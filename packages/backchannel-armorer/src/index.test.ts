@@ -348,29 +348,23 @@ describe('toolbox projection', () => {
     const operation = registry.get('equipment.rename')!;
     const input = { assetId: 'CAM-7', name: 'Studio camera' };
     const context = { registry, host: {}, transport: 'jsonRpcHttp' as const };
-    expect(
-      (
-        await operation.dispatch(input, {
-          ...context,
-          principal: principalFromApiKey({
-            subject: 'reader',
-            scopes: ['inventory.equipment:read'],
-          }),
-        })
-      ).ok,
-    ).toBe(false);
+    const denied = await operation.dispatch(input, {
+      ...context,
+      principal: principalFromApiKey({
+        subject: 'reader',
+        scopes: ['inventory.equipment:read'],
+      }),
+    });
+    expect(denied.ok).toBe(false);
     expect(calls).toBe(0);
-    expect(
-      (
-        await operation.dispatch(input, {
-          ...context,
-          principal: principalFromApiKey({
-            subject: 'editor',
-            scopes: ['inventory.equipment:write'],
-          }),
-        })
-      ).ok,
-    ).toBe(true);
+    const allowed = await operation.dispatch(input, {
+      ...context,
+      principal: principalFromApiKey({
+        subject: 'editor',
+        scopes: ['inventory.equipment:write'],
+      }),
+    });
+    expect(allowed.ok).toBe(true);
     expect(calls).toBe(1);
     expect(validations).toBe(1);
     const snapshot = snapshotOperationCatalog({ operations: registry.list(), restBindings: [] });
@@ -431,6 +425,24 @@ describe('toolbox projection', () => {
       operationsFromToolbox(
         createToolbox([mismatch]),
         [{ ...selection, tool: mismatch.id }],
+        options,
+      ),
+    ).toThrow('equipment.lookup');
+    const standard = createTool({
+      namespace: 'equipment',
+      version: '1.0.0',
+      name: 'standard',
+      description: 'Standard Schema input',
+      input: {
+        '~standard': { version: 1, vendor: 'fixture', validate: (value: unknown) => ({ value }) },
+      },
+      inputSchema: { type: 'object' },
+      execute: async (value) => value,
+    });
+    expect(() =>
+      operationsFromToolbox(
+        createToolbox([standard]),
+        [{ ...selection, tool: standard.id }],
         options,
       ),
     ).toThrow('equipment.lookup');
