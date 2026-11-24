@@ -1,9 +1,9 @@
 {
   "issue": "COR-2604",
   "branch": "steve/cor-2604-backchannel-svelte",
-  "checkedAt": "34dfa0759786d9412aa6ae412804231dda9f91d6",
+  "checkedAt": "7946cfbd55d25d63a9efd139e97d2bf45b2784c3",
   "briefVersion": "766d058a6e0f",
-  "status": "READY",
+  "status": "BLOCKED",
   "criteria": [
     {
       "id": "AC1",
@@ -18,7 +18,7 @@
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "Svelte lifecycle, pagination and attachment tests cover stale completion, errors, abort and teardown."
+      "evidence": "Svelte lifecycle, pagination and attachment tests cover stale completion, errors, abort and teardown; inherited cursor, page and identity fields are rejected or ignored."
     },
     {
       "id": "AC4",
@@ -37,8 +37,8 @@
     },
     {
       "id": "AC7",
-      "status": "met-on-branch",
-      "evidence": "Correlation, reconciliation and DOM/SSR tests pass; coordinator ran the named Chromium fixture at 34dfa0759786d9412aa6ae412804231dda9f91d6, exit 0, scratch/COR-2604-affdc532/chromium-34dfa.log."
+      "status": "not-met",
+      "evidence": "Correlation, reconciliation and DOM/SSR tests pass. Chromium passed at 34dfa0759786d9412aa6ae412804231dda9f91d6 but pagination source changed; combined hosted run remains pending."
     }
   ]
 }
