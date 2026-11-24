@@ -749,7 +749,7 @@ export function underHostSlots<Environment extends { run: CaptureEnvironment['ru
 // is checked for memory before the capture starts (`documentation/repository/host-admission.md`).
 if (import.meta.main) {
   // The capture builds Interborough, which imports Cinder's generated files.
-  ensureCinderGenerated();
+  await ensureCinderGenerated();
   process.exitCode = await withMemoryAdmission(() =>
     withHostSlots(1, (slots) =>
       captureDesignReview(undefined, underHostSlots(hostEnvironment, slots)),

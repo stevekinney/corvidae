@@ -46,7 +46,7 @@ async function main(argumentsList: string[]): Promise<void> {
   if (!parsed.ok) throw new Error(parsed.message);
 
   // A CLI invocation can bypass Turbo's generated-artifact dependencies.
-  ensureCinderGenerated();
+  await ensureCinderGenerated();
   const { planTailwindExport } = await import('../src/shell-app/theme-export-plan.ts');
   const { takeExportSnapshot } = await import('../src/shell-app/theme-export-snapshot.ts');
   const { createRuntimeEvaluator } = await import('../src/shell-app/theme-runtime-evaluator.ts');

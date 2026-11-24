@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2652",
+  "branch": "steve/cor-2652-fixture-reset-safety",
+  "checkedAt": "299f3776324f7ea124e635c3befc1f493ae55e87",
+  "briefVersion": "9f6376efa557",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Fixture-directory, ownership, retirement and workspace regressions passed 21/21; red and healthy controls retained in scratch/COR-2652-a72029e8."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Seed, exact replay and workspace runtime regressions passed 24/24 in scratch/COR-2652-a72029e8/seed-final.log."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Real process qualification passed in scratch/COR-2652-a72029e8/combined-final.log and two-linked-instances.log; the latter injects linked Git identity. Linux verification remains pending."
+    }
+  ]
+}

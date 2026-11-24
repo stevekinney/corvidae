@@ -1,4 +1,12 @@
-import { closeSync, constants, fchmodSync, fstatSync, ftruncateSync, writeSync } from 'node:fs';
+import {
+  closeSync,
+  constants,
+  fchmodSync,
+  fstatSync,
+  ftruncateSync,
+  readSync,
+  writeSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 import { openEntry, readEntry } from './entry-guard.ts';
@@ -154,6 +162,25 @@ export async function defaultAcquireLock(): Promise<(root: string) => RootLock> 
   return (root) => acquireRootLock(root, operations);
 }
 
+/** Take ownership of an already opened lock descriptor and lock its file. */
+export async function acquireLocalRootLockDescriptor(
+  descriptor: number,
+  root: string,
+): Promise<RootLock> {
+  let operations: NativeLock;
+  try {
+    operations = await loadSystemLockOperations();
+  } catch (error) {
+    closeSync(descriptor);
+    throw error;
+  }
+  if (!operations.isCloseOnExec(descriptor)) {
+    closeSync(descriptor);
+    throw new BungalowFilesystemError('The lock descriptor must be close-on-exec.');
+  }
+  return acquireOpenedRootLock(descriptor, root, operations);
+}
+
 /**
  * A held single-instance lock on a local root, as `OpenLocalBungalowOptions.acquireLock` returns
  * it. Acquiring throws when the root is held elsewhere: `BungalowLockedError` by convention.
@@ -188,14 +215,28 @@ export function acquireRootLock(root: string, operations: LockOperations): RootL
     return wrap('open the lock file', error);
   }
 
+  return acquireOpenedRootLock(descriptor, root, operations, lockPath);
+}
+
+function acquireOpenedRootLock(
+  descriptor: number,
+  root: string,
+  operations: LockOperations,
+  lockPath?: string,
+): RootLock {
   try {
+    const status = fstatSync(descriptor);
+    if (!status.isFile() || status.nlink !== 1) {
+      throw new BungalowFilesystemError('The lock file is not an unshared regular file.');
+    }
     let attempt = operations.tryLock(descriptor);
     // A holder takes the kernel lock before it writes its identifier and clears the file before it
     // releases the lock. A contender can therefore find the file empty because the holder is just
     // starting or just finishing: poll, and take the lock if the holder goes. A readable
     // identifier means the lock was held a moment ago, and that is reported.
     for (let polls = 0; attempt === 'contended'; polls += 1) {
-      const holder = readHolder(lockPath);
+      const holder =
+        lockPath === undefined ? readDescriptorHolder(descriptor) : readHolder(lockPath);
       if (holder !== undefined || polls >= HOLDER_READ_ATTEMPTS) {
         throw new BungalowLockedError(root, holder);
       }
@@ -245,4 +286,12 @@ export function acquireRootLock(root: string, operations: LockOperations): RootL
       }
     },
   };
+}
+
+function readDescriptorHolder(descriptor: number): number | undefined {
+  const buffer = Buffer.alloc(32);
+  const length = readSync(descriptor, buffer, 0, buffer.length, 0);
+  const firstLine = buffer.toString('utf8', 0, length).split('\n', 1)[0] ?? '';
+  const holder = Number(firstLine);
+  return /^\d+$/.test(firstLine) && Number.isSafeInteger(holder) && holder > 0 ? holder : undefined;
 }

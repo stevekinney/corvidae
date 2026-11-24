@@ -288,10 +288,7 @@ if (!isCinder) {
 }
 
 const cinderWorkspace = join(repositoryRoot, 'components/cinder');
-ensureCinderGenerated({
-  generate: (cwd) =>
-    Bun.spawnSync(['bun', 'run', 'metadata'], { cwd, stdout: 2, stderr: 'inherit' }).exitCode,
-});
+await ensureCinderGenerated({ stdout: 2 });
 await $`bun run types 1>&2`.cwd(cinderWorkspace);
 if (!isCinder) {
   await $`bun run metadata 1>&2`.cwd(workspaceRoot);
