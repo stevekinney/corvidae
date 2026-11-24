@@ -690,6 +690,8 @@ const scenarios: Record<StressScenarioName, Scenario> = {
         irreversible: true,
         approveLabel: 'Run export',
       };
+      setup.capabilities = { attachments: true };
+      setup.uploads = 'ready';
     } else {
       conversation = withCall(
         conversation,

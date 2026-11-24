@@ -183,11 +183,6 @@
   import NewChatFailure from './new-chat-failure.svelte';
   import NewChatWelcome from './new-chat-welcome.svelte';
 
-  type ApprovalDisclosure = {
-    readonly irreversible?: boolean | undefined;
-    readonly consequence?: string | undefined;
-    readonly why?: string | undefined;
-  };
   import ReplyDetails from './reply-details.svelte';
   import { replyModelLabel, replyModelOf } from './reply-model.ts';
   import { replyStepOf } from './reply-details.ts';
@@ -206,6 +201,12 @@
   import ToolCalls from './tool-calls.svelte';
   import { lapsedChats } from './lapsed-chats.svelte.ts';
   import SessionTasks from './session-tasks.svelte';
+
+  type ApprovalDisclosure = {
+    readonly irreversible?: boolean | undefined;
+    readonly consequence?: string | undefined;
+    readonly why?: string | undefined;
+  };
 
   interface ChatConversationProps {
     sessionId: string;

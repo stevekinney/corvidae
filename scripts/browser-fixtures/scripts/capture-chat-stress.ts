@@ -2525,7 +2525,7 @@ export const repeatedSummaryGuard: PaintGuard = {
     {
       name: 'duration',
       selector: '.chat-tool-call-summary-duration',
-      pattern: '^\\d+(?:ms|s|m|h)(?: \\d+(?:s|m))?$',
+      pattern: '^(?:\\d+(?:\\.\\d)? s|\\d+(?:ms|s|m|h)(?: \\d+(?:s|m))?)$',
     },
   ],
   apart: [['tool/count', 'duration']],
