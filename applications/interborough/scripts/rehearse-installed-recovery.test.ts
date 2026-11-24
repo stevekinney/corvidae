@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { rehearseInstalledRecovery } from './rehearse-installed-recovery.ts';
 
+// spawn-free: identical executables are rejected before the rehearsal can start a process.
 test('rejects the same installed executable before creating evidence', async () => {
   const root = await mkdtemp(join(tmpdir(), 'recovery-boundary-'));
   const evidence = join(root, 'evidence');
