@@ -575,7 +575,12 @@
     "packages/mcp": {
       "name": "@lostgradient/mcp",
       "version": "0.0.0",
+      "dependencies": {
+        "@lostgradient/storage": "workspace:*",
+        "zod": "catalog:",
+      },
       "devDependencies": {
+        "@lostgradient/storage-postgres": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
