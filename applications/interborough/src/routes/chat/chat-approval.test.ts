@@ -88,12 +88,20 @@ describe('a waiting approval', () => {
     expect(onResolve.mock.calls[0]?.[0]).toMatchObject({ decision: 'approve' });
   });
 
-  test('uses the explicit decision surface instead of nesting a review deck', () => {
-    const { container, queryByRole } = mount('dangerous');
+  test('offers its supplied review delegate from the decision surface and commits its guarded choice', async () => {
+    const onResolve = mock((_resolution: unknown) => undefined);
+    const { container, getByRole } = mount('dangerous', onResolve);
     expect(
       container.querySelector('[data-cinder-layout]')?.getAttribute('data-cinder-layout'),
     ).toBe('decision');
-    expect(queryByRole('button', { name: 'Review in deck' })).toBeNull();
+
+    await fireEvent.click(getByRole('button', { name: 'Review in deck' }));
+    await fireEvent.click(
+      container.querySelector<HTMLButtonElement>('[data-decision-action="accept"]')!,
+    );
+    await fireEvent.click(getByRole('button', { name: 'Confirm approval' }));
+
+    expect(onResolve).toHaveBeenCalledWith({ decision: 'approve', remember: false });
   });
 
   test('links a receipt decided in Reviews to that review', () => {
