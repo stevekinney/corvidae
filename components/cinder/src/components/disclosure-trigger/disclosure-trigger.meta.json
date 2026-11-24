@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "category": "action",
+  "status": "beta",
+  "purpose": "One compact labelled trigger that opens a related detail region.",
+  "tags": ["disclosure", "toggle"],
+  "useWhen": [
+    "A detail region is owned by another component and several surfaces need the same trigger treatment."
+  ],
+  "avoidWhen": [
+    { "reason": "The trigger and content are a self-contained block; use Collapsible." }
+  ],
+  "related": ["collapsible", "accordion"],
+  "rationale": "Nearest alternative: Collapsible. DisclosureTrigger owns only the accessible compact trigger so hosts can preserve their existing detail layout and state."
+}

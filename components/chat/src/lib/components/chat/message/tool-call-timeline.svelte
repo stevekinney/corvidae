@@ -15,7 +15,6 @@
   import {
     Brain,
     Check,
-    ChevronRight,
     CircleAlert,
     CircleDot,
     Globe,
@@ -24,6 +23,7 @@
     Terminal,
     X,
     CopyButton,
+    DisclosureTrigger,
     formatDuration,
     Spinner,
     Tooltip,
@@ -42,6 +42,7 @@
   import { useQuestionStore } from '../question/question-store.svelte.ts';
   import {
     foldRepeatedSteps,
+    formatRepeatedToolCallDuration,
     formatToolCallElapsed,
     isProblemStatus,
     nextToolCallApprovalDeadline,
@@ -199,6 +200,10 @@
     listEntries.flatMap((entry) => (entry.kind === 'step' ? [entry.step] : [])),
   );
   const hasRepeatedSummary = $derived(steps.some((step) => step.kind === 'repeated'));
+  const whollyRepeatedSummary = $derived(steps.length === 1 && steps[0]?.kind === 'repeated');
+  const repeatedSummaryDuration = $derived(
+    formatRepeatedToolCallDuration(totalToolCallDuration(rows.map((row) => row.duration)) ?? 0),
+  );
   function stepKey(step: ToolCallStep<TimelineRow>): string {
     return step.kind === 'single' ? step.row.key : `repeated:${step.rows[0].key}`;
   }
@@ -493,14 +498,16 @@
 >
   <span class="cinder-sr-only" aria-live="polite" aria-atomic="true">{announcerText}</span>
   <h3 id={headingId} class="chat-tool-call-heading">
-    <button
-      type="button"
+    <DisclosureTrigger
       class="chat-tool-call-toggle"
-      aria-expanded={groupOpen}
-      aria-controls={listId}
+      open={groupOpen}
+      controls={listId}
       onclick={toggleGroup}
     >
-      <ChevronRight class="chat-tool-call-chevron" aria-hidden="true" />
+      <!-- The compact summary keeps its text-height box. This child owns the larger coarse-pointer
+           hit area: generated content outside a button's border is not consistently hit-tested by
+           browsers, while an overflowing descendant is. -->
+      <span class="chat-tool-call-hit-target" aria-hidden="true"></span>
       <span class="chat-tool-call-summary">
         {#if runningRow?.presentation}
           <!-- The step under way (R1): a spinner, its present-tense title ending in an ellipsis,
@@ -549,11 +556,13 @@
             <span class="chat-tool-call-summary-tools">{summary.tools}</span>
           {/if}
           {#if summary.duration}
-            <span class="chat-tool-call-summary-duration">{summary.duration}</span>
+            <span class="chat-tool-call-summary-duration"
+              >{whollyRepeatedSummary ? repeatedSummaryDuration : summary.duration}</span
+            >
           {/if}
         {/if}
       </span>
-    </button>
+    </DisclosureTrigger>
   </h3>
   <ol id={listId} class="chat-tool-call-list" aria-label={callsLabel} hidden={!groupOpen}>
     {#each listEntries as entry (entryKey(entry))}
@@ -631,7 +640,7 @@
               <code class="chat-tool-call-name">{first.pair.call.name} ×{step.rows.length}</code>
               <span class="chat-tool-call-result"></span>
               {#if total !== undefined}
-                <span class="chat-tool-call-duration">{formatDuration(total)}</span>
+                <span class="chat-tool-call-duration">{formatRepeatedToolCallDuration(total)}</span>
               {/if}
             </button>
             <div id={`${first.detailsId}-repeated`} class="chat-tool-call-details" hidden={!open}>
@@ -692,15 +701,26 @@
     font: inherit;
   }
 
-  /* The first line of a button's content is where its icon aligns: when a phrase wraps, the
-   * chevron and the status icon stay beside the first line, not centered on all of them. */
-  .chat-tool-call-toggle,
+  /* The summary's real child hit target is positioned from its button. Keep that containing block
+     scoped to the header: without it every collapsed timeline targets the message wrapper instead. */
+  .chat-tool-call-heading > :global(.chat-tool-call-toggle) {
+    display: flex;
+    position: relative;
+    z-index: 1;
+    inline-size: 100%;
+    min-inline-size: 0;
+  }
+
+  /* Individual call rows keep their compact timeline treatment. The group trigger itself is the
+   * shared DisclosureTrigger and owns its control, glyph, focus and touch contracts. */
   .chat-tool-call-row {
     display: flex;
     align-items: flex-start;
     gap: var(--cinder-space-2);
     inline-size: 100%;
     min-inline-size: 0;
+    /* The glyph and words stay compact, but the control itself is a real list-row target. */
+    min-block-size: var(--cinder-control-height-xs);
     padding: 0;
     border: 0;
     background: transparent;
@@ -712,23 +732,9 @@
     cursor: pointer;
   }
 
-  .chat-tool-call-toggle:focus-visible,
   .chat-tool-call-row:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
-  }
-
-  /* The chevron is 14px beside 13px text: a glyph follows its text (12 to 14px beside 12 to 13px). */
-  .chat-tool-call-toggle :global(.chat-tool-call-chevron) {
-    inline-size: 14px;
-    block-size: 14px;
-    flex: none;
-    margin-block: calc((1lh - 14px) / 2);
-    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
-  }
-
-  .chat-tool-call-toggle[aria-expanded='true'] :global(.chat-tool-call-chevron) {
-    transform: rotate(90deg);
   }
 
   /* The step row takes the message's direction: the chevron leads at the inline start and points
@@ -737,50 +743,22 @@
     direction: rtl;
   }
 
-  :global(.chat-message-wrapper[data-message-direction='rtl'])
-    .chat-tool-call-toggle[aria-expanded='false']
-    :global(.chat-tool-call-chevron) {
-    transform: scaleX(-1);
-  }
-
-  /* On a touch screen a row is still painted at its text line height; its 44px hit area is a
-   * pseudo-element that reaches past the row and adds no layout. The row stands above the message
-   * line before it (a stacking position of its own), so the overhang is reachable there. Rows
-   * stacked at their text height would cover each other's faces if each overhung both ways, so the
-   * header overhangs on both sides, a step row ends at its own edges, and only the last row
-   * overhangs, below: a tap between two rows goes to the nearer one. */
+  /* The summary paints at its text height and its explicit child owns the coarse-pointer target.
+   * Step rows instead have real list-row targets, so adjacent expanded buttons have unambiguous
+   * touch ownership while their glyphs and words remain compact. */
   @media (any-pointer: coarse) {
-    .chat-tool-call-toggle,
-    .chat-tool-call-row {
-      position: relative;
-      z-index: 1;
+    /* The summary paints at its text height; its explicit child owns the 44px reachable region.
+       A shared minimum height here would add a blank line before the answer. */
+    .chat-tool-call-heading > :global(.chat-tool-call-toggle) {
+      min-block-size: auto;
     }
 
-    .chat-tool-call-toggle::before,
-    .chat-tool-call-row::before {
-      content: '';
+    .chat-tool-call-hit-target {
       position: absolute;
+      z-index: 0;
+      pointer-events: auto;
       inset-inline: 0;
-      inset-block: 0;
-    }
-
-    .chat-tool-call-toggle::before {
       inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
-    }
-
-    .chat-tool-call-item:last-child > .chat-tool-call-row::before {
-      inset-block-end: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
-    }
-
-    /* A line of narration between two steps is text, not a control: the step beside it overhangs
-     * into it, as the last row overhangs below, so a tap on the row's 44px region is not taken by
-     * the line. The line is read, never tapped, and the overhang sits above it. */
-    .chat-tool-call-narration + .chat-tool-call-item > .chat-tool-call-row::before {
-      inset-block-start: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
-    }
-
-    .chat-tool-call-item:has(+ .chat-tool-call-narration) > .chat-tool-call-row::before {
-      inset-block-end: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
     }
   }
 
@@ -935,6 +913,15 @@
     margin: 0;
     padding: 0;
     list-style: none;
+  }
+
+  @media (any-pointer: coarse) {
+    /* A wrapped summary can otherwise overlap the first expanded row before either row's touch
+     * target is considered. Keep a small dedicated lane between them: both painted lines stay
+     * compact, while their 44px targets have separate ownership. */
+    .chat-tool-call-list {
+      margin-block-start: var(--cinder-space-4);
+    }
   }
 
   /* What the agent said between steps. It starts on the steps' text edge (the status icon and its
@@ -1143,7 +1130,7 @@
     flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-3);
   }
 
   .chat-tool-call-failure-actions :global(.chat-tool-call-failure-action) {
@@ -1171,10 +1158,6 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .chat-tool-call-toggle :global(.chat-tool-call-chevron) {
-      transition: none;
-    }
-
     .chat-tool-call-activity-icon[data-cinder-tool-activity-active],
     .chat-tool-call-status-icon[data-cinder-tool-activity-active] {
       animation: none;

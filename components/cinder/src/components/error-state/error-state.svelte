@@ -12,6 +12,7 @@
   import { RefreshCw, Search, TriangleAlert } from '@lucide/svelte';
 
   import Button from '../button/button.svelte';
+  import DisclosureTrigger from '../disclosure-trigger/disclosure-trigger.svelte';
   import { classNames } from '../../utilities/class-names.ts';
   import type { ErrorStateProps } from './error-state.types.ts';
 
@@ -61,6 +62,8 @@
   const flat = $derived(variant === 'flat');
   const row = $derived(variant === 'row');
   const compact = $derived(size === 'compact' && !flat && !row);
+  const detailId = `${titleId}-details`;
+  let detailOpen = $state(false);
 </script>
 
 <div
@@ -119,10 +122,15 @@
         </div>
       {/if}
       {#if detail}
-        <details class="cinder-error-state-details">
-          <summary class="cinder-error-state-details-summary">{detailsLabel}</summary>
-          <p class="cinder-error-state-detail">{detail}</p>
-        </details>
+        <div class="cinder-error-state-details">
+          <DisclosureTrigger
+            open={detailOpen}
+            controls={detailId}
+            class="cinder-error-state-details-summary"
+            onclick={() => (detailOpen = !detailOpen)}>{detailsLabel}</DisclosureTrigger
+          >
+          <p id={detailId} class="cinder-error-state-detail" hidden={!detailOpen}>{detail}</p>
+        </div>
       {/if}
     {:else}
       {#if !flat}
@@ -184,10 +192,15 @@
         </div>
       {/if}
       {#if detail}
-        <details class="cinder-error-state-details">
-          <summary class="cinder-error-state-details-summary">{detailsLabel}</summary>
-          <p class="cinder-error-state-detail">{detail}</p>
-        </details>
+        <div class="cinder-error-state-details">
+          <DisclosureTrigger
+            open={detailOpen}
+            controls={detailId}
+            class="cinder-error-state-details-summary"
+            onclick={() => (detailOpen = !detailOpen)}>{detailsLabel}</DisclosureTrigger
+          >
+          <p id={detailId} class="cinder-error-state-detail" hidden={!detailOpen}>{detail}</p>
+        </div>
       {/if}
     {/if}
   </div>

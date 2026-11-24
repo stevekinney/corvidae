@@ -65,12 +65,16 @@
     CHAT_OVERLAY_INSET_START_PROPERTY,
     ChatNote,
     ChatQuestion,
+    classifyQuestion,
     createConversationHistory,
     McpApp,
     resolveMessageNotes,
     type ChatAvailability,
     type ChatRowContext,
+    type ChatTurnState,
+    type QuestionKind,
     type MessageNoteInfo,
+    type Message,
   } from '@lostgradient/chat';
   import { parseStepRowIdentifier } from '@lostgradient/operative';
   import { CircleHelp, GitBranch, Workflow } from '@lucide/svelte';
@@ -84,6 +88,7 @@
   import { showToast } from '../../app/toast-host.svelte';
   import { getConnection } from '../../app/connection.svelte.ts';
   import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
+  import { browserWorkspaceStorage } from '../../app/workspace-lifetime.ts';
   import {
     forkContext,
     forkRefusalReason,
@@ -141,6 +146,7 @@
   import ChatApproval from './chat-approval.svelte';
   import { branchPointIds } from './branch-points.ts';
   import { choiceButtons, pickChoice } from '../reviews/choice-buttons.ts';
+  import { inboxKey } from '../reviews/review-items.ts';
   import { setChatArchived } from './chat-archive.ts';
   import ChatAssets from './chat-assets.svelte';
   import {
@@ -163,22 +169,26 @@
   import { RestartFlow } from '../settings/plugins/restart-flow.svelte.ts';
   import { withTypedAnswers } from './answer-rows.ts';
   import { assetsOf, hasContent, withoutAssetParts } from './chat-assets.ts';
-  import { ChatSessionState } from './chat-session.svelte.ts';
-  import type { GrantNotLoosened } from './run-wiring.ts';
+  import { chatSessions, openChatSession } from './chat-session-registry.svelte.ts';
+  import type { GrantNotLoosened, HumanRequest } from './run-wiring.ts';
   import { decidedKey, SeenReviews } from './decided-elsewhere.ts';
   import type { DecisionContext } from './approval-decision-words.ts';
   import { editForkPoint, lastBranchPoint } from './edit-fork.ts';
   import { composerStatusOf } from './composer-state.ts';
+  import { lastAssistantId, lastTurnStop, turnStateOf, withoutStopLine } from './turn-states.ts';
+  import { draftTime, forgetChatDraft, readChatDraft, writeChatDraft } from './chat-drafts.ts';
   import { changeSetting, type SteerNotices } from './steer-change.ts';
   import ModelPicker from './model-picker.svelte';
   import NewChatChoices from './new-chat-choices.svelte';
   import NewChatFailure from './new-chat-failure.svelte';
   import NewChatWelcome from './new-chat-welcome.svelte';
+
   import ReplyDetails from './reply-details.svelte';
   import { replyModelLabel, replyModelOf } from './reply-model.ts';
   import { replyStepOf } from './reply-details.ts';
   import {
     formatCallDuration,
+    lastTurnStart,
     railCall,
     toolGroups,
     approvalLapsed,
@@ -191,6 +201,12 @@
   import ToolCalls from './tool-calls.svelte';
   import { lapsedChats } from './lapsed-chats.svelte.ts';
   import SessionTasks from './session-tasks.svelte';
+
+  type ApprovalDisclosure = {
+    readonly irreversible?: boolean | undefined;
+    readonly consequence?: string | undefined;
+    readonly why?: string | undefined;
+  };
 
   interface ChatConversationProps {
     sessionId: string;
@@ -246,47 +262,92 @@
   /** A phone: a new chat's composer is docked to the bottom of the screen (board PageNewChat, frame l). */
   const phone = new MediaQuery('(max-width: 639.98px)', false);
 
-  const session = new ChatSessionState({
-    sessionId: untrack(() => sessionId),
-    // A new chat's thread is not kept until its first run begins, so nothing reads its history before.
-    unopened: untrack(() => isNew),
-    readOnly: untrack(() => readOnly),
-    ...(sharedHistoryUnavailable === undefined
-      ? {}
-      : { onSharedHistoryUnavailable: sharedHistoryUnavailable }),
-    agentName: () => agent,
-    // A deleted chat is sent nothing, and a not-found is checked against a read of the chat.
-    closed: () => gone,
-    onNotFound: () => void context.refetch(),
-    // Another window archived the chat: reading it again turns the composer into the Archived bar.
-    onArchived: () => void context.refetch(),
-    onGrantNotLoosened: (notice) => grantNotLoosened(notice),
-    discardUnstarted: () => choosing,
-    onRunStarted: () => {
-      if (!choosing) return;
-      choosing = false;
-      // The box kept what was typed until the chat started (`clearComposerOnSubmit`). It is emptied
-      // only if it still holds what was sent: text typed after Send, while "Starting chat…" showed,
-      // is the person's next message and stays.
-      const submitted = submittedDraft;
-      submittedDraft = undefined;
-      if (submitted === undefined || chat?.getComposerValue() === submitted) chat?.clearInput();
-      // The session exists now. Its address replaces the new chat's, so Back returns to where the
-      // person came from, and this page stays mounted so the run carries on.
-      router.navigate(chatSessionPath(sessionId), { replace: true, keep: true });
-      void queryClient.invalidateQueries({ queryKey: ['contexts'] });
-      void applyDraft();
+  // The session is the registry's (COR-2293 B2): leaving the page releases it, and a route return
+  // gets the same session back while its run is still going, with no second attach.
+  const opened = openChatSession(
+    chatSessions,
+    {
+      sessionId: untrack(() => sessionId),
+      identity: untrack(() => {
+        const identity = hasPrincipalStore() ? getPrincipalStore().principal?.workspace : undefined;
+        return identity === undefined
+          ? undefined
+          : JSON.stringify([identity.workspaceId, identity.actorId]);
+      }),
+      // A new chat's thread is not kept until its first run begins, so nothing reads its history before.
+      unopened: untrack(() => isNew),
+      readOnly: untrack(() => readOnly),
     },
-  });
+    {
+      ...(sharedHistoryUnavailable === undefined
+        ? {}
+        : { onSharedHistoryUnavailable: sharedHistoryUnavailable }),
+      agentName: () => agent,
+      // A deleted chat is sent nothing, and a not-found is checked against a read of the chat.
+      closed: () => gone,
+      onNotFound: () => void context.refetch(),
+      // Another window archived the chat: reading it again turns the composer into the Archived bar.
+      onArchived: () => void context.refetch(),
+      onGrantNotLoosened: (notice) => grantNotLoosened(notice),
+      discardUnstarted: () => choosing,
+      onRunStarted: () => {
+        if (!choosing) return;
+        choosing = false;
+        // The box kept what was typed until the chat started (`clearComposerOnSubmit`). It is emptied
+        // only if it still holds what was sent: text typed after Send, while "Starting chat…" showed,
+        // is the person's next message and stays.
+        const submitted = submittedDraft;
+        submittedDraft = undefined;
+        if (submitted === undefined || chat?.getComposerValue() === submitted) chat?.clearInput();
+        // The session exists now. Its address replaces the new chat's, so Back returns to where the
+        // person came from, and this page stays mounted so the run carries on.
+        router.navigate(chatSessionPath(sessionId), { replace: true, keep: true });
+        void queryClient.invalidateQueries({ queryKey: ['contexts'] });
+        void applyDraft();
+      },
+    },
+  );
+  const session = opened.session;
 
-  /** The session's adapter; while the chat is new it also notes the box as the first message is sent. */
+  // The draft store (`chat-drafts.ts`): what the person typed in this chat and has not sent, kept in
+  // this browser. An open chat puts it back in the box, and Chat's draft-restored drawer says when it
+  // was written (COR-2284 C7). A new chat has no session to keep a draft under until it starts.
+  const draftStorage = browserWorkspaceStorage(
+    hasPrincipalStore() ? getPrincipalStore().principal?.workspace : undefined,
+    'localStorage',
+  );
+  const storedDraft = untrack(() =>
+    isNew || (draft !== undefined && draft !== '')
+      ? undefined
+      : readChatDraft(draftStorage, sessionId),
+  );
+  /** When the draft put back in the box was written, until it is sent or discarded. */
+  let restoredDraftAt = $state<number | undefined>(untrack(() => storedDraft?.savedAt));
+  /** Keeps what the box holds as this chat's draft. */
+  function rememberDraft(text: string): void {
+    if (choosing) return;
+    // Putting the stored draft back in the box is not writing it again.
+    if (restoredDraftAt !== undefined && text === storedDraft?.text) return;
+    restoredDraftAt = undefined;
+    writeChatDraft(draftStorage, sessionId, text, Date.now());
+  }
+  /** Forgets this chat's draft: it was sent, or Discard draft emptied the box. */
+  function forgetDraft(): void {
+    restoredDraftAt = undefined;
+    if (!choosing) forgetChatDraft(draftStorage, sessionId);
+  }
+
+  /**
+   * The session's adapter. A message sent from an open chat forgets its draft; while the chat is new
+   * it notes the box as the first message is sent.
+   */
   const chatAdapter = $derived.by(() => {
     const adapter = session.chatAdapter;
-    if (!choosing) return adapter;
     return {
       ...adapter,
       sendMessage: (...input: Parameters<typeof adapter.sendMessage>) => {
-        submittedDraft = chat?.getComposerValue();
+        if (choosing) submittedDraft = chat?.getComposerValue();
+        else forgetDraft();
         return adapter.sendMessage(...input);
       },
     };
@@ -627,6 +688,10 @@
       connectHref: router.href('/settings/models'),
       newChatHref: router.href('/chats/new'),
       reconnectAttempt: session.reconnectAttempt,
+      restoredDraft:
+        restoredDraftAt === undefined
+          ? undefined
+          : { when: draftTime(restoredDraftAt, clock()), discard: forgetDraft },
       queuedFollowUps: session.queuedFollowUps,
       note: appliesNote,
       working: session.streaming && !choosing,
@@ -640,7 +705,7 @@
    * state (V4), Connect a model provider with a primary Connect provider. Chat draws that one in
    * place of an empty chat, and beside a chat with messages replaces only the composer, so the
    * history stays readable and a waiting approval answerable (ChatStates rows 19f and 19h). A
-   * blocked row the page draws (unreachable, restarting, a disabled plugin) says what is wrong
+   * offline drawer or a blocked row the page draws (restarting, a disabled plugin) says what is wrong
    * first.
    */
   const availability = $derived.by<ChatAvailability | undefined>(() => {
@@ -684,11 +749,13 @@
     }
     // An archived chat's bar outranks the missing provider: nothing can be sent until it is
     // unarchived, and Unarchive is the way back.
+    // The offline drawer, which keeps the box and its draft, outranks it as the blocked rows do.
     if (
       !readOnly &&
       noProvider &&
       composerStatus?.kind !== 'blocked' &&
-      composerStatus?.kind !== 'archived'
+      composerStatus?.kind !== 'archived' &&
+      composerStatus?.kind !== 'offline'
     ) {
       return {
         kind: 'unconfigured',
@@ -1027,7 +1094,7 @@
       isNew && fromWorkflows
         ? CHAT_COPY.newChatWelcome.workflowPrefill
         : draft === undefined || draft === ''
-          ? undefined
+          ? storedDraft?.text
           : draft,
     ),
   );
@@ -1073,7 +1140,7 @@
   // of, so it is drawn on the row it belongs to (`withStopLine`). A chat the server stopped when it
   // restarted says so under what arrived, in place of the plain line the canceled run left
   // (`withEndedLine`).
-  const shown = $derived(
+  const lined = $derived(
     withoutAssetParts(
       withTypedAnswers(
         withEndedLine(withStopLine(session.conversation, { tools: toolInfo }), endedByRestart),
@@ -1081,11 +1148,65 @@
       ),
     ),
   );
+  // Chat owns the terminal turn presentation, so its source stop line is removed only for the
+  // last settled turn. Earlier failures keep their recorded note in the transcript.
+  const lastStop = $derived(session.streaming ? undefined : lastTurnStop(lined));
+  const shown = $derived(withoutStopLine(lined, lastStop));
+  const currentTurnMessageIds = $derived(new Set(shown.ids.slice(lastTurnStart(shown))));
+  const failedTurnExplanation = $derived.by(() => {
+    if (readOnly || lastStop?.state.kind !== 'failed') return undefined;
+    const runId = stoppedRunIdOf(lastStop.noteId);
+    return runId === undefined
+      ? undefined
+      : {
+          href: router.href(failureExplanationPath(runId)),
+          label: CHAT_COPY.stopLine.explain,
+        };
+  });
 
   // The status line Retry is offered beside: the last turn's, when its run failed. A failed attempt
   // of an earlier turn keeps its line (row 20b) with nothing beside it, since Retry runs the last
   // turn again.
-  const retryNoteId = $derived(failedStopNoteId(shown));
+  const retryNoteId = $derived(readOnly ? undefined : failedStopNoteId(shown));
+  const lastAssistant = $derived(lastAssistantId(shown));
+  let reconnectNow = $state(Date.now());
+  $effect(() => {
+    if (session.reconnectSchedule === undefined) return;
+    reconnectNow = Date.now();
+    // The reconnect countdown is a local display that advances once per second.
+    // poll-reason: clock
+    const timer = setInterval(() => (reconnectNow = Date.now()), 1000);
+    return () => clearInterval(timer);
+  });
+  function turnState(message: Message): ChatTurnState | undefined {
+    const state = turnStateOf(message, {
+      reconnect: session.reconnectSchedule,
+      lastAssistantId: lastAssistant,
+      now: reconnectNow,
+      stop: lastStop?.state,
+    });
+    return state?.kind === 'failed' && failedTurnExplanation !== undefined
+      ? { ...state, explanationLink: failedTurnExplanation }
+      : state;
+  }
+
+  const discardableRun = $derived(
+    !readOnly && lastStop?.state.kind === 'stopped' && lastAssistant !== undefined
+      ? replyStepOf(lastAssistant)?.runId
+      : undefined,
+  );
+  async function discardTurn(): Promise<void> {
+    if (discardableRun === undefined) return;
+    if (!(await session.discardTurn(discardableRun))) {
+      showToast(CHAT_COPY.discardTurn.failed, { variant: 'danger', duration: 0 });
+    }
+  }
+  async function resumeTurn(): Promise<void> {
+    if (discardableRun === undefined) return;
+    if (!(await session.resumeTurn(discardableRun))) {
+      showToast(CHAT_COPY.resumeTurn.failed, { variant: 'danger', duration: 0 });
+    }
+  }
 
   // The messages that offer a branch. A run that is going, or that the page is still reading, has
   // not finished its last message.
@@ -1159,6 +1280,75 @@
       noted('toolCall', SETTINGS.permission, onChanges?.label ?? 'On changes asks');
     }
     await session.retryTurn({ tools: toolInfo });
+  }
+
+  /**
+   * Sends a new, ordinary chat request for one failed call in the final tool turn. This is not a
+   * resume: the selected call is fenced to the current final turn before its human-readable
+   * ordinal and tool name are sent as a normal request under its current permission and approval
+   * rules.
+   */
+  async function retryFailedStep(entries: readonly ToolCallEntry[], callId: string): Promise<void> {
+    const finalGroup = [...activity.groups.values()]
+      .filter((group) => group.messageIds.some((id) => currentTurnMessageIds.has(id)))
+      .at(-1);
+    if (finalGroup?.entries !== entries) return;
+    const position = entries.findIndex((entry) => entry.callId === callId);
+    const entry = entries[position];
+    if (entry === undefined || entry.state !== 'failed') return;
+
+    const details = toolInfo.get(entry.name);
+    // A failed changing call may already have made a partial change. Reset Allow all before the
+    // ordinary request is submitted, exactly as a whole-turn retry does, so the next call asks.
+    if (context.data?.permissionMode === 'allow-all' && details?.tier !== 'read-only') {
+      const data = context.data;
+      const result = await changeSetting({
+        commands: retryCommands,
+        scope: sessionId,
+        content: 'on-changes',
+        send: (commandId) =>
+          steerContext({
+            contextId: sessionId,
+            commandId,
+            expectedRevision: data.configVersion,
+            permissionMode: 'on-changes',
+          }),
+        reload: reloadContext,
+        notices: SETTINGS.permissionNotices,
+      });
+      if (!result.applied) {
+        showToast(result.notice ?? SETTINGS.permissionNotices.notChanged, {
+          variant: 'warning',
+          duration: 0,
+        });
+        return;
+      }
+      const onChanges = SETTINGS.permissionOptions.find((option) => option.value === 'on-changes');
+      noted('toolCall', SETTINGS.permission, onChanges?.label ?? 'On changes asks');
+    }
+
+    // Permission changes await a durable command. Do not let a formerly current row submit after
+    // a newer tool turn replaces it while that command is in flight.
+    const currentGroup = [...activity.groups.values()]
+      .filter((group) => group.messageIds.some((id) => currentTurnMessageIds.has(id)))
+      .at(-1);
+    const currentEntry = currentGroup?.entries.find((candidate) => candidate.callId === callId);
+    if (
+      currentGroup?.entries !== entries ||
+      currentEntry !== entry ||
+      currentEntry.state !== 'failed'
+    ) {
+      return;
+    }
+
+    // Sending through the session adds a normal user turn without replacing the unsent composer
+    // draft. Recheck the ordinary-send authority at this final fence: another turn may have begun
+    // while a changing tool's permission reset was pending.
+    if (!session.canRetryTurn || session.streaming) return;
+    const name = toolDisplayName(entry.name, details?.title);
+    await session.send(
+      `Retry only failed step ${String(position + 1)} of ${String(entries.length)}: ${name}. Keep completed work and follow the current approval rules.`,
+    );
   }
 
   let branching = $state(false);
@@ -1313,6 +1503,28 @@
       if (open?.interruptId !== sentRequest.interruptId) sentRequest = undefined;
     }
   });
+
+  // Choice questions can occupy Chat's composer dock. A text question remains in its transcript
+  // row because its answer belongs in the composer. Chat confirms the dock before this host hides
+  // the inline row, preventing both a duplicate and a missing question.
+  const DOCKED_QUESTION_KINDS: ReadonlySet<QuestionKind> = new Set([
+    'choice',
+    'choice-other',
+    'boolean',
+    'multiple',
+  ]);
+  let repliedInChat = $state<string | undefined>();
+  let hostQuestionDocked = $state(false);
+  const dockedRequest = $derived(
+    session.streaming || sentRequest !== undefined
+      ? undefined
+      : shownRequests.find(
+          (request) =>
+            request.interruptId !== repliedInChat &&
+            request.schema !== undefined &&
+            DOCKED_QUESTION_KINDS.has(classifyQuestion(request.schema as never)),
+        ),
+  );
 
   async function uploadQuestionFile(file: File, signal: AbortSignal): Promise<string> {
     const asset = await uploadAsset(file, { signal });
@@ -1621,7 +1833,10 @@
     if (endedByRestart) return CHAT_COPY.status.ended;
     if (approvalWaits || shownRequests.length > 0) return CHAT_COPY.status.waiting;
     if (runGoing && !parkedOnLapsed) return CHAT_COPY.status.running;
-    if (retryNoteId !== undefined) return CHAT_COPY.status.failed;
+    // `shown` intentionally removes the canonical stopped/failed line once its richer outcome
+    // row owns it. Keep the title state attached to that durable stop, not that filtered view.
+    if (lastStop?.state.kind === 'failed' || retryNoteId !== undefined)
+      return CHAT_COPY.status.failed;
     return CHAT_COPY.status.done;
   });
   /** The Badge tone of each status word beside the title. */
@@ -2152,8 +2367,9 @@
         },
       }),
     );
-    // A new chat has no thread yet, so there is nothing to attach to or to read back.
-    if (!untrack(() => isNew)) void session.attach().then((joined) => (arriving = joined));
+    // A new chat has no thread yet, so there is nothing to attach to or to read back, and a session
+    // retained from an earlier visit is still reading its run: `openChatSession` attaches neither.
+    void opened.attached.then((joined) => (arriving = joined || arriving));
     // "New chat about <topic>" in the palette (`?about=`) opens with the topic in the box, for the
     // person to send or change. It sends nothing.
     const about = untrack(() => (isNew ? router.current.search.get('about') : null));
@@ -2165,7 +2381,8 @@
     return () => {
       for (const remove of removals) remove();
       restart.dispose();
-      session.dispose();
+      // Leaving is a release, not a stop: a session with a run going is kept for a route return.
+      opened.release();
     };
   });
 </script>
@@ -2273,8 +2490,9 @@
           statusPlacement="inline"
         />
       {/if}
-      <!-- The transcript already explains a stopped or failed reply. -->
-      {#if !choosing && !endedByRestart && retryNoteId === undefined}
+      <!-- The transcript already explains the current failed reply; older failed notes remain
+           ordinary history, so their run summaries can still appear here. -->
+      {#if !choosing && !endedByRestart && retryNoteId === undefined && lastStop?.state.kind !== 'failed'}
         <SessionTasks
           {sessionId}
           streaming={session.streaming}
@@ -2391,6 +2609,7 @@
       <div class="weft-chat-surface" onclick={openNoteLink}>
         <Chat
           bind:this={chat}
+          bind:hostQuestionDocked
           id={`chat-${sessionId}`}
           conversation={choosing ? unstartedConversation : shown}
           adapter={chatAdapter}
@@ -2422,6 +2641,17 @@
               : CHAT_COPY.questionAnswerLabel
             : CHAT_COPY.composer.placeholder(agentShown)}
           composerStatus={sharedComposerStatus ?? composerStatus}
+          onComposerInput={rememberDraft}
+          messageTurnState={turnState}
+          {...!readOnly ? { onRetryConnection: () => void session.reconnect() } : {}}
+          {...!readOnly && session.canRetryTurn ? { onRetryTurn: () => void retryTurn() } : {}}
+          {...!readOnly && discardableRun !== undefined && session.discarding === undefined
+            ? { onDiscardTurn: () => void discardTurn() }
+            : {}}
+          {...!readOnly && discardableRun !== undefined && session.resuming === undefined
+            ? { onContinueTurn: () => void resumeTurn() }
+            : {}}
+          questionDock={dockedRequest === undefined ? undefined : hostQuestionDock}
           composerHeader={choosing && agent !== '' ? newChatHeader : undefined}
           composerLead={choosing && (fromWorkflows || agent === '') ? newChatLead : undefined}
           composerFooter={!choosing
@@ -2451,34 +2681,9 @@
         >
           {#snippet trailing()}
             {#each shownRequests as request (request.interruptId)}
-              <div class="weft-chat-question" data-interrupt={request.interruptId}>
-                <p class="weft-chat-question__prompt">
-                  <CircleHelp class="weft-chat-question__glyph" size={16} aria-hidden="true" />
-                  {request.message === '' ? CHAT_COPY.humanRequestFallback : request.message}
-                </p>
-                <div bind:this={questionElement} data-question-answer-region>
-                  <ChatQuestion
-                    {...{ 'data-changes': true }}
-                    id={`chat-question-${request.interruptId}`}
-                    schema={request.schema ?? FREE_TEXT_SCHEMA}
-                    answerInComposer
-                    busy={session.attaching}
-                    uploadFile={uploadQuestionFile}
-                    undoMilliseconds={answerUndoMilliseconds()}
-                    onHoldChange={(held) => (answerHeld = held)}
-                    onSubmit={async (value) => {
-                      sentRequest = request;
-                      const taken = await session.answerQuestion(request.interruptId, value);
-                      // An answer the session did not take leaves the question open, not "answered".
-                      if (!taken) sentRequest = undefined;
-                      return taken;
-                    }}
-                  />
-                </div>
-                {#if numberedChoices > 0}
-                  <p class="weft-chat-question__hint">{CHAT_COPY.pickHint(numberedChoices)}</p>
-                {/if}
-              </div>
+              {#if request.interruptId !== dockedRequest?.interruptId || !hostQuestionDocked}
+                {@render questionBlock(request, false)}
+              {/if}
             {/each}
           {/snippet}
           {#snippet composerControls({ folded })}
@@ -2529,7 +2734,7 @@
             <!-- A failed run's line says why it stopped in a few words, and leads to the Run page's
                  explanation of the failure (COR-2533), for every failed attempt on record. -->
             <!-- The link and Retry are one group a Cinder space apart, never touching. -->
-            {#if (note.kind === 'stopped' && note.failed === true) || note.id === retryNoteId}
+            {#if !readOnly && ((note.kind === 'stopped' && note.failed === true) || note.id === retryNoteId)}
               <Stack direction="row" align="center" wrap gap="var(--cinder-space-3)">
                 {#if note.kind === 'stopped' && note.failed === true}
                   {@const failedRunId = stoppedRunIdOf(note.id)}
@@ -2572,6 +2777,11 @@
                 decided={decisionContext}
                 selectedId={selectedCallId}
                 onSelect={selectCall}
+                {...!readOnly &&
+                session.canRetryTurn &&
+                group.messageIds.some((id) => currentTurnMessageIds.has(id))
+                  ? { onRetryStep: (callId: string) => void retryFailedStep(group.entries, callId) }
+                  : {}}
                 opensPanel={(entry) =>
                   chatToolPanelFor(entry) !== undefined &&
                   structuredResultText(entry) !== undefined}
@@ -2582,11 +2792,12 @@
               >
                 {#snippet decision(entry)}
                   {@const asked = approvalsByCall.get(entry.callId)}
+                  {@const askedAction = asked?.action as ApprovalDisclosure | undefined}
                   {@const expired =
                     entry.state === 'expired' ||
                     (entry.approvalExpiresAt !== undefined &&
                       session.clock.now() >= entry.approvalExpiresAt)}
-                  {#if entry.decision !== undefined || asked !== undefined}
+                  {#if !readOnly && (entry.decision !== undefined || asked !== undefined)}
                     {#key `${entry.state}:${entry.approvalExpiresAt ?? ''}`}
                       <ChatApproval
                         id={`tools-${message.id}-${entry.callId}`}
@@ -2603,6 +2814,14 @@
                           : undefined}
                         requestedAt={asked?.requestedAt}
                         alwaysAsks={asked?.alwaysAsks}
+                        irreversible={askedAction?.irreversible}
+                        consequence={askedAction?.consequence}
+                        why={askedAction?.why}
+                        decidedInHref={entry.reviewId === undefined
+                          ? undefined
+                          : router.href(
+                              `/reviews?tab=done&review=${encodeURIComponent(inboxKey({ source: 'bureau', id: entry.reviewId }))}`,
+                            )}
                         {...asked?.action?.expiresAt === undefined
                           ? {}
                           : { expiresAt: asked.action.expiresAt }}
@@ -2670,6 +2889,57 @@
           {/snippet}
         </Chat>
       </div>
+      {#snippet hostQuestionDock()}
+        {#if dockedRequest !== undefined}
+          {@render questionBlock(dockedRequest, true)}
+          <div class="weft-chat-question__dock-actions">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={answerHeld}
+              title={answerHeld ? 'Reply in chat is available after Undo expires.' : undefined}
+              onclick={() => (repliedInChat = dockedRequest?.interruptId)}
+              >{CHAT_COPY.replyInChat}</Button
+            >
+          </div>
+        {/if}
+      {/snippet}
+      {#snippet questionBlock(request: HumanRequest, docked: boolean)}
+        <div
+          class="weft-chat-question"
+          data-interrupt={request.interruptId}
+          data-docked={docked ? '' : undefined}
+        >
+          <p class="weft-chat-question__prompt">
+            <CircleHelp class="weft-chat-question__glyph" size={16} aria-hidden="true" />
+            {request.message === '' ? CHAT_COPY.humanRequestFallback : request.message}
+          </p>
+          <div bind:this={questionElement} data-question-answer-region>
+            <ChatQuestion
+              {...{ 'data-changes': true }}
+              id={`chat-question-${request.interruptId}`}
+              schema={request.schema ?? FREE_TEXT_SCHEMA}
+              answerInComposer={!docked}
+              choiceStyle={docked ? 'row' : 'card'}
+              busy={session.attaching}
+              uploadFile={uploadQuestionFile}
+              undoMilliseconds={answerUndoMilliseconds()}
+              onHoldChange={(held) => (answerHeld = held)}
+              onSubmit={async (value) => {
+                const asked = request;
+                sentRequest = asked;
+                const taken = await session.answerQuestion(asked.interruptId, value);
+                if (!taken) sentRequest = undefined;
+                return taken;
+              }}
+            />
+          </div>
+          {#if numberedChoices > 0}
+            <p class="weft-chat-question__hint">{CHAT_COPY.pickHint(numberedChoices)}</p>
+          {/if}
+        </div>
+      {/snippet}
     {/if}
     <!-- Model, Effort and Permissions: the live session's, or, on a new chat, the person's choices
        before it has a session (applied once the first message has started it). Rendered once, in

@@ -85,6 +85,16 @@ describe('ChoiceGrid card variant (row 33e)', () => {
     expect(mcp?.hasAttribute('aria-describedby')).toBe(false);
   });
 
+  test('the row variant keeps card semantics without adding a nested panel', () => {
+    const { container } = render(Fixture, { props: { variant: 'row' } });
+    const row = container.querySelector('[role="radio"]')!;
+    expect(row.getAttribute('data-cinder-variant')).toBe('row');
+    expect(row.querySelector('.cinder-choice-grid-item__indicator')).not.toBeNull();
+    expect(row.querySelector('.cinder-choice-grid-item__description')?.textContent).toContain(
+      'A server that offers tools',
+    );
+  });
+
   test('a card rests on the muted hairline, centres a label without a description, and the group shares one row height', async () => {
     const squash = (text: string) => text.replace(/\s+/gu, ' ');
     const itemCss = squash(

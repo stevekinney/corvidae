@@ -127,6 +127,26 @@ test('retries a failed shared-history read without opening a writable stream', a
   );
 });
 
+test('a shared reader rejects recovery commands without an owner RPC', async () => {
+  const calls: string[] = [];
+  const session = open(
+    async (input) => {
+      calls.push(input instanceof Request ? input.url : input.toString());
+      throw new Error('A shared reader must not write.');
+    },
+    { readOnly: true },
+  );
+
+  expect(await session.discardTurn('run')).toBe(false);
+  expect(await session.resumeTurn('run')).toBe(false);
+  await session.regenerateAnswer('reply');
+  await session.retryTurn();
+  await session.retryExpiredApproval('call');
+  await session.send('must not send');
+
+  expect(calls).toEqual([]);
+});
+
 test('a stale shared-history retry cannot restore after a newer read succeeds', async () => {
   const first = Promise.withResolvers<Response>();
   let historyReads = 0;

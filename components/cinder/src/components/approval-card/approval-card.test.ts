@@ -2028,6 +2028,63 @@ describe('ApprovalCard row layout', () => {
     ).toBe('unavailable');
   });
 
+  test('the decision layout keeps unavailable requester context distinct and puts its input before the reason', () => {
+    const reason =
+      "Release helper is unavailable, so this can't be answered now. It returns when the Demo plugin is enabled.";
+    const { container, getByText, queryByRole } = render(ApprovalCard, {
+      props: refundRow({
+        layout: 'decision',
+        question: 'Publish notes for 2.4?',
+        tool: { name: 'publish-notes', label: 'Publish notes', risk: 'medium' },
+        operation: { kind: 'other', argsPreview: { version: '2.4', changes: 12 } },
+        source: 'Release helper',
+        requestedAt: '2026-11-02T10:30:00.000Z',
+        consequence: undefined,
+        state: 'unavailable',
+        unavailableReason: reason,
+      }),
+    });
+
+    const card = requiredInstance(container.querySelector('.cinder-approval-card'), HTMLElement);
+    const asker = requiredInstance(
+      container.querySelector('.cinder-approval-card__asker'),
+      HTMLElement,
+    );
+    const source = requiredInstance(
+      asker.querySelector('.cinder-approval-card__asker-source'),
+      HTMLElement,
+    );
+    const time = requiredInstance(
+      asker.querySelector('.cinder-approval-card__asker-time'),
+      HTMLTimeElement,
+    );
+    const input = requiredInstance(
+      container.querySelector('.cinder-description-list'),
+      HTMLElement,
+    );
+    const unavailableReason = getByText(reason);
+
+    expect(card.getAttribute('data-cinder-layout')).toBe('decision');
+    expect(card.getAttribute('data-cinder-risk')).toBe('medium');
+    expect(source.textContent).toBe('Approval from Release helper');
+    expect(time.textContent).toBe('12 min ago');
+    expect(source.compareDocumentPosition(time) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(
+      input.compareDocumentPosition(unavailableReason) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(queryByRole('button')).toBeNull();
+  });
+
+  test('the decision layout omits a review control when its host supplies no delegate', () => {
+    const { queryByRole } = render(ApprovalCard, {
+      props: refundRow({ layout: 'decision' }),
+    });
+
+    expect(queryByRole('button', { name: 'Review in deck' })).toBeNull();
+  });
+
   test('a denied approval stays as a neutral decision with who and when', () => {
     const { container, queryByRole } = render(ApprovalCard, {
       props: refundRow({

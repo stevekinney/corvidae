@@ -61,6 +61,8 @@ export type ToolCallRailCall = {
    * block.
    */
   failure?: string | undefined;
+  /** The stored diagnostic for a failed call, shown below its human summary and available to copy. */
+  diagnostic?: string | undefined;
   /**
    * Whether the `children` snippet draws content under this call's row, such as the approval that
    * a `waiting` call is waiting on, or the approved one under a call that has been decided.
@@ -105,6 +107,12 @@ export type ToolCallRailLabels = {
   details?: string | undefined;
   /** The link on a failed call that asks the agent to retry. Defaults to "Ask the agent to retry". */
   retry?: string | undefined;
+  /** The ordinal beside a failed call. Defaults to `Step N of M`. */
+  step?: ((position: number, total: number) => string) | undefined;
+  /** The accessible name of the diagnostic copy control. Defaults to `Copy error`. */
+  copyError?: string | undefined;
+  /** The label after a diagnostic was copied. Defaults to `Copied`. */
+  errorCopied?: string | undefined;
   /** The link on a failed call that copies its input. Defaults to "Copy input". */
   copyInput?: string | undefined;
 };

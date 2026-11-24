@@ -230,6 +230,7 @@ export function createDurableActiveRun(
       emitter,
       durableRun.prompt,
       durableRun.onServices,
+      durableRun.beforeLaunch,
       reachability,
       abortedBeforeDrive,
       (toolbox) => toolboxForwarder.onStepToolbox(toolbox),

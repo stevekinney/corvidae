@@ -23,6 +23,7 @@ type ComponentPage = {
     viewport: Viewport;
     fixtureName?: string;
     fixtureContentHash?: string;
+    hasTouch?: boolean;
   }): Promise<import('@playwright/test').Page>;
 };
 
@@ -30,6 +31,11 @@ type ComponentPage = {
 export const PENDING_HIGHLIGHT_SELECTOR = '[data-cinder-highlight-state="pending"]';
 /** A fixture-local region that intentionally holds its highlighter for a dedicated interaction test. */
 export const FIXTURE_PENDING_HIGHLIGHT_REGION_SELECTOR = '[data-cinder-fixture-highlight-pending]';
+
+/** Mobile fixture captures exercise the same coarse-pointer rules that a phone uses. */
+export function hasTouchForViewport(viewport: Viewport): boolean {
+  return viewport.name === 'mobile';
+}
 
 async function uncontrolledPendingHighlightCount(
   page: import('@playwright/test').Page,
@@ -108,6 +114,7 @@ export async function runFixtureSweep(
     viewport,
     fixtureName: fixture.name,
     fixtureContentHash: fixture.fixtureContentHash,
+    hasTouch: hasTouchForViewport(viewport),
   });
 
   const key = {

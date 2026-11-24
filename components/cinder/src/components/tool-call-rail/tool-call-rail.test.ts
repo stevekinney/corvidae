@@ -335,7 +335,7 @@ describe('ToolCallRail rows', () => {
       HTMLElement,
     );
     expect(text(failure)).toBe(
-      "Mail server didn't reply. Details Ask the agent to retry Copy input",
+      "Mail server didn't reply. Step 3 of 3 Details Starts a new request for this step. Ask the agent to retry Copy input",
     );
     const links = [...failure.querySelectorAll<HTMLElement>('button')];
     await fireEvent.click(requiredInstance(links[0], HTMLElement));
@@ -487,6 +487,26 @@ describe('ToolCallRail rows', () => {
     const calls: Call[] = [{ id: 'mail', name: 'Send email', status: 'failed', failure: 'Down.' }];
     const { container } = render(ToolCallRail, { props: { calls } });
     expect(container.querySelectorAll('.cinder-tool-call-rail__failure button')).toHaveLength(0);
+  });
+
+  test('a stored failure exposes its ordinal, wrapped diagnostic and real Copy error control', () => {
+    const calls: Call[] = [
+      done('first'),
+      {
+        id: 'mail',
+        name: 'Send email',
+        status: 'failed',
+        failure: 'The mail server did not answer.',
+        diagnostic: 'timeout: GET /mail/send timed out after 10000 ms',
+      },
+    ];
+    const { container, getByRole } = render(ToolCallRail, { props: { calls } });
+    const failure = container.querySelector('.cinder-tool-call-rail__failure')!;
+    expect(text(failure.querySelector('.cinder-tool-call-rail__failure-step'))).toBe('Step 2 of 2');
+    expect(text(failure.querySelector('.cinder-tool-call-rail__failure-diagnostic'))).toBe(
+      'timeout: GET /mail/send timed out after 10000 ms',
+    );
+    expect(getByRole('button', { name: 'Copy error' })).not.toBeNull();
   });
 
   test('rows are buttons only with onSelect, and the selected row is pressed', async () => {

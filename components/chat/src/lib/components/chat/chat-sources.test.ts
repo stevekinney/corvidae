@@ -152,9 +152,14 @@ describe('claim citations in the production transcript', () => {
     expect(claims[1]!.textContent).toContain('fell');
     const firstMarker = claims[0]!.querySelector<HTMLButtonElement>('.cinder-citation__marker')!;
     const secondMarker = claims[1]!.querySelector<HTMLButtonElement>('.cinder-citation__marker')!;
+    expect(firstMarker.textContent?.trim()).toBe('Annual report');
+    expect(firstMarker.getAttribute('aria-label')).toBe('Annual report');
+    expect(secondMarker.textContent?.trim()).toBe('Board minutes');
     await fireEvent.click(firstMarker);
     await waitFor(() => expect(document.body.textContent).toContain('Annual report'));
-    expect(document.body.textContent).not.toContain('Board minutes');
+    expect(document.querySelector('.cinder-citation__panel')?.textContent).not.toContain(
+      'Board minutes',
+    );
     await fireEvent.click(secondMarker);
     await waitFor(() => expect(document.body.textContent).toContain('Board minutes'));
     expect(sourcesControl(container, 'claims')).toBeNull();

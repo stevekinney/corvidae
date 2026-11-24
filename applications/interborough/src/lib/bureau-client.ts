@@ -367,6 +367,34 @@ export async function unarchiveContext(
   return bureauClient['bureau.contexts.unarchive']({ contextId }, options);
 }
 
+/** The committed removal returned by `bureau.contexts.discardturn`. */
+export type ContextDiscardTurnReceipt = BureauOutput<'bureau.contexts.discardturn'>;
+
+/**
+ * Removes the last stopped turn's generated rows while keeping the person's message. An exact
+ * retry with the same command id returns the original receipt and removes nothing more.
+ */
+export async function discardContextTurn(
+  input: BureauInput<'bureau.contexts.discardturn'>,
+  options?: { readonly signal?: AbortSignal },
+): Promise<ContextDiscardTurnReceipt> {
+  return bureauClient['bureau.contexts.discardturn'](input, options);
+}
+
+/** The continuation run returned by `bureau.contexts.resumeturn`. */
+export type ContextResumeTurnReceipt = BureauOutput<'bureau.contexts.resumeturn'>;
+
+/**
+ * Continues a stopped turn without a new person-authored message. An exact retry with the same
+ * command id returns the continuation run the Bureau already started.
+ */
+export async function resumeContextTurn(
+  input: BureauInput<'bureau.contexts.resumeturn'>,
+  options?: { readonly signal?: AbortSignal },
+): Promise<ContextResumeTurnReceipt> {
+  return bureauClient['bureau.contexts.resumeturn'](input, options);
+}
+
 /**
  * What `bureau.contexts.delete` settled for the runs the session had going: `applied` (none),
  * `cleaned-up`, or a cleanup still going or unfinished, and `rejected` when the Bureau was shutting

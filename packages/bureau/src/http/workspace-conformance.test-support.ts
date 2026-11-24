@@ -216,6 +216,8 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.contexts.steer', 'owner'],
       ['bureau.contexts.fork', 'owner'],
       ['bureau.contexts.regenerate', 'owner'],
+      ['bureau.contexts.discardturn', 'owner'],
+      ['bureau.contexts.resumeturn', 'owner'],
       ['bureau.contexts.rename', 'owner'],
       ['bureau.contexts.archive', 'owner'],
       ['bureau.contexts.unarchive', 'owner'],

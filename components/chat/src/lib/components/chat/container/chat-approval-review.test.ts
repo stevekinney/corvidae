@@ -79,7 +79,7 @@ function withDeadline(messages: readonly Message[], expiresAt: string): readonly
 describe('approval drawer words', () => {
   test('say exactly what is waiting and what the action does', () => {
     // Short enough to sit on one line beside Review on a 320px phone (COR-2327).
-    expect(APPROVAL_DRAWER_TEXT).toBe('Approval needed.');
+    expect(APPROVAL_DRAWER_TEXT).toBe('Waiting for your approval.');
     expect(APPROVAL_DRAWER_ACTION).toBe('Review approval');
     expect(APPROVAL_DRAWER_TEXT).not.toContain(String.fromCodePoint(0xb7));
   });
@@ -424,6 +424,68 @@ describe('the box an arriving approval is placed against (COR-2327)', () => {
     expect(approvalRowVisible(row, { top: 52, bottom: 476, left: 0, right: 320 }, false, 0)).toBe(
       true,
     );
+    timeline.remove();
+  });
+
+  test('a trailing deck trigger does not leave the tool row under the header after a phone resize', () => {
+    const timeline = document.createElement('div');
+    const item = document.createElement('div');
+    item.className = 'cinder-tool-call-rail__item';
+    const label = document.createElement('button');
+    label.className = 'cinder-tool-call-rail__row';
+    const card = document.createElement('div');
+    const actions = document.createElement('div');
+    actions.className = 'cinder-approval-card__row-actions';
+    const deck = document.createElement('div');
+    card.append(actions, deck);
+    item.append(label, card);
+    timeline.append(item);
+    document.body.append(timeline);
+    stubBox(timeline, 52, 473.5);
+    timeline.style.setProperty('--cinder-chat-overlay-inset-start', '71px');
+    timeline.style.paddingTop = '83px';
+    Object.defineProperty(timeline, 'scrollHeight', { value: 893, configurable: true });
+    Object.defineProperty(timeline, 'clientHeight', { value: 422, configurable: true });
+    Object.defineProperty(timeline, 'scrollTop', { value: 454, configurable: true });
+    stubBox(label, 103, 147);
+    stubBox(card, 151, 441.5);
+    stubBox(actions, 360.5, 388.5);
+    stubBox(deck, 400.5, 428.5);
+
+    // The 32px shift starts the label at the protected 135px line and leaves the deck trigger
+    // at 432.5–460.5, before the 473.5px transcript end.
+    expect(approvalPlacementShift(timeline, card)).toBe(-32);
+    timeline.remove();
+  });
+
+  test('a trailing deck trigger keeps the full labeled unit at the transcript end when it fits', () => {
+    const timeline = document.createElement('div');
+    const item = document.createElement('div');
+    item.className = 'cinder-tool-call-rail__item';
+    const label = document.createElement('button');
+    label.className = 'cinder-tool-call-rail__row';
+    const card = document.createElement('div');
+    const actions = document.createElement('div');
+    actions.className = 'cinder-approval-card__row-actions';
+    const deck = document.createElement('div');
+    card.append(actions, deck);
+    item.append(label, card);
+    timeline.append(item);
+    document.body.append(timeline);
+    stubBox(timeline, 52, 473.5);
+    timeline.style.setProperty('--cinder-chat-overlay-inset-start', '71px');
+    timeline.style.paddingTop = '83px';
+    Object.defineProperty(timeline, 'scrollHeight', { value: 893, configurable: true });
+    Object.defineProperty(timeline, 'clientHeight', { value: 422, configurable: true });
+    Object.defineProperty(timeline, 'scrollTop', { value: 454, configurable: true });
+    stubBox(label, 170, 214);
+    stubBox(card, 218, 430);
+    stubBox(actions, 330, 358);
+    stubBox(deck, 370, 398);
+
+    // The 260px labeled unit plus the 32px overlay fade fits the 338.5px arrival box, so the
+    // established 17px end-rest remains instead of using the shorter action-row fallback.
+    expect(approvalPlacementShift(timeline, card)).toBe(17);
     timeline.remove();
   });
 

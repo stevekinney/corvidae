@@ -173,7 +173,8 @@
     aria-label={sources.length > 0
       ? (markerLabel ?? `${label} (${sources.length})`)
       : `${label} (${labels?.noSources ?? 'no sources'})`}
-    >{#if children}{@render children()}{:else}[{sources.length}]{/if}</button
+    ><span class="cinder-citation__marker-hit-target" aria-hidden="true"
+    ></span>{#if children}{@render children()}{:else}[{sources.length}]{/if}</button
   >
 {/snippet}
 

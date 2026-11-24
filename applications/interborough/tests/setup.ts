@@ -195,6 +195,14 @@ afterEach(() => {
   window.dispatchEvent(new window.PopStateEvent('popstate'));
 });
 
+// The chat pages' session registry is a module-scope singleton too (COR-2293 B2): a chat page a
+// test unmounts with a run still going is retained for a route return, which in a test run would
+// be the next test's page reusing this test's session and its stubs. Each test starts with none.
+const { chatSessions } = await import('../src/routes/chat/chat-session-registry.svelte.ts');
+afterEach(() => {
+  chatSessions.dispose();
+});
+
 // `globalThis.fetch` is process-wide, and the coverage run shares one process across every test
 // file, so a test that scripts it and does not put it back changes what every later test reaches:
 // the suites that talk to a real server through Bun's own `fetch` then hit the leftover script

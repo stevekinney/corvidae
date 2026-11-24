@@ -695,6 +695,15 @@ function textOf(message: ConversationHistory['messages'][string]): string {
 
 /** The result row an interrupt parks its tool call on, until the user decides. */
 function approvalRow(interrupt: Interrupt, toolCallId: string): ToolResult {
+  const detail =
+    isRecord(interrupt.metadata) && isRecord(interrupt.metadata[BUREAU_METADATA_KEY])
+      ? interrupt.metadata[BUREAU_METADATA_KEY]
+      : {};
+  const disclosure = detail as {
+    readonly irreversible?: unknown;
+    readonly consequence?: unknown;
+    readonly why?: unknown;
+  };
   return {
     callId: toolCallId,
     outcome: 'action_required',
@@ -707,6 +716,13 @@ function approvalRow(interrupt: Interrupt, toolCallId: string): ToolResult {
       policyVersion: 'bureau',
       idempotencyKey: interrupt.id,
       ...(interrupt.expiresAt === undefined ? {} : { expiresAt: interrupt.expiresAt }),
+      ...(typeof disclosure.irreversible === 'boolean'
+        ? { irreversible: disclosure.irreversible }
+        : {}),
+      ...(typeof disclosure.consequence === 'string'
+        ? { consequence: disclosure.consequence }
+        : {}),
+      ...(typeof disclosure.why === 'string' ? { why: disclosure.why } : {}),
     },
   };
 }
@@ -1753,6 +1769,10 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         ),
         options.agentName(),
       );
+      // A shared reader receives the deliberately redacted transcript projection only. It must not
+      // enrich that view through the owner's run or task routes, even when a separately privileged
+      // reader could call those routes itself.
+      if (options.sharedRead === true) return thread;
       // The stream said why a run stopped while it was watched and does not say it again, so the
       // run's own record is read. The line is a courtesy: a record that cannot be read leaves the
       // thread as it is rather than failing the page's read of it.

@@ -138,6 +138,17 @@ describe('the committed Chat stress cases', () => {
     if (citations !== undefined) {
       expect(buildStressSetup(citations).sources[0]).toHaveLength(6);
     }
+
+    const inlineCitation = findStressCase(cases, 27);
+    expect(inlineCitation).toBeDefined();
+    if (inlineCitation !== undefined) {
+      const setup = buildStressSetup(inlineCitation);
+      expect(setup.claimSources[1]?.[0]).toMatchObject({
+        id: 'duplicate-charge',
+        markdown: 'The policy permits this refund because the charge was duplicated.',
+        sources: [{ label: 'Q3 refund policy' }],
+      });
+    }
   });
 
   it('backs every named approval action witness with setup metadata', () => {
@@ -562,8 +573,8 @@ describe('the design-review rows', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('are the 44 rows the board issues carry text for', () => {
-    expect(rows).toHaveLength(44);
+  it('are the 45 rows the board issues carry text for', () => {
+    expect(rows).toHaveLength(45);
   });
 
   it('are each shown by at least one case, and every row a case names exists', () => {
