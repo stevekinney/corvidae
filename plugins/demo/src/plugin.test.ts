@@ -297,6 +297,38 @@ describe('the demo plugin', () => {
     const result = await second.result();
     expect(result.steps.at(-1)?.results[0]?.outcome).toBe('action_required');
   });
+  test('a remembered refund grant cannot bypass a fresh approval', async () => {
+    const storage = new MemoryStorage();
+    const bureau = await start({ secret: 'fixture-demo-approval-secret', storage });
+    const first = await bureau.tasks.start('demo:tool-runner', 'Refund order-1001', {
+      principal: 'alice',
+    });
+    await first.result();
+    const review = bureau.reviews.list().find((entry) => entry.runId === first.id);
+    if (!review || review.kind !== 'tool-approval') throw new Error('Missing first refund review');
+    const resolution = await bureau.reviews.resolve({
+      id: review.id,
+      decision: 'approve',
+      principal: 'alice',
+      remember: true,
+    });
+    expect(resolution.remembered).toBe(true);
+    const session = await bureau.contexts.get(first.contextId);
+    expect(session?.metadata['approvalGrants']).toEqual(
+      expect.arrayContaining([expect.stringContaining('issue-refund')]),
+    );
+    const processor = createFakeProcessor(scopedStorage(storage, 'plugin:demo:refund-processor'));
+    expect(await processor.refunds()).toHaveLength(1);
+
+    const second = await bureau.tasks.start('demo:tool-runner', 'Refund again', {
+      principal: 'alice',
+      contextId: first.contextId,
+    });
+    const result = await second.result();
+    expect(result.steps.at(-1)?.results[0]?.outcome).toBe('action_required');
+    expect(bureau.reviews.list().some((entry) => entry.runId === second.id)).toBe(true);
+    expect(await processor.refunds()).toHaveLength(1);
+  });
   test('a superseded review does not release or submit the refund', async () => {
     const storage = new MemoryStorage();
     const bureau = await start({ secret: 'fixture-demo-approval-secret', storage, regate: true });
