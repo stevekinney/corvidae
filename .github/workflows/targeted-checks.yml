@@ -1,383 +1,126 @@
-# Runs only the browser cases and unit test files a change reaches, on a branch, in minutes. A full
-# `main.yml` run takes 80 to 170 minutes from dispatch (2026-11-16: up to 35 minutes waiting for
-# runners, Cinder's whole unit suite at 47 minutes, a fixtures shard at 38), which is the wrong price
-# for checking a one-line correction. Use this for every correction round; run `main.yml` once per
-# batch.
-#
-#   gh workflow run targeted-checks.yml --ref <branch> \
-#     -f fixture_components='approval-card,description-list' \
-#     -f fixture_specs='scripts/browser-fixtures/tests/approval-card-input-rows.playwright.ts' \
-#     -f e2e_specs='tests/e2e/chat-responsive.spec.ts tests/e2e/chat-toast-clearance.spec.ts' \
-#     -f unit_lanes='[{"workspace":"components/cinder","paths":["src/components/approval-card"],"config":""}]'
-#
-# Every input is optional. The `checks` job always runs lint and type-check on the changed
-# workspaces; each other job runs only when its inputs name something. The browser jobs copy
-# the image and setup of `browser-suites.yml`, so the renderer and fonts are the baselines' own, and
-# the fixtures job uploads `playwright-fixtures-targeted` on failure, which
-# `scripts/browser-fixtures/scripts/baselines-from-run.ts <run id>` reads like a `main.yml` run's.
-# `scripts/browser-fixtures/scripts/browser-suites-workflow.test.ts` keeps the image tag equal to the
-# Playwright that `bun.lock` resolves. Inputs reach the shell through `env`, never interpolated.
-name: Targeted checks
+name: COR-2654 integrated warm profile observations
 
 on:
   workflow_dispatch:
-    inputs:
-      fixture_components:
-        description: Fixture component slugs for the screenshot suite, comma-separated (CINDER_TEST_COMPONENTS).
-        type: string
-        required: false
-        default: ''
-      fixture_specs:
-        description: Fixture spec files, space-separated, from the repository root.
-        type: string
-        required: false
-        default: ''
-      e2e_specs:
-        description: Interborough end-to-end spec files, space-separated, from applications/interborough.
-        type: string
-        required: false
-        default: ''
-      unit_lanes:
-        description: 'Every unit lane, as a JSON list of {workspace, paths, config}. Workspace "." is the repository root, run through scripts/bun-test.ts; paths are files or folders inside the workspace; config is a bunfig such as ./bunfig.ui.toml.'
-        type: string
-        required: false
-        default: ''
-      plan_digest:
-        description: SHA-256 digest of the evidence plan (scripts/chef/landing-plan.ts), set by targeted-run.ts. Landing reads it from the run name.
-        type: string
-        required: false
-        default: ''
-
-# Landing (scripts/chef/landing-evidence.ts) accepts this run as coverage for a head only when the
-# name carries the digest of the plan it computes itself.
-run-name: ${{ inputs.plan_digest != '' && format('targeted {0}', inputs.plan_digest) || 'Targeted checks' }}
 
 permissions:
   contents: read
-  actions: read
-
-defaults:
-  run:
-    shell: bash
-
-# A newer dispatch on a branch cancels the older one: a correction round supersedes the last.
-concurrency:
-  group: targeted-checks-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
-
-env:
-  TURBO_TELEMETRY_DISABLED: '1'
-  DO_NOT_TRACK: '1'
-  # Vercel Remote Cache, shared with the owner's machine; empty, remote caching is off.
-  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-  CI_REPLAY_HEAD: ${{ github.sha }}
-  CI_REPLAY_FALLBACK: |
-    head=null; base=null; tree=null
-    [[ "${CI_REPLAY_HEAD:-}" =~ ^[a-f0-9]{40}$ ]] && head="\"$CI_REPLAY_HEAD\""
-    [[ "${CI_REPLAY_BASE:-}" =~ ^[a-f0-9]{40}$ ]] && base="\"$CI_REPLAY_BASE\""
-    if [ "$base" = null ]; then
-      candidate=$(git rev-parse origin/main 2>/dev/null || true)
-      [[ "$candidate" =~ ^[a-f0-9]{40}$ ]] && base="\"$candidate\""
-    fi
-    candidate=$(git rev-parse 'HEAD^{tree}' 2>/dev/null || true)
-    [[ "$candidate" =~ ^[a-f0-9]{40}$ ]] && tree="\"$candidate\""
-    printf '{"runId":%s,"attempt":%s,"job":"%s","head":%s,"base":%s,"tree":%s,"jobId":null,"jobIdUnavailable":"replay producer unavailable","toolchain":null,"command":null,"commandUnavailable":"replay producer unavailable","selection":[],"selectionUnavailable":"replay producer unavailable","assertion":null,"assertionUnavailable":"replay producer unavailable or failed","artifacts":{"junit":{"link":null,"reason":"replay producer unavailable"},"trace":{"link":null,"reason":"raw browser traces are not retained"}}}\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_JOB" "$head" "$base" "$tree" > "$RUNNER_TEMP/ci-replay-record.json"
-
-  CI_REPLAY_STAGE: |
-    set -eu
-    umask 077
-    stage="$RUNNER_TEMP/ci-replay-artifact"
-    mkdir -m 700 "$stage"
-    source="$RUNNER_TEMP/ci-replay-record.json"
-    [ -f "$source" ] && [ ! -L "$source" ]
-    cp -P "$source" "$stage/ci-replay-record.json"
-    [ -f "$stage/ci-replay-record.json" ] && [ ! -L "$stage/ci-replay-record.json" ]
-    if grep -Fq '"link": "ci-replay-junit.xml"' "$stage/ci-replay-record.json"; then
-      source="$RUNNER_TEMP/ci-replay-junit.xml"
-      if [ -f "$source" ] && [ ! -L "$source" ] && cp -P "$source" "$stage/ci-replay-junit.xml" && [ -f "$stage/ci-replay-junit.xml" ] && [ ! -L "$stage/ci-replay-junit.xml" ]; then
-        :
-      else
-        rm -f "$stage/ci-replay-junit.xml"
-        bun -e 'const fs = require("node:fs"); const path = process.argv[1]; const record = JSON.parse(fs.readFileSync(path, "utf8")); if (record?.artifacts?.junit?.link !== "ci-replay-junit.xml") process.exit(1); record.artifacts.junit = {link: null, reason: "sanitized JUnit unavailable at staging"}; fs.writeFileSync(path, JSON.stringify(record, null, 2) + String.fromCharCode(10), {mode: 0o600});' "$stage/ci-replay-record.json"
-      fi
-    fi
 
 jobs:
-  # Lint and type-check the workspaces the branch changed against `origin/main`, as
-  # `pull-request.yml` does, so a type error (a svelte-check error, a stale test expectation) never
-  # waits for the full run. It runs on every dispatch, whatever the inputs.
-  checks:
-    name: Changed workspaces lint and type-check
+  profiles:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      TURBO_SCM_BASE: origin/main
+      BASE: 7040a2667941964328504a36b1798c532f5133d1
+      CANDIDATE: 5a9c14a6171eb33cb902ff7120d63123a07a5307
+      CANDIDATE_TREE: 4d38104d5d1d00d011cfe6a086943b67dbf7fcd3
+      TURBO_TELEMETRY_DISABLED: '1'
+      DO_NOT_TRACK: '1'
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version-file: package.json
-      - run: bun scripts/chef/ci-replay.ts run -- bun install --frozen-lockfile
-        env:
-          CI_REPLAY_TOKEN: ${{ github.token }}
-      - uses: ./.github/actions/turbo-cache/restore
-        with:
-          name: targeted-checks
-      - run: bun scripts/chef/ci-replay.ts run -- bunx turbo run lint typecheck --affected --continue --concurrency=4
-        env:
-          CI_REPLAY_TOKEN: ${{ github.token }}
-      - name: Retain first-failure replay record
-        id: replay
-        if: ${{ failure() }}
-        env:
-          CI_REPLAY_TOKEN: ${{ github.token }}
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright install --with-deps chromium
+      - name: Verify source, runner and process ownership
         run: |
-          if command -v bun >/dev/null && [ -f scripts/chef/ci-replay.ts ]; then
-            bun scripts/chef/ci-replay.ts finalize || { [ -f "$RUNNER_TEMP/ci-replay-record.json" ] || bash -c "$CI_REPLAY_FALLBACK"; }
-          else
-            bash -c "$CI_REPLAY_FALLBACK"
+          grep -Fxq 'VERSION_ID="26.04"' /etc/os-release
+          test "$(git rev-parse HEAD^)" = "$CANDIDATE"
+          test "$(git rev-parse "$CANDIDATE^{tree}")" = "$CANDIDATE_TREE"
+          test "$(git diff --name-only "$CANDIDATE" HEAD)" = .github/workflows/targeted-checks.yml
+          git diff --exit-code "$BASE" "$CANDIDATE" -- bun.lock
+          bun applications/interborough/scripts/startup-process-control.ts "$RUNNER_TEMP/cor2654-control"
+          bun applications/interborough/scripts/qualify-startup.ts --matcher-control
+          bun applications/interborough/scripts/qualify-startup.ts --profile-control
+      - name: Measure isolated dev, three warm pairs and production
+        run: |
+          output="$RUNNER_TEMP/cor2654-warm"
+          mkdir "$output"
+          {
+            printf 'image=%s\nimage_version=%s\n' "${ImageOS:-unknown}" "${ImageVersion:-unknown}"
+            uname -a
+            nproc
+            head -3 /proc/meminfo
+            bun --version
+          } > "$output/runner.txt"
+          for arm in base candidate production; do
+            revision="$CANDIDATE"
+            if [[ "$arm" == base ]]; then revision="$BASE"; fi
+            checkout="$RUNNER_TEMP/cor2654-$arm"
+            git worktree add --detach "$checkout" "$revision"
+            git -C "$checkout" rev-parse HEAD 'HEAD^{tree}' > "$output/$arm-identity.txt"
+            test ! -e "$checkout/node_modules"
+            test ! -e "$checkout/applications/interborough/build"
+            test ! -e "$checkout/components/cinder/.metadata"
+            start="$(date +%s%3N)"
+            status=0
+            (cd "$checkout" && bun install --frozen-lockfile) > "$output/$arm-install.log" 2>&1 || status=$?
+            jq -n --argjson start "$start" --argjson end "$(date +%s%3N)" --argjson status "$status" '{milliseconds:($end-$start),exit:$status}' > "$output/$arm-install.json"
+            test "$status" = 0
+            test ! -e "$checkout/components/cinder/.metadata"
+          done
+          measure() {
+            local arm="$1" label="$2" profile="$3" status=0
+            bun applications/interborough/scripts/qualify-startup.ts "$RUNNER_TEMP/cor2654-$arm" "$RUNNER_TEMP/cor2654-home-$arm" "$output/$label.json" "$profile" > "$output/$label.log" 2>&1 || status=$?
+            printf '%s\n' "$status" > "$output/$label.exit"
+            return "$status"
+          }
+          verdict=0
+          measure base base-initial dev &
+          base_pid=$!
+          measure candidate candidate-initial dev &
+          candidate_pid=$!
+          wait "$base_pid" || verdict=1
+          wait "$candidate_pid" || verdict=1
+          if [[ "$verdict" == 0 ]]; then
+            jq -en --slurpfile a "$output/base-initial.json" --slurpfile b "$output/candidate-initial.json" '
+              $a[0].home != $b[0].home and $a[0].url != $b[0].url and
+              ($a[0].startedAt[:19] + "Z" | fromdateiso8601) < (($b[0].startedAt[:19] + "Z" | fromdateiso8601) + $b[0].actionMilliseconds / 1000) and
+              ($b[0].startedAt[:19] + "Z" | fromdateiso8601) < (($a[0].startedAt[:19] + "Z" | fromdateiso8601) + $a[0].actionMilliseconds / 1000)
+            ' > "$output/isolated-overlap.json" || verdict=1
+            for arm in base candidate; do
+              checkout="$RUNNER_TEMP/cor2654-$arm"
+              printf 'cor2654-%s\n' "$arm" > "$checkout/node_modules/.cor2654-install-marker"
+              (cd "$checkout" && bun install --frozen-lockfile) > "$output/$arm-repeat-install.log" 2>&1 || verdict=1
+              if cmp -s "$checkout/node_modules/.cor2654-install-marker" <(printf 'cor2654-%s\n' "$arm"); then
+                printf 'true\n' > "$output/$arm-marker-retained.json"
+              else
+                verdict=1
+              fi
+            done
           fi
-          bash -c "$CI_REPLAY_STAGE"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ failure() && steps.replay.outcome == 'success' }}
-        with:
-          name: replay-checks-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/ci-replay-artifact
-          if-no-files-found: error
-      - uses: ./.github/actions/turbo-cache/save
+          if [[ "$verdict" == 0 ]]; then
+            previous=initial
+            for pair in 1 2 3; do
+              arms=(base candidate)
+              if [[ "$pair" == 2 ]]; then arms=(candidate base); fi
+              for arm in "${arms[@]}"; do
+                measure "$arm" "$arm-$pair" dev || verdict=1
+                jq -en --slurpfile before "$output/$arm-$previous.json" --slurpfile after "$output/$arm-$pair.json" '
+                  $before[0].settings.persisted == $after[0].settings.previous and $after[0].contract.action == "valid"
+                ' > "$output/$arm-$pair-reopen.json" || verdict=1
+              done
+              previous="$pair"
+              jq -e '
+                [.lines[].text | select(contains("STARTUP {")) | sub("^.*STARTUP "; "") | fromjson] as $events |
+                {contract, cinder: [$events[] | select(.stage == "cinder")], panels: [$events[] | select(.stage == "panel")], ui: [$events[] | select(.stage == "ui-bundle")]} |
+                select(.contract.instrumentation == "complete" and (.cinder | length > 0 and all(.generated == false)) and (.panels | length == 7 and all(.built == false and .outcome == "ready")) and (.ui | length == 1))
+              ' "$output/candidate-$pair.json" > "$output/candidate-$pair-warm-producers.json" || verdict=1
+            done
+          fi
+          measure production production production || verdict=1
+          jq -e '.contract.action == "valid" and .contract.instrumentation == "complete" and .productionBuild.exit == 0' "$output/production.json" > "$output/production-verified.json" || verdict=1
+          exit "$verdict"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: ${{ !cancelled() }}
         with:
-          replay_name: replay-checks-${{ github.run_attempt }}
-          prior_status: ${{ job.status }}
-          replay_token: ${{ github.token }}
-
-  fixtures:
-    name: Chromium fixtures (targeted)
-    if: ${{ inputs.fixture_components != '' || inputs.fixture_specs != '' }}
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
-    container:
-      image: mcr.microsoft.com/playwright:v1.63.0-jammy
-    env:
-      CINDER_VISUAL_DIFF: block
-      CI_REPLAY_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
-      CINDER_TEST_COMPONENTS: ${{ inputs.fixture_components }}
-      FIXTURE_SPECS: ${{ inputs.fixture_specs }}
-    steps:
-      - run: apt-get update && apt-get install -y --no-install-recommends git unzip
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: package.json
-      - run: bun scripts/chef/ci-replay.ts run -- bun install --frozen-lockfile
-        env:
-          CI_REPLAY_TOKEN: ${{ github.token }}
-      - uses: ./.github/actions/turbo-cache/restore
-        with:
-          name: targeted-fixtures
-      # Component packages' derived metadata (schemas, variables, manifests) is generated, not
-      # committed: the steps below run tests and servers outside Turborepo, so make it first.
-      - run: bun scripts/chef/ci-replay.ts run -- bunx turbo run metadata
-        env:
-          CI_REPLAY_TOKEN: ${{ github.token }}
-      - run: bun scripts/chef/ci-replay.ts run -- bun scripts/browser-fixtures/scripts/prepare-manifest.ts
-        env:
-          CI_REPLAY_TOKEN: ${{ github.token }}
-      # Named components with no spec run the screenshot suite for those components alone.
-      - run: |
-          read -r -a specs <<< "$FIXTURE_SPECS"
-          if [ -n "$CINDER_TEST_COMPONENTS" ]; then
-            specs+=(scripts/browser-fixtures/tests/components.playwright.ts scripts/browser-fixtures/tests/components-sweep.playwright.ts)
-          fi
-          PLAYWRIGHT_HTML_OUTPUT_DIR="$GITHUB_WORKSPACE/playwright-output/report" \
-          PLAYWRIGHT_JSON_OUTPUT_FILE="$GITHUB_WORKSPACE/playwright-output/results.json" \
-          PLAYWRIGHT_JUNIT_OUTPUT_FILE="$RUNNER_TEMP/ci-replay-junit-raw.xml" \
-          bun scripts/chef/ci-replay.ts run -- bun --bun playwright test --config scripts/browser-fixtures/playwright.config.ts \
-            --project=chromium --workers=4 --reporter=line,html,json,junit "${specs[@]}"
-        env:
-          CI_REPLAY_TOKEN: ${{ github.token }}
-          CI_REPLAY_NO_CREDENTIALS: 'true'
-          CI_REPLAY_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
-          CI_REPLAY_SELECTION: ${{ inputs.fixture_specs }} ${{ inputs.fixture_components }}
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ failure() }}
-        continue-on-error: true
-        with:
-          name: playwright-fixtures-targeted
-          path: scripts/browser-fixtures/test-results/**/*-actual.png
+          name: cor2654-integrated-warm-profiles
+          path: |
+            ${{ runner.temp }}/cor2654-control/process-control.json
+            ${{ runner.temp }}/cor2654-warm/
+          if-no-files-found: error
           retention-days: 14
-          if-no-files-found: ignore
-      - name: Retain first-failure replay record
-        id: replay
-        if: ${{ failure() }}
-        env:
-          CI_REPLAY_TOKEN: ${{ github.token }}
-          CI_REPLAY_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
-          CI_REPLAY_SELECTION: ${{ inputs.fixture_specs }} ${{ inputs.fixture_components }}
-        run: |
-          if command -v bun >/dev/null && [ -f scripts/chef/ci-replay.ts ]; then
-            bun scripts/chef/ci-replay.ts finalize || { [ -f "$RUNNER_TEMP/ci-replay-record.json" ] || bash -c "$CI_REPLAY_FALLBACK"; }
-          else
-            bash -c "$CI_REPLAY_FALLBACK"
-          fi
-          bash -c "$CI_REPLAY_STAGE"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ failure() && steps.replay.outcome == 'success' }}
-        with:
-          name: replay-fixtures-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/ci-replay-artifact
-          if-no-files-found: error
-      - uses: ./.github/actions/turbo-cache/save
-        if: ${{ !cancelled() }}
-        with:
-          replay_name: replay-fixtures-${{ github.run_attempt }}
-          prior_status: ${{ job.status }}
-          replay_token: ${{ github.token }}
-        env:
-          CI_REPLAY_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
-          CI_REPLAY_SELECTION: ${{ inputs.fixture_specs }} ${{ inputs.fixture_components }}
-
-  interborough:
-    name: Interborough end-to-end (targeted)
-    if: ${{ inputs.e2e_specs != '' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    container:
-      image: mcr.microsoft.com/playwright:v1.63.0-jammy
-    env:
-      E2E_SPECS: ${{ inputs.e2e_specs }}
-      CI_REPLAY_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
-    steps:
-      - run: apt-get update && apt-get install -y --no-install-recommends git unzip
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: package.json
-      - run: bun scripts/chef/ci-replay.ts run -- bun install --frozen-lockfile
-        env:
-          CI_REPLAY_TOKEN: ${{ github.token }}
-      - uses: ./.github/actions/turbo-cache/restore
-        with:
-          name: targeted-interborough
-      # Component packages' derived metadata (schemas, variables, manifests) is generated, not
-      # committed: the steps below run tests and servers outside Turborepo, so make it first.
-      - run: bun scripts/chef/ci-replay.ts run -- bunx turbo run metadata
-        env:
-          CI_REPLAY_TOKEN: ${{ github.token }}
-      - run: |
-          read -r -a e2e_specs <<< "$E2E_SPECS"
-          PLAYWRIGHT_HTML_OUTPUT_DIR="$GITHUB_WORKSPACE/playwright-output/report" \
-          PLAYWRIGHT_JSON_OUTPUT_FILE="$GITHUB_WORKSPACE/playwright-output/results.json" \
-          PLAYWRIGHT_JUNIT_OUTPUT_FILE="$RUNNER_TEMP/ci-replay-junit-raw.xml" \
-          bun scripts/chef/ci-replay.ts run -- bun applications/interborough/scripts/run-gated-browser-suite.ts \
-            --trace=retain-on-failure --reporter=line,html,json,junit "${e2e_specs[@]}"
-        env:
-          CI_REPLAY_TOKEN: ${{ github.token }}
-          CI_REPLAY_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
-          CI_REPLAY_SELECTION: ${{ inputs.e2e_specs }}
-      - name: Retain first-failure replay record
-        id: replay
-        if: ${{ failure() }}
-        env:
-          CI_REPLAY_TOKEN: ${{ github.token }}
-          CI_REPLAY_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
-          CI_REPLAY_SELECTION: ${{ inputs.e2e_specs }}
-        run: |
-          if command -v bun >/dev/null && [ -f scripts/chef/ci-replay.ts ]; then
-            bun scripts/chef/ci-replay.ts finalize || { [ -f "$RUNNER_TEMP/ci-replay-record.json" ] || bash -c "$CI_REPLAY_FALLBACK"; }
-          else
-            bash -c "$CI_REPLAY_FALLBACK"
-          fi
-          bash -c "$CI_REPLAY_STAGE"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ failure() && steps.replay.outcome == 'success' }}
-        with:
-          name: playwright-interborough-targeted
-          path: ${{ runner.temp }}/ci-replay-artifact
-          if-no-files-found: error
-      - uses: ./.github/actions/turbo-cache/save
-        if: ${{ !cancelled() }}
-        with:
-          replay_name: playwright-interborough-targeted
-          prior_status: ${{ job.status }}
-          replay_token: ${{ github.token }}
-        env:
-          CI_REPLAY_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
-          CI_REPLAY_SELECTION: ${{ inputs.e2e_specs }}
-
-  unit:
-    name: Unit test files (${{ matrix.lane.workspace }})
-    if: ${{ inputs.unit_lanes != '' && inputs.unit_lanes != '[]' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    # One job per lane of the plan, so no lane is dropped: a failed lane never hides another.
-    strategy:
-      fail-fast: false
-      matrix:
-        lane: ${{ fromJSON(inputs.unit_lanes) }}
-    env:
-      UNIT_WORKSPACE: ${{ matrix.lane.workspace }}
-      UNIT_PATHS: ${{ join(matrix.lane.paths, ' ') }}
-      UNIT_CONFIG: ${{ matrix.lane.config }}
-      TZ: UTC
-      LANG: en_US.UTF-8
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: package.json
-      - run: bun scripts/chef/ci-replay.ts run -- bun install --frozen-lockfile
-        env:
-          CI_REPLAY_TOKEN: ${{ github.token }}
-      - uses: ./.github/actions/turbo-cache/restore
-        with:
-          name: targeted-unit-${{ matrix.lane.workspace }}
-      # Component packages' derived metadata (schemas, variables, manifests) is generated, not
-      # committed: the steps below run tests and servers outside Turborepo, so make it first.
-      - run: bun scripts/chef/ci-replay.ts run -- bunx turbo run metadata
-        env:
-          CI_REPLAY_TOKEN: ${{ github.token }}
-      - run: bun scripts/chef/ci-replay.ts run -- bash scripts/chef/targeted-unit.sh
-        env:
-          CI_REPLAY_TOKEN: ${{ github.token }}
-          CI_REPLAY_SELECTION: ${{ matrix.lane.workspace }} ${{ join(matrix.lane.paths, ' ') }} ${{ matrix.lane.config }}
-      - name: Retain first-failure replay record
-        id: replay
-        if: ${{ failure() }}
-        env:
-          CI_REPLAY_TOKEN: ${{ github.token }}
-          CI_REPLAY_SELECTION: ${{ matrix.lane.workspace }} ${{ join(matrix.lane.paths, ' ') }} ${{ matrix.lane.config }}
-        run: |
-          if command -v bun >/dev/null && [ -f scripts/chef/ci-replay.ts ]; then
-            bun scripts/chef/ci-replay.ts finalize || { [ -f "$RUNNER_TEMP/ci-replay-record.json" ] || bash -c "$CI_REPLAY_FALLBACK"; }
-          else
-            bash -c "$CI_REPLAY_FALLBACK"
-          fi
-          bash -c "$CI_REPLAY_STAGE"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ failure() && steps.replay.outcome == 'success' }}
-        with:
-          name: replay-unit-${{ strategy.job-index }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/ci-replay-artifact
-          if-no-files-found: error
-      - uses: ./.github/actions/turbo-cache/save
-        if: ${{ !cancelled() }}
-        with:
-          replay_name: replay-unit-${{ strategy.job-index }}-${{ github.run_attempt }}
-          prior_status: ${{ job.status }}
-          replay_token: ${{ github.token }}
-        env:
-          CI_REPLAY_SELECTION: ${{ matrix.lane.workspace }} ${{ join(matrix.lane.paths, ' ') }} ${{ matrix.lane.config }}
