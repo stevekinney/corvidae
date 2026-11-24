@@ -894,6 +894,7 @@
     "$.requests[].contextTitle",
     "$.requests[].granteeLabel",
     "$.requests[].granteeOwnerId",
+    "$.requests[].requestId",
     "$.requests[].requestedAt"
   ],
   "output:bureau.contexts.share.revoke": ["$.changed", "$.contextId", "$.granteeOwnerId"],

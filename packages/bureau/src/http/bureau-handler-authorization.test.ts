@@ -251,6 +251,7 @@ function definitionParameters(operation: CatalogOperation) {
     return {
       contextId: 'context-probe',
       granteeOwnerId: 'workspace-a:peer',
+      requestId: '00000000-0000-4000-8000-000000000001',
       decision: 'grant',
     };
   }

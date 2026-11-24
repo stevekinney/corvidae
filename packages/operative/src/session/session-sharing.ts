@@ -7,6 +7,7 @@ export const SESSION_READ_GRANT_HISTORY_METADATA_KEY = 'sessionReadGrantHistory'
 export const SESSION_READ_REQUESTS_METADATA_KEY = 'sessionReadRequests';
 
 export type SessionReadRequest = Readonly<{
+  requestId: string;
   owner: string;
   workspaceId: string;
   actorId: string;
@@ -125,9 +126,10 @@ function jsonEvent(event: SessionReadGrantEvent): JSONValue {
 
 function requestOf(value: JSONValue): SessionReadRequest | undefined {
   if (!isRecord(value)) return undefined;
-  const { owner, workspaceId, actorId, requestedAt, resolvedAt, resolvedBy, decision } = value;
+  const { requestId, owner, workspaceId, actorId, requestedAt, resolvedAt, resolvedBy, decision } =
+    value;
   if (
-    [owner, workspaceId, actorId, requestedAt].some(
+    [requestId, owner, workspaceId, actorId, requestedAt].some(
       (field) => typeof field !== 'string' || field === '',
     )
   )
@@ -147,6 +149,7 @@ function requestOf(value: JSONValue): SessionReadRequest | undefined {
   )
     return undefined;
   return {
+    requestId: requestId as string,
     owner: owner as string,
     workspaceId: workspaceId as string,
     actorId: actorId as string,
@@ -187,6 +190,7 @@ export function withSessionReadRequest(
   return {
     ...metadata,
     [SESSION_READ_REQUESTS_METADATA_KEY]: [...requests, request].map((candidate) => ({
+      requestId: candidate.requestId,
       owner: candidate.owner,
       workspaceId: candidate.workspaceId,
       actorId: candidate.actorId,
@@ -206,6 +210,7 @@ export function withSessionReadRequest(
 export function withSessionReadRequestResolution(
   metadata: Readonly<Record<string, JSONValue>>,
   owner: string,
+  requestId: string,
   decision: 'granted' | 'denied',
   resolvedBy: string,
   resolvedAt: string,
@@ -213,7 +218,12 @@ export function withSessionReadRequestResolution(
   const requests = sessionReadRequestsOf(metadata);
   let changed = false;
   const settled = requests.map((request) => {
-    if (request.owner !== owner || request.resolvedAt !== undefined) return request;
+    if (
+      request.owner !== owner ||
+      request.requestId !== requestId ||
+      request.resolvedAt !== undefined
+    )
+      return request;
     changed = true;
     return { ...request, decision, resolvedBy, resolvedAt };
   });

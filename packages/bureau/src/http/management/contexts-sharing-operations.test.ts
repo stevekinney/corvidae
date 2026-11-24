@@ -6,6 +6,8 @@ import {
   sessionReadGrantOf,
   sessionReadRequestsOf,
   withSessionReadGrant,
+  withSessionReadRequest,
+  withSessionReadRequestResolution,
   withSessionReadRevocation,
 } from '@lostgradient/operative';
 import { createConversationHistory } from 'conversationalist';
@@ -20,8 +22,10 @@ import {
 import { workspaceConformanceLedger } from '../workspace-conformance-ledger.test-support.ts';
 import type { WorkspaceMembership } from '../workspace-principal.ts';
 import {
+  contextsListShareRequestsOperation,
   contextsRequestShareOperation,
   contextsRevokeShareOperation,
+  contextsResolveShareRequestOperation,
   contextsShareStatusOperation,
 } from './contexts-sharing-operations.ts';
 
@@ -186,6 +190,10 @@ describe('chat sharing access requests', () => {
           await workspacePrivacyCall(opened, actor, 'bureau.contexts.share.request', { contextId }),
         );
       }
+      const requestId = sessionReadRequestsOf(
+        (await opened.bureau.contexts.get(contextId))!.metadata,
+      ).find((request) => request.owner === WORKSPACE_PRIVACY_ACTORS.peer.owner)?.requestId;
+      if (requestId === undefined) throw new Error('Expected peer request receipt');
       for (const actor of actors) {
         witnesses.observeCollection(
           'bureau.contexts.share.requests.list',
@@ -201,6 +209,7 @@ describe('chat sharing access requests', () => {
           await workspacePrivacyCall(opened, actor, 'bureau.contexts.share.request.resolve', {
             contextId,
             granteeOwnerId: WORKSPACE_PRIVACY_ACTORS.peer.owner,
+            requestId,
             decision: 'grant',
           }),
         );
@@ -296,6 +305,143 @@ describe('chat sharing access requests', () => {
     });
   });
 
+  test('lists a pending owned request beyond the first owner-filtered page, not newer foreign sessions', async () => {
+    const owner = WORKSPACE_PRIVACY_ACTORS.owner.owner;
+    const peer = WORKSPACE_PRIVACY_ACTORS.peer.owner;
+    const requested = (id: string, sessionOwner: string, requestId?: string) => ({
+      ...sharedSession(
+        requestId === undefined
+          ? {}
+          : withSessionReadRequest(
+              {},
+              {
+                requestId,
+                owner: peer,
+                workspaceId: 'workspace-a',
+                actorId: 'bob',
+                requestedAt: '2026-11-24T00:00:00.000Z',
+              },
+            ),
+      ),
+      id,
+      metadata: {
+        sessionOwner,
+        ...(requestId === undefined
+          ? {}
+          : withSessionReadRequest(
+              {},
+              {
+                requestId,
+                owner: peer,
+                workspaceId: 'workspace-a',
+                actorId: 'bob',
+                requestedAt: '2026-11-24T00:00:00.000Z',
+              },
+            )),
+      },
+    });
+    const owned = Array.from({ length: 101 }, (_, index) =>
+      requested(
+        `owned-${index}`,
+        owner,
+        index === 100 ? '00000000-0000-4000-8000-000000000101' : undefined,
+      ),
+    );
+    const foreign = Array.from({ length: 101 }, (_, index) =>
+      requested(`foreign-${index}`, 'workspace-a:someone-else'),
+    );
+    const { host } = sharingHost(sharedSession({}), (session) => session);
+    const calls: Array<{ owner?: string; offset?: number; limit?: number } | undefined> = [];
+    (
+      host.contexts as {
+        list: (options?: { owner?: string; offset?: number; limit?: number }) => Promise<unknown[]>;
+      }
+    ).list = async (options) => {
+      calls.push(options);
+      const candidates = options?.owner === owner ? owned : [...foreign, ...owned];
+      return candidates.slice(
+        options?.offset ?? 0,
+        (options?.offset ?? 0) + (options?.limit ?? 100),
+      );
+    };
+
+    const result = await contextsListShareRequestsOperation.invoke({
+      input: {},
+      host,
+      principal: workspacePrincipal('owner'),
+    } as never);
+
+    expect(calls).toEqual([
+      { owner, offset: 0, limit: 100 },
+      { owner, offset: 100, limit: 100 },
+    ]);
+    expect(result).toEqual({
+      requests: [
+        expect.objectContaining({
+          contextId: 'owned-100',
+          requestId: '00000000-0000-4000-8000-000000000101',
+          granteeOwnerId: peer,
+        }),
+      ],
+    });
+  });
+
+  test('does not resolve replacement request B with stale request A when timestamps match', async () => {
+    const owner = WORKSPACE_PRIVACY_ACTORS.owner.owner;
+    const peer = WORKSPACE_PRIVACY_ACTORS.peer.owner;
+    const requestedAt = '2026-11-24T00:00:00.000Z';
+    const requestA = '00000000-0000-4000-8000-00000000000a';
+    const requestB = '00000000-0000-4000-8000-00000000000b';
+    const initial = sharedSession(
+      withSessionReadRequest(
+        {},
+        {
+          requestId: requestA,
+          owner: peer,
+          workspaceId: 'workspace-a',
+          actorId: 'bob',
+          requestedAt,
+        },
+      ),
+    );
+    const { host, current } = sharingHost(initial, (session) => ({
+      ...session,
+      metadata: withSessionReadRequest(
+        withSessionReadRequestResolution(
+          session.metadata,
+          peer,
+          requestA,
+          'denied',
+          owner,
+          requestedAt,
+        ),
+        {
+          requestId: requestB,
+          owner: peer,
+          workspaceId: 'workspace-a',
+          actorId: 'bob',
+          requestedAt,
+        },
+      ),
+    }));
+
+    const receipt = await contextsResolveShareRequestOperation.invoke({
+      input: {
+        contextId: initial.id,
+        granteeOwnerId: peer,
+        requestId: requestA,
+        decision: 'grant',
+      },
+      host,
+      principal: workspacePrincipal('owner'),
+    } as never);
+
+    expect(receipt).toMatchObject({ changed: false });
+    const [replacement] = sessionReadRequestsOf(current().metadata);
+    expect(replacement?.requestId).toBe(requestB);
+    expect(replacement?.resolvedAt).toBeUndefined();
+  });
+
   test('a former workspace reader creates one receipt and only its owner can resolve it', async () => {
     const opened = await openWorkspacePrivacyBureau();
     try {
@@ -377,10 +523,13 @@ describe('chat sharing access requests', () => {
           })
         ).body?.result,
       ).toMatchObject({ changed: false });
-      expect(
-        (await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.share.requests.list', {}))
-          .body?.result,
-      ).toMatchObject({ requests: [{ contextId, granteeOwnerId }] });
+      const requests = (
+        await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.share.requests.list', {})
+      ).body?.result;
+      expect(requests).toMatchObject({ requests: [{ contextId, granteeOwnerId }] });
+      const requestId = (requests as { requests?: Array<{ requestId?: string }> }).requests?.[0]
+        ?.requestId;
+      if (requestId === undefined) throw new Error('Expected a durable access request ID');
       expect(
         (await workspacePrivacyCall(opened, 'peer', 'bureau.contexts.share.requests.list', {})).body
           ?.result,
@@ -390,6 +539,7 @@ describe('chat sharing access requests', () => {
           await workspacePrivacyCall(opened, 'peer', 'bureau.contexts.share.request.resolve', {
             contextId,
             granteeOwnerId,
+            requestId,
             decision: 'grant',
           })
         ).body?.error?.data?.httpStatus,
@@ -399,6 +549,7 @@ describe('chat sharing access requests', () => {
           await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.share.request.resolve', {
             contextId,
             granteeOwnerId,
+            requestId,
             decision: 'grant',
           })
         ).body?.result,
@@ -412,6 +563,7 @@ describe('chat sharing access requests', () => {
           await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.share.request.resolve', {
             contextId,
             granteeOwnerId,
+            requestId,
             decision: 'grant',
           })
         ).body?.result,

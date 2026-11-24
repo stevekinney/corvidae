@@ -17,7 +17,11 @@ import { defineOperation, type OperationFault, type Principal } from '@lostgradi
 import { z } from 'zod';
 
 import type { BureauInternals } from '../../bureau-types/facade.ts';
-import { isOwnerOfResource, type BureauOwnershipHost } from '../owner-predicate.ts';
+import {
+  isOwnerOfResource,
+  ownerOfPrincipal,
+  type BureauOwnershipHost,
+} from '../owner-predicate.ts';
 import { type BureauWorkspaceHost } from '../workspace-principal.ts';
 import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 import { noSessions } from './contexts-operations.ts';
@@ -58,12 +62,14 @@ const sharingOutput = z.object({
   changed: z.boolean(),
 });
 const requestResolutionInput = sharingInput.extend({
+  requestId: z.string().uuid().describe('The durable access request being decided.'),
   decision: z.enum(['grant', 'deny']).describe('Whether to restore or deny requested access.'),
 });
 const requestQueueOutput = z.object({
   requests: z.array(
     z.object({
       contextId: z.string(),
+      requestId: z.string(),
       granteeOwnerId: z.string(),
       requestedAt: z.string(),
       granteeLabel: z.string().nullable(),
@@ -113,6 +119,7 @@ function sameGrant(left: SessionReadGrant | undefined, right: SessionReadGrant |
 
 function sameRequest(left: SessionReadRequest | undefined, right: SessionReadRequest | undefined) {
   return (
+    left?.requestId === right?.requestId &&
     left?.owner === right?.owner &&
     left?.workspaceId === right?.workspaceId &&
     left?.actorId === right?.actorId &&
@@ -204,10 +211,10 @@ async function change(
         return undefined;
       if ((kind === 'grant' && currentlyGranted) || (kind === 'revoke' && !currentlyGranted)) {
         if (currentGrant === undefined) return undefined;
-        const pending = sessionReadRequestsOf(current.metadata).some(
+        const pending = sessionReadRequestsOf(current.metadata).find(
           (request) => request.owner === input.granteeOwnerId && request.resolvedAt === undefined,
         );
-        committed ||= kind === 'grant' && pending;
+        committed ||= kind === 'grant' && pending !== undefined;
         const at = new Date().toISOString();
         const attempted = withSessionReadGrantAttempt(
           current.metadata,
@@ -219,10 +226,11 @@ async function change(
         return {
           ...current,
           metadata:
-            kind === 'grant' && pending
+            kind === 'grant' && pending !== undefined
               ? withSessionReadRequestResolution(
                   attempted,
                   input.granteeOwnerId,
+                  pending.requestId,
                   'granted',
                   grantedBy,
                   at,
@@ -243,14 +251,21 @@ async function change(
               grantedAt: at,
             })
           : withSessionReadRevocation(current.metadata, input.granteeOwnerId, grantedBy, at);
-      const pending = sessionReadRequestsOf(next).some(
+      const pending = sessionReadRequestsOf(next).find(
         (request) => request.owner === input.granteeOwnerId && request.resolvedAt === undefined,
       );
       return {
         ...current,
         metadata:
-          kind === 'grant' && pending
-            ? withSessionReadRequestResolution(next, input.granteeOwnerId, 'granted', grantedBy, at)
+          kind === 'grant' && pending !== undefined
+            ? withSessionReadRequestResolution(
+                next,
+                input.granteeOwnerId,
+                pending.requestId,
+                'granted',
+                grantedBy,
+                at,
+              )
             : next,
       };
     },
@@ -373,6 +388,7 @@ export const contextsRequestShareOperation = defineOperation<
           ...current,
           metadata: withSessionReadRequest(current.metadata, {
             owner: workspace.owner,
+            requestId: crypto.randomUUID(),
             workspaceId: workspace.workspaceId,
             actorId: workspace.actorId,
             requestedAt: new Date().toISOString(),
@@ -415,7 +431,10 @@ export const contextsResolveShareRequestOperation = defineOperation<
       loaded === undefined
         ? undefined
         : sessionReadRequestsOf(loaded.metadata).find(
-            (request) => request.owner === input.granteeOwnerId && request.resolvedAt === undefined,
+            (request) =>
+              request.requestId === input.requestId &&
+              request.owner === input.granteeOwnerId &&
+              request.resolvedAt === undefined,
           );
     const priorRequests =
       loaded === undefined ? 0 : requestCount(loaded.metadata, input.granteeOwnerId);
@@ -442,7 +461,10 @@ export const contextsResolveShareRequestOperation = defineOperation<
       (current) => {
         if (current === undefined || current.incarnation !== loaded.incarnation) return undefined;
         const currentPending = sessionReadRequestsOf(current.metadata).find(
-          (request) => request.owner === input.granteeOwnerId && request.resolvedAt === undefined,
+          (request) =>
+            request.requestId === input.requestId &&
+            request.owner === input.granteeOwnerId &&
+            request.resolvedAt === undefined,
         );
         if (
           !sameRequest(currentPending, pending) ||
@@ -454,6 +476,7 @@ export const contextsResolveShareRequestOperation = defineOperation<
         const settled = withSessionReadRequestResolution(
           current.metadata,
           input.granteeOwnerId,
+          input.requestId,
           input.decision === 'grant' ? 'granted' : 'denied',
           workspace.owner,
           at,
@@ -500,24 +523,30 @@ export const contextsListShareRequestsOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ host, principal }) => {
-    const sessions = await host.contexts.list();
+    const owner = ownerOfPrincipal(principal);
+    if (owner === undefined) return { requests: [] };
+    const sessions: Array<Awaited<ReturnType<typeof host.contexts.list>>[number]> = [];
+    for (let offset = 0; ; offset += 100) {
+      const page = await host.contexts.list({ owner, offset, limit: 100 });
+      sessions.push(...page);
+      if (page.length < 100) break;
+    }
     const requests = await Promise.all(
       sessions
         .flatMap((session) => {
-          const owner = sessionOwnerOf(session.metadata);
-          if (owner === null || !isOwnerOfResource(principal, owner)) return [];
           return sessionReadRequestsOf(session.metadata)
             .filter((request) => request.resolvedAt === undefined)
             .map((request) => ({
               contextId: session.id,
+              requestId: request.requestId,
               granteeOwnerId: request.owner,
               requestedAt: request.requestedAt,
               contextTitle: session.title,
               owner: request.owner,
             }));
         })
-        .map(async ({ owner, ...request }) => {
-          const member = await host.resolveWorkspaceOwner?.(owner);
+        .map(async ({ owner: requestOwner, ...request }) => {
+          const member = await host.resolveWorkspaceOwner?.(requestOwner);
           return { ...request, granteeLabel: member?.displayName ?? null };
         }),
     );

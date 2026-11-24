@@ -85,15 +85,14 @@
     undefined,
   );
   let resolvingChatRequest = $state<string | undefined>();
-  // Pending requests use their durable context/member tuple, never a delimiter-prone string.
-  const chatRequestKey = (contextId: string, granteeOwnerId: string) =>
-    JSON.stringify([contextId, granteeOwnerId]);
+  // The opaque durable id identifies the exact pending request shown in this row.
+  const chatRequestKey = (requestId: string) => requestId;
   async function resolveChatRequest(
     request: import('../../lib/bureau-reviews.ts').ChatAccessRequest,
     decision: 'grant' | 'deny',
   ): Promise<void> {
     if (resolvingChatRequest !== undefined) return;
-    resolvingChatRequest = chatRequestKey(request.contextId, request.granteeOwnerId);
+    resolvingChatRequest = chatRequestKey(request.requestId);
     try {
       await resolveChatAccessRequest(request, decision);
       await queryClient.invalidateQueries({ queryKey: ['contexts'] });
@@ -314,7 +313,7 @@
   {#if (chatRequests.data?.length ?? 0) > 0}
     <section aria-label="Chat access requests">
       <h2>Chat access requests</h2>
-      {#each chatRequests.data ?? [] as request (chatRequestKey(request.contextId, request.granteeOwnerId))}
+      {#each chatRequests.data ?? [] as request (chatRequestKey(request.requestId))}
         <article class="ib-chat-access-request">
           <p class="ib-chat-access-request__copy">
             <strong>{request.granteeLabel ?? 'A workspace member'}</strong> requested access to chat {request.contextTitle ??
@@ -332,8 +331,7 @@
               data-changes
               size="sm"
               variant="primary"
-              loading={resolvingChatRequest ===
-                chatRequestKey(request.contextId, request.granteeOwnerId)}
+              loading={resolvingChatRequest === chatRequestKey(request.requestId)}
               onclick={() => void resolveChatRequest(request, 'grant')}>Grant access</Button
             >
           </div>

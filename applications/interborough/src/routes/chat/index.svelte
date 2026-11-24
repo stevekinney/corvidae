@@ -216,6 +216,7 @@
     agentName={shareStatus.data.agentName}
     readOnly
     grantor={shareStatus.data.grantor ?? 'the chat owner'}
+    onSharedHistoryUnavailable={() => void shareStatus.refetch()}
   />
 {:else if context.isError && !failedToLoad}
   {#if shareStatus.data?.status === 'requestable' || shareStatus.data?.status === 'pending'}

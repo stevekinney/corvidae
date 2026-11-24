@@ -419,8 +419,23 @@ export function createAgUiMount(
       authority !== undefined &&
       (await authority(loaded!.owner));
     if (!active) return notFound('thread', threadId);
+    const current = ownedSession(await bureau.contexts.get(threadId));
+    const currentGrant =
+      current === undefined || reader === undefined
+        ? undefined
+        : sessionReadGrantOf(current.session.metadata, reader);
+    if (
+      current === undefined ||
+      current.session.incarnation !== loaded!.session.incarnation ||
+      current.owner !== loaded!.owner ||
+      currentGrant === undefined ||
+      !sessionHasReadGrant(current.session.metadata, reader!, current.session.incarnation) ||
+      currentGrant.workspaceId !== workspace?.workspaceId ||
+      currentGrant.actorId !== workspace.actorId
+    )
+      return notFound('thread', threadId);
     return json(
-      { threadId, messages: sharedSnapshotMessages(loaded!.session.conversationHistory) },
+      { threadId, messages: sharedSnapshotMessages(current.session.conversationHistory) },
       200,
     );
   }

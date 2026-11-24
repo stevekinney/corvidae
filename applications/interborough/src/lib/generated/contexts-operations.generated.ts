@@ -217,6 +217,7 @@ export type ContextsOperationTypes = {
       readonly contextId: string;
       readonly decision: 'grant' | 'deny';
       readonly granteeOwnerId: string;
+      readonly requestId: string;
     };
     readonly output: SharedChangedContextIdGranteeO_3863cba0;
     readonly faults: 'InvalidParams' | 'NotFound' | 'UnsupportedCapability';
@@ -229,6 +230,7 @@ export type ContextsOperationTypes = {
         readonly contextTitle: string | null;
         readonly granteeLabel: string | null;
         readonly granteeOwnerId: string;
+        readonly requestId: string;
         readonly requestedAt: string;
       }>;
     };

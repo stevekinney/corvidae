@@ -59,7 +59,12 @@ export async function resolveChatAccessRequest(
   options?: Options,
 ): Promise<BureauOutput<'bureau.contexts.share.request.resolve'>> {
   return bureauClient['bureau.contexts.share.request.resolve'](
-    { contextId: request.contextId, granteeOwnerId: request.granteeOwnerId, decision },
+    {
+      contextId: request.contextId,
+      granteeOwnerId: request.granteeOwnerId,
+      requestId: request.requestId,
+      decision,
+    },
     options,
   );
 }

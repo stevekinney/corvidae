@@ -210,6 +210,8 @@
     /** A shared reader sees the scrubbed transcript and no mutable chat controls. */
     readOnly?: boolean;
     grantor?: string | undefined;
+    /** A shared transcript disappeared after its dedicated status projection admitted this route. */
+    onSharedHistoryUnavailable?: (() => void) | undefined;
   }
 
   let {
@@ -221,6 +223,7 @@
     draft,
     readOnly = false,
     grantor,
+    onSharedHistoryUnavailable,
   }: ChatConversationProps = $props();
 
   const queryClient = useQueryClient();
@@ -231,6 +234,9 @@
   // The agent is chosen until the run starts, and fixed once the session exists.
   let agent = $state(untrack(() => agentName));
   let choosing = $state(untrack(() => isNew));
+  // The session is constructed once for this route. Its unavailable callback belongs to this route
+  // too, so it deliberately keeps the callback it opened with.
+  const sharedHistoryUnavailable = untrack(() => onSharedHistoryUnavailable);
   let chat = $state<ReturnType<typeof Chat> | undefined>();
   // What the box held when the first message of a new chat was sent, so a start that finishes after
   // the person typed on can tell their later text from the message it started with.
@@ -245,6 +251,9 @@
     // A new chat's thread is not kept until its first run begins, so nothing reads its history before.
     unopened: untrack(() => isNew),
     readOnly: untrack(() => readOnly),
+    ...(sharedHistoryUnavailable === undefined
+      ? {}
+      : { onSharedHistoryUnavailable: sharedHistoryUnavailable }),
     agentName: () => agent,
     // A deleted chat is sent nothing, and a not-found is checked against a read of the chat.
     closed: () => gone,
@@ -656,6 +665,21 @@
       return {
         kind: 'loading',
         labels: { loading: CHAT_COPY.load.loading, slow: CHAT_COPY.load.stillLoading },
+      };
+    }
+    if (readOnly && session.readFailed) {
+      return {
+        kind: 'error',
+        cause: session.failure ?? CHAT_COPY.load.errorDescription,
+        onRetry: () => {
+          onSharedHistoryUnavailable?.();
+          void session.reconnect();
+        },
+        allConversations: {
+          label: CHAT_COPY.load.allConversations,
+          onclick: () => router.navigate('/chats'),
+        },
+        labels: { errorTitle: CHAT_COPY.load.errorTitle, tryAgain: CHAT_COPY.load.tryAgain },
       };
     }
     // An archived chat's bar outranks the missing provider: nothing can be sent until it is

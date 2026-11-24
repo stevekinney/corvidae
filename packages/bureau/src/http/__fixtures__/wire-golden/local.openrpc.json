@@ -11448,6 +11448,16 @@
             "minLength": 1,
             "type": "string"
           }
+        },
+        {
+          "name": "requestId",
+          "required": true,
+          "schema": {
+            "description": "The durable access request being decided.",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          }
         }
       ],
       "result": {
@@ -11504,11 +11514,18 @@
             "maxLength": 256,
             "minLength": 1,
             "type": "string"
+          },
+          "requestId": {
+            "description": "The durable access request being decided.",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
           }
         },
         "required": [
           "contextId",
           "granteeOwnerId",
+          "requestId",
           "decision"
         ],
         "type": "object"
@@ -11564,12 +11581,16 @@
                   "granteeOwnerId": {
                     "type": "string"
                   },
+                  "requestId": {
+                    "type": "string"
+                  },
                   "requestedAt": {
                     "type": "string"
                   }
                 },
                 "required": [
                   "contextId",
+                  "requestId",
                   "granteeOwnerId",
                   "requestedAt",
                   "granteeLabel",
