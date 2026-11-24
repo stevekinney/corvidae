@@ -1,5 +1,13 @@
 # Interborough
 
+## Rehearsing a local upgrade and restore
+
+Use separately installed, compatible macOS arm64 packages and record their source revisions, versions, package digests, and installation receipts before beginning. An offline package installation receipt establishes installation; it does not establish registry publication or recovery. The procedure below applies to a local SQLite home and its content, not a remote database or object store.
+
+From `applications/interborough`, run `bun scripts/rehearse-installed-recovery.ts <previous-executable> <candidate-executable> <new-evidence-directory>`. The final directory must not exist. The command populates a disposable home, stops the previous host before copying it, starts the candidate against that home, and restores the saved home into a separate directory for the previous executable. It retains the before manifest, command trace, backup, restored home, asset downloads, and recovery receipt. Treat the home and its backup as sensitive data. A failure leaves the evidence in place for inspection.
+
+For a manual recovery, first stop the host cleanly and confirm its process and listener have exited. Copy the complete saved home into a new, empty directory, preserving its SQLite database, content, configuration, and secrets together. Start the compatible previous executable against the restored directory; never start two hosts against the same home. With that host listening, run `bun scripts/installed-recovery-manifest.ts <restored-home> <host-url> <before-manifest.json>` to check the schema, asset bytes, setting, and pending review identity. Then resolve the pending review once and inspect the result. Restoring the backup discards changes made after the backup, including actions performed by the candidate. Keep the candidate home separately until its changes have been reconciled.
+
 Interborough is Corvidae's main application. One process on one loopback origin serves the browser application, Weft's engine API for the Engine console, and a Bureau, with no sign-in. It is a private application: nothing here is published.
 
 The browser application is the Weft operator console, moved here from `packages/weft/src/ui` (Weft no longer exports `./ui`, `dashboard()`, or a UI of any kind), with a new shell around it. The Weft console's coverage of Weft's operations is recorded in [`documentation/weft-console/coverage-matrix.md`](documentation/weft-console/coverage-matrix.md).
