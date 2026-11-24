@@ -450,6 +450,19 @@ test('browser login resumes consent and connector authority stays separate', asy
   expect(rename.status).toBe(403);
   expect(rename.headers.get('www-authenticate')).toContain('insufficient_scope');
   expect(asset).toBe('Original');
+  const sessionCondition = identity!.sessionCondition;
+  const sessionValue = sessionCondition.expectedValue;
+  const sessionRecord = JSON.parse(new TextDecoder().decode(sessionValue));
+  await storage.put(
+    sessionCondition.key,
+    new TextEncoder().encode(JSON.stringify({ ...sessionRecord, expires: Date.now() - 1 })),
+  );
+  expect(await browser.currentSession(new Request(appOrigin, { headers: { cookie } }))).toBeNull();
+  const lookupAfterExpiry = await request('/mcp?operation=lookup', { headers: auth });
+  expect(lookupAfterExpiry.status).toBe(200);
+  expect(await lookupAfterExpiry.json()).toEqual({ asset: 'Original' });
+  // Restore the fixture session so the separate sign-out case can exercise it.
+  await storage.put(sessionCondition.key, sessionValue);
   const session = await browser.currentSession(new Request(appOrigin, { headers: { cookie } }));
   const signedOut = await request('/auth/sign-out', {
     method: 'POST',
