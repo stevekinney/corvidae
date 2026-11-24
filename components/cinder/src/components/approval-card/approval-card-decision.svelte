@@ -85,7 +85,6 @@
 </script>
 
 <script lang="ts">
-  import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import { untrack } from 'svelte';
 
   import Button from '../button/button.svelte';
@@ -350,22 +349,14 @@
   {#if isPending}
     {#if why !== undefined}
       <div class="cinder-approval-card__input cinder-approval-card__why">
-        <button
-          type="button"
+        <DisclosureTrigger
           class="cinder-approval-card__input-toggle"
-          aria-expanded={whyOpen}
-          aria-controls={whyId}
+          open={whyOpen}
+          controls={whyId}
           onclick={() => (whyOpen = !whyOpen)}
         >
-          <ChevronRight
-            class="cinder-approval-card__input-chevron"
-            size={12}
-            strokeWidth={2}
-            aria-hidden="true"
-            data-cinder-open={whyOpen || undefined}
-          />
           <span class="cinder-approval-card__input-word">Why the agent wants to do this</span>
-        </button>
+        </DisclosureTrigger>
         <p id={whyId} class="cinder-approval-card__why-body" hidden={!whyOpen} dir="auto">{why}</p>
       </div>
     {/if}
