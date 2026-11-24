@@ -1,0 +1,114 @@
+name: Interborough installed recovery rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      previous_artifact:
+        description: Previous package artifact ID
+        required: true
+        type: string
+      previous_archive_sha256:
+        description: Previous artifact ZIP SHA-256
+        required: true
+        type: string
+      previous_package_sha256:
+        description: Previous npm tarball SHA-256
+        required: true
+        type: string
+      candidate_artifact:
+        description: Candidate package artifact ID
+        required: true
+        type: string
+      candidate_archive_sha256:
+        description: Candidate artifact ZIP SHA-256
+        required: true
+        type: string
+      candidate_package_sha256:
+        description: Candidate npm tarball SHA-256
+        required: true
+        type: string
+  pull_request:
+    paths:
+      - .github/workflows/interborough-installed-recovery.yml
+      - applications/interborough/scripts/installed-recovery-manifest.ts
+      - applications/interborough/scripts/rehearse-installed-recovery.ts
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  rehearsal:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.head_ref == 'steve/cor-2660-installed-upgrade-restore')
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      PREVIOUS_ARTIFACT: ${{ inputs.previous_artifact || '14840715467' }}
+      PREVIOUS_ARCHIVE_SHA256: ${{ inputs.previous_archive_sha256 || '2757a48d02ec8ea1ab9930d69ba0a770156548f130fcb0be23cc3b7ad93a15a0' }}
+      PREVIOUS_PACKAGE_SHA256: ${{ inputs.previous_package_sha256 || '9f70ed5d2271bb7fcd42c438ac94cbeb5e4a240390a69b244b54a562f5706619' }}
+      CANDIDATE_ARTIFACT: ${{ inputs.candidate_artifact || '14878166631' }}
+      CANDIDATE_ARCHIVE_SHA256: ${{ inputs.candidate_archive_sha256 || 'feede2a5cd8bc275d3a186ca83e761daeffebee08b2e7f8f4bfc0a246962c792' }}
+      CANDIDATE_PACKAGE_SHA256: ${{ inputs.candidate_package_sha256 || 'b0dceee147a60e97c70e010005f76847540384c4ab34e79573cf822ee41375c5' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify checked out source
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v6.0.1
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: bun install --frozen-lockfile
+      - name: Download and verify immutable packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/recovery-inputs/previous" "$RUNNER_TEMP/recovery-inputs/candidate" "$RUNNER_TEMP/recovery-evidence"
+          for value in "$PREVIOUS_ARTIFACT" "$CANDIDATE_ARTIFACT"; do
+            case "$value" in *[!0-9]*|'') exit 1;; esac
+          done
+          for value in "$PREVIOUS_ARCHIVE_SHA256" "$PREVIOUS_PACKAGE_SHA256" "$CANDIDATE_ARCHIVE_SHA256" "$CANDIDATE_PACKAGE_SHA256"; do
+            printf '%s' "$value" | grep -Eq '^[a-f0-9]{64}$'
+          done
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$PREVIOUS_ARTIFACT/zip" > "$RUNNER_TEMP/recovery-inputs/previous.zip"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$CANDIDATE_ARTIFACT/zip" > "$RUNNER_TEMP/recovery-inputs/candidate.zip"
+          printf '%s  %s\n' "$PREVIOUS_ARCHIVE_SHA256" "$RUNNER_TEMP/recovery-inputs/previous.zip" | shasum -a 256 -c -
+          printf '%s  %s\n' "$CANDIDATE_ARCHIVE_SHA256" "$RUNNER_TEMP/recovery-inputs/candidate.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/recovery-inputs/previous.zip" -d "$RUNNER_TEMP/recovery-inputs/previous"
+          unzip -q "$RUNNER_TEMP/recovery-inputs/candidate.zip" -d "$RUNNER_TEMP/recovery-inputs/candidate"
+          find "$RUNNER_TEMP/recovery-inputs/previous" -name '*.tgz' -type f > "$RUNNER_TEMP/recovery-inputs/previous-paths"
+          find "$RUNNER_TEMP/recovery-inputs/candidate" -name '*.tgz' -type f > "$RUNNER_TEMP/recovery-inputs/candidate-paths"
+          test "$(wc -l < "$RUNNER_TEMP/recovery-inputs/previous-paths" | tr -d ' ')" = 1
+          test "$(wc -l < "$RUNNER_TEMP/recovery-inputs/candidate-paths" | tr -d ' ')" = 1
+          printf '%s  %s\n' "$PREVIOUS_PACKAGE_SHA256" "$(cat "$RUNNER_TEMP/recovery-inputs/previous-paths")" | shasum -a 256 -c -
+          printf '%s  %s\n' "$CANDIDATE_PACKAGE_SHA256" "$(cat "$RUNNER_TEMP/recovery-inputs/candidate-paths")" | shasum -a 256 -c -
+          printf 'previous artifact %s archive %s package %s\ncandidate artifact %s archive %s package %s\n' "$PREVIOUS_ARTIFACT" "$PREVIOUS_ARCHIVE_SHA256" "$PREVIOUS_PACKAGE_SHA256" "$CANDIDATE_ARTIFACT" "$CANDIDATE_ARCHIVE_SHA256" "$CANDIDATE_PACKAGE_SHA256" > "$RUNNER_TEMP/recovery-evidence/artifacts.txt"
+      - name: Install both packages offline
+        run: |
+          set -euo pipefail
+          node --version | tee "$RUNNER_TEMP/recovery-evidence/node-version.txt"
+          npm --version | tee "$RUNNER_TEMP/recovery-evidence/npm-version.txt"
+          npm_config_cache="$RUNNER_TEMP/previous-cache" npm install --global --offline --ignore-scripts --prefix "$RUNNER_TEMP/previous-install" "$(cat "$RUNNER_TEMP/recovery-inputs/previous-paths")" 2>&1 | tee "$RUNNER_TEMP/recovery-evidence/previous-install.log"
+          npm_config_cache="$RUNNER_TEMP/candidate-cache" npm install --global --offline --ignore-scripts --prefix "$RUNNER_TEMP/candidate-install" "$(cat "$RUNNER_TEMP/recovery-inputs/candidate-paths")" 2>&1 | tee "$RUNNER_TEMP/recovery-evidence/candidate-install.log"
+      - name: Rehearse populated upgrade and restore
+        working-directory: applications/interborough
+        run: |
+          bun scripts/rehearse-installed-recovery.ts "$RUNNER_TEMP/previous-install/bin/interborough" "$RUNNER_TEMP/candidate-install/bin/interborough" "$RUNNER_TEMP/recovery-evidence/rehearsal"
+      - name: Upload recovery evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: interborough-installed-recovery-evidence
+          path: ${{ runner.temp }}/recovery-evidence
+          if-no-files-found: error
