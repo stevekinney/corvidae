@@ -1,0 +1,37 @@
+import { createToolboxMcpHandler } from 'armorer/mcp/http';
+import { createFixture } from '../../equipment-catalog/src/fixture.ts';
+
+const fixture = createFixture('/mcp');
+const handler = await createToolboxMcpHandler(fixture.toolbox, {
+  tools: [
+    { id: fixture.lookup.id, name: 'equipment.lookup', scopes: ['equipment:read'] },
+    { id: fixture.rename.id, name: 'equipment.rename', scopes: ['equipment:write'] },
+  ],
+  authorization: {
+    origin: fixture.origin,
+    resourcePath: '/mcp',
+    issuer: fixture.origin,
+    scopes: ['equipment:read', 'equipment:write'],
+    verifyAccessToken: fixture.oauth.verifyAccessToken,
+    resolvePrincipal: fixture.resolvePrincipal,
+  },
+  requestContext: (principal) => fixture.requestContext(principal.principal),
+});
+const server = Bun.serve({
+  hostname: '0.0.0.0',
+  port: Number(process.env['PORT'] ?? '3000'),
+  fetch(request) {
+    const path = new URL(request.url).pathname;
+    if (path.startsWith('/auth/')) return fixture.browser.fetch(request);
+    if (path === '/mcp' || path.startsWith('/.well-known/oauth-protected-resource'))
+      return handler.fetch(request);
+    return fixture.oauth.handle(request);
+  },
+});
+const shutdown = async () => {
+  await server.stop();
+  await handler.close();
+  fixture.storage[Symbol.dispose]();
+};
+process.once('SIGTERM', shutdown);
+process.once('SIGINT', shutdown);

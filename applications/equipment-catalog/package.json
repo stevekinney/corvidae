@@ -1,0 +1,31 @@
+{
+  "name": "@lostgradient/equipment-catalog-staging",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun src/server.ts --build",
+    "start": "bun src/server.ts",
+    "probe:deployment": "bun scripts/probe-deployment.ts",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@lostgradient/backchannel": "workspace:*",
+    "@lostgradient/backchannel-armorer": "workspace:*",
+    "@lostgradient/backchannel-mcp": "workspace:*",
+    "@lostgradient/credentials": "workspace:*",
+    "@lostgradient/mcp": "workspace:*",
+    "@lostgradient/storage-bun-sqlite": "workspace:*",
+    "@lostgradient/velveteen": "workspace:*",
+    "@modelcontextprotocol/client": "catalog:",
+    "armorer": "workspace:*",
+    "svelte": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:velveteen",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
+  }
+}
