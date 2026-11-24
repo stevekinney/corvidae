@@ -4,12 +4,25 @@ import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
+function forbiddenProviderDependencies(manifest: {
+  dependencies?: Record<string, unknown>;
+  peerDependencies?: Record<string, unknown>;
+  optionalDependencies?: Record<string, unknown>;
+}): string[] {
+  return [
+    ...Object.keys(manifest.dependencies ?? {}),
+    ...Object.keys(manifest.peerDependencies ?? {}),
+    ...Object.keys(manifest.optionalDependencies ?? {}),
+  ].filter((name) => /backchannel|velveteen/i.test(name));
+}
+
 const evidence = await (async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mcp-consumer-'));
   const packageDirectory = resolve(import.meta.dir, '..');
   try {
     const stagedPackage = join(directory, 'package');
     const packageManifest = await Bun.file(join(packageDirectory, 'package.json')).json();
+    const forbiddenProviders = forbiddenProviderDependencies(packageManifest);
     const httpEntry = packageManifest.exports['./http'];
     if (typeof httpEntry !== 'string' || !httpEntry.startsWith('./src/'))
       throw new Error('The MCP HTTP export must name a source file');
@@ -84,6 +97,7 @@ const evidence = await (async () => {
       exports: manifest.exports,
       source,
       installedSource,
+      forbiddenProviders,
     };
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -93,9 +107,25 @@ const evidence = await (async () => {
 test('an independent listener installs the HTTP entry without provider dependencies', () => {
   expect(evidence.packExit).toBe(0);
   expect(evidence.installExit).toBe(0);
-  expect(evidence.dependencies).not.toMatch(/backchannel|velveteen/i);
+  expect(evidence.forbiddenProviders).toEqual([]);
   expect(evidence.dependencies).toBe('{}');
   expect(evidence.exports).toEqual({ './http': evidence.httpEntry });
   expect(evidence.installedSource).toBe(evidence.source);
   expect(evidence.listenerExit).toBe(0);
+});
+
+test('the provider dependency witness checks every production dependency category', () => {
+  expect(
+    forbiddenProviderDependencies({ dependencies: { '@lostgradient/backchannel': 'workspace:*' } }),
+  ).toEqual(['@lostgradient/backchannel']);
+  expect(
+    forbiddenProviderDependencies({
+      peerDependencies: { '@lostgradient/velveteen': 'workspace:*' },
+    }),
+  ).toEqual(['@lostgradient/velveteen']);
+  expect(
+    forbiddenProviderDependencies({
+      optionalDependencies: { '@lostgradient/backchannel-mcp': 'workspace:*' },
+    }),
+  ).toEqual(['@lostgradient/backchannel-mcp']);
 });
