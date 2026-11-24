@@ -126,6 +126,38 @@ export function continuationAdmissionFenceKey(continuationRunId: string): string
   return `bureau-continuation-admission-fence:v1:${continuationRunId}`;
 }
 
+/** The durable identity carried by a continuation marker, independent of the retry command. */
+export function continuationMarker(
+  session: AgentSession,
+  runId: string,
+):
+  | {
+      readonly commandId: string;
+      readonly owner: string;
+      readonly continuationRunId: string;
+      readonly processId: string | undefined;
+    }
+  | undefined {
+  const metadata = getOwn(session.conversationHistory.messages, continuationRowId(runId))?.metadata;
+  if (metadata?.[CONTINUATION_OF_METADATA_KEY] !== runId) return undefined;
+  const commandId = metadata[CONTINUATION_COMMAND_METADATA_KEY];
+  const owner = metadata[CONTINUATION_OWNER_METADATA_KEY];
+  const continuationRunId = metadata[CONTINUATION_RUN_METADATA_KEY];
+  const processId = metadata[CONTINUATION_PROCESS_METADATA_KEY];
+  if (
+    typeof commandId !== 'string' ||
+    typeof owner !== 'string' ||
+    typeof continuationRunId !== 'string'
+  )
+    return undefined;
+  return {
+    commandId,
+    owner,
+    continuationRunId,
+    processId: typeof processId === 'string' ? processId : undefined,
+  };
+}
+
 /** The id of the continuation row of the stopped run `runId`: one per stopped run. */
 function continuationRowId(runId: string): string {
   return `${runId}:continuation`;

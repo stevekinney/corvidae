@@ -18,8 +18,8 @@ import {
   SessionResumeRefusedError,
   commandContinuesAnotherRun,
   CONTINUATION_PREVIOUS_PROJECTION_METADATA_KEY,
-  CONTINUATION_PROCESS_METADATA_KEY,
   continuationAdmissionFenceKey,
+  continuationMarker,
   continuationRow,
   judgeResumableTurn,
   startedContinuation,
@@ -152,6 +152,29 @@ export function createSessionResume<D extends AgentDefinitions>(
           ),
         ],
         taskAdmissionFence: continuationAdmissionFenceKey,
+        authorizeTaskAdmission: async (continuationRunId) => {
+          if (runtime.kv === undefined) return;
+          const authorized = await runtime.kv.conditionalBatch(
+            [{ key: continuationAdmissionFenceKey(continuationRunId), expectedValue: null }],
+            [
+              {
+                type: 'set',
+                key: continuationAdmissionFenceKey(continuationRunId),
+                value: JSON.stringify({ state: 'authorized', runId: continuationRunId }),
+              },
+            ],
+          );
+          if (!authorized)
+            throw new Error(`Continuation admission for "${continuationRunId}" was retired.`);
+        },
+        assertTaskAdmissionLive: async (continuationRunId) => {
+          if (
+            runtime.kv !== undefined &&
+            (await runtime.kv.get(continuationAdmissionFenceKey(continuationRunId))) !== null
+          ) {
+            throw new Error(`Continuation admission for "${continuationRunId}" was retired.`);
+          }
+        },
         // Judged again inside the save that starts the run: whatever landed since wins.
         startGuard: (current: AgentSession | undefined) => {
           if (current === undefined || current.incarnation !== session.incarnation) {
@@ -226,47 +249,58 @@ export function createSessionResume<D extends AgentDefinitions>(
     session: AgentSession,
     resumedRunId: string,
     owner: string,
-    commandId: string,
+    _commandId: string,
   ): Promise<boolean> {
-    const started = startedContinuation(session, resumedRunId, commandId, owner);
-    if (started?.kind !== 'started' || runtime.kv === undefined) return false;
-    const marker = getOwn(session.conversationHistory.messages, `${resumedRunId}:continuation`);
-    const processId = marker?.metadata?.[CONTINUATION_PROCESS_METADATA_KEY];
-    if (typeof processId !== 'string' || processId === '') return false;
+    const marker = continuationMarker(session, resumedRunId);
+    if (marker === undefined || marker.owner !== owner || runtime.kv === undefined) return false;
+    const { commandId: storedCommandId, continuationRunId, processId } = marker;
+    if (processId === undefined || processId === '') return false;
     // Any durable record, including `pending`, is evidence that the start may be progressing.
     const durable =
-      runtime.durable === undefined ? undefined : await runtime.durable.engine.get(started.runId);
+      runtime.durable === undefined
+        ? undefined
+        : await runtime.durable.engine.get(continuationRunId);
     if (durable !== null && durable !== undefined) return false;
     const lease = await readProcessLease(runtime.kv, processId, runtimeServices.clock.now());
     if (lease.state !== 'absent' && lease.state !== 'expired') return false;
-    const fenceKey = continuationAdmissionFenceKey(started.runId);
+    const fenceKey = continuationAdmissionFenceKey(continuationRunId);
+    const taskKey = `${TASK_RECORD_KEY_PREFIX}${continuationRunId}`;
+    const observedTask = await runtime.kv.get(taskKey);
     const fence = JSON.stringify({
       sessionId: session.id,
       incarnation: session.incarnation,
       resumedRunId,
-      runId: started.runId,
+      runId: continuationRunId,
     });
     const reserved = await runtime.kv.conditionalBatch(
       [
         { key: processLeaseKey(processId), expectedValue: lease.raw },
-        { key: `${TASK_RECORD_KEY_PREFIX}${started.runId}`, expectedValue: null },
+        { key: taskKey, expectedValue: observedTask },
         { key: fenceKey, expectedValue: null },
       ],
       [{ type: 'set', key: fenceKey, value: fence }],
     );
     if (!reserved && (await runtime.kv.get(fenceKey)) !== fence) return false;
+    // The fence makes a late prepared holder abandon before any lifecycle work. Its task record
+    // is now a pre-launch admission only, so remove it before the replacement continuation starts.
+    if (observedTask !== null) await core.tasks.remove(continuationRunId);
     let removed = false;
     await sessions.update(session.id, (current) => {
       if (current === undefined || current.incarnation !== session.incarnation) return undefined;
-      const recorded = startedContinuation(current, resumedRunId, commandId, owner);
-      if (recorded?.kind !== 'started' || recorded.runId !== started.runId) return undefined;
+      const recorded = continuationMarker(current, resumedRunId);
+      if (
+        recorded?.commandId !== storedCommandId ||
+        recorded.owner !== owner ||
+        recorded.continuationRunId !== continuationRunId
+      )
+        return undefined;
       const projection = projectionOf(
         getOwn(current.conversationHistory.messages, `${resumedRunId}:continuation`)?.metadata?.[
           CONTINUATION_PREVIOUS_PROJECTION_METADATA_KEY
         ],
       );
       const metadata = { ...current.metadata };
-      if (metadata['lastRunId'] === started.runId && projection !== undefined) {
+      if (metadata['lastRunId'] === continuationRunId && projection !== undefined) {
         restoreStoppedProjection(metadata, projection);
       }
       removed = true;

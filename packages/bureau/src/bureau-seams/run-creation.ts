@@ -818,6 +818,7 @@ export function createRunCreation<D extends AgentDefinitions>(
           tools: toolGrant,
           admissionFence: request.taskAdmissionFence?.(runId),
         });
+        await request.assertTaskAdmissionLive?.(runId);
         // COR-1476 — inside the block below, so a gate that cannot be built
         // (its session read fails) ends the promoted run like any other start
         // failure: its end is logged and its session's input settled.
@@ -926,6 +927,9 @@ export function createRunCreation<D extends AgentDefinitions>(
                 ],
                 ...(humanInputEmitter ? { emitter: humanInputEmitter } : {}),
                 ...(durableServicesOnServices ? { onServices: durableServicesOnServices } : {}),
+                ...(request.authorizeTaskAdmission
+                  ? { beforeLaunch: () => request.authorizeTaskAdmission!(runId) }
+                  : {}),
               }
             : undefined,
           // AB-214 review (PRRT_kwDORvupsc6esZTF): thread the authenticated

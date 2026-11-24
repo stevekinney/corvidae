@@ -383,7 +383,7 @@ describe('a resumed turn', () => {
     expect(await resume(second, run.contextId, run.id)).toEqual(won);
   });
 
-  it('retires an unadmitted continuation of a dead process and fences its stale admission', async () => {
+  it('retires an admitted but unprepared continuation of a dead process and fences its stale launch', async () => {
     const fixture = createSqliteStorageFixture();
     cleanups.push(() => fixture.dispose());
     const first = await openBureau(agentThat('waits'), fixture.storage);
@@ -399,11 +399,12 @@ describe('a resumed turn', () => {
     Object.defineProperty(registry, 'recordAdmission', {
       configurable: true,
       value: async (...args: Parameters<typeof registry.recordAdmission>) => {
+        const result = await recordAdmission(...args);
         if (held) {
           reachedAdmission.resolve();
           await releaseAdmission.promise;
         }
-        return recordAdmission(...args);
+        return result;
       },
     });
 
@@ -415,7 +416,7 @@ describe('a resumed turn', () => {
     expect(typeof processId).toBe('string');
     await textValueStore(fixture.storage).delete(processLeaseKey(processId as string));
 
-    const recovered = await resume(second, run.contextId, run.id);
+    const recovered = await resume(second, run.contextId, run.id, 'resume-after-owner-loss');
     expect(recovered.runId).not.toBe(run.id);
     expect(await tasksOf(second, run.contextId)).toContain(recovered.runId);
     held = false;
@@ -425,7 +426,7 @@ describe('a resumed turn', () => {
       (error: unknown) => error,
     );
     expect(rejected).toBeInstanceOf(Error);
-    expect((rejected as Error).message).toContain('was fenced off');
+    expect((rejected as Error).message).toContain('was retired');
     await untilEnded(second, run.contextId, recovered.runId);
   });
 });
