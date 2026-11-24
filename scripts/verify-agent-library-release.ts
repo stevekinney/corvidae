@@ -47,7 +47,8 @@ try {
       });
     `,
     );
-    await $`bun test ${verificationFile}`.cwd(consumer);
+    const testRunner = join(import.meta.dir, 'bun-test.ts');
+    await $`bun ${testRunner} ${verificationFile}`;
   } else {
     const tests = [
       ...specifiers.map((specifier) => `await import(${JSON.stringify(specifier)});`),
