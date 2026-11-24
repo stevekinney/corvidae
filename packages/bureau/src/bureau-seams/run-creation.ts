@@ -824,15 +824,10 @@ export function createRunCreation<D extends AgentDefinitions>(
       const rejectTaskAdmission = request.rejectTaskAdmission;
       let preserveRejectedContinuation = false;
       let localAdmissionAuthorized = false;
-      const authorizeLocalTaskAdmission = async (): Promise<boolean> => {
-        if (runtime.durable !== undefined || authorizeTaskAdmission === undefined) return false;
-        await authorizeTaskAdmission(runId, 'local');
-        // Authorization is durable and asynchronous. Re-establish COR-690/COR-1481's
-        // synchronous fence immediately before local creation, so a shutdown or deletion that
-        // started while the receipt was claimed cannot miss this run.
-        assertRunCreationStillOpen(sessionId);
-        return true;
-      };
+      const localTaskAdmission = (() => {
+        if (runtime.durable !== undefined) return undefined;
+        return authorizeTaskAdmission;
+      })();
       const preserveRejectedLocalContinuation = async (): Promise<void> => {
         if (!localAdmissionAuthorized) return;
         preserveRejectedContinuation = (await rejectTaskAdmission?.(runId)) === false;
@@ -935,7 +930,14 @@ export function createRunCreation<D extends AgentDefinitions>(
         // run has no such boundary, so it claims only after all synchronous preparation succeeded,
         // immediately before irreversible local creation. Keep the optional call outside the
         // ordinary path: `await undefined` adds a microtask to every normal in-memory start.
-        localAdmissionAuthorized = await authorizeLocalTaskAdmission();
+        if (localTaskAdmission !== undefined) {
+          await localTaskAdmission(runId, 'local');
+          localAdmissionAuthorized = true;
+          // Authorization is durable and asynchronous. Re-establish COR-690/COR-1481's
+          // synchronous fence immediately before local creation, so a shutdown or deletion that
+          // started while the receipt was claimed cannot miss this run.
+          assertRunCreationStillOpen(sessionId);
+        }
         activeRun = createActiveRun(
           startedRunOptions,
           // Route through the durable engine when one was composed (durable
