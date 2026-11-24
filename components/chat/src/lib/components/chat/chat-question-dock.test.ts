@@ -237,6 +237,16 @@ describe('a docked question', () => {
     );
   });
 
+  test('keeps the compact choice keys visible on coarse pointers', async () => {
+    const source = await Bun.file(
+      new URL('./question/chat-question-dock.svelte', import.meta.url),
+    ).text();
+
+    expect(source).not.toMatch(
+      /@media \(any-pointer: coarse\) \{\s*\.chat-question-dock-key \{\s*display: none;/su,
+    );
+  });
+
   test('keeps the dock flat while its nested radio rows retain their own touch size', async () => {
     const source = await Bun.file(
       new URL('./question/chat-question-dock.svelte', import.meta.url),
@@ -256,8 +266,9 @@ describe('a docked question', () => {
     );
     expect(source).not.toContain('chat-question-dock-body cinder-_scroll-fade');
     expect(source).toContain('overflow-y: auto;');
-    expect(source).toContain('@media (any-pointer: coarse)');
-    expect(source).toContain('display: none;');
+    expect(source).not.toMatch(
+      /@media \(any-pointer: coarse\) \{\s*\.chat-question-dock-key \{\s*display: none;/su,
+    );
   });
 
   test('draws the pager as a row of its own at the leading edge, not a slot at the trailing end', async () => {

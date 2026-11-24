@@ -580,12 +580,6 @@
     text-align: center;
   }
 
-  @media (any-pointer: coarse) {
-    .chat-question-dock-key {
-      display: none;
-    }
-  }
-
   /* One muted line, at the notice size: the answer was sent and is no longer open to change. */
   .chat-question-dock-sent {
     margin: 0;

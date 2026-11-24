@@ -26,7 +26,7 @@
 import { chromium, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join, resolve as resolvePath } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { THEME_STORAGE_KEY, buildBrowser } from '@lostgradient/testing';
@@ -80,8 +80,8 @@ import { defaultManifestLayout } from './prepare-manifest.ts';
 const DEADLINE = HANG_GUARD_MILLISECONDS;
 const expectAttachment = expect.configure({ timeout: DEADLINE });
 
-const fixtureRoot = resolve(import.meta.dirname, '..');
-const repositoryRoot = resolve(fixtureRoot, '..', '..');
+const fixtureRoot = resolvePath(import.meta.dirname, '..');
+const repositoryRoot = resolvePath(fixtureRoot, '..', '..');
 
 type Role = Parameters<Page['getByRole']>[0];
 
@@ -2296,9 +2296,7 @@ async function waitForSettledCodeHighlights(page: Page): Promise<void> {
  */
 export async function waitForFinalCaptureReadiness(page: Page): Promise<void> {
   await waitForCaptureLayout(page);
-  await page.evaluate(
-    () => new Promise<void>((complete) => requestAnimationFrame(() => complete())),
-  );
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
   await waitForSettledCodeHighlights(page);
 }
 
@@ -4343,7 +4341,7 @@ async function main(): Promise<number> {
     profiles = profiles.filter((profile) => names.includes(profile.name));
   }
 
-  const outputRoot = resolve(values.out ?? join(repositoryRoot, 'tmp', 'chat-stress'));
+  const outputRoot = resolvePath(values.out ?? join(repositoryRoot, 'tmp', 'chat-stress'));
   await mkdir(outputRoot, { recursive: true });
   const directory = await mkdtemp(join(outputRoot, RUN_DIRECTORY_PREFIX));
 
@@ -4351,7 +4349,7 @@ async function main(): Promise<number> {
   await prepareManifest(defaultManifestLayout);
   const buildDirectory = join(directory, 'build');
   await buildBrowser({
-    entrypoints: [resolve(fixtureRoot, 'index.html')],
+    entrypoints: [resolvePath(fixtureRoot, 'index.html')],
     outdir: buildDirectory,
     development: false,
   });
@@ -4364,7 +4362,7 @@ async function main(): Promise<number> {
   const server = createFixtureServer({
     port: 0,
     outputDirectory: buildDirectory,
-    manifestPath: resolve(fixtureRoot, '.playwright', 'manifest.json'),
+    manifestPath: resolvePath(fixtureRoot, '.playwright', 'manifest.json'),
     development: false,
   });
   const origin = `http://127.0.0.1:${server.port}`;

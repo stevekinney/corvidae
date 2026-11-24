@@ -1977,6 +1977,12 @@
       ) {
       margin-block-end: calc(var(--cinder-touch-target-min) + var(--cinder-space-1));
     }
+
+    /* A citation marker expands its touch target beyond the final prose line. Keep that overhang
+     * out of the persistent action toolbar while leaving transcript time and actions in their lane. */
+    .chat-message-wrapper:has(:global(.cinder-citation)) .chat-message-body {
+      padding-block-end: var(--cinder-space-2);
+    }
   }
 
   /* Shared base for the built-in copy and edit action buttons — small

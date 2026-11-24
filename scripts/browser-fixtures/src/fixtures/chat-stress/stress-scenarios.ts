@@ -673,6 +673,13 @@ const scenarios: Record<StressScenarioName, Scenario> = {
         { document: 'refunds' },
         { status: 'ok' },
       );
+      conversation = withCall(
+        conversation,
+        'read-orders',
+        'list_orders',
+        { limit: 20 },
+        { status: 'ok' },
+      );
       conversation = withApproval(
         conversation,
         'export-ledger',

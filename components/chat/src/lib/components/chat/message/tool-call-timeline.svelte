@@ -42,6 +42,7 @@
   import { useQuestionStore } from '../question/question-store.svelte.ts';
   import {
     foldRepeatedSteps,
+    formatRepeatedToolCallDuration,
     formatToolCallElapsed,
     isProblemStatus,
     nextToolCallApprovalDeadline,
@@ -633,7 +634,7 @@
               <code class="chat-tool-call-name">{first.pair.call.name} ×{step.rows.length}</code>
               <span class="chat-tool-call-result"></span>
               {#if total !== undefined}
-                <span class="chat-tool-call-duration">{formatDuration(total)}</span>
+                <span class="chat-tool-call-duration">{formatRepeatedToolCallDuration(total)}</span>
               {/if}
             </button>
             <div id={`${first.detailsId}-repeated`} class="chat-tool-call-details" hidden={!open}>
@@ -709,7 +710,7 @@
   .chat-tool-call-row {
     display: flex;
     align-items: flex-start;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-3);
     inline-size: 100%;
     min-inline-size: 0;
     /* The glyph and words stay compact, but the control itself is a real list-row target. */

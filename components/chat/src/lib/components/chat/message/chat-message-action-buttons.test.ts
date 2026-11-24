@@ -248,6 +248,13 @@ describe('chat message action buttons', () => {
     expect(resetBlock).toContain('bottom: auto');
   });
 
+  test('coarse citations reserve room before the separate message toolbar', () => {
+    expect(source).toContain(
+      '.chat-message-wrapper:has(:global(.cinder-citation)) .chat-message-body {',
+    );
+    expect(source).toContain('padding-block-end: var(--cinder-space-2);');
+  });
+
   test('touch footer space follows below-bubble placement and rendered content', () => {
     const narrowBlock = extractMediaBlock(source, '@media (max-width: 480px) {');
     const narrowTouchBlock = extractMediaBlock(

@@ -646,6 +646,10 @@
         "text": "waiting for approval"
       },
       {
+        "action": "expect-text",
+        "text": "3 steps"
+      },
+      {
         "action": "expect",
         "role": "button",
         "name": "Run export"

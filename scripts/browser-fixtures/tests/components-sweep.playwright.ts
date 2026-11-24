@@ -16,7 +16,7 @@ import { environmentConfiguration } from '../environment-configuration.ts';
 /** The root chat fixtures render a wall-clock receipt; freeze only their browser captures. */
 const CHAT_FIXTURE_TIME = new Date('2026-11-24T15:30:00.000Z');
 
-function capturePageFor(componentPage: ComponentPageFixture['componentPage'], slug: string) {
+function capturePageFor(componentPage: ComponentPageFixture, slug: string) {
   if (slug !== 'chat' && slug !== 'chat-sub-session') return componentPage;
   return {
     open: async (args: Parameters<typeof componentPage.open>[0]) => {
