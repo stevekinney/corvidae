@@ -204,7 +204,7 @@ async function runControl(control: (typeof controls)[number]) {
   }
 }
 
-const results = [];
+const results: Awaited<ReturnType<typeof runControl>>[] = [];
 for (const control of controls) results.push(await runControl(control));
 
 describe('selected and exhaustive detector corpus', () => {
