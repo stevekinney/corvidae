@@ -128,6 +128,19 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
     ],
   },
   {
+    testFile: 'management/contexts-sharing-operations.test.ts',
+    inputFixture: 'An owner chat with one durable same-workspace reader grant',
+    sentinel: 'PRIVATE-WORKSPACE-CONTENT-8d5c',
+    operations: [
+      ['bureau.contexts.share', 'owner'],
+      ['bureau.contexts.share.revoke', 'owner'],
+      ['bureau.contexts.share.request', 'shared'],
+      ['bureau.contexts.share.request.resolve', 'owner'],
+      ['bureau.contexts.share.requests.list', 'owner-collection'],
+      ['bureau.contexts.share.status', 'shared'],
+    ],
+  },
+  {
     testFile: 'workspace-task-privacy.test.ts',
     inputFixture: 'Owned task, parked wait, and streamed private answer',
     sentinel: 'PRIVATE-TASK-ANSWER-e5b2',

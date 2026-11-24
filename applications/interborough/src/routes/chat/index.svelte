@@ -229,7 +229,7 @@
           : 'You no longer have access to this chat.'}
       >
         {#snippet action()}
-          {#if shareStatus.data.status === 'requestable'}
+          {#if shareStatus.data?.status === 'requestable'}
             <Button variant="primary" loading={requesting} onclick={() => void requestAccess()}
               >Request access</Button
             >
