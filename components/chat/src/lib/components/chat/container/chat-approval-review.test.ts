@@ -458,6 +458,37 @@ describe('the box an arriving approval is placed against (COR-2327)', () => {
     timeline.remove();
   });
 
+  test('a trailing deck trigger keeps the full labeled unit at the transcript end when it fits', () => {
+    const timeline = document.createElement('div');
+    const item = document.createElement('div');
+    item.className = 'cinder-tool-call-rail__item';
+    const label = document.createElement('button');
+    label.className = 'cinder-tool-call-rail__row';
+    const card = document.createElement('div');
+    const actions = document.createElement('div');
+    actions.className = 'cinder-approval-card__row-actions';
+    const deck = document.createElement('div');
+    card.append(actions, deck);
+    item.append(label, card);
+    timeline.append(item);
+    document.body.append(timeline);
+    stubBox(timeline, 52, 473.5);
+    timeline.style.setProperty('--cinder-chat-overlay-inset-start', '71px');
+    timeline.style.paddingTop = '83px';
+    Object.defineProperty(timeline, 'scrollHeight', { value: 893, configurable: true });
+    Object.defineProperty(timeline, 'clientHeight', { value: 422, configurable: true });
+    Object.defineProperty(timeline, 'scrollTop', { value: 454, configurable: true });
+    stubBox(label, 170, 214);
+    stubBox(card, 218, 430);
+    stubBox(actions, 330, 358);
+    stubBox(deck, 370, 398);
+
+    // The 260px labeled unit plus the 32px overlay fade fits the 338.5px arrival box, so the
+    // established 17px end-rest remains instead of using the shorter action-row fallback.
+    expect(approvalPlacementShift(timeline, card)).toBe(17);
+    timeline.remove();
+  });
+
   test('the labelling row is found in the real Interborough shape: a rail item holding the row and the card, with no message article', () => {
     // Interborough draws its messages through its own `row` snippet: a ToolCallRail whose item holds
     // the call's row and, in `.cinder-tool-call-rail__nested`, the approval card. There is no
