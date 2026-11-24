@@ -82,9 +82,10 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
 
       await owner.getByRole('button', { name: 'More actions' }).click();
       await owner.getByRole('menuitem', { name: 'Rename' }).click();
-      await owner.getByLabel('Chat title').fill('Shared chat evidence');
+      const renameDialog = owner.getByRole('dialog', { name: 'Rename this chat' });
+      await renameDialog.getByLabel('Title').fill('Shared chat evidence');
       await owner.getByRole('button', { name: 'Save' }).click();
-      await expect(owner.getByText('Shared chat evidence', { exact: true })).toBeVisible();
+      await expect(owner.getByTestId('chat-header')).toContainText('Shared chat evidence');
 
       await share(owner, 'grant');
       await captureForDesignReviewWithPhone(owner, {
