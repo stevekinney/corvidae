@@ -46,9 +46,9 @@ async function expectReadOnly(reader: Page): Promise<void> {
 async function expectSharedTranscript(page: Page): Promise<void> {
   const rows = page.locator('article[data-message-id]').filter({ hasText: 'shared chat evidence' });
   await expect(rows).toHaveCount(2);
-  const assistantRow = rows.filter({
-    has: page.getByRole('link', { name: 'source' }),
-  });
+  const assistantRow = page
+    .locator("article[data-message-id][data-message-role='assistant']")
+    .filter({ hasText: 'shared chat evidence' });
   await expect(assistantRow).toHaveCount(1);
   await expect(assistantRow.getByRole('link', { name: 'source' })).toHaveAttribute(
     'href',
