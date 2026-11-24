@@ -26535,8 +26535,14 @@
                               {
                                 "additionalProperties": false,
                                 "properties": {
+                                  "consequence": {
+                                    "type": "string"
+                                  },
                                   "expiresAt": {
                                     "type": "string"
+                                  },
+                                  "irreversible": {
+                                    "type": "boolean"
                                   },
                                   "message": {
                                     "type": "string"
@@ -26640,6 +26646,9 @@
                                   },
                                   "type": {
                                     "const": "approval",
+                                    "type": "string"
+                                  },
+                                  "why": {
                                     "type": "string"
                                   }
                                 },
@@ -27137,8 +27146,14 @@
                         {
                           "additionalProperties": false,
                           "properties": {
+                            "consequence": {
+                              "type": "string"
+                            },
                             "expiresAt": {
                               "type": "string"
+                            },
+                            "irreversible": {
+                              "type": "boolean"
                             },
                             "message": {
                               "type": "string"
@@ -27242,6 +27257,9 @@
                             },
                             "type": {
                               "const": "approval",
+                              "type": "string"
+                            },
+                            "why": {
                               "type": "string"
                             }
                           },
