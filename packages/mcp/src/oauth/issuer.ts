@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
+import type { VerifiedGrant } from '../http.ts';
 import { OAuthStore, type OAuthClient } from '../oauth-store.ts';
 import { fetchClientIdMetadataDocument } from './client-metadata-documents.ts';
 import { isValidClientName, isValidRedirectUri } from './security-utilities.ts';
@@ -71,7 +72,82 @@ function parameters(value: string): URLSearchParams | null {
   return result;
 }
 
-export function hostedOAuth(configuration: Options) {
+type HostedProfileOptions<T extends { delegableScopes: string[] }> = {
+  identity: Omit<Options['identity'], 'principalForGrant'> & {
+    principalForGrant(identity: { subject: string; tenant: string }): Promise<T | null>;
+  };
+  stores: OAuthStore;
+  defaultScopes: string[];
+  scopeDescriptions: Record<string, string>;
+};
+
+type HostedProfile<T> = {
+  configure(options: { origin: string; resourcePath: string; scopes: string[] }): {
+    issuer: string;
+    handle(request: Request): Promise<Response>;
+    verifyAccessToken(token: string): Promise<VerifiedGrant | null>;
+    resolvePrincipal(grant: VerifiedGrant): Promise<T | null>;
+  };
+};
+export function hostedOAuth(configuration: Options): ReturnType<typeof createHostedOAuth>;
+export function hostedOAuth<T extends { delegableScopes: string[] }>(
+  configuration: HostedProfileOptions<T>,
+): HostedProfile<T>;
+export function hostedOAuth<T extends { delegableScopes: string[] }>(
+  configuration: Options | HostedProfileOptions<T>,
+): ReturnType<typeof createHostedOAuth> | HostedProfile<T> {
+  if ('issuer' in configuration) return createHostedOAuth(configuration);
+  const profile = {
+    stores: configuration.stores,
+    defaultScopes: [...configuration.defaultScopes],
+    scopeDescriptions: { ...configuration.scopeDescriptions },
+    identity: {
+      session: configuration.identity.session.bind(configuration.identity),
+      signIn: configuration.identity.signIn.bind(configuration.identity),
+      principalForGrant: configuration.identity.principalForGrant.bind(configuration.identity),
+    },
+  };
+  return {
+    configure({
+      origin,
+      resourcePath,
+      scopes,
+    }: {
+      origin: string;
+      resourcePath: string;
+      scopes: string[];
+    }) {
+      if (
+        Object.keys(profile.scopeDescriptions).some((scope) => !scopes.includes(scope)) ||
+        scopes.some((scope) => !Object.hasOwn(profile.scopeDescriptions, scope))
+      )
+        throw new TypeError('Scope descriptions must match the catalog');
+      const issuer = createHostedOAuth({
+        issuer: origin,
+        resource: new URL(resourcePath, origin).href,
+        scopes,
+        startingScopes: profile.defaultScopes,
+        scopeDescriptions: profile.scopeDescriptions,
+        store: profile.stores,
+        identity: profile.identity,
+      });
+      return {
+        ...issuer,
+        issuer: origin,
+        resolvePrincipal(grant: VerifiedGrant) {
+          return grant.tenant === undefined
+            ? Promise.resolve(null)
+            : profile.identity.principalForGrant({
+                subject: grant.subject,
+                tenant: grant.tenant,
+              });
+        },
+      };
+    },
+  };
+}
+
+function createHostedOAuth(configuration: Options) {
   const options = {
     ...configuration,
     scopes: [...configuration.scopes],

@@ -77,7 +77,11 @@ export function createProtectedHttpHandler<T extends Principal>(
       });
     if (path !== options.resourcePath) return new Response(null, { status: 404 });
     const requestOrigin = request.headers.get('origin');
-    if (requestOrigin && !options.allowedOrigins!.includes(requestOrigin))
+    if (
+      requestOrigin &&
+      requestOrigin !== origin.origin &&
+      !options.allowedOrigins!.includes(requestOrigin)
+    )
       return new Response(null, { status: 403 });
     if (request.method === 'OPTIONS')
       return new Response(null, {

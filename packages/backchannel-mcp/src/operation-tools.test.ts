@@ -434,6 +434,19 @@ describe.each(eras)('catalog operations as MCP tools ($era era)', ({ mode, versi
     expect(echoCalls).toBe(before);
   });
 
+  it('returns a recoverable scope challenge without invoking the tool', async () => {
+    const challenge = 'Bearer error="insufficient_scope", scope="events:read"';
+    const { client } = await connect(mode, strangerContext, {
+      scopeChallenge: async (operation) =>
+        operation.name === 'probe.echo' ? { challenge } : undefined,
+    });
+    const before = echoCalls;
+    const result = await client.callTool({ name: 'probe.echo', arguments: { message: 'hello' } });
+    expect(result.isError).toBe(true);
+    expect(result._meta?.['mcp/www_authenticate']).toEqual([challenge]);
+    expect(echoCalls).toBe(before);
+  });
+
   it('imports and invokes the catalog read through Armorer', async () => {
     const { client } = await connect(mode);
     const tools = await fromMcpClientTools(client);

@@ -1,0 +1,5 @@
+{
+  "extends": "../velveteen/tsconfig.json",
+  "include": ["catalog-mount.test.ts"],
+  "exclude": ["node_modules", "coverage"]
+}

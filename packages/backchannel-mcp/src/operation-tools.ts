@@ -33,6 +33,11 @@ import {
  * ```
  */
 export type OperationMcpMountOptions = {
+  /** Return a Bearer challenge when the caller can grant a missing tool scope. */
+  readonly scopeChallenge?: (
+    operation: OperationHandlerMountOperation,
+    context: OperationHandlerMountContext,
+  ) => Promise<{ challenge?: string } | undefined>;
   /** Declare that this mount accepts OAuth credentials for its catalog policies. */
   readonly oauth?: boolean;
   /** The path the mount owns on the operation handler. Defaults to `/mcp`. */
@@ -185,6 +190,7 @@ export function createOperationMcpMount(options: OperationMcpMountOptions): Oper
         resources,
         metaOf,
         options.oauth === true,
+        options.scopeChallenge,
       ),
     {
       legacy: 'stateless',
@@ -286,13 +292,14 @@ function buildServer(
   resources: readonly OperationMcpResource[],
   metaOf: (name: string) => { _meta?: Record<string, unknown> },
   oauth: boolean,
+  scopeChallenge: OperationMcpMountOptions['scopeChallenge'],
 ): McpServer {
   const server = new McpServer(serverInfo, {
     capabilities: resources.length === 0 ? { tools: {} } : { tools: {}, resources: {} },
   });
   registerResources(server, context, resources);
   for (const operation of context.operations) {
-    if (!operation.mcpExposable || operation.mcpTool !== undefined) continue;
+    if (!isMcpTool(operation)) continue;
     const outputSchema =
       operation.kind === 'subscription'
         ? undefined
@@ -319,8 +326,21 @@ function buildServer(
         },
         ...toolMetadata(metaOf(operation.name)._meta, operation, oauth),
       },
-      async (input, handlerContext) =>
-        operation.kind === 'subscription'
+      async (input, handlerContext) => {
+        const refusal = await scopeChallenge?.(operation, context);
+        if (refusal !== undefined) {
+          return {
+            ...faultResult({
+              code: 'Forbidden',
+              message: 'Insufficient scope',
+              data: { reason: 'insufficient scope' },
+            }),
+            ...(refusal.challenge === undefined
+              ? {}
+              : { _meta: { 'mcp/www_authenticate': [refusal.challenge] } }),
+          };
+        }
+        return operation.kind === 'subscription'
           ? collectSubscription(
               context,
               operation.name,
@@ -339,10 +359,20 @@ function buildServer(
                   transport: 'mcp',
                   signal: handlerContext.mcpReq.signal,
                 }),
-              ),
+              );
+      },
     );
   }
   return server;
+}
+
+export function isMcpTool(operation: OperationHandlerMountOperation): boolean {
+  if (!operation.mcpExposable || operation.mcpTool !== undefined || operation.kind === 'stream')
+    return false;
+  return (
+    operation.kind === 'subscription' ||
+    objectOutputSchema(zodToJsonSchema(operation.outputSchema, 'output')) !== undefined
+  );
 }
 
 function objectOutputSchema(schema: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -368,7 +398,7 @@ function toolMetadata(
       ? securitySchemes(operation.access)
       : undefined;
   if (meta === undefined && schemes === undefined) return {};
-  return { _meta: { ...(schemes === undefined ? {} : { securitySchemes: schemes }), ...meta } };
+  return { _meta: { ...meta, ...(schemes === undefined ? {} : { securitySchemes: schemes }) } };
 }
 
 function securitySchemes(

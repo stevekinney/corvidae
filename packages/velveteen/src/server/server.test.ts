@@ -85,6 +85,81 @@ const textOf = async (promise: Promise<Response>) => {
 };
 
 describe("server application", () => {
+  test("captures grouped service factories before startup awaits", async () => {
+    const release = Promise.withResolvers<void>();
+    const second = {
+      rootPaths: () => [],
+      start: () => () => new Response("original"),
+    };
+    const pending = createApplication({
+      generation: generation(),
+      registry: registry([]) as never,
+      mounts: {
+        "/first": async () => {
+          await release.promise;
+          return () => new Response();
+        },
+        "/second": second,
+      },
+    });
+    second.start = () => () => new Response("changed");
+    release.resolve();
+    const app = await pending;
+    try {
+      expect(
+        await textOf(app.fetch(new Request("https://example.test/second"))),
+      ).toBe("original");
+    } finally {
+      await app.dispose();
+    }
+  });
+  test("shares one service between an application mount and exact root routes", async () => {
+    let starts = 0;
+    let closes = 0;
+    const app = await createApplication({
+      generation: generation("/app"),
+      registry: registry([]) as never,
+      mounts: {
+        "/api": {
+          rootPaths: (base) => [`/.well-known/resource${base}/api/mcp`],
+          start: () => {
+            starts++;
+            return {
+              fetch: (request) => new Response(new URL(request.url).pathname),
+              close: () => {
+                closes++;
+              },
+            };
+          },
+        },
+      },
+    });
+    try {
+      expect(
+        await textOf(
+          app.fetch(new Request("https://example.test/app/api/mcp")),
+        ),
+      ).toBe("/mcp");
+      expect(
+        await textOf(
+          app.fetch(
+            new Request(
+              "https://example.test/.well-known/resource/app/api/mcp",
+            ),
+          ),
+        ),
+      ).toBe("/.well-known/resource/app/api/mcp");
+      expect(
+        await app
+          .fetch(new Request("https://example.test/.well-known/other"))
+          .then((result) => result.status),
+      ).toBe(404);
+      expect(starts).toBe(1);
+    } finally {
+      await app.dispose();
+    }
+    expect(closes).toBe(1);
+  });
   test("matches canonical mount segments without decoding the request remainder", async () => {
     const app = await createApplication({
       generation: generation(),

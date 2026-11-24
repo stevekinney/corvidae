@@ -2,6 +2,31 @@ import { describe, expect, test } from 'bun:test';
 import { createProtectedHttpHandler } from './http';
 
 describe('protected HTTP listener', () => {
+  test('admits same-origin requests to bearer authentication', async () => {
+    const handler = createProtectedHttpHandler({
+      origin: 'https://equipment.example.com',
+      resourcePath: '/api/mcp',
+      issuer: 'https://login.example.com',
+      scopes: [],
+      verifyAccessToken: async () => null,
+      resolvePrincipal: async () => null,
+      dispatch: () => new Response(),
+    });
+    expect(
+      await handler(
+        new Request('https://equipment.example.com/api/mcp', {
+          headers: { origin: 'https://equipment.example.com' },
+        }),
+      ).then((result) => result.status),
+    ).toBe(401);
+    expect(
+      await handler(
+        new Request('https://equipment.example.com/api/mcp', {
+          headers: { origin: 'https://other.example.com' },
+        }),
+      ).then((result) => result.status),
+    ).toBe(403);
+  });
   test('binds supplied grant, client and tenant identities across an awaited dispatch', async () => {
     for (const changed of ['none', 'grantId', 'clientId', 'tenant'] as const) {
       let binding = { grantId: 'grant', clientId: 'client', tenant: 'tenant' };

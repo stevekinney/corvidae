@@ -41,6 +41,7 @@ export type {
   ServerLoadEvent,
   FetchHandler,
   FetchService,
+  FetchServiceGroup,
 } from "./types.ts";
 export type { RequestTraceSpan } from "./tracing.ts";
 export { getRequestEvent } from "./context.ts";
@@ -97,9 +98,17 @@ const htmlRequest = (request: Request) =>
 
 /** The host owns its listener and injected ModuleGraph; the application owns requests until their bodies finish. */
 export async function createApplication(options: ApplicationOptions) {
+  const mounts =
+    options.mounts &&
+    Object.fromEntries(
+      Object.entries(options.mounts).map(([path, declaration]) => [
+        path,
+        typeof declaration === "function" ? declaration : { ...declaration },
+      ]),
+    );
   return createGeneration({
     ...options,
-    mounts: options.mounts && { ...options.mounts },
+    mounts,
   });
 }
 

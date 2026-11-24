@@ -6,6 +6,7 @@ import type {
 
 type Mounted = {
   path: string;
+  root: boolean;
   fetch: (request: Request) => Response | Promise<Response>;
   close?: () => void | Promise<void>;
 };
@@ -28,32 +29,45 @@ export function validateMounts(
   registry: ServerRegistry,
   assets: Record<string, unknown>,
 ) {
-  const entries = Object.keys(options.mounts ?? {}).map((key) => {
-    if (!/^\/(?:[^/?#\\]+)(?:\/[^/?#\\]+)*$/.test(key))
-      throw new TypeError(`Invalid mount path: ${key}`);
-    try {
-      return { key, path: canonicalPath(key) };
-    } catch {
-      throw new TypeError(`Invalid mount path: ${key}`);
-    }
-  });
-  for (const [entryIndex, { path }] of entries.entries()) {
+  const base = canonicalPath(options.generation.manifest.basePath);
+  const entries = Object.entries(options.mounts ?? {}).flatMap(
+    ([key, declaration]) => {
+      const paths = [
+        { path: key, root: false },
+        ...(typeof declaration === "function"
+          ? []
+          : declaration.rootPaths(base).map((path) => ({ path, root: true }))),
+      ];
+      return paths.map(({ path, root }) => {
+        if (!/^\/(?:[^/?#\\]+)(?:\/[^/?#\\]+)*$/.test(path))
+          throw new TypeError(`Invalid mount path: ${path}`);
+        try {
+          return { key, path: canonicalPath(path), root };
+        } catch {
+          throw new TypeError(`Invalid mount path: ${path}`);
+        }
+      });
+    },
+  );
+  for (const [entryIndex, { path, root }] of entries.entries()) {
+    const full = `${root ? "" : base}${path}`;
     if (
       entries.some(
         (other, otherIndex) =>
           otherIndex !== entryIndex &&
-          (contains(path, other.path) || contains(other.path, path)),
+          (contains(full, `${other.root ? "" : base}${other.path}`) ||
+            contains(`${other.root ? "" : base}${other.path}`, full)),
       )
     )
       throw new Error(`Overlapping mount: ${path}`);
     if (
       ["/_remote", "/_assets"].some(
         (protectedPath) =>
-          contains(path, protectedPath) || contains(protectedPath, path),
+          contains(full, `${base}${protectedPath}`) ||
+          contains(`${base}${protectedPath}`, full),
       )
     )
       throw new Error(`Protected mount path: ${path}`);
-    const full = `${canonicalPath(options.generation.manifest.basePath)}${path}`;
     if (
       Object.keys(assets).some(
         (asset) =>
@@ -63,11 +77,13 @@ export function validateMounts(
     )
       throw new Error(`Mount conflicts with asset: ${path}`);
     for (const route of registry.manifest.routes) {
+      if (root && base && !contains(base, path)) continue;
+      const routePath = root ? path.slice(base.length) : path;
       const segments = route.id
         .split("/")
         .filter(Boolean)
         .filter((segment) => !/^\(.*\)$/.test(segment));
-      const mountSegments = path.split("/").filter(Boolean);
+      const mountSegments = routePath.split("/").filter(Boolean);
       const common = Math.min(segments.length, mountSegments.length);
       const overlaps = mountSegments
         .slice(0, common)
@@ -89,19 +105,28 @@ export function validateMounts(
 
 export async function startMounts(
   options: ApplicationOptions,
-  paths: Array<{ key: string; path: string }>,
+  paths: Array<{ key: string; path: string; root: boolean }>,
 ) {
   const mounts: Mounted[] = [];
+  const services = new Map<string, FetchService>();
   try {
-    for (const { key, path } of paths) {
-      const service: FetchService = await options.mounts![key]();
+    for (const { key, path, root } of paths) {
+      let service = services.get(key);
+      if (!service) {
+        const declaration = options.mounts![key];
+        service = await (typeof declaration === "function"
+          ? declaration()
+          : declaration.start(options.generation.manifest.basePath));
+        services.set(key, service);
+      }
       mounts.push(
         typeof service === "function"
-          ? { path, fetch: service }
+          ? { path, root, fetch: service }
           : {
               path,
+              root,
               fetch: service.fetch.bind(service),
-              close: service.close?.bind(service),
+              close: root ? undefined : service.close?.bind(service),
             },
       );
     }
@@ -143,8 +168,9 @@ export function dispatchMount(
 ) {
   const url = new URL(request.url);
   const rawSegments = url.pathname.split("/");
-  const mount = mounts.find(({ path }) => {
-    const prefix = `${canonicalPath(base)}${path}`.split("/");
+  const mount = mounts.find(({ path, root }) => {
+    const prefix = `${root ? "" : canonicalPath(base)}${path}`.split("/");
+    if (root && rawSegments.length !== prefix.length) return false;
     if (rawSegments.length < prefix.length) return false;
     try {
       return prefix.every(
@@ -157,8 +183,10 @@ export function dispatchMount(
   });
   if (!mount) return undefined;
   if (closed) return new Response("Application disposed", { status: 503 });
-  const prefixLength = `${base}${mount.path}`.split("/").length;
-  url.pathname = `/${rawSegments.slice(prefixLength).join("/")}`;
+  if (!mount.root) {
+    const prefixLength = `${base}${mount.path}`.split("/").length;
+    url.pathname = `/${rawSegments.slice(prefixLength).join("/")}`;
+  }
   return mount.fetch(
     new Request(url, {
       method: request.method,

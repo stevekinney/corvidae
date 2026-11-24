@@ -5,6 +5,31 @@ import { OAuthStore } from '../oauth-store.ts';
 import { hostedOAuth } from './issuer.ts';
 
 describe('hosted OAuth issuer', () => {
+  test('configures a hosted profile with the catalog resource and scopes', async () => {
+    using storage = new MemoryStorage();
+    const profile = hostedOAuth({
+      stores: new OAuthStore(storage),
+      defaultScopes: ['read'],
+      scopeDescriptions: { read: 'Read' },
+      identity: {
+        session: async () => null,
+        signIn: async () => new Response(null, { status: 401 }),
+        principalForGrant: async () => ({ delegableScopes: ['read'] }),
+      },
+    });
+    const issuer = profile.configure({
+      origin: 'https://issuer.test',
+      resourcePath: '/app/api/mcp',
+      scopes: ['read'],
+    });
+    const response = await issuer.handle(
+      new Request('https://issuer.test/.well-known/oauth-authorization-server'),
+    );
+    expect(await response.json().then((result) => result.issuer)).toBe('https://issuer.test');
+    expect(() =>
+      profile.configure({ origin: 'https://issuer.test', resourcePath: '/mcp', scopes: ['write'] }),
+    ).toThrow();
+  });
   test('registers, discovers, authorizes, exchanges, refreshes and revokes', async () => {
     using storage = new MemoryStorage();
     const issuer = hostedOAuth({
