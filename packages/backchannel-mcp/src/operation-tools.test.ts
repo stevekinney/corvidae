@@ -360,10 +360,8 @@ describe.each(eras)('catalog operations as MCP tools ($era era)', ({ mode, versi
       { type: 'oauth2', scopes: ['events:write'] },
     ]);
     const before = writes;
-    expect(
-      (await client.callTool({ name: 'probe.write', arguments: { message: 'saved' } }))
-        .structuredContent,
-    ).toEqual({ message: 'saved' });
+    const written = await client.callTool({ name: 'probe.write', arguments: { message: 'saved' } });
+    expect(written.structuredContent).toEqual({ message: 'saved' });
     expect(writes).toBe(before + 1);
     expect(tools.find((tool) => tool.name === 'probe.missing')?.annotations).toMatchObject({
       destructiveHint: true,
