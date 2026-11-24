@@ -192,11 +192,19 @@ export function approvalArrivalRestShift(
  */
 export function approvalPlacementShift(transcript: HTMLElement, card: HTMLElement): number | null {
   const unit = approvalUnitBox(card);
+  // A trailing host affordance (such as Review in deck) may sit after the decision row. It remains
+  // reachable in the room below that row, but must not make the label and decisions look too tall
+  // for the arrival box and leave the label under the overlaid header after a phone resize.
+  const actionRow = approvalActionRow(card);
+  const placementUnit =
+    actionRow === null
+      ? unit
+      : { ...unit, bottom: Math.max(unit.top, actionRow.getBoundingClientRect().bottom) };
   const box = approvalArrivalBox(transcript);
-  if (unit.bottom - unit.top <= 0 || box.bottom - box.top <= 0) return null;
+  if (placementUnit.bottom - placementUnit.top <= 0 || box.bottom - box.top <= 0) return null;
   const toEnd = transcript.scrollHeight - transcript.clientHeight - transcript.scrollTop;
   return approvalArrivalRestShift(
-    unit,
+    placementUnit,
     box,
     toEnd,
     APPROVAL_BOTTOM_CLEARANCE,

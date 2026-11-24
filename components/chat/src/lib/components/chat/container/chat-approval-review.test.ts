@@ -427,6 +427,37 @@ describe('the box an arriving approval is placed against (COR-2327)', () => {
     timeline.remove();
   });
 
+  test('a trailing deck trigger does not leave the tool row under the header after a phone resize', () => {
+    const timeline = document.createElement('div');
+    const item = document.createElement('div');
+    item.className = 'cinder-tool-call-rail__item';
+    const label = document.createElement('button');
+    label.className = 'cinder-tool-call-rail__row';
+    const card = document.createElement('div');
+    const actions = document.createElement('div');
+    actions.className = 'cinder-approval-card__row-actions';
+    const deck = document.createElement('div');
+    card.append(actions, deck);
+    item.append(label, card);
+    timeline.append(item);
+    document.body.append(timeline);
+    stubBox(timeline, 52, 473.5);
+    timeline.style.setProperty('--cinder-chat-overlay-inset-start', '71px');
+    timeline.style.paddingTop = '83px';
+    Object.defineProperty(timeline, 'scrollHeight', { value: 893, configurable: true });
+    Object.defineProperty(timeline, 'clientHeight', { value: 422, configurable: true });
+    Object.defineProperty(timeline, 'scrollTop', { value: 454, configurable: true });
+    stubBox(label, 103, 147);
+    stubBox(card, 151, 441.5);
+    stubBox(actions, 360.5, 388.5);
+    stubBox(deck, 400.5, 428.5);
+
+    // The 32px shift starts the label at the protected 135px line and leaves the deck trigger
+    // at 432.5–460.5, before the 473.5px transcript end.
+    expect(approvalPlacementShift(timeline, card)).toBe(-32);
+    timeline.remove();
+  });
+
   test('the labelling row is found in the real Interborough shape: a rail item holding the row and the card, with no message article', () => {
     // Interborough draws its messages through its own `row` snippet: a ToolCallRail whose item holds
     // the call's row and, in `.cinder-tool-call-rail__nested`, the approval card. There is no
