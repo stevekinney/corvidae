@@ -13,6 +13,9 @@
     display: block;
     min-inline-size: 0;
     box-sizing: border-box;
+  }
+
+  .cinder-approval-group__surface {
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface-raised);
@@ -45,7 +48,7 @@
   }
 
   @media (forced-colors: active) {
-    .cinder-approval-group {
+    .cinder-approval-group__surface {
       border-color: CanvasText;
     }
 

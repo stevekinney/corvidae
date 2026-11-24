@@ -223,7 +223,23 @@ describe('a resumed turn', () => {
     const stoppedRun = 'stopped';
     const continuationRun = 'continuation';
     const laterRun = 'later';
-    const conversation = new Conversation(createConversationHistory({ id: 'replay' }));
+    const ids = [
+      'person',
+      `${stoppedRun}:step:0`,
+      `${stoppedRun}:continuation`,
+      'later-person',
+      `${laterRun}:step:0`,
+    ];
+    const nextId = () => {
+      const id = ids.shift();
+      if (id === undefined) throw new Error('test supplied too few message identifiers');
+      return id;
+    };
+    const environment = { randomId: nextId };
+    const conversation = new Conversation(
+      createConversationHistory({ id: 'replay' }, environment),
+      environment,
+    );
     conversation.appendMessages(
       { id: 'person', role: 'user', content: 'go' },
       { id: `${stoppedRun}:step:0`, role: 'assistant', content: 'partial' },

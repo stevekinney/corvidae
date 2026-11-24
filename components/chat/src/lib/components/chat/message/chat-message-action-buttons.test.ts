@@ -101,6 +101,20 @@ describe('chat message action buttons', () => {
     );
   });
 
+  test('a compact stopped turn reserves a 44px lane for Cinder Button hit areas', () => {
+    // The Buttons deliberately retain size="sm" (a 28px painted face). Their Cinder-owned
+    // pseudo-elements expand to 44px on coarse pointers, so the wrapper must occupy that lane
+    // rather than letting the lower overhang intercept Message details below.
+    const coarse = extractMediaBlock(
+      source,
+      '@media (any-pointer: coarse) {',
+      '.chat-turn-actions',
+    );
+    expect(coarse).toContain('min-block-size: var(--cinder-touch-target-min);');
+    expect(source).toMatch(/class="chat-turn-action"\s+size="sm"\s+variant="secondary"/u);
+    expect(source).toMatch(/class="chat-turn-action"\s+size="sm"\s+variant="primary"/u);
+  });
+
   test('Regenerate is an optional action that follows Quote, in both presentations', () => {
     expect(source).toContain('onRegenerate?: ((messageId: string) => void | Promise<void>)');
     expect(source).toContain('chat-message-action-button chat-message-regenerate-button');

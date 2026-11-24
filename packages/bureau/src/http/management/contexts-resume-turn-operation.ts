@@ -36,12 +36,13 @@ import { sessionOwnerOf } from '@lostgradient/operative';
 import { defineOperation, type OperationFault } from '@lostgradient/backchannel';
 import { z } from 'zod';
 
-import { BureauError, BureauShuttingDownError, ContextArchivedError } from '../../bureau-errors.ts';
+import { ContextArchivedError } from '../../bureau-errors.ts';
 import { contextArchivedFault } from './contexts-archive-operation.ts';
 import { SessionResumeRefusedError } from '../../session-resume.ts';
 import type { BureauContexts } from '../../bureau-types/contexts.ts';
 import type { BureauInternals } from '../../bureau-types/facade.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
+import { bureauFaultOf } from '../bureau-fault-policy.ts';
 import {
   resourceNotFound,
   unaryTransports as transports,
@@ -155,17 +156,7 @@ export const contextsResumeTurnOperation = defineOperation<
         } satisfies OperationFault;
       }
       if (error instanceof ContextArchivedError) throw contextArchivedFault(error.message);
-      if (error instanceof BureauShuttingDownError) {
-        throw {
-          code: 'Unavailable',
-          message: error.message,
-          data: { reason: 'shutting-down' },
-        } satisfies OperationFault;
-      }
-      if (error instanceof BureauError && error.code === 'NOT_FOUND') {
-        throw resourceNotFound('context', contextId);
-      }
-      throw error;
+      throw bureauFaultOf(error, { notFound: { resource: 'context', identifier: contextId } });
     }
   },
 });

@@ -29,10 +29,12 @@
   class={classNames('cinder-approval-group', customClassName)}
   aria-labelledby={headingId}
 >
-  <svelte:element this={`h${headingLevel}`} id={headingId} class="cinder-approval-group__heading">
-    {heading}
-  </svelte:element>
-  <div class="cinder-approval-group__rows">
-    {@render children()}
+  <div class="cinder-approval-group__surface">
+    <svelte:element this={`h${headingLevel}`} id={headingId} class="cinder-approval-group__heading">
+      {heading}
+    </svelte:element>
+    <div class="cinder-approval-group__rows">
+      {@render children()}
+    </div>
   </div>
 </section>

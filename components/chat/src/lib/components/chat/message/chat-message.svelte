@@ -1052,7 +1052,9 @@
   {#if turn.kind === 'stopped'}
     <div class="chat-turn-outcome" data-kind="stopped">
       <div class="chat-turn-stopped-row">
-        <Badge variant="neutral">{withoutAnswer ? turnWords.stoppedBeforeAnswer : turnWords.stopped}</Badge>
+        <Badge variant="neutral"
+          >{withoutAnswer ? turnWords.stoppedBeforeAnswer : turnWords.stopped}</Badge
+        >
         {@render stoppedTurnActions()}
       </div>
     </div>
@@ -2586,6 +2588,15 @@
     justify-content: flex-end;
     gap: var(--cinder-space-2);
     margin-inline-start: 0;
+  }
+
+  /* Cinder Button keeps the compact 28px painted face and expands its coarse-pointer hit area
+   * to 44px with a pseudo-element. Reserve that whole lane here: otherwise its lower overhang
+   * can fall into the following Message details control on a narrow stopped turn. */
+  @media (any-pointer: coarse) {
+    .chat-turn-actions {
+      min-block-size: var(--cinder-touch-target-min);
+    }
   }
 
   .chat-turn-outcome :global(.chat-turn-action) {

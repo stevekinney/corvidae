@@ -852,10 +852,12 @@ describe('a regeneration command', () => {
       outbox: [{ namespace: FOREIGN, payload: { anything: true } }],
     });
     const before = (await bureau.contexts.get(CRAFTED))!;
-    const foreign = async () =>
-      (await store.outbox.pending()).filter(
+    const foreign = async () => {
+      const pending = await store.outbox.pending();
+      return pending.filter(
         (entry) => entry.kind === 'session.attachment' && entry.namespace === FOREIGN,
       );
+    };
 
     // A pending command whose session holds only the foreign entry is in doubt: the entry is not
     // read as its receipt, and stays where it was.

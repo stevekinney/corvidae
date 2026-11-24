@@ -6,5 +6,31 @@
   "osCodename": "jammy",
   "architecture": "arm64",
   "dockerImageTag": "corvidae-browser-fixtures:1.63.0-jammy-arm64",
-  "suiteExitCode": 0
+  "suiteExitCode": 0,
+  "componentRenders": {
+    "approval-card": {
+      "renderedSourceSha": "46c7b32ff20062cf12638ccd31f661cf84431b36",
+      "suiteExitCode": 0
+    },
+    "chat": {
+      "renderedSourceSha": "46c7b32ff20062cf12638ccd31f661cf84431b36",
+      "suiteExitCode": 0
+    },
+    "chat-composer-popover": {
+      "renderedSourceSha": "46c7b32ff20062cf12638ccd31f661cf84431b36",
+      "suiteExitCode": 0
+    },
+    "chat-sub-session": {
+      "renderedSourceSha": "46c7b32ff20062cf12638ccd31f661cf84431b36",
+      "suiteExitCode": 0
+    },
+    "review-editor-malformed-front-matter": {
+      "renderedSourceSha": "46c7b32ff20062cf12638ccd31f661cf84431b36",
+      "suiteExitCode": 0
+    },
+    "tool-call-rail": {
+      "renderedSourceSha": "46c7b32ff20062cf12638ccd31f661cf84431b36",
+      "suiteExitCode": 0
+    }
+  }
 }

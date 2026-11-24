@@ -288,6 +288,16 @@ export function createRunCreation<D extends AgentDefinitions>(
     inFlightSessionDeletions,
   } = core;
 
+  const requireLedgerForRequest = (request: CreateRunRequest): void => {
+    if (request.runCreationRequestId !== undefined) requireRunCreationLedger();
+  };
+
+  const rejectDeletingSession = (sessionId: string): void => {
+    if (inFlightSessionDeletions.has(sessionId)) {
+      throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
+    }
+  };
+
   async function createRunFromRequest(
     request: CreateRunRequest & SessionTaskFields,
   ): Promise<CreatedRunSummary> {
@@ -298,14 +308,12 @@ export function createRunCreation<D extends AgentDefinitions>(
     const owner = ownerFromPrincipal(request.principal, toBadRequest);
     core.assertRunAdmissionOpen('run');
 
-    if (request.runCreationRequestId !== undefined) requireRunCreationLedger();
+    requireLedgerForRequest(request);
 
     const sessionId = request.sessionId?.trim() ?? runtimeServices.identifiers.next('session');
     // COR-1481 — a context being deleted takes no new task: it reads as one that does
     // not exist, until the deletion has committed and the id may name a new incarnation.
-    if (inFlightSessionDeletions.has(sessionId)) {
-      throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
-    }
+    rejectDeletingSession(sessionId);
     const runId = runtimeServices.identifiers.next('run');
     // The text that stands for the request where only text fits: flow control,
     // and the session's `lastUserMessage`.

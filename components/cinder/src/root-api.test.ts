@@ -9,7 +9,6 @@ import {
 } from '@lostgradient/cinder';
 import { describe, expect, it } from 'bun:test';
 
-
 describe('@lostgradient/cinder root API', () => {
   it('exposes named component values and types from the single package entrypoint', () => {
     const props: Partial<ButtonProps> = { variant: 'primary' };

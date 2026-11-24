@@ -38,6 +38,7 @@ describe('ApprovalGroup', () => {
     expect(group.classList.contains('cinder-approval-group')).toBe(true);
     const heading = group.querySelector('h3');
     expect(heading?.textContent?.trim()).toBe('2 approvals waiting');
+    expect(heading?.parentElement?.classList.contains('cinder-approval-group__surface')).toBe(true);
     expect(heading?.nextElementSibling?.classList.contains('cinder-approval-group__rows')).toBe(
       true,
     );
@@ -63,7 +64,9 @@ describe('ApprovalGroup', () => {
 
   test('draws one border around the rows, and the rows give up their own (no box in a box)', () => {
     const css = readFileSync(join(import.meta.dir, 'approval-group.css'), 'utf8');
-    expect(css).toMatch(/\.cinder-approval-group \{[^}]*border: 1px solid var\(--cinder-border\);/);
+    expect(css).toMatch(
+      /\.cinder-approval-group__surface \{[^}]*border: 1px solid var\(--cinder-border\);/,
+    );
     expect(css).toMatch(
       /\.cinder-approval-group \.cinder-approval-card--row \{[^}]*border: 0;[^}]*border-radius: 0;/,
     );
