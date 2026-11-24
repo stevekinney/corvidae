@@ -61,6 +61,7 @@ export type StandingState =
   | 'withdrawn'
   | 'plugin-disabled'
   | 'not-offered'
+  | 'workflow-unavailable'
   | 'configuration-invalid'
   | 'needs-setup';
 
@@ -115,6 +116,13 @@ export function hookStanding(hook: StandingHook, context: StandingContext): Hook
       state: 'off',
       word: 'Off',
       sentence: hook.declaredBy?.ownerDisabled === true ? copy.ownerOff : undefined,
+    };
+  }
+  if (hook.problems?.some((problem) => problem.code === 'workflow-unavailable') === true) {
+    return {
+      state: 'workflow-unavailable',
+      word: "Can't load",
+      sentence: undefined,
     };
   }
   if (hook.action.type === 'plugin') {

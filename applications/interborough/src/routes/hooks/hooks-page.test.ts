@@ -13,6 +13,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { chooseFilterOption } from '../../../tests/dom.test-support.ts';
 import { RETRY_LABEL } from '../../app/copy/views.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
+import { taskFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import {
   installBureauStub,
   StubFault,
@@ -146,6 +147,8 @@ function open(
     /** A home that keeps hooks off answers every hooks call with this fault. */
     off?: boolean;
     workflows?: { id: string; state: string; paused: boolean }[];
+    /** Runs named by a delivery body, returned through the normal owner-checked task read. */
+    tasks?: ReturnType<typeof taskFixture>[];
     schedules?: unknown[];
     /** A remote home says so at `/host/paths`. */
     hostMode?: 'local' | 'remote';
@@ -306,6 +309,11 @@ function open(
         rows.map((candidate) => (candidate === target ? sent : candidate)),
       );
       return sent;
+    },
+    'bureau.tasks.get': (params) => {
+      const task = options.tasks?.find((candidate) => candidate.id === params['taskId']);
+      if (task === undefined) throw new StubFault('NotFound', 404, 'No such task.');
+      return task;
     },
     'bureau.events.catalog': () => ({ events: CATALOG }),
     'bureau.agents.list': () => ({ agents: [AGENT] }),
@@ -1934,7 +1942,7 @@ describe('a hook’s delivery log', () => {
         headers: {},
         body: JSON.stringify({
           kind: 'run.error',
-          payload: { runId: 'run-1', step: 2, error: 'GitHub didn’t answer (HTTP 503)' },
+          payload: { runId: 'run-1', step: 2, errorCode: 'upstream-unavailable' },
         }),
       },
     });
@@ -1979,12 +1987,13 @@ describe('a hook’s delivery log', () => {
       deliveries: {
         alpha: [gaveUpDelivery('alpha'), delivery('alpha', 'delivered', { id: 'delivery-ok' })],
       },
+      tasks: [taskFixture({ id: 'run-1', workflow: { type: 'release-notes' } as never })],
     });
     const deliveries = await view.findByTestId('hook-deliveries');
     await within(deliveries).findByTestId('hook-delivery-list');
     expect(within(deliveries).getByRole('heading', { name: copy.heading })).not.toBeNull();
     expect(logItem(deliveries, 'delivery-gave-up')?.textContent).toContain('Gave up');
-    expect(logItem(deliveries, 'delivery-gave-up')?.textContent).toContain('A run fails');
+    expect(logItem(deliveries, 'delivery-gave-up')?.textContent).toContain('Release notes');
     expect(logItem(deliveries, 'delivery-ok')?.textContent).toContain('Delivered, 200 OK');
     expect(deliveries.textContent).not.toContain(String.fromCodePoint(0xb7));
 
@@ -2013,6 +2022,14 @@ describe('a hook’s delivery log', () => {
     const { view } = open([hook('alpha')], {
       path: '/hooks/alpha',
       deliveries: { alpha: [gaveUpDelivery('alpha')] },
+      tasks: [
+        taskFixture({
+          id: 'run-1',
+          workflow: { type: 'release-notes' } as never,
+          failure: { step: { label: 'Collect merged changes' } } as never,
+          statusMessage: 'GitHub did not answer (HTTP 503)',
+        }),
+      ],
     });
     const deliveries = await view.findByTestId('hook-deliveries');
     await within(deliveries).findByTestId('hook-delivery-list');
@@ -2023,11 +2040,11 @@ describe('a hook’s delivery log', () => {
       'events.pagerduty.com answered 410 Gone on all 8 tries, so Interborough stopped. The webhook URL may have been removed. Check the URL, then retry.',
     );
     const facts = within(item).getByTestId('hook-delivery-facts');
-    // The row above names the event in words, so the facts do not say it again; its raw kind shows
-    // only beside an event that reads alike (R10-23).
-    expect(facts.textContent).not.toContain(copy.facts.event);
+    // The authorized run makes this event fact identify the named record, including its raw kind.
+    expect(facts.textContent).toContain(copy.facts.event);
     expect(item.textContent).toContain('A run fails');
-    expect(facts.textContent).not.toContain('run.error');
+    expect(facts.textContent).toContain('Release notes');
+    expect(facts.textContent).toContain('run.error');
     expect(facts.textContent).toContain('events.pagerduty.com');
     expect(facts.textContent).toContain('410 Gone');
 
@@ -2040,7 +2057,14 @@ describe('a hook’s delivery log', () => {
     const payload = within(item).getByTestId('hook-delivery-payload');
     expect(payload.textContent).toContain(copy.payloadLabel);
     expect(payload.textContent).toContain('A run fails (run.error)');
-    expect(payload.textContent).toContain('GitHub didn’t answer (HTTP 503)');
+    expect(payload.textContent).toContain('upstream-unavailable');
+    expect(payload.textContent).not.toContain('GitHub did not answer (HTTP 503)');
+    const related = await within(item).findByTestId('hook-delivery-related-run');
+    expect(within(related).getByRole('link', { name: 'Release notes' }).getAttribute('href')).toBe(
+      '/runs/run-1',
+    );
+    expect(related.textContent).toContain('Step: Collect merged changes');
+    expect(related.textContent).toContain('Error: GitHub did not answer (HTTP 503)');
     expect(within(item).getByRole('button', { name: copy.retry })).not.toBeNull();
   });
 

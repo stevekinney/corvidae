@@ -134,6 +134,21 @@ describe('hookStanding', () => {
     });
   });
 
+  test('is Can’t load only when the Bureau reports a currently unavailable workflow target', () => {
+    const hook: StandingHook = {
+      enabled: true,
+      action: { type: 'start-workflow', workflowId: 'weekly-cleanup', input: 'payload' },
+      lastDelivery: null,
+      problems: [{ code: 'workflow-unavailable' }],
+    };
+
+    expect(hookStanding(hook, { plugins: undefined, reactions: undefined })).toEqual({
+      state: 'workflow-unavailable',
+      word: "Can't load",
+      sentence: undefined,
+    });
+  });
+
   test('is Needs attention when the Bureau lists a configuration-invalid problem, after Off and Unavailable', () => {
     const invalid = {
       code: 'configuration-invalid' as const,
