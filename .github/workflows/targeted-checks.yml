@@ -41,7 +41,7 @@ jobs:
           bun applications/interborough/scripts/qualify-startup.ts "$worktree" "$home" "$output/baseline.json" dev > "$output/baseline.log" 2>&1 || baseline=$?
           printf '%s\n' "$baseline" > "$output/baseline.exit"
           test "$baseline" = 0
-          rg -m 1 -- '--cinder-space-1:[[:space:]]*0?\.25rem;' "$worktree/components/cinder/src/styles/tokens-base.css" > "$output/baseline-declaration.txt"
+          grep -m 1 -E -- '--cinder-space-1:[[:space:]]*0?\.25rem;' "$worktree/components/cinder/src/styles/tokens-base.css" > "$output/baseline-declaration.txt"
           changed=0
           bun scripts/chef/cor2654-marker-probe.ts "$worktree" "$home" applications/interborough/scripts/qualify-startup.ts "$output/changed.json" token > "$output/changed.log" 2>&1 || changed=$?
           printf '%s\n' "$changed" > "$output/changed.exit"
