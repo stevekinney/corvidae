@@ -82,7 +82,8 @@
         "**/*.fixture.svelte",
         "**/*.playwright.ts",
         "**/*.spec.ts",
-        "src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts"
+        "src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts",
+        "src/hooks/recipient-recovery-child.ts"
       ],
       "project": [
         "src/**/*.ts!",
@@ -91,7 +92,8 @@
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!",
-        "!src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts!"
+        "!src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts!",
+        "!src/hooks/recipient-recovery-child.ts!"
       ]
     },
     "packages/backchannel": {
