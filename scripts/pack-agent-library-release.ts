@@ -47,6 +47,10 @@ const privateEntries = new Map([
           '@lostgradient/backchannel',
           join(repository, 'packages/backchannel/src/index.ts'),
         ] as const,
+        [
+          '@lostgradient/credentials/api-key-verification',
+          join(repository, 'packages/credentials/src/api-key-verification.ts'),
+        ] as const,
       ]
     : []),
   ['@lostgradient/cryptography', join(repository, 'packages/cryptography/src/index.ts')],
