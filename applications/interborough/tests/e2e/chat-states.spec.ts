@@ -452,7 +452,7 @@ test.describe('Reply failed partway (frame f: 19p)', () => {
     request,
   }) => {
     await connectProvider(page);
-    await openStatesChat(page, request, 'failed-partway');
+    const { failedRunId } = await openStatesChat(page, request, 'failed-partway');
     await expect(transcript(page).getByText(FAILED_PARTWAY_REPLY)).toBeVisible();
 
     await expectTopBar(page);
@@ -500,7 +500,10 @@ test.describe('Reply failed partway (frame f: 19p)', () => {
       source: SOURCE,
     });
     await explanation.click();
-    await expect(page).toHaveURL(/\/runs\/run-states-failed#failure-explanation$/);
+    await expect(page).toHaveURL(
+      new RegExp(`/runs/${encodeURIComponent(failedRunId ?? '')}#failure-explanation$`),
+    );
+    await expect(page.locator('#failure-explanation')).toBeVisible();
   });
 
   test('at 320 by 640, Retry scrolls above the composer and receives its pointer (19p)', async ({
