@@ -3318,18 +3318,23 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
                   waitingForSignal: state.waitingForSignals?.[0] ?? null,
                 };
               })();
+        const failedStepIndex =
+          newest?.failedStep === undefined
+            ? undefined
+            : failedStepIndexOf(await engine.getTimeline(newest.id));
+        const last =
+          newest === undefined
+            ? null
+            : {
+                status: newest.status,
+                failedStep: failedStepIndex === undefined ? null : failedStepIndex + 1,
+              };
         return {
           total: all.total,
           active: active.total,
           last24Hours: recent.total,
           lastRunAt: newest === undefined ? null : new Date(newest.createdAt).toISOString(),
-          last:
-            newest === undefined
-              ? null
-              : {
-                  status: newest.status,
-                  failedStep: newest.failedStep === undefined ? null : newest.failedStep.index + 1,
-                },
+          last,
           current,
         };
       } catch (error) {
