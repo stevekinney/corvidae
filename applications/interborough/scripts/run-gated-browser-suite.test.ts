@@ -157,6 +157,12 @@ describe('runGatedBrowserSuite', () => {
     expect(await runGatedBrowserSuite([], taken.environment)).toBe(2);
     expect(taken.runs).toHaveLength(0);
     expect(taken.errors.join('')).toContain('never reuses a server');
+    const sharingTaken = fakeEnvironment({
+      requestedPort: 31000,
+      isFree: (port) => port !== 31008,
+    });
+    expect(await runGatedBrowserSuite([], sharingTaken.environment)).toBe(2);
+    expect(sharingTaken.runs).toHaveLength(0);
   });
 });
 

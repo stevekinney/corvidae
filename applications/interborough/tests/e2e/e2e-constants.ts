@@ -22,10 +22,10 @@ export function isBindCollision(error: unknown): boolean {
 
 /**
  * Port the E2E host listens on: 7399 unless `INTERBOROUGH_E2E_PORT` says another. Distinct from the
- * interactive host's default of 7234. The suite holds eight consecutive ports (this one, the
+ * interactive host's default of 7234. The suite holds nine consecutive ports (this one, the
  * barrier's, the second host's, the journey's, the first-run host's, the connect host's, the
- * showcase host's, and the plugin-page host's), so two runs on one machine set
- * `INTERBOROUGH_E2E_PORT` at least eight apart.
+ * showcase host's, the plugin-page host's, and the chat-sharing host's), so two runs on one machine set
+ * `INTERBOROUGH_E2E_PORT` at least nine apart.
  */
 export const E2E_PORT = endToEndPort();
 

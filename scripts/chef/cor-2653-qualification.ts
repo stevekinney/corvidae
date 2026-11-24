@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { appendFile, cp, mkdir, readFile, readdir, readlink, writeFile } from 'node:fs/promises';
 import { cpus, totalmem } from 'node:os';
 import { join, resolve } from 'node:path';
+import { END_TO_END_PORT_COUNT } from '../../applications/interborough/scripts/environment-configuration.ts';
 import { waitUntil } from '../../testing/testing/src/wait-until.ts';
 import { rootScriptEnvironment } from '../environment-configuration.ts';
 import {
@@ -218,7 +219,7 @@ try {
     await command(`install-${name}`, path, ['bun', 'install', '--frozen-lockfile']);
     await command(`metadata-${name}`, path, ['bunx', 'turbo', 'run', 'metadata']);
   }
-  for (let port = 7399; port <= 7406; port += 1)
+  for (let port = 7399; port < 7399 + END_TO_END_PORT_COUNT; port += 1)
     sentinels.push(
       Bun.serve({
         hostname: '127.0.0.1',
@@ -274,7 +275,10 @@ try {
       INTERBOROUGH_E2E_RUN_ID: 'B',
     });
     const [firstPort, secondPort] = await Promise.all([ready(first), ready(second)]);
-    requireResult(Math.abs(firstPort - secondPort) >= 8, 'A and B have overlapping port blocks');
+    requireResult(
+      Math.abs(firstPort - secondPort) >= END_TO_END_PORT_COUNT,
+      'A and B have overlapping port blocks',
+    );
     type Identity = { run: string; build: { commit: string }; port: number };
     const identities = await Promise.all([
       json<Identity>(firstPort + 1, '/identity'),
@@ -323,22 +327,46 @@ try {
       }
     }
     for (const port of [firstPort, secondPort])
-      for (let offset = 0; offset < 8; offset += 1) {
+      for (let offset = 0; offset < END_TO_END_PORT_COUNT; offset += 1) {
         const response = await fetch(
           `http://127.0.0.1:${String(port + offset)}${offset === 1 ? '/waiting' : '/'}`,
-          { headers: { accept: 'text/html' } },
+          {
+            headers: {
+              accept: 'text/html',
+              ...(offset === 8 ? { 'x-api-key': 'chat-owner-browser-key' } : {}),
+            },
+          },
         );
         requireResult(response.ok, `missing listener at ${String(port + offset)}`);
       }
+    const sharing: unknown[] = [];
+    for (const port of [firstPort, secondPort]) {
+      const response = await fetch(`http://127.0.0.1:${String(port + 8)}/bureau/jsonrpc`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': 'chat-owner-browser-key' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'sharing',
+          method: 'bureau.agents.list',
+          params: {},
+        }),
+      });
+      const answer = (await response.json()) as { result?: { agents?: Array<{ name?: string }> } };
+      requireResult(
+        response.ok && answer.result?.agents?.some((agent) => agent.name === 'echo-text'),
+        `sharing host failed authenticated probe on ${String(port + 8)}`,
+      );
+      sharing.push({ port: port + 8, agent: 'echo-text' });
+    }
     const addresses = [firstPort, secondPort].flatMap((port) =>
-      Array.from({ length: 8 }, (_, offset) => port + offset),
+      Array.from({ length: END_TO_END_PORT_COUNT }, (_, offset) => port + offset),
     );
     const owners = await listenerOwners(addresses);
     for (const [port, path, id] of [
       [firstPort, a, 'A'],
       [secondPort, b, 'B'],
     ] as const) {
-      for (let offset = 0; offset < 8; offset += 1) {
+      for (let offset = 0; offset < END_TO_END_PORT_COUNT; offset += 1) {
         const owner = owners.get(port + offset);
         requireResult(
           owner?.run === id && owner.cwd.startsWith(path),
@@ -346,7 +374,7 @@ try {
         );
       }
     }
-    for (let port = 7399; port <= 7406; port += 1) {
+    for (let port = 7399; port < 7399 + END_TO_END_PORT_COUNT; port += 1) {
       const response = await fetch(`http://127.0.0.1:${String(port)}`);
       const body = await response.text();
       requireResult(body === `sentinel-${String(port)}`, `sentinel ${String(port)} changed`);
@@ -355,7 +383,7 @@ try {
     first.child.kill('SIGTERM');
     const firstExit = await first.done;
     const remainingA = await listenerOwners(
-      Array.from({ length: 8 }, (_, offset) => firstPort + offset),
+      Array.from({ length: END_TO_END_PORT_COUNT }, (_, offset) => firstPort + offset),
     );
     requireResult(
       remainingA.size === 0,
@@ -370,6 +398,7 @@ try {
       secondPort,
       identities,
       workflows,
+      sharing,
       listenerOwners: Object.fromEntries(owners),
       firstExit,
       secondExit,
@@ -380,7 +409,7 @@ try {
     };
     const races: Record<string, unknown> = {};
     evidence['allocationRaces'] = races;
-    for (const offset of [1, 6]) {
+    for (const offset of [1, 6, 8]) {
       const race = browser(`allocation-race-${String(offset)}`, a, [
         'tests/e2e/29-goals.spec.ts',
         '--grep',

@@ -19,7 +19,7 @@ export function requiresFreshServer(): boolean {
 }
 
 /** How many consecutive ports the end-to-end suite holds, starting at `endToEndPort()`. */
-export const END_TO_END_PORT_COUNT = 8;
+export const END_TO_END_PORT_COUNT = 9;
 
 export function competitionDirectory(): string | undefined {
   return process.env['COR_2653_COMPETITION_DIRECTORY'];
@@ -39,7 +39,7 @@ export function browserQualification(): { enabled: boolean; run: string; revisio
  * for the first-run host, one for the connect host that restarts, one for the showcase host, and
  * one for the plugin-page host. It
  * is fixed (7399) because the config, the server, and the specs must agree on it, but a checkout
- * that runs the suite beside another can set `INTERBOROUGH_E2E_PORT` for all eight at once. A value
+ * that runs the suite beside another can set `INTERBOROUGH_E2E_PORT` for all nine at once. A value
  * that is not a port is refused rather than replaced.
  */
 export function endToEndPort(): number {

@@ -1,24 +1,24 @@
 {
   "issue": "COR-2653",
   "branch": "steve/cor-2653-browser-port-isolation",
-  "checkedAt": "627bf25947aa1de6a1cb035eb2e2307dad055db4",
+  "checkedAt": "31dc932898b061dbe20516db01151ea7aa8d5485",
   "briefVersion": "f416fc07b354",
-  "status": "READY",
+  "status": "BLOCKED",
   "criteria": [
     {
       "id": "AC1",
-      "status": "met-on-branch",
-      "evidence": "Exact-head hosted run 45362948086: baseline package exit 1 and gated control exit 0; occupied override exit 2; allocation races +1 and +6 exit 0. Candidate connect 4/4 passed; base failed the intended EADDRINUSE assertion."
+      "status": "not-met",
+      "evidence": "Nine-port allocation and override bounds passed local direct tests; hosted collision at +8 is pending."
     },
     {
       "id": "AC2",
-      "status": "met-on-branch",
-      "evidence": "Run 45362948086 recorded distinct A/B identities and 16 listener entries, isolation and workflow actions, A retired with exit 143 and B completed with exit 0 after A cleanup."
+      "status": "not-met",
+      "evidence": "Earlier run 45362948086 verified eight listeners per run; nine-listener identity, sharing probe, sentinel and cleanup replay remains pending."
     },
     {
       "id": "AC3",
-      "status": "met-on-branch",
-      "evidence": "Run 45362948086 recorded all eight correct and incorrect order/concurrency pairs with expected exits and passing competitor actions bracketing assertions. Artifact 14906963959 SHA-256 fef0bfbd2181e6394c8263d4dba239997619625f5d313ac18095da48c79e8b90 preserves evidence and previous failures remain retained."
+      "status": "not-met",
+      "evidence": "Earlier run 45362948086 passed all matrix pairs on its eight-port revision; exact combined nine-port replay remains pending."
     }
   ]
 }
