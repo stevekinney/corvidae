@@ -27,10 +27,9 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * | the context is archived                         | `Conflict`    | `context-archived`                  |
  * | Bureau is shutting down                         | `Unavailable` | `shutting-down`                     |
  *
- * Discarding another owner's turn reads that owner's history and rewrites it, so it requires both
- * `bureau.contexts:read` and `bureau.contexts:write`, as regenerating does. The removal's commit
- * carries an audit entry, `context.turn-discarded`, naming the run, the command and how many rows
- * went, never a row's text.
+ * Only the chat owner may discard its turn. The removal's commit carries an audit entry,
+ * `context.turn-discarded`, naming the run, the command and how many rows went, never a row's
+ * text.
  *
  * @module contexts-discard-turn-operation
  */
@@ -131,18 +130,10 @@ export const contextsDiscardTurnOperation = defineOperation<
     // Authorized before anything about the run is read: a caller who may not act on the context
     // learns nothing of its runs, and a missing context answers as an invisible one.
     const session = await host.contexts.get(contextId);
-    const mayAct = (operatorScope: 'bureau.contexts:read' | 'bureau.contexts:write') =>
-      session !== undefined &&
-      host.ownership.mayAccess({
-        principal,
-        resourceOwner: sessionOwnerOf(session.metadata) ?? undefined,
-        operatorScope,
-      });
     if (
       owner === undefined ||
       session === undefined ||
-      !mayAct('bureau.contexts:read') ||
-      !mayAct('bureau.contexts:write')
+      sessionOwnerOf(session.metadata) !== owner
     ) {
       throw resourceNotFound('context', contextId);
     }

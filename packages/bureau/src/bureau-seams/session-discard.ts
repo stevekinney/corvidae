@@ -38,6 +38,7 @@ import {
   type SessionStore,
   sessionArchivedAtOf,
   sessionOriginOf,
+  sessionOwnerOf,
 } from '@lostgradient/operative';
 
 /** The callables session discarding reads from elsewhere in `constructBureau`. */
@@ -156,6 +157,12 @@ export function createSessionDiscard<D extends AgentDefinitions>(
     if (session === undefined || sessionOriginOf(session.metadata) === 'try') {
       throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
     }
+    // The HTTP operation checks ownership before exposing a context. Repeat it in the fenced
+    // update below, so an ownership change between this read and the durable write cannot make an
+    // operator's command mutate another person's chat.
+    if (sessionOwnerOf(session.metadata) !== owner) {
+      throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
+    }
     // An archive that commits after this read moves the revision the removal is fenced on.
     if (sessionArchivedAtOf(session.metadata) !== null) throw new ContextArchivedError(sessionId);
     // A retained claim under another payload is refused by the claim below, before any judgment.
@@ -222,7 +229,8 @@ export function createSessionDiscard<D extends AgentDefinitions>(
           if (
             current === undefined ||
             current.incarnation !== session.incarnation ||
-            current.revision !== session.revision
+            current.revision !== session.revision ||
+            sessionOwnerOf(current.metadata) !== owner
           ) {
             fence.lost = {
               reason: 'history-changed',

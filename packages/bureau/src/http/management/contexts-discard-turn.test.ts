@@ -146,6 +146,20 @@ describe('bureau.contexts.discardturn', () => {
     });
   });
 
+  it('never lets a scoped operator discard another owner’s turn', async () => {
+    await withBureau(async (opened) => {
+      const run = await stoppedTurn(opened);
+      const before = await opened.bureau.contexts.get(run.contextId);
+
+      const operator = await discardCall(opened, run.contextId, 'operator-key', {
+        runId: run.id,
+      });
+
+      expect(operator.error?.data).toMatchObject({ weftCode: 'NotFound', resource: 'context' });
+      expect(await opened.bureau.contexts.get(run.contextId)).toEqual(before);
+    });
+  });
+
   it('answers a run the context does not have as NotFound naming it', async () => {
     await withBureau(async (opened) => {
       const run = await stoppedTurn(opened);
