@@ -9,12 +9,23 @@
  */
 import { endToEndPort } from '../../scripts/environment-configuration.ts';
 
+export function isBindCollision(error: unknown): boolean {
+  const visited = new Set<object>();
+  let current: unknown = error;
+  while (typeof current === 'object' && current !== null && !visited.has(current)) {
+    visited.add(current);
+    if ('code' in current && current.code === 'EADDRINUSE') return true;
+    current = 'cause' in current ? current.cause : undefined;
+  }
+  return false;
+}
+
 /**
  * Port the E2E host listens on: 7399 unless `INTERBOROUGH_E2E_PORT` says another. Distinct from the
- * interactive host's default of 7234. The suite holds eight consecutive ports (this one, the
+ * interactive host's default of 7234. The suite holds nine consecutive ports (this one, the
  * barrier's, the second host's, the journey's, the first-run host's, the connect host's, the
- * showcase host's, and the plugin-page host's), so two runs on one machine set
- * `INTERBOROUGH_E2E_PORT` at least eight apart.
+ * showcase host's, the plugin-page host's, and the chat-sharing host's), so two runs on one machine set
+ * `INTERBOROUGH_E2E_PORT` at least nine apart.
  */
 export const E2E_PORT = endToEndPort();
 

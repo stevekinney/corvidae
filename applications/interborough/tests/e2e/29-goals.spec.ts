@@ -8,8 +8,12 @@
  * attempts, and the pages pass axe at the two widths. Goals is in the sidebar, and `g` then `l`
  * opens it.
  */
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import type { Page } from '@playwright/test';
+import { existsSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
+import { competitionDirectory } from '../../scripts/environment-configuration.ts';
 import { GOALS_COPY } from '../../src/app/copy/goals.ts';
 import { expect, test } from './fixtures.ts';
 import { pressChord } from './shortcut-support.ts';
@@ -37,6 +41,15 @@ for (const width of WIDTHS) {
   test(`lists the seeded goal at ${width} pixels, and passes axe`, async ({ page, checkA11y }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/goals');
+
+    const directory = competitionDirectory();
+    if (directory) {
+      writeFileSync(join(directory, 'browser-ready'), 'ready');
+      await waitUntil(() => existsSync(join(directory, 'release')), {
+        message: 'the competing browser to start its real actions',
+      });
+      process.stdout.write(`COR2653_ASSERTION ${new Date().toISOString()}\n`);
+    }
 
     await expect(page.locator('[data-view="goals"]')).toHaveAttribute('data-state', 'ready');
     const seeded = page.locator('[data-goal="seeded-goal"]');
