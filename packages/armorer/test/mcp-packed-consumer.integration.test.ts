@@ -1,20 +1,19 @@
+import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { expect, test } from 'bun:test';
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-test('packed native MCP and shared HTTP work in a clean dual-era consumer', async () => {
+async function exercisePackedConsumer() {
   const repository = resolve(import.meta.dir, '../../..');
   const directory = await mkdtemp(join(tmpdir(), 'armorer-mcp-consumer-'));
   const run = async (command: string[], cwd: string) => {
-    const process = Bun.spawn(command, { cwd, stdout: 'pipe', stderr: 'pipe' });
-    const [stdout, stderr, exit] = await Promise.all([
-      new Response(process.stdout).text(),
-      new Response(process.stderr).text(),
-      process.exited,
-    ]);
-    if (exit !== 0) throw new Error(`${command.join(' ')} failed (${exit}): ${stderr}\n${stdout}`);
-    return stdout;
+    const result = await runWithHangGuard(command, { cwd });
+    if (!result.success)
+      throw new Error(
+        `${command.join(' ')} failed (${result.exitCode}): ${result.stderr}\n${result.stdout}`,
+      );
+    return result.stdout.toString();
   };
   try {
     await run(
@@ -70,8 +69,6 @@ test('packed native MCP and shared HTTP work in a clean dual-era consumer', asyn
     );
     await run(['bun', 'install'], directory);
     const graph = await run(['bun', 'pm', 'ls', '--all'], directory);
-    expect(graph).not.toContain('velveteen');
-    expect(graph).not.toContain('backchannel');
     await writeFile(
       join(directory, 'consumer.ts'),
       `
@@ -98,7 +95,14 @@ try { for (const version of ['2025-11-25', '2026-07-28']) {
 `,
     );
     await run(['bun', 'consumer.ts'], directory);
+    return graph;
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+}
+
+const graph = await exercisePackedConsumer();
+test('packed native MCP and shared HTTP work in a clean dual-era consumer', () => {
+  expect(graph).not.toContain('velveteen');
+  expect(graph).not.toContain('backchannel');
 });

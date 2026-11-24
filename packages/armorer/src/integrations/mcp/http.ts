@@ -5,6 +5,7 @@ import {
   type VerifiedGrant,
 } from '@lostgradient/mcp/http';
 import type { ToolRequestContext } from '../../execution-context';
+import { authorityBinding } from './request-context';
 import { createMCP, type CreateMCPOptions } from './server';
 import type { ToolboxLike } from './tools';
 
@@ -59,9 +60,13 @@ export async function createToolboxMcpHandler<T extends Principal>(
         message?.method === 'tools/call'
           ? scopesByName.get(message.params?.name ?? '')
           : surfaceScopes;
+      let admittedAuthority: string | undefined;
       if (scopes) {
         const decision = await context.requireScopes(scopes);
         if (!decision.ok) return decision.response;
+        if (message?.method === 'tools/call') {
+          admittedAuthority = authorityBinding(requestContext(decision.principal, grant).authority);
+        }
       }
       const authorize = async (name: string) => {
         const required = scopesByName.get(name);
@@ -85,6 +90,7 @@ export async function createToolboxMcpHandler<T extends Principal>(
               grant.subject,
             ]),
             armorerAuthorize: authorize,
+            ...(admittedAuthority ? { armorerAuthority: admittedAuthority } : {}),
           },
         },
       });

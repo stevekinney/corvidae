@@ -6,12 +6,14 @@ import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
 import { createTool } from '../src/create-tool';
 import { createToolbox } from '../src/create-toolbox';
-import { createStoreDouble, rpc, TASKS_CAPABILITIES } from './fixtures/mcp-task-harness';
+import { createStoreDouble, deferred, rpc, TASKS_CAPABILITIES } from './fixtures/mcp-task-harness';
 
 describe('protected native MCP listener', () => {
   test('fences task reads and input delivery to the grant and current permission', async () => {
     let binding = { grantId: 'grant', clientId: 'client', tenant: 'tenant', subject: 'subject' };
     let permission = true;
+    let revision = '1';
+    let actorCapabilities = ['write'];
     let deliveries = 0;
     let aborted = false;
     const tool = createTool({
@@ -29,9 +31,10 @@ describe('protected native MCP listener', () => {
         return 'done';
       },
     });
+    const store = createStoreDouble();
     const endpoint = await createToolboxMcpHandler(createToolbox([tool]), {
       tools: [{ id: tool.id, name: 'public.task', scopes: ['write'] }],
-      taskStore: createStoreDouble(),
+      taskStore: store,
       authorization: {
         origin: 'https://equipment.example.com',
         resourcePath: '/mcp',
@@ -47,16 +50,16 @@ describe('protected native MCP listener', () => {
           };
         },
         async resolvePrincipal() {
-          return { delegableScopes: permission ? ['write'] : [] };
+          return { delegableScopes: permission ? ['write'] : [], revision, actorCapabilities };
         },
       },
-      requestContext: () => ({
+      requestContext: (principal) => ({
         authority: {
           principalId: 'subject',
           tenantId: 'tenant',
           ownerId: 'subject',
-          capabilities: ['write'],
-          authorizationRevision: '1',
+          capabilities: principal.actorCapabilities,
+          authorizationRevision: principal.revision,
         },
       }),
     });
@@ -115,6 +118,40 @@ describe('protected native MCP listener', () => {
       expect(denied.error).toBeDefined();
       expect(deliveries).toBe(0);
       permission = true;
+      for (const changed of ['revision', 'capabilities'] as const) {
+        if (changed === 'revision') revision = '2';
+        else actorCapabilities = ['write', 'extra'];
+        for (const method of ['tasks/get', 'tasks/update', 'tasks/cancel']) {
+          const refused = await rpc(
+            adapter as never,
+            method,
+            { taskId, inputResponses: { [inputKey]: { action: 'accept', content: {} } } },
+            capabilities,
+          );
+          expect(refused.error).toBeDefined();
+          expect(deliveries).toBe(0);
+        }
+        revision = '1';
+        actorCapabilities = ['write'];
+      }
+      const gate = deferred<void>();
+      const heldBatch = store.batchCount + 1;
+      store.hold(heldBatch, gate.promise);
+      const racing = rpc(
+        adapter as never,
+        'tasks/update',
+        { taskId, inputResponses: { [inputKey]: { action: 'accept', content: {} } } },
+        capabilities,
+      );
+      await waitUntil(() => store.batchCount >= heldBatch);
+      revision = '2';
+      gate.resolve();
+      const racedResult = await racing;
+      expect(racedResult.error).toBeDefined();
+      expect(deliveries).toBe(0);
+      revision = '1';
+      const restored = await rpc(adapter as never, 'tasks/get', { taskId }, capabilities);
+      expect(restored.result?.['status']).toBe('input_required');
       const allowed = await rpc(
         adapter as never,
         'tasks/update',
@@ -123,6 +160,18 @@ describe('protected native MCP listener', () => {
       );
       expect(allowed.error).toBeUndefined();
       await waitUntil(() => deliveries === 1);
+      await waitUntil(
+        async () =>
+          (await rpc(adapter as never, 'tasks/get', { taskId }, capabilities)).result?.[
+            'status'
+          ] === 'completed',
+      );
+      revision = '2';
+      const hidden = await rpc(adapter as never, 'tasks/get', { taskId }, capabilities);
+      expect(hidden.error).toBeDefined();
+      revision = '1';
+      const visible = await rpc(adapter as never, 'tasks/get', { taskId }, capabilities);
+      expect(JSON.stringify(visible.result)).toContain('done');
     } finally {
       await endpoint.close();
     }
@@ -135,11 +184,14 @@ describe('protected native MCP listener', () => {
       'tenant',
       'clientId',
       'permission',
+      'revision',
+      'capabilities',
       'none',
     ] as const) {
       let binding = { grantId: 'grant', clientId: 'client', tenant: 'tenant', subject: 'subject' };
       let permission = true;
       let revision = 'initial';
+      let capabilities = ['write'];
       const projected: string[] = [];
       let deliveries = 0;
       let aborted = false;
@@ -174,7 +226,7 @@ describe('protected native MCP listener', () => {
             };
           },
           async resolvePrincipal() {
-            return { delegableScopes: permission ? ['write'] : [], revision };
+            return { delegableScopes: permission ? ['write'] : [], revision, capabilities };
           },
         },
         requestContext: (principal) => {
@@ -184,7 +236,7 @@ describe('protected native MCP listener', () => {
               principalId: 'subject',
               tenantId: 'tenant',
               ownerId: 'subject',
-              capabilities: ['write'],
+              capabilities: principal.capabilities,
               authorizationRevision: principal.revision,
             },
           };
@@ -211,8 +263,9 @@ describe('protected native MCP listener', () => {
           { allowInputRequired: true },
         )) as unknown as { resultType: string; requestState: string };
         expect(round.resultType).toBe('input_required');
-        revision = 'current';
         if (change === 'permission') permission = false;
+        else if (change === 'revision') revision = 'current';
+        else if (change === 'capabilities') capabilities = ['write', 'other'];
         else if (change !== 'none') binding = { ...binding, [change]: 'different' };
         const retry = client.callTool(
           {
@@ -232,7 +285,7 @@ describe('protected native MCP listener', () => {
           expect(refusal).toBe(true);
         }
         expect(deliveries).toBe(change === 'none' ? 1 : 0);
-        if (change === 'none') expect(projected.at(-1)).toBe('current');
+        if (change === 'none') expect(projected.at(-1)).toBe('initial');
       } finally {
         await client.close();
         await endpoint.close();
@@ -243,6 +296,8 @@ describe('protected native MCP listener', () => {
   test('selects a pinned public name and enforces tenant authority before execution', async () => {
     let calls = 0;
     let authorityRevision = 0;
+    let advanceAuthority = false;
+    let checksAfterChange = 0;
     const assets = new Map([
       ['one', 'old'],
       ['two', 'old'],
@@ -291,7 +346,7 @@ describe('protected native MCP listener', () => {
         };
       },
       async resolvePrincipal(grant: { tenant?: string }) {
-        authorityRevision++;
+        if (advanceAuthority && ++checksAfterChange === 2) authorityRevision++;
         return {
           tenant: grant.tenant!,
           revision: String(authorityRevision),
@@ -354,6 +409,7 @@ describe('protected native MCP listener', () => {
       ).toThrow();
       expect(calls).toBe(0);
       const allowed = await connect('bearer-marker-two');
+      advanceAuthority = true;
       await allowed.callTool({ name: 'equipment.rename', arguments: { name: 'new' } });
       expect(calls).toBe(1);
       expect([...assets]).toEqual([

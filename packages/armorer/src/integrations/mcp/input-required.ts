@@ -10,7 +10,7 @@ import {
 
 import type { ToolElicitationRequest, ToolElicitationResult } from '../../is-tool';
 import { fromElicitResult, toElicitationInputRequest } from './elicitation';
-import { continuationOwner } from './request-context';
+import { inputRoundOwner } from './request-context';
 
 /**
  * Multi-round tool input for protocol revision 2026-07-28 (MRTR).
@@ -158,7 +158,7 @@ export function createInputRoundRegistry(options: InputRoundRegistryOptions = {}
   const codec = createRequestStateCodec<ResumeState>({
     key: globalThis.crypto.getRandomValues(new Uint8Array(32)),
     ttlSeconds: Math.max(1, Math.ceil(ttlMs / 1000)),
-    bind: continuationOwner,
+    bind: inputRoundOwner,
   });
   const suspended = new Map<
     string,

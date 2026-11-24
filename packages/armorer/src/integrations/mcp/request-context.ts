@@ -1,3 +1,4 @@
+import { sha256HexSync } from '@lostgradient/cryptography';
 import {
   BAGGAGE_META_KEY,
   CLIENT_CAPABILITIES_META_KEY,
@@ -12,13 +13,44 @@ import {
 } from '@modelcontextprotocol/server';
 import { propagation, ROOT_CONTEXT, type Context } from '@opentelemetry/api';
 
+import type { ToolAuthority } from '../../execution-context';
 import type { Tool } from '../../is-tool';
+
+/** Stable nonsecret fingerprint of the authority held by a suspended execution. */
+export function authorityBinding(authority: ToolAuthority): string {
+  const workspace = authority.workspace;
+  return sha256HexSync(
+    JSON.stringify([
+      authority.principalId,
+      authority.tenantId,
+      authority.ownerId,
+      [...authority.capabilities].toSorted(),
+      authority.authorizationRevision,
+      workspace
+        ? [
+            workspace.version,
+            workspace.workspaceId,
+            workspace.actorId,
+            workspace.authorizingOwner,
+            workspace.membershipRevision,
+          ]
+        : null,
+    ]),
+  );
+}
 
 /** The verified, nonsecret owner of a protected continuation. */
 export function continuationOwner(context: ServerContext): string {
   const auth = context.http?.authInfo;
   const binding = auth?.extra?.['armorerBinding'];
   return typeof binding === 'string' ? binding : (auth?.clientId ?? '');
+}
+
+export function inputRoundOwner(context: ServerContext): string {
+  const authority = context.http?.authInfo?.extra?.['armorerAuthority'];
+  return typeof authority === 'string'
+    ? JSON.stringify([continuationOwner(context), authority])
+    : continuationOwner(context);
 }
 
 /** The two MCP protocol eras the SDK serves: 2025-11-25 and earlier, and 2026-07-28. */

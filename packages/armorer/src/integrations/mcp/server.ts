@@ -13,6 +13,7 @@ import type { ToolRequestContext } from '../../execution-context';
 import { createExecutionLifecycle, type ExecutionCleanupReport } from '../../execution-lifecycle';
 import type { Tool } from '../../is-tool';
 import { createInputRoundRegistry, type InputRoundRegistryOptions } from './input-required';
+import { authorityBinding } from './request-context';
 import {
   createMcpTaskRuntime,
   MCP_TASKS_EXTENSION,
@@ -240,7 +241,15 @@ export async function createMCP(
         // A task handle is the Tasks extension's alternative `tools/call` result; the
         // SDK types callbacks as `CallToolResult` only.
         (async (args: unknown, callContext: Parameters<typeof definition.handler>[1]) => {
-          if (authorize) requestContext = await authorize(name);
+          if (authorize) {
+            requestContext = await authorize(name);
+            if (
+              authorityBinding(requestContext.authority) !==
+              context.authInfo?.extra?.['armorerAuthority']
+            ) {
+              throw new Error('MCP authority changed before execution');
+            }
+          }
           return definition.handler(args, callContext);
         }) as never,
       );

@@ -8,10 +8,11 @@ import {
 } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
+import type { ToolRequestContext } from '../../execution-context';
 import type { ExecutionAbortSource } from '../../execution-lifecycle';
 import type { SuspendableExecution } from './input-required';
 import { deliverInputResponse, MCP_ELICITATION_INPUT_KEY } from './input-required';
-import { continuationOwner } from './request-context';
+import { authorityBinding, continuationOwner } from './request-context';
 
 /**
  * Server side of the MCP Tasks extension (`io.modelcontextprotocol/tasks`,
@@ -104,6 +105,8 @@ export type MCPTaskRecord = {
   ownerId: string;
   /** The authenticated `clientId` that created the MCP task, or the empty string. */
   clientId: string;
+  /** Digest of protected authority at admission, when this task is protected. */
+  authorityBinding?: string;
   /** The tool the MCP task runs. */
   toolName: string;
   status: MCPTaskStatus;
@@ -461,6 +464,9 @@ export function createMcpTaskRuntime(options: {
         taskId,
         ownerId,
         clientId: request.clientId,
+        ...(typeof request.context.http?.authInfo?.extra?.['armorerAuthority'] === 'string'
+          ? { authorityBinding: request.context.http.authInfo.extra['armorerAuthority'] }
+          : {}),
         toolName: request.toolName,
         status: 'working',
         createdAt: stamp,
@@ -529,11 +535,23 @@ export function createMcpTaskRuntime(options: {
       };
     },
     /** Registers `tasks/get`, `tasks/update`, and `tasks/cancel` on a 2026-07-28 server. */
-    registerHandlers(server: McpServer, authorize?: (name: string) => Promise<unknown>) {
+    registerHandlers(server: McpServer, authorize?: (name: string) => Promise<ToolRequestContext>) {
       interceptCreationFailures(server, creationFailures);
+      const authorizeRecord = async (record: MCPTaskRecord) => {
+        if (!authorize) {
+          if (record.authorityBinding !== undefined) throw unknownMcpTask();
+          return;
+        }
+        const actor = await authorize(record.toolName);
+        if (
+          !record.authorityBinding ||
+          authorityBinding(actor.authority) !== record.authorityBinding
+        )
+          throw unknownMcpTask();
+      };
       const readAuthorized = async (taskId: string, context: ServerContext) => {
         const record = await read(taskId, clientIdOf(context));
-        if (authorize) await authorize(record.toolName);
+        await authorizeRecord(record);
         return record;
       };
       server.server.setRequestHandler(
@@ -568,7 +586,8 @@ export function createMcpTaskRuntime(options: {
             // The SDK lifts `inputResponses` out of the params onto the request context.
             const inputResponses = context.mcpReq.inputResponses;
             const outstanding = outstandingKey(record);
-            if (outstanding === undefined) return {};
+            const inputRequests = record.inputRequests;
+            if (outstanding === undefined || inputRequests === undefined) return {};
             // A response for any other key (a stale round, an unknown key) is ignored.
             if (inputResponse(inputResponses, outstanding).kind === 'missing') return {};
             // The compare-and-set fences delivery to the round that carries `outstanding`.
@@ -581,9 +600,13 @@ export function createMcpTaskRuntime(options: {
             });
             if (resumed) {
               try {
-                if (authorize) await authorize(record.toolName);
+                await authorizeRecord(record);
               } catch (error) {
-                entry.abort(error);
+                await mutate(taskId, (current) =>
+                  current.status === 'working'
+                    ? { ...current, status: 'input_required', inputRequests }
+                    : undefined,
+                );
                 throw error;
               }
               deliverInputResponse(entry.execution, inputResponses, outstanding);
