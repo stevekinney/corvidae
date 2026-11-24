@@ -93,6 +93,8 @@ export interface StressSetup {
   withdrawable: boolean;
   /** Host wording for a turn's step summary, when a scenario has semantic count-bearing copy. */
   turnLabels?: Partial<ChatTurnLabels>;
+  /** Per-call host wording used only by fixtures that exercise a constrained step title. */
+  toolPresentations: Record<string, ToolCallPresentation>;
 }
 
 /** The empty setup every scenario starts from. */
@@ -114,6 +116,7 @@ function baseSetup(conversation: ConversationHistory): StressSetup {
     secondChat: false,
     emptyPrompts: [],
     withdrawable: false,
+    toolPresentations: {},
   };
 }
 
@@ -692,6 +695,12 @@ const scenarios: Record<StressScenarioName, Scenario> = {
       };
       setup.capabilities = { attachments: true };
       setup.uploads = 'ready';
+      setup.toolPresentations['read-policy'] = {
+        verb: 'Read',
+        tense: 'past',
+        detail: 'the regional chargeback and refund policy for orders awaiting reconciliation',
+        kind: 'fetch',
+      };
     } else {
       conversation = withCall(
         conversation,

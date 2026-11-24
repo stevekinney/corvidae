@@ -180,7 +180,8 @@
       Object.hasOwn(setup.approvalDetails, toolCall.id)
         ? setup.approvalDetails[toolCall.id]
         : setup.approvalDetails[toolCall.name],
-    describeToolCall: (toolCall, result) => describeStressCall(toolCall.name, result?.outcome),
+    describeToolCall: (toolCall, result) =>
+      setup.toolPresentations[toolCall.id] ?? describeStressCall(toolCall.name, result?.outcome),
     resolveToolApproval: async (toolCallId, resolution: ApprovalResolution) => {
       approvals = [...approvals, { toolCallId, decision: resolution.decision }];
       if (resolution.decision === 'approve')
