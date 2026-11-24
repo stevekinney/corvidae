@@ -1128,10 +1128,11 @@ describe('ChatMessage — tool-call rendering', () => {
       expect(source).not.toMatch(
         /@media \(any-pointer: coarse\) \{[^}]*\.chat-tool-call-row\s*\{[^}]*(?:min-block-size|padding-block)/s,
       );
-      // The 44px hit area is a pseudo-element that takes no layout: the header overhangs both
-      // ways, a step row ends at its edges, and only the last row overhangs, below.
+      // The 44px hit area takes no layout: the summary uses an overflowing child because a
+      // generated pseudo-element outside a button's border is not reliably hit-tested. The header
+      // overhangs both ways, a step row ends at its edges, and only the last row overhangs below.
       expect(source).toMatch(
-        /@media \(any-pointer: coarse\) \{[^@]*\.chat-tool-call-toggle::before\s*\{[^}]*inset-block: min\(0px, calc\(\(100% - var\(--cinder-touch-target-min\)\) \/ 2\)\);/s,
+        /@media \(any-pointer: coarse\) \{[^@]*\.chat-tool-call-hit-target\s*\{[^}]*position: absolute;[^}]*pointer-events: auto;[^}]*inset-block: min\(0px, calc\(\(100% - var\(--cinder-touch-target-min\)\) \/ 2\)\);/s,
       );
       expect(source).toMatch(
         /\.chat-tool-call-item:last-child > \.chat-tool-call-row::before\s*\{[^}]*inset-block-end: min\(0px,/s,

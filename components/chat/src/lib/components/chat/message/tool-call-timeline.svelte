@@ -500,6 +500,10 @@
       aria-controls={listId}
       onclick={toggleGroup}
     >
+      <!-- The compact summary keeps its text-height box. This child owns the larger coarse-pointer
+           hit area: generated content outside a button's border is not consistently hit-tested by
+           browsers, while an overflowing descendant is. -->
+      <span class="chat-tool-call-hit-target" aria-hidden="true"></span>
       <ChevronRight class="chat-tool-call-chevron" aria-hidden="true" />
       <span class="chat-tool-call-summary">
         {#if runningRow?.presentation}
@@ -743,8 +747,9 @@
     transform: scaleX(-1);
   }
 
-  /* On a touch screen a row is still painted at its text line height; its 44px hit area is a
-   * pseudo-element that reaches past the row and adds no layout. The row stands above the message
+  /* On a touch screen a row is still painted at its text line height; its 44px hit area reaches
+   * past the row without adding layout. The summary uses an overflowing child because browsers do
+   * not consistently hit-test generated content outside a button's border. The row stands above the message
    * line before it (a stacking position of its own), so the overhang is reachable there. Rows
    * stacked at their text height would cover each other's faces if each overhung both ways, so the
    * header overhangs on both sides, a step row ends at its own edges, and only the last row
@@ -756,7 +761,6 @@
       z-index: 1;
     }
 
-    .chat-tool-call-toggle::before,
     .chat-tool-call-row::before {
       content: '';
       position: absolute;
@@ -764,7 +768,11 @@
       inset-block: 0;
     }
 
-    .chat-tool-call-toggle::before {
+    .chat-tool-call-hit-target {
+      position: absolute;
+      z-index: 0;
+      pointer-events: auto;
+      inset-inline: 0;
       inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
     }
 
