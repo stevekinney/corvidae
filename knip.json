@@ -99,6 +99,25 @@
         "!src/**/*.bench.ts!"
       ]
     },
+    "packages/backchannel-svelte": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
+      ]
+    },
     "packages/bureau": {
       "entry": [
         "**/*.test.ts",
@@ -203,7 +222,11 @@
       "project": ["src/**/*.ts!", "!src/**/*.test.ts!", "scripts/**/*.ts"]
     },
     "scripts/browser-fixtures": {
-      "entry": ["tests/**/*.playwright.ts", "src/fixtures/tool-call-rail.svelte"],
+      "entry": [
+        "tests/**/*.playwright.ts",
+        "src/fixtures/tool-call-rail.svelte",
+        "src/fixtures/backchannel-svelte.svelte"
+      ],
       "project": ["src/**/*.{ts,svelte}", "scripts/**/*.ts", "tests/**/*.playwright.ts"]
     },
     "scripts/groom": {

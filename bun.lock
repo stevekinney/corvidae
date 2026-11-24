@@ -345,6 +345,7 @@
       "dependencies": {
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/lifecycle": "workspace:*",
+        "@lostgradient/mcp": "workspace:*",
         "@modelcontextprotocol/client": "catalog:",
         "@modelcontextprotocol/core": "catalog:",
         "@modelcontextprotocol/ext-apps": "catalog:",
@@ -380,6 +381,20 @@
         "typescript": "catalog:",
       },
     },
+    "packages/backchannel-armorer": {
+      "name": "@lostgradient/backchannel-armorer",
+      "dependencies": {
+        "@lostgradient/backchannel": "workspace:*",
+        "armorer": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/backchannel-mcp": {
       "name": "@lostgradient/backchannel-mcp",
       "dependencies": {
@@ -391,9 +406,31 @@
         "@lostgradient/typescript": "workspace:*",
         "@modelcontextprotocol/client": "catalog:",
         "@types/bun": "catalog:",
+        "armorer": "workspace:*",
         "oxlint": "catalog:",
         "typescript": "catalog:",
         "zod": "catalog:",
+      },
+    },
+    "packages/backchannel-svelte": {
+      "name": "@lostgradient/backchannel-svelte",
+      "dependencies": {
+        "@lostgradient/backchannel": "workspace:*",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@tanstack/svelte-query": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "svelte": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+        "zod": "catalog:",
+      },
+      "peerDependencies": {
+        "@tanstack/svelte-query": "catalog:",
+        "svelte": "catalog:",
       },
     },
     "packages/bungalow": {
@@ -575,7 +612,12 @@
     "packages/mcp": {
       "name": "@lostgradient/mcp",
       "version": "0.0.0",
+      "dependencies": {
+        "@lostgradient/storage": "workspace:*",
+        "zod": "catalog:",
+      },
       "devDependencies": {
+        "@lostgradient/storage-postgres": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
@@ -1496,7 +1538,11 @@
 
     "@lostgradient/backchannel": ["@lostgradient/backchannel@workspace:packages/backchannel"],
 
+    "@lostgradient/backchannel-armorer": ["@lostgradient/backchannel-armorer@workspace:packages/backchannel-armorer"],
+
     "@lostgradient/backchannel-mcp": ["@lostgradient/backchannel-mcp@workspace:packages/backchannel-mcp"],
+
+    "@lostgradient/backchannel-svelte": ["@lostgradient/backchannel-svelte@workspace:packages/backchannel-svelte"],
 
     "@lostgradient/browser-fixtures": ["@lostgradient/browser-fixtures@workspace:scripts/browser-fixtures"],
 

@@ -27,11 +27,13 @@ Run the cross-component browser suite with `bun run test:browser`, or use `bun r
 
 ## Workspace boundaries
 
-Browser component libraries live in `components/`: Cinder, Chat, Editor, and Terminal. Other libraries live in `packages/`: the agent runtimes, the Weft execution engine, the key-value storage protocol Weft and its adapters share, Markdown processing, and the [Cinder MCP server](./packages/cinder-mcp/README.md). Verification tooling lives in `testing/`: the shared test infrastructure and the [evaluator](./testing/evaluation/README.md) that scores completed agent runs against versioned rubrics. No library or component may depend on a `testing/` workspace at runtime. Repository configuration lives in `internal/`, including the `@lostgradient/typescript` presets. Every workspace uses the `@lostgradient/*` namespace.
+Browser component libraries live in `components/`: Cinder, Chat, Editor, and Terminal. Other libraries live in `packages/`: the agent runtimes, the Weft execution engine, the key-value storage protocol Weft and its adapters share, Markdown processing, and the [Cinder MCP server](./packages/cinder-mcp/README.md). Verification tooling lives in `testing/`: the shared test infrastructure and the [evaluator](./testing/evaluation/README.md) that scores completed agent runs against versioned rubrics. No library or component may depend on a `testing/` workspace at runtime. Repository configuration lives in `internal/`, including the `@lostgradient/typescript` presets. Workspace names use the `@lostgradient/*` namespace, with unscoped names for `armorer` and `conversationalist`.
+
+[Backchannel Armorer](./packages/backchannel-armorer/README.md) projects selected tool versions into a server catalog. [Backchannel Svelte](./packages/backchannel-svelte/README.md) supplies the browser runtime for generated catalog bindings.
 
 The applications under `applications/` are the playground, Interborough, and the terminal example (a local browser terminal backed by a Bun PTY). `bun run --filter=@lostgradient/playground dev` starts the component playground, and `bun run --filter=@lostgradient/playground build` exports it as a static site. The `weft` package owns its `weft` and `weft-mcp` source executables. Interborough, under `applications/interborough`, serves the Weft operator console and a Bureau on one loopback origin (`bun run --filter=@lostgradient/interborough dev`), and owns the console's browser tests. Tests spanning Cinder, Chat, and Editor live under `scripts/browser-fixtures`; they need a real browser page, but have no application or package identity. Those hosts compile Svelte and serve their assets with Bun. No workspace uses Vite.
 
-Every source library exposes exactly one package entry:
+Source libraries export TypeScript directly. The package manifest declares the source entry.
 
 ```json
 {
@@ -42,7 +44,7 @@ Every source library exposes exactly one package entry:
 }
 ```
 
-Import supported values and types from the package root. There are no built library artifacts or public subpath aliases. The consuming application compiles its libraries. Root style imports accompany the interface library APIs so applications receive their required CSS cascade.
+Import supported values and types from the root or a subpath declared in the package manifest. The consuming application compiles its libraries. Root style imports accompany the interface library APIs so applications receive their required CSS cascade.
 
 Declare a dependency in the workspace that imports it. Internal dependencies use `workspace:*`; shared third-party versions use the root [Bun catalog](https://bun.sh/docs/pm/catalogs). Run `bun install` after changing manifests and commit the resulting root lockfile with the manifests.
 

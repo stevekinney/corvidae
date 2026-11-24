@@ -8,6 +8,7 @@ import { terminalAppFixtureDeclarations } from '../../../components/terminal/bro
  * them, so its component sweep keeps covering them.
  */
 export const appFixtureDeclarations = {
+  'backchannel-svelte': ['assertion'],
   ...chatAppFixtureDeclarations,
   ...editorAppFixtureDeclarations,
   ...terminalAppFixtureDeclarations,

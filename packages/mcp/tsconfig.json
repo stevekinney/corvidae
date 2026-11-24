@@ -2,5 +2,9 @@
   "extends": "@lostgradient/typescript/library.json",
   "include": ["src"],
   "exclude": ["node_modules", "coverage"],
-  "references": [{ "path": "../../testing/testing/tsconfig.source.json" }]
+  "references": [
+    { "path": "../storage/tsconfig.source.json" },
+    { "path": "../storage-postgres/tsconfig.source.json" },
+    { "path": "../../testing/testing/tsconfig.source.json" }
+  ]
 }
