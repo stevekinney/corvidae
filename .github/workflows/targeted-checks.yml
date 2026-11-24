@@ -36,9 +36,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git merge-base --is-ancestor "$QUALIFICATION_BASE" "$QUALIFICATION_SUBJECT"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git log -1 --format=%P HEAD)" = "$QUALIFICATION_SUBJECT"
+          test "$(git log -1 --format=%P HEAD)" = d8f71026b682b377184ffb7010665fb22ec67054
+          test "$(git log -1 --format=%P HEAD^)" = "$QUALIFICATION_SUBJECT"
           printf '%s\n' \
             .github/workflows/targeted-checks.yml \
             scripts/chef/proof-cor-2659/credential-qualification.spec.ts \
