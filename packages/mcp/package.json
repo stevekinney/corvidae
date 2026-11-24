@@ -15,7 +15,8 @@
     "typecheck": "tsc -b tsconfig.json",
     "test": "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.integration.test.ts'",
     "test:slow": "bun ../../scripts/bun-test-selected.ts .integration.test.ts",
-    "test:oauth:postgres": "bun ../../scripts/bun-test.ts src/oauth-postgres.integration.test.ts"
+    "test:oauth:postgres": "bun ../../scripts/bun-test.ts src/oauth-postgres.integration.test.ts",
+    "test:browser-consent": "bun ../../scripts/bun-test.ts ../credentials/src/browser-consent.integration.test.ts"
   },
   "dependencies": {
     "@lostgradient/storage": "workspace:*",
