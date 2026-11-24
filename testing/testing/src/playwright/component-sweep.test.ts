@@ -4,6 +4,7 @@ import { Window } from 'happy-dom';
 import {
   FIXTURE_PENDING_HIGHLIGHT_REGION_SELECTOR,
   PENDING_HIGHLIGHT_SELECTOR,
+  hasTouchForViewport,
 } from './component-sweep.ts';
 
 test('waits for ordinary highlighters while excluding a fixture-controlled pending region', () => {
@@ -19,4 +20,10 @@ test('waits for ordinary highlighters while excluding a fixture-controlled pendi
     (element) => element.closest(FIXTURE_PENDING_HIGHLIGHT_REGION_SELECTOR) === null,
   );
   expect(uncontrolled).toHaveLength(1);
+});
+
+test('uses coarse-pointer emulation for the mobile fixture profile only', () => {
+  expect(hasTouchForViewport({ name: 'mobile', width: 375, height: 900 })).toBe(true);
+  expect(hasTouchForViewport({ name: 'tablet', width: 768, height: 900 })).toBe(false);
+  expect(hasTouchForViewport({ name: 'desktop', width: 1280, height: 900 })).toBe(false);
 });

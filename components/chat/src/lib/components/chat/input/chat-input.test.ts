@@ -822,6 +822,23 @@ describe('ChatInput', () => {
       target.remove();
     });
 
+    test('reports the empty value after a standalone submission clears the composer', async () => {
+      const values: string[] = [];
+      const { container } = render(ChatInput, {
+        id: 'onComposerInput-cleared-after-send',
+        onsubmit: () => undefined,
+        onComposerInput: (value: string) => values.push(value),
+      });
+      const form = container.querySelector('form')!;
+      const composer = container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
+
+      await fireEvent.input(composer, { target: { value: 'sent follow-up' } });
+      await fireEvent.submit(form);
+
+      expect(composer.value).toBe('');
+      expect(values).toEqual(['sent follow-up', '']);
+    });
+
     test('does not throw when omitted', async () => {
       const target = document.createElement('div');
       document.body.append(target);

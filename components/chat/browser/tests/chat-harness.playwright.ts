@@ -2263,7 +2263,9 @@ test.describe('chat harness — tool calls', () => {
 
         // The chevron sits beside the first line of the header, not centered on a wrapped one.
         const alignment = await toggle.evaluate((button) => {
-          const chevron = button.querySelector('.chat-tool-call-chevron')!.getBoundingClientRect();
+          const chevron = button
+            .querySelector('.cinder-disclosure-trigger__chevron')!
+            .getBoundingClientRect();
           const count = button
             .querySelector('.chat-tool-call-summary-count')!
             .getBoundingClientRect();
@@ -2319,6 +2321,93 @@ test.describe('chat harness — tool calls', () => {
       await rows.click();
       await expect(activity.locator('.chat-tool-call-repeated-call')).toHaveCount(0);
       await expectNoPageOverflow(page);
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('keeps an expanded aggregate summary reachable beyond its painted line on a coarse pointer', async ({
+    browser,
+  }, testInfo) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      hasTouch: true,
+      isMobile: true,
+      viewport: { width: 390, height: 640 },
+    });
+    try {
+      await setHarnessCustomMessageSnippets(page, false);
+      await harness.locator('[data-testid="clear"]').click();
+      await appendToolScenario(page, 'repeated');
+      const aggregate = harness.locator('.chat-tool-call-toggle');
+      await aggregate.click();
+      await expect(aggregate).toHaveAttribute('aria-expanded', 'true');
+      const box = await renderedBox(aggregate, 'expanded aggregate summary');
+      expect(box.height).toBeLessThan(44);
+      const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      const probes = await page.evaluate(
+        ({ centre, target }) => {
+          const describe = (element: Element | null) =>
+            element === null
+              ? null
+              : {
+                  tag: element.tagName,
+                  className: element.getAttribute('class'),
+                  ancestorClasses: Array.from(
+                    element.closest('button, li, ol, section')?.classList ?? [],
+                  ),
+                };
+          const rect = (element: Element | null) => {
+            if (element === null) return null;
+            const { x, y, width, height } = element.getBoundingClientRect();
+            return { x, y, width, height };
+          };
+          const aggregate = document.querySelector(target);
+          const firstRow = document.querySelector(
+            '.chat-tool-call-item:first-child .chat-tool-call-row',
+          );
+          const hitTarget = aggregate?.querySelector('.chat-tool-call-hit-target') ?? null;
+          return {
+            aggregate: rect(aggregate),
+            firstRow: rect(firstRow),
+            hitTarget: rect(hitTarget),
+            points: [-21, 21].map((dy) => ({
+              dy,
+              point: { x: centre.x, y: centre.y + dy },
+              hit: describe(document.elementFromPoint(centre.x, centre.y + dy)),
+            })),
+          };
+        },
+        { centre, target: '.chat-tool-call-toggle' },
+      );
+      await testInfo.attach('expanded aggregate touch probes', {
+        body: JSON.stringify(probes, null, 2),
+        contentType: 'application/json',
+      });
+      for (const dy of [-21, 21] as const) {
+        const owner = await page.evaluate(
+          ([x, y]) =>
+            document
+              .elementFromPoint(x, y)
+              ?.closest('.chat-tool-call-toggle')
+              ?.getAttribute('aria-expanded') ?? null,
+          [centre.x, centre.y + dy] as const,
+        );
+        expect(owner, `point ${dy}px from the expanded aggregate centre`).toBe('true');
+      }
+      const firstRow = harness
+        .locator('.chat-tool-call-item')
+        .first()
+        .locator('.chat-tool-call-row');
+      const firstRowBox = await renderedBox(firstRow, 'first expanded aggregate row');
+      const firstRowOwner = await page.evaluate(
+        ([x, y]) =>
+          document
+            .elementFromPoint(x, y)
+            ?.closest('.chat-tool-call-row')
+            ?.getAttribute('aria-expanded') ?? null,
+        [firstRowBox.x + firstRowBox.width / 2, firstRowBox.y + firstRowBox.height / 2] as const,
+      );
+      expect(firstRowOwner).toBe('false');
     } finally {
       await dispose();
     }

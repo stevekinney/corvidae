@@ -149,6 +149,9 @@ export function projectChatToolAction(
   if (action.snapshotId !== undefined) projected['snapshotId'] = action.snapshotId;
   if (action.expiresAt !== undefined) projected['expiresAt'] = action.expiresAt;
   if (action.editableArgs !== undefined) projected['editableArgs'] = action.editableArgs;
+  if (action.irreversible !== undefined) projected['irreversible'] = action.irreversible;
+  if (action.consequence !== undefined) projected['consequence'] = action.consequence;
+  if (action.why !== undefined) projected['why'] = action.why;
   projected['policyVersion'] = action.policyVersion;
   projected['idempotencyKey'] = action.idempotencyKey;
   return projected;

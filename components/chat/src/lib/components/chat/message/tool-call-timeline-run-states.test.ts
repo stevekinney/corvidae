@@ -326,7 +326,10 @@ describe('R7: a failed step', () => {
     const tooltip = actions?.querySelector('[role="tooltip"]');
     expect(tooltip?.textContent).toBe('Copy error');
     expect(tooltip?.hasAttribute('data-cinder-visible')).toBe(false);
-    await fireEvent.click(getByRole('button', { name: 'Retry' }));
+    const source = await Bun.file(new URL('./tool-call-timeline.svelte', import.meta.url)).text();
+    expect(source).toContain('.chat-tool-call-failure-actions {\n    display: flex;');
+    expect(source).toContain('gap: var(--cinder-space-3);');
+    await fireEvent.click(getByRole('button', { name: 'Retry this step' }));
     expect(retryStep).toHaveBeenCalledWith('s3');
   });
 

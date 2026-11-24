@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import type { ConversationHistory } from 'conversationalist';
 
+import { continuationRow } from '../session-resume.ts';
 import { startTaskFrom } from '../test/task-start-request.ts';
 import { sharedSnapshotMessages } from './ag-ui-messages.ts';
 import { as, openBureau } from './management/management-fixtures.test-support.ts';
@@ -42,6 +43,36 @@ describe('shared thread message projection', () => {
         id: 'assistant',
         role: 'assistant',
         content: 'Answer with [citation](https://example.com/source).',
+      },
+    ]);
+  });
+
+  it('withholds a hidden continuation row while preserving a visible citation', () => {
+    const continuation = continuationRow(
+      'stopped-run',
+      'continue-command',
+      'workspace:owner',
+      'continued-run',
+      '2026-11-24T12:00:00.000Z',
+    );
+    const history = {
+      id: 'shared',
+      ids: [continuation.id, 'assistant'],
+      messages: {
+        [continuation.id]: continuation,
+        assistant: {
+          id: 'assistant',
+          role: 'assistant',
+          content: 'Visible [citation](https://example.com/source).',
+        },
+      },
+    } as unknown as ConversationHistory;
+
+    expect(sharedSnapshotMessages(history)).toEqual([
+      {
+        id: 'assistant',
+        role: 'assistant',
+        content: 'Visible [citation](https://example.com/source).',
       },
     ]);
   });

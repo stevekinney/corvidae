@@ -40,6 +40,8 @@
     onSelect?: ((callId: string) => void) | undefined;
     /** The call whose panel is open: its row is tinted. Only with `onSelect`. */
     selectedId?: string | undefined;
+    /** Retries the interrupted turn from a failed tool row. */
+    onRetryStep?: ((callId: string) => void) | undefined;
   }
 
   let {
@@ -53,6 +55,7 @@
     opensPanel,
     onSelect,
     selectedId,
+    onRetryStep,
   }: ToolCallsProps = $props();
 
   let openDetails = $state<ReadonlySet<string>>(new Set());
@@ -77,6 +80,9 @@
       (entry.decision !== undefined &&
         (entry.decision.outcome === 'denied' ||
           decided.elsewhere?.has(entry.callId) === true ||
+          // A review identity is durable on the result row. On a route return the page did not
+          // observe the decision, but this is still the receipt that links back to Reviews.
+          entry.reviewId !== undefined ||
           // A call whose row carries a link keeps its approval under it, since the row's
           // words are the answer.
           (entry.resultHref !== undefined && entry.decision.outcome === 'approved'))));
@@ -114,8 +120,10 @@
     {duration}
     {endLabel}
     label={CHAT_COPY.tools.railLabel}
+    labels={{ retry: 'Retry this step' }}
     {selectedId}
     onSelect={onSelect ?? toggleDetails}
+    onRetry={onRetryStep}
   >
     {#snippet children(call)}
       {@const entry = byId.get(call.id)}

@@ -275,6 +275,13 @@ export const CHAT_COPY = {
      */
     stopFailed: 'The run could not be stopped, and it may still be going. Reconnect to check.',
   },
+  /** Actions on a terminal stopped turn (COR-2437). */
+  discardTurn: {
+    failed: 'The stopped reply wasn’t discarded. Try again.',
+  },
+  resumeTurn: {
+    failed: 'The stopped reply couldn’t continue. Try again.',
+  },
   /** The host-owned answer replacement action. */
   regeneration: {
     action: 'Regenerate',
@@ -297,6 +304,7 @@ export const CHAT_COPY = {
   humanRequestFallback: 'The agent is waiting for your answer.',
   /** The label of a question that declares no schema, which takes free text. */
   questionAnswerLabel: 'Answer',
+  replyInChat: 'Reply in chat',
   /** Said under a question that is picked from choices: the number keys. */
   pickHint: (count: number): string =>
     count === 1 ? 'Press 1 to pick the choice.' : `Press 1 to ${count} to pick a choice.`,
@@ -518,7 +526,11 @@ export const CHAT_COPY = {
   composer: {
     /** The placeholder of a chat with an agent, which `{name}` fills with the agent's name. */
     placeholder: (agent: string): string => `Message ${agent}…`,
-    unreachable: 'Sending is off until Interborough is reachable',
+    /**
+     * The line under the composer while the chat works: a message sent now waits in Up next and
+     * goes when the run finishes (COR-2284), so it does not steer the run.
+     */
+    working: 'A message sent now waits until this run finishes.',
     restarting: 'Sending resumes when Interborough is back.',
     pluginDisabled: (agent: string, plugin: string): string =>
       `${agent} isn’t available. Enable the ${plugin} plugin to continue.`,

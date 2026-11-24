@@ -237,14 +237,16 @@ export type SharedAdmissionSequenceAdmitte_e74023ec = {
     | 'canceled'
     | 'failed';
 };
-export type SharedAgeMillisecondsAgentName_987c1d9b = {
+export type SharedAgeMillisecondsAgentName_d881af14 = {
   readonly ageMilliseconds: number;
   readonly agentName?: string;
   readonly approval: {
     readonly action:
       | { readonly message?: string; readonly type: 'input' }
       | {
+          readonly consequence?: string;
           readonly expiresAt?: string;
+          readonly irreversible?: boolean;
           readonly message?: string;
           readonly operation:
             | {
@@ -261,6 +263,7 @@ export type SharedAgeMillisecondsAgentName_987c1d9b = {
             | { readonly filesTouched?: ReadonlyArray<string>; readonly kind: 'other' };
           readonly risk: 'low' | 'medium' | 'high';
           readonly type: 'approval';
+          readonly why?: string;
         };
     readonly arguments: unknown;
     readonly callId: string;
@@ -591,6 +594,11 @@ export type SharedCodeLastFiredAtRetryAt_58907586 = {
   readonly retryAt: string | null;
   readonly since: string;
   readonly state: 'listening' | 'waiting-for-secret' | 'failed' | 'stopped' | 'ready' | 'standby';
+};
+export type SharedCommandIdContextIdRunId_f3b33fe9 = {
+  readonly commandId: string;
+  readonly contextId: string;
+  readonly runId: string;
 };
 export type SharedCommandOutcome_2d8e5749 = {
   readonly command: SharedConfigVersionFailureId_72126ec5;

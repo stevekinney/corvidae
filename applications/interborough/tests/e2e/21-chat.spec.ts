@@ -360,6 +360,8 @@ test.describe('leaving a chat while its run is going', () => {
     await expect(page).toHaveURL(new RegExp(`/chats/${threadId}$`));
     // The page joined the run it left: its transcript is the thread as the Bureau holds it.
     await expect(conversation(page).getByText('Start the work')).toBeVisible();
+    // The accepted follow-up is in the transcript, not a draft restored when this route remounts.
+    await expect(page.getByRole('textbox', { name: 'Message' })).toHaveValue('');
     await expectWaiting(request, 1);
 
     await releaseBarrier(request);

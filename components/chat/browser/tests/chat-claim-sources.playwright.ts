@@ -22,23 +22,37 @@ const SOURCES = [
   { id: 'source-b', label: 'Investor call', detail: 'Transcript' },
 ];
 
-test('production Chat renders each source beside its supporting claim (COR-2452)', async ({
-  page,
-}, testInfo) => {
-  await page.goto(`${fixtureRoute('chat')}&productionClaims=1`);
-  const transcript = page.locator('#fixture-basic-chat');
-  const first = transcript.locator('[data-chat-cited-claim="revenue"]');
-  const second = transcript.locator('[data-chat-cited-claim="costs"]');
-  await expect(first.getByRole('link', { name: 'Revenue rose' })).toBeVisible();
-  await expect(second.locator('strong')).toHaveText('fell');
-  await expect(first.locator('a [data-number]')).toHaveCount(0);
-  const screenshot = testInfo.outputPath('claim-citations.png');
-  await transcript.screenshot({ path: screenshot });
-  await testInfo.attach('claim citations', { path: screenshot, contentType: 'image/png' });
-  await first.getByRole('button', { name: 'Sources (1)' }).click();
-  await expect(page.getByRole('link', { name: 'Annual report' })).toBeVisible();
-  await expect(page.getByText('Investor call', { exact: true })).toHaveCount(0);
-});
+for (const profile of [
+  { name: 'phone', viewport: { width: 375, height: 800 }, hasTouch: true, isMobile: true },
+  { name: 'desktop', viewport: { width: 1280, height: 900 }, hasTouch: false, isMobile: false },
+] as const) {
+  test.describe(`production claim sources on ${profile.name}`, () => {
+    test.use(profile);
+
+    test('production Chat renders each source beside its supporting claim (COR-2452)', async ({
+      page,
+    }, testInfo) => {
+      await page.goto(`${fixtureRoute('chat')}&productionClaims=1`);
+      const transcript = page.locator('#fixture-basic-chat');
+      const first = transcript.locator('[data-chat-cited-claim="revenue"]');
+      const second = transcript.locator('[data-chat-cited-claim="costs"]');
+      await expect(first.getByRole('link', { name: 'Revenue rose' })).toBeVisible();
+      await expect(second.locator('strong')).toHaveText('fell');
+      await expect(first.locator('a [data-number]')).toHaveCount(0);
+      const screenshot = testInfo.outputPath('claim-citations.png');
+      await transcript.screenshot({ path: screenshot });
+      await testInfo.attach('claim citations', { path: screenshot, contentType: 'image/png' });
+      const marker = first.getByRole('button', { name: 'Annual report', exact: true });
+      await marker.click();
+      const sources = page.getByRole('region', { name: 'Sources' });
+      await expect(sources.getByRole('link', { name: 'Annual report' })).toBeVisible();
+      await expect(sources.getByText('Investor call', { exact: true })).toHaveCount(0);
+      await page.keyboard.press('Escape');
+      await expect(sources).toHaveCount(0);
+      await expect(marker).toBeFocused();
+    });
+  });
+}
 
 async function send(page: Page, event: unknown): Promise<void> {
   await page.evaluate((next) => {
