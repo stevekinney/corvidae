@@ -18,6 +18,7 @@ import {
   type WorkspacePrivacyActor,
 } from '../workspace-privacy-fixtures.test-support.ts';
 import { workspaceConformanceLedger } from '../workspace-conformance-ledger.test-support.ts';
+import type { WorkspaceMembership } from '../workspace-principal.ts';
 import {
   contextsRequestShareOperation,
   contextsRevokeShareOperation,
@@ -61,7 +62,7 @@ function sharingHost(
         runOwner: async () => undefined,
       },
       workspaceAuthority: () => async () => true,
-      resolveWorkspaceOwner: async (owner: string) =>
+      resolveWorkspaceOwner: async (owner: string): Promise<WorkspaceMembership | undefined> =>
         owner === WORKSPACE_PRIVACY_ACTORS.peer.owner
           ? {
               version: 1 as const,
@@ -134,7 +135,7 @@ describe('chat sharing access requests', () => {
           '2026-11-24T00:01:00.000Z',
         ),
       }));
-      return { ...workspacePrincipal('owner').workspace, displayName: 'Avery Owner' };
+      return { version: 1, ...workspacePrincipal('owner').workspace, displayName: 'Avery Owner' };
     };
 
     await expect(
