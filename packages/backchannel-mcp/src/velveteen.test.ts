@@ -120,7 +120,7 @@ test.each(['modern', 'legacy'] as const)(
     })['/api']!;
     const service = group.start('/app').fetch;
     const clients: Client[] = [];
-    async function connect(token: string) {
+    async function connect(token: string, fetchService = service) {
       const transport = new StreamableHTTPClientTransport(
         new URL('https://equipment.example/app/api/mcp'),
         {
@@ -130,7 +130,7 @@ test.each(['modern', 'legacy'] as const)(
             target.pathname = '/mcp';
             const headers = new Headers(request.headers);
             headers.set('authorization', `Bearer ${token}`);
-            return service(
+            return fetchService(
               new Request(target, {
                 method: request.method,
                 headers,
@@ -188,6 +188,23 @@ test.each(['modern', 'legacy'] as const)(
       });
       expect(insufficient.isError).toBe(true);
       expect(JSON.stringify(insufficient._meta)).toContain('insufficient_scope');
+      expect(renames).toBe(0);
+      const { checkPolicy: _unusedPolicy, ...customWrite } = write;
+      const customService = mountCatalog({
+        basePath: '/api',
+        publicOrigin: 'https://equipment.example',
+        operations: [read, customWrite],
+        host: {},
+        authenticateApi: async () => ({ method: 'api-key', principal }),
+        mcp: { serverInfo: { name: 'equipment', version: '1' }, authorization },
+      })['/api']!.start('/app').fetch;
+      const custom = await connect('upgrade', customService);
+      const unchecked = await custom.callTool({
+        name: 'equipment.rename',
+        arguments: { name: 'Tripod' },
+      });
+      expect(unchecked.isError).toBe(true);
+      expect(unchecked._meta?.['mcp/www_authenticate']).toBeUndefined();
       expect(renames).toBe(0);
       const editor = await connect('editor');
       expect(

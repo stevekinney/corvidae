@@ -2,7 +2,6 @@ import {
   createOperationHandler,
   createOperationRegistry,
   type AuthenticatedPrincipal,
-  type OperationFault,
   type OperationHandlerMountOperation,
   type OperationHandlerOptions,
 } from '@lostgradient/backchannel';
@@ -127,14 +126,7 @@ export function mountCatalog<Host>(options: CatalogOptions<Host>) {
     },
   };
   const profile = options.mcp.authorization;
-  const allowedProbe: OperationFault = {
-    code: 'Forbidden',
-    message: 'policy probe',
-    data: { reason: 'policy probe' },
-  };
-  const probeRegistry = createOperationRegistry(options.operations, {
-    interceptors: [async () => ({ ok: false, fault: allowedProbe })],
-  });
+  const policyRegistry = createOperationRegistry(options.operations);
   const scopes = [
     ...new Set(
       options.operations.flatMap((operation) =>
@@ -228,28 +220,25 @@ export function mountCatalog<Host>(options: CatalogOptions<Host>) {
                         candidate.every((scope) => context.grant.scopes.includes(scope)),
                       ) ?? grantable[0];
                     if (choice && choice.some((scope) => !context.grant.scopes.includes(scope))) {
-                      const authorizedScopes = new Set(
-                        latest.principal.delegableScopes.filter((scope) =>
-                          currentPrincipal.scopes.has(scope),
-                        ),
+                      const policy = options.operations.find(
+                        (candidate) => candidate.name === operation.name,
                       );
-                      const policyPrincipal = {
-                        ...currentPrincipal,
-                        scopes: authorizedScopes,
-                        hasScope: (scope: string) => authorizedScopes.has(scope),
-                      };
-                      const probe = await probeRegistry.get(operation.name)!.dispatch(input, {
-                        principal: policyPrincipal,
+                      if (!policy?.checkPolicy)
+                        return {
+                          fault: {
+                            code: 'Forbidden',
+                            message: 'Permission denied',
+                            data: { reason: 'Policy cannot be checked' },
+                          },
+                        };
+                      const decision = await policy.checkPolicy(input, {
+                        principal: currentPrincipal,
                         host: options.host,
                         transport: 'mcp',
-                        registry: probeRegistry,
+                        registry: policyRegistry,
                         signal,
                       });
-                      if (probe.ok)
-                        return {
-                          fault: { code: 'EngineFailure', message: 'internal error', data: {} },
-                        };
-                      if (probe.fault !== allowedProbe) return { fault: probe.fault };
+                      if (!decision.ok) return { fault: decision.fault };
                     }
                     const result = await context.requireScopes(choice ?? []);
                     if (result.ok) {

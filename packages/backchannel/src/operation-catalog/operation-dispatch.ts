@@ -158,3 +158,13 @@ async function prepareTypedInput<Input, SchemaOutput, Host>(
   tracePipeline(context.pipelineTrace, 'authorized');
   return { ok: true, value: invocation };
 }
+
+/** Evaluate transport, access, input, and application policy without invoking the operation. */
+export async function checkOperationPolicy<Input, SchemaOutput, Host>(
+  operation: OperationMetadata<Input, SchemaOutput, Host>,
+  rawInput: unknown,
+  context: DispatchContext<Host>,
+): Promise<DispatchResult<void>> {
+  const result = await prepareTypedInput(operation, rawInput, context);
+  return result.ok ? { ok: true, value: undefined } : result;
+}
