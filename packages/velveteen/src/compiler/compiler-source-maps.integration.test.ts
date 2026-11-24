@@ -5,12 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const outcome = await (async () => {
-  const directory = await mkdtemp(
-    join(
-      process.env.CHEF_SCRATCH_DIRECTORY ?? tmpdir(),
-      "compiler-source-maps-",
-    ),
-  );
+  const directory = await mkdtemp(join(tmpdir(), "compiler-source-maps-"));
   try {
     const build = await Bun.build({
       entrypoints: [join(import.meta.dir, "index.ts")],
