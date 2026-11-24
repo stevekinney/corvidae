@@ -46,9 +46,11 @@ describe('protected HTTP listener', () => {
       }),
     );
     const reader = response.body!.getReader();
-    expect(new TextDecoder().decode((await reader.read()).value)).toBe('first');
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toBe('first');
     listener!();
-    expect((await reader.read()).done).toBe(true);
+    const closed = await reader.read();
+    expect(closed.done).toBe(true);
     expect(unsubscribed).toBe(true);
   });
   test('binds supplied grant, client and tenant identities across an awaited dispatch', async () => {

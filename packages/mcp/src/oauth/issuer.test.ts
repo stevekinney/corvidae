@@ -91,9 +91,8 @@ describe('hosted OAuth issuer', () => {
       delete oldGrant.approvedAt;
       await storage.put(key, new TextEncoder().encode(JSON.stringify(oldGrant)));
     }
-    expect(
-      (await issuer.listConnectedApps({ subject: 'subject', tenant: 'tenant' }))[0]?.approvedAt,
-    ).toBeNull();
+    const oldInventory = await issuer.listConnectedApps({ subject: 'subject', tenant: 'tenant' });
+    expect(oldInventory[0]?.approvedAt).toBeNull();
     const token = await request('/oauth/token', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },

@@ -385,7 +385,8 @@ test('separate live issuers enforce grant and current authority across restart',
   const tokens = await exchanged.json();
   const independentResponse = await exchange(independentCode);
   const independent = await independentResponse.json();
-  const chat = await (await exchange(chatCode, chatClient.client_id)).json();
+  const chatResponse = await exchange(chatCode, chatClient.client_id);
+  const chat = await chatResponse.json();
   await secondStorage[Symbol.asyncDispose]();
   await using restartedStorage = new PostgresStorage(configuration);
   await using peerStorage = new PostgresStorage(configuration);
@@ -492,19 +493,21 @@ test('separate live issuers enforce grant and current authority across restart',
     }),
   );
   const streamReader = streamResponse.body!.getReader();
-  expect(new TextDecoder().decode((await streamReader.read()).value)).toBe('first');
+  const firstEvent = await streamReader.read();
+  expect(new TextDecoder().decode(firstEvent.value)).toBe('first');
   pauseAt = authorityCalls + 2;
   const racingAccess = protectedRequest();
   await reachedPause;
   expect(
     await restarted.revokeConnectedApp(
       { subject: 'subject', tenant: 'tenant' },
-      originalGrant!.grantId!,
+      originalGrant!.grantId,
     ),
   ).toBe(true);
   release();
   streamController.enqueue(new TextEncoder().encode('private-after-revoke'));
-  expect((await streamReader.read()).done).toBe(true);
+  const closedStream = await streamReader.read();
+  expect(closedStream.done).toBe(true);
   expect(await new OAuthStore(restartedStorage).getAccess(rotated.access_token)).toBeNull();
   const afterRevoke = await racingAccess;
   expect(afterRevoke.status).toBe(401);
@@ -532,8 +535,10 @@ test('separate live issuers enforce grant and current authority across restart',
     }),
   });
   expect(await revokedRefresh.json()).toEqual({ error: 'invalid_grant' });
-  expect((await protectedRequest()).status).toBe(401);
-  expect((await request(peer, `/oauth/authorize?${authorize}`)).status).toBe(200);
+  const deniedRequest = await protectedRequest();
+  expect(deniedRequest.status).toBe(401);
+  const stillSignedIn = await request(peer, `/oauth/authorize?${authorize}`);
+  expect(stillSignedIn.status).toBe(200);
   delegableScopes = [];
   expect(await restarted.verifyAccessToken(independent.access_token)).toBeNull();
   const deniedDelegation = await request(peer, '/oauth/token', {

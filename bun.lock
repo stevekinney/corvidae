@@ -537,11 +537,11 @@
       "dependencies": {
         "@lostgradient/backchannel": "workspace:*",
         "@lostgradient/backchannel-svelte": "workspace:*",
-        "@lostgradient/mcp": "workspace:*",
         "zod": "catalog:",
       },
       "devDependencies": {
         "@lostgradient/cinder": "workspace:*",
+        "@lostgradient/mcp": "workspace:*",
         "@lostgradient/storage-postgres": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",

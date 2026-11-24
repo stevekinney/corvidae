@@ -14,6 +14,7 @@
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts && bun ../../scripts/check-inherited-key-reads.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts",
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
     "test": "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.integration.test.ts' --path-ignore-patterns='**/*.slow.test.ts'",
     "test:slow": "bun ../../scripts/bun-test-selected.ts .slow.test.ts && bun ../../scripts/bun-test-selected.ts .integration.test.ts",
@@ -24,7 +25,6 @@
   "dependencies": {
     "@lostgradient/backchannel": "workspace:*",
     "@lostgradient/backchannel-svelte": "workspace:*",
-    "@lostgradient/mcp": "workspace:*",
     "zod": "catalog:"
   },
   "peerDependencies": {
@@ -39,6 +39,7 @@
   },
   "devDependencies": {
     "@lostgradient/cinder": "workspace:*",
+    "@lostgradient/mcp": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@lostgradient/storage-postgres": "workspace:*",

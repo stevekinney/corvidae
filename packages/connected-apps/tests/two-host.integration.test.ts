@@ -1,15 +1,21 @@
+import { principalFromJwtClaims } from '@lostgradient/backchannel';
 import { OAuthStore, hostedOAuth } from '@lostgradient/mcp/oauth';
 import { PostgresStorage } from '@lostgradient/storage-postgres';
 import { createPostgresTestServer } from '@lostgradient/testing/postgres-server';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { createTool, createToolbox } from 'armorer';
 import { createToolboxMcpHandler } from 'armorer/mcp/http';
-import { expect, test } from 'bun:test';
+import { afterAll, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { hostedConnectedAppsHost } from '../src/backchannel.ts';
+
+const database = await createPostgresTestServer();
+afterAll(async () => {
+  await database[Symbol.asyncDispose]();
+});
 
 test('independent approvals retain native tool access after one grant is revoked on another host', async () => {
-  await using database = await createPostgresTestServer();
   const configuration = { url: database.url, table: 'connected_apps_tool_contract' };
   await using storageA = new PostgresStorage(configuration);
   await using storageB = new PostgresStorage(configuration);
@@ -31,6 +37,19 @@ test('independent approvals retain native tool access after one grant is revoked
   };
   const issuerA = hostedOAuth({ ...issuerConfiguration, store: storeA });
   const issuerB = hostedOAuth({ ...issuerConfiguration, store: storeB });
+  const manager = hostedConnectedAppsHost(issuerA, async () => true);
+  const principal = {
+    ...principalFromJwtClaims({ sub: identity.subject }),
+    workspace: {
+      version: 1 as const,
+      workspaceId: identity.tenant,
+      actorId: identity.subject,
+      actorKind: 'user' as const,
+      owner: identity.subject,
+      membershipRevision: '1',
+      capabilities: ['workspace:use' as const],
+    },
+  };
   const tokens: string[] = [];
   for (const [id, client] of [
     ['first', 'claude'],
@@ -135,7 +154,7 @@ test('independent approvals retain native tool access after one grant is revoked
   };
   try {
     expect(JSON.stringify(await call(tokens[0]!))).toContain('asset');
-    expect(await issuerA.revokeConnectedApp(identity, 'first')).toBe(true);
+    expect(await manager.revoke!(principal, 'first')).toBe(true);
     const denied = await fetch(new URL('/mcp', server.url), {
       headers: { authorization: `Bearer ${tokens[0]}` },
     });

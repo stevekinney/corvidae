@@ -5,7 +5,6 @@ import {
   type Principal,
 } from '@lostgradient/backchannel';
 import { readRestBodyBounded } from '@lostgradient/backchannel/internals';
-import type { hostedOAuth } from '@lostgradient/mcp/oauth';
 import { z } from 'zod';
 
 const permission = z.object({ scope: z.string(), description: z.string(), available: z.boolean() });
@@ -34,7 +33,13 @@ export type ConnectedAppsHost = {
   managementDestination?: string;
 };
 export function hostedConnectedAppsHost(
-  issuer: ReturnType<typeof hostedOAuth>,
+  issuer: {
+    listConnectedApps(identity: { subject: string; tenant: string }): Promise<ConnectedApp[]>;
+    revokeConnectedApp(
+      identity: { subject: string; tenant: string },
+      grantId: string,
+    ): Promise<boolean>;
+  },
   currentMember: ConnectedAppsHost['currentMember'],
 ): ConnectedAppsHost {
   const identity = (principal: Principal) => {

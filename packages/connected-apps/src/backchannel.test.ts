@@ -59,26 +59,29 @@ test('limits personal management to a current session and applies the write guar
     };
   };
   expect(connectedAppsOperations.every((operation) => !operation.mcpExposable)).toBe(true);
-  expect((await call('connected.apps.list', {})).body?.result).toEqual({
+  const listing = await call('connected.apps.list', {});
+  expect(listing.body?.result).toEqual({
     grants: [],
     canList: true,
     canRevoke: true,
   });
-  expect(
-    (await call('connected.apps.revoke', { grantId: 'owned' }, 'invalid')).response.status,
-  ).toBe(403);
+  const denied = await call('connected.apps.revoke', { grantId: 'owned' }, 'invalid');
+  expect(denied.response.status).toBe(403);
   expect(revoked).toBe(false);
   const missing = await call('connected.apps.revoke', { grantId: 'missing' });
   const foreign = await call('connected.apps.revoke', { grantId: 'foreign' });
   expect(missing.response.status).toBe(foreign.response.status);
   expect(missing.body?.error).toEqual(foreign.body?.error);
-  for (let attempt = 0; attempt < 2; attempt++)
-    expect((await call('connected.apps.revoke', { grantId: 'owned' })).body?.result).toEqual({
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await call('connected.apps.revoke', { grantId: 'owned' });
+    expect(result.body?.result).toEqual({
       grantId: 'owned',
       status: 'revoked',
     });
+  }
   signedIn = false;
-  expect((await call('connected.apps.list', {})).body?.error).toBeDefined();
+  const anonymous = await call('connected.apps.list', {});
+  expect(anonymous.body?.error).toBeDefined();
 });
 
 test('external management capabilities receive the current actor and can be absent', async () => {
@@ -129,7 +132,8 @@ test('external management capabilities receive the current actor and can be abse
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
       }),
     );
-    return ((await response.json()) as { result: unknown }).result;
+    const body = (await response.json()) as { result: unknown };
+    return body.result;
   };
   const enabled = makeHandler(host);
   await invoke(enabled, 'connected.apps.list', {});

@@ -63,6 +63,7 @@ function publicWorkspaceName(directoryName: string): string {
 /** The complete, exact set of current workspace names, per the COR-1284 ruling. */
 const expectedWorkspaceNames = new Set([
   '@lostgradient/api-key-settings',
+  '@lostgradient/connected-apps',
   '@lostgradient/backchannel',
   '@lostgradient/backchannel-armorer',
   '@lostgradient/backchannel-mcp',

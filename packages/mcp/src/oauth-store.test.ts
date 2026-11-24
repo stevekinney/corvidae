@@ -57,9 +57,11 @@ describe('OAuthStore consent', () => {
     const grants = await store.listGrants(identity);
     expect(grants.find((grant) => grant.grantId === 'old')?.approvedAt).toBeNull();
     expect(grants.find((grant) => grant.grantId === 'new')?.approvedAt).toEqual(expect.any(Number));
-    expect((await store.getGrant('old'))?.approvedAt).toBeNull();
+    const oldGrant = await store.getGrant('old');
+    expect(oldGrant?.approvedAt).toBeNull();
     expect(await store.revokeOwnedGrant('old', identity)).toBe(true);
-    expect((await store.getGrant('old'))?.active).toBe(false);
+    const revokedGrant = await store.getGrant('old');
+    expect(revokedGrant?.active).toBe(false);
   });
   test('lists and revokes only grants owned by the member in the active workspace', async () => {
     using storage = new MemoryStorage();
@@ -87,7 +89,8 @@ describe('OAuthStore consent', () => {
       ).toBe(true);
     }
     const identity = { issuer: consent.issuer, tenant: 'tenant', subject: 'subject' };
-    expect((await second.listGrants(identity)).map((grant) => grant.grantId)).toEqual(['own']);
+    const visible = await second.listGrants(identity);
+    expect(visible.map((grant) => grant.grantId)).toEqual(['own']);
     expect(await second.revokeOwnedGrant('other-member', identity)).toBe(false);
     expect(await second.revokeOwnedGrant('missing', identity)).toBe(false);
     let release!: () => void;
@@ -108,7 +111,8 @@ describe('OAuthStore consent', () => {
     expect(await second.revokeOwnedGrant('own', identity)).toBe(true);
     expect(await second.revokeOwnedGrant('own', identity)).toBe(true);
     expect(await first.listGrants(identity)).toEqual([]);
-    expect((await first.getGrant('other-member'))?.active).toBe(true);
+    const otherGrant = await first.getGrant('other-member');
+    expect(otherGrant?.active).toBe(true);
   });
 
   test('approval and denial have one winner without partial grant or code records', async () => {
