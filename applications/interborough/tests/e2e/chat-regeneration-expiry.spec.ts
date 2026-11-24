@@ -1,5 +1,5 @@
 /** Real-host proofs for Chat's ended-answer regeneration and expired approval retry. */
-import type { Locator, Page } from '@playwright/test';
+import type { Locator, Page, Route } from '@playwright/test';
 
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
@@ -418,13 +418,62 @@ for (const viewport of VIEWPORTS) {
       // words (COR-2406).
       expect(await textCoveredByAnotherElement(answer)).toEqual([]);
       await answer.hover();
-      const regenerationResponsePromise = page.waitForResponse(
-        (response) => response.request().method() === 'POST' && response.url().endsWith('/jsonrpc'),
-      );
+      let recordRegenerationResponse: (witness: {
+        readonly request: {
+          readonly id?: unknown;
+          readonly jsonrpc?: unknown;
+          readonly method?: unknown;
+        };
+        readonly body: string;
+        readonly ok: boolean;
+        readonly status: number;
+      }) => void;
+      const regenerationResponsePromise = new Promise<{
+        readonly request: {
+          readonly id?: unknown;
+          readonly jsonrpc?: unknown;
+          readonly method?: unknown;
+        };
+        readonly body: string;
+        readonly ok: boolean;
+        readonly status: number;
+      }>((resolve) => {
+        recordRegenerationResponse = resolve;
+      });
+      const forwardRegenerationResponse = async (route: Route) => {
+        const request = route.request();
+        const envelope = request.postDataJSON() as {
+          id?: unknown;
+          jsonrpc?: unknown;
+          method?: unknown;
+        };
+        if (request.method() !== 'POST' || envelope.method !== 'bureau.contexts.regenerate') {
+          await route.fallback();
+          return;
+        }
+        const response = await route.fetch();
+        const body = await response.text();
+        await route.fulfill({ response, body });
+        recordRegenerationResponse({
+          request: envelope,
+          body,
+          ok: response.ok(),
+          status: response.status(),
+        });
+      };
+      await page.route('**/jsonrpc', forwardRegenerationResponse);
       await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
       const regenerationResponse = await regenerationResponsePromise;
-      expect(regenerationResponse.ok()).toBe(true);
-      const regenerationBody = (await regenerationResponse.json()) as {
+      await page.unroute('**/jsonrpc', forwardRegenerationResponse);
+      expect(regenerationResponse.ok).toBe(true);
+      expect(regenerationResponse.status).toBeGreaterThanOrEqual(200);
+      expect(regenerationResponse.status).toBeLessThan(300);
+      expect(regenerationResponse.request).toMatchObject({
+        id: expect.anything(),
+        jsonrpc: '2.0',
+        method: 'bureau.contexts.regenerate',
+      });
+      const regenerationBody = JSON.parse(regenerationResponse.body) as {
         result?: unknown;
         error?: unknown;
       };
