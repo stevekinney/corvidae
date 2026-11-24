@@ -413,11 +413,14 @@ test.describe('Restarting after Enable and restart (frame i: 20f)', () => {
     const row = railRow(page, 'List changes');
     await expect(row).toContainText('0.8s');
     const card = conversation.locator('.cinder-approval-card');
+    await expect(card).toHaveAttribute('data-cinder-layout', 'decision');
+    await expect(card).toHaveAttribute('data-cinder-risk', 'medium');
     await expect(card).toContainText('Publish notes for 2.4?');
     await expect(card.locator('.cinder-approval-card__state-word')).toHaveText('Unavailable');
-    await expect(card).toContainText('Changes things');
-    await expect(card).toContainText('Approval from Release helper');
-    await expect(card).toContainText('12 min ago');
+    await expect(card.locator('.cinder-approval-card__asker-source')).toHaveText(
+      'Approval from Release helper',
+    );
+    await expect(card.locator('.cinder-approval-card__asker-time')).toHaveText('12 min ago');
     await expect(card).toContainText('Version 2.4');
     await expect(card).toContainText('Changes 12');
     await expect(card).toContainText(HELD_BY_PLUGIN_REASON);
