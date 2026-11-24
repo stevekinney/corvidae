@@ -24,7 +24,7 @@ test('a Reviews decision and a chat decision each have one durable receipt after
   await runToEnd(request, 'demo:tool-runner', viaReviews, 'Refund order-1001');
   const review = await waitingReviewOf(request, viaReviews);
   await page.goto(inboxAt(review));
-  await approveReview(page.locator('.ib-review-pane'));
+  await approveReview(page.locator('.ib-reviews__detail'));
   await expect(page.locator(`[data-review-row="bureau:${review.id}"]`)).toHaveCount(0);
 
   const viaChat = newThreadId('receipt-reload-chat');
