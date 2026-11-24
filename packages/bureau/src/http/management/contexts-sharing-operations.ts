@@ -74,13 +74,21 @@ async function change(
   const workspace = 'workspace' in principal ? principal.workspace : undefined;
   const grantedBy = workspace?.owner;
   if (grantedBy === undefined) throw missing(input.contextId);
-  const originallyGranted = sessionHasReadGrant(loaded.metadata, input.granteeOwnerId);
+  const originallyGranted = sessionHasReadGrant(
+    loaded.metadata,
+    input.granteeOwnerId,
+    loaded.incarnation,
+  );
   let committed = false;
   await store.update(
     input.contextId,
     (current) => {
       if (current === undefined || current.incarnation !== loaded.incarnation) return undefined;
-      const currentlyGranted = sessionHasReadGrant(current.metadata, input.granteeOwnerId);
+      const currentlyGranted = sessionHasReadGrant(
+        current.metadata,
+        input.granteeOwnerId,
+        current.incarnation,
+      );
       if ((kind === 'grant' && currentlyGranted) || (kind === 'revoke' && !currentlyGranted)) {
         return undefined;
       }
@@ -94,6 +102,7 @@ async function change(
                 owner: input.granteeOwnerId,
                 workspaceId: workspace!.workspaceId,
                 actorId: workspace!.actorId,
+                sessionIncarnation: current.incarnation,
                 grantedBy,
                 grantedAt: at,
               })

@@ -13,7 +13,7 @@ describe('shared thread message projection', () => {
         tool: { id: 'tool', role: 'tool-result', content: 'private tool result' },
         assistant: { id: 'assistant', role: 'assistant', content: [{ type: 'thinking', text: 'private reasoning' }, { type: 'text', text: 'Answer with [citation](https://example.com/source).' }], metadata: { approval: 'private' } },
       },
-    } as ConversationHistory;
+    } as unknown as ConversationHistory;
 
     expect(sharedSnapshotMessages(history)).toEqual([
       { id: 'user', role: 'user', content: 'See [public](https://example.com). ' },

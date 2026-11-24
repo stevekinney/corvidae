@@ -14,6 +14,7 @@ const initial = withSessionReadGrant({}, {
   owner: 'workspace-a:bob',
   workspaceId: 'workspace-a',
   actorId: 'bob',
+  sessionIncarnation: 'session-a',
   grantedBy: 'workspace-a:alice',
   grantedAt: '2026-11-23T00:00:00.000Z',
 });
@@ -32,6 +33,7 @@ test('read grants are explicit and a revocation retains former-reader evidence',
     owner: 'workspace-a:bob',
     workspaceId: 'workspace-a',
     actorId: 'bob',
+    sessionIncarnation: 'session-a',
     grantedBy: 'workspace-a:alice',
     grantedAt: '2026-11-23T00:00:00.000Z',
     revokedBy: 'workspace-a:alice',
@@ -53,6 +55,7 @@ test('a duplicate or malformed durable row cannot revive an earlier grant', () =
         owner: 'workspace-a:bob',
         workspaceId: 'workspace-a',
         actorId: 'bob',
+        sessionIncarnation: 'session-a',
         grantedBy: 'workspace-a:alice',
         grantedAt: '2026-11-23T00:00:00.000Z',
       },
@@ -73,6 +76,7 @@ test('a later grant restores access without leaving stale revocation state', () 
     owner: 'workspace-a:bob',
     workspaceId: 'workspace-a',
     actorId: 'bob',
+    sessionIncarnation: 'session-a',
     grantedBy: 'workspace-a:alice',
     grantedAt: '2026-11-23T02:00:00.000Z',
   });
@@ -83,4 +87,8 @@ test('a later grant restores access without leaving stale revocation state', () 
     'revoked',
     'granted',
   ]);
+});
+
+test('a grant copied to another session incarnation fails closed', () => {
+  expect(sessionHasReadGrant(initial, 'workspace-a:bob', 'session-b')).toBe(false);
 });

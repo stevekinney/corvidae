@@ -410,7 +410,7 @@ export function createAgUiMount(
     const workspace = 'workspace' in principal ? principal.workspace : undefined;
     const active =
       grant !== undefined &&
-      sessionHasReadGrant(loaded!.session.metadata, reader!) &&
+      sessionHasReadGrant(loaded!.session.metadata, reader!, loaded!.session.incarnation) &&
       workspace?.workspaceId === grant.workspaceId &&
       workspace.actorId === grant.actorId &&
       authority !== undefined &&

@@ -10,6 +10,7 @@ export type SessionReadGrant = Readonly<{
   owner: string;
   workspaceId: string;
   actorId: string;
+  sessionIncarnation: string;
   grantedBy: string;
   grantedAt: string;
   revokedAt?: string | undefined;
@@ -31,10 +32,11 @@ function isRecord(value: JSONValue | undefined): value is Record<string, JSONVal
 
 function grantOf(value: JSONValue): SessionReadGrant | undefined {
   if (!isRecord(value)) return undefined;
-  const { owner, workspaceId, actorId, grantedBy, grantedAt, revokedAt, revokedBy } = value;
+  const { owner, workspaceId, actorId, sessionIncarnation, grantedBy, grantedAt, revokedAt, revokedBy } = value;
   if (typeof owner !== 'string' || owner === '') return undefined;
   if (typeof workspaceId !== 'string' || workspaceId === '') return undefined;
   if (typeof actorId !== 'string' || actorId === '') return undefined;
+  if (typeof sessionIncarnation !== 'string' || sessionIncarnation === '') return undefined;
   if (typeof grantedBy !== 'string' || grantedBy === '') return undefined;
   if (typeof grantedAt !== 'string' || grantedAt === '') return undefined;
   if (revokedAt !== undefined && (typeof revokedAt !== 'string' || revokedAt === '')) return undefined;
@@ -44,6 +46,7 @@ function grantOf(value: JSONValue): SessionReadGrant | undefined {
     owner,
     workspaceId,
     actorId,
+    sessionIncarnation,
     grantedBy,
     grantedAt,
     ...(revokedAt === undefined ? {} : { revokedAt }),
@@ -76,6 +79,7 @@ function jsonGrant(grant: SessionReadGrant): JSONValue {
     owner: grant.owner,
     workspaceId: grant.workspaceId,
     actorId: grant.actorId,
+    sessionIncarnation: grant.sessionIncarnation,
     grantedBy: grant.grantedBy,
     grantedAt: grant.grantedAt,
     ...(grant.revokedAt === undefined ? {} : { revokedAt: grant.revokedAt }),
@@ -134,17 +138,24 @@ export function sessionReadGrantHistoryOf(
 export function sessionHasReadGrant(
   metadata: Readonly<Record<string, JSONValue>>,
   owner: string,
+  sessionIncarnation?: string,
 ): boolean {
   const grant = sessionReadGrantOf(metadata, owner);
-  return grant !== undefined && grant.revokedAt === undefined;
+  return (
+    grant !== undefined &&
+    grant.revokedAt === undefined &&
+    (sessionIncarnation === undefined || grant.sessionIncarnation === sessionIncarnation)
+  );
 }
 
 /** Whether the durable record proves this owner once had a grant. */
 export function sessionWasReadGrantedTo(
   metadata: Readonly<Record<string, JSONValue>>,
   owner: string,
+  sessionIncarnation?: string,
 ): boolean {
-  return sessionReadGrantOf(metadata, owner) !== undefined;
+  const grant = sessionReadGrantOf(metadata, owner);
+  return grant !== undefined && (sessionIncarnation === undefined || grant.sessionIncarnation === sessionIncarnation);
 }
 
 /** Add or restore a reader grant, retaining any prior revocation as audit history. */
