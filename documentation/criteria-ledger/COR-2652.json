@@ -1,24 +1,24 @@
 {
   "issue": "COR-2652",
   "branch": "steve/cor-2652-fixture-reset-safety",
-  "checkedAt": "8a2e805ee57a4f060f95ec7140ba798c3aa7c703",
+  "checkedAt": "839473a4fbd4c170c2637a8bcddf476267cc9911",
   "briefVersion": "9f6376efa557",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "Fixture ownership and hard-death root recovery regressions passed 19/19 (root-lock-final.log); Linux workspace run 45331603278 passed."
+      "evidence": "Fixture ownership and hard-death root recovery passed 19/19 (root-lock-final.log); Linux workspace run 45331603278 passed."
     },
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "Seed, exact replay and workspace runtime regressions passed 24/24 (seed-final.log); Linux workspace run 45331603278 passed."
+      "evidence": "Seed, exact replay and workspace runtime passed 24/24 (seed-final.log); Linux workspace run 45331603278 passed."
     },
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "Real process and concurrent remote supervisor controls passed 2/2 (home-supervisor-green.log), after prior interruption qualification (combined-final.log); Linux workspace run 45331603278 passed."
+      "evidence": "Real process and remote supervisor controls passed (home-supervisor-green.log); linked worktrees passed with verified listener-owner and negative gate/sibling probes 12/12 (worktree-listener-witness.log). Linux workspace run 45331603278 passed; exact-head bound full CI remains pending."
     }
   ]
 }
