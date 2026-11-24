@@ -44,21 +44,50 @@ export type NavigationItemLinkExtra = Omit<
    */
   onclick?: (event: MouseEvent) => void;
 };
-export type NavigationItemButtonExtra = Omit<
+type NavigationItemButtonAttributes = Omit<
   HTMLButtonAttributes,
   keyof HTMLAttributes<HTMLButtonElement> | 'disabled' | 'type'
-> & {
+>;
+// Every arm declares `disabled`, so `PadUnion` never pads it to `never` (the trap
+// `union-props.ts` describes). The button arm with a handler takes any `disabled`, so a plain
+// `boolean` with `onclick` still type-checks; only the literal `true` reaches the arm that lets
+// `onclick` go. TypeScript did not split a `boolean` across `true` and `false` arms of this union
+// when that was tried, so the arms do not rely on it (the type tests pin both cases).
+export type NavigationItemLinkExtraWithState = NavigationItemLinkExtra & { disabled?: boolean };
+/** A button-form item (no `href`) that may be activated, so it takes a click handler. */
+export type NavigationItemButtonExtra = NavigationItemButtonAttributes & {
   href?: undefined;
+  /** Called when the item is activated. Required unless `disabled` is `true`. */
   onclick: (event: MouseEvent) => void;
+  disabled?: boolean;
 };
+/**
+ * A disabled button-form item: it is never activated, so `onclick` is optional and, if given, is
+ * never called while `disabled` is true.
+ */
+export type NavigationItemDisabledButtonExtra = NavigationItemButtonAttributes & {
+  href?: undefined;
+  onclick?: (event: MouseEvent) => void;
+  disabled: true;
+};
+/** The link and button arms `NavigationItem` and `SideNavigation.Item` share. */
+export type NavigationItemElementExtra =
+  NavigationItemLinkExtraWithState | NavigationItemButtonExtra | NavigationItemDisabledButtonExtra;
 
-/** Props for the NavigationItem component. Pass `href` for a link, `onclick` for a button. */
+/**
+ * Props for the NavigationItem component. Pass `href` for a link, `onclick` for a button. A
+ * disabled button-form item (`disabled` set to `true`) takes no `onclick`.
+ */
 export type NavigationItemProps = NavigationItemSharedHtmlAttributes &
   DataAttributes &
-  PadUnion<NavigationItemLinkExtra | NavigationItemButtonExtra> & {
+  PadUnion<NavigationItemElementExtra> & {
     /** Marks this item as the currently active destination; emits `aria-current` and applies active visual styling. */
     active?: boolean;
-    /** Prevents interaction: removes the item from the tab order, blocks clicks, and applies disabled visual styling. */
+    /**
+     * Prevents interaction: removes the item from the tab order, blocks clicks, and applies
+     * disabled visual styling. A button-form item (no `href`) needs no `onclick` while this is
+     * `true`; a plain `boolean` may be `false`, so it still needs one.
+     */
     disabled?: boolean;
     /**
      * The `aria-current` token emitted while `active` is true. Defaults to `'page'`,

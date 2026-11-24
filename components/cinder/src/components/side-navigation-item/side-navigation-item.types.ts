@@ -1,8 +1,7 @@
 import type { Snippet } from 'svelte';
 import type { DataAttributes, PadUnion } from '../../_internal/union-props.ts';
 import type {
-  NavigationItemButtonExtra,
-  NavigationItemLinkExtra,
+  NavigationItemElementExtra,
   NavigationItemSharedHtmlAttributes,
 } from '../navigation-item/navigation-item.types.ts';
 import type { StatusDotStatus } from '../status-dot/status-dot.types.ts';
@@ -27,10 +26,14 @@ import type { StatusDotStatus } from '../status-dot/status-dot.types.ts';
  */
 export type SideNavigationItemProps = NavigationItemSharedHtmlAttributes &
   DataAttributes &
-  PadUnion<NavigationItemLinkExtra | NavigationItemButtonExtra> & {
+  PadUnion<NavigationItemElementExtra> & {
     /** Marks this item as the currently active destination; emits `aria-current` and applies active visual styling. */
     active?: boolean;
-    /** Prevents interaction: removes the item from the tab order, blocks clicks, and applies disabled visual styling. */
+    /**
+     * Prevents interaction: removes the item from the tab order, blocks clicks, and applies
+     * disabled visual styling. A button-form row (no `href`) needs no `onclick` while this is
+     * `true`; a plain `boolean` may be `false`, so it still needs one.
+     */
     disabled?: boolean;
     /**
      * The `aria-current` token emitted while `active` is true. Defaults to `'page'`,
