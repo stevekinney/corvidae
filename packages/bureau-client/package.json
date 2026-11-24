@@ -24,11 +24,14 @@
   },
   "devDependencies": {
     "@lostgradient/bureau": "workspace:*",
+    "@lostgradient/cinder": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
+    "@tanstack/svelte-query": "catalog:",
     "@types/bun": "catalog:",
     "oxlint": "catalog:",
     "prettier": "catalog:",
+    "svelte": "catalog:",
     "svelte-check": "catalog:",
     "typescript": "catalog:"
   },
