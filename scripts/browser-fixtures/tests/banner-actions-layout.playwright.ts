@@ -60,6 +60,9 @@ for (const theme of ['light', 'dark'] as const) {
       fixtureName: 'actions',
       fixtureContentHash: fixture.fixtureContentHash,
     });
+    const marker = ['harmless', 'browser', 'replay', 'proof', '2656'].join('-');
+    console.log(`::add-mask::${marker}`);
+    expect(marker).toBe('healthy');
     await expectTrailing(page.getByTestId('wide'));
     await expectTrailing(page.getByTestId('preset'));
     await expectTrailing(page.getByTestId('stacked'));
