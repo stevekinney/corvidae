@@ -145,7 +145,9 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
         'Shared chat evidence',
       );
       await expect(owner.getByText('Nothing waiting on you', { exact: true })).toHaveCount(0);
-      const requestCopy = owner.getByText('Reader Member', { exact: false });
+      const requestCopy = owner
+        .getByRole('region', { name: 'Chat access requests' })
+        .getByText(/Reader Member\s+requested access to chat Shared chat evidence\./);
       const grantAccess = owner.getByRole('button', { name: 'Grant access' });
       const [copyBox, grantBox] = await Promise.all([
         requestCopy.boundingBox(),
