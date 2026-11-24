@@ -218,6 +218,8 @@ export type ChatRunWiringOptions = {
   readonly agentName: () => string;
   /** Replaces `fetch`, for tests. */
   readonly fetch?: Fetcher;
+  /** Reads the redacted transcript projection for a shared reader. */
+  readonly sharedRead?: boolean;
   /**
    * Told when a run this page started has begun (its `RUN_STARTED` arrived). A run attached to
    * began elsewhere and does not call it.
@@ -1732,6 +1734,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       try {
         messages = await getThreadMessages(threadId, {
           fetch: send,
+          ...(options.sharedRead === true ? { shared: true } : {}),
           ...(signal === undefined ? {} : { signal }),
         });
       } catch (error) {

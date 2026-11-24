@@ -10,6 +10,7 @@
 
   import type { ChatAvailability, ChatAvailabilityAction } from '@lostgradient/chat';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { Button } from '@lostgradient/cinder';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { getConnection } from '../../app/connection.svelte.ts';
@@ -17,7 +18,12 @@
   import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import ForbiddenState from '../../app/forbidden-state.svelte';
   import NotFoundState from '../../app/not-found-state.svelte';
-  import { getContext } from '../../lib/bureau-client.ts';
+  import {
+    getContext,
+    getContextShareStatus,
+    requestContextShare,
+  } from '../../lib/bureau-client.ts';
+  import { getPrincipalStore, hasPrincipalStore } from '../../lib/scopes.svelte.ts';
   import { defaultAgentQuery, workflowAuthorQuery } from '../../lib/default-agent.ts';
   import { classifyFault, isNetworkFailure } from '../../lib/faults.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
@@ -40,6 +46,7 @@
   let { sessionId, isNew, agent }: ChatPaneProps = $props();
   const queryClient = useQueryClient();
   const connection = getConnection();
+  const principals = hasPrincipalStore() ? getPrincipalStore() : undefined;
 
   // The outlet mounts a new route for each path, so the pane is mounted once per chat. A new chat
   // has no session: the client names the thread, and the agent is `?agent=` or the default.
@@ -76,6 +83,33 @@
     }),
     undefined,
   );
+  const reader = $derived(
+    context.data !== undefined &&
+      principals?.principal?.subject !== undefined &&
+      context.data.owner !== null &&
+      context.data.owner !== principals.principal.subject,
+  );
+  const shareStatus = createQuery(
+    () => ({
+      queryKey: ['contexts', sessionId, 'share-status'],
+      queryFn: ({ signal }) => getContextShareStatus(sessionId, { signal }),
+      enabled: !startsNew && context.isError && classifyFault(context.error)?.kind === 'not-found',
+      retry: false,
+    }),
+    undefined,
+  );
+  let requesting = $state(false);
+  async function requestAccess(): Promise<void> {
+    const granteeOwnerId = principals?.principal?.subject;
+    if (typeof granteeOwnerId !== 'string' || requesting) return;
+    requesting = true;
+    try {
+      await requestContextShare({ contextId: sessionId, granteeOwnerId });
+      await shareStatus.refetch();
+    } finally {
+      requesting = false;
+    }
+  }
 
   /** Whether the chat could not be read and there is nothing of it to show: the error state is the page. */
   const failedToLoad = $derived(
@@ -179,6 +213,8 @@
     title={context.data.title}
     agentName={context.data.agentName}
     {draft}
+    readOnly={reader}
+    grantor={reader ? (context.data.owner ?? undefined) : undefined}
   />
 {:else if context.isError && !failedToLoad}
   {#if classifyFault(context.error)?.kind === 'not-found' && VIEW_COPY.chat.notFound}
@@ -189,6 +225,20 @@
       create={VIEW_COPY.chat.notFound.create}
       back={VIEW_COPY.chat.notFound.back}
     />
+  {:else if shareStatus.data?.status === 'requestable' || shareStatus.data?.status === 'pending'}
+    <section aria-label="Chat access">
+      <h1>Chat access</h1>
+      <p>
+        {shareStatus.data.status === 'pending'
+          ? 'Your access request is waiting for the chat owner.'
+          : 'You no longer have access to this chat.'}
+      </p>
+      {#if shareStatus.data.status === 'requestable'}
+        <Button variant="primary" loading={requesting} onclick={() => void requestAccess()}
+          >Request access</Button
+        >
+      {/if}
+    </section>
   {:else}
     <ForbiddenState title={VIEW_COPY.chat.forbidden.title} />
   {/if}

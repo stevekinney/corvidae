@@ -179,6 +179,10 @@ export const OPERATION_MAP = {
     workspaceClass: 'explicit-share',
     exempt: 'an owner-only list of pending former-reader request receipts',
   },
+  'bureau.contexts.share.status': {
+    workspaceClass: 'explicit-share',
+    exempt: 'a privacy-preserving direct-link state for an existing shared-chat recipient',
+  },
 
   'bureau.reviews.list': { workspaceClass: 'private-owned', member: 'reviews.list' },
   'bureau.reviews.get': { workspaceClass: 'private-owned', member: 'reviews.get' },

@@ -238,6 +238,11 @@ export type ContextsOperationTypes = {
     readonly output: SharedChangedContextIdGranteeO_3863cba0;
     readonly faults: 'InvalidParams' | 'NotFound' | 'UnsupportedCapability';
   };
+  'bureau.contexts.share.status': {
+    readonly input: { readonly contextId: string };
+    readonly output: { readonly status: 'active' | 'requestable' | 'pending' };
+    readonly faults: 'InvalidParams' | 'NotFound' | 'UnsupportedCapability';
+  };
   'bureau.contexts.steer': {
     readonly input: {
       readonly commandId: string;

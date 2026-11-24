@@ -504,17 +504,54 @@ const threadMessagesSchema = z.object({ threadId: z.string(), messages: z.array(
 /** A thread's conversation as AG-UI messages (`GET /bureau/ag-ui/threads/<id>/messages`), or a not-found fault. */
 export async function getThreadMessages(
   threadId: string,
-  options: { readonly signal?: AbortSignal; readonly fetch?: Fetcher } = {},
+  options: {
+    readonly signal?: AbortSignal;
+    readonly fetch?: Fetcher;
+    readonly shared?: boolean;
+  } = {},
 ): Promise<readonly unknown[]> {
   const send = options.fetch ?? fetch;
+  const messages = options.shared === true ? 'shared-messages' : 'messages';
   const response = await send(
-    `${BUREAU_PATH}/ag-ui/threads/${encodeURIComponent(threadId)}/messages`,
+    `${BUREAU_PATH}/ag-ui/threads/${encodeURIComponent(threadId)}/${messages}`,
     options.signal === undefined ? {} : { signal: options.signal },
   );
   if (!response.ok) {
     throw new HttpClientError(response.status, `The thread answered ${response.status}.`);
   }
   return threadMessagesSchema.parse(await response.json()).messages;
+}
+
+/** The caller's deliberately metadata-free state for one shared-chat direct link. */
+export async function getContextShareStatus(
+  contextId: string,
+  options?: { readonly signal?: AbortSignal },
+): Promise<BureauOutput<'bureau.contexts.share.status'>> {
+  return bureauClient['bureau.contexts.share.status']({ contextId }, options);
+}
+
+/** Grants one same-workspace member read-only access to a chat the caller owns. */
+export async function shareContext(input: {
+  readonly contextId: string;
+  readonly granteeOwnerId: string;
+}): Promise<BureauOutput<'bureau.contexts.share'>> {
+  return bureauClient['bureau.contexts.share'](input);
+}
+
+/** Removes one member's active read grant from a chat the caller owns. */
+export async function revokeContextShare(input: {
+  readonly contextId: string;
+  readonly granteeOwnerId: string;
+}): Promise<BureauOutput<'bureau.contexts.share.revoke'>> {
+  return bureauClient['bureau.contexts.share.revoke'](input);
+}
+
+/** Requests restoration of this caller's former read grant. */
+export async function requestContextShare(input: {
+  readonly contextId: string;
+  readonly granteeOwnerId: string;
+}): Promise<BureauOutput<'bureau.contexts.share.request'>> {
+  return bureauClient['bureau.contexts.share.request'](input);
 }
 
 /**

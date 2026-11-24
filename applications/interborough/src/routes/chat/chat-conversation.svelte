@@ -207,6 +207,9 @@
     fromWorkflows?: boolean;
     /** What the person typed while the chat was read (`chat-unavailable.svelte`); the box starts with it. */
     draft?: string | undefined;
+    /** A shared reader sees the scrubbed transcript and no mutable chat controls. */
+    readOnly?: boolean;
+    grantor?: string | undefined;
   }
 
   let {
@@ -216,6 +219,8 @@
     isNew = false,
     fromWorkflows = false,
     draft,
+    readOnly = false,
+    grantor,
   }: ChatConversationProps = $props();
 
   const queryClient = useQueryClient();
@@ -239,6 +244,7 @@
     sessionId: untrack(() => sessionId),
     // A new chat's thread is not kept until its first run begins, so nothing reads its history before.
     unopened: untrack(() => isNew),
+    readOnly: untrack(() => readOnly),
     agentName: () => agent,
     // A deleted chat is sent nothing, and a not-found is checked against a read of the chat.
     closed: () => gone,
@@ -657,6 +663,15 @@
     }
     return undefined;
   });
+
+  const sharedComposerStatus = $derived(
+    readOnly
+      ? {
+          kind: 'read-only' as const,
+          tooltip: grantor === undefined ? undefined : `Read access granted by ${grantor}`,
+        }
+      : undefined,
+  );
 
   // An open chat with no message yet is Chat's first-use state (COR-2285 V1): the agent's own
   // description, and the prompts it suggests as buttons that send. None is offered while a prompt
@@ -2176,6 +2191,9 @@
     onBranch={(messageId) => void branchThrough(messageId)}
     onExport={exportChat}
     onArchive={(archive) => void setArchived(archive, false)}
+    canShare={!readOnly &&
+      principals?.principal?.workspace !== undefined &&
+      context.data?.owner === principals.principal.subject}
   />
 {/snippet}
 
@@ -2361,14 +2379,14 @@
                 retryNote: CHAT_COPY.notSent.retryNote,
               }
             : { summary: CHAT_COPY.notSent.online }}
-          disabled={session.disconnected || gone || answerHeld}
+          disabled={readOnly || session.disconnected || gone || answerHeld}
           composerHint={false}
           composerPlaceholder={answering
             ? numberedChoices > 0
               ? CHAT_COPY.composer.answerPlaceholder
               : CHAT_COPY.questionAnswerLabel
             : CHAT_COPY.composer.placeholder(agentShown)}
-          {composerStatus}
+          composerStatus={sharedComposerStatus ?? composerStatus}
           composerHeader={choosing && agent !== '' ? newChatHeader : undefined}
           composerLead={choosing && (fromWorkflows || agent === '') ? newChatLead : undefined}
           composerFooter={!choosing
