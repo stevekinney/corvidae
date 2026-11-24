@@ -1,0 +1,79 @@
+{
+  "issue": "COR-2430",
+  "branch": "steve/cor-2430-workflow-list-activity",
+  "checkedAt": "493ed8d80c",
+  "briefVersion": "de56c264782e",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "not-met",
+      "evidence": "UI/design review pending coordinator."
+    },
+    {
+      "id": "AC2",
+      "status": "not-met",
+      "evidence": "UI/design review pending coordinator."
+    },
+    {
+      "id": "AC3",
+      "status": "not-met",
+      "evidence": "UI/design review pending coordinator."
+    },
+    {
+      "id": "AC4",
+      "status": "not-met",
+      "evidence": "UI/design review pending coordinator."
+    },
+    {
+      "id": "AC5",
+      "status": "not-met",
+      "evidence": "UI/design review pending coordinator."
+    },
+    {
+      "id": "AC6",
+      "status": "not-met",
+      "evidence": "Backend contract is present; UI/design review pending."
+    },
+    {
+      "id": "AC7",
+      "status": "not-met",
+      "evidence": "Backend contract is present; UI/design review pending."
+    },
+    {
+      "id": "AC8",
+      "status": "not-met",
+      "evidence": "Provider UI remains coordinator scope."
+    },
+    {
+      "id": "AC9",
+      "status": "not-met",
+      "evidence": "Loading UI remains coordinator scope."
+    },
+    {
+      "id": "AC10",
+      "status": "not-met",
+      "evidence": "Offline capture/design review pending."
+    },
+    {
+      "id": "AC11",
+      "status": "not-met",
+      "evidence": "Backend current progress exists; UI capture/design review pending."
+    },
+    {
+      "id": "AC12",
+      "status": "not-met",
+      "evidence": "Backend wait state exists; UI capture/design review pending."
+    },
+    {
+      "id": "AC13",
+      "status": "not-met",
+      "evidence": "Runs-column UI remains coordinator scope."
+    },
+    {
+      "id": "AC14",
+      "status": "met-on-branch",
+      "evidence": "Direct Bureau regression tests pass; focused gate's final rerun was superseded by a fixture correction and CI dispatch 44882768153 covers the final head."
+    }
+  ]
+}

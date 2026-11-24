@@ -164,7 +164,20 @@ describe('the list', () => {
   });
 
   test('carries a file’s trigger and the Bureau’s counts of its instances, and none for a code type', () => {
-    const runs = { active: 2, last24Hours: 9, lastRunAt: '2026-10-23T11:00:00.000Z' };
+    const runs = {
+      active: 2,
+      current: {
+        startedAt: '2026-10-23T10:00:00.000Z',
+        status: 'running' as const,
+        step: 2,
+        totalSteps: 4,
+        waitingForSignal: null,
+      },
+      last: { status: 'failed' as const, failedStep: 2 },
+      last24Hours: 9,
+      lastRunAt: '2026-10-23T11:00:00.000Z',
+      total: 12,
+    };
     const rows = joinCatalog(
       [codeDefinition('order-processing')],
       [listingOf(readyFile('digest', { runs, trigger: { kind: 'signal', name: 'go' } }))],
@@ -399,10 +412,10 @@ describe('the signal a form starts with', () => {
 });
 
 describe('the activity of a code-defined type', () => {
-  const NOW = Date.parse('2026-10-23T12:00:00.000Z');
+  const NOW = new Date(2026, 9, 23, 12).getTime();
   const MINUTE = 60_000;
 
-  test('is counted from the engine’s own totals: the unfinished, the last day’s, and the newest', async () => {
+  test('is counted from the engine’s own totals: the running, today’s, and the newest', async () => {
     stub = installWorkflowWorld(
       emptyWorld({
         runs: [
@@ -415,7 +428,10 @@ describe('the activity of a code-defined type', () => {
             createdAt: NOW - 30 * MINUTE,
             status: 'suspended',
           }),
-          runFixture('d', 'order-processing', { createdAt: NOW - 2 * 86_400_000 }),
+          runFixture('d', 'order-processing', {
+            createdAt: NOW - 13 * 60 * MINUTE,
+            status: 'pending',
+          }),
           runFixture('e', 'other', { createdAt: NOW - MINUTE }),
         ],
         schedules: [scheduleFixture('every-5', 'order-processing')],
@@ -423,8 +439,8 @@ describe('the activity of a code-defined type', () => {
     );
     const activity = await loadCodeActivity(stub.client, ['order-processing'], NOW);
     expect(activity.get('order-processing')?.runs).toEqual({
-      active: 2,
-      last24Hours: 3,
+      running: 1,
+      today: 3,
       lastRunAt: new Date(NOW - 10 * MINUTE).toISOString(),
     });
     expect(activity.get('order-processing')?.schedules).toHaveLength(1);
@@ -445,16 +461,16 @@ describe('the activity of a code-defined type', () => {
     );
     const activity = await loadCodeActivity(stub.client, ['quiet', 'rare'], NOW);
     expect(activity.get('quiet')?.runs).toEqual({
-      active: 0,
-      last24Hours: 0,
+      running: 0,
+      today: 0,
       lastRunAt: new Date(NOW - 10 * DAY).toISOString(),
     });
     expect(activity.get('rare')?.runs).toEqual({
-      active: 0,
-      last24Hours: 0,
+      running: 0,
+      today: 0,
       lastRunAt: new Date(NOW - 400 * DAY).toISOString(),
     });
-    // A type that ran in the last day needs no look back at all.
+    // A type that ran today needs no look back at all.
     stub.restore();
     stub = installWorkflowWorld(
       emptyWorld({ runs: [runFixture('fresh', 'busy', { createdAt: NOW - 10 * MINUTE })] }),
@@ -467,7 +483,7 @@ describe('the activity of a code-defined type', () => {
   test('says a type that has never run has not, with no newest', async () => {
     stub = installWorkflowWorld(emptyWorld());
     const activity = await loadCodeActivity(stub.client, ['quiet'], NOW);
-    expect(activity.get('quiet')?.runs).toEqual({ active: 0, last24Hours: 0, lastRunAt: null });
+    expect(activity.get('quiet')?.runs).toEqual({ running: 0, today: 0, lastRunAt: null });
     expect(activity.get('quiet')?.schedules).toEqual([]);
   });
 

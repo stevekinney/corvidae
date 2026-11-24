@@ -39,7 +39,8 @@
     type StartBlock,
   } from './run-setup-model.ts';
   import RunSetupForm from './run-setup-form.svelte';
-  import { locateJsonProblem, problemSentence } from './workflow-source.ts';
+  import { locateJsonProblem } from '@lostgradient/bureau/workflow-json';
+  import { problemSentence } from './workflow-source.ts';
 
   const copy = WORKFLOW_COPY.runSetup;
   const client = getClient();

@@ -502,7 +502,7 @@ describe('results', () => {
     expect(runs.items).toHaveLength(1);
   });
 
-  it('shares definitions but keeps runs, counts, and revisions private per workspace member', async () => {
+  it('shares definitions but keeps run resources private and aggregates operator-only in a workspace', async () => {
     const binding = workspaceAdministratorDirectory();
     const runtime = createManualRuntimeServices();
     const served = await serveWorkflows(cleanups, { workspace: binding, runtime });
@@ -564,6 +564,13 @@ describe('results', () => {
     expect(listOf(ownRuns, 'runs').map((run) => run.id)).toEqual([operatorRunAgainId]);
     expect(listOf(ownRunsNext, 'runs').map((run) => run.id)).toEqual([operatorRunId]);
     expect(ownRuns.result?.['nextOffset']).toBe(1);
+    const ownActivity = await rpc(
+      workspace,
+      'bureau.workflows.list',
+      { includeRuns: true },
+      'operator-key',
+    );
+    expect(listOf(ownActivity, 'workflows')).toMatchObject([{ id: 'digest', runs: null }]);
     const ownGet = await rpc(
       workspace,
       'bureau.workflows.runs.get',
@@ -937,7 +944,14 @@ describe('results', () => {
     expect(byId(before, 'digest')).toMatchObject({
       description: 'Writes the daily digest.',
       trigger: FAST_SCHEDULE,
-      runs: { active: 0, last24Hours: 0, lastRunAt: null },
+      runs: {
+        total: 0,
+        active: 0,
+        last24Hours: 0,
+        lastRunAt: null,
+        last: null,
+        current: null,
+      },
     });
     expect(byId(before, 'bare')).toMatchObject({ description: null });
 
@@ -945,11 +959,13 @@ describe('results', () => {
     await run.result();
     const after = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
     const counted = byId(after, 'digest')?.['runs'] as {
+      total: number;
       active: number;
       last24Hours: number;
       lastRunAt: string | null;
     };
     expect(counted.active).toBe(0);
+    expect(counted.total).toBe(1);
     expect(counted.last24Hours).toBe(1);
     expect(Number.isNaN(Date.parse(counted.lastRunAt ?? ''))).toBe(false);
     expect(byId(after, 'bare')?.['runs']).toMatchObject({ last24Hours: 0, lastRunAt: null });
@@ -962,10 +978,83 @@ describe('results', () => {
       steps: [{ kind: 'await-signal', signal: 'never-sent' }],
     });
     await served.bureau.durableEngine()!.start('waiting', null, { id: 'waiting-run' });
+    await waitForCondition(async () => {
+      const state = await served.bureau.durableEngine()!.get('waiting-run');
+      return state?.waitingForSignals?.includes('never-sent') === true;
+    }, 'the workflow run reaches its signal wait');
     const listed = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
     expect(listed.result?.['workflows']).toMatchObject([
-      { id: 'waiting', runs: { active: 1, last24Hours: 1 } },
+      {
+        id: 'waiting',
+        runs: {
+          total: 1,
+          active: 1,
+          last24Hours: 1,
+          last: { status: 'running', failedStep: null },
+          current: {
+            startedAt: expect.any(String),
+            status: 'running',
+            step: 1,
+            totalSteps: 1,
+            waitingForSignal: 'never-sent',
+          },
+        },
+      },
     ]);
+  });
+
+  it('keeps the active run’s start separate from a newer completed run', async () => {
+    const served = await serve();
+    await served.bureau.workflows!.create('waiting', {
+      trigger: FAST_SCHEDULE,
+      steps: [{ kind: 'await-signal', signal: 'never-sent' }],
+    });
+    const engine = served.bureau.durableEngine()!;
+    await engine.start('waiting', null, { id: 'older-active' });
+    await waitForCondition(async () => {
+      const state = await engine.get('older-active');
+      return state?.waitingForSignals?.includes('never-sent') === true;
+    }, 'the older workflow run reaches its signal wait');
+    const initial = await engine.list({ type: 'waiting', limit: 1 });
+    const [active] = initial.items;
+    if (active === undefined) throw new Error('Expected the active workflow run.');
+    const activeAt = Date.parse('2026-11-02T10:00:00-06:00');
+    const completedAt = Date.parse('2026-11-02T10:30:00-06:00');
+    const completed = {
+      ...active,
+      id: 'newer-completed',
+      status: 'completed' as const,
+      createdAt: completedAt,
+    };
+    const olderActive = { ...active, createdAt: activeAt };
+    const list = spyOn(engine, 'list').mockImplementation(async (filter) => {
+      if (filter?.type !== 'waiting') return { items: [], total: 0 } as never;
+      if (filter?.status !== undefined) return { items: [olderActive], total: 1 } as never;
+      return { items: [completed], total: 2 } as never;
+    });
+    try {
+      const response = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
+      expect(response.result?.['workflows']).toMatchObject([
+        {
+          id: 'waiting',
+          runs: {
+            total: 2,
+            active: 1,
+            lastRunAt: '2026-11-02T16:30:00.000Z',
+            last: { status: 'completed', failedStep: null },
+            current: {
+              startedAt: '2026-11-02T16:00:00.000Z',
+              status: 'running',
+              step: 1,
+              totalSteps: 1,
+              waitingForSignal: 'never-sent',
+            },
+          },
+        },
+      ]);
+    } finally {
+      list.mockRestore();
+    }
   });
 
   it('still lists every file, with no counts for the one whose engine read fails', async () => {
@@ -997,21 +1086,23 @@ describe('results', () => {
     ).toBe(true);
   });
 
-  it('widens the window for a quiet workflow, and reads its whole history only as a last resort', async () => {
+  it('reads a quiet workflow’s total and newest run together, without widening time windows', async () => {
     const served = await serve();
     await served.bureau.workflows!.create('digest', DEFINITION);
     const engine = served.bureau.durableEngine()!;
     const DAY = 24 * 60 * 60 * 1000;
     const longAgo = Date.now() - 400 * DAY;
     const reads: Array<{ ageInDays: number | null }> = [];
-    // The engine's clock is its own, so answer the windowed reads here: nothing in the last day or
-    // the last 30 days, and one instance, 400 days old, in the history.
+    // The engine's clock is its own, so answer the indexed reads here: nothing in the last day and
+    // one instance, 400 days old, in the complete type index.
     const stub = spyOn(engine, 'list').mockImplementation(async (filter) => {
       const gte = filter?.createdAt?.gte;
       reads.push({ ageInDays: gte === undefined ? null : Math.round((Date.now() - gte) / DAY) });
       const found = gte === undefined && filter?.status === undefined;
       return {
-        items: found ? [{ createdAt: longAgo }] : [],
+        items: found
+          ? [{ id: 'quiet-run', status: 'completed', createdAt: longAgo, version: 'version-1' }]
+          : [],
         total: found ? 1 : 0,
       } as never;
     });
@@ -1020,18 +1111,18 @@ describe('results', () => {
       const files = (listed.result?.['workflows'] ?? []) as Array<{ runs: unknown }>;
       const file = files[0];
       expect(file?.runs).toEqual({
+        total: 1,
         active: 0,
         last24Hours: 0,
         lastRunAt: new Date(longAgo).toISOString(),
+        last: { status: 'completed', failedStep: null },
+        current: null,
       });
     } finally {
       stub.mockRestore();
     }
-    // The count of the day, then 30 days, then the whole history; the active read has no window.
-    expect(reads.filter((read) => read.ageInDays !== null)).toEqual([
-      { ageInDays: 1 },
-      { ageInDays: 30 },
-    ]);
+    // The count of the day and the unfiltered type reads for total/newest and active only.
+    expect(reads.filter((read) => read.ageInDays !== null)).toEqual([{ ageInDays: 1 }]);
     expect(reads.filter((read) => read.ageInDays === null).length).toBe(2);
   });
 
@@ -1051,14 +1142,29 @@ describe('results', () => {
     ]);
   });
 
-  it('lists a file that cannot be used with no counts', async () => {
+  it('locates a broken file’s syntax without including source or counts in the list', async () => {
     const served = await serve();
-    await writeFile(join(served.directory, 'broken.json'), '{ not json');
+    await writeFile(
+      join(served.directory, 'broken.json'),
+      ['{', '  "name": "broken"', '  "steps": []', '}'].join('\n'),
+    );
     await served.bureau.workflows!.refresh();
     const listed = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
     expect(listed.result?.['workflows']).toMatchObject([
-      { id: 'broken', state: 'invalid', description: null, trigger: null, runs: null },
+      {
+        id: 'broken',
+        state: 'invalid',
+        title: null,
+        description: null,
+        trigger: null,
+        runs: null,
+        problem: { code: 'invalid-json', syntax: { kind: 'comma', line: 2, stoppedAt: 3 } },
+      },
     ]);
+    const entries = listed.result?.['workflows'];
+    expect(Array.isArray(entries) && entries.length === 1).toBe(true);
+    if (!Array.isArray(entries)) throw new Error('expected a workflow list');
+    expect(entries[0]).not.toHaveProperty('text');
   });
 
   it('reports the readable trigger of an invalid file without making the file runnable', async () => {
