@@ -32,6 +32,7 @@ on:
       - .github/workflows/interborough-installed-recovery.yml
       - applications/interborough/scripts/installed-recovery-manifest.ts
       - applications/interborough/scripts/rehearse-installed-recovery.ts
+      - applications/interborough/scripts/stage-recovery-evidence.ts
 
 permissions:
   contents: read
@@ -105,10 +106,15 @@ jobs:
         working-directory: applications/interborough
         run: |
           bun scripts/rehearse-installed-recovery.ts "$RUNNER_TEMP/previous-install/bin/interborough" "$RUNNER_TEMP/candidate-install/bin/interborough" "$RUNNER_TEMP/recovery-evidence/rehearsal"
+      - name: Stage allowlisted recovery evidence
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/recovery-evidence"
+          bun applications/interborough/scripts/stage-recovery-evidence.ts "$RUNNER_TEMP/recovery-evidence" "$RUNNER_TEMP/recovery-public"
       - name: Upload recovery evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: interborough-installed-recovery-evidence
-          path: ${{ runner.temp }}/recovery-evidence
+          path: ${{ runner.temp }}/recovery-public
           if-no-files-found: error

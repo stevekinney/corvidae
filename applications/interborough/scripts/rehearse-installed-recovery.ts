@@ -18,6 +18,22 @@ import {
 
 type CommandResult = { exitCode: number; stdout: string; stderr: string };
 
+export function pendingReviewFromList(
+  reviews: readonly { id?: string; runId?: string; sessionId?: string }[],
+  reportedRunId: string | undefined,
+): { id: string; runId: string; sessionId: string } {
+  const review = reviews[0];
+  if (
+    !reportedRunId ||
+    reviews.length !== 1 ||
+    typeof review?.id !== 'string' ||
+    typeof review.runId !== 'string' ||
+    typeof review.sessionId !== 'string'
+  )
+    throw new Error('The pending review was not found');
+  return { id: review.id, runId: review.runId, sessionId: review.sessionId };
+}
+
 /** Run against two separately installed packages, retaining each stage under a fresh evidence root. */
 export async function rehearseInstalledRecovery(previous: string, candidate: string, root: string) {
   if (process.platform !== 'darwin' || process.arch !== 'arm64')
@@ -26,7 +42,6 @@ export async function rehearseInstalledRecovery(previous: string, candidate: str
   candidate = await realpath(resolve(candidate));
   root = resolve(root);
   if (previous === candidate) throw new Error('The previous and candidate executables must differ');
-  await mkdir(root, { recursive: false });
   const artifact = async (executable: string) => {
     const release = JSON.parse(
       await readFile(join(dirname(executable), '..', 'release.json'), 'utf8'),
@@ -42,10 +57,18 @@ export async function rehearseInstalledRecovery(previous: string, candidate: str
       sha256: createHash('sha256')
         .update(await readFile(executable))
         .digest('hex'),
-      ...release,
+      sourceSha: release.sourceSha,
+      version: release.version,
+      target: release.target,
     };
   };
   const artifacts = { previous: await artifact(previous), candidate: await artifact(candidate) };
+  if (
+    artifacts.previous.sourceSha === artifacts.candidate.sourceSha &&
+    artifacts.previous.version === artifacts.candidate.version
+  )
+    throw new Error('The previous and candidate release identities must differ');
+  await mkdir(root, { recursive: false });
   await writeFile(join(root, 'installed-artifacts.json'), JSON.stringify(artifacts, null, 2));
   const home = join(root, 'home');
   const backup = join(root, 'backup');
@@ -134,10 +157,14 @@ export async function rehearseInstalledRecovery(previous: string, candidate: str
       root,
       registry.url.href,
     );
-    trace.push({ executable, args, ...result });
-    await writeFile(join(root, 'commands.json'), JSON.stringify(trace, null, 2));
+    trace.push({
+      operation: args.slice(0, 2),
+      exitCode: result.exitCode,
+      responseType: result.stdout.trimStart().startsWith('{') ? 'json-object' : 'text',
+    });
+    await writeFile(join(root, 'diagnostics.json'), JSON.stringify(trace, null, 2));
     if (result.exitCode !== expected)
-      throw new Error(`${args.join(' ')} exited ${result.exitCode}: ${result.stderr}`);
+      throw new Error(`${args.slice(0, 2).join(' ')} exited ${result.exitCode}`);
     return result;
   }
   type CliResponse = {
@@ -149,6 +176,7 @@ export async function rehearseInstalledRecovery(previous: string, candidate: str
     continuation?: { runId?: string };
   };
   const json = (result: CommandResult): CliResponse => JSON.parse(result.stdout) as CliResponse;
+  let phase = 'populate';
   try {
     await writeFile(input, binary);
     await enableDemoPlugin(home);
@@ -185,21 +213,35 @@ export async function rehearseInstalledRecovery(previous: string, candidate: str
         ['chat', '--agent', 'demo:tool-runner', '--message', 'Refund order-1001', '--no-input'],
         5,
       );
-      const runId = `${chat.stdout}\n${chat.stderr}`.match(/run-[A-Za-z0-9_-]+/)?.[0];
+      const reportedRunId = `${chat.stdout}\n${chat.stderr}`.match(/run-[A-Za-z0-9_-]+/)?.[0];
       const reviews = json(
         await command(previous, home, url, ['reviews', 'list', '--output', 'json']),
       );
-      const review = reviews.data?.reviews?.find(
-        (entry: { runId?: string }) => entry.runId === runId,
-      );
-      if (!runId || typeof review?.id !== 'string' || typeof review.sessionId !== 'string')
-        throw new Error('The pending review was not found');
-      return { assetId, reviewId: review.id, runId, sessionId: review.sessionId, wakeup: 'false' };
+      const candidates = reviews.data?.reviews ?? [];
+      const review = candidates[0];
+      trace.push({
+        operation: ['reviews', 'pending-shape'],
+        count: candidates.length,
+        chatRunIdPresent: reportedRunId !== undefined,
+        reviewIdPresent: typeof review?.id === 'string',
+        reviewRunIdPresent: typeof review?.runId === 'string',
+        sessionIdPresent: typeof review?.sessionId === 'string',
+      });
+      await writeFile(join(root, 'diagnostics.json'), JSON.stringify(trace, null, 2));
+      const pending = pendingReviewFromList(candidates, reportedRunId);
+      return {
+        assetId,
+        reviewId: pending.id,
+        runId: pending.runId,
+        sessionId: pending.sessionId,
+        wakeup: 'false',
+      };
     });
     const before = await recoveryManifest(home, [digest], seeded);
     await writeFile(join(root, 'before-manifest.json'), JSON.stringify(before, null, 2));
     await cp(home, backup, { recursive: true, errorOnExist: true, force: false });
     assertRecoveryManifest(await recoveryManifest(backup, [digest], seeded), before);
+    phase = 'upgrade';
     await withHost(candidate, home, async (url) => {
       const reviews = json(
         await command(candidate, home, url, ['reviews', 'list', '--output', 'json']),
@@ -234,18 +276,58 @@ export async function rehearseInstalledRecovery(previous: string, candidate: str
         'json',
       ]);
     });
-    await withHost(candidate, home, async (url) => {
+    const upgraded = await withHost(candidate, home, async (url) => {
       const settings = json(
         await command(candidate, home, url, ['settings', 'get', '--output', 'json']),
       );
       if (settings.data?.values?.['tools.wakeup'] !== true)
         throw new Error('Candidate action did not persist');
+      const reviews = json(
+        await command(candidate, home, url, ['reviews', 'list', '--output', 'json']),
+      );
+      const review = reviews.data?.reviews?.find((entry) => entry.id === seeded.reviewId);
+      if (
+        !review ||
+        typeof review.id !== 'string' ||
+        typeof review.runId !== 'string' ||
+        typeof review.sessionId !== 'string'
+      )
+        throw new Error('Candidate pending review readback is missing');
+      const assetResponse = await fetch(`${url}/bureau/jsonrpc`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'bureau.assets.get',
+          params: { assetId: seeded.assetId },
+        }),
+      });
+      if (!assetResponse.ok) throw new Error('Candidate asset readback failed');
+      const asset = (await assetResponse.json()) as {
+        result?: { assetId?: string; digest?: string; state?: string };
+      };
+      if (
+        typeof asset.result?.assetId !== 'string' ||
+        asset.result.digest !== `sha256:${digest}` ||
+        asset.result.state !== 'available'
+      )
+        throw new Error('Candidate asset readback differs');
+      return {
+        assetId: asset.result.assetId,
+        reviewId: review.id,
+        runId: review.runId,
+        sessionId: review.sessionId,
+        wakeup: String(settings.data.values['tools.wakeup']),
+      };
     });
-    const afterUpgrade = await recoveryManifest(home, [digest], { ...seeded, wakeup: 'true' });
+    const afterUpgrade = await recoveryManifest(home, [digest], upgraded);
+    assertRecoveryManifest(afterUpgrade, { ...before, identities: { ...seeded, wakeup: 'true' } });
     await writeFile(
       join(root, 'after-upgrade-manifest.json'),
       JSON.stringify(afterUpgrade, null, 2),
     );
+    phase = 'restore';
     const started = performance.now();
     await cp(backup, restored, { recursive: true, errorOnExist: true, force: false });
     assertRecoveryManifest(await recoveryManifest(restored, [digest], seeded), before);
@@ -304,11 +386,11 @@ export async function rehearseInstalledRecovery(previous: string, candidate: str
         registry.url.href,
       );
       trace.push({
-        executable: previous,
-        args: ['reviews', 'approve', seeded.reviewId],
-        ...repeated,
+        operation: ['reviews', 'approve-repeat'],
+        exitCode: repeated.exitCode,
+        responseType: repeated.stdout.trimStart().startsWith('{') ? 'json-object' : 'text',
       });
-      await writeFile(join(root, 'commands.json'), JSON.stringify(trace, null, 2));
+      await writeFile(join(root, 'diagnostics.json'), JSON.stringify(trace, null, 2));
       if (repeated.exitCode === 0) throw new Error('A repeated review was accepted');
     });
     const database = new Database(join(restored, 'database.sqlite'), { readonly: true });
@@ -348,6 +430,10 @@ export async function rehearseInstalledRecovery(previous: string, candidate: str
     };
     await writeFile(join(root, 'recovery-receipt.json'), JSON.stringify(receipt, null, 2));
     return receipt;
+  } catch (error) {
+    trace.push({ phase, outcome: 'failed' });
+    await writeFile(join(root, 'diagnostics.json'), JSON.stringify(trace, null, 2));
+    throw error;
   } finally {
     await registry.stop(true);
   }
@@ -359,5 +445,11 @@ if (import.meta.main) {
     throw new Error(
       'Expected previous executable, candidate executable, and fresh evidence directory',
     );
-  console.info(await rehearseInstalledRecovery(previous, candidate, root));
+  try {
+    await rehearseInstalledRecovery(previous, candidate, root);
+    console.info('Recovery rehearsal passed');
+  } catch {
+    console.error('Recovery rehearsal failed; inspect the staged diagnostics.');
+    process.exitCode = 1;
+  }
 }
