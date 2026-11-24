@@ -42,6 +42,7 @@ export function stagedCheck(root: string, runner: Runner = defaultRunner): numbe
   try {
     const gitDirectory = required(runner, ['git', 'rev-parse', '--absolute-git-dir'], root).trim();
     const archive = join(directory, 'tree.tar');
+    const archiveRepository = join(directory, 'archive.git');
     const index = join(directory, 'index');
     const snapshot = join(directory, 'tree');
     const originalIndex = required(
@@ -53,7 +54,40 @@ export function stagedCheck(root: string, runner: Runner = defaultRunner): numbe
     const tree = required(runner, ['git', 'write-tree'], root, { GIT_INDEX_FILE: index }).trim();
     const environment = { GIT_DIR: gitDirectory, GIT_WORK_TREE: snapshot, GIT_INDEX_FILE: index };
     required(runner, ['mkdir', snapshot], root);
-    required(runner, ['git', 'archive', '--format=tar', `--output=${archive}`, tree], root);
+    const objects = required(
+      runner,
+      ['git', 'rev-parse', '--path-format=absolute', '--git-path', 'objects'],
+      root,
+    ).trim();
+    const objectFormat = required(
+      runner,
+      ['git', 'rev-parse', '--show-object-format'],
+      root,
+    ).trim();
+    required(
+      runner,
+      ['git', 'init', '--bare', '--quiet', `--object-format=${objectFormat}`, archiveRepository],
+      root,
+    );
+    writeFileSync(join(archiveRepository, 'objects', 'info', 'alternates'), `${objects}\n`);
+    writeFileSync(
+      join(archiveRepository, 'info', 'attributes'),
+      '* -export-ignore -export-subst\n',
+    );
+    required(
+      runner,
+      [
+        'git',
+        '-c',
+        'core.attributesFile=/dev/null',
+        'archive',
+        '--format=tar',
+        `--output=${archive}`,
+        tree,
+      ],
+      root,
+      { GIT_DIR: archiveRepository },
+    );
     required(runner, ['tar', '-xf', archive, '-C', snapshot], root);
     writeFileSync(join(snapshot, '.git'), `gitdir: ${gitDirectory}\n`);
     required(runner, ['git', 'read-tree', tree], snapshot, environment);
