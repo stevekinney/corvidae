@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2657",
+  "branch": "steve/cor-2657-staged-landing-qualification",
+  "checkedAt": "1a6524bccba8a74bed63e6ccccd5e6a4c2b7b502",
+  "briefVersion": "6ef0650eaae7",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "not-met",
+      "evidence": "Staged negative control and three warm trials passed; hosted exact-tree rejection is pending PR 1255 run 45341774695."
+    },
+    {
+      "id": "AC2",
+      "status": "not-met",
+      "evidence": "Five receipt cases passed; a post-decision actual moved-green-base landing is pending."
+    },
+    {
+      "id": "AC3",
+      "status": "not-met",
+      "evidence": "Coordinator is exercising a protected disposable target; final provider receipts pending."
+    }
+  ]
+}
