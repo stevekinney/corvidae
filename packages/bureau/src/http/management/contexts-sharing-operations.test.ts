@@ -147,6 +147,14 @@ describe('chat sharing access requests', () => {
         );
       }
       for (const actor of actors) {
+        witnesses.observeCollection(
+          'bureau.contexts.share.requests.list',
+          actor,
+          await workspacePrivacyCall(opened, actor, 'bureau.contexts.share.requests.list', {}),
+          contextId,
+        );
+      }
+      for (const actor of actors) {
         witnesses.observeWire(
           'bureau.contexts.share.request.resolve',
           actor,
@@ -155,14 +163,6 @@ describe('chat sharing access requests', () => {
             granteeOwnerId: WORKSPACE_PRIVACY_ACTORS.peer.owner,
             decision: 'grant',
           }),
-        );
-      }
-      for (const actor of actors) {
-        witnesses.observeCollection(
-          'bureau.contexts.share.requests.list',
-          actor,
-          await workspacePrivacyCall(opened, actor, 'bureau.contexts.share.requests.list', {}),
-          contextId,
         );
       }
       witnesses.verify();
