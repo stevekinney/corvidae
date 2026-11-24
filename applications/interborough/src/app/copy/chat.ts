@@ -304,6 +304,7 @@ export const CHAT_COPY = {
   humanRequestFallback: 'The agent is waiting for your answer.',
   /** The label of a question that declares no schema, which takes free text. */
   questionAnswerLabel: 'Answer',
+  replyInChat: 'Reply in chat',
   /** Said under a question that is picked from choices: the number keys. */
   pickHint: (count: number): string =>
     count === 1 ? 'Press 1 to pick the choice.' : `Press 1 to ${count} to pick a choice.`,

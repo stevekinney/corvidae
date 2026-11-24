@@ -287,8 +287,9 @@
           class="chat-question-dock-options-scroll"
           {@attach scrollEdgeFade('block')}
         >
+          <!-- The dock is the one panel; choices are its flat, full-height rows. -->
           <ChoiceGrid
-            variant="card"
+            variant="row"
             size="sm"
             columns={1}
             ariaLabelledby={hasMessage ? questionId : legendId}
@@ -518,20 +519,20 @@
     padding: var(--cinder-space-2) 0 var(--cinder-space-1);
   }
 
-  .chat-question-dock-body :global(.cinder-choice-grid-item[data-cinder-variant='card']) {
-    border: 0;
+  .chat-question-dock-body :global(.cinder-choice-grid-item[data-cinder-variant='row']) {
+    --_cinder-choice-card-min-block-size: 3.25rem;
     padding-block: var(--cinder-space-2);
     gap: var(--cinder-space-2);
   }
 
   .chat-question-dock-body
-    :global(.cinder-choice-grid-item[data-cinder-variant='card']:not([data-cinder-selected])) {
+    :global(.cinder-choice-grid-item[data-cinder-variant='row']:not([data-cinder-selected])) {
     background: transparent;
   }
 
   .chat-question-dock-body
     :global(
-      .cinder-choice-grid-item[data-cinder-variant='card'] .cinder-choice-grid-item__description
+      .cinder-choice-grid-item[data-cinder-variant='row'] .cinder-choice-grid-item__description
     ) {
     flex: 1 1 auto;
     line-height: var(--cinder-leading-tight, 1.25);
@@ -539,7 +540,7 @@
 
   /* A description follows its title on the title's line when the whole of it fits, else it wraps below. */
   .chat-question-dock-body
-    :global(.cinder-choice-grid-item[data-cinder-variant='card'] .cinder-choice-grid-item__card) {
+    :global(.cinder-choice-grid-item[data-cinder-variant='row'] .cinder-choice-grid-item__card) {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
@@ -649,9 +650,7 @@
     flex-wrap: wrap;
     justify-content: space-between;
     gap: var(--cinder-space-2);
-    padding-block-start: var(--cinder-space-2);
-    border-block-start: 1px solid var(--cinder-border-muted);
-    background: var(--cinder-surface-raised, var(--cinder-surface));
+    padding-block-start: var(--cinder-space-1);
   }
 
   @media (max-width: 479.98px), (any-pointer: coarse) {

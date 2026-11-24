@@ -138,6 +138,7 @@
     atBottom = $bindable(true),
     unreadCount = $bindable(0),
     newMessageIndicatorVisible = $bindable(false),
+    hostQuestionDocked = $bindable(false),
     onatbottombindingchange,
     onunreadcountbindingchange,
     onNewMessageIndicatorVisibleBindingChange,
@@ -179,6 +180,7 @@
     composerMarkdownStyling = true,
     composerStatus,
     availability,
+    questionDock,
     questionPlacement = 'inline',
     questionLabels,
     empty,
@@ -516,6 +518,19 @@
     dockedQuestion === undefined ? 1 : dockRound.indexOf(dockedQuestion) + 1,
   );
   const dockedTotal = $derived(dockRound.length);
+  // A host-owned question docks behind any Chat-owned question and only while the composer stays
+  // present. Tell the host before DOM work so it retains the inline row whenever the dock is absent.
+  const hostDocksQuestion = $derived(
+    questionDock !== undefined &&
+      dockedQuestion === undefined &&
+      composerStatus?.kind !== 'blocked' &&
+      !isComposerNoticeStatus(composerStatus) &&
+      !availabilityReplacesComposer(availability),
+  );
+  $effect.pre(() => {
+    const docked = hostDocksQuestion;
+    if (untrack(() => hostQuestionDocked) !== docked) hostQuestionDocked = docked;
+  });
 
   // Once every question of the round is answered the dock has nothing to ask: the round ends, so a
   // question asked later starts a new one.
@@ -3017,7 +3032,7 @@
            it), so a toast sits above it; a centred composer is in the middle and not counted. -->
       <div
         class="chat-input-area"
-        data-question-docked={dockedQuestion !== undefined ? '' : undefined}
+        data-question-docked={dockedQuestion !== undefined || hostDocksQuestion ? '' : undefined}
         {@attach composerCentered ? undefined : dockedToBottom()}
       >
         {#if quotes.quotes.length > 0}
@@ -3080,6 +3095,10 @@
             onNavigate={moveDock}
             labels={questionDockLabels}
           />
+        {:else if hostDocksQuestion && questionDock !== undefined}
+          <div class="chat-host-question-dock" data-chat-question-dock="host">
+            {@render questionDock()}
+          </div>
         {/if}
         <ChatInput
           labels={chatLabels}
@@ -3889,6 +3908,7 @@
   .chat-composer-drawers > :global(.chat-follow-up-drawer),
   .chat-composer-drawers > :global(.chat-follow-up-discard),
   .chat-input-area > :global(.chat-question-dock),
+  .chat-input-area > .chat-host-question-dock,
   .chat-input-area > .chat-composer-footer {
     max-inline-size: 100%;
     margin-inline: auto;
@@ -3898,6 +3918,18 @@
      attachments survive, and comes back when the question is answered or replied to in chat. */
   .chat-input-area[data-question-docked] > :global(.chat-input-shell) {
     display: none;
+  }
+
+  .chat-host-question-dock {
+    box-sizing: border-box;
+    inline-size: 100%;
+    min-inline-size: 0;
+    max-block-size: min(100%, 80dvh);
+    padding: var(--cinder-space-3);
+    overflow-y: auto;
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface-raised, var(--cinder-surface));
   }
 
   .chat-composer-drawers {

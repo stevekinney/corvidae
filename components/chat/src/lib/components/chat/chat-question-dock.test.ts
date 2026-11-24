@@ -7,7 +7,7 @@
 
 /// <reference lib="dom" />
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
-import { tick } from 'svelte';
+import { createRawSnippet, tick } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import {
@@ -51,6 +51,8 @@ afterAll(() => {
 
 const { render, fireEvent, cleanup } = await import('@testing-library/svelte');
 const { default: Chat } = await import('./chat.svelte');
+const { default: HostQuestionDockHarness } =
+  await import('./host-question-dock-harness.test.svelte');
 
 afterEach(() => {
   cleanup();
@@ -209,12 +211,17 @@ describe('a docked question', () => {
     expect(container.querySelector('[data-cinder-tool-input]')).toBeNull();
   });
 
-  test('draws a radio card per choice with its description and the key that chooses it', async () => {
+  test('draws a flat radio row per choice with its description and the key that chooses it', async () => {
     const { container } = mountDocked('dock-radios', ENVIRONMENT);
     await settle();
 
     const radios = radiosOf(container);
     expect(radios).toHaveLength(3);
+    expect(radios.map((radio) => radio.getAttribute('data-cinder-variant'))).toEqual([
+      'row',
+      'row',
+      'row',
+    ]);
     expect(
       radios.map((radio) => radio.querySelector('.chat-question-dock-choice-label')?.textContent),
     ).toEqual(['Staging', 'Production', 'Canary']);
@@ -235,7 +242,7 @@ describe('a docked question', () => {
       new URL('./question/chat-question-dock.svelte', import.meta.url),
     ).text();
 
-    expect(source).not.toContain('--_cinder-choice-card-min-block-size');
+    expect(source).toContain('--_cinder-choice-card-min-block-size: 3.25rem;');
     expect(source).toContain('max-block-size: min(100%, 80dvh);');
     expect(source).toContain('chat-question-dock-options-scroll');
     expect(source).toContain('chat-question-dock-completion');
@@ -243,7 +250,7 @@ describe('a docked question', () => {
       /\.chat-question-dock\s*\{[^}]*border: 1px solid var\(--cinder-border-muted\);/,
     );
     expect(source).toMatch(
-      /\.chat-question-dock-body :global\(\.cinder-choice-grid-item\[data-cinder-variant='card'\]\)\s*\{[^}]*border: 0;/,
+      /\.chat-question-dock-body :global\(\.cinder-choice-grid-item\[data-cinder-variant='row'\]\)\s*\{[^}]*--_cinder-choice-card-min-block-size: 3.25rem;/,
     );
     expect(source).not.toContain('chat-question-dock-body cinder-_scroll-fade');
     expect(source).toContain('overflow-y: auto;');
@@ -959,5 +966,44 @@ describe('a composer that is replaced', () => {
     await settle();
 
     expect(dockOf(container)).toBeNull();
+  });
+});
+
+describe('a host-owned docked question (COR-2437 AC6)', () => {
+  const hostQuestion = createRawSnippet(() => ({
+    render: () => '<fieldset data-host-question><legend>Which environment?</legend></fieldset>',
+  }));
+
+  test('reports its live dock before the host removes the inline question', async () => {
+    const { container } = render(HostQuestionDockHarness, {
+      id: 'host-question-live',
+      conversation: appendUserMessage(
+        createConversationHistory({ id: 'host-question-live' }),
+        'Deploy',
+      ),
+      questionDock: hostQuestion,
+    });
+    await settle();
+
+    expect(container.querySelector('[data-bound]')?.getAttribute('data-bound')).toBe('true');
+    expect(
+      container.querySelector('[data-chat-question-dock="host"] [data-host-question]'),
+    ).not.toBeNull();
+  });
+
+  test('reports false when a blocked composer keeps the host question inline', async () => {
+    const { container } = render(HostQuestionDockHarness, {
+      id: 'host-question-blocked',
+      conversation: appendUserMessage(
+        createConversationHistory({ id: 'host-question-blocked' }),
+        'Deploy',
+      ),
+      questionDock: hostQuestion,
+      composerStatus: { kind: 'blocked', reason: 'Connect a model provider to chat' },
+    });
+    await settle();
+
+    expect(container.querySelector('[data-bound]')?.getAttribute('data-bound')).toBe('false');
+    expect(container.querySelector('[data-chat-question-dock="host"]')).toBeNull();
   });
 });

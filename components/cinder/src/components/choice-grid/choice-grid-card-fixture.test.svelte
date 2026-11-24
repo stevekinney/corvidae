@@ -13,7 +13,7 @@
     value?: string | null;
     values?: string[];
     multiple?: boolean;
-    variant?: 'tile' | 'card';
+    variant?: 'tile' | 'card' | 'row';
   } = $props();
 </script>
 
