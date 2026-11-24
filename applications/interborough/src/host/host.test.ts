@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { AUTHORIZATION_SCOPES, MCP_LEGACY_PROTOCOL_VERSION } from '@lostgradient/weft';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -65,6 +66,34 @@ async function principalOver(host: Host, headers: HeadersInit = {}): Promise<Pri
 }
 
 describe('the host’s listener', () => {
+  test('waits for the browser build before binding, and releases the home if it fails', async () => {
+    const home = await scratch('interborough-home-');
+    const reservation = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response() });
+    const port = reservation.port!;
+    await reservation.stop(true);
+    const reached = Promise.withResolvers<void>();
+    const gate = Promise.withResolvers<void>();
+    const ready: PromiseLike<void> = {
+      then(resolve, reject) {
+        reached.resolve();
+        return gate.promise.then(resolve, reject);
+      },
+    };
+    const starting = startHost({
+      environment: { INTERBOROUGH_HOME: home },
+      port,
+      browserReady: ready,
+    });
+    await reached.promise;
+    const probe = Bun.serve({ hostname: '127.0.0.1', port, fetch: () => new Response() });
+    await probe.stop(true);
+    const failure = new Error('browser build failed');
+    gate.reject(failure);
+    expect(await rejectionOf(starting)).toBe(failure);
+    const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port });
+    hosts.push(host);
+    expect(host.url.port).toBe(String(port));
+  });
   test('the Bureau principal reports the explicit local workspace owner', async () => {
     const host = await start();
     const response = await fetch(new URL('/bureau/jsonrpc', host.url), {

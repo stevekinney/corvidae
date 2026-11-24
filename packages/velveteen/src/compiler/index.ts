@@ -188,7 +188,7 @@ export function createSveltePlugin(options: SvelteCompilerPluginOptions = {}) {
               })
             : result.code;
         const sourceMap = result.map
-          ? `\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(result.map).toString("base64")}`
+          ? `\n//\x23 sourceMappingURL=data:application/json;base64,${Buffer.from(result.map).toString("base64")}`
           : "";
         if (!result.css || target === "server" || css === "injected")
           return { contents: transformed + sourceMap, loader: "js" };
@@ -214,7 +214,7 @@ export function createSveltePlugin(options: SvelteCompilerPluginOptions = {}) {
             `Svelte compiler warnings in ${args.path}: ${JSON.stringify(result.warnings)}`,
           );
         const sourceMap = result.map
-          ? `\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(result.map).toString("base64")}`
+          ? `\n//\x23 sourceMappingURL=data:application/json;base64,${Buffer.from(result.map).toString("base64")}`
           : "";
         return { contents: result.code + sourceMap, loader: "js" };
       });

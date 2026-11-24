@@ -68,6 +68,7 @@ export function browserBuildOptions(options: {
   readonly entrypoints: string[];
   readonly outdir: string;
   readonly development: boolean;
+  readonly sveltePlugin?: Bun.BunPlugin;
   /** What the page shows as the commit it was built from (`displayedCommit`); omitted, it shows none. */
   readonly commit?: string;
 }): Bun.BuildConfig & { readonly metafile: true } {
@@ -87,12 +88,13 @@ export function browserBuildOptions(options: {
     plugins: [
       wasmPlugin,
       curatedShikiPlugin,
-      createSveltePlugin({
-        target: 'client',
-        css: 'injected',
-        development: options.development,
-        hmr: false,
-      }),
+      options.sveltePlugin ??
+        createSveltePlugin({
+          target: 'client',
+          css: 'injected',
+          development: options.development,
+          hmr: false,
+        }),
     ],
     optimizeImports: ['@lostgradient/cinder'],
     // Development links a map beside each chunk so the browser shows the original source;

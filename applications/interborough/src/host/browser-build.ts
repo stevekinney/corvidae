@@ -98,6 +98,31 @@ export function buildBrowserApplication(options: BrowserBuildOptions = {}): Prom
   return startBrowserBuild(options).done;
 }
 
+/** Prepare the host concurrently, stopping the build if either preparation fails. */
+export async function startWithBrowserBuild<T>(options: {
+  readonly build: () => Promise<void>;
+  readonly start: (ready: Promise<void>) => Promise<T>;
+  readonly stop: () => Promise<void>;
+}): Promise<T> {
+  const ready = options.build();
+  // Host preparation can fail before it awaits the build, or the build can reject before then.
+  void ready.catch(() => {});
+  try {
+    return await options.start(ready);
+  } catch (error) {
+    try {
+      await options.stop();
+    } catch (stopError) {
+      throw new AggregateError([error, stopError], 'Startup and browser build cleanup failed', {
+        cause: stopError,
+      });
+    } finally {
+      await ready.catch(() => {});
+    }
+    throw error;
+  }
+}
+
 /** Stop every build this generation started and wait until each child has exited. */
 export async function stopBrowserBuilds(): Promise<void> {
   await Promise.all([...running].map((build) => build.stop()));

@@ -449,6 +449,8 @@ export type HostOptions = {
   readonly port?: number;
   /** The built application to serve. Defaults to `build/` at the package root. */
   readonly buildDirectory?: string;
+  /** Development preparation that must succeed before application routes or the listener exist. */
+  readonly browserReady?: PromiseLike<void>;
   /**
    * Replaces the engine behind the Engine console, for a host whose console must start and inspect
    * workflows of its own (the end-to-end fixtures). The default is the Bureau's durable engine:
@@ -842,6 +844,16 @@ function shellResponder(buildDirectory: string, development: boolean): () => Pro
       headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
     });
   };
+}
+
+function reportBoundListener(
+  environment: BungalowEnvironment,
+  log: (message: string) => void,
+  port: number,
+): void {
+  if (environment['INTERBOROUGH_STARTUP_PROFILE'] === '1') {
+    log(`STARTUP ${JSON.stringify({ stage: 'bound-listener', port })}`);
+  }
 }
 
 type PublicRoutes = Bun.Serve.Routes<HostSocketData, string>;
@@ -1594,6 +1606,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const apiPrincipal = options.apiPrincipal ?? (() => localApiPrincipal(ANONYMOUS_LOCAL_OWNER));
     // Changing a provider or a plugin is changing settings, which needs `settings:write`.
     const refuseSettingsWrites = refuseWritesWithoutScope(refuse, 'settings:write', apiPrincipal);
+    await options.browserReady;
     const buildDirectory = options.buildDirectory ?? DEFAULT_BUILD_DIRECTORY;
     const devReload = options.development === true ? createDevReload() : undefined;
     if (devReload !== undefined) held.devReload = devReload;
@@ -1851,6 +1864,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     listening = publicServer;
     const publicPort = publicServer.port;
     if (publicPort === undefined) throw new Error('The public listener has no port.');
+    reportBoundListener(environment, log, publicPort);
     const publicOrigin = `http://${LOOPBACK}:${publicPort}`;
     hostOrigin = publicOrigin;
     // A2A push delivery is a restart-applied setting: the values read here are the ones this

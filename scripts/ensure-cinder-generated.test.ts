@@ -23,9 +23,31 @@ function fixture(): string {
   };
   touch(join(cinder, 'src/tokens/sets/colors.tokens.json'), 1_000);
   mkdirSync(join(cinder, 'scripts'), { recursive: true });
+  touch(join(root, 'internal/component-tooling/scripts/generate.ts'), 1_000);
+  touch(join(root, 'internal/component-tooling/src/schema.ts'), 1_000);
+  touch(join(root, 'package.json'), 1_000);
+  touch(join(root, 'bun.lock'), 1_000);
+  touch(join(root, 'internal/component-tooling/package.json'), 1_000);
+  touch(join(cinder, 'package.json'), 1_000);
   for (const output of CINDER_GENERATED_OUTPUTS) touch(join(cinder, output), 2_000);
   return cinder;
 }
+
+test('changed metadata tooling and root package inputs invalidate Cinder outputs', () => {
+  for (const relative of [
+    'internal/component-tooling/scripts/generate.ts',
+    'internal/component-tooling/src/schema.ts',
+    'internal/component-tooling/package.json',
+    'components/cinder/package.json',
+    'package.json',
+    'bun.lock',
+  ]) {
+    const cinder = fixture();
+    const root = join(cinder, '..', '..');
+    utimesSync(join(root, relative), 3_000, 3_000);
+    expect(cinderGeneratedStaleness(cinder)).toBe('an input is newer than the oldest output');
+  }
+});
 
 test('reports a missing output and leaves fresh output current', () => {
   const cinder = fixture();

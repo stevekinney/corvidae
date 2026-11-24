@@ -27,6 +27,12 @@ function fixture(): { root: string; cinder: string } {
   };
   touch(join(cinder, 'src/tokens/sets/colors.tokens.json'), 1_000);
   mkdirSync(join(cinder, 'scripts'), { recursive: true });
+  touch(join(root, 'internal/component-tooling/scripts/generate.ts'), 1_000);
+  touch(join(root, 'internal/component-tooling/src/schema.ts'), 1_000);
+  touch(join(root, 'package.json'), 1_000);
+  touch(join(root, 'bun.lock'), 1_000);
+  touch(join(root, 'internal/component-tooling/package.json'), 1_000);
+  touch(join(cinder, 'package.json'), 1_000);
   for (const output of CINDER_GENERATED_OUTPUTS) touch(join(cinder, output), 2_000);
   return { root, cinder };
 }
