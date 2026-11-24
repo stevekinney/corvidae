@@ -41,7 +41,8 @@ type Exchange = {
   verifier: string;
   access: string;
   refresh: string | null;
-  expiresAt: number;
+  accessExpiresAt: number;
+  refreshExpiresAt: number;
 };
 type Credential = {
   grantId: string;
@@ -57,7 +58,8 @@ type Rotation = {
   resource: string;
   access: string;
   nextRefresh: string;
-  expiresAt: number;
+  accessExpiresAt: number;
+  refreshExpiresAt: number;
   scopes: string[];
 };
 export type OAuthClient = {
@@ -224,7 +226,10 @@ export class OAuthStore {
       code.client !== input.client ||
       code.redirect !== input.redirect ||
       code.expiresAt <= Date.now() ||
-      input.expiresAt <= Date.now() ||
+      !Number.isFinite(input.accessExpiresAt) ||
+      input.accessExpiresAt <= Date.now() ||
+      (input.refresh !== null &&
+        (!Number.isFinite(input.refreshExpiresAt) || input.refreshExpiresAt <= Date.now())) ||
       !/^[A-Za-z0-9._~-]{43,128}$/.test(input.verifier) ||
       !equal(createHash('sha256').update(input.verifier).digest('base64url'), code.challenge)
     )
@@ -239,7 +244,7 @@ export class OAuthStore {
     const refreshKey = input.refresh === null ? null : key('refresh', input.refresh);
     const credential: Credential = {
       grantId: code.grantId,
-      expiresAt: input.expiresAt,
+      expiresAt: input.accessExpiresAt,
       scopes: grant.scopes,
       spent: false,
       accessKey,
@@ -256,7 +261,13 @@ export class OAuthStore {
         { type: 'delete', key: codeKey },
         { type: 'put', key: accessKey, value: encode(credential) },
         ...(refreshKey
-          ? [{ type: 'put' as const, key: refreshKey, value: encode(credential) }]
+          ? [
+              {
+                type: 'put' as const,
+                key: refreshKey,
+                value: encode({ ...credential, expiresAt: input.refreshExpiresAt }),
+              },
+            ]
           : []),
       ],
     );
@@ -343,7 +354,14 @@ export class OAuthStore {
           return 'replay_revoked';
         continue;
       }
-      if (prior.expiresAt <= Date.now() || input.expiresAt <= Date.now()) return 'invalid';
+      if (
+        prior.expiresAt <= Date.now() ||
+        !Number.isFinite(input.accessExpiresAt) ||
+        input.accessExpiresAt <= Date.now() ||
+        !Number.isFinite(input.refreshExpiresAt) ||
+        input.refreshExpiresAt <= Date.now()
+      )
+        return 'invalid';
       if (
         input.scopes.some((scope) => !prior.scopes.includes(scope) || !grant.scopes.includes(scope))
       )
@@ -352,7 +370,7 @@ export class OAuthStore {
       const nextRefreshKey = key('refresh', input.nextRefresh);
       const next: Credential = {
         grantId: prior.grantId,
-        expiresAt: input.expiresAt,
+        expiresAt: input.accessExpiresAt,
         scopes: [...input.scopes],
         spent: false,
         accessKey,
@@ -370,7 +388,11 @@ export class OAuthStore {
             { type: 'put', key: refreshKey, value: encode({ ...prior, spent: true }) },
             { type: 'delete', key: prior.accessKey },
             { type: 'put', key: accessKey, value: encode(next) },
-            { type: 'put', key: nextRefreshKey, value: encode(next) },
+            {
+              type: 'put',
+              key: nextRefreshKey,
+              value: encode({ ...next, expiresAt: input.refreshExpiresAt }),
+            },
           ],
         )
       )

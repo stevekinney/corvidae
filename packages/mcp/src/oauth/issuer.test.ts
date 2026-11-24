@@ -87,9 +87,8 @@ describe('hosted OAuth issuer', () => {
     expect(token.status).toBe(200);
     const credentials = await token.json();
     expect(credentials.scope).toBe('read');
-    expect(await issuer.verifyAccessToken(credentials.access_token)).toEqual(
-      expect.objectContaining({ subject: 'subject', scopes: ['read'] }),
-    );
+    const verified = await issuer.verifyAccessToken(credentials.access_token);
+    expect(verified).toEqual(expect.objectContaining({ subject: 'subject', scopes: ['read'] }));
     const otherIssuer = hostedOAuth({
       issuer: 'https://other.test',
       resource: 'https://issuer.test/mcp',
@@ -115,14 +114,19 @@ describe('hosted OAuth issuer', () => {
           resource: 'https://issuer.test/mcp',
         }),
       });
-    const refreshed = await refreshRequest();
-    expect(refreshed.status).toBe(200);
-    const next = await refreshed.json();
-    expect(await issuer.verifyAccessToken(credentials.access_token)).toBeNull();
-    expect(await issuer.verifyAccessToken(next.access_token)).not.toBeNull();
-    const replay = await refreshRequest();
-    expect(replay.status).toBe(400);
-    expect(await issuer.verifyAccessToken(next.access_token)).toBeNull();
+    const clock = spyOn(Date, 'now').mockReturnValue(verified!.expiresAt + 1);
+    try {
+      expect(await issuer.verifyAccessToken(credentials.access_token)).toBeNull();
+      const refreshed = await refreshRequest();
+      expect(refreshed.status).toBe(200);
+      const next = await refreshed.json();
+      expect(await issuer.verifyAccessToken(next.access_token)).not.toBeNull();
+      const replay = await refreshRequest();
+      expect(replay.status).toBe(400);
+      expect(await issuer.verifyAccessToken(next.access_token)).toBeNull();
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   test('consent failures and an approve/deny race never create partial grants', async () => {

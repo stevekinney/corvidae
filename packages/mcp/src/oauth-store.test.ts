@@ -87,7 +87,8 @@ describe('OAuthStore consent', () => {
       verifier,
       access: 'access',
       refresh: 'refresh',
-      expiresAt: Date.now() + 60_000,
+      accessExpiresAt: Date.now() + 60_000,
+      refreshExpiresAt: Date.now() + 60_000,
     };
     expect(await store.exchange({ ...exchange, issuer: 'https://other.test' })).toBe(false);
     expect(await store.exchange(exchange)).toBe(true);
@@ -98,7 +99,8 @@ describe('OAuthStore consent', () => {
       resource: 'https://resource.test',
       access: 'next-access',
       nextRefresh: 'next-refresh',
-      expiresAt: exchange.expiresAt,
+      accessExpiresAt: exchange.accessExpiresAt,
+      refreshExpiresAt: exchange.refreshExpiresAt,
       scopes: ['read'],
     };
     expect(await store.rotate(rotation)).toBe('invalid');
@@ -149,7 +151,8 @@ describe('OAuthStore consent', () => {
       verifier,
       access: 'access',
       refresh: 'refresh',
-      expiresAt: Date.now() + 60_000,
+      accessExpiresAt: Date.now() + 60_000,
+      refreshExpiresAt: Date.now() + 60_000,
     };
     expect(await first.exchange({ ...input, verifier: 'b'.repeat(43) })).toBe(false);
     const results = await Promise.all([
@@ -193,7 +196,8 @@ describe('OAuthStore consent', () => {
       verifier,
       access: 'access',
       refresh: 'refresh',
-      expiresAt,
+      accessExpiresAt: expiresAt,
+      refreshExpiresAt: expiresAt,
     });
     const rotation = {
       refresh: 'refresh',
@@ -202,7 +206,8 @@ describe('OAuthStore consent', () => {
       resource: 'https://resource.test',
       access: 'new-access',
       nextRefresh: 'new-refresh',
-      expiresAt,
+      accessExpiresAt: expiresAt,
+      refreshExpiresAt: expiresAt,
       scopes: ['read'],
     };
     expect(await store.rotate(rotation)).toBe('rotated');
@@ -237,7 +242,8 @@ describe('OAuthStore consent', () => {
         verifier,
         access: 'access',
         refresh: 'refresh',
-        expiresAt: 2_000,
+        accessExpiresAt: 2_000,
+        refreshExpiresAt: 2_000,
       });
       const rotation = {
         refresh: 'refresh',
@@ -246,13 +252,73 @@ describe('OAuthStore consent', () => {
         resource: 'https://resource.test',
         access: 'replacement',
         nextRefresh: 'next',
-        expiresAt: 4_000,
+        accessExpiresAt: 4_000,
+        refreshExpiresAt: 4_000,
         scopes: ['read'],
       };
       expect(await store.rotate(rotation)).toBe('rotated');
       time.mockReturnValue(3_000);
       expect(await store.rotate(rotation)).toBe('replay_revoked');
       expect(await store.getAccess('replacement')).toBeNull();
+    } finally {
+      time.mockRestore();
+    }
+  });
+
+  test('refresh survives access expiry and rejects an expired unspent refresh', async () => {
+    using storage = new MemoryStorage();
+    const time = spyOn(Date, 'now').mockReturnValue(1_000);
+    try {
+      const store = new OAuthStore(storage);
+      for (const name of ['valid', 'expired']) {
+        await store.createConsent(name, consent);
+        expect(
+          await store.approveConsent(name, binding, {
+            grantId: name,
+            code: `code-${name}`,
+            tenant: 'tenant',
+            subject: 'subject',
+            resource: 'https://resource.test',
+            scopes: ['read'],
+          }),
+        ).toBe(true);
+        expect(
+          await store.exchange({
+            issuer: 'https://issuer.test',
+            code: `code-${name}`,
+            client: 'client',
+            redirect: consent.redirect,
+            resource: 'https://resource.test',
+            verifier,
+            access: `access-${name}`,
+            refresh: `refresh-${name}`,
+            accessExpiresAt: 2_000,
+            refreshExpiresAt: name === 'valid' ? 4_000 : 2_000,
+          }),
+        ).toBe(true);
+      }
+      time.mockReturnValue(3_000);
+      expect(await store.getAccess('access-valid')).toBeNull();
+      const rotation = {
+        issuer: 'https://issuer.test',
+        client: 'client',
+        resource: 'https://resource.test',
+        access: 'new-access',
+        nextRefresh: 'new-refresh',
+        accessExpiresAt: 4_000,
+        refreshExpiresAt: 6_000,
+        scopes: ['read'],
+      };
+      expect(await store.rotate({ ...rotation, refresh: 'refresh-valid' })).toBe('rotated');
+      expect(await store.getAccess('new-access')).not.toBeNull();
+      expect(
+        await store.rotate({
+          ...rotation,
+          access: 'expired-access',
+          nextRefresh: 'expired-next',
+          refresh: 'refresh-expired',
+        }),
+      ).toBe('invalid');
     } finally {
       time.mockRestore();
     }
@@ -284,7 +350,8 @@ describe('OAuthStore consent', () => {
         verifier,
         access: `access-${name}`,
         refresh: `refresh-${name}`,
-        expiresAt,
+        accessExpiresAt: expiresAt,
+        refreshExpiresAt: expiresAt,
       });
     expect(await issue('one')).toBe(false);
     expect(await issue('two')).toBe(true);
@@ -314,7 +381,8 @@ describe('OAuthStore consent', () => {
         verifier,
         access: 'access',
         refresh: 'refresh',
-        expiresAt: Date.now() + 60_000,
+        accessExpiresAt: Date.now() + 60_000,
+        refreshExpiresAt: Date.now() + 60_000,
       }),
       second.revokeGrant('grant'),
     ]);
@@ -327,7 +395,8 @@ describe('OAuthStore consent', () => {
         resource: 'https://resource.test',
         access: 'later',
         nextRefresh: 'later-refresh',
-        expiresAt: Date.now() + 60_000,
+        accessExpiresAt: Date.now() + 60_000,
+        refreshExpiresAt: Date.now() + 60_000,
         scopes: ['read'],
       }),
     ).toBe('invalid');

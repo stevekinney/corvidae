@@ -45,7 +45,8 @@ test('consent, exchange, rotation and revocation survive separate PostgreSQL poo
     resource: approval.resource,
     access: 'access',
     refresh: 'refresh',
-    expiresAt,
+    accessExpiresAt: expiresAt,
+    refreshExpiresAt: expiresAt,
   };
   {
     await using storage = new PostgresStorage(configuration);
@@ -84,7 +85,8 @@ test('consent, exchange, rotation and revocation survive separate PostgreSQL poo
         resource: approval.resource,
         access: 'rotated',
         nextRefresh: 'next',
-        expiresAt,
+        accessExpiresAt: expiresAt,
+        refreshExpiresAt: expiresAt,
         scopes: ['read'],
       }),
     ).toBe('rotated');
@@ -114,7 +116,8 @@ test('consent, exchange, rotation and revocation survive separate PostgreSQL poo
         resource: approval.resource,
         access: 'race-next-access',
         nextRefresh: 'race-next-refresh',
-        expiresAt,
+        accessExpiresAt: expiresAt,
+        refreshExpiresAt: expiresAt,
         scopes: ['read'],
       }),
     ).toBe('invalid');
@@ -150,7 +153,8 @@ test('consent, exchange, rotation and revocation survive separate PostgreSQL poo
         resource: approval.resource,
         access: 'later',
         nextRefresh: 'later-refresh',
-        expiresAt,
+        accessExpiresAt: expiresAt,
+        refreshExpiresAt: expiresAt,
         scopes: ['read'],
       }),
     ).toBe('invalid');

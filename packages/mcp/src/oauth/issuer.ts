@@ -292,7 +292,9 @@ export function hostedOAuth(configuration: Options) {
     if (!client.grantTypes.includes(type)) return error('unauthorized_client');
     const access = random();
     const refresh = random();
-    const expiresAt = Date.now() + 3600_000;
+    const now = Date.now();
+    const accessExpiresAt = now + 3_600_000;
+    const refreshExpiresAt = now + 2_592_000_000;
     if (type === 'authorization_code') {
       const code = await options.store.getCode(form.get('code') ?? '');
       const grant = code ? await options.store.getGrant(code.grantId) : null;
@@ -313,7 +315,8 @@ export function hostedOAuth(configuration: Options) {
         resource: form.get('resource') ?? '',
         access,
         refresh: client.grantTypes.includes('refresh_token') ? refresh : null,
-        expiresAt,
+        accessExpiresAt,
+        refreshExpiresAt,
       });
       if (!valid) return error('invalid_grant');
     } else if (type === 'refresh_token') {
@@ -340,7 +343,8 @@ export function hostedOAuth(configuration: Options) {
         resource: form.get('resource') ?? '',
         access,
         nextRefresh: refresh,
-        expiresAt,
+        accessExpiresAt,
+        refreshExpiresAt,
         scopes,
       });
       if (result !== 'rotated')
