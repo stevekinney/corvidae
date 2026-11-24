@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 
 import ts from 'typescript';
 
@@ -30,16 +30,34 @@ const TYPECHECK_GENERATED_DTS = join(FIXTURE_DIR, 'typecheck', 'weft.generated.d
 const PACKED_FIXTURE_VERSION = '0.0.0-packed-fixture';
 
 /**
- * The `@lostgradient/*` workspace packages Weft lists under `dependencies`, each with the directory
- * its fixture copy takes in the packed workspace. `bun pm pack` resolves a `workspace:` edge only to
- * a workspace the fixture carries, so each is copied beside Weft, and the packed consumer links it to
- * that copy rather than to an installed package.
+ * Every runtime workspace dependency reachable from Weft, with its repository-relative directory.
+ * Resolve each edge from its declaring workspace's installed link so unscoped workspaces and
+ * packages outside `packages/` do not need naming conventions or a hand-maintained list.
  */
-const WEFT_WORKSPACE_DEPENDENCIES: ReadonlyMap<string, string> = new Map(
-  Object.entries(manifest.dependencies)
-    .filter(([, specifier]) => specifier.startsWith('workspace:'))
-    .map(([name]) => [name, join('packages', name.slice('@lostgradient/'.length))]),
-);
+function workspaceDependencies(): ReadonlyMap<string, string> {
+  const result = new Map<string, string>();
+  const pending = [PACKAGE_ROOT];
+  while (pending.length > 0) {
+    const source = pending.pop()!;
+    const current = readJsonFile(join(source, 'package.json'));
+    const dependencies = {
+      ...((current['dependencies'] ?? {}) as Record<string, string>),
+      ...((current['optionalDependencies'] ?? {}) as Record<string, string>),
+    };
+    for (const [name, specifier] of Object.entries(dependencies)) {
+      if (!specifier.startsWith('workspace:') || result.has(name)) continue;
+      const target = realpathSync(join(source, 'node_modules', name));
+      const directory = relative(REPOSITORY_ROOT, target);
+      if (directory.startsWith('..') || directory.split(/[\\/]/).includes('node_modules')) {
+        throw new Error(`${name} did not resolve to a repository workspace`);
+      }
+      result.set(name, directory);
+      pending.push(target);
+    }
+  }
+  return result;
+}
+const WEFT_WORKSPACE_DEPENDENCIES = workspaceDependencies();
 
 /** Drop a manifest's `workspace:` development edges, which the packed consumer never installs. */
 function withoutWorkspaceDevelopmentEdges(
@@ -253,10 +271,10 @@ function preparePackedWorkspace(root: string): string {
     // The copy carries no `node_modules`, so a source module in it that imports another workspace
     // package (an adapter importing `@lostgradient/storage`) resolves that package through a link
     // to its fixture copy, the way the consumer resolves Weft's own `workspace:` dependencies.
-    const nestedDependencies = (dependencyPackageJson['dependencies'] ?? {}) as Record<
-      string,
-      string
-    >;
+    const nestedDependencies = {
+      ...((dependencyPackageJson['dependencies'] ?? {}) as Record<string, string>),
+      ...((dependencyPackageJson['optionalDependencies'] ?? {}) as Record<string, string>),
+    };
     for (const nestedName of Object.keys(nestedDependencies)) {
       const nestedDirectory = WEFT_WORKSPACE_DEPENDENCIES.get(nestedName);
       const nestedLink = join(root, workspaceDirectory, 'node_modules', nestedName);
@@ -265,7 +283,7 @@ function preparePackedWorkspace(root: string): string {
       // links to the package this workspace's own install holds.
       symlinkSync(
         nestedDirectory === undefined
-          ? join(REPOSITORY_ROOT, 'node_modules', nestedName)
+          ? realpathSync(join(REPOSITORY_ROOT, workspaceDirectory, 'node_modules', nestedName))
           : join(root, nestedDirectory),
         nestedLink,
         'dir',
@@ -548,6 +566,21 @@ const scenario5 = await outcomeOf(async () => {
   // The service worker constructs the IndexedDB adapter, so it ships with Weft (COR-1777).
   expect(Object.keys(dependencies)).toContain('@lostgradient/storage-indexeddb');
   const fixtureRoot = dirname(consumerDirectory);
+  for (const [name, directory] of WEFT_WORKSPACE_DEPENDENCIES) {
+    const copiedManifest = readJsonFile(join(fixtureRoot, directory, 'package.json'));
+    const nestedDependencies = {
+      ...((copiedManifest['dependencies'] ?? {}) as Record<string, string>),
+      ...((copiedManifest['optionalDependencies'] ?? {}) as Record<string, string>),
+    };
+    for (const [nestedName, specifier] of Object.entries(nestedDependencies)) {
+      if (!specifier.startsWith('workspace:')) continue;
+      const target = WEFT_WORKSPACE_DEPENDENCIES.get(nestedName);
+      expect(target, `${name} -> ${nestedName}`).toBeDefined();
+      expect(realpathSync(join(fixtureRoot, directory, 'node_modules', nestedName))).toBe(
+        realpathSync(join(fixtureRoot, target!)),
+      );
+    }
+  }
   for (const name of Object.keys(dependencies)) {
     const linked = realpathSync(join(consumerDirectory, 'node_modules', name));
     const workspaceDirectory = WEFT_WORKSPACE_DEPENDENCIES.get(name);

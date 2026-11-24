@@ -35,6 +35,19 @@
       color var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
+  @media (pointer: coarse) {
+    .cinder-collapsible > .cinder-collapsible__trigger {
+      position: relative;
+    }
+
+    .cinder-collapsible > .cinder-collapsible__trigger::after {
+      content: '';
+      position: absolute;
+      inset-inline: 0;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+  }
+
   /* State and variant rules select through child combinators, so a Collapsible's own attributes
    * never reach a Collapsible nested in its panel (COR-2634). */
   .cinder-collapsible[data-cinder-expanded] > .cinder-collapsible__trigger {

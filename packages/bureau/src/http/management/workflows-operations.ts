@@ -101,6 +101,13 @@ const problemSchema = z.object({
   code: z.string(),
   message: z.string(),
   issues: z.array(z.object({ path: z.string(), message: z.string() })).nullable(),
+  syntax: z
+    .object({
+      line: z.number().int().positive(),
+      stoppedAt: z.number().int().positive(),
+      kind: z.enum(['comma', 'other']),
+    })
+    .optional(),
 });
 
 /** A JSON Schema as it is written in a workflow file. */
@@ -176,9 +183,36 @@ const scheduleSchema = z.object({
 
 /** How busy a workflow is: see `WorkflowRunCounts`. */
 const runCountsSchema = z.object({
+  total: z.number().int().nonnegative(),
   active: z.number().int(),
   last24Hours: z.number().int(),
   lastRunAt: z.string().nullable(),
+  last: z
+    .object({
+      status: z.enum([
+        'pending',
+        'running',
+        'completed',
+        'failed',
+        'cancelled',
+        'timed-out',
+        'suspended',
+      ]),
+      /** The failed document step, counted from one, or `null` when the run did not fail in one. */
+      failedStep: z.number().int().positive().nullable(),
+    })
+    .nullable(),
+  current: z
+    .object({
+      /** When this unfinished instance was created. */
+      startedAt: z.string(),
+      status: z.enum(['pending', 'running', 'suspended']),
+      /** The most recently started document step, counted from one, or `null` before one starts. */
+      step: z.number().int().positive().nullable(),
+      totalSteps: z.number().int().nonnegative().nullable(),
+      waitingForSignal: z.string().nullable(),
+    })
+    .nullable(),
 });
 
 const workflowDetailSchema = workflowListingSchema.extend({
@@ -398,6 +432,7 @@ function listingView(listing: ReturnType<BureauWorkflows['list']>[number]) {
             code: listing.problem.code,
             message: listing.problem.message,
             issues: listing.problem.issues?.map((issue) => ({ ...issue })) ?? null,
+            ...(listing.problem.syntax === undefined ? {} : { syntax: listing.problem.syntax }),
           },
   };
 }
@@ -905,6 +940,7 @@ export const workflowsListOperation = defineOperation<
     const workflows = workflowsOf(host);
     const limit = input.limit ?? DEFAULT_PAGE_LIMIT;
     const offset = input.offset ?? 0;
+    const mayReadRunSummaries = authorizeWorkspaceClass('deployment-operator', principal).allowed;
     // The files, then the code workflows plugins contributed; the files' entries are unchanged.
     const files = workflows.list();
     const code = workflows.codeList();
@@ -919,9 +955,7 @@ export const workflowsListOperation = defineOperation<
                 ...listingView(listing),
                 // A file the Bureau cannot use is never registered, so it has had no instance to count.
                 runs:
-                  authorizeWorkspaceClass('deployment-operator', principal).allowed &&
-                  input.includeRuns === true &&
-                  listing.state === 'ready'
+                  input.includeRuns === true && listing.state === 'ready' && mayReadRunSummaries
                     ? await workflows.runCounts(listing.id)
                     : null,
               },

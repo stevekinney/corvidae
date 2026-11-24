@@ -1,0 +1,25 @@
+{
+  "name": "@lostgradient/mcp",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./http": "./src/http.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json --report-unused-disable-directives-severity=error && bun ../../scripts/check-inherited-key-reads.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "types": "tsc -b tsconfig.source.json",
+    "typecheck": "tsc -b tsconfig.json",
+    "test": "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.integration.test.ts'",
+    "test:slow": "bun ../../scripts/bun-test-selected.ts .integration.test.ts"
+  },
+  "devDependencies": {
+    "@lostgradient/testing": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
+  },
+  "sideEffects": false
+}

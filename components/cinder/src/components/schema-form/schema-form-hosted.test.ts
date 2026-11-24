@@ -98,6 +98,11 @@ describe('SchemaForm hosted', () => {
     expect(legend?.[1]).toContain('padding-block-end: var(--cinder-space-2)');
   });
 
+  test('uses small composed controls inside its host card', async () => {
+    const { container } = await mount(true);
+    expect(container.querySelector('input')?.getAttribute('data-cinder-size')).toBe('sm');
+  });
+
   test('offers no Edit as JSON panel on a large form', async () => {
     const properties = Object.fromEntries(
       Array.from({ length: 10 }, (_, index) => [`field${String(index)}`, { type: 'string' }]),

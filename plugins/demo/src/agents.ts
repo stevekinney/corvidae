@@ -32,6 +32,7 @@
 import type { PluginAgent, PluginSetupContext } from '@lostgradient/interborough-plugin';
 import { createAgent, createScriptedGenerate, stopWhen } from '@lostgradient/operative';
 
+import type { createRefundLedger } from './refund-ledger.ts';
 import {
   echoGenerate,
   humanInputGenerate,
@@ -41,7 +42,7 @@ import {
   reply,
   toolRunnerGenerate,
 } from './scripts.ts';
-import { createToolRunnerToolbox } from './tools.ts';
+import { createToolRunnerToolbox, type createAdmittedRefundTool } from './tools.ts';
 
 /** Every demo agent, by its name inside the plugin. */
 export const DEMO_AGENT_NAMES = [
@@ -75,6 +76,8 @@ export const CHANGELOG_WRITER_REPLY =
 export function createDemoAgents(
   approvalSecret: string | undefined,
   approvals: PluginSetupContext['approvals'],
+  ledger: ReturnType<typeof createRefundLedger>,
+  issueRefund: ReturnType<typeof createAdmittedRefundTool>,
 ): PluginAgent[] {
   return [
     {
@@ -97,8 +100,8 @@ export function createDemoAgents(
         name: 'tool-runner',
         description: 'Looks an order up, then asks for approval to refund it.',
         examples: ['Refund order 1234'],
-        generate: toolRunnerGenerate(),
-        toolbox: createToolRunnerToolbox(approvalSecret, approvals),
+        generate: toolRunnerGenerate(ledger),
+        toolbox: createToolRunnerToolbox(approvalSecret, approvals, issueRefund),
         stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
       }),
     },

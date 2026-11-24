@@ -97,7 +97,7 @@ async function fillWebhook(page: Page, url: string, name: string): Promise<void>
   await page.getByLabel(copy.check.nameLabel).fill(name);
 }
 
-test('makes a hook in the editor, sends a test event to a receiver, and shows the delivery', async ({
+test('/hooks/:hook: makes a hook in the editor, sends a test event to a receiver, and shows the delivery', async ({
   page,
   checkA11y,
 }) => {
@@ -118,6 +118,11 @@ test('makes a hook in the editor, sends a test event to a receiver, and shows th
   await expect(deliveries.getByText(copy.deliveries.none.title)).toBeVisible();
   // The secret the Bureau made is shown once, on this page, with the note that it cannot be seen again.
   await expect(page.getByTestId('hook-secret')).toContainText(copy.webhook.secretOnce);
+  await captureForDesignReview(page, {
+    route: '/hooks/:hook',
+    state: 'one-time-signing-secret',
+    source: SOURCE,
+  });
 
   await page.getByRole('button', { name: copy.check.test }).click();
   await expect(page.getByTestId('hook-test-result')).toContainText('Test event sent.');
@@ -1562,6 +1567,189 @@ const RECEIPTED = {
   createdAt: Date.UTC(2026, 10, 2, 15),
   updatedAt: Date.UTC(2026, 10, 2, 15, 0, 1),
 };
+
+/** The failed webhook record and its separately authorized run, for the expanded run-error state. */
+const RUN_ERROR_DELIVERY = {
+  id: 'delivery-run-error',
+  hookId: 'run-error-hook',
+  owner: 'anonymous:local',
+  actionType: 'webhook',
+  kind: 'run.error',
+  test: false,
+  status: 'exhausted',
+  request: {
+    url: 'https://events.pagerduty.com/v2/enqueue',
+    headers: {},
+    body: JSON.stringify({
+      kind: 'run.error',
+      payload: { runId: 'run-1', step: 2, errorCode: 'upstream-unavailable' },
+    }),
+  },
+  work: null,
+  attempts: Array.from({ length: 8 }, (_unused, index) => ({
+    number: index + 1,
+    startedAt: Date.UTC(2026, 9, 30, 11, index),
+    finishedAt: Date.UTC(2026, 9, 30, 11, index, 1),
+    outcome: 'response',
+    status: 410,
+    responseExcerpt: null,
+    responseTruncated: null,
+    error: null,
+    receipt: null,
+  })),
+  maxAttempts: 8,
+  createdAt: Date.UTC(2026, 9, 30, 11),
+  updatedAt: Date.UTC(2026, 9, 30, 11, 7),
+};
+
+const TEST_EVENT_DELIVERY = {
+  ...RUN_ERROR_DELIVERY,
+  id: 'delivery-test-event',
+  kind: 'hook.test',
+  test: true,
+  status: 'delivered',
+  request: {
+    ...RUN_ERROR_DELIVERY.request,
+    body: JSON.stringify({ kind: 'hook.test', payload: {} }),
+  },
+  attempts: [{ ...RUN_ERROR_DELIVERY.attempts[0], status: 200 }],
+};
+
+const RETRYING_REVIEW_HOOK = hookRecord('retrying-review-hook', {
+  name: 'Notify Slack when a review is waiting',
+  action: { type: 'webhook', url: 'https://hooks.slack.example/services/refund' },
+  events: ['review.requested'],
+  declaredBy: null,
+});
+const RETRY_TIME = Date.UTC(2026, 9, 30, 11, 4);
+const RETRYING_REVIEW_DELIVERY = {
+  ...RUN_ERROR_DELIVERY,
+  id: 'delivery-review-retry',
+  hookId: 'retrying-review-hook',
+  kind: 'review.requested',
+  status: 'pending',
+  nextAttemptAt: RETRY_TIME + 40_000,
+  request: {
+    url: 'https://hooks.slack.example/services/refund',
+    headers: {},
+    body: JSON.stringify({
+      kind: 'review.requested',
+      payload: { reviewId: 'review-refund-4471', reviewKind: 'tool-approval' },
+    }),
+  },
+  attempts: RUN_ERROR_DELIVERY.attempts.slice(0, 3),
+};
+
+const RUN_ERROR_HOOK = hookRecord('run-error-hook', {
+  name: 'Page on-call when a run fails',
+  action: { type: 'webhook', url: 'https://events.pagerduty.com/v2/enqueue' },
+  events: ['run.error'],
+  declaredBy: null,
+});
+
+for (const width of WIDTHS) {
+  test(`[hook-delivery-run-error] /hooks/:hook: an expanded failed run error keeps its actual body separate from its authorized related run, at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openHooks(page, '/hooks/run-error-hook', [RUN_ERROR_HOOK], {
+      'bureau.hooks.deliveries': () => ({
+        deliveries: [RUN_ERROR_DELIVERY, TEST_EVENT_DELIVERY],
+      }),
+      'bureau.tasks.get': () => ({
+        id: 'run-1',
+        workflow: { type: 'release-notes' },
+        failure: { step: { label: 'Collect merged changes' } },
+        statusMessage: 'GitHub did not answer (HTTP 503)',
+      }),
+    });
+    const item = page
+      .getByTestId('hook-deliveries')
+      .locator('li[data-delivery="delivery-run-error"]');
+    await item.locator('button[aria-expanded]').first().click();
+    const testEvent = page
+      .getByTestId('hook-deliveries')
+      .locator('li[data-delivery="delivery-test-event"]');
+    await expect(testEvent.getByText('Test event', { exact: true })).toBeVisible();
+    await expect(testEvent.getByRole('img', { name: 'Delivered, 200 OK' })).toBeVisible();
+    await expect(testEvent.locator('button[aria-expanded]')).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    await expect(item.getByRole('button', { name: 'Retry delivery' })).toBeVisible();
+
+    const payload = item.getByTestId('hook-delivery-payload');
+    await expect(payload.getByText('Payload sent', { exact: true })).toBeVisible();
+    await expect(payload.getByRole('radio', { name: 'Fields', exact: true })).toBeChecked();
+    await expect(payload.getByRole('radio', { name: 'JSON', exact: true })).toBeVisible();
+    const copyPayload = payload.getByRole('button', { name: 'Copy Payload sent', exact: true });
+    await expect(copyPayload).toBeVisible();
+    await expect(payload).toContainText('upstream-unavailable');
+    await expect(payload).not.toContainText('GitHub did not answer (HTTP 503)');
+
+    const related = item.getByTestId('hook-delivery-related-run');
+    await expect(related.getByRole('link', { name: 'Release notes' })).toHaveAttribute(
+      'href',
+      '/runs/run-1',
+    );
+    await expect(related).toContainText('Step: Collect merged changes');
+    await expect(related).toContainText('Error: GitHub did not answer (HTTP 503)');
+    await captureForDesignReview(page, {
+      route: '/hooks/:hook',
+      state: 'expanded failed run.error delivery',
+      source: SOURCE,
+    });
+
+    await payload.getByRole('radio', { name: 'JSON' }).check({ force: true });
+    await expect(payload.getByRole('tree', { name: 'JSON tree' })).toBeVisible();
+    await expect(payload).not.toContainText('GitHub did not answer (HTTP 503)');
+    await captureForDesignReview(page, {
+      route: '/hooks/:hook',
+      state: 'expanded failed run.error delivery JSON',
+      source: SOURCE,
+    });
+
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await copyPayload.click();
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe(RUN_ERROR_DELIVERY.request.body);
+  });
+}
+
+for (const width of WIDTHS) {
+  test(`[hook-delivery-review-retry] /hooks/:hook: a retrying review names its hook and request, at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.clock.setFixedTime(new Date(RETRY_TIME));
+    await openHooks(page, '/hooks/retrying-review-hook', [RETRYING_REVIEW_HOOK], {
+      'bureau.hooks.deliveries': () => ({ deliveries: [RETRYING_REVIEW_DELIVERY] }),
+      'bureau.reviews.get': () => ({
+        id: 'review-refund-4471',
+        kind: 'tool-approval',
+        approval: {
+          toolName: 'issue_refund',
+          arguments: {},
+          action: { type: 'approval', message: 'Refund order 4471 for $42.00?' },
+        },
+      }),
+    });
+    const item = page
+      .getByTestId('hook-deliveries')
+      .locator('li[data-delivery="delivery-review-retry"]');
+    await expect(item).toContainText(
+      'Notify Slack when a review is waiting, Refund order 4471 for $42.00?',
+    );
+    await expect(item.getByRole('img', { name: 'Retrying, try 3 of 8' })).toBeVisible();
+    await expect(item).toContainText('Next try in 40 seconds');
+    await captureForDesignReview(page, {
+      route: '/hooks/:hook',
+      state: 'retrying review delivery',
+      source: SOURCE,
+    });
+  });
+}
 
 // At 375 the capture also takes the 320 phone, so each of these states is seen at 320 and 1280.
 for (const width of WIDTHS) {

@@ -15,6 +15,7 @@ import { compareStrings } from '../src/internals.ts';
 
 import { join } from 'node:path';
 
+import { renderOperationBehaviors } from './operation-behaviors.ts';
 import { renderAliasDeclarations, selectAliases } from './operation-client-aliases.ts';
 import {
   GENERATED_HEADER,
@@ -139,6 +140,8 @@ export type OperationClientOptions = {
   readonly outputDirectory: string;
   /** The name of the main generated file. Defaults to `operation-client.generated.ts`. */
   readonly outputFile?: string | undefined;
+  /** Emit transport-injected and Fetch entries alongside the existing client. */
+  readonly portableEntries?: boolean | undefined;
   /** The module the generated client imports its runtime from. Defaults to `@lostgradient/backchannel/client`. */
   readonly runtimeSpecifier?: string | undefined;
   /** The prefix the server serves its REST paths under, which the client's paths omit. Defaults to none. */
@@ -266,6 +269,8 @@ export async function createOperationClientSources(
     restOnlyOperations,
     subscriptionOperations,
   );
+  const behaviors = renderOperationBehaviors(snapshot.operations);
+  if (behaviors !== undefined) sources.set('operation-behaviors.generated.ts', behaviors);
   sources.set(
     outputFile,
     mainSource({
@@ -282,6 +287,59 @@ export async function createOperationClientSources(
       names,
     }),
   );
+
+  if (options.portableEntries) {
+    const portableFile = 'portable-operation-client.generated.ts';
+    sources.set(
+      portableFile,
+      `${GENERATED_HEADER}
+import { createCatalogClient, type CatalogClient, type CatalogTransport } from '${runtimeSpecifier}';
+${imports}
+
+const operationNames = [
+${catalogNames.join('\n')}
+] as const;
+
+type CatalogOperationTypes = Pick<${types}, (typeof operationNames)[number]>;
+
+/** Bind this catalog to a host-provided transport. */
+export function ${options.factoryName}WithTransport(transport: CatalogTransport): CatalogClient<CatalogOperationTypes> {
+  return createCatalogClient<CatalogOperationTypes>(operationNames, transport);
+}
+`,
+    );
+    sources.set(
+      'fetch-operation-client.generated.ts',
+      `${GENERATED_HEADER}
+import { httpJsonRpcTransport, type JsonRpcHttpConnection${subscriptionOperations.length ? ', createSubscriptionClient, sseSubscriptionTransport' : ''} } from '${runtimeSpecifier}';
+import { ${options.factoryName}WithTransport } from './${portableFile}';
+${
+  subscriptionOperations.length
+    ? `import type { SubscriptionOperationTypes } from './${SUBSCRIPTION_TYPES_FILE}';
+
+const subscriptionNames = [
+${subscriptionOperations.map((operation) => `  '${operation.name}',`).join('\n')}
+] as const;\n`
+    : ''
+}
+
+/** Bind this catalog to the Fetch JSON-RPC transport. */
+export function ${options.factoryName}WithFetch(connection: JsonRpcHttpConnection) {
+  ${
+    subscriptionOperations.length
+      ? `return {
+    ...${options.factoryName}WithTransport(httpJsonRpcTransport(connection)),
+    ...createSubscriptionClient<SubscriptionOperationTypes>(
+      subscriptionNames,
+      sseSubscriptionTransport({ ...connection, routePrefix: ${JSON.stringify(options.subscriptionRoutes?.pathPrefix ?? DEFAULT_SUBSCRIPTION_ROUTE_PREFIX)} }),
+    ),
+  };`
+      : `return ${options.factoryName}WithTransport(httpJsonRpcTransport(connection));`
+  }
+}
+`,
+    );
+  }
 
   const formatted = new Map<string, string>();
   for (const [fileName, contents] of sources) {

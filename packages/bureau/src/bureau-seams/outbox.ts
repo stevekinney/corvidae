@@ -436,6 +436,30 @@ export function createOutbox<D extends AgentDefinitions>(core: BureauCore<D>, pe
       return acknowledge();
     }
     const payload = entry.payload;
+    const release = (payload as ReviewAuditAttachment).terminalRelease;
+    if (release !== undefined) {
+      if (
+        typeof release !== 'object' ||
+        release === null ||
+        typeof release.handler !== 'string' ||
+        typeof release.identifier !== 'string' ||
+        typeof release.runId !== 'string' ||
+        typeof release.reviewId !== 'string' ||
+        !Number.isSafeInteger(release.round) ||
+        typeof release.toolRevision !== 'string'
+      )
+        throw new Error('Malformed terminal review release');
+      const contribution = core.terminalReviewReleases?.get(release.handler);
+      if (!contribution || contribution.release.toolRevision !== release.toolRevision)
+        throw new Error(`Terminal review release unavailable: ${release.handler}`);
+      await contribution.release.release({
+        identifier: release.identifier,
+        runId: release.runId,
+        reviewId: release.reviewId,
+        round: release.round,
+        toolRevision: release.toolRevision,
+      });
+    }
     if (core.auditTrailInstance) {
       await core.auditTrailInstance.record({
         runId: payload.runId,

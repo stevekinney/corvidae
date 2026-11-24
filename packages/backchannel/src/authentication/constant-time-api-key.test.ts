@@ -7,7 +7,7 @@ import {
   findConstantTimeApiKeyMatch,
   findConstantTimeDigestMatch,
   type ConstantTimeApiKeyEntry,
-} from './constant-time-api-key.ts';
+} from '@lostgradient/credentials/api-key-verification';
 
 describe('constant-time API key matching', () => {
   it('accepts valid keys and rejects invalid keys without depending on raw key length', async () => {

@@ -503,6 +503,9 @@ export const HOOKS_COPY = {
       showFewer: 'Show fewer',
       /** The label of the payload inspector over what the delivery sent. */
       payloadLabel: 'Payload sent',
+      relatedRun: 'Related run',
+      relatedRunStep: 'Step',
+      relatedRunError: 'Error',
       /** What the inspector says for a delivery that sent no request. */
       noPayload: 'This delivery sent no payload.',
       /** The same for a test of a plugin action, which sends nothing by design. */
