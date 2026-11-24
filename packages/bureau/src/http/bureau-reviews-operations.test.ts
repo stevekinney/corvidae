@@ -1326,6 +1326,19 @@ describe('the reviews operations against a real Bureau', () => {
         });
         expect(JSON.stringify(detail.result)).not.toContain('private-provider');
         expect(
+          bureauReviewSchema.safeParse({
+            ...detail.result,
+            effect: {
+              kind: 'refund',
+              refundId: refund.id,
+              orderId: 'order',
+              cents: 500,
+              currency: 'EUR',
+              status: 'admitted',
+            },
+          }).success,
+        ).toBe(false);
+        expect(
           (await call(handler, 'bureau.reviews.get', { id: review?.id }, 'operator-key')).result,
         ).toMatchObject({ id: review?.id, round: 0 });
         const reasonOf = (reply: Awaited<ReturnType<typeof call>>) =>
@@ -1595,19 +1608,6 @@ describe('workspace privacy for reviews', () => {
           { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: BUREAU_SCOPES },
         ),
       });
-      expect(
-        bureauReviewSchema.safeParse({
-          ...detail.result,
-          effect: {
-            kind: 'refund',
-            refundId: refund.id,
-            orderId: 'order',
-            cents: 500,
-            currency: 'EUR',
-            status: 'admitted',
-          },
-        }).success,
-      ).toBe(false);
       const controlResult = await call(control, 'bureau.reviews.list', {});
       expect(JSON.stringify(controlResult)).toContain('PRIVATE-ENGINE-ARTIFACT-598a');
       for (const actor of Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[]) {
