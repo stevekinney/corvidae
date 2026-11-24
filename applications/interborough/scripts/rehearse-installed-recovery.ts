@@ -112,7 +112,9 @@ export async function rehearseInstalledRecovery(previous: string, candidate: str
       }
     } catch (error) {
       if (!outcome.ok)
-        throw new AggregateError([outcome.error, error], 'Host action and shutdown failed');
+        throw new AggregateError([outcome.error, error], 'Host action and shutdown failed', {
+          cause: error,
+        });
       throw error;
     }
     if (!outcome.ok) throw outcome.error;
