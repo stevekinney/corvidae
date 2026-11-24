@@ -696,7 +696,7 @@
 
   /* The first line of a button's content is where its icon aligns: when a phrase wraps, the
    * chevron and the status icon stay beside the first line, not centered on all of them. */
-  .chat-tool-call-toggle,
+  :global(.chat-tool-call-toggle),
   .chat-tool-call-row {
     display: flex;
     align-items: flex-start;
@@ -714,14 +714,14 @@
     cursor: pointer;
   }
 
-  .chat-tool-call-toggle:focus-visible,
+  :global(.chat-tool-call-toggle:focus-visible),
   .chat-tool-call-row:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
   /* The chevron is 14px beside 13px text: a glyph follows its text (12 to 14px beside 12 to 13px). */
-  .chat-tool-call-toggle :global(.chat-tool-call-chevron) {
+  :global(.chat-tool-call-toggle .cinder-disclosure-trigger__chevron) {
     inline-size: 14px;
     block-size: 14px;
     flex: none;
@@ -729,7 +729,7 @@
     transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
-  .chat-tool-call-toggle[aria-expanded='true'] :global(.chat-tool-call-chevron) {
+  :global(.chat-tool-call-toggle[aria-expanded='true'] .cinder-disclosure-trigger__chevron) {
     transform: rotate(90deg);
   }
 
@@ -739,9 +739,11 @@
     direction: rtl;
   }
 
-  :global(.chat-message-wrapper[data-message-direction='rtl'])
-    .chat-tool-call-toggle[aria-expanded='false']
-    :global(.chat-tool-call-chevron) {
+  :global(
+    .chat-message-wrapper[data-message-direction='rtl']
+      .chat-tool-call-toggle[aria-expanded='false']
+      .cinder-disclosure-trigger__chevron
+  ) {
     transform: scaleX(-1);
   }
 
@@ -753,7 +755,7 @@
    * header overhangs on both sides, a step row ends at its own edges, and only the last row
    * overhangs, below: a tap between two rows goes to the nearer one. */
   @media (any-pointer: coarse) {
-    .chat-tool-call-toggle,
+    :global(.chat-tool-call-toggle),
     .chat-tool-call-row {
       position: relative;
       z-index: 1;
@@ -1186,7 +1188,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .chat-tool-call-toggle :global(.chat-tool-call-chevron) {
+    :global(.chat-tool-call-toggle .cinder-disclosure-trigger__chevron) {
       transition: none;
     }
 
