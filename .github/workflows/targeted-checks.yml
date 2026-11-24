@@ -16,8 +16,8 @@ jobs:
       matrix:
         mode: [selected, exhaustive-fast, exhaustive-isolated]
     env:
-      SUBJECT_REVISION: 4c69562549612d884a3035e842fcd031fc5181a3
-      SUBJECT_TREE: 76b8cfdb05dd64a24fee006f78a493be6b266870
+      SUBJECT_REVISION: 37a39728ba5bf7ff2688b783eacf2b0964764014
+      SUBJECT_TREE: 0f96ab0afeb99460f15ab0d19e7ec6629d4ac6e1
       SUBJECT_BASE: a1ccdcb653c5106fbe29a2b6743a06c0b06f343a
       MODE: ${{ matrix.mode }}
       TURBO_CACHE: local:rw
