@@ -1,7 +1,7 @@
 {
   "issue": "COR-2596_COR-2597_COR-2598_COR-2599_COR-2600_COR-2601_COR-2602_COR-2651",
   "branch": "steve/composable-portable-credentials-refunds",
-  "checkedAt": "ed622bf88a37a33606c921d450b027b4c20246bc",
+  "checkedAt": "d67315df5f5dcbaa010a6cab6cc41b2f997c19b3",
   "briefVersion": "4be05d6acd48",
   "status": "READY",
   "criteria": [
@@ -183,7 +183,7 @@
     {
       "id": "COR-2601/AC9",
       "status": "met-on-branch",
-      "evidence": "Named credentials test exits 0 (8 cases, 197 assertions). Backchannel durable-api-key.test.ts drives actual Fetch and Backchannel operation rights and asserts unchanged rename state."
+      "evidence": "Named credentials test exits 0 (8 cases, 197 assertions). Backchannel durable-api-key.test.ts drives actual Fetch and Backchannel operation rights and asserts unchanged rename state. Full Backchannel 749/1942 and isolated installed Weft codegen 15/91 prove the exact new workspace dependency and its packed transitive fixture."
     },
     {
       "id": "COR-2601/AC10",
@@ -233,12 +233,12 @@
     {
       "id": "COR-2602/AC8",
       "status": "met-on-branch",
-      "evidence": "demo registered plugin test"
+      "evidence": "demo registered plugin test c3 verifies the real app-mount continuation and pending-state phrase, and migrates the Chat and Reviews Playwright callers. The product gate requires the corrected hosted browser run."
     },
     {
       "id": "COR-2602/AC9",
       "status": "met-on-branch",
-      "evidence": "demo plugin and tools tests"
+      "evidence": "demo plugin and tools tests c3 verifies mounted allow-all still interrupts for approval and the canonical mode marker prevents an invalid remembered bypass. c4 enforces the naming taxonomy at the plugin boundary without altering durable release identity."
     },
     {
       "id": "COR-2602/AC10",
@@ -253,7 +253,7 @@
     {
       "id": "COR-2602/AC12",
       "status": "met-on-branch",
-      "evidence": "Bureau process recovery test"
+      "evidence": "Bureau process recovery test Nine process cases and 48 assertions on the c4 source passed, including re-delivery after process death."
     },
     {
       "id": "COR-2602/AC13",
