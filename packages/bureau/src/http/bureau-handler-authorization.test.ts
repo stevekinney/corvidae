@@ -247,6 +247,13 @@ function definitionParameters(operation: CatalogOperation) {
     return {
       events: [{ kind: 'run.settled', bureauId: 'bureau-1', emittedAtMs: 1_000, payload: {} }],
     };
+  if (operation.name.startsWith('bureau.contexts.share')) {
+    return {
+      contextId: 'context-probe',
+      granteeOwnerId: 'workspace-a:peer',
+      decision: 'grant',
+    };
+  }
   if (operation.name.startsWith('bureau.assets.')) return ASSET_PARAMETERS;
   if (operation.name.startsWith('bureau.schedules.')) return SCHEDULE_PARAMETERS;
   if (operation.name.startsWith('bureau.goals.')) return GOAL_PARAMETERS;
