@@ -14,6 +14,7 @@ on:
           - cinder-mcp
           - armorer
           - conversationalist
+          - bungalow
         required: true
       version:
         description: Version to pack or publish, without build metadata.
@@ -66,7 +67,7 @@ jobs:
           PUBLISH: ${{ inputs.publish }}
         run: |
           case "$PACKAGE" in
-            markdown|cinder|editor|chat|cinder-mcp)
+            markdown|cinder|editor|chat|cinder-mcp|bungalow)
               npm_name="@lostgradient/$PACKAGE"
               tarball="lostgradient-$PACKAGE-$VERSION.tgz"
               ;;
@@ -130,7 +131,7 @@ jobs:
             cinder-mcp)
               bun packages/cinder-mcp/scripts/pack-release.ts --version "$VERSION" --cinder-version "$CINDER_VERSION" --outdir "$output" > "$output/receipt.json"
               ;;
-            armorer|conversationalist)
+            armorer|conversationalist|bungalow)
               bun scripts/pack-agent-library-release.ts --package "$PACKAGE" --version "$VERSION" --armorer-version "$ARMORER_VERSION" --outdir "$output" > "$output/receipt.json"
               ;;
           esac
@@ -138,7 +139,7 @@ jobs:
           bunx publint run --strict "$tarball"
           bunx attw --profile esm-only "$tarball"
           case "$PACKAGE" in
-            armorer|conversationalist)
+            armorer|conversationalist|bungalow)
               dependencies=()
               if [[ "$PACKAGE" == conversationalist && "$PUBLISH" != true ]]; then
                 staging="$RUNNER_TEMP/armorer-dependency"
@@ -198,6 +199,10 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: inputs.package == 'bungalow'
+        with:
+          bun-version: 1.4.4
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: cinder-npm-tarball
@@ -220,4 +225,8 @@ jobs:
           printf '{"private":true,"type":"module"}\n' > package.json
           npm install --ignore-scripts --no-audit --no-fund --save-exact "$package"
           npm audit signatures
-          node --input-type=module -e 'await import(process.env.NPM_NAME);'
+          if [[ "$NPM_NAME" == '@lostgradient/bungalow' ]]; then
+            bun -e 'const bungalow = await import(process.env.NPM_NAME); const home = await bungalow.openTemporaryBungalow({ name: "release-smoke" }); home.close();'
+          else
+            node --input-type=module -e 'await import(process.env.NPM_NAME);'
+          fi
