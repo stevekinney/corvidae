@@ -1,7 +1,7 @@
 {
   "issue": "COR-2669",
   "branch": "steve/composable-compiler-source-maps",
-  "checkedAt": "03f750a182490844965181ae3ed551b9d52d6617",
+  "checkedAt": "539eb2cfa9402c406e96a8144c8dd604a0c4768b",
   "briefVersion": "ae057174bde7",
   "status": "READY",
   "criteria": [
