@@ -11,10 +11,7 @@ import type { ToolboxLike } from './tools';
 export type ToolboxMcpHttpOptions<T extends Principal> = Omit<CreateMCPOptions, 'selection'> & {
   tools: readonly { id: string; name: string; scopes: readonly string[] }[];
   authorization: Omit<ProtectedHttpOptions<T>, 'dispatch'>;
-  requestContext: (
-    principal: T,
-    grant: VerifiedGrant,
-  ) => ToolRequestContext | Promise<ToolRequestContext>;
+  requestContext: (principal: T, grant: VerifiedGrant) => ToolRequestContext;
   surfaceScopes?: readonly string[];
 };
 
@@ -71,10 +68,7 @@ export async function createToolboxMcpHandler<T extends Principal>(
         if (!required) throw new Error('Unknown MCP tool');
         const decision = await context.requireScopes(required);
         if (!decision.ok) throw new Error('MCP tool access denied');
-        const actor = await requestContext(decision.principal, grant);
-        const fresh = await context.requireScopes(required);
-        if (!fresh.ok) throw new Error('MCP tool access denied');
-        return actor;
+        return requestContext(decision.principal, grant);
       };
       return mcp.fetch(request, {
         authInfo: {

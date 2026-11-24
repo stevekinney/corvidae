@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { createToolboxMcpHandler } from 'armorer/mcp/http';
@@ -138,6 +139,8 @@ describe('protected native MCP listener', () => {
     ] as const) {
       let binding = { grantId: 'grant', clientId: 'client', tenant: 'tenant', subject: 'subject' };
       let permission = true;
+      let revision = 'initial';
+      const projected: string[] = [];
       let deliveries = 0;
       let aborted = false;
       const tool = createTool({
@@ -171,18 +174,21 @@ describe('protected native MCP listener', () => {
             };
           },
           async resolvePrincipal() {
-            return { delegableScopes: permission ? ['write'] : [] };
+            return { delegableScopes: permission ? ['write'] : [], revision };
           },
         },
-        requestContext: () => ({
-          authority: {
-            principalId: 'subject',
-            tenantId: 'tenant',
-            ownerId: 'subject',
-            capabilities: ['write'],
-            authorizationRevision: '1',
-          },
-        }),
+        requestContext: (principal) => {
+          projected.push(principal.revision);
+          return {
+            authority: {
+              principalId: 'subject',
+              tenantId: 'tenant',
+              ownerId: 'subject',
+              capabilities: ['write'],
+              authorizationRevision: principal.revision,
+            },
+          };
+        },
       });
       const transport = new StreamableHTTPClientTransport(
         new URL('https://equipment.example.com/mcp'),
@@ -205,6 +211,7 @@ describe('protected native MCP listener', () => {
           { allowInputRequired: true },
         )) as unknown as { resultType: string; requestState: string };
         expect(round.resultType).toBe('input_required');
+        revision = 'current';
         if (change === 'permission') permission = false;
         else if (change !== 'none') binding = { ...binding, [change]: 'different' };
         const retry = client.callTool(
@@ -225,6 +232,7 @@ describe('protected native MCP listener', () => {
           expect(refusal).toBe(true);
         }
         expect(deliveries).toBe(change === 'none' ? 1 : 0);
+        if (change === 'none') expect(projected.at(-1)).toBe('current');
       } finally {
         await client.close();
         await endpoint.close();
@@ -234,6 +242,7 @@ describe('protected native MCP listener', () => {
   });
   test('selects a pinned public name and enforces tenant authority before execution', async () => {
     let calls = 0;
+    let authorityRevision = 0;
     const assets = new Map([
       ['one', 'old'],
       ['two', 'old'],
@@ -246,6 +255,9 @@ describe('protected native MCP listener', () => {
       async execute({ name }, context) {
         calls++;
         expect(JSON.stringify(context)).not.toContain('bearer-marker');
+        expect(context.requestContext!.authority.authorizationRevision).toBe(
+          String(authorityRevision),
+        );
         const tenant = context.requestContext!.authority.tenantId;
         assets.set(tenant, name);
         return { name };
@@ -279,8 +291,10 @@ describe('protected native MCP listener', () => {
         };
       },
       async resolvePrincipal(grant: { tenant?: string }) {
+        authorityRevision++;
         return {
           tenant: grant.tenant!,
+          revision: String(authorityRevision),
           delegableScopes: grant.tenant === 'one' ? ['read'] : ['read', 'write'],
         };
       },
@@ -291,13 +305,13 @@ describe('protected native MCP listener', () => {
         { id: lookup.id, name: 'equipment.lookup', scopes: ['read'] },
       ],
       authorization,
-      requestContext: (principal: { tenant: string }) => ({
+      requestContext: (principal: { tenant: string; revision: string }) => ({
         authority: {
           principalId: 'user',
           tenantId: principal.tenant,
           ownerId: 'user',
           capabilities: ['write'],
-          authorizationRevision: '1',
+          authorizationRevision: principal.revision,
         },
       }),
     };
@@ -333,9 +347,11 @@ describe('protected native MCP listener', () => {
       });
       const read = await denied.callTool({ name: 'equipment.lookup', arguments: {} });
       expect(JSON.stringify(read)).toContain('old');
-      await expect(
-        denied.callTool({ name: 'equipment.rename', arguments: { name: 'denied' } }),
-      ).rejects.toThrow();
+      expect(
+        await throwingRejectionOf(
+          denied.callTool({ name: 'equipment.rename', arguments: { name: 'denied' } }),
+        ),
+      ).toThrow();
       expect(calls).toBe(0);
       const allowed = await connect('bearer-marker-two');
       await allowed.callTool({ name: 'equipment.rename', arguments: { name: 'new' } });
@@ -344,18 +360,22 @@ describe('protected native MCP listener', () => {
         ['one', 'old'],
         ['two', 'new'],
       ]);
-      await expect(
-        createToolboxMcpHandler(toolbox, {
-          ...configuration,
-          tools: [{ ...configuration.tools[0]!, id: 'missing@1' }],
-        }),
-      ).rejects.toThrow();
-      await expect(
-        createToolboxMcpHandler(toolbox, {
-          ...configuration,
-          tools: [...configuration.tools, ...configuration.tools],
-        }),
-      ).rejects.toThrow();
+      expect(
+        await throwingRejectionOf(
+          createToolboxMcpHandler(toolbox, {
+            ...configuration,
+            tools: [{ ...configuration.tools[0]!, id: 'missing@1' }],
+          }),
+        ),
+      ).toThrow();
+      expect(
+        await throwingRejectionOf(
+          createToolboxMcpHandler(toolbox, {
+            ...configuration,
+            tools: [...configuration.tools, ...configuration.tools],
+          }),
+        ),
+      ).toThrow();
     } finally {
       await Promise.all(clients.map((client) => client.close()));
       server.stop(true);

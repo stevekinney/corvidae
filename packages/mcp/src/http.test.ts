@@ -48,7 +48,8 @@ describe('protected HTTP listener', () => {
       await waiting;
       if (changed !== 'none') binding = { ...binding, [changed]: 'different' };
       release();
-      expect((await pending).status).toBe(changed === 'none' ? 204 : 401);
+      const response = await pending;
+      expect(response.status).toBe(changed === 'none' ? 204 : 401);
       expect(calls).toBe(changed === 'none' ? 1 : 0);
     }
   });
