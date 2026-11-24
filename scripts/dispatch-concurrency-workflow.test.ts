@@ -55,8 +55,10 @@ describe('workflow_dispatch concurrency', () => {
     expect(job).toContain('TURBO_SCM_BASE: origin/main');
     expect(job).toContain('fetch-depth: 0');
     expect(job).toContain('turbo run lint typecheck --affected');
-    // The job itself always runs; a step may carry a condition (the cache save runs unless cancelled).
-    expect(job.slice(0, job.indexOf('\n    steps:\n'))).not.toContain('if:');
+    // Only the dedicated qualification marker excludes the ordinary lint and type-check job.
+    const header = job.slice(0, job.indexOf('\n    steps:\n'));
+    expect(header).toContain("if: ${{ !startsWith(inputs.e2e_specs, 'COR-2653-qualification:') }}");
+    expect(header.match(/^\s+if:/gm)).toHaveLength(1);
   });
 
   // A dispatch without unit_config ran Interborough UI tests DOM-less (run 44371426895).

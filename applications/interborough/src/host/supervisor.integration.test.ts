@@ -104,7 +104,7 @@ const failingStop = await superviseUntilSignalled('9', 'SIGINT');
 const emptyBuild = scratch();
 const missingBuild = await runWithHangGuard([process.execPath, supervisorEntry, 'serve'], {
   cwd: packageDirectory,
-  env: { ...process.env, INTERBOROUGH_BUILD_DIRECTORY: emptyBuild },
+  env: { ...processEnvironment(), INTERBOROUGH_BUILD_DIRECTORY: emptyBuild },
 });
 // The launch command reaches the host: `bun run start`, as Bun reports the package script, with
 // the arguments given after the script's own. No other `npm_*` variable of this test's own run
@@ -129,7 +129,7 @@ writeFileSync(
 );
 const staleServe = await runWithHangGuard([process.execPath, supervisorEntry, 'serve'], {
   cwd: join(import.meta.dir, '..', '..'),
-  env: { ...process.env, INTERBOROUGH_BUILD_DIRECTORY: staleBuild },
+  env: { ...processEnvironment(), INTERBOROUGH_BUILD_DIRECTORY: staleBuild },
 });
 const launchOutput = join(launchDirectory, 'launch.json');
 const launchFixture = join(import.meta.dir, 'launch-command-fixture.test-support.ts');
@@ -171,7 +171,14 @@ for (const argumentsList of [
 }
 
 describe('supervise', () => {
-  test('starts the host again on exit code 75 and ends with the first other code', () => {
+  test('starts the host again on exit code 75 and ends with the first other code', async () => {
+    const directory = processEnvironment()['COR_2653_COMPETITION_DIRECTORY'];
+    if (directory) {
+      writeFileSync(join(directory, 'integration-ready'), 'ready');
+      await waitUntil(() => existsSync(join(directory, 'release')), {
+        message: 'the competing browser to start its real actions',
+      });
+    }
     if (processEnvironment()['COR_2653_TRACE_ASSERTIONS'] === '1') {
       process.stdout.write(`COR2653_ASSERTION ${new Date().toISOString()}\n`);
     }

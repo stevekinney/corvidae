@@ -11,19 +11,21 @@ import {
 } from './environment-configuration.ts';
 
 test('reads opt-in browser qualification identity', () => {
-  const keys = ['COR_2653_QUALIFICATION', 'INTERBOROUGH_E2E_RUN_ID', 'COR_2653_REVISION'] as const;
-  const saved = keys.map((key) => process.env[key]);
+  const savedEnabled = process.env['COR_2653_QUALIFICATION'];
+  const savedRun = process.env['INTERBOROUGH_E2E_RUN_ID'];
+  const savedRevision = process.env['COR_2653_REVISION'];
   try {
-    process.env[keys[0]] = '1';
-    process.env[keys[1]] = 'A';
-    process.env[keys[2]] = 'abcdef0';
+    process.env['COR_2653_QUALIFICATION'] = '1';
+    process.env['INTERBOROUGH_E2E_RUN_ID'] = 'A';
+    process.env['COR_2653_REVISION'] = 'abcdef0';
     expect(browserQualification()).toEqual({ enabled: true, run: 'A', revision: 'abcdef0' });
   } finally {
-    keys.forEach((key, index) => {
-      const value = saved[index];
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    });
+    if (savedEnabled === undefined) delete process.env['COR_2653_QUALIFICATION'];
+    else process.env['COR_2653_QUALIFICATION'] = savedEnabled;
+    if (savedRun === undefined) delete process.env['INTERBOROUGH_E2E_RUN_ID'];
+    else process.env['INTERBOROUGH_E2E_RUN_ID'] = savedRun;
+    if (savedRevision === undefined) delete process.env['COR_2653_REVISION'];
+    else process.env['COR_2653_REVISION'] = savedRevision;
   }
 });
 

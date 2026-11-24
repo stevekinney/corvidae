@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import {
-  assertionOverlapsCompetitor,
-  competitorIntervals,
+  actionsBracketAssertion,
+  competitorActions,
   qualificationMode,
 } from './cor-2653-overlap.ts';
 
@@ -19,25 +19,19 @@ test('names partial competition evidence separately and requires the complete ex
   ).toBeUndefined();
 });
 
-test('requires the actual assertion to fall inside a competitor action interval', () => {
-  const intervals = [
-    { assertionAt: '2026-11-24T03:02:35.000Z', finishedAt: '2026-11-24T03:04:46.000Z' },
-  ];
-  expect(assertionOverlapsCompetitor('2026-11-24T03:03:03.000Z', intervals)).toBe(true);
-  expect(assertionOverlapsCompetitor('2026-11-24T03:05:58.000Z', intervals)).toBe(false);
-  expect(assertionOverlapsCompetitor(undefined, intervals)).toBe(false);
-  expect(assertionOverlapsCompetitor('invalid', intervals)).toBe(false);
+test('requires real actions on both sides of each target assertion', () => {
+  const actions = ['2026-11-24T03:02:35.000Z', '2026-11-24T03:04:46.000Z'];
+  expect(actionsBracketAssertion('2026-11-24T03:03:03.000Z', actions)).toBe(true);
+  expect(actionsBracketAssertion('2026-11-24T03:05:58.000Z', actions)).toBe(false);
+  expect(actionsBracketAssertion('2026-11-24T03:02:35.000Z', actions)).toBe(false);
+  expect(actionsBracketAssertion(undefined, actions)).toBe(false);
+  expect(actionsBracketAssertion('invalid', actions)).toBe(false);
 });
 
-test('counts only independently passing competitor cases with assertion and completion markers', () => {
-  const output = [
-    'COR2653_ASSERTION 2026-11-24T03:02:35.000Z',
-    'COR2653_TEST_END 2026-11-24T03:03:03.000Z passed',
-    'COR2653_ASSERTION 2026-11-24T03:04:00.000Z',
-    'COR2653_TEST_END 2026-11-24T03:04:46.000Z failed',
-    'COR2653_TEST_END 2026-11-24T03:05:58.000Z passed',
-  ].join('\n');
-  expect(competitorIntervals(output)).toEqual([
-    { assertionAt: '2026-11-24T03:02:35.000Z', finishedAt: '2026-11-24T03:03:03.000Z' },
-  ]);
+test('extracts action markers rather than process or assertion markers', () => {
+  expect(
+    competitorActions(
+      'COR2653_ACTION 2026-11-24T03:02:35.000Z\nCOR2653_ASSERTION 2026-11-24T03:03:03.000Z\n',
+    ),
+  ).toEqual(['2026-11-24T03:02:35.000Z']);
 });

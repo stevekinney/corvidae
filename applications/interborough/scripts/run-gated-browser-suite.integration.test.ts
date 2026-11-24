@@ -4,6 +4,8 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { processEnvironment } from '../src/host/environment-configuration.ts';
+
 const directory = await mkdtemp(join(tmpdir(), 'gated-browser-retry-'));
 const counter = join(directory, 'counter');
 const executable = join(directory, 'bun');
@@ -20,8 +22,8 @@ try {
     {
       cwd: join(import.meta.dir, '..'),
       env: {
-        ...process.env,
-        PATH: `${directory}:${process.env['PATH'] ?? ''}`,
+        ...processEnvironment(),
+        PATH: `${directory}:${processEnvironment()['PATH'] ?? ''}`,
         INTERBOROUGH_E2E_PORT: '',
       },
     },

@@ -21,6 +21,10 @@ export function requiresFreshServer(): boolean {
 /** How many consecutive ports the end-to-end suite holds, starting at `endToEndPort()`. */
 export const END_TO_END_PORT_COUNT = 8;
 
+export function competitionDirectory(): string | undefined {
+  return process.env['COR_2653_COMPETITION_DIRECTORY'];
+}
+
 export function browserQualification(): { enabled: boolean; run: string; revision: string } {
   return {
     enabled: process.env['COR_2653_QUALIFICATION'] === '1',

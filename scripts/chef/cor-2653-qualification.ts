@@ -5,8 +5,8 @@ import { join, resolve } from 'node:path';
 import { waitUntil } from '../../testing/testing/src/wait-until.ts';
 import { rootScriptEnvironment } from '../environment-configuration.ts';
 import {
-  assertionOverlapsCompetitor,
-  competitorIntervals,
+  actionsBracketAssertion,
+  competitorActions,
   qualificationMode,
 } from './cor-2653-overlap.ts';
 
@@ -419,25 +419,32 @@ try {
     evidence['override'] = { exit: explicit.code };
   }
   const integrationPath = 'applications/interborough/src/host/supervisor.integration.test.ts';
-  const integration = (name: string, path: string, trace: boolean) => {
+  const integration = (name: string, path: string, directory: string | undefined) => {
     const run = start(
       name,
       path,
       ['bun', 'scripts/bun-test.ts', integrationPath],
-      trace ? { COR_2653_TRACE_ASSERTIONS: '1' } : {},
+      directory
+        ? { COR_2653_TRACE_ASSERTIONS: '1', COR_2653_COMPETITION_DIRECTORY: directory }
+        : {},
     );
     allRuns.push(run);
     return run;
   };
-  const seeded = (name: string, path: string, trace: boolean) =>
-    browser(name, path, [
-      'tests/e2e/29-goals.spec.ts',
-      '--grep',
-      'lists the seeded goal at 375 pixels',
-      trace
-        ? `--reporter=line,${join(path, 'scripts/chef/cor-2653-reporter.ts')}`
-        : '--reporter=line',
-    ]);
+  const seeded = (name: string, path: string, directory: string | undefined) =>
+    browser(
+      name,
+      path,
+      [
+        'tests/e2e/29-goals.spec.ts',
+        '--grep',
+        'lists the seeded goal at 375 pixels',
+        directory
+          ? `--reporter=line,${join(path, 'scripts/chef/cor-2653-reporter.ts')}`
+          : '--reporter=line',
+      ],
+      directory ? { COR_2653_COMPETITION_DIRECTORY: directory } : {},
+    );
   const supervisor = join(bad, 'applications/interborough/src/host/supervisor.ts');
   const supervisorSource = await readFile(supervisor, 'utf8');
   const supervisorBad = supervisorSource.replace(
@@ -464,65 +471,67 @@ try {
     )[]) {
       const finishMeasurement = measureCondition();
       activeMeasurement = { label: `${label}-${order}`, stop: finishMeasurement };
+      const directory =
+        order === 'competing-worktree' ? join(output, `competition-${label}`) : undefined;
+      if (directory) await mkdir(directory, { recursive: true });
       let integrationResult: Run | undefined;
       let browserResult: Run | undefined;
       const integrationRun = () =>
-        (integrationResult = integration(
-          `${label}-${order}-integration`,
-          path,
-          order === 'competing-worktree',
-        ));
+        (integrationResult = integration(`${label}-${order}-integration`, path, directory));
       const browserRun = () =>
-        (browserResult = seeded(`${label}-${order}-browser`, path, order === 'competing-worktree'));
+        (browserResult = seeded(`${label}-${order}-browser`, path, directory));
       let codes: number[];
       if (order === 'competing-worktree') {
-        const competitionState = { stopped: false };
-        let failure: unknown;
-        const competitors: Run[] = [];
-        const competition = (async () => {
-          while (!competitionState.stopped) {
-            const competitor = browser(
-              `${label}-competitor-${String(competitors.length + 1)}`,
-              b,
-              [
-                'tests/e2e/29-goals.spec.ts',
-                '--grep',
-                'lists the seeded goal at 375 pixels',
-                '--repeat-each=30',
-                `--reporter=line,${join(b, 'scripts/chef/cor-2653-reporter.ts')}`,
-              ],
-              { INTERBOROUGH_E2E_RUN_ID: `${label}-competitor` },
-            );
-            competitors.push(competitor);
-            requireResult((await competitor.done) === 0, 'competing browser case failed');
-          }
-        })().catch((error: unknown) => {
-          failure = error;
-        });
-        let x: Run;
-        let y: Run;
-        try {
-          await waitUntil(
-            () => failure !== undefined || competitors.some((run) => run.assertionAt !== undefined),
-            { message: 'competing browser first assertion' },
-          );
-          if (failure !== undefined) throw failure;
-          x = integrationRun();
-          y = browserRun();
-          codes = await Promise.all([x.done, y.done]);
-        } finally {
-          competitionState.stopped = true;
-          await competition;
-        }
-        if (failure !== undefined) throw failure;
-        const intervals = competitors.flatMap((run) => competitorIntervals(run.stdout));
+        if (!directory) throw new Error('Missing competition control directory');
+        const x = integrationRun();
+        const y = browserRun();
+        const competitor = browser(
+          `${label}-competitor`,
+          b,
+          ['tests/e2e/browser-competition.qualification.ts', '--reporter=line'],
+          {
+            ...shared,
+            COR_2653_COMPETITION_DIRECTORY: directory,
+            INTERBOROUGH_E2E_RUN_ID: `${label}-competitor`,
+          },
+        );
+        const competitorPort = await ready(competitor);
+        await waitUntil(
+          () => {
+            if (
+              competitor.finished ||
+              (x.finished && !x.assertionAt) ||
+              (y.finished && !y.assertionAt)
+            )
+              throw new Error('A case ended before the readiness handshake');
+            return competitorActions(competitor.stdout).length > 0;
+          },
+          { message: 'the first real competing browser action' },
+        );
+        await writeFile(join(directory, 'release'), 'release');
+        await waitUntil(
+          () => {
+            if (
+              competitor.finished ||
+              (x.finished && !x.assertionAt) ||
+              (y.finished && !y.assertionAt)
+            )
+              throw new Error('A case ended before both target assertions');
+            return x.assertionAt !== undefined && y.assertionAt !== undefined;
+          },
+          { message: 'both target assertions' },
+        );
+        await json(competitorPort + 1, '/qualification', 'POST');
+        codes = await Promise.all([x.done, y.done]);
+        requireResult((await competitor.done) === 0, 'competing browser case failed');
+        const actions = competitorActions(competitor.stdout);
         evidence[`${label}-overlap`] = {
-          competitors: competitors.map((run) => ({
-            startedAt: run.startedAt,
-            finishedAt: run.finishedAt,
-            exit: run.code,
-          })),
-          competitorAssertionIntervals: intervals,
+          competitor: {
+            startedAt: competitor.startedAt,
+            finishedAt: competitor.finishedAt,
+            exit: competitor.code,
+          },
+          competitorActions: actions,
           integrationStarted: x.startedAt,
           integrationFirstAssertion: x.assertionAt,
           integrationFirstVerdict: x.verdictAt,
@@ -533,12 +542,12 @@ try {
           browserFinished: y.finishedAt,
         };
         requireResult(
-          assertionOverlapsCompetitor(x.assertionAt, intervals),
-          'integration first assertion did not overlap a passing competitor action',
+          actionsBracketAssertion(x.assertionAt, actions),
+          'integration first assertion was not bracketed by real competitor actions',
         );
         requireResult(
-          assertionOverlapsCompetitor(y.assertionAt, intervals),
-          'browser first assertion did not overlap a passing competitor action',
+          actionsBracketAssertion(y.assertionAt, actions),
+          'browser first assertion was not bracketed by real competitor actions',
         );
         requireResult(
           x.verdictAt !== undefined && y.verdictAt !== undefined,
