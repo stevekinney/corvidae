@@ -198,6 +198,24 @@ describe('the draft store (COR-2284 C7)', () => {
     await waitFor(() => expect(drawer()).toBeNull());
     expect(window.localStorage.getItem(KEY)).toBe('');
   });
+
+  test('persists an edit after restoring a draft, including when it returns to the restored text', async () => {
+    serve();
+    const first = mountAs();
+    await waitFor(() => expect(composer(first.container)).not.toBeNull());
+    await fireEvent.input(composer(first.container)!, { target: { value: 'Draft A' } });
+    first.unmount();
+
+    const restored = mountAs();
+    await waitFor(() => expect(composer(restored.container)?.value).toBe('Draft A'));
+    await fireEvent.input(composer(restored.container)!, { target: { value: 'Draft B' } });
+    await fireEvent.input(composer(restored.container)!, { target: { value: 'Draft A' } });
+    expect(JSON.parse(window.localStorage.getItem(KEY) ?? '{}')).toMatchObject({ text: 'Draft A' });
+    restored.unmount();
+
+    const reopened = mountAs();
+    await waitFor(() => expect(composer(reopened.container)?.value).toBe('Draft A'));
+  });
 });
 
 describe('a blocked composer', () => {
