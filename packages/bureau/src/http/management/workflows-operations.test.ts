@@ -1057,6 +1057,79 @@ describe('results', () => {
     }
   });
 
+  it('reports the document step that failed after an earlier activity retried', async () => {
+    const served = await serve();
+    await served.bureau.workflows!.create('digest', {
+      trigger: FAST_SCHEDULE,
+      steps: [AGENT_STEP, AGENT_STEP],
+    });
+    const engine = served.bureau.durableEngine()!;
+    const failed = {
+      id: 'failed-after-retry',
+      status: 'failed' as const,
+      createdAt: Date.parse('2026-11-02T10:30:00-06:00'),
+      version: 'version-1',
+      // The engine timeline indexes the retry and backoff operations too. The fourth operation is
+      // the second document step, not the fourth document step.
+      failedStep: { index: 3 },
+    };
+    const list = spyOn(engine, 'list').mockImplementation(async (filter) => {
+      if (filter?.type !== 'digest') return { items: [], total: 0 } as never;
+      if (filter?.status !== undefined) return { items: [], total: 0 } as never;
+      return { items: [failed], total: 1 } as never;
+    });
+    const timeline = spyOn(engine, 'getTimeline').mockResolvedValue([
+      {
+        step: 0,
+        documentStep: 0,
+        operationType: 'activity',
+        operationLabel: 'writer',
+        inputSummary: '',
+        timestamp: 0,
+        status: 'failed',
+      },
+      {
+        step: 1,
+        documentStep: 0,
+        operationType: 'sleep',
+        operationLabel: 'retry-backoff',
+        inputSummary: '',
+        timestamp: 1,
+        status: 'completed',
+      },
+      {
+        step: 2,
+        documentStep: 0,
+        operationType: 'activity',
+        operationLabel: 'writer',
+        inputSummary: '',
+        timestamp: 2,
+        status: 'completed',
+      },
+      {
+        step: 3,
+        documentStep: 1,
+        operationType: 'activity',
+        operationLabel: 'editor',
+        inputSummary: '',
+        timestamp: 3,
+        status: 'failed',
+      },
+    ] as never);
+    try {
+      const response = await ownerRpc(served.owner, 'bureau.workflows.list', { includeRuns: true });
+      expect(response.result?.['workflows']).toMatchObject([
+        {
+          id: 'digest',
+          runs: { last: { status: 'failed', failedStep: 2 } },
+        },
+      ]);
+    } finally {
+      timeline.mockRestore();
+      list.mockRestore();
+    }
+  });
+
   it('still lists every file, with no counts for the one whose engine read fails', async () => {
     const diagnostics: string[] = [];
     const served = await serve((event) => diagnostics.push(`${event.level}: ${event.message}`));
