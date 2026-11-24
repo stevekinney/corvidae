@@ -15,9 +15,16 @@ export async function stageCatalogPackages(
   const archives = new Map<string, string>();
   for (const name of [
     "storage",
+    "storage-postgres",
     "credentials",
+    "cryptography",
+    "lifecycle",
+    "mcp",
     "backchannel",
     "backchannel-svelte",
+    "armorer",
+    "backchannel-armorer",
+    "backchannel-mcp",
   ]) {
     const source = join(workspaceRoot, "packages", name);
     const stage = join(directory, `stage-${name}`);
