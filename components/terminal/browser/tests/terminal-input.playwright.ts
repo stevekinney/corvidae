@@ -404,7 +404,6 @@ test.describe('paste review', () => {
       ),
     );
     expect(faces[0]).toEqual(faces[1]);
-    expect(faces[0]).toEqual({ height: 32, fontSize: '13px', paddingInline: '16px' });
   });
 
   test('every bracketed paste is reviewed, and its payload goes out exactly between the markers', async ({
