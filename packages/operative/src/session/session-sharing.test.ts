@@ -7,6 +7,7 @@ import {
   sessionReadGrantOf,
   sessionWasReadGrantedTo,
   withSessionReadGrant,
+  withSessionReadGrantAttempt,
   withSessionReadRevocation,
 } from './session-sharing.ts';
 
@@ -39,7 +40,10 @@ test('read grants are explicit and a revocation retains former-reader evidence',
     revokedBy: 'workspace-a:alice',
     revokedAt: '2026-11-23T01:00:00.000Z',
   });
-  expect(sessionReadGrantHistoryOf(revoked).map((event) => event.kind)).toEqual(['granted', 'revoked']);
+  expect(sessionReadGrantHistoryOf(revoked).map((event) => [event.kind, event.changed])).toEqual([
+    ['granted', true],
+    ['revoked', true],
+  ]);
 });
 
 test('malformed sharing metadata fails closed', () => {
@@ -91,4 +95,15 @@ test('a later grant restores access without leaving stale revocation state', () 
 
 test('a grant copied to another session incarnation fails closed', () => {
   expect(sessionHasReadGrant(initial, 'workspace-a:bob', 'session-b')).toBe(false);
+});
+
+test('a repeated command records an unchanged audit outcome', () => {
+  const repeated = withSessionReadGrantAttempt(
+    initial,
+    'workspace-a:bob',
+    'granted',
+    'workspace-a:alice',
+    '2026-11-23T00:01:00.000Z',
+  );
+  expect(sessionReadGrantHistoryOf(repeated).map((event) => event.changed)).toEqual([true, false]);
 });

@@ -52,6 +52,7 @@ export {
   sessionReadRequestsOf,
   sessionWasReadGrantedTo,
   withSessionReadGrant,
+  withSessionReadGrantAttempt,
   withSessionReadRevocation,
   withSessionReadRequest,
   withSessionReadRequestResolution,

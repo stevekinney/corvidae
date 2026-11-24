@@ -2,10 +2,12 @@
 
 import {
   sessionHasReadGrant,
+  sessionReadGrantOf,
   sessionOwnerOf,
   sessionReadRequestsOf,
   sessionWasReadGrantedTo,
   withSessionReadGrant,
+  withSessionReadGrantAttempt,
   withSessionReadRequest,
   withSessionReadRequestResolution,
   withSessionReadRevocation,
@@ -107,7 +109,19 @@ async function change(
         current.incarnation,
       );
       if ((kind === 'grant' && currentlyGranted) || (kind === 'revoke' && !currentlyGranted)) {
-        return undefined;
+        const record = sessionReadGrantOf(current.metadata, input.granteeOwnerId);
+        return record === undefined
+          ? undefined
+          : {
+              ...current,
+              metadata: withSessionReadGrantAttempt(
+                current.metadata,
+                input.granteeOwnerId,
+                kind === 'grant' ? 'granted' : 'revoked',
+                grantedBy,
+                new Date().toISOString(),
+              ),
+            };
       }
       committed = true;
       const at = new Date().toISOString();

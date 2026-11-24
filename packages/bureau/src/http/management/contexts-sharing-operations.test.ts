@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { sessionReadGrantHistoryOf } from '@lostgradient/operative';
 
 import { startTaskFrom } from '../../test/task-start-request.ts';
 import {
@@ -23,7 +24,11 @@ describe('chat sharing access requests', () => {
       const contextId = await chat(opened);
       const granteeOwnerId = WORKSPACE_PRIVACY_ACTORS.peer.owner;
       expect((await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.share', { contextId, granteeOwnerId })).body?.result).toMatchObject({ changed: true });
+      const repeatedGrant = await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.share', { contextId, granteeOwnerId });
+      expect(repeatedGrant.body).toMatchObject({ result: { changed: false } });
       expect((await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.share.revoke', { contextId, granteeOwnerId })).body?.result).toMatchObject({ changed: true });
+      expect((await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.share.revoke', { contextId, granteeOwnerId })).body?.result).toMatchObject({ changed: false });
+      expect(sessionReadGrantHistoryOf((await opened.bureau.contexts.get(contextId))!.metadata).map((entry) => entry.changed)).toEqual([true, false, true, false]);
       expect((await workspacePrivacyCall(opened, 'peer', 'bureau.contexts.share.request', { contextId, granteeOwnerId })).body?.result).toMatchObject({ changed: true });
       expect((await workspacePrivacyCall(opened, 'peer', 'bureau.contexts.share.request', { contextId, granteeOwnerId })).body?.result).toMatchObject({ changed: false });
       expect((await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.share.requests.list', {})).body?.result).toMatchObject({ requests: [{ contextId, granteeOwnerId }] });

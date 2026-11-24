@@ -35,6 +35,7 @@ export type SessionReadGrantEvent = Readonly<{
   kind: 'granted' | 'revoked';
   actor: string;
   at: string;
+  changed: boolean;
 }>;
 
 function isRecord(value: JSONValue | undefined): value is Record<string, JSONValue> {
@@ -67,7 +68,7 @@ function grantOf(value: JSONValue): SessionReadGrant | undefined {
 
 function eventOf(value: JSONValue): SessionReadGrantEvent | undefined {
   if (!isRecord(value)) return undefined;
-  const { owner, workspaceId, actorId, kind, actor, at } = value;
+  const { owner, workspaceId, actorId, kind, actor, at, changed } = value;
   if (
     typeof owner !== 'string' ||
     owner === '' ||
@@ -79,10 +80,11 @@ function eventOf(value: JSONValue): SessionReadGrantEvent | undefined {
     typeof actor !== 'string' ||
     actor === '' ||
     typeof at !== 'string' ||
-    at === ''
+    at === '' ||
+    typeof changed !== 'boolean'
   )
     return undefined;
-  return { owner, workspaceId, actorId, kind, actor, at };
+  return { owner, workspaceId, actorId, kind, actor, at, changed };
 }
 
 function jsonGrant(grant: SessionReadGrant): JSONValue {
@@ -106,6 +108,7 @@ function jsonEvent(event: SessionReadGrantEvent): JSONValue {
     kind: event.kind,
     actor: event.actor,
     at: event.at,
+    changed: event.changed,
   };
 }
 
@@ -228,7 +231,7 @@ export function withSessionReadGrant(
     [SESSION_READ_GRANTS_METADATA_KEY]: [...grants, grant].map(jsonGrant),
     [SESSION_READ_GRANT_HISTORY_METADATA_KEY]: [
       ...history,
-      { ...grant, kind: 'granted' as const, actor: grant.grantedBy, at: grant.grantedAt },
+      { ...grant, kind: 'granted' as const, actor: grant.grantedBy, at: grant.grantedAt, changed: true },
     ].map(jsonEvent),
   };
 }
@@ -258,7 +261,28 @@ export function withSessionReadRevocation(
         kind: 'revoked' as const,
         actor: revokedBy,
         at: revokedAt,
+        changed: true,
       },
+    ].map(jsonEvent),
+  };
+}
+
+/** Appends the outcome of an idempotent owner command without changing access. */
+export function withSessionReadGrantAttempt(
+  metadata: Readonly<Record<string, JSONValue>>,
+  owner: string,
+  kind: 'granted' | 'revoked',
+  actor: string,
+  at: string,
+): Record<string, JSONValue> {
+  const grant = sessionReadGrantOf(metadata, owner);
+  if (grant === undefined) return { ...metadata };
+  const history = sessionReadGrantHistoryOf(metadata);
+  return {
+    ...metadata,
+    [SESSION_READ_GRANT_HISTORY_METADATA_KEY]: [
+      ...history,
+      { owner: grant.owner, workspaceId: grant.workspaceId, actorId: grant.actorId, kind, actor, at, changed: false },
     ].map(jsonEvent),
   };
 }
