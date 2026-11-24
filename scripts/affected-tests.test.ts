@@ -28,10 +28,30 @@ import {
   explainJson,
   planInvocations,
   shouldRunIsolatedTests,
+  sourceAnalysisCache,
 } from './affected-tests.ts';
 import { computedPathRules } from './computed-path-tests.ts';
 
 const root = join(import.meta.dir, '..');
+
+describe('source analysis cache', () => {
+  test('uses current contents and treats a malformed cache as cold', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'affected-analysis-'));
+    try {
+      const first = sourceAnalysisCache(root, directory);
+      expect(first.analyze('src/a.ts', "import './one.ts';").specifiers).toEqual(['./one.ts']);
+      first.save();
+      const warm = sourceAnalysisCache(root, directory);
+      expect(warm.analyze('src/a.ts', "import './two.ts';").specifiers).toEqual(['./two.ts']);
+      warm.save();
+      writeFileSync(join(directory, 'source-analysis.json'), '{broken');
+      const cold = sourceAnalysisCache(root, directory);
+      expect(cold.analyze('src/a.ts', "import './three.ts';").specifiers).toEqual(['./three.ts']);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
 
 function workspace(
   name: string,

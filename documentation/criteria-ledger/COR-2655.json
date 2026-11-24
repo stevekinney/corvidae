@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2655",
+  "branch": "steve/cor-2655-affected-selector-qualification",
+  "checkedAt": "37a39728ba5bf7ff2688b783eacf2b0964764014",
+  "briefVersion": "f3210546d15e",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Eight named corpus controls pass on merged head (corpus-merged.log); existing Cinder regression passed in selection-after-owners.log."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Eight fresh-process corpus controls passed. Hosted same-tree comparison 45344364793 found the same guard failure in selected and exhaustive fast lanes; restored 45350810322 had zero failures in 2200 selected and 85280 exhaustive fast cases, and all 30 isolated tasks passed. Isolated JUnit retention failed after execution succeeded. See the exact-tree comparison attachment 1e5162be-38ec-4f74-b59d-67b1723b17a8."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Five interleaved matched plans on merged tree: 122.05 ms baseline versus 27.02 ms warm planning median, identical obligations and reasons; graph and total separately recorded. Two live worktrees cover untracked, staged add, tracked rename, and tracked deletion. See merged-phase-pairs.json and worktrees-*.jsonl."
+    }
+  ]
+}
