@@ -116,6 +116,7 @@ import { join, resolve as resolvePath, sep } from 'node:path';
 import {
   combineHostAuthentication,
   createHostAuthority,
+  type HostAuthority,
   type HostWorkspaceAuthentication,
 } from './host-authority.ts';
 import { localWorkspaceMembership } from './workspace-principal.ts';
@@ -152,7 +153,6 @@ import {
 import { DEMO_AGENT_NAMES } from '@lostgradient/plugin-demo';
 import { type Storage } from '@lostgradient/storage';
 import {
-  handleRequest,
   serve,
   type AlertingOptions,
   type RegistryAgnosticEngine,
@@ -912,6 +912,39 @@ type Guard = (request: Request) => Response | undefined;
 /** Where the engine's private listener is, once it is up. */
 type EngineUpstream = { readonly url: string; readonly key: string };
 
+/** Project the host-only sharing availability beside the verified principal. */
+async function hostPrincipalResponse(
+  request: Request,
+  authority: HostAuthority,
+  memorySharingAvailable: HostWorkspaceAuthentication['memorySharingAvailable'],
+): Promise<Response> {
+  const context = await authority.authenticate(request);
+  if (context instanceof Response) return context;
+  const principal = context.principal;
+  const membership = principal?.workspace;
+  if (principal === undefined || membership === undefined)
+    return new Response('Workspace membership required', { status: 403 });
+  let memorySharing = false;
+  try {
+    memorySharing = (await memorySharingAvailable?.(membership)) === true;
+  } catch {
+    // A directory that cannot prove an eligible recipient must not invite a refused share.
+  }
+  return Response.json({
+    method: principal.method,
+    subject: principal.subject ?? null,
+    scopes: [...principal.scopes],
+    workspace: { ...membership, memorySharing },
+  });
+}
+
+/** The directory's private availability projection, if this host configured one. */
+function memorySharingAvailableOf(
+  options: HostOptions,
+): HostWorkspaceAuthentication['memorySharingAvailable'] {
+  return options.workspaceAuthentication?.memorySharingAvailable;
+}
+
 /** Start the host. The caller owns it and must `close()` it. */
 export async function startHost(options: HostOptions = {}): Promise<Host> {
   const incarnationId = randomUUID();
@@ -1248,6 +1281,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       bungalow.workspaceId,
       a2aExposure.authentication !== undefined,
     );
+    const memorySharingAvailable = memorySharingAvailableOf(options);
     const configuredWorkspace = options.workspaceAuthentication?.workspace ?? localWorkspace;
     if (configuredWorkspace.workspaceId !== bungalow.workspaceId)
       throw new Error('The authentication directory belongs to another workspace.');
@@ -1574,15 +1608,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const publicRoutes = {
       ...applicationRoutes(buildDirectory, refuse, shell),
       '/api/v1/principal': {
-        GET: async (request: Request) => {
-          const context = await authority.authenticate(request);
-          if (context instanceof Response) return context;
-          const principalUrl = new URL(request.url);
-          principalUrl.pathname = '/v1/principal';
-          return handleRequest(new Request(principalUrl, request), engine, {
-            authContext: context,
-          });
-        },
+        GET: (request: Request) =>
+          hostPrincipalResponse(request, authority, memorySharingAvailable),
       },
       // The development reload stream. A production host registers no route, so the path is a 404.
       ...(devReload === undefined

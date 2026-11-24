@@ -112,6 +112,8 @@ describe('parseArguments', () => {
       'tests/e2e/chat-list.spec.ts',
       'tests/e2e/chat-page.spec.ts',
       'tests/e2e/chat-sharing.spec.ts',
+      'tests/e2e/27-agent-memory.spec.ts',
+      'tests/e2e/27-agent-memory-share.spec.ts',
       'tests/e2e/chat-responsive.spec.ts',
       'tests/e2e/chat-tool-call-turn.spec.ts',
       'tests/e2e/chat-states.spec.ts',
@@ -214,6 +216,8 @@ describe('parseArguments', () => {
       'tests/e2e/chat-list.spec.ts',
       'tests/e2e/chat-page.spec.ts',
       'tests/e2e/chat-sharing.spec.ts',
+      'tests/e2e/27-agent-memory.spec.ts',
+      'tests/e2e/27-agent-memory-share.spec.ts',
       'tests/e2e/chat-responsive.spec.ts',
       'tests/e2e/chat-tool-call-turn.spec.ts',
       'tests/e2e/chat-states.spec.ts',
@@ -300,6 +304,8 @@ describe('parseArguments', () => {
       'tests/e2e/chat-list.spec.ts',
       'tests/e2e/chat-page.spec.ts',
       'tests/e2e/chat-sharing.spec.ts',
+      'tests/e2e/27-agent-memory.spec.ts',
+      'tests/e2e/27-agent-memory-share.spec.ts',
       'tests/e2e/chat-responsive.spec.ts',
       'tests/e2e/chat-tool-call-turn.spec.ts',
       'tests/e2e/chat-states.spec.ts',
@@ -631,6 +637,7 @@ describe('captureForDesignReview readiness', () => {
       });
       expect(events).toEqual([
         'ready',
+        'ready',
         'screenshot',
         'viewport:1280x901',
         'ready',
@@ -639,6 +646,7 @@ describe('captureForDesignReview readiness', () => {
         'ready',
         // The 1280 capture is repeated at 1920 by 1080, with its own stretch for the whole page.
         'viewport:1920x1080',
+        'ready',
         'ready',
         'screenshot',
         'viewport:1920x1081',

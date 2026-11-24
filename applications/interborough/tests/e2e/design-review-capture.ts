@@ -251,10 +251,12 @@ export async function captureForDesignReview(
   const viewportSize = page.viewportSize();
   if (viewportSize === null) throw new Error('A design-review capture needs a fixed viewport.');
   if (viewportSize.width > PHONE_WIDTH_MAXIMUM) {
+    await capture.ready?.(page);
     await captureViewport(page, capture, directory, viewportSize, 'asked');
     if (viewportSize.width === DESKTOP_WIDTH) {
       await page.setViewportSize(WIDE_DESKTOP);
       await nextFrame(page);
+      await capture.ready?.(page);
       await captureViewport(page, capture, directory, WIDE_DESKTOP, 'repeated');
       await page.setViewportSize(viewportSize);
       await nextFrame(page);
@@ -264,10 +266,12 @@ export async function captureForDesignReview(
   }
   const restorePointer = await emulateTouch(page);
   await withPointerCleanup(async () => {
+    await capture.ready?.(page);
     await captureViewport(page, capture, directory, viewportSize, 'asked');
     if (viewportSize.width !== SMALL_PHONE.width) {
       await page.setViewportSize(SMALL_PHONE);
       await nextFrame(page);
+      await capture.ready?.(page);
       await captureViewport(page, capture, directory, SMALL_PHONE, 'repeated');
       await page.setViewportSize(viewportSize);
       await nextFrame(page);
@@ -278,6 +282,38 @@ export async function captureForDesignReview(
 
 /** The phone a state held only at a desktop width is captured at as well, with 320 by 640 after it. */
 export const DESIGN_REVIEW_PHONE = { width: 375, height: 812 } as const;
+
+/** The review widths for a state whose responsive menu treatment needs an explicit witness. */
+const MENU_CAPTURE_VIEWPORTS = [
+  { width: 1280, height: 900 },
+  { width: 768, height: 900 },
+  DESIGN_REVIEW_PHONE,
+] as const;
+
+/**
+ * Captures one already-open menu at the standard desktop, tablet and phone widths. The ordinary
+ * suite keeps its one interaction; only a design-review capture changes the viewport, while
+ * {@link captureForDesignReview} derives 1920 from 1280 and 320 from the phone width.
+ */
+export async function captureOpenMenuForDesignReview(
+  page: Page,
+  capture: DesignReviewCapture,
+): Promise<void> {
+  if (designReviewCaptureDirectory() === undefined) return;
+  const original = page.viewportSize();
+  if (original === null) throw new Error('A design-review capture needs a fixed viewport.');
+  try {
+    for (const viewport of MENU_CAPTURE_VIEWPORTS) {
+      await page.setViewportSize(viewport);
+      await nextFrame(page);
+      await captureForDesignReview(page, capture);
+    }
+  } finally {
+    await page.setViewportSize(original);
+    await nextFrame(page);
+    await capture.ready?.(page);
+  }
+}
 
 /**
  * Captures a state at the width the page is at and then at a phone (375, and so 320 as well), for a

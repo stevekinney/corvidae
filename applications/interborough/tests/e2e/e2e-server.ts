@@ -722,6 +722,13 @@ const secondaryResults = await Promise.allSettled([
                     });
               },
             },
+            memorySharingAvailable: async (member) =>
+              [...members.values()].some(
+                (candidate) =>
+                  candidate.workspaceId === member.workspaceId &&
+                  candidate.owner !== member.owner &&
+                  candidate.actorKind === 'user',
+              ),
             workspace: {
               workspaceId,
               resolveMembership: async ({ subject }) => members.get(subject ?? '') ?? null,

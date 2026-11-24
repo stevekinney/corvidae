@@ -46,7 +46,12 @@ afterEach(async () => {
   }
 });
 
-type Principal = { method: string; subject: string | null; scopes: string[] };
+type Principal = {
+  method: string;
+  subject: string | null;
+  scopes: string[];
+  workspace?: { readonly memorySharing?: boolean };
+};
 
 async function statusOf(host: Host, path: string): Promise<number> {
   const response = await fetch(new URL(path, host.url));
@@ -103,6 +108,7 @@ describe('the identity of every request', () => {
     const principal = await principalOver(host);
     expect(principal.subject).toBe('anonymous:local');
     expect([...principal.scopes].toSorted()).toEqual([...AUTHORIZATION_SCOPES].toSorted());
+    expect(principal.workspace).toMatchObject({ memorySharing: false });
   });
 
   test('a credential the caller sends does not change who it is', async () => {
