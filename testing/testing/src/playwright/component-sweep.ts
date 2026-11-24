@@ -121,6 +121,8 @@ export async function runFixtureSweep(
 
   // Every fixture has a resting-state capture. Interaction fixtures
   // use a second key so their resulting state remains pixel-checked.
+  // The mounted fixture can still be rendering syntax highlighting.
+  await expect(page.locator('[data-cinder-highlight-state="pending"]')).toHaveCount(0);
   await captureState(
     page,
     restingKey,
