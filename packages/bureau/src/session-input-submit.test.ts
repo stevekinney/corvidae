@@ -26,6 +26,14 @@ import { quietFor } from '@lostgradient/testing/wait-until';
 
 const input = { id: 'input-x', principal: 'alice', deliveryMode: 'steer' as const, payload: 'hi' };
 
+it('forwards conditional batch deadlines through the storage seam', async () => {
+  const seam = seamStorage(new MemoryStorage());
+  const operations = [{ type: 'put' as const, key: 'record', value: new Uint8Array([1]) }];
+  expect(await seam.storage.conditionalBatch!([], operations, Date.now() - 1)).toBe(false);
+  expect(await seam.storage.get('record')).toBeNull();
+  expect(await seam.storage.conditionalBatch!([], operations)).toBe(true);
+});
+
 /**
  * A bureau whose only run has finished, with the write that marks the session
  * completed held: the session still reads as running, and no run is live.

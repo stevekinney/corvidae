@@ -9,7 +9,7 @@ const modulePath = resolve(import.meta.dir, '../../../../plugins/demo/src/plugin
 const { createDemoPlugin, DEMO_APPROVAL_SECRET } = await import(modulePath);
 const storage = new BunSQLiteStorage(path);
 const conditional = storage.conditionalBatch.bind(storage);
-storage.conditionalBatch = async (conditions, operations) => {
+storage.conditionalBatch = async (conditions, operations, deadline) => {
   const release = operations.find(
     (operation) =>
       operation.type === 'put' &&
@@ -20,7 +20,7 @@ storage.conditionalBatch = async (conditions, operations) => {
     console.log('release-barrier');
     await new Response(Bun.stdin.stream()).text();
   }
-  return conditional(conditions, operations);
+  return conditional(conditions, operations, deadline);
 };
 const bureau = await createBureau({
   agents: {},

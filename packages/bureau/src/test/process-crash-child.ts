@@ -64,7 +64,7 @@ import type { AgentDefinitions } from '../agent-catalog';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { LMDBStorage } from '@lostgradient/storage-lmdb';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
-import { textValueStore } from '@lostgradient/storage';
+import { textValueStore, type Storage } from '@lostgradient/storage';
 import { reviewDecisionKey } from '../review-decision-record';
 import { agentFileDirectory } from '../sources/agent-file-directory';
 import { createVendorCatalog } from '../testing/vendor-catalog.test-support';
@@ -445,7 +445,7 @@ async function relaunchRecover(): Promise<void> {
 async function raceRecover(): Promise<void> {
   const directory = dirname(markerPath as string);
   const { runId } = JSON.parse(readFileSync(markerPath as string, 'utf8')) as { runId: string };
-  const storage =
+  const storage: Storage =
     backend === 'lmdb' ? new LMDBStorage(storagePath as string) : new BunSQLiteStorage(storagePath);
   publishChildFile(join(directory, RACER_READY_FILE), '');
   await pollUntil('the parent to start the race', () => existsSync(join(directory, RACER_GO_FILE)));
@@ -908,7 +908,7 @@ async function peerRecoveryPostCommitThenCrash(): Promise<void> {
   const decisionKey = reviewDecisionKey(marker.reviewId, 0);
   const originalConditionalBatch = storage.conditionalBatch?.bind(storage);
   if (originalConditionalBatch === undefined) process.exit(4);
-  storage.conditionalBatch = async (conditions, operations) => {
+  storage.conditionalBatch = async (conditions, operations, deadline) => {
     const decisionWrite = operations.some(
       (operation) =>
         operation.type === 'put' &&
@@ -924,7 +924,7 @@ async function peerRecoveryPostCommitThenCrash(): Promise<void> {
         killSelf();
       }
     }
-    return originalConditionalBatch(conditions, operations);
+    return originalConditionalBatch(conditions, operations, deadline);
   };
   const bureau = await createHarnessBureau({
     storage,

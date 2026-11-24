@@ -1,24 +1,34 @@
 {
   "issue": "COR-2610",
-  "branch": "steve/cor-2610-browser-consent",
-  "checkedAt": "c93ece78a0ecaf52a1e18bc4f3b6e6e1d72c74a6",
-  "briefVersion": "155c05f1a34e",
+  "branch": "steve/composable-consent-api-settings",
+  "checkedAt": "29cf8e633eab34a3027692c5d1cbda8e4709eb03",
+  "briefVersion": "f201c6df93a8",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "bun run --cwd packages/mcp test:browser-consent: exit 0"
+      "evidence": "The named real-listener consent flow completed sign-in, consent, code exchange and asset lookup. The existing browser session went directly to consent."
     },
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "bun run --cwd packages/mcp test:browser-consent: exit 0"
+      "evidence": "Cross-session and workspace decisions, sign-out, stale binding, denial and changed delegation exercised the durable decision results in the listener suite."
     },
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "bun run --cwd packages/mcp test:browser-consent: exit 0"
+      "evidence": "The protected listener required a valid bearer and current workspace permissions. The grant still served lookup after browser expiry or sign-out, and ceased to authorize after membership removal."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "The composition refused separate namespaces before serving. Shared storage was exercised on independent instances."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "The named command exercised memory, SQLite, PostgreSQL deadline rollback, a real PostgreSQL lock wait, a controlled retry and the already-approved grant after browser expiry."
     }
   ]
 }
