@@ -2788,7 +2788,7 @@
                     entry.state === 'expired' ||
                     (entry.approvalExpiresAt !== undefined &&
                       session.clock.now() >= entry.approvalExpiresAt)}
-                  {#if entry.decision !== undefined || asked !== undefined}
+                  {#if !readOnly && (entry.decision !== undefined || asked !== undefined)}
                     {#key `${entry.state}:${entry.approvalExpiresAt ?? ''}`}
                       <ChatApproval
                         id={`tools-${message.id}-${entry.callId}`}
@@ -2821,13 +2821,11 @@
                           : { expiresAt: new Date(entry.approvalExpiresAt).toISOString() }}
                         context={decisionContext}
                         unreachable={connection.unreachable}
-                        onAskAgain={!readOnly && expired ? () => void askAgain(entry) : undefined}
+                        onAskAgain={expired ? () => void askAgain(entry) : undefined}
                         resolving={deciding || session.streaming
                           ? (decidingAs ?? 'approve')
                           : undefined}
-                        onResolve={readOnly
-                          ? undefined
-                          : (resolution) => void resolveApproval(entry.callId, resolution)}
+                        onResolve={(resolution) => void resolveApproval(entry.callId, resolution)}
                       />
                     {/key}
                   {/if}
