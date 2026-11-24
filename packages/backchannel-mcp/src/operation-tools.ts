@@ -296,10 +296,10 @@ function buildServer(
     const outputSchema =
       operation.kind === 'subscription'
         ? undefined
-        : zodToJsonSchema(operation.outputSchema, 'output');
+        : objectOutputSchema(zodToJsonSchema(operation.outputSchema, 'output'));
     if (
       operation.kind === 'stream' ||
-      (outputSchema !== undefined && outputSchema['type'] !== 'object')
+      (operation.kind !== 'subscription' && outputSchema === undefined)
     )
       continue;
     server.registerTool(
@@ -343,6 +343,19 @@ function buildServer(
     );
   }
   return server;
+}
+
+function objectOutputSchema(schema: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (schema['type'] === 'object') return schema;
+  if (schema['type'] !== undefined) return undefined;
+  const arms = schema['oneOf'] ?? schema['anyOf'];
+  if (
+    !Array.isArray(arms) ||
+    arms.length === 0 ||
+    !arms.every((arm: unknown) => isRecord(arm) && objectOutputSchema(arm) !== undefined)
+  )
+    return undefined;
+  return { ...schema, type: 'object' };
 }
 
 function toolMetadata(

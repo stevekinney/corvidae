@@ -106,6 +106,39 @@ const unsupported = defineOperation<z.ZodObject<{}>, z.ZodObject<{ value: z.ZodA
 });
 
 let writes = 0;
+const unionOutput = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('first'), value: z.string() }),
+  z.object({ kind: z.literal('second'), count: z.number() }),
+]);
+const union = defineOperation<
+  z.ZodObject<{ kind: z.ZodEnum<{ first: 'first'; second: 'second' }> }>,
+  typeof unionOutput,
+  TestHost
+>({
+  name: 'probe.union',
+  mcpExposable: true,
+  summary: 'Object union',
+  destructive: false,
+  inputSchema: z.object({ kind: z.enum(['first', 'second']) }),
+  outputSchema: unionOutput,
+  access: { kind: 'public' },
+  transports,
+  unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+  invoke: async ({ input }) =>
+    input.kind === 'first' ? { kind: 'first', value: 'a' } : { kind: 'second', count: 2 },
+});
+const scalar = defineOperation<z.ZodObject<{}>, z.ZodString, TestHost>({
+  name: 'probe.scalar',
+  mcpExposable: true,
+  summary: 'Scalar result',
+  destructive: false,
+  inputSchema: z.object({}),
+  outputSchema: z.string(),
+  access: { kind: 'public' },
+  transports,
+  unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+  invoke: async () => 'scalar',
+});
 let cancellationStarted = () => {};
 let cancellationObserved = () => {};
 const cancellation = defineOperation<z.ZodObject<{}>, z.ZodObject<{}>, TestHost>({
@@ -300,6 +333,8 @@ async function connect(
       unsupported,
       write,
       cancellation,
+      union,
+      scalar,
     ],
     host,
     authenticate: async () => caller(),
@@ -331,6 +366,7 @@ describe.each(eras)('catalog operations as MCP tools ($era era)', ({ mode, versi
       'probe.finite',
       'probe.missing',
       'probe.oversized',
+      'probe.union',
       'probe.unsupported',
       'probe.write',
     ]);
@@ -373,6 +409,20 @@ describe.each(eras)('catalog operations as MCP tools ($era era)', ({ mode, versi
     const result = await client.callTool({ name: 'probe.echo', arguments: { message: 'hello' } });
     expect(result.isError).toBeFalsy();
     expect(result.structuredContent).toEqual({ message: 'hello' });
+  });
+
+  it('lists and invokes each object union arm and omits a scalar output', async () => {
+    const { client } = await connect(mode);
+    const { tools } = await client.listTools();
+    expect(tools.find((tool) => tool.name === 'probe.scalar')).toBeUndefined();
+    expect(tools.find((tool) => tool.name === 'probe.union')?.outputSchema).toMatchObject({
+      type: 'object',
+      oneOf: [{ type: 'object' }, { type: 'object' }],
+    });
+    const first = await client.callTool({ name: 'probe.union', arguments: { kind: 'first' } });
+    const second = await client.callTool({ name: 'probe.union', arguments: { kind: 'second' } });
+    expect(first.structuredContent).toEqual({ kind: 'first', value: 'a' });
+    expect(second.structuredContent).toEqual({ kind: 'second', count: 2 });
   });
 
   it('refuses a caller the access policy refuses, as a Forbidden tool error', async () => {
