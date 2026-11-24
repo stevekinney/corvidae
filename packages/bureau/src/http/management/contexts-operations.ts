@@ -99,7 +99,7 @@ async function isActiveSharedSummary(
     grant.revokedAt === undefined &&
     grant.workspaceId === workspace!.workspaceId &&
     grant.actorId === workspace!.actorId &&
-    grant.sessionIncarnation === loaded.incarnation
+    grant.sessionIncarnation === loaded?.incarnation
     )
   )
     return false;

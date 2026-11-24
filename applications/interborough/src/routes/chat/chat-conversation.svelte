@@ -646,7 +646,9 @@
     }
     // Until the first read of the thread settles, an empty transcript is not an empty chat: it is
     // still loading, in the words the stand-in used before the chat was read (`index.svelte`).
-    if (!session.historySettled) {
+    // Shared history is a complete, read-only projection. Its controller does not join the live
+    // stream, so it intentionally never reaches the owner's live-history settled flag.
+    if (!session.historySettled && !readOnly) {
       return {
         kind: 'loading',
         labels: { loading: CHAT_COPY.load.loading, slow: CHAT_COPY.load.stillLoading },
