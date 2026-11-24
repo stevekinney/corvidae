@@ -833,6 +833,60 @@ describe('a regeneration command', () => {
     expect(after.conversationHistory.messages[ANSWER]?.content).toBe('committed answer');
   });
 
+  it('leaves an outbox entry of a namespace it does not own pending and unclaimed, before and after it regenerates (COR-2296 R7)', async () => {
+    const FOREIGN = 'peer.future-fact.v1';
+    const script = newScript();
+    // The drain says, as a diagnostic, that it stops at the entry it does not recognize.
+    const diagnostics: string[] = [];
+    const bureau = await createBureau<AgentDefinitions>({
+      models: { catalog: createVendorCatalog().descriptors },
+      agents: { agent: scriptedAgent(script) },
+      storage: new MemoryStorage(),
+      durable: true,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+    });
+    cleanups.push(() => bureau.dispose());
+    await craft(bureau);
+    const store = bureau.internals.sessionStore!;
+    await store.update(CRAFTED, (current) => current, {
+      outbox: [{ namespace: FOREIGN, payload: { anything: true } }],
+    });
+    const before = (await bureau.contexts.get(CRAFTED))!;
+    const foreign = async () => {
+      const pending = await store.outbox.pending();
+      return pending.filter(
+        (entry) => entry.kind === 'session.attachment' && entry.namespace === FOREIGN,
+      );
+    };
+
+    // A pending command whose session holds only the foreign entry is in doubt: the entry is not
+    // read as its receipt, and stays where it was.
+    const identity = identityOf('foreign-pending');
+    await ledgerOf(bureau).claim(identity, digestCommandPayload({ messageId: ANSWER }), {
+      incarnation: before.incarnation,
+      revision: before.revision,
+    });
+    expect(await refusalOf(regenerate(bureau, CRAFTED, ANSWER, 'foreign-pending'))).toBe(
+      'command-in-doubt',
+    );
+    expect(await foreign()).toHaveLength(1);
+
+    const result = await regenerate(bureau, CRAFTED, ANSWER);
+    await bureau.maintain();
+
+    expect(result.revision).toBe(before.revision + 1);
+    expect(script.regenerations).toBe(1);
+    const left = await foreign();
+    expect(left).toHaveLength(1);
+    expect(left[0]?.claim).toBeUndefined();
+    expect(left[0]?.kind === 'session.attachment' ? left[0].payload : undefined).toEqual({
+      anything: true,
+    });
+    const after = (await bureau.contexts.get(CRAFTED))!;
+    expect(after.conversationHistory.messages[ANSWER]?.content).toBe('a better answer');
+    expect(diagnostics.some((message) => message.includes(`"${FOREIGN}"`))).toBe(true);
+  });
+
   it('never completes a pending command from a receipt that names another payload', async () => {
     const script = newScript();
     const bureau = await openBureau(script);

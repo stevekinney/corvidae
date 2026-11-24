@@ -83,6 +83,33 @@ describe('the Bureau’s review operations', () => {
     expect(reviews.map((review) => review.kind)).toEqual(['tool-approval', 'engine-review']);
   });
 
+  test('keeps an approval’s irreversible, consequence and why, and reads a review without them (COR-2438)', async () => {
+    const explained = toolApprovalFixture({
+      approval: {
+        ...TOOL_APPROVAL.approval,
+        action: {
+          type: 'approval',
+          message: 'Refund order-1001?',
+          risk: 'high',
+          operation: { kind: 'other' },
+          irreversible: true,
+          consequence: 'Sends $42.00 back to the card.',
+          why: 'The order arrived damaged.',
+        },
+      },
+    });
+    const stub = answering({ reviews: [explained, TOOL_APPROVAL] });
+    const [withFields, without] = await withFetch(stub.fetch, () => listBureauReviews());
+    expect(withFields?.kind === 'tool-approval' && withFields.approval.action).toMatchObject({
+      irreversible: true,
+      consequence: 'Sends $42.00 back to the card.',
+      why: 'The order arrived damaged.',
+    });
+    expect(without?.kind === 'tool-approval' && without.approval.action).toEqual(
+      TOOL_APPROVAL.approval.action,
+    );
+  });
+
   test('get reads one review by its id', async () => {
     const stub = answering(HUMAN_WAIT);
     const review = await withFetch(stub.fetch, () => getBureauReview(HUMAN_WAIT.id));

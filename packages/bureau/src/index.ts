@@ -701,6 +701,18 @@ export type {
   ForkSessionResult,
   SessionForkRefusalReason,
 } from './session-fork';
+export { SessionResumeRefusedError } from './session-resume';
+export type {
+  ResumeTurnRequest,
+  ResumeTurnResult,
+  SessionResumeRefusalReason,
+} from './session-resume';
+export { SessionDiscardRefusedError } from './session-discard';
+export type {
+  DiscardTurnRequest,
+  DiscardTurnResult,
+  SessionDiscardRefusalReason,
+} from './session-discard';
 export { SessionRegenerateRefusedError } from './session-regenerate';
 export type {
   RegenerateSessionRequest,

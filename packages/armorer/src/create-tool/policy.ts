@@ -123,6 +123,7 @@ function createApprovalAction(
     ...(decision.action?.editableArgs !== undefined
       ? { editableArgs: decision.action.editableArgs }
       : {}),
+    ...approvalExplanationFields(decision),
     policyVersion,
     idempotencyKey:
       decision.action?.idempotencyKey ?? createApprovalIdempotencyKey(decision, reason, context),
@@ -159,8 +160,27 @@ function createApprovalIdempotencyKey(
     snapshotId: decision.action?.snapshotId,
     expiresAt: decision.action?.expiresAt,
     editableArgs: decision.action?.editableArgs,
+    // Spread only when declared, so an approval without them keeps the key it had before they existed.
+    ...approvalExplanationFields(decision),
   });
   return `approval:${computeDigest(payload, 'sha256')}`;
+}
+
+/**
+ * The policy's `irreversible`, `consequence` and `why`, each only when it declared one, so an
+ * action without them reads exactly as it did before the fields existed.
+ */
+function approvalExplanationFields(decision: ToolPolicyDecision): {
+  irreversible?: boolean;
+  consequence?: string;
+  why?: string;
+} {
+  const action = decision.action;
+  return {
+    ...(action?.irreversible === undefined ? {} : { irreversible: action.irreversible }),
+    ...(action?.consequence === undefined ? {} : { consequence: action.consequence }),
+    ...(action?.why === undefined ? {} : { why: action.why }),
+  };
 }
 
 function policyPauseMatchesDescriptor(

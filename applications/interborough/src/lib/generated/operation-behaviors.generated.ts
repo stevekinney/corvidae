@@ -80,6 +80,9 @@ export const CATALOG_OPERATION_BEHAVIORS = {
   'bureau.contexts.delete': {
     mcpExposable: false,
   },
+  'bureau.contexts.discardturn': {
+    mcpExposable: false,
+  },
   'bureau.contexts.forgetgrants': {
     mcpExposable: false,
   },
@@ -99,6 +102,9 @@ export const CATALOG_OPERATION_BEHAVIORS = {
     mcpExposable: false,
   },
   'bureau.contexts.rename': {
+    mcpExposable: false,
+  },
+  'bureau.contexts.resumeturn': {
     mcpExposable: false,
   },
   'bureau.contexts.retract': {

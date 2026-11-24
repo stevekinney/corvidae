@@ -698,6 +698,7 @@
       {decidedBy}
       {decidedIn}
       {decidedInHref}
+      decidedTime={outcomeTime}
       {onAskAgain}
       {decisionNote}
       {context}
@@ -706,6 +707,10 @@
       inputRows={hasDecisionArguments ? inputRows : []}
       inputLabel={payloadLabel}
       resolve={isActionable && hasResolutionCallback ? resolveIfActionable : undefined}
+      decisionReview={isActionable && hasResolutionCallback ? decisionReview : undefined}
+      {sourceText}
+      {requestedText}
+      {requestedIso}
     />
   </article>
 {:else if layout === 'detail'}

@@ -55,6 +55,28 @@
         "!src/**/*.test.ts!",
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!",
+        "!src/lib/components/chat/host-question-dock-harness.test.svelte!"
+      ]
+    },
+    "components/cinder": {
+      "entry": [
+        "src/index.ts",
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "src/{components,lib/components}/*/*-fixtures.ts",
+        "**/*.playwright.ts",
+        "**/*.spec.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!"
       ]
     },
@@ -230,7 +252,8 @@
         "!src/**/*.test.ts!",
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
-        "!src/**/*.bench.ts!"
+        "!src/**/*.bench.ts!",
+        "!src/routes/chat/chat-session-registry.test-support.svelte.ts!"
       ]
     },
     "applications/playground": {

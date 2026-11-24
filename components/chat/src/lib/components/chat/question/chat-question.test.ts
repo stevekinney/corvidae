@@ -453,10 +453,12 @@ describe('the question unit reads as one thing in the dock and the transcript', 
 });
 
 describe('the pick of a held answer', () => {
-  test('uses Cinder card selection so the radio indicator and label share one state', async () => {
+  test('uses Cinder card selection by default and flat ChoiceGrid rows in a dock', async () => {
     const source = await Bun.file(new URL('./chat-question.svelte', import.meta.url)).text();
-    expect(source).toContain('variant="card"');
-    expect(source).not.toContain('--_cinder-choice-card-min-block-size');
+    expect(source).toContain("choiceStyle = 'card'");
+    expect(source).toContain('variant={choiceStyle}');
+    expect(source).toContain("choiceStyle?: 'card' | 'row' | undefined;");
+    expect(source).toContain('--_cinder-choice-card-min-block-size: 3.25rem;');
   });
 
   test('leaves selected-state colour and contrast to the shared ChoiceGridItem component', async () => {

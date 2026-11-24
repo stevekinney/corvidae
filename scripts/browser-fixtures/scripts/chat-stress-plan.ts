@@ -1,6 +1,6 @@
 /**
  * What the Chat stress capture (`capture-chat-stress.ts`, COR-2289) promises, as pure functions that the
- * tool and its tests share: the four profiles, the image names, how many images a run must hold,
+ * tool and its tests share: the five profiles, the image names, how many images a run must hold,
  * what a page measurement must show, whether the manifest, the files and the gallery agree, and the
  * gallery itself. Nothing here starts a browser or a process, so `chat-stress-plan.test.ts` runs in
  * the default lane.
@@ -21,12 +21,17 @@ export interface StressProfile {
   readonly coarse: boolean;
 }
 
-/** The four profiles of the board: 1440 light, 768 dark, 390 light and 320 dark. */
+/**
+ * The four profiles of the board, 1440 light, 768 dark, 390 light and 320 dark, and the 375 light
+ * phone Interborough's consuming pages are reviewed at (COR-2440), so a compact-on-touch change can
+ * be judged at the width the pages use.
+ */
 export const STRESS_PROFILES: readonly StressProfile[] = [
   { name: '1440-light', width: 1440, height: 900, theme: 'light', coarse: false },
   { name: '768-dark', width: 768, height: 1024, theme: 'dark', coarse: false },
   { name: '390-light', width: 390, height: 844, theme: 'light', coarse: true },
   { name: '320-dark', width: 320, height: 640, theme: 'dark', coarse: true },
+  { name: '375-light', width: 375, height: 667, theme: 'light', coarse: true },
 ];
 
 /** The extra phone profile `CHAT_STRESS_SUPPLEMENTAL=1` adds, for the header and safe-area frames. */
@@ -519,7 +524,7 @@ export function sourceIdentity(parts: Omit<SourceIdentity, 'identity'>): SourceI
 /** What a run wrote as `summary.json`. */
 export interface RunSummary {
   readonly passed: boolean;
-  /** Whether the run drew all 80 cases at all four profiles; a selection of cases is a partial run. */
+  /** Whether the run drew every case at every profile; a selection of cases is a partial run. */
   readonly complete: boolean;
   readonly runDirectory: string;
   readonly identity: SourceIdentity;

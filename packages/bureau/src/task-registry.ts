@@ -436,6 +436,12 @@ export interface TaskAdmission {
   readonly tools?: TaskToolGrant | undefined;
   /** When the work began, if that was before this record was written (ISO 8601). */
   readonly createdAt?: string | undefined;
+  /**
+   * An internal negative admission fence. When present, a stale creator may write this task only
+   * while the fence remains absent. Continuation recovery uses it to retire a run whose process
+   * died after saving its session marker but before it admitted the task.
+   */
+  readonly admissionFence?: string | undefined;
 }
 
 /** What the live run of a task reports. */
@@ -2198,16 +2204,22 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       const key = recordKey(admission.taskId);
       const indexKey = contextIndexKey(admission.contextId, admission.taskId);
       // Written once: a second admission of the same run id leaves the first.
-      await kv.conditionalBatch(
+      const admitted = await kv.conditionalBatch(
         [
           { key, expectedValue: null },
           { key: indexKey, expectedValue: null },
+          ...(admission.admissionFence === undefined
+            ? []
+            : [{ key: admission.admissionFence, expectedValue: null }]),
         ],
         [
           { type: 'set', key, value: JSON.stringify(record) },
           { type: 'set', key: indexKey, value: admission.taskId },
         ],
       );
+      if (!admitted && admission.admissionFence !== undefined) {
+        throw new Error(`Task admission for "${admission.taskId}" was fenced off.`);
+      }
     },
 
     async recordToolGrant(taskId, tools) {

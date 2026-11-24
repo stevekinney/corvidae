@@ -19,6 +19,16 @@ import type {
 import type { ForkSessionRequest, ForkSessionResult } from '../session-fork';
 import type { RegenerateSessionRequest, RegenerateSessionResult } from '../session-regenerate';
 import type {
+  DiscardTurnRequest,
+  DiscardTurnResult,
+  SessionDiscardRefusedError,
+} from '../session-discard';
+import type {
+  ResumeTurnRequest,
+  ResumeTurnResult,
+  SessionResumeRefusedError,
+} from '../session-resume';
+import type {
   SessionSteeringState,
   SteeringCommandAdmissionOutcome,
   SteeringCommandRequest,
@@ -408,6 +418,53 @@ export interface BureauContexts {
     contextId: string,
     request: RegenerateSessionRequest,
   ): Promise<RegenerateSessionResult>;
+
+  /**
+   * Discards the context's last unfinished turn (COR-2437): the rows `request.runId` wrote after
+   * the person's message that started it (its replies, tool calls, tool results and the answers
+   * given to its questions) are removed, and the person's message is kept. The run must be the
+   * context's last and must have ended without finishing: the person stopped it, or it failed.
+   * Anything else throws a {@link SessionDiscardRefusedError} naming why: a run still going or
+   * waiting on an approval or a question (`turn-running`: cancel it first), one that finished
+   * normally (`turn-finished`), one a later run or row follows (`not-latest-turn`), one whose
+   * process stopped before it recorded its end (`turn-outcome-unknown`), one a follow-up was
+   * delivered into (`follow-up-delivered`), a context with a follow-up still queued
+   * (`follow-ups-queued`), and a run that wrote nothing (`nothing-to-discard`). The removal is one
+   * compare-and-swap fenced on the incarnation and revision the attempt read, judged again on what
+   * it writes over, and its commit carries the discard's receipt and its audit entry
+   * (`context.turn-discarded`) to the session outbox. The run's task record is kept as it is: it
+   * says how the run ended, which stays true.
+   *
+   * `commandId` is recorded in the durable command ledger: an exact retry, even after a restart,
+   * returns the original result; a duplicate whose first attempt is still pending is answered
+   * from its committed receipt, or refused `command-in-doubt`; the same `commandId` with another
+   * `runId` is refused `command-conflict`. It does not authorize the caller: that is the caller's
+   * to do, as for `contexts.get`. Throws a `BureauError` `NOT_FOUND` for a context this Bureau
+   * does not hold, a `ContextArchivedError` for an archived one, and a `BureauShuttingDownError`
+   * when Bureau is shutting down.
+   */
+  discardTurn(contextId: string, request: DiscardTurnRequest): Promise<DiscardTurnResult>;
+
+  /**
+   * Lets the context's last stopped turn go on (COR-2437): a continuation run starts on the stored
+   * conversation, the partial reply included, with no message from the person, and writes a new
+   * assistant turn after the partial reply. The turn must be the context's last, and its run must
+   * have been stopped by the person or have failed on finish reason `error`. The start is one
+   * atomic session write that appends a hidden continuation row naming the stopped run and the
+   * command, names the new run as the chat's last, and judges the history again inside its update,
+   * so a message, a discard or another resume that lands first wins. A repeated `commandId`
+   * answers the run it started, after a restart too, and never starts a second; the same
+   * `commandId` for another run is `command-conflict`. Anything else throws a
+   * {@link SessionResumeRefusedError} and starts nothing: `run-not-found`, `not-latest-turn`,
+   * `turn-running`, `turn-awaiting-person`, `turn-recovering` (a run whose process stopped, which
+   * the Bureau that next boots takes up), `turn-finished` (a reply cut at the token limit
+   * included), `run-not-resumable` (a failure going on would meet again), `turn-interrupted-call`,
+   * `follow-up-delivered`, `follow-ups-queued` and `nothing-to-resume`. It does not authorize the
+   * caller. Throws a `BureauError` `NOT_FOUND` for a context this Bureau does not hold, a
+   * `ContextArchivedError` for an archived one, and a `BureauShuttingDownError` when Bureau is
+   * shutting down.
+   */
+  resumeTurn(contextId: string, request: ResumeTurnRequest): Promise<ResumeTurnResult>;
 
   /**
    * One page of the context's durable event history, from the exclusive `options.since` cursor. It

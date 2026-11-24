@@ -130,6 +130,22 @@ export type ToolApprovalAction = {
   snapshotId?: string | undefined;
   expiresAt?: string | undefined;
   editableArgs?: boolean | undefined;
+  /**
+   * Whether the operation cannot be undone once approved, as the tool declares it. Absent, the
+   * tool said nothing, which every approval written before the field existed is; a reader then
+   * judges by `risk` alone.
+   */
+  irreversible?: boolean | undefined;
+  /**
+   * What happens if the person approves, in one sentence, such as `Charges the card on file
+   * $42.00.` Non-empty and at most 500 characters.
+   */
+  consequence?: string | undefined;
+  /**
+   * Why the agent wants to take the action, as it explains itself to the person deciding.
+   * Non-empty and at most 2000 characters.
+   */
+  why?: string | undefined;
   policyVersion: string;
   idempotencyKey: string;
 };
@@ -147,6 +163,12 @@ export interface ToolActionInput {
   snapshotId?: unknown;
   expiresAt?: unknown;
   editableArgs?: unknown;
+  /** An approval's {@link ToolApprovalAction.irreversible}, validated as a boolean. */
+  irreversible?: unknown;
+  /** An approval's {@link ToolApprovalAction.consequence}, validated and bounded. */
+  consequence?: unknown;
+  /** An approval's {@link ToolApprovalAction.why}, validated and bounded. */
+  why?: unknown;
   policyVersion?: unknown;
   idempotencyKey?: unknown;
 }

@@ -50,6 +50,9 @@
     context: DecisionContext;
     operation?: ApprovalOperation | undefined;
     irreversible?: boolean | undefined;
+    consequence?: string | undefined;
+    why?: string | undefined;
+    decidedInHref?: string | undefined;
     policyVersion?: string | undefined;
     idempotencyKey?: string | undefined;
     expiresAt?: string | undefined;
@@ -87,6 +90,9 @@
     context,
     operation,
     irreversible,
+    consequence,
+    why,
+    decidedInHref,
     policyVersion,
     idempotencyKey,
     expiresAt,
@@ -239,7 +245,7 @@
 <ApprovalCard
   {...dataChanges ? { 'data-changes': true } : {}}
   {id}
-  layout="row"
+  layout="decision"
   headingLevel={4}
   question={decision === undefined ? question : decidedQuestion}
   tool={{
@@ -256,6 +262,8 @@
   policyVersion={policyVersion ?? id}
   idempotencyKey={requestKey}
   {decisionReview}
+  {...consequence === undefined ? {} : { consequence }}
+  {...why === undefined ? {} : { why }}
   {...expiresAt === undefined ? {} : { expiresAt }}
   {...actionLabel === undefined ? {} : { actionLabel }}
   {...failure === undefined ? {} : { failure }}
@@ -285,7 +293,9 @@
     : {
         decidedBy: decidedByLabel(decision, context.owner),
         decidedAt: decision.decidedAt,
-        ...(place === undefined ? {} : { decidedIn: place }),
+        ...(place === undefined
+          ? {}
+          : { decidedIn: place, ...(decidedInHref === undefined ? {} : { decidedInHref }) }),
         ...(decision.reason === undefined ? {} : { decisionNote: decision.reason }),
       }}
   {...decision === undefined
@@ -298,8 +308,7 @@
     : {}}
 />
 {#if decision === undefined && unavailableReason === undefined && expired && lapsedAt !== undefined}
-  <!-- When it lapsed is a line under the card in a message's time style (Chat's rule for
-       `.chat-approval-time`), not text inside the card. -->
+  <!-- When it lapsed is a line under the card in a message's time style. -->
   <div class="chat-approval-time">
     <time datetime={lapsedAt}><bdi>{formatTimeOfDay(lapsedAt)}</bdi></time>
   </div>

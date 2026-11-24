@@ -63,6 +63,8 @@
     decidedIn: string | undefined;
     /** Where `decidedIn` leads. */
     decidedInHref: string | undefined;
+    /** Time of the durable decision, formatted by the card. */
+    decidedTime: string | undefined;
     /** Requests a fresh approval after expiration. */
     onAskAgain: (() => void) | undefined;
     /** The note the approver left with the decision. */
@@ -79,11 +81,16 @@
     inputLabel: string;
     /** Resolution sink; undefined when the host is not wired to answer, or the approval is not actionable. */
     resolve: ((resolution: ApprovalResolution) => void) | undefined;
+    /** Optional host-owned review controls for an actionable decision card. */
+    decisionReview:
+      Snippet<[(decision: 'approve' | 'deny') => void, disabled: boolean]> | undefined;
+    sourceText: string | undefined;
+    requestedText: string | undefined;
+    requestedIso: string | undefined;
   };
 </script>
 
 <script lang="ts">
-  import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import { untrack } from 'svelte';
 
   import Button from '../button/button.svelte';
@@ -92,6 +99,7 @@
   import Link from '../link/link.svelte';
   import InlineConfirm from '../inline-confirm/inline-confirm.svelte';
   import Textarea from '../textarea/textarea.svelte';
+  import DisclosureTrigger from '../disclosure-trigger/disclosure-trigger.svelte';
   import ApprovalCardSettled from './approval-card-settled.svelte';
   import ApprovalCardFactsLine from './approval-card-facts-line.svelte';
   import { fitNoteLabel } from './approval-card-note-fit.ts';
@@ -128,6 +136,7 @@
     decidedBy,
     decidedIn,
     decidedInHref,
+    decidedTime,
     onAskAgain,
     decisionNote,
     context,
@@ -136,6 +145,10 @@
     inputRows,
     inputLabel,
     resolve,
+    decisionReview,
+    sourceText,
+    requestedText,
+    requestedIso,
   }: ApprovalCardDecisionProps = $props();
 
   const inputId = $derived(`${rootId}-input`);
@@ -216,8 +229,21 @@
   }
 </script>
 
-{#if context !== undefined}
-  <div class="cinder-approval-card__context">{@render context()}</div>
+{#if context !== undefined || ((isPending || isUnavailable) && (sourceText !== undefined || requestedText !== undefined))}
+  <div class="cinder-approval-card__context">
+    {#if context !== undefined}{@render context()}{/if}
+    {#if (isPending || isUnavailable) && (sourceText !== undefined || requestedText !== undefined)}
+      <p class="cinder-approval-card__asker">
+        {#if sourceText !== undefined}<span class="cinder-approval-card__asker-source"
+            >{sourceText}</span
+          >{/if}
+        {#if requestedText !== undefined}<time
+            class="cinder-approval-card__asker-time"
+            datetime={requestedIso}>{requestedText}</time
+          >{/if}
+      </p>
+    {/if}
+  </div>
 {/if}
 
 {#if approvalState === 'expired'}
@@ -233,8 +259,7 @@
   </ApprovalCardSettled>
 {:else if isReceipt}
   <div class="cinder-approval-card__receipt" data-cinder-tone={outcomeTone}>
-    <!-- The same pattern as an expired card: the decided action as the title, one status line, and
-         the time under the card, which the host writes as it writes a message's. -->
+    <!-- The durable receipt owns its decision time; expiry remains a host message-time below its card. -->
     <ApprovalCardSettled
       {titleTag}
       {titleId}
@@ -249,53 +274,47 @@
             approvalState
           ]}{#if hasWho}{' '}{byText}{inText}{#if decidedIn !== undefined}{#if decidedInHref !== undefined}<Link
                 href={decidedInHref}>{decidedIn}</Link
-              >{:else}{decidedIn}{/if}{/if}{/if}
+              >{:else}{decidedIn}{/if}{/if}{/if}{#if decidedTime !== undefined}, {decidedTime}{/if}
       {/snippet}
     </ApprovalCardSettled>
     {#if hasReceiptDetails}
       <div class="cinder-approval-card__input">
-        <button
-          type="button"
+        <DisclosureTrigger
           class="cinder-approval-card__input-toggle"
-          aria-expanded={detailsOpen}
-          aria-controls={detailsId}
+          open={detailsOpen}
+          controls={detailsId}
           onclick={() => (detailsOpen = !detailsOpen)}
         >
-          <ChevronRight
-            class="cinder-approval-card__input-chevron"
-            size={12}
-            strokeWidth={2}
-            aria-hidden="true"
-            data-cinder-open={detailsOpen || undefined}
-          />
           <span class="cinder-approval-card__input-word">Details</span>
-        </button>
-        <div id={detailsId} class="cinder-approval-card__receipt-details" hidden={!detailsOpen}>
+        </DisclosureTrigger>
+        <dl id={detailsId} class="cinder-approval-card__receipt-details" hidden={!detailsOpen}>
           {#if hasNote}
-            <p class="cinder-approval-card__decision-note">
-              <span class="cinder-approval-card__decision-note-label">Your note:</span>
-              <span class="cinder-approval-card__decision-note-text" dir="auto">{decisionNote}</span
-              >
-            </p>
+            <div class="cinder-approval-card__decision-note">
+              <dt>Your note</dt>
+              <dd dir="auto">{decisionNote}</dd>
+            </div>
           {/if}
           {#if result !== undefined}
-            <p class="cinder-approval-card__result">
-              <span class="cinder-approval-card__result-label">Result:</span>
-              {result}
-            </p>
+            <div class="cinder-approval-card__result">
+              <dt>Result</dt>
+              <dd>{result}</dd>
+            </div>
           {/if}
           {#if command !== undefined}
             <div class="cinder-approval-card__command">
-              <CodeBlock
-                code={command}
-                language="shell"
-                languageLabelVisible={false}
-                copyable={false}
-                wrap
-              />
+              <dt>Command</dt>
+              <dd>
+                <CodeBlock
+                  code={command}
+                  language="shell"
+                  languageLabelVisible={false}
+                  copyable={false}
+                  wrap
+                />
+              </dd>
             </div>
           {/if}
-        </div>
+        </dl>
       </div>
     {/if}
     {#if notice !== undefined}
@@ -362,22 +381,14 @@
   {#if isPending}
     {#if why !== undefined}
       <div class="cinder-approval-card__input cinder-approval-card__why">
-        <button
-          type="button"
+        <DisclosureTrigger
           class="cinder-approval-card__input-toggle"
-          aria-expanded={whyOpen}
-          aria-controls={whyId}
+          open={whyOpen}
+          controls={whyId}
           onclick={() => (whyOpen = !whyOpen)}
         >
-          <ChevronRight
-            class="cinder-approval-card__input-chevron"
-            size={12}
-            strokeWidth={2}
-            aria-hidden="true"
-            data-cinder-open={whyOpen || undefined}
-          />
           <span class="cinder-approval-card__input-word">Why the agent wants to do this</span>
-        </button>
+        </DisclosureTrigger>
         <p id={whyId} class="cinder-approval-card__why-body" hidden={!whyOpen} dir="auto">{why}</p>
       </div>
     {/if}
@@ -464,11 +475,17 @@
           onConfirm={() => decide('approve')}
         />
       </div>
+      {#if decisionReview !== undefined}
+        {@render decisionReview(decide, isBusy || disabledReason !== undefined)}
+      {/if}
       {#if footnote !== undefined}
         <p class="cinder-approval-card__footnote" dir="auto">{footnote}</p>
       {/if}
     {/if}
   {:else if isUnavailable && unavailableReason !== undefined}
+    {#if inputRows.length > 0}
+      <ApprovalCardInputRows id={inputId} label={inputLabel} rows={inputRows} />
+    {/if}
     <p class="cinder-approval-card__reason" dir="auto">{unavailableReason}</p>
   {/if}
   {#if !isPending && notice !== undefined}
