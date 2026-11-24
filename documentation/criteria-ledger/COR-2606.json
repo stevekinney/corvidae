@@ -1,24 +1,24 @@
 {
   "issue": "COR-2606",
   "branch": "steve/cor-2606-native-mcp",
-  "checkedAt": "4a6c2a1a19fc7437de374aeb883e8f86b2f184b4",
+  "checkedAt": "1eb23131b998d244b7d854cd882517c60a5f4e43",
   "briefVersion": "795d948904e4",
   "status": "READY",
   "criteria": [
     {
       "id": "AC-bbbeefcb955d",
       "status": "met-on-branch",
-      "evidence": "bun scripts/bun-test.ts packages/armorer/test/mcp-http.test.ts exit 0: pinned names, read/write scopes, invalid selections."
+      "evidence": "Normal Armorer suite exit 0; native HTTP test verifies pinned names, read/write scopes and invalid selections; public API manifest witness includes approved subpath."
     },
     {
       "id": "AC-a9a22009f9a0",
       "status": "met-on-branch",
-      "evidence": "bun scripts/bun-test.ts packages/armorer/test/mcp-http.test.ts exit 0: live SDK two-tenant denied and allowed rename and credential exclusion."
+      "evidence": "Normal Armorer suite exit 0; live SDK two-tenant denied and allowed rename and credential exclusion."
     },
     {
       "id": "AC-381d69024a23",
       "status": "met-on-branch",
-      "evidence": "Native conformance, input-required, tasks and protected HTTP suites exit 0; identity, permission, authority revision/capability fences, rollback and shutdown asserted."
+      "evidence": "Normal Armorer suite exit 0 including native conformance, input-required, task and protected HTTP tests; duplicate unselected names retain latest behavior."
     },
     {
       "id": "AC-eba2e1979f42",
