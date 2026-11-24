@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 import {
   createReviewsClientWithTransport,
@@ -42,17 +43,19 @@ describe('the portable Reviews boundary', () => {
       await client['bureau.reviews.resolve']({ id: review.id, round: 0, decision: 'approve' }),
     ).toEqual(receipt);
     value = { ...list, reviews: [{ ...review, id: 9 }] };
-    await expect(client['bureau.reviews.list']({})).rejects.toThrow(
-      'Invalid bureau.reviews.list response',
-    );
+    expect(await rejectionOf(client['bureau.reviews.list']({}))).toMatchObject({
+      message: 'Invalid bureau.reviews.list response',
+    });
     value = { ...review, round: '0' };
-    await expect(client['bureau.reviews.get']({ id: review.id })).rejects.toThrow(
-      'Invalid bureau.reviews.get response',
-    );
+    expect(await rejectionOf(client['bureau.reviews.get']({ id: review.id }))).toMatchObject({
+      message: 'Invalid bureau.reviews.get response',
+    });
     value = { ...receipt, receipt: 1 };
-    await expect(
-      client['bureau.reviews.resolve']({ id: review.id, round: 0, decision: 'approve' }),
-    ).rejects.toThrow('Invalid bureau.reviews.resolve response');
+    expect(
+      await rejectionOf(
+        client['bureau.reviews.resolve']({ id: review.id, round: 0, decision: 'approve' }),
+      ),
+    ).toMatchObject({ message: 'Invalid bureau.reviews.resolve response' });
   });
 
   it('accepts a display-only opening without fabricating a round and rejects private or malformed fields', () => {

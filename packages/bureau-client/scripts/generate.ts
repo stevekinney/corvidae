@@ -154,10 +154,15 @@ export async function createReviewsClientSources(): Promise<ReadonlyMap<string, 
   output.set(
     'portable-operation-client.generated.ts',
     await format(
-      portable.replace(
-        'return createCatalogClient<CatalogOperationTypes>(operationNames, transport);',
-        'return createCatalogClient<CatalogOperationTypes>(operationNames, validatedReviewsTransport(transport));',
-      ).replace("import type { ReviewsOperationTypes }", "import { validatedReviewsTransport } from '../reviews/validation.ts';\nimport type { ReviewsOperationTypes }") +
+      portable
+        .replace(
+          'return createCatalogClient<CatalogOperationTypes>(operationNames, transport);',
+          'return createCatalogClient<CatalogOperationTypes>(operationNames, validatedReviewsTransport(transport));',
+        )
+        .replace(
+          'import type { ReviewsOperationTypes }',
+          "import { validatedReviewsTransport } from '../reviews/validation.ts';\nimport type { ReviewsOperationTypes }",
+        ) +
         "\nexport { parseReviewsOpeningSnapshot, validatedReviewsTransport } from '../reviews/validation.ts';\nexport type { ReviewsOpeningSnapshot } from '../reviews/validation.ts';\n",
       {
         ...(await resolveConfig(join(outputDirectory, 'portable-operation-client.generated.ts'))),

@@ -16,6 +16,92 @@ it('compiles the approval action state for both Svelte targets', async () => {
   }
 });
 
+it('validates direct-host reads and receipts before acting', async () => {
+  const build = await Bun.build({
+    entrypoints: [fileURLToPath(new URL('./tool-approval-actions.svelte.ts', import.meta.url))],
+    target: 'bun',
+    plugins: [
+      {
+        name: 'svelte-module',
+        setup(builder) {
+          builder.onLoad({ filter: /\.svelte\.ts$/u }, async ({ path }) => ({
+            loader: 'js',
+            contents: compileModule(
+              new Bun.Transpiler({ loader: 'ts' }).transformSync(await Bun.file(path).text()),
+              { filename: path, generate: 'server' },
+            ).js.code,
+          }));
+        },
+      },
+    ],
+  });
+  const module = await import(
+    `data:text/javascript;base64,${Buffer.from(await build.outputs[0].text()).toString('base64')}`
+  );
+  const review = {
+    source: 'bureau',
+    id: 'approval:1',
+    runId: 'run:1',
+    sessionId: 'session:1',
+    requestedAt: 1,
+    ageMilliseconds: 0,
+    round: 0,
+    kind: 'tool-approval',
+    status: 'pending',
+    approval: {
+      callId: 'call:1',
+      toolName: 'send',
+      arguments: {},
+      action: { type: 'input' },
+      mayRemember: true,
+    },
+  };
+  for (const malformedRead of [true, false]) {
+    let writes = 0;
+    let reads = 0;
+    let notify!: () => void;
+    const reported = new Promise<void>((resolve) => {
+      notify = resolve;
+    });
+    const outcomes: string[] = [];
+    const host = {
+      disposed: false,
+      async call(name: string) {
+        if (name.endsWith('.get')) {
+          if (++reads > 1) throw new Error('read unavailable');
+          return malformedRead ? { ...review, effect: 'refund' } : review;
+        }
+        writes++;
+        return {
+          id: review.id,
+          kind: 'tool-approval',
+          decision: 'approve',
+          receipt: 'applied',
+          privateField: 'secret',
+        };
+      },
+      invalidate() {},
+    };
+    const actions = module.useToolApprovalActions({
+      catalog: host,
+      authorized: () => true,
+      onOutcome: (_seen: unknown, outcome: string) => {
+        outcomes.push(outcome);
+        notify();
+      },
+    })(review);
+    actions.remember();
+    await reported;
+    expect(outcomes).toEqual([malformedRead ? 'failed' : 'unknown-after-dispatch']);
+    expect(writes).toBe(malformedRead ? 0 : 1);
+    if (!malformedRead) {
+      actions.deny();
+      expect(actions.disabled).toBe(true);
+      expect(writes).toBe(1);
+    }
+  }
+});
+
 it('distinguishes a typed Forbidden refusal from a lost response for the same target', async () => {
   const build = await Bun.build({
     entrypoints: [fileURLToPath(new URL('./tool-approval-actions.svelte.ts', import.meta.url))],
@@ -40,10 +126,15 @@ it('distinguishes a typed Forbidden refusal from a lost response for the same ta
   );
   const review = {
     id: 'approval:1',
+    source: 'bureau',
+    runId: 'run:1',
+    sessionId: 'session:1',
+    requestedAt: 1,
+    ageMilliseconds: 0,
     round: 0,
     kind: 'tool-approval',
     status: 'pending',
-    approval: { action: { type: 'input' } },
+    approval: { callId: 'call:1', toolName: 'send', arguments: {}, action: { type: 'input' } },
   };
   for (const refused of [true, false]) {
     let reads = 0;
@@ -132,10 +223,21 @@ it('fences duplicate actions before the first read completes', async () => {
   });
   const review = {
     id: 'review',
+    source: 'bureau',
+    runId: 'run:1',
+    sessionId: 'session:1',
+    requestedAt: 1,
+    ageMilliseconds: 0,
     round: 1,
     kind: 'tool-approval',
     status: 'pending',
-    approval: { action: { type: 'input' }, mayRemember: true },
+    approval: {
+      callId: 'call:1',
+      toolName: 'send',
+      arguments: {},
+      action: { type: 'input' },
+      mayRemember: true,
+    },
   };
   const host = {
     disposed: false,
@@ -185,10 +287,21 @@ it('keeps a lost response fenced until a read succeeds', async () => {
   );
   const review = {
     id: 'review',
+    source: 'bureau',
+    runId: 'run:1',
+    sessionId: 'session:1',
+    requestedAt: 1,
+    ageMilliseconds: 0,
     round: 1,
     kind: 'tool-approval',
     status: 'pending',
-    approval: { action: { type: 'input' }, mayRemember: true },
+    approval: {
+      callId: 'call:1',
+      toolName: 'send',
+      arguments: {},
+      action: { type: 'input' },
+      mayRemember: true,
+    },
   };
   let reads = 0;
   let writes = 0;
@@ -260,10 +373,21 @@ it('uses fresh round and policy and suppresses results after authority changes',
   );
   const review = {
     id: 'review',
+    source: 'bureau',
+    runId: 'run:1',
+    sessionId: 'session:1',
+    requestedAt: 1,
+    ageMilliseconds: 0,
     round: 1,
     kind: 'tool-approval',
     status: 'pending',
-    approval: { action: { type: 'input' }, mayRemember: true },
+    approval: {
+      callId: 'call:1',
+      toolName: 'send',
+      arguments: {},
+      action: { type: 'input' },
+      mayRemember: true,
+    },
   };
   let complete!: () => void;
   const next = new Promise<void>((resolve) => {
@@ -353,10 +477,21 @@ it('reports distinct receipts and conflicts and rereads each conflict', async ()
   );
   const review = {
     id: 'review',
+    source: 'bureau',
+    runId: 'run:1',
+    sessionId: 'session:1',
+    requestedAt: 1,
+    ageMilliseconds: 0,
     round: 1,
     kind: 'tool-approval',
     status: 'pending',
-    approval: { action: { type: 'input' }, mayRemember: true },
+    approval: {
+      callId: 'call:1',
+      toolName: 'send',
+      arguments: {},
+      action: { type: 'input' },
+      mayRemember: true,
+    },
   };
   const cases = [
     [{ receipt: 'applied' }, 'applied'],

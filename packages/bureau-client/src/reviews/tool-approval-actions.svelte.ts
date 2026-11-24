@@ -1,6 +1,7 @@
 import type { CatalogHost } from '@lostgradient/backchannel-svelte';
 import { SvelteMap } from 'svelte/reactivity';
 import type { ReviewsOperationTypes } from '../generated/reviews-operations.generated.ts';
+import { validatedReviewsTransport } from './validation.ts';
 
 type Review = Extract<
   ReviewsOperationTypes['bureau.reviews.get']['output'],
@@ -28,6 +29,9 @@ const scopes = new WeakMap<CatalogHost, SvelteMap<string, Target>>();
 
 export function useApprovalDecision(host: ApprovalHost) {
   const { catalog, authorized, decisionSurface, onOutcome } = host;
+  const call = validatedReviewsTransport((name, input, options) =>
+    catalog.call(name, input, options?.signal),
+  );
   let targets = scopes.get(catalog);
   if (!targets) {
     targets = new SvelteMap();
@@ -71,7 +75,7 @@ export function useApprovalDecision(host: ApprovalHost) {
     const capture = () => JSON.parse(JSON.stringify(review)) as Review;
     const invalidate = () => catalog.invalidate(['bureau.reviews.list', 'bureau.reviews.get']);
     const read = async () =>
-      (await catalog.call('bureau.reviews.get', {
+      (await call('bureau.reviews.get', {
         id: seen.id,
       })) as ReviewsOperationTypes['bureau.reviews.get']['output'];
     async function reconcile() {
@@ -131,26 +135,18 @@ export function useApprovalDecision(host: ApprovalHost) {
         )
           return;
         dispatched = true;
-        const response = await catalog.call('bureau.reviews.resolve', {
+        const response = await call('bureau.reviews.resolve', {
           ...seen,
           ...choice,
           ...(decisionSurface ? { decisionSurface } : {}),
         });
-        if (
-          response === null ||
-          typeof response !== 'object' ||
-          !('id' in response) ||
-          response.id !== seen.id ||
-          !('kind' in response) ||
-          response.kind !== 'tool-approval' ||
-          !('decision' in response) ||
-          response.decision !== choice.decision ||
-          !('receipt' in response) ||
-          !['applied', 'superseded', 'rejected'].includes(String(response.receipt)) ||
-          ('warning' in response && response.warning !== 'APPROVAL_OUTCOME_NOT_WRITTEN')
-        )
-          throw new Error('Invalid review decision receipt');
         const result = response as Receipt;
+        if (
+          result.id !== seen.id ||
+          result.kind !== 'tool-approval' ||
+          result.decision !== choice.decision
+        )
+          throw new Error('Review decision receipt does not match the command');
         if (result.receipt === 'rejected') {
           state.uncertain = true;
           report('failed', captured);
