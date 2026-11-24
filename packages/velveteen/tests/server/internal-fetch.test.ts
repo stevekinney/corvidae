@@ -2,6 +2,7 @@ import { throwingRejectionOf } from "@lostgradient/testing/promise-outcome";
 import { expect, test } from "bun:test";
 import type { Fetch } from "../../src/data/contract.ts";
 import { createEvent } from "../../src/server/request.ts";
+import { createApplication } from "../../src/server/index.ts";
 import type { ApplicationOptions } from "../../src/server/types.ts";
 
 const options: ApplicationOptions = {
@@ -373,4 +374,120 @@ test("rejected redirects cancel their response bodies while manual redirects rem
   expect(canceled).toBe(1);
   await manual.body!.cancel();
   expect(canceled).toBe(2);
+});
+
+test("network and event.fetch mounts preserve identity, release policy, and stream cancellation", async () => {
+  const seen: Array<{ path: string; id: string; credential: string | null }> =
+    [];
+  let authorized = true;
+  let admitted = Promise.withResolvers<void>();
+  let release = Promise.withResolvers<void>();
+  let cancelled = Promise.withResolvers<void>();
+  const app = await createApplication({
+    generation: {
+      ...options.generation,
+      manifest: { ...options.generation.manifest, basePath: "/base" },
+    },
+    registry: {
+      manifest: options.generation.manifest.routing,
+      nodes: [],
+      Root: {} as never,
+      render: () => ({ body: "", head: "" }),
+    },
+    hooks: {
+      handle: async ({ event, resolve }) => {
+        if (event.url.pathname === "/base/page")
+          return event.fetch(
+            `/base/catalog/items/a%20b?mode=${event.url.searchParams.get("mode")}`,
+          );
+        return resolve();
+      },
+    },
+    mounts: {
+      "/catalog": () => (request) => {
+        const url = new URL(request.url);
+        seen.push({
+          path: url.pathname,
+          id: decodeURIComponent(url.pathname.split("/").at(-1)!),
+          credential: request.headers.get("authorization"),
+        });
+        request.signal.addEventListener("abort", () => cancelled.resolve(), {
+          once: true,
+        });
+        if (url.searchParams.get("mode") === "stream")
+          return new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode("started"));
+              },
+            }),
+          );
+        admitted.resolve();
+        return new Response(
+          new ReadableStream(
+            {
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode("admitted"));
+              },
+              async pull(controller) {
+                await release.promise;
+                if (authorized)
+                  controller.enqueue(new TextEncoder().encode("private value"));
+                controller.close();
+              },
+            },
+            { highWaterMark: 0 },
+          ),
+        );
+      },
+    },
+  });
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: (request) => app.fetch(request),
+  });
+  try {
+    for (const path of ["/base/catalog/items/a%20b", "/base/page"]) {
+      authorized = true;
+      admitted = Promise.withResolvers<void>();
+      release = Promise.withResolvers<void>();
+      const response = await fetch(
+        new URL(`${path}?mode=private`, server.url),
+        { headers: { authorization: "Bearer actor" } },
+      );
+      await admitted.promise;
+      const privateReader = response.body!.getReader();
+      expect(new TextDecoder().decode((await privateReader.read()).value)).toBe(
+        "admitted",
+      );
+      authorized = false;
+      release.resolve();
+      expect((await privateReader.read()).done).toBe(true);
+      cancelled = Promise.withResolvers<void>();
+      const controller = new AbortController();
+      const stream = await fetch(new URL(`${path}?mode=stream`, server.url), {
+        headers: { authorization: "Bearer actor" },
+        signal: controller.signal,
+      });
+      const reader = stream.body!.getReader();
+      expect(new TextDecoder().decode((await reader.read()).value)).toBe(
+        "started",
+      );
+      controller.abort();
+      await cancelled.promise;
+      await reader.cancel().catch(() => undefined);
+    }
+    expect(seen).toEqual(
+      Array.from({ length: 4 }, () => ({
+        path: "/items/a%20b",
+        id: "a b",
+        credential: "Bearer actor",
+      })),
+    );
+  } finally {
+    release.resolve();
+    await server.stop(true);
+    await app.dispose();
+  }
 });
