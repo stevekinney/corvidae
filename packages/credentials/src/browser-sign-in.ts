@@ -92,7 +92,8 @@ export function createBrowserSignIn(options: BrowserSignInOptions) {
   async function resolveSession(request: Request) {
     const credential = cookie(request, options.cookieName);
     if (!credential) return null;
-    const raw = await options.storage.get(await sessionKey(credential));
+    const key = await sessionKey(credential);
+    const raw = await options.storage.get(key);
     if (!raw) return null;
     const session = JSON.parse(decoder.decode(raw)) as Session;
     if (session.expires <= Date.now()) return null;
@@ -101,7 +102,7 @@ export function createBrowserSignIn(options: BrowserSignInOptions) {
       workspaceId: session.workspaceId,
     });
     if (!membership || membership.workspaceId !== session.workspaceId) return null;
-    return { session, membership, credential };
+    return { session, membership, credential, key, raw };
   }
 
   async function currentSession(request: Request) {
@@ -269,13 +270,32 @@ export function createBrowserSignIn(options: BrowserSignInOptions) {
       const resolved = await resolveSession(request);
       return resolved?.session.consentBinding ?? null;
     },
-    consentIdentity: async (request: Request) => {
-      const resolved = await resolveSession(request);
-      if (!resolved) return null;
+    oauthIdentity: (
+      store: { usesStorage(storage: Storage): boolean },
+      principalForGrant: (identity: {
+        subject: string;
+        tenant: string;
+      }) => Promise<{ delegableScopes: string[] } | null>,
+    ) => {
+      if (!store.usesStorage(options.storage))
+        throw new TypeError('Browser and OAuth must use the same atomic storage namespace');
       return {
-        subject: resolved.session.subjectId,
-        tenant: resolved.session.workspaceId,
-        binding: resolved.session.consentBinding,
+        assertStore: (candidate: { usesStorage(storage: Storage): boolean }) => {
+          if (candidate !== store)
+            throw new TypeError('Browser and OAuth must use the same atomic storage namespace');
+        },
+        session: async (request: Request) => {
+          const resolved = await resolveSession(request);
+          if (!resolved) return null;
+          return {
+            subject: resolved.session.subjectId,
+            tenant: resolved.session.workspaceId,
+            binding: resolved.session.consentBinding,
+            sessionCondition: { key: resolved.key, expectedValue: resolved.raw },
+          };
+        },
+        signIn: startSignIn,
+        principalForGrant,
       };
     },
   };

@@ -1,8 +1,12 @@
 import { createProtectedHttpHandler } from '@lostgradient/mcp/http';
 import { hostedOAuth, OAuthStore } from '@lostgradient/mcp/oauth';
-import { MemoryStorage } from '@lostgradient/storage';
+import { scopedStorage } from '@lostgradient/storage';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import * as client from 'openid-client';
 import { createBrowserSignIn } from './browser-sign-in.ts';
 
@@ -90,48 +94,37 @@ test('browser login resumes consent and connector authority stays separate', asy
     undefined,
     { execute: [client.allowInsecureRequests, client.enableNonRepudiationChecks] },
   );
-  using storage = new MemoryStorage();
+  const directory = mkdtempSync(join(tmpdir(), 'browser-consent-'));
+  using cleanup = { [Symbol.dispose]: () => rmSync(directory, { recursive: true, force: true }) };
+  void cleanup;
+  using database = new BunSQLiteStorage(join(directory, 'sessions.sqlite'));
+  using secondDatabase = new BunSQLiteStorage(join(directory, 'sessions.sqlite'));
+  let beforeCommit: (() => Promise<void>) | undefined;
+  const storage = new Proxy(database, {
+    get(target, property) {
+      if (property === 'conditionalBatch')
+        return async (...args: Parameters<typeof database.conditionalBatch>) => {
+          if (beforeCommit && args[1].some((operation) => operation.key.startsWith('oauth:grant:')))
+            await beforeCommit();
+          return target.conditionalBatch(...args);
+        };
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
   let active = true;
   let activeWorkspace = 'workspace';
   let scopes = ['read', 'write'];
   let asset = 'Original';
   let appOrigin = '';
   let browser!: ReturnType<typeof createBrowserSignIn>;
+  let browserIdentity!: ReturnType<typeof browser.oauthIdentity>;
   const issuerOrigin = 'https://app.test';
   const resource = `${issuerOrigin}/mcp`;
   const principal = async () => (active ? { delegableScopes: [...scopes] } : null);
   const store = new OAuthStore(storage);
-  const issuer = hostedOAuth({
-    issuer: issuerOrigin,
-    resource,
-    scopes: ['read', 'write'],
-    startingScopes: ['read'],
-    scopeDescriptions: { read: 'Read assets', write: 'Rename assets' },
-    store,
-    identity: {
-      session: async (request) => {
-        const identity = await browser.consentIdentity(request);
-        return identity && { ...identity, tenant: activeWorkspace };
-      },
-      signIn: (request) => browser.startSignIn(request),
-      principalForGrant: principal,
-    },
-  });
-  const protectedHandler = createProtectedHttpHandler({
-    origin: issuerOrigin,
-    resourcePath: '/mcp',
-    issuer: issuerOrigin,
-    scopes: ['read', 'write'],
-    verifyAccessToken: issuer.verifyAccessToken,
-    resolvePrincipal: principal,
-    async dispatch(request, context) {
-      const operation = new URL(request.url).searchParams.get('operation');
-      const decision = await context.requireScopes([operation === 'rename' ? 'write' : 'read']);
-      if (!decision.ok) return decision.response;
-      if (operation === 'rename') asset = 'Changed';
-      return Response.json({ asset });
-    },
-  });
+  let issuer!: ReturnType<typeof hostedOAuth>;
+  let protectedHandler!: ReturnType<typeof createProtectedHttpHandler>;
   const app = Bun.serve({
     hostname: '127.0.0.1',
     port: 0,
@@ -155,6 +148,65 @@ test('browser login resumes consent and connector authority stays separate', asy
     resolveAccount: async () => 'person',
     resolveMembership: async ({ workspaceId }) => (active ? { workspaceId } : null),
   });
+  browserIdentity = browser.oauthIdentity(store, principal);
+  const issuerOptions = {
+    issuer: issuerOrigin,
+    resource,
+    scopes: ['read', 'write'],
+    startingScopes: ['read'],
+    scopeDescriptions: { read: 'Read assets', write: 'Rename assets' },
+    store,
+    identity: {
+      ...browserIdentity,
+      session: async (request: Request) => {
+        const identity = await browserIdentity.session(request);
+        return identity && { ...identity, tenant: activeWorkspace };
+      },
+    },
+  };
+  const distinctStorage = scopedStorage(database, 'other-namespace');
+  expect(() => browser.oauthIdentity(new OAuthStore(distinctStorage), principal)).toThrow();
+  expect(() => hostedOAuth({ ...issuerOptions, store: new OAuthStore(distinctStorage) })).toThrow();
+  for await (const entry of distinctStorage.scan(''))
+    throw new Error(`Unexpected record ${entry[0]}`);
+  for await (const entry of storage.scan('')) throw new Error(`Unexpected record ${entry[0]}`);
+  issuer = hostedOAuth(issuerOptions);
+  protectedHandler = createProtectedHttpHandler({
+    origin: issuerOrigin,
+    resourcePath: '/mcp',
+    issuer: issuerOrigin,
+    scopes: ['read', 'write'],
+    verifyAccessToken: issuer.verifyAccessToken,
+    resolvePrincipal: principal,
+    async dispatch(request, context) {
+      const operation = new URL(request.url).searchParams.get('operation');
+      const decision = await context.requireScopes([operation === 'rename' ? 'write' : 'read']);
+      if (!decision.ok) return decision.response;
+      if (operation === 'rename') asset = 'Changed';
+      return Response.json({ asset });
+    },
+  });
+  const secondBrowser = createBrowserSignIn({
+    publicOrigin: appOrigin,
+    storage: secondDatabase,
+    workspaceId: 'workspace',
+    cookieName: 'session',
+    provider: Promise.resolve(configuration),
+    resolveAccount: async () => 'person',
+    resolveMembership: async ({ workspaceId }) => (active ? { workspaceId } : null),
+  });
+  const secondApp = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch(request) {
+      const incoming = new URL(request.url);
+      return secondBrowser.fetch(
+        new Request(new URL(incoming.pathname + incoming.search, appOrigin), request),
+      );
+    },
+  });
+  using secondAppCleanup = { [Symbol.dispose]: () => secondApp.stop(true) };
+  void secondAppCleanup;
   const request = (path: string, init?: RequestInit) =>
     fetch(`${appOrigin}${path}`, { ...init, redirect: 'manual' });
   const discovery = await request('/mcp');
@@ -225,7 +277,9 @@ test('browser login resumes consent and connector authority stays separate', asy
     return total;
   };
   const pending = await form();
-  const identity = await browser.consentIdentity(new Request(appOrigin, { headers: { cookie } }));
+  const identity = await browser
+    .oauthIdentity(store, principal)
+    .session(new Request(appOrigin, { headers: { cookie } }));
   const retained = await store.getConsent(pending.get('transaction')!, {
     issuer: issuerOrigin,
     client: registered.client_id,
@@ -258,6 +312,38 @@ test('browser login resumes consent and connector authority stays separate', asy
   expect(wrongWorkspace.status).toBe(400);
   expect(await wrongWorkspace.json()).toEqual({ error: 'invalid_request' });
   activeWorkspace = 'workspace';
+  const racing = await form(otherCookie);
+  let entered!: () => void;
+  let resume!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const resumed = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  beforeCommit = async () => {
+    entered();
+    await resumed;
+  };
+  const approvalInFlight = submit(racing, 'approve', otherCookie);
+  await waiting;
+  const otherSession = await secondBrowser.currentSession(
+    new Request(appOrigin, { headers: { cookie: otherCookie } }),
+  );
+  const racedSignout = await fetch(`http://127.0.0.1:${secondApp.port}/auth/sign-out`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { cookie: otherCookie, origin: appOrigin, 'x-csrf-token': otherSession!.csrfToken },
+  });
+  expect(racedSignout.status).toBe(303);
+  resume();
+  const racedApproval = await approvalInFlight;
+  beforeCommit = undefined;
+  expect(racedApproval.status).toBe(400);
+  expect(await racedApproval.json()).toEqual({ error: 'invalid_request' });
+  expect(racedApproval.headers.get('location')).toBeNull();
+  expect(await count('oauth:grant:')).toBe(0);
+  expect(await count('oauth:code:')).toBe(0);
   const denied = await submit(await form(), 'deny');
   expect(denied.status).toBe(302);
   const deniedUrl = new URL(denied.headers.get('location')!);

@@ -1,10 +1,16 @@
+import type { ConditionalBatchCondition } from '@lostgradient/storage';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { OAuthStore, type OAuthClient } from '../oauth-store.ts';
 import { fetchClientIdMetadataDocument } from './client-metadata-documents.ts';
 import { isValidClientName, isValidRedirectUri } from './security-utilities.ts';
 
-type Identity = { subject: string; tenant: string; binding: string };
+type Identity = {
+  subject: string;
+  tenant: string;
+  binding: string;
+  sessionCondition?: ConditionalBatchCondition;
+};
 type Options = {
   issuer: string;
   resource: string;
@@ -13,6 +19,7 @@ type Options = {
   scopeDescriptions: Record<string, string>;
   store: OAuthStore;
   identity: {
+    assertStore?(store: OAuthStore): void;
     session(request: Request): Promise<Identity | null>;
     signIn(request: Request): Promise<Response>;
     principalForGrant(identity: {
@@ -72,6 +79,7 @@ function parameters(value: string): URLSearchParams | null {
 }
 
 export function hostedOAuth(configuration: Options) {
+  configuration.identity.assertStore?.(configuration.store);
   const options = {
     ...configuration,
     scopes: [...configuration.scopes],
@@ -257,7 +265,13 @@ export function hostedOAuth(configuration: Options) {
     const form = text === null ? null : parameters(text);
     const session = await options.identity.session(request);
     if (!form || !session) return error('invalid_request');
-    const identity = { ...session };
+    const identity = {
+      ...session,
+      sessionCondition: session.sessionCondition && {
+        key: session.sessionCondition.key,
+        expectedValue: session.sessionCondition.expectedValue?.slice() ?? null,
+      },
+    };
     const transaction = form.get('transaction') ?? '';
     const binding = {
       issuer: options.issuer,
@@ -274,7 +288,8 @@ export function hostedOAuth(configuration: Options) {
     if (pending.state) destination.searchParams.set('state', pending.state);
     destination.searchParams.set('iss', options.issuer);
     if (decision === 'deny') {
-      if (!(await options.store.denyConsent(transaction, binding))) return error('invalid_request');
+      if (!(await options.store.denyConsent(transaction, binding, identity.sessionCondition)))
+        return error('invalid_request');
       destination.searchParams.set('error', 'access_denied');
     } else if (decision === 'approve') {
       const principal = await authority(identity);
@@ -282,14 +297,19 @@ export function hostedOAuth(configuration: Options) {
         return error('access_denied', 403);
       const code = random();
       if (
-        !(await options.store.approveConsent(transaction, binding, {
-          grantId: randomUUID(),
-          code,
-          subject: identity.subject,
-          tenant: identity.tenant,
-          resource: pending.resource,
-          scopes: pending.scopes,
-        }))
+        !(await options.store.approveConsent(
+          transaction,
+          binding,
+          {
+            grantId: randomUUID(),
+            code,
+            subject: identity.subject,
+            tenant: identity.tenant,
+            resource: pending.resource,
+            scopes: pending.scopes,
+          },
+          identity.sessionCondition,
+        ))
       )
         return error('invalid_request');
       destination.searchParams.set('code', code);
