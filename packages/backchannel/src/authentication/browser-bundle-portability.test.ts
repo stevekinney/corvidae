@@ -98,7 +98,7 @@ function nodeCryptoResolutions(evidence: NodeCryptoEvidence): NodeCryptoFinding[
 
 const packageRoot = join(import.meta.dir, '..', '..');
 const indexPath = join(packageRoot, 'src', 'index.ts');
-// The package depends on Zod alone, so nothing is left external.
+// Bundle the package and its dependencies to check the complete browser entry.
 const externals: string[] = [];
 
 interface BundleOutcome {
