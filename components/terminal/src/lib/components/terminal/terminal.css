@@ -97,6 +97,12 @@
       /* @runtime-state */
       --cinder-button-padding-x-sm: var(--cinder-space-2);
     }
+
+    /* Keep the destructive clear action on its own line: the short read-only tools remain quick
+     * to scan, and Reset stays beside Clear history instead of becoming a fourth line. */
+    .cinder-terminal__inspection > :nth-child(3) {
+      flex-basis: 100%;
+    }
   }
 
   .cinder-terminal__search {

@@ -127,7 +127,8 @@ test.describe('the accessible output dialog', () => {
   }) => {
     const page = await terminalPage.open();
     await exportButton(page).click();
-    const footer = (name: string) => dialog(page).getByRole('button', { name, exact: true }).last();
+    const footer = (name: string) =>
+      dialog(page).locator('.cinder-modal__footer').getByRole('button', { name, exact: true });
     await expect(footer('Copy')).toBeVisible();
     const faces = await Promise.all(
       ['Refresh', 'Copy', 'Download', 'Close'].map((name) =>

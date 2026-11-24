@@ -491,10 +491,10 @@
   {/if}
   {#snippet footer()}
     {#if displayedReview?.kind === 'confirm'}
-      <Button variant="secondary" autofocus onclick={() => input?.cancelPaste()}>Cancel</Button>
-      <Button variant="primary" onclick={() => input?.acceptPaste()}>Paste</Button>
+      <Button variant="secondary" size="sm" autofocus onclick={() => input?.cancelPaste()}>Cancel</Button>
+      <Button variant="primary" size="sm" onclick={() => input?.acceptPaste()}>Paste</Button>
     {:else}
-      <Button variant="secondary" autofocus onclick={() => input?.cancelPaste()}>Close</Button>
+      <Button variant="secondary" size="sm" autofocus onclick={() => input?.cancelPaste()}>Close</Button>
     {/if}
   {/snippet}
 </Modal>

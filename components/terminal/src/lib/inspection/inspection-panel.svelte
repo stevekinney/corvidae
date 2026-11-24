@@ -191,15 +191,16 @@
   {#snippet footer()}
     <Button
       variant="secondary"
+      size="sm"
       disabled={view.snapshot === undefined || !view.snapshot.refreshable}
       onclick={refresh}>Refresh</Button
     >
     <!-- A secondary Button like its siblings, not the compact CopyButton, so the footer's four
          actions are one size (COR-2440). -->
-    <Button variant="secondary" onclick={() => void copySnapshot()}
+    <Button variant="secondary" size="sm" onclick={() => void copySnapshot()}
       >{copiedText !== undefined && copiedText === snapshotText ? 'Copied' : 'Copy'}</Button
     >
-    <Button variant="secondary" onclick={() => inspection.downloadExport()}>Download</Button>
-    <Button variant="primary" onclick={() => inspection.closeSnapshot()}>Close</Button>
+    <Button variant="secondary" size="sm" onclick={() => inspection.downloadExport()}>Download</Button>
+    <Button variant="primary" size="sm" onclick={() => inspection.closeSnapshot()}>Close</Button>
   {/snippet}
 </Modal>
