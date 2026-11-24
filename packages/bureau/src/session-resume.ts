@@ -111,6 +111,9 @@ export const CONTINUATION_COMMAND_METADATA_KEY = 'bureau:continuationCommand';
 /** The metadata key of a continuation row that names the owner whose command started it. */
 export const CONTINUATION_OWNER_METADATA_KEY = 'bureau:continuationOwner';
 
+/** The continuation run allocated in the same session update that stores its command marker. */
+export const CONTINUATION_RUN_METADATA_KEY = 'bureau:continuationRun';
+
 /** The id of the continuation row of the stopped run `runId`: one per stopped run. */
 export function continuationRowId(runId: string): string {
   return `${runId}:continuation`;
@@ -124,6 +127,7 @@ export function continuationRow(
   runId: string,
   commandId: string,
   owner: string,
+  continuationRunId: string,
   createdAt: string,
 ): Message {
   return {
@@ -138,6 +142,7 @@ export function continuationRow(
       [CONTINUATION_OF_METADATA_KEY]: runId,
       [CONTINUATION_COMMAND_METADATA_KEY]: commandId,
       [CONTINUATION_OWNER_METADATA_KEY]: owner,
+      [CONTINUATION_RUN_METADATA_KEY]: continuationRunId,
     },
   };
 }
@@ -235,12 +240,10 @@ export function startedContinuation(
   ) {
     return { kind: 'other-command' };
   }
-  for (const id of history.ids.slice(history.ids.indexOf(rowId) + 1)) {
-    const step = parseStepRowIdentifier(id);
-    if (step !== undefined) return { kind: 'started', runId: step.runId };
-  }
-  const last = session.metadata['lastRunId'];
-  return typeof last === 'string' && last !== runId ? { kind: 'started', runId: last } : undefined;
+  const continuationRunId = metadata[CONTINUATION_RUN_METADATA_KEY];
+  return typeof continuationRunId === 'string' && continuationRunId !== ''
+    ? { kind: 'started', runId: continuationRunId }
+    : undefined;
 }
 
 /** Whether `commandId` of `owner` started the continuation of another run than `runId`. */

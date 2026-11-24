@@ -144,6 +144,11 @@ export type SessionTaskFields = {
    * judged on: a message, a discard or another continuation that lands first wins.
    */
   readonly startGuard?: ((session: AgentSession | undefined) => void) | undefined;
+  /**
+   * Server-owned rows that need the allocated run id in the same atomic session update that starts
+   * it. This is intentionally internal to Bureau's run creation paths, not caller input.
+   */
+  readonly appendMessagesForRun?: ((runId: string) => ReadonlyArray<Message>) | undefined;
 };
 
 /** The run-creation fields a task input becomes: a message, its parts, or rows to append. */

@@ -131,7 +131,15 @@ export function createSessionResume<D extends AgentDefinitions>(
         sessionId,
         principal: owner,
         origin: { kind: 'chat' },
-        appendMessages: [continuationRow(runId, commandId, owner, runtimeServices.clock.nowISO())],
+        appendMessagesForRun: (continuationRunId) => [
+          continuationRow(
+            runId,
+            commandId,
+            owner,
+            continuationRunId,
+            runtimeServices.clock.nowISO(),
+          ),
+        ],
         // Judged again inside the save that starts the run: whatever landed since wins.
         startGuard: (current: AgentSession | undefined) => {
           if (current === undefined || current.incarnation !== session.incarnation) {

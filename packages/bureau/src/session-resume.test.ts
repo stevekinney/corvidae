@@ -27,8 +27,12 @@ import { createBureau } from './create-bureau';
 import {
   continuationRowId,
   CONTINUATION_OF_METADATA_KEY,
+  CONTINUATION_COMMAND_METADATA_KEY,
+  CONTINUATION_OWNER_METADATA_KEY,
+  CONTINUATION_RUN_METADATA_KEY,
   judgeResumableTurn,
   SessionResumeRefusedError,
+  startedContinuation,
 } from './session-resume';
 import { SessionDiscardRefusedError } from './session-discard';
 import { waitForCondition, waitForTaskState } from './test';
@@ -54,7 +58,7 @@ let secondStep = Promise.withResolvers<void>();
  * An agent whose first step calls a tool; its second fails, finishes, or waits to be stopped. A
  * step that answers a continuation row records the rows the model is sent and finishes the turn.
  */
-function agentThat(second: 'waits' | 'fails' | 'finishes') {
+function agentThat(second: 'waits' | 'fails' | 'finishes' | 'continuation-waits') {
   secondStep = Promise.withResolvers<void>();
   continuedOver = [];
   return createAgent({
@@ -72,6 +76,15 @@ function agentThat(second: 'waits' | 'fails' | 'finishes') {
       const lastId = history.ids.at(-1) ?? '';
       if (lastId.endsWith(':continuation')) {
         continuedOver.push(history.ids.filter((id) => history.messages[id]?.hidden !== true));
+        if (second === 'continuation-waits') {
+          secondStep.resolve();
+          await new Promise<void>((_resolve, reject) => {
+            const signal = context.signal;
+            if (signal === undefined) throw new Error('A step of a run is given its signal.');
+            if (signal.aborted) reject(signal.reason);
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+          });
+        }
         return { content: 'and so the answer goes on.', toolCalls: [] };
       }
       if (history.messages[lastId]?.toolResult === undefined) {
@@ -209,6 +222,42 @@ describe('a resumed turn', () => {
     await restarted.recovery();
     expect(await resume(restarted, run.contextId, run.id)).toEqual(started);
     expect(await tasksOf(restarted, run.contextId)).toEqual([started.runId, run.id]);
+  });
+
+  it('replays an empty continuation’s recorded run, not a later normal run', () => {
+    const stoppedRun = 'stopped';
+    const continuationRun = 'continuation';
+    const laterRun = 'later';
+    const conversation = new Conversation(createConversationHistory({ id: 'replay' }));
+    conversation.appendMessages(
+      { id: 'person', role: 'user', content: 'go' },
+      { id: `${stoppedRun}:step:0`, role: 'assistant', content: 'partial' },
+      {
+        id: continuationRowId(stoppedRun),
+        role: 'user',
+        content: 'Continue the answer from where it stopped.',
+        hidden: true,
+        metadata: {
+          [CONTINUATION_OF_METADATA_KEY]: stoppedRun,
+          [CONTINUATION_COMMAND_METADATA_KEY]: 'resume-1',
+          [CONTINUATION_OWNER_METADATA_KEY]: ALICE,
+          [CONTINUATION_RUN_METADATA_KEY]: continuationRun,
+        },
+      },
+      { id: 'later-person', role: 'user', content: 'a later normal turn' },
+      { id: `${laterRun}:step:0`, role: 'assistant', content: 'later answer' },
+    );
+    const session = createAgentSession({
+      id: 'replay',
+      agentName: 'agent',
+      conversationHistory: conversation.current,
+      metadata: { lastRunId: laterRun },
+    });
+
+    expect(startedContinuation(session, stoppedRun, 'resume-1', ALICE)).toEqual({
+      kind: 'started',
+      runId: continuationRun,
+    });
   });
 });
 

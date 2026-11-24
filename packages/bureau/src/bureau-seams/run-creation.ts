@@ -485,7 +485,10 @@ export function createRunCreation<D extends AgentDefinitions>(
 
       if (request.message !== undefined) conversation.appendUserMessage(request.message);
       if (request.inputParts !== undefined) appendAgentInput(conversation, request.inputParts);
-      appendRequestRows(conversation, request.appendMessages);
+      appendRequestRows(
+        conversation,
+        request.appendMessagesForRun?.(runId) ?? request.appendMessages,
+      );
       // A run answers the row the conversation ends in: a user message, or a
       // tool result (the outcome of an approval) with nothing newer.
       assertConversationAnswerable(conversation);
