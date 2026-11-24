@@ -554,7 +554,7 @@ describe('a resumed turn', () => {
     });
   });
 
-  it('does not replay a local receipt interrupted by shutdown after authorization', async () => {
+  it('replays the owner-lost winner when shutdown interrupts local authorization', async () => {
     const fixture = createSqliteStorageFixture();
     cleanups.push(() => fixture.dispose());
     const first = await openBureau(agentThat('waits'), fixture.storage, false);
@@ -563,33 +563,49 @@ describe('a resumed turn', () => {
     const kv = first.internals.kv!;
     const conditionalBatch = kv.conditionalBatch.bind(kv);
     let intercepted = false;
-    let peerReason: string | undefined;
+    let peer: Awaited<ReturnType<typeof resume>> | undefined;
     let shutdown: Promise<unknown> | undefined;
     (kv as { conditionalBatch: typeof kv.conditionalBatch }).conditionalBatch = async (
       conditions,
       operations,
     ) => {
       const written = await conditionalBatch(conditions, operations);
-      if (
-        !intercepted &&
-        operations.some(
-          (operation) => operation.type === 'set' && operation.value.includes('"local-authorized"'),
-        )
-      ) {
+      const authorization = operations.find(
+        (operation) => operation.type === 'set' && operation.value.includes('"local-authorized"'),
+      );
+      if (!intercepted && authorization !== undefined) {
         intercepted = true;
         shutdown = first.shutdown({ policy: 'detach' });
         await shutdown;
-        peerReason = await refusalOf(resume(second, run.contextId, run.id, 'shutdown-race'));
+        const continuationRunId = JSON.parse(authorization.value).runId as string;
+        const admitted = await second.internals.taskRegistry.record(continuationRunId);
+        expect(admitted?.ownerProcess).toEqual(expect.any(String));
+        expect(
+          await second.internals.taskRegistry.settleAbandoned(
+            continuationRunId,
+            admitted!.ownerProcess!,
+            { key: processLeaseKey(admitted!.ownerProcess!), expected: null },
+            {
+              at: new Date().toISOString(),
+              status: 'failed',
+              finishReason: TASK_OWNER_LOST_FINISH_REASON,
+              message: 'The process that was running this task stopped before it finished.',
+            },
+          ),
+        ).toBe('written');
+        peer = await resume(second, run.contextId, run.id, 'shutdown-race');
       }
       return written;
     };
-    const rejected = await resume(first, run.contextId, run.id, 'shutdown-race').then(
-      () => undefined,
-      (error: unknown) => error,
-    );
-    expect(rejected).toBeDefined();
-    expect(peerReason).toBe('turn-running');
+    const replayed = await resume(first, run.contextId, run.id, 'shutdown-race');
+    expect(replayed).toEqual(peer);
     await shutdown;
+    expect((await second.internals.taskRegistry.record(replayed.runId))?.settled).toMatchObject({
+      finishReason: TASK_OWNER_LOST_FINISH_REASON,
+    });
+    expect(
+      continuationMarker((await second.contexts.get(run.contextId))!, run.id)?.continuationRunId,
+    ).toBe(replayed.runId);
   });
 });
 
