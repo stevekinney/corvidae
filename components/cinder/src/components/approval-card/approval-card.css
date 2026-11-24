@@ -320,6 +320,16 @@
     line-height: var(--cinder-leading-normal);
   }
 
+  .cinder-approval-card__asker {
+    display: flex;
+    gap: var(--cinder-space-1);
+    margin: var(--cinder-space-1) 0 0;
+  }
+
+  .cinder-approval-card__asker-time {
+    color: var(--cinder-text-muted);
+  }
+
   /* Why the last answer did not go through: Alert's tinted, bordered danger message, drawn as one
    * compact line of a glyph, the bold summary and the reason. */
   .cinder-approval-card__failure.cinder-alert {

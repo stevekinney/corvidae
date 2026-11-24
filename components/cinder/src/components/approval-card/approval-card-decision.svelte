@@ -82,7 +82,8 @@
     /** Resolution sink; undefined when the host is not wired to answer, or the approval is not actionable. */
     resolve: ((resolution: ApprovalResolution) => void) | undefined;
     /** Optional host-owned review controls for an actionable decision card. */
-    decisionReview: Snippet<[(decision: 'approve' | 'deny') => void, disabled: boolean]> | undefined;
+    decisionReview:
+      Snippet<[(decision: 'approve' | 'deny') => void, disabled: boolean]> | undefined;
     sourceText: string | undefined;
     requestedText: string | undefined;
     requestedIso: string | undefined;
@@ -228,8 +229,21 @@
   }
 </script>
 
-{#if context !== undefined}
-  <div class="cinder-approval-card__context">{@render context()}</div>
+{#if context !== undefined || ((isPending || isUnavailable) && (sourceText !== undefined || requestedText !== undefined))}
+  <div class="cinder-approval-card__context">
+    {#if context !== undefined}{@render context()}{/if}
+    {#if (isPending || isUnavailable) && (sourceText !== undefined || requestedText !== undefined)}
+      <p class="cinder-approval-card__asker">
+        {#if sourceText !== undefined}<span class="cinder-approval-card__asker-source"
+            >{sourceText}</span
+          >{/if}
+        {#if requestedText !== undefined}<time
+            class="cinder-approval-card__asker-time"
+            datetime={requestedIso}>{requestedText}</time
+          >{/if}
+      </p>
+    {/if}
+  </div>
 {/if}
 
 {#if approvalState === 'expired'}
@@ -469,12 +483,6 @@
       {/if}
     {/if}
   {:else if isUnavailable && unavailableReason !== undefined}
-    {#if sourceText !== undefined || requestedText !== undefined}
-      <p class="cinder-approval-card__asker">
-        {#if sourceText !== undefined}<span class="cinder-approval-card__asker-source">{sourceText}</span>{/if}
-        {#if requestedText !== undefined}<time class="cinder-approval-card__asker-time" datetime={requestedIso}>{requestedText}</time>{/if}
-      </p>
-    {/if}
     {#if inputRows.length > 0}
       <ApprovalCardInputRows id={inputId} label={inputLabel} rows={inputRows} />
     {/if}
