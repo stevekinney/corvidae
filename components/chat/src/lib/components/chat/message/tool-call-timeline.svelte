@@ -694,6 +694,16 @@
     font: inherit;
   }
 
+  /* The summary's real child hit target is positioned from its button. Keep that containing block
+     scoped to the header: without it every collapsed timeline targets the message wrapper instead. */
+  .chat-tool-call-heading > :global(.chat-tool-call-toggle) {
+    display: flex;
+    position: relative;
+    z-index: 1;
+    inline-size: 100%;
+    min-inline-size: 0;
+  }
+
   /* Individual call rows keep their compact timeline treatment. The group trigger itself is the
    * shared DisclosureTrigger and owns its control, glyph, focus and touch contracts. */
   .chat-tool-call-row {
@@ -732,6 +742,12 @@
    * header overhangs on both sides, a step row ends at its own edges, and only the last row
    * overhangs, below: a tap between two rows goes to the nearer one. */
   @media (any-pointer: coarse) {
+    /* The summary paints at its text height; its explicit child owns the 44px reachable region.
+       A shared minimum height here would add a blank line before the answer. */
+    .chat-tool-call-heading > :global(.chat-tool-call-toggle) {
+      min-block-size: auto;
+    }
+
     .chat-tool-call-row {
       position: relative;
       z-index: 1;
