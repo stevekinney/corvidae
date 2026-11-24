@@ -145,7 +145,8 @@
         "**/*.bench.ts",
         "**/*.fixture.svelte",
         "**/*.playwright.ts",
-        "**/*.spec.ts"
+        "**/*.spec.ts",
+        "scripts/generate-component-metadata-worker.ts"
       ],
       "project": [
         "src/**/*.ts!",
@@ -197,6 +198,7 @@
         "**/*.playwright.ts",
         "**/*.spec.ts",
         "scripts/browser-build.ts!",
+        "scripts/startup-process-control.ts",
         "src/host/{cli,dev,serve}.ts!",
         "src/host/supervisor-owned.test-support.ts"
       ],

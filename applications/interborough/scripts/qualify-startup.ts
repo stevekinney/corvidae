@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { runInProcessGroup } from '../../../scripts/run-exclusively.ts';
 import { processEnvironment } from '../src/host/environment-configuration.ts';
 
-function isSettingsRequest(
+export function isSettingsRequest(
   url: string,
   origin: string,
   verb: string,
@@ -22,7 +22,7 @@ function isSettingsRequest(
   }
 }
 
-function panelOutcomes(
+export function panelOutcomes(
   expected: readonly string[],
   mounted: readonly string[],
   reason = 'not listed by /host/panels; see startup log',
@@ -34,7 +34,85 @@ function panelOutcomes(
   }));
 }
 
-if (process.argv[2] === '--profile-control') {
+/** Classify observed evidence separately from whether all candidate stage events were emitted. */
+export function classifyStartupReceipt(value: unknown): {
+  action: 'valid' | 'invalid';
+  instrumentation: 'complete' | 'incomplete';
+} {
+  const result = z
+    .object({
+      listenerMilliseconds: z.number().nonnegative(),
+      settingsRequestMilliseconds: z.number().nonnegative(),
+      actionMilliseconds: z.number().nonnegative(),
+      navigation: z.object({ status: z.literal(200) }),
+      settingsRequest: z.object({
+        sameOrigin: z.literal(true),
+        path: z.literal('/jsonrpc'),
+        method: z.literal('POST'),
+        rpcMethod: z.literal('bureau.settings.get'),
+        status: z.number().min(200).max(299),
+      }),
+      settings: z.object({
+        field: z.literal('retention.audit'),
+        previous: z.string(),
+        requested: z.string(),
+        persisted: z.string(),
+        errors: z.array(z.unknown()).length(0),
+      }),
+      missingStages: z.array(z.string()),
+      inventoryError: z.string().optional(),
+      cleanupError: z.string().optional(),
+      qualification: z.object({
+        name: z.literal('ordinary-empty-home'),
+        required: z.array(z.object({ name: z.string(), outcome: z.string() })),
+        expectedPanels: z.array(z.string()),
+        panels: z.array(
+          z.object({ id: z.string(), outcome: z.string(), reason: z.string().optional() }),
+        ),
+      }),
+    })
+    .safeParse(value);
+  if (!result.success) return { action: 'invalid', instrumentation: 'incomplete' };
+  const receipt = result.data;
+  const required = receipt.qualification.required;
+  const actionValid =
+    receipt.listenerMilliseconds <= receipt.settingsRequestMilliseconds &&
+    receipt.settingsRequestMilliseconds <= receipt.actionMilliseconds &&
+    receipt.settings.previous !== receipt.settings.requested &&
+    receipt.settings.requested === receipt.settings.persisted &&
+    ['shell', 'settings-save-and-reload'].every(
+      (name) =>
+        required.filter((entry) => entry.name === name && entry.outcome === 'ready').length === 1 &&
+        required.filter((entry) => entry.name === name).length === 1,
+    );
+  const { expectedPanels, panels } = receipt.qualification;
+  const inventoryValid =
+    expectedPanels.length > 0 &&
+    new Set(expectedPanels).size === expectedPanels.length &&
+    panels.length === expectedPanels.length &&
+    expectedPanels.every(
+      (id) =>
+        /^inspectors:[^:]+$/.test(id) && panels.filter((panel) => panel.id === id).length === 1,
+    ) &&
+    panels.every(
+      (panel) =>
+        panel.outcome === 'ready' ||
+        (panel.outcome === 'optional-degraded' && Boolean(panel.reason?.trim())),
+    );
+  return {
+    action: actionValid ? 'valid' : 'invalid',
+    instrumentation:
+      actionValid &&
+      inventoryValid &&
+      receipt.missingStages.length === 0 &&
+      receipt.inventoryError === undefined &&
+      receipt.cleanupError === undefined
+        ? 'complete'
+        : 'incomplete',
+  };
+}
+
+if (import.meta.main && process.argv[2] === '--profile-control') {
   const outcomes = panelOutcomes(['inspectors:one', 'inspectors:two'], ['inspectors:one']);
   if (
     outcomes[0]?.outcome !== 'ready' ||
@@ -44,7 +122,7 @@ if (process.argv[2] === '--profile-control') {
     throw new Error('Panel profile control failed');
   }
   console.log(JSON.stringify({ profileControl: 'passed', outcomes }));
-} else if (process.argv[2] === '--matcher-control') {
+} else if (import.meta.main && process.argv[2] === '--matcher-control') {
   const origin = 'http://127.0.0.1:1234';
   const body = JSON.stringify({ method: 'bureau.settings.get' });
   const cases = [
@@ -64,7 +142,7 @@ if (process.argv[2] === '--profile-control') {
     throw new Error('Settings response matcher control failed');
   }
   console.log(JSON.stringify({ matcherControl: 'passed', cases }));
-} else if (process.argv[2] === '--supervise') {
+} else if (import.meta.main && process.argv[2] === '--supervise') {
   const [, , , checkout, mode] = process.argv;
   if (!checkout || !mode) throw new Error('Missing supervised checkout or mode');
   process.exitCode = await runInProcessGroup(
@@ -78,7 +156,7 @@ if (process.argv[2] === '--profile-control') {
       },
     },
   );
-} else {
+} else if (import.meta.main) {
   const [checkoutArgument, homeArgument, outputArgument, profile] = process.argv.slice(2);
   if (
     !checkoutArgument ||
@@ -284,6 +362,18 @@ if (process.argv[2] === '--profile-control') {
         throw new Error('Settings request returned no result');
       }
       receipt['settingsRequestMilliseconds'] = performance.now() - started;
+      receipt['settingsRequest'] = {
+        sameOrigin: isSettingsRequest(
+          response.request().url(),
+          new URL(url).origin,
+          response.request().method(),
+          response.request().postData(),
+        ),
+        path: '/jsonrpc',
+        method: 'POST',
+        rpcMethod: 'bureau.settings.get',
+        status: response.status(),
+      };
       const row = page.locator('[data-setting="retention.audit"]');
       const days = row.getByRole('spinbutton');
       await days.waitFor();
@@ -308,7 +398,13 @@ if (process.argv[2] === '--profile-control') {
       }
       receipt['actionMilliseconds'] = performance.now() - started;
       settingsReady = true;
-      receipt['settings'] = { previous, persisted, errors };
+      receipt['settings'] = {
+        field: 'retention.audit',
+        previous,
+        requested: next,
+        persisted,
+        errors,
+      };
     } finally {
       await browser.close();
     }
@@ -349,6 +445,7 @@ if (process.argv[2] === '--profile-control') {
           'plugins/inspectors/plugin-identities.json',
           'plugins/inspectors/src/plugin.ts',
         ],
+        expectedPanels: expected,
         panels: panelOutcomes(
           expected,
           panels.apps.map(({ plugin, app }) => `${plugin}:${app}`),
@@ -363,6 +460,7 @@ if (process.argv[2] === '--profile-control') {
           { name: 'settings-save-and-reload', outcome: settingsReady ? 'ready' : 'failed' },
         ],
         panelSources: ['plugins/inspectors/plugin-identities.json'],
+        expectedPanels: expected,
         panels: panelOutcomes(expected, [], 'panel inventory could not be observed'),
       };
       process.exitCode = 1;
@@ -384,6 +482,7 @@ if (process.argv[2] === '--profile-control') {
         !productionBuildOutput.includes(`"stage":"${stage}"`) &&
         !lines.some(({ text }) => text.includes(`"stage":"${stage}"`)),
     );
+    receipt['contract'] = classifyStartupReceipt(receipt);
     receipt['lines'] = lines;
     await writeFile(output, `${JSON.stringify(receipt, null, 2)}\n`);
   }

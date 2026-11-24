@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { expect, test } from 'bun:test';
 import { startWithBrowserBuild } from './browser-build.ts';
 
@@ -31,7 +32,7 @@ test('a failed build fails startup and stops outstanding builds', async () => {
       stops += 1;
     },
   });
-  await expect(starting).rejects.toBe(failure);
+  expect(await rejectionOf(starting)).toBe(failure);
   expect(stops).toBe(1);
 });
 
@@ -49,6 +50,6 @@ test('a failed host start stops and settles its pending browser build', async ()
       build.reject(new Error('stopped'));
     },
   });
-  await expect(starting).rejects.toBe(failure);
+  expect(await rejectionOf(starting)).toBe(failure);
   expect(stops).toBe(1);
 });

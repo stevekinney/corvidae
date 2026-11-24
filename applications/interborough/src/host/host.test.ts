@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { AUTHORIZATION_SCOPES, MCP_LEGACY_PROTOCOL_VERSION } from '@lostgradient/weft';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -83,7 +84,7 @@ describe('the host’s listener', () => {
     await probe.stop(true);
     const failure = new Error('browser build failed');
     gate.reject(failure);
-    await expect(starting).rejects.toBe(failure);
+    expect(await rejectionOf(starting)).toBe(failure);
     const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port });
     hosts.push(host);
     expect(host.url.port).toBe(String(port));
