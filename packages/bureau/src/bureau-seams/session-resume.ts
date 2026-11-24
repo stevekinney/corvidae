@@ -29,6 +29,7 @@ import {
   sessionArchivedAtOf,
   sessionOriginOf,
 } from '@lostgradient/operative';
+import { removeMessage } from 'conversationalist';
 
 /** The finish reasons of a failed run that going on may get past: the model call itself failed. */
 const RETRYABLE_FAILURES: ReadonlySet<string> = new Set(['error']);
@@ -117,13 +118,14 @@ export function createSessionResume<D extends AgentDefinitions>(
     const session = await loadVisible(sessions, sessionId);
     // A command that already started its continuation is answered with it, before any judgment:
     // the turn it went on from is no longer the chat's last.
-    const replay = replayOf(session, runId, owner, commandId);
+    const replay = await replayOf(session, runId, owner, commandId);
     if (replay !== undefined) return replay;
     if (sessionArchivedAtOf(session.metadata) !== null) throw new ContextArchivedError(sessionId);
     await assertLastResumableRun(session, runId);
     const judged = judgeResumableTurn(session, runId);
     if (!judged.ok) return refuse(judged.reason, judged.message);
     await assertNothingQueued(session);
+    let savedContinuation: { readonly runId: string; readonly incarnation: string } | undefined;
     let started: CreatedRunSummary;
     try {
       started = await peers.createRunFromRequest({
@@ -148,12 +150,26 @@ export function createSessionResume<D extends AgentDefinitions>(
           const again = judgeResumableTurn(current, runId);
           if (!again.ok) refuse(again.reason, again.message);
         },
+        onSessionSaved: (continuationRunId, saved) => {
+          savedContinuation = { runId: continuationRunId, incarnation: saved.incarnation };
+        },
       });
     } catch (error) {
+      if (savedContinuation !== undefined) {
+        await rollbackFailedContinuation(
+          sessions,
+          session,
+          runId,
+          owner,
+          commandId,
+          savedContinuation,
+        );
+      }
       // A duplicate in another process may have started the continuation first: its row answers.
       if (error instanceof SessionResumeRefusedError) {
         const latest = await sessions.load(sessionId);
-        const raced = latest === undefined ? undefined : replayOf(latest, runId, owner, commandId);
+        const raced =
+          latest === undefined ? undefined : await replayOf(latest, runId, owner, commandId);
         if (raced !== undefined) return raced;
       }
       throw error;
@@ -172,12 +188,12 @@ export function createSessionResume<D extends AgentDefinitions>(
   }
 
   /** The answer to a command that already started its continuation, or `undefined`. */
-  function replayOf(
+  async function replayOf(
     session: AgentSession,
     runId: string,
     owner: string,
     commandId: string,
-  ): ResumeTurnResult | undefined {
+  ): Promise<ResumeTurnResult | undefined> {
     if (commandContinuesAnotherRun(session, runId, commandId, owner)) {
       return refuse('command-conflict', `The command "${commandId}" resumed another run's turn.`);
     }
@@ -186,7 +202,74 @@ export function createSessionResume<D extends AgentDefinitions>(
     if (started.kind === 'other-command') {
       return refuse('not-latest-turn', 'The turn already went on under another command.');
     }
-    return { contextId: session.id, runId: started.runId, resumedRunId: runId };
+    if (await continuationHasStarted(started.runId)) {
+      return { contextId: session.id, runId: started.runId, resumedRunId: runId };
+    }
+    return undefined;
+  }
+
+  /** Whether a continuation marker has reached a live run or a durable start record. */
+  async function continuationHasStarted(continuationRunId: string): Promise<true> {
+    if (runtime.durable === undefined) {
+      if (core.store.getRun(continuationRunId) !== undefined) return true;
+      return refuse('turn-running', 'The continuation is still being prepared.');
+    }
+    const record = await runtime.durable.engine.get(continuationRunId);
+    if (record !== null && record !== undefined && record.status !== 'pending') return true;
+    // A task record is intentionally written before durable prepare. It is an in-doubt start,
+    // not a receipt: another Bureau may still own the prepare, so never report success or erase it.
+    const task = await core.tasks.record(continuationRunId);
+    if (task !== undefined || record?.status === 'pending') {
+      return refuse('turn-running', 'The continuation is still being prepared.');
+    }
+    return refuse('turn-running', 'The continuation start is in doubt.');
+  }
+
+  /**
+   * Removes the marker of this exact rejected admission. The atomic update keeps rows and metadata
+   * that arrived after the failure, and only restores the stopped-run projection while this failed
+   * attempt still owns it.
+   */
+  async function rollbackFailedContinuation(
+    sessions: SessionStore,
+    before: AgentSession,
+    resumedRunId: string,
+    owner: string,
+    commandId: string,
+    continuation: { readonly runId: string; readonly incarnation: string },
+  ): Promise<void> {
+    const markerId = `${resumedRunId}:continuation`;
+    await sessions.update(before.id, (current) => {
+      if (current === undefined || current.incarnation !== continuation.incarnation) return current;
+      const recorded = startedContinuation(current, resumedRunId, commandId, owner);
+      if (recorded?.kind !== 'started' || recorded.runId !== continuation.runId) return current;
+      const metadata = { ...current.metadata };
+      if (metadata['lastRunId'] === continuation.runId) {
+        restoreStoppedProjection(metadata, before.metadata);
+      }
+      return {
+        ...current,
+        metadata,
+        conversationHistory: removeMessage(current.conversationHistory, markerId),
+      };
+    });
+  }
+
+  function restoreStoppedProjection(
+    metadata: AgentSession['metadata'],
+    before: AgentSession['metadata'],
+  ): void {
+    for (const key of [
+      'lastRunId',
+      'lastRunStatus',
+      'lastFinishReason',
+      'lastError',
+      'lastRunEndReason',
+    ]) {
+      const value = Object.hasOwn(before, key) ? before[key] : undefined;
+      if (value === undefined) delete metadata[key];
+      else metadata[key] = value;
+    }
   }
 
   /**

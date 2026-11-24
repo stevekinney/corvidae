@@ -269,6 +269,77 @@ describe('a resumed turn', () => {
       runId: continuationRun,
     });
   });
+
+  it('removes a continuation marker when task admission rejects after its session save', async () => {
+    const bureau = await openBureau(agentThat('waits'));
+    const { run, before } = await stoppedTurn(bureau);
+    const registry = bureau.internals.taskRegistry as {
+      recordAdmission: typeof bureau.internals.taskRegistry.recordAdmission;
+    };
+    const recordAdmission = registry.recordAdmission.bind(registry);
+    let rejectAdmission = true;
+    Object.defineProperty(registry, 'recordAdmission', {
+      configurable: true,
+      value: async (...args: Parameters<typeof registry.recordAdmission>) => {
+        if (rejectAdmission) throw new Error('task admission rejected');
+        return recordAdmission(...args);
+      },
+    });
+
+    const rejected = await resume(bureau, run.contextId, run.id).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(rejected).toBeInstanceOf(Error);
+    expect((rejected as Error).message).toBe('task admission rejected');
+
+    const rolledBack = (await bureau.contexts.get(run.contextId))!;
+    expect(rolledBack.conversationHistory.ids).toEqual(before.conversationHistory.ids);
+    expect(rolledBack.metadata['lastRunId']).toBe(run.id);
+    expect(rolledBack.metadata['lastRunStatus']).toBe('aborted');
+    expect(await tasksOf(bureau, run.contextId)).toEqual([run.id]);
+
+    rejectAdmission = false;
+    const resumed = await resume(bureau, run.contextId, run.id);
+    expect(resumed.runId).not.toBe(run.id);
+    await untilEnded(bureau, run.contextId, resumed.runId);
+  });
+
+  it('does not replay or remove a continuation marker while another Bureau admits it', async () => {
+    const storage = new MemoryStorage();
+    const first = await openBureau(agentThat('waits'), storage);
+    const second = await openBureau(agentThat('waits'), storage);
+    const { run } = await stoppedTurn(first);
+    const registry = first.internals.taskRegistry as {
+      recordAdmission: typeof first.internals.taskRegistry.recordAdmission;
+    };
+    const recordAdmission = registry.recordAdmission.bind(registry);
+    const admitted = Promise.withResolvers<void>();
+    const releaseAdmission = Promise.withResolvers<void>();
+    Object.defineProperty(registry, 'recordAdmission', {
+      configurable: true,
+      value: async (...args: Parameters<typeof registry.recordAdmission>) => {
+        admitted.resolve();
+        await releaseAdmission.promise;
+        return recordAdmission(...args);
+      },
+    });
+
+    const starting = resume(first, run.contextId, run.id);
+    await admitted.promise;
+
+    expect(await refusalOf(resume(second, run.contextId, run.id))).toBe('turn-running');
+    const pending = await second.contexts.get(run.contextId);
+    expect(pending?.conversationHistory.ids).toContain(`${run.id}:continuation`);
+
+    releaseAdmission.resolve();
+    const won = await starting;
+    await waitForCondition(async () => {
+      const state = await second.durableEngine()?.get(won.runId);
+      return state?.status !== 'pending';
+    }, 'the admitted continuation durable start');
+    expect(await resume(second, run.contextId, run.id)).toEqual(won);
+  });
 });
 
 describe('a resume racing', () => {

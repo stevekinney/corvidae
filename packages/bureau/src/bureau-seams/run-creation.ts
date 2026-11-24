@@ -255,6 +255,15 @@ function continuationRecord(
   };
 }
 
+/** Notifies an internal caller only after the session save that named its allocated run. */
+function notifySessionSaved(
+  request: SessionTaskFields,
+  runId: string,
+  session: AgentSession | undefined,
+): void {
+  if (session !== undefined) request.onSessionSaved?.(runId, session);
+}
+
 /** Builds the run creation functions of one Bureau. Synchronous, and registers nothing. */
 export function createRunCreation<D extends AgentDefinitions>(
   core: BureauCore<D>,
@@ -614,6 +623,7 @@ export function createRunCreation<D extends AgentDefinitions>(
         // COR-2437 — a continuation's own judgment, decided inside the same atomic update.
         request.startGuard,
       );
+      notifySessionSaved(request, runId, savedAsRunning);
 
       // F3 — opt-in `requestHumanInput` wiring for a REAL durable run
       // (`options.humanInput`). This closes the tracked wiring gap: the tool's

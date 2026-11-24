@@ -129,6 +129,12 @@ export type SessionTaskFields = {
   readonly inputParts?: Exclude<SessionInputPayload, string> | undefined;
   readonly onActiveRun?: ((activeRun: ActiveRun) => void) | undefined;
   /**
+   * Internal handoff after the session has durably named this allocated run, before task
+   * admission. A caller which wrote a companion receipt can use this exact identity to undo it
+   * if admission rejects.
+   */
+  readonly onSessionSaved?: ((runId: string, session: AgentSession) => void) | undefined;
+  /**
    * The caller's start signal, bound to the run once its workflow is prepared and before its
    * receipt is recorded: the run executes from that point, so an abort must reach it from there.
    */
