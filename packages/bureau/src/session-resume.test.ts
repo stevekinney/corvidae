@@ -26,8 +26,8 @@ import type { AgentDefinitions } from './agent-catalog';
 import { BureauShuttingDownError, ContextArchivedError } from './bureau-errors';
 import { createBureau } from './create-bureau';
 import {
-  CONTINUATION_PROCESS_METADATA_KEY,
   continuationAdmissionFenceKey,
+  continuationMarker,
   continuationRow,
   judgeResumableTurn,
   SessionResumeRefusedError,
@@ -410,8 +410,7 @@ describe('a resumed turn', () => {
     const stale = resume(first, run.contextId, run.id);
     await reachedPreparedShell.promise;
     const marked = (await first.contexts.get(run.contextId))!;
-    const marker = getOwn(marked.conversationHistory.messages, `${run.id}:continuation`)!;
-    const processId = marker.metadata?.[CONTINUATION_PROCESS_METADATA_KEY];
+    const processId = continuationMarker(marked, run.id)?.processId;
     expect(typeof processId).toBe('string');
     await textValueStore(fixture.storage).delete(processLeaseKey(processId as string));
 
@@ -459,8 +458,7 @@ describe('a resumed turn', () => {
     const stale = resume(first, run.contextId, run.id);
     await reachedAdmission.promise;
     const marked = (await first.contexts.get(run.contextId))!;
-    const processId = getOwn(marked.conversationHistory.messages, `${run.id}:continuation`)
-      ?.metadata?.[CONTINUATION_PROCESS_METADATA_KEY];
+    const processId = continuationMarker(marked, run.id)?.processId;
     expect(typeof processId).toBe('string');
     await textValueStore(fixture.storage).delete(processLeaseKey(processId as string));
 
@@ -550,7 +548,8 @@ describe('a resumed turn', () => {
       runId: continuationRunId,
       resumedRunId: run.id,
     });
-    expect((await second.internals.taskRegistry.record(continuationRunId))?.settled).toMatchObject({
+    const settledContinuation = await second.internals.taskRegistry.record(continuationRunId);
+    expect(settledContinuation?.settled).toMatchObject({
       finishReason: TASK_OWNER_LOST_FINISH_REASON,
     });
   });
@@ -574,9 +573,7 @@ describe('a resumed turn', () => {
       if (
         !intercepted &&
         operations.some(
-          (operation) =>
-            operation.type === 'set' &&
-            operation.value.includes('"local-authorized"'),
+          (operation) => operation.type === 'set' && operation.value.includes('"local-authorized"'),
         )
       ) {
         intercepted = true;

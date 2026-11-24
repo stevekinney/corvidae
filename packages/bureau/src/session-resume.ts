@@ -115,7 +115,7 @@ const CONTINUATION_OWNER_METADATA_KEY = 'bureau:continuationOwner';
 const CONTINUATION_RUN_METADATA_KEY = 'bureau:continuationRun';
 
 /** The process which saved a continuation marker, when its store can outlive it. */
-export const CONTINUATION_PROCESS_METADATA_KEY = 'bureau:continuationProcess';
+const CONTINUATION_PROCESS_METADATA_KEY = 'bureau:continuationProcess';
 
 /** The terminal projection to restore if an unadmitted continuation is retired. */
 export const CONTINUATION_PREVIOUS_PROJECTION_METADATA_KEY =

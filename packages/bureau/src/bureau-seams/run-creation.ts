@@ -824,6 +824,19 @@ export function createRunCreation<D extends AgentDefinitions>(
       const rejectTaskAdmission = request.rejectTaskAdmission;
       let preserveRejectedContinuation = false;
       let localAdmissionAuthorized = false;
+      const authorizeLocalTaskAdmission = async (): Promise<boolean> => {
+        if (runtime.durable !== undefined || authorizeTaskAdmission === undefined) return false;
+        await authorizeTaskAdmission(runId, 'local');
+        // Authorization is durable and asynchronous. Re-establish COR-690/COR-1481's
+        // synchronous fence immediately before local creation, so a shutdown or deletion that
+        // started while the receipt was claimed cannot miss this run.
+        assertRunCreationStillOpen(sessionId);
+        return true;
+      };
+      const preserveRejectedLocalContinuation = async (): Promise<void> => {
+        if (!localAdmissionAuthorized) return;
+        preserveRejectedContinuation = (await rejectTaskAdmission?.(runId)) === false;
+      };
       // COR-1707 — with no session store, nothing saves the context's rows or claims what they
       // reference, so the task holds its own rows, its input included, under its run for the
       // task's life, as a catalog run does; its end releases them (the terminal listeners below).
@@ -922,14 +935,7 @@ export function createRunCreation<D extends AgentDefinitions>(
         // run has no such boundary, so it claims only after all synchronous preparation succeeded,
         // immediately before irreversible local creation. Keep the optional call outside the
         // ordinary path: `await undefined` adds a microtask to every normal in-memory start.
-        if (runtime.durable === undefined && authorizeTaskAdmission !== undefined) {
-          await authorizeTaskAdmission(runId, 'local');
-          localAdmissionAuthorized = true;
-          // Authorization is durable and asynchronous. Re-establish COR-690/COR-1481's
-          // synchronous fence immediately before local creation, so a shutdown or deletion that
-          // started while the receipt was claimed cannot miss this run.
-          assertRunCreationStillOpen(sessionId);
-        }
+        localAdmissionAuthorized = await authorizeLocalTaskAdmission();
         activeRun = createActiveRun(
           startedRunOptions,
           // Route through the durable engine when one was composed (durable
@@ -982,9 +988,7 @@ export function createRunCreation<D extends AgentDefinitions>(
           { owner },
         );
       } catch (error) {
-        if (localAdmissionAuthorized) {
-          preserveRejectedContinuation = (await rejectTaskAdmission?.(runId)) === false;
-        }
+        await preserveRejectedLocalContinuation();
         if (!preserveRejectedContinuation) await core.tasks.discard(runId).catch(() => undefined);
         // Promoted but never started, so no terminal listener will ever log
         // its end: log it here, or every process would count this run as
@@ -1279,7 +1283,15 @@ export function createRunCreation<D extends AgentDefinitions>(
       registeredForRecovery = true;
       runSessionIdentifiers.set(activeRun, sessionId);
       if (runtime.durable === undefined && confirmTaskAdmission !== undefined) {
-        await confirmTaskAdmission(runId);
+        try {
+          await confirmTaskAdmission(runId);
+        } catch (error) {
+          diagnose({
+            level: 'error',
+            scope: 'continuation-admission',
+            message: `[bureau] Could not confirm registered continuation "${runId}": ${serializeUnknownError(error)}`,
+          });
+        }
       }
 
       // AB-361/AB-34: the started-work control contract says an

@@ -302,6 +302,7 @@ export function createSessionResume<D extends AgentDefinitions>(
     const observedTask = await runtime.kv.get(taskKey);
     const observedReceipt = await runtime.kv.get(fenceKey);
     const state = continuationReceipt(observedReceipt, continuationRunId);
+    if (observedReceipt !== null && state === undefined) return false;
     if (state === 'launched' || state === 'durable-authorized') return false;
     if (state === 'local-authorized') {
       const task = await core.tasks.record(continuationRunId);
@@ -372,16 +373,15 @@ export function createSessionResume<D extends AgentDefinitions>(
 
   /** Refuses unless the continuation's scoped durable admission receipt was written. */
   async function assertContinuationStarted(continuationRunId: string): Promise<void> {
+    if (runtime.kv !== undefined) {
+      const receipt = continuationReceipt(
+        await runtime.kv.get(continuationAdmissionFenceKey(continuationRunId)),
+        continuationRunId,
+      );
+      if (receipt === 'launched' || receipt === 'durable-authorized') return;
+    }
     if (runtime.durable === undefined) {
       if (core.store.getRun(continuationRunId) !== undefined) return;
-      if (
-        runtime.kv !== undefined &&
-        continuationReceipt(
-          await runtime.kv.get(continuationAdmissionFenceKey(continuationRunId)),
-          continuationRunId,
-        ) === 'launched'
-      )
-        return;
       return refuse('turn-running', 'The continuation is still being prepared.');
     }
     if (runtime.kv === undefined) {
@@ -389,8 +389,6 @@ export function createSessionResume<D extends AgentDefinitions>(
       if (record !== null && record !== undefined && record.status !== 'pending') return;
       return refuse('turn-running', 'The continuation is still being prepared.');
     }
-    const receipt = await runtime.kv.get(continuationAdmissionFenceKey(continuationRunId));
-    if (continuationReceipt(receipt, continuationRunId) === 'durable-authorized') return;
     // A task and a prepared engine shell both precede authorization. Neither proves that this
     // continuation can launch: its owner may have died after prepare, and recovery may retire the
     // exact unclaimed admission. The scoped receipt is the only durable start fact.
