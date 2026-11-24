@@ -128,6 +128,9 @@ export type WorkspaceOwnerAuthority = (owner: string) => Promise<boolean>;
 export type BureauWorkspaceHost = {
   readonly workspaceAuthority?:
     ((principal: Principal) => WorkspaceOwnerAuthority | undefined) | undefined;
+  /** Trusted directory lookup for explicit-share records; never request input. */
+  readonly resolveWorkspaceOwner?:
+    ((owner: string) => Promise<WorkspaceMembership | undefined>) | undefined;
 };
 
 export function workspaceOwnerAuthority(

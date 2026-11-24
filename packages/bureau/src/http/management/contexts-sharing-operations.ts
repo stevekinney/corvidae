@@ -89,6 +89,8 @@ async function change(
   const workspace = 'workspace' in principal ? principal.workspace : undefined;
   const grantedBy = workspace?.owner;
   if (grantedBy === undefined) throw missing(input.contextId);
+  const target = await host.resolveWorkspaceOwner?.(input.granteeOwnerId);
+  if (target === undefined || target.workspaceId !== workspace!.workspaceId) throw missing(input.contextId);
   const originallyGranted = sessionHasReadGrant(
     loaded.metadata,
     input.granteeOwnerId,
@@ -116,7 +118,7 @@ async function change(
             ? withSessionReadGrant(current.metadata, {
                 owner: input.granteeOwnerId,
                 workspaceId: workspace!.workspaceId,
-                actorId: workspace!.actorId,
+                actorId: target.actorId,
                 sessionIncarnation: current.incarnation,
                 grantedBy,
                 grantedAt: at,

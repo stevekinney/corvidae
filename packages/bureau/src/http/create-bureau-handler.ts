@@ -29,6 +29,7 @@ import {
 
 import {
   withWorkspaceMembership,
+  resolveWorkspaceOwner,
   workspaceOwnerAuthority,
   type WorkspaceMembershipOptions,
 } from './workspace-principal.ts';
@@ -1370,6 +1371,8 @@ export function buildBureauHandlerHost(
   const operations = describeOperations(BUREAU_HANDLER_OPERATIONS);
   return {
     workspaceAuthority: (principal) => workspaceOwnerAuthority(workspace, principal),
+    resolveWorkspaceOwner: async (owner) =>
+      workspace === undefined ? undefined : resolveWorkspaceOwner(workspace, owner),
     // A Bureau owns exactly one feed, so the registry answers for its id alone.
     bureauFeeds: {
       get: (bureauId) => (bureauId === bureau.id ? bureau.internals.eventFeed : undefined),
