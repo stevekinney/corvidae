@@ -2,6 +2,7 @@
 import type { Browser, BrowserContext, Page } from '@playwright/test';
 
 import { captureForDesignReviewWithPhone } from './design-review-capture.ts';
+import { readBoxes } from './read-boxes.ts';
 import { E2E_CHAT_SHARING_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
@@ -149,12 +150,10 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
         .getByRole('region', { name: 'Chat access requests' })
         .getByText(/Reader Member\s+requested access to chat Shared chat evidence\./);
       const grantAccess = owner.getByRole('button', { name: 'Grant access' });
-      const [copyBox, grantBox] = await Promise.all([
-        requestCopy.boundingBox(),
-        grantAccess.boundingBox(),
-      ]);
-      expect(copyBox).not.toBeNull();
-      expect(grantBox).not.toBeNull();
+      const { copy: copyBox, grant: grantBox } = await readBoxes(owner, {
+        copy: requestCopy,
+        grant: grantAccess,
+      });
       expect(grantBox!.x - (copyBox!.x + copyBox!.width)).toBeLessThanOrEqual(96);
       await captureForDesignReviewWithPhone(owner, {
         route: '/reviews',

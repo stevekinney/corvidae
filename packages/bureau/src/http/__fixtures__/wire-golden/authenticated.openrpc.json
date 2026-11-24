@@ -11139,6 +11139,7 @@
           "name": "contextId",
           "required": true,
           "schema": {
+            "description": "The chat context identifier.",
             "minLength": 1,
             "type": "string"
           }
@@ -11147,6 +11148,7 @@
           "name": "granteeOwnerId",
           "required": true,
           "schema": {
+            "description": "The current workspace member owner identifier.",
             "maxLength": 256,
             "minLength": 1,
             "type": "string"
@@ -11190,10 +11192,12 @@
         "additionalProperties": false,
         "properties": {
           "contextId": {
+            "description": "The chat context identifier.",
             "minLength": 1,
             "type": "string"
           },
           "granteeOwnerId": {
+            "description": "The current workspace member owner identifier.",
             "maxLength": 256,
             "minLength": 1,
             "type": "string"
@@ -11235,6 +11239,7 @@
           "name": "contextId",
           "required": true,
           "schema": {
+            "description": "The chat context identifier.",
             "minLength": 1,
             "type": "string"
           }
@@ -11243,6 +11248,7 @@
           "name": "granteeOwnerId",
           "required": true,
           "schema": {
+            "description": "The current workspace member owner identifier.",
             "maxLength": 256,
             "minLength": 1,
             "type": "string"
@@ -11286,10 +11292,12 @@
         "additionalProperties": false,
         "properties": {
           "contextId": {
+            "description": "The chat context identifier.",
             "minLength": 1,
             "type": "string"
           },
           "granteeOwnerId": {
+            "description": "The current workspace member owner identifier.",
             "maxLength": 256,
             "minLength": 1,
             "type": "string"
@@ -11331,6 +11339,7 @@
           "name": "contextId",
           "required": true,
           "schema": {
+            "description": "The chat context identifier.",
             "minLength": 1,
             "type": "string"
           }
@@ -11373,6 +11382,7 @@
         "additionalProperties": false,
         "properties": {
           "contextId": {
+            "description": "The chat context identifier.",
             "minLength": 1,
             "type": "string"
           }
@@ -11412,6 +11422,7 @@
           "name": "contextId",
           "required": true,
           "schema": {
+            "description": "The chat context identifier.",
             "minLength": 1,
             "type": "string"
           }
@@ -11420,6 +11431,7 @@
           "name": "decision",
           "required": true,
           "schema": {
+            "description": "Whether to restore or deny requested access.",
             "enum": [
               "grant",
               "deny"
@@ -11431,6 +11443,7 @@
           "name": "granteeOwnerId",
           "required": true,
           "schema": {
+            "description": "The current workspace member owner identifier.",
             "maxLength": 256,
             "minLength": 1,
             "type": "string"
@@ -11474,10 +11487,12 @@
         "additionalProperties": false,
         "properties": {
           "contextId": {
+            "description": "The chat context identifier.",
             "minLength": 1,
             "type": "string"
           },
           "decision": {
+            "description": "Whether to restore or deny requested access.",
             "enum": [
               "grant",
               "deny"
@@ -11485,6 +11500,7 @@
             "type": "string"
           },
           "granteeOwnerId": {
+            "description": "The current workspace member owner identifier.",
             "maxLength": 256,
             "minLength": 1,
             "type": "string"
@@ -11614,6 +11630,7 @@
           "name": "contextId",
           "required": true,
           "schema": {
+            "description": "The chat context identifier.",
             "minLength": 1,
             "type": "string"
           }
@@ -11697,6 +11714,7 @@
         "additionalProperties": false,
         "properties": {
           "contextId": {
+            "description": "The chat context identifier.",
             "minLength": 1,
             "type": "string"
           }

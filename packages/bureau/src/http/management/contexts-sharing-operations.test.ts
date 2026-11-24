@@ -138,13 +138,12 @@ describe('chat sharing access requests', () => {
       return { version: 1, ...workspacePrincipal('owner').workspace, displayName: 'Avery Owner' };
     };
 
-    await expect(
-      contextsShareStatusOperation.invoke({
-        input: { contextId: initial.id },
-        host,
-        principal: workspacePrincipal('peer'),
-      } as never),
-    ).resolves.toEqual({ status: 'requestable' });
+    const result = await contextsShareStatusOperation.invoke({
+      input: { contextId: initial.id },
+      host,
+      principal: workspacePrincipal('peer'),
+    } as never);
+    expect(result).toEqual({ status: 'requestable' });
   });
 
   test('executes all six actor witnesses for sharing operations', async () => {

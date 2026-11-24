@@ -230,7 +230,7 @@
       >
         {#snippet action()}
           {#if shareStatus.data?.status === 'requestable'}
-            <Button variant="primary" loading={requesting} onclick={() => void requestAccess()}
+            <Button data-changes variant="primary" loading={requesting} onclick={() => void requestAccess()}
               >Request access</Button
             >
           {/if}

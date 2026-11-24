@@ -85,12 +85,15 @@
     undefined,
   );
   let resolvingChatRequest = $state<string | undefined>();
+  // Pending requests use their durable context/member tuple, never a delimiter-prone string.
+  const chatRequestKey = (contextId: string, granteeOwnerId: string) =>
+    JSON.stringify([contextId, granteeOwnerId]);
   async function resolveChatRequest(
     request: import('../../lib/bureau-reviews.ts').ChatAccessRequest,
     decision: 'grant' | 'deny',
   ): Promise<void> {
     if (resolvingChatRequest !== undefined) return;
-    resolvingChatRequest = `${request.contextId}:${request.granteeOwnerId}`;
+    resolvingChatRequest = chatRequestKey(request.contextId, request.granteeOwnerId);
     try {
       await resolveChatAccessRequest(request, decision);
       await queryClient.invalidateQueries({ queryKey: ['contexts'] });
@@ -311,7 +314,7 @@
   {#if (chatRequests.data?.length ?? 0) > 0}
     <section aria-label="Chat access requests">
       <h2>Chat access requests</h2>
-      {#each chatRequests.data ?? [] as request (`${request.contextId}:${request.granteeOwnerId}`)}
+      {#each chatRequests.data ?? [] as request (chatRequestKey(request.contextId, request.granteeOwnerId))}
         <article class="ib-chat-access-request">
           <p class="ib-chat-access-request__copy">
             <strong>{request.granteeLabel ?? 'A workspace member'}</strong> requested access to chat {request.contextTitle ??
@@ -319,15 +322,17 @@
           </p>
           <div class="ib-chat-access-request__actions">
             <Button
+              data-changes
               size="sm"
               variant="secondary"
               disabled={resolvingChatRequest !== undefined}
               onclick={() => void resolveChatRequest(request, 'deny')}>Deny</Button
             >
             <Button
+              data-changes
               size="sm"
               variant="primary"
-              loading={resolvingChatRequest === `${request.contextId}:${request.granteeOwnerId}`}
+              loading={resolvingChatRequest === chatRequestKey(request.contextId, request.granteeOwnerId)}
               onclick={() => void resolveChatRequest(request, 'grant')}>Grant access</Button
             >
           </div>

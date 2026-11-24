@@ -355,10 +355,12 @@
         "additionalProperties": false,
         "properties": {
           "contextId": {
+            "description": "The chat context identifier.",
             "minLength": 1,
             "type": "string"
           },
           "granteeOwnerId": {
+            "description": "The current workspace member owner identifier.",
             "maxLength": 256,
             "minLength": 1,
             "type": "string"
@@ -394,6 +396,7 @@
         "additionalProperties": false,
         "properties": {
           "contextId": {
+            "description": "The chat context identifier.",
             "minLength": 1,
             "type": "string"
           }

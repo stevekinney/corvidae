@@ -35,13 +35,13 @@
     <Button
       variant="secondary"
       disabled={sending || member.trim() === ''}
-      onclick={() => void submit('revoke')}>Revoke access</Button
+      data-changes onclick={() => void submit('revoke')}>Revoke access</Button
     >
     <Button
       variant="primary"
       loading={sending}
       disabled={member.trim() === ''}
-      onclick={() => void submit('grant')}>Share read-only</Button
+      data-changes onclick={() => void submit('grant')}>Share read-only</Button
     >
   {/snippet}
 </Modal>
