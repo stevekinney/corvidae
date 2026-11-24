@@ -1,7 +1,7 @@
 {
   "issue": "COR-2611",
   "branch": "steve/composable-consent-api-settings",
-  "checkedAt": "29cf8e633eab34a3027692c5d1cbda8e4709eb03",
+  "checkedAt": "d9585e8ba153cfbc69089a898f476fdd4ea349e4",
   "briefVersion": "c6fa35d18253",
   "status": "READY",
   "criteria": [

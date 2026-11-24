@@ -1,7 +1,7 @@
 {
   "issue": "COR-2610",
   "branch": "steve/composable-consent-api-settings",
-  "checkedAt": "29cf8e633eab34a3027692c5d1cbda8e4709eb03",
+  "checkedAt": "d9585e8ba153cfbc69089a898f476fdd4ea349e4",
   "briefVersion": "f201c6df93a8",
   "status": "READY",
   "criteria": [
@@ -28,7 +28,7 @@
     {
       "id": "AC5",
       "status": "met-on-branch",
-      "evidence": "The named command exercised memory, SQLite, PostgreSQL deadline rollback, a real PostgreSQL lock wait, a controlled retry and the already-approved grant after browser expiry."
+      "evidence": "The named command exercised memory, SQLite, PostgreSQL deadline rollback, a real PostgreSQL lock wait, a controlled retry and the already-approved grant after browser expiry. The Weft public capabilities schema and generated clients also carry deadline support. The corrected downstream relay and storage cases pass."
     }
   ]
 }
