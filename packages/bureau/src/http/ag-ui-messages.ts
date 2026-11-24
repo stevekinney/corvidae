@@ -176,11 +176,7 @@ export function snapshotMessages(history: ConversationHistory): AgUiMessage[] {
 export function sharedSnapshotMessages(history: ConversationHistory): AgUiMessage[] {
   return history.ids.flatMap((id) => {
     const row = getOwn(history.messages, id);
-    if (
-      row === undefined ||
-      row.hidden === true ||
-      (row.role !== 'user' && row.role !== 'assistant')
-    )
+    if (row === undefined || row.hidden || (row.role !== 'user' && row.role !== 'assistant'))
       return [];
     const content =
       typeof row.content === 'string'

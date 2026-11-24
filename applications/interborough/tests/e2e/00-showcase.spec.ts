@@ -76,6 +76,59 @@ async function untilQuiet(page: Page): Promise<void> {
     .toBeGreaterThanOrEqual(3);
 }
 
+async function isCompactPhoneViewport(page: Page): Promise<boolean> {
+  return page.evaluate(() => window.innerWidth === 320);
+}
+
+function blockedRefundApprovalIsReady(): boolean {
+  const transcript = document.querySelector<HTMLElement>('.chat-timeline');
+  const approval = document.querySelector<HTMLElement>('[data-approval-decision]');
+  const tool =
+    approval
+      ?.closest<HTMLElement>('.cinder-tool-call-rail__item')
+      ?.querySelector<HTMLElement>('[data-cinder-tool-call-row]') ?? null;
+  const question =
+    approval?.querySelector<HTMLElement>(
+      '.cinder-approval-card__row-question, .cinder-approval-card__decision-title',
+    ) ?? null;
+  const actions = [...(approval?.querySelectorAll<HTMLButtonElement>('button') ?? [])].filter(
+    (button) => ['Deny', 'Approve'].includes(button.textContent?.trim() ?? ''),
+  );
+  if (transcript === null || approval === null || tool === null || question === null) return false;
+  if (actions.length !== 2 || document.querySelector('[data-chat-approval-drawer]') !== null) {
+    return false;
+  }
+  const reaches = (element: HTMLElement, x: number, y: number) => {
+    const hit = document.elementFromPoint(x, y);
+    return hit !== null && element.contains(hit);
+  };
+  const withinTranscript = (box: DOMRect) => {
+    const bounds = transcript.getBoundingClientRect();
+    return box.top >= bounds.top && box.bottom <= bounds.bottom;
+  };
+  const toolBox = tool.getBoundingClientRect();
+  const inset = 1;
+  const toolCorners: readonly (readonly [number, number])[] = [
+    [toolBox.left + inset, toolBox.top + inset],
+    [toolBox.right - inset, toolBox.top + inset],
+    [toolBox.left + inset, toolBox.bottom - inset],
+    [toolBox.right - inset, toolBox.bottom - inset],
+  ];
+  const questionBox = question.getBoundingClientRect();
+  const actionsReachable = actions.every((action) => {
+    const actionBox = action.getBoundingClientRect();
+    return (
+      withinTranscript(actionBox) &&
+      reaches(action, actionBox.x + actionBox.width / 2, actionBox.y + actionBox.height / 2)
+    );
+  });
+  return (
+    withinTranscript(questionBox) &&
+    actionsReachable &&
+    toolCorners.every(([x, y]) => reaches(tool, x, y))
+  );
+}
+
 /**
  * The refund showcase opens on a waiting approval. A design-review capture repeats its 375px view
  * at 320px with coarse-pointer emulation, which changes the header after the first layout frame.
@@ -83,63 +136,8 @@ async function untilQuiet(page: Page): Promise<void> {
  * approval's tool target is still under that header.
  */
 async function readyBlockedRefundApprovalCapture(page: Page): Promise<void> {
-  if ((await page.evaluate(() => window.innerWidth)) !== 320) return;
-  await expect
-    .poll(async () =>
-      page.evaluate(() => {
-        const transcript = document.querySelector<HTMLElement>('.chat-timeline');
-        const approval = document.querySelector<HTMLElement>('[data-approval-decision]');
-        const tool =
-          approval
-            ?.closest<HTMLElement>('.cinder-tool-call-rail__item')
-            ?.querySelector<HTMLElement>('[data-cinder-tool-call-row]') ?? null;
-        const question =
-          approval?.querySelector<HTMLElement>(
-            '.cinder-approval-card__row-question, .cinder-approval-card__decision-title',
-          ) ?? null;
-        const actions = [...(approval?.querySelectorAll<HTMLButtonElement>('button') ?? [])].filter(
-          (button) => ['Deny', 'Approve'].includes(button.textContent?.trim() ?? ''),
-        );
-        if (transcript === null || approval === null || tool === null || question === null)
-          return false;
-        if (
-          actions.length !== 2 ||
-          document.querySelector('[data-chat-approval-drawer]') !== null
-        ) {
-          return false;
-        }
-        const reaches = (element: HTMLElement, x: number, y: number) => {
-          const hit = document.elementFromPoint(x, y);
-          return hit !== null && element.contains(hit);
-        };
-        const withinTranscript = (box: DOMRect) => {
-          const bounds = transcript.getBoundingClientRect();
-          return box.top >= bounds.top && box.bottom <= bounds.bottom;
-        };
-        const toolBox = tool.getBoundingClientRect();
-        const inset = 1;
-        const toolCorners: readonly (readonly [number, number])[] = [
-          [toolBox.left + inset, toolBox.top + inset],
-          [toolBox.right - inset, toolBox.top + inset],
-          [toolBox.left + inset, toolBox.bottom - inset],
-          [toolBox.right - inset, toolBox.bottom - inset],
-        ];
-        const questionBox = question.getBoundingClientRect();
-        const actionsReachable = actions.every((action) => {
-          const actionBox = action.getBoundingClientRect();
-          return (
-            withinTranscript(actionBox) &&
-            reaches(action, actionBox.x + actionBox.width / 2, actionBox.y + actionBox.height / 2)
-          );
-        });
-        return (
-          withinTranscript(questionBox) &&
-          actionsReachable &&
-          toolCorners.every(([x, y]) => reaches(tool, x, y))
-        );
-      }),
-    )
-    .toBe(true);
+  if (!(await isCompactPhoneViewport(page))) return;
+  await expect.poll(() => page.evaluate(blockedRefundApprovalIsReady)).toBe(true);
 }
 
 test.beforeAll(async () => {
