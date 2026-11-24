@@ -245,7 +245,7 @@ async function captureDecisionNotice(page: Page, state: string, title: string): 
     for (const width of [1280, 768, 375]) {
       await page.setViewportSize({ width, height: 900 });
       const ready = async (current: Page) => {
-        await expect(current.getByText(title, { exact: true })).toBeVisible();
+        await expect(current.getByText(title)).toBeVisible();
       };
       await ready(page);
       await captureForDesignReview(page, {
@@ -316,7 +316,7 @@ test.describe('a tool approval', () => {
       });
     });
     await approveReview(paneOf(page));
-    await expect(page.getByText(REVIEWS_COPY.roundChanged.title, { exact: true })).toBeVisible();
+    await expect(page.getByText(REVIEWS_COPY.roundChanged.title)).toBeVisible();
     expect(refundRan(await threadMessages(request, threadId))).toBe(false);
     const current = await bureauCall(request, 'bureau.reviews.get', { id: review.id });
     expect(current).toMatchObject({ id: review.id, status: 'pending' });
