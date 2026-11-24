@@ -95,6 +95,7 @@ function addConfigurationOptions(
   result: ToolConfiguration,
   configuration: ToolConfigurationInput,
 ): ToolConfiguration {
+  if (configuration.inputJsonSchema) result.inputJsonSchema = configuration.inputJsonSchema;
   if (configuration.policy) result.policy = configuration.policy;
   if (configuration.policyContext) result.policyContext = configuration.policyContext;
   if (configuration.digests !== undefined) result.digests = configuration.digests;
