@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2657",
+  "branch": "steve/cor-2657-staged-landing-qualification",
+  "checkedAt": "2f7c5923eee678c8fae7dfd2fb52e48fe908ba02",
+  "briefVersion": "6ef0650eaae7",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Warm staged checks passed in 62.79, 67.34 and 71.44 seconds. Local staged command and hosted PR 1256 run 45347683200 both rejected the same one-line guard violation; local indexed bytes remained unchanged. See corrected-negative-provider-tree.txt."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Five receipt controls pass; PR 1197 moved-base receipt and runs 44931997555 and 44935669540 are recorded in moved-policy-replay.json."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Protected target rejected missing and failed checks and merged reasoned-empty and clean exact-tree cases; see protected-provider-qualification.json."
+    }
+  ]
+}

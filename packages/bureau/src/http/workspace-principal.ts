@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { ANONYMOUS_LOCAL_OWNER, isReservedOwnerSubject } from '../owner-of-record.ts';
 
 /** The immutable workspace identity a trusted host directory resolves for a credential. */
-export type WorkspaceMembership = WorkspaceIdentity;
+export type WorkspaceMembership = WorkspaceIdentity & { readonly displayName?: string | undefined };
 
 /** Verified credential information; no request headers, input, or claims are directory authority. */
 export type WorkspaceCredential = Readonly<Pick<AuthenticatedPrincipal, 'method' | 'subject'>>;
@@ -33,6 +33,8 @@ const membershipSchema = z
     actorId: z.string().min(1),
     actorKind: z.enum(['user', 'service', 'local']),
     owner: z.string().min(1),
+    /** Optional directory-controlled label suitable for a peer-facing UI. */
+    displayName: z.string().min(1).max(200).optional(),
     membershipRevision: z.string().min(1),
     capabilities: z.array(z.enum(['workspace:use', 'workspace:manage', 'deployment:operate'])),
   })
@@ -128,6 +130,9 @@ export type WorkspaceOwnerAuthority = (owner: string) => Promise<boolean>;
 export type BureauWorkspaceHost = {
   readonly workspaceAuthority?:
     ((principal: Principal) => WorkspaceOwnerAuthority | undefined) | undefined;
+  /** Trusted directory lookup for explicit-share records; never request input. */
+  readonly resolveWorkspaceOwner?:
+    ((owner: string) => Promise<WorkspaceMembership | undefined>) | undefined;
 };
 
 export function workspaceOwnerAuthority(

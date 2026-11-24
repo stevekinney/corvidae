@@ -113,6 +113,10 @@ export type ChatSessionOptions = {
    * existing thread leaves this out.
    */
   readonly unopened?: boolean;
+  /** This session is a reader projection and must never attach or mutate a live run. */
+  readonly readOnly?: boolean;
+  /** The dedicated shared projection disappeared, so its route state must be read again. */
+  readonly onSharedHistoryUnavailable?: () => void;
 };
 
 /** Whether `error` is the Bureau, or the AG-UI door, saying it has no such thread. */
@@ -359,10 +363,14 @@ export class ChatSessionState {
   #controllerTransport: number | undefined;
   /** Whether the Bureau holds this session's thread, so its history may be read. */
   #opened: boolean;
+  readonly #readOnly: boolean;
+  readonly #onSharedHistoryUnavailable: (() => void) | undefined;
 
   constructor(options: ChatSessionOptions) {
     this.sessionId = options.sessionId;
     this.#opened = options.unopened !== true;
+    this.#readOnly = options.readOnly === true;
+    this.#onSharedHistoryUnavailable = options.onSharedHistoryUnavailable;
     this.historySettled = !this.#opened;
     this.#closed = options.closed;
     this.#onNotFound = options.onNotFound;
@@ -419,6 +427,7 @@ export class ChatSessionState {
       },
       agentName: options.agentName,
       ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+      ...(this.#readOnly ? { sharedRead: true } : {}),
       onHumanRequests: (requests) => {
         this.humanRequests = requests;
         for (const request of requests) {
@@ -1092,9 +1101,36 @@ export class ChatSessionState {
    * follow-ups, approvals) works on a run the page did not start.
    */
   attach(options: { readonly rereading?: boolean } = {}): Promise<boolean> {
+    if (this.#readOnly) return this.#readSharedHistory();
     const attached = this.#attach(options.rereading === true);
     this.#attachment = attached.then(() => undefined);
     return attached;
+  }
+
+  async #readSharedHistory(): Promise<boolean> {
+    const generation = ++this.#retryGeneration;
+    try {
+      const history = await this.#wiring.history(this.sessionId, this.#abort.signal);
+      if (this.#abort.signal.aborted || generation !== this.#retryGeneration) return false;
+      if (history === undefined) {
+        this.historySettled = true;
+        this.readFailed = true;
+        this.failure = CHAT_COPY.load.errorDescription;
+        this.#onSharedHistoryUnavailable?.();
+        return false;
+      }
+      this.#restoreKeepingLocalInput(history, true);
+      this.historySettled = true;
+      this.readFailed = false;
+      this.failure = undefined;
+    } catch (error) {
+      if (this.#abort.signal.aborted || generation !== this.#retryGeneration) return false;
+      this.historySettled = true;
+      this.readFailed = true;
+      this.failure = error instanceof Error ? error.message : String(error);
+      this.#scheduleReconnect(error);
+    }
+    return false;
   }
 
   /**

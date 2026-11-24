@@ -128,6 +128,24 @@ describe('the retained-route session registry (COR-2293 B2)', () => {
     expect(server.posts).toHaveLength(1);
   });
 
+  test('a shared reader never reuses an owner session for the same chat', async () => {
+    const server = bureau();
+    const sessions = registry();
+    const owner = openChatSession(
+      sessions,
+      { sessionId: 'thread', fetch: server.fetch, unopened: true },
+      host(),
+    );
+    const reader = openChatSession(
+      sessions,
+      { sessionId: 'thread', fetch: server.fetch, unopened: true, readOnly: true },
+      host(),
+    );
+
+    expect(reader.reacquired).toBe(false);
+    expect(reader.session).not.toBe(owner.session);
+  });
+
   test('a released session with no live work is disposed at once, and the next visit attaches again', async () => {
     const server = bureau();
     const sessions = registry();

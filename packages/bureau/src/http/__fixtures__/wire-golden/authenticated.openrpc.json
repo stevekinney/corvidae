@@ -11361,6 +11361,642 @@
       }
     },
     {
+      "description": "Lets a workspace chat owner grant read-only access to one current member of the same workspace. The grant is durable, records its grantor, and is idempotent. Missing contexts, another owner’s context, local callers, and people outside the workspace all answer NotFound.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.contexts.share",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "contextId",
+          "required": true,
+          "schema": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "granteeOwnerId",
+          "required": true,
+          "schema": {
+            "description": "The current workspace member owner identifier.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "changed": {
+              "type": "boolean"
+            },
+            "contextId": {
+              "type": "string"
+            },
+            "granteeOwnerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "contextId",
+            "granteeOwnerId",
+            "changed"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Share a context read-only",
+      "tags": [
+        {
+          "name": "Contexts"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "contextId": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "granteeOwnerId": {
+            "description": "The current workspace member owner identifier.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId",
+          "granteeOwnerId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Lets a workspace chat owner revoke one reader’s current access. The former reader record remains durable so a direct-link access request can be admitted without making unrelated chats discoverable. Repeating a revocation is idempotent.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.contexts.share.revoke",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "contextId",
+          "required": true,
+          "schema": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "granteeOwnerId",
+          "required": true,
+          "schema": {
+            "description": "The current workspace member owner identifier.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "changed": {
+              "type": "boolean"
+            },
+            "contextId": {
+              "type": "string"
+            },
+            "granteeOwnerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "contextId",
+            "granteeOwnerId",
+            "changed"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Revoke a context reader",
+      "tags": [
+        {
+          "name": "Contexts"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "contextId": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "granteeOwnerId": {
+            "description": "The current workspace member owner identifier.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId",
+          "granteeOwnerId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Lets only a formerly granted workspace member create one pending owner-visible request. It never restores access.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.contexts.share.request",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "contextId",
+          "required": true,
+          "schema": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "changed": {
+              "type": "boolean"
+            },
+            "contextId": {
+              "type": "string"
+            },
+            "granteeOwnerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "contextId",
+            "granteeOwnerId",
+            "changed"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Request restored context access",
+      "tags": [
+        {
+          "name": "Contexts"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "contextId": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Lets only the chat owner grant or deny a pending former-reader request.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.contexts.share.request.resolve",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "contextId",
+          "required": true,
+          "schema": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "decision",
+          "required": true,
+          "schema": {
+            "description": "Whether to restore or deny requested access.",
+            "enum": [
+              "grant",
+              "deny"
+            ],
+            "type": "string"
+          }
+        },
+        {
+          "name": "granteeOwnerId",
+          "required": true,
+          "schema": {
+            "description": "The current workspace member owner identifier.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "requestId",
+          "required": true,
+          "schema": {
+            "description": "The durable access request being decided.",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "changed": {
+              "type": "boolean"
+            },
+            "contextId": {
+              "type": "string"
+            },
+            "granteeOwnerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "contextId",
+            "granteeOwnerId",
+            "changed"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Resolve a context access request",
+      "tags": [
+        {
+          "name": "Contexts"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "contextId": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "decision": {
+            "description": "Whether to restore or deny requested access.",
+            "enum": [
+              "grant",
+              "deny"
+            ],
+            "type": "string"
+          },
+          "granteeOwnerId": {
+            "description": "The current workspace member owner identifier.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "requestId": {
+            "description": "The durable access request being decided.",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId",
+          "granteeOwnerId",
+          "requestId",
+          "decision"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Lists only pending requests for contexts the caller owns. It never exposes another owner’s chat or request receipt.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.contexts.share.requests.list",
+      "paramStructure": "by-name",
+      "params": [],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "requests": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "contextId": {
+                    "type": "string"
+                  },
+                  "contextTitle": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "granteeLabel": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "granteeOwnerId": {
+                    "type": "string"
+                  },
+                  "requestId": {
+                    "type": "string"
+                  },
+                  "requestedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "contextId",
+                  "requestId",
+                  "granteeOwnerId",
+                  "requestedAt",
+                  "granteeLabel",
+                  "contextTitle"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "requests"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "List pending chat access requests",
+      "tags": [
+        {
+          "name": "Contexts"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns active, requestable, or pending only to a current same-workspace reader or former reader of this exact context. All other callers receive NotFound without context metadata.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.contexts.share.status",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "contextId",
+          "required": true,
+          "schema": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "agentName": {
+                  "type": "string"
+                },
+                "grantor": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "const": "active",
+                  "type": "string"
+                },
+                "title": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "status",
+                "title",
+                "agentName",
+                "grantor"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "status": {
+                  "const": "requestable",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "status"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "status": {
+                  "const": "pending",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "status"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "summary": "Read this caller’s shared-chat access state",
+      "tags": [
+        {
+          "name": "Contexts"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "contextId": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Writes a new agent file for `id`, the agent’s identifier: a lowercase letter or digit, then lowercase letters, digits, and hyphens, ending in a letter or digit. A caller derives it from the agent’s name; the name is only a label. `definition` is the file’s frontmatter (`name`, `description`, `model` written `<provider>/<model-or-alias>`, `effort`, `tools`, `card`, `a2a`, `limits`, `retry`, `compaction`, `references`, `guardrails`, `escalations`, `interceptors`, `approvals`) and its body (`instructions`). A new agent does not opt into A2A unless `a2a` is `true`. The file is written to a temporary file and renamed into place, and the agent is in the catalog before the call returns. Requires `bureau.agents:write` unless the caller owns the deployment’s agents. A taken identifier, including the key of a code-defined agent, is a `Conflict`; a definition that would not load is `Unprocessable`, and nothing is written. A `model` or `models` entry that the `modelPolicy` deployment or Bureau layer forbids is `Unprocessable` with the reason `model-policy-denied`, its issue naming `model` or `models.<index>`. An `effort` the `model` does not support (a tier outside its portable tiers) is `Unprocessable` with the reason `effort-not-supported`, its issue naming `effort`.",
       "errors": [
         {

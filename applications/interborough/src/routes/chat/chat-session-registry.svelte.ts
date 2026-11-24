@@ -24,11 +24,14 @@ import { ChatSessionState, type ChatSessionOptions } from './chat-session.svelte
 /** What a page tells the session it holds: its callbacks, read while it holds the session. */
 export type ChatSessionHost = Omit<
   ChatSessionOptions,
-  'sessionId' | 'fetch' | 'clock' | 'unopened'
+  'sessionId' | 'fetch' | 'clock' | 'unopened' | 'readOnly'
 >;
 
 /** What identifies the session itself, fixed for its life. */
-export type ChatSessionKey = Pick<ChatSessionOptions, 'sessionId' | 'fetch' | 'clock' | 'unopened'>;
+export type ChatSessionKey = Pick<
+  ChatSessionOptions,
+  'sessionId' | 'fetch' | 'clock' | 'unopened' | 'readOnly'
+>;
 
 /** A page's hold on a session. */
 export type HeldChatSession = {
@@ -95,7 +98,8 @@ export class ChatSessionRegistry {
     const reusable =
       existing !== undefined &&
       existing.key.fetch === key.fetch &&
-      existing.key.clock === key.clock;
+      existing.key.clock === key.clock &&
+      existing.key.readOnly === key.readOnly;
     if (existing !== undefined && !reusable) this.#drop(existing);
     const entry = reusable ? existing : this.#create(key, host);
     entry.unwatch?.();
@@ -133,6 +137,7 @@ export class ChatSessionRegistry {
       onNotFound: () => current()?.onNotFound?.(),
       onArchived: () => current()?.onArchived?.(),
       onGrantNotLoosened: (notice) => current()?.onGrantNotLoosened?.(notice),
+      onSharedHistoryUnavailable: () => current()?.onSharedHistoryUnavailable?.(),
     };
     // The session's own derived state belongs to the registry, not to the page that asked first: a
     // page's deriveds die with it, and a retained session must still read true after its page is

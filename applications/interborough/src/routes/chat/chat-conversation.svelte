@@ -223,6 +223,11 @@
     fromWorkflows?: boolean;
     /** What the person typed while the chat was read (`chat-unavailable.svelte`); the box starts with it. */
     draft?: string | undefined;
+    /** A shared reader sees the scrubbed transcript and no mutable chat controls. */
+    readOnly?: boolean;
+    grantor?: string | undefined;
+    /** A shared transcript disappeared after its dedicated status projection admitted this route. */
+    onSharedHistoryUnavailable?: (() => void) | undefined;
   }
 
   let {
@@ -232,6 +237,9 @@
     isNew = false,
     fromWorkflows = false,
     draft,
+    readOnly = false,
+    grantor,
+    onSharedHistoryUnavailable,
   }: ChatConversationProps = $props();
 
   const queryClient = useQueryClient();
@@ -242,6 +250,9 @@
   // The agent is chosen until the run starts, and fixed once the session exists.
   let agent = $state(untrack(() => agentName));
   let choosing = $state(untrack(() => isNew));
+  // The session is constructed once for this route. Its unavailable callback belongs to this route
+  // too, so it deliberately keeps the callback it opened with.
+  const sharedHistoryUnavailable = untrack(() => onSharedHistoryUnavailable);
   let chat = $state<ReturnType<typeof Chat> | undefined>();
   // What the box held when the first message of a new chat was sent, so a start that finishes after
   // the person typed on can tell their later text from the message it started with.
@@ -259,8 +270,12 @@
       sessionId: untrack(() => sessionId),
       // A new chat's thread is not kept until its first run begins, so nothing reads its history before.
       unopened: untrack(() => isNew),
+      readOnly: untrack(() => readOnly),
     },
     {
+      ...(sharedHistoryUnavailable === undefined
+        ? {}
+        : { onSharedHistoryUnavailable: sharedHistoryUnavailable }),
       agentName: () => agent,
       // A deleted chat is sent nothing, and a not-found is checked against a read of the chat.
       closed: () => gone,
@@ -374,7 +389,7 @@
     () => ({
       queryKey: queryKeys.contexts.detail(sessionId),
       queryFn: ({ signal }) => getContext(sessionId, { signal }),
-      enabled: !choosing,
+      enabled: !choosing && !readOnly,
       retry: false,
     }),
     undefined,
@@ -386,14 +401,14 @@
     () => ({
       queryKey: queryKeys.contexts.window(sessionId),
       queryFn: ({ signal }) => getContextWindow(sessionId, { signal }),
-      enabled: !choosing,
+      enabled: !choosing && !readOnly,
       retry: false,
     }),
     undefined,
   );
   $effect(() => {
     // Only the end of a run asks again. Reading the queries here would make each answer ask again.
-    if (!choosing && !session.streaming) {
+    if (!choosing && !readOnly && !session.streaming) {
       untrack(() => {
         void context.refetch();
         void contextWindow.refetch();
@@ -403,7 +418,9 @@
   // The chat was deleted, here or elsewhere: the Bureau reads `session.deleted` into the chats, this
   // read is asked again, and it says not-found. A send then would start the chat again under the
   // same identifier, with every row it had, so the composer is closed.
-  const gone = $derived(context.isError && wireCodeOf(context.error) === 'NotFound');
+  // A shared reader deliberately cannot use the owner's private context projection. Its dedicated
+  // status and transcript projections decide availability instead of treating that 404 as deletion.
+  const gone = $derived(!readOnly && context.isError && wireCodeOf(context.error) === 'NotFound');
   const displayTitle = $derived(context.data?.title ?? title ?? CHAT_COPY.untitled);
   const clock = useMinuteClock();
   /** The model that wrote the chat's latest reply, which names the chat's model when nothing else does. */
@@ -612,7 +629,9 @@
   const archivedAt = $derived(choosing ? null : (context.data?.archivedAt ?? null));
   // A read-only chat offers no Regenerate or Try again: either would start a run its agent may not
   // start (COR-2429, design review 2).
-  const mayRegenerate = $derived(archivedAt === null && !agentDisabled && !agentUnavailable);
+  const mayRegenerate = $derived(
+    !readOnly && archivedAt === null && !agentDisabled && !agentUnavailable,
+  );
   let archiving = $state(false);
   /**
    * Archives the chat or unarchives it (`chat-archive.ts`). Unarchived from the bar, the composer
@@ -698,16 +717,34 @@
     }
     // Until the first read of the thread settles, an empty transcript is not an empty chat: it is
     // still loading, in the words the stand-in used before the chat was read (`index.svelte`).
-    if (!session.historySettled) {
+    // Shared history is a complete, read-only projection. Its controller does not join the live
+    // stream, so it intentionally never reaches the owner's live-history settled flag.
+    if (!session.historySettled && !readOnly) {
       return {
         kind: 'loading',
         labels: { loading: CHAT_COPY.load.loading, slow: CHAT_COPY.load.stillLoading },
+      };
+    }
+    if (readOnly && session.readFailed) {
+      return {
+        kind: 'error',
+        cause: session.failure ?? CHAT_COPY.load.errorDescription,
+        onRetry: () => {
+          onSharedHistoryUnavailable?.();
+          void session.reconnect();
+        },
+        allConversations: {
+          label: CHAT_COPY.load.allConversations,
+          onclick: () => router.navigate('/chats'),
+        },
+        labels: { errorTitle: CHAT_COPY.load.errorTitle, tryAgain: CHAT_COPY.load.tryAgain },
       };
     }
     // An archived chat's bar outranks the missing provider: nothing can be sent until it is
     // unarchived, and Unarchive is the way back.
     // The offline drawer, which keeps the box and its draft, outranks it as the blocked rows do.
     if (
+      !readOnly &&
       noProvider &&
       composerStatus?.kind !== 'blocked' &&
       composerStatus?.kind !== 'archived' &&
@@ -721,6 +758,15 @@
     }
     return undefined;
   });
+
+  const sharedComposerStatus = $derived(
+    readOnly
+      ? {
+          kind: 'read-only' as const,
+          tooltip: grantor === undefined ? undefined : `Read access granted by ${grantor}`,
+        }
+      : undefined,
+  );
 
   // An open chat with no message yet is Chat's first-use state (COR-2285 V1): the agent's own
   // description, and the prompts it suggests as buttons that send. None is offered while a prompt
@@ -2376,19 +2422,22 @@
 
 <!-- The context meter is the composer's alone, by Send (COR-2438): one meter in one place. -->
 {#snippet headerActions()}
-  <ChatMoreMenu
-    {sessionId}
-    title={displayTitle}
-    {runGoing}
-    branchTarget={lastBranchTarget}
-    {branching}
-    canExport={hasExportableText(shown)}
-    archived={archivedAt !== null}
-    {archiveBlock}
-    onBranch={(messageId) => void branchThrough(messageId)}
-    onExport={exportChat}
-    onArchive={(archive) => void setArchived(archive, false)}
-  />
+  {#if !readOnly}
+    <ChatMoreMenu
+      {sessionId}
+      title={displayTitle}
+      {runGoing}
+      branchTarget={lastBranchTarget}
+      {branching}
+      canExport={hasExportableText(shown)}
+      archived={archivedAt !== null}
+      {archiveBlock}
+      onBranch={(messageId) => void branchThrough(messageId)}
+      onExport={exportChat}
+      onArchive={(archive) => void setArchived(archive, false)}
+      canShare={context.data !== undefined}
+    />
+  {/if}
 {/snippet}
 
 <div class="ib-chat-frame">
@@ -2575,14 +2624,14 @@
                 retryNote: CHAT_COPY.notSent.retryNote,
               }
             : { summary: CHAT_COPY.notSent.online }}
-          disabled={session.disconnected || gone || answerHeld}
+          disabled={readOnly || session.disconnected || gone || answerHeld}
           composerHint={false}
           composerPlaceholder={answering
             ? numberedChoices > 0
               ? CHAT_COPY.composer.answerPlaceholder
               : CHAT_COPY.questionAnswerLabel
             : CHAT_COPY.composer.placeholder(agentShown)}
-          {composerStatus}
+          composerStatus={sharedComposerStatus ?? composerStatus}
           onComposerInput={rememberDraft}
           messageTurnState={turnState}
           onRetryConnection={() => void session.reconnect()}
@@ -2614,7 +2663,7 @@
             // The transcript offers Branch on a message and no Edit: editing a sent message is a
             // fork, which Branch on that message is.
             editing: false,
-            quote: true,
+            quote: !readOnly,
           }}
           uploadAttachment={upload}
           acceptedTypes={settings?.acceptedTypes ?? []}
@@ -2643,7 +2692,7 @@
           {#snippet messageActions({ message })}
             {@const replyStep = message.role === 'assistant' ? replyStepOf(message.id) : undefined}
             {@const branchAt = branchTargetOf(message)}
-            {#if replyStep !== undefined && !session.streaming}
+            {#if !readOnly && replyStep !== undefined && !session.streaming}
               {@const replyModel = replyModelName(message.metadata)}
               {#if replyModel !== undefined}
                 <span class="weft-chat-model">{replyModel}</span>
@@ -2654,7 +2703,7 @@
                 usage={session.usage.get(replyStep.runId)}
               />
             {/if}
-            {#if branchAt !== undefined}
+            {#if !readOnly && branchAt !== undefined}
               <Button
                 data-changes
                 type="button"

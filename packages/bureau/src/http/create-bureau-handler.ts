@@ -29,6 +29,7 @@ import {
 
 import {
   withWorkspaceMembership,
+  resolveWorkspaceOwner,
   workspaceOwnerAuthority,
   type WorkspaceMembershipOptions,
 } from './workspace-principal.ts';
@@ -180,6 +181,15 @@ import {
   contextsGetOperation,
   contextsListOperation,
 } from './management/contexts-operations.ts';
+import {
+  type BureauContextsSharingOperationHost,
+  contextsRevokeShareOperation,
+  contextsRequestShareOperation,
+  contextsResolveShareRequestOperation,
+  contextsListShareRequestsOperation,
+  contextsShareStatusOperation,
+  contextsShareOperation,
+} from './management/contexts-sharing-operations.ts';
 import {
   type BureauAgentDefinitionsOperationHost,
   bureauAgentDefinitionsOperations,
@@ -466,6 +476,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauTaskEventsOperationHost &
   BureauTasksRespondOperationHost &
   BureauContextsOperationHost &
+  BureauContextsSharingOperationHost &
   BureauContextsInputOperationHost &
   BureauContextsRetractOperationHost &
   BureauContextsForgetGrantsOperationHost &
@@ -914,6 +925,12 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsArchiveOperation,
   contextsUnarchiveOperation,
   contextsWindowOperation,
+  contextsShareOperation,
+  contextsRevokeShareOperation,
+  contextsRequestShareOperation,
+  contextsResolveShareRequestOperation,
+  contextsListShareRequestsOperation,
+  contextsShareStatusOperation,
   ...bureauAgentDefinitionsOperations,
   ...bureauAgentOverridesOperations,
   ...bureauAgentDisableOperations,
@@ -1370,6 +1387,8 @@ export function buildBureauHandlerHost(
   const operations = describeOperations(BUREAU_HANDLER_OPERATIONS);
   return {
     workspaceAuthority: (principal) => workspaceOwnerAuthority(workspace, principal),
+    resolveWorkspaceOwner: async (owner) =>
+      workspace === undefined ? undefined : resolveWorkspaceOwner(workspace, owner),
     // A Bureau owns exactly one feed, so the registry answers for its id alone.
     bureauFeeds: {
       get: (bureauId) => (bureauId === bureau.id ? bureau.internals.eventFeed : undefined),

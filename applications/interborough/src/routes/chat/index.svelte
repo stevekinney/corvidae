@@ -10,6 +10,7 @@
 
   import type { ChatAvailability, ChatAvailabilityAction } from '@lostgradient/chat';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { Button, EmptyState } from '@lostgradient/cinder';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { getConnection } from '../../app/connection.svelte.ts';
@@ -17,7 +18,11 @@
   import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import ForbiddenState from '../../app/forbidden-state.svelte';
   import NotFoundState from '../../app/not-found-state.svelte';
-  import { getContext } from '../../lib/bureau-client.ts';
+  import {
+    getContext,
+    getContextShareStatus,
+    requestContextShare,
+  } from '../../lib/bureau-client.ts';
   import { defaultAgentQuery, workflowAuthorQuery } from '../../lib/default-agent.ts';
   import { classifyFault, isNetworkFailure } from '../../lib/faults.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
@@ -76,6 +81,26 @@
     }),
     undefined,
   );
+  const shareStatus = createQuery(
+    () => ({
+      queryKey: ['contexts', sessionId, 'share-status'],
+      queryFn: ({ signal }) => getContextShareStatus(sessionId, { signal }),
+      enabled: !startsNew && context.isError && classifyFault(context.error)?.kind === 'not-found',
+      retry: false,
+    }),
+    undefined,
+  );
+  let requesting = $state(false);
+  async function requestAccess(): Promise<void> {
+    if (requesting) return;
+    requesting = true;
+    try {
+      await requestContextShare(sessionId);
+      await shareStatus.refetch();
+    } finally {
+      requesting = false;
+    }
+  }
 
   /** Whether the chat could not be read and there is nothing of it to show: the error state is the page. */
   const failedToLoad = $derived(
@@ -90,9 +115,13 @@
   usePageLabel(() => ({
     path: chatSessionPath(sessionId),
     label:
-      failedToLoad || (!startsNew && context.data === undefined && context.isPending)
-        ? CHAT_COPY.load.crumb
-        : undefined,
+      shareStatus.data?.status === 'active'
+        ? (shareStatus.data.title ?? CHAT_COPY.load.crumb)
+        : shareStatus.data?.status === 'requestable' || shareStatus.data?.status === 'pending'
+          ? CHAT_COPY.load.crumb
+          : failedToLoad || (!startsNew && context.data === undefined && context.isPending)
+            ? CHAT_COPY.load.crumb
+            : undefined,
   }));
   // A read that got no answer with nothing to show is the full error state, and the shell's banner
   // stays out: a banner says the data on screen is old, and none of this chat is.
@@ -180,8 +209,39 @@
     agentName={context.data.agentName}
     {draft}
   />
+{:else if shareStatus.data?.status === 'active'}
+  <ChatConversation
+    {sessionId}
+    title={shareStatus.data.title}
+    agentName={shareStatus.data.agentName}
+    readOnly
+    grantor={shareStatus.data.grantor ?? 'the chat owner'}
+    onSharedHistoryUnavailable={() => void shareStatus.refetch()}
+  />
 {:else if context.isError && !failedToLoad}
-  {#if classifyFault(context.error)?.kind === 'not-found' && VIEW_COPY.chat.notFound}
+  {#if shareStatus.data?.status === 'requestable' || shareStatus.data?.status === 'pending'}
+    <div class="weft-chat-route-access">
+      <EmptyState
+        kind="blocked"
+        headingLevel={1}
+        title="Chat access"
+        description={shareStatus.data.status === 'pending'
+          ? 'Your access request is waiting for the chat owner.'
+          : 'You no longer have access to this chat.'}
+      >
+        {#snippet action()}
+          {#if shareStatus.data?.status === 'requestable'}
+            <Button
+              data-changes
+              variant="primary"
+              loading={requesting}
+              onclick={() => void requestAccess()}>Request access</Button
+            >
+          {/if}
+        {/snippet}
+      </EmptyState>
+    </div>
+  {:else if classifyFault(context.error)?.kind === 'not-found' && VIEW_COPY.chat.notFound}
     <NotFoundState
       title={VIEW_COPY.chat.notFound.title}
       description={VIEW_COPY.chat.notFound.description}
@@ -198,3 +258,9 @@
        nothing to send to), and the list beside it stays live. -->
   <ChatUnavailable {sessionId} {availability} {agent} onDraft={(text) => (draft = text)} />
 {/if}
+
+<style>
+  .weft-chat-route-access {
+    padding-inline: var(--cinder-space-4);
+  }
+</style>
