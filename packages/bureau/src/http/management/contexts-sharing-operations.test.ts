@@ -21,6 +21,7 @@ import { workspaceConformanceLedger } from '../workspace-conformance-ledger.test
 import {
   contextsRequestShareOperation,
   contextsRevokeShareOperation,
+  contextsShareStatusOperation,
 } from './contexts-sharing-operations.ts';
 
 async function chat(opened: Awaited<ReturnType<typeof openWorkspacePrivacyBureau>>) {
@@ -106,6 +107,45 @@ const workspacePrincipal = (actor: 'owner' | 'peer') => ({
 });
 
 describe('chat sharing access requests', () => {
+  test('returns metadata-free requestable when a grantor lookup races a revocation', async () => {
+    const initial = sharedSession(
+      withSessionReadGrant(
+        {},
+        {
+          owner: WORKSPACE_PRIVACY_ACTORS.peer.owner,
+          workspaceId: 'workspace-a',
+          actorId: 'bob',
+          sessionIncarnation: 'shared-incarnation',
+          grantedBy: WORKSPACE_PRIVACY_ACTORS.owner.owner,
+          grantedAt: '2026-11-24T00:00:00.000Z',
+        },
+      ),
+    );
+    const { host, current } = sharingHost(initial, (session) => session);
+    host.resolveWorkspaceOwner = async (owner: string) => {
+      if (owner !== WORKSPACE_PRIVACY_ACTORS.owner.owner) return undefined;
+      const session = current();
+      await host.contexts.internals.sessionStore.update(session.id, () => ({
+        ...session,
+        metadata: withSessionReadRevocation(
+          session.metadata,
+          WORKSPACE_PRIVACY_ACTORS.peer.owner,
+          WORKSPACE_PRIVACY_ACTORS.owner.owner,
+          '2026-11-24T00:01:00.000Z',
+        ),
+      }));
+      return { ...workspacePrincipal('owner').workspace, displayName: 'Avery Owner' };
+    };
+
+    await expect(
+      contextsShareStatusOperation.invoke({
+        input: { contextId: initial.id },
+        host,
+        principal: workspacePrincipal('peer'),
+      } as never),
+    ).resolves.toEqual({ status: 'requestable' });
+  });
+
   test('executes all six actor witnesses for sharing operations', async () => {
     const opened = await openWorkspacePrivacyBureau();
     const witnesses = workspaceConformanceLedger('management/contexts-sharing-operations.test.ts');
