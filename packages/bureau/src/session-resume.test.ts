@@ -573,7 +573,7 @@ describe('a resumed turn', () => {
       const authorization = operations.find(
         (operation) => operation.type === 'set' && operation.value.includes('"local-authorized"'),
       );
-      if (!intercepted && authorization !== undefined) {
+      if (!intercepted && authorization?.type === 'set') {
         intercepted = true;
         shutdown = first.shutdown({ policy: 'detach' });
         await shutdown;
@@ -598,14 +598,52 @@ describe('a resumed turn', () => {
       return written;
     };
     const replayed = await resume(first, run.contextId, run.id, 'shutdown-race');
-    expect(replayed).toEqual(peer);
+    expect(peer).toBeDefined();
+    expect(replayed).toEqual(peer!);
     await shutdown;
-    expect((await second.internals.taskRegistry.record(replayed.runId))?.settled).toMatchObject({
+    const replayedTask = await second.internals.taskRegistry.record(replayed.runId);
+    expect(replayedTask?.settled).toMatchObject({
       finishReason: TASK_OWNER_LOST_FINISH_REASON,
     });
     expect(
       continuationMarker((await second.contexts.get(run.contextId))!, run.id)?.continuationRunId,
     ).toBe(replayed.runId);
+  });
+
+  it('replays a registered terminal when its local confirmation write failed once', async () => {
+    const fixture = createSqliteStorageFixture();
+    cleanups.push(() => fixture.dispose());
+    const first = await openBureau(agentThat('waits'), fixture.storage, false);
+    const second = await openBureau(agentThat('waits'), fixture.storage, false);
+    const { run } = await stoppedTurn(first);
+    const kv = first.internals.kv!;
+    const conditionalBatch = kv.conditionalBatch.bind(kv);
+    let failConfirmation = true;
+    (kv as { conditionalBatch: typeof kv.conditionalBatch }).conditionalBatch = async (
+      conditions,
+      operations,
+    ) => {
+      if (
+        failConfirmation &&
+        operations.some(
+          (operation) => operation.type === 'set' && operation.value.includes('"launched"'),
+        )
+      ) {
+        failConfirmation = false;
+        return false;
+      }
+      return conditionalBatch(conditions, operations);
+    };
+    const started = await resume(first, run.contextId, run.id, 'confirmation-write-failure');
+    await untilEnded(first, run.contextId, started.runId);
+    await first.shutdown({ policy: 'detach' });
+
+    expect(await resume(second, run.contextId, run.id, 'confirmation-write-failure')).toEqual(
+      started,
+    );
+    expect(
+      await textValueStore(fixture.storage).get(continuationAdmissionFenceKey(started.runId)),
+    ).toBe(JSON.stringify({ state: 'launched', runId: started.runId }));
   });
 });
 

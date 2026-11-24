@@ -306,7 +306,10 @@ export function createSessionResume<D extends AgentDefinitions>(
     if (state === 'launched' || state === 'durable-authorized') return false;
     if (state === 'local-authorized') {
       const task = await core.tasks.record(continuationRunId);
-      if (task?.settled?.finishReason !== TASK_OWNER_LOST_FINISH_REASON) return false;
+      // A one-shot failure confirming a run after local registration leaves this receipt at its
+      // pre-confirmation state. Once the owner is gone, any persisted terminal is the durable
+      // proof that the registered run really happened, not a pre-launch shell to retire.
+      if (task?.settled === undefined) return false;
       const acknowledged = await runtime.kv.conditionalBatch(
         [
           { key: processLeaseKey(processId), expectedValue: lease.raw },
