@@ -2,12 +2,15 @@ import armorer from '../packages/armorer/package.json';
 import bungalow from '../packages/bungalow/package.json';
 import conversationalist from '../packages/conversationalist/package.json';
 
-export const libraryManifests = { armorer, bungalow, conversationalist };
+import operative from '../packages/operative/package.json';
+
+export const libraryManifests = { armorer, bungalow, conversationalist, operative };
 
 // Workspace manifests expose the imports used in Corvidae. npm also exposes
 // the documented entry points of the previously published libraries.
 export const releaseEntries = {
   bungalow: bungalow.exports,
+  operative: operative.exports,
   armorer: {
     './mcp': './src/integrations/mcp/index.ts',
     './core': './src/core/index.ts',

@@ -3,20 +3,24 @@
  * `app/copy/workflows.ts` holds. Plain functions over data, so the rows and the labels are tested without a
  * page.
  */
+import type { StatusDotWordLabel } from '@lostgradient/cinder';
 import { humanizeIdentifier } from '@lostgradient/cinder';
 
 import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import type { ContributedTriggerKind } from '../../lib/bureau-plugin-kinds.ts';
 import { calendarDay, clockTime, rowTime, viewerTimeZone } from '../../lib/format/clock.ts';
+import { formatRelativeTime } from '../../lib/format/index.ts';
 import type {
   CatalogRow,
   CodeActivity,
+  CodeRunCounts,
   DefinitionDetail,
   InternalActivity,
 } from '../../lib/workflow-catalog.ts';
 import type { WorkflowRunCounts } from '../../lib/workflow-files.ts';
 import { describeCadence } from '../schedules/cadence.ts';
 import { cadenceText } from '../schedules/schedule-cadence-text.ts';
+import { problemSentence } from './workflow-source.ts';
 
 /** The segments above the list: every workflow, the paused ones, and the ones that cannot load. */
 export type ListSegment = 'all' | 'paused' | 'problems';
@@ -50,19 +54,30 @@ export function segmentCounts(rows: readonly CatalogRow[]): Record<ListSegment, 
   };
 }
 
-/** The rows in the order the list shows them: those that cannot load first, the rest as the catalog sorts them. */
+/** The rows in the order the list shows them: ready, then a file problem, then a paused file. */
 export function sortListRows(rows: readonly CatalogRow[]): CatalogRow[] {
-  return rows.toSorted((first, second) => Number(hasProblem(second)) - Number(hasProblem(first)));
+  return rows.toSorted((first, second) => listOrder(first) - listOrder(second));
+}
+
+function listOrder(row: CatalogRow): number {
+  if (hasProblem(row)) return 1;
+  return row.file?.paused === true ? 2 : 0;
 }
 
 /** One part of the line under a row's title. */
 export type LinePart = {
   readonly text: string;
   /** The part is the run in progress: a solid dot and the word, in the info tone. */
-  readonly status?: 'Running';
+  readonly status?: StatusDotWordLabel;
   /** The test id of the element that carries the part. */
   readonly testId?: string;
 };
+
+type ListRunCounts = WorkflowRunCounts | CodeRunCounts;
+
+function hasBureauRunReceipts(runs: ListRunCounts): runs is WorkflowRunCounts {
+  return 'total' in runs;
+}
 
 /** The two words a row's status column can carry. */
 export type ListStatusWord =
@@ -102,12 +117,14 @@ export function listDate(at: number, now: number, zone: string = viewerTimeZone(
 }
 
 /**
- * The right edge of a row: when the newest run began, "Never run" for a workflow with none, and
- * when the run in progress began ("Started 10:45 AM") while one is going. `null` when the engine
- * has not said, so a count that could not be read is never shown as never run.
+ * The right edge of a file row: when the newest run began, "Never run" for a workflow with none,
+ * and when the run in progress began ("Started 10:45 AM") while one is going. Engine-defined rows
+ * put their complete activity caption under the title. `null` when the engine has not said, so a
+ * count that could not be read is never shown as never run.
  */
-export function rowDate(
-  runs: WorkflowRunCounts | null | undefined,
+function rowDate(
+  kind: CatalogRow['kind'],
+  runs: ListRunCounts | null | undefined,
   now: number,
   zone: string = viewerTimeZone(),
 ): string | null {
@@ -117,20 +134,87 @@ export function rowDate(
   if (runs.lastRunAt === null) return WORKFLOW_COPY.list.neverRun;
   const at = Date.parse(runs.lastRunAt);
   if (Number.isNaN(at)) return null;
-  return runs.active > 0
-    ? WORKFLOW_COPY.list.started(rowTime(at, now, zone))
-    : listDate(at, now, zone);
+  if (kind === 'code') return null;
+  if (hasBureauRunReceipts(runs) && runs.current !== null) {
+    const startedAt = Date.parse(runs.current.startedAt);
+    return Number.isNaN(startedAt)
+      ? null
+      : WORKFLOW_COPY.list.started(rowTime(startedAt, now, zone));
+  }
+  return listDate(at, now, zone);
+}
+
+/** The active run's own state. It never changes the workflow's status column. */
+function currentRunLine(runs: WorkflowRunCounts): LinePart | null {
+  const current = runs.current;
+  if (current === null) return null;
+  // The engine leaves an await-signal run `running` while it is parked, so the named durable wait
+  // is more specific than that transport state. A suspended run without a named signal is the
+  // separate human-input state below.
+  if (current.waitingForSignal !== null) {
+    return { text: WORKFLOW_COPY.list.waiting, status: 'Waiting' };
+  }
+  if (current.status === 'suspended') {
+    return {
+      text: WORKFLOW_COPY.list.waitingOnYou,
+      status: 'Waiting on you',
+    };
+  }
+  if (current.status === 'pending') {
+    return { text: 'Scheduled', status: 'Scheduled' };
+  }
+  const words = WORKFLOW_COPY.list.runningStep(current.step, current.totalSteps);
+  const status: StatusDotWordLabel =
+    current.step === null || current.totalSteps === null
+      ? 'Running'
+      : `Running, step ${String(current.step)} of ${String(current.totalSteps)}`;
+  return { text: words, status };
+}
+
+/** What the latest settled run did, said only when no newer run is underway. */
+function lastRunLine(runs: WorkflowRunCounts): LinePart | null {
+  if (runs.current !== null || runs.last === null) return null;
+  switch (runs.last.status) {
+    case 'completed':
+      return { text: WORKFLOW_COPY.list.lastRunDone };
+    case 'failed':
+      return {
+        text:
+          runs.last.failedStep === null
+            ? WORKFLOW_COPY.list.lastRunFailed
+            : WORKFLOW_COPY.list.lastRunFailedAtStep(runs.last.failedStep),
+      };
+    case 'cancelled':
+      return { text: WORKFLOW_COPY.list.lastRunCanceled };
+    case 'timed-out':
+      return { text: WORKFLOW_COPY.list.lastRunTimedOut };
+    default:
+      return null;
+  }
 }
 
 /**
  * Line two of a row. A file the Bureau cannot use names its file and the problem. Any other says
- * what failed to load for a source the engine could not load, then the run in progress, the steps
- * of the file, and how many runs began in the last 24 hours. The date is never repeated here.
+ * what failed to load for a source the engine could not load, then the current run, the steps of
+ * the file, its durable total, and its last settled outcome. The date is never repeated here.
  */
-export function rowLine(row: CatalogRow, runs: WorkflowRunCounts | null | undefined): LinePart[] {
+export function rowLine(
+  row: CatalogRow,
+  runs: ListRunCounts | null | undefined,
+  now: number,
+): LinePart[] {
   if (row.file?.state === 'invalid') {
+    const fileName = WORKFLOW_COPY.list.fileName(row.name);
+    if (row.problem?.syntax !== undefined) {
+      return [
+        {
+          text: problemSentence(fileName, row.problem, row.problem.syntax),
+          testId: 'workflow-problem',
+        },
+      ];
+    }
     return [
-      { text: WORKFLOW_COPY.list.fileName(row.name) },
+      { text: fileName },
       ...(row.problem === null ? [] : [{ text: row.problem.message, testId: 'workflow-problem' }]),
     ];
   }
@@ -138,15 +222,38 @@ export function rowLine(row: CatalogRow, runs: WorkflowRunCounts | null | undefi
   if (row.failure !== null) {
     parts.push({ text: WORKFLOW_COPY.sourceFailed(row.failure), testId: 'workflow-failure' });
   }
-  if (runs !== null && runs !== undefined && runs.active > 0) {
-    parts.push({ text: WORKFLOW_COPY.list.runningNow, status: 'Running' });
+  if (runs !== null && runs !== undefined && hasBureauRunReceipts(runs)) {
+    const current = currentRunLine(runs);
+    if (current !== null) parts.push(current);
   }
   const steps = row.file?.steps;
   if (steps !== null && steps !== undefined) {
     parts.push({ text: WORKFLOW_COPY.list.steps(steps.length) });
   }
-  if (runs !== null && runs !== undefined && runs.last24Hours > 0) {
-    parts.push({ text: WORKFLOW_COPY.list.runs(runs.last24Hours), testId: 'workflow-run-counts' });
+  if (runs !== null && runs !== undefined) {
+    if (hasBureauRunReceipts(runs) && runs.total > 0) {
+      parts.push({ text: WORKFLOW_COPY.list.runs(runs.total), testId: 'workflow-run-counts' });
+      const last = lastRunLine(runs);
+      if (last !== null) parts.push(last);
+    } else if (!hasBureauRunReceipts(runs) && runs.lastRunAt !== null) {
+      const at = Date.parse(runs.lastRunAt);
+      if (row.kind === 'code' && !Number.isNaN(at)) {
+        parts.push({
+          text: WORKFLOW_COPY.list.codeActivity(
+            runs.today,
+            runs.running,
+            formatRelativeTime(at, now),
+          ),
+          testId: 'workflow-run-counts',
+        });
+      } else {
+        parts.push({
+          text: WORKFLOW_COPY.list.runsToday(runs.today),
+          testId: 'workflow-run-counts',
+        });
+        if (runs.running > 0) parts.push({ text: WORKFLOW_COPY.list.runningRuns(runs.running) });
+      }
+    }
   }
   return parts;
 }
@@ -176,8 +283,8 @@ export function workflowListRow(
         : segment === 'paused'
           ? WORKFLOW_COPY.list.statusPaused
           : null,
-    date: rowDate(runs, now, zone),
-    line: rowLine(row, runs),
+    date: rowDate(row.kind, runs, now, zone),
+    line: rowLine(row, runs, now),
   };
 }
 

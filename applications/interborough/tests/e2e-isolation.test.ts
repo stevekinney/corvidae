@@ -34,13 +34,43 @@ function callsOf(source: string, callee: string): string[] {
   return calls;
 }
 
+/** A link assertion does not start a chat, unlike a route use elsewhere in a second-host spec. */
+function startsChatOnSecondHost(source: string): boolean {
+  const withoutHrefAssertions = callsOf(source, 'toHaveAttribute').reduce(
+    (remaining, call) => remaining.replace(call, call.replaceAll('/chats/new', '')),
+    source,
+  );
+  return (
+    withoutHrefAssertions.includes('baseURL: E2E_BUREAU_URL') &&
+    withoutHrefAssertions.includes('/chats/new')
+  );
+}
+
+describe('second-host chat isolation detection', () => {
+  test('requires cleanup for a second-host new-chat route use', () => {
+    expect(
+      startsChatOnSecondHost(
+        "test.use({ baseURL: E2E_BUREAU_URL }); await page.goto('/chats/new');",
+      ),
+    ).toBe(true);
+  });
+
+  test('does not mistake an asserted new-chat link for a chat the spec started', () => {
+    expect(
+      startsChatOnSecondHost(
+        "test.use({ baseURL: E2E_BUREAU_URL }); await expect(link).toHaveAttribute('href', '/chats/new?from=workflows');",
+      ),
+    ).toBe(false);
+  });
+});
+
 describe('end-to-end spec isolation', () => {
   test('a spec that starts a chat on the second host deletes what it started', () => {
     const offenders = specs
       .filter(
         ({ source }) =>
           callsOf(source, 'runToEnd').some((call) => call.includes('E2E_BUREAU_URL')) ||
-          (source.includes('baseURL: E2E_BUREAU_URL') && source.includes('/chats/new')),
+          startsChatOnSecondHost(source),
       )
       .filter(({ source }) => !source.includes('deleteChats('))
       .map(({ name }) => name);

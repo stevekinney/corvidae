@@ -172,7 +172,16 @@ for (const argumentsList of [
 
 describe('supervise', () => {
   test('starts the host again on exit code 75 and ends with the first other code', () => {
-    expect(restarted).toMatchObject({ code: 3, starts: 3 });
+    if (processEnvironment()['COR_2653_TRACE_ASSERTIONS'] === '1') {
+      process.stdout.write(`COR2653_ASSERTION ${new Date().toISOString()}\n`);
+    }
+    try {
+      expect(restarted).toMatchObject({ code: 3, starts: 3 });
+    } finally {
+      if (processEnvironment()['COR_2653_TRACE_ASSERTIONS'] === '1') {
+        process.stdout.write(`COR2653_VERDICT ${new Date().toISOString()}\n`);
+      }
+    }
   });
 
   test.each(exitCodes)('ends with exit code %i without starting it again', (exitCode) => {

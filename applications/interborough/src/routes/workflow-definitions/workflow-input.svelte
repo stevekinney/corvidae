@@ -41,7 +41,7 @@
     type InputIssue,
     type InputState,
   } from './run-setup-model.ts';
-  import { locateJsonProblem } from './workflow-source.ts';
+  import { locateJsonProblem } from '@lostgradient/bureau/workflow-json';
 
   interface Props {
     /** The JSON Schema the input is described by, or `undefined` when the workflow declares none. */

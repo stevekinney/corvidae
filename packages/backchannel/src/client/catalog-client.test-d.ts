@@ -1,3 +1,4 @@
+import { createProbeClientWithTransport } from '../__fixtures__/probe-client/portable-operation-client.generated.ts';
 import type { CatalogCallOptions, CatalogClient, CatalogTransport } from './catalog-client.ts';
 
 type Operations = {
@@ -37,3 +38,8 @@ export const reading: CatalogTransport = async (_operationName, _input, options)
   const call: CatalogCallOptions | undefined = options;
   return call?.signal?.aborted;
 };
+
+const generated = createProbeClientWithTransport(ignoring);
+export const generatedResult: Promise<null> = generated['probe.jobs.cancel']({ id: 'job' });
+// @ts-expect-error generated input requires an id.
+generated['probe.jobs.cancel']({});

@@ -1,0 +1,44 @@
+{
+  "issue": "COR-2598",
+  "branch": "steve/cor-2598-composable",
+  "checkedAt": "03fb157a5cfe3ff6d3b39fcb100457712bcc0cf6",
+  "briefVersion": "7b9e8a74db34",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Server regression: synchronous and asynchronous factories start once and serve repeated requests."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Server regressions cover normalized Unicode and encoded mount prefixes, opaque encoded remainders, base, request properties, adjacent fallback and service 404."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Server regression covers external and internal admission, forwarded values and cancellation."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Server regressions verify normalized equivalent and protected prefixes, route and asset collisions, and reject encoded separators before startup."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "Coordinator runtime-lifecycle browser suite passed at 03fb157a; server suite covers failed startup and exactly-once cleanup. Evidence: tmp/chef/2026-11-23-cor-2598-candidate-named-gates.log."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "Server regressions cover host stream release after revocation and listener-owned WebSocket upgrade."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "Coordinator package-consumer suite passed at 03fb157a, including installed starter mounts in development and production. Evidence: tmp/chef/2026-11-23-cor-2598-candidate-named-gates.log."
+    }
+  ]
+}

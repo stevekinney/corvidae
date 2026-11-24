@@ -1,0 +1,279 @@
+{
+  "issue": "COR-2596_COR-2597_COR-2598_COR-2599_COR-2600_COR-2601_COR-2602_COR-2651",
+  "branch": "steve/composable-portable-credentials-refunds",
+  "checkedAt": "199b63acae9e62da8e77fb045216e8758398de4b",
+  "briefVersion": "4be05d6acd48",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "COR-2596/AC1",
+      "status": "met-on-branch",
+      "evidence": "behavior-validation.test.ts round trips equipment and books; Weft golden adds 111 MCP eligibility fields only"
+    },
+    {
+      "id": "COR-2596/AC2",
+      "status": "met-on-branch",
+      "evidence": "behavior-validation.test.ts checks repeat generation and instrumented factories"
+    },
+    {
+      "id": "COR-2596/AC3",
+      "status": "met-on-branch",
+      "evidence": "behavior-validation.test.ts checks plain callable and declared and absent replay"
+    },
+    {
+      "id": "COR-2596/AC4",
+      "status": "met-on-branch",
+      "evidence": "behavior-validation.test.ts verifies directional paging, observation and replay compatibility, nested transforms and deterministic invalid catalog diagnostics without callbacks"
+    },
+    {
+      "id": "COR-2596/AC5",
+      "status": "met-on-branch",
+      "evidence": "behavior-validation.test.ts executes both catalog operations and checks browser bundle graph; bun run typecheck passed"
+    },
+    {
+      "id": "COR-2597/AC1",
+      "status": "met-on-branch",
+      "evidence": "generate-operation-client.test.ts recording transport"
+    },
+    {
+      "id": "COR-2597/AC2",
+      "status": "met-on-branch",
+      "evidence": "generate-operation-client.test.ts cancellation and structured fault"
+    },
+    {
+      "id": "COR-2597/AC3",
+      "status": "met-on-branch",
+      "evidence": "generate-operation-client.test.ts Fetch request and unchanged input"
+    },
+    {
+      "id": "COR-2597/AC4",
+      "status": "met-on-branch",
+      "evidence": "generate-operation-client.test.ts, catalog-client.test-d.ts and scratch round1-regeneration.log"
+    },
+    {
+      "id": "COR-2597/AC5",
+      "status": "met-on-branch",
+      "evidence": "The merged 113cdc2 candidate’s full storage, credentials and Backchannel archives were installed into a clean consumer; the generated Fetch browser page and injected bridge both built without any forbidden inputs, and deterministic regeneration passed. Exact archives and inputs in 2026-11-23-composable-next-batch-archive-proof.log."
+    },
+    {
+      "id": "COR-2598/AC1",
+      "status": "met-on-branch",
+      "evidence": "Server regression: synchronous and asynchronous factories start once and serve repeated requests."
+    },
+    {
+      "id": "COR-2598/AC2",
+      "status": "met-on-branch",
+      "evidence": "Server regressions cover normalized Unicode and encoded mount prefixes, opaque encoded remainders, base, request properties, adjacent fallback and service 404."
+    },
+    {
+      "id": "COR-2598/AC3",
+      "status": "met-on-branch",
+      "evidence": "Server regression covers external and internal admission, forwarded values and cancellation."
+    },
+    {
+      "id": "COR-2598/AC4",
+      "status": "met-on-branch",
+      "evidence": "Server regressions verify normalized equivalent and protected prefixes, route and asset collisions, and reject encoded separators before startup."
+    },
+    {
+      "id": "COR-2598/AC5",
+      "status": "met-on-branch",
+      "evidence": "Coordinator runtime-lifecycle browser suite passed at 03fb157a; server suite covers failed startup and exactly-once cleanup. Evidence: tmp/chef/2026-11-23-cor-2598-candidate-named-gates.log."
+    },
+    {
+      "id": "COR-2598/AC6",
+      "status": "met-on-branch",
+      "evidence": "Server regressions cover host stream release after revocation and listener-owned WebSocket upgrade."
+    },
+    {
+      "id": "COR-2598/AC7",
+      "status": "met-on-branch",
+      "evidence": "Coordinator package-consumer suite passed at 03fb157a, including installed starter mounts in development and production. Evidence: tmp/chef/2026-11-23-cor-2598-candidate-named-gates.log."
+    },
+    {
+      "id": "COR-2599/AC1",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/mcp/src/http.test.ts: canonical metadata and bearer challenges"
+    },
+    {
+      "id": "COR-2599/AC2",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/mcp/src/http.test.ts: current principal and delegation after dispatch await, cancellation before operation admission, and delayed body in correction worktree"
+    },
+    {
+      "id": "COR-2599/AC3",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/mcp/src/http.test.ts: delegable and denied scope challenges"
+    },
+    {
+      "id": "COR-2599/AC4",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/mcp/src/http.test.ts: size, forwarded host, origin, cancellation during authority recheck and scope revocation in correction worktree"
+    },
+    {
+      "id": "COR-2599/AC5",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/mcp/src/installed.integration.test.ts: installed archive listener and dependency graph"
+    },
+    {
+      "id": "COR-2600/AC1",
+      "status": "met-on-branch",
+      "evidence": "test:browser-sign-in: real local OIDC issuer, standalone and actual Velveteen mount Standard tmpdir correction retained the exact real named test and no-unregistered-environment policy passed."
+    },
+    {
+      "id": "COR-2600/AC2",
+      "status": "met-on-branch",
+      "evidence": "test:browser-sign-in: real local OIDC issuer, standalone and actual Velveteen mount Standard tmpdir correction retained the exact real named test and no-unregistered-environment policy passed."
+    },
+    {
+      "id": "COR-2600/AC3",
+      "status": "met-on-branch",
+      "evidence": "test:browser-sign-in: real local OIDC issuer, standalone and actual Velveteen mount Standard tmpdir correction retained the exact real named test and no-unregistered-environment policy passed."
+    },
+    {
+      "id": "COR-2600/AC4",
+      "status": "met-on-branch",
+      "evidence": "test:browser-sign-in: real local OIDC issuer, standalone and actual Velveteen mount Standard tmpdir correction retained the exact real named test and no-unregistered-environment policy passed."
+    },
+    {
+      "id": "COR-2600/AC5",
+      "status": "met-on-branch",
+      "evidence": "test:browser-sign-in: real local OIDC issuer, standalone and actual Velveteen mount Standard tmpdir correction retained the exact real named test and no-unregistered-environment policy passed."
+    },
+    {
+      "id": "COR-2601/AC1",
+      "status": "met-on-branch",
+      "evidence": "Named test:api-keys:storage passed 4/4, 40 assertions. Real PostgreSQL two-host case verifies exact subject/workspace/read scope, one-time result disclosure and no stored/listed secret. Source uses crypto.getRandomValues."
+    },
+    {
+      "id": "COR-2601/AC2",
+      "status": "met-on-branch",
+      "evidence": "Named test:api-keys:storage verifies non-manager and foreign-workspace list/issue/rotate/revoke are denied without storage mutation, and verifies denied nondelegable scope."
+    },
+    {
+      "id": "COR-2601/AC3",
+      "status": "met-on-branch",
+      "evidence": "Named test:api-keys:storage observes predecessor/successor overlap and exact predecessor retirement time."
+    },
+    {
+      "id": "COR-2601/AC4",
+      "status": "met-on-branch",
+      "evidence": "Named test:api-keys:storage deterministically holds rotation while the second PostgreSQL host commits revoke, then asserts no usable successor and consistent index."
+    },
+    {
+      "id": "COR-2601/AC5",
+      "status": "met-on-branch",
+      "evidence": "Named test:api-keys:storage closes and reopens SQLite and verifies the successor’s committed identity."
+    },
+    {
+      "id": "COR-2601/AC6",
+      "status": "met-on-branch",
+      "evidence": "Named test:api-keys:storage uses two instances against a real PostgreSQL primary and verifies immediate revocation and current membership enforcement."
+    },
+    {
+      "id": "COR-2601/AC7",
+      "status": "met-on-branch",
+      "evidence": "Named test:api-keys:storage rejects a backend without conditional atomic batches before any write."
+    },
+    {
+      "id": "COR-2601/AC8",
+      "status": "met-on-branch",
+      "evidence": "Named test:api-keys:storage verifies public-ID revocation, refused authentication and secret/verifier-free listings across both hosts."
+    },
+    {
+      "id": "COR-2601/AC9",
+      "status": "met-on-branch",
+      "evidence": "Named credentials test exits 0 (8 cases, 197 assertions). Backchannel durable-api-key.test.ts drives actual Fetch and Backchannel operation rights and asserts unchanged rename state. Full Backchannel 749/1942 and isolated installed Weft codegen 15/91 prove the exact new workspace dependency and its packed transitive fixture."
+    },
+    {
+      "id": "COR-2601/AC10",
+      "status": "met-on-branch",
+      "evidence": "Named credentials test verifies invalid or ambiguous explicit credentials take precedence over an otherwise valid session without protected callback execution."
+    },
+    {
+      "id": "COR-2601/AC11",
+      "status": "met-on-branch",
+      "evidence": "Named credentials test uses real protected MCP handler around Armorer, verifies issued API key receives 401 and a valid OAuth grant reaches initialization, and asserts nested Velveteen fetch sends no ambient X-API-Key."
+    },
+    {
+      "id": "COR-2602/AC1",
+      "status": "met-on-branch",
+      "evidence": "demo ledger and Bureau cross-process admission tests"
+    },
+    {
+      "id": "COR-2602/AC2",
+      "status": "met-on-branch",
+      "evidence": "demo ledger test"
+    },
+    {
+      "id": "COR-2602/AC3",
+      "status": "met-on-branch",
+      "evidence": "Bureau cross-process admission tests"
+    },
+    {
+      "id": "COR-2602/AC4",
+      "status": "met-on-branch",
+      "evidence": "demo ledger test"
+    },
+    {
+      "id": "COR-2602/AC5",
+      "status": "met-on-branch",
+      "evidence": "Bureau process recovery test"
+    },
+    {
+      "id": "COR-2602/AC6",
+      "status": "met-on-branch",
+      "evidence": "Bureau process recovery test"
+    },
+    {
+      "id": "COR-2602/AC7",
+      "status": "met-on-branch",
+      "evidence": "Bureau process recovery test"
+    },
+    {
+      "id": "COR-2602/AC8",
+      "status": "met-on-branch",
+      "evidence": "demo registered plugin test c3 verifies the real app-mount continuation and pending-state phrase, and migrates the Chat and Reviews Playwright callers. The product gate requires the corrected hosted browser run. C6 holds and retries a real one-policy approval, verifies the second real response, and then verifies its provider-pending result. Mounted distinct-two-policy control advances from tool tier to registry tier and produces one result after both."
+    },
+    {
+      "id": "COR-2602/AC9",
+      "status": "met-on-branch",
+      "evidence": "demo plugin and tools tests c3 verifies mounted allow-all still interrupts for approval and the canonical mode marker prevents an invalid remembered bypass. c4 enforces the naming taxonomy at the plugin boundary without altering durable release identity. C6 mounted test proves real rememberable on-changes coverage via a harmless mutation, preserving the refund’s no-remember approval policy."
+    },
+    {
+      "id": "COR-2602/AC10",
+      "status": "met-on-branch",
+      "evidence": "demo plugin and tools tests"
+    },
+    {
+      "id": "COR-2602/AC11",
+      "status": "met-on-branch",
+      "evidence": "demo registered plugin deny/reject tests"
+    },
+    {
+      "id": "COR-2602/AC12",
+      "status": "met-on-branch",
+      "evidence": "Bureau process recovery test Nine process cases and 48 assertions on the c4 source passed, including re-delivery after process death."
+    },
+    {
+      "id": "COR-2602/AC13",
+      "status": "met-on-branch",
+      "evidence": "demo registered plugin supersession and stale-release tests"
+    },
+    {
+      "id": "COR-2651/AC1",
+      "status": "met-on-branch",
+      "evidence": "Exact final Playwright fixture asserts both reference and nested triggers match :active before reading or comparing. Prebuilt stock fixture, real Chromium selected case passed 1/1."
+    },
+    {
+      "id": "COR-2651/AC2",
+      "status": "met-on-branch",
+      "evidence": "Only this test page suppresses the transitions and reapplies after reload. Existing fixture coverage and default timeout/retry behavior unchanged. named Chromium case passed after prebuild."
+    },
+    {
+      "id": "COR-2651/AC3",
+      "status": "met-on-branch",
+      "evidence": "Disposable wrong-color injection produced exit 1 with expected oklch pressed surface and received rgb(255, 0, 0) after both active checks. Temporary code restored. Evidence and exact patch under COR-2651-a2b3e32b."
+    }
+  ]
+}

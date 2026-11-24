@@ -992,6 +992,50 @@ export function createReviewResolution<D extends AgentDefinitions>(
     };
   }
 
+  function attachTerminalRelease(
+    attachment: ReviewAuditAttachment,
+    review: SessionPendingReview,
+    verified: boolean,
+    decision: ResolveReviewInput['decision'],
+  ): void {
+    if (!verified || review.kind !== 'tool-approval' || decision === 'approve') return;
+    for (const [handler, contribution] of core.terminalReviewReleases ?? []) {
+      const release = contribution.release;
+      const revision = review.approval.approvalBinding?.toolDefinitionRevision;
+      if (
+        review.agentName !== `${contribution.plugin}:${release.agent}` ||
+        review.approval.toolName !== release.tool ||
+        revision !== release.toolRevision
+      )
+        continue;
+      const identifier = release.identifier(review.approval.arguments);
+      if (typeof identifier !== 'string' || identifier.length === 0)
+        throw new Error('Invalid terminal review release identifier');
+      attachment.terminalRelease = {
+        handler,
+        identifier,
+        runId: review.runId,
+        reviewId: review.id,
+        round: review.round,
+        toolRevision: revision,
+      };
+    }
+  }
+
+  function assertTerminalReleaseRecorded(
+    attachment: ReviewAuditAttachment,
+    recorded: boolean,
+  ): void {
+    if (attachment.terminalRelease && !recorded)
+      throw new Error('Terminal review release could not be durably recorded');
+  }
+
+  function terminalReleaseField(release: ReviewAuditAttachment['terminalRelease']): {
+    terminalRelease?: NonNullable<ReviewAuditAttachment['terminalRelease']>;
+  } {
+    return release === undefined ? {} : { terminalRelease: release };
+  }
+
   async function resolveReview(
     input: ResolveReviewInput,
     // COR-1579: the human wait of a session run another process holds, derived from durable
@@ -1032,6 +1076,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
             cleanup.owner,
             cleanup.decisionSurface,
           );
+          Object.assign(cleanupAuditAttachment, terminalReleaseField(cleanup.terminalRelease));
           const cleanupAuditAppended = await peers.persistReviewResolutionWithRetry(
             cleanup.sessionId,
             input.id,
@@ -1043,6 +1088,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
             cleanupAuditAttachment,
             cleanup.rememberTool,
           );
+          assertTerminalReleaseRecorded(cleanupAuditAttachment, cleanupAuditAppended);
           reviewResolutionCleanupPending.delete(input.id);
           await releaseDecidedReview(cleanup.runId, cleanup.review.id);
           if (cleanupAuditAppended) {
@@ -1229,6 +1275,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
     // Set once a step that cannot be shown not to have acted has begun: a throw before it is a
     // proven pre-execution failure, which releases an approval's claim.
     let actionStarted = false;
+    let verifiedTerminalApproval = false;
     // COR-1920: what the audit entry says of each secret answer this delivery stored.
     let secretAnswerAudit: readonly SecretAnswerAuditEntry[] = [];
     // COR-2009: the audit record of the approved call, once it has run.
@@ -1449,6 +1496,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
               message: `[bureau] Denied approval "${review.id}" was already terminal or absent: ${serializeUnknownError(error)}`,
             });
           }
+          verifiedTerminalApproval = true;
         }
       } else {
         // AB-46: a `human-wait` park is a genuine durable park
@@ -1495,6 +1543,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
         decisionOwner,
         decisionSurfaceOf(review, input),
       );
+      attachTerminalRelease(auditAttachment, review, verifiedTerminalApproval, input.decision);
       try {
         auditAlreadyAppended = await peers.persistReviewResolutionWithRetry(
           review.sessionId,
@@ -1507,6 +1556,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
           auditAttachment,
           rememberTool,
         );
+        assertTerminalReleaseRecorded(auditAttachment, auditAlreadyAppended);
       } catch (error) {
         // AB-391 (Codex P1 review finding, PR #601, "Distinguish concurrent
         // resolvers from commit retries"): a genuine CONFLICT here means a
@@ -1536,6 +1586,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
             rememberTool,
             owner: decisionOwner,
             decisionSurface: decisionSurfaceOf(review, input),
+            ...terminalReleaseField(auditAttachment.terminalRelease),
           });
         }
         resolvingReviewIds.delete(review.id);

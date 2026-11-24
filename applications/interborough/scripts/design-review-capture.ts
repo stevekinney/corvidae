@@ -167,6 +167,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/chat-new.spec.ts',
   'tests/e2e/chat-new-states.spec.ts',
   'tests/e2e/chat-new-workflows.spec.ts',
+  'tests/e2e/workflows-list-states.spec.ts',
   // Workflow detail, its runs and its More menu on the PageWorkflow board (COR-2431).
   'tests/e2e/workflow-detail-states.spec.ts',
   'tests/e2e/agent-duplicate.spec.ts',

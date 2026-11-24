@@ -4,25 +4,35 @@ import { cpus, totalmem } from 'node:os';
 import { join, resolve } from 'node:path';
 import { waitUntil } from '../../testing/testing/src/wait-until.ts';
 import { rootScriptEnvironment } from '../environment-configuration.ts';
+import {
+  assertionOverlapsCompetitor,
+  competitorIntervals,
+  qualificationMode,
+} from './cor-2653-overlap.ts';
 
 const root = resolve(import.meta.dir, '../..');
 const environment = rootScriptEnvironment();
 const output = join(root, 'qualification-output');
 const candidate = environment['QUALIFICATION_SHA'] ?? '';
 const request = environment['QUALIFICATION_REQUEST'] ?? '';
+const mode = qualificationMode(request, candidate);
+const competitionOnly = mode === 'competition-only';
 const base = '299f3776324f7ea124e635c3befc1f493ae55e87';
 await mkdir(output, { recursive: true });
 await writeFile(join(output, 'request.json'), JSON.stringify({ request, candidate }));
-if (request !== `COR-2653-qualification:${candidate}` || !/^[a-f0-9]{40}$/.test(candidate))
+if (mode === undefined)
   throw new Error('Qualification request must name the exact checked-out SHA.');
 
 type Run = {
   child: ReturnType<typeof Bun.spawn>;
   output: string;
+  stdout: string;
   finished: boolean;
   code?: number;
   startedAt: string;
   finishedAt?: string;
+  assertionAt?: string;
+  verdictAt?: string;
   done: Promise<number>;
 };
 function start(
@@ -41,21 +51,34 @@ function start(
   const run: Run = {
     child,
     output: '',
+    stdout: '',
     finished: false,
     startedAt: new Date().toISOString(),
     done: Promise.resolve(1),
   };
-  const forward = async (stream: ReadableStream<Uint8Array>) => {
+  const forward = async (stream: ReadableStream<Uint8Array>, standardOutput: boolean) => {
+    let tail = '';
     for await (const bytes of stream) {
       const chunk = new TextDecoder().decode(bytes);
       run.output += chunk;
+      if (standardOutput) run.stdout += chunk;
+      const scanned = tail + chunk;
+      const assertion = /COR2653_ASSERTION (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z)/.exec(
+        scanned,
+      )?.[1];
+      const verdict = /COR2653_(?:VERDICT|TEST_END) (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z)/.exec(
+        scanned,
+      )?.[1];
+      if (run.assertionAt === undefined && assertion !== undefined) run.assertionAt = assertion;
+      if (run.verdictAt === undefined && verdict !== undefined) run.verdictAt = verdict;
+      tail = scanned.slice(-128);
       await appendFile(join(output, `${name}.log`), chunk);
     }
   };
   run.done = Promise.all([
     child.exited,
-    forward(child.stdout as ReadableStream<Uint8Array>),
-    forward(child.stderr as ReadableStream<Uint8Array>),
+    forward(child.stdout as ReadableStream<Uint8Array>, true),
+    forward(child.stderr as ReadableStream<Uint8Array>, false),
   ]).then(async ([code]) => {
     run.finished = true;
     run.code = code;
@@ -146,6 +169,7 @@ let activeMeasurement: { label: string; stop: () => number } | undefined;
 const evidence: Record<string, unknown> = {
   base,
   candidate,
+  mode: competitionOnly ? 'competition-only' : 'full',
   runner: process.platform,
   architecture: process.arch,
   processors: cpus().length,
@@ -187,6 +211,7 @@ try {
     ['base', control, base],
     ['bad', bad, candidate],
   ] as const) {
+    if (competitionOnly && name === 'base') continue;
     await command(`checkout-${name}`, root, ['git', 'worktree', 'add', '--detach', path, revision]);
     await command(`install-${name}`, path, ['bun', 'install', '--frozen-lockfile']);
     await command(`metadata-${name}`, path, ['bunx', 'turbo', 'run', 'metadata']);
@@ -214,195 +239,204 @@ try {
     allRuns.push(run);
     return run;
   };
-  const baseline = browser('baseline-package-collision', control, [
-    'tests/e2e/29-goals.spec.ts',
-    '--grep',
-    'lists the seeded goal at 375 pixels',
-    '--reporter=line',
-  ]);
-  requireResult(
-    (await baseline.done) !== 0 && baseline.output.includes('EADDRINUSE'),
-    'baseline did not reproduce the occupied default block',
-  );
-  const healthy = start('baseline-gated-control', join(control, 'applications/interborough'), [
-    'bun',
-    'scripts/run-gated-browser-suite.ts',
-    'tests/e2e/29-goals.spec.ts',
-    '--grep',
-    'lists the seeded goal at 375 pixels',
-    '--reporter=line',
-  ]);
-  allRuns.push(healthy);
-  requireResult((await healthy.done) === 0, 'baseline gated control failed');
-  evidence['baseline'] = { packageExit: baseline.code, gatedExit: healthy.code };
   const qualification = ['tests/e2e/browser-isolation.qualification.ts', '--reporter=line'];
   const shared = { COR_2653_QUALIFICATION: '1', COR_2653_REVISION: candidate.slice(0, 7) };
-  const first = browser('concurrent-a', a, qualification, {
-    ...shared,
-    INTERBOROUGH_E2E_RUN_ID: 'A',
-  });
-  const second = browser('concurrent-b', b, qualification, {
-    ...shared,
-    INTERBOROUGH_E2E_RUN_ID: 'B',
-  });
-  const [firstPort, secondPort] = await Promise.all([ready(first), ready(second)]);
-  requireResult(Math.abs(firstPort - secondPort) >= 8, 'A and B have overlapping port blocks');
-  type Identity = { run: string; build: { commit: string }; port: number };
-  const identities = await Promise.all([
-    json<Identity>(firstPort + 1, '/identity'),
-    json<Identity>(secondPort + 1, '/identity'),
-  ]);
-  requireResult(
-    identities[0].run === 'A' &&
-      identities[1].run === 'B' &&
-      identities.every((identity) => identity.build.commit === candidate),
-    'identity or build mismatch',
-  );
-  await waitUntil(
-    async () => {
-      if (first.finished || second.finished)
-        throw new Error('A or B ended before both browser actions');
-      const states = await Promise.all([
-        json<{ started: boolean }>(firstPort + 1, '/qualification'),
-        json<{ started: boolean }>(secondPort + 1, '/qualification'),
-      ]);
-      return states.every((state) => state.started);
-    },
-    { message: 'both browsers to verify their seeded host and revision' },
-  );
-  const workflows: unknown[] = [];
-  for (const [port, own, other] of [
-    [firstPort, 'qualification-a', 'qualification-b'],
-    [secondPort, 'qualification-b', 'qualification-a'],
-  ] as const) {
-    for (const id of [own, other]) {
-      const response = await fetch(`http://127.0.0.1:${String(port)}/bureau/jsonrpc`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id,
-          method: 'bureau.workflows.get',
-          params: { id },
-        }),
-      });
-      const answer = (await response.json()) as { result?: { id?: string }; error?: unknown };
-      requireResult(
-        id === own ? answer.result?.id === own : answer.error !== undefined,
-        `workflow ${id} was not isolated at ${String(port)}`,
-      );
-      workflows.push({ port, id, answer });
-    }
-  }
-  for (const port of [firstPort, secondPort])
-    for (let offset = 0; offset < 8; offset += 1) {
-      const response = await fetch(
-        `http://127.0.0.1:${String(port + offset)}${offset === 1 ? '/waiting' : '/'}`,
-        { headers: { accept: 'text/html' } },
-      );
-      requireResult(response.ok, `missing listener at ${String(port + offset)}`);
-    }
-  const addresses = [firstPort, secondPort].flatMap((port) =>
-    Array.from({ length: 8 }, (_, offset) => port + offset),
-  );
-  const owners = await listenerOwners(addresses);
-  for (const [port, path, id] of [
-    [firstPort, a, 'A'],
-    [secondPort, b, 'B'],
-  ] as const) {
-    for (let offset = 0; offset < 8; offset += 1) {
-      const owner = owners.get(port + offset);
-      requireResult(
-        owner?.run === id && owner.cwd.startsWith(path),
-        `listener ${String(port + offset)} belongs to ${JSON.stringify(owner)}`,
-      );
-    }
-  }
-  for (let port = 7399; port <= 7406; port += 1) {
-    const response = await fetch(`http://127.0.0.1:${String(port)}`);
-    const body = await response.text();
-    requireResult(body === `sentinel-${String(port)}`, `sentinel ${String(port)} changed`);
-  }
-  first.child.kill('SIGTERM');
-  first.child.kill('SIGTERM');
-  const firstExit = await first.done;
-  const remainingA = await listenerOwners(
-    Array.from({ length: 8 }, (_, offset) => firstPort + offset),
-  );
-  requireResult(
-    remainingA.size === 0,
-    `A's listeners remained after cleanup: ${JSON.stringify(Object.fromEntries(remainingA))}`,
-  );
-  requireResult(!second.finished, 'B ended before A stopped');
-  await json(secondPort + 1, '/qualification', 'POST');
-  const secondExit = await second.done;
-  requireResult(secondExit === 0, `B failed with ${String(secondExit)}`);
-  evidence['concurrent'] = {
-    firstPort,
-    secondPort,
-    identities,
-    workflows,
-    listenerOwners: Object.fromEntries(owners),
-    firstExit,
-    secondExit,
-    firstStarted: first.startedAt,
-    firstFinished: first.finishedAt,
-    secondStarted: second.startedAt,
-    secondFinished: second.finishedAt,
-  };
-  const races: Record<string, unknown> = {};
-  evidence['allocationRaces'] = races;
-  for (const offset of [1, 6]) {
-    const race = browser(`allocation-race-${String(offset)}`, a, [
+  if (!competitionOnly) {
+    const baseline = browser('baseline-package-collision', control, [
       'tests/e2e/29-goals.spec.ts',
       '--grep',
       'lists the seeded goal at 375 pixels',
       '--reporter=line',
     ]);
-    await waitUntil(() => race.finished || portOf(race) !== undefined, {
-      message: 'port allocation',
-    });
-    requireResult(!race.finished, 'race ended before allocation');
-    const allocatedPort = portOf(race);
-    requireResult(allocatedPort !== undefined, 'race did not report its port');
-    const collisionPort = allocatedPort + offset;
-    const collision = Bun.serve({
-      hostname: '127.0.0.1',
-      port: collisionPort,
-      fetch: () => new Response('race sentinel'),
-    });
-    sentinels.push(collision);
-    await waitUntil(() => race.finished || race.output.includes('retrying with a fresh block'), {
-      message: 'collision retry',
-    });
-    requireResult(!race.finished, 'allocation collision was not retried');
-    const collisionResponse = await fetch(`http://127.0.0.1:${String(collisionPort)}`);
-    const collisionBody = await collisionResponse.text();
-    requireResult(collisionBody === 'race sentinel', 'race sentinel changed');
-    requireResult((await race.done) === 0, 'allocation race failed');
-    races[String(offset)] = { collisionPort, exit: race.code };
-  }
-  const explicit = browser('occupied-override', a, qualification, {
-    ...shared,
-    INTERBOROUGH_E2E_PORT: '7399',
-  });
-  requireResult(
-    (await explicit.done) === 2 && explicit.output.includes('not a free block'),
-    'occupied override did not fail clearly',
-  );
-  evidence['override'] = { exit: explicit.code };
-  const integrationPath = 'applications/interborough/src/host/supervisor.integration.test.ts';
-  const integration = (name: string, path: string) => {
-    const run = start(name, path, ['bun', 'scripts/bun-test.ts', integrationPath]);
-    allRuns.push(run);
-    return run;
-  };
-  const seeded = (name: string, path: string) =>
-    browser(name, path, [
+    requireResult(
+      (await baseline.done) !== 0 && baseline.output.includes('EADDRINUSE'),
+      'baseline did not reproduce the occupied default block',
+    );
+    const healthy = start('baseline-gated-control', join(control, 'applications/interborough'), [
+      'bun',
+      'scripts/run-gated-browser-suite.ts',
       'tests/e2e/29-goals.spec.ts',
       '--grep',
       'lists the seeded goal at 375 pixels',
       '--reporter=line',
+    ]);
+    allRuns.push(healthy);
+    requireResult((await healthy.done) === 0, 'baseline gated control failed');
+    evidence['baseline'] = { packageExit: baseline.code, gatedExit: healthy.code };
+    const first = browser('concurrent-a', a, qualification, {
+      ...shared,
+      INTERBOROUGH_E2E_RUN_ID: 'A',
+    });
+    const second = browser('concurrent-b', b, qualification, {
+      ...shared,
+      INTERBOROUGH_E2E_RUN_ID: 'B',
+    });
+    const [firstPort, secondPort] = await Promise.all([ready(first), ready(second)]);
+    requireResult(Math.abs(firstPort - secondPort) >= 8, 'A and B have overlapping port blocks');
+    type Identity = { run: string; build: { commit: string }; port: number };
+    const identities = await Promise.all([
+      json<Identity>(firstPort + 1, '/identity'),
+      json<Identity>(secondPort + 1, '/identity'),
+    ]);
+    requireResult(
+      identities[0].run === 'A' &&
+        identities[1].run === 'B' &&
+        identities.every((identity) => identity.build.commit === candidate),
+      'identity or build mismatch',
+    );
+    await waitUntil(
+      async () => {
+        if (first.finished || second.finished)
+          throw new Error('A or B ended before both browser actions');
+        const states = await Promise.all([
+          json<{ started: boolean }>(firstPort + 1, '/qualification'),
+          json<{ started: boolean }>(secondPort + 1, '/qualification'),
+        ]);
+        return states.every((state) => state.started);
+      },
+      { message: 'both browsers to verify their seeded host and revision' },
+    );
+    const workflows: unknown[] = [];
+    for (const [port, own, other] of [
+      [firstPort, 'qualification-a', 'qualification-b'],
+      [secondPort, 'qualification-b', 'qualification-a'],
+    ] as const) {
+      for (const id of [own, other]) {
+        const response = await fetch(`http://127.0.0.1:${String(port)}/bureau/jsonrpc`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id,
+            method: 'bureau.workflows.get',
+            params: { id },
+          }),
+        });
+        const answer = (await response.json()) as { result?: { id?: string }; error?: unknown };
+        requireResult(
+          id === own ? answer.result?.id === own : answer.error !== undefined,
+          `workflow ${id} was not isolated at ${String(port)}`,
+        );
+        workflows.push({ port, id, answer });
+      }
+    }
+    for (const port of [firstPort, secondPort])
+      for (let offset = 0; offset < 8; offset += 1) {
+        const response = await fetch(
+          `http://127.0.0.1:${String(port + offset)}${offset === 1 ? '/waiting' : '/'}`,
+          { headers: { accept: 'text/html' } },
+        );
+        requireResult(response.ok, `missing listener at ${String(port + offset)}`);
+      }
+    const addresses = [firstPort, secondPort].flatMap((port) =>
+      Array.from({ length: 8 }, (_, offset) => port + offset),
+    );
+    const owners = await listenerOwners(addresses);
+    for (const [port, path, id] of [
+      [firstPort, a, 'A'],
+      [secondPort, b, 'B'],
+    ] as const) {
+      for (let offset = 0; offset < 8; offset += 1) {
+        const owner = owners.get(port + offset);
+        requireResult(
+          owner?.run === id && owner.cwd.startsWith(path),
+          `listener ${String(port + offset)} belongs to ${JSON.stringify(owner)}`,
+        );
+      }
+    }
+    for (let port = 7399; port <= 7406; port += 1) {
+      const response = await fetch(`http://127.0.0.1:${String(port)}`);
+      const body = await response.text();
+      requireResult(body === `sentinel-${String(port)}`, `sentinel ${String(port)} changed`);
+    }
+    first.child.kill('SIGTERM');
+    first.child.kill('SIGTERM');
+    const firstExit = await first.done;
+    const remainingA = await listenerOwners(
+      Array.from({ length: 8 }, (_, offset) => firstPort + offset),
+    );
+    requireResult(
+      remainingA.size === 0,
+      `A's listeners remained after cleanup: ${JSON.stringify(Object.fromEntries(remainingA))}`,
+    );
+    requireResult(!second.finished, 'B ended before A stopped');
+    await json(secondPort + 1, '/qualification', 'POST');
+    const secondExit = await second.done;
+    requireResult(secondExit === 0, `B failed with ${String(secondExit)}`);
+    evidence['concurrent'] = {
+      firstPort,
+      secondPort,
+      identities,
+      workflows,
+      listenerOwners: Object.fromEntries(owners),
+      firstExit,
+      secondExit,
+      firstStarted: first.startedAt,
+      firstFinished: first.finishedAt,
+      secondStarted: second.startedAt,
+      secondFinished: second.finishedAt,
+    };
+    const races: Record<string, unknown> = {};
+    evidence['allocationRaces'] = races;
+    for (const offset of [1, 6]) {
+      const race = browser(`allocation-race-${String(offset)}`, a, [
+        'tests/e2e/29-goals.spec.ts',
+        '--grep',
+        'lists the seeded goal at 375 pixels',
+        '--reporter=line',
+      ]);
+      await waitUntil(() => race.finished || portOf(race) !== undefined, {
+        message: 'port allocation',
+      });
+      requireResult(!race.finished, 'race ended before allocation');
+      const allocatedPort = portOf(race);
+      requireResult(allocatedPort !== undefined, 'race did not report its port');
+      const collisionPort = allocatedPort + offset;
+      const collision = Bun.serve({
+        hostname: '127.0.0.1',
+        port: collisionPort,
+        fetch: () => new Response('race sentinel'),
+      });
+      sentinels.push(collision);
+      await waitUntil(() => race.finished || race.output.includes('retrying with a fresh block'), {
+        message: 'collision retry',
+      });
+      requireResult(!race.finished, 'allocation collision was not retried');
+      const collisionResponse = await fetch(`http://127.0.0.1:${String(collisionPort)}`);
+      const collisionBody = await collisionResponse.text();
+      requireResult(collisionBody === 'race sentinel', 'race sentinel changed');
+      requireResult((await race.done) === 0, 'allocation race failed');
+      races[String(offset)] = { collisionPort, exit: race.code };
+    }
+    const explicit = browser('occupied-override', a, qualification, {
+      ...shared,
+      INTERBOROUGH_E2E_PORT: '7399',
+    });
+    requireResult(
+      (await explicit.done) === 2 && explicit.output.includes('not a free block'),
+      'occupied override did not fail clearly',
+    );
+    evidence['override'] = { exit: explicit.code };
+  }
+  const integrationPath = 'applications/interborough/src/host/supervisor.integration.test.ts';
+  const integration = (name: string, path: string, trace: boolean) => {
+    const run = start(
+      name,
+      path,
+      ['bun', 'scripts/bun-test.ts', integrationPath],
+      trace ? { COR_2653_TRACE_ASSERTIONS: '1' } : {},
+    );
+    allRuns.push(run);
+    return run;
+  };
+  const seeded = (name: string, path: string, trace: boolean) =>
+    browser(name, path, [
+      'tests/e2e/29-goals.spec.ts',
+      '--grep',
+      'lists the seeded goal at 375 pixels',
+      trace
+        ? `--reporter=line,${join(path, 'scripts/chef/cor-2653-reporter.ts')}`
+        : '--reporter=line',
     ]);
   const supervisor = join(bad, 'applications/interborough/src/host/supervisor.ts');
   const supervisorSource = await readFile(supervisor, 'utf8');
@@ -423,40 +457,93 @@ try {
     ['correct', a, 0],
     ['incorrect', bad, 1],
   ] as const) {
-    for (const order of [
-      'integration-first',
-      'browser-first',
-      'concurrent',
-      'competing-worktree',
-    ] as const) {
+    for (const order of (competitionOnly
+      ? ['competing-worktree']
+      : ['integration-first', 'browser-first', 'concurrent', 'competing-worktree']) as readonly (
+      'integration-first' | 'browser-first' | 'concurrent' | 'competing-worktree'
+    )[]) {
       const finishMeasurement = measureCondition();
       activeMeasurement = { label: `${label}-${order}`, stop: finishMeasurement };
       let integrationResult: Run | undefined;
       let browserResult: Run | undefined;
       const integrationRun = () =>
-        (integrationResult = integration(`${label}-${order}-integration`, path));
-      const browserRun = () => (browserResult = seeded(`${label}-${order}-browser`, path));
+        (integrationResult = integration(
+          `${label}-${order}-integration`,
+          path,
+          order === 'competing-worktree',
+        ));
+      const browserRun = () =>
+        (browserResult = seeded(`${label}-${order}-browser`, path, order === 'competing-worktree'));
       let codes: number[];
       if (order === 'competing-worktree') {
-        const competitor = browser(`${label}-competitor`, b, qualification, {
-          ...shared,
-          INTERBOROUGH_E2E_RUN_ID: `${label}-competitor`,
+        const competitionState = { stopped: false };
+        let failure: unknown;
+        const competitors: Run[] = [];
+        const competition = (async () => {
+          while (!competitionState.stopped) {
+            const competitor = browser(
+              `${label}-competitor-${String(competitors.length + 1)}`,
+              b,
+              [
+                'tests/e2e/29-goals.spec.ts',
+                '--grep',
+                'lists the seeded goal at 375 pixels',
+                '--repeat-each=30',
+                `--reporter=line,${join(b, 'scripts/chef/cor-2653-reporter.ts')}`,
+              ],
+              { INTERBOROUGH_E2E_RUN_ID: `${label}-competitor` },
+            );
+            competitors.push(competitor);
+            requireResult((await competitor.done) === 0, 'competing browser case failed');
+          }
+        })().catch((error: unknown) => {
+          failure = error;
         });
-        const competitorPort = await ready(competitor);
-        const x = integrationRun();
-        const y = browserRun();
-        codes = await Promise.all([x.done, y.done]);
-        requireResult(!competitor.finished, 'competing worktree ended before the cases');
-        await json(competitorPort + 1, '/qualification', 'POST');
-        requireResult((await competitor.done) === 0, 'competing worktree failed');
+        let x: Run;
+        let y: Run;
+        try {
+          await waitUntil(
+            () => failure !== undefined || competitors.some((run) => run.assertionAt !== undefined),
+            { message: 'competing browser first assertion' },
+          );
+          if (failure !== undefined) throw failure;
+          x = integrationRun();
+          y = browserRun();
+          codes = await Promise.all([x.done, y.done]);
+        } finally {
+          competitionState.stopped = true;
+          await competition;
+        }
+        if (failure !== undefined) throw failure;
+        const intervals = competitors.flatMap((run) => competitorIntervals(run.stdout));
         evidence[`${label}-overlap`] = {
-          competitorStarted: competitor.startedAt,
-          competitorFinished: competitor.finishedAt,
+          competitors: competitors.map((run) => ({
+            startedAt: run.startedAt,
+            finishedAt: run.finishedAt,
+            exit: run.code,
+          })),
+          competitorAssertionIntervals: intervals,
           integrationStarted: x.startedAt,
+          integrationFirstAssertion: x.assertionAt,
+          integrationFirstVerdict: x.verdictAt,
           integrationFinished: x.finishedAt,
           browserStarted: y.startedAt,
+          browserFirstAssertion: y.assertionAt,
+          browserFirstVerdict: y.verdictAt,
           browserFinished: y.finishedAt,
         };
+        requireResult(
+          assertionOverlapsCompetitor(x.assertionAt, intervals),
+          'integration first assertion did not overlap a passing competitor action',
+        );
+        requireResult(
+          assertionOverlapsCompetitor(y.assertionAt, intervals),
+          'browser first assertion did not overlap a passing competitor action',
+        );
+        requireResult(
+          x.verdictAt !== undefined && y.verdictAt !== undefined,
+          'first verdict timestamps are missing',
+        );
       } else if (order === 'concurrent') {
         const x = integrationRun();
         const y = browserRun();
@@ -486,35 +573,37 @@ try {
       }
     }
   }
-  const connectTest = 'applications/interborough/tests/e2e/connect-host.integration.test.ts';
-  const connectFixture = 'applications/interborough/tests/e2e/connect-host.test-support.ts';
-  await writeFile(join(control, connectTest), await readFile(join(a, connectTest)));
-  await writeFile(join(control, connectFixture), await readFile(join(a, connectFixture)));
-  const baseConnect = start('base-connect-control', control, [
-    'bun',
-    'scripts/bun-test.ts',
-    connectTest,
-  ]);
-  const candidateConnect = start('candidate-connect-control', a, [
-    'bun',
-    'scripts/bun-test.ts',
-    connectTest,
-  ]);
-  allRuns.push(baseConnect, candidateConnect);
-  const connectCodes = await Promise.all([baseConnect.done, candidateConnect.done]);
-  requireResult(
-    connectCodes[0] !== 0 && connectCodes[1] === 0,
-    `connect control verdict mismatch: ${connectCodes.join(',')}`,
-  );
-  requireResult(
-    baseConnect.output.includes('Expected EADDRINUSE'),
-    'base control failed before the intended bind assertion',
-  );
-  requireResult(
-    !candidateConnect.output.includes('did not build'),
-    'candidate connect control emitted panel build warnings',
-  );
-  evidence['connectControl'] = { base: connectCodes[0], candidate: connectCodes[1] };
+  if (!competitionOnly) {
+    const connectTest = 'applications/interborough/tests/e2e/connect-host.integration.test.ts';
+    const connectFixture = 'applications/interborough/tests/e2e/connect-host.test-support.ts';
+    await writeFile(join(control, connectTest), await readFile(join(a, connectTest)));
+    await writeFile(join(control, connectFixture), await readFile(join(a, connectFixture)));
+    const baseConnect = start('base-connect-control', control, [
+      'bun',
+      'scripts/bun-test.ts',
+      connectTest,
+    ]);
+    const candidateConnect = start('candidate-connect-control', a, [
+      'bun',
+      'scripts/bun-test.ts',
+      connectTest,
+    ]);
+    allRuns.push(baseConnect, candidateConnect);
+    const connectCodes = await Promise.all([baseConnect.done, candidateConnect.done]);
+    requireResult(
+      connectCodes[0] !== 0 && connectCodes[1] === 0,
+      `connect control verdict mismatch: ${connectCodes.join(',')}`,
+    );
+    requireResult(
+      baseConnect.output.includes('Expected EADDRINUSE'),
+      'base control failed before the intended bind assertion',
+    );
+    requireResult(
+      !candidateConnect.output.includes('did not build'),
+      'candidate connect control emitted panel build warnings',
+    );
+    evidence['connectControl'] = { base: connectCodes[0], candidate: connectCodes[1] };
+  }
   const peak = await Bun.file('/sys/fs/cgroup/memory.peak').text();
   requireResult(Number(peak) > 0, 'runner did not provide peak memory');
 } catch (error) {

@@ -6,6 +6,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import {
+  createRegenerationProofAgent,
+  REMEMBER_APPROVAL_AGENT,
+} from '../../tests/e2e/regeneration-proof-agent.ts';
 import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { startHost, type Host } from './host.ts';
 
@@ -154,10 +158,109 @@ const interruptOf = (stream: string): string =>
   /"interrupts":\[\{"id":"([^"]+)"/.exec(stream)?.[1] ?? '';
 
 describe('the tool-runner approval over the mount', () => {
+  test('the harmless on-changes fixture runs after a remembered approval', async () => {
+    const host = await start({ extraAgents: { agents: createRegenerationProofAgent() } });
+    const first = await streamOf(host, REMEMBER_APPROVAL_AGENT, body('remember-proof'));
+    expect(first).toContain('"type":"interrupt"');
+    expect(first).toContain('(mode: on-mutation)');
+    const approved = await streamOf(
+      host,
+      REMEMBER_APPROVAL_AGENT,
+      body('remember-proof', {
+        messages: [],
+        resume: [
+          {
+            interruptId: interruptOf(first),
+            status: 'resolved',
+            payload: { decision: 'approve', remember: true },
+          },
+        ],
+      }),
+    );
+    expect(approved).toContain('The fixture value was recorded.');
+    expect(approved).toContain('"remembered":true');
+  });
+
+  test('an explicitly always-gated refund requires both independent approval rounds', async () => {
+    const host = await start();
+    type Review = {
+      id: string;
+      sessionId?: string;
+      approval: { round?: number; policyPauseTier?: string };
+    };
+    type Answer = {
+      result: {
+        hash: string;
+        overrides: object;
+        reviews: Review[];
+        decision?: string;
+        receipt?: string;
+      };
+      error?: unknown;
+    };
+    async function rpc(method: string, params: object): Promise<Answer> {
+      const response = await fetch(new URL('/bureau/jsonrpc', host.url), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      });
+      return (await response.json()) as Answer;
+    }
+    const initial = await rpc('bureau.agents.overrides.get', { id: 'demo:tool-runner' });
+    const updated = await rpc('bureau.agents.overrides.update', {
+      id: 'demo:tool-runner',
+      expectedHash: initial.result.hash,
+      overrides: { ...initial.result.overrides, approvals: { 'issue-refund': 'always' } },
+    });
+    expect(updated.error).toBeUndefined();
+    for (const thread of ['direct-always', 'retry-always']) {
+      await streamOf(host, 'demo:tool-runner', body(thread));
+      const listed = await rpc('bureau.reviews.list', {});
+      const review = listed.result.reviews.find((item) => item.sessionId === thread);
+      expect(review).toBeDefined();
+      if (!review) throw new Error('Missing review');
+      const result = await rpc('bureau.reviews.resolve', {
+        id: review.id,
+        round: review.approval.round,
+        decision: 'approve',
+      });
+      expect(result.error).toBeUndefined();
+      expect(result.result).toMatchObject({ decision: 'approve' });
+      expect(result.result.receipt).toBe('superseded');
+      const after = await rpc('bureau.reviews.list', {});
+      const replacement = after.result.reviews.find((item) => item.id === review.id);
+      if (!replacement) throw new Error('Missing replacement review');
+      expect(review.approval.policyPauseTier).toBe('tool');
+      expect(replacement.approval.policyPauseTier).toBe('registry');
+      const final = await rpc('bureau.reviews.resolve', {
+        id: replacement.id,
+        round: replacement.approval.round,
+        decision: 'approve',
+      });
+      expect(final.error).toBeUndefined();
+      expect(final.result).toMatchObject({ decision: 'approve' });
+      expect(final.result.receipt).not.toBe('superseded');
+      const remaining = await rpc('bureau.reviews.list', {});
+      expect(remaining.result.reviews.some((item) => item.id === review.id)).toBe(false);
+      const messages = await fetch(new URL(`/bureau/ag-ui/threads/${thread}/messages`, host.url));
+      const transcript = (await messages.json()) as {
+        messages: Array<{ role?: string; content?: unknown }>;
+      };
+      const results = transcript.messages.filter(
+        (message) =>
+          message.role === 'tool' && JSON.stringify(message.content).includes('provider-pending'),
+      );
+      expect(results).toHaveLength(1);
+    }
+  });
+
   test('approving the refund runs a run that reports it, and a later turn raises its own approval', async () => {
     const host = await start();
     const first = await streamOf(host, 'demo:tool-runner', body('thread-refund'));
     expect(first).toContain('"type":"interrupt"');
+    expect(first).toContain('Refund order order-1001 for 4200 minor units (USD)');
+    expect(first).toContain('(mode: always)');
+    expect(first).not.toContain('provider-pending');
 
     const approved = await streamOf(
       host,
@@ -169,7 +272,8 @@ describe('the tool-runner approval over the mount', () => {
         ],
       }),
     );
-    expect(approved).toContain('Order order-1001 was refunded.');
+    expect(approved).toContain('The refund for order order-1001 is pending with the processor.');
+    expect(approved).toContain('provider-pending');
     expect(approved).toContain('"type":"success"');
 
     // The next turn's calls are its own: a call identifier names one call in a conversation.

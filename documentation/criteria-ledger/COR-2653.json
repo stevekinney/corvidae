@@ -1,24 +1,24 @@
 {
   "issue": "COR-2653",
   "branch": "steve/cor-2653-browser-port-isolation",
-  "checkedAt": "6803a93f2f459277973405494a328385c170a548",
+  "checkedAt": "a41c5572d4c48c4616a2babc2f80b9af03da19f1",
   "briefVersion": "f416fc07b354",
   "status": "BLOCKED",
   "criteria": [
     {
       "id": "AC1",
-      "status": "not-met",
-      "evidence": "Launcher and direct regression implemented; hosted bind-race evidence remains pending."
+      "status": "met-on-branch",
+      "evidence": "Hosted run 45312674485 recorded baseline red, gated control green, occupied override and post-allocation +1/+6 bind races."
     },
     {
       "id": "AC2",
-      "status": "not-met",
-      "evidence": "Hosted A/B replay did not start in run 45307249662; exact workspace trust correction awaits verification."
+      "status": "met-on-branch",
+      "evidence": "Hosted run 45312674485 recorded A/B identities, listener ownership, sentinel controls, double stop and B exit 0."
     },
     {
       "id": "AC3",
       "status": "not-met",
-      "evidence": "Hosted control matrix did not start in run 45307249662; local connect-host panel warnings require matched hosted control."
+      "evidence": "Run 45312674485 recorded seven expected conditions, but the incorrect competing-worktree control timed out; the revised competition-only replay has not run."
     }
   ]
 }
