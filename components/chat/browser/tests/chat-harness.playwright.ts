@@ -2326,7 +2326,7 @@ test.describe('chat harness — tool calls', () => {
 
   test('keeps an expanded aggregate summary reachable beyond its painted line on a coarse pointer', async ({
     browser,
-  }) => {
+  }, testInfo) => {
     const { page, harness, dispose } = await openHarness(browser, {
       hasTouch: true,
       isMobile: true,
@@ -2342,6 +2342,45 @@ test.describe('chat harness — tool calls', () => {
       const box = await renderedBox(aggregate, 'expanded aggregate summary');
       expect(box.height).toBeLessThan(44);
       const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      const probes = await page.evaluate(
+        ({ centre, target }) => {
+          const describe = (element: Element | null) =>
+            element === null
+              ? null
+              : {
+                  tag: element.tagName,
+                  className: element.getAttribute('class'),
+                  ancestorClasses: Array.from(
+                    element.closest('button, li, ol, section')?.classList ?? [],
+                  ),
+                };
+          const rect = (element: Element | null) => {
+            if (element === null) return null;
+            const { x, y, width, height } = element.getBoundingClientRect();
+            return { x, y, width, height };
+          };
+          const aggregate = document.querySelector(target);
+          const firstRow = document.querySelector(
+            '.chat-tool-call-item:first-child .chat-tool-call-row',
+          );
+          const hitTarget = aggregate?.querySelector('.chat-tool-call-hit-target') ?? null;
+          return {
+            aggregate: rect(aggregate),
+            firstRow: rect(firstRow),
+            hitTarget: rect(hitTarget),
+            points: [-21, 21].map((dy) => ({
+              dy,
+              point: { x: centre.x, y: centre.y + dy },
+              hit: describe(document.elementFromPoint(centre.x, centre.y + dy)),
+            })),
+          };
+        },
+        { centre, target: '.chat-tool-call-toggle' },
+      );
+      await testInfo.attach('expanded aggregate touch probes', {
+        body: JSON.stringify(probes, null, 2),
+        contentType: 'application/json',
+      });
       for (const dy of [-21, 21] as const) {
         const owner = await page.evaluate(
           ([x, y]) =>
