@@ -817,7 +817,9 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     await expect(decided.getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
     // The receipt is one settled title and status line: no pending tool input or controls remain.
-    await expect(decided.getByRole('heading')).toHaveText('Refund order 4471 for $42.00?');
+    await expect(
+      decided.getByRole('heading', { name: 'Approved: Refund order 4471 for $42.00?' }),
+    ).toBeVisible();
     await expect(decided.locator('.cinder-approval-card__settled-row')).toHaveAttribute(
       'data-cinder-tone',
       'success',
