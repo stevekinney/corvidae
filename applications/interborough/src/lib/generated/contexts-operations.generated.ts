@@ -240,7 +240,10 @@ export type ContextsOperationTypes = {
   };
   'bureau.contexts.share.status': {
     readonly input: { readonly contextId: string };
-    readonly output: { readonly status: 'active' | 'requestable' | 'pending' };
+    readonly output:
+      | { readonly agentName: string; readonly status: 'active'; readonly title: string | null }
+      | { readonly status: 'requestable' }
+      | { readonly status: 'pending' };
     readonly faults: 'InvalidParams' | 'NotFound' | 'UnsupportedCapability';
   };
   'bureau.contexts.steer': {

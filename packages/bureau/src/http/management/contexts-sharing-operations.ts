@@ -6,6 +6,7 @@ import {
   sessionOwnerOf,
   sessionReadRequestsOf,
   sessionWasReadGrantedTo,
+  summarizeSession,
   withSessionReadGrant,
   withSessionReadGrantAttempt,
   withSessionReadRequest,
@@ -60,9 +61,11 @@ const requestQueueOutput = z.object({
     }),
   ),
 });
-const shareStatusOutput = z.object({
-  status: z.enum(['active', 'requestable', 'pending']),
-});
+const shareStatusOutput = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('active'), title: z.string().nullable(), agentName: z.string() }),
+  z.object({ status: z.literal('requestable') }),
+  z.object({ status: z.literal('pending') }),
+]);
 
 function missing(contextId: string): OperationFault {
   return resourceNotFound('context', contextId);
@@ -304,10 +307,10 @@ export const contextsResolveShareRequestOperation = defineOperation<
       input.contextId,
       (current) => {
         if (current === undefined || current.incarnation !== loaded.incarnation) return undefined;
-        const pending = sessionReadRequestsOf(current.metadata).some(
+        const pending = sessionReadRequestsOf(current.metadata).find(
           (request) => request.owner === input.granteeOwnerId && request.resolvedAt === undefined,
         );
-        if (!pending) return undefined;
+        if (pending === undefined) return undefined;
         changed = true;
         const at = new Date().toISOString();
         const settled = withSessionReadRequestResolution(
@@ -324,7 +327,7 @@ export const contextsResolveShareRequestOperation = defineOperation<
               ? withSessionReadGrant(settled, {
                   owner: input.granteeOwnerId,
                   workspaceId: workspace.workspaceId,
-                  actorId: workspace.actorId,
+                  actorId: pending.actorId,
                   sessionIncarnation: current.incarnation,
                   grantedBy: workspace.owner,
                   grantedAt: at,
@@ -409,8 +412,10 @@ export const contextsShareStatusOperation = defineOperation<
       !(await currentWorkspacePeer(host, principal, owner))
     )
       throw missing(input.contextId);
-    if (sessionHasReadGrant(loaded.metadata, workspace.owner, loaded.incarnation))
-      return { status: 'active' as const };
+    if (sessionHasReadGrant(loaded.metadata, workspace.owner, loaded.incarnation)) {
+      const summary = summarizeSession(loaded);
+      return { status: 'active' as const, title: summary.title, agentName: summary.agentName };
+    }
     if (!sessionWasReadGrantedTo(loaded.metadata, workspace.owner, loaded.incarnation))
       throw missing(input.contextId);
     return {

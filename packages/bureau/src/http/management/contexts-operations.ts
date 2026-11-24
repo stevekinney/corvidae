@@ -74,25 +74,11 @@ export function mayAccessLoadedContext(
   session: AgentSession,
   operatorScope: 'bureau.contexts:write' | 'bureau.contexts:read',
 ): boolean {
-  if (
-    host.ownership.mayAccess({
-      principal,
-      resourceOwner: sessionOwnerOf(session.metadata) ?? undefined,
-      operatorScope,
-    })
-  )
-    return true;
-  if (operatorScope !== 'bureau.contexts:read') return false;
-  const workspace = 'workspace' in principal ? principal.workspace : undefined;
-  const grant =
-    workspace === undefined ? undefined : sessionReadGrantOf(session.metadata, workspace.owner);
-  return (
-    grant !== undefined &&
-    grant.revokedAt === undefined &&
-    grant.workspaceId === workspace!.workspaceId &&
-    grant.actorId === workspace!.actorId &&
-    grant.sessionIncarnation === session.incarnation
-  );
+  return host.ownership.mayAccess({
+    principal,
+    resourceOwner: sessionOwnerOf(session.metadata) ?? undefined,
+    operatorScope,
+  });
 }
 
 /** A summary admits an active recipient only when its bound workspace identity still matches. */

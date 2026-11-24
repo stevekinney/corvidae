@@ -216,6 +216,14 @@
     readOnly={reader}
     grantor={reader ? (context.data.owner ?? undefined) : undefined}
   />
+{:else if shareStatus.data?.status === 'active'}
+  <ChatConversation
+    {sessionId}
+    title={shareStatus.data.title}
+    agentName={shareStatus.data.agentName}
+    readOnly
+    grantor="the chat owner"
+  />
 {:else if context.isError && !failedToLoad}
   {#if classifyFault(context.error)?.kind === 'not-found' && VIEW_COPY.chat.notFound}
     <NotFoundState
