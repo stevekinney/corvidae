@@ -68,6 +68,8 @@ function newestInput(directory: string, outputs: ReadonlySet<string>): number {
 
 /** Why the generated files need regenerating, or `undefined` when they are present and fresh. */
 export function cinderGeneratedStaleness(cinder: string): string | undefined {
+  const root = resolve(cinder, '..', '..');
+  const tooling = join(root, 'internal/component-tooling');
   const outputs = CINDER_GENERATED_OUTPUTS.map((path) => join(cinder, path));
   const missing = outputs.find((path) => !existsSync(path));
   if (missing !== undefined) return `${relative(cinder, missing)} is missing`;
@@ -76,6 +78,14 @@ export function cinderGeneratedStaleness(cinder: string): string | undefined {
   const input = Math.max(
     newestInput(join(cinder, 'src'), absolute),
     newestInput(join(cinder, 'scripts'), absolute),
+    newestInput(join(tooling, 'scripts'), absolute),
+    newestInput(join(tooling, 'src'), absolute),
+    ...[
+      join(cinder, 'package.json'),
+      join(tooling, 'package.json'),
+      join(root, 'package.json'),
+      join(root, 'bun.lock'),
+    ].map((path) => statSync(path).mtimeMs),
   );
   return input > oldest ? 'an input is newer than the oldest output' : undefined;
 }
