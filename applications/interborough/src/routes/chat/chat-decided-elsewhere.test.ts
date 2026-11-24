@@ -75,7 +75,9 @@ function decidedThread(decision: Record<string, unknown>, content: unknown) {
       ],
     },
     {
-      id: 'result-1',
+      // Durable Bureau histories name a tool result with its run, step and provider call. The
+      // receipt derives its Reviews identity from that persisted row on a later route mount.
+      id: 'native-1:step:0:result:call-refund',
       role: 'tool',
       toolCallId: 'call-refund',
       content: JSON.stringify(content),

@@ -208,13 +208,15 @@ export class ChatSessionRegistry {
 
 /** A page's session, and the attach it started: none when the session was retained. */
 export type OpenedChatSession = HeldChatSession & {
-  /** Whether the attach found a run to join; `false` at once for a reacquired or new chat. */
+  /** Whether the attach found a run to join; `false` at once for a new chat or live reacquisition. */
   readonly attached: Promise<boolean>;
 };
 
 /**
- * Holds the session for a chat page. A session retained from an earlier visit is already reading
- * its run, so it is not attached again; a fresh one attaches unless it is a new chat.
+ * Holds the session for a chat page. A session retained from an earlier visit while its transport
+ * is open is already reading its run, so it is not attached again. A retained parked session has
+ * no open transport: re-read it, because a decision made while the route was away replaces its
+ * waiting row with the durable receipt.
  */
 export function openChatSession(
   registry: ChatSessionRegistry,
@@ -223,7 +225,9 @@ export function openChatSession(
 ): OpenedChatSession {
   const held = registry.acquire(key, host);
   const attached =
-    held.reacquired || key.unopened === true ? Promise.resolve(false) : held.session.attach();
+    key.unopened === true || (held.reacquired && held.session.transportActive)
+      ? Promise.resolve(false)
+      : held.session.attach();
   return { ...held, attached };
 }
 

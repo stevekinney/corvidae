@@ -80,6 +80,9 @@
       (entry.decision !== undefined &&
         (entry.decision.outcome === 'denied' ||
           decided.elsewhere?.has(entry.callId) === true ||
+          // A review identity is durable on the result row. On a route return the page did not
+          // observe the decision, but this is still the receipt that links back to Reviews.
+          entry.reviewId !== undefined ||
           // A call whose row carries a link keeps its approval under it, since the row's
           // words are the answer.
           (entry.resultHref !== undefined && entry.decision.outcome === 'approved'))));
