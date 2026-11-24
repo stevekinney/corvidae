@@ -1122,6 +1122,14 @@
     margin-inline-start: auto;
   }
 
+  /* The compact rule above is the base for a narrow receipt. Reassert the wide trailing column
+     after it so the action does not collapse into column two and leave the grid's final gap empty. */
+  @media (min-width: 30rem) {
+    .cinder-approval-card__settled-actions {
+      grid-column: 3;
+    }
+  }
+
   /* No glyph gutter: the action is the first thing on the row, and a badge beside it says when it
      cannot be undone. The title may wrap, so a long action never truncates. */
   .cinder-approval-card__decision-head {
