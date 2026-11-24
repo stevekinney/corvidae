@@ -42,7 +42,7 @@ test('a Reviews decision and a chat decision each have one durable receipt after
   );
   await expect(reviewReceipt.getByRole('link', { name: 'Reviews' })).toHaveAttribute(
     'href',
-    new RegExp(`/reviews\\?tab=done&review=${encodeURIComponent(`bureau:${review.id}`)}`),
+    new RegExp(`/reviews[?]tab=done&review=${encodeURIComponent(`bureau:${review.id}`)}`),
   );
   await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
 

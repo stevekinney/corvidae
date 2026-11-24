@@ -808,9 +808,7 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     await expect(decided.locator('.cinder-approval-card__settled-note')).toContainText(
       'Approved by you in Reviews',
     );
-    await expect(
-      decided.locator('xpath=following-sibling::*[1][contains(@class, "chat-approval-time")]'),
-    ).toHaveText('10:46 AM');
+    await expect(decided.locator('.cinder-approval-card__settled-note')).toContainText('10:46 AM');
     await expect(decided.getByRole('link', { name: 'Reviews' })).toHaveAttribute(
       'href',
       /\/reviews\?tab=done&review=/,
@@ -873,9 +871,7 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     await expect(decided.locator('.cinder-approval-card__settled-note')).toContainText(
       'Approved by you in Reviews',
     );
-    await expect(
-      decided.locator('xpath=following-sibling::*[1][contains(@class, "chat-approval-time")]'),
-    ).toHaveText('10:46 AM');
+    await expect(decided.locator('.cinder-approval-card__settled-note')).toContainText('10:46 AM');
     await expect(
       page.locator('[data-cinder-layout="decision"][data-cinder-state="approved"]'),
     ).toHaveCount(1);
