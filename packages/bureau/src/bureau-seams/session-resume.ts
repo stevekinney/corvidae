@@ -255,12 +255,6 @@ export function createSessionResume<D extends AgentDefinitions>(
     if (marker === undefined || marker.owner !== owner || runtime.kv === undefined) return false;
     const { commandId: storedCommandId, continuationRunId, processId } = marker;
     if (processId === undefined || processId === '') return false;
-    // Any durable record, including `pending`, is evidence that the start may be progressing.
-    const durable =
-      runtime.durable === undefined
-        ? undefined
-        : await runtime.durable.engine.get(continuationRunId);
-    if (durable !== null && durable !== undefined) return false;
     const lease = await readProcessLease(runtime.kv, processId, runtimeServices.clock.now());
     if (lease.state !== 'absent' && lease.state !== 'expired') return false;
     const fenceKey = continuationAdmissionFenceKey(continuationRunId);
@@ -316,21 +310,45 @@ export function createSessionResume<D extends AgentDefinitions>(
     return removed;
   }
 
-  /** Refuses unless a continuation marker has reached a live run or a durable start record. */
+  /** Refuses unless the continuation's scoped durable admission receipt was written. */
   async function assertContinuationStarted(continuationRunId: string): Promise<void> {
     if (runtime.durable === undefined) {
       if (core.store.getRun(continuationRunId) !== undefined) return;
       return refuse('turn-running', 'The continuation is still being prepared.');
     }
-    const record = await runtime.durable.engine.get(continuationRunId);
-    if (record !== null && record !== undefined && record.status !== 'pending') return;
-    // A task record is intentionally written before durable prepare. It is an in-doubt start,
-    // not a receipt: another Bureau may still own the prepare, so never report success or erase it.
+    if (runtime.kv === undefined) {
+      const record = await runtime.durable.engine.get(continuationRunId);
+      if (record !== null && record !== undefined && record.status !== 'pending') return;
+      return refuse('turn-running', 'The continuation is still being prepared.');
+    }
+    const receipt = await runtime.kv.get(continuationAdmissionFenceKey(continuationRunId));
+    if (isAuthorizedContinuationReceipt(receipt, continuationRunId)) return;
+    // A task and a prepared engine shell both precede authorization. Neither proves that this
+    // continuation can launch: its owner may have died after prepare, and recovery may retire the
+    // exact unclaimed admission. The scoped receipt is the only durable start fact.
     const task = await core.tasks.record(continuationRunId);
-    if (task !== undefined || record?.status === 'pending') {
+    if (task !== undefined) {
       return refuse('turn-running', 'The continuation is still being prepared.');
     }
     return refuse('turn-running', 'The continuation start is in doubt.');
+  }
+
+  function isAuthorizedContinuationReceipt(
+    value: string | null | undefined,
+    continuationRunId: string,
+  ): boolean {
+    if (value === null || value === undefined) return false;
+    try {
+      const parsed: unknown = JSON.parse(value);
+      return (
+        parsed !== null &&
+        typeof parsed === 'object' &&
+        (parsed as Record<string, unknown>)['state'] === 'authorized' &&
+        (parsed as Record<string, unknown>)['runId'] === continuationRunId
+      );
+    } catch {
+      return false;
+    }
   }
 
   /**

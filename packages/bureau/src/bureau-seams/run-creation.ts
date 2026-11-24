@@ -799,6 +799,13 @@ export function createRunCreation<D extends AgentDefinitions>(
       // rejects this run instead of letting it start outside shutdown's snapshot.
       let activeRun: ReturnType<typeof createActiveRun>;
       let startedRunOptions: RunOptions;
+      // A continuation can lose its durable admission race after `prepare()` has written its
+      // shell. Its driver still emits a terminal result so local teardown runs, but that result
+      // must not put the rejected continuation marker back into a session another Bureau already
+      // restored. This is deliberately scoped to the `beforeLaunch` rejection: ordinary terminal
+      // errors retain their usual conversation save.
+      let admissionRejectedBeforeLaunch = false;
+      const authorizeTaskAdmission = request.authorizeTaskAdmission;
       // COR-1707 — with no session store, nothing saves the context's rows or claims what they
       // reference, so the task holds its own rows, its input included, under its run for the
       // task's life, as a catalog run does; its end releases them (the terminal listeners below).
@@ -819,6 +826,14 @@ export function createRunCreation<D extends AgentDefinitions>(
           admissionFence: request.taskAdmissionFence?.(runId),
         });
         await request.assertTaskAdmissionLive?.(runId);
+        // Durable runs claim this same receipt in their post-prepare `beforeLaunch` fence. An
+        // in-memory run has no such boundary, so it must claim before its local creation starts;
+        // otherwise a peer can retire the saved marker after this read and before the local run
+        // exists. Keep the optional call outside the ordinary path: `await undefined` adds a
+        // microtask to every normal in-memory start.
+        if (runtime.durable === undefined && authorizeTaskAdmission !== undefined) {
+          await authorizeTaskAdmission(runId);
+        }
         // COR-1476 — inside the block below, so a gate that cannot be built
         // (its session read fails) ends the promoted run like any other start
         // failure: its end is logged and its session's input settled.
@@ -927,9 +942,18 @@ export function createRunCreation<D extends AgentDefinitions>(
                 ],
                 ...(humanInputEmitter ? { emitter: humanInputEmitter } : {}),
                 ...(durableServicesOnServices ? { onServices: durableServicesOnServices } : {}),
-                ...(request.authorizeTaskAdmission
-                  ? { beforeLaunch: () => request.authorizeTaskAdmission!(runId) }
-                  : {}),
+                ...(authorizeTaskAdmission === undefined
+                  ? {}
+                  : {
+                      beforeLaunch: async () => {
+                        try {
+                          await authorizeTaskAdmission(runId);
+                        } catch (error) {
+                          admissionRejectedBeforeLaunch = true;
+                          throw error;
+                        }
+                      },
+                    }),
               }
             : undefined,
           // AB-214 review (PRRT_kwDORvupsc6esZTF): thread the authenticated
@@ -1078,30 +1102,32 @@ export function createRunCreation<D extends AgentDefinitions>(
           frame: createRunFinishedFrame({ runId, report }, runtimeServices.clock.now),
         });
 
-        peers.persistTerminalSession(
-          () =>
-            peers.saveRunTerminalSession(
+        if (!admissionRejectedBeforeLaunch) {
+          peers.persistTerminalSession(
+            () =>
+              peers.saveRunTerminalSession(
+                runId,
+                sessionId,
+                event.conversation,
+                {
+                  lastRunId: runId,
+                  lastRunStatus,
+                  lastFinishReason: event.finishReason,
+                  ...(isFailureFinishReason(event.finishReason)
+                    ? { lastError: serializeUnknownError(event.error) }
+                    : {}),
+                },
+                agentName,
+                baseConversationHistory,
+              ),
+            {
               runId,
               sessionId,
-              event.conversation,
-              {
-                lastRunId: runId,
-                lastRunStatus,
-                lastFinishReason: event.finishReason,
-                ...(isFailureFinishReason(event.finishReason)
-                  ? { lastError: serializeUnknownError(event.error) }
-                  : {}),
-              },
-              agentName,
-              baseConversationHistory,
-            ),
-          {
-            runId,
-            sessionId,
-            status: lastRunStatus,
-            spend: { agentName, owner, costEstimate: event.costEstimate },
-          },
-        );
+              status: lastRunStatus,
+              spend: { agentName, owner, costEstimate: event.costEstimate },
+            },
+          );
+        }
       });
 
       activeRun.once('run.aborted', (event) => {
@@ -1139,47 +1165,49 @@ export function createRunCreation<D extends AgentDefinitions>(
           frame: createRunFinishedFrame({ runId, report }, runtimeServices.clock.now),
         });
 
-        peers.persistTerminalSession(
-          () =>
-            // Persist the conversation carried on the abort event, NOT the
-            // launch-time `conversation` closure. On the durable path the workflow
-            // mutates per-step checkpoint snapshots, so a run that aborts after
-            // checkpointed steps (e.g. when engine.cancel() wins the abort race)
-            // reconstructs its abort RunResult from the checkpoint — the event's
-            // conversation reflects those steps, whereas the closure still holds
-            // only the seed transcript. For the in-memory loop the event carries
-            // the same mutated instance, so this is correct on both paths.
-            peers.saveRunTerminalSession(
+        if (!admissionRejectedBeforeLaunch) {
+          peers.persistTerminalSession(
+            () =>
+              // Persist the conversation carried on the abort event, NOT the
+              // launch-time `conversation` closure. On the durable path the workflow
+              // mutates per-step checkpoint snapshots, so a run that aborts after
+              // checkpointed steps (e.g. when engine.cancel() wins the abort race)
+              // reconstructs its abort RunResult from the checkpoint — the event's
+              // conversation reflects those steps, whereas the closure still holds
+              // only the seed transcript. For the in-memory loop the event carries
+              // the same mutated instance, so this is correct on both paths.
+              peers.saveRunTerminalSession(
+                runId,
+                sessionId,
+                event.conversation,
+                {
+                  lastRunId: runId,
+                  lastRunStatus: 'aborted',
+                  // Write lastFinishReason too so an aborted session's metadata is
+                  // internally consistent (status + finishReason agree) and a prior
+                  // run's stale lastFinishReason on the same session can't linger. This
+                  // is also what boot recovery now relies on: a recovered run that
+                  // aborts settles through THIS listener (settleRecoveredRun is gone),
+                  // so the field must be written here, not only on the old recovery path.
+                  lastFinishReason: 'aborted',
+                  lastError: serializeUnknownError(event.error),
+                  // COR-2009 — why the run ended, when the run did not end itself: the host
+                  // stopped it. Written on every abort, so an earlier run's reason never lingers.
+                  lastRunEndReason: runsStoppedByShutdown.has(activeRun)
+                    ? SESSION_END_REASON_HOST_STOPPED
+                    : null,
+                },
+                agentName,
+                baseConversationHistory,
+              ),
+            {
               runId,
               sessionId,
-              event.conversation,
-              {
-                lastRunId: runId,
-                lastRunStatus: 'aborted',
-                // Write lastFinishReason too so an aborted session's metadata is
-                // internally consistent (status + finishReason agree) and a prior
-                // run's stale lastFinishReason on the same session can't linger. This
-                // is also what boot recovery now relies on: a recovered run that
-                // aborts settles through THIS listener (settleRecoveredRun is gone),
-                // so the field must be written here, not only on the old recovery path.
-                lastFinishReason: 'aborted',
-                lastError: serializeUnknownError(event.error),
-                // COR-2009 — why the run ended, when the run did not end itself: the host
-                // stopped it. Written on every abort, so an earlier run's reason never lingers.
-                lastRunEndReason: runsStoppedByShutdown.has(activeRun)
-                  ? SESSION_END_REASON_HOST_STOPPED
-                  : null,
-              },
-              agentName,
-              baseConversationHistory,
-            ),
-          {
-            runId,
-            sessionId,
-            status: 'aborted',
-            spend: { agentName, owner, costEstimate: event.costEstimate },
-          },
-        );
+              status: 'aborted',
+              spend: { agentName, owner, costEstimate: event.costEstimate },
+            },
+          );
+        }
       });
 
       activeRun.once('run.error', (_event) => {

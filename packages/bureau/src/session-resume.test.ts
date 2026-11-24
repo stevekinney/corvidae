@@ -383,33 +383,28 @@ describe('a resumed turn', () => {
     expect(await resume(second, run.contextId, run.id)).toEqual(won);
   });
 
-  it('retires an admitted but unprepared continuation of a dead process and fences its stale launch', async () => {
+  it('retires a prepared but unauthorized continuation of a dead process without restoring its stale marker', async () => {
     const fixture = createSqliteStorageFixture();
     cleanups.push(() => fixture.dispose());
     const first = await openBureau(agentThat('waits'), fixture.storage);
     const second = await openBureau(agentThat('waits'), fixture.storage);
     const { run } = await stoppedTurn(first);
-    const registry = first.internals.taskRegistry as {
-      recordAdmission: typeof first.internals.taskRegistry.recordAdmission;
-    };
-    const recordAdmission = registry.recordAdmission.bind(registry);
-    const reachedAdmission = Promise.withResolvers<void>();
-    const releaseAdmission = Promise.withResolvers<void>();
-    let held = true;
-    Object.defineProperty(registry, 'recordAdmission', {
+    const engine = first.durableEngine()!;
+    const prepare = engine.prepare.bind(engine);
+    const reachedPreparedShell = Promise.withResolvers<void>();
+    const releasePreparedShell = Promise.withResolvers<void>();
+    Object.defineProperty(engine, 'prepare', {
       configurable: true,
-      value: async (...args: Parameters<typeof registry.recordAdmission>) => {
-        const result = await recordAdmission(...args);
-        if (held) {
-          reachedAdmission.resolve();
-          await releaseAdmission.promise;
-        }
-        return result;
+      value: async (...args: Parameters<typeof engine.prepare>) => {
+        const prepared = await prepare(...args);
+        reachedPreparedShell.resolve();
+        await releasePreparedShell.promise;
+        return prepared;
       },
     });
 
     const stale = resume(first, run.contextId, run.id);
-    await reachedAdmission.promise;
+    await reachedPreparedShell.promise;
     const marked = (await first.contexts.get(run.contextId))!;
     const marker = getOwn(marked.conversationHistory.messages, `${run.id}:continuation`)!;
     const processId = marker.metadata?.['bureau:continuationProcess'];
@@ -419,14 +414,19 @@ describe('a resumed turn', () => {
     const recovered = await resume(second, run.contextId, run.id, 'resume-after-owner-loss');
     expect(recovered.runId).not.toBe(run.id);
     expect(await tasksOf(second, run.contextId)).toContain(recovered.runId);
-    held = false;
-    releaseAdmission.resolve();
+    releasePreparedShell.resolve();
     const rejected = await stale.then(
       () => undefined,
       (error: unknown) => error,
     );
     expect(rejected).toBeInstanceOf(Error);
     expect((rejected as Error).message).toContain('was retired');
+    const settled = (await second.contexts.get(run.contextId))!;
+    expect(
+      getOwn(settled.conversationHistory.messages, `${run.id}:continuation`)?.metadata?.[
+        'bureau:continuationRun'
+      ],
+    ).toBe(recovered.runId);
     await untilEnded(second, run.contextId, recovered.runId);
   });
 });
