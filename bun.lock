@@ -391,6 +391,7 @@
         "@lostgradient/typescript": "workspace:*",
         "@modelcontextprotocol/client": "catalog:",
         "@types/bun": "catalog:",
+        "armorer": "workspace:*",
         "oxlint": "catalog:",
         "typescript": "catalog:",
         "zod": "catalog:",

@@ -19,6 +19,7 @@
     "@modelcontextprotocol/server": "catalog:"
   },
   "devDependencies": {
+    "armorer": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@modelcontextprotocol/client": "catalog:",

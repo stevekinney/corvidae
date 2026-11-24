@@ -33,6 +33,8 @@ import {
  * ```
  */
 export type OperationMcpMountOptions = {
+  /** Declare that this mount accepts OAuth credentials for its catalog policies. */
+  readonly oauth?: boolean;
   /** The path the mount owns on the operation handler. Defaults to `/mcp`. */
   readonly pathPrefix?: string;
   /** Upper bound on a POST body, answered `413` when exceeded. */
@@ -118,6 +120,7 @@ export type OperationMcpResource = {
 const DEFAULT_MCP_MAX_BODY_BYTES = 1_048_576;
 const DEFAULT_MAX_EVENTS = 100;
 const DEFAULT_IDLE_MS = 250;
+const MAX_TOOL_RESULT_BYTES = 256 * 1024;
 /** The key under `AuthInfo.extra` that carries the mount's context to the server factory. */
 const CONTEXT_KEY = 'weftOperationMount';
 
@@ -174,7 +177,15 @@ export function createOperationMcpMount(options: OperationMcpMountOptions): Oper
   const metaOf = (operationName: string) =>
     toolMetaOf(toolMeta, options.defaultToolMeta, operationName);
   const handler = createMcpHandler(
-    (request) => buildServer(contextOf(request), serverInfo, limits, resources, metaOf),
+    (request) =>
+      buildServer(
+        contextOf(request),
+        serverInfo,
+        limits,
+        resources,
+        metaOf,
+        options.oauth === true,
+      ),
     {
       legacy: 'stateless',
       maxRequestBodySize: options.maxBodyBytes ?? DEFAULT_MCP_MAX_BODY_BYTES,
@@ -274,6 +285,7 @@ function buildServer(
   limits: CollectionLimits,
   resources: readonly OperationMcpResource[],
   metaOf: (name: string) => { _meta?: Record<string, unknown> },
+  oauth: boolean,
 ): McpServer {
   const server = new McpServer(serverInfo, {
     capabilities: resources.length === 0 ? { tools: {} } : { tools: {}, resources: {} },
@@ -281,17 +293,31 @@ function buildServer(
   registerResources(server, context, resources);
   for (const operation of context.operations) {
     if (!operation.mcpExposable || operation.mcpTool !== undefined) continue;
+    const outputSchema =
+      operation.kind === 'subscription'
+        ? undefined
+        : zodToJsonSchema(operation.outputSchema, 'output');
+    if (
+      operation.kind === 'stream' ||
+      (outputSchema !== undefined && outputSchema['type'] !== 'object')
+    )
+      continue;
     server.registerTool(
       operation.name,
       {
         title: operation.summary,
         description: operation.description ?? operation.summary,
         inputSchema: fromJsonSchema(toolInputSchema(operation) as JsonSchemaType),
+        ...(outputSchema === undefined
+          ? {}
+          : { outputSchema: fromJsonSchema(outputSchema as JsonSchemaType) }),
         annotations: {
-          readOnlyHint: !operation.destructive && operation.kind === 'subscription',
+          readOnlyHint:
+            !operation.destructive &&
+            (operation.kind === 'subscription' || operation.behavior?.kind === 'read'),
           destructiveHint: operation.destructive,
         },
-        ...metaOf(operation.name),
+        ...toolMetadata(metaOf(operation.name)._meta, operation, oauth),
       },
       async (input, handlerContext) =>
         operation.kind === 'subscription'
@@ -302,10 +328,57 @@ function buildServer(
               limits,
               handlerContext.mcpReq.signal,
             )
-          : toolResult(await context.dispatch(operation.name, input, { transport: 'mcp' })),
+          : handlerContext.mcpReq.signal.aborted
+            ? faultResult({
+                code: 'Unprocessable',
+                message: 'call cancelled',
+                data: { reason: 'cancelled' },
+              })
+            : toolResult(
+                await context.dispatch(operation.name, input, {
+                  transport: 'mcp',
+                  signal: handlerContext.mcpReq.signal,
+                }),
+              ),
     );
   }
   return server;
+}
+
+function toolMetadata(
+  meta: Record<string, unknown> | undefined,
+  operation: OperationHandlerMountOperation,
+  oauth: boolean,
+): { _meta?: Record<string, unknown> } {
+  const schemes =
+    oauth && operation.parameterizedAccess === undefined
+      ? securitySchemes(operation.access)
+      : undefined;
+  if (meta === undefined && schemes === undefined) return {};
+  return { _meta: { ...(schemes === undefined ? {} : { securitySchemes: schemes }), ...meta } };
+}
+
+function securitySchemes(
+  access: OperationHandlerMountOperation['access'],
+): Array<Record<string, unknown>> | undefined {
+  const requirement = (
+    value: Extract<OperationHandlerMountOperation['access'], { kind: 'scoped' }>['scopes'],
+  ) =>
+    value.kind === 'allOf'
+      ? [{ type: 'oauth2', scopes: [...value.scopes] }]
+      : value.scopes.map((scope) => ({ type: 'oauth2', scopes: [scope] }));
+  switch (access.kind) {
+    case 'public':
+      return [{ type: 'noauth' }];
+    case 'authenticated':
+      return [{ type: 'oauth2', scopes: [] }];
+    case 'scoped':
+      return requirement(access.scopes);
+    case 'scopedAlternatives':
+      return access.alternatives.flatMap(requirement);
+    case 'optionalAuth':
+      return undefined;
+  }
 }
 
 /** The operation's input schema, closed or open as its JSON-RPC unknown-key policy says. */
@@ -317,9 +390,31 @@ function toolInputSchema(operation: OperationHandlerMountOperation): Record<stri
 
 function toolResult(result: DispatchResult<unknown>): CallToolResult {
   if (!result.ok) return faultResult(result.fault);
+  if (!isRecord(result.value))
+    return faultResult({
+      code: 'Unprocessable',
+      message: 'unsupported tool result',
+      data: { reason: 'not an object' },
+    });
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(result.value);
+  } catch {
+    return faultResult({
+      code: 'Unprocessable',
+      message: 'unsupported tool result',
+      data: { reason: 'not JSON serializable' },
+    });
+  }
+  if (new TextEncoder().encode(serialized).byteLength > MAX_TOOL_RESULT_BYTES)
+    return faultResult({
+      code: 'Unprocessable',
+      message: 'tool result exceeds 262144 bytes',
+      data: { reason: 'result too large' },
+    });
   return {
-    content: [{ type: 'text', text: JSON.stringify(result.value) }],
-    ...(isRecord(result.value) ? { structuredContent: result.value } : {}),
+    content: [{ type: 'text', text: serialized }],
+    structuredContent: result.value,
   };
 }
 
@@ -339,8 +434,20 @@ function faultResult(fault: OperationFault): CallToolResult {
     retryable,
     ...(remediation === undefined ? {} : { remediation }),
   };
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(payload);
+  } catch {
+    return { content: [{ type: 'text', text: 'Fault could not be serialized' }], isError: true };
+  }
+  if (new TextEncoder().encode(serialized).byteLength > MAX_TOOL_RESULT_BYTES) {
+    return {
+      content: [{ type: 'text', text: 'Fault exceeds the tool result limit' }],
+      isError: true,
+    };
+  }
   return {
-    content: [{ type: 'text', text: JSON.stringify(payload) }],
+    content: [{ type: 'text', text: serialized }],
     structuredContent: payload,
     isError: true,
   };
@@ -357,7 +464,7 @@ async function collectSubscription(
   limits: CollectionLimits,
   signal: AbortSignal,
 ): Promise<CallToolResult> {
-  const started = await context.subscribe(operationName, input, { transport: 'mcp' });
+  const started = await context.subscribe(operationName, input, { transport: 'mcp', signal });
   if (!started.ok) return faultResult(started.fault);
   const { envelope, iterable, close } = started.value;
   const events: unknown[] = [];
@@ -379,7 +486,7 @@ async function collectSubscription(
   const last = events.at(-1);
   const nextCursor = isRecord(last) && typeof last['cursor'] === 'string' ? last['cursor'] : null;
   const value = { envelope, events, nextCursor, ended };
-  return { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value };
+  return toolResult({ ok: true, value });
 }
 
 async function nextOrIdle(

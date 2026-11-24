@@ -7,6 +7,7 @@ import {
   StreamableHTTPClientTransport,
   type ClientOptions,
 } from '@modelcontextprotocol/client';
+import { fromMcpClientTools } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -26,6 +27,7 @@ const MCP_LEGACY_PROTOCOL_VERSION = '2025-11-25';
 const serverInfo = { name: 'probe', version: '1.0.0' };
 
 const transports = { http: true, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false };
+let echoCalls = 0;
 
 const echo = defineOperation<
   z.ZodObject<{ message: z.ZodString }>,
@@ -37,12 +39,16 @@ const echo = defineOperation<
   summary: 'Echo a message',
   description: 'Answers with the message it was given.',
   destructive: false,
+  behavior: { kind: 'read' },
   inputSchema: z.object({ message: z.string() }),
   outputSchema: z.object({ message: z.string() }),
   access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['events:read'] } },
   transports,
   unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
-  invoke: async ({ input }) => ({ message: input.message }),
+  invoke: async ({ input }) => {
+    echoCalls += 1;
+    return { message: input.message };
+  },
 });
 
 const hidden = defineOperation<z.ZodObject<{}>, z.ZodObject<{}>, TestHost>({
@@ -56,6 +62,96 @@ const hidden = defineOperation<z.ZodObject<{}>, z.ZodObject<{}>, TestHost>({
   transports,
   unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
   invoke: async () => ({}),
+});
+
+const disclosure = defineOperation<z.ZodObject<{}>, z.ZodObject<{ public: z.ZodString }>, TestHost>(
+  {
+    name: 'probe.disclosure',
+    mcpExposable: true,
+    summary: 'Public projection',
+    destructive: false,
+    inputSchema: z.object({}),
+    outputSchema: z.object({ public: z.string() }),
+    access: { kind: 'public' },
+    transports,
+    unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+    invoke: async () => ({ public: 'visible', secret: 'private-value' }),
+  },
+);
+
+const oversized = defineOperation<z.ZodObject<{}>, z.ZodObject<{ value: z.ZodString }>, TestHost>({
+  name: 'probe.oversized',
+  mcpExposable: true,
+  summary: 'Large output',
+  destructive: false,
+  inputSchema: z.object({}),
+  outputSchema: z.object({ value: z.string() }),
+  access: { kind: 'public' },
+  transports,
+  unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+  invoke: async () => ({ value: 'é'.repeat(131072) }),
+});
+
+const unsupported = defineOperation<z.ZodObject<{}>, z.ZodObject<{ value: z.ZodAny }>, TestHost>({
+  name: 'probe.unsupported',
+  mcpExposable: true,
+  summary: 'Unserializable output',
+  destructive: false,
+  inputSchema: z.object({}),
+  outputSchema: z.object({ value: z.any() }),
+  access: { kind: 'public' },
+  transports,
+  unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+  invoke: async () => ({ value: 1n }),
+});
+
+let writes = 0;
+let cancellationStarted = () => {};
+let cancellationObserved = () => {};
+const cancellation = defineOperation<z.ZodObject<{}>, z.ZodObject<{}>, TestHost>({
+  name: 'probe.cancellation',
+  mcpExposable: true,
+  summary: 'Wait for cancellation',
+  destructive: false,
+  inputSchema: z.object({}),
+  outputSchema: z.object({}),
+  access: { kind: 'public' },
+  transports,
+  unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+  invoke: async ({ signal }) => {
+    cancellationStarted();
+    await new Promise<void>((resolve) =>
+      signal?.addEventListener(
+        'abort',
+        () => {
+          cancellationObserved();
+          resolve();
+        },
+        { once: true },
+      ),
+    );
+    return {};
+  },
+});
+const write = defineOperation<
+  z.ZodObject<{ message: z.ZodString }>,
+  z.ZodObject<{ message: z.ZodString }>,
+  TestHost
+>({
+  name: 'probe.write',
+  mcpExposable: true,
+  summary: 'Write a message',
+  destructive: true,
+  behavior: { kind: 'command' },
+  inputSchema: z.object({ message: z.string() }),
+  outputSchema: z.object({ message: z.string() }),
+  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['events:read', 'events:write'] } },
+  transports,
+  unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+  invoke: async ({ input }) => {
+    writes += 1;
+    return input;
+  },
 });
 
 const missing = defineOperation<z.ZodObject<{ id: z.ZodString }>, z.ZodObject<{}>, TestHost>({
@@ -192,7 +288,19 @@ async function connect(
 ) {
   const host = createTestHost();
   const handler = createOperationHandler({
-    operations: [echo, hidden, missing, advised, events, finite],
+    operations: [
+      echo,
+      hidden,
+      missing,
+      advised,
+      events,
+      finite,
+      disclosure,
+      oversized,
+      unsupported,
+      write,
+      cancellation,
+    ],
     host,
     authenticate: async () => caller(),
     mounts: [createOperationMcpMount({ serverInfo, idleMs: 20, ...mountOptions })],
@@ -211,15 +319,20 @@ async function connect(
 
 describe.each(eras)('catalog operations as MCP tools ($era era)', ({ mode, version }) => {
   it('lists exactly the mcpExposable operations, with their input schemas', async () => {
-    const { client } = await connect(mode);
+    const { client } = await connect(mode, readerContext, { oauth: true });
     expect(client.getNegotiatedProtocolVersion()).toBe(version);
     const { tools } = await client.listTools();
     expect(tools.map((tool) => tool.name).toSorted()).toEqual([
       'probe.advised',
+      'probe.cancellation',
+      'probe.disclosure',
       'probe.echo',
       'probe.events',
       'probe.finite',
       'probe.missing',
+      'probe.oversized',
+      'probe.unsupported',
+      'probe.write',
     ]);
     const echoTool = tools.find((tool) => tool.name === 'probe.echo');
     expect(echoTool?.description).toBe('Answers with the message it was given.');
@@ -229,6 +342,29 @@ describe.each(eras)('catalog operations as MCP tools ($era era)', ({ mode, versi
       required: ['message'],
       additionalProperties: false,
     });
+    expect(echoTool?.outputSchema).toMatchObject({
+      type: 'object',
+      properties: { message: { type: 'string' } },
+      required: ['message'],
+    });
+    expect(echoTool?.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+    expect(echoTool?._meta?.['securitySchemes']).toEqual([
+      { type: 'oauth2', scopes: ['events:read'] },
+    ]);
+    const writeTool = tools.find((tool) => tool.name === 'probe.write');
+    expect(writeTool?.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+    expect(writeTool?.inputSchema).toMatchObject({ properties: { message: { type: 'string' } } });
+    expect(writeTool?.outputSchema).toMatchObject({ properties: { message: { type: 'string' } } });
+    expect(writeTool?._meta?.['securitySchemes']).toEqual([
+      { type: 'oauth2', scopes: ['events:read'] },
+      { type: 'oauth2', scopes: ['events:write'] },
+    ]);
+    const before = writes;
+    expect(
+      (await client.callTool({ name: 'probe.write', arguments: { message: 'saved' } }))
+        .structuredContent,
+    ).toEqual({ message: 'saved' });
+    expect(writes).toBe(before + 1);
     expect(tools.find((tool) => tool.name === 'probe.missing')?.annotations).toMatchObject({
       destructiveHint: true,
     });
@@ -243,9 +379,56 @@ describe.each(eras)('catalog operations as MCP tools ($era era)', ({ mode, versi
 
   it('refuses a caller the access policy refuses, as a Forbidden tool error', async () => {
     const { client } = await connect(mode, strangerContext);
+    const before = echoCalls;
     const result = await client.callTool({ name: 'probe.echo', arguments: { message: 'hello' } });
     expect(result.isError).toBe(true);
     expect(result.structuredContent).toMatchObject({ code: 'Forbidden' });
+    expect(echoCalls).toBe(before);
+  });
+
+  it('imports and invokes the catalog read through Armorer', async () => {
+    const { client } = await connect(mode);
+    const tools = await fromMcpClientTools(client);
+    expect(tools.find((tool) => tool.name === 'probe.hidden')).toBeUndefined();
+    expect(
+      await tools.find((tool) => tool.name === 'probe.echo')?.execute({ message: 'imported' }),
+    ).toEqual({ message: 'imported' });
+  });
+
+  it('does not infer OAuth without an explicit host declaration', async () => {
+    const { client } = await connect(mode);
+    const { tools } = await client.listTools();
+    expect(
+      tools.find((tool) => tool.name === 'probe.echo')?._meta?.['securitySchemes'],
+    ).toBeUndefined();
+  });
+
+  it('discloses only fields admitted by the output schema', async () => {
+    const { client } = await connect(mode);
+    const result = await client.callTool({ name: 'probe.disclosure', arguments: {} });
+    expect(result.structuredContent).toEqual({ public: 'visible' });
+    expect(JSON.stringify(result)).not.toContain('private-value');
+  });
+
+  it('returns a typed error for a result over the UTF-8 byte bound', async () => {
+    const { client } = await connect(mode);
+    const result = await client.callTool({ name: 'probe.oversized', arguments: {} });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      code: 'Unprocessable',
+      data: { reason: 'result too large' },
+    });
+    expect(JSON.stringify(result)).not.toContain('é');
+  });
+
+  it('returns a typed error for an unsupported result', async () => {
+    const { client } = await connect(mode);
+    const result = await client.callTool({ name: 'probe.unsupported', arguments: {} });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      code: 'Unprocessable',
+      data: { reason: 'not JSON serializable' },
+    });
   });
 
   it('answers a fault the operation raises as a tool error result', async () => {
@@ -329,6 +512,24 @@ describe.each(eras)('catalog operations as MCP tools ($era era)', ({ mode, versi
   });
 });
 
+it('propagates modern MCP cancellation to the catalog operation', async () => {
+  const { client } = await connect({ pin: MCP_PROTOCOL_VERSION });
+  const started = new Promise<void>((resolve) => {
+    cancellationStarted = resolve;
+  });
+  const observed = new Promise<void>((resolve) => {
+    cancellationObserved = resolve;
+  });
+  const controller = new AbortController();
+  const call = client
+    .callTool({ name: 'probe.cancellation', arguments: {} }, { signal: controller.signal })
+    .catch(() => undefined);
+  await started;
+  controller.abort();
+  await call;
+  await observed;
+});
+
 describe('a subscription tool whose stream ends', () => {
   it('answers with what it delivered and reports that the stream ended', async () => {
     const { client } = await connect({ pin: MCP_PROTOCOL_VERSION });
@@ -369,7 +570,7 @@ describe.each(eras)('injected resources and tool metadata ($era era)', ({ mode }
       { uri: page.uri, mimeType: page.mimeType, text: page.text, _meta: page._meta },
     ]);
     const { tools } = await client.listTools();
-    expect(tools.find((tool) => tool.name === 'probe.echo')?._meta).toEqual({
+    expect(tools.find((tool) => tool.name === 'probe.echo')?._meta).toMatchObject({
       ui: { resourceUri: page.uri },
     });
     expect(tools.find((tool) => tool.name === 'probe.missing')?._meta).toBeUndefined();
@@ -383,7 +584,7 @@ describe.each(eras)('injected resources and tool metadata ($era era)', ({ mode }
     const { tools } = await client.listTools();
     expect(tools.length).toBeGreaterThan(1);
     for (const tool of tools) {
-      expect(tool._meta).toEqual(
+      expect(tool._meta).toMatchObject(
         tool.name === 'probe.echo'
           ? { ui: { resourceUri: page.uri } }
           : { ui: { visibility: ['model'] } },
