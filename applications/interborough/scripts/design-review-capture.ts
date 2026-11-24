@@ -158,6 +158,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/home-activity.spec.ts',
   'tests/e2e/chat-list.spec.ts',
   'tests/e2e/chat-page.spec.ts',
+  'tests/e2e/chat-sharing.spec.ts',
   'tests/e2e/chat-responsive.spec.ts',
   'tests/e2e/chat-tool-call-turn.spec.ts',
   'tests/e2e/chat-states.spec.ts',

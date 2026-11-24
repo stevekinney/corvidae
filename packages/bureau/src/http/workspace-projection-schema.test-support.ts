@@ -181,6 +181,18 @@ const SCHEMA_SAFE_OUTPUTS: Readonly<Record<string, string>> = {
     'The archive receipt contains the context identifier, a changed flag and the archive time, not the title, preview or any message (contextArchiveReceiptSchema).',
   'bureau.contexts.unarchive':
     'The unarchive receipt contains the context identifier, a changed flag and a null archive time, not the title, preview or any message (contextArchiveReceiptSchema).',
+  'bureau.contexts.share':
+    'The sharing receipt contains only the context and grantee identifiers and changed flag (sharingOutput).',
+  'bureau.contexts.share.revoke':
+    'The revoke receipt contains only the context and grantee identifiers and changed flag (sharingOutput).',
+  'bureau.contexts.share.request':
+    'The request receipt contains only the context and requester identifiers and changed flag (sharingOutput).',
+  'bureau.contexts.share.request.resolve':
+    'The resolution receipt contains only the context and requester identifiers and changed flag (sharingOutput).',
+  'bureau.contexts.share.requests.list':
+    'The owner queue projects request timing and safe display labels, never transcript content (requestQueueOutput).',
+  'bureau.contexts.share.status':
+    'The direct-link status exposes metadata only for an admitted reader and otherwise remains not-found (shareStatusOutput).',
   'bureau.notifications.markread':
     'The notification update output is only the count of records updated (notifications operation output schema).',
   'bureau.notifications.dismiss':

@@ -351,6 +351,61 @@
         ],
         "type": "object"
       },
+      "BureauContextsShareInput": {
+        "additionalProperties": false,
+        "properties": {
+          "contextId": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "granteeOwnerId": {
+            "description": "The current workspace member owner identifier.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId",
+          "granteeOwnerId"
+        ],
+        "type": "object"
+      },
+      "BureauContextsShareOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "changed": {
+            "type": "boolean"
+          },
+          "contextId": {
+            "type": "string"
+          },
+          "granteeOwnerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId",
+          "granteeOwnerId",
+          "changed"
+        ],
+        "type": "object"
+      },
+      "BureauContextsShareRequestInput": {
+        "additionalProperties": false,
+        "properties": {
+          "contextId": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId"
+        ],
+        "type": "object"
+      },
       "BureauDeploymentsGetOutput": {
         "additionalProperties": false,
         "properties": {

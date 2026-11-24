@@ -87,6 +87,8 @@
     readonly items: InboxItem[];
     /** `loading` until the list is read; `failed` when it could not be, which the page says. */
     readonly phase: 'loading' | 'failed' | 'ready';
+    /** Another owner-visible waiting item is rendered above this panel. */
+    readonly hasSupplementalWaiting?: boolean;
     /** Whether a decision or an answer on one of the Bureau's reviews is being sent. */
     readonly resolving: boolean;
     /** Whether a decision on one of the workflow reviews is being sent. */
@@ -118,6 +120,7 @@
     mode,
     items,
     phase,
+    hasSupplementalWaiting = false,
     resolving,
     submitting,
     submitGate,
@@ -538,7 +541,7 @@
   </div>
 {/snippet}
 
-{#if phase === 'ready' && visible.length === 0 && selectedKey === null && selection.read('review') === null}
+{#if phase === 'ready' && visible.length === 0 && selectedKey === null && selection.read('review') === null && !(mode === 'waiting' && hasSupplementalWaiting)}
   <!-- The one list-page empty state (owner report, 2026-11-19), with the Reviews icon. Nothing is
        made here, so it has no create action. -->
   {#if mode === 'waiting'}

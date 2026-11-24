@@ -13,12 +13,15 @@
    * An approve that finds the review already resolved (the agent moved on, or it was decided
    * elsewhere) says "No longer waiting" in its place, as a review that left the list does (row 26g).
    */
-  import { Alert, FilterBar, PageHeader, type FilterSegment } from '@lostgradient/cinder';
+  import { Alert, Button, FilterBar, PageHeader, type FilterSegment } from '@lostgradient/cinder';
+  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import {
     isReviewNoLongerWaiting,
     isReviewRoundChanged,
+    listChatAccessRequests,
+    resolveChatAccessRequest,
     type BureauHumanWait,
   } from '../../lib/bureau-reviews.ts';
   import { answerRefusalIssues, taskAnswerText } from '../../lib/bureau-tasks.ts';
@@ -59,6 +62,7 @@
   }
 
   const client = getClient();
+  const queryClient = useQueryClient();
   const principalStore = getPrincipalStore();
   const submitGate = $derived(scopeGate(principalStore, ['reviews:write']));
   /** Who the caller is, so what they decided reads "by you". */
@@ -72,6 +76,31 @@
   // One key stays with an answer until the Bureau confirms it, so a retry after a lost response is
   // the same command and the Bureau answers it from its ledger.
   const answerKey = createPendingCommandKey();
+  const chatRequests = createQuery(
+    () => ({
+      queryKey: ['chat-access-requests'],
+      queryFn: ({ signal }) => listChatAccessRequests({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  let resolvingChatRequest = $state<string | undefined>();
+  // The opaque durable id identifies the exact pending request shown in this row.
+  const chatRequestKey = (requestId: string) => requestId;
+  async function resolveChatRequest(
+    request: import('../../lib/bureau-reviews.ts').ChatAccessRequest,
+    decision: 'grant' | 'deny',
+  ): Promise<void> {
+    if (resolvingChatRequest !== undefined) return;
+    resolvingChatRequest = chatRequestKey(request.requestId);
+    try {
+      await resolveChatAccessRequest(request, decision);
+      await queryClient.invalidateQueries({ queryKey: ['contexts'] });
+      await chatRequests.refetch();
+    } finally {
+      resolvingChatRequest = undefined;
+    }
+  }
 
   const waiting = $derived(waitingItems(waitingQuery.data ?? []));
   // A review decided while a later page was being read can come on two pages, so the pages are
@@ -281,6 +310,36 @@
 <section class="ib-reviews" data-page="reviews">
   <PageHeader title={REVIEWS_COPY.heading} description={REVIEWS_COPY.description} />
 
+  {#if (chatRequests.data?.length ?? 0) > 0}
+    <section aria-label="Chat access requests">
+      <h2>Chat access requests</h2>
+      {#each chatRequests.data ?? [] as request (chatRequestKey(request.requestId))}
+        <article class="ib-chat-access-request">
+          <p class="ib-chat-access-request__copy">
+            <strong>{request.granteeLabel ?? 'A workspace member'}</strong> requested access to chat {request.contextTitle ??
+              'an untitled chat'}.
+          </p>
+          <div class="ib-chat-access-request__actions">
+            <Button
+              data-changes
+              size="sm"
+              variant="secondary"
+              disabled={resolvingChatRequest !== undefined}
+              onclick={() => void resolveChatRequest(request, 'deny')}>Deny</Button
+            >
+            <Button
+              data-changes
+              size="sm"
+              variant="primary"
+              loading={resolvingChatRequest === chatRequestKey(request.requestId)}
+              onclick={() => void resolveChatRequest(request, 'grant')}>Grant access</Button
+            >
+          </div>
+        </article>
+      {/each}
+    </section>
+  {/if}
+
   {#if notice !== undefined}
     <Alert variant="warning" dismissible onDismiss={() => (notice = undefined)}>
       <p class="ib-review-notice__title">{notice.title}</p>
@@ -327,19 +386,47 @@
       onSubmit={submitDecision}
     />
   {:else}
-    <ReviewsPanel
-      mode="waiting"
-      items={waiting}
-      phase={phaseOf(waitingQuery)}
-      {resolving}
-      submitting={decisionMutation.isPending}
-      {submitGate}
-      {outcome}
-      {viewer}
-      {refusedKey}
-      onResolve={resolve}
-      onAnswer={answer}
-      onSubmit={submitDecision}
-    />
+    {#if (chatRequests.data?.length ?? 0) === 0 || waiting.length > 0 || waitingQuery.isPending || waitingQuery.isError}
+      <ReviewsPanel
+        mode="waiting"
+        items={waiting}
+        phase={phaseOf(waitingQuery)}
+        hasSupplementalWaiting={(chatRequests.data?.length ?? 0) > 0}
+        {resolving}
+        submitting={decisionMutation.isPending}
+        {submitGate}
+        {outcome}
+        {viewer}
+        {refusedKey}
+        onResolve={resolve}
+        onAnswer={answer}
+        onSubmit={submitDecision}
+      />
+    {/if}
   {/if}
 </section>
+
+<style>
+  .ib-chat-access-request {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-3);
+    max-inline-size: 44rem;
+  }
+  .ib-chat-access-request__copy {
+    margin: 0;
+  }
+  .ib-chat-access-request__actions {
+    display: flex;
+    gap: var(--cinder-space-2);
+  }
+  @media (max-width: 600px) {
+    .ib-chat-access-request {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+    .ib-chat-access-request__actions {
+      margin-inline-start: 0;
+    }
+  }
+</style>
