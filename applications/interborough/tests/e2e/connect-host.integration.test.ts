@@ -1,31 +1,65 @@
-import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { expect, test } from 'bun:test';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { readSourceInfo } from '../../src/host/build-info.ts';
-import { startConnectHost } from './connect-host.ts';
-
-test('reports an occupied connect port as a bind collision', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'connect-port-'));
-  const listener = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } });
+const directory = await mkdtemp(join(tmpdir(), 'connect-port-'));
+const fixture = join(import.meta.dir, 'connect-host.test-support.ts');
+const hostSlots = join(import.meta.dir, '../../../../scripts/host-slots.ts');
+const command = (mode: string) => [
+  process.execPath,
+  hostSlots,
+  '--slots=1',
+  '--',
+  process.execPath,
+  fixture,
+  directory,
+  mode,
+];
+let collision: Awaited<ReturnType<typeof runWithHangGuard>>;
+let hung: Awaited<ReturnType<typeof runWithHangGuard>>;
+let collisionEvidence: { code: string };
+let hungEvidence: { port: number; supervisorPid: number };
+let cleanupEvidence: string;
+let portWasReleased = false;
+let supervisorWasReaped = false;
+try {
+  collision = await runWithHangGuard(command('collision'));
+  process.stdout.write(collision.stdout);
+  process.stderr.write(collision.stderr);
+  collisionEvidence = collision.success
+    ? JSON.parse(await readFile(join(directory, 'collision.json'), 'utf8'))
+    : { code: '' };
+  hung = await runWithHangGuard(command('hang'));
+  process.stdout.write(hung.stdout);
+  process.stderr.write(hung.stderr);
+  hungEvidence = JSON.parse(await readFile(join(directory, 'ready.json'), 'utf8'));
+  cleanupEvidence = await readFile(join(directory, 'cleaned-hang'), 'utf8');
+  const probe = Bun.listen({
+    hostname: '127.0.0.1',
+    port: hungEvidence.port,
+    socket: { data() {} },
+  });
+  probe.stop(true);
+  portWasReleased = true;
   try {
-    const build = join(directory, 'build');
-    const home = join(directory, 'home');
-    await mkdir(build);
-    await mkdir(home);
-    await writeFile(join(build, 'index.html'), '<html></html>');
-    await writeFile(
-      join(build, 'build-info.json'),
-      JSON.stringify(readSourceInfo(join(import.meta.dir, '../..'))),
-    );
-    const error = await rejectionOf(
-      startConnectHost({ home, buildDirectory: build, port: listener.port }),
-    );
-    expect(error).toMatchObject({ code: 'EADDRINUSE' });
-  } finally {
-    listener.stop(true);
-    await rm(directory, { recursive: true, force: true });
+    process.kill(hungEvidence.supervisorPid, 0);
+  } catch {
+    supervisorWasReaped = true;
   }
+} finally {
+  await rm(directory, { recursive: true, force: true });
+}
+
+test('reports an occupied connect port as a bind collision', () => {
+  expect(collision.exitCode).toBe(0);
+  expect(collisionEvidence.code).toBe('EADDRINUSE');
+});
+
+test('the hang guard ends a stalled connect host and reaps its supervisor', () => {
+  expect(hung.exitCode).toBe(143);
+  expect(cleanupEvidence).toBe('signal');
+  expect(portWasReleased).toBe(true);
+  expect(supervisorWasReaped).toBe(true);
 });

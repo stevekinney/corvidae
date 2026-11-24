@@ -487,7 +487,9 @@ try {
     }
   }
   const connectTest = 'applications/interborough/tests/e2e/connect-host.integration.test.ts';
+  const connectFixture = 'applications/interborough/tests/e2e/connect-host.test-support.ts';
   await writeFile(join(control, connectTest), await readFile(join(a, connectTest)));
+  await writeFile(join(control, connectFixture), await readFile(join(a, connectFixture)));
   const baseConnect = start('base-connect-control', control, [
     'bun',
     'scripts/bun-test.ts',
@@ -503,6 +505,10 @@ try {
   requireResult(
     connectCodes[0] !== 0 && connectCodes[1] === 0,
     `connect control verdict mismatch: ${connectCodes.join(',')}`,
+  );
+  requireResult(
+    baseConnect.output.includes('Expected EADDRINUSE'),
+    'base control failed before the intended bind assertion',
   );
   requireResult(
     !candidateConnect.output.includes('did not build'),

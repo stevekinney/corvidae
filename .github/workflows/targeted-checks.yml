@@ -203,6 +203,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: package.json
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: bun install --frozen-lockfile
       - run: bun scripts/chef/cor-2653-qualification.ts
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

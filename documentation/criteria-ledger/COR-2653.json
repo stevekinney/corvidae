@@ -1,24 +1,24 @@
 {
   "issue": "COR-2653",
   "branch": "steve/cor-2653-browser-port-isolation",
-  "checkedAt": "299f3776324f7ea124e635c3befc1f493ae55e87",
+  "checkedAt": "6803a93f2f459277973405494a328385c170a548",
   "briefVersion": "f416fc07b354",
   "status": "BLOCKED",
   "criteria": [
     {
       "id": "AC1",
       "status": "not-met",
-      "evidence": "Launcher changes and process-group regression are implemented; hosted bind-race evidence is pending and local host warnings remain unresolved."
+      "evidence": "Launcher and direct regression implemented; hosted bind-race evidence remains pending."
     },
     {
       "id": "AC2",
       "status": "not-met",
-      "evidence": "Hosted A/B replay and identity evidence are implemented but not run."
+      "evidence": "Hosted A/B replay did not start in run 45307249662; exact workspace trust correction awaits verification."
     },
     {
       "id": "AC3",
       "status": "not-met",
-      "evidence": "Hosted integration and seeded browser control matrix is implemented but not run."
+      "evidence": "Hosted control matrix did not start in run 45307249662; local connect-host panel warnings require matched hosted control."
     }
   ]
 }
