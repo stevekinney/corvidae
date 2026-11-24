@@ -1,5 +1,5 @@
 import type { Component } from 'svelte';
-import type { ApplicationFixtureDeclaration, VisualFixture } from '../index.ts';
+import type { VisualFixture } from '../index.ts';
 
 export type LazyModule<Value> = () => Promise<{ default: Value }>;
 
@@ -12,7 +12,7 @@ export type FixtureModuleMaps = {
   fixtureModules: Record<string, LazyModule<VisualFixture[]>>;
   hostModules: Record<string, LazyModule<Component<any>>>;
   appHostModules: Record<string, LazyModule<Component<any>>>;
-  appFixtureDeclarations: Readonly<Record<string, readonly ApplicationFixtureDeclaration[]>>;
+  appFixtureDeclarations: Readonly<Record<string, readonly string[]>>;
 };
 
 export type LoadedFixture = {
@@ -26,13 +26,11 @@ function hostPath(sourcePath: string | undefined, host: string): string {
   return `${sourcePath.slice(0, sourcePath.lastIndexOf('/'))}/${host.slice(2)}`;
 }
 
-function declaredAppFixture(
+function declaredAppFixtureNames(
   declarations: FixtureModuleMaps['appFixtureDeclarations'],
   component: string,
-  name: string,
-): ApplicationFixtureDeclaration | undefined {
-  const entries = Object.hasOwn(declarations, component) ? (declarations[component] ?? []) : [];
-  return entries.find((entry) => (typeof entry === 'string' ? entry : entry.name) === name);
+): readonly string[] {
+  return Object.hasOwn(declarations, component) ? (declarations[component] ?? []) : [];
 }
 
 function appFixture(
@@ -40,21 +38,13 @@ function appFixture(
   name: string,
   modules: FixtureModuleMaps,
 ): VisualFixture | undefined {
-  const declaration = declaredAppFixture(modules.appFixtureDeclarations, component, name);
   if (
-    declaration === undefined ||
+    !declaredAppFixtureNames(modules.appFixtureDeclarations, component).includes(name) ||
     modules.appHostModules[`./fixtures/${component}.svelte`] === undefined
   ) {
     return undefined;
   }
-  return {
-    name,
-    host: `./app/${component}.svelte`,
-    category: 'visual-contract',
-    ...(typeof declaration === 'string' || declaration.highlighting === undefined
-      ? {}
-      : { highlighting: declaration.highlighting }),
-  };
+  return { name, host: `./app/${component}.svelte`, category: 'visual-contract' };
 }
 
 export async function loadFixture(

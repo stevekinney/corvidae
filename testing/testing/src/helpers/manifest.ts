@@ -1,11 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { environmentConfiguration } from '../environment-configuration.ts';
-import type {
-  FixtureCategory,
-  FixtureHighlightingState,
-  InteractionStep,
-  MaskRule,
-} from '../visual-fixtures.ts';
+import type { FixtureCategory, InteractionStep, MaskRule } from '../visual-fixtures.ts';
 
 /** Supported browser color themes. */
 export type Theme = 'light' | 'dark';
@@ -35,8 +30,6 @@ export type ManifestFixtureEntry = {
   mask?: MaskRule[];
   /** Fixture category. */
   category: FixtureCategory;
-  /** Whether this fixture intentionally captures syntax highlighting before it settles. */
-  highlighting?: FixtureHighlightingState;
 };
 
 /**

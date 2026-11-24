@@ -1,10 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import {
-  fixtureRenderMode,
-  fixtureWaitsForHighlight,
-  parseFixtureFile,
-} from './visual-fixtures.ts';
+import { fixtureRenderMode, parseFixtureFile } from './visual-fixtures.ts';
 
 describe('parseFixtureFile', () => {
   test('parses direct and host fixtures with default categories', () => {
@@ -37,21 +33,6 @@ describe('parseFixtureFile', () => {
     });
 
     expect(result.fixtures[0]?.category).toBe('interaction-state');
-  });
-
-  test('preserves an explicitly intentional pending highlighter for its capture', () => {
-    const [fixture] = parseFixtureFile({
-      componentName: 'CodeBlock',
-      fixtures: [{ name: 'before-highlight', props: {}, highlighting: 'intentionally-pending' }],
-    }).fixtures;
-    const [settledFixture] = parseFixtureFile({
-      componentName: 'CodeBlock',
-      fixtures: [{ name: 'after-highlight', props: {} }],
-    }).fixtures;
-
-    expect(fixture?.highlighting).toBe('intentionally-pending');
-    expect(fixtureWaitsForHighlight(fixture!)).toBe(false);
-    expect(fixtureWaitsForHighlight(settledFixture!)).toBe(true);
   });
 
   test('rejects duplicate and derived resting-state fixture name collisions', () => {

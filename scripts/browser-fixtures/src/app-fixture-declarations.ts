@@ -85,7 +85,7 @@ export const appFixtureDeclarations = {
   'selection-popover': ['assertion'],
   'token-computation': ['assertion'],
   'theme-surfaces': ['assertion'],
-  'functional-residual': [{ name: 'assertion', highlighting: 'intentionally-pending' } as const],
+  'functional-residual': ['assertion'],
   banner: ['assertion'],
   toggle: ['assertion'],
   'floating-action': ['assertion'],
