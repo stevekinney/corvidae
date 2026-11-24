@@ -2432,8 +2432,9 @@
           statusPlacement="inline"
         />
       {/if}
-      <!-- The transcript already explains a stopped or failed reply. -->
-      {#if !choosing && !endedByRestart && retryNoteId === undefined}
+      <!-- The transcript already explains the current failed reply; older failed notes remain
+           ordinary history, so their run summaries can still appear here. -->
+      {#if !choosing && !endedByRestart && retryNoteId === undefined && lastStop?.state.kind !== 'failed'}
         <SessionTasks
           {sessionId}
           streaming={session.streaming}

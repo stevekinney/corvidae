@@ -287,7 +287,7 @@ describe('an approval of an agent a disabled plugin holds back (19k, 20f)', () =
 
 describe('a reply that failed partway (19p)', () => {
   test('keeps the partial text, then the status line with Retry, and reads Failed', async () => {
-    serve(failedPartwayMessages(), {
+    const served = serve(failedPartwayMessages(), {
       answers: {
         'bureau.tasks.list': () => ({
           tasks: tasksOf('failed-partway').map((task) => ({ ...task, contextId: 'session-1' })),
@@ -309,6 +309,10 @@ describe('a reply that failed partway (19p)', () => {
         'Failed',
       ),
     );
+    await waitFor(() =>
+      expect(served.calls.some((call) => call.method === 'bureau.tasks.list')).toBe(true),
+    );
+    expect(container.querySelector('.weft-chat-strip')).toBeNull();
   });
 });
 
