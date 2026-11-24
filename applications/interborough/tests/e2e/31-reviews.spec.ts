@@ -261,6 +261,34 @@ async function captureDecisionNotice(page: Page, state: string, title: string): 
 }
 
 test.describe('a tool approval', () => {
+  test('keeps the open approval in a bounded decision column at 1920px', async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await waitingRefund(page, request, 'reviews-wide-decision', REFUND_APPROVAL);
+    const pane = paneOf(page);
+    const card = pane.locator('.cinder-approval-card--detail');
+    const input = card.getByRole('group', { name: 'Input', exact: true });
+    const note = card.getByRole('textbox', { name: 'Note (optional)', exact: true });
+    const actions = card.getByRole('group', { name: 'Approval actions' });
+    const boxes = await readBoxes(page, { pane, card, input, note, actions });
+    expect(boxes.card.width).toBeLessThanOrEqual(768);
+    expect(
+      boxes.pane.x + boxes.pane.width - (boxes.card.x + boxes.card.width),
+    ).toBeGreaterThanOrEqual(16);
+    for (const child of [boxes.input, boxes.note, boxes.actions]) {
+      expect(child.x).toBeGreaterThanOrEqual(boxes.card.x);
+      expect(child.x + child.width).toBeLessThanOrEqual(boxes.card.x + boxes.card.width);
+    }
+    expect(boxes.actions.y).toBeGreaterThanOrEqual(boxes.note.y + boxes.note.height);
+    await captureForDesignReview(page, {
+      route: '/reviews',
+      state: 'approval bounded decision column',
+      source: '31-reviews.spec.ts',
+    });
+  });
+
   test('captures an applied decision with an outcome warning', async ({ page, request }) => {
     const { review, threadId } = await waitingRefund(page, request, 'reviews-applied-warning');
     const resolves = recordResolves(page);
@@ -749,6 +777,17 @@ test.describe('a phone tool approval', () => {
         const boxes = await readBoxes(page, { actions, value });
         expect(boxes.value.y + boxes.value.height).toBeLessThanOrEqual(boxes.actions.y);
         await expect(actions).toBeInViewport();
+        for (const name of ['Deny', 'Approve']) {
+          const button = actions.getByRole('button', { name, exact: true });
+          await expect(button).toBeEnabled();
+          expect(
+            await button.evaluate((element) => {
+              const { x, y, width, height } = element.getBoundingClientRect();
+              const hit = document.elementFromPoint(x + width / 2, y + height / 2);
+              return hit !== null && element.contains(hit);
+            }),
+          ).toBe(true);
+        }
       }
 
       for (const argument of Object.values(REFUND_APPROVAL.arguments)) {

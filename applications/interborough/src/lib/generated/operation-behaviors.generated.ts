@@ -104,6 +104,24 @@ export const CATALOG_OPERATION_BEHAVIORS = {
   'bureau.contexts.retract': {
     mcpExposable: false,
   },
+  'bureau.contexts.share': {
+    mcpExposable: false,
+  },
+  'bureau.contexts.share.request': {
+    mcpExposable: false,
+  },
+  'bureau.contexts.share.request.resolve': {
+    mcpExposable: false,
+  },
+  'bureau.contexts.share.requests.list': {
+    mcpExposable: false,
+  },
+  'bureau.contexts.share.revoke': {
+    mcpExposable: false,
+  },
+  'bureau.contexts.share.status': {
+    mcpExposable: false,
+  },
   'bureau.contexts.steer': {
     mcpExposable: false,
   },

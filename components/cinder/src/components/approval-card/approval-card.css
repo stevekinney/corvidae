@@ -1335,6 +1335,13 @@
   }
 
   @container (inline-size < 24rem) {
+    /* Let the content scroll past the sticky decision row, including its touch target and inset. */
+    .cinder-approval-card__detail-body:has(
+      > .cinder-approval-card__actions .cinder-approval-card__action-row
+    ) {
+      padding-block-end: calc(var(--cinder-touch-target-min) + 2 * var(--cinder-space-2));
+    }
+
     .cinder-approval-card--decision .cinder-approval-card__row-actions .cinder-button {
       line-height: var(--cinder-leading-tight);
     }

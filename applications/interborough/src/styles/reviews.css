@@ -64,6 +64,11 @@
   min-inline-size: 0;
 }
 
+/* Keep the approval's input, note and decision together on wide detail panes. */
+.ib-reviews__detail [data-kind='tool-approval'] > .cinder-approval-card--detail {
+  max-inline-size: 48rem;
+}
+
 /* ── The open review ──────────────────────────────────────────────────────────── */
 
 .ib-review-detail {
