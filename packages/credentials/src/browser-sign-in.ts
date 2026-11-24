@@ -269,5 +269,14 @@ export function createBrowserSignIn(options: BrowserSignInOptions) {
       const resolved = await resolveSession(request);
       return resolved?.session.consentBinding ?? null;
     },
+    consentIdentity: async (request: Request) => {
+      const resolved = await resolveSession(request);
+      if (!resolved) return null;
+      return {
+        subject: resolved.session.subjectId,
+        tenant: resolved.session.workspaceId,
+        binding: resolved.session.consentBinding,
+      };
+    },
   };
 }
