@@ -801,8 +801,11 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
       .filter({ hasText: question });
     await expect(decided).toBeVisible();
     await expect(decided.locator('.cinder-approval-card__settled-note')).toContainText(
-      /Approved by you in Reviews\s*10:46 AM/,
+      'Approved by you in Reviews',
     );
+    await expect(
+      decided.locator('xpath=following-sibling::*[1][contains(@class, "chat-approval-time")]'),
+    ).toHaveText('10:46 AM');
     await expect(decided.getByRole('link', { name: 'Reviews' })).toHaveAttribute(
       'href',
       /\/reviews\?tab=done&review=/,
@@ -863,8 +866,11 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     ).toHaveText('Running');
     // The decision stays as it was, and is not told again.
     await expect(decided.locator('.cinder-approval-card__settled-note')).toContainText(
-      /Approved by you in Reviews\s*10:46 AM/,
+      'Approved by you in Reviews',
     );
+    await expect(
+      decided.locator('xpath=following-sibling::*[1][contains(@class, "chat-approval-time")]'),
+    ).toHaveText('10:46 AM');
     await expect(
       page.locator('[data-cinder-layout="decision"][data-cinder-state="approved"]'),
     ).toHaveCount(1);
@@ -1040,8 +1046,11 @@ test.describe('an open chat whose approval was denied with a note (18h)', () => 
       .filter({ hasText: 'Refund order 4398' });
     await expect(denied).toBeVisible();
     await expect(denied.locator('.cinder-approval-card__settled-note')).toContainText(
-      /Denied by you\s*10:40 AM/,
+      'Denied by you',
     );
+    await expect(
+      denied.locator('xpath=following-sibling::*[1][contains(@class, "chat-approval-time")]'),
+    ).toHaveText('10:40 AM');
     await denied.getByRole('button', { name: 'Details' }).click();
     await expect(denied.locator('.cinder-approval-card__decision-note')).toContainText(NOTE);
     await expect(

@@ -44,6 +44,7 @@ export function lastTurnStop(conversation: ConversationHistory): TurnStop | unde
   if (lastAssistantId(conversation) === undefined) return undefined;
   for (const id of conversation.ids.slice(lastTurnStart(conversation))) {
     const row = Object.hasOwn(conversation.messages, id) ? conversation.messages[id] : undefined;
+    if (row === undefined) continue;
     const note = (resolveMessageNotes(row) ?? []).find(
       (entry): entry is Extract<MessageNoteInfo, { kind: 'stopped' }> =>
         entry.kind === 'stopped' && entry.notice !== true,

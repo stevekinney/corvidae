@@ -257,7 +257,6 @@
     ...rest
   }: ChatImplementationProps = $props();
 
-  const chatWords = $derived(resolveTurnLabels(turnLabels));
   const chatLabels = $derived(resolveChatLabels(labels));
   // Shared Chat words provide defaults for the dock; an explicit questionLabels override always
   // wins so hosts can specialize question vocabulary without changing the rest of Chat.

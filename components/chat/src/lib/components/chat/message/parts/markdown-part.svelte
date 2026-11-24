@@ -37,7 +37,7 @@
     {markdownNode}
   />
 {:else}
-  {#each claimSources as claim, index (claim.id)}
+  {#each claimSources as claim (claim.id)}
     <div class="chat-markdown-claim" data-chat-cited-claim={claim.id}>
       <MessageContent content={claim.markdown} class="chat-markdown-claim-content" {markdownNode} />
       {#if claim.sources.length > 0}

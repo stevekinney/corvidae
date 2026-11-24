@@ -180,6 +180,12 @@
   import NewChatChoices from './new-chat-choices.svelte';
   import NewChatFailure from './new-chat-failure.svelte';
   import NewChatWelcome from './new-chat-welcome.svelte';
+
+  type ApprovalDisclosure = {
+    readonly irreversible?: boolean | undefined;
+    readonly consequence?: string | undefined;
+    readonly why?: string | undefined;
+  };
   import ReplyDetails from './reply-details.svelte';
   import { replyModelLabel, replyModelOf } from './reply-model.ts';
   import { replyStepOf } from './reply-details.ts';
@@ -2582,6 +2588,7 @@
               >
                 {#snippet decision(entry)}
                   {@const asked = approvalsByCall.get(entry.callId)}
+                  {@const askedAction = asked?.action as ApprovalDisclosure | undefined}
                   {@const expired =
                     entry.state === 'expired' ||
                     (entry.approvalExpiresAt !== undefined &&
@@ -2603,9 +2610,9 @@
                           : undefined}
                         requestedAt={asked?.requestedAt}
                         alwaysAsks={asked?.alwaysAsks}
-                        irreversible={asked?.action?.irreversible}
-                        consequence={asked?.action?.consequence}
-                        why={asked?.action?.why}
+                        irreversible={askedAction?.irreversible}
+                        consequence={askedAction?.consequence}
+                        why={askedAction?.why}
                         decidedInHref={entry.reviewId === undefined
                           ? undefined
                           : router.href(

@@ -307,9 +307,15 @@
       }
     : {}}
 />
-{#if decision === undefined && unavailableReason === undefined && expired && lapsedAt !== undefined}
-  <!-- When it lapsed is a line under the card in a message's time style (Chat's rule for
-       `.chat-approval-time`), not text inside the card. -->
+{#if decision !== undefined}
+  <!-- Cinder owns the decision wording; the host owns its transcript time. -->
+  <div class="chat-approval-time">
+    <time datetime={new Date(decision.decidedAt).toISOString()}
+      ><bdi>{formatTimeOfDay(decision.decidedAt)}</bdi></time
+    >
+  </div>
+{:else if unavailableReason === undefined && expired && lapsedAt !== undefined}
+  <!-- When it lapsed is a line under the card in a message's time style. -->
   <div class="chat-approval-time">
     <time datetime={lapsedAt}><bdi>{formatTimeOfDay(lapsedAt)}</bdi></time>
   </div>

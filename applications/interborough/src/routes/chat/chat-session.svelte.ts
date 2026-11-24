@@ -65,7 +65,6 @@ import {
   type ChatRunWiring,
   type GrantNotLoosened,
   type HumanRequest,
-  type LastRunEnd,
   type Refusal,
   type RunUsage,
 } from './run-wiring.ts';
@@ -245,8 +244,6 @@ export class ChatSessionState {
   );
   /** The continuation of the last stopped turn in flight, by the run it goes on from. */
   resuming = $state<{ readonly runId: string; readonly commandId: string } | undefined>(undefined);
-  /** How the last run ended, as the latest thread read recorded. */
-  lastRunEnd = $state<LastRunEnd | undefined>(undefined);
   /** The questions the run is waiting on the person to answer; the next message answers one. */
   humanRequests = $state.raw<readonly HumanRequest[]>([]);
   /** Whether the session opened on a run that was going, and is still reading it. */
@@ -816,7 +813,6 @@ export class ChatSessionState {
         { signal: this.#abort.signal },
       );
       this.#resumeCommand = undefined;
-      this.lastRunEnd = undefined;
       await this.refresh();
       return true;
     } catch (error) {

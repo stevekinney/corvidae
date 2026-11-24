@@ -40,6 +40,8 @@
     onSelect?: ((callId: string) => void) | undefined;
     /** The call whose panel is open: its row is tinted. Only with `onSelect`. */
     selectedId?: string | undefined;
+    /** Retries the interrupted turn from a failed tool row. */
+    onRetryStep?: ((callId: string) => void) | undefined;
   }
 
   let {
@@ -53,6 +55,7 @@
     opensPanel,
     onSelect,
     selectedId,
+    onRetryStep,
   }: ToolCallsProps = $props();
 
   let openDetails = $state<ReadonlySet<string>>(new Set());
@@ -116,6 +119,7 @@
     label={CHAT_COPY.tools.railLabel}
     {selectedId}
     onSelect={onSelect ?? toggleDetails}
+    onRetry={onRetryStep}
   >
     {#snippet children(call)}
       {@const entry = byId.get(call.id)}

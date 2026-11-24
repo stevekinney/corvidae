@@ -693,6 +693,11 @@ function textOf(message: ConversationHistory['messages'][string]): string {
 
 /** The result row an interrupt parks its tool call on, until the user decides. */
 function approvalRow(interrupt: Interrupt, toolCallId: string): ToolResult {
+  const detail = interrupt as Interrupt & {
+    readonly irreversible?: unknown;
+    readonly consequence?: unknown;
+    readonly why?: unknown;
+  };
   return {
     callId: toolCallId,
     outcome: 'action_required',
@@ -705,6 +710,9 @@ function approvalRow(interrupt: Interrupt, toolCallId: string): ToolResult {
       policyVersion: 'bureau',
       idempotencyKey: interrupt.id,
       ...(interrupt.expiresAt === undefined ? {} : { expiresAt: interrupt.expiresAt }),
+      ...(typeof detail.irreversible === 'boolean' ? { irreversible: detail.irreversible } : {}),
+      ...(typeof detail.consequence === 'string' ? { consequence: detail.consequence } : {}),
+      ...(typeof detail.why === 'string' ? { why: detail.why } : {}),
     },
   };
 }

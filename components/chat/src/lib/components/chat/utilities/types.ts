@@ -122,7 +122,12 @@ export type ImageMessagePart = {
   image: Extract<MultiModalContent, { type: 'image' }>;
 };
 
-export type ToolApprovalAction = Extract<ToolAction, { type: 'approval' }>;
+/** Optional decision context travels with newer approval actions; older stored actions omit it. */
+export type ToolApprovalAction = Extract<ToolAction, { type: 'approval' }> & {
+  readonly irreversible?: boolean | undefined;
+  readonly consequence?: string | undefined;
+  readonly why?: string | undefined;
+};
 
 /**
  * A tool-approval render part — emitted in place of a `tool-result` part only
