@@ -54,6 +54,6 @@ test('publishes the original artifact only after isolated consumer tests pass', 
       step.uses?.startsWith('actions/download-artifact@'),
     );
     expect(download?.with?.['artifact-ids']).toBe('${{ needs.package.outputs.artifact-id }}');
-    expect(download?.with?.name).toBeUndefined();
+    expect(download?.with?.['name']).toBeUndefined();
   }
 });
