@@ -384,6 +384,7 @@
       mode="waiting"
       items={waiting}
       phase={phaseOf(waitingQuery)}
+      hasSupplementalWaiting={(chatRequests.data?.length ?? 0) > 0}
       {resolving}
       submitting={decisionMutation.isPending}
       {submitGate}
