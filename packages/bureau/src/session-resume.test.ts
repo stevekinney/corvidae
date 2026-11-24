@@ -520,7 +520,7 @@ describe('a resumed turn', () => {
     });
     await textValueStore(fixture.storage).set(
       continuationAdmissionFenceKey(continuationRunId),
-      JSON.stringify({ state: 'authorized', runId: continuationRunId }),
+      JSON.stringify({ state: 'local-authorized', runId: continuationRunId }),
     );
     await textValueStore(fixture.storage).delete(processLeaseKey(admission.ownerProcess!));
 
@@ -545,9 +545,54 @@ describe('a resumed turn', () => {
     expect(
       await textValueStore(fixture.storage).get(continuationAdmissionFenceKey(continuationRunId)),
     ).toBe(JSON.stringify({ state: 'launched', runId: continuationRunId }));
+    expect(await resume(second, run.contextId, run.id, 'resume-after-local-crash')).toEqual({
+      contextId: run.contextId,
+      runId: continuationRunId,
+      resumedRunId: run.id,
+    });
     expect((await second.internals.taskRegistry.record(continuationRunId))?.settled).toMatchObject({
       finishReason: TASK_OWNER_LOST_FINISH_REASON,
     });
+  });
+
+  it('does not replay a local receipt interrupted by shutdown after authorization', async () => {
+    const fixture = createSqliteStorageFixture();
+    cleanups.push(() => fixture.dispose());
+    const first = await openBureau(agentThat('waits'), fixture.storage, false);
+    const second = await openBureau(agentThat('waits'), fixture.storage, false);
+    const { run } = await stoppedTurn(first);
+    const kv = first.internals.kv!;
+    const conditionalBatch = kv.conditionalBatch.bind(kv);
+    let intercepted = false;
+    let peerReason: string | undefined;
+    let shutdown: Promise<unknown> | undefined;
+    (kv as { conditionalBatch: typeof kv.conditionalBatch }).conditionalBatch = async (
+      conditions,
+      operations,
+    ) => {
+      const written = await conditionalBatch(conditions, operations);
+      if (
+        !intercepted &&
+        operations.some(
+          (operation) =>
+            operation.type === 'set' &&
+            operation.value.includes('"local-authorized"'),
+        )
+      ) {
+        intercepted = true;
+        shutdown = first.shutdown({ policy: 'detach' });
+        await shutdown;
+        peerReason = await refusalOf(resume(second, run.contextId, run.id, 'shutdown-race'));
+      }
+      return written;
+    };
+    const rejected = await resume(first, run.contextId, run.id, 'shutdown-race').then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(rejected).toBeDefined();
+    expect(peerReason).toBe('turn-running');
+    await shutdown;
   });
 });
 

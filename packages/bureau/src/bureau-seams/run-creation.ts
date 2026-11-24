@@ -823,6 +823,7 @@ export function createRunCreation<D extends AgentDefinitions>(
       const confirmTaskAdmission = request.confirmTaskAdmission;
       const rejectTaskAdmission = request.rejectTaskAdmission;
       let preserveRejectedContinuation = false;
+      let localAdmissionAuthorized = false;
       // COR-1707 — with no session store, nothing saves the context's rows or claims what they
       // reference, so the task holds its own rows, its input included, under its run for the
       // task's life, as a catalog run does; its end releases them (the terminal listeners below).
@@ -922,18 +923,12 @@ export function createRunCreation<D extends AgentDefinitions>(
         // immediately before irreversible local creation. Keep the optional call outside the
         // ordinary path: `await undefined` adds a microtask to every normal in-memory start.
         if (runtime.durable === undefined && authorizeTaskAdmission !== undefined) {
-          await authorizeTaskAdmission(runId);
+          await authorizeTaskAdmission(runId, 'local');
+          localAdmissionAuthorized = true;
           // Authorization is durable and asynchronous. Re-establish COR-690/COR-1481's
           // synchronous fence immediately before local creation, so a shutdown or deletion that
           // started while the receipt was claimed cannot miss this run.
-          try {
-            assertRunCreationStillOpen(sessionId);
-          } catch (error) {
-            // Do not erase an owner-lost acknowledgement which won between the final guard and
-            // this process's rollback. Its terminal task remains the continuation's receipt.
-            preserveRejectedContinuation = (await rejectTaskAdmission?.(runId)) === false;
-            throw error;
-          }
+          assertRunCreationStillOpen(sessionId);
         }
         activeRun = createActiveRun(
           startedRunOptions,
@@ -971,7 +966,7 @@ export function createRunCreation<D extends AgentDefinitions>(
                   : {
                       beforeLaunch: async () => {
                         try {
-                          await authorizeTaskAdmission(runId);
+                          await authorizeTaskAdmission(runId, 'durable');
                         } catch (error) {
                           admissionRejectedBeforeLaunch = true;
                           throw error;
@@ -987,6 +982,9 @@ export function createRunCreation<D extends AgentDefinitions>(
           { owner },
         );
       } catch (error) {
+        if (localAdmissionAuthorized) {
+          preserveRejectedContinuation = (await rejectTaskAdmission?.(runId)) === false;
+        }
         if (!preserveRejectedContinuation) await core.tasks.discard(runId).catch(() => undefined);
         // Promoted but never started, so no terminal listener will ever log
         // its end: log it here, or every process would count this run as
@@ -1278,11 +1276,11 @@ export function createRunCreation<D extends AgentDefinitions>(
       );
 
       store.register(activeRun, runId);
+      registeredForRecovery = true;
+      runSessionIdentifiers.set(activeRun, sessionId);
       if (runtime.durable === undefined && confirmTaskAdmission !== undefined) {
         await confirmTaskAdmission(runId);
       }
-      registeredForRecovery = true;
-      runSessionIdentifiers.set(activeRun, sessionId);
 
       // AB-361/AB-34: the started-work control contract says an
       // acknowledged durable run is durable — a caller that holds this

@@ -152,10 +152,13 @@ export function createSessionResume<D extends AgentDefinitions>(
           ),
         ],
         taskAdmissionFence: continuationAdmissionFenceKey,
-        authorizeTaskAdmission: async (continuationRunId) => {
+        authorizeTaskAdmission: async (continuationRunId, kind) => {
           if (runtime.kv === undefined) return;
           const key = continuationAdmissionFenceKey(continuationRunId);
-          const authorizedReceipt = continuationReceiptValue('authorized', continuationRunId);
+          const authorizedReceipt = continuationReceiptValue(
+            kind === 'durable' ? 'durable-authorized' : 'local-authorized',
+            continuationRunId,
+          );
           const authorized = await runtime.kv.conditionalBatch(
             [{ key, expectedValue: null }],
             [{ type: 'set', key, value: authorizedReceipt }],
@@ -166,7 +169,7 @@ export function createSessionResume<D extends AgentDefinitions>(
         confirmTaskAdmission: async (continuationRunId) => {
           if (runtime.kv === undefined) return;
           const key = continuationAdmissionFenceKey(continuationRunId);
-          const authorizedReceipt = continuationReceiptValue('authorized', continuationRunId);
+          const authorizedReceipt = continuationReceiptValue('local-authorized', continuationRunId);
           const launchedReceipt = continuationReceiptValue('launched', continuationRunId);
           if (
             !(await runtime.kv.conditionalBatch(
@@ -181,7 +184,7 @@ export function createSessionResume<D extends AgentDefinitions>(
         rejectTaskAdmission: async (continuationRunId) => {
           if (runtime.kv === undefined) return true;
           const key = continuationAdmissionFenceKey(continuationRunId);
-          const authorizedReceipt = continuationReceiptValue('authorized', continuationRunId);
+          const authorizedReceipt = continuationReceiptValue('local-authorized', continuationRunId);
           const rejectedReceipt = continuationReceiptValue('rejected', continuationRunId);
           if (
             await runtime.kv.conditionalBatch(
@@ -214,6 +217,18 @@ export function createSessionResume<D extends AgentDefinitions>(
       });
     } catch (error) {
       if (savedContinuation !== undefined) {
+        if (
+          runtime.kv !== undefined &&
+          continuationReceipt(
+            await runtime.kv.get(continuationAdmissionFenceKey(savedContinuation.runId)),
+            savedContinuation.runId,
+          ) === 'launched'
+        ) {
+          const latest = await sessions.load(sessionId);
+          const raced =
+            latest === undefined ? undefined : await replayOf(latest, runId, owner, commandId);
+          if (raced !== undefined) return raced;
+        }
         await rollbackFailedContinuation(
           sessions,
           session,
@@ -287,7 +302,8 @@ export function createSessionResume<D extends AgentDefinitions>(
     const observedTask = await runtime.kv.get(taskKey);
     const observedReceipt = await runtime.kv.get(fenceKey);
     const state = continuationReceipt(observedReceipt, continuationRunId);
-    if (state === 'authorized') {
+    if (state === 'launched' || state === 'durable-authorized') return false;
+    if (state === 'local-authorized') {
       const task = await core.tasks.record(continuationRunId);
       if (task?.settled?.finishReason !== TASK_OWNER_LOST_FINISH_REASON) return false;
       const acknowledged = await runtime.kv.conditionalBatch(
@@ -374,7 +390,7 @@ export function createSessionResume<D extends AgentDefinitions>(
       return refuse('turn-running', 'The continuation is still being prepared.');
     }
     const receipt = await runtime.kv.get(continuationAdmissionFenceKey(continuationRunId));
-    if (continuationReceipt(receipt, continuationRunId) === 'authorized') return;
+    if (continuationReceipt(receipt, continuationRunId) === 'durable-authorized') return;
     // A task and a prepared engine shell both precede authorization. Neither proves that this
     // continuation can launch: its owner may have died after prepare, and recovery may retire the
     // exact unclaimed admission. The scoped receipt is the only durable start fact.
@@ -388,7 +404,7 @@ export function createSessionResume<D extends AgentDefinitions>(
   function continuationReceipt(
     value: string | null | undefined,
     continuationRunId: string,
-  ): 'authorized' | 'launched' | 'rejected' | 'retired' | undefined {
+  ): 'durable-authorized' | 'local-authorized' | 'launched' | 'rejected' | 'retired' | undefined {
     if (value === null || value === undefined) return undefined;
     try {
       const parsed: unknown = JSON.parse(value);
@@ -398,7 +414,8 @@ export function createSessionResume<D extends AgentDefinitions>(
         (parsed as Record<string, unknown>)['runId'] === continuationRunId
           ? (parsed as Record<string, unknown>)['state']
           : undefined;
-      return state === 'authorized' ||
+      return state === 'durable-authorized' ||
+        state === 'local-authorized' ||
         state === 'launched' ||
         state === 'rejected' ||
         state === 'retired'
@@ -410,7 +427,7 @@ export function createSessionResume<D extends AgentDefinitions>(
   }
 
   function continuationReceiptValue(
-    state: 'authorized' | 'launched' | 'rejected' | 'retired',
+    state: 'durable-authorized' | 'local-authorized' | 'launched' | 'rejected' | 'retired',
     runId: string,
   ): string {
     return JSON.stringify({ state, runId });

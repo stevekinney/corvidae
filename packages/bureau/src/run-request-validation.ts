@@ -137,7 +137,8 @@ export type SessionTaskFields = {
   /** Internal fence which prevents a retired continuation creator from admitting its task. */
   readonly taskAdmissionFence?: ((runId: string) => string) | undefined;
   /** Internal continuation-only authorization immediately after durable prepare. */
-  readonly authorizeTaskAdmission?: ((runId: string) => Promise<void>) | undefined;
+  readonly authorizeTaskAdmission?:
+    ((runId: string, kind: 'durable' | 'local') => Promise<void>) | undefined;
   /** Records that a locally registered continuation may answer duplicate commands. */
   readonly confirmTaskAdmission?: ((runId: string) => Promise<void>) | undefined;
   /** Rejects a claimed local continuation before its rollback removes its marker. */
