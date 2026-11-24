@@ -1,0 +1,19 @@
+{
+  "issue": "COR-2668",
+  "branch": "steve/cor-2653-browser-port-isolation",
+  "checkedAt": "146c0eae2b882a12db76202ee9afc37f2e88fd1b",
+  "briefVersion": "4479cac72816",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "not-met",
+      "evidence": "Test-only change reviewed; real desktop and phone browser proof pending on integrated candidate."
+    },
+    {
+      "id": "AC2",
+      "status": "not-met",
+      "evidence": "Direct real-route UI regression passed; pinned Linux seven-spec and full-shard bound proof pending."
+    }
+  ]
+}

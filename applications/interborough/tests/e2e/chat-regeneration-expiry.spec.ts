@@ -11,7 +11,7 @@ import {
   REGENERATION_PROOF_AGENT,
   REGENERATION_PROOF_TOOL,
 } from './regeneration-proof-agent.ts';
-import { threadMessages } from './task-support.ts';
+import { bureauCall, threadMessages } from './task-support.ts';
 
 const VIEWPORTS = [
   { width: 1280, height: 900, label: 'desktop' },
@@ -214,12 +214,17 @@ async function assertChatListStatus(
   page: Page,
   threadId: string,
   waiting: boolean,
+  title: string,
 ): Promise<number | undefined> {
   await page.goto('/chats');
+  if (viewportIsDesktop(page))
+    await page.getByRole('searchbox', { name: 'Search chats' }).fill(title);
   const row = page.locator(`[data-chat="${threadId}"]`);
   await expect(row).toHaveCount(1);
   if (waiting) await expect(row).toContainText('Waiting on you');
   else await expect(row).not.toContainText('Waiting on you');
+  if (viewportIsDesktop(page))
+    await expect.poll(() => chatListWaitingCount(page)).toBe(waiting ? 1 : 0);
   const count = viewportIsDesktop(page) ? await chatListWaitingCount(page) : undefined;
   await page.goto(`/chats/${threadId}`);
   return count;
@@ -521,6 +526,11 @@ for (const viewport of VIEWPORTS) {
       const reviewId = review?.id;
       if (reviewId === undefined)
         throw new Error('the real pending approval did not name its review');
+      const chatTitle = `Expiry ${threadId}`;
+      await bureauCall(request, 'bureau.contexts.rename', {
+        contextId: threadId,
+        title: chatTitle,
+      });
 
       await expect(page.locator('.cinder-approval-card')).toHaveCount(1);
       const initialCall = await assertCanonicalCallPair(page, 'expiring-approval-1', reviewId);
@@ -535,7 +545,10 @@ for (const viewport of VIEWPORTS) {
         await expect.poll(() => reviewsNavigationCount(page)).toBe(initialReviewsCount);
       }
       const initialChatWaitingCount =
-        viewport.width >= 500 ? await chatListWaitingCount(page) : undefined;
+        viewport.width >= 500
+          ? await assertChatListStatus(page, threadId, true, chatTitle)
+          : undefined;
+      if (initialChatWaitingCount !== undefined) expect(initialChatWaitingCount).toBe(1);
       // Leave the page open through the configured 20-second binding expiry, then reread the durable
       // history. The host sweep, not a mocked response or page route, transitions this receipt.
       await expect
@@ -635,8 +648,9 @@ for (const viewport of VIEWPORTS) {
       }
       await expect(expiredToolPanel).toHaveCount(0);
       await expect(page.locator('[data-chat-composer-status="waiting"]')).toHaveCount(0);
-      const expiredChatWaitingCount = await assertChatListStatus(page, threadId, false);
+      const expiredChatWaitingCount = await assertChatListStatus(page, threadId, false, chatTitle);
       if (initialChatWaitingCount !== undefined && expiredChatWaitingCount !== undefined) {
+        expect(expiredChatWaitingCount).toBe(0);
         expect(expiredChatWaitingCount).toBeLessThan(initialChatWaitingCount);
       }
       // assertChatListStatus navigates away and back; re-prove the expired card after that remount
@@ -728,8 +742,9 @@ for (const viewport of VIEWPORTS) {
       if (expiredReviewsCount !== undefined) {
         await expect.poll(() => reviewsNavigationCount(page)).toBe(expiredReviewsCount + 1);
       }
-      const freshChatWaitingCount = await assertChatListStatus(page, threadId, true);
+      const freshChatWaitingCount = await assertChatListStatus(page, threadId, true, chatTitle);
       if (expiredChatWaitingCount !== undefined && freshChatWaitingCount !== undefined) {
+        expect(freshChatWaitingCount).toBe(1);
         expect(freshChatWaitingCount).toBe(expiredChatWaitingCount + 1);
       }
       const reloadedExpiredToolRow = reloadedExpiredCall.row;
