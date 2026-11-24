@@ -17,7 +17,7 @@
                 clientId: 'client',
                 clientName: 'Claude',
                 resource: 'https://resource.test',
-                approvedAt: 1,
+                approvedAt: null,
                 permissions: [{ scope: 'read', description: 'Read assets', available: true }],
               },
             ]

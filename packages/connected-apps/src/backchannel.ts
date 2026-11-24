@@ -14,7 +14,7 @@ const grant = z.object({
   clientId: z.string(),
   clientName: z.string(),
   resource: z.string(),
-  approvedAt: z.number(),
+  approvedAt: z.number().nullable(),
   permissions: z.array(permission),
 });
 const listOutput = z.object({

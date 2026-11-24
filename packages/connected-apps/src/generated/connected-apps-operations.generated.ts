@@ -7,7 +7,7 @@ export type ConnectedAppsOperationTypes = {
       readonly canList: boolean;
       readonly canRevoke: boolean;
       readonly grants: ReadonlyArray<{
-        readonly approvedAt: number;
+        readonly approvedAt: number | null;
         readonly clientId: string;
         readonly clientName: string;
         readonly grantId: string;

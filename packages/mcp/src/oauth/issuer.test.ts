@@ -86,6 +86,14 @@ describe('hosted OAuth issuer', () => {
     expect(
       await issuer.revokeConnectedApp({ subject: 'other', tenant: 'tenant' }, grants[0].grantId),
     ).toBe(false);
+    for await (const [key, bytes] of storage.scan('oauth:grant:')) {
+      const oldGrant = JSON.parse(new TextDecoder().decode(bytes));
+      delete oldGrant.approvedAt;
+      await storage.put(key, new TextEncoder().encode(JSON.stringify(oldGrant)));
+    }
+    expect(
+      (await issuer.listConnectedApps({ subject: 'subject', tenant: 'tenant' }))[0]?.approvedAt,
+    ).toBeNull();
     const token = await request('/oauth/token', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },

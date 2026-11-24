@@ -27,6 +27,39 @@ const binding = {
 };
 
 describe('OAuthStore consent', () => {
+  test('retains older grants without inventing an approval time', async () => {
+    using storage = new MemoryStorage();
+    const store = new OAuthStore(storage);
+    for (const id of ['old', 'new']) {
+      await store.createConsent(id, consent);
+      expect(
+        await store.approveConsent(id, binding, {
+          grantId: id,
+          code: `code-${id}`,
+          tenant: consent.tenant,
+          subject: consent.subject,
+          resource: consent.resource,
+          scopes: consent.scopes,
+        }),
+      ).toBe(true);
+    }
+    for await (const [key, bytes] of storage.scan('oauth:grant:')) {
+      const grant = JSON.parse(new TextDecoder().decode(bytes)) as {
+        grantId: string;
+        approvedAt?: number;
+      };
+      if (grant.grantId === 'old') {
+        delete grant.approvedAt;
+        await storage.put(key, new TextEncoder().encode(JSON.stringify(grant)));
+      }
+    }
+    const identity = { issuer: consent.issuer, tenant: consent.tenant, subject: consent.subject };
+    const grants = await store.listGrants(identity);
+    expect(grants.find((grant) => grant.grantId === 'old')?.approvedAt).toBeNull();
+    expect(grants.find((grant) => grant.grantId === 'new')?.approvedAt).toEqual(expect.any(Number));
+    expect(await store.revokeOwnedGrant('old', identity)).toBe(true);
+    expect((await store.getGrant('old'))?.active).toBe(false);
+  });
   test('lists and revokes only grants owned by the member in the active workspace', async () => {
     using storage = new MemoryStorage();
     const first = new OAuthStore(storage);

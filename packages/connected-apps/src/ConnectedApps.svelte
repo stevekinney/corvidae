@@ -51,7 +51,11 @@
             <h2>{grant.clientName}</h2>
             <p>Client: {grant.clientId}</p>
             <p>Resource: {grant.resource}</p>
-            <p>Approved: {new Date(grant.approvedAt).toLocaleString()}</p>
+            <p>
+              Approved: {grant.approvedAt === null
+                ? 'Time unavailable'
+                : new Date(grant.approvedAt).toLocaleString()}
+            </p>
             <details>
               <summary>Approved permissions</summary>
               <ul>

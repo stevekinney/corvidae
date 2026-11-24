@@ -32,7 +32,7 @@ export type OAuthGrant = Omit<Approval, 'code'> & {
   issuer: string;
   client: string;
   active: boolean;
-  approvedAt: number;
+  approvedAt: number | null;
 };
 type Grant = OAuthGrant;
 type Code = {
@@ -264,7 +264,7 @@ export class OAuthStore {
         grant.tenant === identity.tenant &&
         grant.subject === identity.subject
       )
-        grants.push(grant);
+        grants.push({ ...grant, approvedAt: grant.approvedAt ?? null });
     }
     return grants;
   }

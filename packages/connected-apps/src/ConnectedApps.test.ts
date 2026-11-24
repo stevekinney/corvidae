@@ -27,6 +27,7 @@ test('shows approval details and asks before disconnecting', async () => {
   try {
     await waitUntil(() => target.textContent?.includes('Claude') ?? false);
     expect(target.textContent).toContain('Read assets');
+    expect(target.textContent).toContain('Time unavailable');
     click('Disconnect');
     await waitUntil(
       () => target.textContent?.includes('This approval will no longer grant access.') ?? false,
