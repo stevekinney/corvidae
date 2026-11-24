@@ -809,12 +809,8 @@ export interface PluginEventDeclaration {
   readonly payload: z.ZodObject;
 }
 
-/**
- * What `setup` returns: everything the plugin adds to the host. Every member is optional, so a
- * plugin names only the kinds it contributes.
- */
 /** Durable cleanup for a terminally denied or rejected, signed tool call. */
-export interface PluginTerminalReviewRelease {
+export interface PluginRelease {
   readonly name: string;
   readonly agent: string;
   readonly tool: string;
@@ -831,9 +827,13 @@ export interface PluginTerminalReviewRelease {
   }) => Promise<void>;
 }
 
+/**
+ * What `setup` returns: everything the plugin adds to the host. Every member is optional, so a
+ * plugin names only the kinds it contributes.
+ */
 export interface PluginContributions {
-  /** Internal, durable business cleanup; unlike hooks this cannot be disabled separately. */
-  readonly terminalReviewReleases?: readonly PluginTerminalReviewRelease[];
+  /** Terminal-review business cleanup, delivered durably and not separately disableable like hooks. */
+  readonly releases?: readonly PluginRelease[];
   /** Tools agents can call. */
   readonly tools?: readonly AnyTool[];
   /** Activities workflows can call. */

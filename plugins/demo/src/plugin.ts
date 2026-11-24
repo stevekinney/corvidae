@@ -79,7 +79,7 @@ export function createDemoPlugin(options: DemoPluginOptions = {}): PluginDescrip
           ({ name }) => provided === undefined || provided.has(name),
         ),
         tools: [createLookupOrderTool(), issueRefund],
-        terminalReviewReleases: [
+        releases: [
           {
             name: 'refund',
             agent: 'tool-runner',

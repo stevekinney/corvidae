@@ -253,7 +253,7 @@ export interface BureauCore<D extends AgentDefinitions> {
     string,
     {
       plugin: string;
-      release: import('@lostgradient/interborough-plugin').PluginTerminalReviewRelease;
+      release: import('@lostgradient/interborough-plugin').PluginRelease;
     }
   >;
   /** The resolved options, final once `runtime` exists. */

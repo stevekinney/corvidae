@@ -334,7 +334,7 @@ describe('the demo plugin', () => {
       host: {},
     } as never);
     if (!contributions) throw new Error('Missing contributions');
-    const release = contributions.terminalReviewReleases?.[0];
+    const release = contributions.releases?.[0];
     if (!release) throw new Error('Missing terminal release');
     const ledger = createRefundLedger(scopedStorage(storage, 'refund-ledger'));
     await ledger.addCharge({

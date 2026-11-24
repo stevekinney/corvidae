@@ -108,7 +108,7 @@ export type ComposableOptions = Omit<BureauOptions, 'agentSource' | 'agents'> & 
 export interface ComposedPlugins<O extends ComposableOptions> {
   readonly terminalReviewReleases: ReadonlyMap<
     string,
-    { plugin: string; release: NonNullable<PluginContributions['terminalReviewReleases']>[number] }
+    { plugin: string; release: NonNullable<PluginContributions['releases']>[number] }
   >;
   /** The options with every running plugin's contributions folded in, and `memory` built. */
   readonly options: O;
@@ -751,7 +751,7 @@ export function registersKind(kind: PluginContributionKind, options: ComposableO
 class Contributed {
   readonly terminalReviewReleases = new Map<
     string,
-    { plugin: string; release: NonNullable<PluginContributions['terminalReviewReleases']>[number] }
+    { plugin: string; release: NonNullable<PluginContributions['releases']>[number] }
   >();
   readonly tools: Record<string, Tool> = {};
   readonly activities: { plugin: string; version: string; result: PluginSetupResult }[] = [];
@@ -789,7 +789,7 @@ class Contributed {
     tools: ReadonlyMap<string, Tool>,
     gate: PluginSecretGate | undefined,
   ): void {
-    for (const release of result.terminalReviewReleases ?? []) {
+    for (const release of result.releases ?? []) {
       const key = `${plugin}:${release.name}`;
       if (this.terminalReviewReleases.has(key))
         throw new Error(`Duplicate terminal review release: ${key}`);
