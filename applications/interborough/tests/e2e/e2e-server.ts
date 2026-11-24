@@ -684,6 +684,7 @@ const secondaryResults = await Promise.allSettled([
           actorId: 'chat-reader-actor',
           actorKind: 'user',
           owner: 'chat-sharing:reader',
+          displayName: 'Reader Member',
           membershipRevision: 'chat-sharing-1',
           capabilities: ['workspace:use'],
         },

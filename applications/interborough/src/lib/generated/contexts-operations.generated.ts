@@ -226,6 +226,8 @@ export type ContextsOperationTypes = {
     readonly output: {
       readonly requests: ReadonlyArray<{
         readonly contextId: string;
+        readonly contextTitle: string | null;
+        readonly granteeLabel: string | null;
         readonly granteeOwnerId: string;
         readonly requestedAt: string;
       }>;

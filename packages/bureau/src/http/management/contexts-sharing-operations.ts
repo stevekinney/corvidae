@@ -60,6 +60,8 @@ const requestQueueOutput = z.object({
       contextId: z.string(),
       granteeOwnerId: z.string(),
       requestedAt: z.string(),
+      granteeLabel: z.string().nullable(),
+      contextTitle: z.string().nullable(),
     }),
   ),
 });
@@ -493,17 +495,26 @@ export const contextsListShareRequestsOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ host, principal }) => {
     const sessions = await host.contexts.list();
-    const requests = sessions.flatMap((session) => {
-      const owner = sessionOwnerOf(session.metadata);
-      if (owner === null || !isOwnerOfResource(principal, owner)) return [];
-      return sessionReadRequestsOf(session.metadata)
-        .filter((request) => request.resolvedAt === undefined)
-        .map((request) => ({
-          contextId: session.id,
-          granteeOwnerId: request.owner,
-          requestedAt: request.requestedAt,
-        }));
-    });
+    const requests = await Promise.all(
+      sessions
+        .flatMap((session) => {
+          const owner = sessionOwnerOf(session.metadata);
+          if (owner === null || !isOwnerOfResource(principal, owner)) return [];
+          return sessionReadRequestsOf(session.metadata)
+            .filter((request) => request.resolvedAt === undefined)
+            .map((request) => ({
+              contextId: session.id,
+              granteeOwnerId: request.owner,
+              requestedAt: request.requestedAt,
+              contextTitle: session.title,
+              owner: request.owner,
+            }));
+        })
+        .map(async ({ owner, ...request }) => ({
+          ...request,
+          granteeLabel: (await host.resolveWorkspaceOwner?.(owner))?.displayName ?? null,
+        })),
+    );
     return { requests };
   },
 });

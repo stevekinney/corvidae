@@ -38,6 +38,9 @@ async function expectReadOnly(reader: Page): Promise<void> {
   );
   await expect(reader.locator('button[data-chat-send]')).toHaveCount(0);
   await expect(reader.getByRole('button', { name: 'More actions' })).toHaveCount(0);
+  await expect(reader.getByRole('button', { name: /Branch|Regenerate|Reply details/ })).toHaveCount(
+    0,
+  );
 }
 
 test.describe('workspace chat sharing /chats/:chat /reviews', () => {
@@ -122,7 +125,10 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
       ).toBeVisible();
       await owner.goto('/reviews');
       await expect(owner.getByRole('region', { name: 'Chat access requests' })).toContainText(
-        READER_OWNER,
+        'Reader Member',
+      );
+      await expect(owner.getByRole('region', { name: 'Chat access requests' })).toContainText(
+        'shared chat evidence',
       );
       await captureForDesignReviewWithPhone(owner, {
         route: '/reviews',

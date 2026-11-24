@@ -314,7 +314,8 @@
       {#each chatRequests.data ?? [] as request (`${request.contextId}:${request.granteeOwnerId}`)}
         <article>
           <p>
-            <strong>{request.granteeOwnerId}</strong> requested access to chat {request.contextId}.
+            <strong>{request.granteeLabel ?? 'A workspace member'}</strong> requested access to chat {request.contextTitle ??
+              'an untitled chat'}.
           </p>
           <Button
             size="sm"
