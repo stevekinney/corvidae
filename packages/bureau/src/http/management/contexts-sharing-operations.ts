@@ -64,7 +64,12 @@ const requestQueueOutput = z.object({
   ),
 });
 const shareStatusOutput = z.discriminatedUnion('status', [
-  z.object({ status: z.literal('active'), title: z.string().nullable(), agentName: z.string() }),
+  z.object({
+    status: z.literal('active'),
+    title: z.string().nullable(),
+    agentName: z.string(),
+    grantor: z.string().nullable(),
+  }),
   z.object({ status: z.literal('requestable') }),
   z.object({ status: z.literal('pending') }),
 ]);
@@ -413,9 +418,22 @@ export const contextsShareStatusOperation = defineOperation<
       !(await currentWorkspacePeer(host, principal, owner))
     )
       throw missing(input.contextId);
-    if (sessionHasReadGrant(loaded.metadata, workspace.owner, loaded.incarnation)) {
+    const grant = sessionReadGrantOf(loaded.metadata, workspace.owner);
+    if (
+      grant !== undefined &&
+      grant.revokedAt === undefined &&
+      grant.workspaceId === workspace.workspaceId &&
+      grant.actorId === workspace.actorId &&
+      grant.sessionIncarnation === loaded.incarnation
+    ) {
       const summary = summarizeSession(loaded);
-      return { status: 'active' as const, title: summary.title, agentName: summary.agentName };
+      const grantor = await host.resolveWorkspaceOwner?.(owner);
+      return {
+        status: 'active' as const,
+        title: summary.title,
+        agentName: summary.agentName,
+        grantor: grantor?.displayName ?? null,
+      };
     }
     if (!sessionWasReadGrantedTo(loaded.metadata, workspace.owner, loaded.incarnation))
       throw missing(input.contextId);

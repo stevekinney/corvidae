@@ -671,6 +671,7 @@ const secondaryResults = await Promise.allSettled([
           actorId: 'chat-owner-actor',
           actorKind: 'user',
           owner: 'chat-sharing:owner',
+          displayName: 'Avery Owner',
           membershipRevision: 'chat-sharing-1',
           capabilities: ['workspace:use'],
         },

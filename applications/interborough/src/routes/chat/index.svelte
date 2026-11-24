@@ -211,7 +211,7 @@
     title={shareStatus.data.title}
     agentName={shareStatus.data.agentName}
     readOnly
-    grantor="the chat owner"
+    grantor={shareStatus.data.grantor ?? 'the chat owner'}
   />
 {:else if context.isError && !failedToLoad}
   {#if shareStatus.data?.status === 'requestable' || shareStatus.data?.status === 'pending'}

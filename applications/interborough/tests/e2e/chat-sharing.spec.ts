@@ -28,6 +28,18 @@ async function share(owner: Page, decision: 'grant' | 'revoke'): Promise<void> {
     .click();
 }
 
+async function expectReadOnly(reader: Page): Promise<void> {
+  const notice = reader.locator('[data-chat-composer-status="read-only"]');
+  const trigger = notice.getByRole('button', { name: 'Read only' });
+  await expect(notice).toBeVisible();
+  await trigger.focus();
+  await expect(reader.locator('.chat-input-tooltip')).toHaveText(
+    'Read access granted by Avery Owner',
+  );
+  await expect(reader.locator('button[data-chat-send]')).toHaveCount(0);
+  await expect(reader.getByRole('button', { name: 'More actions' })).toHaveCount(0);
+}
+
 test.describe('workspace chat sharing', () => {
   test('an owner grants, revokes, reviews, and restores one former reader', async ({ browser }) => {
     const ownerContext = await member(browser, OWNER_KEY);
@@ -55,10 +67,8 @@ test.describe('workspace chat sharing', () => {
       await reader.goto('/chats');
       await expect(reader.locator(`a[href="/chats/${contextId}"]`)).toBeVisible();
       await reader.goto(`/chats/${contextId}`);
-      await expect(reader.getByText('Read access granted by the chat owner')).toBeVisible();
       await expect(reader.getByText('shared chat evidence', { exact: true })).toHaveCount(2);
-      await expect(reader.locator('button[data-chat-send]')).toBeDisabled();
-      await expect(reader.getByRole('button', { name: 'More actions' })).toHaveCount(0);
+      await expectReadOnly(reader);
       await captureForDesignReview(reader, {
         route: '/chats/:chat',
         state: 'active shared chat read-only',
@@ -67,8 +77,17 @@ test.describe('workspace chat sharing', () => {
 
       await owner.goto(`/chats/${contextId}`);
       await share(owner, 'revoke');
+      await owner.goto('/chats/new?agent=echo-text');
+      await owner.getByRole('textbox', { name: 'Message' }).fill('unrelated private chat');
+      await owner.locator('button[data-chat-send]').click();
+      await expect.poll(() => new URL(owner.url()).pathname.startsWith('/chats/')).toBe(true);
+      const unrelatedId = new URL(owner.url()).pathname.split('/').at(-1);
+      if (unrelatedId === undefined || unrelatedId === 'new')
+        throw new Error('Expected an unrelated private chat URL.');
       await reader.goto('/chats');
       await expect(reader.locator(`a[href="/chats/${contextId}"]`)).toHaveCount(0);
+      await reader.goto(`/chats/${unrelatedId}`);
+      await expect(reader.getByRole('button', { name: 'Request access' })).toHaveCount(0);
       await reader.goto(`/chats/${contextId}`);
       await expect(reader.getByRole('heading', { name: 'Chat access' })).toBeVisible();
       await expect(reader.getByRole('button', { name: 'Request access' })).toBeVisible();
@@ -94,8 +113,8 @@ test.describe('workspace chat sharing', () => {
       await owner.getByRole('button', { name: 'Grant access' }).click();
 
       await reader.reload();
-      await expect(reader.getByText('Read access granted by the chat owner')).toBeVisible();
       await expect(reader.getByText('shared chat evidence', { exact: true })).toHaveCount(2);
+      await expectReadOnly(reader);
       await captureForDesignReview(reader, {
         route: '/chats/:chat',
         state: 'restored shared chat read-only',

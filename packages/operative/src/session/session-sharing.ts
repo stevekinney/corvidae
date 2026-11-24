@@ -155,7 +155,7 @@ function requestOf(value: JSONValue): SessionReadRequest | undefined {
       ? {}
       : {
           resolvedAt,
-          resolvedBy,
+          resolvedBy: String(resolvedBy),
           decision: decision as 'granted' | 'denied',
         }),
   };

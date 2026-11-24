@@ -82,16 +82,45 @@ export function mayAccessLoadedContext(
 }
 
 /** A summary admits an active recipient only when its bound workspace identity still matches. */
-function isActiveSharedSummary(principal: Principal, summary: SessionSummary): boolean {
+async function isActiveSharedSummary(
+  host: BureauContextsOperationHost,
+  principal: Principal,
+  summary: SessionSummary,
+): Promise<boolean> {
   const workspace = 'workspace' in principal ? principal.workspace : undefined;
+  const loaded = await host.contexts.get(summary.id);
   const grant =
-    workspace === undefined ? undefined : sessionReadGrantOf(summary.metadata, workspace.owner);
-  return (
+    workspace === undefined || loaded === undefined
+      ? undefined
+      : sessionReadGrantOf(loaded.metadata, workspace.owner);
+  if (
+    !(
     grant !== undefined &&
     grant.revokedAt === undefined &&
     grant.workspaceId === workspace!.workspaceId &&
-    grant.actorId === workspace!.actorId
+    grant.actorId === workspace!.actorId &&
+    grant.sessionIncarnation === loaded.incarnation
+    )
+  )
+    return false;
+  const owner = loaded === undefined ? null : sessionOwnerOf(loaded.metadata);
+  const authority = host.workspaceAuthority?.(principal);
+  return owner !== null && authority !== undefined && (await authority(owner));
+}
+
+async function activeSharedSummaries(
+  host: BureauContextsOperationHost,
+  principal: Principal,
+  owner: string | undefined,
+  summaries: readonly SessionSummary[],
+): Promise<SessionSummary[]> {
+  const admitted = await Promise.all(
+    summaries.map(async (summary) => ({
+      summary,
+      admitted: summary.owner === owner || (await isActiveSharedSummary(host, principal, summary)),
+    })),
   );
+  return admitted.flatMap(({ summary, admitted }) => (admitted ? [summary] : []));
 }
 
 const contextsDeleteInput = z.object({
@@ -431,9 +460,7 @@ export const contextsListOperation = defineOperation<
     if (input.activity !== undefined) {
       if (sharedListing) {
         const candidates = await host.contexts.list({ ...filters, limit: Number.MAX_SAFE_INTEGER });
-        const admitted = candidates.filter(
-          (summary) => summary.owner === owner || isActiveSharedSummary(principal, summary),
-        );
+        const admitted = await activeSharedSummaries(host, principal, owner, candidates);
         const activity = await host.tasks.activityOf(admitted.map((summary) => summary.id));
         const matching = admitted.filter(
           (summary) => (activity.get(summary.id) ?? 'idle') === input.activity,
@@ -452,9 +479,7 @@ export const contextsListOperation = defineOperation<
     }
     if (sharedListing) {
       const candidates = await host.contexts.list({ ...filters, limit: Number.MAX_SAFE_INTEGER });
-      const admitted = candidates.filter(
-        (summary) => summary.owner === owner || isActiveSharedSummary(principal, summary),
-      );
+      const admitted = await activeSharedSummaries(host, principal, owner, candidates);
       const page = admitted.slice(offset, offset + limit);
       const activity = await host.tasks.activityOf(page.map((summary) => summary.id));
       return {
