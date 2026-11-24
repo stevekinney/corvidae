@@ -50,6 +50,8 @@ export type ChatTurnState =
       cause: string;
       /** What Retry keeps, such as "Retry keeps the text above and the 2 steps that finished." Defaults to the `retryKeeps` label. */
       keeps?: string | undefined;
+      /** An optional host-owned route to the failed run's explanation, rendered beside Retry. */
+      explanationLink?: { readonly href: string; readonly label: string } | undefined;
     }
   | { kind: 'empty' }
   | { kind: 'complete' };
@@ -188,6 +190,17 @@ function isOptionalText(value: unknown): value is string | undefined {
   return value === undefined || typeof value === 'string';
 }
 
+function isExplanationLink(
+  value: unknown,
+): value is { readonly href: string; readonly label: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as Record<string, unknown>)['href'] === 'string' &&
+    typeof (value as Record<string, unknown>)['label'] === 'string'
+  );
+}
+
 /**
  * Narrows a host's value to a well-formed {@link ChatTurnState}. A reconnecting state needs whole
  * counts with the try no later than the last one, and a failed one needs a cause; anything else
@@ -211,7 +224,12 @@ export function isChatTurnState(value: unknown): value is ChatTurnState {
         (candidate['wait'] === undefined || isCount(candidate['wait'], 0))
       );
     case 'failed':
-      return typeof candidate['cause'] === 'string' && isOptionalText(candidate['keeps']);
+      return (
+        typeof candidate['cause'] === 'string' &&
+        isOptionalText(candidate['keeps']) &&
+        (candidate['explanationLink'] === undefined ||
+          isExplanationLink(candidate['explanationLink']))
+      );
     default:
       return false;
   }

@@ -252,6 +252,7 @@
     CircleAlert,
     Collapsible,
     CopyButton,
+    Link,
     Pencil,
     Popover,
     Quote,
@@ -1064,7 +1065,7 @@
         semantic="note"
         class="chat-turn-callout chat-turn-alert"
         title={withoutAnswer ? turnWords.failedBeforeAnswer : turnWords.incomplete}
-        {...onRetryTurn ? { action: retryTurnAction } : {}}
+        {...turn.explanationLink !== undefined || onRetryTurn ? { action: failedTurnAction } : {}}
       >
         {#snippet icon()}<CircleAlert aria-hidden="true" />{/snippet}
         <p class="chat-turn-text chat-turn-failure-body" dir="auto">
@@ -1096,6 +1097,19 @@
     label={turn.kind === 'empty' ? turnWords.tryAgain : turnWords.retry}
     onclick={() => onRetryTurn?.(message.id)}
   />
+{/snippet}
+
+{#snippet failedTurnAction()}
+  <span class="chat-turn-actions">
+    {#if turn.kind === 'failed' && turn.explanationLink !== undefined}
+      <Link color="inherit" underline="always" data-chat-note-link href={turn.explanationLink.href}>
+        {turn.explanationLink.label}
+      </Link>
+    {/if}
+    {#if onRetryTurn}
+      {@render retryTurnAction()}
+    {/if}
+  </span>
 {/snippet}
 
 <div

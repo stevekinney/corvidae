@@ -1100,6 +1100,16 @@
   const lastStop = $derived(session.streaming ? undefined : lastTurnStop(lined));
   const shown = $derived(withoutStopLine(lined, lastStop));
   const currentTurnMessageIds = $derived(new Set(shown.ids.slice(lastTurnStart(shown))));
+  const failedTurnExplanation = $derived.by(() => {
+    if (lastStop?.state.kind !== 'failed') return undefined;
+    const runId = stoppedRunIdOf(lastStop.noteId);
+    return runId === undefined
+      ? undefined
+      : {
+          href: router.href(failureExplanationPath(runId)),
+          label: CHAT_COPY.stopLine.explain,
+        };
+  });
 
   // The status line Retry is offered beside: the last turn's, when its run failed. A failed attempt
   // of an earlier turn keeps its line (row 20b) with nothing beside it, since Retry runs the last
@@ -1114,12 +1124,15 @@
     return () => clearInterval(timer);
   });
   function turnState(message: Message): ChatTurnState | undefined {
-    return turnStateOf(message, {
+    const state = turnStateOf(message, {
       reconnect: session.reconnectSchedule,
       lastAssistantId: lastAssistant,
       now: reconnectNow,
       stop: lastStop?.state,
     });
+    return state?.kind === 'failed' && failedTurnExplanation !== undefined
+      ? { ...state, explanationLink: failedTurnExplanation }
+      : state;
   }
 
   const discardableRun = $derived(
