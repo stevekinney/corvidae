@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test';
 
 import { materializeToolResult } from 'armorer/protocol';
 
-import { toolActionSchema } from './schemas';
+import { conversationSchema, toolActionSchema } from './schemas';
+import { CURRENT_SCHEMA_VERSION } from './types';
 
 describe('tool action schema approval metadata', () => {
   const approvalAction = {
@@ -75,6 +76,50 @@ describe('tool action schema approval metadata', () => {
         }),
       ).toThrow();
     });
+  });
+
+  test('a stored conversation from before the fields and one carrying them both parse under the current version', () => {
+    function stored(action: Record<string, unknown>) {
+      return {
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        id: 'stored',
+        status: 'active',
+        metadata: {},
+        ids: ['call', 'result'],
+        messages: {
+          call: {
+            id: 'call',
+            role: 'tool-call',
+            content: '',
+            position: 0,
+            createdAt: '2026-11-01T00:00:00.000Z',
+            metadata: {},
+            hidden: false,
+            toolCall: { id: 'call-1', name: 'deploy', arguments: {} },
+          },
+          result: {
+            id: 'result',
+            role: 'tool-result',
+            content: '',
+            position: 1,
+            createdAt: '2026-11-01T00:00:01.000Z',
+            metadata: {},
+            hidden: false,
+            toolResult: { callId: 'call-1', outcome: 'action_required', content: null, action },
+          },
+        },
+        createdAt: '2026-11-01T00:00:00.000Z',
+        updatedAt: '2026-11-01T00:00:01.000Z',
+      };
+    }
+    // The version did not move for these optional fields (README, version history).
+    expect(CURRENT_SCHEMA_VERSION).toBe(8);
+    const before = conversationSchema.safeParse(stored(approvalAction));
+    const after = conversationSchema.safeParse(
+      stored({ ...approvalAction, irreversible: true, consequence: 'Deploys.', why: 'Asked to.' }),
+    );
+    expect(before.success).toBe(true);
+    expect(after.success).toBe(true);
   });
 
   test('accepts complete approval metadata', () => {
