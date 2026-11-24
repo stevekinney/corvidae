@@ -7,7 +7,10 @@
 import { HttpClientError } from '@lostgradient/weft';
 
 import { bureauClient, type BureauOutput, type WithUndefined } from './bureau-api.ts';
-import { CATALOG_OPERATION_BEHAVIORS } from './generated/operation-behaviors.generated.ts';
+import type { CATALOG_OPERATION_BEHAVIORS } from './generated/operation-behaviors.generated.ts';
+
+type ReviewConflictReason =
+  (typeof CATALOG_OPERATION_BEHAVIORS)['bureau.reviews.resolve']['behavior']['conflictReasons'][number];
 
 /**
  * Where a person decided a tool approval: `chat`, the chat that asked, or `reviews`, the Reviews
@@ -136,8 +139,7 @@ export type ReviewResolution = BureauOutput<'bureau.reviews.resolve'>;
  * one sent: a re-gated approval keeps its id, so the decision was made on a request that is no longer
  * the one pending, and nothing was decided (`bureau.reviews.resolve`'s description).
  */
-export const REVIEW_ROUND_CHANGED =
-  CATALOG_OPERATION_BEHAVIORS['bureau.reviews.resolve'].behavior.conflictReasons[0];
+export const REVIEW_ROUND_CHANGED = 'REVIEW_ROUND_CHANGED' satisfies ReviewConflictReason;
 
 /** Whether a fault says the review changed while it was read, so the decision was not made. */
 export function isReviewRoundChanged(error: unknown): boolean {
@@ -151,8 +153,7 @@ export function isReviewRoundChanged(error: unknown): boolean {
  * decision, by another resolver or because the agent moved on: nothing was decided, and it is no
  * longer waiting (COR-2426, `bureau.reviews.resolve`'s description).
  */
-export const REVIEW_ALREADY_RESOLVED =
-  CATALOG_OPERATION_BEHAVIORS['bureau.reviews.resolve'].behavior.conflictReasons[1];
+export const REVIEW_ALREADY_RESOLVED = 'REVIEW_ALREADY_RESOLVED' satisfies ReviewConflictReason;
 
 /**
  * Whether a decision found the review no longer waiting: the Bureau says it was already resolved.

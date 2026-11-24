@@ -97,7 +97,7 @@ function respondFault(error: unknown, taskId: string): unknown {
     return {
       code: 'Conflict',
       message: error.message,
-      data: { reason: `${REVIEW_ALREADY_RESOLVED}: ${error.message}` },
+      data: { reason: REVIEW_ALREADY_RESOLVED },
       remediation: 'The wait is already resolved and no longer waiting; read the task to see it.',
     } satisfies OperationFault;
   }

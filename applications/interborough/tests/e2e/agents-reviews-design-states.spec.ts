@@ -555,7 +555,7 @@ for (const width of WIDTHS) {
               data: {
                 httpStatus: 409,
                 weftCode: 'Conflict',
-                reason: `${REVIEW_ALREADY_RESOLVED}: Review is already resolved`,
+                reason: REVIEW_ALREADY_RESOLVED,
               },
             },
           },

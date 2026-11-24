@@ -237,7 +237,93 @@ async function captureApprovalAtWidths(
   }
 }
 
+/** Captures a persistent decision notice at the three requested widths. */
+async function captureDecisionNotice(page: Page, state: string, title: string): Promise<void> {
+  const originalViewport = page.viewportSize();
+  if (originalViewport === null) throw new Error('The Reviews test requires a viewport.');
+  try {
+    for (const width of [1280, 768, 375]) {
+      await page.setViewportSize({ width, height: 900 });
+      const ready = async (current: Page) => {
+        await expect(current.getByText(title, { exact: true })).toBeVisible();
+      };
+      await ready(page);
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state,
+        source: '31-reviews.spec.ts',
+        ready,
+      });
+    }
+  } finally {
+    await page.setViewportSize(originalViewport);
+  }
+}
+
 test.describe('a tool approval', () => {
+  test('captures an applied decision with an outcome warning', async ({ page, request }) => {
+    const { review, threadId } = await waitingRefund(page, request, 'reviews-applied-warning');
+    const resolves = recordResolves(page);
+    await page.route('**/jsonrpc', async (route) => {
+      const call = route.request().postDataJSON() as { method?: string; params?: { id?: string } };
+      if (call.method !== 'bureau.reviews.resolve' || call.params?.id !== review.id)
+        return route.fallback();
+      const response = await route.fetch();
+      const body = (await response.json()) as { result?: { receipt?: string } };
+      expect(body.result?.receipt).toBe('applied');
+      await route.fulfill({
+        response,
+        json: { ...body, result: { ...body.result, warning: 'APPROVAL_OUTCOME_NOT_WRITTEN' } },
+      });
+    });
+    await approveReview(paneOf(page));
+    await expect(
+      page.getByText(REVIEWS_COPY.outcomeNotWritten.title, { exact: true }),
+    ).toBeVisible();
+    await expect.poll(async () => refundRan(await threadMessages(request, threadId))).toBe(true);
+    await captureDecisionNotice(
+      page,
+      'applied decision with outcome warning',
+      REVIEWS_COPY.outcomeNotWritten.title,
+    );
+    expect(resolves).toHaveLength(1);
+  });
+
+  test('captures a stale-round conflict without executing the refund', async ({
+    page,
+    request,
+  }) => {
+    const { review, threadId } = await waitingRefund(page, request, 'reviews-stale-round');
+    const resolves = recordResolves(page);
+    await page.route('**/jsonrpc', async (route) => {
+      const call = route.request().postDataJSON() as {
+        method?: string;
+        id?: string;
+        params?: { id?: string };
+      };
+      if (call.method !== 'bureau.reviews.resolve' || call.params?.id !== review.id)
+        return route.fallback();
+      await route.fulfill({
+        json: {
+          jsonrpc: '2.0',
+          id: call.id,
+          error: {
+            code: -32000,
+            message: 'Review changed',
+            data: { httpStatus: 409, weftCode: 'Conflict', reason: 'REVIEW_ROUND_CHANGED' },
+          },
+        },
+      });
+    });
+    await approveReview(paneOf(page));
+    await expect(page.getByText(REVIEWS_COPY.roundChanged.title, { exact: true })).toBeVisible();
+    expect(refundRan(await threadMessages(request, threadId))).toBe(false);
+    const current = await bureauCall(request, 'bureau.reviews.get', { id: review.id });
+    expect(current).toMatchObject({ id: review.id, status: 'pending' });
+    await captureDecisionNotice(page, 'stale round conflict', REVIEWS_COPY.roundChanged.title);
+    expect(resolves).toHaveLength(1);
+  });
+
   test('approved from the inbox runs the tool, and its row goes', async ({
     page,
     request,
