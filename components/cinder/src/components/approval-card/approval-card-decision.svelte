@@ -81,6 +81,11 @@
     inputLabel: string;
     /** Resolution sink; undefined when the host is not wired to answer, or the approval is not actionable. */
     resolve: ((resolution: ApprovalResolution) => void) | undefined;
+    /** Optional host-owned review controls for an actionable decision card. */
+    decisionReview: Snippet<[(decision: 'approve' | 'deny') => void, disabled: boolean]> | undefined;
+    sourceText: string | undefined;
+    requestedText: string | undefined;
+    requestedIso: string | undefined;
   };
 </script>
 
@@ -139,6 +144,10 @@
     inputRows,
     inputLabel,
     resolve,
+    decisionReview,
+    sourceText,
+    requestedText,
+    requestedIso,
   }: ApprovalCardDecisionProps = $props();
 
   const inputId = $derived(`${rootId}-input`);
@@ -452,11 +461,23 @@
           onConfirm={() => decide('approve')}
         />
       </div>
+      {#if decisionReview !== undefined}
+        {@render decisionReview(decide, isBusy || disabledReason !== undefined)}
+      {/if}
       {#if footnote !== undefined}
         <p class="cinder-approval-card__footnote" dir="auto">{footnote}</p>
       {/if}
     {/if}
   {:else if isUnavailable && unavailableReason !== undefined}
+    {#if sourceText !== undefined || requestedText !== undefined}
+      <p class="cinder-approval-card__asker">
+        {#if sourceText !== undefined}<span class="cinder-approval-card__asker-source">{sourceText}</span>{/if}
+        {#if requestedText !== undefined}<time class="cinder-approval-card__asker-time" datetime={requestedIso}>{requestedText}</time>{/if}
+      </p>
+    {/if}
+    {#if inputRows.length > 0}
+      <ApprovalCardInputRows id={inputId} label={inputLabel} rows={inputRows} />
+    {/if}
     <p class="cinder-approval-card__reason" dir="auto">{unavailableReason}</p>
   {/if}
   {#if !isPending && notice !== undefined}
