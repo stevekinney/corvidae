@@ -1,0 +1,39 @@
+{
+  "name": "@lostgradient/backchannel-svelte",
+  "private": true,
+  "type": "module",
+  "description": "Scoped Svelte bindings for Backchannel catalogs.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./provider": {
+      "types": "./src/provider.d.ts",
+      "svelte": "./src/Provider.svelte",
+      "default": "./src/Provider.svelte"
+    }
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-inherited-key-reads.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "typecheck": "tsc --noEmit && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
+    "test": "bun ../../scripts/bun-test-junit.ts"
+  },
+  "dependencies": {
+    "@lostgradient/backchannel": "workspace:*"
+  },
+  "peerDependencies": {
+    "@tanstack/svelte-query": "catalog:",
+    "svelte": "catalog:"
+  },
+  "devDependencies": {
+    "@lostgradient/typescript": "workspace:*",
+    "@lostgradient/testing": "workspace:*",
+    "@tanstack/svelte-query": "catalog:",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "svelte": "catalog:",
+    "svelte-check": "catalog:",
+    "typescript": "catalog:",
+    "zod": "catalog:"
+  },
+  "sideEffects": false
+}

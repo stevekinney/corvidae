@@ -25,6 +25,7 @@ import {
   type OperationDomainName,
 } from './operation-client-domains.ts';
 import { schemaToNode } from './operation-client-schema.ts';
+import { svelteClientSource } from './operation-client-svelte.ts';
 
 export type { OperationDomainName } from './operation-client-domains.ts';
 
@@ -142,6 +143,8 @@ export type OperationClientOptions = {
   readonly outputFile?: string | undefined;
   /** Emit transport-injected and Fetch entries alongside the existing client. */
   readonly portableEntries?: boolean | undefined;
+  /** Emit bindings for declared behavior using the optional Svelte runtime. */
+  readonly svelte?: boolean | undefined;
   /** The module the generated client imports its runtime from. Defaults to `@lostgradient/backchannel/client`. */
   readonly runtimeSpecifier?: string | undefined;
   /** The prefix the server serves its REST paths under, which the client's paths omit. Defaults to none. */
@@ -338,6 +341,13 @@ export function ${options.factoryName}WithFetch(connection: JsonRpcHttpConnectio
   }
 }
 `,
+    );
+  }
+
+  if (options.svelte) {
+    sources.set(
+      'operation-client.svelte.ts',
+      svelteClientSource(clientOperations, subscriptionOperations, outputFile, options.serverName),
     );
   }
 

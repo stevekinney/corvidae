@@ -12,6 +12,7 @@ import type { z } from 'zod';
 
 import type { JsonObject } from '../../core/serialization/json';
 import { createTool } from '../../create-tool';
+import type { ToolRequestContext } from '../../execution-context';
 import type { createExecutionLifecycle, ExecutionAbortSource } from '../../execution-lifecycle';
 import type {
   Tool,
@@ -30,6 +31,7 @@ import {
   type SuspendableExecution,
 } from './input-required';
 import {
+  continuationOwner,
   createProgressForwarder,
   readRequestFacts,
   subscribeToExecutionProgress,
@@ -49,6 +51,7 @@ export type ToolboxLike = {
       elicit?: ToolElicitationRequester;
       executionId?: string;
       executionContext?: Record<string, unknown>;
+      requestContext?: ToolRequestContext;
       traceContext?: unknown;
     },
   ) => Promise<ToolResultLike>;
@@ -108,10 +111,13 @@ export type MCPToolExecutionRequest = {
   signal: AbortSignal;
   elicit?: ToolElicitationRequester;
   executionContext: { mcp: MCPRequestExecutionContext };
+  requestContext?: ToolRequestContext;
   traceContext?: Context;
 };
 
 export type ToMCPToolsOptions = {
+  /** Public name used to authorize detached tasks. */
+  publicName?: string;
   toolConfiguration?: (tool: Tool) => MCPToolConfiguration;
   formatResult?: (result: ToolResultLike) => CallToolResult;
   executeTool?: (tool: Tool, request: MCPToolExecutionRequest) => Promise<ToolResultLike>;
@@ -380,8 +386,8 @@ async function handleToolCall(
     try {
       return await mcpTasks.begin({
         context,
-        toolName: tool.name,
-        clientId: context.http?.authInfo?.clientId ?? '',
+        toolName: options.publicName ?? tool.name,
+        clientId: continuationOwner(context),
         execution: suspendable,
         signal: control.signal,
         abort: control.abort,
