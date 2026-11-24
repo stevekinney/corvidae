@@ -7,7 +7,10 @@ import { readSourceInfo } from '../../src/host/build-info.ts';
 import { startConnectHost } from './connect-host.ts';
 
 const [directory, mode] = process.argv.slice(2);
-if (!directory || (mode !== 'collision' && mode !== 'hang'))
+if (
+  !directory ||
+  (mode !== 'collision' && mode !== 'hang' && mode !== 'repeat-signal' && mode !== 'early-signal')
+)
   throw new Error('Expected a directory and mode.');
 const build = join(directory, `build-${mode}`);
 const home = join(directory, `home-${mode}`);
@@ -20,33 +23,64 @@ await writeFile(
 );
 const listener = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } });
 const port = listener.port;
-if (mode === 'hang') listener.stop(true);
+if (mode !== 'collision') listener.stop(true);
 let stop: (() => Promise<void>) | undefined;
 let stopping: Promise<void> | undefined;
+let startup: ReturnType<typeof startConnectHost> | undefined;
+const controller = new AbortController();
 const cleanup = () => {
   stopping ??= (async () => {
+    if (mode === 'early-signal') await startup?.catch(() => undefined);
     await stop?.();
     if (mode === 'collision') listener.stop(true);
     await writeFile(join(directory, `cleaned-${mode}`), 'clean');
   })();
   return stopping;
 };
-// The host-slots process group owns the supervisor and its child. Exit promptly so its
-// process-group cleanup can reap both even if startup or shutdown never settles.
+// Reap our supervisor before exiting: a container's init may not reap an orphaned child.
+let terminating: Promise<void> | undefined;
+let signals = 0;
 process.on('SIGTERM', () => {
-  writeFileSync(join(directory, `cleaned-${mode}`), 'signal');
-  process.exit(143);
+  signals += 1;
+  controller.abort();
+  terminating ??= cleanup().then(() => {
+    writeFileSync(
+      join(directory, `cleaned-${mode}`),
+      mode === 'repeat-signal' ? String(signals) : 'signal',
+    );
+    process.exit(143);
+  });
+  if (mode === 'repeat-signal' && signals === 1) process.emit('SIGTERM');
+  void terminating.catch((error: unknown) => {
+    console.error(error);
+    process.exit(1);
+  });
 });
 try {
   const operation = startConnectHost({
     home,
     buildDirectory: build,
     port,
+    signal: controller.signal,
     onStartupResource: (resource) => {
       stop = resource;
     },
   });
-  if (mode === 'collision') {
+  if (mode === 'early-signal') {
+    startup = operation.then(
+      () => {
+        throw new Error('Startup unexpectedly completed after termination');
+      },
+      (error: unknown) => {
+        if (error !== controller.signal.reason) throw error;
+        writeFileSync(join(directory, 'startup-aborted'), 'aborted');
+        throw error;
+      },
+    );
+    process.emit('SIGTERM');
+    await startup.catch(() => undefined);
+    await new Promise<void>(() => {});
+  } else if (mode === 'collision') {
     const error = await rejectionOf(operation);
     if (
       typeof error !== 'object' ||
@@ -59,9 +93,12 @@ try {
   } else {
     const host = await operation;
     await writeFile(
-      join(directory, 'ready.json'),
+      join(directory, mode === 'hang' ? 'ready.json' : 'ready-repeat-signal.json'),
       JSON.stringify({ port, supervisorPid: host.supervisorPid }),
     );
+    if (mode === 'repeat-signal') {
+      process.kill(process.pid, 'SIGTERM');
+    }
     await new Promise<void>(() => {});
   }
 } finally {

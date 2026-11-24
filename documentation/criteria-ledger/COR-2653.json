@@ -1,7 +1,7 @@
 {
   "issue": "COR-2653",
   "branch": "steve/cor-2653-browser-port-isolation",
-  "checkedAt": "47e3f9d4f7f0f5e8b90f34f66036126e64d01a1c",
+  "checkedAt": "d09fb513e9bf8cb8d691deb4aa0f68ae79066f13",
   "briefVersion": "f416fc07b354",
   "status": "BLOCKED",
   "criteria": [
@@ -18,7 +18,7 @@
     {
       "id": "AC3",
       "status": "not-met",
-      "evidence": "Run 45312674485 timed out its held competitor; run 45329190010 found a cold-launch gap; run 45337199624 recorded no post-release action. The corrected competition-only replay remains unverified."
+      "evidence": "Corrected competition replay passed; full matrix run 45351503820 failed connect supervisor reaping. Diagnostic run 45359311834 found same-incarnation orphan zombies. Fixture correction passed local four-case control; final hosted matrix remains required."
     }
   ]
 }

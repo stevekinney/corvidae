@@ -52,6 +52,7 @@ export type ConnectHostOptions = {
   readonly buildDirectory: string;
   readonly port: number;
   readonly onStartupResource?: (stop: () => Promise<void>) => void;
+  readonly signal?: AbortSignal;
 };
 
 const SUPERVISOR = join(import.meta.dir, '..', '..', 'src', 'host', 'supervisor.ts');
@@ -99,6 +100,7 @@ function watchOutput(stream: ReadableStream<Uint8Array>): { listening: Promise<v
 
 /** Starts the servers, then the host under the supervisor, and resolves once the host is listening. */
 export async function startConnectHost(options: ConnectHostOptions): Promise<ConnectHost> {
+  const signal = options.signal;
   let bearer: TestServer | undefined;
   let oauth: OAuthMcpServer | undefined;
   let pets: TestServer | undefined;
@@ -106,6 +108,7 @@ export async function startConnectHost(options: ConnectHostOptions): Promise<Con
     bearer = await startMcpServer(E2E_CONNECT_TOKEN);
     oauth = await startOAuthMcpServer();
     pets = await startPetsService();
+    signal?.throwIfAborted();
     const startedSupervisor = Bun.spawn([process.execPath, '--no-install', SUPERVISOR, 'serve'], {
       env: {
         ...process.env,

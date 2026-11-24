@@ -19,11 +19,16 @@ const command = (mode: string) => [
 ];
 let collision: Awaited<ReturnType<typeof runWithHangGuard>>;
 let hung: Awaited<ReturnType<typeof runWithHangGuard>>;
+let repeatedSignal: Awaited<ReturnType<typeof runWithHangGuard>>;
+let earlySignal: Awaited<ReturnType<typeof runWithHangGuard>>;
 let collisionEvidence: { code: string };
 let hungEvidence: { port: number; supervisorPid: number };
 let cleanupEvidence: string;
 let portWasReleased = false;
 let supervisorWasReaped = false;
+let repeatedSupervisorWasReaped = false;
+let repeatedCleanupEvidence: string;
+let earlyAbortEvidence: string;
 try {
   collision = await runWithHangGuard(command('collision'));
   process.stdout.write(collision.stdout);
@@ -31,6 +36,20 @@ try {
   collisionEvidence = collision.success
     ? JSON.parse(await readFile(join(directory, 'collision.json'), 'utf8'))
     : { code: '' };
+  earlySignal = await runWithHangGuard(command('early-signal'));
+  earlyAbortEvidence = await readFile(join(directory, 'startup-aborted'), 'utf8');
+  repeatedSignal = await runWithHangGuard(command('repeat-signal'));
+  process.stdout.write(repeatedSignal.stdout);
+  process.stderr.write(repeatedSignal.stderr);
+  const repeatedEvidence: { supervisorPid: number } = JSON.parse(
+    await readFile(join(directory, 'ready-repeat-signal.json'), 'utf8'),
+  );
+  repeatedCleanupEvidence = await readFile(join(directory, 'cleaned-repeat-signal'), 'utf8');
+  try {
+    process.kill(repeatedEvidence.supervisorPid, 0);
+  } catch {
+    repeatedSupervisorWasReaped = true;
+  }
   hung = await runWithHangGuard(command('hang'));
   process.stdout.write(hung.stdout);
   process.stderr.write(hung.stderr);
@@ -62,4 +81,16 @@ test('the hang guard ends a stalled connect host and reaps its supervisor', () =
   expect(cleanupEvidence).toBe('signal');
   expect(portWasReleased).toBe(true);
   expect(supervisorWasReaped).toBe(true);
+});
+
+test('repeated termination signals still reap the supervisor', () => {
+  expect(repeatedSignal.exitCode).toBe(143);
+  expect(repeatedCleanupEvidence).toBe('2');
+  expect(repeatedSupervisorWasReaped).toBe(true);
+});
+
+test('termination during helper startup does not spawn a supervisor', () => {
+  expect(earlySignal.exitCode).toBe(143);
+  expect(earlyAbortEvidence).toBe('aborted');
+  expect(earlySignal.stdout.toString()).not.toContain('Started the host');
 });
