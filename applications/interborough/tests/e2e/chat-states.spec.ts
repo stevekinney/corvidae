@@ -472,7 +472,9 @@ test.describe('Reply failed partway (frame f: 19p)', () => {
     // not agent speech, with Retry.
     const line = transcript(page).locator('.chat-turn-outcome[data-kind="failed"]');
     await expect(line).toContainText('This answer is incomplete.');
-    await expect(line).toContainText('The model provider dropped the connection.');
+    await expect(line).toContainText(
+      'The reply stopped partway: the model provider dropped the connection.',
+    );
     await expect(line).toContainText('Retry keeps what was written so far.');
     await expect(line.getByRole('button', { name: 'Retry' })).toBeVisible();
     // This is a fine-pointer desktop Chat at the 1280px capture width. Attach keeps Cinder's
@@ -484,10 +486,8 @@ test.describe('Reply failed partway (frame f: 19p)', () => {
     expect(attachBox.width).toBeGreaterThanOrEqual(24);
     expect(attachBox.height).toBeGreaterThanOrEqual(24);
     // COR-2533: the line leads to the run's explanation on the Run page.
-    await expect(line.getByRole('link', { name: 'Why it failed' })).toHaveAttribute(
-      'href',
-      /^\/runs\/.+#failure-explanation$/,
-    );
+    const explanation = line.getByRole('link', { name: 'Why it failed' });
+    await expect(explanation).toHaveAttribute('href', /^\/runs\/.+#failure-explanation$/);
     await expect(page.locator('.weft-chat-strip')).toHaveCount(0);
     await expect(page.getByText('The agent did not answer', { exact: true })).toHaveCount(0);
     // The conversation stays live: a provider is connected, so the composer takes a message.
@@ -499,6 +499,8 @@ test.describe('Reply failed partway (frame f: 19p)', () => {
       state: 'reply failed partway',
       source: SOURCE,
     });
+    await explanation.click();
+    await expect(page).toHaveURL(/\/runs\/run-states-failed#failure-explanation$/);
   });
 
   test('at 320 by 640, Retry scrolls above the composer and receives its pointer (19p)', async ({
@@ -521,9 +523,9 @@ test.describe('Reply failed partway (frame f: 19p)', () => {
       });
     });
 
-    const boxes = await readBoxes(page, { timeline, note, retry, composer });
-    expect(boxes.note.y).toBeGreaterThanOrEqual(boxes.timeline.y);
-    expect(boxes.note.y + boxes.note.height).toBeLessThanOrEqual(
+    const boxes = await readBoxes(page, { timeline, line, retry, composer });
+    expect(boxes.line.y).toBeGreaterThanOrEqual(boxes.timeline.y);
+    expect(boxes.line.y + boxes.line.height).toBeLessThanOrEqual(
       boxes.timeline.y + boxes.timeline.height,
     );
     expect(boxes.retry.y).toBeGreaterThanOrEqual(boxes.timeline.y);
