@@ -911,7 +911,7 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     await expect(decided).toHaveCount(1);
     await expect(decided).toBeVisible();
     await expect(decided.locator('.cinder-approval-card__settled-note')).toHaveText(
-      'Approved by you in Reviews',
+      'Approved by you in Reviews, 10:46 AM',
     );
     await expect(decided.getByRole('link', { name: 'Reviews' })).toHaveAttribute(
       'href',

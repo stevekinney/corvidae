@@ -38,7 +38,7 @@ export interface ArchivedChat {
 }
 
 /** A draft the page put back in the composer from the draft store (`chat-drafts.ts`). */
-export interface RestoredDraft {
+interface RestoredDraft {
   /** When the draft was written, in words, such as `yesterday at 4:12 PM`. */
   readonly when: string;
   /** Forgets the draft once Discard draft has emptied the composer. */
