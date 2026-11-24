@@ -549,6 +549,11 @@ export type SharedBreakingKindStep_f7c54476 = {
   readonly step: number;
 };
 export type SharedCallsSeconds_35295711 = { readonly calls?: number; readonly seconds?: number };
+export type SharedChangedContextIdGranteeO_3863cba0 = {
+  readonly changed: boolean;
+  readonly contextId: string;
+  readonly granteeOwnerId: string;
+};
 export type SharedChangedGrantedByGranteeO_6dd6d7c1 = {
   readonly changed: boolean;
   readonly grantedBy: string;
@@ -656,6 +661,10 @@ export type SharedContentCreatedAtId_21bc25fe = {
     | 'system';
   readonly trust: 'untrusted' | 'verified' | 'system';
   readonly writer: 'person' | 'agent' | 'system';
+};
+export type SharedContextIdGranteeOwnerId_dce966fb = {
+  readonly contextId: string;
+  readonly granteeOwnerId: string;
 };
 export type SharedCostStepsTools_95f40410 = {
   readonly cost?: SharedChatRunWarn_cfc87b81 | null;
