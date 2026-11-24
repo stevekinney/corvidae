@@ -1,14 +1,14 @@
 {
   "issue": "COR-2657",
   "branch": "steve/cor-2657-staged-landing-qualification",
-  "checkedAt": "d478d733e1660a402fe026d11ecdc81aebac158d",
+  "checkedAt": "2400741a9210f7927a8b9e2e5109ef3a742743ca",
   "briefVersion": "6ef0650eaae7",
-  "status": "BLOCKED",
+  "status": "READY",
   "criteria": [
     {
       "id": "AC1",
-      "status": "not-met",
-      "evidence": "Named staged command and attribute regression pass locally; corrected hosted exact-tree rejection is pending."
+      "status": "met-on-branch",
+      "evidence": "Warm staged checks passed in 62.79, 67.34 and 71.44 seconds. Local staged command and hosted PR 1256 run 45347683200 both rejected the same one-line guard violation; local indexed bytes remained unchanged. See corrected-negative-provider-tree.txt."
     },
     {
       "id": "AC2",
