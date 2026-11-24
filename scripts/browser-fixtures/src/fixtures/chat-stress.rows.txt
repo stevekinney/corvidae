@@ -37,6 +37,7 @@ X2 | Content | Open fence caret inside pre after the final character; Writing to
 X3 | Content | Wide table hairline container, visible dark header band, no cell wrapping; right fade and +N column cue outside cell text.
 X4 | Content | Arabic messages, user bubble, Citation and approval text dir auto, text-align start; RTL numbers and punctuation correct.
 X5 | Content | Broken image dashed footprint placeholder, image-off, name didn't load, Retry; an image-only message has no Copy.
+X6 | Content | Up to five sources open as one list, not a pager, with two-line titles, quoted excerpts, safe Open host links, internal-document and unsafe-link notes, and translatable Citation labels.
 P1 | PhoneRun | Dark 390 step header title truncates and 3 steps stays; approval badge above title, wrapped command; equal full-width Deny and primary at 44 px; safe-area bottom padding; Attach and Send at 44.
 P2 | PhoneComposer | Light 390 one row per file, Retry and remove at 44; capped list with fade and N more below; blocking reason under the composer.
 P3 | PhoneQuestion | Dark 390 pending question replaces the composer; fieldset The agent is asking, radios at least 52 px tall with 1, 2 and 3 shortcuts and details; Something else opens text; secondary Reply in chat instead, primary Answer; Needs you step warning; multi-question progression and answer receipt.
