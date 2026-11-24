@@ -130,9 +130,12 @@ export type InternalsMembers = AssertNever<
   >
 >;
 
-// `reviews` has exactly the five operations.
+// `reviews` has exactly the declared operations.
 export type ReviewsMembers = AssertNever<
-  Exclude<keyof BureauReviews, 'list' | 'listResolved' | 'get' | 'resolve' | 'pendingOf'>
+  Exclude<
+    keyof BureauReviews,
+    'list' | 'listResolved' | 'get' | 'resolve' | 'pendingOf' | 'mayRemember'
+  >
 >;
 
 // `schedules` includes the fifteen operations, the creation of a schedule for a workflow, and

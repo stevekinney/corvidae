@@ -352,6 +352,8 @@ export interface ResolvedReview {
  * `bureau.reviews.*` operations served by `createBureauHandler` delegate to these members.
  */
 export interface BureauReviews {
+  /** Whether a remembered grant would loosen the current policy for this review. */
+  mayRemember(review: PendingReview): Promise<boolean>;
   /**
    * List every parked run awaiting human review (AB-20): armorer's
    * `needs_approval` tool-approval flow AND durable `requestHumanInput`

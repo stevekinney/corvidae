@@ -515,6 +515,31 @@
         "typescript": "catalog:",
       },
     },
+    "packages/bureau-client": {
+      "name": "@lostgradient/bureau-client",
+      "dependencies": {
+        "@lostgradient/backchannel": "workspace:*",
+        "@lostgradient/backchannel-svelte": "workspace:*",
+      },
+      "devDependencies": {
+        "@lostgradient/bureau": "workspace:*",
+        "@lostgradient/cinder": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@tanstack/svelte-query": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "prettier": "catalog:",
+        "svelte": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@lostgradient/cinder": "workspace:*",
+        "@tanstack/svelte-query": "catalog:",
+        "svelte": "catalog:",
+      },
+    },
     "packages/cinder-mcp": {
       "name": "@lostgradient/cinder-mcp",
       "version": "0.1.24",
@@ -1624,6 +1649,8 @@
     "@lostgradient/bungalow": ["@lostgradient/bungalow@workspace:packages/bungalow"],
 
     "@lostgradient/bureau": ["@lostgradient/bureau@workspace:packages/bureau"],
+
+    "@lostgradient/bureau-client": ["@lostgradient/bureau-client@workspace:packages/bureau-client"],
 
     "@lostgradient/chat": ["@lostgradient/chat@workspace:components/chat"],
 

@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2621",
+  "branch": "steve/composable-reviews-client-equipment",
+  "checkedAt": "fd156369c257f83acfe957ea7c5e900c24ccef28",
+  "briefVersion": "1b06ed3a491f",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "External development and production archive installations, dependency exclusions and compiled browser graph passed in the named Velveteen package-consumer suite."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "The installed page rendered equipment through SSR in both modes. The generated rename and script client read returned Studio camera."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Independent Velveteen, Backchannel, headless catalog MCP and native Armorer installations execute their operations. Dual-era and callback/denial assertions passed."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "The source diff after adding an operation allowed only its declaration to change outside regenerated files."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "The installed remote source completed OAuth callback and audience checks, invoked the selected tool, closed, and rejected post-close use with no further callback."
+    }
+  ]
+}

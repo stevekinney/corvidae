@@ -328,6 +328,7 @@ describe('bureau.reviews.list', () => {
           round: 0,
           approval: {
             callId: 'call-1',
+            mayRemember: false,
             toolName: 'send-email',
             arguments: { to: 'someone@example.test' },
             reason: 'sends mail',
@@ -500,6 +501,15 @@ describe('the tool-approval action projection', () => {
 });
 
 describe('bureau.reviews.get', () => {
+  it('projects the current remember permission and fails closed when unavailable', async () => {
+    const review = toolApprovalReview();
+    const permitted = serve(stubHost({ get: async () => review, mayRemember: async () => true }));
+    const denied = serve(stubHost({ get: async () => review }));
+    const permittedResult = await call(permitted, 'bureau.reviews.get', { id: review.id });
+    const deniedResult = await call(denied, 'bureau.reviews.get', { id: review.id });
+    expect(permittedResult.result).toMatchObject({ approval: { mayRemember: true } });
+    expect(deniedResult.result).toMatchObject({ approval: { mayRemember: false } });
+  });
   it('returns one review by id, including a resolved one', async () => {
     const body = await call(serve(stubHost()), 'bureau.reviews.get', {
       id: 'approval:run-1:call-1',

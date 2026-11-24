@@ -1,0 +1,40 @@
+{
+  "name": "@lostgradient/bureau-client",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./reviews": "./src/generated/portable-operation-client.generated.ts",
+    "./reviews/svelte": "./src/generated/operation-client.svelte.ts",
+    "./reviews/ui": "./src/reviews/ui.ts"
+  },
+  "scripts": {
+    "generate": "bun scripts/generate.ts",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-inherited-key-reads.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
+    "test": "bun ../../scripts/bun-test-junit.ts"
+  },
+  "dependencies": {
+    "@lostgradient/backchannel": "workspace:*",
+    "@lostgradient/backchannel-svelte": "workspace:*"
+  },
+  "peerDependencies": {
+    "@lostgradient/cinder": "workspace:*",
+    "@tanstack/svelte-query": "catalog:",
+    "svelte": "catalog:"
+  },
+  "devDependencies": {
+    "@lostgradient/bureau": "workspace:*",
+    "@lostgradient/cinder": "workspace:*",
+    "@lostgradient/testing": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
+    "@tanstack/svelte-query": "catalog:",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "svelte": "catalog:",
+    "svelte-check": "catalog:",
+    "typescript": "catalog:"
+  },
+  "sideEffects": false
+}

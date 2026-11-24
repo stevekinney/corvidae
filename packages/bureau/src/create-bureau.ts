@@ -2662,6 +2662,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   } = createSessionInputGates<D>(core, peers);
   const {
     grantFieldsOf,
+    grantLoosensReview,
     approvedCallAuditOf,
     recordApprovedCall,
     buildReviewDecisionAuditRecord,
@@ -4889,6 +4890,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         .toSorted((a, b) => b.decidedAt - a.decidedAt || (a.review.id < b.review.id ? -1 : 1));
     },
     listSessionReviews: listPendingReviews,
+    mayRemember: grantLoosensReview,
     listRunHumanWaits: () => [...runHumanWaits.list(), ...workflowReviewWaits.list()],
     get: getReview,
     pendingOf: pendingHumanWaitsOfRun,
