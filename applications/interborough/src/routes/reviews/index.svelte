@@ -407,6 +407,7 @@
     display: flex;
     align-items: center;
     gap: var(--cinder-space-3);
+    max-inline-size: 44rem;
   }
   .ib-chat-access-request__copy {
     margin: 0;
@@ -414,7 +415,6 @@
   .ib-chat-access-request__actions {
     display: flex;
     gap: var(--cinder-space-2);
-    margin-inline-start: auto;
   }
   @media (max-width: 600px) {
     .ib-chat-access-request {

@@ -560,16 +560,23 @@ export const contextsShareStatusOperation = defineOperation<
       !(await currentWorkspacePeer(host, principal, owner))
     )
       throw missing(input.contextId);
-    const grant = sessionReadGrantOf(loaded.metadata, workspace.owner);
+    const grantor = await host.resolveWorkspaceOwner?.(owner);
+    const current = await host.contexts.get(input.contextId);
+    if (
+      current === undefined ||
+      current.incarnation !== loaded.incarnation ||
+      sessionOwnerOf(current.metadata) !== owner
+    )
+      throw missing(input.contextId);
+    const grant = sessionReadGrantOf(current.metadata, workspace.owner);
     if (
       grant !== undefined &&
       grant.revokedAt === undefined &&
       grant.workspaceId === workspace.workspaceId &&
       grant.actorId === workspace.actorId &&
-      grant.sessionIncarnation === loaded.incarnation
+      grant.sessionIncarnation === current.incarnation
     ) {
-      const summary = summarizeSession(loaded);
-      const grantor = await host.resolveWorkspaceOwner?.(owner);
+      const summary = summarizeSession(current);
       return {
         status: 'active' as const,
         title: summary.title,
@@ -582,7 +589,7 @@ export const contextsShareStatusOperation = defineOperation<
       grant.revokedAt === undefined ||
       grant.workspaceId !== workspace.workspaceId ||
       grant.actorId !== workspace.actorId ||
-      grant.sessionIncarnation !== loaded.incarnation
+      grant.sessionIncarnation !== current.incarnation
     )
       throw missing(input.contextId);
     return {
