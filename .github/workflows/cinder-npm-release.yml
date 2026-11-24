@@ -229,7 +229,7 @@ jobs:
           # npm scans a published version before it appears in public registry reads.
           deadline=$((SECONDS + 900))
           until npm view "$package" dist --json --prefer-online --fetch-retries=0 --fetch-timeout=15000 > registry-dist.json 2> registry-error.log; do
-            if ! grep -q 'npm error code E404' registry-error.log || (( SECONDS >= deadline )); then
+            if ! jq -e '.error.code == "E404"' registry-dist.json > /dev/null 2>&1 || (( SECONDS >= deadline )); then
               cat registry-error.log >&2
               exit 1
             fi
