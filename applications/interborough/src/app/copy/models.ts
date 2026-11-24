@@ -49,15 +49,8 @@ export const MODELS_COPY = {
   /** Connect (board SettingsShell, "Connect, empty", "testing", "invalid key" and "connected"). */
   connectDialog: {
     title: (name: string): string => `Connect ${name}`,
-    /** The line under the title, which says where the dialog is. */
-    subtitle: {
-      idle: 'Paste an API key, then test it.',
-      testing: 'Testing the key.',
-      failed: 'The test failed.',
-      tested: 'The key works.',
-      saveFailed: 'The key could not be saved.',
-      connected: 'Connected.',
-    },
+    /** The line under the title stays about the task; the inline status and result own the state. */
+    subtitle: 'Paste an API key, then test it.',
     keyLabel: 'API key',
     keyPlaceholder: 'Paste your API key',
     /** Where or how a key is stored is never said (owner, 2026-11-19): no path, no secret reference. */
@@ -111,6 +104,10 @@ export const MODELS_COPY = {
     /** The primary button while the provider's settings differ from what is stored, in place of Done. */
     save: 'Save',
     saving: 'Saving…',
+    discardTitle: 'Discard provider settings?',
+    discardChanges: 'Discard changes',
+    keepEditing: 'Keep editing',
+    discardDescription: 'Your unsaved settings will be lost.',
   },
   /** A provider's plugin settings, drawn from the plugin's own schema in the Connect and Manage dialogs. */
   configuration: {
@@ -186,6 +183,9 @@ export const MODELS_COPY = {
       label: 'Decision model',
       description: 'Answers yes-or-no and classification questions for Interborough.',
       /** Said instead while the chosen row is empty, missing or needs setup: the row that answers, named by the Bureau. */
+      hostAnswers: (host: string): string => `${host} answers the decision types it supports.`,
+      hostAndFallback: (host: string, fallback: string): string =>
+        `${host} answers the decision types it supports. ${fallback} answers the rest.`,
       fallbackAnswers: (model: string) => `${model} answers until a decision model is ready.`,
       /**
        * Said while the Bureau reports no row that can answer. It does not name TypeSafe: while its
@@ -223,6 +223,10 @@ export const MODELS_COPY = {
       description: 'Used when the decision model can’t answer.',
       /** The stored fallback is a row the Bureau's fallback never uses (it returns no structured output). */
       unusable: (name: string) => `“${name}” can’t be the fallback. Choose another.`,
+      missing: (name: string) => `“${name}” is no longer listed.`,
+      needsSetup: (name: string) => `“${name}” needs setup.`,
+      inUse: (name: string) => `${name} is the fallback.`,
+      unavailable: 'No fallback is available.',
     },
     /** The mark beside a row whose provider has no key saved yet or whose model is off. */
     needsSetup: 'Needs setup',

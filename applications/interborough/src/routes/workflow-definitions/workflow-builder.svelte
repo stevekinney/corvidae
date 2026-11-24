@@ -10,8 +10,8 @@
    * `workflow-step-list.svelte`, one list at any depth (a case, an otherwise path, side-by-side
    * lists, a repeat's steps), which reads the text, the catalogs and the one way to change the text
    * from the host this component provides (`workflow-builder-host.ts`). Below 640 pixels the
-   * builder is read-only (its fields, its JSON and its actions; the tabs still switch) and says to
-   * open it on a larger screen, beside a link back (row 05n).
+   * builder shows read-only fields and JSON, hides field editing actions, and disables the footer's
+   * primary action. The tabs still switch (row 05n).
    *
    * Create workflow's problems (the ID, what starts it, each step) are said at their fields and
    * outline their step once the page asks to `showProblems`, from two of them in one line above the
@@ -107,12 +107,10 @@
     jsonId: string;
     jsonLabel: string;
     jsonDescription: string;
-    /** Where the read-only notice below 640 pixels links back to: the workflow's page, or Workflows. */
-    backHref: string;
     /**
      * The footer's actions, at the right of the read-back: Cancel and the one primary action. Told
-     * whether the builder is read-only (below 640 pixels), so the primary action is drawn off there
-     * rather than inviting a save it cannot make (note N3).
+     * whether the builder is read-only (below 640 pixels), so its primary action stays visible but
+     * disabled rather than inviting a save it cannot make (note N3).
      */
     actions?: Snippet<[boolean]>;
     /**
@@ -160,7 +158,6 @@
     jsonId,
     jsonLabel,
     jsonDescription,
-    backHref,
     actions,
     showProblems = false,
     takenId,
@@ -178,6 +175,7 @@
 
   /** The footer's sentence, which a disabled Builder tab points at as its reason. */
   const READ_BACK_ID = 'workflow-builder-read-back';
+  const ID_CHANGE_ID = 'workflow-builder-id-change';
   /** A new schedule's cadence: weekdays at 9:00 AM (row 65d). */
   const DEFAULT_SCHEDULE_SPEC = '0 9 * * 1-5';
   /** A fire that comes while a run is going is skipped, unless the file says otherwise. */
@@ -524,9 +522,11 @@
     write(mode === 'create' ? setTitleDerivingName(text, next) : setTitle(text, next));
   }
 
-  function useDerivedId(): void {
+  async function resetId(): Promise<void> {
     write(setName(text, derivedId));
     idOpen = false;
+    await tick();
+    document.getElementById(ID_CHANGE_ID)?.focus();
   }
 
   /** The agents a step's select offers: the catalog, and the one the file names when it is not there. */
@@ -632,42 +632,40 @@
   <FormSection {heading} {description} columns={1}>
     {#if schema.kind === 'unreadable'}
       <p class="weft-workflow-builder__note">{copy.schemaUnreadable}</p>
-    {:else if schema.kind === 'none' && !schemaOpened[key]}
+    {:else if schema.kind === 'none' && (readOnly || !schemaOpened[key])}
       <div
         class="weft-workflow-builder__schema-empty"
         data-testid={`workflow-builder-${key}-empty`}
       >
         <p class="weft-workflow-builder__note">{empty}</p>
-        <Button variant="secondary" size="sm" onclick={() => (schemaOpened[key] = true)}>
-          {#snippet leadingIcon()}<Plus aria-hidden="true" />{/snippet}
-          {copy.addField}
-        </Button>
+        {#if !readOnly}
+          <Button
+            variant="secondary"
+            size="sm"
+            label={copy.addField}
+            onclick={() => (schemaOpened[key] = true)}
+          >
+            {#snippet leadingIcon()}<Plus aria-hidden="true" />{/snippet}
+          </Button>
+        {/if}
       </div>
     {:else}
       <JsonSchemaEditor
         id={`workflow-builder-${key}`}
         variant="fields"
         schema={shownSchema(schema)}
+        readonly={locked}
         onValueChangeRequest={(event) => changeSchema(key, event.schema)}
       />
     {/if}
   </FormSection>
 {/snippet}
 
-<div class="weft-workflow-builder" data-testid="workflow-builder">
-  {#if readOnly}
-    <p class="weft-workflow-builder__phone" data-testid="workflow-builder-phone">
-      <span>{copy.phone.message}</span>
-      <Button
-        variant="ghost-accent"
-        size="sm"
-        href={router.href(backHref)}
-        onclick={(event) => go(event, backHref)}
-        >{mode === 'create' ? copy.phone.backToWorkflows : copy.phone.backToWorkflow}</Button
-      >
-    </p>
-  {/if}
+{#snippet resetIdAction()}
+  <Button variant="ghost-accent" size="sm" onclick={resetId} label={copy.resetId} />
+{/snippet}
 
+<div class="weft-workflow-builder" data-testid="workflow-builder">
   <Tabs bind:value={tab}>
     <Tabs.List label={copy.tabsLabel}>
       <Tabs.Trigger
@@ -710,11 +708,18 @@
                 >
                 <span class="weft-workflow-builder__note">{copy.idFixed}</span>
               </p>
+            {:else if readOnly && view.title.trim() !== '' && derivedId !== ''}
+              <p class="weft-workflow-builder__id-line" data-testid="workflow-builder-id-line">
+                <span class="weft-workflow-builder__id-label">{copy.idLabel}</span>
+                <code class="weft-workflow-builder__id">{view.name}</code>
+                <span class="weft-workflow-builder__note">{copy.idFixedOnCreate}</span>
+              </p>
             {:else if idCollapsed}
               <p class="weft-workflow-builder__id-line" data-testid="workflow-builder-id-line">
                 <span class="weft-workflow-builder__id-label">{copy.idLabel}</span>
                 <code class="weft-workflow-builder__id">{view.name}</code>
                 <Button
+                  id={ID_CHANGE_ID}
                   variant="ghost-accent"
                   size="sm"
                   onclick={() => (idOpen = true)}
@@ -745,15 +750,11 @@
                 {...idProblem?.kind === 'id' ? { error: idProblem.message } : {}}
                 value={view.name}
                 onValueChange={(next) => write(setName(text, next))}
+                trailing={resetIdAction}
+                trailingInteractive
               >
                 {#snippet descriptionAction()}
                   {' '}<code>{copy.idFile(view.name)}</code>{copy.idChangedDescription.after}
-                  <Button
-                    variant="ghost-accent"
-                    size="sm"
-                    onclick={useDerivedId}
-                    label={copy.useDerivedId}
-                  />
                 {/snippet}
               </Input>
             {/if}
@@ -996,15 +997,6 @@
     flex-direction: column;
     gap: 20px;
     padding-top: var(--cinder-space-3);
-  }
-
-  /* One layout on New and on Edit (note N3): what to do, then the way back under it, each page's
-     link naming where it goes. */
-  .weft-workflow-builder__phone {
-    display: grid;
-    justify-items: start;
-    gap: var(--cinder-space-1);
-    margin: var(--cinder-space-3) 0 0;
   }
 
   /* A read-only builder offers nothing to type: its fields show their values, never a prompt. */

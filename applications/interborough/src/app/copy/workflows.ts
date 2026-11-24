@@ -639,7 +639,8 @@ export const WORKFLOW_COPY = {
     idFixedOnCreate: 'Can’t be changed after you create it.',
     /** Beside an existing workflow's ID. */
     idFixed: 'Can’t be changed',
-    useDerivedId: 'Use the ID made from the title',
+    resetId: 'Reset ID',
+    readOnlyOnScreen: 'Read-only on this screen.',
     descriptionLabel: 'Description',
     descriptionPlaceholder: 'What does this workflow do?',
     startsHeading: 'Starts',
@@ -798,6 +799,13 @@ export const WORKFLOW_COPY = {
       noSchema: 'Its input is edited in the JSON tab.',
       noInput: 'It takes no input.',
       inputNotObject: 'Its input is not an object. It is edited in the JSON tab.',
+      replaceInput: {
+        title: 'Replace workflow input?',
+        description:
+          'Switching workflows replaces this step’s input with the new workflow’s input.',
+        cancel: 'Keep editing',
+        confirm: 'Replace input',
+      },
     },
     /** The control-flow cards, in the person's words. */
     controlFlow: {
@@ -891,12 +899,6 @@ export const WORKFLOW_COPY = {
         }`,
       other: 'run a step the builder can’t describe',
       next: 'then',
-    },
-    /** Below 640 pixels the builder is read-only (board ResponsiveAndDark, row 05n). */
-    phone: {
-      message: 'Open on a larger screen',
-      backToWorkflow: 'Back to the workflow',
-      backToWorkflows: 'Back to Workflows',
     },
     /**
      * What the builder says when the JSON tab holds text it cannot draw: the Builder tab is off, and

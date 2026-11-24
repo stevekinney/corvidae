@@ -171,6 +171,7 @@ export interface AccessChange {
   readonly restored: string;
   readonly apply: () => void;
   readonly undo: () => void;
+  readonly onSaved?: () => void;
 }
 
 type Definition = NonNullable<AgentDetail['definition']>;
@@ -213,9 +214,9 @@ export class AgentAccessState {
   /** Whether a skill can be granted or withdrawn; `false` where only the tools and guardrails are saved. */
   readonly skillsEditable: boolean;
   /** Whether a tool can be allowed or withdrawn; held while the agent's own Asks would be dropped. */
-  readonly toolsEditable: boolean;
+  toolsEditable = $state(false);
   /** Whether the Asks of the tools can be changed; held while the agent's own would be replaced. */
-  readonly approvalsEditable: boolean;
+  approvalsEditable = $state(false);
   /** Whether a guardrail can be turned on or off; held while the agent's own would be replaced. */
   readonly guardrailsEditable: boolean;
   /** The skills the file defines itself, which the tab lists as granted (sweep S65). */
@@ -248,6 +249,8 @@ export class AgentAccessState {
   tools = $state<string[]>([]);
   /** The approvals the file states. A tool absent here asks at its own default. */
   readonly approvals = new SvelteMap<string, ToolApproval>();
+  /** An explicit empty approval override replaces a built-in agent's unreadable policy. */
+  approvalsReplaced = $state(false);
   /** The skills the agent may activate, in the order the file lists them and then the order they were granted. */
   skills = $state<string[]>([]);
   /** The plugin guardrails the agent runs, by id, in the order the file lists them and then the order they were turned on. */
@@ -318,6 +321,8 @@ export class AgentAccessState {
     for (const [tool, approval] of Object.entries(definition?.approvals ?? {})) {
       this.approvals.set(tool, approval);
     }
+    this.approvalsReplaced =
+      options.ownTools !== undefined && definition?.approvals != null && this.approvals.size === 0;
     this.skills = [...(definition?.skills ?? detail.codeDefinition?.skills ?? [])];
     this.guardrails = (definition?.guardrails ?? []).map(guardrailEntryId);
     const chat = definition?.limits.cost?.chat;
@@ -441,6 +446,12 @@ export class AgentAccessState {
     }
   }
 
+  /** Prepares this tab’s explicit policy while the existing one still controls editing. */
+  replaceApprovals(): void {
+    this.approvals.clear();
+    this.approvalsReplaced = true;
+  }
+
   /** How many rows the tools table has: the one total the toolbar's count is out of (row 38l). */
   get totalCount(): number {
     return this.rows.length;
@@ -513,6 +524,7 @@ export class AgentAccessState {
         this.#written.add(result.hash);
         this.#committed = text;
         this.#settle(change.key);
+        change.onSaved?.();
         return { kind: 'saved', hash: result.hash };
       } catch (error) {
         this.#fail(change, error);
@@ -571,7 +583,7 @@ export class AgentAccessState {
   /** The approvals of the tools still allowed, or `null` when none is left to state. */
   #approvalsToWrite(): Record<string, ToolApproval> | null {
     const kept = [...this.approvals].filter(([tool]) => this.tools.includes(tool));
-    return kept.length === 0 ? null : Object.fromEntries(kept);
+    return kept.length === 0 ? (this.approvalsReplaced ? {} : null) : Object.fromEntries(kept);
   }
 
   /**

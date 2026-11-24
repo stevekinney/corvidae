@@ -110,7 +110,8 @@ export interface BureauDecisionModel {
    * `decisions.model` names (or defaults to) when it is in the catalog, can decide and is not
    * `needs-setup`; else the {@link BureauDecisionModel.fallback} row. A named row the model policy
    * forbids refuses every decision, so no row is marked. At most one row is marked, and none when
-   * nothing can answer. A page names the answering row by comparing this with its setting.
+   * nothing can answer. A selected host model handles its declared kinds first. The fallback
+   * row answers only kinds the selected host model does not serve.
    */
   readonly answering: boolean;
   /**
@@ -120,6 +121,10 @@ export interface BureauDecisionModel {
    * policy forbids. At most one row is marked. With no `decisions.model` it is the answering row.
    */
   readonly fallback: boolean;
+  /** The exact configured decision setting when it resolves here, including a saved alias. */
+  readonly configured: string | null;
+  /** The exact configured fallback setting when it resolves here, including a saved alias. */
+  readonly configuredFallback: string | null;
   /**
    * Whether this row can be the language-model fallback at all: it returns structured output, the
    * rule `chooseFallbackRow` applies before it looks at availability. A row that cannot (a
@@ -128,6 +133,17 @@ export interface BureauDecisionModel {
    * returns structured output is marked: it becomes the fallback once its provider has a key.
    */
   readonly canBeFallback: boolean;
+}
+
+/** The decision choices and host registration that are currently in effect. */
+interface BureauDecisionCatalog {
+  /** Provider model rows, in catalog order, with their configured and effective roles. */
+  readonly rows: readonly BureauDecisionModel[];
+  /** The registered host model selected by settings, if it serves any decision kinds. */
+  readonly hostModel: {
+    readonly name: string;
+    readonly kinds: readonly DecisionKind[];
+  } | null;
 }
 
 /**
@@ -141,7 +157,7 @@ export interface BureauDecisions {
    * the fallback. A row the model policy forbids is left out: it cannot answer. Read again on every
    * call, so it reflects the catalog and settings as they are now.
    */
-  models(): readonly BureauDecisionModel[];
+  models(): BureauDecisionCatalog;
   /**
    * Answers `request`. A request whose kind the model named by the `decisions.model` setting
    * ({@link DecisionsOptions.model} by default) serves goes to it, and is looked up again on every

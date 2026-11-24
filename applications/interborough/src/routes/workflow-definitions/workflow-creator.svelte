@@ -198,7 +198,11 @@
 </script>
 
 <div class="ib-workflow" data-page="workflow-creator">
-  <PageHeader title={creator.heading} headingLevel={1} description={creator.description} />
+  <PageHeader
+    title={creator.heading}
+    headingLevel={1}
+    description={phoneViewport.current ? copy.builder.readOnlyOnScreen : creator.description}
+  />
 
   <form class="ib-workflow__section" onsubmit={(event) => event.preventDefault()}>
     <WorkflowBuilder
@@ -214,7 +218,6 @@
       jsonId="workflow-creator-text"
       jsonLabel={creator.textLabel}
       jsonDescription={creator.textDescription}
-      backHref="/workflows"
       onTextChange={(next) => {
         text = next;
         documentProblem = null;

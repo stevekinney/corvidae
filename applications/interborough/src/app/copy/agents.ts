@@ -753,6 +753,7 @@ export const AGENT_PAGE_COPY = {
       const names = kept.flatMap((key) => (key === 'approvals' ? ['tools', 'Asks'] : [key]));
       return `Its own ${nameList(names)} stay as they are here, because a change would replace all of them.`;
     },
+    replaceAsks: 'Replace its Asks',
     exists: (name: string): string =>
       `You already have an agent named ${name}. Open it, or rename or delete it to duplicate this one again.`,
     notLoaded: 'This agent is not loaded now, so it cannot be duplicated.',

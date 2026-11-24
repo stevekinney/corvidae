@@ -267,6 +267,26 @@
   }
 
   const groups = $derived(form === undefined ? [] : groupAccessRows(form.rows));
+
+  function replaceAsks(state: AgentAccessState): void {
+    const approvals = new Map(state.approvals);
+    const replaced = state.approvalsReplaced;
+    void state.change({
+      key: 'approvals',
+      subject: AGENT_PAGE_COPY.plugin.replaceAsks,
+      restored: AGENT_PAGE_COPY.plugin.overridableKept(['approvals']),
+      apply: () => state.replaceApprovals(),
+      onSaved: () => {
+        state.toolsEditable = true;
+        state.approvalsEditable = true;
+      },
+      undo: () => {
+        state.approvals.clear();
+        for (const [tool, approval] of approvals) state.approvals.set(tool, approval);
+        state.approvalsReplaced = replaced;
+      },
+    });
+  }
   const segments = $derived<FilterSegment[]>([
     { value: 'all', label: copy.all, count: form?.totalCount ?? 'pending' },
     ...groups.map((group) => ({
@@ -635,6 +655,18 @@
   {:else}
     {#if overrides !== undefined}
       <AgentPluginNote {plugin} title={pluginTitle} mode="editable" kept={overrides.keptOwn} />
+      {#if overrides.keptOwn.includes('approvals') && !form.approvalsReplaced}
+        <div class="ib-agent-replace-asks">
+          <Button
+            variant="secondary"
+            size="sm"
+            data-changes
+            onclick={() => {
+              if (form !== undefined) replaceAsks(form);
+            }}>{AGENT_PAGE_COPY.plugin.replaceAsks}</Button
+          >
+        </div>
+      {/if}
     {:else if plugin !== null}
       <AgentPluginNote
         {plugin}

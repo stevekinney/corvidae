@@ -452,7 +452,11 @@
     />
   {/if}
 
-  <PageHeader title={editor.heading(name)} headingLevel={1} />
+  <PageHeader
+    title={editor.heading(name)}
+    headingLevel={1}
+    {...phoneViewport.current && editable ? { description: copy.builder.readOnlyOnScreen } : {}}
+  />
   <p class="weft-workflow-editor__path">
     <span>{hostPaths.data?.mode === 'remote' ? copy.remote.fileLabel : copy.fileLabel}</span>
     <CodeLocation class="weft-code-location" file={filePath} data-testid="workflow-file-path" />
@@ -544,7 +548,6 @@
           jsonId="workflow-editor-text"
           jsonLabel={editor.textLabel}
           jsonDescription={editor.textDescription}
-          backHref={workflowTypePath(type)}
           {...footerStatus === undefined ? {} : { status: footerStatus }}
           {...changedOnDisk ? { notice: changedNotice } : {}}
           {...saveImpact === undefined ? {} : { aboveFooter: impactSnippet }}

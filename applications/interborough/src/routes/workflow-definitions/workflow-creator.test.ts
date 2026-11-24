@@ -62,19 +62,27 @@ function open(agents: ReadonlyArray<Record<string, unknown>> = [], overrides: Pa
   return render(Harness, { props: { client: stub.client, scopes: AUTHORIZATION_SCOPES } } as never);
 }
 
-/** Makes the viewport a phone, which is what `phoneViewport` reads. */
-function phone(): void {
+/** Sets the initial viewport and returns a resize that notifies the existing media query. */
+function phone(initial = true): (matches: boolean) => void {
   const original = window.matchMedia;
+  const events = new window.EventTarget();
+  let matches = initial;
   window.matchMedia = ((query: string) => ({
-    matches: query === '(width < 640px)',
+    get matches() {
+      return query === '(width < 640px)' && matches;
+    },
     media: query,
-    addEventListener: () => {},
-    removeEventListener: () => {},
+    addEventListener: events.addEventListener.bind(events),
+    removeEventListener: events.removeEventListener.bind(events),
     addListener: () => {},
     removeListener: () => {},
   })) as unknown as typeof window.matchMedia;
   restoreViewport = () => {
     window.matchMedia = original;
+  };
+  return (next) => {
+    matches = next;
+    events.dispatchEvent(new window.Event('change'));
   };
 }
 
@@ -458,10 +466,11 @@ describe('the builder', () => {
     await fireEvent.input(field(container, 'workflow-builder-name'), {
       target: { value: 'briefing' },
     });
-    await fireEvent.click(button(container, BUILDER.useDerivedId));
+    await fireEvent.click(button(container, BUILDER.resetId));
     await waitFor(() =>
       expect(container.querySelector('[data-testid="workflow-builder-id-line"]')).toBeTruthy(),
     );
+    expect(document.activeElement?.id).toBe('workflow-builder-id-change');
 
     await openJson(container);
     expect(JSON.parse(textarea(container).value)).toMatchObject({
@@ -961,19 +970,25 @@ describe('the builder', () => {
     await waitFor(() => expect(router.pathname).toBe('/workflows/refund'));
   });
 
-  test('is read-only below 640 pixels, and links back to Workflows', async () => {
+  test('says the builder is read-only in the phone heading while tabs stay full width', async () => {
     phone();
     const { container } = open();
     await ready(container);
-    const notice = container.querySelector('[data-testid="workflow-builder-phone"]');
-    expect(notice?.textContent).toContain(BUILDER.phone.message);
-    expect(notice?.querySelector('a')?.getAttribute('href')).toBe('/workflows');
+    const readOnly = container.querySelector('.cinder-page-header__description');
+    expect(readOnly?.textContent).toBe(BUILDER.readOnlyOnScreen);
+    expect(readOnly?.closest('[role="tablist"]')).toBeNull();
+    expect(container.querySelector('.weft-workflow-builder__read-only')).toBeNull();
+    expect(container.querySelector('[data-testid="workflow-builder-phone"]')).toBeNull();
     expect(container.querySelector('.weft-workflow-builder__body')?.hasAttribute('inert')).toBe(
       true,
     );
     expect(container.querySelector('.weft-workflow-builder__actions')?.hasAttribute('inert')).toBe(
       true,
     );
+    const buttonLabels = [...container.querySelectorAll('button')].map((button) =>
+      button.textContent?.trim(),
+    );
+    expect(buttonLabels).not.toContain(BUILDER.addField);
     // Design correction 2, N3: the fields are visibly inert (no prompts), and so is the primary.
     expect(
       container.querySelector('.weft-workflow-builder__body')?.hasAttribute('data-read-only'),
@@ -990,7 +1005,35 @@ describe('the builder', () => {
     expect(container.querySelector('.weft-workflow-builder__json')?.hasAttribute('inert')).toBe(
       true,
     );
-    expect(container.textContent).toContain(BUILDER.phone.message);
+    expect(container.querySelector('.cinder-page-header__description')?.textContent).toBe(
+      BUILDER.readOnlyOnScreen,
+    );
+  });
+
+  test('keeps a seeded custom ID read-only on a phone without an inert Change or Reset ID action', async () => {
+    const resize = phone(false);
+    const { container } = open();
+    await ready(container);
+    await fireEvent.input(field(container, 'workflow-builder-title'), {
+      target: { value: 'Morning Briefing' },
+    });
+    await fireEvent.click(button(container, BUILDER.idChange));
+    await fireEvent.input(field(container, 'workflow-builder-name'), {
+      target: { value: 'custom-briefing' },
+    });
+
+    resize(true);
+    await waitFor(() =>
+      expect(container.querySelector('.cinder-page-header__description')?.textContent).toBe(
+        BUILDER.readOnlyOnScreen,
+      ),
+    );
+
+    const line = container.querySelector('[data-testid="workflow-builder-id-line"]');
+    expect(line?.textContent).toContain('custom-briefing');
+    expect(line?.querySelector('button')).toBeNull();
+    expect(container.querySelector('#workflow-builder-name')).toBeNull();
+    expect(container.querySelector('[aria-label="Reset ID"]')).toBeNull();
   });
 
   test('COR-2432: ⌘Enter creates nothing below 640 pixels, where the builder is read-only', async () => {
