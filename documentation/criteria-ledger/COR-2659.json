@@ -1,9 +1,9 @@
 {
   "issue": "COR-2659",
   "branch": "steve/cor-2659-disposable-workspace-authority",
-  "checkedAt": "52560d4b82b926f3fdbed6a0d617ee7f48b13586",
+  "checkedAt": "eef0e14156ea12292dba4d737e256061d0b7ee58",
   "briefVersion": "4fff5d483b58",
-  "status": "BLOCKED",
+  "status": "READY",
   "criteria": [
     {
       "id": "AC1",
@@ -17,8 +17,8 @@
     },
     {
       "id": "AC3",
-      "status": "not-met",
-      "evidence": "Local credential response/JUnit checks and synthetic Vision positive control passed; real hosted browser trace and OCR proof pending."
+      "status": "met-on-branch",
+      "evidence": "Hosted proof https://github.com/stevekinney/corvidae/actions/runs/45371646551 at 47665d1f2e2a0d877d2efa02125cc54a855b9cb1, unchanged product source 52560d4b82b926f3fdbed6a0d617ee7f48b13586; artifact https://github.com/stevekinney/corvidae/actions/runs/45371646551/artifacts/14910940325 sha256:739f0266efb82f0609ffe9a9b3a491db45ea473d402dbc826d9fc5c5670172c0; normalized receipt attachment f40fb6b6-32a1-4a60-b41c-487e42125941. Success exit 0, planted failure exit 1, six screenshots OCR-clean; positive OCR/text/archive controls passed; 67/70 trace members scanned with contaminated members excluded; sanitized JUnit and first-failure replay retained."
     }
   ]
 }
