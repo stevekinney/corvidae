@@ -20007,6 +20007,34 @@
                     },
                     "message": {
                       "type": "string"
+                    },
+                    "syntax": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "comma",
+                            "other"
+                          ],
+                          "type": "string"
+                        },
+                        "line": {
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991,
+                          "type": "integer"
+                        },
+                        "stoppedAt": {
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "line",
+                        "stoppedAt",
+                        "kind"
+                      ],
+                      "type": "object"
                     }
                   },
                   "required": [
@@ -20435,6 +20463,34 @@
                               },
                               "message": {
                                 "type": "string"
+                              },
+                              "syntax": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "comma",
+                                      "other"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "stoppedAt": {
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 9007199254740991,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "line",
+                                  "stoppedAt",
+                                  "kind"
+                                ],
+                                "type": "object"
                               }
                             },
                             "required": [
@@ -20459,6 +20515,108 @@
                                 "minimum": -9007199254740991,
                                 "type": "integer"
                               },
+                              "current": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "startedAt": {
+                                        "type": "string"
+                                      },
+                                      "status": {
+                                        "enum": [
+                                          "pending",
+                                          "running",
+                                          "suspended"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "step": {
+                                        "anyOf": [
+                                          {
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 9007199254740991,
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "totalSteps": {
+                                        "anyOf": [
+                                          {
+                                            "maximum": 9007199254740991,
+                                            "minimum": 0,
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "waitingForSignal": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "startedAt",
+                                      "status",
+                                      "step",
+                                      "totalSteps",
+                                      "waitingForSignal"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "last": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "failedStep": {
+                                        "anyOf": [
+                                          {
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 9007199254740991,
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "status": {
+                                        "enum": [
+                                          "pending",
+                                          "running",
+                                          "completed",
+                                          "failed",
+                                          "cancelled",
+                                          "timed-out",
+                                          "suspended"
+                                        ],
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "status",
+                                      "failedStep"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
                               "last24Hours": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
@@ -20469,12 +20627,20 @@
                                   "string",
                                   "null"
                                 ]
+                              },
+                              "total": {
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
                               }
                             },
                             "required": [
+                              "total",
                               "active",
                               "last24Hours",
-                              "lastRunAt"
+                              "lastRunAt",
+                              "last",
+                              "current"
                             ],
                             "type": "object"
                           },

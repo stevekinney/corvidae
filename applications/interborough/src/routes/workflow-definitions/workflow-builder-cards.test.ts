@@ -850,6 +850,19 @@ describe('a path chosen by a value', () => {
       },
     ]);
 
+  test('lays out root steps as cards and nested steps as rows with matching Move and Remove controls', async () => {
+    const { container } = await openBuilder(branching());
+    const root = container.querySelector('[data-step-address="2"]');
+    const nested = container.querySelector('[data-step-address="2-c1-1"]');
+    expect(root?.getAttribute('data-cinder-layout')).toBe('card');
+    expect(nested?.getAttribute('data-cinder-layout')).toBe('row');
+    const move = nested?.querySelector('button[data-cinder-move="down"]');
+    const remove = nested?.querySelector('button[aria-label^="Remove"]');
+    expect(move?.classList.contains('button-variant-secondary')).toBe(true);
+    expect(remove?.classList.contains('button-variant-secondary')).toBe(true);
+    expect(nested?.querySelector('button[data-cinder-move="up"]')).toBeNull();
+  });
+
   test('is added with one empty case, in the person’s words, and its fields write the step', async () => {
     const { container } = await openBuilder(file([{ kind: 'sleep', duration: '1m' }]));
     await addStep(container, BUILDER.add.branch);

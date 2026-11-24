@@ -7,6 +7,11 @@
   min-width: 0;
 }
 
+/* Keep names and right-aligned row facts within the view’s readable measure. */
+.ib-records__bounded-list {
+  max-inline-size: 60rem;
+}
+
 /* Count, filters, primary action: one row that wraps instead of widening the page. */
 .ib-records-toolbar {
   display: flex;

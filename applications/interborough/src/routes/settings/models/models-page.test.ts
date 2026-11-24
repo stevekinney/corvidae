@@ -204,6 +204,7 @@ describe('the providers', () => {
 
     const rows = [...container.querySelectorAll<HTMLElement>('[data-provider]')];
     expect(rows.map((row) => row.dataset['provider'])).toEqual(['anthropic', 'openai', 'gemini']);
+    expect(rows.every((row) => row.matches('li.cinder-grouped-list-item'))).toBe(true);
     expect(rows.map((row) => row.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
       'Anthropic Claude models Connect',
       'OpenAI GPT models Connect',
@@ -1091,7 +1092,7 @@ describe('removing a provider’s key', () => {
       const dialog = await ask(container, 'openai');
 
       await waitFor(() =>
-        expect(within(dialog).getByTestId('provider-remove-embedder').textContent).toBe(
+        expect(within(dialog).getByTestId('provider-remove-embedder').textContent?.trim()).toBe(
           'Memory search uses OpenAI from this provider. Removing the key stops it, so search matches words only until you add a key or switch embedders.',
         ),
       );

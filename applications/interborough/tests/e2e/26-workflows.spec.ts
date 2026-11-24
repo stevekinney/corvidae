@@ -17,6 +17,7 @@ import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
 import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { describeCadence } from '../../src/routes/schedules/cadence.ts';
 import { bureau } from './agent-support.ts';
+import { connectProvider } from './chat-states-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
@@ -198,7 +199,7 @@ test.describe('the list', () => {
     await checkA11y('workflow search at 375px');
   });
 
-  test('counts a file’s instances: running, and begun in the last day', async ({
+  test('counts a file’s instances and names the run waiting for a signal', async ({
     page,
     request,
   }) => {
@@ -208,12 +209,30 @@ test.describe('the list', () => {
     });
     await bureau(request, 'bureau.workflows.signal', { name: 'e2e-counted-go' });
     try {
+      // Starting records the run before its await-signal step has registered. Read the list's own
+      // durable projection until that registration is visible, so this test asserts Waiting only
+      // after the run is actually parked on the signal it names.
+      await expect
+        .poll(async () => {
+          const listed = await bureau(request, 'bureau.workflows.list', { includeRuns: true });
+          expect(listed.fault, 'listing e2e-counted after its start signal').toBeUndefined();
+          const workflow = (
+            listed.result as {
+              workflows: Array<{
+                id: string;
+                runs?: { current: { waitingForSignal: string | null } | null } | null;
+              }>;
+            }
+          ).workflows.find((entry) => entry.id === 'e2e-counted');
+          return workflow?.runs?.current?.waitingForSignal;
+        })
+        .toBe('e2e-counted-wait');
       await page.goto('/workflows');
       const counted = row(page, 'e2e-counted');
-      await expect(counted.getByTestId('workflow-run-counts')).toHaveText('1 run in 24 hours');
-      // A run is going, so the right edge says when it began and line two leads with Running.
+      await expect(counted.getByTestId('workflow-run-counts')).toHaveText('1 run');
+      // A run is underway, so the right edge says when it began and line two names the wait.
       await expect(counted.getByTestId('workflow-last-run')).toContainText('Started');
-      await expect(counted).toContainText(WORKFLOW_COPY.list.runningNow);
+      await expect(counted).toContainText(WORKFLOW_COPY.list.waiting);
       // The captioned frame of a run in progress (rows 61j and 61k): the status column stays empty.
       await expect(counted).not.toHaveAttribute('data-status', /.+/);
       await captureForDesignReview(page, {
@@ -306,25 +325,29 @@ test.describe('the list', () => {
           }
           await route.fulfill({ response, json });
         });
+        // This is the connected-provider first-use state: Ask an agent is an enabled secondary
+        // action, not an absent action or the disabled no-provider state.
+        await connectProvider(page);
         await page.goto('/workflows');
         await expect(area(page)).toHaveAttribute('data-state', 'ready');
         const empty = area(page).getByTestId('workflows-empty');
         await expect(empty).toContainText(WORKFLOW_COPY.list.empty.title);
-        // The header and state each offer a way to internal workflows alongside New workflow.
+        // The header carries the internal-workflows affordance; first use has the two semantic
+        // ListPageEmpty link actions, New workflow and the connected Ask action.
         await expect(
           page.getByRole('link', { name: WORKFLOW_COPY.newAction }).first(),
         ).toBeVisible();
+        await expect(empty.getByRole('link', { name: WORKFLOW_COPY.newAction })).toBeVisible();
         await expect(
           empty.getByRole('link', { name: WORKFLOW_COPY.list.empty.askAction }),
-        ).toHaveCount(0);
-        await expect(
-          empty.getByRole('link', { name: WORKFLOW_COPY.list.empty.internalAction }),
-        ).toHaveAttribute('href', '/internal-workflows');
+        ).toHaveAttribute('href', '/chats/new?from=workflows');
         await expect(area(page).getByTestId('internal-workflows-action')).toBeVisible();
         const directory = await workflowDirectory(request);
         await expect(empty).not.toContainText(directory);
-        await empty.getByRole('button', { name: WORKFLOW_COPY.list.empty.files.label }).click();
-        await expect(area(page).getByTestId('file-location-directory')).toContainText(directory);
+        await expect(empty.getByRole('link')).toHaveCount(2);
+        await expect(empty.getByTestId('workflows-file-hint')).toHaveText(
+          WORKFLOW_COPY.list.empty.fileHint,
+        );
         // First use is the page: no filter row.
         await expect(page.getByRole('radio')).toHaveCount(0);
         for (const name of ENGINE_TYPES) await expect(row(page, name)).toHaveCount(0);
