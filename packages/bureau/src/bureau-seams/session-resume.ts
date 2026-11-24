@@ -202,20 +202,18 @@ export function createSessionResume<D extends AgentDefinitions>(
     if (started.kind === 'other-command') {
       return refuse('not-latest-turn', 'The turn already went on under another command.');
     }
-    if (await continuationHasStarted(started.runId)) {
-      return { contextId: session.id, runId: started.runId, resumedRunId: runId };
-    }
-    return undefined;
+    await assertContinuationStarted(started.runId);
+    return { contextId: session.id, runId: started.runId, resumedRunId: runId };
   }
 
-  /** Whether a continuation marker has reached a live run or a durable start record. */
-  async function continuationHasStarted(continuationRunId: string): Promise<true> {
+  /** Refuses unless a continuation marker has reached a live run or a durable start record. */
+  async function assertContinuationStarted(continuationRunId: string): Promise<void> {
     if (runtime.durable === undefined) {
-      if (core.store.getRun(continuationRunId) !== undefined) return true;
+      if (core.store.getRun(continuationRunId) !== undefined) return;
       return refuse('turn-running', 'The continuation is still being prepared.');
     }
     const record = await runtime.durable.engine.get(continuationRunId);
-    if (record !== null && record !== undefined && record.status !== 'pending') return true;
+    if (record !== null && record !== undefined && record.status !== 'pending') return;
     // A task record is intentionally written before durable prepare. It is an in-doubt start,
     // not a receipt: another Bureau may still own the prepare, so never report success or erase it.
     const task = await core.tasks.record(continuationRunId);
@@ -240,9 +238,9 @@ export function createSessionResume<D extends AgentDefinitions>(
   ): Promise<void> {
     const markerId = `${resumedRunId}:continuation`;
     await sessions.update(before.id, (current) => {
-      if (current === undefined || current.incarnation !== continuation.incarnation) return current;
+      if (current === undefined || current.incarnation !== continuation.incarnation) return undefined;
       const recorded = startedContinuation(current, resumedRunId, commandId, owner);
-      if (recorded?.kind !== 'started' || recorded.runId !== continuation.runId) return current;
+      if (recorded?.kind !== 'started' || recorded.runId !== continuation.runId) return undefined;
       const metadata = { ...current.metadata };
       if (metadata['lastRunId'] === continuation.runId) {
         restoreStoppedProjection(metadata, before.metadata);

@@ -305,6 +305,45 @@ describe('a resumed turn', () => {
     await untilEnded(bureau, run.contextId, resumed.runId);
   });
 
+  it('does not rewrite a newer session incarnation while rolling back rejected admission', async () => {
+    const bureau = await openBureau(agentThat('waits'));
+    const { run } = await stoppedTurn(bureau);
+    const sessions = bureau.internals.sessionStore!;
+    const registry = bureau.internals.taskRegistry as {
+      recordAdmission: typeof bureau.internals.taskRegistry.recordAdmission;
+    };
+    let replacementRevision = -1;
+    Object.defineProperty(registry, 'recordAdmission', {
+      configurable: true,
+      value: async () => {
+        const marked = (await sessions.load(run.contextId))!;
+        await sessions.delete(run.contextId, { expectedIncarnation: marked.incarnation });
+        await sessions.save(
+          createAgentSession({
+            id: marked.id,
+            agentName: marked.agentName,
+            conversationHistory: marked.conversationHistory,
+            metadata: { ...marked.metadata, newerState: 'kept' },
+            runs: marked.runs,
+          }),
+        );
+        replacementRevision = (await sessions.load(run.contextId))!.revision;
+        throw new Error('task admission rejected after session replacement');
+      },
+    });
+
+    const rejected = await resume(bureau, run.contextId, run.id).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(rejected).toBeInstanceOf(Error);
+
+    const replacement = (await sessions.load(run.contextId))!;
+    expect(replacement.metadata['newerState']).toBe('kept');
+    expect(replacement.revision).toBe(replacementRevision);
+    expect(replacement.conversationHistory.ids).toContain(`${run.id}:continuation`);
+  });
+
   it('does not replay or remove a continuation marker while another Bureau admits it', async () => {
     const storage = new MemoryStorage();
     const first = await openBureau(agentThat('waits'), storage);
@@ -336,7 +375,7 @@ describe('a resumed turn', () => {
     const won = await starting;
     await waitForCondition(async () => {
       const state = await second.durableEngine()?.get(won.runId);
-      return state?.status !== 'pending';
+      return state !== null && state !== undefined && state.status !== 'pending';
     }, 'the admitted continuation durable start');
     expect(await resume(second, run.contextId, run.id)).toEqual(won);
   });
