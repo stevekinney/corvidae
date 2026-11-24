@@ -1,4 +1,3 @@
-import { timingSafeEqual } from 'node:crypto';
 import { isIPv4, isIPv6 } from 'node:net';
 import { canonicalizeIpAddress, expandIpv6Groups } from './canonicalize-ip-address.ts';
 
@@ -39,10 +38,6 @@ export function isAddressInCidr(address: string, cidr: string): boolean {
   if (range.prefixLength === 0) return true;
   const shift = BigInt((candidate.family === 4 ? 32 : 128) - range.prefixLength);
   return candidate.value >> shift === range.value >> shift;
-}
-
-export function isValidCidr(cidr: string): boolean {
-  return parseCidr(cidr) !== null;
 }
 
 export function isValidRedirectUri(uri: string): boolean {
@@ -88,14 +83,6 @@ export function isExactContentType(value: string | null, expectedMediaType: stri
     else if (character === ',' && !inQuotes) return false;
   }
   return value.split(';')[0]?.trim().toLowerCase() === expectedMediaType;
-}
-
-/** Compares UTF-8 credentials without data-dependent comparison timing. */
-export function constantTimeEquals(leftValue: string, rightValue: string): boolean {
-  const leftBuffer = Buffer.from(leftValue, 'utf8');
-  const rightBuffer = Buffer.from(rightValue, 'utf8');
-  if (leftBuffer.length !== rightBuffer.length) return false;
-  return timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 export function withDeadline<T>(promise: Promise<T>, timeoutMilliseconds: number): Promise<T> {

@@ -82,7 +82,7 @@ function extractIpv4MappedAddress(groups: string[]): string | null {
  * both bracketed IPv6 (`[2001:db8::1]:4711`) and IPv4 (`1.2.3.4:5678`)
  * forms. Returns the input unchanged when no port suffix is present.
  */
-export function stripPort(input: string): string {
+function stripPort(input: string): string {
   const trimmed = input.trim();
 
   const bracketedMatch = /^\[([^\]]+)]:\d+$/.exec(trimmed);

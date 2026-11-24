@@ -1,14 +1,9 @@
 import { rejectionOf } from '@lostgradient/testing';
 import { beforeEach, describe, expect, it } from 'bun:test';
-import {
-  clearClientIdMetadataDocumentCacheForTests,
-  fetchClientIdMetadataDocument,
-  isClientIdMetadataDocumentUrl,
-  resetDnsLookupConcurrencyLimiterForTests,
-  safeFetchPublicHttpsUrl,
-} from './client-metadata-documents.ts';
+import { fetchClientIdMetadataDocument } from './client-metadata-documents.ts';
+import { safeFetchPublicHttpsUrl } from './safe-public-https-fetch.ts';
 
-const validDocumentUrl = 'https://app.example.com/oauth/client.json';
+let validDocumentUrl = 'https://app.example.com/oauth/client.json';
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -100,50 +95,39 @@ describe('safeFetchPublicHttpsUrl', () => {
   });
 });
 
-describe('isClientIdMetadataDocumentUrl', () => {
-  it('accepts an https URL with a non-root path', () => {
-    expect(isClientIdMetadataDocumentUrl(validDocumentUrl)).toBe(true);
-  });
-
-  it('rejects a bare https origin with no path', () => {
-    expect(isClientIdMetadataDocumentUrl('https://app.example.com')).toBe(false);
-    expect(isClientIdMetadataDocumentUrl('https://app.example.com/')).toBe(false);
-  });
-
-  it('rejects http (non-TLS)', () => {
-    expect(isClientIdMetadataDocumentUrl('http://app.example.com/client.json')).toBe(false);
-  });
-
-  it('rejects a URL with a fragment', () => {
-    expect(isClientIdMetadataDocumentUrl(`${validDocumentUrl}#frag`)).toBe(false);
-  });
-
-  it('rejects a URL with embedded userinfo', () => {
-    expect(isClientIdMetadataDocumentUrl('https://user:pass@app.example.com/client.json')).toBe(
-      false,
-    );
-  });
-
-  it('rejects a DCR-shaped client_id (not a URL at all)', () => {
-    expect(isClientIdMetadataDocumentUrl('a1b2c3d4-e5f6-7890-abcd-ef1234567890')).toBe(false);
-  });
-
-  it('rejects a malformed URL', () => {
-    expect(isClientIdMetadataDocumentUrl('not a url')).toBe(false);
-  });
+describe('metadata document identifiers', () => {
+  for (const identifier of [
+    'https://app.example.com',
+    'https://app.example.com/',
+    'http://app.example.com/client.json',
+    'https://app.example.com/client.json#frag',
+    'https://user:pass@app.example.com/client.json',
+    'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    'not a url',
+  ]) {
+    it(`rejects ${identifier} without network access`, async () => {
+      let networkCalls = 0;
+      const result = await fetchClientIdMetadataDocument(identifier, {
+        lookupImpl: async () => {
+          networkCalls++;
+          return [publicAddress];
+        },
+        fetchImpl: async () => {
+          networkCalls++;
+          return jsonResponse({});
+        },
+      });
+      expect(result).toBeNull();
+      expect(networkCalls).toBe(0);
+    });
+  }
 });
 
 describe('fetchClientIdMetadataDocument', () => {
+  let caseNumber = 0;
   beforeEach(() => {
-    clearClientIdMetadataDocumentCacheForTests();
-    // The DNS lookup concurrency limiter's in-flight map and outstanding
-    // count are process-global module state (see resetDnsLookupConcurrencyLimiterForTests's
-    // own doc comment). Several cases below (including the pre-existing
-    // "never resolves" case) intentionally leave a lookup permanently
-    // pending for the same hostname `validDocumentUrl` uses; without this
-    // reset, that stuck entry would coalesce into -- and hang -- every
-    // later test that looks up the same hostname.
-    resetDnsLookupConcurrencyLimiterForTests();
+    validDocumentUrl = `https://app-${++caseNumber}.example.com/oauth/client.json`;
+    validDocumentBody.client_id = validDocumentUrl;
   });
 
   const validDocumentBody = {
@@ -501,17 +485,23 @@ describe('fetchClientIdMetadataDocument', () => {
       // preflight open indefinitely. `dnsTimeoutMs` lets this test exercise the real deadline
       // path without waiting out the production 5-second budget.
       let fetchWasCalled = false;
+      let releaseLookup!: () => void;
+      const lookup = new Promise<{ address: string; family: number }[]>((resolve) => {
+        releaseLookup = () => resolve([]);
+      });
       const result = await fetchClientIdMetadataDocument(validDocumentUrl, {
         fetchImpl: async () => {
           fetchWasCalled = true;
           return jsonResponse(validDocumentBody);
         },
-        lookupImpl: () => new Promise(() => {}), // never resolves or rejects
+        lookupImpl: () => lookup,
         dnsTimeoutMs: 25,
       });
 
       expect(result).toBeNull();
       expect(fetchWasCalled).toBe(false);
+      releaseLookup();
+      await lookup;
     });
 
     it('passes redirect: "error" to fetch so a redirect to an internal target cannot be followed', async () => {

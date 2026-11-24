@@ -6,16 +6,6 @@ import {
 } from './safe-public-https-fetch.ts';
 import { isExactContentType, isValidClientName, isValidRedirectUri } from './security-utilities.ts';
 
-export {
-  ClientMetadataDocumentFetchError,
-  resetDnsLookupConcurrencyLimiterForTests,
-  safeFetchPublicHttpsUrl,
-} from './safe-public-https-fetch.ts';
-export type {
-  DnsLookupAllFunction,
-  SafePublicHttpsFetchOptions,
-} from './safe-public-https-fetch.ts';
-
 const cimdMaxResponseBytes = 16 * 1024;
 const cimdCacheTtlMs = 10 * 60 * 1_000;
 const cimdCacheMaxEntries = 1_000;
@@ -24,6 +14,22 @@ const oauthMaxGrantTypeCount = 5;
 const oauthMaxRedirectUriCount = 10;
 const oauthMaxRedirectUriLength = 2_048;
 const oauthMaxResponseTypeCount = 5;
+
+function isClientIdMetadataDocumentUrl(clientId: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(clientId);
+  } catch {
+    return false;
+  }
+  return (
+    parsed.protocol === 'https:' &&
+    !parsed.hash &&
+    !parsed.username &&
+    !parsed.password &&
+    parsed.pathname !== '/'
+  );
+}
 
 export type ClientMetadataDocumentFetchDependencies = {
   fetchImpl?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
@@ -38,29 +44,6 @@ export type ClientMetadataDocumentFetchDependencies = {
    */
   dnsTimeoutMs?: number;
 };
-
-/**
- * A `client_id` is a Client ID Metadata Document identifier only if it is
- * an HTTPS URL with a non-root path component (the MCP spec's own
- * requirement, matching the CIMD draft: `https://example.com/client.json`,
- * never bare `https://example.com`), no fragment, and no embedded userinfo.
- * A DCR `client_id` is always a `randomUUID()`, so this never collides with
- * one.
- */
-export function isClientIdMetadataDocumentUrl(clientId: string): boolean {
-  let parsed: URL;
-  try {
-    parsed = new URL(clientId);
-  } catch {
-    return false;
-  }
-
-  if (parsed.protocol !== 'https:') return false;
-  if (parsed.hash !== '' || parsed.username !== '' || parsed.password !== '') return false;
-  if (parsed.pathname === '' || parsed.pathname === '/') return false;
-
-  return true;
-}
 
 const applicationTypes = ['web', 'native'] as const;
 
@@ -274,16 +257,3 @@ export async function fetchClientIdMetadataDocument(
   cacheDocument(document, now() + cimdCacheTtlMs);
   return document;
 }
-
-/** Test-only: clears the module-local cache so tests don't leak state across files/cases. */
-export function clearClientIdMetadataDocumentCacheForTests(): void {
-  documentCache.clear();
-}
-
-/**
- * Test-only: resets the DNS lookup concurrency limiter's process-global
- * state. `outstandingDnsLookupCount` and `inFlightDnsLookupsByHostname` are
- * shared across every test file in the same process -- without this, a test
- * that saturates the limiter (or leaves a lookup in flight past its own
- * test's lifetime) would leak that state into the next test file's run.
- */
