@@ -74,7 +74,8 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
       await expect
         .poll(
           () =>
-            /^\/chats\/[^/]+$/.test(new URL(owner.url()).pathname) && !owner.url().endsWith('/new'),
+            /^\/chats\/[^/]+$/.test(new URL(owner.url()).pathname) &&
+            new URL(owner.url()).pathname !== '/chats/new',
         )
         .toBe(true);
       const contextId = new URL(owner.url()).pathname.split('/').at(-1);
@@ -114,7 +115,8 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
       await expect
         .poll(
           () =>
-            /^\/chats\/[^/]+$/.test(new URL(owner.url()).pathname) && !owner.url().endsWith('/new'),
+            /^\/chats\/[^/]+$/.test(new URL(owner.url()).pathname) &&
+            new URL(owner.url()).pathname !== '/chats/new',
         )
         .toBe(true);
       const unrelatedId = new URL(owner.url()).pathname.split('/').at(-1);
