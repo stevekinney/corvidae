@@ -627,6 +627,19 @@ describe('run', () => {
 });
 
 describe('the workflow and the manifest', () => {
+  test('qualification runs cannot acquire a targeted landing name even with a digest', async () => {
+    const workflow = await Bun.file(
+      new URL('../../.github/workflows/targeted-checks.yml', import.meta.url),
+    ).text();
+    const runName = workflow.split('\n').find((line) => line.startsWith('run-name:'));
+    expect(runName).toContain(
+      "startsWith(inputs.e2e_specs, 'COR-2653-qualification:') && 'COR-2653 qualification'",
+    );
+    expect(runName?.indexOf('COR-2653 qualification')).toBeLessThan(
+      runName?.indexOf('inputs.plan_digest') ?? -1,
+    );
+  });
+
   test('buildCommand names every input of targeted-checks.yml', async () => {
     const workflow = await Bun.file(
       new URL('../../.github/workflows/targeted-checks.yml', import.meta.url),

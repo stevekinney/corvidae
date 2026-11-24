@@ -21,6 +21,14 @@ export function requiresFreshServer(): boolean {
 /** How many consecutive ports the end-to-end suite holds, starting at `endToEndPort()`. */
 export const END_TO_END_PORT_COUNT = 8;
 
+export function browserQualification(): { enabled: boolean; run: string; revision: string } {
+  return {
+    enabled: process.env['COR_2653_QUALIFICATION'] === '1',
+    run: process.env['INTERBOROUGH_E2E_RUN_ID'] ?? '',
+    revision: process.env['COR_2653_REVISION'] ?? '',
+  };
+}
+
 /**
  * The port the end-to-end host listens on, and the seven after it: one for the barrier's control,
  * one for the host whose console runs on the Bureau's own engine, one for the journey's host, one

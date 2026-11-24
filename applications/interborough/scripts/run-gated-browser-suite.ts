@@ -93,7 +93,9 @@ export async function runGatedBrowserSuite(
   environment: GatedRunEnvironment = hostEnvironment,
   attempt = 0,
 ): Promise<number> {
-  let first = environment.requestedPort;
+  const argumentsList = [...argv];
+  const requestedPort = environment.requestedPort;
+  let first = requestedPort;
   if (first === undefined) {
     first = findFreePortBlock(END_TO_END_PORT_COUNT, environment.portIsFree);
     if (first === undefined) {
@@ -112,14 +114,14 @@ export async function runGatedBrowserSuite(
     `gated browser suite: starting on ports ${String(first)}-${String(first + END_TO_END_PORT_COUNT - 1)}.\n`,
   );
   const result = await environment.run(
-    ['bun', 'scripts/run-gated-browser-suite.ts', '--playwright-child', ...argv],
+    ['bun', 'scripts/run-gated-browser-suite.ts', '--playwright-child', ...argumentsList],
     { INTERBOROUGH_E2E_PORT: String(first), INTERBOROUGH_E2E_FRESH_SERVER: '1' },
   );
-  if (result === 73 && environment.requestedPort === undefined && attempt + 1 < SEARCH_ATTEMPTS) {
+  if (result === 73 && requestedPort === undefined && attempt + 1 < SEARCH_ATTEMPTS) {
     environment.standardError(
       'gated browser suite: a port was occupied during startup; retrying with a fresh block.\n',
     );
-    return runGatedBrowserSuite(argv, environment, attempt + 1);
+    return runGatedBrowserSuite(argumentsList, environment, attempt + 1);
   }
   if (result === 73) {
     environment.standardError(
@@ -127,6 +129,17 @@ export async function runGatedBrowserSuite(
     );
   }
   return result;
+}
+
+export function scanCollisionOutput(
+  tail: string,
+  text: string,
+): { tail: string; collision: boolean } {
+  const combined = tail + text;
+  return {
+    tail: combined.slice(-512),
+    collision: combined.includes('INTERBOROUGH_E2E_STARTUP_BIND_COLLISION'),
+  };
 }
 
 async function runPlaywrightChild(argv: readonly string[]): Promise<number> {
@@ -149,8 +162,9 @@ async function runPlaywrightChild(argv: readonly string[]): Promise<number> {
     let tail = '';
     for await (const chunk of stream) {
       const text = decoder.decode(chunk, { stream: true });
-      tail = (tail + text).slice(-512);
-      collision ||= tail.includes('INTERBOROUGH_E2E_STARTUP_BIND_COLLISION');
+      const scanned = scanCollisionOutput(tail, text);
+      tail = scanned.tail;
+      collision ||= scanned.collision;
       target.write(text);
     }
   };

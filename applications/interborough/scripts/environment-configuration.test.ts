@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import {
+  browserQualification,
   designReviewCaptureDirectory,
   designReviewColorScheme,
   endToEndPort,
@@ -8,6 +9,23 @@ import {
   isContinuousIntegration,
   requiresFreshServer,
 } from './environment-configuration.ts';
+
+test('reads opt-in browser qualification identity', () => {
+  const keys = ['COR_2653_QUALIFICATION', 'INTERBOROUGH_E2E_RUN_ID', 'COR_2653_REVISION'] as const;
+  const saved = keys.map((key) => process.env[key]);
+  try {
+    process.env[keys[0]] = '1';
+    process.env[keys[1]] = 'A';
+    process.env[keys[2]] = 'abcdef0';
+    expect(browserQualification()).toEqual({ enabled: true, run: 'A', revision: 'abcdef0' });
+  } finally {
+    keys.forEach((key, index) => {
+      const value = saved[index];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    });
+  }
+});
 
 describe('the end-to-end port', () => {
   let saved: string | undefined;

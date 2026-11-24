@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -19,9 +20,10 @@ test('reports an occupied connect port as a bind collision', async () => {
       join(build, 'build-info.json'),
       JSON.stringify(readSourceInfo(join(import.meta.dir, '../..'))),
     );
-    await expect(
+    const error = await rejectionOf(
       startConnectHost({ home, buildDirectory: build, port: listener.port }),
-    ).rejects.toMatchObject({ code: 'EADDRINUSE' });
+    );
+    expect(error).toMatchObject({ code: 'EADDRINUSE' });
   } finally {
     listener.stop(true);
     await rm(directory, { recursive: true, force: true });

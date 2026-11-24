@@ -14,6 +14,7 @@ import {
   type GatedRunEnvironment,
   hostEnvironment,
   runGatedBrowserSuite,
+  scanCollisionOutput,
 } from './run-gated-browser-suite.ts';
 
 function fakeEnvironment(options: {
@@ -79,6 +80,15 @@ describe('findFreePortBlock', () => {
   });
 });
 
+test('detects a collision marker split across chunks or followed by a long suffix', () => {
+  const first = scanCollisionOutput('', 'INTERBOROUGH_E2E_STARTUP_BIND_');
+  expect(first.collision).toBe(false);
+  expect(scanCollisionOutput(first.tail, `COLLISION${'x'.repeat(1024)}`).collision).toBe(true);
+  expect(
+    scanCollisionOutput('', `INTERBOROUGH_E2E_STARTUP_BIND_COLLISION${'x'.repeat(1024)}`).collision,
+  ).toBe(true);
+});
+
 describe('runGatedBrowserSuite', () => {
   test('the package browser command enters the gated launcher', async () => {
     const manifest = await Bun.file(new URL('../package.json', import.meta.url)).json();
@@ -112,6 +122,21 @@ describe('runGatedBrowserSuite', () => {
     const override = fakeEnvironment({ requestedPort: 31000, collisions: 1 });
     expect(await runGatedBrowserSuite([], override.environment)).toBe(73);
     expect(override.runs).toHaveLength(1);
+  });
+
+  test('keeps the original arguments when a caller changes its array during startup', async () => {
+    const argumentsList = ['--grep', 'original'];
+    const { environment, runs } = fakeEnvironment({ collisions: 1 });
+    const run = environment.run;
+    const guarded = {
+      ...environment,
+      run: async (...input: Parameters<typeof run>) => {
+        argumentsList[1] = 'changed';
+        return run(...input);
+      },
+    };
+    expect(await runGatedBrowserSuite(argumentsList, guarded)).toBe(0);
+    expect(runs[1]?.command.slice(-2)).toEqual(['--grep', 'original']);
   });
 
   test('exits 2 without running when no block is free', async () => {

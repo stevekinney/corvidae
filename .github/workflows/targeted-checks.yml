@@ -50,7 +50,7 @@ on:
 
 # Landing (scripts/chef/landing-evidence.ts) accepts this run as coverage for a head only when the
 # name carries the digest of the plan it computes itself.
-run-name: ${{ inputs.plan_digest != '' && format('targeted {0}', inputs.plan_digest) || 'Targeted checks' }}
+run-name: ${{ startsWith(inputs.e2e_specs, 'COR-2653-qualification:') && 'COR-2653 qualification' || inputs.plan_digest != '' && format('targeted {0}', inputs.plan_digest) || 'Targeted checks' }}
 
 permissions:
   contents: read
@@ -209,10 +209,7 @@ jobs:
         if: ${{ always() }}
         with:
           name: cor-2653-qualification
-          path: |
-            ${{ runner.temp }}/cor-2653-qualification/*.log
-            ${{ runner.temp }}/cor-2653-qualification/*.json
-            ${{ runner.temp }}/cor-2653-qualification/worktrees/*/applications/interborough/test-results/
+          path: qualification-output/
           if-no-files-found: error
           retention-days: 14
 

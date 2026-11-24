@@ -1,13 +1,18 @@
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
+import { appendFile, cp, mkdir, readFile, readdir, readlink, writeFile } from 'node:fs/promises';
+import { cpus, totalmem } from 'node:os';
 import { join, resolve } from 'node:path';
 import { waitUntil } from '../../testing/testing/src/wait-until.ts';
+import { rootScriptEnvironment } from '../environment-configuration.ts';
 
 const root = resolve(import.meta.dir, '../..');
-const output = join(process.env['RUNNER_TEMP'] ?? root, 'cor-2653-qualification');
-const candidate = process.env['QUALIFICATION_SHA'] ?? '';
-const request = process.env['QUALIFICATION_REQUEST'] ?? '';
+const environment = rootScriptEnvironment();
+const output = join(root, 'qualification-output');
+const candidate = environment['QUALIFICATION_SHA'] ?? '';
+const request = environment['QUALIFICATION_REQUEST'] ?? '';
 const base = '299f3776324f7ea124e635c3befc1f493ae55e87';
 await mkdir(output, { recursive: true });
+await writeFile(join(output, 'request.json'), JSON.stringify({ request, candidate }));
 if (request !== `COR-2653-qualification:${candidate}` || !/^[a-f0-9]{40}$/.test(candidate))
   throw new Error('Qualification request must name the exact checked-out SHA.');
 
@@ -23,12 +28,12 @@ type Run = {
 function start(
   name: string,
   cwd: string,
-  command: string[],
+  argumentsList: string[],
   variables: Record<string, string> = {},
 ): Run {
-  const child = Bun.spawn(command, {
+  const child = Bun.spawn(argumentsList, {
     cwd,
-    env: { ...process.env, ...variables },
+    env: { ...environment, ...variables },
     stdout: 'pipe',
     stderr: 'pipe',
     stdin: 'ignore',
@@ -93,23 +98,87 @@ async function json<T>(port: number, path: string, method = 'GET'): Promise<T> {
   requireResult(response.ok, `${String(port)}${path}: ${String(response.status)}`);
   return response.json() as Promise<T>;
 }
-const worktrees = join(output, 'worktrees');
+async function listenerOwners(
+  ports: number[],
+): Promise<Map<number, { pid: number; cwd: string; run: string }>> {
+  const sockets = new Map<string, number>();
+  for (const table of ['/proc/net/tcp', '/proc/net/tcp6']) {
+    const tableContents = await readFile(table, 'utf8');
+    for (const line of tableContents.split('\n').slice(1)) {
+      const fields = line.trim().split(/\s+/);
+      const address = fields[1];
+      const inode = fields[9];
+      if (!address || !inode || fields[3] !== '0A') continue;
+      const port = Number.parseInt(address.split(':')[1] ?? '', 16);
+      if (ports.includes(port)) sockets.set(inode, port);
+    }
+  }
+  const owners = new Map<number, { pid: number; cwd: string; run: string }>();
+  for (const entry of await readdir('/proc')) {
+    if (!/^\d+$/.test(entry)) continue;
+    const directory = `/proc/${entry}`;
+    const descriptors = await readdir(`${directory}/fd`).catch(() => []);
+    for (const descriptor of descriptors) {
+      const target = await readlink(`${directory}/fd/${descriptor}`).catch(() => '');
+      const inode = /^socket:\[(\d+)\]$/.exec(target)?.[1];
+      const port = inode === undefined ? undefined : sockets.get(inode);
+      if (port === undefined) continue;
+      const processEnvironmentText = await readFile(`${directory}/environ`, 'utf8').catch(() => '');
+      const run =
+        processEnvironmentText
+          .split('\0')
+          .find((item) => item.startsWith('INTERBOROUGH_E2E_RUN_ID='))
+          ?.split('=')[1] ?? '';
+      const cwd = await readlink(`${directory}/cwd`).catch(() => '');
+      owners.set(port, { pid: Number(entry), cwd, run });
+    }
+  }
+  return owners;
+}
+const worktrees = join(environment['RUNNER_TEMP'] ?? root, 'cor-2653-worktrees');
 const a = join(worktrees, 'a');
 const b = join(worktrees, 'b');
 const control = join(worktrees, 'base');
 const bad = join(worktrees, 'bad');
 const allRuns: Run[] = [];
 const sentinels: ReturnType<typeof Bun.serve>[] = [];
+let activeMeasurement: { label: string; stop: () => number } | undefined;
 const evidence: Record<string, unknown> = {
   base,
   candidate,
   runner: process.platform,
   architecture: process.arch,
+  processors: cpus().length,
+  totalMemoryBytes: totalmem(),
+  runnerClass: environment['RUNNER_NAME'] ?? 'unknown',
+  runnerImage: 'ubuntu-latest / mcr.microsoft.com/playwright:v1.63.0-jammy',
   workers: 1,
   playwrightRetries: 0,
   hangGuardMilliseconds: 120000,
   testTimeoutMilliseconds: 240000,
 };
+function measureCondition() {
+  let peak = 0;
+  let failure: unknown;
+  const sample = () => {
+    try {
+      const value = Number(readFileSync('/sys/fs/cgroup/memory.current', 'utf8'));
+      if (!Number.isFinite(value) || value <= 0) throw new Error('No cgroup memory measurement');
+      peak = Math.max(peak, value);
+    } catch (error) {
+      failure = error;
+    }
+  };
+  sample();
+  const timer = setInterval(sample, 500);
+  timer.unref();
+  return () => {
+    clearInterval(timer);
+    sample();
+    if (failure !== undefined) throw failure;
+    return peak;
+  };
+}
 try {
   await mkdir(worktrees, { recursive: true });
   for (const [name, path, revision] of [
@@ -201,6 +270,30 @@ try {
     },
     { message: 'both browsers to verify their seeded host and revision' },
   );
+  const workflows: unknown[] = [];
+  for (const [port, own, other] of [
+    [firstPort, 'qualification-a', 'qualification-b'],
+    [secondPort, 'qualification-b', 'qualification-a'],
+  ] as const) {
+    for (const id of [own, other]) {
+      const response = await fetch(`http://127.0.0.1:${String(port)}/bureau/jsonrpc`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id,
+          method: 'bureau.workflows.get',
+          params: { id },
+        }),
+      });
+      const answer = (await response.json()) as { result?: { id?: string }; error?: unknown };
+      requireResult(
+        id === own ? answer.result?.id === own : answer.error !== undefined,
+        `workflow ${id} was not isolated at ${String(port)}`,
+      );
+      workflows.push({ port, id, answer });
+    }
+  }
   for (const port of [firstPort, secondPort])
     for (let offset = 0; offset < 8; offset += 1) {
       const response = await fetch(
@@ -209,15 +302,37 @@ try {
       );
       requireResult(response.ok, `missing listener at ${String(port + offset)}`);
     }
-  for (let port = 7399; port <= 7406; port += 1)
-    requireResult(
-      (await (await fetch(`http://127.0.0.1:${String(port)}`)).text()) ===
-        `sentinel-${String(port)}`,
-      `sentinel ${String(port)} changed`,
-    );
+  const addresses = [firstPort, secondPort].flatMap((port) =>
+    Array.from({ length: 8 }, (_, offset) => port + offset),
+  );
+  const owners = await listenerOwners(addresses);
+  for (const [port, path, id] of [
+    [firstPort, a, 'A'],
+    [secondPort, b, 'B'],
+  ] as const) {
+    for (let offset = 0; offset < 8; offset += 1) {
+      const owner = owners.get(port + offset);
+      requireResult(
+        owner?.run === id && owner.cwd.startsWith(path),
+        `listener ${String(port + offset)} belongs to ${JSON.stringify(owner)}`,
+      );
+    }
+  }
+  for (let port = 7399; port <= 7406; port += 1) {
+    const response = await fetch(`http://127.0.0.1:${String(port)}`);
+    const body = await response.text();
+    requireResult(body === `sentinel-${String(port)}`, `sentinel ${String(port)} changed`);
+  }
   first.child.kill('SIGTERM');
   first.child.kill('SIGTERM');
   const firstExit = await first.done;
+  const remainingA = await listenerOwners(
+    Array.from({ length: 8 }, (_, offset) => firstPort + offset),
+  );
+  requireResult(
+    remainingA.size === 0,
+    `A's listeners remained after cleanup: ${JSON.stringify(Object.fromEntries(remainingA))}`,
+  );
   requireResult(!second.finished, 'B ended before A stopped');
   await json(secondPort + 1, '/qualification', 'POST');
   const secondExit = await second.done;
@@ -226,6 +341,8 @@ try {
     firstPort,
     secondPort,
     identities,
+    workflows,
+    listenerOwners: Object.fromEntries(owners),
     firstExit,
     secondExit,
     firstStarted: first.startedAt,
@@ -233,35 +350,38 @@ try {
     secondStarted: second.startedAt,
     secondFinished: second.finishedAt,
   };
-  const race = browser('allocation-race', a, [
-    'tests/e2e/29-goals.spec.ts',
-    '--grep',
-    'lists the seeded goal at 375 pixels',
-    '--reporter=line',
-  ]);
-  await waitUntil(() => race.finished || portOf(race) !== undefined, {
-    message: 'port allocation',
-  });
-  requireResult(!race.finished, 'race ended before allocation');
-  const allocatedPort = portOf(race);
-  requireResult(allocatedPort !== undefined, 'race did not report its port');
-  const collisionPort = allocatedPort + 1;
-  const collision = Bun.serve({
-    hostname: '127.0.0.1',
-    port: collisionPort,
-    fetch: () => new Response('race sentinel'),
-  });
-  sentinels.push(collision);
-  await waitUntil(() => race.finished || race.output.includes('retrying with a fresh block'), {
-    message: 'collision retry',
-  });
-  requireResult(!race.finished, 'allocation collision was not retried');
-  requireResult(
-    (await (await fetch(`http://127.0.0.1:${String(collisionPort)}`)).text()) === 'race sentinel',
-    'race sentinel changed',
-  );
-  requireResult((await race.done) === 0, 'allocation race failed');
-  evidence['allocationRace'] = { collisionPort, exit: race.code };
+  const races: Record<string, unknown> = {};
+  evidence['allocationRaces'] = races;
+  for (const offset of [1, 6]) {
+    const race = browser(`allocation-race-${String(offset)}`, a, [
+      'tests/e2e/29-goals.spec.ts',
+      '--grep',
+      'lists the seeded goal at 375 pixels',
+      '--reporter=line',
+    ]);
+    await waitUntil(() => race.finished || portOf(race) !== undefined, {
+      message: 'port allocation',
+    });
+    requireResult(!race.finished, 'race ended before allocation');
+    const allocatedPort = portOf(race);
+    requireResult(allocatedPort !== undefined, 'race did not report its port');
+    const collisionPort = allocatedPort + offset;
+    const collision = Bun.serve({
+      hostname: '127.0.0.1',
+      port: collisionPort,
+      fetch: () => new Response('race sentinel'),
+    });
+    sentinels.push(collision);
+    await waitUntil(() => race.finished || race.output.includes('retrying with a fresh block'), {
+      message: 'collision retry',
+    });
+    requireResult(!race.finished, 'allocation collision was not retried');
+    const collisionResponse = await fetch(`http://127.0.0.1:${String(collisionPort)}`);
+    const collisionBody = await collisionResponse.text();
+    requireResult(collisionBody === 'race sentinel', 'race sentinel changed');
+    requireResult((await race.done) === 0, 'allocation race failed');
+    races[String(offset)] = { collisionPort, exit: race.code };
+  }
   const explicit = browser('occupied-override', a, qualification, {
     ...shared,
     INTERBOROUGH_E2E_PORT: '7399',
@@ -309,6 +429,8 @@ try {
       'concurrent',
       'competing-worktree',
     ] as const) {
+      const finishMeasurement = measureCondition();
+      activeMeasurement = { label: `${label}-${order}`, stop: finishMeasurement };
       let integrationResult: Run | undefined;
       let browserResult: Run | undefined;
       const integrationRun = () =>
@@ -346,6 +468,8 @@ try {
         codes = [await integrationRun().done, y];
       }
       outcomes[`${label}-${order}`] = codes;
+      evidence[`${label}-${order}-sampledCgroupPeakMemoryBytes`] = finishMeasurement();
+      activeMeasurement = undefined;
       requireResult(
         codes.every((code) => (expected === 0 ? code === 0 : code !== 0)),
         `${label} ${order} verdict mismatch: ${codes.join(',')}`,
@@ -391,17 +515,35 @@ try {
   evidence['failure'] = error instanceof Error ? error.stack : String(error);
   throw error;
 } finally {
+  if (activeMeasurement !== undefined) {
+    try {
+      evidence[`${activeMeasurement.label}-sampledCgroupPeakMemoryBytes`] =
+        activeMeasurement.stop();
+    } catch (error) {
+      evidence['memoryMeasurementError'] = String(error);
+    }
+  }
   for (const run of allRuns) if (!run.finished) run.child.kill('SIGTERM');
   await Promise.allSettled(allRuns.map((run) => run.done));
-  for (const sentinel of sentinels) sentinel.stop(true);
+  for (const sentinel of sentinels) await sentinel.stop(true);
   evidence['runs'] = allRuns.map((run) => ({
     pid: run.child.pid,
     startedAt: run.startedAt,
     finishedAt: run.finishedAt,
     exit: run.code,
   }));
-  evidence['memoryPeakBytes'] = await Bun.file('/sys/fs/cgroup/memory.peak')
+  evidence['aggregateCgroupPeakMemoryBytes'] = await Bun.file('/sys/fs/cgroup/memory.peak')
     .text()
     .catch(() => 'unavailable');
+  for (const [name, path] of [
+    ['a', a],
+    ['b', b],
+    ['base', control],
+    ['bad', bad],
+  ] as const) {
+    const results = join(path, 'applications/interborough/test-results');
+    if (existsSync(results))
+      await cp(results, join(output, `browser-${name}`), { recursive: true });
+  }
   await writeFile(join(output, 'evidence.json'), JSON.stringify(evidence, null, 2));
 }

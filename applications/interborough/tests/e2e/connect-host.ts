@@ -137,8 +137,9 @@ export async function startConnectHost(options: ConnectHostOptions): Promise<Con
       for await (const chunk of startedSupervisor.stderr) {
         const text = decoder.decode(chunk, { stream: true });
         process.stderr.write(text);
-        tail = (tail + text).slice(-512);
-        bindCollision ||= tail.includes('EADDRINUSE');
+        const combined = tail + text;
+        bindCollision ||= combined.includes('EADDRINUSE');
+        tail = combined.slice(-512);
       }
     })();
     await Promise.race([

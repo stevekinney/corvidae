@@ -32,6 +32,7 @@ import { seedSampleWorld } from '../../fixtures/sample-world-seed.ts';
 import { seedWorkflowRevisions } from '../../fixtures/workflow-revisions.ts';
 import { seed, workflows } from '../../fixtures/workflows.ts';
 import { buildCheckoutApplication } from '../../scripts/build.ts';
+import { browserQualification } from '../../scripts/environment-configuration.ts';
 import { bindHome, enableDemoPlugin } from '../../src/host/demo-plugin-home.ts';
 import { startHost, type Host } from '../../src/host/host.ts';
 import { workspacePlugins } from '../../src/host/plugins.ts';
@@ -58,6 +59,7 @@ import {
   E2E_RECONNECT_GRACE_PERIOD_MS,
   E2E_SHOWCASE_PORT,
   E2E_TASK_OPERATION_ID,
+  isBindCollision,
 } from './e2e-constants.ts';
 
 import { createEchoAgents } from './echo-agent.ts';
@@ -89,7 +91,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 let startupComplete = false;
 process.on('uncaughtExceptionMonitor', (error) => {
-  if (!startupComplete && 'code' in error && error.code === 'EADDRINUSE') {
+  if (!startupComplete && isBindCollision(error)) {
     process.stderr.write('INTERBOROUGH_E2E_STARTUP_BIND_COLLISION\n');
   }
 });
@@ -677,7 +679,7 @@ const barrierControl = Bun.serve({
     '/identity': {
       GET: async () =>
         Response.json({
-          run: process.env['INTERBOROUGH_E2E_RUN_ID'] ?? '',
+          run: browserQualification().run,
           build: await Bun.file(join(buildDirectory, 'build-info.json')).json(),
           port: E2E_PORT,
         }),
