@@ -11,6 +11,7 @@
         "scripts/**/*.playwright.ts",
         "scripts/affected-tests.ts",
         "scripts/chef/evaluate-outcomes.ts",
+        "scripts/chef/staged-check.ts",
         "scripts/cinder-release-consumer.ts",
         "scripts/owned-process-gate.ts",
         "scripts/ensure-cinder-owned.test-support.ts",

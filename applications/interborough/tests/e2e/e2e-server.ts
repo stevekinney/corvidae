@@ -17,11 +17,19 @@
  * The fixtures start workflows after the host is listening, so their lifecycle events land in the
  * fleet feed's replay buffer exactly as a workflow started after boot would.
  */
-import type { BureauOwnTools } from '@lostgradient/bureau';
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import { openBungalow } from '@lostgradient/bungalow';
+import { BUREAU_SCOPES, type BureauOwnTools, type WorkspaceMembership } from '@lostgradient/bureau';
 import { createAgent, stopWhen, type GenerateFunction } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { exitWhenOrphaned } from '@lostgradient/testing/exit-when-orphaned';
-import { createWorkflowLogStore, Engine, LongPollWorker, RemoteWorker } from '@lostgradient/weft';
+import {
+  AUTHORIZATION_SCOPES,
+  createWorkflowLogStore,
+  Engine,
+  LongPollWorker,
+  RemoteWorker,
+} from '@lostgradient/weft';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -45,6 +53,7 @@ import {
   E2E_BUREAU_PORT,
   E2E_CANCELLATION_GRACE_PERIOD_MS,
   E2E_CANCELLING_TASK_OPERATION_ID,
+  E2E_CHAT_SHARING_PORT,
   E2E_CONNECT_PORT,
   E2E_DEPLOYMENT_NAME,
   E2E_FIRST_RUN_PORT,
@@ -650,6 +659,87 @@ const secondaryResults = await Promise.allSettled([
       throw error;
     }
   })(),
+  trackStartupPromise(
+    (async () => {
+      // This is deliberately not the local-caller fixture: browser credential subjects, trusted
+      // actor IDs, and durable owners all differ, while both members resolve from one directory.
+      const sharingHome = join(scratch, 'chat-sharing-home');
+      await bindHome(sharingHome);
+      const bungalow = await openBungalow({
+        name: 'interborough',
+        environment: { INTERBOROUGH_HOME: sharingHome },
+      });
+      const workspaceId = bungalow.workspaceId;
+      bungalow.close();
+      const members = new Map<string, WorkspaceMembership>([
+        [
+          'chat-owner-browser-subject',
+          {
+            version: 1,
+            workspaceId,
+            actorId: 'chat-owner-actor',
+            actorKind: 'user',
+            owner: 'chat-sharing:owner',
+            displayName: 'Avery Owner',
+            membershipRevision: 'chat-sharing-1',
+            capabilities: ['workspace:use'],
+          },
+        ],
+        [
+          'chat-reader-browser-subject',
+          {
+            version: 1,
+            workspaceId,
+            actorId: 'chat-reader-actor',
+            actorKind: 'user',
+            owner: 'chat-sharing:reader',
+            displayName: 'Reader Member',
+            membershipRevision: 'chat-sharing-1',
+            capabilities: ['workspace:use'],
+          },
+        ],
+      ]);
+      const credentials = new Map([
+        ['chat-owner-browser-key', 'chat-owner-browser-subject'],
+        ['chat-reader-browser-key', 'chat-reader-browser-subject'],
+      ]);
+      let started: Host | undefined;
+      try {
+        started = await startHost({
+          environment: { INTERBOROUGH_HOME: sharingHome },
+          extraAgents: { agents: createTextEchoAgents() },
+          port: E2E_CHAT_SHARING_PORT,
+          buildDirectory,
+          workspaceAuthentication: {
+            authentication: {
+              resolveApiKeyPrincipal: async (key) => {
+                const subject = credentials.get(key);
+                return subject === undefined
+                  ? null
+                  : principalFromApiKey({
+                      subject,
+                      scopes: [...AUTHORIZATION_SCOPES, ...BUREAU_SCOPES],
+                    });
+              },
+            },
+            workspace: {
+              workspaceId,
+              resolveMembership: async ({ subject }) => members.get(subject ?? '') ?? null,
+              resolveOwnerMembership: async (owner) =>
+                [...members.values()].find((member) => member.owner === owner) ?? null,
+            },
+          },
+        });
+        await started.bureau.plugins.ready();
+        trackStartupResource(started);
+        reportStartupPhase('chat-sharing-ready');
+        return started;
+      } catch (error) {
+        await started?.close();
+        throw error;
+      }
+    })(),
+  ),
 ]);
 
 const failedSecondary = secondaryResults.find((result) => result.status === 'rejected');
@@ -660,11 +750,18 @@ if (failedSecondary !== undefined) {
   throw failedSecondary.reason;
 }
 
-const [bureauHost, journeyHost, firstRunHost, connectHost, showcaseHost, pluginPagesHost] =
-  secondaryResults.map((result) => {
-    if (result.status === 'rejected') throw result.reason;
-    return result.value;
-  }) as [Host, Host, Host, ConnectHost, Host, Host];
+const [
+  bureauHost,
+  journeyHost,
+  firstRunHost,
+  connectHost,
+  showcaseHost,
+  pluginPagesHost,
+  chatSharingHost,
+] = secondaryResults.map((result) => {
+  if (result.status === 'rejected') throw result.reason;
+  return result.value;
+}) as [Host, Host, Host, ConnectHost, Host, Host, Host];
 
 // The barrier's control: the one route a spec uses to learn that a run is waiting and to let it
 // go. It binds loopback only and exists in this process alone, never in the host. The journey's
@@ -774,6 +871,7 @@ process.stdout.write(
     `Interborough E2E first-run host listening on ${firstRunHost.url}`,
     `Interborough E2E showcase host listening on ${showcaseHost.url}`,
     `Interborough E2E plugin-page host listening on ${pluginPagesHost.url}`,
+    `Interborough E2E chat-sharing host listening on ${chatSharingHost.url}`,
     `Interborough E2E connect host listening on http://127.0.0.1:${E2E_CONNECT_PORT}/`,
     `Registered E2E fleet worker under deployment "${E2E_DEPLOYMENT_NAME}"`,
     'Seeded COR-124 attempt, lease, and cancellation evidence',
@@ -792,6 +890,7 @@ async function shutDown(): Promise<void> {
   await fleetWorker.disconnect();
   await connectHost.stop();
   await pluginPagesHost.close();
+  await chatSharingHost.close();
   await showcaseHost.close();
   await firstRunHost.close();
   await journeyHost.close();

@@ -549,6 +549,11 @@ export type SharedBreakingKindStep_f7c54476 = {
   readonly step: number;
 };
 export type SharedCallsSeconds_35295711 = { readonly calls?: number; readonly seconds?: number };
+export type SharedChangedContextIdGranteeO_3863cba0 = {
+  readonly changed: boolean;
+  readonly contextId: string;
+  readonly granteeOwnerId: string;
+};
 export type SharedChangedGrantedByGranteeO_6dd6d7c1 = {
   readonly changed: boolean;
   readonly grantedBy: string;

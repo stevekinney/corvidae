@@ -885,6 +885,27 @@
     "$.receipt.sessionId",
     "$.receipt.state"
   ],
+  "output:bureau.contexts.share": ["$.changed", "$.contextId", "$.granteeOwnerId"],
+  "output:bureau.contexts.share.request": ["$.changed", "$.contextId", "$.granteeOwnerId"],
+  "output:bureau.contexts.share.request.resolve": ["$.changed", "$.contextId", "$.granteeOwnerId"],
+  "output:bureau.contexts.share.requests.list": [
+    "$.requests",
+    "$.requests[].contextId",
+    "$.requests[].contextTitle",
+    "$.requests[].granteeLabel",
+    "$.requests[].granteeOwnerId",
+    "$.requests[].requestId",
+    "$.requests[].requestedAt"
+  ],
+  "output:bureau.contexts.share.revoke": ["$.changed", "$.contextId", "$.granteeOwnerId"],
+  "output:bureau.contexts.share.status": [
+    "$|oneOf[0].agentName",
+    "$|oneOf[0].grantor",
+    "$|oneOf[0].status",
+    "$|oneOf[0].title",
+    "$|oneOf[1].status",
+    "$|oneOf[2].status"
+  ],
   "output:bureau.contexts.steer": [
     "$|oneOf[0].command",
     "$|oneOf[0].command.configVersion",

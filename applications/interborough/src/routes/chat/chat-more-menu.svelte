@@ -15,6 +15,7 @@
     Ellipsis,
     GitBranch,
     Pencil,
+    Share2,
     Trash2,
   } from '@lucide/svelte';
   import { useQueryClient } from '@tanstack/svelte-query';
@@ -26,6 +27,7 @@
   import { router } from '../../lib/router.svelte.ts';
   import { chatIsGone } from './chat-gone.ts';
   import ChatRenameDialog from './chat-rename-dialog.svelte';
+  import ChatShareDialog from './chat-share-dialog.svelte';
 
   interface Props {
     sessionId: string;
@@ -54,6 +56,7 @@
      * is undone by Unarchive. The page says why one was refused.
      */
     onArchive: (archive: boolean) => void;
+    canShare?: boolean;
   }
 
   let {
@@ -68,6 +71,7 @@
     onBranch,
     onExport,
     onArchive,
+    canShare = false,
   }: Props = $props();
 
   const copy = CHAT_COPY.more;
@@ -75,6 +79,7 @@
 
   let renaming = $state(false);
   let confirmingDelete = $state(false);
+  let sharing = $state(false);
   let deleting = $state(false);
 
   const branchHint = $derived(
@@ -143,6 +148,12 @@
     <VisuallyHidden>{copy.label}</VisuallyHidden>
   </Dropdown.Trigger>
   <Dropdown.Menu>
+    {#if canShare}
+      <Dropdown.Item onclick={() => (sharing = true)}>
+        <Share2 aria-hidden="true" size={14} />
+        Share chat
+      </Dropdown.Item>
+    {/if}
     <Dropdown.Item data-changes onclick={() => (renaming = true)}>
       <Pencil aria-hidden="true" size={14} />
       {copy.rename}
@@ -189,6 +200,10 @@
 
 {#if renaming}
   <ChatRenameDialog {sessionId} current={title} onClose={() => (renaming = false)} />
+{/if}
+
+{#if sharing}
+  <ChatShareDialog {sessionId} onClose={() => (sharing = false)} />
 {/if}
 
 <ConfirmDialog
