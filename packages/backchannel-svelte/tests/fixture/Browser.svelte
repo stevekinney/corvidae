@@ -50,6 +50,7 @@
     const value = input as { id?: string; filter?: string; cursor?: string };
     if (operation === 'probe.jobs.cancel') {
       writes++;
+      if (value.id === 'ambiguous') throw new Error('lost response');
       if (value.id === 'delayed')
         return new Promise((resolve) => {
           resolveCommand = resolve;

@@ -30,11 +30,24 @@ export function createCatalogHost(options: {
   let disposed = false;
   const controllers = new Set<AbortController>();
   const releases = new Set<() => void>();
-  const commands = new Map<string, { active: number; uncertain: boolean; reconciling: boolean }>();
+  const commands = new Map<
+    string,
+    {
+      active: number;
+      uncertain: boolean;
+      reconciling: boolean;
+      fault: ReturnType<typeof writable<'unknown' | undefined>>;
+    }
+  >();
   const commandState = (operation: string) => {
     let state = commands.get(operation);
     if (!state) {
-      state = { active: 0, uncertain: false, reconciling: false };
+      state = {
+        active: 0,
+        uncertain: false,
+        reconciling: false,
+        fault: writable<'unknown' | undefined>(),
+      };
       commands.set(operation, state);
     }
     return state;
@@ -50,6 +63,9 @@ export function createCatalogHost(options: {
     get disposed() {
       return disposed;
     },
+    commandFault(operation: string) {
+      return commandState(operation).fault;
+    },
     beginCommand(operation: string) {
       const state = commandState(operation);
       if (state.uncertain || state.reconciling)
@@ -60,7 +76,9 @@ export function createCatalogHost(options: {
       commandState(operation).active--;
     },
     markUncertain(operation: string) {
-      commandState(operation).uncertain = true;
+      const state = commandState(operation);
+      state.uncertain = true;
+      state.fault.set('unknown');
     },
     beginReconciliation(operation: string) {
       const state = commandState(operation);
@@ -72,7 +90,10 @@ export function createCatalogHost(options: {
     endReconciliation(operation: string, succeeded: boolean) {
       const state = commandState(operation);
       state.reconciling = false;
-      if (succeeded && !disposed) state.uncertain = false;
+      if (succeeded && !disposed) {
+        state.uncertain = false;
+        state.fault.set(undefined);
+      }
     },
     seed<Output>(
       operation: string,
@@ -121,6 +142,7 @@ export function createCatalogHost(options: {
       for (const controller of controllers) controller.abort();
       for (const release of releases) release();
       releases.clear();
+      for (const state of commands.values()) state.fault.set(undefined);
       options.cache.removeQueries({ queryKey: prefix });
     },
   };
@@ -217,14 +239,17 @@ export function createCommand<Input, Output>(
   host: CatalogHost,
   operation: string,
   invalidates: readonly string[],
+  declaredReads: readonly string[] = [],
 ) {
   const invalidationTargets = [...invalidates];
+  const reconciliationTargets = invalidationTargets.length
+    ? invalidationTargets
+    : [...declaredReads];
   const pending = writable(false);
-  const fault = writable<'unknown' | undefined>();
+  const fault = host.commandFault(operation);
   let active = 0;
   host.own(() => {
     pending.set(false);
-    fault.set(undefined);
   });
   return {
     pending: readonly(pending),
@@ -234,7 +259,6 @@ export function createCommand<Input, Output>(
       host.beginCommand(operation);
       active++;
       pending.set(true);
-      fault.set(undefined);
       let result: unknown;
       try {
         result = await host.call(operation, input);
@@ -242,7 +266,6 @@ export function createCommand<Input, Output>(
       } catch (cause) {
         if (host.disposed) throw cause;
         host.markUncertain(operation);
-        fault.set('unknown');
         throw new UnknownCommandOutcome(cause);
       } finally {
         host.endCommand(operation);
@@ -253,8 +276,8 @@ export function createCommand<Input, Output>(
       return result as Output;
     },
     async reconcile(read: string, input: unknown) {
-      if (!invalidationTargets.includes(read))
-        throw new Error('Reconciliation requires a declared invalidated read');
+      if (!reconciliationTargets.includes(read))
+        throw new Error('Reconciliation requires a declared read');
       host.beginReconciliation(operation);
       let succeeded = false;
       try {

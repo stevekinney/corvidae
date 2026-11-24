@@ -170,6 +170,59 @@ describe('scoped catalog host', () => {
     expect(calls).toEqual(['write', 'write', 'read']);
   });
 
+  it('reconciles an invalidation-free command only with a declared read', async () => {
+    const calls: string[] = [];
+    let readAvailable = false;
+    const host = createCatalogHost({
+      scope: 'a',
+      cache: new QueryClient(),
+      transport: async (operation) => {
+        calls.push(operation);
+        if (operation === 'write') throw new Error('lost');
+        if (!readAvailable) throw new Error('read failed');
+        return 'fresh';
+      },
+    });
+    const command = createCommand(host, 'write', [], ['read']);
+    const otherBinding = createCommand(host, 'write', [], ['read']);
+    const faults: (string | undefined)[] = [];
+    const otherFaults: (string | undefined)[] = [];
+    const release = command.fault.subscribe((value) => faults.push(value));
+    const releaseOther = otherBinding.fault.subscribe((value) => otherFaults.push(value));
+    expect(await throwingRejectionOf(command.mutateAsync({}))).toThrow('outcome is unknown');
+    expect(await throwingRejectionOf(command.reconcile('write', {}))).toThrow('declared read');
+    expect(await throwingRejectionOf(command.reconcile('unknown', {}))).toThrow('declared read');
+    expect(await throwingRejectionOf(command.reconcile('read', {}))).toThrow('read failed');
+    expect(await throwingRejectionOf(command.mutateAsync({}))).toThrow('Reconcile');
+    readAvailable = true;
+    expect(await command.reconcile('read', {})).toBe('fresh');
+    expect(faults.at(-1)).toBeUndefined();
+    expect(otherFaults.at(-1)).toBeUndefined();
+    expect(calls).toEqual(['write', 'read', 'read']);
+    release();
+    releaseOther();
+  });
+
+  it('keeps declared invalidation targets authoritative and fails closed without any reads', async () => {
+    const host = createCatalogHost({
+      scope: 'a',
+      cache: new QueryClient(),
+      transport: async () => {
+        throw new Error('lost');
+      },
+    });
+    const restricted = createCommand(host, 'write', ['specific-read'], ['other-read']);
+    expect(await throwingRejectionOf(restricted.mutateAsync({}))).toThrow('outcome is unknown');
+    expect(await throwingRejectionOf(restricted.reconcile('other-read', {}))).toThrow(
+      'declared read',
+    );
+    const readless = createCommand(host, 'other-write', [], []);
+    expect(await throwingRejectionOf(readless.mutateAsync({}))).toThrow('outcome is unknown');
+    expect(await throwingRejectionOf(readless.reconcile('specific-read', {}))).toThrow(
+      'declared read',
+    );
+  });
+
   it('returns a one-time result to its caller without caching it', async () => {
     const secret = `synthetic-${crypto.randomUUID()}`;
     const cache = new QueryClient();

@@ -3,7 +3,7 @@ import { createOperationClientSources } from './generate-operation-client.ts';
 import { fixtureOptions, fixtureSnapshot } from './operation-client-test-support.ts';
 
 /** A portable catalog with a paged read, a one-time command and a cursor stream. */
-export function svelteFixtureSnapshot(): CatalogSnapshot {
+function svelteFixtureSnapshot(): CatalogSnapshot {
   const snapshot = fixtureSnapshot();
   return {
     ...snapshot,
@@ -58,7 +58,6 @@ export function svelteFixtureSnapshot(): CatalogSnapshot {
           },
           behavior: {
             kind: 'command',
-            invalidates: ['probe.jobs.list'],
             responseDisposition: 'one-time',
           },
         };

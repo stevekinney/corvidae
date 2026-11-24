@@ -26,11 +26,12 @@ describe('createOperationClientSources for a catalog that is not Weft', () => {
   it('matches the committed paged Svelte catalog fixture', async () => {
     const sources = await svelteFixtureSources();
     const directory = join(import.meta.dir, '../../backchannel-svelte/tests/fixture/generated');
+    const svelte = sources.get('operation-client.svelte.ts') ?? '';
+    expect(svelte).toContain('"probe.jobs.cancel", [], ["probe.jobs.list"]');
     const names = await readdir(directory);
     expect(names.toSorted()).toEqual([...sources.keys()].toSorted());
     for (const [name, source] of sources)
       expect(await Bun.file(join(directory, name)).text()).toBe(source);
-    const svelte = sources.get('operation-client.svelte.ts') ?? '';
     expect(svelte).toContain('createPagination');
     expect(svelte).toContain('useProbeJobsWatch');
     expect(svelte).toContain('ProbeProvider');

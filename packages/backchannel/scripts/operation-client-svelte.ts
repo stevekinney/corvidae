@@ -9,6 +9,9 @@ export function svelteClientSource(
   serverName: string,
 ): string {
   const usedNames = new Set<string>();
+  const declaredReads = operations
+    .filter((operation) => operation.kind === 'unary' && operation.behavior?.kind === 'read')
+    .map((operation) => operation.name);
   const bindingName = (operation: CatalogOperationSnapshot) => {
     const name = operation.name
       .split(/[^A-Za-z0-9]+/u)
@@ -32,9 +35,13 @@ export function svelteClientSource(
   return ${behavior.pagination ? `Object.assign(read, createPagination(host, ${JSON.stringify(operation.name)}, input, ${JSON.stringify(behavior.pagination)}))` : 'read'};
 }`,
       ];
+    for (const target of behavior.invalidates ?? []) {
+      if (!declaredReads.includes(target))
+        throw new Error(`Command ${operation.name} invalidates undeclared read ${target}`);
+    }
     return [
       `export function use${name}(host: CatalogHost) {
-  return createCommand<${type}['input'], ${type}['output']>(host, ${JSON.stringify(operation.name)}, ${JSON.stringify(behavior.invalidates ?? [])});
+  return createCommand<${type}['input'], ${type}['output']>(host, ${JSON.stringify(operation.name)}, ${JSON.stringify(behavior.invalidates ?? [])}${behavior.invalidates?.length ? '' : `, ${JSON.stringify(declaredReads)}`});
 }`,
     ];
   });

@@ -5,7 +5,7 @@ import type { SubscriptionOperationTypes } from './subscription-operations.gener
 export { default as ProbeProvider } from '@lostgradient/backchannel-svelte/provider';
 export { getCatalogHost as getProbeHost } from '@lostgradient/backchannel-svelte';
 export function useProbeJobsCancel(host: CatalogHost) {
-  return createCommand<ClientOperationTypes["probe.jobs.cancel"]['input'], ClientOperationTypes["probe.jobs.cancel"]['output']>(host, "probe.jobs.cancel", ["probe.jobs.list"]);
+  return createCommand<ClientOperationTypes["probe.jobs.cancel"]['input'], ClientOperationTypes["probe.jobs.cancel"]['output']>(host, "probe.jobs.cancel", [], ["probe.jobs.list"]);
 }
 
 export function useProbeJobsList(host: CatalogHost, input: () => ClientOperationTypes["probe.jobs.list"]['input']) {

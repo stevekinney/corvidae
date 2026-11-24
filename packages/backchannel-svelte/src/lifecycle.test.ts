@@ -76,6 +76,13 @@ it('runs the generated Svelte fixture with reactive reads, scope teardown and se
     expect(text('inspection')).not.toContain('synthetic-once-secret');
     expect(text('inspection')).not.toContain('stale-secret');
     expect(text('writes')).toBe('2');
+    click('Submit ambiguous');
+    await waitUntil(() => text('command-fault') === 'unknown');
+    expect(text('writes')).toBe('3');
+    click('Reconcile');
+    await waitUntil(() => text('command-fault') === '');
+    click('Submit');
+    await waitUntil(() => text('writes') === '4');
   } finally {
     await driver.unmount(component);
     target.remove();

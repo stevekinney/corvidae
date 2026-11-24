@@ -1,7 +1,7 @@
 {
   "issue": "COR-2604",
   "branch": "steve/cor-2604-backchannel-svelte",
-  "checkedAt": "11c2ee574689c71680a009ffa86ecf9d9cac7a17",
+  "checkedAt": "3b0b4fe32ee5936e660c8e8b0d7d10c1ab815f9a",
   "briefVersion": "766d058a6e0f",
   "status": "BLOCKED",
   "criteria": [

@@ -11,6 +11,7 @@
   const host = getProbeHost();
   const read = useProbeJobsList(host, () => ({ filter }));
   const command = useProbeJobsCancel(host);
+  const fault = command.fault;
   let secret = $state('');
   let events = $state<string[]>([]);
   const watch = useProbeJobsWatch(host, {}, (event) => {
@@ -29,6 +30,13 @@
       /* interrupted on scope disposal */
     }
   }
+  async function submitAmbiguous() {
+    try {
+      await command.mutateAsync({ id: 'ambiguous' });
+    } catch {
+      /* outcome is reported by the binding */
+    }
+  }
 </script>
 
 <div {@attach activateResource(read)}>
@@ -39,6 +47,9 @@
   <button onclick={() => void read.refresh().catch(() => {})}>Refresh</button>
   <button onclick={submit}>Submit</button>
   <button onclick={submitDelayed}>Submit delayed</button>
+  <button onclick={submitAmbiguous}>Submit ambiguous</button>
+  <button onclick={() => void command.reconcile('probe.jobs.list', { filter })}>Reconcile</button>
+  <output data-testid="command-fault">{$fault ?? ''}</output>
   <button onclick={() => void watch.connect()}>Connect events</button>
   <output data-testid="events">{events.join(',')}</output>
   <output data-testid="secret">{secret}</output>

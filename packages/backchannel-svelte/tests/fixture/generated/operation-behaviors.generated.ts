@@ -9,9 +9,6 @@ export const CATALOG_OPERATION_BEHAVIORS = {
     "mcpExposable": false,
     "behavior": {
       "kind": "command",
-      "invalidates": [
-        "probe.jobs.list"
-      ],
       "responseDisposition": "one-time"
     }
   },

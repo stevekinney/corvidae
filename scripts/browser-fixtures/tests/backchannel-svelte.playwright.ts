@@ -45,5 +45,12 @@ test('reactive scoped reads and explicit commands use the generated client', asy
   await page.getByRole('button', { name: 'Inspect state' }).click();
   await expect(page.getByTestId('inspection')).not.toContainText('synthetic-once-secret');
   await expect(page.getByTestId('inspection')).not.toContainText('stale-secret');
+  await page.getByRole('button', { name: 'Submit ambiguous' }).click();
+  await expect(page.getByTestId('command-fault')).toHaveText('unknown');
+  await expect(page.getByTestId('writes')).toHaveText('3');
+  await page.getByRole('button', { name: 'Reconcile' }).click();
+  await expect(page.getByTestId('command-fault')).toHaveText('');
+  await page.getByRole('button', { name: 'Submit', exact: true }).click();
+  await expect(page.getByTestId('writes')).toHaveText('4');
   expect(errors).toEqual([]);
 });
