@@ -67,7 +67,7 @@ test.describe('workspace chat sharing', () => {
       await reader.goto('/chats');
       await expect(reader.locator(`a[href="/chats/${contextId}"]`)).toBeVisible();
       await reader.goto(`/chats/${contextId}`);
-      await expect(reader.getByText('shared chat evidence', { exact: true })).toHaveCount(2);
+      await expect(reader.locator('article[data-message-id]').getByText('shared chat evidence', { exact: true })).toHaveCount(2);
       await expectReadOnly(reader);
       await captureForDesignReview(reader, {
         route: '/chats/:chat',
@@ -113,7 +113,7 @@ test.describe('workspace chat sharing', () => {
       await owner.getByRole('button', { name: 'Grant access' }).click();
 
       await reader.reload();
-      await expect(reader.getByText('shared chat evidence', { exact: true })).toHaveCount(2);
+      await expect(reader.locator('article[data-message-id]').getByText('shared chat evidence', { exact: true })).toHaveCount(2);
       await expectReadOnly(reader);
       await captureForDesignReview(reader, {
         route: '/chats/:chat',

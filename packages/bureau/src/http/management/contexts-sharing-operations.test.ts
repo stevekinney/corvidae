@@ -1,3 +1,4 @@
+/* oxlint-disable unicorn/no-await-expression-member -- transport assertions intentionally inspect receipts inline. */
 import { describe, expect, test } from 'bun:test';
 import { sessionReadGrantHistoryOf } from '@lostgradient/operative';
 

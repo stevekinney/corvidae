@@ -368,7 +368,8 @@ export const contextsListShareRequestsOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ host, principal }) => {
-    const requests = (await host.contexts.list()).flatMap((session) => {
+    const sessions = await host.contexts.list();
+    const requests = sessions.flatMap((session) => {
       const owner = sessionOwnerOf(session.metadata);
       if (owner === null || !isOwnerOfResource(principal, owner)) return [];
       return sessionReadRequestsOf(session.metadata)

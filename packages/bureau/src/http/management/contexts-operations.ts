@@ -120,7 +120,18 @@ async function activeSharedSummaries(
       admitted: summary.owner === owner || (await isActiveSharedSummary(host, principal, summary)),
     })),
   );
-  return admitted.flatMap(({ summary, admitted }) => (admitted ? [summary] : []));
+  return admitted.flatMap(({ summary, admitted: isAdmitted }) => (isAdmitted ? [summary] : []));
+}
+
+async function projectListedContext(
+  host: BureauContextsOperationHost,
+  owner: string | undefined,
+  summary: SessionSummary,
+  activity: ContextActivity | undefined,
+): Promise<z.infer<typeof contextSummarySchema> | undefined> {
+  if (summary.owner === owner) return projectContext(summary, activity);
+  const loaded = await host.contexts.get(summary.id);
+  return loaded === undefined ? undefined : projectSharedContext(summarizeSession(loaded));
 }
 
 const contextsDeleteInput = z.object({
@@ -466,11 +477,12 @@ export const contextsListOperation = defineOperation<
           (summary) => (activity.get(summary.id) ?? 'idle') === input.activity,
         );
         const page = matching.slice(offset, offset + limit);
+        const projected = await Promise.all(
+          page.map((summary) => projectListedContext(host, owner, summary, activity.get(summary.id))),
+        );
         return {
-          contexts: page.map((summary) =>
-            summary.owner === owner
-              ? projectContext(summary, activity.get(summary.id))
-              : projectSharedContext(summary),
+          contexts: projected.filter(
+            (context): context is z.infer<typeof contextSummarySchema> => context !== undefined,
           ),
           nextOffset: matching.length > offset + limit ? offset + limit : null,
         };
@@ -482,11 +494,12 @@ export const contextsListOperation = defineOperation<
       const admitted = await activeSharedSummaries(host, principal, owner, candidates);
       const page = admitted.slice(offset, offset + limit);
       const activity = await host.tasks.activityOf(page.map((summary) => summary.id));
+      const projected = await Promise.all(
+        page.map((summary) => projectListedContext(host, owner, summary, activity.get(summary.id))),
+      );
       return {
-        contexts: page.map((summary) =>
-          summary.owner === owner
-            ? projectContext(summary, activity.get(summary.id))
-            : projectSharedContext(summary),
+        contexts: projected.filter(
+          (context): context is z.infer<typeof contextSummarySchema> => context !== undefined,
         ),
         nextOffset: admitted.length > offset + limit ? offset + limit : null,
       };
