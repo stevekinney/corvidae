@@ -3806,17 +3806,11 @@
     margin-block-start: var(--cinder-space-1);
   }
 
-  /* A bodyless transcript's Message details line is the next interactive surface after some
-   * answered-step groups. Reserve this only on a coarse pointer and only when no answer text
-   * follows: ordinary answer rhythm keeps its measured text-to-step spacing. */
+  /* An empty approval slot can be followed inside the same group by a message-details control.
+   * Reserve this coarse-pointer boundary only; regular answer rows have no such sibling. */
   @media (any-pointer: coarse) {
-    .chat-tool-call-group:has(
-        + :global(
-            .chat-message-wrapper:has(.chat-message-body[data-empty])
-              .chat-message-line[aria-label='Message details']
-          )
-      ) {
-      margin-block-end: var(--cinder-space-1);
+    .chat-tool-call-group > .chat-approval-group-rows:empty + :global(.chat-message-wrapper) {
+      margin-block-start: var(--cinder-space-1);
     }
   }
 

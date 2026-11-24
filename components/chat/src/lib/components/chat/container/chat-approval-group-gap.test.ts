@@ -33,7 +33,7 @@ describe('batch approval group spacing', () => {
 
   test('reserves the coarse-pointer boundary before an adjacent Message details control', () => {
     expect(source).toMatch(
-      /@media \(any-pointer: coarse\)\s*\{\s*\.chat-tool-call-group:has\([\s\S]*?\.chat-message-body\[data-empty\][\s\S]*?\.chat-message-line\[aria-label='Message details'\][\s\S]*?margin-block-end: var\(--cinder-space-1\);/s,
+      /@media \(any-pointer: coarse\)\s*\{\s*\.chat-tool-call-group > \.chat-approval-group-rows:empty \+ :global\(\.chat-message-wrapper\)\s*\{\s*margin-block-start: var\(--cinder-space-1\);/s,
     );
   });
 });
