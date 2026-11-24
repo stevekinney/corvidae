@@ -1,7 +1,7 @@
 {
   "issue": "COR-2653",
   "branch": "steve/cor-2653-browser-port-isolation",
-  "checkedAt": "228e24282ac691d0cc18c2945c3ba67b7aacd94f",
+  "checkedAt": "47e3f9d4f7f0f5e8b90f34f66036126e64d01a1c",
   "briefVersion": "f416fc07b354",
   "status": "BLOCKED",
   "criteria": [
@@ -18,7 +18,7 @@
     {
       "id": "AC3",
       "status": "not-met",
-      "evidence": "Run 45312674485 timed out its held competitor; run 45329190010 found a cold-launch gap. The revised competition-only replay remains unverified."
+      "evidence": "Run 45312674485 timed out its held competitor; run 45329190010 found a cold-launch gap; run 45337199624 recorded no post-release action. The corrected competition-only replay remains unverified."
     }
   ]
 }

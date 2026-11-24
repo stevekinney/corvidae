@@ -5,8 +5,10 @@ import { join, resolve } from 'node:path';
 import { waitUntil } from '../../testing/testing/src/wait-until.ts';
 import { rootScriptEnvironment } from '../environment-configuration.ts';
 import {
+  actionAfterRelease,
   actionsBracketAssertion,
   competitorActions,
+  observedRelease,
   qualificationMode,
 } from './cor-2653-overlap.ts';
 
@@ -532,6 +534,7 @@ try {
             exit: competitor.code,
           },
           competitorActions: actions,
+          competitorReleaseObserved: observedRelease(competitor.stdout),
           integrationStarted: x.startedAt,
           integrationFirstAssertion: x.assertionAt,
           integrationFirstVerdict: x.verdictAt,
@@ -548,6 +551,10 @@ try {
         requireResult(
           actionsBracketAssertion(y.assertionAt, actions),
           'browser first assertion was not bracketed by real competitor actions',
+        );
+        requireResult(
+          actionAfterRelease(competitor.stdout),
+          'competitor did not perform a verified action after observing release',
         );
         requireResult(
           x.verdictAt !== undefined && y.verdictAt !== undefined,

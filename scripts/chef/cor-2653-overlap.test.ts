@@ -1,9 +1,25 @@
 import { expect, test } from 'bun:test';
 import {
+  actionAfterRelease,
   actionsBracketAssertion,
   competitorActions,
+  performCompetitionActions,
   qualificationMode,
 } from './cor-2653-overlap.ts';
+
+test('performs a verified action after an immediate release acknowledgement', async () => {
+  const events: string[] = [];
+  await performCompetitionActions(
+    async () => {
+      events.push('action');
+    },
+    async () => {
+      events.push('released');
+      return true;
+    },
+  );
+  expect(events).toEqual(['action', 'released', 'action']);
+});
 
 test('names partial competition evidence separately and requires the complete exact revision', () => {
   const revision = 'a'.repeat(40);
@@ -34,4 +50,13 @@ test('extracts action markers rather than process or assertion markers', () => {
       'COR2653_ACTION 2026-11-24T03:02:35.000Z\nCOR2653_ASSERTION 2026-11-24T03:03:03.000Z\n',
     ),
   ).toEqual(['2026-11-24T03:02:35.000Z']);
+});
+
+test('requires an action marker after release, not only before it', () => {
+  const action = 'COR2653_ACTION 2026-11-24T06:17:30.481Z\n';
+  const release = 'COR2653_RELEASE 2026-11-24T06:17:30.494Z\n';
+  expect(actionAfterRelease(action + release)).toBe(false);
+  expect(actionAfterRelease(action + release + 'COR2653_ACTION 2026-11-24T06:17:30.495Z\n')).toBe(
+    true,
+  );
 });

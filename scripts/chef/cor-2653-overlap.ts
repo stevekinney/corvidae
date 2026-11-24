@@ -15,6 +15,27 @@ export function competitorActions(output: string): string[] {
   );
 }
 
+export function observedRelease(output: string): string | undefined {
+  return /COR2653_RELEASE (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z)/.exec(output)?.[1];
+}
+
+export function actionAfterRelease(output: string): boolean {
+  const release = output.indexOf('COR2653_RELEASE ');
+  return release >= 0 && competitorActions(output.slice(release)).length > 0;
+}
+
+export async function performCompetitionActions(
+  action: () => Promise<void>,
+  isReleased: () => Promise<boolean>,
+): Promise<void> {
+  let released = false;
+  while (!released) {
+    await action();
+    released = await isReleased();
+  }
+  await action();
+}
+
 /** A single passing competitor must record real actions on both sides of the target assertion. */
 export function actionsBracketAssertion(
   assertionAt: string | undefined,
