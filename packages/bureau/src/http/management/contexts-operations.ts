@@ -113,7 +113,18 @@ async function activeSharedSession(
   // The directory lookup above is async. Fence a delete/recreate of the same id while it was
   // in flight: the response must be bound to the incarnation that the grant admitted.
   const current = await host.contexts.get(summary.id);
-  return current?.incarnation === loaded.incarnation ? loaded : undefined;
+  const currentGrant =
+    current === undefined ? undefined : sessionReadGrantOf(current.metadata, workspace!.owner);
+  return current === undefined ||
+    current.incarnation !== loaded.incarnation ||
+    sessionOwnerOf(current.metadata) !== owner ||
+    currentGrant === undefined ||
+    currentGrant.revokedAt !== undefined ||
+    currentGrant.workspaceId !== workspace!.workspaceId ||
+    currentGrant.actorId !== workspace!.actorId ||
+    currentGrant.sessionIncarnation !== current.incarnation
+    ? undefined
+    : current;
 }
 
 async function activeSharedSummaries(

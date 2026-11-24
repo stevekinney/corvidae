@@ -49,7 +49,9 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
     try {
       await owner.goto('/chats/new?agent=echo-text');
       await expect(owner.getByTestId('new-chat-welcome')).toBeVisible();
-      await owner.getByRole('textbox', { name: 'Message' }).fill('shared chat evidence');
+      await owner
+        .getByRole('textbox', { name: 'Message' })
+        .fill('shared chat evidence [source](https://example.com/evidence)');
       await owner.locator('button[data-chat-send]').click();
       await expect(owner.getByText('shared chat evidence', { exact: true })).toHaveCount(2);
       await expect
@@ -75,7 +77,10 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
       await expect(
         reader
           .locator('article[data-message-id]')
-          .getByText('shared chat evidence', { exact: true }),
+          .getByText('shared chat evidence', { exact: false }),
+      ).toHaveCount(2);
+      await expect(
+        reader.locator('article[data-message-id] a[href="https://example.com/evidence"]'),
       ).toHaveCount(2);
       await expectReadOnly(reader);
       await captureForDesignReviewWithPhone(reader, {
@@ -130,7 +135,9 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
       await expect(
         reader
           .locator('article[data-message-id]')
-          .getByText('shared chat evidence', { exact: true }),
+          .getByText('shared chat evidence [source](https://example.com/evidence)', {
+            exact: true,
+          }),
       ).toHaveCount(2);
       await expectReadOnly(reader);
       await captureForDesignReviewWithPhone(reader, {

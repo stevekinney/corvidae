@@ -166,7 +166,11 @@ async function change(
   const grantedBy = workspace?.owner;
   if (grantedBy === undefined) throw missing(input.contextId);
   const target = await host.resolveWorkspaceOwner?.(input.granteeOwnerId);
-  if (target === undefined || target.workspaceId !== workspace!.workspaceId)
+  if (
+    target === undefined ||
+    target.workspaceId !== workspace!.workspaceId ||
+    target.actorKind !== 'user'
+  )
     throw missing(input.contextId);
   const originalGrant = sessionReadGrantOf(loaded.metadata, input.granteeOwnerId);
   const originalGrantEvents = changedGrantEventCount(loaded.metadata, input.granteeOwnerId);
@@ -414,7 +418,8 @@ export const contextsResolveShareRequestOperation = defineOperation<
       workspace === undefined ||
       !(await currentWorkspacePeer(host, principal, input.granteeOwnerId)) ||
       target === undefined ||
-      target.workspaceId !== workspace.workspaceId
+      target.workspaceId !== workspace.workspaceId ||
+      target.actorKind !== 'user'
     )
       throw missing(input.contextId);
     if (
