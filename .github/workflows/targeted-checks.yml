@@ -1,4 +1,4 @@
-name: COR-2654 startup diagnostic
+name: COR-2654 Cinder generation phase timing
 
 on:
   workflow_dispatch:
@@ -7,52 +7,57 @@ permissions:
   contents: read
 
 jobs:
-  diagnostic:
+  phases:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      SUBJECT_BASE: a1ccdcb653c5106fbe29a2b6743a06c0b06f343a
+      SUBJECT: a1ccdcb653c5106fbe29a2b6743a06c0b06f343a
       TURBO_TELEMETRY_DISABLED: '1'
       DO_NOT_TRACK: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          fetch-depth: 0
+          ref: ${{ env.SUBJECT }}
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
-      - run: bunx playwright install --with-deps chromium
-      - name: Verify Linux process ownership and cleanup
-        run: bun applications/interborough/scripts/startup-process-control.ts "$RUNNER_TEMP/cor2654-control"
-      - name: Pin a fresh base worktree
+      - name: Run the exact cold generation phases
+        working-directory: components/cinder
         run: |
-          base="$RUNNER_TEMP/cor2654-base"
-          git worktree add --detach "$base" "$SUBJECT_BASE"
-          test "$(git -C "$base" rev-parse HEAD)" = "$SUBJECT_BASE"
-          test ! -e "$base/node_modules"
-          sha256sum "$base/bun.lock"
-          git rev-parse HEAD 'HEAD^{tree}'
-          bun --version
-          nproc
-          install_start="$(date +%s%3N)"
-          (cd "$base" && bun install --frozen-lockfile)
-          jq -n --arg rev "$SUBJECT_BASE" --argjson begin "$install_start" \
-            --argjson end "$(date +%s%3N)" '{revision:$rev,installMilliseconds:($end-$begin)}' \
-            > "$RUNNER_TEMP/cor2654-install.json"
-      - name: Measure cold startup and persisted settings on original base
-        run: |
-          bun applications/interborough/scripts/qualify-startup.ts \
-            "$RUNNER_TEMP/cor2654-base" "$RUNNER_TEMP/cor2654-home" \
-            "$RUNNER_TEMP/cor2654-baseline.json" dev
+          output="$RUNNER_TEMP/cor2654-generator-phases"
+          mkdir "$output"
+          test "$(git rev-parse HEAD)" = "$SUBJECT"
+          test ! -e .metadata
+          test ! -e src/tokens/registry.generated.json
+          printf '%s\n' "$SUBJECT" > "$output/revision.txt"
+          bun --version > "$output/bun.txt"
+          nproc > "$output/processors.txt"
+          sha256sum ../../bun.lock > "$output/lockfile.sha256"
+          for phase in tokens component-metadata; do
+            start="$(date +%s%3N)"
+            status=0
+            if [[ "$phase" == tokens ]]; then
+              bun run tokens:seed > "$output/$phase.log" 2>&1 || status=$?
+            else
+              bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts \
+                > "$output/$phase.log" 2>&1 || status=$?
+            fi
+            jq -n --arg phase "$phase" --argjson start "$start" --argjson status "$status" \
+              --argjson end "$(date +%s%3N)" '{phase:$phase,milliseconds:($end-$start),exit:$status}' \
+              > "$output/$phase.json"
+            test "$status" = 0
+          done
+          test -s src/tokens/registry.generated.json
+          test -d .metadata
+          test -z "$(git status --porcelain)"
+          { find .metadata -type f ; printf '%s\n' src/tokens/registry.generated.json ; } \
+            | LC_ALL=C sort | xargs -d '\n' sha256sum > "$output/generated-files.sha256"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: ${{ !cancelled() }}
         with:
-          name: cor2654-linux-diagnostic
-          path: |
-            ${{ runner.temp }}/cor2654-control/process-control.json
-            ${{ runner.temp }}/cor2654-install.json
-            ${{ runner.temp }}/cor2654-baseline.json
+          name: cor2654-generator-phases
+          path: ${{ runner.temp }}/cor2654-generator-phases/
           if-no-files-found: error
           retention-days: 14
