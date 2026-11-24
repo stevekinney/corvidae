@@ -2,7 +2,7 @@ import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
 /** Visual treatment of the disclosure: a bordered card, or a flat row with no box. */
-export type CollapsibleVariant = 'default' | 'flat';
+export type CollapsibleVariant = 'default' | 'flat' | 'disclosure';
 
 /** Where a disclosure's chevron sits: before the label, or at the trailing edge. */
 export type CollapsibleChevron = 'start' | 'end';

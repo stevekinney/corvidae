@@ -340,6 +340,40 @@
     "internal/typescript": {
       "name": "@lostgradient/typescript",
     },
+    "packages/api-key-settings": {
+      "name": "@lostgradient/api-key-settings",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lostgradient/backchannel": "workspace:*",
+        "@lostgradient/backchannel-svelte": "workspace:*",
+        "@lostgradient/credentials": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/backchannel-mcp": "workspace:*",
+        "@lostgradient/cinder": "workspace:*",
+        "@lostgradient/storage": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@modelcontextprotocol/client": "catalog:",
+        "@tanstack/svelte-query": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "playwright": "catalog:",
+        "prettier": "catalog:",
+        "svelte": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@lostgradient/cinder": "workspace:*",
+        "@tanstack/svelte-query": "catalog:",
+        "svelte": "catalog:",
+      },
+      "optionalPeers": [
+        "@lostgradient/cinder",
+      ],
+    },
     "packages/armorer": {
       "name": "armorer",
       "dependencies": {
@@ -500,6 +534,40 @@
         "typescript": "catalog:",
       },
     },
+    "packages/connected-apps": {
+      "name": "@lostgradient/connected-apps",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lostgradient/backchannel": "workspace:*",
+        "@lostgradient/backchannel-svelte": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/cinder": "workspace:*",
+        "@lostgradient/mcp": "workspace:*",
+        "@lostgradient/storage-postgres": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@modelcontextprotocol/client": "catalog:",
+        "@tanstack/svelte-query": "catalog:",
+        "@types/bun": "catalog:",
+        "armorer": "workspace:*",
+        "oxlint": "catalog:",
+        "playwright": "catalog:",
+        "prettier": "catalog:",
+        "svelte": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@lostgradient/cinder": "workspace:*",
+        "@tanstack/svelte-query": "catalog:",
+        "svelte": "catalog:",
+      },
+      "optionalPeers": [
+        "@lostgradient/cinder",
+      ],
+    },
     "packages/conversationalist": {
       "name": "conversationalist",
       "dependencies": {
@@ -618,12 +686,14 @@
       "dependencies": {
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/storage-postgres": "workspace:*",
+        "pg": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
+        "@types/pg": "catalog:",
         "oxlint": "catalog:",
         "typescript": "catalog:",
       },
@@ -1539,6 +1609,8 @@
 
     "@loaderkit/resolve": ["@loaderkit/resolve@1.0.6", "", { "dependencies": { "@braidai/lang": "^1.0.0" } }, "sha512-G8FdIoF5CypfwmD9rl8BXod5HDn8JqB0CCNBXDTaRZ+yRYhARrrSToX1zg1zy9jX3zLqigsELwhT4gNtkdQAUg=="],
 
+    "@lostgradient/api-key-settings": ["@lostgradient/api-key-settings@workspace:packages/api-key-settings"],
+
     "@lostgradient/backchannel": ["@lostgradient/backchannel@workspace:packages/backchannel"],
 
     "@lostgradient/backchannel-armorer": ["@lostgradient/backchannel-armorer@workspace:packages/backchannel-armorer"],
@@ -1560,6 +1632,8 @@
     "@lostgradient/cinder-mcp": ["@lostgradient/cinder-mcp@workspace:packages/cinder-mcp"],
 
     "@lostgradient/component-tooling": ["@lostgradient/component-tooling@workspace:internal/component-tooling"],
+
+    "@lostgradient/connected-apps": ["@lostgradient/connected-apps@workspace:packages/connected-apps"],
 
     "@lostgradient/credentials": ["@lostgradient/credentials@workspace:packages/credentials"],
 

@@ -58,6 +58,9 @@ export type {
   ApprovalToolRisk,
 } from './components/approval-card/index.ts';
 
+export { default as ApprovalGroup } from './components/approval-group/index.ts';
+export type { ApprovalGroupProps } from './components/approval-group/index.ts';
+
 export { default as AreaChart } from './components/area-chart/index.ts';
 export type {
   ChartDataTableVisibility as AreaChartDataTableVisibility,
@@ -360,6 +363,9 @@ export type {
   DiffStatisticsProps,
   DiffStatisticsVariant,
 } from './components/diff-statistics/index.ts';
+
+export { default as DisclosureTrigger } from './components/disclosure-trigger/index.ts';
+export type { DisclosureTriggerProps } from './components/disclosure-trigger/index.ts';
 
 export { default as Divider } from './components/divider/index.ts';
 export type { DividerOrientation, DividerProps, DividerTone } from './components/divider/index.ts';

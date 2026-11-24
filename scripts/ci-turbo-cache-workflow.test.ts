@@ -212,13 +212,14 @@ describe('Turborepo cache in the workflows', () => {
   // The two most expensive suites: each shard replays only when its inputs, its slice and its
   // renderer are the same, so the shard and the image must stay in the task's hash.
   describe.each([
-    { job: 'fixtures', task: '//#ci:browser-fixtures', script: 'ci:browser-fixtures' },
+    { job: 'fixtures', task: '//#ci:browser-fixtures', script: 'ci:browser-fixtures', shards: 4 },
     {
       job: 'interborough',
       task: '//#ci:browser-interborough',
       script: 'ci:browser-interborough',
+      shards: 6,
     },
-  ])('the $job browser suite', ({ job, task, script }) => {
+  ])('the $job browser suite', ({ job, task, script, shards }) => {
     const turbo = JSON.parse(readFileSync(resolve(root, 'turbo.json'), 'utf8')) as {
       tasks: Record<
         string,
@@ -255,7 +256,10 @@ describe('Turborepo cache in the workflows', () => {
 
     test('sets the shard and the image the job runs in, and the script uses the shard', () => {
       const body = jobBody?.lines.join('\n') ?? '';
-      expect(body).toContain('PLAYWRIGHT_SHARD: ${{ matrix.shard }}/4');
+      expect(body).toContain(
+        `shard: [${Array.from({ length: shards }, (_, index) => index + 1).join(', ')}]`,
+      );
+      expect(body).toContain('PLAYWRIGHT_SHARD: ${{ matrix.shard }}/' + String(shards));
       const image = /^\s+image: (.+)$/mu.exec(body)?.[1];
       expect(image).toBeDefined();
       expect(body).toContain(`PLAYWRIGHT_BASE_IMAGE: ${image}`);

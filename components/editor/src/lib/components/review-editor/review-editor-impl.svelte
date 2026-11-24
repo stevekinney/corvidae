@@ -2431,8 +2431,14 @@
             <p>{frontMatterParseWarning}</p>
             <div class="review-editor-front-matter-warning__actions">
               <Button onclick={focusMalformedFrontMatterSource}>Edit as plain text</Button>
-              <Button variant="ghost" onclick={() => (malformedFrontMatterDismissed = true)}>
-                Dismiss front matter warning
+              <!-- The note names what it dismisses, so the visible word is Dismiss and the full name is
+                   its accessible name: both stay on one row from 375 px (COR-2440). -->
+              <Button
+                variant="ghost"
+                aria-label="Dismiss front matter warning"
+                onclick={() => (malformedFrontMatterDismissed = true)}
+              >
+                Dismiss
               </Button>
             </div>
           </Callout>

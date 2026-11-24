@@ -27,6 +27,57 @@ describe('protected HTTP listener', () => {
       ).then((result) => result.status),
     ).toBe(403);
   });
+  test('a targeted revocation notice closes the open stream and unsubscribes', async () => {
+    let listener: (() => void) | undefined;
+    let unsubscribed = false;
+    const handler = createProtectedHttpHandler({
+      origin: 'https://equipment.example.com',
+      resourcePath: '/api/mcp',
+      issuer: 'https://login.example.com',
+      scopes: ['read'],
+      async verifyAccessToken() {
+        return {
+          issuer: 'https://login.example.com',
+          audience: 'https://equipment.example.com/api/mcp',
+          expiresAt: Date.now() + 60000,
+          subject: 'user',
+          grantId: 'grant',
+          scopes: ['read'],
+        };
+      },
+      async resolvePrincipal() {
+        return { delegableScopes: ['read'] };
+      },
+      subscribeGrantRevocation(grantId, callback) {
+        expect(grantId).toBe('grant');
+        listener = callback;
+        return () => {
+          unsubscribed = true;
+        };
+      },
+      dispatch() {
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('first'));
+            },
+          }),
+        );
+      },
+    });
+    const response = await handler(
+      new Request('https://equipment.example.com/api/mcp', {
+        headers: { authorization: 'Bearer valid' },
+      }),
+    );
+    const reader = response.body!.getReader();
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toBe('first');
+    listener!();
+    const closed = await reader.read();
+    expect(closed.done).toBe(true);
+    expect(unsubscribed).toBe(true);
+  });
   test('binds supplied grant, client and tenant identities across an awaited dispatch', async () => {
     for (const changed of ['none', 'grantId', 'clientId', 'tenant'] as const) {
       let binding = { grantId: 'grant', clientId: 'client', tenant: 'tenant' };

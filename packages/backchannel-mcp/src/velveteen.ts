@@ -25,6 +25,8 @@ export type CatalogAuthority = {
   } | null>;
   /** Serve issuer routes when the application hosts its own authorization server. */
   handle?(request: Request): Promise<Response>;
+  /** Subscribe to a grant's revocation while a response remains open. */
+  subscribeGrantRevocation?(grantId: string, listener: () => void): () => void;
 };
 
 type CatalogOptions<Host> = Pick<OperationHandlerOptions<Host>, 'operations' | 'host'> & {
@@ -92,6 +94,12 @@ export function mountCatalog<Host>(options: CatalogOptions<Host>) {
           ...(suppliedProfile.handle === undefined
             ? {}
             : { handle: suppliedProfile.handle.bind(suppliedProfile) }),
+          ...(suppliedProfile.subscribeGrantRevocation === undefined
+            ? {}
+            : {
+                subscribeGrantRevocation:
+                  suppliedProfile.subscribeGrantRevocation.bind(suppliedProfile),
+              }),
         };
   options = {
     ...options,
@@ -172,6 +180,12 @@ export function mountCatalog<Host>(options: CatalogOptions<Host>) {
           scopes,
           verifyAccessToken: (token) => authorization.verifyAccessToken(token),
           resolvePrincipal: (grant) => authorization.resolvePrincipal(grant),
+          ...(authorization.subscribeGrantRevocation === undefined
+            ? {}
+            : {
+                subscribeGrantRevocation: (grantId: string, listener: () => void) =>
+                  authorization.subscribeGrantRevocation!(grantId, listener),
+              }),
           async dispatch(request, context) {
             const admission = await context.requireScopes(options.mcp.requiredScopes ?? []);
             if (!admission.ok) return admission.response;

@@ -35,10 +35,10 @@ describe('composerStatusText', () => {
     expect(isComposerDrawerStatus(undefined)).toBe(false);
   });
 
-  test('reads an approval wait, and says a message steers the run when one would', () => {
+  test('reads an approval wait, and says a message sent now is queued (COR-2282 M7)', () => {
     expect(composerStatusText({ kind: 'waiting' })).toBe('Waiting for your approval');
-    expect(composerStatusText({ kind: 'waiting', steers: true })).toBe(
-      'Waiting for your approval. A message now steers the run.',
+    expect(composerStatusText({ kind: 'waiting', queues: true })).toBe(
+      'Waiting for your approval. Anything you send now queues until you decide.',
     );
   });
 });

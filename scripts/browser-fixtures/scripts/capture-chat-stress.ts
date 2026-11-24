@@ -26,7 +26,7 @@
 import { chromium, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join, resolve as resolvePath } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { THEME_STORAGE_KEY, buildBrowser } from '@lostgradient/testing';
@@ -80,8 +80,8 @@ import { defaultManifestLayout } from './prepare-manifest.ts';
 const DEADLINE = HANG_GUARD_MILLISECONDS;
 const expectAttachment = expect.configure({ timeout: DEADLINE });
 
-const fixtureRoot = resolve(import.meta.dirname, '..');
-const repositoryRoot = resolve(fixtureRoot, '..', '..');
+const fixtureRoot = resolvePath(import.meta.dirname, '..');
+const repositoryRoot = resolvePath(fixtureRoot, '..', '..');
 
 type Role = Parameters<Page['getByRole']>[0];
 
@@ -2191,22 +2191,7 @@ async function runSteps(opened: OpenCase, stressCase: StressCase, steps: readonl
       timeout: DEADLINE,
     });
   }
-  // A block that names its language is highlighted once the highlighter answers, and until its
-  // effect first runs it reads "plain", as a block that never highlights does. Waiting on "pending"
-  // alone passes in that gap and the frame is taken as the highlight starts, so a block that names
-  // a language, and is not streaming, must also have left "plain".
-  await opened.page.waitForFunction(
-    () =>
-      document.querySelector('[data-cinder-highlight-state="pending"]') === null &&
-      [...document.querySelectorAll('.cinder-code-block')].every(
-        (block) =>
-          block.querySelector('.cinder-code-block__language') === null ||
-          block.getAttribute('aria-busy') === 'true' ||
-          block.getAttribute('data-cinder-highlight-state') !== 'plain',
-      ),
-    undefined,
-    { timeout: DEADLINE },
-  );
+  await waitForSettledCodeHighlights(opened.page);
 }
 
 async function readComposerTransition(
@@ -2284,6 +2269,37 @@ export async function waitForCaptureLayout(page: Page): Promise<void> {
   }
 }
 
+/** Waits for every language-labelled, settled code block to finish its semantic highlight state. */
+async function waitForSettledCodeHighlights(page: Page): Promise<void> {
+  // A block that names its language is highlighted once the highlighter answers, and until its
+  // effect first runs it reads "plain", as a block that never highlights does. Waiting on "pending"
+  // alone passes in that gap and the frame is taken as the highlight starts, so a block that names
+  // a language, and is not streaming, must also have left "plain".
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[data-cinder-highlight-state="pending"]') === null &&
+      [...document.querySelectorAll('.cinder-code-block')].every(
+        (block) =>
+          block.querySelector('.cinder-code-block__language') === null ||
+          block.getAttribute('aria-busy') === 'true' ||
+          block.getAttribute('data-cinder-highlight-state') !== 'plain',
+      ),
+    undefined,
+    { timeout: DEADLINE },
+  );
+}
+
+/**
+ * Settles both physical layout and semantic code rendering immediately before a measurement or
+ * screenshot. Layout can virtualize a code block after `runSteps` saw it highlighted, which starts
+ * another pending highlighter pass; yielding one frame exposes that pass without retrying capture.
+ */
+export async function waitForFinalCaptureReadiness(page: Page): Promise<void> {
+  await waitForCaptureLayout(page);
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  await waitForSettledCodeHighlights(page);
+}
+
 /** Waits for the real Cinder tooltip panel before capturing icon-action focus states. */
 async function waitForFocusedTooltip(page: Page, name: string): Promise<void> {
   if (name !== 'Copy' && name !== 'Quote message' && name !== 'Regenerate') return;
@@ -2314,7 +2330,7 @@ async function measure(
   profile: StressProfile,
   composerTransition?: PageMeasurement['composerTransition'],
 ): Promise<{ measurement: PageMeasurement; problems: string[] }> {
-  if (stressCase.id !== 47) await waitForCaptureLayout(opened.page);
+  if (stressCase.id !== 47) await waitForFinalCaptureReadiness(opened.page);
   const inPage = await opened.page.evaluate(measureInPage, {
     coarse: profile.coarse,
     rtl: stressCase.direction === 'rtl',
@@ -2509,7 +2525,7 @@ export const repeatedSummaryGuard: PaintGuard = {
     {
       name: 'duration',
       selector: '.chat-tool-call-summary-duration',
-      pattern: '^\\d+(?:ms|s|m|h)(?: \\d+(?:s|m))?$',
+      pattern: '^(?:\\d+(?:\\.\\d)? s|\\d+(?:ms|s|m|h)(?: \\d+(?:s|m))?)$',
     },
   ],
   apart: [['tool/count', 'duration']],
@@ -4074,7 +4090,7 @@ async function captureImage(
   let written = false;
   if (opened !== undefined) {
     try {
-      if (stressCase.id !== 47) await waitForCaptureLayout(opened.page);
+      if (stressCase.id !== 47) await waitForFinalCaptureReadiness(opened.page);
       await opened.page.screenshot({
         path: join(state.directory, file),
         animations: 'disabled',
@@ -4161,7 +4177,7 @@ async function captureFocusSweep(
           `case ${caseLabel(stressCase.id)} at ${profile.name} ${variant}: ${measured.problems.join('; ')}`,
         );
       }
-      await waitForCaptureLayout(opened.page);
+      await waitForFinalCaptureReadiness(opened.page);
       await opened.page.screenshot({
         path: join(state.directory, file),
         animations: 'disabled',
@@ -4325,7 +4341,7 @@ async function main(): Promise<number> {
     profiles = profiles.filter((profile) => names.includes(profile.name));
   }
 
-  const outputRoot = resolve(values.out ?? join(repositoryRoot, 'tmp', 'chat-stress'));
+  const outputRoot = resolvePath(values.out ?? join(repositoryRoot, 'tmp', 'chat-stress'));
   await mkdir(outputRoot, { recursive: true });
   const directory = await mkdtemp(join(outputRoot, RUN_DIRECTORY_PREFIX));
 
@@ -4333,7 +4349,7 @@ async function main(): Promise<number> {
   await prepareManifest(defaultManifestLayout);
   const buildDirectory = join(directory, 'build');
   await buildBrowser({
-    entrypoints: [resolve(fixtureRoot, 'index.html')],
+    entrypoints: [resolvePath(fixtureRoot, 'index.html')],
     outdir: buildDirectory,
     development: false,
   });
@@ -4346,7 +4362,7 @@ async function main(): Promise<number> {
   const server = createFixtureServer({
     port: 0,
     outputDirectory: buildDirectory,
-    manifestPath: resolve(fixtureRoot, '.playwright', 'manifest.json'),
+    manifestPath: resolvePath(fixtureRoot, '.playwright', 'manifest.json'),
     development: false,
   });
   const origin = `http://127.0.0.1:${server.port}`;

@@ -40,6 +40,8 @@
      * "Answer below" and draws no field of its own; without it, a text field is drawn in place.
      */
     answerInComposer?: boolean | undefined;
+    /** `'row'` uses ChoiceGrid's flat rows when this question sits in an already-framed dock. */
+    choiceStyle?: 'card' | 'row' | undefined;
     /** Whether an answer is being sent. */
     busy?: boolean | undefined;
     /** Why the host refused the last answer, shown on the fields the paths name. */
@@ -121,6 +123,7 @@
     answer,
     initialValue,
     answerInComposer = false,
+    choiceStyle = 'card',
     busy = false,
     issues = [],
     failed = false,
@@ -419,7 +422,7 @@
     {#if kind === 'choice' || kind === 'choice-other'}
       <ChoiceGrid
         class="chat-question-choices"
-        variant="card"
+        variant={choiceStyle}
         size="sm"
         columns={1}
         ariaLabel={title}
@@ -501,7 +504,7 @@
     {:else if kind === 'boolean'}
       <ChoiceGrid
         class="chat-question-choices"
-        variant="card"
+        variant={choiceStyle}
         size="sm"
         columns={1}
         ariaLabel={title}
@@ -753,6 +756,21 @@
   /* A description follows its title on the title's line when the whole of it fits, else it wraps below. */
   .chat-question
     :global(.cinder-choice-grid-item[data-cinder-variant='card'] .cinder-choice-grid-item__card) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--cinder-space-2);
+    row-gap: 0;
+  }
+
+  .chat-question :global(.cinder-choice-grid-item[data-cinder-variant='row']) {
+    --_cinder-choice-card-min-block-size: 3.25rem;
+    padding-block: var(--cinder-space-2);
+    gap: var(--cinder-space-2);
+  }
+
+  .chat-question
+    :global(.cinder-choice-grid-item[data-cinder-variant='row'] .cinder-choice-grid-item__card) {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;

@@ -1,3 +1,4 @@
+import type { ConditionalBatchCondition } from '@lostgradient/storage';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import type { VerifiedGrant } from '../http.ts';
@@ -5,7 +6,12 @@ import { OAuthStore, type OAuthClient } from '../oauth-store.ts';
 import { fetchClientIdMetadataDocument } from './client-metadata-documents.ts';
 import { isValidClientName, isValidRedirectUri } from './security-utilities.ts';
 
-type Identity = { subject: string; tenant: string; binding: string };
+type Identity = {
+  subject: string;
+  tenant: string;
+  binding: string;
+  sessionCondition?: ConditionalBatchCondition & { deadline?: number | undefined };
+};
 type Options = {
   issuer: string;
   resource: string;
@@ -14,6 +20,7 @@ type Options = {
   scopeDescriptions: Record<string, string>;
   store: OAuthStore;
   identity: {
+    assertStore?(store: OAuthStore): void;
     session(request: Request): Promise<Identity | null>;
     signIn(request: Request): Promise<Response>;
     principalForGrant(identity: {
@@ -21,6 +28,7 @@ type Options = {
       tenant: string;
     }): Promise<{ delegableScopes: string[] } | null>;
   };
+  notifyGrantRevoked?: (grantId: string) => Promise<void>;
 };
 const random = () => randomBytes(32).toString('base64url');
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -79,14 +87,19 @@ type HostedProfileOptions<T extends { delegableScopes: string[] }> = {
   stores: OAuthStore;
   defaultScopes: string[];
   scopeDescriptions: Record<string, string>;
+  notifyGrantRevoked?: (grantId: string) => Promise<void>;
+  subscribeGrantRevocation?: (grantId: string, listener: () => void) => () => void;
 };
 
 type HostedProfile<T> = {
-  configure(options: { origin: string; resourcePath: string; scopes: string[] }): {
+  configure(options: { origin: string; resourcePath: string; scopes: string[] }): ReturnType<
+    typeof createHostedOAuth
+  > & {
     issuer: string;
     handle(request: Request): Promise<Response>;
     verifyAccessToken(token: string): Promise<VerifiedGrant | null>;
     resolvePrincipal(grant: VerifiedGrant): Promise<T | null>;
+    subscribeGrantRevocation?: (grantId: string, listener: () => void) => () => void;
   };
 };
 export function hostedOAuth(configuration: Options): ReturnType<typeof createHostedOAuth>;
@@ -101,7 +114,16 @@ export function hostedOAuth<T extends { delegableScopes: string[] }>(
     stores: configuration.stores,
     defaultScopes: [...configuration.defaultScopes],
     scopeDescriptions: { ...configuration.scopeDescriptions },
+    ...(configuration.notifyGrantRevoked === undefined
+      ? {}
+      : { notifyGrantRevoked: configuration.notifyGrantRevoked.bind(configuration) }),
+    ...(configuration.subscribeGrantRevocation === undefined
+      ? {}
+      : { subscribeGrantRevocation: configuration.subscribeGrantRevocation.bind(configuration) }),
     identity: {
+      ...(configuration.identity.assertStore === undefined
+        ? {}
+        : { assertStore: configuration.identity.assertStore.bind(configuration.identity) }),
       session: configuration.identity.session.bind(configuration.identity),
       signIn: configuration.identity.signIn.bind(configuration.identity),
       principalForGrant: configuration.identity.principalForGrant.bind(configuration.identity),
@@ -130,10 +152,16 @@ export function hostedOAuth<T extends { delegableScopes: string[] }>(
         scopeDescriptions: profile.scopeDescriptions,
         store: profile.stores,
         identity: profile.identity,
+        ...(profile.notifyGrantRevoked === undefined
+          ? {}
+          : { notifyGrantRevoked: profile.notifyGrantRevoked }),
       });
       return {
         ...issuer,
         issuer: origin,
+        ...(profile.subscribeGrantRevocation === undefined
+          ? {}
+          : { subscribeGrantRevocation: profile.subscribeGrantRevocation }),
         resolvePrincipal(grant: VerifiedGrant) {
           return grant.tenant === undefined
             ? Promise.resolve(null)
@@ -148,6 +176,7 @@ export function hostedOAuth<T extends { delegableScopes: string[] }>(
 }
 
 function createHostedOAuth(configuration: Options) {
+  configuration.identity.assertStore?.(configuration.store);
   const options = {
     ...configuration,
     scopes: [...configuration.scopes],
@@ -333,7 +362,14 @@ function createHostedOAuth(configuration: Options) {
     const form = text === null ? null : parameters(text);
     const session = await options.identity.session(request);
     if (!form || !session) return error('invalid_request');
-    const identity = { ...session };
+    const identity = {
+      ...session,
+      sessionCondition: session.sessionCondition && {
+        key: session.sessionCondition.key,
+        expectedValue: session.sessionCondition.expectedValue?.slice() ?? null,
+        deadline: session.sessionCondition.deadline,
+      },
+    };
     const transaction = form.get('transaction') ?? '';
     const binding = {
       issuer: options.issuer,
@@ -350,7 +386,8 @@ function createHostedOAuth(configuration: Options) {
     if (pending.state) destination.searchParams.set('state', pending.state);
     destination.searchParams.set('iss', options.issuer);
     if (decision === 'deny') {
-      if (!(await options.store.denyConsent(transaction, binding))) return error('invalid_request');
+      if (!(await options.store.denyConsent(transaction, binding, identity.sessionCondition)))
+        return error('invalid_request');
       destination.searchParams.set('error', 'access_denied');
     } else if (decision === 'approve') {
       const principal = await authority(identity);
@@ -358,14 +395,19 @@ function createHostedOAuth(configuration: Options) {
         return error('access_denied', 403);
       const code = random();
       if (
-        !(await options.store.approveConsent(transaction, binding, {
-          grantId: randomUUID(),
-          code,
-          subject: identity.subject,
-          tenant: identity.tenant,
-          resource: pending.resource,
-          scopes: pending.scopes,
-        }))
+        !(await options.store.approveConsent(
+          transaction,
+          binding,
+          {
+            grantId: randomUUID(),
+            code,
+            subject: identity.subject,
+            tenant: identity.tenant,
+            resource: pending.resource,
+            scopes: pending.scopes,
+          },
+          identity.sessionCondition,
+        ))
       )
         return error('invalid_request');
       destination.searchParams.set('code', code);
@@ -530,5 +572,43 @@ function createHostedOAuth(configuration: Options) {
       scopes: grant.scopes,
     };
   };
-  return { handle, verifyAccessToken };
+  const listConnectedApps = async (identity: { subject: string; tenant: string }) => {
+    identity = { ...identity };
+    const principal = await authority(identity);
+    if (!principal) throw new Error('Forbidden');
+    const grants = await options.store.listGrants({ issuer: options.issuer, ...identity });
+    return Promise.all(
+      grants.map(async (grant) => {
+        const client = await clientFor(grant.client);
+        return {
+          grantId: grant.grantId,
+          clientId: grant.client,
+          clientName: client?.name ?? 'Unknown Client',
+          resource: grant.resource,
+          approvedAt: grant.approvedAt,
+          permissions: grant.scopes.map((scope) => ({
+            scope,
+            description: Object.hasOwn(options.scopeDescriptions, scope)
+              ? options.scopeDescriptions[scope]!
+              : scope,
+            available: principal.delegableScopes.includes(scope),
+          })),
+        };
+      }),
+    );
+  };
+  const revokeConnectedApp = async (
+    identity: { subject: string; tenant: string },
+    grantId: string,
+  ) => {
+    identity = { ...identity };
+    if (!(await authority(identity))) throw new Error('Forbidden');
+    const revoked = await options.store.revokeOwnedGrant(grantId, {
+      issuer: options.issuer,
+      ...identity,
+    });
+    if (revoked && options.notifyGrantRevoked) await options.notifyGrantRevoked(grantId);
+    return revoked;
+  };
+  return { handle, verifyAccessToken, listConnectedApps, revokeConnectedApp };
 }

@@ -267,6 +267,21 @@ describe('recordAdmission and history', () => {
     expect(history?.[0]?.text).toBe('first');
   });
 
+  it('does not admit a task after its continuation fence was recorded', async () => {
+    const { registry, kv } = build();
+    await kv.set('continuation-fence:run-1', 'retired');
+
+    const rejected = await admit(registry, 'run-1', {
+      admissionFence: 'continuation-fence:run-1',
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(rejected).toBeInstanceOf(Error);
+    expect((rejected as Error).message).toContain('was fenced off');
+    expect(await registry.record('run-1')).toBeUndefined();
+  });
+
   it('keeps every originating message out of a view', async () => {
     const { registry, held } = build();
     await admit(registry, 'run-1', { message: 'a private request' });

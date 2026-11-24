@@ -21,6 +21,7 @@ import {
   buildSqliteKeyRangeSelect,
   buildSqliteKeyValueMetadataRangeSelect,
   buildSqliteKeyValueRangeSelect,
+  ConditionalBatchDeadlineExpired,
   runConditionalBatchBody,
   SQLITE_ADD_UPDATED_AT_COLUMN,
   SQLITE_BUSY_TIMEOUT_MS,
@@ -215,6 +216,7 @@ export class BunSQLiteStorage implements Storage {
       scanConsistency: 'snapshot',
       atomicBatch: true,
       conditionalBatch: true,
+      conditionalBatchDeadline: true,
       boundedRangeDelete: true,
     };
   }
@@ -343,6 +345,7 @@ export class BunSQLiteStorage implements Storage {
   async conditionalBatch(
     conditions: ConditionalBatchCondition[],
     operations: BatchOperation[],
+    deadline?: number,
   ): Promise<boolean> {
     assertStorageBatchOperationCount('conditionalBatch conditions', conditions.length);
     assertStorageBatchOperationCount('conditionalBatch operations', operations.length);
@@ -350,23 +353,39 @@ export class BunSQLiteStorage implements Storage {
     const writtenAt = this.#now();
     const conditionalTransaction = this.#database.transaction(
       (pendingConditions: ConditionalBatchCondition[], pendingOperations: BatchOperation[]) =>
-        runConditionalBatchBody(pendingConditions, pendingOperations, {
-          read: (key) => {
-            const row = this.#getStatement.get(key);
-            return row ? new Uint8Array(row.value) : null;
+        runConditionalBatchBody(
+          pendingConditions,
+          pendingOperations,
+          {
+            read: (key) => {
+              const row = this.#getStatement.get(key);
+              return row ? new Uint8Array(row.value) : null;
+            },
+            put: (key, value) => {
+              this.#putStatement.run(key, value, writtenAt);
+            },
+            delete: (key) => {
+              this.#deleteStatement.run(key);
+            },
+            now: () =>
+              this.#database
+                .query<{ now: number }, []>(
+                  "SELECT CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER) AS now",
+                )
+                .get()!.now,
           },
-          put: (key, value) => {
-            this.#putStatement.run(key, value, writtenAt);
-          },
-          delete: (key) => {
-            this.#deleteStatement.run(key);
-          },
-        }),
+          deadline,
+        ),
     );
 
     // Immediate, so the write lock is taken before the read and a lost race returns `false`
     // after waiting, where a deferred transaction would throw `database is locked`.
-    return conditionalTransaction.immediate(conditions, operations);
+    try {
+      return conditionalTransaction.immediate(conditions, operations);
+    } catch (error) {
+      if (error instanceof ConditionalBatchDeadlineExpired) return false;
+      throw error;
+    }
   }
 
   async query<T>(sql: string, parameters?: SQLQueryBindings[]): Promise<T[]> {

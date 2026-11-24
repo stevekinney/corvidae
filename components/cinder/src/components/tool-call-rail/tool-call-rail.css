@@ -389,6 +389,20 @@
     min-inline-size: 0;
   }
 
+  .cinder-tool-call-rail__failure-step {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-tool-call-rail__failure-diagnostic {
+    max-inline-size: 100%;
+    overflow-wrap: anywhere;
+    color: var(--cinder-text-default);
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    white-space: pre-wrap;
+  }
+
   .cinder-tool-call-rail__failure-glyph {
     flex: none;
     inline-size: 0.875rem;

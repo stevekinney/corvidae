@@ -21,6 +21,7 @@ export interface ProtectedHttpOptions<T extends Principal> {
   allowedOrigins?: readonly string[];
   maximumRequestBytes?: number;
   verifyAccessToken(token: string): Promise<VerifiedGrant | null>;
+  subscribeGrantRevocation?(grantId: string, listener: () => void): () => void;
   resolvePrincipal(grant: VerifiedGrant): Promise<T | null>;
   dispatch(
     request: Request,
@@ -212,36 +213,54 @@ export function createProtectedHttpHandler<T extends Principal>(
     const reader = response.body.getReader();
     let closed = false;
     let cancelled = false;
+    let finished = false;
+    let output: ReadableStreamDefaultController<Uint8Array>;
+    let unsubscribe = () => {};
+    const finish = () => {
+      if (finished || cancelled) return;
+      finished = true;
+      unsubscribe();
+      request.signal.removeEventListener('abort', abort);
+      output.close();
+    };
     const close = async () => {
       if (closed) return;
       closed = true;
       await reader.cancel();
     };
     const abort = () => {
-      void close();
+      void close().then(finish);
     };
     request.signal.addEventListener('abort', abort, { once: true });
     const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        output = controller;
+        if (binding.grantId && options.subscribeGrantRevocation) {
+          unsubscribe = options.subscribeGrantRevocation(binding.grantId, () => {
+            void close().then(finish);
+          });
+        }
+      },
       async pull(controller) {
         const beforeRead = await current();
         if (closed || request.signal.aborted || !beforeRead) {
           await close();
-          if (!cancelled) controller.close();
+          finish();
           return;
         }
         const result = await reader.read();
         const beforeRelease = await current();
         if (closed || request.signal.aborted || !beforeRelease) {
           await close();
-          if (!cancelled) controller.close();
+          finish();
         } else if (result.done) {
           closed = true;
-          request.signal.removeEventListener('abort', abort);
-          controller.close();
+          finish();
         } else controller.enqueue(result.value);
       },
       async cancel() {
         cancelled = true;
+        unsubscribe();
         request.signal.removeEventListener('abort', abort);
         await close();
       },

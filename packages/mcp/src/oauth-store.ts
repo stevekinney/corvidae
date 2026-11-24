@@ -1,4 +1,8 @@
-import { storageConditionalBatch, type Storage } from '@lostgradient/storage';
+import {
+  storageConditionalBatch,
+  type ConditionalBatchCondition,
+  type Storage,
+} from '@lostgradient/storage';
 import { createHash, timingSafeEqual } from 'node:crypto';
 
 type Consent = {
@@ -24,7 +28,13 @@ type Approval = {
   resource: string;
   scopes: string[];
 };
-type Grant = Omit<Approval, 'code'> & { issuer: string; client: string; active: boolean };
+export type OAuthGrant = Omit<Approval, 'code'> & {
+  issuer: string;
+  client: string;
+  active: boolean;
+  approvedAt: number | null;
+};
+type Grant = OAuthGrant;
 type Code = {
   grantId: string;
   client: string;
@@ -96,6 +106,10 @@ export class OAuthStore {
     }
   }
 
+  usesStorage(storage: Storage): boolean {
+    return this.storage === storage;
+  }
+
   async registerClient(client: OAuthClient): Promise<boolean> {
     const clientKey = key('client', client.clientId);
     return storageConditionalBatch(
@@ -136,16 +150,26 @@ export class OAuthStore {
     return this.matchesConsent(consent, binding) ? consent : null;
   }
 
-  async denyConsent(id: string, binding: ConsentBinding): Promise<boolean> {
+  async denyConsent(
+    id: string,
+    binding: ConsentBinding,
+    sessionCondition?: ConditionalBatchCondition & { deadline?: number | undefined },
+  ): Promise<boolean> {
     binding = { ...binding };
+    sessionCondition = sessionCondition && {
+      key: sessionCondition.key,
+      expectedValue: sessionCondition.expectedValue?.slice() ?? null,
+      deadline: sessionCondition.deadline,
+    };
     const consentKey = key('consent', id);
     const value = await this.storage.get(consentKey);
     if (!value || !this.matchesConsent(JSON.parse(decoder.decode(value)) as Consent, binding))
       return false;
     return storageConditionalBatch(
       this.storage,
-      [{ key: consentKey, expectedValue: value }],
+      [{ key: consentKey, expectedValue: value }, ...(sessionCondition ? [sessionCondition] : [])],
       [{ type: 'delete', key: consentKey }],
+      sessionCondition?.deadline,
     );
   }
 
@@ -160,9 +184,19 @@ export class OAuthStore {
     );
   }
 
-  async approveConsent(id: string, binding: ConsentBinding, approval: Approval): Promise<boolean> {
+  async approveConsent(
+    id: string,
+    binding: ConsentBinding,
+    approval: Approval,
+    sessionCondition?: ConditionalBatchCondition & { deadline?: number | undefined },
+  ): Promise<boolean> {
     binding = { ...binding };
     approval = { ...approval, scopes: [...approval.scopes] };
+    sessionCondition = sessionCondition && {
+      key: sessionCondition.key,
+      expectedValue: sessionCondition.expectedValue?.slice() ?? null,
+      deadline: sessionCondition.deadline,
+    };
     const consentKey = key('consent', id);
     const value = await this.storage.get(consentKey);
     if (!value) return false;
@@ -184,6 +218,7 @@ export class OAuthStore {
       issuer: consent.issuer,
       client: binding.client,
       active: true,
+      approvedAt: Date.now(),
     };
     const code: Code = {
       grantId: approval.grantId,
@@ -198,18 +233,70 @@ export class OAuthStore {
         { key: consentKey, expectedValue: value },
         { key: grantKey, expectedValue: null },
         { key: codeKey, expectedValue: null },
+        ...(sessionCondition ? [sessionCondition] : []),
       ],
       [
         { type: 'delete', key: consentKey },
         { type: 'put', key: grantKey, value: encode(grant) },
         { type: 'put', key: codeKey, value: encode(code) },
       ],
+      sessionCondition?.deadline,
     );
   }
 
   async getGrant(id: string): Promise<Grant | null> {
     const value = await this.storage.get(key('grant', id));
-    return value ? (JSON.parse(decoder.decode(value)) as Grant) : null;
+    if (!value) return null;
+    const grant = JSON.parse(decoder.decode(value)) as Grant;
+    return { ...grant, approvedAt: grant.approvedAt ?? null };
+  }
+
+  async listGrants(identity: {
+    issuer: string;
+    tenant: string;
+    subject: string;
+  }): Promise<OAuthGrant[]> {
+    identity = { ...identity };
+    const grants: OAuthGrant[] = [];
+    for await (const [, value] of this.storage.scan('oauth:grant:')) {
+      const grant = JSON.parse(decoder.decode(value)) as OAuthGrant;
+      if (
+        grant.active &&
+        grant.issuer === identity.issuer &&
+        grant.tenant === identity.tenant &&
+        grant.subject === identity.subject
+      )
+        grants.push({ ...grant, approvedAt: grant.approvedAt ?? null });
+    }
+    return grants;
+  }
+
+  async revokeOwnedGrant(
+    id: string,
+    identity: { issuer: string; tenant: string; subject: string },
+  ): Promise<boolean> {
+    identity = { ...identity };
+    const grantKey = key('grant', id);
+    for (;;) {
+      const value = await this.storage.get(grantKey);
+      if (!value) return false;
+      const grant = JSON.parse(decoder.decode(value)) as OAuthGrant;
+      if (
+        grant.issuer !== identity.issuer ||
+        grant.tenant !== identity.tenant ||
+        grant.subject !== identity.subject
+      )
+        return false;
+      if (!grant.active) return true;
+      if (
+        await storageConditionalBatch(
+          this.storage,
+          [{ key: grantKey, expectedValue: value }],
+          [{ type: 'put', key: grantKey, value: encode({ ...grant, active: false }) }],
+        )
+      )
+        return true;
+    }
   }
 
   async getCode(id: string): Promise<Code | null> {

@@ -12,6 +12,8 @@ test('mounts a hosted issuer and catalog in a Velveteen app', async () => {
   using storage = new MemoryStorage();
   let currentName = 'Camera';
   let writes = 0;
+  let revocations = 0;
+  let subscriptions = 0;
   let role = 'reader';
   const principal = principalFromApiKey({
     subject: 'user',
@@ -63,6 +65,13 @@ test('mounts a hosted issuer and catalog in a Velveteen app', async () => {
   });
   const authorization = hostedOAuth({
     stores: new OAuthStore(storage),
+    notifyGrantRevoked: async () => {
+      revocations++;
+    },
+    subscribeGrantRevocation: () => {
+      subscriptions++;
+      return () => {};
+    },
     defaultScopes: ['equipment:read'],
     scopeDescriptions: {
       'equipment:read': 'Read equipment',
@@ -425,6 +434,21 @@ test('mounts a hosted issuer and catalog in a Velveteen app', async () => {
     expect(readInternally.structuredContent).toEqual({ name: 'Tripod' });
     expect(writes).toBe(1);
     await internalEditor.close();
+    const management = authorization.configure({
+      origin: 'https://equipment.example',
+      resourcePath: '/app/api/mcp',
+      scopes: ['equipment:read', 'equipment:write'],
+    });
+    const readerGrants = await management.listConnectedApps({ subject: 'reader', tenant: 'team' });
+    expect(readerGrants).toHaveLength(1);
+    expect(
+      await management.revokeConnectedApp(
+        { subject: 'reader', tenant: 'team' },
+        readerGrants[0].grantId,
+      ),
+    ).toBe(true);
+    expect(revocations).toBe(1);
+    expect(subscriptions).toBeGreaterThan(0);
     expect(
       await request('/oauth/revoke', {
         method: 'POST',

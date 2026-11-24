@@ -1442,6 +1442,9 @@
         abortUploads();
         attachments.forEach((a) => URL.revokeObjectURL(a.previewUrl));
         attachments = [];
+        // A host that persists drafts must observe the settled empty composer. Without this, a
+        // route return can restore the text that was just accepted while the component unmounts.
+        onComposerInput?.(value);
       }
 
       // Restore focus to editor

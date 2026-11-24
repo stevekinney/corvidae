@@ -112,7 +112,13 @@ async function readApprovalPlacement(page: Page) {
     const buttons = [...(decision?.querySelectorAll('button') ?? [])].filter((button) =>
       ['Deny', 'Approve'].includes(button.textContent?.trim() ?? ''),
     );
-    const question = decision?.querySelector('.cinder-approval-card__row-question') ?? null;
+    // Row approvals and the retained decision layout expose the same semantic question as their
+    // heading, with layout-specific classes. Keep both supported so geometry failures identify a
+    // missing rendered heading rather than producing an opaque null box.
+    const question =
+      decision?.querySelector(
+        '.cinder-approval-card__row-question, .cinder-approval-card__decision-title',
+      ) ?? null;
     const questionBox = question?.getBoundingClientRect();
     const questionHit =
       questionBox === undefined
@@ -161,6 +167,7 @@ function expectDecisionInView(read: ApprovalPlacement): void {
  */
 function expectQuestionAndApproveInView(read: ApprovalPlacement): void {
   const transcript = read.transcript!;
+  expect(read.question, 'the approval renders a semantic question heading').not.toBeNull();
   const question = read.question!;
   const approve = read.buttons.at(-1)!.box!;
   for (const [name, box] of [
