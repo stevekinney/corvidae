@@ -1335,13 +1335,6 @@
   }
 
   @container (inline-size < 24rem) {
-    /* Let the content scroll past the sticky decision row, including its touch target and inset. */
-    .cinder-approval-card__detail-body:has(
-      > .cinder-approval-card__actions .cinder-approval-card__action-row
-    ) {
-      padding-block-end: calc(var(--cinder-touch-target-min) + 2 * var(--cinder-space-2));
-    }
-
     .cinder-approval-card--decision .cinder-approval-card__row-actions .cinder-button {
       line-height: var(--cinder-leading-tight);
     }
@@ -1765,17 +1758,9 @@
   }
 
   @container (inline-size < 24rem) {
-    /* Let the decision bar stick across the full detail, including the content above the note. */
-    .cinder-approval-card--detail .cinder-approval-card__actions {
-      display: contents;
-    }
-
+    /* Keep decisions in flow so they never cover the input on narrow screens. */
     .cinder-approval-card--detail .cinder-approval-card__action-row {
-      position: sticky;
-      z-index: 1;
-      inset-block-end: 0;
       padding-block: var(--cinder-space-2);
-      background: var(--cinder-surface);
     }
 
     .cinder-approval-card--detail .cinder-approval-card__action-buttons {

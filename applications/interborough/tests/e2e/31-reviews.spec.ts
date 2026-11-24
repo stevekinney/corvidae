@@ -705,7 +705,7 @@ test.describe('a tool approval', () => {
 test.describe('a phone tool approval', () => {
   test.use({ viewport: { width: 375, height: 640 }, hasTouch: true, isMobile: true });
 
-  test('shared Reviews approval detail shows full Fields values and keeps the actions docked on a phone', async ({
+  test('shared Reviews approval detail shows full Fields values and reachable actions on a phone', async ({
     page,
     request,
   }) => {
@@ -723,6 +723,7 @@ test.describe('a phone tool approval', () => {
         .toBeLessThanOrEqual(inputBounds.x + inputBounds.width);
 
       const actions = pane.getByRole('group', { name: 'Approval actions' });
+      await actions.scrollIntoViewIfNeeded();
       const targets = await actions.evaluate((group) => {
         const buttons = Array.from(group.querySelectorAll('button'));
         return buttons.map((button) => {
@@ -760,7 +761,7 @@ test.describe('a phone tool approval', () => {
     });
   });
 
-  test('/reviews keeps every approval argument reachable above the dock at 320px', async ({
+  test('/reviews keeps every approval argument and action reachable at 320px', async ({
     page,
     request,
   }) => {
@@ -770,12 +771,25 @@ test.describe('a phone tool approval', () => {
       const pane = paneOf(page);
       const input = pane.getByRole('group', { name: 'Input', exact: true });
       const actions = pane.getByRole('group', { name: 'Approval actions' });
+      const restingBoxes = await readBoxes(page, { input, actions });
+      expect(restingBoxes.actions.y).toBeGreaterThanOrEqual(
+        restingBoxes.input.y + restingBoxes.input.height,
+      );
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state: 'approval input at rest',
+        source: '31-reviews.spec.ts',
+      });
 
       async function readAboveActions(value: Locator): Promise<void> {
         await value.evaluate((element) => element.scrollIntoView({ block: 'center' }));
         await expect(value).toBeInViewport({ ratio: 1 });
         const boxes = await readBoxes(page, { actions, value });
         expect(boxes.value.y + boxes.value.height).toBeLessThanOrEqual(boxes.actions.y);
+      }
+
+      async function checkActions(): Promise<void> {
+        await actions.scrollIntoViewIfNeeded();
         await expect(actions).toBeInViewport();
         for (const name of ['Deny', 'Approve']) {
           const button = actions.getByRole('button', { name, exact: true });
@@ -793,9 +807,10 @@ test.describe('a phone tool approval', () => {
       for (const argument of Object.values(REFUND_APPROVAL.arguments)) {
         await readAboveActions(input.getByText(argument, { exact: true }));
       }
+      await checkActions();
       await captureForDesignReview(page, {
         route: '/reviews',
-        state: 'approval Fields above dock',
+        state: 'approval Fields and actions',
         source: '31-reviews.spec.ts',
       });
 
@@ -805,9 +820,10 @@ test.describe('a phone tool approval', () => {
       for (const argument of Object.values(REFUND_APPROVAL.arguments)) {
         await readAboveActions(tree.getByText(argument, { exact: false }).last());
       }
+      await checkActions();
       await captureForDesignReview(page, {
         route: '/reviews',
-        state: 'approval JSON above dock',
+        state: 'approval JSON and actions',
         source: '31-reviews.spec.ts',
       });
     });
@@ -893,10 +909,23 @@ test.describe('/reviews: a question a run asks', () => {
     await checkA11y('a question in the inbox');
     const originalViewport = page.viewportSize();
     if (originalViewport === null) throw new Error('The Reviews test requires a viewport.');
-    for (const width of WIDTHS) {
+    for (const width of [...WIDTHS, 1920]) {
       await page.setViewportSize({ width, height: 900 });
       await expect(paneOf(page).getByLabel('Your answer')).toBeVisible();
       await expect(paneOf(page).getByRole('button', { name: 'Send', exact: true })).toBeVisible();
+      if (width === 1920) {
+        const pane = paneOf(page);
+        const detail = pane.locator('.ib-review-detail');
+        const answer = detail.getByLabel('Your answer');
+        const boxes = await readBoxes(page, { pane, detail, answer });
+        expect(boxes.detail.width).toBeLessThanOrEqual(768);
+        expect(
+          boxes.pane.x + boxes.pane.width - (boxes.detail.x + boxes.detail.width),
+        ).toBeGreaterThanOrEqual(16);
+        expect(boxes.answer.x + boxes.answer.width).toBeLessThanOrEqual(
+          boxes.detail.x + boxes.detail.width,
+        );
+      }
       await captureForDesignReview(page, {
         route: '/reviews',
         state: 'pending human question',
