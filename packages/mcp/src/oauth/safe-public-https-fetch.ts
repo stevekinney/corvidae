@@ -147,9 +147,3 @@ export async function safeFetchPublicHttpsUrl(
     signal: AbortSignal.timeout(options.fetchTimeoutMs ?? defaultFetchTimeoutMilliseconds),
   });
 }
-
-/** Test-only: clears process-global DNS concurrency state between isolated cases. */
-export function resetDnsLookupConcurrencyLimiterForTests(): void {
-  outstandingDnsLookupCount = 0;
-  inFlightDnsLookupsByHostname.clear();
-}
