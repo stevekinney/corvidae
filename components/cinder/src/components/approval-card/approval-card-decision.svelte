@@ -63,6 +63,8 @@
     decidedIn: string | undefined;
     /** Where `decidedIn` leads. */
     decidedInHref: string | undefined;
+    /** Time of the durable decision, formatted by the card. */
+    decidedTime: string | undefined;
     /** Requests a fresh approval after expiration. */
     onAskAgain: (() => void) | undefined;
     /** The note the approver left with the decision. */
@@ -129,6 +131,7 @@
     decidedBy,
     decidedIn,
     decidedInHref,
+    decidedTime,
     onAskAgain,
     decisionNote,
     context,
@@ -234,8 +237,7 @@
   </ApprovalCardSettled>
 {:else if isReceipt}
   <div class="cinder-approval-card__receipt" data-cinder-tone={outcomeTone}>
-    <!-- The same pattern as an expired card: the decided action as the title, one status line, and
-         the time under the card, which the host writes as it writes a message's. -->
+    <!-- The durable receipt owns its decision time; expiry remains a host message-time below its card. -->
     <ApprovalCardSettled
       {titleTag}
       {titleId}
@@ -250,7 +252,7 @@
             approvalState
           ]}{#if hasWho}{' '}{byText}{inText}{#if decidedIn !== undefined}{#if decidedInHref !== undefined}<Link
                 href={decidedInHref}>{decidedIn}</Link
-              >{:else}{decidedIn}{/if}{/if}{/if}
+              >{:else}{decidedIn}{/if}{/if}{/if}{#if decidedTime !== undefined}, {decidedTime}{/if}
       {/snippet}
     </ApprovalCardSettled>
     {#if hasReceiptDetails}
@@ -263,22 +265,15 @@
         >
           <span class="cinder-approval-card__input-word">Details</span>
         </DisclosureTrigger>
-        <div id={detailsId} class="cinder-approval-card__receipt-details" hidden={!detailsOpen}>
+        <dl id={detailsId} class="cinder-approval-card__receipt-details" hidden={!detailsOpen}>
           {#if hasNote}
-            <p class="cinder-approval-card__decision-note">
-              <span class="cinder-approval-card__decision-note-label">Your note:</span>
-              <span class="cinder-approval-card__decision-note-text" dir="auto">{decisionNote}</span
-              >
-            </p>
+            <div class="cinder-approval-card__decision-note"><dt>Your note</dt><dd dir="auto">{decisionNote}</dd></div>
           {/if}
           {#if result !== undefined}
-            <p class="cinder-approval-card__result">
-              <span class="cinder-approval-card__result-label">Result:</span>
-              {result}
-            </p>
+            <div class="cinder-approval-card__result"><dt>Result</dt><dd>{result}</dd></div>
           {/if}
           {#if command !== undefined}
-            <div class="cinder-approval-card__command">
+            <div class="cinder-approval-card__command"><dt>Command</dt><dd>
               <CodeBlock
                 code={command}
                 language="shell"
@@ -286,9 +281,9 @@
                 copyable={false}
                 wrap
               />
-            </div>
+            </dd></div>
           {/if}
-        </div>
+        </dl>
       </div>
     {/if}
     {#if notice !== undefined}

@@ -698,6 +698,7 @@
       {decidedBy}
       {decidedIn}
       {decidedInHref}
+      decidedTime={outcomeTime}
       {onAskAgain}
       {decisionNote}
       {context}

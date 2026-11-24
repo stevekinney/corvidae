@@ -134,8 +134,8 @@
       part.state === 'approved_with_edits' ||
       part.state === 'denied'
     ) {
-      // The row layout keeps the time in its own line; the decision surface leaves it to this one.
-      if (layout !== 'decision' || part.receipt === undefined) return undefined;
+      // A decision-layout receipt owns its durable decision time. Row layout keeps the host time.
+      if (layout === 'decision' || part.receipt === undefined) return undefined;
       const decided = new Date(part.receipt.decidedAt);
       return Number.isNaN(decided.getTime())
         ? undefined
