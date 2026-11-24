@@ -35,6 +35,9 @@ describe('chat sharing access requests', () => {
         (await workspacePrivacyCall(opened, 'peer', 'bureau.contexts.share.status', { contextId }))
           .body?.result,
       ).toEqual({ status: 'active' });
+      expect(
+        (await workspacePrivacyCall(opened, 'peer', 'bureau.contexts.list', {})).body?.result,
+      ).toMatchObject({ contexts: [expect.objectContaining({ id: contextId })] });
       const repeatedGrant = await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.share', {
         contextId,
         granteeOwnerId,
@@ -52,6 +55,9 @@ describe('chat sharing access requests', () => {
         (await workspacePrivacyCall(opened, 'peer', 'bureau.contexts.share.status', { contextId }))
           .body?.result,
       ).toEqual({ status: 'requestable' });
+      expect(
+        (await workspacePrivacyCall(opened, 'peer', 'bureau.contexts.list', {})).body?.result,
+      ).toMatchObject({ contexts: [] });
       expect(
         (
           await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.share.revoke', {

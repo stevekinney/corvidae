@@ -17,6 +17,7 @@ import {
   type SessionListOptions,
   type SessionSummary,
   sessionArchivedAtOf,
+  sessionReadGrantOf,
   sessionOriginOf,
   sessionOwnerOf,
   summarizeSession,
@@ -39,6 +40,7 @@ import {
   type BureauOwnershipHost,
   ownerOfPrincipal,
 } from '../owner-predicate.ts';
+import type { BureauWorkspaceHost } from '../workspace-principal.ts';
 import {
   DEFAULT_PAGE_LIMIT,
   pageFields,
@@ -52,13 +54,14 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 import { dryRunField, dryRunResult, effect, LIVE_TASK_STATUSES, orDryRun } from './dry-run.ts';
 
 /** What the context operations read from the handler's `host`. */
-export type BureauContextsOperationHost = BureauOwnershipHost & {
-  readonly contexts: Pick<BureauContexts, 'get' | 'delete' | 'list' | 'steering'> &
-    Pick<Bureau, 'lifecycle'> & {
-      readonly internals: Pick<BureauInternals, 'sessionStore'>;
-    };
-  readonly tasks: Pick<TaskRegistry, 'settleCleanup' | 'activityOf' | 'taskIdsOfContext' | 'get'>;
-};
+export type BureauContextsOperationHost = BureauOwnershipHost &
+  BureauWorkspaceHost & {
+    readonly contexts: Pick<BureauContexts, 'get' | 'delete' | 'list' | 'steering'> &
+      Pick<Bureau, 'lifecycle'> & {
+        readonly internals: Pick<BureauInternals, 'sessionStore'>;
+      };
+    readonly tasks: Pick<TaskRegistry, 'settleCleanup' | 'activityOf' | 'taskIdsOfContext' | 'get'>;
+  };
 /**
  * Whether `principal` may act, with `operatorScope`, on the session it has just loaded.
  * The owner is the loaded session's own, not a second lookup of the id: a context id can
@@ -66,16 +69,43 @@ export type BureauContextsOperationHost = BureauOwnershipHost & {
  * session the operation then reads or deletes.
  */
 export function mayAccessLoadedContext(
-  host: BureauOwnershipHost,
+  host: BureauOwnershipHost & BureauWorkspaceHost,
   principal: Principal,
   session: AgentSession,
   operatorScope: 'bureau.contexts:write' | 'bureau.contexts:read',
 ): boolean {
-  return host.ownership.mayAccess({
-    principal,
-    resourceOwner: sessionOwnerOf(session.metadata) ?? undefined,
-    operatorScope,
-  });
+  if (
+    host.ownership.mayAccess({
+      principal,
+      resourceOwner: sessionOwnerOf(session.metadata) ?? undefined,
+      operatorScope,
+    })
+  )
+    return true;
+  if (operatorScope !== 'bureau.contexts:read') return false;
+  const workspace = 'workspace' in principal ? principal.workspace : undefined;
+  const grant =
+    workspace === undefined ? undefined : sessionReadGrantOf(session.metadata, workspace.owner);
+  return (
+    grant !== undefined &&
+    grant.revokedAt === undefined &&
+    grant.workspaceId === workspace!.workspaceId &&
+    grant.actorId === workspace!.actorId &&
+    grant.sessionIncarnation === session.incarnation
+  );
+}
+
+/** A summary admits an active recipient only when its bound workspace identity still matches. */
+function isActiveSharedSummary(principal: Principal, summary: SessionSummary): boolean {
+  const workspace = 'workspace' in principal ? principal.workspace : undefined;
+  const grant =
+    workspace === undefined ? undefined : sessionReadGrantOf(summary.metadata, workspace.owner);
+  return (
+    grant !== undefined &&
+    grant.revokedAt === undefined &&
+    grant.workspaceId === workspace!.workspaceId &&
+    grant.actorId === workspace!.actorId
+  );
 }
 
 const contextsDeleteInput = z.object({
@@ -381,8 +411,10 @@ export const contextsListOperation = defineOperation<
     if (!everyOwner && owner === undefined) return { contexts: [], nextOffset: null };
     const limit = input.limit ?? DEFAULT_PAGE_LIMIT;
     const offset = input.offset ?? 0;
+    const sharedListing =
+      !everyOwner && 'workspace' in principal && principal.workspace !== undefined;
     const filters = {
-      ...(owner === undefined ? {} : { owner }),
+      ...(owner === undefined || sharedListing ? {} : { owner }),
       ...(input.agentName === undefined ? {} : { agentName: input.agentName }),
       ...(input.origin === undefined ? {} : { origin: input.origin }),
       ...(input.titleContains === undefined ? {} : { titleContains: input.titleContains }),
@@ -391,7 +423,34 @@ export const contextsListOperation = defineOperation<
       ...(input.sortOrder === undefined ? {} : { sortOrder: input.sortOrder }),
     };
     if (input.activity !== undefined) {
+      if (sharedListing) {
+        const candidates = await host.contexts.list({ ...filters, limit: Number.MAX_SAFE_INTEGER });
+        const admitted = candidates.filter(
+          (summary) => summary.owner === owner || isActiveSharedSummary(principal, summary),
+        );
+        const activity = await host.tasks.activityOf(admitted.map((summary) => summary.id));
+        const matching = admitted.filter(
+          (summary) => (activity.get(summary.id) ?? 'idle') === input.activity,
+        );
+        const page = matching.slice(offset, offset + limit);
+        return {
+          contexts: page.map((summary) => projectContext(summary, activity.get(summary.id))),
+          nextOffset: matching.length > offset + limit ? offset + limit : null,
+        };
+      }
       return listByActivity(host, filters, input.activity, offset, limit);
+    }
+    if (sharedListing) {
+      const candidates = await host.contexts.list({ ...filters, limit: Number.MAX_SAFE_INTEGER });
+      const admitted = candidates.filter(
+        (summary) => summary.owner === owner || isActiveSharedSummary(principal, summary),
+      );
+      const page = admitted.slice(offset, offset + limit);
+      const activity = await host.tasks.activityOf(page.map((summary) => summary.id));
+      return {
+        contexts: page.map((summary) => projectContext(summary, activity.get(summary.id))),
+        nextOffset: admitted.length > offset + limit ? offset + limit : null,
+      };
     }
     // One row past the page says whether another page follows.
     const rows = await host.contexts.list({ ...filters, limit: limit + 1, offset });
