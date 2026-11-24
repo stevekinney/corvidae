@@ -147,7 +147,8 @@ describe('a resume that reads a session another owner created under the threadâ€
         ),
       );
       expect(charged).toEqual([]);
-      expect((await harness.bureau.reviews.get(reviewId))?.status).toBe('pending');
+      const pending = await harness.bureau.reviews.get(reviewId);
+      expect(pending?.status).toBe('pending');
     } finally {
       await harness.dispose();
     }

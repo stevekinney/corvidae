@@ -1338,9 +1338,13 @@ describe('the reviews operations against a real Bureau', () => {
             },
           }).success,
         ).toBe(false);
-        expect(
-          (await call(handler, 'bureau.reviews.get', { id: review?.id }, 'operator-key')).result,
-        ).toMatchObject({ id: review?.id, round: 0 });
+        const operatorDetail = await call(
+          handler,
+          'bureau.reviews.get',
+          { id: review?.id },
+          'operator-key',
+        );
+        expect(operatorDetail.result).toMatchObject({ id: review?.id, round: 0 });
         const reasonOf = (reply: Awaited<ReturnType<typeof call>>) =>
           (reply.error?.data as { reason?: string } | undefined)?.reason;
 
@@ -1374,9 +1378,8 @@ describe('the reviews operations against a real Bureau', () => {
         });
         expect(missingRound.error).toBeDefined();
         expect(charges).toEqual([]);
-        expect(
-          (await call(handler, 'bureau.reviews.get', { id: review?.id })).result,
-        ).toMatchObject({ status: 'pending', round: 0 });
+        const initiallyPending = await call(handler, 'bureau.reviews.get', { id: review?.id });
+        expect(initiallyPending.result).toMatchObject({ status: 'pending', round: 0 });
         const forged = await call(
           handler,
           'bureau.reviews.resolve',
@@ -1384,13 +1387,15 @@ describe('the reviews operations against a real Bureau', () => {
           'agent-key',
         );
         expect(forged.error).toBeDefined();
-        expect(
-          (await call(handler, 'bureau.reviews.get', { id: review?.id }, 'agent-key')).error?.data
-            ?.httpStatus,
-        ).toBe(404);
-        expect(
-          (await call(handler, 'bureau.reviews.list', {}, 'agent-key')).result?.['reviews'],
-        ).toEqual([]);
+        const agentDetail = await call(
+          handler,
+          'bureau.reviews.get',
+          { id: review?.id },
+          'agent-key',
+        );
+        expect(agentDetail.error?.data?.httpStatus).toBe(404);
+        const agentList = await call(handler, 'bureau.reviews.list', {}, 'agent-key');
+        expect(agentList.result?.['reviews']).toEqual([]);
         const remembered = await call(handler, 'bureau.reviews.resolve', {
           id: review?.id,
           decision: 'approve',
@@ -1399,14 +1404,16 @@ describe('the reviews operations against a real Bureau', () => {
         });
         expect(remembered.error).toBeDefined();
         expect(charges).toEqual([]);
-        await expect(
-          bureau.reviews.resolve({
-            id: review!.id,
-            decision: 'approve',
-            principal: 'api-key:tester',
-            round: 0,
-          }),
-        ).rejects.toThrow();
+        expect(
+          await rejectionOf(
+            bureau.reviews.resolve({
+              id: review!.id,
+              decision: 'approve',
+              principal: 'api-key:tester',
+              round: 0,
+            }),
+          ),
+        ).toBeInstanceOf(Error);
         expect(charges).toEqual([]);
 
         // The first resolver supersedes round 0, so the review is now at round 1.
@@ -1423,23 +1430,21 @@ describe('the reviews operations against a real Bureau', () => {
             }),
           );
           try {
-            first = (
-              await next.callTool({
-                name: 'bureau.reviews.resolve',
-                arguments: { id: review!.id, decision: 'approve', round: 0 },
-              })
-            ).structuredContent;
+            const reply = await next.callTool({
+              name: 'bureau.reviews.resolve',
+              arguments: { id: review!.id, decision: 'approve', round: 0 },
+            });
+            first = reply.structuredContent;
           } finally {
             await next.close();
           }
         } else {
-          first = (
-            await call(handler, 'bureau.reviews.resolve', {
-              id: review?.id,
-              decision: 'approve',
-              round: 0,
-            })
-          ).result;
+          const reply = await call(handler, 'bureau.reviews.resolve', {
+            id: review?.id,
+            decision: 'approve',
+            round: 0,
+          });
+          first = reply.result;
         }
         expect(first).toMatchObject({ receipt: 'superseded' });
         const reread = await call(handler, 'bureau.reviews.get', { id: review?.id });
@@ -1496,10 +1501,9 @@ describe('the reviews operations against a real Bureau', () => {
           fetch: (url, init) => handler(new Request(url, init)),
         });
         expect(refused.ok).toBe(false);
-        expect(
-          (await call(handler, 'bureau.reviews.get', { id: review?.id })).result,
-        ).toMatchObject({ status: 'pending', round: 1 });
-        await expect(
+        const beforeLostReply = await call(handler, 'bureau.reviews.get', { id: review?.id });
+        expect(beforeLostReply.result).toMatchObject({ status: 'pending', round: 1 });
+        const lostReply = await rejectionOf(
           callJsonRpc({
             ...request,
             params: {
@@ -1513,8 +1517,10 @@ describe('the reviews operations against a real Bureau', () => {
               throw new Error('response lost after dispatch');
             },
           }),
-        ).rejects.toThrow('response lost after dispatch');
-        const decided = (await call(handler, 'bureau.reviews.get', { id: review?.id })).result;
+        );
+        expect(String(lostReply)).toContain('response lost after dispatch');
+        const decidedReply = await call(handler, 'bureau.reviews.get', { id: review?.id });
+        const decided = decidedReply.result;
         expect(decided).toMatchObject({
           status: 'denied',
           round: 1,

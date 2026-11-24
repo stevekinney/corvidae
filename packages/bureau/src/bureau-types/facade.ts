@@ -233,7 +233,7 @@ export interface BureauDiagnostics {
  * is part of its surface, and the project may reshape them without a deprecation period.
  */
 export interface BureauInternals {
-  readonly reviewPolicy?: ReviewPolicy;
+  readonly reviewPolicy?: ReviewPolicy | undefined;
   /**
    * Whether {@link BureauOptions.id} was supplied. `false` means {@link Bureau.id}
    * is a generated identifier that changes on every restart, which

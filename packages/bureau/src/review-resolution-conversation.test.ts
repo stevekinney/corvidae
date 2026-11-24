@@ -503,12 +503,11 @@ describe('when the outcome cannot be written into the session', () => {
           const client = new Client({ name: 'review-warning-test', version: '1.0.0' });
           await client.connect(transport);
           try {
-            result = (
-              await client.callTool({
-                name: 'bureau.reviews.resolve',
-                arguments: { id: review.id, decision: 'approve', round: 0 },
-              })
-            ).structuredContent;
+            const reply = await client.callTool({
+              name: 'bureau.reviews.resolve',
+              arguments: { id: review.id, decision: 'approve', round: 0 },
+            });
+            result = reply.structuredContent;
           } finally {
             await client.close();
           }
@@ -520,7 +519,8 @@ describe('when the outcome cannot be written into the session', () => {
           warning: 'APPROVAL_OUTCOME_NOT_WRITTEN',
         });
         expect(charges).toEqual([500]);
-        expect((await bureau.reviews.get(review.id))?.status).toBe('approved');
+        const resolved = await bureau.reviews.get(review.id);
+        expect(resolved?.status).toBe('approved');
       } finally {
         failing.mockRestore();
         await bureau.dispose();

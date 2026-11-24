@@ -39,6 +39,7 @@ import type {
   PendingReview,
   ResolveReviewInput,
   ResolveReviewResult,
+  ReviewPolicy,
   ReviewStatus,
   SessionPendingReview,
 } from '../bureau-types/reviews';
@@ -1036,6 +1037,34 @@ export function createReviewResolution<D extends AgentDefinitions>(
     return release === undefined ? {} : { terminalRelease: release };
   }
 
+  function policyForDecision(
+    review: PendingReview,
+    input: ResolveReviewInput,
+    hideInvalid = false,
+  ) {
+    const policy = core.options.reviewPolicy;
+    if (!policy?.matches(review)) return undefined;
+    if (input.round === undefined || input.remember === true || input.reviewer === undefined) {
+      if (hideInvalid)
+        throw new BureauError(`No pending review with id "${input.id}"`, 'NOT_FOUND');
+      throw new BureauError(
+        'Review decision requires reviewer authority and the displayed round',
+        'BAD_REQUEST',
+      );
+    }
+    return policy;
+  }
+
+  async function assertPolicyAllows(
+    policy: ReviewPolicy | undefined,
+    review: PendingReview,
+    input: ResolveReviewInput,
+  ) {
+    if (policy !== undefined && !(await policy.mayDecide(review, input.reviewer!))) {
+      throw new BureauError(`No pending review with id "${review.id}"`, 'NOT_FOUND');
+    }
+  }
+
   async function resolveReview(
     input: ResolveReviewInput,
     // COR-1579: the human wait of a session run another process holds, derived from durable
@@ -1054,17 +1083,11 @@ export function createReviewResolution<D extends AgentDefinitions>(
     if (!review) {
       const cleanup = reviewResolutionCleanupPending.get(input.id);
       if (cleanup) {
-        const policy = core.options.reviewPolicy;
-        if (policy?.matches(cleanup.review)) {
-          if (
-            input.round === undefined ||
-            input.remember === true ||
-            input.reviewer === undefined ||
-            !(await policy.mayDecide(cleanup.review, input.reviewer))
-          ) {
-            throw new BureauError(`No pending review with id "${input.id}"`, 'NOT_FOUND');
-          }
-        }
+        await assertPolicyAllows(
+          policyForDecision(cleanup.review, input, true),
+          cleanup.review,
+          input,
+        );
         assertExpectedReviewRound(input, cleanup.review);
         if (cleanup.decision !== input.decision) {
           throw new ReviewAlreadyResolvedError(`Review with id "${input.id}" is already resolved`);
@@ -1185,17 +1208,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
       throw new BureauError(`No pending review with id "${input.id}"`, 'NOT_FOUND');
     }
 
-    const policy = core.options.reviewPolicy;
-    const protectedReview = policy?.matches(review) === true;
-    if (
-      protectedReview &&
-      (input.round === undefined || input.remember === true || input.reviewer === undefined)
-    ) {
-      throw new BureauError(
-        'Review decision requires reviewer authority and the displayed round',
-        'BAD_REQUEST',
-      );
-    }
+    const policy = policyForDecision(review, input);
     // COR-1920: nothing unsealed is digested or claimed.
     peers.refuseUnsealedSecrets(review, humanWaitDecisionPayload(input), input.decision);
     if (resolvingReviewIds.has(review.id)) {
@@ -1291,9 +1304,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
     }
     if (claim.outcome === 'same' && review.kind === 'tool-approval') {
       try {
-        if (protectedReview && !(await policy!.mayDecide(review, input.reviewer!))) {
-          throw new BureauError(`No pending review with id "${review.id}"`, 'NOT_FOUND');
-        }
+        await assertPolicyAllows(policy, review, input);
         return await answerSameApprovalDecision(review, input);
       } finally {
         resolvingReviewIds.delete(review.id);
@@ -1315,9 +1326,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
     let keepPending = false;
     try {
       await refuseStaleRoundOfHeldClaim(review, heldApprovalClaim !== undefined, input.round);
-      if (protectedReview && !(await policy!.mayDecide(review, input.reviewer!))) {
-        throw new BureauError(`No pending review with id "${review.id}"`, 'NOT_FOUND');
-      }
+      await assertPolicyAllows(policy, review, input);
       if (review.kind === 'tool-approval') {
         // COR-1596: a fire canceled elsewhere (a peer process, a route that never reached this
         // one) still has its approval here until this is read; the engine's status says it was
