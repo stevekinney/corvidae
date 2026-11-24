@@ -39,7 +39,7 @@ export async function dispatchOperation<Input, SchemaOutput, Host>(
   const prepared = await prepareTypedInput(operation, rawInput, context);
   if (!prepared.ok) return prepared;
   try {
-    context.signal?.throwIfAborted();
+    if (context.transport === 'mcp') context.signal?.throwIfAborted();
     return await invokeWithInterceptors(operation, prepared.value, context);
   } catch (error) {
     return { ok: false, fault: classifyEngineError(error, operation, context.faultPolicy) };
@@ -56,7 +56,7 @@ async function invokeWithInterceptors<Input, SchemaOutput, Host>(
   const invoke = async (): Promise<DispatchResult<unknown>> => {
     if (settled)
       return { ok: false, fault: { code: 'EngineFailure', message: 'internal error', data: {} } };
-    context.signal?.throwIfAborted();
+    if (context.transport === 'mcp') context.signal?.throwIfAborted();
     const value = await operation.invoke(invocation);
     tracePipeline(context.pipelineTrace, 'invoked');
     if (operation.kind === 'subscription' && isSubscriptionInvocation(value)) {

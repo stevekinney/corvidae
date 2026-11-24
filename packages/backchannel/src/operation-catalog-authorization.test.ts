@@ -28,12 +28,13 @@ import { anonymousPrincipal, principalFromApiKey } from './principal.ts';
 const fakeEngine: Parameters<typeof executeOperation>[2]['host'] = {};
 
 describe('executeOperation — step 6: authorize hook', () => {
-  it('does not invoke after cancellation during asynchronous authorization', async () => {
+  it('does not invoke after MCP cancellation during asynchronous authorization', async () => {
     const controller = new AbortController();
     let invoked = false;
     const registry = createOperationRegistry([
       makeOp({
         name: 'weft.test.cancelled',
+        mcpExposable: true,
         inputSchema: z.object({}),
         outputSchema: z.object({}),
         access: { kind: 'public' },
@@ -54,7 +55,7 @@ describe('executeOperation — step 6: authorize hook', () => {
       {
         principal: anonymousPrincipal(),
         host: fakeEngine,
-        transport: 'http-rest',
+        transport: 'mcp',
         registry,
         signal: controller.signal,
       },
