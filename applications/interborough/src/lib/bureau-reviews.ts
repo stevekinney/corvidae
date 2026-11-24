@@ -131,7 +131,7 @@ export type ReviewDecision = 'approve' | 'deny' | 'reject';
 export type ReviewResolution = BureauOutput<'bureau.reviews.resolve'>;
 
 /**
- * The token a `Conflict`'s reason begins with when the review had moved to another round than the
+ * The token in a `Conflict`'s reason when the review had moved to another round than the
  * one sent: a re-gated approval keeps its id, so the decision was made on a request that is no longer
  * the one pending, and nothing was decided (`bureau.reviews.resolve`'s description).
  */
@@ -145,7 +145,7 @@ export function isReviewRoundChanged(error: unknown): boolean {
 }
 
 /**
- * The token a `Conflict`'s reason begins with when the review was already resolved with another
+ * The token in a `Conflict`'s reason when the review was already resolved with another
  * decision, by another resolver or because the agent moved on: nothing was decided, and it is no
  * longer waiting (COR-2426, `bureau.reviews.resolve`'s description).
  */

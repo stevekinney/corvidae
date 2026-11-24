@@ -238,9 +238,11 @@ test.describe('the pending-review MCP App', () => {
     await expect(app.getByRole('heading', { level: 2 })).toBeVisible();
     // Another resolver re-gates the approval between the app's read and its decision.
     await page.evaluate(() => {
-      window.referenceHost.handlers['bureau.reviews.resolve'] = () => {
-        throw new Error('Conflict: REVIEW_ROUND_CHANGED: now at round 3');
-      };
+      window.referenceHost.rawHandlers['bureau.reviews.resolve'] = () => ({
+        isError: true,
+        content: [{ type: 'text', text: 'Review changed' }],
+        structuredContent: { code: 'Conflict', data: { reason: 'REVIEW_ROUND_CHANGED' } },
+      });
     });
     await app.getByRole('button', { name: 'Approve' }).click();
     await expect(app.getByRole('status')).toContainText('changed while you read it');
@@ -255,9 +257,16 @@ test.describe('the pending-review MCP App', () => {
     const { app } = await open(page, [review('a')]);
     await expect(app.getByRole('heading', { level: 2 })).toBeVisible();
     await page.evaluate(() => {
-      window.referenceHost.handlers['bureau.reviews.resolve'] = () => {
-        throw new Error('Conflict: APPROVAL_OUTCOME_NOT_WRITTEN: session write failed');
-      };
+      window.referenceHost.rawHandlers['bureau.reviews.resolve'] = () => ({
+        content: [{ type: 'text', text: 'Decision applied' }],
+        structuredContent: {
+          id: 'a',
+          kind: 'tool-approval',
+          decision: 'approve',
+          receipt: 'applied',
+          warning: 'APPROVAL_OUTCOME_NOT_WRITTEN',
+        },
+      });
     });
     await app.getByRole('button', { name: 'Approve' }).click();
     await expect(app.getByRole('status')).toContainText('Approved. Warning');

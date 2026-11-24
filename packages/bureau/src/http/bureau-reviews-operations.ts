@@ -592,10 +592,8 @@ export function reviewFault(error: unknown, identifier: string, resource = 'revi
         "Correct the answer so it fits the question's schema, as each issue names, and send it again.",
     } satisfies OperationFault;
   }
-  // The decision took effect and only the write into the conversation failed, which a client must
-  // not read as another resolver having won. Weft's wire for a `Conflict` carries `data.reason`
-  // and none of the other fields, so the token a client branches on is the start of the reason:
-  // `APPROVAL_OUTCOME_NOT_WRITTEN: `.
+  // A caller without the authentic resolution still gets the exact warning classifier and must
+  // read again; the Reviews operation returns an applied receipt when the resolution is available.
   if (error instanceof ApprovalOutcomeNotWrittenError) {
     return {
       code: 'Conflict',
