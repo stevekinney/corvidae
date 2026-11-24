@@ -1,4 +1,8 @@
-import { storageConditionalBatch, type Storage } from '@lostgradient/storage';
+import {
+  storageConditionalBatch,
+  type ConditionalBatchCondition,
+  type Storage,
+} from '@lostgradient/storage';
 import { createHash, timingSafeEqual } from 'node:crypto';
 
 type Consent = {
@@ -96,6 +100,10 @@ export class OAuthStore {
     }
   }
 
+  usesStorage(storage: Storage): boolean {
+    return this.storage === storage;
+  }
+
   async registerClient(client: OAuthClient): Promise<boolean> {
     const clientKey = key('client', client.clientId);
     return storageConditionalBatch(
@@ -136,16 +144,26 @@ export class OAuthStore {
     return this.matchesConsent(consent, binding) ? consent : null;
   }
 
-  async denyConsent(id: string, binding: ConsentBinding): Promise<boolean> {
+  async denyConsent(
+    id: string,
+    binding: ConsentBinding,
+    sessionCondition?: ConditionalBatchCondition & { deadline?: number | undefined },
+  ): Promise<boolean> {
     binding = { ...binding };
+    sessionCondition = sessionCondition && {
+      key: sessionCondition.key,
+      expectedValue: sessionCondition.expectedValue?.slice() ?? null,
+      deadline: sessionCondition.deadline,
+    };
     const consentKey = key('consent', id);
     const value = await this.storage.get(consentKey);
     if (!value || !this.matchesConsent(JSON.parse(decoder.decode(value)) as Consent, binding))
       return false;
     return storageConditionalBatch(
       this.storage,
-      [{ key: consentKey, expectedValue: value }],
+      [{ key: consentKey, expectedValue: value }, ...(sessionCondition ? [sessionCondition] : [])],
       [{ type: 'delete', key: consentKey }],
+      sessionCondition?.deadline,
     );
   }
 
@@ -160,9 +178,19 @@ export class OAuthStore {
     );
   }
 
-  async approveConsent(id: string, binding: ConsentBinding, approval: Approval): Promise<boolean> {
+  async approveConsent(
+    id: string,
+    binding: ConsentBinding,
+    approval: Approval,
+    sessionCondition?: ConditionalBatchCondition & { deadline?: number | undefined },
+  ): Promise<boolean> {
     binding = { ...binding };
     approval = { ...approval, scopes: [...approval.scopes] };
+    sessionCondition = sessionCondition && {
+      key: sessionCondition.key,
+      expectedValue: sessionCondition.expectedValue?.slice() ?? null,
+      deadline: sessionCondition.deadline,
+    };
     const consentKey = key('consent', id);
     const value = await this.storage.get(consentKey);
     if (!value) return false;
@@ -198,12 +226,14 @@ export class OAuthStore {
         { key: consentKey, expectedValue: value },
         { key: grantKey, expectedValue: null },
         { key: codeKey, expectedValue: null },
+        ...(sessionCondition ? [sessionCondition] : []),
       ],
       [
         { type: 'delete', key: consentKey },
         { type: 'put', key: grantKey, value: encode(grant) },
         { type: 'put', key: codeKey, value: encode(code) },
       ],
+      sessionCondition?.deadline,
     );
   }
 
