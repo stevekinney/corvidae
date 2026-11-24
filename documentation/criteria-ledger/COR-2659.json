@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2659",
+  "branch": "steve/cor-2659-disposable-workspace-authority",
+  "checkedAt": "52560d4b82b926f3fdbed6a0d617ee7f48b13586",
+  "briefVersion": "4fff5d483b58",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Authenticated fixture test: distinct issued principals, local versus simulated profile, create/write/reset and protected owner readback; direct test exit 0."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Fixture test: default and explicit targets, owner-checked reset, forbidden and revoked credentials, protected persisted state/revision readback; direct test exit 0."
+    },
+    {
+      "id": "AC3",
+      "status": "not-met",
+      "evidence": "Local credential response/JUnit checks and synthetic Vision positive control passed; real hosted browser trace and OCR proof pending."
+    }
+  ]
+}
