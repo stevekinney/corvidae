@@ -499,10 +499,8 @@ export const contextsListOperation = defineOperation<
           ({ summary }) => (activity.get(summary.id) ?? 'idle') === input.activity,
         );
         const page = matching.slice(offset, offset + limit);
-        const projected = await Promise.all(
-          page.map((admittedSummary) =>
-            projectListedContext(owner, admittedSummary, activity.get(admittedSummary.summary.id)),
-          ),
+        const projected = page.map((admittedSummary) =>
+          projectListedContext(owner, admittedSummary, activity.get(admittedSummary.summary.id)),
         );
         return {
           contexts: projected.filter(
@@ -518,10 +516,8 @@ export const contextsListOperation = defineOperation<
       const admitted = await activeSharedSummaries(host, principal, owner, candidates);
       const page = admitted.slice(offset, offset + limit);
       const activity = await host.tasks.activityOf(page.map(({ summary }) => summary.id));
-      const projected = await Promise.all(
-        page.map((admittedSummary) =>
-          projectListedContext(owner, admittedSummary, activity.get(admittedSummary.summary.id)),
-        ),
+      const projected = page.map((admittedSummary) =>
+        projectListedContext(owner, admittedSummary, activity.get(admittedSummary.summary.id)),
       );
       return {
         contexts: projected.filter(
