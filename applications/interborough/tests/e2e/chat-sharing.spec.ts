@@ -80,6 +80,12 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
       if (contextId === undefined || contextId === 'new')
         throw new Error('Expected an owned chat URL.');
 
+      await owner.getByRole('button', { name: 'More actions' }).click();
+      await owner.getByRole('menuitem', { name: 'Rename' }).click();
+      await owner.getByLabel('Chat title').fill('Shared chat evidence');
+      await owner.getByRole('button', { name: 'Save' }).click();
+      await expect(owner.getByText('Shared chat evidence', { exact: true })).toBeVisible();
+
       await share(owner, 'grant');
       await captureForDesignReviewWithPhone(owner, {
         route: '/chats/:chat',
@@ -118,6 +124,7 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
       await expect(reader.getByRole('button', { name: 'Request access' })).toHaveCount(0);
       await reader.goto(`/chats/${contextId}`);
       await expect(reader.getByRole('heading', { name: 'Chat access' })).toBeVisible();
+      await expect(reader.getByText(contextId, { exact: true })).toHaveCount(0);
       await expect(reader.getByRole('button', { name: 'Request access' })).toBeVisible();
       await captureForDesignReviewWithPhone(reader, {
         route: '/chats/:chat',
@@ -134,8 +141,9 @@ test.describe('workspace chat sharing /chats/:chat /reviews', () => {
         'Reader Member',
       );
       await expect(owner.getByRole('region', { name: 'Chat access requests' })).toContainText(
-        'shared chat evidence',
+        'Shared chat evidence',
       );
+      await expect(owner.getByText('Nothing waiting on you', { exact: true })).toHaveCount(0);
       await captureForDesignReviewWithPhone(owner, {
         route: '/reviews',
         state: 'chat access request pending',
