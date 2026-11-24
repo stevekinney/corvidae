@@ -736,6 +736,8 @@ for (const width of [1920, 1280, 768, 375] as const) {
       // 2: the schema is open, with nothing to expand.
       const source = inputs.locator('.cinder-schema-view__source');
       await expect(source).toContainText('"assetId"');
+      await detail.getByTestId('tool-risk').hover();
+      await expect(page.getByRole('tooltip')).toBeVisible();
       // Captured once settled, before the geometry is judged, so a miss still leaves the screens.
       await captureForDesignReview(page, {
         route: '/capabilities',
