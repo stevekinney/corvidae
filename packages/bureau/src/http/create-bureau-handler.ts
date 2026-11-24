@@ -173,6 +173,11 @@ import {
   contextsListOperation,
 } from './management/contexts-operations.ts';
 import {
+  type BureauContextsSharingOperationHost,
+  contextsRevokeShareOperation,
+  contextsShareOperation,
+} from './management/contexts-sharing-operations.ts';
+import {
   type BureauAgentDefinitionsOperationHost,
   bureauAgentDefinitionsOperations,
 } from './management/agent-definitions-operations.ts';
@@ -456,6 +461,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauTaskEventsOperationHost &
   BureauTasksRespondOperationHost &
   BureauContextsOperationHost &
+  BureauContextsSharingOperationHost &
   BureauContextsInputOperationHost &
   BureauContextsRetractOperationHost &
   BureauContextsForgetGrantsOperationHost &
@@ -900,6 +906,8 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsArchiveOperation,
   contextsUnarchiveOperation,
   contextsWindowOperation,
+  contextsShareOperation,
+  contextsRevokeShareOperation,
   ...bureauAgentDefinitionsOperations,
   ...bureauAgentOverridesOperations,
   ...bureauAgentDisableOperations,

@@ -67,7 +67,12 @@ import {
  */
 
 import { type RuntimeServices, createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { type AgentSession, sessionArchivedAtOf } from '@lostgradient/operative';
+import {
+  type AgentSession,
+  sessionHasReadGrant,
+  sessionReadGrantOf,
+  sessionArchivedAtOf,
+} from '@lostgradient/operative';
 import { type RunAgentInput } from '@ag-ui/core';
 import { RunAgentInputSchema } from '@ag-ui/core/schemas';
 import type { OperationHandlerMount } from '@lostgradient/backchannel';
@@ -86,6 +91,7 @@ import type { TaskState } from '../task-registry.ts';
 import {
   managedAssetIdsOf,
   rowsAddedBy,
+  sharedSnapshotMessages,
   snapshotMessages,
   withDetectedMediaTypes,
 } from './ag-ui-messages.ts';
@@ -390,6 +396,27 @@ export function createAgUiMount(
       { threadId, messages: snapshotMessages(authorized.session.conversationHistory) },
       200,
     );
+  }
+
+  /** A distinct, non-streaming text projection for an active explicit reader grant. */
+  async function readSharedThreadMessages(threadId: string, principal: Principal): Promise<Response> {
+    const loaded = ownedSession(await bureau.contexts.get(threadId));
+    const reader = ownerOfPrincipal(principal);
+    const grant =
+      loaded === undefined || reader === undefined
+        ? undefined
+        : sessionReadGrantOf(loaded.session.metadata, reader);
+    const authority = authorization.workspaceAuthority?.(principal);
+    const workspace = 'workspace' in principal ? principal.workspace : undefined;
+    const active =
+      grant !== undefined &&
+      sessionHasReadGrant(loaded!.session.metadata, reader!) &&
+      workspace?.workspaceId === grant.workspaceId &&
+      workspace.actorId === grant.actorId &&
+      authority !== undefined &&
+      (await authority(loaded!.owner));
+    if (!active) return notFound('thread', threadId);
+    return json({ threadId, messages: sharedSnapshotMessages(loaded!.session.conversationHistory) }, 200);
   }
 
   async function attachByThread(
@@ -837,6 +864,10 @@ export function createAgUiMount(
     if (segments.length === 3 && first === 'threads' && third === 'messages') {
       if (method !== 'GET') return json({ code: 'MethodNotAllowed', message: 'Use GET' }, 405);
       return readThreadMessages(second!, principal);
+    }
+    if (segments.length === 3 && first === 'threads' && third === 'shared-messages') {
+      if (method !== 'GET') return json({ code: 'MethodNotAllowed', message: 'Use GET' }, 405);
+      return readSharedThreadMessages(second!, principal);
     }
     if (segments.length === 3 && first === 'threads' && third === 'run') {
       if (method !== 'GET') return json({ code: 'MethodNotAllowed', message: 'Use GET' }, 405);

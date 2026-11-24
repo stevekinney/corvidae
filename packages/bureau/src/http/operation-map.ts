@@ -159,6 +159,14 @@ export const OPERATION_MAP = {
   'bureau.contexts.archive': { workspaceClass: 'private-owned', member: 'contexts.archive' },
   'bureau.contexts.unarchive': { workspaceClass: 'private-owned', member: 'contexts.unarchive' },
   'bureau.contexts.window': { workspaceClass: 'private-owned', member: 'contexts.window' },
+  'bureau.contexts.share': {
+    workspaceClass: 'explicit-share',
+    exempt: 'an owner-authorized transition of durable session reader metadata',
+  },
+  'bureau.contexts.share.revoke': {
+    workspaceClass: 'explicit-share',
+    exempt: 'an owner-authorized transition of durable session reader metadata',
+  },
 
   'bureau.reviews.list': { workspaceClass: 'private-owned', member: 'reviews.list' },
   'bureau.reviews.get': { workspaceClass: 'private-owned', member: 'reviews.get' },

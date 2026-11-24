@@ -43,14 +43,16 @@ export type { SessionOrigin } from './session-origin';
 export { LOCAL_SESSION_OWNER, SESSION_OWNER_METADATA_KEY, sessionOwnerOf } from './session-owner';
 export {
   SESSION_READ_GRANTS_METADATA_KEY,
+  SESSION_READ_GRANT_HISTORY_METADATA_KEY,
   sessionHasReadGrant,
   sessionReadGrantOf,
   sessionReadGrantsOf,
+  sessionReadGrantHistoryOf,
   sessionWasReadGrantedTo,
   withSessionReadGrant,
   withSessionReadRevocation,
 } from './session-sharing';
-export type { SessionReadGrant } from './session-sharing';
+export type { SessionReadGrant, SessionReadGrantEvent } from './session-sharing';
 export { resumeSession } from './session-resume';
 export type { ResumeSessionOptions, ResumeSessionResult } from './session-resume';
 export {

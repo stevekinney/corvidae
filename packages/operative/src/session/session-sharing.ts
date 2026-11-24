@@ -2,14 +2,27 @@ import type { JSONValue } from '../types';
 
 /** Durable metadata for explicit read-only access to a session. */
 export const SESSION_READ_GRANTS_METADATA_KEY = 'sessionReadGrants';
+/** Append-only grant and revocation facts for audit and former-reader admission. */
+export const SESSION_READ_GRANT_HISTORY_METADATA_KEY = 'sessionReadGrantHistory';
 
 /** One current or former reader, recorded in session metadata with its grant state. */
 export type SessionReadGrant = Readonly<{
   owner: string;
+  workspaceId: string;
+  actorId: string;
   grantedBy: string;
   grantedAt: string;
   revokedAt?: string | undefined;
   revokedBy?: string | undefined;
+}>;
+
+export type SessionReadGrantEvent = Readonly<{
+  owner: string;
+  workspaceId: string;
+  actorId: string;
+  kind: 'granted' | 'revoked';
+  actor: string;
+  at: string;
 }>;
 
 function isRecord(value: JSONValue | undefined): value is Record<string, JSONValue> {
@@ -18,8 +31,10 @@ function isRecord(value: JSONValue | undefined): value is Record<string, JSONVal
 
 function grantOf(value: JSONValue): SessionReadGrant | undefined {
   if (!isRecord(value)) return undefined;
-  const { owner, grantedBy, grantedAt, revokedAt, revokedBy } = value;
+  const { owner, workspaceId, actorId, grantedBy, grantedAt, revokedAt, revokedBy } = value;
   if (typeof owner !== 'string' || owner === '') return undefined;
+  if (typeof workspaceId !== 'string' || workspaceId === '') return undefined;
+  if (typeof actorId !== 'string' || actorId === '') return undefined;
   if (typeof grantedBy !== 'string' || grantedBy === '') return undefined;
   if (typeof grantedAt !== 'string' || grantedAt === '') return undefined;
   if (revokedAt !== undefined && (typeof revokedAt !== 'string' || revokedAt === '')) return undefined;
@@ -27,10 +42,55 @@ function grantOf(value: JSONValue): SessionReadGrant | undefined {
   if ((revokedAt === undefined) !== (revokedBy === undefined)) return undefined;
   return {
     owner,
+    workspaceId,
+    actorId,
     grantedBy,
     grantedAt,
     ...(revokedAt === undefined ? {} : { revokedAt }),
     ...(revokedBy === undefined ? {} : { revokedBy }),
+  };
+}
+
+function eventOf(value: JSONValue): SessionReadGrantEvent | undefined {
+  if (!isRecord(value)) return undefined;
+  const { owner, workspaceId, actorId, kind, actor, at } = value;
+  if (
+    typeof owner !== 'string' ||
+    owner === '' ||
+    typeof workspaceId !== 'string' ||
+    workspaceId === '' ||
+    typeof actorId !== 'string' ||
+    actorId === '' ||
+    (kind !== 'granted' && kind !== 'revoked') ||
+    typeof actor !== 'string' ||
+    actor === '' ||
+    typeof at !== 'string' ||
+    at === ''
+  )
+    return undefined;
+  return { owner, workspaceId, actorId, kind, actor, at };
+}
+
+function jsonGrant(grant: SessionReadGrant): JSONValue {
+  return {
+    owner: grant.owner,
+    workspaceId: grant.workspaceId,
+    actorId: grant.actorId,
+    grantedBy: grant.grantedBy,
+    grantedAt: grant.grantedAt,
+    ...(grant.revokedAt === undefined ? {} : { revokedAt: grant.revokedAt }),
+    ...(grant.revokedBy === undefined ? {} : { revokedBy: grant.revokedBy }),
+  };
+}
+
+function jsonEvent(event: SessionReadGrantEvent): JSONValue {
+  return {
+    owner: event.owner,
+    workspaceId: event.workspaceId,
+    actorId: event.actorId,
+    kind: event.kind,
+    actor: event.actor,
+    at: event.at,
   };
 }
 
@@ -43,7 +103,10 @@ export function sessionReadGrantsOf(
   const byOwner = new Map<string, SessionReadGrant>();
   for (const value of stored) {
     const grant = grantOf(value);
-    if (grant !== undefined) byOwner.set(grant.owner, grant);
+    // A partial or duplicate durable record is ambiguous. Do not let a valid
+    // earlier row turn a malformed replacement into an active authorization.
+    if (grant === undefined || byOwner.has(grant.owner)) return [];
+    byOwner.set(grant.owner, grant);
   }
   return [...byOwner.values()];
 }
@@ -54,6 +117,17 @@ export function sessionReadGrantOf(
   owner: string,
 ): SessionReadGrant | undefined {
   return sessionReadGrantsOf(metadata).find((grant) => grant.owner === owner);
+}
+
+/** Valid durable audit facts, in commit order. */
+export function sessionReadGrantHistoryOf(
+  metadata: Readonly<Record<string, JSONValue>>,
+): readonly SessionReadGrantEvent[] {
+  const stored = metadata[SESSION_READ_GRANT_HISTORY_METADATA_KEY];
+  return Array.isArray(stored) ? stored.flatMap((value) => {
+    const event = eventOf(value);
+    return event === undefined ? [] : [event];
+  }) : [];
 }
 
 /** Whether a session presently admits `owner` as a reader. */
@@ -79,9 +153,14 @@ export function withSessionReadGrant(
   grant: Omit<SessionReadGrant, 'revokedAt' | 'revokedBy'>,
 ): Record<string, JSONValue> {
   const grants = sessionReadGrantsOf(metadata).filter((candidate) => candidate.owner !== grant.owner);
+  const history = sessionReadGrantHistoryOf(metadata);
   return {
     ...metadata,
-    [SESSION_READ_GRANTS_METADATA_KEY]: [...grants, grant],
+    [SESSION_READ_GRANTS_METADATA_KEY]: [...grants, grant].map(jsonGrant),
+    [SESSION_READ_GRANT_HISTORY_METADATA_KEY]: [
+      ...history,
+      { ...grant, kind: 'granted' as const, actor: grant.grantedBy, at: grant.grantedAt },
+    ].map(jsonEvent),
   };
 }
 
@@ -97,5 +176,20 @@ export function withSessionReadRevocation(
   const grants = sessionReadGrantsOf(metadata).map((grant) =>
     grant.owner === owner ? { ...grant, revokedBy, revokedAt } : grant,
   );
-  return { ...metadata, [SESSION_READ_GRANTS_METADATA_KEY]: grants };
+  const history = sessionReadGrantHistoryOf(metadata);
+  return {
+    ...metadata,
+    [SESSION_READ_GRANTS_METADATA_KEY]: grants.map(jsonGrant),
+    [SESSION_READ_GRANT_HISTORY_METADATA_KEY]: [
+      ...history,
+      {
+        owner: current.owner,
+        workspaceId: current.workspaceId,
+        actorId: current.actorId,
+        kind: 'revoked' as const,
+        actor: revokedBy,
+        at: revokedAt,
+      },
+    ].map(jsonEvent),
+  };
 }
