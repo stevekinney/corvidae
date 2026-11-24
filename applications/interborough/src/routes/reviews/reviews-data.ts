@@ -29,7 +29,6 @@ import {
 import { useBureauEventsLive, useFleetEventsLive } from '../../app/live-polling.svelte.ts';
 import { showFault } from '../../app/toast-host.svelte';
 import {
-  isApprovalOutcomeNotWritten,
   isReviewNoLongerWaiting,
   listBureauReviews,
   listPendingReviews,
@@ -222,18 +221,10 @@ export function resolveBureauReviewMutation(): CreateMutationResult<
 
   return createMutation(() => ({
     mutationFn: async (variables: ResolveBureauReviewVariables) => {
-      try {
-        return await resolveBureauReview(variables);
-      } catch (error) {
-        if (!isApprovalOutcomeNotWritten(error)) throw error;
-        return {
-          id: variables.id,
-          kind: 'tool-approval' as const,
-          decision: variables.decision,
-          receipt: 'applied' as const,
-          outcomeNotWritten: true as const,
-        };
-      }
+      const result = await resolveBureauReview(variables);
+      return 'warning' in result && result.warning === 'APPROVAL_OUTCOME_NOT_WRITTEN'
+        ? { ...result, outcomeNotWritten: true as const }
+        : result;
     },
     // The Reviews pane owns the inline outcome and retry for this mutation.
     onError: () => undefined,

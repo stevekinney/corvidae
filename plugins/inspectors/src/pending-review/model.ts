@@ -219,16 +219,14 @@ export function describeStatus(status: string): string {
   }
 }
 
-/** The token `bureau.reviews.resolve` puts in a Conflict whose decision took effect but whose outcome was not written. */
-export const OUTCOME_NOT_WRITTEN = 'APPROVAL_OUTCOME_NOT_WRITTEN';
-
-/** Whether an error result from `resolve` says the decision took effect and only recording it failed. */
+/** Whether a successful receipt says its outcome row could not be written. */
 export function isOutcomeNotWritten(result: unknown): boolean {
-  try {
-    return JSON.stringify(result)?.includes(OUTCOME_NOT_WRITTEN) ?? false;
-  } catch {
-    return false;
-  }
+  return (
+    typeof result === 'object' &&
+    result !== null &&
+    'warning' in result &&
+    result.warning === 'APPROVAL_OUTCOME_NOT_WRITTEN'
+  );
 }
 
 /** The token `bureau.reviews.resolve` puts in a Conflict whose review had moved to another round than the one sent. */
@@ -236,11 +234,27 @@ export const ROUND_CHANGED = 'REVIEW_ROUND_CHANGED';
 
 /** Whether an error result from `resolve` says the review moved to another round, so nothing was decided. */
 export function isRoundChanged(result: unknown): boolean {
-  try {
-    return JSON.stringify(result)?.includes(ROUND_CHANGED) ?? false;
-  } catch {
+  if (
+    typeof result !== 'object' ||
+    result === null ||
+    !('isError' in result) ||
+    result.isError !== true ||
+    !('structuredContent' in result)
+  )
     return false;
-  }
+  const fault = result.structuredContent;
+  if (
+    typeof fault !== 'object' ||
+    fault === null ||
+    !('code' in fault) ||
+    fault.code !== 'Conflict' ||
+    !('data' in fault)
+  )
+    return false;
+  const data = fault.data;
+  return (
+    typeof data === 'object' && data !== null && 'reason' in data && data.reason === ROUND_CHANGED
+  );
 }
 
 /** What a decision's receipt tells the reader. */

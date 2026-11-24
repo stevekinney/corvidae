@@ -109,8 +109,11 @@ export type CatalogAccessSnapshot =
 export type CatalogOperationSnapshot = {
   /** The operation's name. */
   readonly name: string;
+  /** Whether the operation may be exposed as an MCP tool. */
   readonly mcpExposable?: boolean;
+  /** Producer-declared read or command semantics for generated consumers. */
   readonly behavior?: OperationBehavior;
+  /** Conflict reason tokens the operation declares for its command behavior. */
   readonly conflictReasonTokens?: readonly string[];
   /** Whether the operation is unary, a stream or a subscription. */
   readonly kind: OperationKind;

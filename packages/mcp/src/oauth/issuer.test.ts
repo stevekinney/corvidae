@@ -5,6 +5,45 @@ import { OAuthStore } from '../oauth-store.ts';
 import { hostedOAuth } from './issuer.ts';
 
 describe('hosted OAuth issuer', () => {
+  test('configures a hosted profile with the catalog resource and scopes', async () => {
+    using storage = new MemoryStorage();
+    const store = new OAuthStore(storage);
+    let assertions = 0;
+    let subscribed = '';
+    const profile = hostedOAuth({
+      stores: store,
+      defaultScopes: ['read'],
+      scopeDescriptions: { read: 'Read' },
+      subscribeGrantRevocation: (grantId) => {
+        subscribed = grantId;
+        return () => {};
+      },
+      identity: {
+        assertStore: (actual) => {
+          expect(actual).toBe(store);
+          assertions++;
+        },
+        session: async () => null,
+        signIn: async () => new Response(null, { status: 401 }),
+        principalForGrant: async () => ({ delegableScopes: ['read'] }),
+      },
+    });
+    const issuer = profile.configure({
+      origin: 'https://issuer.test',
+      resourcePath: '/app/api/mcp',
+      scopes: ['read'],
+    });
+    const response = await issuer.handle(
+      new Request('https://issuer.test/.well-known/oauth-authorization-server'),
+    );
+    expect(await response.json().then((result) => result.issuer)).toBe('https://issuer.test');
+    expect(assertions).toBe(1);
+    issuer.subscribeGrantRevocation?.('grant', () => {});
+    expect(subscribed).toBe('grant');
+    expect(() =>
+      profile.configure({ origin: 'https://issuer.test', resourcePath: '/mcp', scopes: ['write'] }),
+    ).toThrow();
+  });
   test('registers, discovers, authorizes, exchanges, refreshes and revokes', async () => {
     using storage = new MemoryStorage();
     const issuer = hostedOAuth({
@@ -72,6 +111,27 @@ describe('hosted OAuth issuer', () => {
       grants.push(JSON.parse(new TextDecoder().decode(value)));
     expect(grants).toHaveLength(1);
     expect(grants[0].grantId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(await issuer.listConnectedApps({ subject: 'subject', tenant: 'tenant' })).toEqual([
+      expect.objectContaining({
+        grantId: grants[0].grantId,
+        clientName: 'Client',
+        clientId: client.client_id,
+        resource: 'https://issuer.test/mcp',
+        approvedAt: expect.any(Number),
+        permissions: [{ scope: 'read', description: 'Read', available: true }],
+      }),
+    ]);
+    expect(await issuer.listConnectedApps({ subject: 'other', tenant: 'tenant' })).toEqual([]);
+    expect(
+      await issuer.revokeConnectedApp({ subject: 'other', tenant: 'tenant' }, grants[0].grantId),
+    ).toBe(false);
+    for await (const [key, bytes] of storage.scan('oauth:grant:')) {
+      const oldGrant = JSON.parse(new TextDecoder().decode(bytes));
+      delete oldGrant.approvedAt;
+      await storage.put(key, new TextEncoder().encode(JSON.stringify(oldGrant)));
+    }
+    const oldInventory = await issuer.listConnectedApps({ subject: 'subject', tenant: 'tenant' });
+    expect(oldInventory[0]?.approvedAt).toBeNull();
     const token = await request('/oauth/token', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },

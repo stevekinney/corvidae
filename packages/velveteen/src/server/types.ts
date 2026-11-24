@@ -80,8 +80,18 @@ export type ServerRegistry = RuntimeRegistry & {
 export type FetchHandler = (request: Request) => Response | Promise<Response>;
 export type FetchService =
   FetchHandler | { fetch: FetchHandler; close?: () => void | Promise<void> };
+/** One service with an application-relative mount and exact public root paths. */
+export type FetchServiceGroup = {
+  rootPaths: (this: void, basePath: string) => readonly string[];
+  start: (this: void, basePath: string) => FetchService | Promise<FetchService>;
+};
 export type ApplicationOptions = {
-  mounts?: Readonly<Record<string, () => FetchService | Promise<FetchService>>>;
+  mounts?: Readonly<
+    Record<
+      string,
+      (() => FetchService | Promise<FetchService>) | FetchServiceGroup
+    >
+  >;
   prerendering?: boolean;
   remotes?: RemoteDefinitions;
   remoteForms?: RemoteForms;

@@ -16,6 +16,7 @@ import {
   type Toolbox,
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
+import { principalFromApiKey } from '@lostgradient/backchannel';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
@@ -227,7 +228,10 @@ async function sessionParkedInA(
  * A tool approval of a settled run, held by two processes A and B that were both opened after it
  * settled and restored it at boot.
  */
-async function settledApproval(charges: Charges) {
+async function settledApproval(
+  charges: Charges,
+  options: Partial<BureauOptions<AgentDefinitions>> = {},
+) {
   const generate = charging();
   const setup = await openProcess(database, generate, {
     id: 'review-resolution-multi-instance',
@@ -250,8 +254,8 @@ async function settledApproval(charges: Charges) {
   });
   await listed(setup.bureau, run.id);
   await setup.bureau.dispose();
-  const a = await open(charging(), charges);
-  const b = await open(charging(), charges);
+  const a = await open(charging(), charges, options);
+  const b = await open(charging(), charges, options);
   const review = (await listed(a.bureau, run.id)) as PendingToolApprovalReview;
   await listed(b.bureau, run.id);
   return { a, b, run, review };
@@ -458,6 +462,36 @@ describe('a session human wait another process holds (COR-1579)', () => {
 });
 
 describe('a tool approval two processes hold (COR-1579)', () => {
+  it('allows one effect when authorized reviewers race the same protected round', async () => {
+    const charges = newCharges();
+    const policy = {
+      matches: () => true,
+      mayRead: () => true,
+      mayDecide: () => true,
+      effect: async () => undefined,
+    };
+    const { a, b, review } = await settledApproval(charges, { reviewPolicy: policy });
+    const held = b.seam.holdWrite(writesDecisionRecord);
+    const other = b.bureau.reviews.resolve({
+      id: review.id,
+      decision: 'approve',
+      principal: 'bob',
+      reviewer: principalFromApiKey({ subject: 'bob', scopes: [] }),
+      round: 0,
+    });
+    await held.reached;
+    const winner = await a.bureau.reviews.resolve({
+      id: review.id,
+      decision: 'approve',
+      principal: 'alice',
+      reviewer: principalFromApiKey({ subject: 'alice', scopes: [] }),
+      round: 0,
+    });
+    held.release();
+    expect(winner.decision).toBe('approve');
+    expect(codeOf(await rejectionOf(other))).toBe('CONFLICT');
+    expect(charges.charged).toEqual([500]);
+  });
   it('decides an approve/deny race by whichever claims first', async () => {
     // A first: B is held before its claim commits, and A approves.
     {

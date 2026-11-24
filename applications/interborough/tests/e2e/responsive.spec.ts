@@ -320,8 +320,8 @@ async function untilQuiet(page: Page): Promise<void> {
  * frame is in the state the seed gives the route, the route's marker text is there, and the outlet
  * has stopped changing.
  */
-async function settle(page: Page, pattern: string, width: number): Promise<void> {
-  await page.setViewportSize({ width, height: HEIGHT });
+async function settle(page: Page, pattern: string, width: number, height = HEIGHT): Promise<void> {
+  await page.setViewportSize({ width, height });
   await page.goto((addresses[pattern] ?? variantAddresses[pattern])!);
   const outlet = page.locator('main.weft-shell-outlet');
   await expect(outlet).toBeVisible();
@@ -769,8 +769,7 @@ test('/agents/:agent/hooks keeps the last switch reachable above the phone tabs 
   page,
 }) => {
   const route = '/agents/:agent/hooks';
-  await settle(page, route, 320);
-  await page.setViewportSize({ width: 320, height: 640 });
+  await settle(page, route, 320, 640);
   const outlet = page.locator('main.weft-shell-outlet');
   const tabBar = page.getByRole('navigation', { name: 'Main tabs', exact: true });
   const toggle = page.getByTestId('agent-hooks').getByRole('switch').last();

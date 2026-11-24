@@ -160,11 +160,10 @@ async function start(): Promise<void> {
     if (receipt.isError === true && isRoundChanged(receipt)) {
       return 'This review changed while you read it. It was not decided. Read it again before deciding.';
     }
-    // The decision took effect and only the write of its outcome failed: it is not a refusal.
-    if (receipt.isError === true && isOutcomeNotWritten(receipt)) {
+    const answer = receipt.isError === true ? undefined : receipt.structuredContent;
+    if (isOutcomeNotWritten(answer)) {
       return `${describeResolution(decision, 'applied')} Warning: the outcome could not be written into the session; check the run.`;
     }
-    const answer = receipt.isError === true ? undefined : receipt.structuredContent;
     return typeof answer === 'object' && answer !== null && 'receipt' in answer
       ? describeResolution(decision, String(answer.receipt))
       : 'The decision was refused: the review was already decided or is not yours to decide.';

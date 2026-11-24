@@ -423,6 +423,11 @@ type RegistrableOperationBase<Host> = {
     rawInput: unknown,
     context: DispatchContext<Host>,
   ) => Promise<DispatchResult<unknown>>;
+  /** Check policy without invoking the operation, when the operation supports it. */
+  readonly checkPolicy?: (
+    rawInput: unknown,
+    context: DispatchContext<Host>,
+  ) => Promise<DispatchResult<void>>;
 };
 
 type UnaryRegistrableOperation<Host> = RegistrableOperationBase<Host> & {

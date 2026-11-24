@@ -74,6 +74,7 @@ function stringSubset(source: Record<string, unknown>, target: Record<string, un
   if (source['type'] !== 'string' || target['type'] !== 'string') return false;
   const supported = new Set([
     '$schema',
+    'description',
     'type',
     'enum',
     'const',
@@ -225,7 +226,9 @@ function validatePage(
   const items = unwrap(field(operation.outputSchema, page.items, name));
   if (!(items instanceof z.ZodArray))
     throw new Error(`operation "${name}" pagination items must be an array`);
-  for (const key of page.itemKey) field(items.element as z.ZodType, key, name);
+  const item = unwrap(items.element as z.ZodType);
+  const variants = item instanceof z.ZodUnion ? (item.options as z.ZodType[]) : [item];
+  for (const key of page.itemKey) for (const variant of variants) field(variant, key, name);
   for (const filter of page.cursorFilters) field(operation.inputSchema, filter, name);
   if (!(unwrap(field(operation.outputSchema, page.total, name)) instanceof z.ZodNumber))
     throw new Error(`operation "${name}" pagination total must be a number`);
