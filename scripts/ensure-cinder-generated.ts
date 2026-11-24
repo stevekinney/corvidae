@@ -8,16 +8,11 @@
 // Cinder's own `metadata` script (the token seed, the token generator and the component
 // artifacts) once, under a lock, so parallel test workers do not each regenerate.
 
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import { rootScriptEnvironment } from './environment-configuration.ts';
+import { OwnedProcessGroupUnverifiedError, runOwnedProcessGroup } from './owned-process-group.ts';
+import { acquireOwnedProcessLease } from './owned-process-lease.ts';
 
 const REPOSITORY_ROOT = resolve(import.meta.dirname, '..');
 
@@ -48,7 +43,13 @@ export interface EnsureOptions {
   /** The repository root; tests point it at a fixture. */
   root?: string;
   /** Runs the generator; tests replace it. Returns the exit code. */
-  generate?: (cinder: string) => number;
+  generate?: (cinder: string) => number | Promise<number>;
+  /** Send the generator's output to standard error when standard output is an artifact. */
+  stdout?: 'inherit' | number;
+  /** Test seam before a child identity is recorded. */
+  beforeRegistration?: (pid: number) => void | Promise<void>;
+  /** Test seam after staging the owner and before publishing its lease. */
+  beforeLeasePublication?: () => void | Promise<void>;
 }
 
 function newestInput(directory: string, outputs: ReadonlySet<string>): number {
@@ -80,68 +81,45 @@ export function cinderGeneratedStaleness(cinder: string): string | undefined {
   return input > oldest ? 'an input is newer than the oldest output' : undefined;
 }
 
-function defaultGenerate(cinder: string): number {
-  const result = Bun.spawnSync(['bun', 'run', 'metadata'], {
-    cwd: cinder,
-    stdout: 'inherit',
-    stderr: 'inherit',
-  });
-  return result.exitCode;
-}
-
-function pause(milliseconds: number): void {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
-}
-
-function alive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Run `action` holding an exclusive directory lock; a lock whose holder died is taken over. */
-function locked<T>(lock: string, action: () => T): T {
-  for (;;) {
-    try {
-      mkdirSync(lock);
-      writeFileSync(join(lock, 'pid'), String(process.pid));
-      break;
-    } catch (error) {
-      if ((error as { code?: string }).code !== 'EEXIST') throw error;
-      const holder = readPid(lock);
-      if (holder > 0 && !alive(holder)) rmSync(lock, { recursive: true, force: true });
-      else pause(100);
-    }
-  }
-  try {
-    return action();
-  } finally {
-    rmSync(lock, { recursive: true, force: true });
-  }
-}
-
-function readPid(lock: string): number {
-  try {
-    return Number(readFileSync(join(lock, 'pid'), 'utf8'));
-  } catch {
-    return 0;
-  }
-}
-
 /** Generate Cinder's ignored files when one is missing or stale. Returns whether it generated. */
-export function ensureCinderGenerated(options: EnsureOptions = {}): boolean {
-  const cinder = join(options.root ?? REPOSITORY_ROOT, 'components/cinder');
+export async function ensureCinderGenerated(options: EnsureOptions = {}): Promise<boolean> {
+  const { generate, stdout, beforeRegistration, beforeLeasePublication } = options;
+  const root = options.root ?? REPOSITORY_ROOT;
+  const environment = { ...rootScriptEnvironment() };
+  const cinder = join(root, 'components/cinder');
   if (cinderGeneratedStaleness(cinder) === undefined) return false;
-  return locked(join(cinder, '.generate-lock'), () => {
+  const lease = await acquireOwnedProcessLease(
+    join(cinder, '.generate-lock'),
+    root,
+    'Cinder metadata',
+    beforeLeasePublication,
+  );
+  let safeToRelease = true;
+  try {
     // Another process may have generated while this one waited for the lock.
     const reason = cinderGeneratedStaleness(cinder);
     if (reason === undefined) return false;
-    const code = (options.generate ?? defaultGenerate)(cinder);
+    const code =
+      generate === undefined
+        ? await runOwnedProcessGroup({
+            command: [process.execPath, 'run', 'metadata'],
+            cwd: cinder,
+            environment,
+            token: lease.token,
+            stdout: stdout ?? 'inherit',
+            register: async (pid) => {
+              await beforeRegistration?.(pid);
+              await lease.recordProcessGroup(pid);
+            },
+          })
+        : await generate(cinder);
     if (code !== 0)
       throw new Error(`Cinder's metadata task failed (${reason}); run it and read its output.`);
     return true;
-  });
+  } catch (error) {
+    if (error instanceof OwnedProcessGroupUnverifiedError) safeToRelease = false;
+    throw error;
+  } finally {
+    if (safeToRelease) await lease.release();
+  }
 }
