@@ -1068,11 +1068,11 @@ test.describe('an open chat whose approval was denied with a note (18h)', () => 
       .filter({ hasText: 'Refund order 4398' });
     await expect(denied).toBeVisible();
     await expect(denied.locator('.cinder-approval-card__settled-note')).toContainText(
-      'Denied by you',
+      'Denied by you, 10:40 AM',
     );
     await expect(
-      denied.locator('xpath=following-sibling::*[1][contains(@class, "chat-approval-time")]'),
-    ).toHaveText('10:40 AM');
+      denied.loc('xpath=following-sibling::*[1][contains(@class, "chat-approval-time")]'),
+    ).toHaveCount(0);
     await denied.getByRole('button', { name: 'Details' }).click();
     await expect(denied.locator('.cinder-approval-card__decision-note')).toContainText(NOTE);
     await expect(
