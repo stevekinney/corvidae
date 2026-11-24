@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { spawnWithHangGuard } from "@lostgradient/testing/hang-guard";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,7 +22,7 @@ test("bundled compiler reports an error stack without source map diagnostics", a
       (output) => output.kind === "entry-point",
     );
     expect(artifact).toBeDefined();
-    const child = Bun.spawn(
+    const child = spawnWithHangGuard(
       [
         process.execPath,
         "-e",

@@ -73,8 +73,8 @@ test("plugin loaders emit valid inline maps for components and rune modules", as
       ["Fixture.svelte", "<h1>Fixture</h1>"],
       ["fixture.svelte.ts", "export const value = $state(1);"],
     ]) {
-      const path = join(directory, name!);
-      await Bun.write(path, source!);
+      const path = join(directory, name);
+      await Bun.write(path, source);
       const loader = loaders.find(({ filter }) => filter.test(path));
       expect(loader).toBeDefined();
       const output = await loader!.callback({ path });
@@ -82,9 +82,9 @@ test("plugin loaders emit valid inline maps for components and rune modules", as
         /sourceMappingURL=data:application\/json;base64,([^\s]+)/,
       );
       expect(match).not.toBeNull();
-      const map = JSON.parse(Buffer.from(match![1]!, "base64").toString());
+      const map = JSON.parse(Buffer.from(match![1], "base64").toString());
       expect(map.version).toBe(3);
-      expect(map.sources.some((source: string) => source.endsWith(name!))).toBe(
+      expect(map.sources.some((source: string) => source.endsWith(name))).toBe(
         true,
       );
     }
