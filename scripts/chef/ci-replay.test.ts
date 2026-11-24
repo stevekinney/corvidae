@@ -352,15 +352,20 @@ describe('failure replay evidence', () => {
         env: Record<string, unknown>;
         jobs: Record<
           string,
-          { steps: { name?: string; run?: string; with?: { path?: string } }[] }
+          { steps: { name?: string; run?: string; if?: string; with?: { path?: string } }[] }
         >;
       };
       expect(typeof yaml.env['CI_REPLAY_FALLBACK']).toBe('string');
+      expect(typeof yaml.env['CI_REPLAY_STAGE']).toBe('string');
       for (const name of jobs) {
         const steps = yaml.jobs[name]!.steps;
         const finalizer = steps.find((step) => step.name === 'Retain first-failure replay record');
         expect(finalizer?.run).toContain('bash -c "$CI_REPLAY_FALLBACK"');
-        expect(steps.some((step) => step.with?.path?.includes('ci-replay-record.json'))).toBe(true);
+        expect(finalizer?.run).toContain('bash -c "$CI_REPLAY_STAGE"');
+        const upload = steps.find(
+          (step) => step.with?.path === '${{ runner.temp }}/ci-replay-artifact',
+        );
+        expect(upload?.if).toContain("steps.replay.outcome == 'success'");
       }
     }
   });

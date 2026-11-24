@@ -84,6 +84,25 @@ env:
     [[ "$candidate" =~ ^[a-f0-9]{40}$ ]] && tree="\"$candidate\""
     printf '{"runId":%s,"attempt":%s,"job":"%s","head":%s,"base":%s,"tree":%s,"jobId":null,"jobIdUnavailable":"replay producer unavailable","toolchain":null,"command":null,"commandUnavailable":"replay producer unavailable","selection":[],"selectionUnavailable":"replay producer unavailable","assertion":null,"assertionUnavailable":"replay producer unavailable or failed","artifacts":{"junit":{"link":null,"reason":"replay producer unavailable"},"trace":{"link":null,"reason":"raw browser traces are not retained"}}}\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_JOB" "$head" "$base" "$tree" > "$RUNNER_TEMP/ci-replay-record.json"
 
+  CI_REPLAY_STAGE: |
+    set -eu
+    umask 077
+    stage="$RUNNER_TEMP/ci-replay-artifact"
+    mkdir -m 700 "$stage"
+    source="$RUNNER_TEMP/ci-replay-record.json"
+    [ -f "$source" ] && [ ! -L "$source" ]
+    cp -P "$source" "$stage/ci-replay-record.json"
+    [ -f "$stage/ci-replay-record.json" ] && [ ! -L "$stage/ci-replay-record.json" ]
+    if grep -Fq '"link": "ci-replay-junit.xml"' "$stage/ci-replay-record.json"; then
+      source="$RUNNER_TEMP/ci-replay-junit.xml"
+      if [ -f "$source" ] && [ ! -L "$source" ] && cp -P "$source" "$stage/ci-replay-junit.xml" && [ -f "$stage/ci-replay-junit.xml" ] && [ ! -L "$stage/ci-replay-junit.xml" ]; then
+        :
+      else
+        rm -f "$stage/ci-replay-junit.xml"
+        bun -e 'const fs = require("node:fs"); const path = process.argv[1]; const record = JSON.parse(fs.readFileSync(path, "utf8")); if (record?.artifacts?.junit?.link !== "ci-replay-junit.xml") process.exit(1); record.artifacts.junit = {link: null, reason: "sanitized JUnit unavailable at staging"}; fs.writeFileSync(path, JSON.stringify(record, null, 2) + String.fromCharCode(10), {mode: 0o600});' "$stage/ci-replay-record.json"
+      fi
+    fi
+
 jobs:
   # Lint and type-check the workspaces the branch changed against `origin/main`, as
   # `pull-request.yml` does, so a type error (a svelte-check error, a stale test expectation) never
@@ -114,6 +133,7 @@ jobs:
       - uses: ./.github/actions/turbo-cache/save
         if: ${{ !cancelled() }}
       - name: Retain first-failure replay record
+        id: replay
         if: ${{ failure() }}
         env:
           CI_REPLAY_TOKEN: ${{ github.token }}
@@ -123,13 +143,12 @@ jobs:
           else
             bash -c "$CI_REPLAY_FALLBACK"
           fi
+          bash -c "$CI_REPLAY_STAGE"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ failure() }}
+        if: ${{ failure() && steps.replay.outcome == 'success' }}
         with:
           name: replay-checks-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/ci-replay-record.json
-            ${{ runner.temp }}/ci-replay-junit.xml
+          path: ${{ runner.temp }}/ci-replay-artifact
           if-no-files-found: error
 
   fixtures:
@@ -194,6 +213,7 @@ jobs:
       - uses: ./.github/actions/turbo-cache/save
         if: ${{ !cancelled() }}
       - name: Retain first-failure replay record
+        id: replay
         if: ${{ failure() }}
         env:
           CI_REPLAY_TOKEN: ${{ github.token }}
@@ -205,13 +225,12 @@ jobs:
           else
             bash -c "$CI_REPLAY_FALLBACK"
           fi
+          bash -c "$CI_REPLAY_STAGE"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ failure() }}
+        if: ${{ failure() && steps.replay.outcome == 'success' }}
         with:
           name: replay-fixtures-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/ci-replay-record.json
-            ${{ runner.temp }}/ci-replay-junit.xml
+          path: ${{ runner.temp }}/ci-replay-artifact
           if-no-files-found: error
 
   interborough:
@@ -258,6 +277,7 @@ jobs:
       - uses: ./.github/actions/turbo-cache/save
         if: ${{ !cancelled() }}
       - name: Retain first-failure replay record
+        id: replay
         if: ${{ failure() }}
         env:
           CI_REPLAY_TOKEN: ${{ github.token }}
@@ -269,13 +289,12 @@ jobs:
           else
             bash -c "$CI_REPLAY_FALLBACK"
           fi
+          bash -c "$CI_REPLAY_STAGE"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ failure() }}
+        if: ${{ failure() && steps.replay.outcome == 'success' }}
         with:
           name: playwright-interborough-targeted
-          path: |
-            ${{ runner.temp }}/ci-replay-record.json
-            ${{ runner.temp }}/ci-replay-junit.xml
+          path: ${{ runner.temp }}/ci-replay-artifact
           if-no-files-found: error
 
   unit:
@@ -320,6 +339,7 @@ jobs:
       - uses: ./.github/actions/turbo-cache/save
         if: ${{ !cancelled() }}
       - name: Retain first-failure replay record
+        id: replay
         if: ${{ failure() }}
         env:
           CI_REPLAY_TOKEN: ${{ github.token }}
@@ -330,11 +350,10 @@ jobs:
           else
             bash -c "$CI_REPLAY_FALLBACK"
           fi
+          bash -c "$CI_REPLAY_STAGE"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ failure() }}
+        if: ${{ failure() && steps.replay.outcome == 'success' }}
         with:
           name: replay-unit-${{ strategy.job-index }}-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/ci-replay-record.json
-            ${{ runner.temp }}/ci-replay-junit.xml
+          path: ${{ runner.temp }}/ci-replay-artifact
           if-no-files-found: error

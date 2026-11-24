@@ -179,7 +179,7 @@ describe('the browser suites workflow', () => {
     );
     expect(interborough).toContain('name: playwright-interborough-${{ matrix.shard }}\n');
     expect(interborough).toContain('if: ${{ failure() }}\n');
-    expect(interborough).toContain('path: ${{ runner.temp }}/ci-replay-record.json\n');
+    expect(interborough).toContain('path: ${{ runner.temp }}/ci-replay-artifact\n');
     expect(interborough).not.toContain('applications/interborough/test-results/\n');
   });
 });
