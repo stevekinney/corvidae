@@ -277,6 +277,8 @@ export function createBrowserSignIn(options: BrowserSignInOptions) {
         tenant: string;
       }) => Promise<{ delegableScopes: string[] } | null>,
     ) => {
+      if (!options.storage.capabilities().conditionalBatchDeadline)
+        throw new TypeError('Browser consent requires transaction deadline support');
       if (!store.usesStorage(options.storage))
         throw new TypeError('Browser and OAuth must use the same atomic storage namespace');
       return {
@@ -291,7 +293,11 @@ export function createBrowserSignIn(options: BrowserSignInOptions) {
             subject: resolved.session.subjectId,
             tenant: resolved.session.workspaceId,
             binding: resolved.session.consentBinding,
-            sessionCondition: { key: resolved.key, expectedValue: resolved.raw },
+            sessionCondition: {
+              key: resolved.key,
+              expectedValue: resolved.raw,
+              deadline: resolved.session.expires,
+            },
           };
         },
         signIn: startSignIn,

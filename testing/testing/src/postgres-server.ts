@@ -176,7 +176,7 @@ async function startDisposablePostgres(
       '-l',
       log,
       '-o',
-      `-h 127.0.0.1 -p ${port} -k ${directory}`,
+      `-h 127.0.0.1 -p ${port} -c unix_socket_directories=''`,
       '-w',
       'start',
     ]);

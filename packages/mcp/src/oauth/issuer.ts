@@ -9,7 +9,7 @@ type Identity = {
   subject: string;
   tenant: string;
   binding: string;
-  sessionCondition?: ConditionalBatchCondition;
+  sessionCondition?: ConditionalBatchCondition & { deadline?: number | undefined };
 };
 type Options = {
   issuer: string;
@@ -270,6 +270,7 @@ export function hostedOAuth(configuration: Options) {
       sessionCondition: session.sessionCondition && {
         key: session.sessionCondition.key,
         expectedValue: session.sessionCondition.expectedValue?.slice() ?? null,
+        deadline: session.sessionCondition.deadline,
       },
     };
     const transaction = form.get('transaction') ?? '';

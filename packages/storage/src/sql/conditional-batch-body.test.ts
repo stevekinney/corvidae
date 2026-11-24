@@ -25,6 +25,26 @@ function createStore(initial: Readonly<Record<string, Uint8Array>> = {}) {
 }
 
 describe('runConditionalBatchBody', () => {
+  it('signals rollback when the deadline expires after staging writes', () => {
+    let reads = 0;
+    const staged: string[] = [];
+    expect(() =>
+      runConditionalBatchBody(
+        [],
+        [{ type: 'put', key: 'grant', value: new Uint8Array([1]) }],
+        {
+          read: () => null,
+          put: (key) => {
+            staged.push(key);
+          },
+          delete: () => {},
+          now: () => (reads++ === 0 ? 99 : 100),
+        },
+        100,
+      ),
+    ).toThrow();
+    expect(staged).toEqual(['grant']);
+  });
   it('returns false and performs no writes when a condition mismatches', () => {
     const store = createStore({ existing: new Uint8Array([1]) });
 

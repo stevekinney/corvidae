@@ -1,8 +1,10 @@
 import { createProtectedHttpHandler } from '@lostgradient/mcp/http';
 import { hostedOAuth, OAuthStore } from '@lostgradient/mcp/oauth';
-import { scopedStorage } from '@lostgradient/storage';
+import { MemoryStorage, scopedStorage } from '@lostgradient/storage';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
-import { expect, test } from 'bun:test';
+import { PostgresStorage } from '@lostgradient/storage-postgres';
+import { createPostgresTestServer } from '@lostgradient/testing/postgres-server';
+import { afterAll, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -12,6 +14,30 @@ import { createBrowserSignIn } from './browser-sign-in.ts';
 
 const base64 = (value: Uint8Array) => Buffer.from(value).toString('base64url');
 const json = (value: unknown) => base64(new TextEncoder().encode(JSON.stringify(value)));
+const postgresServer = await createPostgresTestServer();
+afterAll(async () => postgresServer[Symbol.asyncDispose]());
+
+test('transaction deadlines preserve or reject writes on each supported store', async () => {
+  using memory = new MemoryStorage();
+  using sqlite = new BunSQLiteStorage(':memory:');
+  await using postgres = new PostgresStorage({
+    url: postgresServer.url,
+    table: 'consent_deadlines',
+  });
+  for (const storage of [memory, sqlite, postgres]) {
+    const value = new TextEncoder().encode('session');
+    await storage.put('session', value);
+    const conditions = [{ key: 'session', expectedValue: value }];
+    const operations = [{ type: 'put' as const, key: 'grant', value }];
+    expect(await storage.conditionalBatch(conditions, operations, Date.now() - 1000)).toBe(false);
+    expect(await storage.get('grant')).toBeNull();
+    expect(await storage.conditionalBatch(conditions, operations, Date.now() + 60_000)).toBe(true);
+    expect(await storage.get('grant')).toEqual(value);
+    expect(
+      await storage.conditionalBatch([{ key: 'session', expectedValue: null }], operations),
+    ).toBe(false);
+  }
+});
 
 test('browser login resumes consent and connector authority stays separate', async () => {
   const keys = await crypto.subtle.generateKey(
@@ -100,12 +126,18 @@ test('browser login resumes consent and connector authority stays separate', asy
   using database = new BunSQLiteStorage(join(directory, 'sessions.sqlite'));
   using secondDatabase = new BunSQLiteStorage(join(directory, 'sessions.sqlite'));
   let beforeCommit: (() => Promise<void>) | undefined;
+  let expireApproval = false;
   const storage = new Proxy(database, {
     get(target, property) {
       if (property === 'conditionalBatch')
         return async (...args: Parameters<typeof database.conditionalBatch>) => {
           if (beforeCommit && args[1].some((operation) => operation.key.startsWith('oauth:grant:')))
             await beforeCommit();
+          if (
+            expireApproval &&
+            args[1].some((operation) => operation.key.startsWith('oauth:grant:'))
+          )
+            args[2] = Date.now() - 1;
           return target.conditionalBatch(...args);
         };
       const value = Reflect.get(target, property, target);
@@ -149,6 +181,26 @@ test('browser login resumes consent and connector authority stays separate', asy
     resolveMembership: async ({ workspaceId }) => (active ? { workspaceId } : null),
   });
   browserIdentity = browser.oauthIdentity(store, principal);
+  const unsupportedStorage = new Proxy(database, {
+    get(target, property) {
+      if (property === 'capabilities')
+        return () => ({ ...target.capabilities(), conditionalBatchDeadline: false });
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+  const unsupportedBrowser = createBrowserSignIn({
+    publicOrigin: appOrigin,
+    storage: unsupportedStorage,
+    workspaceId: 'workspace',
+    cookieName: 'session',
+    provider: Promise.resolve(configuration),
+    resolveAccount: async () => 'person',
+    resolveMembership: async ({ workspaceId }) => (active ? { workspaceId } : null),
+  });
+  expect(() =>
+    unsupportedBrowser.oauthIdentity(new OAuthStore(unsupportedStorage), principal),
+  ).toThrow('transaction deadline support');
   const issuerOptions = {
     issuer: issuerOrigin,
     resource,
@@ -360,6 +412,14 @@ test('browser login resumes consent and connector authority stays separate', asy
   expect(await count('oauth:grant:')).toBe(0);
   expect(await count('oauth:code:')).toBe(0);
   scopes = ['read', 'write'];
+  const expiring = await form();
+  expireApproval = true;
+  const expired = await submit(expiring, 'approve');
+  expireApproval = false;
+  expect(expired.status).toBe(400);
+  expect(await expired.json()).toEqual({ error: 'invalid_request' });
+  expect(await count('oauth:grant:')).toBe(0);
+  expect(await count('oauth:code:')).toBe(0);
   const approved = await submit(await form(), 'approve');
   expect(approved.status).toBe(302);
   const code = new URL(approved.headers.get('location')!).searchParams.get('code')!;

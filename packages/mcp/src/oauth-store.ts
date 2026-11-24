@@ -147,12 +147,13 @@ export class OAuthStore {
   async denyConsent(
     id: string,
     binding: ConsentBinding,
-    sessionCondition?: ConditionalBatchCondition,
+    sessionCondition?: ConditionalBatchCondition & { deadline?: number | undefined },
   ): Promise<boolean> {
     binding = { ...binding };
     sessionCondition = sessionCondition && {
       key: sessionCondition.key,
       expectedValue: sessionCondition.expectedValue?.slice() ?? null,
+      deadline: sessionCondition.deadline,
     };
     const consentKey = key('consent', id);
     const value = await this.storage.get(consentKey);
@@ -162,6 +163,7 @@ export class OAuthStore {
       this.storage,
       [{ key: consentKey, expectedValue: value }, ...(sessionCondition ? [sessionCondition] : [])],
       [{ type: 'delete', key: consentKey }],
+      sessionCondition?.deadline,
     );
   }
 
@@ -180,13 +182,14 @@ export class OAuthStore {
     id: string,
     binding: ConsentBinding,
     approval: Approval,
-    sessionCondition?: ConditionalBatchCondition,
+    sessionCondition?: ConditionalBatchCondition & { deadline?: number | undefined },
   ): Promise<boolean> {
     binding = { ...binding };
     approval = { ...approval, scopes: [...approval.scopes] };
     sessionCondition = sessionCondition && {
       key: sessionCondition.key,
       expectedValue: sessionCondition.expectedValue?.slice() ?? null,
+      deadline: sessionCondition.deadline,
     };
     const consentKey = key('consent', id);
     const value = await this.storage.get(consentKey);
@@ -230,6 +233,7 @@ export class OAuthStore {
         { type: 'put', key: grantKey, value: encode(grant) },
         { type: 'put', key: codeKey, value: encode(code) },
       ],
+      sessionCondition?.deadline,
     );
   }
 
