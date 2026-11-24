@@ -1,14 +1,14 @@
 {
   "issue": "COR-2655",
   "branch": "steve/cor-2655-affected-selector-qualification",
-  "checkedAt": "4e3d92b9869c0d4e79741a5f1b412f8c4a2f4d0c",
+  "checkedAt": "6bdfcebda723a1462d318a9b82190cdd7ff1561a",
   "briefVersion": "f3210546d15e",
   "status": "BLOCKED",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "Eight named corpus controls and existing Cinder regression pass; corpus-typed.log and selection-after-owners.log."
+      "evidence": "Eight named corpus controls pass on merged head (corpus-merged.log); existing Cinder regression passed in selection-after-owners.log."
     },
     {
       "id": "AC2",
@@ -18,7 +18,7 @@
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "Five interleaved matched plans: 181.51 ms baseline versus 53.07 ms warm planning median, identical obligations and reasons; graph and total separately recorded. Two live worktrees cover untracked, staged add, tracked rename, and tracked deletion. See final-phase-pairs.json and worktrees-*.jsonl."
+      "evidence": "Five interleaved matched plans on merged tree: 122.05 ms baseline versus 27.02 ms warm planning median, identical obligations and reasons; graph and total separately recorded. Two live worktrees cover untracked, staged add, tracked rename, and tracked deletion. See merged-phase-pairs.json and worktrees-*.jsonl."
     }
   ]
 }
