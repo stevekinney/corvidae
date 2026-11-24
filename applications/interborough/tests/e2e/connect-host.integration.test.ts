@@ -20,7 +20,7 @@ const command = (mode: string) => [
 let collision: Awaited<ReturnType<typeof runWithHangGuard>>;
 let hung: Awaited<ReturnType<typeof runWithHangGuard>>;
 let collisionEvidence: { code: string };
-let hungEvidence: { port: number; supervisorPid: number };
+let hungEvidence: { port: number; supervisorPid: number; hostPid: number };
 let cleanupEvidence: string;
 let portWasReleased = false;
 let supervisorWasReaped = false;
@@ -36,6 +36,23 @@ try {
   process.stderr.write(hung.stderr);
   hungEvidence = JSON.parse(await readFile(join(directory, 'ready.json'), 'utf8'));
   cleanupEvidence = await readFile(join(directory, 'cleaned-hang'), 'utf8');
+  if (process.platform === 'linux') {
+    const readEvidence = (path: string) =>
+      readFile(path, 'utf8').catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      });
+    process.stdout.write(
+      `COR2653_CONNECT_PROCESS ${JSON.stringify({
+        before: hungEvidence,
+        after: {
+          supervisorStat: await readEvidence(`/proc/${String(hungEvidence.supervisorPid)}/stat`),
+          hostStat: await readEvidence(`/proc/${String(hungEvidence.hostPid)}/stat`),
+          instance: await readEvidence(join(directory, 'home-hang', 'instance.json')),
+        },
+      })}\n`,
+    );
+  }
   const probe = Bun.listen({
     hostname: '127.0.0.1',
     port: hungEvidence.port,

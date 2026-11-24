@@ -1,6 +1,6 @@
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { writeFileSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { readSourceInfo } from '../../src/host/build-info.ts';
@@ -58,9 +58,20 @@ try {
     await writeFile(join(directory, 'collision.json'), JSON.stringify({ port, code: error.code }));
   } else {
     const host = await operation;
+    const instance = await readFile(join(home, 'instance.json'), 'utf8');
+    const hostPid = (JSON.parse(instance) as { pid: number }).pid;
+    const proc = async (pid: number) =>
+      process.platform === 'linux' ? readFile(`/proc/${String(pid)}/stat`, 'utf8') : undefined;
     await writeFile(
       join(directory, 'ready.json'),
-      JSON.stringify({ port, supervisorPid: host.supervisorPid }),
+      JSON.stringify({
+        port,
+        supervisorPid: host.supervisorPid,
+        hostPid,
+        instance,
+        supervisorStat: await proc(host.supervisorPid),
+        hostStat: await proc(hostPid),
+      }),
     );
     await new Promise<void>(() => {});
   }

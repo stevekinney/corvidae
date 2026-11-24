@@ -1,10 +1,11 @@
 export function qualificationMode(
   request: string,
   revision: string,
-): 'full' | 'competition-only' | undefined {
+): 'full' | 'competition-only' | 'connect-only' | undefined {
   if (!/^[a-f0-9]{40}$/.test(revision)) return undefined;
   if (request === `COR-2653-qualification:${revision}`) return 'full';
   if (request === `COR-2653-qualification:${revision}:competition`) return 'competition-only';
+  if (request === `COR-2653-qualification:${revision}:connect`) return 'connect-only';
   return undefined;
 }
 

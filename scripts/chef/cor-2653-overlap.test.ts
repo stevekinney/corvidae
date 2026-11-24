@@ -24,6 +24,9 @@ test('performs a verified action after an immediate release acknowledgement', as
 test('names partial competition evidence separately and requires the complete exact revision', () => {
   const revision = 'a'.repeat(40);
   expect(qualificationMode(`COR-2653-qualification:${revision}`, revision)).toBe('full');
+  expect(qualificationMode(`COR-2653-qualification:${revision}:connect`, revision)).toBe(
+    'connect-only',
+  );
   expect(qualificationMode(`COR-2653-qualification:${revision}:competition`, revision)).toBe(
     'competition-only',
   );
