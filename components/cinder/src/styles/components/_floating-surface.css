@@ -35,7 +35,14 @@
    * above it and scrolls in the remaining viewport. Use physical insets
    * because the sheet docks to the physical bottom in every writing mode. */
   .cinder-_floating-surface[data-cinder-sheet='docked'] {
-    --_cinder-sheet-bottom: var(--_cinder-docked-action-bar-height, 0px);
+    /* A bottom bar can itself fill a very short viewport. Keep the measured stack whenever it
+     * leaves the picker its 16rem list, and only overlap it once it would otherwise collapse the
+     * sheet below its 90dvh cap. `10dvh` is the space that cap leaves at the physical bottom. */
+    --_cinder-sheet-min-height: 16rem;
+    --_cinder-sheet-bottom: min(
+      var(--_cinder-docked-action-bar-height, 0px),
+      max(10dvh, calc(100dvh - var(--_cinder-sheet-min-height)))
+    );
     --_cinder-sheet-max-height: min(90dvh, max(0px, 100dvh - var(--_cinder-sheet-bottom)));
 
     top: auto;

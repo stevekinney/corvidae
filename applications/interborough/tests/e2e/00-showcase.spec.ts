@@ -27,6 +27,7 @@ import { expect, goOffline, test } from './fixtures.ts';
 import { readBoxes } from './read-boxes.ts';
 import { listEngineReviews } from './review-support.ts';
 import {
+  SHOWCASE_ROUTES_COVERED_ELSEWHERE,
   SHOWCASE_ROUTES_WITHOUT_CONTENT,
   showcaseAddresses,
   showcaseVariantNames,
@@ -145,15 +146,24 @@ test.beforeAll(async () => {
   addresses = { ...showcaseAddresses(world), ...showcaseVariants(world) };
 });
 
-test('gives every route in the table an address', () => {
-  const patterns = routes.filter((route) => route.redirect === undefined).map((r) => r.pattern);
+test('gives every shared-showcase route an address', () => {
+  const patterns = routes
+    .filter(
+      (route) =>
+        route.redirect === undefined && !SHOWCASE_ROUTES_COVERED_ELSEWHERE.includes(route.pattern),
+    )
+    .map((r) => r.pattern);
   for (const pattern of patterns) expect(addresses, pattern).toHaveProperty([pattern]);
 });
 
 const NAMES = [
   ...routes.filter((route) => route.redirect === undefined).map((route) => route.pattern),
   ...showcaseVariantNames(),
-].filter((name) => !SHOWCASE_ROUTES_WITHOUT_CONTENT.includes(name));
+].filter(
+  (name) =>
+    !SHOWCASE_ROUTES_WITHOUT_CONTENT.includes(name) &&
+    !SHOWCASE_ROUTES_COVERED_ELSEWHERE.includes(name),
+);
 
 for (const name of NAMES) {
   test(`${name} holds believable content at ${WIDTHS.join(', ')} pixels`, async ({ page }) => {
