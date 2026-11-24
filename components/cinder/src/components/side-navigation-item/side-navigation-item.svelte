@@ -92,7 +92,10 @@
   );
   const describedBy = $derived.by(() => {
     const own = props['aria-describedby'];
-    const reason = reasonText !== undefined && accessibleName !== undefined ? reasonId : undefined;
+    // The reason is the description whenever something other than the content names the row: a
+    // `label`, an `aria-label`, or the consumer's own `aria-labelledby`.
+    const named = accessibleName !== undefined || props['aria-labelledby'] !== undefined;
+    const reason = reasonText !== undefined && named ? reasonId : undefined;
     return (
       [own, reason].filter((value) => value !== undefined && value !== '').join(' ') || undefined
     );

@@ -83,6 +83,17 @@ describe('SideNavigationItem disabledReason', () => {
     expect(textOf(button.getAttribute('aria-describedby'))).toBe(`Also read this. ${REASON}`);
   });
 
+  test('a row named by its own aria-labelledby is still described by its reason', () => {
+    const name = document.createElement('span');
+    name.id = 'own-name';
+    name.textContent = 'Workers page';
+    document.body.append(name);
+    const { container } = renderTemporalRow({ label: undefined, 'aria-labelledby': 'own-name' });
+    const button = container.querySelector('button')!;
+    expect(button.getAttribute('aria-labelledby')).toBe('own-name');
+    expect(textOf(button.getAttribute('aria-describedby'))).toBe(REASON);
+  });
+
   test('a row without an icon keeps its children as direct children of the button', () => {
     const { container } = renderTemporalRow();
     const button = container.querySelector('button')!;
