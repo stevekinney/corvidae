@@ -8,6 +8,17 @@ export function qualificationMode(
   return undefined;
 }
 
+/** Plant the negative control only in the direct supervisor branch exercised by the integration test. */
+export function plantDirectSupervisorFailure(source: string): string {
+  const site = `if (stopping) return code === RESTART_EXIT_CODE || signal !== null ? 0 : code;\n      if (code !== RESTART_EXIT_CODE) return code;`;
+  if (source.split(site).length !== 2)
+    throw new Error('Expected exactly one direct supervisor restart check');
+  return source.replace(
+    site,
+    `if (stopping) return code === RESTART_EXIT_CODE || signal !== null ? 0 : code;\n      if (code !== RESTART_EXIT_CODE || code === 75) return code;`,
+  );
+}
+
 export function competitorActions(output: string): string[] {
   return Array.from(
     output.matchAll(/COR2653_ACTION (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z)/g),

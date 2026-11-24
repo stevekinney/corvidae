@@ -10,6 +10,7 @@ import {
   actionsBracketAssertion,
   competitorActions,
   observedRelease,
+  plantDirectSupervisorFailure,
   qualificationMode,
 } from './cor-2653-overlap.ts';
 
@@ -478,11 +479,7 @@ try {
     );
   const supervisor = join(bad, 'applications/interborough/src/host/supervisor.ts');
   const supervisorSource = await readFile(supervisor, 'utf8');
-  const supervisorBad = supervisorSource.replace(
-    'if (code !== RESTART_EXIT_CODE) return code;',
-    'if (code !== RESTART_EXIT_CODE || code === 75) return code;',
-  );
-  requireResult(supervisorBad !== supervisorSource, 'integration mutation did not apply');
+  const supervisorBad = plantDirectSupervisorFailure(supervisorSource);
   await writeFile(supervisor, supervisorBad);
   const seed = join(bad, 'plugins/demo/src/seed.ts');
   const seedSource = await readFile(seed, 'utf8');

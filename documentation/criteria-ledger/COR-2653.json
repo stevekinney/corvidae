@@ -1,24 +1,24 @@
 {
   "issue": "COR-2653",
   "branch": "steve/cor-2653-browser-port-isolation",
-  "checkedAt": "31dc932898b061dbe20516db01151ea7aa8d5485",
+  "checkedAt": "43a3b156848b41e53616afec0eeaf2c53b11a2f7",
   "briefVersion": "f416fc07b354",
   "status": "BLOCKED",
   "criteria": [
     {
       "id": "AC1",
-      "status": "not-met",
-      "evidence": "Nine-port allocation and override bounds passed local direct tests; hosted collision at +8 is pending."
+      "status": "met-on-branch",
+      "evidence": "Hosted run 45383678856 verified nine-port allocation and races at +1, +6 and +8; local override and bounds controls passed."
     },
     {
       "id": "AC2",
-      "status": "not-met",
-      "evidence": "Earlier run 45362948086 verified eight listeners per run; nine-listener identity, sharing probe, sentinel and cleanup replay remains pending."
+      "status": "met-on-branch",
+      "evidence": "Hosted run 45383678856 recorded 18 owned listeners, separate A/B identities, sharing probes and cleanup."
     },
     {
       "id": "AC3",
       "status": "not-met",
-      "evidence": "Earlier run 45362948086 passed all matrix pairs on its eight-port revision; exact combined nine-port replay remains pending."
+      "evidence": "Run 45383678856 passed four correct cases but incorrect integration was falsely green. Corrected direct-branch mutation is proven by matched local healthy exit 0 and planted exit 1 at named assertion; hosted replay remains pending."
     }
   ]
 }

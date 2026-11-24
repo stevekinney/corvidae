@@ -4,8 +4,23 @@ import {
   actionsBracketAssertion,
   competitorActions,
   performCompetitionActions,
+  plantDirectSupervisorFailure,
   qualificationMode,
 } from './cor-2653-overlap.ts';
+
+test('plants the direct restart failure once, leaving the owned branch unchanged', async () => {
+  const source = await Bun.file(
+    new URL('../../applications/interborough/src/host/supervisor.ts', import.meta.url),
+  ).text();
+  const altered = plantDirectSupervisorFailure(source);
+  expect(altered).toContain('if (code !== RESTART_EXIT_CODE) return code;');
+  expect(altered).toContain(
+    'if (stopping) return code === RESTART_EXIT_CODE || signal !== null ? 0 : code;\n      if (code !== RESTART_EXIT_CODE || code === 75) return code;',
+  );
+  expect(() => plantDirectSupervisorFailure(altered)).toThrow('exactly one');
+  expect(() => plantDirectSupervisorFailure(`${source}\n${source}`)).toThrow('exactly one');
+  expect(() => plantDirectSupervisorFailure('')).toThrow('exactly one');
+});
 
 test('performs a verified action after an immediate release acknowledgement', async () => {
   const events: string[] = [];
