@@ -70,7 +70,9 @@
     resolveMessageNotes,
     type ChatAvailability,
     type ChatRowContext,
+    type ChatTurnState,
     type MessageNoteInfo,
+    type Message,
   } from '@lostgradient/chat';
   import { parseStepRowIdentifier } from '@lostgradient/operative';
   import { CircleHelp, GitBranch, Workflow } from '@lucide/svelte';
@@ -169,6 +171,7 @@
   import type { DecisionContext } from './approval-decision-words.ts';
   import { editForkPoint, lastBranchPoint } from './edit-fork.ts';
   import { composerStatusOf } from './composer-state.ts';
+  import { lastAssistantId, turnStateOf } from './turn-states.ts';
   import { changeSetting, type SteerNotices } from './steer-change.ts';
   import ModelPicker from './model-picker.svelte';
   import NewChatChoices from './new-chat-choices.svelte';
@@ -1036,6 +1039,21 @@
   // of an earlier turn keeps its line (row 20b) with nothing beside it, since Retry runs the last
   // turn again.
   const retryNoteId = $derived(failedStopNoteId(shown));
+  const lastAssistant = $derived(lastAssistantId(shown));
+  let reconnectNow = $state(Date.now());
+  $effect(() => {
+    if (session.reconnectSchedule === undefined) return;
+    reconnectNow = Date.now();
+    const timer = setInterval(() => (reconnectNow = Date.now()), 1000);
+    return () => clearInterval(timer);
+  });
+  function turnState(message: Message): ChatTurnState | undefined {
+    return turnStateOf(message, {
+      reconnect: session.reconnectSchedule,
+      lastAssistantId: lastAssistant,
+      now: reconnectNow,
+    });
+  }
 
   // The messages that offer a branch. A run that is going, or that the page is still reading, has
   // not finished its last message.
@@ -2369,6 +2387,8 @@
               : CHAT_COPY.questionAnswerLabel
             : CHAT_COPY.composer.placeholder(agentShown)}
           {composerStatus}
+          messageTurnState={turnState}
+          onRetryConnection={() => void session.reconnect()}
           composerHeader={choosing && agent !== '' ? newChatHeader : undefined}
           composerLead={choosing && (fromWorkflows || agent === '') ? newChatLead : undefined}
           composerFooter={!choosing
@@ -2519,6 +2539,7 @@
                 decided={decisionContext}
                 selectedId={selectedCallId}
                 onSelect={selectCall}
+              onRetryStep={session.canRetryTurn ? () => void retryTurn() : undefined}
                 opensPanel={(entry) =>
                   chatToolPanelFor(entry) !== undefined &&
                   structuredResultText(entry) !== undefined}

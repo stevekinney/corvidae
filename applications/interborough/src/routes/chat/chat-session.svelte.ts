@@ -165,6 +165,19 @@ function approvalRound(
 /** How many failed attempts in a row end the retries and leave the session disconnected. */
 export const MAX_RECONNECT_ATTEMPTS = 8;
 
+/** How many retry attempts follow the read that failed first. */
+export const RECONNECT_TRIES = MAX_RECONNECT_ATTEMPTS - 1;
+
+/** The retry currently scheduled for a dropped Chat stream. */
+export interface ChatReconnect {
+  readonly attempt: number;
+  readonly attempts: number;
+  readonly wait: number;
+  readonly nextTryAt: number;
+  /** A run stream, rather than the initial history read, was interrupted. */
+  readonly runDropped: boolean;
+}
+
 export type ChatRegenerationState = {
   readonly messageId: string;
   readonly commandId: string;
@@ -243,6 +256,8 @@ export class ChatSessionState {
    * composer says "Reconnecting… attempt N" while it is above zero.
    */
   reconnectAttempt = $state(0);
+  /** The current retry details for Chat's reconnecting turn state. */
+  reconnectSchedule = $state.raw<ChatReconnect | undefined>(undefined);
   /**
    * How many follow-ups the run has not taken yet: the transcript's queued rows. The Bureau holds
    * each until the run's next step takes it, when it becomes a sent message, and Remove takes one
@@ -1214,6 +1229,13 @@ export class ChatSessionState {
   #setRetryFailures(failures: number): void {
     this.#retryFailures = failures;
     this.reconnectAttempt = failures;
+    if (failures === 0) this.reconnectSchedule = undefined;
+  }
+
+  #giveUpReconnecting(): void {
+    this.disconnected = true;
+    this.reconnectAttempt = 0;
+    this.reconnectSchedule = undefined;
   }
 
   #scheduleReconnect(error: unknown): void {
@@ -1222,19 +1244,24 @@ export class ChatSessionState {
     // fails must not start the ladder again behind a page that still says it is disconnected.
     if (this.disconnected) return;
     if (error instanceof AgUiHttpError && [403, 404, 410].includes(error.status)) {
-      this.disconnected = true;
-      this.reconnectAttempt = 0;
+      this.#giveUpReconnecting();
       return;
     }
     this.#setRetryFailures(this.#retryFailures + 1);
     if (this.#retryFailures >= MAX_RECONNECT_ATTEMPTS) {
-      this.disconnected = true;
-      this.reconnectAttempt = 0;
+      this.#giveUpReconnecting();
       return;
     }
     if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
     const generation = ++this.#retryGeneration;
     const delay = Math.min(500 * 2 ** (this.#retryFailures - 1), 10_000);
+    this.reconnectSchedule = {
+      attempt: this.#retryFailures,
+      attempts: RECONNECT_TRIES,
+      wait: delay,
+      nextTryAt: Date.now() + delay,
+      runDropped: this.#attachedRun || this.reconnectSchedule?.runDropped === true,
+    };
     // poll-reason: timer
     this.#retryTimer = setTimeout(() => {
       this.#retryTimer = undefined;
