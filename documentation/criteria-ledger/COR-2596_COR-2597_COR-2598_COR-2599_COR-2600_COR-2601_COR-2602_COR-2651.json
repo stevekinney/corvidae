@@ -1,7 +1,7 @@
 {
   "issue": "COR-2596_COR-2597_COR-2598_COR-2599_COR-2600_COR-2601_COR-2602_COR-2651",
   "branch": "steve/composable-portable-credentials-refunds",
-  "checkedAt": "d67315df5f5dcbaa010a6cab6cc41b2f997c19b3",
+  "checkedAt": "199b63acae9e62da8e77fb045216e8758398de4b",
   "briefVersion": "4be05d6acd48",
   "status": "READY",
   "criteria": [
@@ -233,12 +233,12 @@
     {
       "id": "COR-2602/AC8",
       "status": "met-on-branch",
-      "evidence": "demo registered plugin test c3 verifies the real app-mount continuation and pending-state phrase, and migrates the Chat and Reviews Playwright callers. The product gate requires the corrected hosted browser run."
+      "evidence": "demo registered plugin test c3 verifies the real app-mount continuation and pending-state phrase, and migrates the Chat and Reviews Playwright callers. The product gate requires the corrected hosted browser run. C6 holds and retries a real one-policy approval, verifies the second real response, and then verifies its provider-pending result. Mounted distinct-two-policy control advances from tool tier to registry tier and produces one result after both."
     },
     {
       "id": "COR-2602/AC9",
       "status": "met-on-branch",
-      "evidence": "demo plugin and tools tests c3 verifies mounted allow-all still interrupts for approval and the canonical mode marker prevents an invalid remembered bypass. c4 enforces the naming taxonomy at the plugin boundary without altering durable release identity."
+      "evidence": "demo plugin and tools tests c3 verifies mounted allow-all still interrupts for approval and the canonical mode marker prevents an invalid remembered bypass. c4 enforces the naming taxonomy at the plugin boundary without altering durable release identity. C6 mounted test proves real rememberable on-changes coverage via a harmless mutation, preserving the refund’s no-remember approval policy."
     },
     {
       "id": "COR-2602/AC10",
