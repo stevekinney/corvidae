@@ -1,24 +1,24 @@
 {
   "issue": "COR-2619",
   "branch": "steve/composable-review-adoption",
-  "checkedAt": "a15839ae1e23df47321bc8af250327cc581df10f",
+  "checkedAt": "382b010fbc3e791c7a1de952068dcac560ba3cd2",
   "briefVersion": "6af12e5f7cf4",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "Catalog and protocol inventory checked by catalog-consumer-inventory.test.ts at a15839ae1e."
+      "evidence": "Catalog and protocol inventory checked by catalog-consumer-inventory.test.ts at 1b44e29a2e before the clean main merge."
     },
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "Direct inventory test validates served operations, supported bindings, classifications and required transport fields at a15839ae1e."
+      "evidence": "Direct inventory test validates served operations, supported bindings, classifications and required transport fields at 1b44e29a2e."
     },
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "Direct inventory test scans imports and transport sites and rejects unlisted and replaced fixture calls at a15839ae1e."
+      "evidence": "Direct inventory test scans imports and transport sites and rejects unlisted, replaced, property, injected and aliased fetch fixture calls at 1b44e29a2e."
     },
     {
       "id": "AC4",
