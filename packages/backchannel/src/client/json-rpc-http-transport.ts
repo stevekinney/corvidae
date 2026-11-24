@@ -37,11 +37,12 @@ export type JsonRpcHttpConnection = {
   readonly headers?: Readonly<Record<string, string>> | undefined;
   /** The `fetch` to use unless a call brings its own. Defaults to the global one. */
   readonly fetch?: CatalogFetch | undefined;
-  /** The JSON-RPC request `id` every call carries. Defaults to `catalog-client`. */
+  /** The JSON-RPC request `id` every call carries. By default each call gets a distinct id. */
   readonly requestId?: string | undefined;
 };
 
 const DEFAULT_REQUEST_ID = 'catalog-client';
+let requestSequence = 0n;
 
 /**
  * The JSON-RPC endpoint of a handler: its base URL with any query or fragment
@@ -125,7 +126,9 @@ export async function callJsonRpc(call: JsonRpcHttpCall): Promise<JsonRpcCallRes
     ...(call.signal === undefined ? {} : { signal: call.signal }),
   });
   const body = (await response.json()) as unknown;
-  if (isJsonRpcError(body)) return { ok: false, error: body.error };
+  if (!matchesResponse(body, call.id))
+    throw new Error(`Invalid JSON-RPC response from ${call.endpoint}`);
+  if (isJsonRpcError(body) && !('result' in body)) return { ok: false, error: body.error };
   // A success envelope carries `jsonrpc` and `id`, but `result` is absent when the operation
   // returns void: `JSON.stringify` drops an `undefined` result key on the server.
   if (isJsonRpcSuccess(body)) {
@@ -160,7 +163,7 @@ export function httpJsonRpcTransport(connection: JsonRpcHttpConnection): Catalog
       endpoint,
       method: operationName,
       params: input,
-      id: connection.requestId ?? DEFAULT_REQUEST_ID,
+      id: connection.requestId ?? `${DEFAULT_REQUEST_ID}-${++requestSequence}`,
       headers: connection.headers,
       ...(fetchOverride === undefined ? {} : { fetch: fetchOverride }),
       ...(options?.signal === undefined ? {} : { signal: options.signal }),
@@ -168,6 +171,17 @@ export function httpJsonRpcTransport(connection: JsonRpcHttpConnection): Catalog
     if (!outcome.ok) throw new CatalogClientError(operationName, outcome.error);
     return outcome.result;
   };
+}
+
+function matchesResponse(value: unknown, id: string): value is Record<string, unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Object.hasOwn(value, 'jsonrpc') &&
+    (value as Record<string, unknown>)['jsonrpc'] === '2.0' &&
+    Object.hasOwn(value, 'id') &&
+    (value as Record<string, unknown>)['id'] === id
+  );
 }
 
 function isJsonRpcError(value: unknown): value is { readonly error: JsonRpcErrorObject } {

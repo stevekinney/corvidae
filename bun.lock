@@ -396,6 +396,26 @@
         "zod": "catalog:",
       },
     },
+    "packages/backchannel-svelte": {
+      "name": "@lostgradient/backchannel-svelte",
+      "dependencies": {
+        "@lostgradient/backchannel": "workspace:*",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@tanstack/svelte-query": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "svelte": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@tanstack/svelte-query": "catalog:",
+        "svelte": "catalog:",
+      },
+    },
     "packages/bungalow": {
       "name": "@lostgradient/bungalow",
       "devDependencies": {
@@ -1497,6 +1517,8 @@
     "@lostgradient/backchannel": ["@lostgradient/backchannel@workspace:packages/backchannel"],
 
     "@lostgradient/backchannel-mcp": ["@lostgradient/backchannel-mcp@workspace:packages/backchannel-mcp"],
+
+    "@lostgradient/backchannel-svelte": ["@lostgradient/backchannel-svelte@workspace:packages/backchannel-svelte"],
 
     "@lostgradient/browser-fixtures": ["@lostgradient/browser-fixtures@workspace:scripts/browser-fixtures"],
 

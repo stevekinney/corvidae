@@ -13,6 +13,7 @@ import {
   fixtureOptions,
   fixtureSnapshot,
 } from './operation-client-test-support.ts';
+import { svelteFixtureSources } from './svelte-client-fixture.ts';
 
 async function generatedText(
   options: Parameters<typeof fixtureOptions>[0] = {},
@@ -22,6 +23,40 @@ async function generatedText(
 }
 
 describe('createOperationClientSources for a catalog that is not Weft', () => {
+  it('matches the committed paged Svelte catalog fixture', async () => {
+    const sources = await svelteFixtureSources();
+    const directory = join(import.meta.dir, '../../backchannel-svelte/tests/fixture/generated');
+    expect((await readdir(directory)).toSorted()).toEqual([...sources.keys()].toSorted());
+    for (const [name, source] of sources)
+      expect(await Bun.file(join(directory, name)).text()).toBe(source);
+    const svelte = sources.get('operation-client.svelte.ts') ?? '';
+    expect(svelte).toContain('createPagination');
+    expect(svelte).toContain('useProbeJobsWatch');
+    expect(svelte).toContain('ProbeProvider');
+  });
+  it('generates scoped Svelte reads and explicit commands only for declared behavior', async () => {
+    const snapshot = fixtureSnapshot();
+    const operations = snapshot.operations.map((operation) => {
+      if (operation.name === 'probe.jobs.list')
+        return { ...operation, behavior: { kind: 'read' as const, key: ['limit'] } };
+      if (operation.name === 'probe.jobs.cancel')
+        return {
+          ...operation,
+          behavior: { kind: 'command' as const, invalidates: ['probe.jobs.list'] },
+        };
+      return operation;
+    });
+    const sources = await createOperationClientSources(
+      { ...snapshot, operations },
+      { ...fixtureOptions({ portableEntries: true }), svelte: true },
+    );
+    const generated = sources.get('operation-client.svelte.ts') ?? '';
+    expect(generated).toContain('useProbeJobsList');
+    expect(generated).toContain('useProbeJobsCancel');
+    expect(generated).toMatch(/["']probe\.jobs\.list["']/u);
+    expect(generated).not.toContain('useProbeUsersGet');
+    expect(generated).toContain('@lostgradient/backchannel-svelte');
+  });
   it('emits no Weft name, path, domain or example', async () => {
     const { text } = await generatedText();
     expect(text).not.toMatch(/weft/iu);
@@ -320,7 +355,11 @@ describe('portable generated entries', () => {
       headers,
       fetch: async (url, init) => {
         requests.push([url, init]);
-        return Response.json({ jsonrpc: '2.0', id: 'catalog-client', result: null });
+        return Response.json({
+          jsonrpc: '2.0',
+          id: (JSON.parse(String(init?.body)) as { id: string }).id,
+          result: null,
+        });
       },
     });
     await client['probe.jobs.cancel'](input);
@@ -328,7 +367,7 @@ describe('portable generated entries', () => {
     expect(requests[0]?.[1]?.headers).toEqual({ 'content-type': 'application/json', ...headers });
     expect(JSON.parse(requests[0]?.[1]?.body as string)).toEqual({
       jsonrpc: '2.0',
-      id: 'catalog-client',
+      id: expect.stringMatching(/^catalog-client-\d+$/u),
       method: 'probe.jobs.cancel',
       params: input,
     });

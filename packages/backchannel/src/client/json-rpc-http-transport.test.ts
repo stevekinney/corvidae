@@ -20,7 +20,12 @@ function recordingFetch(
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const body = typeof init?.body === 'string' ? init.body : '{}';
     requests.push({ url, init, body: JSON.parse(body) as Record<string, unknown> });
-    return Response.json(answer);
+    const parsed = JSON.parse(body) as { id: string };
+    return Response.json(
+      typeof answer === 'object' && answer !== null && 'id' in answer
+        ? { ...answer, id: parsed.id }
+        : answer,
+    );
   };
   return { fetch: stub, requests };
 }
@@ -50,6 +55,35 @@ describe('jsonRpcHttpEndpoint', () => {
 });
 
 describe('httpJsonRpcTransport', () => {
+  it('correlates reverse-order concurrent responses with distinct default request ids', async () => {
+    const requests: { id: string; resolve: (response: Response) => void }[] = [];
+    const fetch: CatalogFetch = async (_input, init) => {
+      const request = JSON.parse(String(init?.body)) as { id: string };
+      return new Promise((resolve) => requests.push({ id: request.id, resolve }));
+    };
+    const transport = httpJsonRpcTransport({ baseUrl: '/api', fetch });
+    const first = transport('probe.first', {});
+    const second = transport('probe.second', {});
+    expect(requests[0]!.id).not.toBe(requests[1]!.id);
+    requests[1]!.resolve(Response.json({ jsonrpc: '2.0', id: requests[1]!.id, result: 'second' }));
+    requests[0]!.resolve(Response.json({ jsonrpc: '2.0', id: requests[0]!.id, result: 'first' }));
+    expect(await first).toBe('first');
+    expect(await second).toBe('second');
+  });
+
+  it('rejects responses with a mismatched id or invalid protocol, including errors', async () => {
+    for (const answer of [
+      { jsonrpc: '2.0', id: 'different', result: 'wrong' },
+      { jsonrpc: '1.0', id: 'expected', result: 'wrong' },
+      { jsonrpc: '2.0', id: 'different', error: { code: -32601, message: 'wrong' } },
+      { error: { code: -32601, message: 'wrong' } },
+    ]) {
+      const fetch: CatalogFetch = async () => Response.json(answer);
+      await expect(
+        httpJsonRpcTransport({ baseUrl: '/api', fetch, requestId: 'expected' })('probe.read', {}),
+      ).rejects.toThrow('Invalid JSON-RPC response');
+    }
+  });
   it('posts a JSON-RPC request to the endpoint with the connection headers', async () => {
     const { fetch: stub, requests } = recordingFetch(echoed);
     const transport = httpJsonRpcTransport({
@@ -72,7 +106,7 @@ describe('httpJsonRpcTransport', () => {
       jsonrpc: '2.0',
       method: 'probe.echo',
       params: { message: 'hello' },
-      id: 'catalog-client',
+      id: expect.stringMatching(/^catalog-client-\d+$/u),
     });
   });
 
