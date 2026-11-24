@@ -17,39 +17,9 @@ import {
   SUBSCRIPTION_OPERATION_NAMES,
 } from '../src/lib/generated/bureau-operation-client.generated.ts';
 import inventory from './catalog-consumer-inventory.json';
+import { assertClassified, callerOf, scanTransport } from './catalog-consumer-transport.ts';
 
 const sourceRoot = join(import.meta.dir, '../src');
-function callerOf(node: ts.Node, tree: ts.SourceFile): string {
-  for (let current = node.parent; current; current = current.parent) {
-    if ((ts.isFunctionDeclaration(current) || ts.isMethodDeclaration(current)) && current.name)
-      return current.name.getText(tree);
-    if (
-      (ts.isArrowFunction(current) || ts.isFunctionExpression(current)) &&
-      ts.isVariableDeclaration(current.parent)
-    )
-      return current.parent.name.getText(tree);
-  }
-  return '<module>';
-}
-function transportExpression(node: ts.Node, tree: ts.SourceFile): string {
-  if (ts.isCallExpression(node)) return node.getText(tree).replace(/\s+/gu, ' ');
-  let variable: ts.VariableDeclaration | undefined;
-  for (let current = node.parent; current; current = current.parent) {
-    if (ts.isFunctionDeclaration(current) || ts.isMethodDeclaration(current))
-      return current.getText(tree).replace(/\s+/gu, ' ');
-    if (ts.isVariableDeclaration(current) && !variable) variable = current;
-  }
-  return (variable ?? node).getText(tree).replace(/\s+/gu, ' ');
-}
-function assertClassified(actual: readonly string[], expected: readonly string[]): void {
-  const remaining = [...expected];
-  for (const entry of actual) {
-    const index = remaining.indexOf(entry);
-    if (index < 0) throw new Error(`Unclassified call: ${entry}`);
-    remaining.splice(index, 1);
-  }
-  if (remaining.length) throw new Error(`Stale inventory: ${remaining.join(', ')}`);
-}
 const restMethods: Readonly<Record<string, string>> = {
   addTags: 'weft.workflows.tags.add',
   cancel: 'weft.workflows.cancel',
@@ -136,6 +106,8 @@ test('catalog consumers remain classified against the served catalogs', async ()
   }
   function scanTrees(inputs: typeof trees): void {
     for (const { path, tree, source } of inputs) {
+      const transport = scanTransport(path, tree);
+      discoveredTransport.push(...transport.calls);
       function visit(node: ts.Node): void {
         if (
           ts.isImportDeclaration(node) &&
@@ -156,25 +128,6 @@ test('catalog consumers remain classified against the served catalogs', async ()
               `${path} ${specifier} ${node.importClause.getText(tree).replace(/\s+/gu, ' ')}`,
             );
         }
-        if (
-          (ts.isCallExpression(node) &&
-            ts.isIdentifier(node.expression) &&
-            node.expression.text === 'fetch') ||
-          (ts.isBinaryExpression(node) &&
-            node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken &&
-            ts.isIdentifier(node.right) &&
-            node.right.text === 'fetch') ||
-          (ts.isParameter(node) &&
-            node.initializer !== undefined &&
-            ts.isIdentifier(node.initializer) &&
-            node.initializer.text === 'fetch') ||
-          (ts.isPropertyAccessExpression(node) &&
-            node.expression.getText(tree) === 'globalThis' &&
-            node.name.text === 'fetch')
-        )
-          discoveredTransport.push(
-            `${path} ${callerOf(node, tree)} ${transportExpression(node, tree)}`,
-          );
         if (/^host\/cli-(?!client|destructive).*\.ts$/u.test(path)) {
           if (ts.isStringLiteral(node) && /^(?:bureau|weft)\.[a-z.]+$/u.test(node.text))
             discoveredCli.push(`${path} ${callerOf(node, tree)} ${node.text}`);
@@ -243,18 +196,14 @@ test('catalog consumers remain classified against the served catalogs', async ()
           if (
             node['type'] === 'CallExpression' &&
             typeof node['start'] === 'number' &&
-            typeof node['end'] === 'number' &&
-            /^fetch\s*\(/u.test(source.slice(node['start'], node['end']))
-          )
-            discoveredTransport.push(
-              `${path} <markup> ${source.slice(node['start'], node['end']).replace(/\s+/gu, ' ')}`,
-            );
-          if (
-            node['type'] === 'CallExpression' &&
-            typeof node['start'] === 'number' &&
             typeof node['end'] === 'number'
           ) {
             const expression = source.slice(node['start'], node['end']);
+            const fetchCall = /^(?:(\w+)|(?:[\w.]+)\.fetch|(?:[\w.]+)\[['"]fetch['"]\])\s*\(/u.exec(
+              expression,
+            );
+            if (fetchCall && (!fetchCall[1] || transport.aliases.has(fetchCall[1])))
+              discoveredTransport.push(`${path} <markup> ${expression.replace(/\s+/gu, ' ')}`);
             const call = /^(?:\w+\.)?client\.(activity\.)?(\w+)\s*\(/u.exec(expression);
             if (call) {
               const method = `${call[1] ?? ''}${call[2]}`;
@@ -509,4 +458,30 @@ test('catalog consumers remain classified against the served catalogs', async ()
       expectedTransport,
     ),
   ).toThrow("Unclassified call: app/engine-status.svelte.ts probe fetch('/v1/unlisted')");
+  for (const example of [
+    "function probe() { return window.fetch('/unlisted'); }",
+    "function probe() { return globalThis.fetch('/unlisted'); }",
+    "function probe(client: Client) { return client.fetch('/unlisted'); }",
+    "function probe(client: Client) { return client['fetch']('/unlisted'); }",
+    "function probe() { const send = globalThis.fetch; return send('/unlisted'); }",
+    "function probe() { const { fetch: send } = window; return send('/unlisted'); }",
+    "function probe(fetcher: Fetcher) { return fetcher('/unlisted'); }",
+    "function probe(request: Fetcher) { return request('/unlisted'); }",
+    "function probe({ fetch: send }: Options) { return send('/unlisted'); }",
+    "function probe() { const send = window.fetch; const relay = send; return relay('/unlisted'); }",
+  ]) {
+    const before = discoveredTransport.length;
+    scanTrees([
+      {
+        path: existingPath,
+        source: example,
+        tree: ts.createSourceFile(existingPath, example, ts.ScriptTarget.Latest, true),
+      },
+    ]);
+    const calls = discoveredTransport.slice(before);
+    expect(calls.some((call) => call.includes("('/unlisted')"))).toBe(true);
+    expect(() => assertClassified(calls, [])).toThrow(
+      'Unclassified call: app/engine-status.svelte.ts',
+    );
+  }
 });
