@@ -1363,7 +1363,7 @@
         </form>
         {#if !isNew}
           <aside id={LOG_ID} class="ib-hook-editor__aside" tabindex="-1">
-            <HookDeliveries {hookId} events={hook?.events ?? []} />
+            <HookDeliveries {hookId} events={hook?.events ?? []} hookName={hook?.name ?? null} />
           </aside>
         {/if}
       </div>
