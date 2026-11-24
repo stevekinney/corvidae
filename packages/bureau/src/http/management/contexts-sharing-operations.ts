@@ -41,8 +41,12 @@ export type BureauContextsSharingOperationHost = BureauOwnershipHost &
   };
 
 const sharingInput = z.object({
-  contextId: z.string().min(1),
-  granteeOwnerId: z.string().min(1).max(256),
+  contextId: z.string().min(1).describe('The chat context identifier.'),
+  granteeOwnerId: z
+    .string()
+    .min(1)
+    .max(256)
+    .describe('The current workspace member owner identifier.'),
 });
 // A requester cannot name an owner. The authenticated workspace directory supplies it.
 const requestShareInput = sharingInput.pick({ contextId: true });
@@ -53,7 +57,9 @@ const sharingOutput = z.object({
   granteeOwnerId: z.string(),
   changed: z.boolean(),
 });
-const requestResolutionInput = sharingInput.extend({ decision: z.enum(['grant', 'deny']) });
+const requestResolutionInput = sharingInput.extend({
+  decision: z.enum(['grant', 'deny']).describe('Whether to restore or deny requested access.'),
+});
 const requestQueueOutput = z.object({
   requests: z.array(
     z.object({
