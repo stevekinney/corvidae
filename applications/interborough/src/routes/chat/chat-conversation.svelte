@@ -355,7 +355,9 @@
   // The chat was deleted, here or elsewhere: the Bureau reads `session.deleted` into the chats, this
   // read is asked again, and it says not-found. A send then would start the chat again under the
   // same identifier, with every row it had, so the composer is closed.
-  const gone = $derived(context.isError && wireCodeOf(context.error) === 'NotFound');
+  // A shared reader deliberately cannot use the owner's private context projection. Its dedicated
+  // status and transcript projections decide availability instead of treating that 404 as deletion.
+  const gone = $derived(!readOnly && context.isError && wireCodeOf(context.error) === 'NotFound');
   const displayTitle = $derived(context.data?.title ?? title ?? CHAT_COPY.untitled);
   const clock = useMinuteClock();
   /** The model that wrote the chat's latest reply, which names the chat's model when nothing else does. */
@@ -656,7 +658,12 @@
     }
     // An archived chat's bar outranks the missing provider: nothing can be sent until it is
     // unarchived, and Unarchive is the way back.
-    if (noProvider && composerStatus?.kind !== 'blocked' && composerStatus?.kind !== 'archived') {
+    if (
+      !readOnly &&
+      noProvider &&
+      composerStatus?.kind !== 'blocked' &&
+      composerStatus?.kind !== 'archived'
+    ) {
       return {
         kind: 'unconfigured',
         onConnect: () => router.navigate('/settings/models'),

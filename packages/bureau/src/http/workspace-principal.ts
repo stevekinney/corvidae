@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { ANONYMOUS_LOCAL_OWNER, isReservedOwnerSubject } from '../owner-of-record.ts';
 
 /** The immutable workspace identity a trusted host directory resolves for a credential. */
-export type WorkspaceMembership = WorkspaceIdentity & { readonly displayName?: string };
+export type WorkspaceMembership = WorkspaceIdentity & { readonly displayName?: string | undefined };
 
 /** Verified credential information; no request headers, input, or claims are directory authority. */
 export type WorkspaceCredential = Readonly<Pick<AuthenticatedPrincipal, 'method' | 'subject'>>;
