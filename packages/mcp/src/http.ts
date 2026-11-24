@@ -3,6 +3,9 @@ export interface VerifiedGrant {
   audience: string | readonly string[];
   expiresAt: number;
   subject: string;
+  grantId?: string;
+  clientId?: string;
+  tenant?: string;
   scopes: readonly string[];
 }
 
@@ -112,9 +115,19 @@ export function createProtectedHttpHandler<T extends Principal>(
       grant.expiresAt <= Date.now()
     )
       return unauthorized();
-    grant = {
+    grant = Object.freeze({
       ...grant,
-      audience: typeof grant.audience === 'string' ? grant.audience : [...grant.audience],
+      audience:
+        typeof grant.audience === 'string' ? grant.audience : Object.freeze([...grant.audience]),
+      scopes: Object.freeze([...grant.scopes]),
+    });
+    const binding = {
+      issuer: grant.issuer,
+      subject: grant.subject,
+      grantId: grant.grantId,
+      clientId: grant.clientId,
+      tenant: grant.tenant,
+      audience: JSON.stringify(grant.audience),
       scopes: [...grant.scopes],
     };
     if (!(await options.resolvePrincipal(grant))) return unauthorized();
@@ -145,11 +158,15 @@ export function createProtectedHttpHandler<T extends Principal>(
         const fresh = await options.verifyAccessToken(token);
         if (
           !fresh ||
-          fresh.issuer !== grant.issuer ||
-          fresh.subject !== grant.subject ||
-          JSON.stringify(fresh.audience) !== JSON.stringify(grant.audience) ||
+          fresh.issuer !== binding.issuer ||
+          fresh.subject !== binding.subject ||
+          fresh.grantId !== binding.grantId ||
+          fresh.clientId !== binding.clientId ||
+          fresh.tenant !== binding.tenant ||
+          JSON.stringify(fresh.audience) !== binding.audience ||
+          !Number.isFinite(fresh.expiresAt) ||
           fresh.expiresAt <= Date.now() ||
-          !grant.scopes.every((scope) => fresh.scopes.includes(scope))
+          !binding.scopes.every((scope) => fresh.scopes.includes(scope))
         )
           return null;
         const currentPrincipal = await options.resolvePrincipal(fresh);
@@ -172,7 +189,7 @@ export function createProtectedHttpHandler<T extends Principal>(
           return { ok: false, response: new Response(null, { status: 403 }) };
         const principal = await current();
         if (!principal || request.signal.aborted) return { ok: false, response: unauthorized() };
-        const missing = requested.filter((scope) => !grant.scopes.includes(scope));
+        const missing = requested.filter((scope) => !binding.scopes.includes(scope));
         if (requested.some((scope) => !principal.delegableScopes.includes(scope)))
           return { ok: false, response: new Response(null, { status: 403 }) };
         if (missing.length)

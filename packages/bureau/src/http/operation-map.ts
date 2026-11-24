@@ -159,6 +159,30 @@ export const OPERATION_MAP = {
   'bureau.contexts.archive': { workspaceClass: 'private-owned', member: 'contexts.archive' },
   'bureau.contexts.unarchive': { workspaceClass: 'private-owned', member: 'contexts.unarchive' },
   'bureau.contexts.window': { workspaceClass: 'private-owned', member: 'contexts.window' },
+  'bureau.contexts.share': {
+    workspaceClass: 'explicit-share',
+    exempt: 'an owner-authorized transition of durable session reader metadata',
+  },
+  'bureau.contexts.share.revoke': {
+    workspaceClass: 'explicit-share',
+    exempt: 'an owner-authorized transition of durable session reader metadata',
+  },
+  'bureau.contexts.share.request': {
+    workspaceClass: 'explicit-share',
+    exempt: 'a former reader’s owner-visible request receipt',
+  },
+  'bureau.contexts.share.request.resolve': {
+    workspaceClass: 'explicit-share',
+    exempt: 'an owner resolving a former reader request receipt',
+  },
+  'bureau.contexts.share.requests.list': {
+    workspaceClass: 'explicit-share',
+    exempt: 'an owner-only list of pending former-reader request receipts',
+  },
+  'bureau.contexts.share.status': {
+    workspaceClass: 'explicit-share',
+    exempt: 'a privacy-preserving direct-link state for an existing shared-chat recipient',
+  },
 
   'bureau.reviews.list': { workspaceClass: 'private-owned', member: 'reviews.list' },
   'bureau.reviews.get': { workspaceClass: 'private-owned', member: 'reviews.get' },

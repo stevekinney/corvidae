@@ -42,6 +42,33 @@ export function reviewWithSource<Review extends ListedReview>(review: Review): R
 
 type Options = { readonly signal?: AbortSignal };
 
+/** A durable, owner-only request to restore a former chat reader. */
+export type ChatAccessRequest =
+  BureauOutput<'bureau.contexts.share.requests.list'>['requests'][number];
+
+export async function listChatAccessRequests(
+  options?: Options,
+): Promise<readonly ChatAccessRequest[]> {
+  const result = await bureauClient['bureau.contexts.share.requests.list']({}, options);
+  return result.requests;
+}
+
+export async function resolveChatAccessRequest(
+  request: ChatAccessRequest,
+  decision: 'grant' | 'deny',
+  options?: Options,
+): Promise<BureauOutput<'bureau.contexts.share.request.resolve'>> {
+  return bureauClient['bureau.contexts.share.request.resolve'](
+    {
+      contextId: request.contextId,
+      granteeOwnerId: request.granteeOwnerId,
+      requestId: request.requestId,
+      decision,
+    },
+    options,
+  );
+}
+
 /** What `bureau.reviews.list` filters and pages by. */
 export type ReviewsQuery = {
   /** `pending` (the default) or `resolved`, the reviews a person decided. */

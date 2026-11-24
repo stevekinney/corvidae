@@ -109,6 +109,48 @@ test('only a collector-issued receipt can validate', () => {
   expect(validateEvidence(plan, forged, expected).ok).toBe(false);
 });
 
+test('qualifies failed, missing, stale, reasoned-empty, and combined-tree receipts', () => {
+  const expected = {
+    revision: request.revision,
+    integrationTree: request.integrationTree,
+    environment: request.environment,
+  };
+  const check = (evidence: ReturnType<typeof collectProviderEvidence>) =>
+    validateEvidence(plan, evidence, expected).ok;
+  expect(check(collectProviderEvidence(request, transport({ conclusion: 'failure' })))).toBe(false);
+  const missingArtifact = {
+    ...request,
+    providerRuns: [{ ...request.providerRuns[0]!, artifact: 'report' }],
+  };
+  expect(
+    check(
+      collectProviderEvidence(missingArtifact, {
+        ...transport(),
+        artifact: () => ({ present: false, expired: false }),
+      }),
+    ),
+  ).toBe(false);
+  expect(check(collectProviderEvidence(request, transport({ revision: 'e'.repeat(40) })))).toBe(
+    false,
+  );
+  const emptyPlan = {
+    ...plan,
+    obligations: [
+      {
+        ...plan.obligations[0]!,
+        expectedInventory: [],
+        selectionReason: 'No matching tests for this documentation-only change.',
+      },
+    ],
+  };
+  const empty = collectProviderEvidence(
+    { ...request, plan: emptyPlan },
+    { ...transport(), job: () => ({ ...transport().job(), inventory: [] }) },
+  );
+  expect(validateEvidence(emptyPlan, empty, expected).ok).toBe(true);
+  expect(check(collectProviderEvidence(request, transport()))).toBe(true);
+});
+
 test('compares an installed-release receipt with its archive and configuration obligation', () => {
   const expected = {
     sourceRevision: 'a'.repeat(40),

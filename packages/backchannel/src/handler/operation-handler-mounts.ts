@@ -24,6 +24,9 @@ export type OperationHandlerMountOperation = Pick<
   | 'outputSchema'
   | 'unknownKeyPolicy'
   | 'kind'
+  | 'behavior'
+  | 'access'
+  | 'parameterizedAccess'
 >;
 
 /**
@@ -33,6 +36,8 @@ export type OperationHandlerMountOperation = Pick<
 export type OperationHandlerMountDispatchOptions = {
   /** The transport the dispatch runs as: `http-rest` by default, or `mcp`. */
   readonly transport?: 'http-rest' | 'mcp';
+  /** Cancellation of the protocol-level call, combined with the request signal. */
+  readonly signal?: AbortSignal;
 };
 
 /**

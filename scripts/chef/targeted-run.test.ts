@@ -627,6 +627,35 @@ describe('run', () => {
 });
 
 describe('the workflow and the manifest', () => {
+  test('qualification trusts only its checked-out workspace before making worktrees', async () => {
+    const workflow = await Bun.file(
+      new URL('../../.github/workflows/targeted-checks.yml', import.meta.url),
+    ).text();
+    const job = workflow.slice(
+      workflow.indexOf('\n  cor-2653-qualification:'),
+      workflow.indexOf('\n  unit:'),
+    );
+    const trust = 'git config --global --add safe.directory "$GITHUB_WORKSPACE"';
+    expect(job).toContain(trust);
+    expect(job.indexOf(trust)).toBeLessThan(
+      job.indexOf('bun scripts/chef/cor-2653-qualification.ts'),
+    );
+    expect(job).not.toContain('safe.directory "*"');
+  });
+
+  test('qualification runs cannot acquire a targeted landing name even with a digest', async () => {
+    const workflow = await Bun.file(
+      new URL('../../.github/workflows/targeted-checks.yml', import.meta.url),
+    ).text();
+    const runName = workflow.split('\n').find((line) => line.startsWith('run-name:'));
+    expect(runName).toContain(
+      "startsWith(inputs.e2e_specs, 'COR-2653-qualification:') && 'COR-2653 qualification'",
+    );
+    expect(runName?.indexOf('COR-2653 qualification')).toBeLessThan(
+      runName?.indexOf('inputs.plan_digest') ?? -1,
+    );
+  });
+
   test('uses Bash in containers and captures manifest preparation failures', async () => {
     const workflow = await Bun.file(
       new URL('../../.github/workflows/targeted-checks.yml', import.meta.url),

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import {
+  browserQualification,
   designReviewCaptureDirectory,
   designReviewColorScheme,
   endToEndPort,
@@ -8,6 +9,25 @@ import {
   isContinuousIntegration,
   requiresFreshServer,
 } from './environment-configuration.ts';
+
+test('reads opt-in browser qualification identity', () => {
+  const savedEnabled = process.env['COR_2653_QUALIFICATION'];
+  const savedRun = process.env['INTERBOROUGH_E2E_RUN_ID'];
+  const savedRevision = process.env['COR_2653_REVISION'];
+  try {
+    process.env['COR_2653_QUALIFICATION'] = '1';
+    process.env['INTERBOROUGH_E2E_RUN_ID'] = 'A';
+    process.env['COR_2653_REVISION'] = 'abcdef0';
+    expect(browserQualification()).toEqual({ enabled: true, run: 'A', revision: 'abcdef0' });
+  } finally {
+    if (savedEnabled === undefined) delete process.env['COR_2653_QUALIFICATION'];
+    else process.env['COR_2653_QUALIFICATION'] = savedEnabled;
+    if (savedRun === undefined) delete process.env['INTERBOROUGH_E2E_RUN_ID'];
+    else process.env['INTERBOROUGH_E2E_RUN_ID'] = savedRun;
+    if (savedRevision === undefined) delete process.env['COR_2653_REVISION'];
+    else process.env['COR_2653_REVISION'] = savedRevision;
+  }
+});
 
 describe('the end-to-end port', () => {
   let saved: string | undefined;
@@ -44,11 +64,11 @@ describe('the end-to-end port', () => {
     expect(endToEndPort()).toBe(7721);
   });
 
-  test('leaves room for the five ports the suite holds after it, so the highest is 65530', () => {
-    process.env['INTERBOROUGH_E2E_PORT'] = '65530';
-    expect(endToEndPort()).toBe(65530);
-    process.env['INTERBOROUGH_E2E_PORT'] = '65531';
-    expect(() => endToEndPort()).toThrow('below 65531');
+  test('leaves room for the eight ports the suite holds after it', () => {
+    process.env['INTERBOROUGH_E2E_PORT'] = '65527';
+    expect(endToEndPort()).toBe(65527);
+    process.env['INTERBOROUGH_E2E_PORT'] = '65528';
+    expect(() => endToEndPort()).toThrow('below 65528');
   });
 
   test('refuses a value that is not a port', () => {

@@ -63,7 +63,9 @@ function publicWorkspaceName(directoryName: string): string {
 /** The complete, exact set of current workspace names, per the COR-1284 ruling. */
 const expectedWorkspaceNames = new Set([
   '@lostgradient/backchannel',
+  '@lostgradient/backchannel-armorer',
   '@lostgradient/backchannel-mcp',
+  '@lostgradient/backchannel-svelte',
   '@lostgradient/weft',
   '@lostgradient/velveteen',
   '@lostgradient/cinder',

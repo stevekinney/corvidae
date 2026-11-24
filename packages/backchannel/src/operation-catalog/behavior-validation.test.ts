@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'bun:test';
+import { relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { createOperationClientSources } from '../../scripts/generate-operation-client.ts';
 import {
@@ -401,16 +403,17 @@ describe('declared operation behavior', () => {
       outputDirectory: '.',
       format: async (source) => source,
     });
+    const repository = fileURLToPath(new URL('../../../../', import.meta.url));
     const paths: string[] = [];
     const result = await Bun.build({
-      entrypoints: [new URL('../client/index.ts', import.meta.url).pathname],
+      entrypoints: [fileURLToPath(new URL('../client/index.ts', import.meta.url))],
       target: 'browser',
       plugins: [
         {
           name: 'record-graph',
           setup(build) {
             build.onLoad({ filter: /\.ts$/ }, async (args) => {
-              paths.push(args.path);
+              paths.push(relative(repository, args.path));
               return { contents: await Bun.file(args.path).text(), loader: 'ts' };
             });
           },

@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2653",
+  "branch": "steve/cor-2653-browser-port-isolation",
+  "checkedAt": "29ebf53f1c3da3e7d7215eb6cd261de0ca2f9178",
+  "briefVersion": "f416fc07b354",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Shared launcher verified on both ordinary routes. Nine-port override exited 2. Late collisions at +1, +6 and +8 retried cleanly. Exact current Connect negative reached Expected EADDRINUSE, and the exact product passed all four cases without panel warnings in 45396347929, artifact 14922040914."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Corrected Linux matrix 45389119107 retained 18 distinct owners across two nine-address blocks, two authenticated sharing routes, protected default sentinels, distinct run/revision identities and live workflow actions. A stopped twice with exit 143 and B completed with exit 0. Artifact 14920033441 SHA-256 f9e305650ac1c6514921fb26d8df577b19e85bd9ecd309edda81a3a557180886."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "All four healthy and four intentionally bad order and contention pairs reached the expected first exits and assertions at 45389119107. Real competing browser actions bracketed the assertions and succeeded after release. Linux four CPU, worker 1, retry 0, guard 120000 ms, Playwright limit 240000 ms, aggregate peak 11445714944 bytes. Original warning-bearing concurrent Connect control retained and warning-free matched serial supplement verified at 45396347929."
+    }
+  ]
+}

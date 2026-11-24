@@ -1,0 +1,44 @@
+{
+  "issue": "COR-2604",
+  "branch": "steve/cor-2604-backchannel-svelte",
+  "checkedAt": "6910a9342b154c6ae99978c4686b76cedd060976",
+  "briefVersion": "766d058a6e0f",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Generator golden and compiled fixture tests, tsc and svelte-check pass."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Host and Svelte DOM lifecycle tests cover scope, seed and hydration."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Svelte lifecycle, pagination and attachment tests cover stale completion, errors, abort and teardown; inherited cursor, page and identity fields are rejected or ignored."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Fixture build test records browser imports and executes a portable bundle without Svelte imports."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "Generated subscription binding runs in the Svelte lifecycle fixture; cursor replay, deduplication, unsupported capability and teardown pass direct tests."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "Host and Svelte lifecycle tests cover isolated command results, histories and scope disposal."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "Correlation, reconciliation and DOM/SSR tests pass. Coordinator ran Chromium at corrected source 7946cfbd55d25d63a9efd139e97d2bf45b2784c3, exit 0; scratch/COR-2604-affdc532/chromium-7946.log."
+    }
+  ]
+}

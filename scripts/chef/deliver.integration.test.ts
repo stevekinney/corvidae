@@ -2063,6 +2063,12 @@ scenarios.describe('deliver --branch refuses to land without evidence', () => {
       });
       expect(undigested.report).toMatchObject({ merged: false, failedStep: 'verification' });
       expect(undigested.report.detail).toContain('no green run covers the head');
+      const qualification = await landBranch({
+        identity: { none: true },
+        answers: targeted('COR-2653 qualification'),
+      });
+      expect(qualification.report).toMatchObject({ merged: false, failedStep: 'verification' });
+      expect(qualification.report.detail).toContain('no green run covers the head');
       const full = await landBranch({
         identity: { none: true },
         answers: {

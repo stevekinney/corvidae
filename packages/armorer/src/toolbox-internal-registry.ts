@@ -8,7 +8,7 @@ import type { SerializedToolbox, ToolboxOptions } from './toolbox-contracts';
  */
 export const internalToolboxOptionsRegistry = new WeakMap<
   () => SerializedToolbox,
-  InternalToolboxOptions
+  InternalToolboxOptions & { opaqueToolFactory: boolean }
 >();
 
 export function registerInternalToolboxOptions(
@@ -30,6 +30,7 @@ export function registerInternalToolboxOptions(
     readOnly: boolean;
     allowMutation: boolean;
     allowDangerous: boolean;
+    opaqueToolFactory: boolean;
   },
 ): void {
   const internalOptions = {
@@ -42,6 +43,7 @@ export function registerInternalToolboxOptions(
     readOnly: values.readOnly,
     allowMutation: values.allowMutation,
     allowDangerous: values.allowDangerous,
+    opaqueToolFactory: values.opaqueToolFactory,
     ...(values.registryPolicy ? { policy: values.registryPolicy } : {}),
     ...(values.registryPolicyContext ? { policyContext: values.registryPolicyContext } : {}),
     ...(values.approvalPolicy ? { approvalPolicy: values.approvalPolicy } : {}),

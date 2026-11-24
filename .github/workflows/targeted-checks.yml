@@ -50,7 +50,7 @@ on:
 
 # Landing (scripts/chef/landing-evidence.ts) accepts this run as coverage for a head only when the
 # name carries the digest of the plan it computes itself.
-run-name: ${{ inputs.plan_digest != '' && format('targeted {0}', inputs.plan_digest) || 'Targeted checks' }}
+run-name: ${{ startsWith(inputs.e2e_specs, 'COR-2653-qualification:') && 'COR-2653 qualification' || inputs.plan_digest != '' && format('targeted {0}', inputs.plan_digest) || 'Targeted checks' }}
 
 permissions:
   contents: read
@@ -62,7 +62,7 @@ defaults:
 
 # A newer dispatch on a branch cancels the older one: a correction round supersedes the last.
 concurrency:
-  group: targeted-checks-${{ github.ref }}
+  group: targeted-checks-${{ github.ref }}-${{ startsWith(inputs.e2e_specs, 'COR-2653-qualification:') && 'qualification' || 'normal' }}
   cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
 
 env:
@@ -109,6 +109,7 @@ jobs:
   # waits for the full run. It runs on every dispatch, whatever the inputs.
   checks:
     name: Changed workspaces lint and type-check
+    if: ${{ !startsWith(inputs.e2e_specs, 'COR-2653-qualification:') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -246,7 +247,7 @@ jobs:
 
   interborough:
     name: Interborough end-to-end (targeted)
-    if: ${{ inputs.e2e_specs != '' }}
+    if: ${{ inputs.e2e_specs != '' && !startsWith(inputs.e2e_specs, 'COR-2653-qualification:') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     container:
@@ -314,6 +315,34 @@ jobs:
         env:
           CI_REPLAY_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
           CI_REPLAY_SELECTION: ${{ inputs.e2e_specs }}
+
+  cor-2653-qualification:
+    if: ${{ startsWith(inputs.e2e_specs, 'COR-2653-qualification:') }}
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-jammy
+    env:
+      QUALIFICATION_REQUEST: ${{ inputs.e2e_specs }}
+      QUALIFICATION_SHA: ${{ github.sha }}
+    steps:
+      - run: apt-get update && apt-get install -y --no-install-recommends git unzip
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: bun install --frozen-lockfile
+      - run: bun scripts/chef/cor-2653-qualification.ts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() }}
+        with:
+          name: cor-2653-qualification
+          path: qualification-output/
+          if-no-files-found: error
+          retention-days: 14
 
   unit:
     name: Unit test files (${{ matrix.lane.workspace }})
