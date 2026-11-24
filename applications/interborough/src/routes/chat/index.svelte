@@ -117,9 +117,11 @@
     label:
       shareStatus.data?.status === 'active'
         ? (shareStatus.data.title ?? CHAT_COPY.load.crumb)
-        : failedToLoad || (!startsNew && context.data === undefined && context.isPending)
+        : shareStatus.data?.status === 'requestable' || shareStatus.data?.status === 'pending'
           ? CHAT_COPY.load.crumb
-          : undefined,
+          : failedToLoad || (!startsNew && context.data === undefined && context.isPending)
+            ? CHAT_COPY.load.crumb
+            : undefined,
   }));
   // A read that got no answer with nothing to show is the full error state, and the shell's banner
   // stays out: a banner says the data on screen is old, and none of this chat is.

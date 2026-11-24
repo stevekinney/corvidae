@@ -2418,7 +2418,7 @@
             // The transcript offers Branch on a message and no Edit: editing a sent message is a
             // fork, which Branch on that message is.
             editing: false,
-            quote: true,
+            quote: !readOnly,
           }}
           uploadAttachment={upload}
           acceptedTypes={settings?.acceptedTypes ?? []}
