@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2608",
+  "branch": "steve/cor-2608-reviews-wire",
+  "checkedAt": "400c8d189aff05cbd1111b8f476146f142f48fff",
+  "briefVersion": "18fc470fdc79",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "not-met",
+      "evidence": "Not implemented or checked."
+    },
+    {
+      "id": "AC2",
+      "status": "needs-decision",
+      "evidence": "Existing remembered-grant execution precedes review admission; refund admission is explicitly out of scope."
+    },
+    {
+      "id": "AC3",
+      "status": "needs-decision",
+      "evidence": "Refund effect and authority providers are future host services absent at the pinned base."
+    },
+    {
+      "id": "AC4",
+      "status": "not-met",
+      "evidence": "Not implemented or checked."
+    },
+    {
+      "id": "AC5",
+      "status": "not-met",
+      "evidence": "Not implemented or checked."
+    }
+  ]
+}
