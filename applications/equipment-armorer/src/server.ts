@@ -1,5 +1,5 @@
-import { createToolboxMcpHandler } from 'armorer/mcp/http';
 import { createFixture } from '@lostgradient/equipment-fixture';
+import { createToolboxMcpHandler } from 'armorer/mcp/http';
 
 const fixture = createFixture('/mcp');
 const handler = await createToolboxMcpHandler(fixture.toolbox, {
