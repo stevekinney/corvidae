@@ -65,7 +65,7 @@
 }
 
 /* Keep review inputs and decisions together on wide detail panes. */
-.ib-reviews__detail [data-kind='tool-approval'] > .cinder-approval-card--detail,
+.ib-reviews__detail [data-kind='tool-approval'],
 .ib-reviews__detail .ib-review-detail {
   max-inline-size: 48rem;
 }
