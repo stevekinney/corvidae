@@ -577,6 +577,11 @@ export type SharedCodeLastFiredAtRetryAt_58907586 = {
   readonly since: string;
   readonly state: 'listening' | 'waiting-for-secret' | 'failed' | 'stopped' | 'ready' | 'standby';
 };
+export type SharedCommandIdContextIdRunId_f3b33fe9 = {
+  readonly commandId: string;
+  readonly contextId: string;
+  readonly runId: string;
+};
 export type SharedCommandOutcome_2d8e5749 = {
   readonly command: SharedConfigVersionFailureId_72126ec5;
   readonly outcome: 'accepted';

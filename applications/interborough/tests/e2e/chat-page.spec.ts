@@ -794,22 +794,25 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     );
     await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
 
-    const decided = page.locator('.cinder-approval-card--row').filter({ hasText: question });
+    // A settled approval uses the explicit decision layout. Its public layout/state attributes are
+    // stable across the receipt's initial arrival and the subsequent transcript refresh.
+    const decided = page
+      .locator('[data-cinder-layout="decision"][data-cinder-state="approved"]')
+      .filter({ hasText: question });
     await expect(decided).toBeVisible();
-    await expect(decided.locator('.cinder-approval-card__outcome')).toContainText(
+    await expect(decided.locator('.cinder-approval-card__settled-note')).toContainText(
       /Approved by you in Reviews\s*10:46 AM/,
+    );
+    await expect(decided.getByRole('link', { name: 'Reviews' })).toHaveAttribute(
+      'href',
+      /\/reviews\?tab=done&review=/,
     );
     await expect(decided.getByRole('button', { name: 'Deny' })).toHaveCount(0);
     await expect(decided.getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
-    // The row collapses to a check, the question and the decision: no tool line and no Input.
-    // The card holds the question twice in its text: once in an aria-hidden screen-reader-only
-    // span that only matchers read, and once as the heading a person sees.
-    await expect(decided).toHaveText(
-      /^\s*(?:Refund order 4471 for \$42\.00\?\s*){2}Approved by you in Reviews\s*10:46 AM\s*$/,
-    );
+    // The receipt is one settled title and status line: no pending tool input or controls remain.
     await expect(decided.getByRole('heading')).toHaveText('Refund order 4471 for $42.00?');
-    await expect(decided.locator('.cinder-approval-card__decided-glyph')).toHaveAttribute(
+    await expect(decided.locator('.cinder-approval-card__settled-row')).toHaveAttribute(
       'data-cinder-tone',
       'success',
     );
@@ -859,9 +862,12 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
       ),
     ).toHaveText('Running');
     // The decision stays as it was, and is not told again.
-    await expect(decided.locator('.cinder-approval-card__outcome')).toContainText(
+    await expect(decided.locator('.cinder-approval-card__settled-note')).toContainText(
       /Approved by you in Reviews\s*10:46 AM/,
     );
+    await expect(
+      page.locator('[data-cinder-layout="decision"][data-cinder-state="approved"]'),
+    ).toHaveCount(1);
     await expect(live).toHaveText('Approved in Reviews. Refund order 4471 for $42.00.');
     // While the continuing run is going the rail row says so in place of the result (18i), and
     // the chat's status and its row in the list say Running too.
@@ -1030,12 +1036,13 @@ test.describe('an open chat whose approval was denied with a note (18h)', () => 
     await page.goto(`/chats/${THREAD}`);
 
     const denied = page
-      .locator('.cinder-approval-card--row')
+      .locator('[data-cinder-layout="decision"][data-cinder-state="denied"]')
       .filter({ hasText: 'Refund order 4398' });
     await expect(denied).toBeVisible();
-    await expect(denied.locator('.cinder-approval-card__outcome')).toContainText(
+    await expect(denied.locator('.cinder-approval-card__settled-note')).toContainText(
       /Denied by you\s*10:40 AM/,
     );
+    await denied.getByRole('button', { name: 'Details' }).click();
     await expect(denied.locator('.cinder-approval-card__decision-note')).toContainText(NOTE);
     await expect(
       conversationArea(page).locator('.cinder-tool-call-rail__item[data-cinder-status="denied"]'),

@@ -172,7 +172,7 @@
   import type { DecisionContext } from './approval-decision-words.ts';
   import { editForkPoint, lastBranchPoint } from './edit-fork.ts';
   import { composerStatusOf } from './composer-state.ts';
-  import { lastAssistantId, turnStateOf } from './turn-states.ts';
+  import { lastAssistantId, lastTurnStop, turnStateOf, withoutStopLine } from './turn-states.ts';
   import { changeSetting, type SteerNotices } from './steer-change.ts';
   import ModelPicker from './model-picker.svelte';
   import NewChatChoices from './new-chat-choices.svelte';
@@ -1027,7 +1027,7 @@
   // of, so it is drawn on the row it belongs to (`withStopLine`). A chat the server stopped when it
   // restarted says so under what arrived, in place of the plain line the canceled run left
   // (`withEndedLine`).
-  const shown = $derived(
+  const lined = $derived(
     withoutAssetParts(
       withTypedAnswers(
         withEndedLine(withStopLine(session.conversation, { tools: toolInfo }), endedByRestart),
@@ -1035,6 +1035,10 @@
       ),
     ),
   );
+  // Chat owns the terminal turn presentation, so its source stop line is removed only for the
+  // last settled turn. Earlier failures keep their recorded note in the transcript.
+  const lastStop = $derived(session.streaming ? undefined : lastTurnStop(lined));
+  const shown = $derived(withoutStopLine(lined, lastStop));
 
   // The status line Retry is offered beside: the last turn's, when its run failed. A failed attempt
   // of an earlier turn keeps its line (row 20b) with nothing beside it, since Retry runs the last
@@ -1053,7 +1057,26 @@
       reconnect: session.reconnectSchedule,
       lastAssistantId: lastAssistant,
       now: reconnectNow,
+      stop: lastStop?.state,
     });
+  }
+
+  const discardableRun = $derived(
+    lastStop?.state.kind === 'stopped' && lastAssistant !== undefined
+      ? replyStepOf(lastAssistant)?.runId
+      : undefined,
+  );
+  async function discardTurn(): Promise<void> {
+    if (discardableRun === undefined) return;
+    if (!(await session.discardTurn(discardableRun))) {
+      showToast(CHAT_COPY.discardTurn.failed, { variant: 'danger', duration: 0 });
+    }
+  }
+  async function resumeTurn(): Promise<void> {
+    if (discardableRun === undefined) return;
+    if (!(await session.resumeTurn(discardableRun))) {
+      showToast(CHAT_COPY.resumeTurn.failed, { variant: 'danger', duration: 0 });
+    }
   }
 
   // The messages that offer a branch. A run that is going, or that the page is still reading, has
@@ -2390,6 +2413,13 @@
           {composerStatus}
           messageTurnState={turnState}
           onRetryConnection={() => void session.reconnect()}
+          {...session.canRetryTurn ? { onRetryTurn: () => void retryTurn() } : {}}
+          {...discardableRun !== undefined && session.discarding === undefined
+            ? { onDiscardTurn: () => void discardTurn() }
+            : {}}
+          {...discardableRun !== undefined && session.resuming === undefined
+            ? { onContinueTurn: () => void resumeTurn() }
+            : {}}
           composerHeader={choosing && agent !== '' ? newChatHeader : undefined}
           composerLead={choosing && (fromWorkflows || agent === '') ? newChatLead : undefined}
           composerFooter={!choosing
@@ -2540,7 +2570,7 @@
                 decided={decisionContext}
                 selectedId={selectedCallId}
                 onSelect={selectCall}
-              onRetryStep={session.canRetryTurn ? () => void retryTurn() : undefined}
+                onRetryStep={session.canRetryTurn ? () => void retryTurn() : undefined}
                 opensPanel={(entry) =>
                   chatToolPanelFor(entry) !== undefined &&
                   structuredResultText(entry) !== undefined}

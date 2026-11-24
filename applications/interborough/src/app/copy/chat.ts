@@ -275,6 +275,13 @@ export const CHAT_COPY = {
      */
     stopFailed: 'The run could not be stopped, and it may still be going. Reconnect to check.',
   },
+  /** Actions on a terminal stopped turn (COR-2437). */
+  discardTurn: {
+    failed: 'The stopped reply wasn’t discarded. Try again.',
+  },
+  resumeTurn: {
+    failed: 'The stopped reply couldn’t continue. Try again.',
+  },
   /** The host-owned answer replacement action. */
   regeneration: {
     action: 'Regenerate',

@@ -2,6 +2,7 @@
 import type {
   SharedAdmissionSequenceAdmitte_e74023ec,
   SharedArchivedAtChangedId_d5d03aad,
+  SharedCommandIdContextIdRunId_f3b33fe9,
   SharedCommandOutcome_2d8e5749,
   SharedCommandOutcome_69ccd5e0,
   SharedConflictOutcome_e9582f9b,
@@ -49,6 +50,17 @@ export type ContextsOperationTypes = {
           }>;
         };
     readonly faults: 'InvalidParams' | 'NotFound' | 'UnsupportedCapability';
+  };
+  'bureau.contexts.discardturn': {
+    readonly input: SharedCommandIdContextIdRunId_f3b33fe9;
+    readonly output: {
+      readonly contextId: string;
+      readonly removed: number;
+      readonly revision: number;
+      readonly runId: string;
+    };
+    readonly faults:
+      'Conflict' | 'InvalidParams' | 'NotFound' | 'Unavailable' | 'UnsupportedCapability';
   };
   'bureau.contexts.forgetgrants': {
     readonly input: {
@@ -192,6 +204,16 @@ export type ContextsOperationTypes = {
     readonly input: { readonly contextId: string; readonly title: string | null };
     readonly output: { readonly contextId: string; readonly title: string | null };
     readonly faults: 'InvalidParams' | 'NotFound' | 'Unavailable' | 'UnsupportedCapability';
+  };
+  'bureau.contexts.resumeturn': {
+    readonly input: SharedCommandIdContextIdRunId_f3b33fe9;
+    readonly output: {
+      readonly contextId: string;
+      readonly resumedRunId: string;
+      readonly runId: string;
+    };
+    readonly faults:
+      'Conflict' | 'InvalidParams' | 'NotFound' | 'Unavailable' | 'UnsupportedCapability';
   };
   'bureau.contexts.retract': {
     readonly input: { readonly contextId: string; readonly inputId: string };

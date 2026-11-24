@@ -36,9 +36,11 @@ import {
 import { parseStepRowIdentifier } from '@lostgradient/operative';
 import { CHAT_COPY } from '../../app/copy/chat.ts';
 import {
+  discardContextTurn,
   forgetContextGrants,
   forkRefusalReason,
   regenerateContext,
+  resumeContextTurn,
   retractContextInput,
   sendContextInput,
   wireCodeOf,
@@ -63,6 +65,7 @@ import {
   type ChatRunWiring,
   type GrantNotLoosened,
   type HumanRequest,
+  type LastRunEnd,
   type Refusal,
   type RunUsage,
 } from './run-wiring.ts';
@@ -236,6 +239,14 @@ export class ChatSessionState {
   failureWasTransport = $state(false);
   /** The host-owned answer replacement currently in flight, or its retryable failure receipt. */
   regeneration = $state<ChatRegenerationState | undefined>(undefined);
+  /** The discard of the last stopped turn in flight, by the run whose turn it removes. */
+  discarding = $state<{ readonly runId: string; readonly commandId: string } | undefined>(
+    undefined,
+  );
+  /** The continuation of the last stopped turn in flight, by the run it goes on from. */
+  resuming = $state<{ readonly runId: string; readonly commandId: string } | undefined>(undefined);
+  /** How the last run ended, as the latest thread read recorded. */
+  lastRunEnd = $state<LastRunEnd | undefined>(undefined);
   /** The questions the run is waiting on the person to answer; the next message answers one. */
   humanRequests = $state.raw<readonly HumanRequest[]>([]);
   /** Whether the session opened on a run that was going, and is still reading it. */
@@ -338,6 +349,10 @@ export class ChatSessionState {
    */
   #approvalDeadlines: readonly ApprovalDeadline[] = [];
   #regenerationPromise: Promise<void> | undefined;
+  /** The discard command retried after a Bureau refusal, keyed to the stopped run. */
+  #discardCommand: { readonly runId: string; readonly commandId: string } | undefined;
+  /** The continuation command retried after a Bureau refusal, keyed to the stopped run. */
+  #resumeCommand: { readonly runId: string; readonly commandId: string } | undefined;
   #readerAbort: AbortController | undefined;
   #activeTurn: Promise<unknown> = Promise.resolve();
   /**
