@@ -38,7 +38,7 @@ describe('composerStatusText', () => {
   test('reads an approval wait, and says a message sent now is queued (COR-2282 M7)', () => {
     expect(composerStatusText({ kind: 'waiting' })).toBe('Waiting for your approval');
     expect(composerStatusText({ kind: 'waiting', queues: true })).toBe(
-      'Waiting for your approval. A message sent now is queued until you decide.',
+      'Waiting for your approval. Anything you send now queues until you decide.',
     );
   });
 });

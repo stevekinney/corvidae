@@ -147,7 +147,7 @@ describe('Chat queued follow-ups (COR-2284, row C3)', () => {
     await tick();
 
     expect(container.querySelector('.chat-input-status')?.textContent).toBe(
-      'Waiting for your approval. A message sent now is queued until you decide.',
+      'Waiting for your approval. Anything you send now queues until you decide.',
     );
     await submit(container, 'use the staging bucket');
     await settle();

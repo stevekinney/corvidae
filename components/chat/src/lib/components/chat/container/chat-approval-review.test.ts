@@ -79,7 +79,7 @@ function withDeadline(messages: readonly Message[], expiresAt: string): readonly
 describe('approval drawer words', () => {
   test('say exactly what is waiting and what the action does', () => {
     // Short enough to sit on one line beside Review on a 320px phone (COR-2327).
-    expect(APPROVAL_DRAWER_TEXT).toBe('Approval needed.');
+    expect(APPROVAL_DRAWER_TEXT).toBe('Waiting for your approval.');
     expect(APPROVAL_DRAWER_ACTION).toBe('Review approval');
     expect(APPROVAL_DRAWER_TEXT).not.toContain(String.fromCodePoint(0xb7));
   });

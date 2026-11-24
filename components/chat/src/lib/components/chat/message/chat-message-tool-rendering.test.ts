@@ -1121,21 +1121,22 @@ describe('ChatMessage — tool-call rendering', () => {
       ).toBe(false);
     });
 
-    test('on a touch screen the summary line and each step row are painted at their text height and reach 44px by a pseudo-element', () => {
+    test('keeps the summary compact and gives every expanded step a real control-height target', () => {
       const source = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
-      // No painted minimum or padding on any pointer type: the row is its text line height.
-      expect(source).not.toMatch(/\.chat-tool-call-(?:toggle|row)[^}]*min-block-size/s);
-      expect(source).not.toMatch(
-        /@media \(any-pointer: coarse\) \{[^}]*\.chat-tool-call-row\s*\{[^}]*(?:min-block-size|padding-block)/s,
+      // No painted minimum or padding on any pointer type: the row is its text line height. The
+      // shared disclosure trigger supplies a coarse 44px minimum by default, so the timeline
+      // explicitly opts the compact summary back out before its child owns the hit region.
+      expect(source).toMatch(
+        /\.chat-tool-call-heading > :global\(\.chat-tool-call-toggle\)\s*\{[^}]*min-block-size: auto;/s,
       );
-      // The 44px hit area takes no layout: the summary uses an overflowing child because a
-      // generated pseudo-element outside a button's border is not reliably hit-tested. The header
-      // overhangs both ways, a step row ends at its edges, and only the last row overhangs below.
+      expect(source).toMatch(
+        /\.chat-tool-call-row\s*\{[^}]*min-block-size: var\(--cinder-control-height-xs\);/s,
+      );
+      // The compact summary needs an explicit child because generated content outside a button's
+      // border is not reliably hit-tested. Expanded rows use a real control height so adjacent
+      // buttons never compete for the same point.
       expect(source).toMatch(
         /@media \(any-pointer: coarse\) \{[^@]*\.chat-tool-call-hit-target\s*\{[^}]*position: absolute;[^}]*pointer-events: auto;[^}]*inset-block: min\(0px, calc\(\(100% - var\(--cinder-touch-target-min\)\) \/ 2\)\);/s,
-      );
-      expect(source).toMatch(
-        /\.chat-tool-call-item:last-child > \.chat-tool-call-row::before\s*\{[^}]*inset-block-end: min\(0px,/s,
       );
       // A failed step's Retry and Copy error are Cinder Buttons: compact paint, hit-area extension.
       expect(source).not.toMatch(

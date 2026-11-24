@@ -181,7 +181,7 @@ describe('ChatInput — status line', () => {
     const line = () => container.querySelector('.chat-input-status');
 
     expect(line()?.textContent).toBe(
-      'Waiting for your approval. A message sent now is queued until you decide.',
+      'Waiting for your approval. Anything you send now queues until you decide.',
     );
     expect(line()?.getAttribute('data-chat-composer-status')).toBe('waiting');
 

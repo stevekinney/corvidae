@@ -712,6 +712,8 @@
     gap: var(--cinder-space-2);
     inline-size: 100%;
     min-inline-size: 0;
+    /* The glyph and words stay compact, but the control itself is a real list-row target. */
+    min-block-size: var(--cinder-control-height-xs);
     padding: 0;
     border: 0;
     background: transparent;
@@ -734,30 +736,14 @@
     direction: rtl;
   }
 
-  /* On a touch screen a row is still painted at its text line height; its 44px hit area reaches
-   * past the row without adding layout. The summary uses an overflowing child because browsers do
-   * not consistently hit-test generated content outside a button's border. The row stands above the message
-   * line before it (a stacking position of its own), so the overhang is reachable there. Rows
-   * stacked at their text height would cover each other's faces if each overhung both ways, so the
-   * header overhangs on both sides, a step row ends at its own edges, and only the last row
-   * overhangs, below: a tap between two rows goes to the nearer one. */
+  /* The summary paints at its text height and its explicit child owns the coarse-pointer target.
+   * Step rows instead have real list-row targets, so adjacent expanded buttons have unambiguous
+   * touch ownership while their glyphs and words remain compact. */
   @media (any-pointer: coarse) {
     /* The summary paints at its text height; its explicit child owns the 44px reachable region.
        A shared minimum height here would add a blank line before the answer. */
     .chat-tool-call-heading > :global(.chat-tool-call-toggle) {
       min-block-size: auto;
-    }
-
-    .chat-tool-call-row {
-      position: relative;
-      z-index: 1;
-    }
-
-    .chat-tool-call-row::before {
-      content: '';
-      position: absolute;
-      inset-inline: 0;
-      inset-block: 0;
     }
 
     .chat-tool-call-hit-target {
@@ -766,21 +752,6 @@
       pointer-events: auto;
       inset-inline: 0;
       inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
-    }
-
-    .chat-tool-call-item:last-child > .chat-tool-call-row::before {
-      inset-block-end: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
-    }
-
-    /* A line of narration between two steps is text, not a control: the step beside it overhangs
-     * into it, as the last row overhangs below, so a tap on the row's 44px region is not taken by
-     * the line. The line is read, never tapped, and the overhang sits above it. */
-    .chat-tool-call-narration + .chat-tool-call-item > .chat-tool-call-row::before {
-      inset-block-start: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
-    }
-
-    .chat-tool-call-item:has(+ .chat-tool-call-narration) > .chat-tool-call-row::before {
-      inset-block-end: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
     }
   }
 

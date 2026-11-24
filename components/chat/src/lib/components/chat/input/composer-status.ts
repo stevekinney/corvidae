@@ -145,7 +145,7 @@ export function composerStatusText(status: ChatComposerStatus): string {
   if (status.kind === 'note') return status.text;
   if (status.kind === 'waiting') {
     return status.queues
-      ? 'Waiting for your approval. A message sent now is queued until you decide.'
+      ? 'Waiting for your approval. Anything you send now queues until you decide.'
       : 'Waiting for your approval';
   }
   if (status.kind === 'reconnecting') {

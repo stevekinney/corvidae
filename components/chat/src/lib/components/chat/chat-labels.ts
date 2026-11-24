@@ -181,7 +181,7 @@ export type ChatLabels = {
   uploadFailed: string;
   /** Host-overridable text. The default reads `Approval waiting`. */
   approvalWaiting: string;
-  /** Host-overridable text. The default reads `Approval needed.`. */
+  /** Host-overridable text. The default reads `Waiting for your approval.`. */
   approvalWaitingText: string;
   /**
    * The sentence that follows the approval reminder, and the Queue button's description, while the
@@ -335,8 +335,8 @@ export const DEFAULT_CHAT_LABELS: ChatLabels = {
   readingFile: 'Reading file',
   uploadFailed: 'Upload failed. Try again, or remove it.',
   approvalWaiting: 'Approval waiting',
-  approvalWaitingText: 'Approval needed.',
-  approvalQueueNote: 'Messages you send now wait until you decide.',
+  approvalWaitingText: 'Waiting for your approval.',
+  approvalQueueNote: 'Anything you send now queues until you decide.',
   reviewApproval: 'Review approval',
   approvalsWaiting: (count) => `${count} approvals waiting`,
   reviewApprovalShort: 'Review',
