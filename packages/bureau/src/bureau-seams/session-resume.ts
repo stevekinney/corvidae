@@ -17,19 +17,23 @@ import {
   type ResumeTurnResult,
   SessionResumeRefusedError,
   commandContinuesAnotherRun,
+  CONTINUATION_PREVIOUS_PROJECTION_METADATA_KEY,
+  CONTINUATION_PROCESS_METADATA_KEY,
+  continuationAdmissionFenceKey,
   continuationRow,
   judgeResumableTurn,
   startedContinuation,
 } from '../session-resume';
 import { forEachOpenReceipt } from '../session-input-settlement';
-import { TASK_OWNER_LOST_FINISH_REASON } from '../task-registry';
+import { processLeaseKey, readProcessLease } from '../process-lease';
+import { TASK_OWNER_LOST_FINISH_REASON, TASK_RECORD_KEY_PREFIX } from '../task-registry';
 import {
   type AgentSession,
   type SessionStore,
   sessionArchivedAtOf,
   sessionOriginOf,
 } from '@lostgradient/operative';
-import { removeMessage } from 'conversationalist';
+import { getOwn, removeMessage } from 'conversationalist';
 
 /** The finish reasons of a failed run that going on may get past: the model call itself failed. */
 const RETRYABLE_FAILURES: ReadonlySet<string> = new Set(['error']);
@@ -115,7 +119,10 @@ export function createSessionResume<D extends AgentDefinitions>(
     if (sessions === undefined) {
       throw new BureauError('This Bureau keeps no sessions to resume a turn of.', 'BAD_REQUEST');
     }
-    const session = await loadVisible(sessions, sessionId);
+    let session = await loadVisible(sessions, sessionId);
+    if (await retireOrphanedContinuation(sessions, session, runId, owner, commandId)) {
+      session = await loadVisible(sessions, sessionId);
+    }
     // A command that already started its continuation is answered with it, before any judgment:
     // the turn it went on from is no longer the chat's last.
     const replay = await replayOf(session, runId, owner, commandId);
@@ -140,8 +147,11 @@ export function createSessionResume<D extends AgentDefinitions>(
             owner,
             continuationRunId,
             runtimeServices.clock.nowISO(),
+            core.processLease.processId,
+            JSON.stringify(stoppedProjection(session.metadata)),
           ),
         ],
+        taskAdmissionFence: continuationAdmissionFenceKey,
         // Judged again inside the save that starts the run: whatever landed since wins.
         startGuard: (current: AgentSession | undefined) => {
           if (current === undefined || current.incarnation !== session.incarnation) {
@@ -206,6 +216,72 @@ export function createSessionResume<D extends AgentDefinitions>(
     return { contextId: session.id, runId: started.runId, resumedRunId: runId };
   }
 
+  /**
+   * Retires a marker whose owner demonstrably died before recording its task. The lease value and
+   * absent task record share one conditional write with the negative admission fence, so a paused
+   * original process cannot admit after this caller has removed its marker.
+   */
+  async function retireOrphanedContinuation(
+    sessions: SessionStore,
+    session: AgentSession,
+    resumedRunId: string,
+    owner: string,
+    commandId: string,
+  ): Promise<boolean> {
+    const started = startedContinuation(session, resumedRunId, commandId, owner);
+    if (started?.kind !== 'started' || runtime.kv === undefined) return false;
+    const marker = getOwn(session.conversationHistory.messages, `${resumedRunId}:continuation`);
+    const processId = marker?.metadata?.[CONTINUATION_PROCESS_METADATA_KEY];
+    if (typeof processId !== 'string' || processId === '') return false;
+    // Any durable record, including `pending`, is evidence that the start may be progressing.
+    const durable =
+      runtime.durable === undefined ? undefined : await runtime.durable.engine.get(started.runId);
+    if (durable !== null && durable !== undefined) return false;
+    const lease = await readProcessLease(runtime.kv, processId, runtimeServices.clock.now());
+    if (lease.state !== 'absent' && lease.state !== 'expired') return false;
+    const fenceKey = continuationAdmissionFenceKey(started.runId);
+    const fence = JSON.stringify({
+      sessionId: session.id,
+      incarnation: session.incarnation,
+      resumedRunId,
+      runId: started.runId,
+    });
+    const reserved = await runtime.kv.conditionalBatch(
+      [
+        { key: processLeaseKey(processId), expectedValue: lease.raw },
+        { key: `${TASK_RECORD_KEY_PREFIX}${started.runId}`, expectedValue: null },
+        { key: fenceKey, expectedValue: null },
+      ],
+      [{ type: 'set', key: fenceKey, value: fence }],
+    );
+    if (!reserved && (await runtime.kv.get(fenceKey)) !== fence) return false;
+    let removed = false;
+    await sessions.update(session.id, (current) => {
+      if (current === undefined || current.incarnation !== session.incarnation) return undefined;
+      const recorded = startedContinuation(current, resumedRunId, commandId, owner);
+      if (recorded?.kind !== 'started' || recorded.runId !== started.runId) return undefined;
+      const projection = projectionOf(
+        getOwn(current.conversationHistory.messages, `${resumedRunId}:continuation`)?.metadata?.[
+          CONTINUATION_PREVIOUS_PROJECTION_METADATA_KEY
+        ],
+      );
+      const metadata = { ...current.metadata };
+      if (metadata['lastRunId'] === started.runId && projection !== undefined) {
+        restoreStoppedProjection(metadata, projection);
+      }
+      removed = true;
+      return {
+        ...current,
+        metadata,
+        conversationHistory: removeMessage(
+          current.conversationHistory,
+          `${resumedRunId}:continuation`,
+        ),
+      };
+    });
+    return removed;
+  }
+
   /** Refuses unless a continuation marker has reached a live run or a durable start record. */
   async function assertContinuationStarted(continuationRunId: string): Promise<void> {
     if (runtime.durable === undefined) {
@@ -238,7 +314,8 @@ export function createSessionResume<D extends AgentDefinitions>(
   ): Promise<void> {
     const markerId = `${resumedRunId}:continuation`;
     await sessions.update(before.id, (current) => {
-      if (current === undefined || current.incarnation !== continuation.incarnation) return undefined;
+      if (current === undefined || current.incarnation !== continuation.incarnation)
+        return undefined;
       const recorded = startedContinuation(current, resumedRunId, commandId, owner);
       if (recorded?.kind !== 'started' || recorded.runId !== continuation.runId) return undefined;
       const metadata = { ...current.metadata };
@@ -267,6 +344,33 @@ export function createSessionResume<D extends AgentDefinitions>(
       const value = Object.hasOwn(before, key) ? before[key] : undefined;
       if (value === undefined) delete metadata[key];
       else metadata[key] = value;
+    }
+  }
+
+  function stoppedProjection(metadata: AgentSession['metadata']): AgentSession['metadata'] {
+    const projection: AgentSession['metadata'] = {};
+    for (const key of [
+      'lastRunId',
+      'lastRunStatus',
+      'lastFinishReason',
+      'lastError',
+      'lastRunEndReason',
+    ]) {
+      const value = Object.hasOwn(metadata, key) ? metadata[key] : undefined;
+      if (value !== undefined) projection[key] = value;
+    }
+    return projection;
+  }
+
+  function projectionOf(value: unknown): AgentSession['metadata'] | undefined {
+    if (typeof value !== 'string') return undefined;
+    try {
+      const parsed: unknown = JSON.parse(value);
+      return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as AgentSession['metadata'])
+        : undefined;
+    } catch {
+      return undefined;
     }
   }
 

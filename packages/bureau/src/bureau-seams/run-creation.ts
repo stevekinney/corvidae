@@ -816,6 +816,7 @@ export function createRunCreation<D extends AgentDefinitions>(
           // The text the run began with, whether it came as `message` or as an appended user row.
           message: request.message ?? (requestText === '' ? undefined : requestText),
           tools: toolGrant,
+          admissionFence: request.taskAdmissionFence?.(runId),
         });
         // COR-1476 — inside the block below, so a gate that cannot be built
         // (its session read fails) ends the promoted run like any other start

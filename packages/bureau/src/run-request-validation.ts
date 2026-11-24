@@ -134,6 +134,8 @@ export type SessionTaskFields = {
    * if admission rejects.
    */
   readonly onSessionSaved?: ((runId: string, session: AgentSession) => void) | undefined;
+  /** Internal fence which prevents a retired continuation creator from admitting its task. */
+  readonly taskAdmissionFence?: ((runId: string) => string) | undefined;
   /**
    * The caller's start signal, bound to the run once its workflow is prepared and before its
    * receipt is recorded: the run executes from that point, so an abort must reach it from there.

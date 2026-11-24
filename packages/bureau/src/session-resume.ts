@@ -114,6 +114,18 @@ const CONTINUATION_OWNER_METADATA_KEY = 'bureau:continuationOwner';
 /** The continuation run allocated in the same session update that stores its command marker. */
 const CONTINUATION_RUN_METADATA_KEY = 'bureau:continuationRun';
 
+/** The process which saved a continuation marker, when its store can outlive it. */
+export const CONTINUATION_PROCESS_METADATA_KEY = 'bureau:continuationProcess';
+
+/** The terminal projection to restore if an unadmitted continuation is retired. */
+export const CONTINUATION_PREVIOUS_PROJECTION_METADATA_KEY =
+  'bureau:continuationPreviousProjection';
+
+/** A continuation's negative task-admission fence. */
+export function continuationAdmissionFenceKey(continuationRunId: string): string {
+  return `bureau-continuation-admission-fence:v1:${continuationRunId}`;
+}
+
 /** The id of the continuation row of the stopped run `runId`: one per stopped run. */
 function continuationRowId(runId: string): string {
   return `${runId}:continuation`;
@@ -129,6 +141,8 @@ export function continuationRow(
   owner: string,
   continuationRunId: string,
   createdAt: string,
+  processId?: string,
+  previousProjection?: string,
 ): Message {
   return {
     id: continuationRowId(runId),
@@ -143,6 +157,10 @@ export function continuationRow(
       [CONTINUATION_COMMAND_METADATA_KEY]: commandId,
       [CONTINUATION_OWNER_METADATA_KEY]: owner,
       [CONTINUATION_RUN_METADATA_KEY]: continuationRunId,
+      ...(processId === undefined ? {} : { [CONTINUATION_PROCESS_METADATA_KEY]: processId }),
+      ...(previousProjection === undefined
+        ? {}
+        : { [CONTINUATION_PREVIOUS_PROJECTION_METADATA_KEY]: previousProjection }),
     },
   };
 }

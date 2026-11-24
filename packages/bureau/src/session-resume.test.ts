@@ -16,9 +16,10 @@ import {
   Conversation,
   type ConversationHistory,
   createConversationHistory,
+  getOwn,
 } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { MemoryStorage, type Storage } from '@lostgradient/storage';
+import { MemoryStorage, textValueStore, type Storage } from '@lostgradient/storage';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
@@ -36,6 +37,8 @@ import { startTaskFrom } from './test/task-start-request.ts';
 import { createVendorCatalog } from './testing/vendor-catalog.test-support';
 import { approvalToolbox } from './http/management/management-fixtures.test-support';
 import { TASK_OWNER_LOST_FINISH_REASON } from './task-registry';
+import { processLeaseKey } from './process-lease';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -378,6 +381,52 @@ describe('a resumed turn', () => {
       return state !== null && state !== undefined && state.status !== 'pending';
     }, 'the admitted continuation durable start');
     expect(await resume(second, run.contextId, run.id)).toEqual(won);
+  });
+
+  it('retires an unadmitted continuation of a dead process and fences its stale admission', async () => {
+    const fixture = createSqliteStorageFixture();
+    cleanups.push(() => fixture.dispose());
+    const first = await openBureau(agentThat('waits'), fixture.storage);
+    const second = await openBureau(agentThat('waits'), fixture.storage);
+    const { run } = await stoppedTurn(first);
+    const registry = first.internals.taskRegistry as {
+      recordAdmission: typeof first.internals.taskRegistry.recordAdmission;
+    };
+    const recordAdmission = registry.recordAdmission.bind(registry);
+    const reachedAdmission = Promise.withResolvers<void>();
+    const releaseAdmission = Promise.withResolvers<void>();
+    let held = true;
+    Object.defineProperty(registry, 'recordAdmission', {
+      configurable: true,
+      value: async (...args: Parameters<typeof registry.recordAdmission>) => {
+        if (held) {
+          reachedAdmission.resolve();
+          await releaseAdmission.promise;
+        }
+        return recordAdmission(...args);
+      },
+    });
+
+    const stale = resume(first, run.contextId, run.id);
+    await reachedAdmission.promise;
+    const marked = (await first.contexts.get(run.contextId))!;
+    const marker = getOwn(marked.conversationHistory.messages, `${run.id}:continuation`)!;
+    const processId = marker.metadata?.['bureau:continuationProcess'];
+    expect(typeof processId).toBe('string');
+    await textValueStore(fixture.storage).delete(processLeaseKey(processId as string));
+
+    const recovered = await resume(second, run.contextId, run.id);
+    expect(recovered.runId).not.toBe(run.id);
+    expect(await tasksOf(second, run.contextId)).toContain(recovered.runId);
+    held = false;
+    releaseAdmission.resolve();
+    const rejected = await stale.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(rejected).toBeInstanceOf(Error);
+    expect((rejected as Error).message).toContain('was fenced off');
+    await untilEnded(second, run.contextId, recovered.runId);
   });
 });
 
