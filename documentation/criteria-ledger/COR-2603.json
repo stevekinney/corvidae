@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2603",
+  "branch": "steve/cor-2603-toolbox-projection",
+  "checkedAt": "90f76020971dc4b7a9ca87f49c1121545a8965bf",
+  "briefVersion": "0dbeb546dcb1",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "not-met",
+      "evidence": "Implementation not started pending interruption contract."
+    },
+    {
+      "id": "AC2",
+      "status": "needs-decision",
+      "evidence": "Dynamic toolbox policy hooks can pause; no public startup capability or selection declaration exists."
+    },
+    {
+      "id": "AC3",
+      "status": "not-met",
+      "evidence": "Implementation not started pending interruption contract."
+    },
+    {
+      "id": "AC4",
+      "status": "not-met",
+      "evidence": "Implementation not started pending interruption contract."
+    }
+  ]
+}
