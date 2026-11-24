@@ -401,71 +401,87 @@ test.describe('a tool approval', () => {
       page,
       request,
     }) => {
-      await withAlwaysRefundMode(request, async () => {
-        const { review, threadId } = await waitingRefund(
-          page,
-          request,
-          'reviews-capture-held',
-          REFUND_APPROVAL,
-        );
-        const requests = recordResolves(page);
-        const release = Promise.withResolvers<void>();
-        let failedOnce = false;
-        const failureTitle =
-          REVIEWS_COPY.approvalFailed[decision === 'Approve' ? 'approve' : 'deny'];
-        // The first decision is rejected here before reaching the Bureau. This fixture can say
-        // what did not happen. The page relies on the actual failure message for live responses.
-        const reason =
-          decision === 'Approve'
-            ? 'Interborough couldn’t reach the agent. Nothing was refunded.'
-            : 'Interborough couldn’t reach the agent. Nothing changed.';
-        await page.route('**/jsonrpc', async (route) => {
-          const call = route.request().postDataJSON() as {
-            method?: string;
-            id?: string;
-            params?: { id?: string };
-          };
-          if (call.method !== 'bureau.reviews.resolve' || call.params?.id !== review.id) {
-            return route.fallback();
-          }
-          if (failedOnce) return route.fallback();
-          failedOnce = true;
-          await release.promise;
-          await route.fulfill({
-            json: { jsonrpc: '2.0', id: call.id, error: { code: -32603, message: reason } },
-          });
-        });
-        const pane = paneOf(page);
-        await expect(pane.getByRole('checkbox')).toHaveCount(0);
-        try {
-          if (decision === 'Approve') await approveReview(pane);
-          else await pane.getByRole('button', { name: decision, exact: true }).click();
-          await expect(pane.getByRole('button', { name: active, exact: true })).toHaveAttribute(
-            'aria-busy',
-            'true',
-          );
-          await expect(pane.getByRole('button', { name: other, exact: true })).toBeDisabled();
-          await expect(pane.getByRole('checkbox')).toHaveCount(0);
-          await page.keyboard.press(decision === 'Approve' ? 'd' : 'a');
-          expect(requests).toHaveLength(1);
-          await captureApprovalAtWidths(page, `${decision} in flight`, [active, other]);
-        } finally {
-          release.resolve();
+      const { review, threadId } = await waitingRefund(
+        page,
+        request,
+        'reviews-capture-held',
+        REFUND_APPROVAL,
+      );
+      const requests = recordResolves(page);
+      const release = Promise.withResolvers<void>();
+      let failedOnce = false;
+      const failureTitle = REVIEWS_COPY.approvalFailed[decision === 'Approve' ? 'approve' : 'deny'];
+      // The first decision is rejected here before reaching the Bureau. This fixture can say
+      // what did not happen. The page relies on the actual failure message for live responses.
+      const reason =
+        decision === 'Approve'
+          ? 'Interborough couldn’t reach the agent. Nothing was refunded.'
+          : 'Interborough couldn’t reach the agent. Nothing changed.';
+      await page.route('**/jsonrpc', async (route) => {
+        const call = route.request().postDataJSON() as {
+          method?: string;
+          id?: string;
+          params?: { id?: string };
+        };
+        if (call.method !== 'bureau.reviews.resolve' || call.params?.id !== review.id) {
+          return route.fallback();
         }
-        await expect(pane.getByText(failureTitle, { exact: true })).toBeVisible();
-        await expect(pane).toContainText(reason);
-        await expect(page.locator('.cinder-toast-region').getByText(reason)).toHaveCount(0);
-        await expect(pane.getByRole('button', { name: decision, exact: true })).toBeEnabled();
-        await expect(pane.getByRole('checkbox')).toHaveCount(0);
-        await expect(rowOf(page, review)).toBeVisible();
-        expect(refundRan(await threadMessages(request, threadId))).toBe(false);
-        expect(requests).toHaveLength(1);
-        await captureApprovalAtWidths(page, `${decision} failing`);
+        if (failedOnce) return route.fallback();
+        failedOnce = true;
+        await release.promise;
+        await route.fulfill({
+          json: { jsonrpc: '2.0', id: call.id, error: { code: -32603, message: reason } },
+        });
+      });
+      const pane = paneOf(page);
+      await expect(pane.getByRole('checkbox')).toHaveCount(0);
+      try {
         if (decision === 'Approve') await approveReview(pane);
         else await pane.getByRole('button', { name: decision, exact: true }).click();
-        await expect(rowOf(page, review)).toHaveCount(0);
-        expect(requests).toHaveLength(2);
+        await expect(pane.getByRole('button', { name: active, exact: true })).toHaveAttribute(
+          'aria-busy',
+          'true',
+        );
+        await expect(pane.getByRole('button', { name: other, exact: true })).toBeDisabled();
+        await expect(pane.getByRole('checkbox')).toHaveCount(0);
+        await page.keyboard.press(decision === 'Approve' ? 'd' : 'a');
+        expect(requests).toHaveLength(1);
+        await captureApprovalAtWidths(page, `${decision} in flight`, [active, other]);
+      } finally {
+        release.resolve();
+      }
+      await expect(pane.getByText(failureTitle, { exact: true })).toBeVisible();
+      await expect(pane).toContainText(reason);
+      await expect(page.locator('.cinder-toast-region').getByText(reason)).toHaveCount(0);
+      await expect(pane.getByRole('button', { name: decision, exact: true })).toBeEnabled();
+      await expect(pane.getByRole('checkbox')).toHaveCount(0);
+      await expect(rowOf(page, review)).toBeVisible();
+      expect(refundRan(await threadMessages(request, threadId))).toBe(false);
+      expect(requests).toHaveLength(1);
+      await captureApprovalAtWidths(page, `${decision} failing`);
+      const retry = page.waitForResponse((response) => {
+        if (!response.url().includes('/jsonrpc')) return false;
+        const body = response.request().postDataJSON() as {
+          method?: string;
+          params?: { id?: string };
+        };
+        return body.method === 'bureau.reviews.resolve' && body.params?.id === review.id;
       });
+      if (decision === 'Approve') await approveReview(pane);
+      else await pane.getByRole('button', { name: decision, exact: true }).click();
+      const response = await retry;
+      const answer = (await response.json()) as {
+        result?: { decision?: string; receipt?: string };
+        error?: unknown;
+      };
+      expect(answer.error).toBeUndefined();
+      expect(answer.result).toMatchObject({ decision: decision.toLowerCase() });
+      expect(answer.result?.receipt).not.toBe('superseded');
+      await expect(rowOf(page, review)).toHaveCount(0);
+      expect(requests).toHaveLength(2);
+      await expect
+        .poll(async () => refundRan(await threadMessages(request, threadId)))
+        .toBe(decision === 'Approve');
     });
   }
 
