@@ -790,13 +790,6 @@
     .chat-tool-call-item:has(+ .chat-tool-call-narration) > .chat-tool-call-row::before {
       inset-block-end: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
     }
-
-    /* A wrapped summary can otherwise overlap the first expanded row before either row's touch
-     * target is considered. Keep a small dedicated lane between them: both painted lines stay
-     * compact, while their 44px targets have separate ownership. */
-    .chat-tool-call-list {
-      margin-block-start: calc(var(--cinder-space-2) + 2px);
-    }
   }
 
   /* The header's phrases are fields: the step count, the tools, any failed or waiting counts and
@@ -950,6 +943,15 @@
     margin: 0;
     padding: 0;
     list-style: none;
+  }
+
+  @media (any-pointer: coarse) {
+    /* A wrapped summary can otherwise overlap the first expanded row before either row's touch
+     * target is considered. Keep a small dedicated lane between them: both painted lines stay
+     * compact, while their 44px targets have separate ownership. */
+    .chat-tool-call-list {
+      margin-block-start: calc(var(--cinder-space-2) + 2px);
+    }
   }
 
   /* What the agent said between steps. It starts on the steps' text edge (the status icon and its
