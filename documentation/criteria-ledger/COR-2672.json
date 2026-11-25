@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2672",
+  "branch": "steve/composable-velveteen-types",
+  "checkedAt": "9833156c5df1271f837e6d060f35cae727b367da",
+  "briefVersion": "25a594efff26",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "bun install --frozen-lockfile and bunx tsc -b packages/velveteen/tsconfig.source.json exited 0; exports unchanged."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Integrated listener candidate 28cc1abd1c passed typecheck:root (40/40 tasks) and scoped Interborough Turbo typecheck (34/34 tasks; both Svelte checks clean), exit 0. Logs: COR-2620 scratch root-typecheck-28cc.log and scoped-typecheck-28cc.log."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Existing strict compiler options and source exports unchanged; declaration project follows existing workspace convention; focused checks passed."
+    }
+  ]
+}
