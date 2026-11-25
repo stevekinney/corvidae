@@ -6,6 +6,7 @@
   import type { SideNavigationGroupProps } from './side-navigation-group.types.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
+  import { getSidebarContext } from '../../_internal/sidebar-context.ts';
   import {
     setSideNavigationGroupContext,
     tryGetSideNavigationGroupContext,
@@ -19,6 +20,7 @@
     labelVisibility = 'visible',
     expanded = $bindable(true),
     disabled = false,
+    disabledReason,
     icon,
     badge,
     class: className,
@@ -40,6 +42,11 @@
   const labelHidden = $derived(!collapsible && labelVisibility === 'hidden');
   const headerId = $derived(`${id}-trigger`);
   const panelId = $derived(`${id}-panel`);
+  // One reason for the group's disabled rows, drawn once (COR-2680). The id is fixed at mount so a
+  // row's description never points at a stale element.
+  const reasonId = `${generatedId}-reason`;
+  const reasonText = $derived(disabledReason?.trim() || undefined);
+  const sidebar = getSidebarContext();
 
   function toggle(): void {
     if (disabled || !collapsible) return;
@@ -84,7 +91,13 @@
     parentHandle?.setActive(containsActive);
   });
 
-  setSideNavigationGroupContext({ register });
+  setSideNavigationGroupContext({
+    register,
+    get disabledReason() {
+      return reasonText;
+    },
+    reasonId,
+  });
 </script>
 
 <li
@@ -131,6 +144,18 @@
   {:else if !labelHidden}
     <!-- A static section names its list; the label is not a control, so it is plain text. -->
     <span id={headerId} class="cinder-side-navigation-group__heading">{validatedLabel}</span>
+  {/if}
+  {#if reasonText !== undefined}
+    <!-- The group's shared reason, said once for every disabled row in it. A collapsed rail clips
+         it, and it stays their description. -->
+    <p
+      id={reasonId}
+      class="cinder-side-navigation-group__reason"
+      data-cinder-collapsed={sidebar?.collapsed ? '' : undefined}
+      hidden={collapsible && !expanded}
+    >
+      {reasonText}
+    </p>
   {/if}
   <ul
     id={panelId}
