@@ -394,7 +394,8 @@ test('listener binds verified browser identities, revokes private access and res
     holdKeyTargets = false;
     members.set('admin', administratorMembership);
     const keysAfterRefusal = await listKeys(administrator.cookie!);
-    expect((await keysAfterRefusal.json()).result.keys).toEqual([]);
+    const keysAfterRefusalBody = await keysAfterRefusal.json();
+    expect(keysAfterRefusalBody.result.keys).toEqual([]);
     for (const headers of [
       { 'x-api-key': 'machine-api-key' },
       { authorization: 'Bearer connector-token' },
