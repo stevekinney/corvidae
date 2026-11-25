@@ -2123,12 +2123,20 @@ export class Engine<
         ),
       abandon: () =>
         abandonPreparedWorkflowFromLifecycle(getInternals(this), context, async (workflowId) => {
+          if (
+            getInternals(this).options.ownershipMode === 'workflow-lease' &&
+            context.claimEpoch === undefined
+          )
+            throw new Error(`Prepared workflow "${workflowId}" has no claim epoch.`);
           await terminateWorkflowFromTermination(
             getInternals(this),
             workflowId,
             'cancelled',
             this.#createTerminationCallbacks(),
             PREPARED_WORKFLOW_ABANDONED_REASON,
+            0,
+            undefined,
+            context.claimEpoch,
           );
         }),
     };
