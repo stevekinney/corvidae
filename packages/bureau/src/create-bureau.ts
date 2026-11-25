@@ -5034,7 +5034,27 @@ async function constructBureau<const D extends AgentDefinitions>(
       reviewedRunState: async (runId) => {
         try {
           const task = await tasks.record(runId);
-          if (!task || typeof task.agentName !== 'string') return 'unresolved';
+          if (!task) return 'unresolved';
+          const session = await runtime.sessionStore?.load(task.contextId);
+          const markers = session?.metadata['reviewedApprovalProvenance'];
+          if (
+            markers !== undefined &&
+            (!markers || typeof markers !== 'object' || Array.isArray(markers))
+          )
+            return 'unresolved';
+          const markedRun =
+            markers && Object.keys(markers).some((id) => id.startsWith(`approval:${runId}:`));
+          if (markedRun && (!task.origin || !Object.hasOwn(task.origin, 'reviewedTool')))
+            return 'unresolved';
+          if (typeof task.agentName !== 'string') {
+            if (
+              task.origin &&
+              (!isTaskOrigin(task.origin) || Object.hasOwn(task.origin, 'reviewedTool'))
+            )
+              return 'unresolved';
+            if (!session) return 'unresolved';
+            return markedRun ? 'unresolved' : 'ordinary';
+          }
           if (!task.origin)
             return task.agentName.startsWith('reviewed:') ? 'unresolved' : 'ordinary';
           if (!isTaskOrigin(task.origin)) return 'unresolved';

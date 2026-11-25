@@ -1609,6 +1609,7 @@ describe('workspace privacy for reviews', () => {
       if (!key) throw new Error('Missing task record');
       const record = JSON.parse((await kv.get(key))!) as Record<string, unknown>;
       delete record['origin'];
+      record['agentName'] = null;
       await kv.set(key, JSON.stringify(record));
       const legacyDetail = await workspacePrivacyCall(opened, 'owner', 'bureau.reviews.get', {
         id: review.id,

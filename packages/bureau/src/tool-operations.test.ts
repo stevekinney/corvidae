@@ -358,21 +358,10 @@ describe('reviewedToolOperations', () => {
         effect: { kind: 'inventory', itemId: 'one' },
       });
       expect(JSON.stringify(detail)).not.toContain('private:');
-      const kv = bureau.internals.kv;
-      if (!kv) throw new Error('Missing task storage');
-      const recordKeys = await kv.list(TASK_RECORD_KEY_PREFIX);
-      const recordKey = recordKeys.find((key) => key.endsWith(review.runId));
-      if (!recordKey) throw new Error('Missing reviewed task record');
-      const savedRecord = await kv.get(recordKey);
-      if (!savedRecord) throw new Error('Missing reviewed task record content');
-      await kv.delete(recordKey);
-      try {
-        expect(await bureau.internals.reviewedProvenance(review)).toBe('unresolved');
-        const missingTaskReview = await rpc('bureau.reviews.get', { id: review.id });
-        expect(missingTaskReview.error).toBeDefined();
-      } finally {
-        await kv.set(recordKey, savedRecord);
-      }
+      const parkedSession = await bureau.internals.sessionStore?.load(review.sessionId);
+      expect(parkedSession?.metadata['reviewedApprovalProvenance']).toMatchObject({
+        [review.id]: { kind: 'api', reviewedTool: { tool: tool.id } },
+      });
       for (const method of ['bureau.tasks.get', 'bureau.tasks.inspect']) {
         const taskView = await rpc(method, { taskId: review.runId });
         expect(taskView.result).toBeDefined();
@@ -463,6 +452,17 @@ describe('reviewedToolOperations', () => {
       expect(taskText).toContain('input-required');
       expect(taskText).not.toContain('private:');
       expect(taskText).not.toContain(review.approval.approvalToken!);
+      const kv = bureau.internals.kv;
+      if (!kv) throw new Error('Missing task storage');
+      const recordKeys = await kv.list(TASK_RECORD_KEY_PREFIX);
+      const recordKey = recordKeys.find((key) => key.endsWith(review.runId));
+      if (!recordKey) throw new Error('Missing reviewed task record');
+      const savedRecord = await kv.get(recordKey);
+      if (!savedRecord) throw new Error('Missing reviewed task record content');
+      await kv.delete(recordKey);
+      expect(await bureau.internals.reviewedProvenance(review)).toBe('unresolved');
+      const missingTaskReview = await rpc('bureau.reviews.get', { id: review.id });
+      expect(missingTaskReview.error).toBeDefined();
       await bureau.dispose();
       storage = await storageFixture.reopen();
       store = durableApprovalStore(storage);
@@ -474,6 +474,10 @@ describe('reviewedToolOperations', () => {
       contribution = reviewedToolOperations(toolbox, [selection], options());
       bureau = await open(true);
       handler = makeHandler(bureau);
+      expect(await bureau.internals.reviewedProvenance(review)).toBe('unresolved');
+      const restartedReview = await rpc('bureau.reviews.get', { id: review.id });
+      expect(restartedReview.error).toBeDefined();
+      await bureau.internals.kv!.set(recordKey, savedRecord);
       await waitForCondition(
         () => bureau.reviews.list().some((item) => item.id === review.id),
         'review was not restored',

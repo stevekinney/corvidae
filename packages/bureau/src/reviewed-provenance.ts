@@ -50,8 +50,16 @@ export async function reviewedProvenanceOf(
       sessionMarkers && Object.hasOwn(sessionMarkers, review.id)
         ? Object.entries(sessionMarkers).find(([key]) => key === review.id)?.[1]
         : undefined;
-    if (!task) return session && sessionOrigin === undefined ? 'ordinary' : 'unresolved';
-    if (typeof task.agentName !== 'string') return 'unresolved';
+    const markedRun =
+      sessionMarkers &&
+      Object.keys(sessionMarkers).some((id) => id.startsWith(`approval:${review.runId}:`));
+    if (!task) return session && !markedRun ? 'ordinary' : 'unresolved';
+    if (typeof task.agentName !== 'string') {
+      if (!session || markedRun) return 'unresolved';
+      if (task.origin && Object.hasOwn(task.origin, 'reviewedTool')) return 'unresolved';
+      return task.origin && !isTaskOrigin(task.origin) ? 'unresolved' : 'ordinary';
+    }
+    if (markedRun && sessionOrigin === undefined) return 'unresolved';
     if (
       sessionOrigin !== undefined &&
       JSON.stringify(sessionOrigin) !== JSON.stringify(task.origin)
