@@ -1700,7 +1700,6 @@
 ["exports","scripts/chef/command-spellings.test-support.ts","chefDirectory"]
 ["exports","scripts/chef/command-spellings.test-support.ts","codeSpans"]
 ["exports","scripts/chef/command-spellings.test-support.ts","scriptsMentioned"]
-["exports","scripts/chef/context-fence.ts","currentContext"]
 ["exports","scripts/chef/credentials.ts","defaultCredentialDependencies"]
 ["exports","scripts/chef/credentials.ts","describeRejected"]
 ["exports","scripts/chef/deliver.test-support.ts","BASE"]

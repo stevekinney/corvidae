@@ -11,7 +11,6 @@
 //   a worker that cannot write the file is not trapped.
 // - `AskUserQuestion` is denied for a session holding a live lease marker; unleased sessions
 //   (`/groom`, `/create-task`) keep it.
-// - The context fence on a leased coordinator is `scripts/chef/context-fence.ts`.
 //
 // Every decision that cannot read its own input fails open and says why in `systemMessage`; only
 // the refusals above deny.

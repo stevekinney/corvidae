@@ -70,7 +70,6 @@ The coordinator's rules are in [coordination](.agents/skills/chef/references/coo
 - No host cap (owner decision, 2026-11-21): `scripts/host-sessions.ts` records each dispatch for `status`, the leases and the session fences, but never makes a dispatch wait or refuses one.
 - Batch work, one CI run per batch (owner decision, 2026-11-16): one worker takes consecutive issues on one branch, commits once per issue, pushes once, and the batch gets one CI run, review and merge.
 - Every implementation dispatch names the `chef-worker` agent type. A worker has no context ceiling: it works until its change is ready for review (owner decision, 2026-11-13).
-- A leased coordinator above about 200K tokens compacts at a batch boundary; a hook denies its dispatches until it does.
 - End a turn only on a state change: merged, blocked, needs a decision, or ready for review. Wait on a completion (a background command or a notification); never poll.
 - An explicit owner instruction in the current scope outranks these process rules and their guards; a guard stops the worker and hands the case to the coordinator ([decisions](.agents/skills/chef/references/decisions.md#owner-instructions-outrank-process-rules)).
 
