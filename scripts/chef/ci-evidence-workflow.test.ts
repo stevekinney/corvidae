@@ -240,7 +240,7 @@ describe('CI evidence workflow producers', () => {
     for (const name of ['tests-slow', 'browser']) {
       const job = main.split(`\n  ${name}:\n`)[1]?.split(/\n  [a-z-]+:\n/)[0];
       expect(job).toContain(
-        "if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}",
+        "if: ${{ (inputs.chef_candidate == '' || inputs.chef_candidate == github.sha) && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true') }}",
       );
     }
     // A scheduled run shares the push group and never cancels or is cancelled by one.

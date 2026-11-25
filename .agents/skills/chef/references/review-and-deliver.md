@@ -39,7 +39,7 @@ Run `bun scripts/chef/gate-run.ts triage <log> --base <sha>` first, where `<sha>
 
 For anything ambiguous (a task several changes touched, a failure in a file none of them changed, a load-sensitive test), run `bun scripts/chef/gate-run.ts control --candidate <dir> --base <dir> --command <shell>` under the same load. Candidate fails and base passes: the candidate caused it. Both fail the same way: it is pre-existing and gets its own issue. Inconclusive: widen the control. Never rerun a gate until it passes in place of a control.
 
-A full `validate` taken as an exception runs on GitHub: push the branch, run `bun scripts/chef/targeted-run.ts` (its full run never replaces a pending `main` run), and read it with `gh run list --workflow main.yml --branch <branch> --limit 1`.
+Review the handoff before discretionary CI. Run `bun scripts/chef/targeted-run.ts --dry-run --json` on the candidate and follow the [dispatch decision procedure](../../../../documentation/repository/test-lanes-and-checks.md#discretionary-dispatch). Record the decision and run ID with the handoff.
 
 ## Preflights
 

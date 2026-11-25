@@ -9,22 +9,22 @@ import { MANIFEST_PATH, manifestSlugs } from './evidence-plan.ts';
 import { landingPlan } from './landing-plan.ts';
 import type { Runner } from './process-runner.ts';
 import {
-  buildCommand,
   fitUnitLanes,
   inputsFromPlan,
   OVERSIZE_RULE,
-  run,
-  UsageError,
   WHOLE_SUITE_FILE_LIMIT,
   WORKSPACE,
   type TargetedDependencies,
-} from './targeted-run.ts';
+} from './targeted-inputs.ts';
+import { buildCommand, run, UsageError } from './targeted-run.ts';
 import {
   computeEvidencePlan,
   type EvidenceContext,
   type EvidencePlan,
   type UnitSelection,
 } from './verification-plan.ts';
+
+const head = 'a'.repeat(40);
 
 const known = new Set(['approval-card', 'description-list', 'terminal']);
 
@@ -82,7 +82,10 @@ function fake(
       const listed = command.includes('--diff-filter=d') ? changed : [...changed, ...deleted];
       return { code: 0, stdout: `${listed.join('\n')}\n`, stderr: '' };
     }
-    if (command[1] === 'rev-parse') return { code: 0, stdout: 'chef/x\n', stderr: '' };
+    if (command[1] === 'rev-parse')
+      return { code: 0, stdout: command.includes('--verify') ? head : 'chef/x\n', stderr: '' };
+    if (command[1] === 'ls-remote')
+      return { code: 0, stdout: `${head}\t${command.at(-1)}`, stderr: '' };
     return { code: 0, stdout: '', stderr: '' };
   };
   return {
@@ -417,10 +420,8 @@ describe('run', () => {
       expect(text).toContain("'main.yml'");
       expect(text).toContain('Dispatching main.yml');
       expect(text).toContain('requires_full_run: true');
-      run(['--ref', 'b'], dependencies);
-      expect(calls.filter((call) => call[0] === 'gh')).toEqual([
-        ['gh', 'workflow', 'run', 'main.yml', '--ref', 'b'],
-      ]);
+      expect(() => run(['--ref', 'b'], dependencies)).toThrow('coordinator decision');
+      expect(calls.filter((call) => call[0] === 'gh')).toEqual([]);
     }
   });
 
@@ -458,14 +459,14 @@ describe('run', () => {
     expect(json.requiresFullRun).toBe(true);
     // No diff, no manifest and no git: a bound run is planned by its request, not by this script.
     expect(calls).toEqual([]);
-    run(bound, dependencies);
-    expect(calls.filter((call) => call[0] === 'gh')).toHaveLength(1);
+    expect(() => run(bound, dependencies)).toThrow('delivery-request.ts prepare');
+    expect(calls).toEqual([]);
   });
 
   test('a delivery binding is refused when partial, malformed, refless or mixed with a selection', () => {
     const { dependencies, calls } = fake(['a.ts']);
     const request = ['--verification-request', 'a'.repeat(64)];
-    expect(() => run(['--ref', 'b', ...request], dependencies)).toThrow('go together');
+    expect(() => run(['--dry-run', '--ref', 'b', ...request], dependencies)).toThrow('go together');
     const all = [
       ...request,
       '--verification-plan',
@@ -473,13 +474,14 @@ describe('run', () => {
       '--verification-base',
       'c'.repeat(40),
     ];
-    expect(() => run(all, dependencies)).toThrow('needs --ref');
+    expect(() => run(['--dry-run', ...all], dependencies)).toThrow('needs --ref');
     expect(() =>
-      run(['--ref', 'b', ...all, '--e2e-spec', 'tests/e2e/x.spec.ts'], dependencies),
+      run(['--dry-run', '--ref', 'b', ...all, '--e2e-spec', 'tests/e2e/x.spec.ts'], dependencies),
     ).toThrow('--e2e-spec');
     expect(() =>
       run(
         [
+          '--dry-run',
           '--ref',
           'b',
           '--verification-request',
@@ -541,9 +543,21 @@ describe('run', () => {
     expect(result.output).toContain('packages/operative/src/durable/types.ts: persisted record');
   });
 
-  test('dispatches once unless it is a dry run', () => {
+  test('dispatches an explicit named required check on its pinned head', () => {
     const { dependencies, calls } = fake([]);
-    run(['--ref', 'b', '--fixture-components', 'approval-card'], dependencies);
+    run(
+      [
+        '--ref',
+        'b',
+        '--fixture-components',
+        'approval-card',
+        '--required-check',
+        'COR-2652:AC1',
+        '--head',
+        head,
+      ],
+      dependencies,
+    );
     expect(calls.filter((call) => call[0] === 'gh')).toEqual([
       [
         'gh',
@@ -554,6 +568,8 @@ describe('run', () => {
         'b',
         '-f',
         'fixture_components=approval-card',
+        '-f',
+        `chef_candidate=${head}`,
       ],
     ]);
   });
@@ -609,9 +625,11 @@ describe('run', () => {
 
   test('dispatches with no input when the diff reaches no browser or unit file, for the lint and type-check job', () => {
     const { dependencies, calls } = fake(['packages/bureau/src/table-cell.ts']);
-    const result = run(['--ref', 'b'], dependencies);
+    const result = run(['--ref', 'b', '--dry-run'], dependencies);
     expect(result.output).toContain('only lint and type-check');
-    expect(calls.filter((call) => call[0] === 'gh')).toEqual([
+    const planned = JSON.parse(run(['--ref', 'b', '--dry-run', '--json'], dependencies).output);
+    expect(calls.filter((call) => call[0] === 'gh')).toEqual([]);
+    expect([planned.command]).toEqual([
       [
         'gh',
         'workflow',
