@@ -415,7 +415,7 @@ describe('a new agent', () => {
     expect(getByText(prompt)).not.toBeNull();
   });
 
-  test('stages a text document until Create, and refuses PDFs and oversized files', async () => {
+  test('stages dropped text documents until Create, and refuses PDFs, invalid UTF-8, and oversized files', async () => {
     const calls = bureau();
     const { container, findByRole, findByTestId, findByText, getByRole } = mountEditor();
     await type(await findByRole('textbox', { name: /^Name/ }), 'Researcher');
@@ -428,8 +428,25 @@ describe('a new agent', () => {
       },
     });
     expect((await findByTestId('agent-references')).textContent).toContain('style.md');
+    const dropZone = container.querySelector('label.weft-agent-form__drop-zone');
+    if (dropZone === null) throw new Error('Expected the document drop zone.');
+    const drop = new window.Event('drop', { bubbles: true });
+    Object.defineProperty(drop, 'dataTransfer', {
+      value: {
+        files: [new File(['Use the title case.\n'], 'style guide.md', { type: 'text/markdown' })],
+      },
+    });
+    await fireEvent(dropZone, drop);
+    const references = await findByTestId('agent-references');
+    await waitFor(() => expect(references.textContent).toContain('style guide.md'));
     await fireEvent.change(upload, {
       target: { files: [new File(['%PDF'], 'document.pdf', { type: 'application/pdf' })] },
+    });
+    expect(await findByText(AGENT_EDITOR_COPY.edit.references.invalidDocument)).not.toBeNull();
+    await fireEvent.change(upload, {
+      target: {
+        files: [new File([new Uint8Array([0xc3, 0x28])], 'invalid.md', { type: 'text/markdown' })],
+      },
     });
     expect(await findByText(AGENT_EDITOR_COPY.edit.references.invalidDocument)).not.toBeNull();
     await fireEvent.change(upload, {
@@ -444,6 +461,9 @@ describe('a new agent', () => {
     expect(create?.params['referenceDocuments']).toEqual([
       expect.objectContaining({
         path: expect.stringMatching(/^references\/researcher\/[a-f0-9]{64}\/style\.md$/),
+      }),
+      expect.objectContaining({
+        path: expect.stringMatching(/^references\/researcher\/[a-f0-9]{64}\/style guide\.md$/),
       }),
     ]);
   });

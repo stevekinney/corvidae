@@ -15,7 +15,11 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createS3TestServer } from '@lostgradient/testing/s3-server';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { AGENT_REFERENCE_SIZE_LIMIT, AgentFileConflictError } from './agent-file';
+import {
+  AGENT_REFERENCES_TOTAL_SIZE_LIMIT,
+  AGENT_REFERENCE_SIZE_LIMIT,
+  AgentFileConflictError,
+} from './agent-file';
 import { readFileAgentBinding } from './agent-file-catalog';
 import type { AgentSnapshot } from './agent-snapshot-store';
 import { agentFileDirectory } from './sources/agent-file-directory';
@@ -249,6 +253,127 @@ describe.each(SOURCES)('agent files over %s', (_name, makeHarness) => {
     disposers.push(harness.dispose, fixture.dispose);
     return { harness, fixture };
   }
+
+  function stagedDocument(
+    id: string,
+    basename: string,
+    text: string,
+  ): {
+    readonly path: string;
+    readonly text: string;
+  } {
+    return {
+      path: `references/${id}/${hashOf(text)}/${basename}`,
+      text,
+    };
+  }
+
+  it('preflights every staged document before publishing, including the aggregate reference cap', async () => {
+    const { harness, fixture } = await start();
+    const first = stagedDocument('helper', 'first.md', 'First.\n');
+    const unlisted = stagedDocument('helper', 'unlisted.md', 'Unlisted.\n');
+    const malformed = await fixture.catalog
+      .create(
+        'helper',
+        { model: KNOWN_MODEL, instructions: '', references: [first.path] },
+        { referenceDocuments: [first, unlisted] },
+      )
+      .catch((thrown: unknown) => thrown);
+    expect(malformed).toMatchObject({ code: 'invalid-frontmatter' });
+    expect(
+      await harness.source.readSibling(first.path, { limit: AGENT_REFERENCE_SIZE_LIMIT }),
+    ).toEqual({ kind: 'missing' });
+
+    const documents = Array.from({ length: 5 }, (_, index) =>
+      stagedDocument('helper', `${String(index)}.md`, 'x'.repeat(AGENT_REFERENCE_SIZE_LIMIT)),
+    );
+    const oversized = await fixture.catalog
+      .create(
+        'helper',
+        {
+          model: KNOWN_MODEL,
+          instructions: '',
+          references: documents.map((document) => document.path),
+        },
+        { referenceDocuments: documents },
+      )
+      .catch((thrown: unknown) => thrown);
+    expect(oversized).toMatchObject({ code: 'invalid-frontmatter' });
+    expect(AGENT_REFERENCE_SIZE_LIMIT * documents.length).toBeGreaterThan(
+      AGENT_REFERENCES_TOTAL_SIZE_LIMIT,
+    );
+    expect(
+      await harness.source.readSibling(documents[0]?.path ?? '', {
+        limit: AGENT_REFERENCE_SIZE_LIMIT,
+      }),
+    ).toEqual({ kind: 'missing' });
+  });
+
+  it('adopts an identical staged document when a create retries after its definition CAS loses', async () => {
+    const { harness, fixture } = await start();
+    const document = stagedDocument('helper', 'style guide.md', 'Use short sentences.\n');
+    const definition = {
+      model: KNOWN_MODEL,
+      instructions: 'Original.\n',
+      references: [document.path],
+    };
+    harness.editDuringNextWrite('helper', validAgentFile('Written elsewhere.\n'));
+    const conflict = await fixture.catalog
+      .create('helper', definition, { referenceDocuments: [document] })
+      .catch((thrown: unknown) => thrown);
+    expect(conflict).toBeInstanceOf(AgentFileConflictError);
+    expect(
+      await harness.source.readSibling(document.path, { limit: AGENT_REFERENCE_SIZE_LIMIT }),
+    ).toMatchObject({
+      kind: 'found',
+      bytes: encoder.encode(document.text),
+    });
+
+    await harness.remove('helper');
+    const retried = await fixture.catalog.create('helper', definition, {
+      referenceDocuments: [document],
+    });
+    expect(retried.id).toBe('helper');
+    expect(
+      readFileAgentBinding(fixture.catalog.find('helper') as object)?.definition.references,
+    ).toEqual([document.path]);
+  });
+
+  it('keeps a published retry document unreferenced when a stale update loses, then adopts it', async () => {
+    const { harness, fixture } = await start();
+    const created = await fixture.catalog.create('helper', {
+      model: KNOWN_MODEL,
+      instructions: 'Original.\n',
+    });
+    const document = stagedDocument('helper', 'style guide.md', 'Use short sentences.\n');
+    const external = validAgentFile('Written elsewhere.\n');
+    const definition = {
+      model: KNOWN_MODEL,
+      instructions: 'With the guide.\n',
+      references: [document.path],
+    };
+    harness.editDuringNextWrite('helper', external);
+    const stale = await fixture.catalog
+      .update('helper', definition, {
+        expectedHash: created.hash,
+        referenceDocuments: [document],
+      })
+      .catch((thrown: unknown) => thrown);
+    expect(stale).toBeInstanceOf(AgentFileConflictError);
+    await fixture.catalog.refresh();
+    expect(
+      readFileAgentBinding(fixture.catalog.find('helper') as object)?.definition.references,
+    ).toBeUndefined();
+
+    const retried = await fixture.catalog.update('helper', definition, {
+      expectedHash: hashOf(external),
+      referenceDocuments: [document],
+    });
+    expect(retried.id).toBe('helper');
+    expect(
+      readFileAgentBinding(fixture.catalog.find('helper') as object)?.definition.references,
+    ).toEqual([document.path]);
+  });
 
   it('parses a ready file, and lists an invalid one with its typed problem', async () => {
     const { harness, fixture } = await start();

@@ -19,6 +19,8 @@ import { createHash } from 'node:crypto';
 
 import {
   AGENT_FILE_SIZE_LIMIT,
+  AGENT_REFERENCE_SIZE_LIMIT,
+  AGENT_REFERENCES_TOTAL_SIZE_LIMIT,
   AgentFileConflictError,
   AgentFileError,
   type AgentFileDefinition,
@@ -29,7 +31,6 @@ import {
   decodeAgentFile,
   hashAgentFileBytes,
   parseAgentFile,
-  resolveAgentFileDefinition,
   serializeNewAgentFile,
   serializeUpdatedAgentFile,
 } from './agent-file';
@@ -46,7 +47,7 @@ import { assertReferenceDocument, assertReferencePath } from './sources/referenc
 const textEncoder = new TextEncoder();
 
 /** A UTF-8 text document staged by an editor to be published with its definition save. */
-export interface AgentReferenceDocument {
+interface AgentReferenceDocument {
   readonly path: string;
   readonly text: string;
 }
@@ -283,6 +284,7 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
     id: string,
     bytes: Uint8Array,
     before?: AgentFileDefinition,
+    options: { readonly skipReferences?: boolean } = {},
   ): Promise<void> {
     if (bytes.length > AGENT_FILE_SIZE_LIMIT) {
       refuse({
@@ -299,11 +301,19 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
           : { code: 'not-utf8', message: 'The agent file is not valid UTF-8.' },
       );
     }
-    const problem = await dependencies.validate(id, parsed.file.definition, before);
+    const definition = options.skipReferences
+      ? { ...parsed.file.definition, references: undefined }
+      : parsed.file.definition;
+    const problem = await dependencies.validate(id, definition, before);
     if (problem !== undefined) refuse(problem);
   }
 
-  /** Publish staged documents only after the definition and its current revision were preflighted. */
+  /**
+   * Publish a fully preflighted document batch. Documents are deliberately published before the
+   * definition which names them: otherwise a catalog can observe an invalid, dangling reference.
+   * A failed final CAS can therefore leave an unreferenced document, which the same byte-identical
+   * retry may adopt, but a malformed batch never publishes any member.
+   */
   async function writeReferenceDocuments(
     id: string,
     definition: AgentFileDefinition,
@@ -312,6 +322,7 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
   ): Promise<void> {
     if (documents === undefined || documents.length === 0) return;
     const references = new Set(definition.references ?? []);
+    const documentsByPath = new Map<string, Uint8Array>();
     const prepared = documents.map((document) => ({
       document,
       bytes: textEncoder.encode(document.text),
@@ -341,6 +352,12 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
           ],
         });
       }
+      if (documentsByPath.has(document.path)) {
+        refuse({
+          code: 'invalid-frontmatter',
+          message: `The staged reference document ${JSON.stringify(document.path)} appears more than once.`,
+        });
+      }
       try {
         assertReferencePath(document.path);
         assertReferenceDocument(bytes);
@@ -349,6 +366,33 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
           refuse({ code: 'invalid-frontmatter', message: error.message });
         }
         throw error;
+      }
+      documentsByPath.set(document.path, bytes);
+    }
+    let total = 0;
+    for (const path of definition.references ?? []) {
+      const staged = documentsByPath.get(path);
+      const read =
+        staged === undefined
+          ? await source.readSibling(path, {
+              limit: AGENT_REFERENCE_SIZE_LIMIT,
+              definitionId: id,
+            })
+          : undefined;
+      const bytes = staged ?? (read?.kind === 'found' ? read.bytes : undefined);
+      if (bytes === undefined) {
+        const message =
+          read?.kind === 'too-large'
+            ? `The reference ${JSON.stringify(path)} is too large.`
+            : `The reference ${JSON.stringify(path)} does not exist.`;
+        refuse({ code: 'invalid-frontmatter', message });
+      }
+      total += bytes.byteLength;
+      if (total > AGENT_REFERENCES_TOTAL_SIZE_LIMIT) {
+        refuse({
+          code: 'invalid-frontmatter',
+          message: `The reference documents total may be at most ${String(AGENT_REFERENCES_TOTAL_SIZE_LIMIT)} bytes.`,
+        });
       }
     }
     for (const { document, bytes } of prepared) {
@@ -401,6 +445,7 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
         const bytes = serializeNewAgentFile(definition);
         const parsed = parseAgentFile(id, decodeAgentFile(bytes) ?? '');
         if (parsed.ok) {
+          await checkWritable(id, bytes, undefined, { skipReferences: true });
           await writeReferenceDocuments(
             id,
             parsed.file.definition,
@@ -427,25 +472,17 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
           );
         }
         // The definition is checked even when it changes nothing: an update never reports a
-        // success for a file that would not load.
+        // success for a file that would not load. The reference bytes are checked after staged
+        // files exist, but every other definition constraint is checked before publication.
         const { definition: before } = parsed.file;
-        const problem = await dependencies.validate(
-          id,
-          resolveAgentFileDefinition(id, {
-            ...definition,
-            // A key the update leaves out keeps the file's value, and is checked as the file has it.
-            ...(definition.compaction === undefined ? { compaction: before.compaction } : {}),
-            ...(definition.references === undefined ? { references: before.references } : {}),
-            ...(definition.effort === undefined ? { effort: before.effort } : {}),
-            ...(definition.skills === undefined ? { skills: before.skills } : {}),
-          }),
-          before,
-        );
-        if (problem !== undefined) refuse(problem);
         const next = serializeUpdatedAgentFile(id, parsed.file, definition);
-        if (next === undefined) return { id, hash: expectedHash };
+        if (next === undefined) {
+          await checkWritable(id, current, before);
+          return { id, hash: expectedHash };
+        }
         const nextParsed = parseAgentFile(id, decodeAgentFile(next) ?? '');
         if (nextParsed.ok) {
+          await checkWritable(id, next, before, { skipReferences: true });
           await writeReferenceDocuments(
             id,
             nextParsed.file.definition,
