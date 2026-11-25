@@ -24,14 +24,14 @@ Import components, utilities, types, and metadata from this one entry point. Com
 
 ## Web Components
 
-From the repository root, run `bun run --cwd components/cinder web-components:build`. Serve the resulting `components/cinder/dist/web-components/` directory over HTTP and open `index.html` to try the [plain HTML example](./src/web-components/example.html). The build compiles the Cinder source components directly and bundles the Svelte runtime. Load the module and stylesheet in the page.
+From the repository root, run `bun components/cinder/scripts/build-web-components.ts`. Serve the resulting `components/cinder/dist/web-components/` directory over HTTP and open `index.html` to try the [plain HTML example](./src/web-components/example.html). The build compiles the Cinder source components directly and bundles the Svelte runtime. Load the module and stylesheet in the page.
 
 ```html
 <link rel="stylesheet" href="./web-components.css" />
 <script type="module" src="./web-components.js"></script>
 ```
 
-Workspace applications can import the generated assets as `@lostgradient/cinder/web-components` and `@lostgradient/cinder/web-components.css`. The stylesheet supplies the page theme. The browser build also emits element typings for the Web Components entry point. The accordion uses the shared Cinder styles in its shadow root.
+The stylesheet supplies the page theme, and the build includes `web-components.d.ts` for TypeScript consumers. The accordion uses the shared Cinder styles in its shadow root.
 
 Each entry in the Cinder component manifest gets a `cinder-<id>` element. The build reads the corresponding prop schema to choose attribute conversions, such as Boolean presence, numbers, and JSON arrays. Assign structured values, DOM references, and callbacks directly as JavaScript properties. Use kebab-case in HTML for camel-case property names. Component props that share a name with a native element property use a `component` prefix, as in `component-id` and `componentId`.
 
