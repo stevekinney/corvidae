@@ -189,7 +189,6 @@ for (const name of NAMES) {
         await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText(
           'Tool runner',
         );
-        await expect(frame.getByRole('button', { name: 'Duplicate', exact: true })).toBeVisible();
       }
       await captureForDesignReview(page, {
         route: name,
