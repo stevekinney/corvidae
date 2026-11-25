@@ -34,7 +34,9 @@ import { readFile, writeFile } from 'node:fs/promises';
 import {
   DEFAULT_THEMES,
   DEFAULT_WIDTHS,
+  isWitnessTarget,
   validateResolved,
+  WITNESS_SPECIFICATION,
   type ResolvedRows,
   type StateKind,
   type ViewportWitnessProfile,
@@ -347,22 +349,30 @@ export function missingViewportWitnesses(
   expected: readonly ViewportWitnessExpectation[],
   captured: readonly CapturedLine[],
 ): ViewportWitnessExpectation[] {
-  return expected.filter(
-    (entry) =>
-      !captured.some(
-        (line) =>
-          typeof line.source === 'string' &&
-          entry.specification.endsWith(`/${line.source}`) &&
-          line.route === entry.route &&
-          line.world === entry.world &&
-          line.state === entry.state &&
-          line.width === entry.width &&
-          line.colorScheme === entry.theme &&
-          typeof line.viewport === 'string' &&
-          !line.viewport.endsWith('.full.png') &&
-          Array.isArray(line.witnesses) &&
-          line.witnesses.includes(viewportWitnessKey(entry)),
-      ),
+  return expected.filter((entry) => viewportWitnessProof(entry, captured) === undefined);
+}
+
+/**
+ * The capture line that proves a witness: its declared source, route, world, state, width and
+ * theme, an actual viewport frame (never a `.full.png`), and the witness's key recorded on it.
+ */
+export function viewportWitnessProof(
+  entry: ViewportWitnessExpectation,
+  captured: readonly CapturedLine[],
+): (CapturedLine & { readonly viewport: string }) | undefined {
+  return captured.find(
+    (line): line is CapturedLine & { readonly viewport: string } =>
+      typeof line.source === 'string' &&
+      entry.specification.endsWith(`/${line.source}`) &&
+      line.route === entry.route &&
+      line.world === entry.world &&
+      line.state === entry.state &&
+      line.width === entry.width &&
+      line.colorScheme === entry.theme &&
+      typeof line.viewport === 'string' &&
+      !line.viewport.endsWith('.full.png') &&
+      Array.isArray(line.witnesses) &&
+      line.witnesses.includes(viewportWitnessKey(entry)),
   );
 }
 
@@ -397,7 +407,33 @@ export function parseCaptureManifest(text: string): CaptureManifest | string {
     return 'the capture manifest needs version 2, captures and witnesses lists';
   // An empty plan is covered by anything, so it is no plan.
   if (file.captures.length === 0) return 'the capture manifest expects no captures';
+  // The witnesses become Playwright arguments and locators, so a hand-edited file is held to the
+  // same shapes `validateResolved` holds the rows to.
+  const malformed = file.witnesses.findIndex((witness) => !wellFormedWitness(witness));
+  if (malformed !== -1) return `the capture manifest's witness ${malformed + 1} is malformed`;
   return file as CaptureManifest;
+}
+
+function wellFormedWitness(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const witness = value as Partial<Record<keyof ViewportWitnessExpectation, unknown>>;
+  return (
+    typeof witness.specification === 'string' &&
+    WITNESS_SPECIFICATION.test(witness.specification) &&
+    typeof witness.title === 'string' &&
+    witness.title.trim() !== '' &&
+    !witness.title.includes('\n') &&
+    (witness.theme === 'light' || witness.theme === 'dark') &&
+    Number.isInteger(witness.width) &&
+    (witness.width as number) > 0 &&
+    (witness.scrolling === 'none' || witness.scrolling === 'outlet') &&
+    Array.isArray(witness.targets) &&
+    witness.targets.length > 0 &&
+    witness.targets.every(isWitnessTarget) &&
+    [witness.row, witness.name, witness.route, witness.state, witness.world, witness.visible].every(
+      (field) => typeof field === 'string' && field !== '',
+    )
+  );
 }
 
 /** Writes or prints the capture manifest of a resolved rows file, or the checklist template. */

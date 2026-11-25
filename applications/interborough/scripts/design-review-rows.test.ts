@@ -35,7 +35,7 @@ function state(route: string, name: string, kind: 'ready' | 'empty' | 'first-run
     state: name,
     kind,
     witness: {
-      specification: 'tests/e2e/runs-states.spec.ts',
+      specification: 'applications/interborough/tests/e2e/runs-states.spec.ts',
       title: `/runs ${name} at 375 pixels`,
       world: 'sample-world',
       profiles: [
@@ -454,6 +454,22 @@ describe('captureManifest', () => {
     expect(parseCaptureManifest('{"version":2,"issue":"COR-9","captures":[],"witnesses":[]}')).toBe(
       'the capture manifest expects no captures',
     );
+    // A hand-edited witness becomes Playwright arguments and locators, so it is held to the rows' shapes.
+    const manifest = captureManifest(resolved);
+    for (const change of [
+      { specification: '--config=elsewhere.ts' },
+      { title: 'two\nlines' },
+      { targets: ['[data-anything]'] },
+      { theme: 'sepia' },
+    ])
+      expect(
+        parseCaptureManifest(
+          JSON.stringify({
+            ...manifest,
+            witnesses: [{ ...manifest.witnesses[0]!, ...change }],
+          }),
+        ),
+      ).toBe("the capture manifest's witness 1 is malformed");
   });
 });
 
@@ -465,7 +481,7 @@ describe('missingViewportWitnesses', () => {
       route: '/runs',
       state: 'ready',
       kind: 'ready' as const,
-      specification: 'tests/e2e/runs-states.spec.ts',
+      specification: 'applications/interborough/tests/e2e/runs-states.spec.ts',
       title:
         'on a phone is two-line rows under day bands with a Status select, Filter and a labelled Start run (05t, 05v)',
       world: 'sample-world',

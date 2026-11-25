@@ -24,7 +24,7 @@
  *
  *   bun scripts/design-review-capture.ts [--out <dir>] [--scheme light|dark|both]
  *     [--data showcase|stress|both] [--specs all|responsive|states] [--grep <pattern>]
- *     [--shard <index>/<count>] [--expect <expected-captures.json>]
+ *     [--shard <index>/<count>] [--expect <expected-captures.json>] [--narrow]
  *
  * `--shard` captures one shard of the specifications the other flags chose (`design-review-shards.ts`
  * plans them by weight, whole files each), so a runner takes a sixth of a sweep; the workflow runs
@@ -39,6 +39,12 @@
  * --manifest` writes the file from the issue's `rows.resolved.json`): after the run, each expected
  * route, state, width and scheme that `manifest.jsonl` does not show is named on standard error,
  * `summary.json` records the coverage, and the run exits 1. Without it nothing is held to a plan.
+ * The plan also names each declared state's physical viewport witnesses (COR-2574): before the
+ * broad run, each witness's specification runs alone with its literal title, escaped and anchored,
+ * as the `--grep`, and must select exactly one test, whose named targets must sit inside the
+ * viewport; coverage then needs an actual viewport PNG (never a `.full.png`) that records each
+ * witness, and `viewport-witnesses.json` lists every row and profile with its frame. `--narrow`
+ * runs only the witnesses, for the physical review that gates accepting a broad capture.
  *
  * `--data` chooses the content: `showcase` runs only the showcase specifications, `stress` runs the
  * responsive and view-states specifications, and `both` (the default) runs every one of them. `--specs`
@@ -56,10 +62,11 @@
  * and asks for a free `INTERBOROUGH_E2E_PORT` instead of screenshotting someone else's tree.
  */
 import { readFileSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { WITNESS_APPLICATION_DIRECTORY } from '../../../scripts/chef/design-rows-resolved.ts';
 import { ensureCinderGenerated } from '../../../scripts/ensure-cinder-generated.ts';
 import { withHostSlots, withMemoryAdmission, type HostSlots } from '../../../scripts/host-slots.ts';
 import { runInProcessGroup } from '../../../scripts/run-exclusively.ts';
@@ -69,7 +76,7 @@ import {
   missingCaptures,
   missingViewportWitnesses,
   parseCaptureManifest,
-  viewportWitnessKey,
+  viewportWitnessProof,
   wideCaptureHint,
   type CapturedLine,
   type CaptureExpectation,
@@ -335,6 +342,8 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
   if (specsGiven && data === 'showcase') {
     return '--specs narrows the stress data, so it cannot be used with --data showcase';
   }
+  // The narrow run is the expected plan's witnesses, so without a plan it would run nothing.
+  if (narrow && expectFile === undefined) return '--narrow needs --expect <expected-captures.json>';
   // A specification both lists hold (the view states) runs once, where it is first listed.
   const specifications = [
     ...new Set([
@@ -615,14 +624,17 @@ export async function captureDesignReview(
     return 0;
   }
   const runs: { scheme: Scheme; exitCode: number; ranNothing: string[] }[] = [];
+  const failedWitnesses: CaptureManifest['witnesses'][number][] = [];
   if (expected !== undefined) {
     const groups = Map.groupBy(
       expected.witnesses,
       (witness) => `${witness.specification}\0${witness.title}\0${witness.theme}`,
     );
-    for (const witnesses of groups.values()) {
+    for (const [groupIndex, witnesses] of [...groups.values()].entries()) {
       const witness = witnesses[0]!;
-      const report = join(options.out, `playwright-witness-${witness.row}-${witness.name}.json`);
+      // One report per run, removed first, so a run that writes none is never judged by another's.
+      const report = join(options.out, `playwright-witness-${groupIndex + 1}.json`);
+      await rm(report, { force: true });
       const command = [
         'bun',
         '--bun',
@@ -631,7 +643,8 @@ export async function captureDesignReview(
         '--config',
         'playwright.config.ts',
         '--reporter=list,json',
-        witness.specification,
+        // Playwright runs in the application directory; the manifest validated the prefix.
+        witness.specification.slice(WITNESS_APPLICATION_DIRECTORY.length),
         '--grep',
         `^${escapeTitleForGrep(witness.title)}$`,
       ];
@@ -644,12 +657,24 @@ export async function captureDesignReview(
         INTERBOROUGH_VIEWPORT_WITNESSES: JSON.stringify(witnesses),
         PLAYWRIGHT_JSON_OUTPUT_NAME: report,
       });
-      if (selectedTestCount(await readReport(report), witness.specification) !== 1) {
+      // A witness counts only from a run that selected exactly its one test and passed: a frame
+      // another test wrote, or one taken before a failed assertion, proves nothing about this one.
+      const selected = selectedTestCount(await readReport(report), witness.specification);
+      if (selected !== 1) {
         environment.standardError(
-          `design review: viewport witness row ${witness.row} ${witness.name} did not resolve exactly one test for ${witness.specification} title "${witness.title}"\n`,
+          `design review: viewport witness row ${witness.row} ${witness.name} did not resolve exactly one test for ${witness.specification} title "${witness.title}" (it selected ${selected})\n`,
         );
+        failedWitnesses.push(...witnesses);
         runs.push({ scheme: witness.theme, exitCode: 1, ranNothing: [] });
-      } else runs.push({ scheme: witness.theme, exitCode, ranNothing: [] });
+      } else {
+        if (exitCode !== 0) {
+          environment.standardError(
+            `design review: viewport witness row ${witness.row} ${witness.name} failed its test (exit ${exitCode}) for ${witness.specification} title "${witness.title}"\n`,
+          );
+          failedWitnesses.push(...witnesses);
+        }
+        runs.push({ scheme: witness.theme, exitCode, ranNothing: [] });
+      }
     }
   }
   for (const scheme of options.narrow ? [] : options.schemes) {
@@ -696,7 +721,7 @@ export async function captureDesignReview(
   const coverage =
     expected === undefined
       ? undefined
-      : await coverageOf(options.out, expected, environment, !options.narrow);
+      : await coverageOf(options.out, expected, environment, !options.narrow, failedWitnesses);
   const summary = {
     out: options.out,
     captures,
@@ -748,7 +773,7 @@ function shardHasTests(options: Options): boolean {
 export interface Coverage {
   readonly expected: number;
   readonly missing: readonly CaptureExpectation[];
-  readonly missingWitnesses: readonly CaptureManifest['witnesses'];
+  readonly missingWitnesses: CaptureManifest['witnesses'];
   readonly complete: boolean;
 }
 
@@ -757,7 +782,8 @@ async function coverageOf(
   out: string,
   manifest: CaptureManifest,
   environment: CaptureEnvironment,
-  includeCaptures = true,
+  includeCaptures: boolean,
+  failedWitnesses: CaptureManifest['witnesses'],
 ): Promise<Coverage> {
   const text = await readFile(join(out, 'manifest.jsonl'), 'utf8').catch(() => '');
   const lines: CapturedLine[] = [];
@@ -786,7 +812,14 @@ async function coverageOf(
       }),
     )
   ).filter((line): line is CapturedLine => line !== undefined);
-  const missingWitnesses = missingViewportWitnesses(manifest.witnesses, physicalLines);
+  // A witness whose run selected no single test, or failed, is missing whatever frames exist.
+  const failed = new Set(failedWitnesses);
+  const missingWitnesses = [
+    ...new Set([
+      ...failedWitnesses,
+      ...missingViewportWitnesses(manifest.witnesses, physicalLines),
+    ]),
+  ].sort((left, right) => manifest.witnesses.indexOf(left) - manifest.witnesses.indexOf(right));
   for (const entry of missing)
     environment.standardError(`design review: ${describeMissing(entry)}\n`);
   const hint = wideCaptureHint(missing);
@@ -795,17 +828,9 @@ async function coverageOf(
     environment.standardError(
       `design review: missing viewport witness: row ${witness.row}, ${witness.name}, ${witness.specification}, title "${witness.title}", ${witness.world}, ${witness.width}px ${witness.theme}; expected ${witness.visible}\n`,
     );
+  // The receipt, row by row: each proven witness and the actual viewport frame that proves it.
   const receipt = manifest.witnesses.flatMap((witness) => {
-    const line = physicalLines.find(
-      (candidate) =>
-        candidate.route === witness.route &&
-        candidate.state === witness.state &&
-        candidate.world === witness.world &&
-        candidate.width === witness.width &&
-        candidate.colorScheme === witness.theme &&
-        Array.isArray(candidate.witnesses) &&
-        candidate.witnesses.includes(viewportWitnessKey(witness)),
-    );
+    const line = failed.has(witness) ? undefined : viewportWitnessProof(witness, physicalLines);
     return line === undefined
       ? []
       : [{ row: witness.row, name: witness.name, viewport: line.viewport }];

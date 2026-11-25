@@ -1471,7 +1471,7 @@ describe('design rows need rows.resolved.json', () => {
               state: 'ready',
               kind: 'ready',
               witness: {
-                specification: 'tests/e2e/runs-states.spec.ts',
+                specification: 'applications/interborough/tests/e2e/runs-states.spec.ts',
                 title: '/runs ready at 375 pixels',
                 world: 'sample-world',
                 profiles: [
@@ -1491,7 +1491,7 @@ describe('design rows need rows.resolved.json', () => {
               state: 'empty',
               kind: 'empty',
               witness: {
-                specification: 'tests/e2e/runs-states.spec.ts',
+                specification: 'applications/interborough/tests/e2e/runs-states.spec.ts',
                 title: '/runs empty at 375 pixels',
                 world: 'sample-world',
                 profiles: [

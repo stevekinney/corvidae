@@ -62,9 +62,17 @@ export interface ViewportWitnessProfile {
 
 /** The exact Playwright state that produces a row's narrow physical witness. */
 export interface ViewportWitness {
-  /** Repository-relative Playwright specification. */
+  /**
+   * Repository-relative Playwright specification under Interborough's end-to-end or panel tests,
+   * for example `applications/interborough/tests/e2e/runs-states.spec.ts`.
+   */
   readonly specification: string;
-  /** Full, literal Playwright title path. It is passed as text, never evaluated. */
+  /**
+   * The full, literal, project-qualified title Playwright matches `--grep` against: the project,
+   * the file relative to `tests/`, and the title path, joined by spaces, as `bun --bun playwright
+   * test --list` names it, for example `chromium e2e/runs-states.spec.ts /runs ready at 375 pixels`.
+   * It is escaped and anchored, never evaluated, and must select exactly one test.
+   */
   readonly title: string;
   /** Fixture world recorded by the capture manifest. */
   readonly world: string;
@@ -169,12 +177,27 @@ function stateProblems(id: string, states: unknown): string[] {
   return problems;
 }
 
+/** The directory Playwright runs from; a witness's specification is passed relative to it. */
+export const WITNESS_APPLICATION_DIRECTORY = 'applications/interborough/';
+
+/** The repository-relative Playwright specifications a witness may name. */
+export const WITNESS_SPECIFICATION =
+  /^applications\/interborough\/tests\/(?:e2e|panels)\/[a-z0-9][a-z0-9-]*\.spec\.ts$/;
+
+/** A `data-testid` value or a `role:<role>:<exact accessible name>` descriptor, matched as text. */
+export function isWitnessTarget(target: unknown): target is string {
+  return (
+    typeof target === 'string' &&
+    (/^[a-z][a-z0-9-]*$/.test(target) || /^role:[a-z-]+:[^:\n]+$/.test(target))
+  );
+}
+
 function witnessProblems(label: string, value: unknown): string[] {
   const witness = record(value);
   if (witness === undefined) return [`${label} needs a viewport witness`];
   const problems: string[] = [];
   const specification = witness['specification'];
-  if (!nonEmpty(specification) || !/^tests\/e2e\/[a-z0-9][a-z0-9-]*\.spec\.ts$/.test(specification))
+  if (!nonEmpty(specification) || !WITNESS_SPECIFICATION.test(specification))
     problems.push(`${label} witness needs a repository-relative Playwright specification`);
   if (!nonEmpty(witness['title']) || witness['title'].includes('\n'))
     problems.push(`${label} witness needs one literal full title`);
@@ -210,15 +233,7 @@ function witnessProblems(label: string, value: unknown): string[] {
       else viewports.add(key);
     }
     const targets = profile['targets'];
-    if (
-      !Array.isArray(targets) ||
-      targets.length === 0 ||
-      targets.some(
-        (target) =>
-          typeof target !== 'string' ||
-          !(/^[a-z][a-z0-9-]*$/.test(target) || /^role:[a-z-]+:[^:\n]+$/.test(target)),
-      )
-    )
+    if (!Array.isArray(targets) || targets.length === 0 || !targets.every(isWitnessTarget))
       problems.push(`${profileLabel} needs named data-testid or role targets`);
     if (!nonEmpty(profile['visible'])) problems.push(`${profileLabel} needs a visible expectation`);
     if (profile['scrolling'] !== 'none' && profile['scrolling'] !== 'outlet')

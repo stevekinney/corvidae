@@ -15,7 +15,7 @@ function state(route: string, name: string, kind: 'ready' | 'empty' | 'first-run
     state: name,
     kind,
     witness: {
-      specification: 'tests/e2e/runs-states.spec.ts',
+      specification: 'applications/interborough/tests/e2e/runs-states.spec.ts',
       title: `/runs ${name} at 375 pixels`,
       world: 'sample-world',
       profiles: [
@@ -130,6 +130,35 @@ describe('validateResolved', () => {
     const problems = validateResolved(malformed, expected).join('\n');
     expect(problems).toContain('repository-relative Playwright specification');
     expect(problems).toContain('named data-testid or role targets');
+  });
+
+  test('names the specification from the repository root, under the end-to-end or panel tests', () => {
+    const withSpecification = (specification: string) => {
+      const base = resolved();
+      const state = base.rows[0]!.states[0]!;
+      return validateResolved(
+        {
+          ...base,
+          rows: [
+            {
+              ...base.rows[0]!,
+              states: [{ ...state, witness: { ...state.witness, specification } }],
+            },
+            base.rows[1]!,
+          ],
+        },
+        expected,
+      ).join('\n');
+    };
+    expect(
+      withSpecification('applications/interborough/tests/panels/run-timeline-states.spec.ts'),
+    ).toBe('');
+    for (const refused of [
+      'tests/e2e/runs-states.spec.ts',
+      'applications/interborough/tests/e2e/../../package.json',
+      '--config=elsewhere.ts',
+    ])
+      expect(withSpecification(refused)).toContain('repository-relative Playwright specification');
   });
 
   test('requires every literal criterion of the issue to be checked, and a conflict to be settled with a reason', () => {

@@ -56,7 +56,7 @@ const critique = (overrides: Record<string, unknown> = {}) => ({
           state: 'ready',
           kind: 'ready',
           witness: {
-            specification: 'tests/e2e/runs-states.spec.ts',
+            specification: 'applications/interborough/tests/e2e/runs-states.spec.ts',
             title: '/runs ready at 375 pixels',
             world: 'sample-world',
             profiles: [
@@ -76,7 +76,7 @@ const critique = (overrides: Record<string, unknown> = {}) => ({
           state: 'empty',
           kind: 'empty',
           witness: {
-            specification: 'tests/e2e/runs-states.spec.ts',
+            specification: 'applications/interborough/tests/e2e/runs-states.spec.ts',
             title: '/runs empty at 375 pixels',
             world: 'sample-world',
             profiles: [
