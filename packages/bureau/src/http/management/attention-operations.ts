@@ -115,6 +115,39 @@ const item = z.discriminatedUnion('kind', [
       .nonnegative()
       .describe('How many tasks on that queue failed for good.'),
   }),
+  z.object({
+    kind: z.literal('run-stalled'),
+    area,
+    at: at.describe('When the Bureau saw the run stall, in epoch milliseconds.'),
+    runId: z.string().describe('The run that stalled.'),
+    agentName: z.string().nullable().describe('The agent the run is of, or `null`.'),
+  }),
+  z.object({
+    kind: z.literal('run-looping'),
+    area,
+    at: at.describe('When the first loop was reported, in epoch milliseconds.'),
+    runId: z.string().describe('The run that is looping.'),
+    agentName: z.string().nullable().describe('The agent the run is of, or `null`.'),
+  }),
+  z.object({
+    kind: z.literal('run-overspending'),
+    area,
+    at: at.describe('When a step found the run over the spend threshold, in epoch milliseconds.'),
+    runId: z.string().describe('The run that cost more than the threshold.'),
+    agentName: z.string().nullable().describe('The agent the run is of, or `null`.'),
+    costUsd: z
+      .number()
+      .nullable()
+      .describe('What the run has cost so far, or in total once it settled, in US dollars.'),
+    thresholdUsd: z
+      .number()
+      .describe('The spend threshold in force when the step found the run over, in US dollars.'),
+    settledAt: z
+      .number()
+      .int()
+      .nullable()
+      .describe('When the run settled, in epoch milliseconds, or `null` while it runs.'),
+  }),
 ]);
 
 /** One item as the wire carries it: its own copy of every list. */
@@ -152,7 +185,7 @@ export const healthAttentionOperation = defineOperation<
   mcpExposable: false,
   summary: 'List what needs attention',
   description:
-    'Lists the system problems that need attention now, most recent first: an alert rule that is firing (`alert`), a schedule that missed runs in the last seven days and has not run since (`missed-runs`), an enabled hook whose newest delivery failed or gave up (`hook-failed`), a plugin that did not load (`plugin-not-loaded`), and what the host reports, such as no model provider connected (`no-provider`). `count` is the number of items, and `checks` counts the same items by area. Reviews waiting on a person are never listed. Requires `bureau.diagnostics:read`.',
+    'Lists the system problems that need attention now, most recent first: an alert rule that is firing (`alert`), a schedule that missed runs in the last seven days and has not run since (`missed-runs`), an enabled hook whose newest delivery failed or gave up (`hook-failed`), a plugin that did not load (`plugin-not-loaded`), and what the host reports, such as no model provider connected (`no-provider`). A run that is alive but making no progress (`run-stalled`), a run whose toolbox reported a loop (`run-looping`) and a run that cost more than the `runs.spendThresholdUsd` setting (`run-overspending`, listed while it runs and for seven days after it settles) each name their run; none of them stops it. `count` is the number of items, and `checks` counts the same items by area. Reviews waiting on a person are never listed. Requires `bureau.diagnostics:read`.',
   destructive: false,
   tags: ['Deployment'],
   inputSchema: attentionInput,

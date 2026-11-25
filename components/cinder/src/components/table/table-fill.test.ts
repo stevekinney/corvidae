@@ -84,7 +84,11 @@ describe('table fill', () => {
 
     const dataTable = await declarations(files.dataTable);
     expect(
-      valueOf(dataTable, '.cinder-data-table tbody .cinder-table__row:focus-within', 'background'),
+      valueOf(
+        dataTable,
+        '.cinder-data-table tbody .cinder-table__row:focus-within:where(:not([data-cinder-open]))',
+        'background',
+      ),
     ).toBe('var(--_cinder-table-row-hover)');
 
     const grid = await declarations(files.dataGrid);

@@ -10,7 +10,7 @@
   ],
   "avoidWhen": [
     {
-      "reason": "Collecting structured input or multiple fields — compose a modal with form controls instead."
+      "reason": "Collecting a long form of many fields or sections: compose a modal instead. One or two labelled controls fit in options."
     },
     { "reason": "Announcing a non-blocking result — use toast-region or banner." }
   ],

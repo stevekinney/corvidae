@@ -205,3 +205,16 @@ export function dayAndTime(at: number, now: number, zone: string = viewerTimeZon
     ? `Today, ${clockTime(at, zone)}`
     : rowTime(at, now, zone);
 }
+
+/**
+ * When something happened, for the middle of a sentence: "today at 10:30 AM", "yesterday at 4:12 PM"
+ * and "Thu, Oct 29 at 11:05 AM". It is {@link dayAndTime} said as a phrase, so a line that reads
+ * "Written by a model {phrase}" never carries a capital or a comma between the day and the clock.
+ */
+export function sentenceTime(at: number, now: number, zone: string = viewerTimeZone()): string {
+  const text = dayAndTime(at, now, zone);
+  const split = text.lastIndexOf(', ');
+  if (split === -1) return text;
+  const day = text.slice(0, split);
+  return `${/^(Today|Yesterday)$/.test(day) ? day.toLowerCase() : day} at ${text.slice(split + 2)}`;
+}

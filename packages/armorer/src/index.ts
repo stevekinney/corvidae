@@ -26,6 +26,7 @@ export { combineToolboxes } from './combine-toolboxes';
 export * from './core';
 export { TOOLBOX_BUDGET_EXCEEDED_MARKER, isToolboxBudgetExceededToolError } from './core/errors';
 export type { ToolError, ToolErrorCategory, ToolboxBudgetExceededToolError } from './core/errors';
+export { assertJsonValue } from './core/serialization/json';
 export {
   EXTERNAL_PROJECTION_VERSION,
   freezeEffectiveToolExecutionContext,
@@ -60,7 +61,10 @@ export type {
   ExecutionState,
 } from './execution-lifecycle';
 export { readToolShortDescription, readToolTitle, renderToolSummary } from './tool-summary';
-export { getToolboxApprovalOptions } from './toolbox-approval-options';
+export {
+  getToolboxApprovalOptions,
+  toolboxProjectionInterruption,
+} from './toolbox-approval-options';
 export type { ToolboxApprovalOptions } from './toolbox-approval-options';
 // RuntimeServices is part of this package's public execution contract.
 // Its implementation and types have one source owner: @lostgradient/lifecycle.

@@ -603,6 +603,12 @@ export type PluginPanelPlacement =
   | {
       /** The panel shows on a run's page, beside the run it belongs to. */
       readonly kind: 'run';
+      /**
+       * Which runs the panel shows on. Left out, every run's page mounts it; `failed` mounts it only
+       * on the page of a run that failed, so a panel that has nothing to say about any other run
+       * draws no empty card there (COR-2543).
+       */
+      readonly when?: 'failed';
     }
   | {
       /** The panel opens inline in Chat from a tool call of the agent tool `agentTool`. */
@@ -803,11 +809,31 @@ export interface PluginEventDeclaration {
   readonly payload: z.ZodObject;
 }
 
+/** Durable cleanup for a terminally denied or rejected, signed tool call. */
+export interface PluginRelease {
+  readonly name: string;
+  readonly agent: string;
+  readonly tool: string;
+  readonly toolRevision: string;
+  /** Project only the domain identifier from the verified arguments. */
+  readonly identifier: (arguments_: unknown) => string;
+  /** Idempotently release the identified domain reservation, or prove it no longer needs release. */
+  readonly release: (input: {
+    readonly identifier: string;
+    readonly runId: string;
+    readonly reviewId: string;
+    readonly round: number;
+    readonly toolRevision: string;
+  }) => Promise<void>;
+}
+
 /**
  * What `setup` returns: everything the plugin adds to the host. Every member is optional, so a
  * plugin names only the kinds it contributes.
  */
 export interface PluginContributions {
+  /** Terminal-review business cleanup, delivered durably and not separately disableable like hooks. */
+  readonly releases?: readonly PluginRelease[];
   /** Tools agents can call. */
   readonly tools?: readonly AnyTool[];
   /** Activities workflows can call. */

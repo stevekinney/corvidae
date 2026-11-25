@@ -1,13 +1,8 @@
 /** Where a workflow file's JSON stops being JSON, and where its parts start, found by reading the text. */
 import { describe, expect, test } from 'bun:test';
 
-import {
-  locateJsonProblem,
-  problemNote,
-  problemSentence,
-  sourceLineId,
-  sourceOutline,
-} from './workflow-source.ts';
+import { locateJsonProblem } from '@lostgradient/bureau/workflow-json';
+import { problemNote, problemSentence, sourceLineId, sourceOutline } from './workflow-source.ts';
 
 const lines = (...rows: string[]): string => rows.join('\n');
 

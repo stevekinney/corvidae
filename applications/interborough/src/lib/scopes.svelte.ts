@@ -81,7 +81,12 @@ export type UnauthenticatedAccessPolicy = 'warn' | 'allow' | 'reject';
 /** Who the server says the caller is and the scopes it granted them. */
 export interface Principal {
   /** Server-resolved identity used to isolate browser data. */
-  workspace?: { readonly workspaceId: string; readonly actorId: string };
+  workspace?: {
+    readonly workspaceId: string;
+    readonly actorId: string;
+    /** Whether the trusted directory proved another eligible owner exists for memory sharing. */
+    readonly memorySharing?: boolean;
+  };
   /**
    * The scopes the server reported as granted for this credential
    * (`weft.system.principal`). Empty for an anonymous principal. Shrinks
@@ -345,7 +350,11 @@ const hostPrincipalSchema = z.object({
   ]),
   subject: z.string().nullable(),
   scopes: z.array(z.string()),
-  workspace: z.object({ workspaceId: z.string().min(1), actorId: z.string().min(1) }),
+  workspace: z.object({
+    workspaceId: z.string().min(1),
+    actorId: z.string().min(1),
+    memorySharing: z.boolean().optional(),
+  }),
 });
 
 /** Resolve this host's verified caller rather than the engine relay's internal credential. */
@@ -361,7 +370,7 @@ export async function resolveHostPrincipal(
     scopes: result.method === 'unauthenticated' ? [] : result.scopes.filter(isConsoleScope),
     subject: result.subject,
     unauthenticatedAccess: result.method === 'unauthenticated' ? 'warn' : null,
-    workspace: result.workspace,
+    workspace: { ...result.workspace, memorySharing: result.workspace.memorySharing === true },
   };
 }
 

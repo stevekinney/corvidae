@@ -17,6 +17,7 @@ import {
   type SessionListOptions,
   type SessionSummary,
   sessionArchivedAtOf,
+  sessionReadGrantOf,
   sessionOriginOf,
   sessionOwnerOf,
   summarizeSession,
@@ -39,6 +40,7 @@ import {
   type BureauOwnershipHost,
   ownerOfPrincipal,
 } from '../owner-predicate.ts';
+import type { BureauWorkspaceHost } from '../workspace-principal.ts';
 import {
   DEFAULT_PAGE_LIMIT,
   pageFields,
@@ -52,13 +54,14 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 import { dryRunField, dryRunResult, effect, LIVE_TASK_STATUSES, orDryRun } from './dry-run.ts';
 
 /** What the context operations read from the handler's `host`. */
-export type BureauContextsOperationHost = BureauOwnershipHost & {
-  readonly contexts: Pick<BureauContexts, 'get' | 'delete' | 'list' | 'steering'> &
-    Pick<Bureau, 'lifecycle'> & {
-      readonly internals: Pick<BureauInternals, 'sessionStore'>;
-    };
-  readonly tasks: Pick<TaskRegistry, 'settleCleanup' | 'activityOf' | 'taskIdsOfContext' | 'get'>;
-};
+export type BureauContextsOperationHost = BureauOwnershipHost &
+  BureauWorkspaceHost & {
+    readonly contexts: Pick<BureauContexts, 'get' | 'delete' | 'list' | 'steering'> &
+      Pick<Bureau, 'lifecycle'> & {
+        readonly internals: Pick<BureauInternals, 'sessionStore'>;
+      };
+    readonly tasks: Pick<TaskRegistry, 'settleCleanup' | 'activityOf' | 'taskIdsOfContext' | 'get'>;
+  };
 /**
  * Whether `principal` may act, with `operatorScope`, on the session it has just loaded.
  * The owner is the loaded session's own, not a second lookup of the id: a context id can
@@ -66,7 +69,7 @@ export type BureauContextsOperationHost = BureauOwnershipHost & {
  * session the operation then reads or deletes.
  */
 export function mayAccessLoadedContext(
-  host: BureauOwnershipHost,
+  host: BureauOwnershipHost & BureauWorkspaceHost,
   principal: Principal,
   session: AgentSession,
   operatorScope: 'bureau.contexts:write' | 'bureau.contexts:read',
@@ -76,6 +79,81 @@ export function mayAccessLoadedContext(
     resourceOwner: sessionOwnerOf(session.metadata) ?? undefined,
     operatorScope,
   });
+}
+
+/** A summary admits an active recipient only when its bound workspace identity still matches. */
+type AdmittedContextSummary = Readonly<{
+  summary: SessionSummary;
+  /** The exact shared incarnation that passed the current-directory admission. */
+  sharedSession?: AgentSession | undefined;
+}>;
+
+async function activeSharedSession(
+  host: BureauContextsOperationHost,
+  principal: Principal,
+  summary: SessionSummary,
+): Promise<AgentSession | undefined> {
+  const workspace = 'workspace' in principal ? principal.workspace : undefined;
+  const loaded = await host.contexts.get(summary.id);
+  const grant =
+    workspace === undefined || loaded === undefined
+      ? undefined
+      : sessionReadGrantOf(loaded.metadata, workspace.owner);
+  if (!(
+    grant !== undefined &&
+    grant.revokedAt === undefined &&
+    grant.workspaceId === workspace!.workspaceId &&
+    grant.actorId === workspace!.actorId &&
+    grant.sessionIncarnation === loaded?.incarnation
+  ))
+    return undefined;
+  const owner = loaded === undefined ? null : sessionOwnerOf(loaded.metadata);
+  const authority = host.workspaceAuthority?.(principal);
+  if (owner === null || authority === undefined || !(await authority(owner))) return undefined;
+  // The directory lookup above is async. Fence a delete/recreate of the same id while it was
+  // in flight: the response must be bound to the incarnation that the grant admitted.
+  const current = await host.contexts.get(summary.id);
+  const currentGrant =
+    current === undefined ? undefined : sessionReadGrantOf(current.metadata, workspace!.owner);
+  return current === undefined ||
+    current.incarnation !== loaded.incarnation ||
+    sessionOwnerOf(current.metadata) !== owner ||
+    currentGrant === undefined ||
+    currentGrant.revokedAt !== undefined ||
+    currentGrant.workspaceId !== workspace!.workspaceId ||
+    currentGrant.actorId !== workspace!.actorId ||
+    currentGrant.sessionIncarnation !== current.incarnation
+    ? undefined
+    : current;
+}
+
+async function activeSharedSummaries(
+  host: BureauContextsOperationHost,
+  principal: Principal,
+  owner: string | undefined,
+  summaries: readonly SessionSummary[],
+): Promise<AdmittedContextSummary[]> {
+  const admitted = await Promise.all(
+    summaries.map(async (summary): Promise<AdmittedContextSummary | undefined> => {
+      if (summary.owner === owner) return { summary };
+      const sharedSession = await activeSharedSession(host, principal, summary);
+      return sharedSession === undefined ? undefined : { summary, sharedSession };
+    }),
+  );
+  return admitted.filter(
+    (candidate): candidate is AdmittedContextSummary => candidate !== undefined,
+  );
+}
+
+function projectListedContext(
+  owner: string | undefined,
+  admitted: AdmittedContextSummary,
+  activity: ContextActivity | undefined,
+): z.infer<typeof contextSummarySchema> | undefined {
+  if (admitted.summary.owner === owner) return projectContext(admitted.summary, activity);
+  return admitted.sharedSession === undefined
+    ? undefined
+    : projectSharedContext(summarizeSession(admitted.sharedSession));
 }
 
 const contextsDeleteInput = z.object({
@@ -293,6 +371,26 @@ function projectContext(
   };
 }
 
+/** The deliberately small list row for an active reader, never an owner projection. */
+function projectSharedContext(summary: SessionSummary): z.infer<typeof contextSummarySchema> {
+  return {
+    id: summary.id,
+    owner: null,
+    agentName: summary.agentName,
+    title: summary.title,
+    lastMessagePreview: null,
+    parentContextId: null,
+    forkedFromMessageId: null,
+    origin: 'chat',
+    messageCount: summary.messageCount,
+    createdAt: summary.updatedAt,
+    updatedAt: summary.updatedAt,
+    activity: 'idle',
+    endReason: null,
+    archivedAt: null,
+  };
+}
+
 /** The fault for a Bureau that keeps no session store, and so no contexts. */
 export function noSessions(): OperationFault {
   return {
@@ -381,8 +479,10 @@ export const contextsListOperation = defineOperation<
     if (!everyOwner && owner === undefined) return { contexts: [], nextOffset: null };
     const limit = input.limit ?? DEFAULT_PAGE_LIMIT;
     const offset = input.offset ?? 0;
+    const sharedListing =
+      !everyOwner && 'workspace' in principal && principal.workspace !== undefined;
     const filters = {
-      ...(owner === undefined ? {} : { owner }),
+      ...(owner === undefined || sharedListing ? {} : { owner }),
       ...(input.agentName === undefined ? {} : { agentName: input.agentName }),
       ...(input.origin === undefined ? {} : { origin: input.origin }),
       ...(input.titleContains === undefined ? {} : { titleContains: input.titleContains }),
@@ -391,7 +491,40 @@ export const contextsListOperation = defineOperation<
       ...(input.sortOrder === undefined ? {} : { sortOrder: input.sortOrder }),
     };
     if (input.activity !== undefined) {
+      if (sharedListing) {
+        const candidates = await host.contexts.list({ ...filters, limit: Number.MAX_SAFE_INTEGER });
+        const admitted = await activeSharedSummaries(host, principal, owner, candidates);
+        const activity = await host.tasks.activityOf(admitted.map(({ summary }) => summary.id));
+        const matching = admitted.filter(
+          ({ summary }) => (activity.get(summary.id) ?? 'idle') === input.activity,
+        );
+        const page = matching.slice(offset, offset + limit);
+        const projected = page.map((admittedSummary) =>
+          projectListedContext(owner, admittedSummary, activity.get(admittedSummary.summary.id)),
+        );
+        return {
+          contexts: projected.filter(
+            (context): context is z.infer<typeof contextSummarySchema> => context !== undefined,
+          ),
+          nextOffset: matching.length > offset + limit ? offset + limit : null,
+        };
+      }
       return listByActivity(host, filters, input.activity, offset, limit);
+    }
+    if (sharedListing) {
+      const candidates = await host.contexts.list({ ...filters, limit: Number.MAX_SAFE_INTEGER });
+      const admitted = await activeSharedSummaries(host, principal, owner, candidates);
+      const page = admitted.slice(offset, offset + limit);
+      const activity = await host.tasks.activityOf(page.map(({ summary }) => summary.id));
+      const projected = page.map((admittedSummary) =>
+        projectListedContext(owner, admittedSummary, activity.get(admittedSummary.summary.id)),
+      );
+      return {
+        contexts: projected.filter(
+          (context): context is z.infer<typeof contextSummarySchema> => context !== undefined,
+        ),
+        nextOffset: admitted.length > offset + limit ? offset + limit : null,
+      };
     }
     // One row past the page says whether another page follows.
     const rows = await host.contexts.list({ ...filters, limit: limit + 1, offset });

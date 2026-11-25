@@ -749,8 +749,28 @@ describe('Toggle — size contract in the stylesheet (COR-1552)', () => {
         .map((match) => match[1] ?? '')
         .find((block) => /\.cinder-toggle\s*\{/.test(block)) ?? '';
     expect(coarse, 'no (any-pointer: coarse) block for .cinder-toggle').not.toBe('');
-    expect(coarse).toMatch(/--_cinder-toggle-pad-inline:[^;]*2\.75rem/);
+    expect(coarse).toMatch(/--_cinder-toggle-pad-inline-start:\s*0rem;/);
+    expect(coarse).toMatch(
+      /--_cinder-toggle-pad-inline-end:\s*calc\(2\.75rem - var\(--cinder-toggle-width, 2rem\)\);/,
+    );
     expect(coarse).toMatch(/--_cinder-toggle-pad-block:[^;]*2\.75rem/);
+  });
+
+  test('a coarse pointer keeps the track at the logical inline start inside its 44px hit area', () => {
+    const coarse =
+      [...css.matchAll(/@media \(any-pointer: coarse\)\s*\{([\s\S]*?)\n  \}/g)]
+        .map((match) => match[1] ?? '')
+        .find((block) => /\.cinder-toggle\s*\{/.test(block)) ?? '';
+
+    expect(coarse).toMatch(/--_cinder-toggle-pad-inline-start:\s*0rem;/);
+    expect(coarse).toMatch(
+      /--_cinder-toggle-pad-inline-end:\s*calc\(2\.75rem - var\(--cinder-toggle-width, 2rem\)\);/,
+    );
+    expect(css).toMatch(/padding-inline-start:\s*var\(--_cinder-toggle-pad-inline-start\);/);
+    expect(css).toMatch(/padding-inline-end:\s*var\(--_cinder-toggle-pad-inline-end\);/);
+    expect(css).toMatch(
+      /inset-inline-start:\s*calc\(var\(--_cinder-toggle-pad-inline-start\) \+ 0\.125rem\);/,
+    );
   });
 });
 

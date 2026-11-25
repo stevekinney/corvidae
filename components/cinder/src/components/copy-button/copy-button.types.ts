@@ -48,6 +48,8 @@ export type CopyButtonProps = Omit<
    * @default false
    */
   textVisible?: boolean;
+  /** Use the borderless, text-sized face for a copy control that follows a value. */
+  appearance?: 'default' | 'inline';
   /** Additional class names merged with `.cinder-copy-button`. */
   class?: string;
   /** The words of the text face at rest, after the Copy icon. Passing them shows the text face. */

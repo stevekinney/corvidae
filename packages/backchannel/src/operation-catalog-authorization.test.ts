@@ -28,6 +28,41 @@ import { anonymousPrincipal, principalFromApiKey } from './principal.ts';
 const fakeEngine: Parameters<typeof executeOperation>[2]['host'] = {};
 
 describe('executeOperation — step 6: authorize hook', () => {
+  it('does not invoke after MCP cancellation during asynchronous authorization', async () => {
+    const controller = new AbortController();
+    let invoked = false;
+    const registry = createOperationRegistry([
+      makeOp({
+        name: 'weft.test.cancelled',
+        mcpExposable: true,
+        inputSchema: z.object({}),
+        outputSchema: z.object({}),
+        access: { kind: 'public' },
+        authorize: async () => {
+          await Promise.resolve();
+          controller.abort();
+          return { allowed: true };
+        },
+        invoke: async () => {
+          invoked = true;
+          return {};
+        },
+      }),
+    ]);
+    const result = await executeOperation(
+      'weft.test.cancelled',
+      {},
+      {
+        principal: anonymousPrincipal(),
+        host: fakeEngine,
+        transport: 'mcp',
+        registry,
+        signal: controller.signal,
+      },
+    );
+    expect(result.ok).toBe(false);
+    expect(invoked).toBe(false);
+  });
   it('rejects malformed authorize hook return values', async () => {
     const base = makeOp({
       name: 'weft.test.badhook',

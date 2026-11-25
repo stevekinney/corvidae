@@ -247,6 +247,14 @@ function definitionParameters(operation: CatalogOperation) {
     return {
       events: [{ kind: 'run.settled', bureauId: 'bureau-1', emittedAtMs: 1_000, payload: {} }],
     };
+  if (operation.name.startsWith('bureau.contexts.share')) {
+    return {
+      contextId: 'context-probe',
+      granteeOwnerId: 'workspace-a:peer',
+      requestId: '00000000-0000-4000-8000-000000000001',
+      decision: 'grant',
+    };
+  }
   if (operation.name.startsWith('bureau.assets.')) return ASSET_PARAMETERS;
   if (operation.name.startsWith('bureau.schedules.')) return SCHEDULE_PARAMETERS;
   if (operation.name.startsWith('bureau.goals.')) return GOAL_PARAMETERS;
@@ -903,6 +911,12 @@ describe('identifiers grant nothing', () => {
               // still names the schedule, which is bob's.
               ...(operation.name === 'bureau.schedules.update'
                 ? { scheduleId: bobScheduleId }
+                : {}),
+              // COR-2437: discarding or resuming a turn names the context and its run; the run is
+              // bob's while the context is probed, and the context bob's while the run is.
+              ...(operation.name === 'bureau.contexts.discardturn' ||
+              operation.name === 'bureau.contexts.resumeturn'
+                ? { contextId: bob.run.contextId, runId: bob.run.id }
                 : {}),
               [parameter]: requested,
               decision: 'approve',

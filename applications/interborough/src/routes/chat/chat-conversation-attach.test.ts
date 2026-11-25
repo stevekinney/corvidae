@@ -6,6 +6,7 @@
 import { cleanup, render } from '@testing-library/svelte';
 import { afterEach, expect, test } from 'bun:test';
 
+import { CHAT_COPY } from '../../app/copy/chat.ts';
 import ChatConversation from './chat-conversation.svelte';
 import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
@@ -51,4 +52,35 @@ test('joins a run that finishes without asking, and leaves focus where the perso
   expect(await findByText(/Order 4471 is \$42\.00\./)).not.toBeNull();
   expect(container.querySelector('[data-approval-decision]')).toBeNull();
   expect(document.activeElement?.closest('[data-approval-decision]') ?? null).toBeNull();
+});
+
+test('a revoked shared projection replaces the read-only chat with its retry state and refreshes route access', async () => {
+  let unavailable = 0;
+  restore = bureau(
+    { 'bureau.contexts.get': () => CONTEXT, 'bureau.reviews.list': () => ({ reviews: [] }) },
+    (url) => {
+      if (url.endsWith('/shared-messages')) return new Response('', { status: 404 });
+      return undefined;
+    },
+  ).restore;
+  landAt('/chats/session-1');
+
+  const { findByText, findByRole } = render(QueryPage, {
+    props: {
+      page: ChatConversation,
+      pageProps: {
+        sessionId: 'session-1',
+        title: 'Plan the week',
+        agentName: 'assistant',
+        readOnly: true,
+        onSharedHistoryUnavailable: () => {
+          unavailable += 1;
+        },
+      },
+    },
+  } as never);
+
+  expect(await findByText(CHAT_COPY.load.errorTitle)).not.toBeNull();
+  expect(await findByRole('button', { name: CHAT_COPY.load.tryAgain })).not.toBeNull();
+  expect(unavailable).toBe(1);
 });

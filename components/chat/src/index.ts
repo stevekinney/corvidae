@@ -17,4 +17,4 @@ export * from './lib/components/chat-navigation-rail/index.ts';
 export { default as ChatNavigationRail } from './lib/components/chat-navigation-rail/index.ts';
 export * from './lib/components/chat-sub-session/index.ts';
 export { default as ChatSubSession } from './lib/components/chat-sub-session/index.ts';
-export { default as Chat } from './lib/components/chat/index.ts';
+export { default as Chat, default } from './lib/components/chat/index.ts';

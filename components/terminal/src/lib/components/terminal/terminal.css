@@ -90,6 +90,21 @@
     gap: var(--cinder-space-2);
   }
 
+  /* On a phone the five tools keep the 8px inline padding small buttons had before COR-2289 widened
+   * it, so the toolbar takes three rows at 375 px, not four (COR-2440). */
+  @media (max-width: 479.98px) {
+    .cinder-terminal__inspection {
+      /* @runtime-state */
+      --cinder-button-padding-x-sm: var(--cinder-space-2);
+    }
+
+    /* Keep the destructive clear action on its own line: the short read-only tools remain quick
+     * to scan, and Reset stays beside Clear history instead of becoming a fourth line. */
+    .cinder-terminal__inspection > :nth-child(3) {
+      flex-basis: 100%;
+    }
+  }
+
   .cinder-terminal__search {
     display: flex;
     flex-direction: column;

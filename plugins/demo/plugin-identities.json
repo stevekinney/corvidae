@@ -71,8 +71,8 @@
     {
       "kind": "tool",
       "id": "demo:issue-refund",
-      "version": "1.0.0",
-      "schema": "sha256:faa8c3b57ed8c9b6db8630a303018627684dd6c301f1239076dae50a72379743"
+      "version": "1.1.0",
+      "schema": "sha256:d99314a88d4b212ba7a1cbe5583635f8387b72d74a2ac9a0d7e46dba68e2416a"
     },
     {
       "kind": "tool",

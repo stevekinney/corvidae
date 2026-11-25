@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { relative, resolve, sep } from 'node:path';
 
 import { runWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { analyzeSource, isCodeFile, resolveSpecifier } from './affected-tests-graph.ts';
@@ -25,6 +25,26 @@ const paths = new Set(
     .filter((path) => path.length > 0 && existsSync(resolve(root, path))),
 );
 const workspaces = discoverWorkspaces(root);
+const dryRun = await runWithHangGuard(
+  [
+    resolve(root, 'node_modules/.bin/turbo'),
+    'run',
+    'ci:browser-fixtures',
+    'ci:browser-interborough',
+    '--dry=json',
+    '--cache=local:r',
+  ],
+  { cwd: root },
+);
+if (dryRun.exitCode !== 0) throw new Error(dryRun.stderr.toString());
+const plan = JSON.parse(dryRun.stdout.toString()) as {
+  tasks: { taskId: string; dependencies: string[]; inputs: Record<string, string> }[];
+};
+const plannedTask = (id: string) => {
+  const task = plan.tasks.find((entry) => entry.taskId === id);
+  if (task === undefined) throw new Error(`Turbo did not plan ${id}`);
+  return task;
+};
 
 describe.each([
   { job: 'fixtures', task: '//#ci:browser-fixtures', script: 'ci:browser-fixtures' },
@@ -119,8 +139,20 @@ describe.each([
       [
         'scripts/ensure-cinder-generated.ts',
         {
-          fingerprint: 'bdd70cdc8bcfbd17eb3ffff4303b04df2ac0b5475855bba654cf52cc28982646',
-          inputs: ['$TURBO_ROOT$/components/cinder/{src,scripts}/**'],
+          fingerprint: '1a4b8f08de28d1139b6aa385e479b640dbaf02c825e16383ade42470fa6ea309',
+          inputs: [
+            '$TURBO_ROOT$/components/cinder/{src,scripts}/**',
+            '$TURBO_ROOT$/package.json',
+            '$TURBO_ROOT$/bun.lock',
+          ],
+        },
+      ],
+      // The lease scans pending ownership records in the local lock directory, not source files.
+      [
+        'scripts/owned-process-lease.ts',
+        {
+          fingerprint: 'b83af1c29292ca379363f9826154fbc4a820674f546aaedc06b3ea01c5cd983c',
+          inputs: [],
         },
       ],
       // Lock and process inspection are host state, not repository source inputs. A source change
@@ -159,8 +191,56 @@ describe.each([
       );
       for (const input of classification.inputs) expect(inputs).toContain(input);
     }
+    if (dynamicRootHelpers.has('scripts/ensure-cinder-generated.ts')) {
+      // The Cinder metadata task keys tooling sources and its own manifest. Its transit dependency
+      // keys the tooling manifest. Verify the effective Turbo graph for both suite entrypoints.
+      const workspace = job === 'fixtures' ? 'browser-fixtures' : 'interborough';
+      const suite = plannedTask(task);
+      const metadata = plannedTask(`@lostgradient/${workspace}#metadata`);
+      const cinder = plannedTask('@lostgradient/cinder#metadata');
+      const transit = plannedTask('@lostgradient/cinder#transit');
+      const tooling = plannedTask('@lostgradient/component-tooling#transit');
+      expect(suite.dependencies).toContain(metadata.taskId);
+      expect(metadata.dependencies).toContain(cinder.taskId);
+      expect(cinder.dependencies).toContain(transit.taskId);
+      expect(transit.dependencies).toContain(tooling.taskId);
+      expect(Object.hasOwn(cinder.inputs, 'package.json')).toBe(true);
+      expect(
+        Object.hasOwn(
+          cinder.inputs,
+          '../../internal/component-tooling/scripts/generate-component-artifacts.ts',
+        ),
+      ).toBe(true);
+      expect(
+        Object.hasOwn(cinder.inputs, '../../internal/component-tooling/src/schema-types.ts'),
+      ).toBe(true);
+      expect(Object.hasOwn(tooling.inputs, 'package.json')).toBe(true);
+      for (const path of paths) {
+        if (
+          !/^internal\/component-tooling\/(?:scripts|src)\//u.test(path) ||
+          /\.test\.[cm]?[jt]s$/u.test(path)
+        )
+          continue;
+        const input = relative('components/cinder', path).split(sep).join('/');
+        expect(Object.hasOwn(cinder.inputs, input), `${path} is absent from Cinder metadata`).toBe(
+          true,
+        );
+      }
+      const metadataInputs = configuration.tasks['metadata']?.inputs ?? [];
+      expect(metadataInputs).toContain('$TURBO_ROOT$/internal/component-tooling/scripts/**');
+      expect(metadataInputs).toContain('$TURBO_ROOT$/internal/component-tooling/src/**');
+    }
     if (job === 'interborough')
       expect(reachableRootHelpers).toContain('scripts/ensure-cinder-generated.ts');
+    // The group starts this fixed executable by path, which the static import graph cannot see.
+    if (reachableRootHelpers.includes('scripts/owned-process-group.ts')) {
+      const group = readFileSync(resolve(root, 'scripts/owned-process-group.ts'), 'utf8');
+      expect(new Bun.CryptoHasher('sha256').update(group).digest('hex')).toBe(
+        '2b24a5391ee5cfb3fb81eaa872751e858e28220a811f7183816824ad13ba5c7f',
+      );
+      expect(group).toContain("join(import.meta.dir, 'owned-process-gate.ts')");
+      expect(covers('scripts/owned-process-gate.ts')).toBe(true);
+    }
     expect(unsupportedDynamicEdges, 'a root helper needs a proven bounded dynamic domain').toEqual(
       [],
     );

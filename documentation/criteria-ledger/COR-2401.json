@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2401",
+  "branch": "codex/cor-2401-run-capacity",
+  "checkedAt": "4c64d48a30aba363f0e4dfbdef3819ecddee32a1",
+  "briefVersion": "86abed5618e3",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "packages/weft/src/core/engine/run-concurrency.test.ts proves Engine.runConcurrency() returns each engine's own counted running set over shared storage; focused checks passed."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-main",
+      "evidence": "The existing child and uncounted-run witness in run-concurrency.test.ts proves the cap excludes children; Run Setup already reads bureau.workflows.concurrency, with no UI or wire change in this branch."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "The added two-Engine shared-MemoryStorage regression proves each process reports only its own active run; the Bureau operation suite confirms the existing snapshot projection."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "packages/weft/README.md documents Engine.runConcurrency() and bureau.workflows.concurrency as per-engine-process scoped."
+    }
+  ]
+}

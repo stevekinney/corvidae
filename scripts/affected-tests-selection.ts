@@ -27,6 +27,7 @@ import {
   type SourceTree,
   type WorkspaceDescription,
 } from './affected-tests-graph.ts';
+import { computedPathTests } from './computed-path-tests.ts';
 
 export type Reason =
   { kind: 'changed' } | { kind: 'imports'; chain: string[] } | { kind: 'fallback'; rule: string };
@@ -63,6 +64,7 @@ export interface SelectionInput {
   changed: readonly string[];
   tree: SourceTree;
   workspaces: readonly WorkspaceDescription[];
+  analyze?: (path: string, source: string) => SourceAnalysis;
 }
 
 /** Root files that configure every lane. A change to one selects the whole repository. */
@@ -149,6 +151,7 @@ function scriptEntrypoints(workspace: WorkspaceDescription, paths: ReadonlySet<s
 interface Analysis {
   edges: Map<string, Set<string>>;
   importers: Map<string, Set<string>>;
+  owners: Map<string, WorkspaceDescription>;
   /** Files that something imports for its types only, which makes them used, not orphans. */
   typeImported: Set<string>;
   analyses: Map<string, SourceAnalysis>;
@@ -158,19 +161,22 @@ function buildGraph(
   tree: SourceTree,
   paths: ReadonlySet<string>,
   workspaces: readonly WorkspaceDescription[],
+  analyze: (path: string, source: string) => SourceAnalysis,
 ): Analysis {
   const edges = new Map<string, Set<string>>();
   const importers = new Map<string, Set<string>>();
   const analyses = new Map<string, SourceAnalysis>();
+  const owners = new Map<string, WorkspaceDescription>();
   const typeImported = new Set<string>();
   for (const path of tree.paths) {
     const extension = extensionOf(path);
     if (!CODE_EXTENSIONS.has(extension) && extension !== '.css') continue;
     const source = tree.read(path);
     if (source === undefined) continue;
-    const analysis = analyzeSource(path, source);
+    const analysis = analyze(path, source);
     analyses.set(path, analysis);
     const workspace = owningWorkspace(path, workspaces);
+    owners.set(path, workspace);
     const dependencies = new Set<string>();
     for (const specifier of analysis.typeSpecifiers) {
       const target = resolveSpecifier(path, specifier, paths, workspaces);
@@ -191,7 +197,7 @@ function buildGraph(
       set.add(path);
     }
   }
-  return { edges, importers, analyses, typeImported };
+  return { edges, importers, analyses, owners, typeImported };
 }
 
 /** The workspaces a package-level `--affected` run would run: changed ones and their dependents. */
@@ -218,7 +224,12 @@ export function selectTests(input: SelectionInput): Selection {
   const { workspaces, tree } = input;
   const paths = new Set(tree.paths);
   for (const path of input.changed) paths.add(path);
-  const { edges, importers, analyses, typeImported } = buildGraph(tree, paths, workspaces);
+  const { edges, importers, analyses, owners, typeImported } = buildGraph(
+    tree,
+    paths,
+    workspaces,
+    input.analyze ?? analyzeSource,
+  );
 
   const seeds = new Map<string, Reason>();
   const workspaceRules = new Map<string, string>();
@@ -262,7 +273,7 @@ export function selectTests(input: SelectionInput): Selection {
   const literalsByName = new Map<string, { literal: string; file: string }[]>();
   const workspacesWithCode = new Set<string>();
   for (const [file, analysis] of analyses) {
-    if (isCodeFile(file)) workspacesWithCode.add(owningWorkspace(file, workspaces).directory);
+    if (isCodeFile(file)) workspacesWithCode.add(owners.get(file)!.directory);
     for (const literal of analysis.pathLiterals) {
       const tail = literal.replace(/^(?:\.{1,2}\/)+/, '');
       const key = posix.basename(tail);
@@ -343,7 +354,7 @@ export function selectTests(input: SelectionInput): Selection {
     for (const [file, analysis] of analyses) {
       if (
         analysis.computedPathExtensions.includes(extensionOf(path)) &&
-        owningWorkspace(file, workspaces) === workspace
+        owners.get(file) === workspace
       ) {
         seed(file, {
           kind: 'fallback',
@@ -362,10 +373,15 @@ export function selectTests(input: SelectionInput): Selection {
     else widenWorkspace(workspace.directory, rule);
   }
 
+  // Tests that read workspace files by a computed path have no edge to what they read.
+  for (const { path, reason } of computedPathTests(changed, tree.paths)) {
+    seed(path, { kind: 'fallback', rule: reason });
+  }
+
   // Code that reads the tree or loads code the graph cannot see depends on changes in its scope.
   const everyChange = changed.length > 0;
   for (const [path, analysis] of analyses) {
-    const workspace = owningWorkspace(path, workspaces);
+    const workspace = owners.get(path)!;
     const eligible = isTestOrTooling(path);
     const unseen =
       analysis.bundlesCode || (eligible && analysis.importsDynamically)
@@ -415,7 +431,7 @@ export function selectTests(input: SelectionInput): Selection {
   const testsByWorkspace = new Map<string, string[]>();
   for (const path of tree.paths) {
     if (!isTestFile(path)) continue;
-    const directory = owningWorkspace(path, workspaces).directory;
+    const directory = (owners.get(path) ?? owningWorkspace(path, workspaces)).directory;
     const list = testsByWorkspace.get(directory) ?? [];
     list.push(path);
     testsByWorkspace.set(directory, list);

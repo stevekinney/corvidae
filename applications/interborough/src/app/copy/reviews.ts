@@ -87,13 +87,6 @@ export const REVIEWS_COPY = {
   noteDescription: 'Saved with your decision. If you deny, the agent reads it as the reason.',
   toolLabel: 'Tool',
   argumentsLabel: 'Arguments',
-  /** The labels on the parts of what an approval would run. */
-  operation: {
-    command: 'Command',
-    diff: 'Changes',
-    filesTouched: 'Files touched',
-    showWholeDiff: 'Show the whole diff',
-  },
   reasonFact: 'Reason',
   messageFact: 'Message',
   riskFact: 'Risk',
@@ -129,6 +122,10 @@ export const REVIEWS_COPY = {
     answered: 'Answered',
     closed: 'Closed',
   },
+  approvalClosed: {
+    revoked: 'This approval was revoked.',
+    superseded: 'A newer request replaced this approval.',
+  },
   /** Between what became of a review and who did it. */
   by: 'by',
   /** After a review's kind in its list row: "Tool approval from Tool runner". */
@@ -151,6 +148,7 @@ export const REVIEWS_COPY = {
   },
   /** Said under a question that is picked from choices: the number keys. */
   pickHint: 'Press 1 to 9 to pick a choice.',
+  noInput: 'This call was given no input.',
   /** What the open approval would run, and what it was given. */
   inputLabel: 'Input',
   /** The shortcuts the `?` map lists for this page. */
@@ -159,6 +157,10 @@ export const REVIEWS_COPY = {
   denyShortcut: 'Deny the open review',
   pickShortcut: (position: number): string => `Pick choice ${String(position)}`,
   decisionFailed: 'The decision was not recorded',
+  approvalFailed: {
+    approve: 'Couldn’t approve',
+    deny: 'Couldn’t deny',
+  },
   /**
    * The Bureau's answer when a decision took effect and only its write into the conversation
    * failed (`APPROVAL_OUTCOME_NOT_WRITTEN`). It is not a lost race, so it does not say the decision

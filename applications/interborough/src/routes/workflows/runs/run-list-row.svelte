@@ -7,10 +7,20 @@
    * one link to the run's page; the list around it follows the link in place (`followLinks`). A
    * running row keeps its place: its duration follows `now`, and its word changes where it stands.
    */
-  import { StackedListItem, StatusDot, type StackedListItemPhoneWidth } from '@lostgradient/cinder';
+  import {
+    Badge,
+    StackedListItem,
+    StatusDot,
+    type StackedListItemPhoneWidth,
+  } from '@lostgradient/cinder';
 
+  import { COST_COPY } from '../../../app/copy/cost.ts';
+  import { RUN_ATTENTION_COPY } from '../../../app/copy/run-attention.ts';
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
+  import { WORKFLOW_COPY } from '../../../app/copy/workflows.ts';
   import { clockTime } from '../../../lib/format/clock.ts';
+  import { formatAttemptsCost } from '../../../lib/format/cost.ts';
+  import { phoneViewport } from '../../../lib/phone-viewport.svelte.ts';
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { runLineTwo, runStatusWord, type RunRow } from './run-rows.ts';
 
@@ -27,6 +37,9 @@
     pluginTitle?: ((plugin: string) => string | undefined) | undefined;
     /** When a schedule runs, by its identifier, which a schedule's chat run says (row 53l). */
     scheduleCadence?: ((scheduleId: string) => string | undefined) | undefined;
+    /** The Workflow page includes the current step for a signal wait and schedule cadence for completed runs. */
+    workflowPage?: boolean;
+    viewer?: string | undefined;
     /**
      * Which width decides the row's phone form (Cinder's `phoneWidth`): the Runs list, which fills
      * the page's content column, follows the window, so on a tablet beside the navigation rail the
@@ -55,6 +68,8 @@
     agentLabel,
     pluginTitle = undefined,
     scheduleCadence = undefined,
+    workflowPage = false,
+    viewer = undefined,
     scheduleHolds = undefined,
     phoneWidth = 'row',
     href = undefined,
@@ -62,11 +77,18 @@
   }: Props = $props();
 
   const word = $derived(runStatusWord(row, now));
+  const statusLabel = $derived(
+    workflowPage && word === 'Waiting for a signal'
+      ? WORKFLOW_COPY.page.runs.waitingSignalLabel
+      : undefined,
+  );
   const baseLineTwo = $derived(
     runLineTwo(row, {
       now,
       zone,
       agentLabel,
+      workflowPage,
+      ...(viewer === undefined ? {} : { viewer }),
       ...(pluginTitle === undefined ? {} : { pluginTitle }),
       ...(scheduleCadence === undefined ? {} : { scheduleCadence }),
       ...(scheduleHolds === undefined ? {} : { scheduleHolds }),
@@ -75,9 +97,38 @@
   // Line two keeps what the run was; why the row does not open is the row's own description, so a
   // line cut short never drops it first.
   const lineTwo = $derived(baseLineTwo);
+  // The Cost column (COR-2525): what the run cost, or nothing at all for a run with no cost, so a
+  // run the Bureau priced no request of never shows "$0.00" or a dash. An instance of a workflow
+  // file says the sum of its steps that have a cost, as "At least" when a step has none.
+  const cost = $derived(formatAttemptsCost(row.cost ?? null));
+  // A phone's row has no room for a column beside its time at large text, so the cost takes the
+  // line under line two, as a goal's check does, and the row never grows wider than the screen.
+  const phone = $derived(phoneViewport.current);
+  // Each state the run asks for attention in is a badge after the title (COR-2528): a stalled or a
+  // looping run is a warning, a run over the spend threshold a danger. The title gives way to them.
+  const attention = $derived(row.attention ?? []);
 </script>
 
+{#snippet attentionBadges()}
+  {#each attention as state (state)}
+    <Badge
+      size="xs"
+      variant={state === 'overspending' ? 'danger' : 'warning'}
+      data-attention={state}
+      title={RUN_ATTENTION_COPY.badgeTitles[state]}>{RUN_ATTENTION_COPY.badges[state]}</Badge
+    >
+  {/each}
+{/snippet}
 {#snippet lockedNote()}{TASK_COPY.list.engineRunLocked}{/snippet}
+{#snippet costCell()}
+  <span
+    class="ib-run-list-cost"
+    class:ib-run-list-cost--line={phone}
+    data-testid="run-cost"
+    title={row.cost?.partial === true ? COST_COPY.partialNote : COST_COPY.column}
+    aria-label={cost === undefined ? undefined : COST_COPY.rowLabel(cost)}>{cost}</span
+  >
+{/snippet}
 
 <StackedListItem
   data-run={row.id}
@@ -87,11 +138,37 @@
   {...readable ? { href: router.href(href ?? workflowDetailPath(row.id)) } : {}}
   tooltip={row.title}
   metaTooltip={lineTwo}
+  {...attention.length === 0 ? {} : { badge: attentionBadges }}
+  metaLines={2}
+  {...cost === undefined ? {} : phone ? { detail: costCell } : { trailing: costCell }}
 >
-  {#snippet status()}<StatusDot {word} />{/snippet}
+  {#snippet status()}<StatusDot
+      {word}
+      {...statusLabel === undefined ? {} : { label: statusLabel }}
+    />{/snippet}
   {#snippet title()}{row.title}{/snippet}
   {#snippet time()}
     <time datetime={new Date(row.startedAt).toISOString()}>{clockTime(row.startedAt, zone)}</time>
   {/snippet}
   {#snippet meta()}{lineTwo}{/snippet}
 </StackedListItem>
+
+<style>
+  /* The Cost column: figures right-aligned in the row's last column. On a phone it is the row's
+     last line and reads from the start, like the line above it. */
+  .ib-run-list-cost {
+    display: inline-block;
+    max-inline-size: 100%;
+    min-inline-size: 0;
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+    /* The cost wraps inside the row, so large text or a long sum never widens the page. */
+    white-space: normal;
+    overflow-wrap: anywhere;
+    color: var(--cinder-text-muted);
+  }
+
+  .ib-run-list-cost--line {
+    text-align: start;
+  }
+</style>

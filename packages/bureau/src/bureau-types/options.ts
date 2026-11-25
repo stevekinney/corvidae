@@ -58,7 +58,7 @@ import type {
   BureauPluginSettings,
   PluginStatus,
 } from '../plugins/plugin-types';
-import type { RecoverableStartedApproval } from './reviews';
+import type { RecoverableStartedApproval, ReviewPolicy } from './reviews';
 
 // ── Host events ──────────────────────────────────────────────────────
 
@@ -465,6 +465,8 @@ export interface BureauReceiptRetentionOption {
   readonly olderThan: number;
 }
 export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
+  /** Trusted policy for domain-specific review authorization and public effects. */
+  reviewPolicy?: ReviewPolicy;
   /** Supplies the peer-call journal before durable boot recovery begins. */
   peerCallsReady?: (journal: PeerCallJournal) => void;
   /**

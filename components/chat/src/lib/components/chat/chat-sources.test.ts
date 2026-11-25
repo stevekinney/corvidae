@@ -117,6 +117,74 @@ const sourcesForA: readonly CitationSource[] = [
   { label: 'Unsafe source', url: 'javascript:alert(1)' },
 ];
 
+describe('claim citations in the production transcript', () => {
+  test('attaches each citation to its own Markdown claim and keeps the unmapped message footer', async () => {
+    const first = '[Revenue rose](https://example.com/revenue).';
+    const second = '\n\nCosts **fell**.';
+    let conversation = appendMessage(createConversation(), 'assistant', first + second, 'claims');
+    conversation = appendMessage(conversation, 'assistant', 'The outlook improved.', 'plain');
+    const before = structuredClone(conversation);
+    const { container } = render(Chat, {
+      id: 'claim-citations',
+      conversation,
+      claimSourcesByMessageId: new Map([
+        [
+          'claims',
+          [
+            { id: 'revenue', markdown: first, sources: [sourcesForA[0]!] },
+            { id: 'costs', markdown: second, sources: [sourcesForA[1]!] },
+          ],
+        ],
+      ]),
+      sourcesByMessageId: new Map([
+        ['claims', sourcesForA],
+        ['plain', sourcesForA],
+      ]),
+    });
+    await tick();
+
+    const claims = [
+      ...messageArticle(container, 'claims').querySelectorAll('[data-chat-cited-claim]'),
+    ];
+    expect(claims).toHaveLength(2);
+    expect(claims[0]!.textContent).toContain('Revenue rose');
+    expect(claims[0]!.querySelector('a .cinder-citation__marker')).toBeNull();
+    expect(claims[1]!.textContent).toContain('fell');
+    const firstMarker = claims[0]!.querySelector<HTMLButtonElement>('.cinder-citation__marker')!;
+    const secondMarker = claims[1]!.querySelector<HTMLButtonElement>('.cinder-citation__marker')!;
+    expect(firstMarker.textContent?.trim()).toBe('Annual report');
+    expect(firstMarker.getAttribute('aria-label')).toBe('Annual report');
+    expect(secondMarker.textContent?.trim()).toBe('Board minutes');
+    await fireEvent.click(firstMarker);
+    await waitFor(() => expect(document.body.textContent).toContain('Annual report'));
+    expect(document.querySelector('.cinder-citation__panel')?.textContent).not.toContain(
+      'Board minutes',
+    );
+    await fireEvent.click(secondMarker);
+    await waitFor(() => expect(document.body.textContent).toContain('Board minutes'));
+    expect(sourcesControl(container, 'claims')).toBeNull();
+    expect(sourcesControl(container, 'plain')).not.toBeNull();
+    expect(conversation).toEqual(before);
+  });
+
+  test('renders the unchanged message and its sources when the mapping no longer matches', async () => {
+    const { container } = render(Chat, {
+      id: 'stale-claim-citations',
+      conversation: sourcedConversation(),
+      claimSourcesByMessageId: new Map([
+        ['assistant-a', [{ id: 'old', markdown: 'Revenue fell.', sources: sourcesForA }]],
+      ]),
+      sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+    });
+    await tick();
+    const message = messageArticle(container, 'assistant-a');
+    expect(message.textContent).toContain('Revenue rose.');
+    expect(message.textContent).not.toContain('Revenue fell.');
+    expect(message.querySelector('[data-chat-cited-claim]')).toBeNull();
+    expect(sourcesControl(container, 'assistant-a')).not.toBeNull();
+  });
+});
+
 function messageArticle(container: HTMLElement, id: string): HTMLElement {
   return container.querySelector<HTMLElement>(`article[data-message-id="${id}"]`)!;
 }

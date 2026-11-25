@@ -21,17 +21,35 @@
     attributeFiltersToInvocationConditions,
     createEmptyQueryConditionRow,
     invocationConditionsToAttributeFilters,
+    invocationConditionsToFailureFilters,
     invocationConditionsToRawPreview,
+    QUERY_FAILURE_FIELD_OPTIONS,
+    type QueryFailureFilters,
   } from './query-builder.ts';
 
   interface QueryBuilderProps {
     attributes: readonly AttributeFilter[];
-    onAttributesChange: (next: AttributeFilter[]) => void;
+    /**
+     * The conditions changed: the search attributes, and the built-in fields beside them
+     * (Failed at step and Retrying, COR-2535), which are fields of the list and not attributes.
+     * One call carries both, so the address changes once.
+     */
+    onAttributesChange: (next: AttributeFilter[], failure: QueryFailureFilters) => void;
     /** Observed attribute names remain typeahead suggestions; Cinder also permits arbitrary keys. */
     knownAttributeKeys: readonly string[];
+    /** The step the list is filtered to a failure at, as its address holds it. */
+    failedStep?: string | undefined;
+    /** Whether the list is filtered to the runs retrying an activity, or to those not. */
+    retrying?: boolean | undefined;
   }
 
-  let { attributes, onAttributesChange, knownAttributeKeys }: QueryBuilderProps = $props();
+  let {
+    attributes,
+    onAttributesChange,
+    knownAttributeKeys,
+    failedStep,
+    retrying,
+  }: QueryBuilderProps = $props();
 
   function valuesForAttribute(attribute: AttributeFilter): AttributeScalar[] {
     const exact =
@@ -58,12 +76,15 @@
     return undefined;
   }
 
-  const fieldOptions = $derived(
-    knownAttributeKeys.map((key): InvocationRuleOption => {
+  // The built-in fields come after the attributes the list holds: Cinder gives a new condition the
+  // first field, which a person adding one most likely means to be an attribute.
+  const fieldOptions = $derived([
+    ...knownAttributeKeys.map((key): InvocationRuleOption => {
       const type = fieldTypeFor(key);
       return { value: key, label: key, ...(type === undefined ? {} : { type }) };
     }),
-  );
+    ...QUERY_FAILURE_FIELD_OPTIONS,
+  ]);
 
   const blankCondition = (): InvocationRuleCondition => {
     const row = createEmptyQueryConditionRow();
@@ -72,7 +93,10 @@
 
   let conditions = $state<InvocationRuleCondition[]>(
     untrack(() => {
-      const seeded = attributeFiltersToInvocationConditions(attributes);
+      const seeded = attributeFiltersToInvocationConditions(attributes, {
+        ...(failedStep === undefined ? {} : { failedStep }),
+        ...(retrying === undefined ? {} : { retrying }),
+      });
       return seeded.length > 0 ? seeded : [blankCondition()];
     }),
   );
@@ -84,7 +108,10 @@
     // Keep one editable placeholder visible after the last condition is
     // removed, while blank rows remain excluded from URL serialization.
     conditions = nextConditions.length > 0 ? nextConditions : [blankCondition()];
-    onAttributesChange(invocationConditionsToAttributeFilters(nextConditions));
+    onAttributesChange(
+      invocationConditionsToAttributeFilters(nextConditions),
+      invocationConditionsToFailureFilters(nextConditions),
+    );
   }
 </script>
 

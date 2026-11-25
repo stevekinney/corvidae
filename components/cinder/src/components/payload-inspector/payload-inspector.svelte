@@ -310,7 +310,7 @@
     <div class="cinder-payload-inspector__header">
       <!-- A labelled card sets its count as a muted line under the label, start-aligned, so the
            count never takes a line of its own at the inline end; an unlabelled card keeps it with
-           the copy button (27c). -->
+           the copy button (COR-2582). -->
       {#if label !== undefined}
         <div class="cinder-payload-inspector__title">
           <!-- The name after the label is set a space apart in the code face and a lighter weight,

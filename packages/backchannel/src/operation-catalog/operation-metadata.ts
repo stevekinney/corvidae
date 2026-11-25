@@ -23,6 +23,10 @@ export function snapshotOperationMetadata(operation: OperationMetadata): Operati
 function optionalMetadata(operation: OperationMetadata) {
   return {
     ...(operation.description === undefined ? {} : { description: operation.description }),
+    ...(operation.behavior === undefined ? {} : { behavior: freezeBehavior(operation.behavior) }),
+    ...(operation.conflictReasonTokens === undefined
+      ? {}
+      : { conflictReasonTokens: frozenArray(operation.conflictReasonTokens) }),
     ...(operation.discoverable === undefined ? {} : { discoverable: operation.discoverable }),
     ...(operation.supportsDryRun === true ? { supportsDryRun: true } : {}),
     ...(operation.mcpTool === undefined ? {} : { mcpTool: frozenRecord(operation.mcpTool) }),
@@ -33,6 +37,20 @@ function optionalMetadata(operation: OperationMetadata) {
       ? {}
       : { parameterizedAccess: freezeParameterizedAccess(operation.parameterizedAccess) }),
   };
+}
+
+function freezeBehavior(
+  behavior: NonNullable<OperationMetadata['behavior']>,
+): NonNullable<OperationMetadata['behavior']> {
+  return deepFreeze(structuredClone(behavior));
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === 'object') {
+    for (const child of Object.values(value)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
 }
 
 function frozenArray<Value>(values: ReadonlyArray<Value>): ReadonlyArray<Value> {

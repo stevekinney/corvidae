@@ -1,0 +1,281 @@
+name: npm library release
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package to release.
+        type: choice
+        options:
+          - markdown
+          - cinder
+          - editor
+          - chat
+          - cinder-mcp
+          - armorer
+          - conversationalist
+          - bungalow
+          - operative
+        required: true
+      version:
+        description: Version to pack or publish, without build metadata.
+        type: string
+        required: true
+      markdown-version:
+        description: Published Markdown dependency version for Cinder, Editor, and Chat.
+        type: string
+      cinder-version:
+        description: Published Cinder dependency version for Editor, Chat, and Cinder MCP.
+        type: string
+      conversationalist-version:
+        description: Published Conversationalist dependency version for Chat and Operative.
+        type: string
+      armorer-version:
+        description: Published Armorer dependency version for Conversationalist and Operative.
+        type: string
+      weft-version:
+        description: Published Weft dependency version for Operative.
+        type: string
+      publish:
+        description: Publish the tested tarball from protected main.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cinder-npm-${{ inputs.package }}
+  cancel-in-progress: false
+
+env:
+  PACKAGE: ${{ inputs.package }}
+  VERSION: ${{ inputs.version }}
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      npm-name: ${{ steps.inputs.outputs.npm-name }}
+      tarball: ${{ steps.inputs.outputs.tarball }}
+      artifact-id: ${{ steps.archive.outputs.artifact-id }}
+    env:
+      MARKDOWN_VERSION: ${{ inputs.markdown-version }}
+      CINDER_VERSION: ${{ inputs.cinder-version }}
+      CONVERSATIONALIST_VERSION: ${{ inputs.conversationalist-version }}
+      ARMORER_VERSION: ${{ inputs.armorer-version }}
+      WEFT_VERSION: ${{ inputs.weft-version }}
+    steps:
+      - name: Validate release inputs
+        id: inputs
+        env:
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          case "$PACKAGE" in
+            markdown|cinder|editor|chat|cinder-mcp|bungalow|operative)
+              npm_name="@lostgradient/$PACKAGE"
+              tarball="lostgradient-$PACKAGE-$VERSION.tgz"
+              ;;
+            armorer|conversationalist)
+              npm_name="$PACKAGE"
+              tarball="$PACKAGE-$VERSION.tgz"
+              ;;
+            *) exit 1 ;;
+          esac
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
+            echo '::error::Use an exact SemVer version without build metadata.'
+            exit 1
+          fi
+          if [[ "$PACKAGE" == cinder || "$PACKAGE" == editor || "$PACKAGE" == chat ]] && [[ -z "$MARKDOWN_VERSION" ]]; then
+            echo '::error::Set markdown-version to the published Markdown version.'
+            exit 1
+          fi
+          if [[ "$PACKAGE" == editor || "$PACKAGE" == chat || "$PACKAGE" == cinder-mcp ]] && [[ -z "$CINDER_VERSION" ]]; then
+            echo '::error::Set cinder-version to the published Cinder version.'
+            exit 1
+          fi
+          if [[ "$PACKAGE" == chat && -z "$CONVERSATIONALIST_VERSION" ]]; then
+            echo '::error::Set conversationalist-version to the published Conversationalist version.'
+            exit 1
+          fi
+          if [[ "$PACKAGE" == conversationalist && -z "$ARMORER_VERSION" ]]; then
+            echo '::error::Set armorer-version to the published Armorer version.'
+            exit 1
+          fi
+          if [[ "$PACKAGE" == operative ]] && [[ -z "$ARMORER_VERSION" || -z "$CONVERSATIONALIST_VERSION" || -z "$WEFT_VERSION" ]]; then
+            echo '::error::Set armorer-version, conversationalist-version, and weft-version for Operative.'
+            exit 1
+          fi
+          printf 'npm-name=%s\ntarball=%s\n' "$npm_name" "$tarball" >> "$GITHUB_OUTPUT"
+          if [ "$PUBLISH" = true ]; then
+            test "$GITHUB_REF" = refs/heads/main
+            test "$GITHUB_REF_PROTECTED" = true
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v6.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: bun install --frozen-lockfile
+      - name: Pack and lint
+        env:
+          TARBALL: ${{ steps.inputs.outputs.tarball }}
+        run: |
+          output="$RUNNER_TEMP/cinder-npm-package"
+          mkdir "$output"
+          case "$PACKAGE" in
+            markdown)
+              bun packages/markdown/scripts/pack-release.ts --version "$VERSION" --outdir "$output" > "$output/receipt.json"
+              ;;
+            cinder|editor|chat)
+              bun scripts/pack-cinder-release.ts --package "$PACKAGE" --version "$VERSION" --markdown-version "$MARKDOWN_VERSION" --cinder-version "$CINDER_VERSION" --conversationalist-version "$CONVERSATIONALIST_VERSION" --outdir "$output" > "$output/receipt.json"
+              ;;
+            cinder-mcp)
+              bun packages/cinder-mcp/scripts/pack-release.ts --version "$VERSION" --cinder-version "$CINDER_VERSION" --outdir "$output" > "$output/receipt.json"
+              ;;
+            armorer|conversationalist|bungalow|operative)
+              bun scripts/pack-agent-library-release.ts --package "$PACKAGE" --version "$VERSION" --armorer-version "$ARMORER_VERSION" --conversationalist-version "$CONVERSATIONALIST_VERSION" --weft-version "$WEFT_VERSION" --outdir "$output" > "$output/receipt.json"
+              ;;
+          esac
+          tarball="$output/$TARBALL"
+          bunx publint run --strict "$tarball"
+          bunx attw --profile esm-only "$tarball"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        id: archive
+        with:
+          name: cinder-npm-tarball
+          path: ${{ runner.temp }}/cinder-npm-package
+          if-no-files-found: error
+
+  test-package:
+    # Installed dependencies run on a separate runner from artifact creation and publication.
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v6.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.package.outputs.artifact-id }}
+          path: ${{ runner.temp }}/cinder-npm-package
+      - name: Test the installed package
+        env:
+          PUBLISH: ${{ inputs.publish }}
+          TARBALL: ${{ needs.package.outputs.tarball }}
+          ARMORER_VERSION: ${{ inputs.armorer-version }}
+        run: |
+          tarball="$RUNNER_TEMP/cinder-npm-package/$TARBALL"
+          case "$PACKAGE" in
+            armorer|conversationalist|bungalow|operative)
+              dependencies=()
+              if [[ "$PACKAGE" == conversationalist && "$PUBLISH" != true ]]; then
+                staging="$RUNNER_TEMP/armorer-dependency"
+                bun scripts/pack-agent-library-release.ts --package armorer --version "$ARMORER_VERSION" --outdir "$staging"
+                dependencies+=("$staging/armorer-$ARMORER_VERSION.tgz")
+              fi
+              bun scripts/verify-agent-library-release.ts "$PACKAGE" "$tarball" "${dependencies[@]}"
+              ;;
+            *) bun scripts/verify-cinder-release.ts "$PACKAGE" "$tarball" ;;
+          esac
+
+  publish:
+    if: ${{ inputs.publish && github.ref == 'refs/heads/main' && github.ref_protected }}
+    needs: [package, test-package]
+    runs-on: ubuntu-latest
+    environment: cinder-npm-publish
+    timeout-minutes: 15
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v6.0.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.package.outputs.artifact-id }}
+          path: ${{ runner.temp }}/cinder-npm-package
+      - name: Verify tarball and publish using npm trusted publishing
+        working-directory: ${{ runner.temp }}/cinder-npm-package
+        env:
+          NPM_NAME: ${{ needs.package.outputs.npm-name }}
+          TARBALL: ${{ needs.package.outputs.tarball }}
+        run: |
+          local_integrity="$(jq -er --arg name "$NPM_NAME" --arg version "$VERSION" --arg tarball "$TARBALL" '.[0] | select(.name == $name and .version == $version and .filename == $tarball) | .integrity' receipt.json)"
+          actual_integrity="sha512-$(openssl dgst -sha512 -binary "$TARBALL" | openssl base64 -A)"
+          test "$local_integrity" = "$actual_integrity"
+          case "$VERSION" in
+            *-*) tag=next ;;
+            *) tag=latest ;;
+          esac
+          npm publish "$TARBALL" --ignore-scripts --provenance --access public --tag "$tag"
+
+  verify:
+    needs: [package, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions: {}
+    steps:
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v6.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: inputs.package == 'bungalow'
+        with:
+          bun-version: 1.4.4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.package.outputs.artifact-id }}
+          path: ${{ runner.temp }}/cinder-npm-package
+      - name: Verify public bytes, provenance and install
+        working-directory: ${{ runner.temp }}/cinder-npm-package
+        env:
+          NPM_NAME: ${{ needs.package.outputs.npm-name }}
+          NPM_TOKEN: ''
+          NODE_AUTH_TOKEN: ''
+          NPM_CONFIG_USERCONFIG: /dev/null
+        run: |
+          package="$NPM_NAME@$VERSION"
+          local_integrity="$(jq -er '.[0].integrity' receipt.json)"
+          # npm scans a published version before it appears in public registry reads.
+          deadline=$((SECONDS + 900))
+          until npm view "$package" dist --json --prefer-online --fetch-retries=0 --fetch-timeout=15000 > registry-dist.json 2> registry-error.log; do
+            if ! jq -e '.error.code == "E404"' registry-dist.json > /dev/null 2>&1 || (( SECONDS >= deadline )); then
+              cat registry-error.log >&2
+              exit 1
+            fi
+            echo "Waiting for npm to make $package available."
+            sleep 30
+          done
+          test "$local_integrity" = "$(jq -er '.integrity' registry-dist.json)"
+          jq -e '.attestations.provenance' registry-dist.json > /dev/null
+          mkdir "$RUNNER_TEMP/registry-consumer"
+          cd "$RUNNER_TEMP/registry-consumer"
+          printf '{"private":true,"type":"module"}\n' > package.json
+          npm install --ignore-scripts --no-audit --no-fund --save-exact "$package"
+          npm audit signatures
+          if [[ "$NPM_NAME" == '@lostgradient/bungalow' ]]; then
+            bun -e 'const bungalow = await import(process.env.NPM_NAME); const home = await bungalow.openTemporaryBungalow({ name: "release-smoke" }); home.close();'
+          else
+            node --input-type=module -e 'await import(process.env.NPM_NAME);'
+          fi

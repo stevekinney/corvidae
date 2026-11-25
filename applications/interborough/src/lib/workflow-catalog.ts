@@ -300,22 +300,23 @@ const instancePageSchema = z.object({
   items: z.array(z.object({ createdAt: z.number() })),
 });
 
-/** How far back a type's recent instances are counted, as the Bureau counts a file's. */
-const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
-
-/** The statuses of an instance that has not finished. */
 /** How far back a quiet type's newest instance is looked for before its whole history is read. */
 const QUIET_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
-
-const ACTIVE_STATUSES = ['pending', 'running', 'suspended'] as const;
 
 /** What the engine says of a code-defined type's activity: its instance counts and its schedules. */
 export type CodeActivity = {
   /** `null` when the engine would not count. A count that could not be read is never shown as zero. */
-  readonly runs: WorkflowRunCounts | null;
+  readonly runs: CodeRunCounts | null;
   /** The schedules that start the type, `null` when the engine would not list them. */
   readonly schedules:
     readonly { readonly cronExpression?: string; readonly intervalMs?: number }[] | null;
+};
+
+/** The engine's aggregate-only activity for a code-defined type. It has no run receipt or progress. */
+export type CodeRunCounts = {
+  readonly running: number;
+  readonly today: number;
+  readonly lastRunAt: string | null;
 };
 
 /**
@@ -332,18 +333,20 @@ export async function loadCodeActivity(
     instancePageSchema.parse(
       await client.operations['weft.workflows.list']({ ...filter, limit: 1 }),
     );
-  async function runsOf(type: string): Promise<WorkflowRunCounts | null> {
+  // The browser clock supplies the viewer’s local day, including days with a clock change.
+  const localDayStart = new Date(now).setHours(0, 0, 0, 0);
+  async function runsOf(type: string): Promise<CodeRunCounts | null> {
     try {
       // The engine narrows by its type, status, and created-at indexes before it loads any state,
       // so each read loads only the instances it counts.
-      const [active, recent] = await Promise.all([
-        list({ type, status: ACTIVE_STATUSES }),
-        list({ type, createdAt: { gte: now - RECENT_WINDOW_MS } }),
+      const [running, today] = await Promise.all([
+        list({ type, status: ['running'] }),
+        list({ type, createdAt: { gte: localDayStart } }),
       ]);
       // The engine lists newest first, so the one item of a page is the newest in its window. A type
       // that ran today has its newest already; a quiet one looks back further, and reads its whole
       // history only as the last resort.
-      let last = recent.items[0];
+      let last = today.items[0];
       for (const windowMs of [QUIET_WINDOW_MS, undefined]) {
         if (last !== undefined) break;
         const page = await list({
@@ -353,8 +356,8 @@ export async function loadCodeActivity(
         last = page.items[0];
       }
       return {
-        active: active.total,
-        last24Hours: recent.total,
+        running: running.total,
+        today: today.total,
         lastRunAt: last === undefined ? null : new Date(last.createdAt).toISOString(),
       };
     } catch {

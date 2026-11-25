@@ -53,7 +53,7 @@ describe('ChatConnectionNotice', () => {
     expect(bar.getAttribute('aria-valuenow')).toBe('80');
     expect(bar.getAttribute('aria-valuetext')).toBe('8s');
 
-    await fireEvent.click(getByRole('button', { name: 'Retry' }));
+    await fireEvent.click(getByRole('button', { name: 'Retry now' }));
     expect(retry).toHaveBeenCalledTimes(1);
   });
 
@@ -70,6 +70,6 @@ describe('ChatConnectionNotice', () => {
 
   test('without the callback there is no Retry', () => {
     const { queryByRole } = render(ChatConnectionNotice, { props: { turn: reconnecting } });
-    expect(queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(queryByRole('button', { name: 'Retry now' })).toBeNull();
   });
 });

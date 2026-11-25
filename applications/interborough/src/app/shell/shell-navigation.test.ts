@@ -1,7 +1,5 @@
 /**
- * How the shell shows its navigation (design rows 04a to 04c, COR-2315): the column at 1200px and
- * wider, the 76px rail from 700px to 1199px, and the drawer behind the bottom tab bar under 700px.
- * The person's own preference applies only to the column.
+ * Desktop docks the sidebar, smaller windows use the drawer, and phones add bottom tabs.
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
@@ -10,8 +8,7 @@ import {
   DESKTOP_MINIMUM_WIDTH,
   DRAWER_BREAKPOINT,
   DRAWER_QUERY,
-  EXPANDED_QUERY,
-  RAIL_MINIMUM_WIDTH,
+  PHONE_TAB_QUERY,
   ShellNavigation,
 } from './shell-navigation.svelte.ts';
 
@@ -43,8 +40,22 @@ function navigation(): { shell: ShellNavigation; preferences: LayoutPreferences 
 }
 
 describe('the shell navigation', () => {
+  test('uses the existing drawer for tablet navigation and preserves the desktop preference', () => {
+    viewport([DRAWER_QUERY]);
+    const { shell, preferences } = navigation();
+    preferences.setSidebarCollapsed(false);
+    expect(shell.mode).toBe('drawer');
+    expect(shell.showPhoneTabs).toBe(false);
+    expect(shell.collapsed).toBe(true);
+    shell.collapsed = false;
+    expect(shell.drawerOpen).toBe(true);
+    shell.close();
+    expect(shell.drawerOpen).toBe(false);
+    expect(preferences.sidebarCollapsed).toBe(false);
+  });
+
   test('is the column at 1200px and wider, and follows the person’s preference there', () => {
-    viewport([EXPANDED_QUERY]);
+    viewport([]);
     const { shell, preferences } = navigation();
     expect(shell.mode).toBe('expanded');
     expect(shell.collapsed).toBe(false);
@@ -53,26 +64,11 @@ describe('the shell navigation', () => {
     expect(window.localStorage.getItem('interborough-sidebar-collapsed')).toBe('true');
   });
 
-  test('is the rail on a tablet, whatever the preference says (04b)', () => {
-    viewport([]);
-    const { shell, preferences } = navigation();
-    preferences.setSidebarCollapsed(false);
-    expect(shell.mode).toBe('rail');
-    expect(shell.collapsed).toBe(true);
-    // Expanding opens the overlay and never writes the preference.
-    shell.collapsed = false;
-    expect(shell.overlayOpen).toBe(true);
-    expect(shell.collapsed).toBe(false);
-    expect(preferences.sidebarCollapsed).toBe(false);
-    shell.close();
-    expect(shell.overlayOpen).toBe(false);
-    expect(shell.collapsed).toBe(true);
-  });
-
   test('is the drawer under 700px, closed until opened, and never writes the preference', () => {
-    viewport([DRAWER_QUERY]);
+    viewport([DRAWER_QUERY, PHONE_TAB_QUERY]);
     const { shell, preferences } = navigation();
     expect(shell.mode).toBe('drawer');
+    expect(shell.showPhoneTabs).toBe(true);
     expect(shell.collapsed).toBe(true);
     shell.collapsed = false;
     expect(shell.drawerOpen).toBe(true);
@@ -82,24 +78,10 @@ describe('the shell navigation', () => {
     expect(shell.drawerOpen).toBe(false);
   });
 
-  test('draws its breakpoints at 1200px and 700px (COR-2315)', () => {
+  test('uses 1200px for desktop and 700px for the tab bar', () => {
     expect(DESKTOP_MINIMUM_WIDTH).toBe(1200);
-    expect(RAIL_MINIMUM_WIDTH).toBe(700);
-    expect(EXPANDED_QUERY).toBe('(min-width: 1200px)');
-    expect(DRAWER_QUERY).toBe('(max-width: 699.98px)');
-    expect(DRAWER_BREAKPOINT).toBe('699.98px');
-  });
-
-  test('gives touch no form of its own: a tablet gets the rail, whose labels are drawn', () => {
-    // Only the width decides. A pointer-based drawer query would hide the rail on a touch tablet,
-    // where the rail now draws its labels and needs no tooltip.
-    expect(DRAWER_QUERY).not.toContain('pointer');
-    viewport([]);
-    expect(navigation().shell.mode).toBe('rail');
-  });
-
-  test('a viewport that matches both queries is a phone first', () => {
-    viewport([DRAWER_QUERY, EXPANDED_QUERY]);
-    expect(navigation().shell.mode).toBe('drawer');
+    expect(DRAWER_BREAKPOINT).toBe('1199.98px');
+    expect(DRAWER_QUERY).toBe('(max-width: 1199.98px)');
+    expect(PHONE_TAB_QUERY).toBe('(max-width: 699.98px)');
   });
 });

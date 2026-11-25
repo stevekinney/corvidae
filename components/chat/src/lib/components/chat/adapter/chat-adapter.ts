@@ -100,10 +100,14 @@ export type ChatPushHandlers = {
  * every approval as the explicit decision surface: the action as the title, a danger badge when it
  * cannot be undone, a sentence about the pause, Tool, Target, Amount and Command facts, a named
  * primary action that arms on its first press when it is irreversible, and a retained receipt once
- * it is decided. The action carries the Tool and the Command; this adds the rest.
+ * it is decided. The action carries the Tool and the Command, and may carry its own `irreversible`,
+ * `consequence` and `why`; this adds the rest, and where both say something, this wins.
  */
 export type ChatApprovalDetails = {
-  /** Whether the operation cannot be undone: an irreversible primary arms on its first press. */
+  /**
+   * Whether the operation cannot be undone: an irreversible primary arms on its first press.
+   * Overrides the approval action's own `irreversible`.
+   */
   irreversible?: boolean | undefined;
   /** The primary action's own words, such as `Refund $42.00`. Default `Approve`. */
   approveLabel?: string | undefined;
@@ -111,7 +115,7 @@ export type ChatApprovalDetails = {
   pauseSentence?: string | undefined;
   /** Facts written after the tool, such as Target and Amount. The command comes from the action. */
   facts?: ApprovalFact[] | undefined;
-  /** Why the agent wants to do this, offered as a disclosure. */
+  /** Why the agent wants to do this, offered as a disclosure. Overrides the approval action's own `why`. */
   why?: string | undefined;
 };
 

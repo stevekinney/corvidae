@@ -457,6 +457,7 @@ describe('confirmation of the irreversible commands', () => {
       });
       const refused = await executeCli([...scenario.arguments, ...url], declined.dependencies);
       expect(refused.exitCode).toBe(1);
+      expect(refused.stderr).toContain('Canceled. Nothing was changed.');
       expect(questions).toHaveLength(1);
       expect(sent(declined)).toEqual([]);
 

@@ -158,7 +158,7 @@ test('boot uses the host-resolved principal and rejects an absent workspace', as
     scopes: ['system:read'],
     subject: 'credential',
     unauthenticatedAccess: null,
-    workspace: { workspaceId: 'a', actorId: 'b' },
+    workspace: { workspaceId: 'a', actorId: 'b', memorySharing: false },
   });
   expect(observedHeaders?.get('authorization')).toBe('Bearer fixture');
   expect(observedHeaders?.get('x-api-key')).toBe('fixture');
@@ -169,6 +169,18 @@ test('boot uses the host-resolved principal and rejects an absent workspace', as
       ),
     ),
   ).toThrow();
+});
+
+test('boot retains the host-proven memory-sharing availability', async () => {
+  const principal = await resolveHostPrincipal({}, async () =>
+    Response.json({
+      method: 'api-key',
+      subject: 'credential',
+      scopes: [],
+      workspace: { workspaceId: 'a', actorId: 'b', memorySharing: true },
+    }),
+  );
+  expect(principal?.workspace?.memorySharing).toBe(true);
 });
 
 test('the host local owner retains the existing local shell banner state', async () => {

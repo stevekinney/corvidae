@@ -35,7 +35,7 @@ const FIELDS = {
 const ENVELOPE_KEYS = ['kind', 'scheduleId', 'workspaceAuthority'];
 
 describe('the header', () => {
-  test('sets the count under the label, start-aligned, and keeps only the copy button at the end', () => {
+  test('puts the count on the label’s baseline, and keeps only the copy button at the end', () => {
     const view = render(PayloadInspector, { value: { a: 1, b: 2 }, label: 'Input' });
     const title = view.container.querySelector('.cinder-payload-inspector__title');
     expect(title?.querySelector('.cinder-payload-inspector__label')?.textContent).toBe('Input');
@@ -49,7 +49,7 @@ describe('the header', () => {
       /\.cinder-payload-inspector__title \{[^}]*flex: 1 1 0;[^}]*min-inline-size: 0;/,
     );
     expect(stylesheet).toMatch(
-      /\.cinder-payload-inspector__title \{[^}]*flex-direction: column;[^}]*align-items: flex-start;/,
+      /\.cinder-payload-inspector__title \{[^}]*flex-direction: row;[^}]*align-items: baseline;/,
     );
   });
 

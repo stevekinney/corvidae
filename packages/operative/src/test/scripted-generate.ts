@@ -135,7 +135,7 @@ export interface ScriptedGenerate extends GenerateFunction {
    * (`stepSignal` in `run-step.ts`) from `RunOptions.signal` rather than
    * forwarding that same instance, so no caller could ever observe
    * reference equality against the signal it constructed. Every other field
-   * compares by `Bun.deepEquals`. Throws, naming both the actual and
+   * compares by strict deep equality. Throws, naming both the actual and
    * expected value, on any mismatch or when `index` is out of range for
    * `calls`/`callCount`.
    */
@@ -179,7 +179,11 @@ function fieldsEqual(
     const expectedAborted = isAbortSignalLike(expected) ? expected.aborted : undefined;
     return actualAborted === expectedAborted;
   }
-  return Bun.deepEquals(actual, expected);
+  // Browser consumers can import other root exports without bundling Node utilities.
+  const utilities = globalThis.process?.getBuiltinModule?.('node:util') as
+    typeof import('node:util') | undefined;
+  if (!utilities) throw new Error('Scripted generate assertions require Node.js 22.3 or Bun');
+  return utilities.isDeepStrictEqual(actual, expected);
 }
 
 /**

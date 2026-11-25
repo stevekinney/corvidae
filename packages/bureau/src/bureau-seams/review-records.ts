@@ -172,6 +172,7 @@ export function createReviewRecords<D extends AgentDefinitions>(
   async function grantLoosensReview(review: PendingReview): Promise<boolean> {
     if (review.kind !== 'tool-approval') return false;
     try {
+      if (core.options.reviewPolicy?.matches(review)) return false;
       const definition = await weighableDefinitionOf(review.agentName);
       // No definition to weigh: the grant is not read for this agent, so it loosens nothing.
       if (definition === undefined) return false;
@@ -1109,6 +1110,7 @@ export function createReviewRecords<D extends AgentDefinitions>(
 
   return {
     grantFieldsOf,
+    grantLoosensReview,
     approvedCallAuditOf,
     recordApprovedCall,
     buildReviewDecisionAuditRecord,

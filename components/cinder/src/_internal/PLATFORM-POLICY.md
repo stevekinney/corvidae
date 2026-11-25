@@ -47,7 +47,7 @@ Every modern feature Cinder uses falls into exactly one tier. The tier decides w
 
 ## Enforcement
 
-`bun run --filter=@lostgradient/cinder platform:audit` reports current usage of every classified feature and flags hard-coded viewport breakpoints in component CSS so a reviewer can confirm each is viewport-owned (allowed) rather than a container-constraint in disguise (a Tier-1 violation). The feature inventory is a **report**, not a hard gate: deliberate adoption is the goal, so the command surfaces usage for human judgment rather than banning features outright. Viewport breakpoints are the one gated part: `lint` runs the audit with `--strict`, which fails on a viewport `@media` width query that `scripts/platform-viewport-baseline.json` does not list. Rewrite a new one as a container query, or, when the viewport genuinely owns it, grandfather it with `--update-baseline`.
+`bun ../../internal/component-tooling/scripts/check-platform-features.ts` (run from `components/cinder`) reports current usage of every classified feature and flags hard-coded viewport breakpoints in component CSS so a reviewer can confirm each is viewport-owned (allowed) rather than a container-constraint in disguise (a Tier-1 violation). The feature inventory is a **report**, not a hard gate: deliberate adoption is the goal, so the command surfaces usage for human judgment rather than banning features outright. Viewport breakpoints are the one gated part: `lint` runs the audit with `--strict`, which fails on a viewport `@media` width query that `scripts/platform-viewport-baseline.json` does not list. Rewrite a new one as a container query, or, when the viewport genuinely owns it, grandfather it with `--update-baseline`.
 
 Every entry in the baseline was reviewed on 2026-11-16 (COR-2394). Banner, EmptyState, ErrorState, Inspector and InspectorRow moved to container queries, and DescriptionList's framed `fields` surface followed the Inspector's on 2026-11-18. These three are viewport-owned and stay:
 
@@ -110,7 +110,7 @@ Component contract-misuse warnings — a missing required prop, an `id` that doe
 
 - **Rule:** no bare `console.warn` in `src/components/**` (`.svelte` or `.ts`). Use `devWarn(message, ...args)` instead. `devWarn` self-gates on `DEV`, so do **not** wrap it in `if (DEV) { … }` or add a `!DEV` early-return around it.
 - **Don't keep a `$effect` alive solely to warn.** A reactive effect whose only job is to log re-subscribes on every state change for no runtime benefit. Warn from a plain guard at the point of misuse (e.g. right after the `$props()` destructure for a "missing required prop" check) unless the condition is genuinely reactive and a test asserts the warning fires on a specific change.
-- **Enforcement:** `bun run check:no-bare-console-warn` (a scanned grep with an explicit allow-list, in the `lint` chain and CI) fails on any bare `console.warn` in component source. oxlint cannot express this rule because Svelte files are in its `ignorePatterns`.
+- **Enforcement:** `bun ../../internal/component-tooling/scripts/check-no-bare-console-warn.ts` (run from `components/cinder`; a scanned grep with an explicit allow-list, part of `lint:checks`, so `bun run lint` and CI run it) fails on any bare `console.warn` in component source. oxlint cannot express this rule because Svelte files are in its `ignorePatterns`.
 
 ## Live regions
 

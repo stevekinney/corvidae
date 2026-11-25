@@ -181,6 +181,56 @@ describe('approval tool actions', () => {
     ).toThrow(/unknown field/);
   });
 
+  describe('irreversible, consequence and why (COR-2438)', () => {
+    const explained = {
+      ...approvalAction,
+      irreversible: true,
+      consequence: 'Deploys three replicas to production.',
+      why: 'The release passed staging and the change window is open.',
+    } satisfies ToolApprovalAction;
+
+    function materialize(action: Record<string, unknown>) {
+      return materializeToolResult({
+        callId: 'call-explained',
+        outcome: 'action_required',
+        content: null,
+        action: action as ToolApprovalAction,
+      });
+    }
+
+    test('carries all three on the materialized approval', () => {
+      expect(materialize(explained).action).toEqual(explained);
+    });
+
+    test('reads an approval written before the fields existed unchanged, adding none of them', () => {
+      const action = materialize(approvalAction).action;
+      expect(action).toEqual(approvalAction);
+      expect(Object.keys(action ?? {})).not.toContain('irreversible');
+      expect(Object.keys(action ?? {})).not.toContain('consequence');
+      expect(Object.keys(action ?? {})).not.toContain('why');
+    });
+
+    test('takes a consequence of 500 characters and a why of 2000, the bounds', () => {
+      const action = materialize({
+        ...approvalAction,
+        consequence: 'c'.repeat(500),
+        why: 'w'.repeat(2000),
+      }).action;
+      expect(action).toMatchObject({ consequence: 'c'.repeat(500), why: 'w'.repeat(2000) });
+    });
+
+    test.each([
+      ['a non-boolean irreversible', { irreversible: 'yes' }],
+      ['an empty consequence', { consequence: '' }],
+      ['a consequence over 500 characters', { consequence: 'c'.repeat(501) }],
+      ['a non-string consequence', { consequence: 42 }],
+      ['an empty why', { why: '' }],
+      ['a why over 2000 characters', { why: 'w'.repeat(2001) }],
+    ])('rejects %s', (_label, override) => {
+      expect(() => materialize({ ...approvalAction, ...override })).toThrow();
+    });
+  });
+
   test('exports a structural approval resolution contract', () => {
     const resolution = {
       decision: 'approve_with_edits',

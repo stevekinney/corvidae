@@ -17,6 +17,7 @@ export const REGENERATION_PROOF_AGENT = 'e2e:regeneration-proof';
 export const REGENERATION_PROOF_TOOL = 'regeneration-proof-lookup';
 export const EXPIRING_APPROVAL_AGENT = 'e2e:expiring-approval';
 export const EXPIRING_APPROVAL_TOOL = 'expiring-approval-mutation';
+export const REMEMBER_APPROVAL_AGENT = 'e2e:remember-approval';
 
 const lookup = createTool({
   name: REGENERATION_PROOF_TOOL,
@@ -77,6 +78,33 @@ export function createRegenerationProofAgent() {
     metadata: { mutates: true },
     execute: async ({ value }) => ({ value, committed: true }),
   });
+  const rememberTool = createTool({
+    name: 'remember-proof-mutation',
+    version: '1.0.0',
+    description: 'Records a harmless approval fixture value.',
+    input: z.object({ value: z.string() }),
+    metadata: { mutates: true },
+    execute: async ({ value }) => ({ value, recorded: true }),
+  });
+  const rememberAgent = createAgent({
+    name: REMEMBER_APPROVAL_AGENT,
+    description: 'Asks before recording a harmless fixture value.',
+    generate: (async ({ conversation }) => {
+      if (conversation.getMessages().some((message) => message.toolResult?.outcome === 'success'))
+        return { content: 'The fixture value was recorded.', toolCalls: [] };
+      return {
+        content: '',
+        toolCalls: [
+          { id: 'remember-proof-1', name: rememberTool.name, arguments: { value: 'proof' } },
+        ],
+      };
+    }) satisfies GenerateFunction,
+    toolbox: createToolbox([rememberTool], {
+      approvalSecret: 'e2e-remember-approval-secret',
+      approvalPolicy: { mode: 'on-mutation' },
+    }),
+    stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
+  });
   const expiringAgent = createAgent({
     name: EXPIRING_APPROVAL_AGENT,
     description: 'Leaves a short-lived real approval pending.',
@@ -120,6 +148,7 @@ export function createRegenerationProofAgent() {
     stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
   });
   return {
+    [REMEMBER_APPROVAL_AGENT]: rememberAgent,
     [REGENERATION_PROOF_AGENT]: createAgent({
       name: REGENERATION_PROOF_AGENT,
       description: 'Performs one real lookup before answering.',

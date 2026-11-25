@@ -11,7 +11,7 @@ import { router } from '../../lib/router.svelte.ts';
 import { LayoutPreferences } from '../layout-preferences.svelte.ts';
 import { memoryStore } from '../notification-store.test-support.ts';
 import { ThemeStore } from '../theme.svelte.ts';
-import { DRAWER_QUERY, EXPANDED_QUERY, ShellNavigation } from './shell-navigation.svelte.ts';
+import { DRAWER_QUERY, ShellNavigation } from './shell-navigation.svelte.ts';
 import Harness from './topbar.test-harness.svelte';
 
 const undo: Array<() => void> = [];
@@ -57,14 +57,11 @@ function mount() {
 }
 
 describe('the top bar', () => {
-  test('draws no menu button where the sidebar stays in the page or is a rail', () => {
-    for (const matching of [[EXPANDED_QUERY], []]) {
-      viewport(matching);
-      landAt('/health');
-      const { queryByRole, unmount } = mount();
-      expect(queryByRole('button', { name: 'Open navigation' })).toBeNull();
-      unmount();
-    }
+  test('draws no menu button where the sidebar stays in the page', () => {
+    viewport([]);
+    landAt('/health');
+    const { queryByRole } = mount();
+    expect(queryByRole('button', { name: 'Open navigation' })).toBeNull();
   });
 
   test('draws the menu button first while the navigation is a drawer, and it opens the drawer', async () => {
@@ -93,7 +90,7 @@ describe('the top bar', () => {
   });
 
   test('the bar keeps its surface and its rule in every mode (COR-2445)', async () => {
-    for (const matching of [[DRAWER_QUERY], [EXPANDED_QUERY]]) {
+    for (const matching of [[DRAWER_QUERY], []]) {
       viewport(matching);
       landAt('/health');
       const { container, unmount } = mount();
@@ -124,7 +121,7 @@ describe('the top bar', () => {
   });
 
   test('names the page in words in the breadcrumb, and Home at the root', () => {
-    viewport([EXPANDED_QUERY]);
+    viewport([]);
     for (const [path, name] of [
       ['/health', 'Health'],
       ['/', 'Home'],
@@ -138,7 +135,7 @@ describe('the top bar', () => {
   });
 
   test('the search field says "Search everything" with a ⌘K hint, and opens the palette', async () => {
-    viewport([EXPANDED_QUERY]);
+    viewport([]);
     landAt('/');
     const { getByRole, getByTestId } = mount();
     const search = getByRole('button', { name: /^Search everything/ });
@@ -151,7 +148,7 @@ describe('the top bar', () => {
   });
 
   test('ends with the search field, the bell and quick settings, in that order', () => {
-    viewport([EXPANDED_QUERY]);
+    viewport([]);
     landAt('/');
     const { container } = mount();
 
@@ -162,7 +159,7 @@ describe('the top bar', () => {
   });
 
   test('the bell carries a dot while anything is unread, and says how many in its name', () => {
-    viewport([EXPANDED_QUERY]);
+    viewport([]);
     landAt('/');
     const { getByRole, container, notifications } = mount();
     expect(container.querySelector('.weft-notification-bell__dot')).toBeNull();

@@ -2,5 +2,8 @@
   "extends": "@lostgradient/typescript/library.json",
   "include": ["src"],
   "exclude": ["node_modules", "coverage"],
-  "references": [{ "path": "../backchannel/tsconfig.source.json" }]
+  "references": [
+    { "path": "../backchannel/tsconfig.source.json" },
+    { "path": "../mcp/tsconfig.source.json" }
+  ]
 }

@@ -39,6 +39,7 @@ export async function driveDurableRun(
   emitter: OperativeEventEmitter,
   prompt: SessionInputPayload | undefined,
   onServices: ((services: DurableRunDeps) => void) | undefined,
+  beforeLaunch: (() => Promise<void>) | undefined,
   reachability: { unreachable: boolean },
   // AB-339: true when `abort()` was called before this run's deferred
   // microtask even fired — captured, once, as a synchronous snapshot in
@@ -229,6 +230,29 @@ export async function driveDurableRun(
   } catch (error) {
     rejectDurablyStarted(error);
     return errorResult(error);
+  }
+  try {
+    await beforeLaunch?.();
+  } catch (error) {
+    try {
+      await prepared.abandon();
+    } catch {
+      // The fence failure remains the outcome; recovery will classify a record the engine kept.
+    }
+    rejectDurablyStarted(error);
+    // A retired continuation lost a durable ownership race before it could launch. It must still
+    // settle its local ActiveRun for Bureau teardown, but must not run user error hooks for work
+    // another process has explicitly replaced.
+    return makeErrorResult(
+      emptyRunState(),
+      conversation,
+      undefined,
+      emitter,
+      toAgentRunError(error),
+      options.costEstimation,
+      undefined,
+      hookTracker,
+    );
   }
   // Resolved for good: nothing after the commit rejects it.
   resolveDurablyStarted();

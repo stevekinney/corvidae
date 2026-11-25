@@ -68,6 +68,9 @@ test('the executable repository has no unregistered environment reads', async ()
 
 test('registers runtime and script boundaries separately', () => {
   expect(boundaryKind('packages/operative/src/environment-configuration.ts')).toBe('runtime');
+  expect(boundaryKind('packages/equipment-fixture/src/environment-configuration.ts')).toBe(
+    'runtime',
+  );
   expect(boundaryKind('applications/playground/src/environment-configuration.ts')).toBe('runtime');
   expect(boundaryKind('applications/interborough/src/host/environment-configuration.ts')).toBe(
     'runtime',

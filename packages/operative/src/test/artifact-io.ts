@@ -125,6 +125,13 @@ function canonicalize<TCleanupReport>(
   };
 }
 
+function loadArtifactFileSystem(): typeof import('node:fs/promises') {
+  const fileSystem = globalThis.process?.getBuiltinModule?.('node:fs/promises') as
+    typeof import('node:fs/promises') | undefined;
+  if (!fileSystem) throw new Error('Reproduction artifact I/O requires Node.js 22.3 or Bun');
+  return fileSystem;
+}
+
 /**
  * Writes `artifact` to `path` as stable, fixed-key-order JSON. Writing the
  * same artifact twice — even from two independently constructed objects
@@ -137,7 +144,10 @@ export async function writeReproductionArtifact<TCleanupReport>(
   path: string,
 ): Promise<void> {
   const json = `${JSON.stringify(canonicalize(artifact), null, 2)}\n`;
-  await Bun.write(path, json);
+  const fileSystem = loadArtifactFileSystem();
+  const paths = process.getBuiltinModule('node:path');
+  await fileSystem.mkdir(paths.dirname(path), { recursive: true });
+  await fileSystem.writeFile(path, json, 'utf8');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -219,7 +229,7 @@ export async function readReproductionArtifact(
 ): Promise<ReproductionArtifact<unknown>> {
   let raw: unknown;
   try {
-    raw = await Bun.file(path).json();
+    raw = JSON.parse(await loadArtifactFileSystem().readFile(path, 'utf8'));
   } catch (error) {
     // Malformed JSON, a missing file, or any other read/parse failure —
     // surfaced as the same typed error the shape-validation guards below

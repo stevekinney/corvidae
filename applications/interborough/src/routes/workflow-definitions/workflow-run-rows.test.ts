@@ -84,13 +84,14 @@ describe('one instance as a row', () => {
   test('names the trigger’s plugin by its title in the who slot of a run whose workflow names no agent, never "An agent" (COR-2171)', () => {
     const row = workflowRunRow(
       summary({ origin: { kind: 'trigger', plugin: 'linear', workflowId: 'sync' } }),
-      { title: 'Sync', agentName: null },
+      { title: 'Sync', agentName: null, type: 'sync' },
     );
     const line = runLineTwo(row, {
       now: 1_760_000_010_000,
       zone: 'America/Chicago',
       agentLabel: (name) => name,
       pluginTitle: (plugin) => (plugin === 'linear' ? 'Linear' : undefined),
+      workflowPage: true,
     });
     expect(line).toBe(
       [TASK_COPY.list.kinds.trigger, 'Linear', '3 s'].join(TASK_COPY.list.separator),
@@ -101,12 +102,13 @@ describe('one instance as a row', () => {
   test('says the plugin’s identifier only when no title is loaded for it (COR-2171)', () => {
     const row = workflowRunRow(
       summary({ origin: { kind: 'trigger', plugin: 'linear', workflowId: 'sync' } }),
-      { title: 'Sync', agentName: null },
+      { title: 'Sync', agentName: null, type: 'sync' },
     );
     const context = {
       now: 1_760_000_010_000,
       zone: 'America/Chicago',
       agentLabel: (n: string) => n,
+      workflowPage: true,
     };
     expect(runLineTwo(row, context)).toContain(', linear, ');
     expect(runLineTwo(row, { ...context, pluginTitle: () => undefined })).toContain(', linear, ');
@@ -114,6 +116,73 @@ describe('one instance as a row', () => {
 
   test('has no duration while it is still going', () => {
     expect(workflowRunRow(summary({ status: 'running' }), CONTEXT).durationMs).toBeNull();
+  });
+
+  test('uses a file summary for the failed step and a signal wait, without calling it Waiting on you', () => {
+    const file = { ...CONTEXT, type: 'release-notes' };
+    const failed = workflowRunRow(
+      summary({ status: 'failed', steps: { total: 4, at: 2 }, failure: 'GitHub did not answer' }),
+      file,
+    );
+    expect(
+      runLineTwo(failed, {
+        now: 1_760_000_010_000,
+        zone: 'America/Chicago',
+        agentLabel: (name) => name,
+      }),
+    ).toContain('failed at step 2 of 4');
+    expect(failed.summary).toBe('GitHub did not answer');
+    const waiting = workflowRunRow(
+      summary({ status: 'suspended', awaitingSignal: 'notes-approved' }),
+      file,
+    );
+    expect(runStatusWord(waiting)).toBe('Waiting for a signal');
+    expect(
+      runLineTwo(waiting, {
+        now: 1_760_000_010_000,
+        zone: 'America/Chicago',
+        agentLabel: (name) => name,
+      }),
+    ).toContain('notes-approved');
+  });
+
+  test('names a completed schedule cadence and the viewer’s step while waiting on a signal', () => {
+    const file = {
+      ...CONTEXT,
+      type: 'release-notes',
+      scheduleNames: new Map([['daily', 'Daily']]),
+    };
+    const context = {
+      now: 1_760_000_010_000,
+      zone: 'America/Chicago',
+      agentLabel: () => 'Assistant',
+      workflowPage: true,
+      viewer: 'local',
+      scheduleCadence: (id: string) => (id === 'daily' ? 'every day at 8:00 AM' : undefined),
+    };
+    const done = workflowRunRow(
+      summary({
+        status: 'completed',
+        schedule: { id: 'daily', manual: false },
+      }),
+      file,
+    );
+    expect(runLineTwo(done, context)).toBe('Schedule, Assistant, every day at 8:00 AM, 3 s');
+    const waiting = workflowRunRow(
+      summary({
+        status: 'suspended',
+        origin: { kind: 'person', principal: 'local', surface: 'web' },
+        awaitingSignal: 'notes-approved',
+        steps: { total: 4, at: 4 },
+      }),
+      file,
+    );
+    expect(runLineTwo(waiting, context)).toBe(
+      'Workflow, You, waiting for the signal notes-approved, step 4 of 4',
+    );
+    expect(runLineTwo(waiting, { ...context, viewer: 'someone-else' })).toContain(
+      'Started by hand',
+    );
   });
 
   test('says on line two what started it, the agent and how long it took, kind first', () => {
@@ -165,6 +234,7 @@ describe('what started an instance', () => {
   test('keeps the surface a person started it from', () => {
     expect(workflowRunOrigin({ kind: 'person', principal: 'local', surface: 'web' })).toEqual({
       kind: 'person',
+      principal: 'local',
       surface: 'web',
     });
   });

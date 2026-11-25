@@ -11,7 +11,7 @@
 
   import { RETRY_LABEL } from '../../../app/copy/views.ts';
   import { RUN_LOGS_COPY } from '../../../app/copy/runs.ts';
-  import { faultTreatment } from '../../../lib/faults.ts';
+  import { faultTreatment, treatmentErrorStateAdvice } from '../../../lib/faults.ts';
   import LogLines from './log-lines.svelte';
   import {
     LOGS_OPERATION,
@@ -64,7 +64,9 @@
           description={failure?.message ?? ''}
           headingLevel={3}
           retryLabel={RETRY_LABEL}
-          onRetry={() => void logs.refetch()}
+          {...failure === undefined
+            ? { onRetry: () => void logs.refetch() }
+            : treatmentErrorStateAdvice(failure, () => void logs.refetch())}
         />
       {:else if logs.data === undefined || logs.data.lines.length === 0}
         <EmptyState

@@ -5,6 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./failure-explanation": "./src/failure-explanation.ts",
+    "./run-comparison": "./src/run-comparison.ts",
     "./schedule-form": "./src/schedule-form.ts",
     "./step-waterfall": "./src/step-waterfall.ts",
     "./testing": "./src/testing/index.ts"

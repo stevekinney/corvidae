@@ -19,7 +19,7 @@ import {
   urlOf,
 } from './bureau-stub.test-support.ts';
 import { installFetchImplementation } from './live-source/fetch.test-support.ts';
-import type { SignalResult } from './workflow-files.ts';
+import type { SavedWorkflowVersion, SignalResult, WorkflowRunCounts } from './workflow-files.ts';
 
 export type Call = { readonly method: string; readonly params: Record<string, unknown> };
 
@@ -58,7 +58,7 @@ export type FileFixture = {
   /** The steps as written, for a file that loaded. Left out, the listing sends none. */
   steps?: Array<Record<string, unknown>> | null;
   /** What `bureau.workflows.list` counts for the file, or `null` for one the Bureau cannot use. */
-  runs: { active: number; last24Hours: number; lastRunAt: string | null } | null;
+  runs: WorkflowRunCounts | null;
   problem: {
     code: string;
     message: string;
@@ -114,6 +114,9 @@ export type RunFixture = {
   createdAt: number;
   updatedAt: number;
   origin?: Record<string, unknown> | null;
+  steps?: { total: number; at: number | null } | null;
+  awaitingSignal?: string | null;
+  failure?: string | null;
 };
 
 export type RevisionFixture = {
@@ -130,6 +133,35 @@ export type RevisionFixture = {
   /** Weft's verdict against the current revision; `null` (the default) when there is none. */
   compatibility?: { compatible: true } | { compatible: false; reasons: string[] } | null;
 };
+
+/** A saved file version as the Bureau's History operation answers it. */
+export function savedVersionFixture(
+  version: string,
+  overrides: Partial<SavedWorkflowVersion> = {},
+): SavedWorkflowVersion {
+  return {
+    version,
+    current: true,
+    savedAt: '2026-10-19T08:00:00.000Z',
+    hash: `hash-${version}`,
+    workflowVersion: `revision-${version}`,
+    origin: 'write',
+    actor: null,
+    surface: null,
+    title: null,
+    description: null,
+    trigger: { kind: 'manual' },
+    steps: [],
+    inputSchema: null,
+    outputSchema: null,
+    outputName: null,
+    previousVersion: null,
+    changes: [],
+    compatibility: null,
+    runs: null,
+    ...overrides,
+  };
+}
 
 export const DOCUMENT_TEXT = JSON.stringify(
   {
@@ -182,7 +214,11 @@ export function sourceDefinition(
 }
 
 /** A Bureau workflow file that loaded. */
-export function readyFile(id: string, overrides: Partial<FileFixture> = {}): FileFixture {
+export function readyFile(
+  id: string,
+  overrides: Partial<Omit<FileFixture, 'runs'>> & { runs?: Partial<WorkflowRunCounts> | null } = {},
+): FileFixture {
+  const { runs, ...fields } = overrides;
   return {
     id,
     state: 'ready',
@@ -195,11 +231,22 @@ export function readyFile(id: string, overrides: Partial<FileFixture> = {}): Fil
     outputSchema: null,
     version: 'version-1',
     trigger: { kind: 'schedule', spec: '0 6 * * *' },
-    runs: { active: 0, last24Hours: 0, lastRunAt: null },
+    runs:
+      runs === null
+        ? null
+        : {
+            active: 0,
+            current: null,
+            last: null,
+            last24Hours: 0,
+            lastRunAt: null,
+            total: runs?.last24Hours ?? 0,
+            ...runs,
+          },
     problem: null,
     text: DOCUMENT_TEXT.replace('"digest"', JSON.stringify(id)),
     schedule: { id: `bureau-workflow-schedule:${id}:1`, status: 'active', nextFireAt: null },
-    ...overrides,
+    ...fields,
   };
 }
 
@@ -336,6 +383,7 @@ export type World = {
   runs: RunFixture[];
   /** What `bureau.workflows.revisions` answers, by identifier: only the versions that have run. */
   revisions: Record<string, RevisionFixture[]>;
+  savedVersions: Record<string, SavedWorkflowVersion[]>;
   /** What `weft.workflows.revisions.list` answers, by name: every installed version, run or not. */
   installedRevisions: Record<string, unknown[]>;
   /** The starts `bureau.workflows.start` accepted, in order. */
@@ -348,6 +396,8 @@ export type World = {
   workflowDirectory: string | null;
   /** `remote` makes `/host/paths` answer as a host that keeps its state in Postgres and a bucket. */
   hostMode: 'local' | 'remote';
+  /** Whether the host reports a model provider that can be called. */
+  providerConnected: boolean;
   /** Makes the engine's schedule list answer with a refusal, as a server that cannot read them would. */
   failSchedules: boolean;
   /** The agent each Bureau schedule runs, by schedule id. A schedule that is not here is not a Bureau agent schedule. */
@@ -426,12 +476,14 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     schedules: [],
     runs: [],
     revisions: {},
+    savedVersions: {},
     installedRevisions: {},
     startedRuns: [],
     engineStarts: [],
     signalAnswer: { started: [], delivered: [], rejected: [] },
     workflowDirectory: STUB_WORKFLOW_DIRECTORY,
     hostMode: 'local',
+    providerConnected: true,
     failSchedules: false,
     scheduleAgents: {},
     scheduleInputs: {},
@@ -576,6 +628,32 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     return schedule;
   };
 
+  function savedVersionsOf(id: string): SavedWorkflowVersion[] | undefined {
+    if (Object.hasOwn(world.savedVersions, id)) return world.savedVersions[id];
+    if (Object.hasOwn(world.savedSteps, id)) {
+      return [savedVersionFixture('1.0.0', { current: false, steps: world.savedSteps[id] ?? [] })];
+    }
+    if (Object.hasOwn(world.revisions, id)) {
+      return world.revisions[id]?.map((revision, index, revisions) =>
+        savedVersionFixture(`1.${String(revisions.length - 1 - index)}.0`, {
+          current: index === 0,
+          workflowVersion: revision.workflowVersion,
+          savedAt: revision.firstRunAt,
+          trigger: revision.document.trigger,
+          steps: revision.document.steps,
+          compatibility:
+            revision.compatibility == null
+              ? null
+              : revision.compatibility.compatible
+                ? 'compatible'
+                : 'breaking',
+          runs: { count: 1, firstRunAt: revision.firstRunAt, lastRunAt: revision.lastRunAt },
+        }),
+      );
+    }
+    return find(id) === undefined ? undefined : [];
+  }
+
   const bureauHandlers: Record<string, (params: Record<string, unknown>) => unknown> = {
     'bureau.agents.list': () => ({ agents: world.agents }),
     'bureau.health.attention': () => ({
@@ -584,9 +662,9 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       checks: [],
     }),
     'bureau.workflows.history': (params) => {
-      const steps = world.savedSteps[String(params['id'])];
-      if (steps === undefined) throw workflowFaults.notFound(`workflow ${String(params['id'])}`);
-      return { revisions: [{ current: false, steps }] };
+      const versions = savedVersionsOf(String(params['id']));
+      if (versions === undefined) throw workflowFaults.notFound(`workflow ${String(params['id'])}`);
+      return { revisions: versions };
     },
     'bureau.agents.definitions.get': (params) => {
       const id = String(params['id']);
@@ -817,20 +895,22 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     },
     'bureau.workflows.runs.list': (params) => {
       const limit = typeof params['limit'] === 'number' ? params['limit'] : 50;
-      const runs = world.runs
+      const matching = world.runs
         .filter((run) => run.type === params['workflow'])
-        .toSorted((left, right) => right.createdAt - left.createdAt)
-        .slice(0, limit)
-        .map((run) => ({
-          id: run.id,
-          workflow: run.type,
-          workflowVersion: 'version-1',
-          status: run.status,
-          createdAt: new Date(run.createdAt).toISOString(),
-          updatedAt: new Date(run.updatedAt).toISOString(),
-          ...(run.origin === undefined ? {} : { origin: run.origin }),
-        }));
-      return { runs, nextOffset: null };
+        .toSorted((left, right) => right.createdAt - left.createdAt);
+      const runs = matching.slice(0, limit).map((run) => ({
+        id: run.id,
+        workflow: run.type,
+        workflowVersion: 'version-1',
+        status: run.status,
+        createdAt: new Date(run.createdAt).toISOString(),
+        updatedAt: new Date(run.updatedAt).toISOString(),
+        origin: run.origin ?? null,
+        steps: run.steps ?? null,
+        awaitingSignal: run.awaitingSignal ?? null,
+        failure: run.failure ?? null,
+      }));
+      return { runs, nextOffset: matching.length > limit ? limit : null };
     },
     'bureau.workflows.get': (params) => {
       const file = find(params['id']);
@@ -867,14 +947,22 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       };
     },
     'bureau.workflows.revisions': (params) => {
-      const revisions = world.revisions[String(params['id'])];
-      if (revisions === undefined) {
+      const id = String(params['id']);
+      const savedVersions = savedVersionsOf(id);
+      const revisions = Object.hasOwn(world.revisions, id) ? (world.revisions[id] ?? []) : [];
+      if (savedVersions === undefined) {
         throw workflowFaults.notFound(`workflow ${String(params['id'])}`);
       }
       // The Bureau always answers both schemas, `null` for a file that declares none.
       return {
+        savedVersionCount: savedVersions.length,
         revisions: revisions.map((revision) => ({
           ...revision,
+          runs: {
+            count: 1,
+            firstRunAt: revision.firstRunAt,
+            lastRunAt: revision.lastRunAt,
+          },
           compatibility: revision.compatibility ?? null,
           document: {
             ...revision.document,
@@ -1063,6 +1151,15 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
 
   const restoreFetch = installFetchImplementation(async (input, init) => {
     const url = new URL(urlOf(input), 'http://localhost');
+    if (url.pathname === '/host/providers') {
+      const connected = world.providerConnected;
+      return Response.json({
+        configurationRevision: null,
+        providers: [{ name: 'anthropic', configured: connected, hasKey: connected, connected }],
+        catalog: [],
+        models: [],
+      });
+    }
     if (url.pathname === '/host/paths') {
       if (world.workflowDirectory === null) return new Response('Not found', { status: 404 });
       return Response.json(

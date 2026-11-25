@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 
-import { dispatchOperation } from './operation-catalog/operation-dispatch.ts';
+import { checkOperationPolicy, dispatchOperation } from './operation-catalog/operation-dispatch.ts';
 import { snapshotOperationMetadata } from './operation-catalog/operation-metadata.ts';
 import {
   validateOperationName,
@@ -95,6 +95,11 @@ type DispatchEntry<Host> = {
     rawInput: unknown,
     context: DispatchContext<Host>,
   ) => Promise<DispatchResult<unknown>>;
+  /** Validate input and authorize this operation without running its callback. */
+  readonly checkPolicy: (
+    rawInput: unknown,
+    context: DispatchContext<Host>,
+  ) => Promise<DispatchResult<void>>;
 };
 
 /** The result of {@link defineOperation} for a `kind: 'unary'` operation. */
@@ -179,6 +184,8 @@ export function defineOperation(
       ...operation,
       dispatch: (rawInput: unknown, context: DispatchContext) =>
         dispatchOperation(operation, { rawInput, context }),
+      checkPolicy: (rawInput: unknown, context: DispatchContext) =>
+        checkOperationPolicy(operation, rawInput, context),
     });
   }
   if (input.kind === 'subscription') {
@@ -192,6 +199,8 @@ export function defineOperation(
       ...operation,
       dispatch: (rawInput: unknown, context: DispatchContext) =>
         dispatchOperation(operation, { rawInput, context }),
+      checkPolicy: (rawInput: unknown, context: DispatchContext) =>
+        checkOperationPolicy(operation, rawInput, context),
     });
   }
   const operation = Object.freeze({ ...fields, kind: 'unary' as const, invoke: input.invoke });
@@ -199,5 +208,7 @@ export function defineOperation(
     ...operation,
     dispatch: (rawInput: unknown, context: DispatchContext) =>
       dispatchOperation(operation, { rawInput, context }),
+    checkPolicy: (rawInput: unknown, context: DispatchContext) =>
+      checkOperationPolicy(operation, rawInput, context),
   });
 }

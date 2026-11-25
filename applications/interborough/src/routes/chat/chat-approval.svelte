@@ -14,11 +14,20 @@
    */
   import {
     ApprovalCard,
+    Button,
+    DecisionDeck,
     formatTimeOfDay,
+    Modal,
+    PayloadInspector,
+    Text,
+    Tooltip,
     type ApprovalFailure,
     type ApprovalOperation,
     type ApprovalResolution,
+    type DecisionDeckOutcome,
   } from '@lostgradient/cinder';
+  import { Layers } from '@lucide/svelte';
+  import type { Snippet } from 'svelte';
 
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { approvalQuestion, declaredSummary } from '../../lib/tool-text.ts';
@@ -41,6 +50,9 @@
     context: DecisionContext;
     operation?: ApprovalOperation | undefined;
     irreversible?: boolean | undefined;
+    consequence?: string | undefined;
+    why?: string | undefined;
+    decidedInHref?: string | undefined;
     policyVersion?: string | undefined;
     idempotencyKey?: string | undefined;
     expiresAt?: string | undefined;
@@ -78,6 +90,9 @@
     context,
     operation,
     irreversible,
+    consequence,
+    why,
+    decidedInHref,
     policyVersion,
     idempotencyKey,
     expiresAt,
@@ -122,12 +137,115 @@
         ? undefined
         : new Date(entry.approvalExpiresAt).toISOString(),
   );
+  const copy = CHAT_COPY.approval;
+  const requestKey = $derived(idempotencyKey ?? entry.callId);
+  // Keep the review deck on the exact operation payload the live ApprovalCard receives. The
+  // inspector preserves empty, text and unsupported values instead of serializing them here.
+  const reviewedOperation = $derived(
+    operation ?? { kind: 'other' as const, argsPreview: entry.arguments },
+  );
+  let deckFor = $state<string | undefined>();
+  let selectedDecision = $state<'approve' | 'deny' | undefined>();
+
+  function closeDeck(): void {
+    deckFor = undefined;
+    selectedDecision = undefined;
+  }
+
+  function reviewOutcome(outcome: DecisionDeckOutcome): void {
+    if (outcome === 'later') closeDeck();
+    else selectedDecision = outcome === 'accept' ? 'approve' : 'deny';
+  }
 </script>
+
+{#snippet decisionReview(commit: (decision: 'approve' | 'deny') => void, disabled: boolean)}
+  <Tooltip text={copy.reviewDeck} describe={false}>
+    <Button
+      type="button"
+      variant="secondary"
+      size="sm"
+      iconOnly
+      label={copy.reviewDeck}
+      {disabled}
+      onclick={() => {
+        selectedDecision = undefined;
+        deckFor = requestKey;
+      }}
+    >
+      {#snippet leadingIcon()}<Layers aria-hidden="true" />{/snippet}
+    </Button>
+  </Tooltip>
+  {#if deckFor === requestKey && !disabled}
+    <DecisionDeck
+      items={[{ id: requestKey, title: entry.name, eyebrow: source }]}
+      label={copy.deckTitle}
+      acceptLabel="Approve"
+      rejectLabel="Deny"
+      emptyTitle={copy.selectedDecision}
+      emptyDescription=""
+      onDecision={({ outcome }) => reviewOutcome(outcome)}
+      onUndo={() => (selectedDecision = undefined)}
+      card={reviewCard}
+    >
+      {#snippet layout(content: Snippet, actions: Snippet)}
+        <Modal open title={copy.deckTitle} onDismiss={closeDeck}>
+          <div class="weft-chat-approval__deck-content">
+            {@render content()}
+            {#if selectedDecision !== undefined}
+              <section aria-label={copy.selectedDecision}>
+                <Text variant="code">{entry.name}</Text>
+                {@render reviewArguments()}
+              </section>
+            {/if}
+          </div>
+          {#snippet footer()}
+            <div class="weft-chat-approval__deck-footer">
+              {#if irreversible ?? entry.tier === 'dangerous'}
+                <Text variant="caption">{copy.irreversible}</Text>
+              {/if}
+              {@render actions()}
+              <div class="weft-chat-approval__deck-exits">
+                <Button type="button" variant="secondary" onclick={closeDeck}>
+                  {copy.returnToApproval}
+                </Button>
+                {#if selectedDecision !== undefined}
+                  <Button
+                    type="button"
+                    variant="primary"
+                    mutating
+                    onclick={() => {
+                      const decision = selectedDecision;
+                      if (decision === undefined || deckFor !== requestKey || disabled) return;
+                      closeDeck();
+                      commit(decision);
+                    }}
+                  >
+                    {selectedDecision === 'approve' ? copy.confirmApproval : copy.confirmDenial}
+                  </Button>
+                {/if}
+              </div>
+            </div>
+          {/snippet}
+        </Modal>
+      {/snippet}
+    </DecisionDeck>
+  {/if}
+{/snippet}
+
+{#snippet reviewCard()}
+  <Text variant="caption">{question}</Text>
+  <Text variant="h4"><Text variant="code">{entry.name}</Text></Text>
+  {@render reviewArguments()}
+{/snippet}
+
+{#snippet reviewArguments()}
+  <PayloadInspector value={reviewedOperation.argsPreview} label="Arguments" bare />
+{/snippet}
 
 <ApprovalCard
   {...dataChanges ? { 'data-changes': true } : {}}
   {id}
-  layout="row"
+  layout="decision"
   headingLevel={4}
   question={decision === undefined ? question : decidedQuestion}
   tool={{
@@ -142,7 +260,10 @@
   {...requestedAt === undefined ? {} : { requestedAt }}
   operation={operation ?? { kind: 'other', argsPreview: entry.arguments }}
   policyVersion={policyVersion ?? id}
-  idempotencyKey={idempotencyKey ?? entry.callId}
+  idempotencyKey={requestKey}
+  {decisionReview}
+  {...consequence === undefined ? {} : { consequence }}
+  {...why === undefined ? {} : { why }}
   {...expiresAt === undefined ? {} : { expiresAt }}
   {...actionLabel === undefined ? {} : { actionLabel }}
   {...failure === undefined ? {} : { failure }}
@@ -172,7 +293,9 @@
     : {
         decidedBy: decidedByLabel(decision, context.owner),
         decidedAt: decision.decidedAt,
-        ...(place === undefined ? {} : { decidedIn: place }),
+        ...(place === undefined
+          ? {}
+          : { decidedIn: place, ...(decidedInHref === undefined ? {} : { decidedInHref }) }),
         ...(decision.reason === undefined ? {} : { decisionNote: decision.reason }),
       }}
   {...decision === undefined
@@ -185,8 +308,7 @@
     : {}}
 />
 {#if decision === undefined && unavailableReason === undefined && expired && lapsedAt !== undefined}
-  <!-- When it lapsed is a line under the card in a message's time style (Chat's rule for
-       `.chat-approval-time`), not text inside the card. -->
+  <!-- When it lapsed is a line under the card in a message's time style. -->
   <div class="chat-approval-time">
     <time datetime={lapsedAt}><bdi>{formatTimeOfDay(lapsedAt)}</bdi></time>
   </div>
@@ -194,3 +316,27 @@
 {#if decision === undefined && unavailableReason === undefined && providerNote !== undefined}
   <p class="weft-chat-approval__provider-note">{providerNote}</p>
 {/if}
+
+<style>
+  .weft-chat-approval__deck-content,
+  .weft-chat-approval__deck-footer {
+    display: grid;
+    gap: var(--cinder-space-4);
+    max-inline-size: 26rem;
+    margin-inline: auto;
+  }
+
+  .weft-chat-approval__deck-footer {
+    inline-size: 100%;
+  }
+
+  .weft-chat-approval__deck-exits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2);
+  }
+
+  .weft-chat-approval__deck-exits > :global(button) {
+    flex: 1 1 auto;
+  }
+</style>

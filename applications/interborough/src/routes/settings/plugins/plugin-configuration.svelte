@@ -29,6 +29,7 @@
     contributedFormSchema,
   } from '../../../lib/contributed-configuration.ts';
   import { HostPluginError, updatePlugin, type PluginStanding } from '../../../lib/host-plugins.ts';
+  import { phoneViewport } from '../../../lib/phone-viewport.svelte.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import {
     configurationChanges,
@@ -138,7 +139,7 @@
         {/snippet}
         {#snippet end()}
           <Button type="submit" variant="primary" disabled={locked || saving || !changed}>
-            {saving ? copy.saving : copy.save}
+            {saving ? copy.saving : phoneViewport.current ? 'Save' : copy.save}
           </Button>
         {/snippet}
       </FormActions>

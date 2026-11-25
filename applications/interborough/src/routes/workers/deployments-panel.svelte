@@ -167,7 +167,7 @@
       {scopeReason('system:read')} to read deployment versions and routing.
     </Alert>
   {:else if error && overviews === undefined}
-    <PanelFault {error} onRetry={() => void overviewsQuery.refetch()} />
+    <PanelFault {error} subject="deployments" onRetry={() => void overviewsQuery.refetch()} />
   {:else if overviews}
     {#if error}
       <Alert variant="warning"

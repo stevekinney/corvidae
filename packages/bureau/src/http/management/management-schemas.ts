@@ -181,10 +181,12 @@ export const taskViewSchema = z.object({
   /**
    * What asks for attention (COR-2526): `stalled` while the run is alive but making no progress
    * outside a declared wait, which is Operative's own `alive-but-stalled` assessment recorded when
-   * it changes, and `looping` once the run's toolbox reported a loop until the run settles. Empty
-   * for a task that has ended, and `stalled` is empty while a person is asked something.
+   * it changes, and `looping` once the run's toolbox reported a loop until the run settles. Neither
+   * is listed for a task that has ended, and `stalled` is empty while a person is asked something.
+   * `overspending` (COR-2527) is listed once a step found the run's cost over the workspace's spend
+   * threshold (the `runs.spendThresholdUsd` setting), and stays after the run settles.
    */
-  attention: z.array(z.enum(['stalled', 'looping'])),
+  attention: z.array(z.enum(['stalled', 'looping', 'overspending'])),
   /** The instant, as ISO 8601 on the Bureau's clock, the run was seen to stall; `null` unless `attention` holds `stalled`. */
   stalledSince: z.string().nullable(),
   /**

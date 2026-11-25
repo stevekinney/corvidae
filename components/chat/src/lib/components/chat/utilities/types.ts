@@ -122,7 +122,12 @@ export type ImageMessagePart = {
   image: Extract<MultiModalContent, { type: 'image' }>;
 };
 
-export type ToolApprovalAction = Extract<ToolAction, { type: 'approval' }>;
+/** Optional decision context travels with newer approval actions; older stored actions omit it. */
+export type ToolApprovalAction = Extract<ToolAction, { type: 'approval' }> & {
+  readonly irreversible?: boolean | undefined;
+  readonly consequence?: string | undefined;
+  readonly why?: string | undefined;
+};
 
 /**
  * A tool-approval render part — emitted in place of a `tool-result` part only
@@ -148,10 +153,19 @@ export type ToolApprovalMessagePart = {
   receipt?: ToolApprovalReceipt;
 };
 
-/** The decision a person made in this chat on a tool approval. */
+/**
+ * The decision a person made on a tool approval: in this chat, or (read from the result row's
+ * `approvalDecision` metadata) wherever it was recorded.
+ */
 export type ToolApprovalReceipt = {
   /** When it was decided, in epoch milliseconds. */
   decidedAt: number;
+  /** Who decided, as the receipt says it: "Approved by Priya Raman". Absent, the reader did (`you`). */
+  decidedBy?: string;
+  /** Where it was decided when that was not here, such as `Reviews`. */
+  decidedIn?: string;
+  /** Where `decidedIn` leads: the receipt writes the place as a link to it. */
+  decidedInHref?: string;
   /** The note that went with the decision, when the person left one. */
   reason?: string;
   /** The host result received after the approval was applied, when one exists. */

@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2629",
+  "branch": "steve/composable-equipment-staging",
+  "checkedAt": "7963f26ded",
+  "briefVersion": "bfd32137ae20",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "not-met",
+      "evidence": "Live revisions, callbacks and isolated data remain to be verified."
+    },
+    {
+      "id": "AC2",
+      "status": "not-met",
+      "evidence": "Local discovery and 401 passed; real hosted reader and editor OAuth checks are pending."
+    },
+    {
+      "id": "AC3",
+      "status": "not-met",
+      "evidence": "Live receipts, operator access and hosted client registration settings are pending."
+    }
+  ]
+}

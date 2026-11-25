@@ -10,6 +10,7 @@
   import { RefreshCw } from '@lucide/svelte';
 
   import type { HookDelivery } from '../../lib/bureau-hooks.ts';
+  import { workflowDetailPath } from '../../lib/router.svelte.ts';
   import { HOOKS_COPY } from './hook-copy.ts';
   import {
     ATTEMPTS_SHOWN,
@@ -21,6 +22,7 @@
     deliveryStamp,
     payloadFieldText,
     retryKind,
+    type DeliveryReferenceNames,
   } from './hook-delivery-presentation.ts';
 
   interface Props {
@@ -32,16 +34,34 @@
     onRetry: () => void;
     /** The event kinds that read alike among the hook's events, the only ones whose raw kind shows. */
     alike?: ReadonlySet<string>;
+    /** Names read from the delivery's existing identifiers through the normal authorized endpoints. */
+    names?: DeliveryReferenceNames;
+    /** The existing authorized run detail named by the recorded delivery body, if it was readable. */
+    relatedRun:
+      | {
+          readonly id: string;
+          readonly name: string;
+          readonly step?: string;
+          readonly error?: string;
+        }
+      | undefined;
   }
 
-  let { delivery, retrying, onRetry, alike = new Set<string>() }: Props = $props();
+  let {
+    delivery,
+    retrying,
+    onRetry,
+    alike = new Set<string>(),
+    names = {},
+    relatedRun,
+  }: Props = $props();
 
   const copy = HOOKS_COPY.editor.deliveries;
 
   let showAllTries = $state(false);
 
   const cause = $derived(deliveryCause(delivery));
-  const facts = $derived(deliveryFacts(delivery, alike));
+  const facts = $derived(deliveryFacts(delivery, alike, names));
   const tries = $derived(attemptList(delivery, showAllTries));
   const payload = $derived(deliveryPayload(delivery));
   const canRetry = $derived(retryKind(delivery) === 'retry');
@@ -120,9 +140,23 @@
       <PayloadInspector
         label={copy.payloadLabel}
         value={payload.value}
-        formatValue={({ path, value }) => payloadFieldText(path, value)}
+        formatValue={({ path, value }) =>
+          payload.eventEnvelope ? payloadFieldText(path, value) : undefined}
       />
     </div>
+  {/if}
+
+  {#if relatedRun !== undefined}
+    <section
+      class="ib-hook-delivery__related-run"
+      aria-label={copy.relatedRun}
+      data-testid="hook-delivery-related-run"
+    >
+      <h3>{copy.relatedRun}</h3>
+      <Link href={workflowDetailPath(relatedRun.id)}>{relatedRun.name}</Link>
+      {#if relatedRun.step !== undefined}<p>{copy.relatedRunStep}: {relatedRun.step}</p>{/if}
+      {#if relatedRun.error !== undefined}<p>{copy.relatedRunError}: {relatedRun.error}</p>{/if}
+    </section>
   {/if}
 
   {#if canRetry}
@@ -146,6 +180,11 @@
   }
 
   .ib-hook-delivery__cause {
+    margin: 0;
+  }
+
+  .ib-hook-delivery__related-run h3,
+  .ib-hook-delivery__related-run p {
     margin: 0;
   }
 

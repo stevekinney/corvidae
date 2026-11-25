@@ -24,6 +24,7 @@
   import { GOALS_COPY } from '../../app/copy/goals.ts';
   import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { listAgents } from '../../lib/bureau-client.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { getGoal, updateGoal, type GoalChange } from '../../lib/bureau-goals.ts';
   import { listValidators } from '../../lib/bureau-validators.ts';
   import { goalPath } from '../../lib/identifier-paths.ts';
@@ -166,7 +167,7 @@
         title={GOALS_COPY.detail.loadFailed.title}
         description={GOALS_COPY.detail.loadFailed.description}
         retryLabel={RETRY_LABEL}
-        onRetry={() => void goal.refetch()}
+        {...faultErrorStateAdvice(goal.error, () => void goal.refetch())}
       />
     {:else}
       <Skeleton variant="form" rows={4} label={copy.loading} delay={LOADING_DELAY_MILLISECONDS} />

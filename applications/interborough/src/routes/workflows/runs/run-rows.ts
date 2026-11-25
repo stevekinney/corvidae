@@ -24,10 +24,13 @@ import type { Goal } from '../../../lib/bureau-goals.ts';
 import {
   isScheduleFire,
   isTerminalState,
+  TASK_ATTENTION_KINDS,
+  type TaskAttention,
   type TaskState,
   type TaskView,
 } from '../../../lib/bureau-tasks.ts';
 import { calendarDay, clockTime, dateLine, zoneLabel } from '../../../lib/format/clock.ts';
+import { attemptsCost, type AttemptsCost } from '../../../lib/format/cost.ts';
 import { chatSessionPath, goalPath } from '../../../lib/identifier-paths.ts';
 import { oneLine } from '../../../lib/one-line.ts';
 import { reasonClause } from '../../../lib/reason-clause.ts';
@@ -139,6 +142,12 @@ export type RunRow = {
   readonly updatedAt: number;
   /** How long it took, once it is over. */
   readonly durationMs: number | null;
+  /**
+   * What the run cost (COR-2525), which the Cost column says: the run's own figure, or for an
+   * instance of a workflow file the sum of its steps that have one, marked partial when a step has
+   * none. `null` for a run the Bureau priced no request of, which shows no cost at all.
+   */
+  readonly cost?: AttemptsCost | null;
   /** Which attempt of its goal the run is, or `null` for a run no goal made. */
   readonly attempt: RunAttempt | null;
   /**
@@ -165,7 +174,24 @@ export type RunRow = {
    * is the engine's, so it opens for a caller who may read the engine (`workflows:read`).
    */
   readonly engineRun?: boolean;
+  /**
+   * What asks for attention on the run (COR-2528), in the order {@link TASK_ATTENTION_KINDS} lists
+   * the states: stalled, looping, over the spend threshold. Each is a badge on the row. Absent or
+   * empty for a run with none, which is every run an engine holds and every goal attempt a task
+   * does not describe.
+   */
+  readonly attention?: readonly TaskAttention[];
+  /**
+   * The step a failed run failed at (COR-2531): a tool's name, `model`, or a workflow's failed
+   * step. `null` for a run that did not fail, and for one a goal's attempt stands for.
+   */
+  readonly failedStep?: string | null;
+  /** The step a running run is on a second or later try of, and which try that is (COR-2531). */
+  readonly retrying?: RunRetrying | null;
 };
+
+/** The step a run is retrying, and the try it is on: 2 or later. */
+type RunRetrying = { readonly label: string; readonly attempt: number };
 
 /** The workflow types a task record is made for; every other type is a run only the engine holds. */
 const RECORDED_TASK_WORKFLOWS: readonly string[] = ['agentRun', 'goalRun'];
@@ -229,12 +255,11 @@ export function runSegmentOf(status: TaskState): RunStatusSegment {
 
 /**
  * The segment a row is counted under. A run parked at an `await-signal` step needs nobody at the
- * page, so it counts under Waiting and not under Running (COR-2424, row 56g); every other run is
- * counted by its status.
+ * page, so it counts under Waiting (COR-2424, row 56g). A start waiting for an execution slot
+ * is Scheduled and appears only under All (COR-2433, row 59a).
  */
-export function runSegmentOfRow(
-  row: Pick<RunRow, 'status'> & { readonly workflow?: RunWorkflow | null | undefined },
-): RunStatusSegment {
+function runSegmentOfRow(row: RunRow): RunStatusSegment | undefined {
+  if (queuedWorkflowInstance(row)) return undefined;
   return awaitingSignalOf(row) === null ? runSegmentOf(row.status) : 'signal';
 }
 
@@ -257,9 +282,52 @@ export type RunFilter = {
   readonly startedBy?: StartedBy;
   /** The workflow type the runs ran on (COR-2423): `agentRun`, `goalRun`, `scheduleTick`, or a workflow file's identifier. */
   readonly workflow?: string;
+  /**
+   * The step the run failed at (COR-2535): a tool's name, `model`, or a workflow's failed step. It
+   * is sent to `bureau.tasks.list`, which compares the first {@link FAILED_STEP_LIMIT} characters,
+   * so the address never holds more.
+   */
+  readonly failedStep?: string;
+  /** Only the runs with a step on a second or later try right now (COR-2535). */
+  readonly retrying?: true;
   /** Words the title, the agent or the summary must hold, whatever their case. */
   readonly search?: string;
+  /**
+   * Only the runs that carry an attention state (COR-2528): stalled, looping, or over the spend
+   * threshold, a settled run that overspent included. The page asks the Bureau for them
+   * (`listAllTasksNeedingAttention`) rather than reading every run.
+   */
+  readonly attention?: true;
 };
+
+/** How many characters of a step name the Bureau compares, and so how many the address keeps. */
+const FAILED_STEP_LIMIT = 200;
+
+/**
+ * A step name cut to what the Bureau compares, never in the middle of a surrogate pair, so the
+ * address, the request and the rows agree on one name.
+ */
+export function failedStepName(text: string): string {
+  const name = text.trim();
+  if (name.length <= FAILED_STEP_LIMIT) return name;
+  const cut = name.slice(0, FAILED_STEP_LIMIT);
+  const last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+}
+
+/**
+ * What the Bureau is asked of a filter (`bureau.tasks.list`): only the two filters it applies, the
+ * rest being applied here. The Runs list reads every page of the result.
+ */
+export function serverRunFilter(filter: RunFilter): {
+  readonly failedStep?: string;
+  readonly retrying?: boolean;
+} {
+  return {
+    ...(filter.failedStep === undefined ? {} : { failedStep: filter.failedStep }),
+    ...(filter.retrying === undefined ? {} : { retrying: filter.retrying }),
+  };
+}
 
 function waitSummary(task: TaskView): string {
   const wait = task.openWaits[0];
@@ -502,6 +570,7 @@ function taskRow(
     startedAt,
     updatedAt,
     durationMs: isTerminalState(task.status) ? Math.max(0, updatedAt - startedAt) : null,
+    cost: attemptsCost([{ usage: { costUsd: task.usage?.costUsd ?? null } }]),
     attempt: null,
     checkNotMet: false,
     workflowType: workflow?.type ?? null,
@@ -512,7 +581,16 @@ function taskRow(
       null,
     dueAt: task.status === 'working' && !Number.isNaN(wake) ? wake : null,
     engineRun: isEngineRunTask(task),
+    attention: attentionOf(task),
+    failedStep: task.failure?.step?.label ?? null,
+    retrying: task.retrying ?? null,
   };
+}
+
+/** The states a task asks for attention in, in the order a row says them, each once. */
+function attentionOf(task: Pick<TaskView, 'attention'>): readonly TaskAttention[] {
+  const states = task.attention ?? [];
+  return TASK_ATTENTION_KINDS.filter((kind) => states.includes(kind));
 }
 
 const ATTEMPT_STATUS = {
@@ -549,6 +627,7 @@ function goalRows(goal: Goal, chats: ReadonlyMap<string, ChatContext>): RunRow[]
       startedAt,
       updatedAt: completedAt ?? startedAt,
       durationMs: completedAt === null ? null : Math.max(0, completedAt - startedAt),
+      cost: attemptsCost([attempt]),
       attempt: {
         number: attempt.attemptIndex + 1,
         of: Math.max(goal.bounds.maximumAttempts, attempt.attemptIndex + 1),
@@ -573,6 +652,14 @@ const INSTANCE_STATUS_ORDER: readonly TaskState[] = [
   'completed',
 ];
 
+/**
+ * What the steps of a workflow instance cost together (COR-2525): the sum of the steps that have a
+ * cost, partial when a step has none, and `null` when none has one.
+ */
+function stepsCost(steps: readonly RunRow[]): AttemptsCost | null {
+  return attemptsCost(steps.map((step) => ({ usage: { costUsd: step.cost?.costUsd ?? null } })));
+}
+
 /** One instance of a workflow file, from the rows of its steps: the run a person started. */
 function instanceRow(parentRunId: string, steps: readonly RunRow[]): RunRow {
   const status =
@@ -591,11 +678,27 @@ function instanceRow(parentRunId: string, steps: readonly RunRow[]): RunRow {
     startedAt,
     updatedAt,
     durationMs: isTerminalState(status) ? Math.max(0, updatedAt - startedAt) : null,
+    cost: stepsCost(steps),
     attempt: null,
     checkNotMet: false,
     // No task is the instance, only its steps are: the engine holds the run a person started.
     engineRun: true,
+    attention: attentionOfSteps(steps),
+    // The instance fails where its failed step did, and retries what one of its steps retries.
+    failedStep:
+      status === 'failed'
+        ? (steps.find((step) => step.status === 'failed' && step.failedStep != null)?.failedStep ??
+          null)
+        : null,
+    retrying: steps.find((step) => step.retrying != null)?.retrying ?? null,
   };
+}
+
+/** The states any of the steps asks for attention in, which the instance they make up carries. */
+function attentionOfSteps(steps: readonly RunRow[]): readonly TaskAttention[] {
+  return TASK_ATTENTION_KINDS.filter((kind) =>
+    steps.some((step) => step.attention?.includes(kind)),
+  );
 }
 
 /** Every run the two sources hold, the most recently changed first, each run once. */
@@ -632,6 +735,9 @@ export function buildRunRows(input: {
             origin: goalRow.origin,
             title: goalRow.title,
             attempt: goalRow.attempt,
+            // The task's own figure wins, an explicit `null` (the Bureau priced no request) included:
+            // the goal's record of the attempt fills in only a task that has reported no usage at all.
+            cost: task.usage == null ? (row.cost ?? goalRow.cost ?? null) : (row.cost ?? null),
             checkNotMet: missedCheck.has(task.id) && row.status === 'completed',
           }
         : row,
@@ -644,12 +750,21 @@ export function buildRunRows(input: {
  * The rows as Runs lists them: the steps of each workflow instance folded into one row for the
  * instance, which is the run a person started, and every run the most recently started first. A
  * run's place does not change when it finishes, so a row stays where it is while it is watched.
+ * An instance's row carries the attention states of its steps.
+ *
+ * `foldSteps: false` lists each step as its own run. The Needs attention filter reads only the
+ * steps that ask for attention (COR-2528), and an instance made of some of its steps would state a
+ * status and a cost the instance does not have.
  */
-export function runListRows(rows: readonly RunRow[]): RunRow[] {
+export function runListRows(
+  rows: readonly RunRow[],
+  options: { readonly foldSteps?: boolean } = {},
+): RunRow[] {
+  const foldSteps = options.foldSteps ?? true;
   const listed = new Map<string, RunRow>();
   const steps = new Map<string, RunRow[]>();
   for (const row of rows) {
-    if (row.origin.kind === 'parent') {
+    if (row.origin.kind === 'parent' && foldSteps) {
       const parentRunId = row.origin.parentRunId;
       steps.set(parentRunId, [...(steps.get(parentRunId) ?? []), row]);
     } else {
@@ -660,11 +775,22 @@ export function runListRows(rows: readonly RunRow[]): RunRow[] {
     const instance = listed.get(parentRunId);
     if (instance === undefined) {
       listed.set(parentRunId, instanceRow(parentRunId, instanceSteps));
-    } else if (instance.agentName === null) {
+    } else {
       // The engine's record of an instance names no agent; its steps say which one ran them, which
-      // its row says after its schedule (row 53l, "Schedule, Inbox triage, Assistant").
-      const agentName = instanceSteps.find((step) => step.agentName !== null)?.agentName ?? null;
-      if (agentName !== null) listed.set(parentRunId, { ...instance, agentName });
+      // its row says after its schedule (row 53l, "Schedule, Inbox triage, Assistant"). It holds no
+      // usage either (its view's is `null`), so the steps' costs are the instance's, summed as an
+      // instance with no row of its own sums them (COR-2525).
+      const agentName =
+        instance.agentName ?? instanceSteps.find((step) => step.agentName !== null)?.agentName;
+      const cost = instance.cost ?? stepsCost(instanceSteps);
+      const attention = attentionOfSteps([instance, ...instanceSteps]);
+      if (
+        agentName !== instance.agentName ||
+        cost !== instance.cost ||
+        attention.length !== (instance.attention?.length ?? 0)
+      ) {
+        listed.set(parentRunId, { ...instance, agentName: agentName ?? null, cost, attention });
+      }
     }
   }
   return [...listed.values()].toSorted(
@@ -696,6 +822,9 @@ export function filterRunRows(
       (filter.agent === undefined || row.agentName === filter.agent) &&
       (filter.startedBy === undefined || row.origin.kind === filter.startedBy) &&
       (filter.workflow === undefined || row.workflowType === filter.workflow) &&
+      (filter.attention === undefined || (row.attention?.length ?? 0) > 0) &&
+      (filter.failedStep === undefined || row.failedStep === filter.failedStep) &&
+      (filter.retrying === undefined || row.retrying != null) &&
       (filter.search === undefined || matchesSearch(row, filter.search, agentLabelOf)),
   );
 }
@@ -714,9 +843,15 @@ export function runSegmentCounts(rows: readonly RunRow[]): Readonly<Record<RunSe
     failed: 0,
     canceled: 0,
   };
-  for (const row of rows) counts[runSegmentOfRow(row)] += 1;
+  for (const row of rows) {
+    const segment = runSegmentOfRow(row);
+    if (segment !== undefined) counts[segment] += 1;
+  }
   return counts;
 }
+
+/** What the address holds for the Needs attention filter: `/runs?attention=1`. */
+const ATTENTION_PARAMETER_VALUE = '1';
 
 /** Reads the filter out of a query string; a value it does not know is no filter. */
 export function parseRunFilter(search: URLSearchParams): RunFilter {
@@ -724,12 +859,16 @@ export function parseRunFilter(search: URLSearchParams): RunFilter {
   const agent = search.get('agent')?.trim();
   const startedBy = STARTED_BY_KINDS.find((kind) => kind === search.get('startedBy'));
   const workflow = search.get('workflow')?.trim();
+  const failedStep = failedStepName(search.get('failedStep') ?? '');
   const words = search.get('q')?.trim();
   return {
+    ...(search.get('attention') === ATTENTION_PARAMETER_VALUE ? { attention: true as const } : {}),
     ...(status === undefined ? {} : { status }),
     ...(agent === undefined || agent === '' ? {} : { agent }),
     ...(startedBy === undefined ? {} : { startedBy }),
     ...(workflow === undefined || workflow === '' ? {} : { workflow }),
+    ...(failedStep === '' ? {} : { failedStep }),
+    ...(search.get('retrying') === 'true' ? { retrying: true as const } : {}),
     ...(words === undefined || words === '' ? {} : { search: words }),
   };
 }
@@ -737,10 +876,13 @@ export function parseRunFilter(search: URLSearchParams): RunFilter {
 /** The query string a filter is kept in the address as. */
 export function serializeRunFilter(filter: RunFilter): string {
   const params = new URLSearchParams();
+  if (filter.attention !== undefined) params.set('attention', ATTENTION_PARAMETER_VALUE);
   if (filter.status !== undefined) params.set('status', filter.status);
   if (filter.agent !== undefined) params.set('agent', filter.agent);
   if (filter.startedBy !== undefined) params.set('startedBy', filter.startedBy);
   if (filter.workflow !== undefined) params.set('workflow', filter.workflow);
+  if (filter.failedStep !== undefined) params.set('failedStep', filter.failedStep);
+  if (filter.retrying !== undefined) params.set('retrying', 'true');
   if (filter.search !== undefined) params.set('q', filter.search);
   return params.toString();
 }
@@ -756,16 +898,30 @@ function awaitingSignalOf(
   return going ? (row.workflow?.awaitingSignal ?? null) : null;
 }
 
+function queuedWorkflowInstance(
+  row: Pick<RunRow, 'status'> & Partial<Pick<RunRow, 'engineRun' | 'workflow'>>,
+): boolean {
+  const type = row.workflow?.type;
+  return (
+    row.status === 'submitted' &&
+    row.engineRun === true &&
+    type !== undefined &&
+    isInstanceWorkflow(type)
+  );
+}
+
 /**
  * The status word of a row, which Cinder's `StatusDot` gives its one tone. An instance waiting for
  * a signal is "Waiting" (the hollow ring), and a run that asked to be woken is "Scheduled" until it
  * is (`now`, when it is given, is the clock the due time is read against).
  */
 export function runStatusWord(
-  row: Pick<RunRow, 'status' | 'checkNotMet'> & Partial<Pick<RunRow, 'workflow' | 'dueAt'>>,
+  row: Pick<RunRow, 'status' | 'checkNotMet'> &
+    Partial<Pick<RunRow, 'workflow' | 'dueAt' | 'engineRun'>>,
   now?: number,
 ): RunStatusWord {
   if (row.checkNotMet) return 'Check not met';
+  if (queuedWorkflowInstance(row)) return 'Scheduled';
   if (awaitingSignalOf({ status: row.status, workflow: row.workflow }) !== null) {
     return SIGNAL_WAIT_WORD;
   }
@@ -836,6 +992,8 @@ export type RunLineContext = {
    * identifier, or `undefined` when the schedule was not read (row 53l).
    */
   readonly scheduleCadence?: (scheduleId: string) => string | undefined;
+  readonly workflowPage?: boolean;
+  readonly viewer?: string;
   /**
    * Why a schedule will not start its next run, in words, by its identifier and the agent the run
    * is for ("Order refund can’t load", "no provider is connected"); empty when nothing holds it.
@@ -862,29 +1020,30 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
   // its identifier only when no title is loaded; never "An agent". Interborough's own bookkeeping
   // says "Interborough started" only of a tick it recorded after a restart, which is when that is
   // true (row 53l); any other is said by what it did.
+  const onWorkflowPage = instance && context.workflowPage === true;
+  const person = onWorkflowPage && row.origin.kind === 'person' ? row.origin : null;
+  const plugin = row.origin.kind === 'trigger' ? row.origin.plugin : null;
   const agent =
     row.origin.kind === 'system'
       ? tick?.whileStopped === true
         ? copy.interboroughStarted
         : null
-      : instance
-        ? // A failed instance gives the room to where and why it failed (rows 09r, 52i: "Schedule,
-          // Release notes digest, failed at step 2 of 4, …"); any other names its agent (53l).
-          row.agentName === null || row.status === 'failed'
+      : row.agentName !== null
+        ? // A failed instance gives the room to where and why it failed (rows 09r, 52i).
+          instance && row.status === 'failed'
           ? null
           : context.agentLabel(row.agentName)
-        : row.agentName !== null
-          ? context.agentLabel(row.agentName)
-          : row.origin.kind === 'trigger' && row.origin.plugin !== null
-            ? (context.pluginTitle?.(row.origin.plugin) ?? row.origin.plugin)
+        : plugin !== null
+          ? (context.pluginTitle?.(plugin) ?? plugin)
+          : instance
+            ? null
             : TASK_COPY.unknownAgent;
   // A run of a workflow file that nothing recorded an origin for is still a workflow's.
   const kind =
-    instance && row.origin.kind === 'none' ? copy.kinds.parent : copy.kinds[row.origin.kind];
+    (instance && row.origin.kind === 'none') || person !== null
+      ? copy.kinds.parent
+      : copy.kinds[row.origin.kind];
   const parts: string[] = [kind];
-  if (instance && row.scheduleName !== null && row.scheduleName !== undefined) {
-    parts.push(row.scheduleName);
-  }
   const scheduleId =
     row.origin.kind === 'schedule' ? (row.origin.scheduleId ?? workflow?.scheduleId ?? null) : null;
   // A schedule's run that is due says what holds its schedule first, then its agent and when it
@@ -894,16 +1053,25 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
     (row.status === 'working' || row.status === 'submitted') &&
     awaitingSignalOf(row) === null &&
     runStatusWord(row, context.now) === 'Scheduled';
+  const cadence =
+    (!instance || (onWorkflowPage && row.status === 'completed')) && !due && scheduleId !== null
+      ? context.scheduleCadence?.(scheduleId)
+      : undefined;
+  if (instance && !cadence && row.scheduleName != null) parts.push(row.scheduleName);
   if (due && scheduleId !== null) {
     for (const hold of context.scheduleHolds?.(scheduleId, row.agentName) ?? []) {
       parts.push(hold);
     }
   }
-  if (agent !== null) parts.push(agent);
-  // A schedule's chat run says when its schedule runs, after the agent: "Schedule, Assistant,
-  // every day at 3:00 AM, 14 s" (row 53l).
-  const cadence =
-    !instance && !due && scheduleId !== null ? context.scheduleCadence?.(scheduleId) : undefined;
+  if (person !== null) {
+    parts.push(
+      person.principal !== undefined && person.principal === context.viewer
+        ? copy.startedByViewer
+        : copy.kinds.person,
+    );
+  } else if (agent !== null) {
+    parts.push(agent);
+  }
   if (cadence !== undefined && cadence !== '') parts.push(cadence);
   if (row.attempt !== null) parts.push(copy.attempt(row.attempt.number, row.attempt.of));
   if (tick !== null) {
@@ -926,12 +1094,25 @@ export function runLineTwo(row: RunRow, context: RunLineContext): string {
       // Only a run that is running says its step (10h: "step 2 of 4, running 1 min 12 s"); one
       // waiting for a signal or for its time says what it waits for and nothing of its step.
       if (awaiting !== null) {
-        parts.push(copy.waitingForSignal(awaiting));
+        parts.push(
+          onWorkflowPage
+            ? copy.waitingForWorkflowSignal(awaiting)
+            : copy.waitingForSignal(awaiting),
+        );
+        if (onWorkflowPage && steps != null && reached !== null) {
+          parts.push(copy.stepOf(reached, steps.total));
+        }
+      } else if (queuedWorkflowInstance(row)) {
+        parts.push(copy.waitingForRunSlot);
       } else if (runStatusWord(row, context.now) === 'Scheduled' && row.dueAt != null) {
         parts.push(copy.dueAt(dueWords(row.dueAt, context.now, context.zone)));
       } else {
         if (steps !== null && steps !== undefined && reached !== null) {
           parts.push(copy.stepOf(reached, steps.total));
+        }
+        // The step it is on a second or later try of, and which try: "retrying charge-card, try 3".
+        if (row.retrying != null) {
+          parts.push(copy.retrying(row.retrying.label, row.retrying.attempt));
         }
         parts.push(copy.runningFor(durationWords(context.now - row.startedAt)));
       }

@@ -82,6 +82,7 @@ import { AGENT_IDENTIFIER_PATTERN } from './agent-file';
 import { NAMESPACED_IDENTIFIER_SOURCE, weftNameOf } from './namespaced-identifier';
 import { toScheduleSpec } from './schedule-spec';
 import { toWeftDocument, validateBureauWorkflowDocument } from './workflow-document-handlers';
+import { locateJsonProblem, type JsonProblem } from './workflow-json-syntax';
 import { inputSchemaIssues, workflowSchemaIssues } from './workflow-schema';
 
 /**
@@ -214,6 +215,8 @@ export type WorkflowFileIssue = WorkflowDocumentIssue;
 export interface WorkflowFileProblem {
   readonly code: WorkflowFileProblemCode;
   readonly message: string;
+  /** The first syntax error in readable JSON, independent of the host engine's error text. */
+  readonly syntax?: JsonProblem;
   /** Every failure found, for `invalid-document`. */
   readonly issues?: readonly WorkflowFileIssue[];
   /**
@@ -358,7 +361,11 @@ export interface WorkflowFileDefinition {
 
 export type ParsedWorkflowFile =
   | { readonly ok: true; readonly file: WorkflowFileContents }
-  | { readonly ok: false; readonly problem: WorkflowFileProblem };
+  | {
+      readonly ok: false;
+      readonly problem: WorkflowFileProblem;
+      readonly readableTrigger?: WorkflowFileTrigger;
+    };
 
 /**
  * Why `id` cannot be a workflow identifier, or `undefined` when it can: an owner file's bare stem,
@@ -639,11 +646,13 @@ export function parseWorkflowFile(
   try {
     value = JSON.parse(text);
   } catch (error) {
+    const syntax = locateJsonProblem(text);
     return {
       ok: false,
       problem: {
         code: 'invalid-json',
         message: `The file is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+        ...(syntax === null ? {} : { syntax }),
       },
     };
   }
@@ -725,8 +734,21 @@ export function parseWorkflowFile(
     issues.push(...scheduleInputIssues(document, written['trigger']));
   }
   if (issues.length > 0 || document === undefined) {
+    const trigger = written['trigger'];
+    let readableTrigger: WorkflowFileTrigger | undefined;
+    if (
+      isPlainObject(trigger) &&
+      !issues.some(({ path }) => path === 'trigger' || path.startsWith('trigger.'))
+    ) {
+      if (trigger['kind'] === 'signal' && typeof trigger['name'] === 'string') {
+        readableTrigger = { kind: 'signal', name: trigger['name'] };
+      } else if (trigger['kind'] === 'schedule' && typeof trigger['spec'] === 'string') {
+        readableTrigger = { kind: 'schedule', spec: trigger['spec'] };
+      }
+    }
     return {
       ok: false,
+      ...(readableTrigger === undefined ? {} : { readableTrigger }),
       problem: {
         code: 'invalid-document',
         message: `Invalid workflow file: ${issues
@@ -796,7 +818,8 @@ export type WorkflowFileErrorCode =
   | 'workflow-file-not-found'
   | 'workflow-file-exists'
   | 'workflow-file-changed'
-  | 'workflow-file-read-only';
+  | 'workflow-file-read-only'
+  | 'workflow-file-write-denied';
 
 /** A write or read of a workflow file that was refused. `problem` carries the detail, if any. */
 export class WorkflowFileError extends Error {

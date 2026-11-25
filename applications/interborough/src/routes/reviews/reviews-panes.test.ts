@@ -91,11 +91,10 @@ describe('an approval', () => {
       requestedAt: Date.now() - 1_000,
       approval: { ...toolApprovalFixture().approval, arguments: {} },
     });
-    const { container, findByRole, queryByRole } = open({ reviews: [approval] });
+    const { container, findByText } = open({ reviews: [approval] });
     await openFirst(container);
-    await findByRole('button', { name: 'Approve' });
-    expect(queryByRole('group', { name: 'Input' })).toBeNull();
-    expect(container.querySelector('.ib-tool__details')).toBeNull();
+    await findByText('This call was given no input.');
+    expect(container.querySelector('.cinder-payload-inspector')).toBeNull();
   });
 });
 
@@ -172,7 +171,8 @@ describe('a list that failed', () => {
         scopes: AUTHORIZATION_SCOPES,
       },
     } as never);
-    await findByText('The Bureau broke.');
+    // The stub says "Bureau"; the page reads "the server".
+    await findByText('The server broke.');
     failing = false;
     await fireEvent.click(await findByRole('button', { name: RETRY_LABEL }));
     await waitFor(() => expect(rows(container).length).toBe(1));

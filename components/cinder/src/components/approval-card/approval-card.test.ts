@@ -96,6 +96,7 @@ describe('ApprovalCard', () => {
     expect(approvalCardSchema.properties).toHaveProperty('operation');
     expect(approvalCardSchema.metadata?.unsupportedProps?.map((prop) => prop.name)).toEqual([
       'context',
+      'decisionReview',
       'onAskAgain',
       'onResolve',
     ]);
@@ -369,7 +370,7 @@ describe('ApprovalCard', () => {
     });
 
     await fireEvent.click(getByRole('button', { name: 'Add note' }));
-    await fireEvent.input(getByLabelText('Note'), {
+    await fireEvent.input(getByLabelText('Note Optional'), {
       target: { value: 'Outside the deployment window.' },
     });
     await fireEvent.click(
@@ -382,6 +383,19 @@ describe('ApprovalCard', () => {
       reason: 'Outside the deployment window.',
       remember: true,
     });
+  });
+
+  test('starts with a host-owned decision note when requested', () => {
+    const { getByLabelText } = render(ApprovalCard, {
+      ...approvalCardProps({
+        reason: 'Keep this review-specific note.',
+        noteInitiallyOpen: true,
+      }),
+    });
+
+    expect(requiredInstance(getByLabelText('Note Optional'), HTMLTextAreaElement).value).toBe(
+      'Keep this review-specific note.',
+    );
   });
 
   test('offers no Dismiss: Deny and Approve are the only decisions on screen', () => {
@@ -400,7 +414,7 @@ describe('ApprovalCard', () => {
     });
 
     await fireEvent.click(view.getByRole('button', { name: 'Add note' }));
-    await fireEvent.input(view.getByLabelText('Note'), {
+    await fireEvent.input(view.getByLabelText('Note Optional'), {
       target: { value: 'Applies only to the first approval.' },
     });
     await fireEvent.click(
@@ -415,9 +429,11 @@ describe('ApprovalCard', () => {
     });
 
     // A new request starts with the note closed and empty.
-    expect(view.queryByLabelText('Note')).toBeNull();
+    expect(view.queryByLabelText('Note Optional')).toBeNull();
     await fireEvent.click(view.getByRole('button', { name: 'Add note' }));
-    expect(requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement).value).toBe('');
+    expect(requiredInstance(view.getByLabelText('Note Optional'), HTMLTextAreaElement).value).toBe(
+      '',
+    );
     expect(
       requiredInstance(
         view.getByRole('checkbox', {
@@ -441,7 +457,7 @@ describe('ApprovalCard', () => {
     });
 
     await fireEvent.click(view.getByRole('button', { name: 'Add note' }));
-    await fireEvent.input(view.getByLabelText('Note'), {
+    await fireEvent.input(view.getByLabelText('Note Optional'), {
       target: { value: 'Still drafting this reason.' },
     });
     await fireEvent.click(
@@ -455,7 +471,7 @@ describe('ApprovalCard', () => {
       ...approvalCardProps({ onResolve, idempotencyKey: 'approval-one', snapshotId: 'snap-2' }),
     });
 
-    expect(requiredInstance(view.getByLabelText('Note'), HTMLTextAreaElement).value).toBe(
+    expect(requiredInstance(view.getByLabelText('Note Optional'), HTMLTextAreaElement).value).toBe(
       'Still drafting this reason.',
     );
     expect(
@@ -1210,7 +1226,9 @@ describe('ApprovalCard', () => {
 
       expect(
         getByText(
-          `No approval actions are available because this request is ${state.replaceAll('_', ' ')}.`,
+          `No approval actions are available because this request is ${
+            state === 'cancelled' ? 'canceled' : state.replaceAll('_', ' ')
+          }.`,
         ),
       ).toBeTruthy();
       expect(
@@ -1221,6 +1239,26 @@ describe('ApprovalCard', () => {
       expect(queryByRole('group', { name: 'Approval actions' })).toBeNull();
       unmount();
     }
+  });
+
+  test('renders cancelled terminal copy with American spelling', () => {
+    const { getByText } = render(ApprovalCard, {
+      ...approvalCardProps({ state: 'cancelled' }),
+    });
+
+    expect(getByText('Canceled')).toBeTruthy();
+    expect(
+      getByText('No approval actions are available because this request is canceled.'),
+    ).toBeTruthy();
+
+    const decision = render(ApprovalCard, {
+      ...approvalCardProps({ state: 'cancelled', layout: 'decision' }),
+    });
+    expect(
+      decision.getByRole('heading', {
+        name: /^Canceled before a decision:/,
+      }),
+    ).toBeTruthy();
   });
 });
 
@@ -1794,6 +1832,13 @@ describe('ApprovalCard row layout', () => {
     test(`the ${layout} layout keeps its note closed behind Add note, beside Deny, and focuses it on open`, async () => {
       const onResolve = mock((_resolution: unknown) => undefined);
       const view = render(ApprovalCard, { props: refundRow({ layout, onResolve }) });
+      const noteLabels = {
+        row: 'Note Optional',
+        card: 'Note Optional',
+        detail: 'Note (optional)',
+        decision: 'Note',
+      };
+      const noteLabel = noteLabels[layout];
 
       expect(view.queryByRole('textbox', { name: /note/i })).toBeNull();
       expect(view.container.textContent).not.toContain('(optional)');
@@ -1806,15 +1851,14 @@ describe('ApprovalCard row layout', () => {
 
       await fireEvent.click(toggle);
       await tick();
-      const label = layout === 'row' ? 'Note Optional' : 'Note';
-      const field = requiredInstance(view.getByLabelText(label), HTMLTextAreaElement);
+      const field = requiredInstance(view.getByLabelText(noteLabel), HTMLTextAreaElement);
       expect(document.activeElement).toBe(field);
       expect(view.queryByRole('button', { name: 'Add note' })).toBeNull();
 
       // A typed note keeps the field open through an unrelated re-render.
       await fireEvent.input(field, { target: { value: 'Check the carrier first.' } });
       await view.rerender({ ...refundRow({ layout, onResolve }), consequence: 'Sends it back' });
-      expect(requiredInstance(view.getByLabelText(label), HTMLTextAreaElement).value).toBe(
+      expect(requiredInstance(view.getByLabelText(noteLabel), HTMLTextAreaElement).value).toBe(
         'Check the carrier first.',
       );
     });
@@ -1982,6 +2026,63 @@ describe('ApprovalCard row layout', () => {
     expect(
       container.querySelector('.cinder-approval-card')?.getAttribute('data-cinder-state'),
     ).toBe('unavailable');
+  });
+
+  test('the decision layout keeps unavailable requester context distinct and puts its input before the reason', () => {
+    const reason =
+      "Release helper is unavailable, so this can't be answered now. It returns when the Demo plugin is enabled.";
+    const { container, getByText, queryByRole } = render(ApprovalCard, {
+      props: refundRow({
+        layout: 'decision',
+        question: 'Publish notes for 2.4?',
+        tool: { name: 'publish-notes', label: 'Publish notes', risk: 'medium' },
+        operation: { kind: 'other', argsPreview: { version: '2.4', changes: 12 } },
+        source: 'Release helper',
+        requestedAt: '2026-11-02T10:30:00.000Z',
+        consequence: undefined,
+        state: 'unavailable',
+        unavailableReason: reason,
+      }),
+    });
+
+    const card = requiredInstance(container.querySelector('.cinder-approval-card'), HTMLElement);
+    const asker = requiredInstance(
+      container.querySelector('.cinder-approval-card__asker'),
+      HTMLElement,
+    );
+    const source = requiredInstance(
+      asker.querySelector('.cinder-approval-card__asker-source'),
+      HTMLElement,
+    );
+    const time = requiredInstance(
+      asker.querySelector('.cinder-approval-card__asker-time'),
+      HTMLTimeElement,
+    );
+    const input = requiredInstance(
+      container.querySelector('.cinder-description-list'),
+      HTMLElement,
+    );
+    const unavailableReason = getByText(reason);
+
+    expect(card.getAttribute('data-cinder-layout')).toBe('decision');
+    expect(card.getAttribute('data-cinder-risk')).toBe('medium');
+    expect(source.textContent).toBe('Approval from Release helper');
+    expect(time.textContent).toBe('12 min ago');
+    expect(source.compareDocumentPosition(time) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(
+      input.compareDocumentPosition(unavailableReason) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(queryByRole('button')).toBeNull();
+  });
+
+  test('the decision layout omits a review control when its host supplies no delegate', () => {
+    const { queryByRole } = render(ApprovalCard, {
+      props: refundRow({ layout: 'decision' }),
+    });
+
+    expect(queryByRole('button', { name: 'Review in deck' })).toBeNull();
   });
 
   test('a denied approval stays as a neutral decision with who and when', () => {
@@ -2230,7 +2331,8 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         expect(getByRole('article').getAttribute('data-cinder-state')).toBe('pending');
 
         await fireEvent.click(getByRole('button', { name: 'Approve' }));
-        if (layout === 'row') {
+        if (layout === 'row' || layout === 'detail') {
+          expect(onResolve).not.toHaveBeenCalled();
           await fireEvent.click(getByRole('button', { name: /Press again to approve/i }));
         }
         expect(onResolve).toHaveBeenCalledWith({ decision: 'approve', remember: false });

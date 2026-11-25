@@ -403,7 +403,13 @@ function mountContext(
   signal: AbortSignal,
 ): OperationHandlerMountContext {
   const contextFor = (options: OperationHandlerMountDispatchOptions | undefined) =>
-    ({ principal, host, transport: options?.transport ?? 'http-rest', registry, signal }) as const;
+    ({
+      principal,
+      host,
+      transport: options?.transport ?? 'http-rest',
+      registry,
+      signal: options?.signal === undefined ? signal : AbortSignal.any([signal, options.signal]),
+    }) as const;
   return {
     principal,
     operations: registry.list(),

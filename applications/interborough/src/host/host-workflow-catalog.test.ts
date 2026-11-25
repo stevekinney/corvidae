@@ -26,7 +26,7 @@ import {
 import {
   deleteWorkflowFile,
   getWorkflowFile,
-  listWorkflowRevisions,
+  getWorkflowRevisionSummary,
   pauseWorkflowFile,
   signalWorkflows,
 } from '../lib/workflow-files.ts';
@@ -153,8 +153,9 @@ describe('the Workflows data, against the production composition', () => {
       status = run?.status ?? '';
     }
     expect(status).toBe('completed');
-    const revisions = await listWorkflowRevisions('approval', options);
+    const { revisions, savedVersionCount } = await getWorkflowRevisionSummary('approval', options);
     expect(revisions).toHaveLength(1);
+    expect(savedVersionCount).toBe(1);
   });
 
   test('a deleted file is not found while the engine still holds its source, and leaves the list', async () => {

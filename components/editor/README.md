@@ -1,6 +1,6 @@
 # @lostgradient/editor
 
-`@lostgradient/editor` is Cinder's [Svelte](https://svelte.dev/) Markdown editing, review, and diffing surface. It provides `MarkdownEditor` for [Milkdown](https://milkdown.dev/)- and [ProseMirror](https://prosemirror.net/)-based rich editing, `ReviewEditor` for threaded comments and export, and `DiffViewer` for word-level Markdown diffs. Keeping that machinery here means an application that only renders buttons and tables does not install an editing runtime for moral support.
+`@lostgradient/editor` is Cinder's [Svelte](https://svelte.dev/) Markdown editing, review, and diffing surface. It provides `MarkdownEditor` for [Milkdown](https://milkdown.dev/)- and [ProseMirror](https://prosemirror.net/)-based rich editing, `ReviewEditor` for threaded comments and export, `DiffViewer` for word-level Markdown diffs, and `DiffReview` and `DiffReviewComments` for aggregate diff review. Keeping that machinery here means an application that only renders buttons and tables does not install an editing runtime for moral support.
 
 ## Workspace usage
 
@@ -24,6 +24,8 @@ Import components by name. The root entry loads the required Cinder and editor s
 - `MarkdownEditor` provides rich Markdown editing.
 - `ReviewEditor` composes editing, threaded comments, front matter, and export.
 - `DiffViewer` provides Markdown diffs, front matter, and revert controls.
+- `DiffReview` provides aggregate single- and multi-target diff review: a file list with Reviewed checkboxes, the diff surface for the selected target, comment creation, a drafts inventory, and Markdown and JSON export.
+- `DiffReviewComments` provides a resolution-aware comments panel for a `DiffReviewState` session, usable standalone or inside `DiffReview`.
 
 All components, supported types, schemas, variables, and headless utilities are named exports from `@lostgradient/editor`.
 

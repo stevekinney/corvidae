@@ -16,11 +16,20 @@
     onvalidationErrorcount?: ((count: number) => void) | undefined;
     onEnumDraftsChange?: ((next: Record<string, Record<number, EnumDraft>>) => void) | undefined;
     onValueChange: (properties: Record<string, JsonSchemaValue>, required: string[]) => void;
+    /**
+     * Whether the list offers required names with no field of their own. The fields form leaves it
+     * out: there, Required is the table's own column and nothing else (row 65s).
+     */
+    requiredOnlyVisible?: boolean;
   };
 </script>
 
 <script lang="ts">
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
+  import Ellipsis from '@lucide/svelte/icons/ellipsis';
+  import Plus from '@lucide/svelte/icons/plus';
+  import Trash2 from '@lucide/svelte/icons/trash-2';
+  import { ArrowDown, ArrowUp } from '../icons/index.ts';
   import { onDestroy, tick } from 'svelte';
   import { classNames } from '../../utilities/class-names.ts';
   import Alert from '../alert/alert.svelte';
@@ -29,6 +38,7 @@
   import Chip from '../chip/chip.svelte';
   import { default as Badge } from '../badge/index.ts';
   import { default as Collapsible } from '../collapsible/index.ts';
+  import { default as Dropdown } from '../dropdown/index.ts';
   import { default as Table } from '../table/index.ts';
   import Input from '../input/input.svelte';
   import PropertyEditor from './property-editor.svelte';
@@ -47,6 +57,7 @@
     onvalidationErrorcount,
     onEnumDraftsChange,
     onValueChange,
+    requiredOnlyVisible = true,
   }: PropertyListProps = $props();
 
   const propertyNames = $derived(Object.keys(properties));
@@ -275,11 +286,41 @@
     expanded[key] = true;
   }
 
+  /** A JSON Schema type in the words a person reads in the Type column: "Text", "Date", "Number". */
+  const TYPE_WORDS: Readonly<Record<string, string>> = {
+    string: 'Text',
+    number: 'Number',
+    integer: 'Whole number',
+    boolean: 'Yes or no',
+    object: 'Object',
+    array: 'List',
+    null: 'Nothing',
+  };
+
+  /** The formats of a string a person names by what it holds. */
+  const FORMAT_WORDS: Readonly<Record<string, string>> = {
+    date: 'Date',
+    'date-time': 'Date and time',
+    time: 'Time',
+    email: 'Email address',
+    uri: 'Link',
+  };
+
+  function typeWord(type: string): string {
+    return Object.hasOwn(TYPE_WORDS, type) ? (TYPE_WORDS[type] ?? type) : type;
+  }
+
   function summariseType(schema: JsonSchemaValue): string {
-    if (typeof schema === 'boolean') return schema ? 'true' : 'false';
+    if (typeof schema === 'boolean') return schema ? 'Any value' : 'No value';
     const t = schema.type;
-    if (t === undefined && Array.isArray(schema.enum)) return 'enum';
-    const base = t === undefined ? 'any' : Array.isArray(t) ? t.join(' | ') : t;
+    if (t === undefined && Array.isArray(schema.enum)) return 'Choice';
+    const format = typeof schema.format === 'string' ? schema.format : undefined;
+    if (t === 'string' && format !== undefined && Object.hasOwn(FORMAT_WORDS, format)) {
+      return FORMAT_WORDS[format] ?? 'Text';
+    }
+    if (t === 'string' && Array.isArray(schema.enum)) return 'Choice';
+    const base =
+      t === undefined ? 'Any value' : Array.isArray(t) ? t.map(typeWord).join(' or ') : typeWord(t);
     // "of <items>" only makes sense when the schema is exclusively an array —
     // a multi-type schema like ['array', 'null'] isn't only an array, so
     // items don't describe every value it can hold.
@@ -287,7 +328,7 @@
       ? t.length === 1 && t[0] === 'array'
       : t === 'array';
     if (isExclusivelyArray) {
-      return `${base} of ${summariseType(schema.items ?? {})}`;
+      return `${base} of ${summariseType(schema.items ?? {}).toLocaleLowerCase()}`;
     }
     return base;
   }
@@ -335,10 +376,17 @@
     >
       <Table.Header class={classNames(depth > 0 && 'cinder-sr-only')}>
         <Table.Row>
-          <Table.HeaderCell>Property key</Table.HeaderCell>
-          <Table.HeaderCell>Type</Table.HeaderCell>
-          <Table.HeaderCell>Description</Table.HeaderCell>
-          <Table.HeaderCell><span class="cinder-sr-only">Actions</span></Table.HeaderCell>
+          <Table.HeaderCell>Field</Table.HeaderCell>
+          <Table.HeaderCell class="cinder-jse-property-table__type-heading">Type</Table.HeaderCell>
+          <Table.HeaderCell class="cinder-jse-property-table__description-heading"
+            >Description</Table.HeaderCell
+          >
+          <Table.HeaderCell class="cinder-jse-property-table__required-heading"
+            >Required</Table.HeaderCell
+          >
+          <Table.HeaderCell class="cinder-jse-property-table__actions-heading"
+            ><span class="cinder-sr-only">Actions</span></Table.HeaderCell
+          >
         </Table.Row>
       </Table.Header>
       <Table.Body>
@@ -389,6 +437,16 @@
                   </Badge>
                 {/if}
               </button>
+              <!-- In a narrow container the type and the description read under the field's name,
+                   where their own columns have no room (row 65s). -->
+              <span class="cinder-jse-property-row__key-meta">
+                <span class="cinder-jse-property-row__key-type"
+                  >{summariseType(propertySchema)}</span
+                >
+                {#if description !== ''}
+                  <span class="cinder-jse-property-row__key-description">{description}</span>
+                {/if}
+              </span>
             </Table.Cell>
             <Table.Cell class="cinder-jse-property-row__type">
               {summariseType(propertySchema)}
@@ -396,40 +454,84 @@
             <Table.Cell class="cinder-jse-property-row__description">
               {description}
             </Table.Cell>
-            <Table.Cell class="cinder-jse-property-row__actions">
+            <!-- Whether the field is required is its own column, under its own heading (row 65s). -->
+            <Table.Cell class="cinder-jse-property-row__required">
               <Checkbox
                 checked={isRequired}
                 disabled={readonly}
                 aria-label={key}
                 onValueChange={(next) => setRequired(key, next)}
               />
-              <Button
-                variant="ghost"
-                size="xs"
-                disabled={readonly || !canMoveProperty(index, -1)}
-                aria-label={`Move ${key} up`}
-                onclick={() => moveProperty(key, -1, index)}
-              >
-                ↑
-              </Button>
-              <Button
-                variant="ghost"
-                size="xs"
-                disabled={readonly || !canMoveProperty(index, 1)}
-                aria-label={`Move ${key} down`}
-                onclick={() => moveProperty(key, 1, index)}
-              >
-                ↓
-              </Button>
-              <Button
-                variant="ghost-danger"
-                size="xs"
-                disabled={readonly}
-                aria-label={`Delete ${key}`}
-                onclick={() => deleteProperty(key, index)}
-              >
-                Delete
-              </Button>
+            </Table.Cell>
+            <Table.Cell class="cinder-jse-property-row__actions">
+              <!-- A row keeps its own actions inside its box: wide, the icon buttons a sortable
+                   list's rows use (arrows to move, a trash can to delete); in a narrow container
+                   one icon menu that holds them (row 65s). The table never scrolls sideways to
+                   reach them. -->
+              <span class="cinder-jse-property-row__inline-actions">
+                <Button
+                  iconOnly
+                  variant="secondary"
+                  size="sm"
+                  disabled={readonly || !canMoveProperty(index, -1)}
+                  aria-label={`Move ${key} up`}
+                  onclick={() => moveProperty(key, -1, index)}
+                >
+                  <ArrowUp aria-hidden="true" />
+                </Button>
+                <Button
+                  iconOnly
+                  variant="secondary"
+                  size="sm"
+                  disabled={readonly || !canMoveProperty(index, 1)}
+                  aria-label={`Move ${key} down`}
+                  onclick={() => moveProperty(key, 1, index)}
+                >
+                  <ArrowDown aria-hidden="true" />
+                </Button>
+                <Button
+                  iconOnly
+                  variant="ghost"
+                  size="sm"
+                  disabled={readonly}
+                  aria-label={`Delete ${key}`}
+                  onclick={() => deleteProperty(key, index)}
+                >
+                  <Trash2 aria-hidden="true" />
+                </Button>
+              </span>
+              <span class="cinder-jse-property-row__menu">
+                <Dropdown id={`${idPrefix}-${key}-actions`} placement="bottom-end">
+                  <Dropdown.Trigger caretVisible={false} variant="ghost" size="xs">
+                    <Ellipsis aria-hidden="true" size={16} />
+                    <span class="cinder-sr-only">{`Actions for ${key}`}</span>
+                  </Dropdown.Trigger>
+                  <Dropdown.Menu>
+                    <Dropdown.Item
+                      disabled={readonly || !canMoveProperty(index, -1)}
+                      onclick={() => moveProperty(key, -1, index)}
+                    >
+                      <ArrowUp aria-hidden="true" size={14} />
+                      Move up
+                    </Dropdown.Item>
+                    <Dropdown.Item
+                      disabled={readonly || !canMoveProperty(index, 1)}
+                      onclick={() => moveProperty(key, 1, index)}
+                    >
+                      <ArrowDown aria-hidden="true" size={14} />
+                      Move down
+                    </Dropdown.Item>
+                    <Dropdown.Item
+                      variant="danger"
+                      disabled={readonly}
+                      onclick={() => deleteProperty(key, index)}
+                    >
+                      <Trash2 aria-hidden="true" size={14} />
+                      Delete
+                    </Dropdown.Item>
+                  </Dropdown.Menu>
+                </Dropdown>
+              </span>
             </Table.Cell>
           </Table.Row>
 
@@ -437,7 +539,7 @@
             <Table.Row class="cinder-jse-property-row__detail-row">
               <Table.Cell
                 id={panelId}
-                colspan={4}
+                colspan={5}
                 class="cinder-jse-property-row__detail-cell"
                 style={`--cinder-jse-property-depth: ${depth}`}
               >
@@ -473,12 +575,14 @@
   {/if}
 
   <span class="cinder-jse-property-list__add-property-reference" bind:this={addPropertyElement}>
+    <!-- Compact, with a leading plus, as every "Add a …" button on a builder page (row 65s). -->
     <Button variant="secondary" size="sm" disabled={readonly} onclick={addProperty}>
-      Add property
+      {#snippet leadingIcon()}<Plus aria-hidden="true" />{/snippet}
+      Add a field
     </Button>
   </span>
 
-  {#if !readonly || requiredOnly.length > 0}
+  {#if requiredOnlyVisible && (!readonly || requiredOnly.length > 0)}
     <Collapsible
       class="cinder-jse-required-only"
       trigger={`Required fields not yet defined (${requiredOnly.length})`}

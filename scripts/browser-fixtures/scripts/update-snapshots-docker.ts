@@ -115,10 +115,14 @@ export async function startRendererRun(
   const runDirectory = await createRunDirectory(`corvidae-baselines-${mode}-`);
   const outputDirectory = join(runDirectory, 'out');
   await mkdir(outputDirectory, { recursive: true });
+  const rawComponentScope = environmentConfiguration().cinderTestComponents;
+  const command = containerCommand(mode, options.forwarded, {
+    componentScope: rawComponentScope,
+    outputDirectory,
+  });
   const sourceArchive = join(runDirectory, 'source.tar');
   archiveCommit(sha, sourceArchive);
 
-  const rawComponentScope = environmentConfiguration().cinderTestComponents;
   const containerName = containerNameForRun();
   process.stdout.write(
     `Running ${mode} for ${sha} in ${containerName}. Host at start: ${describeHostLoad(loadAtStart)}.\n`,
@@ -132,7 +136,7 @@ export async function startRendererRun(
       cpus: Math.min(CONTAINER_CPUS, readDockerCpuCount() ?? CONTAINER_CPUS),
       imageTag,
       outputDirectory,
-      command: containerCommand(mode, options.forwarded),
+      command,
       environment: {
         BASELINE_SOURCE_SHA: sha,
         PLAYWRIGHT_JSON_OUTPUT_FILE: CONTAINER_RESULTS_PATH,

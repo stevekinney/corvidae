@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2615",
+  "branch": "steve/composable-consent-api-settings",
+  "checkedAt": "4a1c2e9effc3504b3ea094f8e466d1c36953efcb",
+  "briefVersion": "b534ea0a4fcd",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "The Velveteen mount tests exercise the catalog, protected MCP endpoint, metadata and issuer routes under a base path. The original page and unrelated well-known route still respond, and startup and shutdown each occur once."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Both pinned protocols return the required scope descriptions. The tests distinguish insufficient grantable scope from permanent policy denial and count zero tool calls in every denied case."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "The read and editor roles exercise lookup and rename through public and internal requests with hosted and external issuers. The external profile advertises its configured authority and leaves built-in consent routes unmounted."
+    }
+  ]
+}

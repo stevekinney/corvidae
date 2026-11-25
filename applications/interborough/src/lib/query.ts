@@ -153,10 +153,10 @@ export const queryKeys = {
     schedules: (type: string) => ['workflow-catalog', 'schedules', type] as const,
     /** A code-defined workflow's description and registered contract (`bureau.workflows.internal.get`). */
     codeSource: (type: string) => ['workflow-catalog', 'code-source', type] as const,
-    /** The steps of the newest version the Bureau saved of a file, for a file that cannot load (`bureau.workflows.history`). */
-    savedSteps: (type: string) => ['workflow-catalog', 'saved-steps', type] as const,
-    /** The versions of one agent-authored workflow that have run (`bureau.workflows.revisions`). */
+    /** The run revisions and total saved count for one workflow (`bureau.workflows.revisions`). */
     revisions: (type: string) => ['workflow-catalog', 'revisions', type] as const,
+    /** Every saved version of one workflow's file (`bureau.workflows.history`). */
+    savedVersions: (type: string) => ['workflow-catalog', 'saved-versions', type] as const,
   },
   /** The caller's goals (`bureau.goals.list`). */
   goals: {
@@ -298,6 +298,10 @@ export const queryKeys = {
     step: (taskId: string, step: number) => ['bureau-tasks', 'step', taskId, step] as const,
     /** One run's hook plan and the hooks that threw (`bureau.tasks.inspect`, COR-2115). */
     hooks: (taskId: string) => ['bureau-tasks', 'hooks', taskId] as const,
+    /** Why one failed run failed (`bureau.tasks.explain`, COR-2533), for an agent run or an instance. */
+    explanation: (runId: string) => ['bureau-tasks', 'explanation', runId] as const,
+    /** What a model wrote about why one failed agent run failed, when asked (COR-2534). */
+    modelExplanation: (runId: string) => ['bureau-tasks', 'model-explanation', runId] as const,
     /** How many runs are running now: working or not yet started, never waiting on a person. */
     running: () => ['bureau-tasks', 'running'] as const,
     /**
