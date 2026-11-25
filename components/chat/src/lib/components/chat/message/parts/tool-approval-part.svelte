@@ -1,5 +1,6 @@
 <script lang="ts" module>
-  import type { ApprovalResolution } from '@lostgradient/cinder';
+  import type { Snippet } from 'svelte';
+  import type { ApprovalCardProps, ApprovalResolution } from '@lostgradient/cinder';
   import type { ToolApprovalMessagePart } from '../../utilities/types.ts';
 
   export type ToolApprovalPartProps = {
@@ -11,7 +12,47 @@
     onApprovalResolve?:
       ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;
     /** Uses the compact actionable row when several approvals share one tool group. */
-    layout?: 'decision' | 'row';
+    layout?: 'decision' | 'row' | 'detail';
+    /** Host-specific card presentation, including an explicit in-flight progress state. */
+    appearance?: Partial<
+      Pick<
+        ApprovalCardProps,
+        | 'context'
+        | 'consequence'
+        | 'decidedAt'
+        | 'decidedBy'
+        | 'decisionNote'
+        | 'disabledReason'
+        | 'eyebrow'
+        | 'failure'
+        | 'footnote'
+        | 'headingLevel'
+        | 'inputLabel'
+        | 'idempotencyKey'
+        | 'expiresAt'
+        | 'noteInitiallyOpen'
+        | 'notice'
+        | 'operation'
+        | 'outcomeLabel'
+        | 'policyVersion'
+        | 'question'
+        | 'requestedAt'
+        | 'rememberScope'
+        | 'resolving'
+        | 'source'
+        | 'sourceHref'
+        | 'sourceIn'
+        | 'sourceInHref'
+        | 'sourcePrefix'
+        | 'tool'
+        | 'toolPrefix'
+        | 'view'
+      >
+    >;
+    /** Host content rendered above the shared approval's detail. */
+    context?: Snippet;
+    /** A host-owned note, retained while the approval is open. */
+    reason?: string;
     /** The reader's own word, for a decision the reader made. Default `you`. */
     youLabel?: string;
   };
@@ -19,18 +60,24 @@
 
 <script lang="ts">
   import { ApprovalCard } from '@lostgradient/cinder';
-  import type { ApprovalCardProps } from '@lostgradient/cinder';
 
   let {
     part,
     onApprovalResolve,
     onApprovalRequestAgain,
     layout = 'decision',
+    appearance,
+    context,
+    reason = $bindable(''),
     youLabel = 'you',
   }: ToolApprovalPartProps = $props();
 
+  // Ordinary Chat hides actions once it has sent an answer. A detail host that supplies the exact
+  // progress state keeps Cinder's disabled, labelled action mounted instead.
   const canResolve = $derived(
-    part.state === 'pending' && !part.resolutionInFlight && onApprovalResolve !== undefined,
+    part.state === 'pending' &&
+      onApprovalResolve !== undefined &&
+      (!part.resolutionInFlight || appearance?.resolving !== undefined),
   );
   // The host's word first, then the tool's own on the approval action: a host that knows better
   // can say so, while an action stored before these fields existed carries neither detail.
@@ -81,6 +128,9 @@
     if (part.action.snapshotId !== undefined) props.snapshotId = part.action.snapshotId;
     if (part.action.expiresAt !== undefined) props.expiresAt = part.action.expiresAt;
     if (part.action.editableArgs !== undefined) props.editableArgs = part.action.editableArgs;
+    if (context !== undefined) props.context = context;
+
+    Object.assign(props, appearance);
 
     return props;
   });
@@ -149,14 +199,15 @@
   });
 
   function resolveApproval(resolution: ApprovalResolution): void {
-    if (!canResolve) return;
+    if (!canResolve || part.resolutionInFlight) return;
     onApprovalResolve?.(part.toolCallId, resolution);
   }
 
   function handleKeydown(event: KeyboardEvent): void {
     // An armed irreversible press owns Escape: it reverts the arm and marks the key handled, so the
     // approval itself is not cancelled by the same keystroke.
-    if (event.key !== 'Escape' || !canResolve || event.defaultPrevented) return;
+    if (event.key !== 'Escape' || !canResolve || part.resolutionInFlight || event.defaultPrevented)
+      return;
     event.preventDefault();
     resolveApproval({ decision: 'cancel', remember: false });
   }
@@ -164,6 +215,7 @@
 
 <ApprovalCard
   {...cardProps}
+  bind:reason
   data-cinder-tool-approval
   tabindex={-1}
   onkeydown={handleKeydown}

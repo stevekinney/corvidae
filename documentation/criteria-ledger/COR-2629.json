@@ -1,24 +1,24 @@
 {
   "issue": "COR-2629",
-  "branch": "steve/composable-equipment-staging",
-  "checkedAt": "7963f26ded",
+  "branch": "steve/cor-2629-container-build",
+  "checkedAt": "c7dc38815a3db35519bd8cc9d4363b7efcb520d7",
   "briefVersion": "bfd32137ae20",
   "status": "BLOCKED",
   "criteria": [
     {
       "id": "AC1",
-      "status": "not-met",
-      "evidence": "Live revisions, callbacks and isolated data remain to be verified."
+      "status": "met-on-branch",
+      "evidence": "Catalog deployment 1ffe8b68-9f1b-4585-a450-97ba4a424923 and Armorer deployment 4d24e960-354e-41cf-9d21-5fe7f48cf0d2 are healthy at distinct public HTTPS origins with separate synthetic stores. Their Dex registrations use each service’s exact /auth/callback. The live handoff records the deployed source revisions."
     },
     {
       "id": "AC2",
       "status": "not-met",
-      "evidence": "Local discovery and 401 passed; real hosted reader and editor OAuth checks are pending."
+      "evidence": "Separate HTTP sessions per synthetic role completed both deployments. Reader lookup, refused rename and unchanged readback passed. Editor lookup, rename, readback and restore passed. The catalog repair ran in deployment 1ffe8b68-9f1b-4585-a450-97ba4a424923. The private-browser requirement is pending."
     },
     {
       "id": "AC3",
       "status": "not-met",
-      "evidence": "Live receipts, operator access and hosted client registration settings are pending."
+      "evidence": "Linear records the origins, deployment revisions, operator record names, protocol receipts, and hosted discovery for both services. ChatGPT displayed its CIMD callback. Claude selected its published identity. The actual Claude authorization redirect and private-browser role receipts remain open."
     }
   ]
 }

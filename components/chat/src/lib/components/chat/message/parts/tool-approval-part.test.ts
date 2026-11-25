@@ -297,12 +297,35 @@ describe('ToolApprovalPart', () => {
     });
   });
 
-  test('does not forward resolutions for in-flight or terminal cards', async () => {
+  test('hides default Chat actions while the resolution is in flight', async () => {
     const onApprovalResolve = mock(() => undefined);
-    const inFlight = render(ToolApprovalPart, {
+    const { container, queryByRole } = render(ToolApprovalPart, {
       props: { part: pendingPart({ resolutionInFlight: true }), onApprovalResolve },
     });
-    expect(inFlight.queryByRole('button', { name: 'Approve' })).toBeNull();
+
+    expect(queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(queryByRole('button', { name: 'Deny' })).toBeNull();
+    const card = container.querySelector('[data-cinder-tool-approval]');
+    card && (await fireEvent.keyDown(card, { key: 'Escape' }));
+    expect(onApprovalResolve).not.toHaveBeenCalled();
+  });
+
+  test('keeps detail Denying mounted but prevents a second dispatch while the resolution is in flight', async () => {
+    const onApprovalResolve = mock(() => undefined);
+    const inFlight = render(ToolApprovalPart, {
+      props: {
+        part: pendingPart({ resolutionInFlight: true }),
+        appearance: { resolving: 'deny' },
+        onApprovalResolve,
+      },
+    });
+    const denying = inFlight.getByRole('button', { name: 'Denying…' });
+    expect(denying.getAttribute('aria-busy')).toBe('true');
+    await fireEvent.click(denying);
+    expect(onApprovalResolve).not.toHaveBeenCalled();
+    const inFlightCard = inFlight.container.querySelector('[data-cinder-tool-approval]');
+    inFlightCard && (await fireEvent.keyDown(inFlightCard, { key: 'Escape' }));
+    expect(onApprovalResolve).not.toHaveBeenCalled();
     inFlight.unmount();
 
     const terminal = render(ToolApprovalPart, {
