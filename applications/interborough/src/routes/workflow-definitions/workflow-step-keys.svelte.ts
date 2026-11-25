@@ -127,8 +127,10 @@ export class StepKeys {
       const orderIndex = held.order.indexOf(key);
       // Deleted keys retain their place in order so adjacent steps can be restored in either order.
       const active = new Set(held.keys);
-      const index = held.order.slice(0, orderIndex).filter((entry) => active.has(entry)).length;
-      return { list: held.path, index, key, descendants };
+      const restoreIndex = held.order
+        .slice(0, orderIndex)
+        .filter((entry) => active.has(entry)).length;
+      return { list: held.path, index: restoreIndex, key, descendants };
     };
   }
 
