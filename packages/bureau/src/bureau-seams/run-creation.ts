@@ -216,8 +216,14 @@ export interface RunCreationPeers {
  * has nothing to drift from; the case only keeps the resolution union narrowed, and a run that did
  * reach it would be refused as recovery refuses it.
  */
-function ordinaryRunProvenance(origin: TaskOrigin, agentName: string, runId: string): string | null {
-  return !Object.hasOwn(origin, 'reviewedTool') && !agentName.startsWith('reviewed:') ? runId : null;
+function ordinaryRunProvenance(
+  origin: TaskOrigin,
+  agentName: string,
+  runId: string,
+): string | null {
+  return !Object.hasOwn(origin, 'reviewedTool') && !agentName.startsWith('reviewed:')
+    ? runId
+    : null;
 }
 
 function unresolvedStart(

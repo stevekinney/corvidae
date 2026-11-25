@@ -513,6 +513,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
     review: Extract<PendingReview, { kind: 'tool-approval' }>,
     input: ResolveReviewInput,
     result: unknown,
+    reviewed: boolean,
   ): Promise<ApprovalOutcomeNotWrittenError | undefined> {
     const sessionStore = runtime.sessionStore;
     if (!sessionStore) return undefined;
@@ -520,7 +521,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
     const refusal = input.decision === 'reject' ? 'Tool call rejected' : 'Tool call denied';
     const message = input.reason === undefined ? refusal : `${refusal}: ${input.reason}`;
     const decidedAtISO = runtimeServices.clock.nowISO();
-    const asked = askedOf(review);
+    const asked = reviewed ? undefined : askedOf(review);
     const outcome =
       input.decision === 'approve'
         ? await peers.scannedApprovedOutcome(review, result)
@@ -1071,8 +1072,8 @@ export function createReviewResolution<D extends AgentDefinitions>(
     }
   }
 
-  async function assertReviewProvenance(review: PendingReview): Promise<void> {
-    if (review.kind !== 'tool-approval') return;
+  async function assertReviewProvenance(review: PendingReview): Promise<boolean> {
+    if (review.kind !== 'tool-approval') return false;
     const provenance = await reviewedProvenanceOf(review, {
       task: (runId) => core.tasks.record(runId),
       session: async (sessionId) => runtime.sessionStore?.load(sessionId),
@@ -1084,6 +1085,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
     });
     if (provenance === 'unresolved')
       throw new BureauError('Review provenance is unavailable', 'NOT_FOUND');
+    return provenance === 'verified';
   }
 
   async function resolveReview(
@@ -1104,7 +1106,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
     if (!review) {
       const cleanup = reviewResolutionCleanupPending.get(input.id);
       if (cleanup) {
-        await assertReviewProvenance(cleanup.review);
+        const reviewed = await assertReviewProvenance(cleanup.review);
         await assertPolicyAllows(
           policyForDecision(cleanup.review, input, true),
           cleanup.review,
@@ -1188,6 +1190,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
                     ...decisionSurfaceField(cleanup.decisionSurface),
                   },
                   cleanup.result,
+                  reviewed,
                 )
               : undefined;
           await peers.recordReviewDecision(
@@ -1230,7 +1233,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
       throw new BureauError(`No pending review with id "${input.id}"`, 'NOT_FOUND');
     }
 
-    await assertReviewProvenance(review);
+    const reviewed = await assertReviewProvenance(review);
     const policy = policyForDecision(review, input);
     // COR-1920: nothing unsealed is digested or claimed.
     peers.refuseUnsealedSecrets(review, humanWaitDecisionPayload(input), input.decision);
@@ -1686,7 +1689,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
     // run starts from it. A resolution the policy gated again executed nothing.
     const outcomeNotWritten =
       review.kind === 'tool-approval' && !keepPending
-        ? await writeApprovalOutcomeToSession(review, input, result)
+        ? await writeApprovalOutcomeToSession(review, input, result, reviewed)
         : undefined;
 
     await peers.recordReviewDecision(review, input.decision, input.principal, input.reason, {

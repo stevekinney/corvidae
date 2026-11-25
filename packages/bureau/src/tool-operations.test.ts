@@ -120,7 +120,7 @@ describe('reviewedToolOperations', () => {
       version: '1.0.0',
       description: 'Adjust stock',
       input: z.strictObject({ intentId: z.string(), itemId: z.string() }),
-      metadata: { mutates: true },
+      metadata: { mutates: true, summary: 'Review {intentId}' },
       policy: approvalOnlyPolicy((context) => ({
         decision: 'approval',
         reason: `review ${(context.params as { intentId: string }).intentId}`,
@@ -660,19 +660,40 @@ describe('reviewedToolOperations', () => {
       const declined = bureau.reviews.list().find((item) => item.id !== review.id);
       if (!declined || declined.kind !== 'tool-approval')
         throw new Error('Missing declined review');
-      const denied = await rpc(
-        'bureau.reviews.resolve',
-        { id: declined.id, decision: 'deny', round: 0 },
-        'reviewer',
+      const reviewerClient = new Client({ name: 'reviewer-fixture', version: '1.0.0' });
+      await reviewerClient.connect(
+        new StreamableHTTPClientTransport(new URL('http://localhost/mcp'), {
+          fetch: (url, init) => {
+            const headers = new Headers(init?.headers);
+            headers.set('x-actor', 'reviewer');
+            return handler(new Request(url, { ...init, headers }));
+          },
+        }),
       );
-      expect(denied.result).toMatchObject({ receipt: 'applied' });
+      try {
+        const denied = await reviewerClient.callTool({
+          name: 'bureau.reviews.resolve',
+          arguments: { id: declined.id, decision: 'deny', round: 0 },
+        });
+        expect(denied.structuredContent).toMatchObject({ receipt: 'applied' });
+      } finally {
+        await reviewerClient.close();
+      }
       expect(calls).toEqual([signedArguments]);
+      const deniedResponse = await handler(
+        new Request(`http://localhost/ag-ui/threads/${declined.sessionId}/messages`),
+      );
+      const deniedMessages = await deniedResponse.text();
+      expect(deniedResponse.status).toBe(200);
+      expect(deniedMessages).toContain('"decision":"deny"');
+      expect(deniedMessages).not.toContain('private:');
       const completedResponse = await handler(
         new Request(`http://localhost/ag-ui/threads/${review.sessionId}/messages`),
       );
       const completedMessages = await completedResponse.text();
       expect(completedResponse.status).toBe(200);
       expect(completedMessages).toContain('itemId');
+      expect(completedMessages).toContain('"decision":"approve"');
       expect(completedMessages).not.toContain('private:');
       expect(completedMessages).not.toContain(review.approval.approvalToken!);
     } finally {
