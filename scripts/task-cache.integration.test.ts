@@ -1063,5 +1063,7 @@ test('the root package defines the preflight script the lock wrapper runs', asyn
   // `scripts/run-exclusively.ts` runs the same command before every heavy stage; the script keeps
   // it available on its own as `bun run preflight`.
   const manifest = await Bun.file(join(root, 'package.json')).json();
-  expect(manifest.scripts?.preflight).toBe('bun install --frozen-lockfile');
+  expect(manifest.scripts?.preflight).toBe(
+    'bun install --frozen-lockfile && bun scripts/check-installed-dependencies.ts',
+  );
 });

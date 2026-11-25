@@ -4,6 +4,8 @@ import { unzipSync } from 'fflate';
 
 import {
   CiEvidenceError,
+  ciEvidenceRequestKey,
+  type AutomaticPullRequestEvidenceRequest,
   type CiEvidenceObservation,
   type CiEvidenceProvider,
   type CiEvidenceRequest,
@@ -47,6 +49,7 @@ interface GitHubObject {
   runId?: unknown;
   attempt?: unknown;
   reports?: unknown;
+  testFiles?: unknown;
   testCases?: unknown;
 }
 
@@ -79,6 +82,7 @@ interface Receipt {
   attempt: number;
   jobs: Record<string, 'success' | 'not-applicable'>;
   reports?: Record<string, { reports: number; testCases: number }>;
+  testFiles?: string[];
 }
 
 const sha = (value: unknown): value is string =>
@@ -192,7 +196,9 @@ function parseReceipt(value: unknown): Receipt {
     throw new CiEvidenceError('CI evidence receipt has invalid fields');
   const names = Object.keys(receipt);
   if (
-    !names.every((name) => [...strings, 'runId', 'attempt', 'jobs', 'reports'].includes(name)) ||
+    !names.every((name) =>
+      [...strings, 'runId', 'attempt', 'jobs', 'reports', 'testFiles'].includes(name),
+    ) ||
     !['runId', 'attempt', 'jobs'].every((name) => Object.hasOwn(receipt, name))
   )
     throw new CiEvidenceError('CI evidence receipt has an invalid contract');
@@ -230,6 +236,16 @@ function parseReceipt(value: unknown): Receipt {
     })
   )
     throw new CiEvidenceError('CI evidence receipt has invalid report summaries');
+  if (
+    receipt.testFiles !== undefined &&
+    (!Array.isArray(receipt.testFiles) ||
+      receipt.testFiles.length === 0 ||
+      !receipt.testFiles.every(
+        (path) => typeof path === 'string' && /^[A-Za-z0-9_./-]+\.test\.ts$/.test(path),
+      ) ||
+      new Set(receipt.testFiles).size !== receipt.testFiles.length)
+  )
+    throw new CiEvidenceError('CI evidence receipt has invalid observed test inventory');
   return receipt as unknown as Receipt;
 }
 
@@ -364,155 +380,241 @@ export function createGitHubCiEvidenceProvider(
   const git = options.git ?? defaultGit(options.cwd ?? process.cwd());
   const transport = createGitHubEvidenceTransport(options.repository, raw, options.cwd);
   const dispatchRef = options.dispatchRef;
+  const findRuns = async (request: CiEvidenceRequest): Promise<CiEvidenceObservation[]> => {
+    if (request.repository !== options.repository)
+      throw new CiEvidenceError('CI evidence request repository differs from provider');
+    const candidates = pages(
+      raw,
+      request.repository,
+      `actions/workflows/${workflowFile(request.workflowPath)}/runs?event=${encodeURIComponent(request.event)}&head_sha=${request.candidate}`,
+      'workflow_runs',
+    ).filter(
+      (run) =>
+        text(run.event) === request.event &&
+        text(run.head_sha) === request.candidate &&
+        text(run.path) === request.workflowPath &&
+        (request.event === 'workflow_dispatch'
+          ? text(run.display_title) === `P07 ${request.requestKey}` &&
+            (text(run.name) === request.workflow || text(run.name) === text(run.display_title))
+          : text(run.name) === request.workflow) &&
+        (request.event === 'pull_request'
+          ? pullRequestIdentity(run)?.head === request.candidate &&
+            pullRequestIdentity(run)?.base === request.base
+          : true),
+    );
+    return candidates.map((run): CiEvidenceObservation => {
+      const id = integer(run.id);
+      const attempt = integer(run.run_attempt);
+      if (id === undefined || id < 1 || attempt === undefined || attempt < 1)
+        throw new CiEvidenceError('authenticated CI run has invalid identity');
+      const runDetail = transport.run(id);
+      if (
+        runDetail.repository !== request.repository ||
+        runDetail.revision !== request.candidate ||
+        runDetail.workflow !== request.workflow ||
+        runDetail.workflowPath !== request.workflowPath ||
+        runDetail.event !== request.event ||
+        runDetail.attempt !== attempt
+      )
+        throw new CiEvidenceError('authenticated CI run details changed during collection');
+      if (runDetail.status !== 'completed') return { state: 'pending', id, attempt };
+      if (runDetail.conclusion === 'cancelled') return { state: 'canceled', id, attempt };
+      if (runDetail.conclusion !== 'success') return { state: 'failed', id, attempt };
+      const metadata = transport.artifact(id, `ci-evidence-receipt-${attempt}`);
+      if (!metadata.present || metadata.expired || metadata.id === undefined)
+        throw new CiEvidenceError('authenticated CI run has no usable receipt artifact');
+      if (
+        metadata.sizeBytes === undefined ||
+        metadata.sizeBytes < 1 ||
+        metadata.sizeBytes > MAX_RECEIPT_BYTES
+      )
+        throw new CiEvidenceError('authenticated CI receipt exceeds its declared size bound');
+      const archive = transport.downloadArtifact?.(metadata.id);
+      if (archive === undefined) throw new CiEvidenceError('CI receipt download is unavailable');
+      const receipt = readReceipt(archive, metadata.digest);
+      if (
+        receipt.repository !== request.repository ||
+        receipt.event !== request.event ||
+        receipt.workflowPath !== request.workflowPath ||
+        receipt.workflowRevision !== request.workflowRevision ||
+        (request.event === 'workflow_dispatch'
+          ? receipt.requestKey !== request.requestKey
+          : receipt.requestKey !== '') ||
+        receipt.planDigest !== request.verificationPlanDigest ||
+        receipt.base !== request.base ||
+        receipt.candidate !== request.candidate ||
+        receipt.runId !== id ||
+        receipt.attempt !== attempt ||
+        !bindsCheckout(request, receipt, git, raw)
+      )
+        throw new CiEvidenceError('authenticated CI receipt does not bind the requested candidate');
+      const currentJobs = pages(
+        raw,
+        request.repository,
+        `actions/runs/${id}/attempts/${attempt}/jobs`,
+        'jobs',
+      );
+      const aggregate = currentJobs.filter((job) => text(job.name) === 'Evidence aggregate');
+      if (
+        aggregate.length !== 1 ||
+        text(aggregate[0]?.status) !== 'completed' ||
+        text(aggregate[0]?.conclusion) !== 'success'
+      )
+        throw new CiEvidenceError(
+          'authenticated CI Evidence aggregate did not complete successfully',
+        );
+      const jobRecords = completedJobs(raw, request, id, attempt, currentJobs);
+      const jobs = jobRecords.map((job) => text(job.name)).filter(Boolean);
+      if (jobs.length === 0 || new Set(jobs).size !== jobs.length)
+        throw new CiEvidenceError('authenticated CI run has invalid job inventory');
+      const maySkipBrowser = request.event === 'pull_request';
+      if (
+        jobRecords.some(
+          (job) =>
+            text(job.status) !== 'completed' ||
+            (text(job.conclusion) !== 'success' &&
+              !(
+                maySkipBrowser &&
+                text(job.name).startsWith('Browser suites / ') &&
+                text(job.conclusion) === 'skipped'
+              )),
+        )
+      )
+        throw new CiEvidenceError(
+          'authenticated CI run contains a required job without a successful conclusion',
+        );
+      if (
+        Object.entries(receipt.jobs).some(
+          ([name, status]) => status !== 'success' && !(maySkipBrowser && name === 'browser'),
+        )
+      )
+        throw new CiEvidenceError('CI receipt declares a required job not successful');
+      if (maySkipBrowser) {
+        const browserJobs = jobRecords.filter((job) =>
+          text(job.name).startsWith('Browser suites / '),
+        );
+        const browser = receipt.jobs['browser'];
+        const actualSuccess = browserJobs.some((job) => text(job.conclusion) === 'success');
+        if (
+          browserJobs.length === 0 ||
+          (browser !== 'success' && browser !== 'not-applicable') ||
+          (browser === 'success') !== actualSuccess
+        )
+          throw new CiEvidenceError('CI browser receipt disagrees with authenticated jobs');
+      }
+      const evidenceRun: CiEvidenceRun = {
+        id,
+        repository: request.repository,
+        head: request.candidate,
+        base: request.base,
+        integrationTree: receipt.checkedTree,
+        event: request.event,
+        workflow: request.workflow,
+        workflowPath: request.workflowPath,
+        workflowRevision: receipt.workflowRevision,
+        verificationPlanDigest: receipt.planDigest,
+        requestKey: request.requestKey,
+        receiptRequestKey: receipt.requestKey,
+        checkedRevision: receipt.checkedRevision,
+        checkedTree: receipt.checkedTree,
+        receiptJobs: receipt.jobs,
+        ...(receipt.reports === undefined ? {} : { receiptReports: receipt.reports }),
+        ...(receipt.testFiles === undefined ? {} : { receiptTestFiles: receipt.testFiles }),
+        attempt,
+        jobs: jobRecords
+          .filter((job) => text(job.conclusion) === 'success')
+          .map((job) => text(job.name)),
+      };
+      return evidenceRun;
+    });
+  };
   return {
-    async findRuns(request) {
+    findRuns,
+    async findAutomaticPullRequestRuns(
+      request: AutomaticPullRequestEvidenceRequest,
+    ): Promise<CiEvidenceRun[]> {
       if (request.repository !== options.repository)
         throw new CiEvidenceError('CI evidence request repository differs from provider');
       const candidates = pages(
         raw,
         request.repository,
-        `actions/workflows/${workflowFile(request.workflowPath)}/runs?event=${encodeURIComponent(request.event)}&head_sha=${request.candidate}`,
+        `actions/workflows/${workflowFile(request.workflowPath)}/runs?event=pull_request&head_sha=${request.candidate}`,
         'workflow_runs',
       ).filter(
         (run) =>
-          text(run.event) === request.event &&
+          text(run.event) === 'pull_request' &&
           text(run.head_sha) === request.candidate &&
           text(run.path) === request.workflowPath &&
-          (request.event === 'workflow_dispatch'
-            ? text(run.display_title) === `P07 ${request.requestKey}` &&
-              (text(run.name) === request.workflow || text(run.name) === text(run.display_title))
-            : text(run.name) === request.workflow) &&
-          (request.event === 'pull_request'
-            ? pullRequestIdentity(run)?.head === request.candidate &&
-              pullRequestIdentity(run)?.base === request.base
-            : true),
+          text(run.name) === request.workflow &&
+          pullRequestIdentity(run)?.head === request.candidate &&
+          pullRequestIdentity(run)?.base === request.base,
       );
-      return candidates.map((run): CiEvidenceObservation => {
-        const id = integer(run.id);
-        const attempt = integer(run.run_attempt);
+      const runs = new Map<number, CiEvidenceRun>();
+      for (const candidate of candidates) {
+        const id = integer(candidate.id);
+        const attempt = integer(candidate.run_attempt);
         if (id === undefined || id < 1 || attempt === undefined || attempt < 1)
           throw new CiEvidenceError('authenticated CI run has invalid identity');
-        const runDetail = transport.run(id);
+        const detail = transport.run(id);
         if (
-          runDetail.repository !== request.repository ||
-          runDetail.revision !== request.candidate ||
-          runDetail.workflow !== request.workflow ||
-          runDetail.workflowPath !== request.workflowPath ||
-          runDetail.event !== request.event ||
-          runDetail.attempt !== attempt
+          detail.repository !== request.repository ||
+          detail.revision !== request.candidate ||
+          detail.workflow !== request.workflow ||
+          detail.workflowPath !== request.workflowPath ||
+          detail.event !== 'pull_request' ||
+          detail.attempt !== attempt ||
+          detail.status !== 'completed' ||
+          detail.conclusion !== 'success'
         )
-          throw new CiEvidenceError('authenticated CI run details changed during collection');
-        if (runDetail.status !== 'completed') return { state: 'pending', id, attempt };
-        if (runDetail.conclusion === 'cancelled') return { state: 'canceled', id, attempt };
-        if (runDetail.conclusion !== 'success') return { state: 'failed', id, attempt };
+          continue;
         const metadata = transport.artifact(id, `ci-evidence-receipt-${attempt}`);
-        if (!metadata.present || metadata.expired || metadata.id === undefined)
-          throw new CiEvidenceError('authenticated CI run has no usable receipt artifact');
         if (
+          !metadata.present ||
+          metadata.expired ||
+          metadata.id === undefined ||
           metadata.sizeBytes === undefined ||
           metadata.sizeBytes < 1 ||
           metadata.sizeBytes > MAX_RECEIPT_BYTES
         )
-          throw new CiEvidenceError('authenticated CI receipt exceeds its declared size bound');
+          continue;
         const archive = transport.downloadArtifact?.(metadata.id);
-        if (archive === undefined) throw new CiEvidenceError('CI receipt download is unavailable');
-        const receipt = readReceipt(archive, metadata.digest);
+        if (archive === undefined) continue;
+        let receipt: Receipt;
+        try {
+          receipt = readReceipt(archive, metadata.digest);
+        } catch {
+          continue;
+        }
+        const identityInput = {
+          repository: request.repository,
+          resource: request.resource,
+          base: request.base,
+          candidate: request.candidate,
+          integrationTree: request.integrationTree,
+          verificationPlanDigest: receipt.planDigest,
+          workflow: request.workflow,
+          workflowPath: request.workflowPath,
+          workflowRevision: receipt.workflowRevision,
+          event: 'pull_request' as const,
+        };
+        const identity = { ...identityInput, requestKey: ciEvidenceRequestKey(identityInput) };
         if (
           receipt.repository !== request.repository ||
-          receipt.event !== request.event ||
+          receipt.event !== 'pull_request' ||
           receipt.workflowPath !== request.workflowPath ||
-          receipt.workflowRevision !== request.workflowRevision ||
-          (request.event === 'workflow_dispatch'
-            ? receipt.requestKey !== request.requestKey
-            : receipt.requestKey !== '') ||
-          receipt.planDigest !== request.verificationPlanDigest ||
+          receipt.requestKey !== '' ||
           receipt.base !== request.base ||
           receipt.candidate !== request.candidate ||
           receipt.runId !== id ||
           receipt.attempt !== attempt ||
-          !bindsCheckout(request, receipt, git, raw)
+          !bindsCheckout(identity, receipt, git, raw)
         )
-          throw new CiEvidenceError(
-            'authenticated CI receipt does not bind the requested candidate',
-          );
-        const currentJobs = pages(
-          raw,
-          request.repository,
-          `actions/runs/${id}/attempts/${attempt}/jobs`,
-          'jobs',
-        );
-        const aggregate = currentJobs.filter((job) => text(job.name) === 'Evidence aggregate');
-        if (
-          aggregate.length !== 1 ||
-          text(aggregate[0]?.status) !== 'completed' ||
-          text(aggregate[0]?.conclusion) !== 'success'
-        )
-          throw new CiEvidenceError(
-            'authenticated CI Evidence aggregate did not complete successfully',
-          );
-        const jobRecords = completedJobs(raw, request, id, attempt, currentJobs);
-        const jobs = jobRecords.map((job) => text(job.name)).filter(Boolean);
-        if (jobs.length === 0 || new Set(jobs).size !== jobs.length)
-          throw new CiEvidenceError('authenticated CI run has invalid job inventory');
-        const maySkipBrowser = request.event === 'pull_request';
-        if (
-          jobRecords.some(
-            (job) =>
-              text(job.status) !== 'completed' ||
-              (text(job.conclusion) !== 'success' &&
-                !(
-                  maySkipBrowser &&
-                  text(job.name).startsWith('Browser suites / ') &&
-                  text(job.conclusion) === 'skipped'
-                )),
-          )
-        )
-          throw new CiEvidenceError(
-            'authenticated CI run contains a required job without a successful conclusion',
-          );
-        if (
-          Object.entries(receipt.jobs).some(
-            ([name, status]) => status !== 'success' && !(maySkipBrowser && name === 'browser'),
-          )
-        )
-          throw new CiEvidenceError('CI receipt declares a required job not successful');
-        if (maySkipBrowser) {
-          const browserJobs = jobRecords.filter((job) =>
-            text(job.name).startsWith('Browser suites / '),
-          );
-          const browser = receipt.jobs['browser'];
-          const actualSuccess = browserJobs.some((job) => text(job.conclusion) === 'success');
-          if (
-            browserJobs.length === 0 ||
-            (browser !== 'success' && browser !== 'not-applicable') ||
-            (browser === 'success') !== actualSuccess
-          )
-            throw new CiEvidenceError('CI browser receipt disagrees with authenticated jobs');
+          continue;
+        for (const observed of await findRuns(identity)) {
+          if (!('state' in observed)) runs.set(observed.id, observed);
         }
-        const evidenceRun: CiEvidenceRun = {
-          id,
-          repository: request.repository,
-          head: request.candidate,
-          base: request.base,
-          integrationTree: receipt.checkedTree,
-          event: request.event,
-          workflow: request.workflow,
-          workflowPath: request.workflowPath,
-          workflowRevision: receipt.workflowRevision,
-          verificationPlanDigest: receipt.planDigest,
-          requestKey: request.requestKey,
-          receiptRequestKey: receipt.requestKey,
-          checkedRevision: receipt.checkedRevision,
-          checkedTree: receipt.checkedTree,
-          receiptJobs: receipt.jobs,
-          ...(receipt.reports === undefined ? {} : { receiptReports: receipt.reports }),
-          attempt,
-          jobs: jobRecords
-            .filter((job) => text(job.conclusion) === 'success')
-            .map((job) => text(job.name)),
-        };
-        return evidenceRun;
-      });
+      }
+      return [...runs.values()];
     },
     async dispatch(request) {
       if (dispatchRef === undefined || !/^[A-Za-z0-9._/-]+$/.test(dispatchRef))

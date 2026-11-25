@@ -9,22 +9,22 @@ import { MANIFEST_PATH, manifestSlugs } from './evidence-plan.ts';
 import { landingPlan } from './landing-plan.ts';
 import type { Runner } from './process-runner.ts';
 import {
-  buildCommand,
   fitUnitLanes,
   inputsFromPlan,
   OVERSIZE_RULE,
-  run,
-  UsageError,
   WHOLE_SUITE_FILE_LIMIT,
   WORKSPACE,
   type TargetedDependencies,
-} from './targeted-run.ts';
+} from './targeted-inputs.ts';
+import { buildCommand, run, UsageError } from './targeted-run.ts';
 import {
   computeEvidencePlan,
   type EvidenceContext,
   type EvidencePlan,
   type UnitSelection,
 } from './verification-plan.ts';
+
+const head = 'a'.repeat(40);
 
 const known = new Set(['approval-card', 'description-list', 'terminal']);
 
@@ -82,7 +82,10 @@ function fake(
       const listed = command.includes('--diff-filter=d') ? changed : [...changed, ...deleted];
       return { code: 0, stdout: `${listed.join('\n')}\n`, stderr: '' };
     }
-    if (command[1] === 'rev-parse') return { code: 0, stdout: 'chef/x\n', stderr: '' };
+    if (command[1] === 'rev-parse')
+      return { code: 0, stdout: command.includes('--verify') ? head : 'chef/x\n', stderr: '' };
+    if (command[1] === 'ls-remote')
+      return { code: 0, stdout: `${head}\t${command.at(-1)}`, stderr: '' };
     return { code: 0, stdout: '', stderr: '' };
   };
   return {
@@ -379,16 +382,42 @@ describe('run', () => {
     expect(parsed.command.join(' ')).not.toContain('plan_digest');
   });
 
-  test('passes the digest of the plan over the diff with every status, deletions included', () => {
+  test('a deleted protected golden dispatches the full workflow with no targeted digest', () => {
     const golden = 'packages/bureau/src/http/__fixtures__/wire-golden/local.openrpc.json';
     const { dependencies } = fake(['scripts/chef/a.ts'], [], [golden]);
     const command = run(['--dry-run', '--json'], dependencies).output;
-    expect(JSON.parse(command).command).toContain(
-      `plan_digest=${landingPlan(['scripts/chef/a.ts', golden]).digest}`,
-    );
+    expect(JSON.parse(command).command).toEqual([
+      'gh',
+      'workflow',
+      'run',
+      'main.yml',
+      '--ref',
+      'chef/x',
+    ]);
+    expect(JSON.parse(command).command.join(' ')).not.toContain('plan_digest');
     expect(landingPlan(['scripts/chef/a.ts', golden]).digest).not.toBe(
       landingPlan(['scripts/chef/a.ts']).digest,
     );
+  });
+
+  test('a deleted ordinary test stays targeted while a mixed deletion takes the widest tier', () => {
+    const deletedTest = 'packages/bureau/src/removed.test.ts';
+    const targeted = JSON.parse(
+      run(['--dry-run', '--json'], fake([], [], [deletedTest]).dependencies).output,
+    );
+    expect(targeted.requiresFullRun).toBe(false);
+    expect(targeted.inputs.unitLanes).toEqual([]);
+
+    const protectedGolden = 'packages/bureau/src/http/__fixtures__/wire-golden/local.openrpc.json';
+    const mixed = JSON.parse(
+      run(
+        ['--dry-run', '--json'],
+        fake(['packages/bureau/src/kept.test.ts'], [], [protectedGolden]).dependencies,
+      ).output,
+    );
+    expect(mixed.requiresFullRun).toBe(true);
+    expect(mixed.command).toContain('main.yml');
+    expect(mixed.command.join(' ')).not.toContain('plan_digest');
   });
 
   test('--json with no inputs prints { ref, inputs, command, requiresFullRun } from the plan', () => {
@@ -417,10 +446,8 @@ describe('run', () => {
       expect(text).toContain("'main.yml'");
       expect(text).toContain('Dispatching main.yml');
       expect(text).toContain('requires_full_run: true');
-      run(['--ref', 'b'], dependencies);
-      expect(calls.filter((call) => call[0] === 'gh')).toEqual([
-        ['gh', 'workflow', 'run', 'main.yml', '--ref', 'b'],
-      ]);
+      expect(() => run(['--ref', 'b'], dependencies)).toThrow('coordinator decision');
+      expect(calls.filter((call) => call[0] === 'gh')).toEqual([]);
     }
   });
 
@@ -458,14 +485,14 @@ describe('run', () => {
     expect(json.requiresFullRun).toBe(true);
     // No diff, no manifest and no git: a bound run is planned by its request, not by this script.
     expect(calls).toEqual([]);
-    run(bound, dependencies);
-    expect(calls.filter((call) => call[0] === 'gh')).toHaveLength(1);
+    expect(() => run(bound, dependencies)).toThrow('delivery-request.ts prepare');
+    expect(calls).toEqual([]);
   });
 
   test('a delivery binding is refused when partial, malformed, refless or mixed with a selection', () => {
     const { dependencies, calls } = fake(['a.ts']);
     const request = ['--verification-request', 'a'.repeat(64)];
-    expect(() => run(['--ref', 'b', ...request], dependencies)).toThrow('go together');
+    expect(() => run(['--dry-run', '--ref', 'b', ...request], dependencies)).toThrow('go together');
     const all = [
       ...request,
       '--verification-plan',
@@ -473,13 +500,14 @@ describe('run', () => {
       '--verification-base',
       'c'.repeat(40),
     ];
-    expect(() => run(all, dependencies)).toThrow('needs --ref');
+    expect(() => run(['--dry-run', ...all], dependencies)).toThrow('needs --ref');
     expect(() =>
-      run(['--ref', 'b', ...all, '--e2e-spec', 'tests/e2e/x.spec.ts'], dependencies),
+      run(['--dry-run', '--ref', 'b', ...all, '--e2e-spec', 'tests/e2e/x.spec.ts'], dependencies),
     ).toThrow('--e2e-spec');
     expect(() =>
       run(
         [
+          '--dry-run',
           '--ref',
           'b',
           '--verification-request',
@@ -541,9 +569,21 @@ describe('run', () => {
     expect(result.output).toContain('packages/operative/src/durable/types.ts: persisted record');
   });
 
-  test('dispatches once unless it is a dry run', () => {
+  test('dispatches an explicit named required check on its pinned head', () => {
     const { dependencies, calls } = fake([]);
-    run(['--ref', 'b', '--fixture-components', 'approval-card'], dependencies);
+    run(
+      [
+        '--ref',
+        'b',
+        '--fixture-components',
+        'approval-card',
+        '--required-check',
+        'COR-2652:AC1',
+        '--head',
+        head,
+      ],
+      dependencies,
+    );
     expect(calls.filter((call) => call[0] === 'gh')).toEqual([
       [
         'gh',
@@ -554,6 +594,8 @@ describe('run', () => {
         'b',
         '-f',
         'fixture_components=approval-card',
+        '-f',
+        `chef_candidate=${head}`,
       ],
     ]);
   });
@@ -609,9 +651,11 @@ describe('run', () => {
 
   test('dispatches with no input when the diff reaches no browser or unit file, for the lint and type-check job', () => {
     const { dependencies, calls } = fake(['packages/bureau/src/table-cell.ts']);
-    const result = run(['--ref', 'b'], dependencies);
+    const result = run(['--ref', 'b', '--dry-run'], dependencies);
     expect(result.output).toContain('only lint and type-check');
-    expect(calls.filter((call) => call[0] === 'gh')).toEqual([
+    const planned = JSON.parse(run(['--ref', 'b', '--dry-run', '--json'], dependencies).output);
+    expect(calls.filter((call) => call[0] === 'gh')).toEqual([]);
+    expect([planned.command]).toEqual([
       [
         'gh',
         'workflow',
@@ -693,6 +737,12 @@ describe('the workflow and the manifest', () => {
     expect(job).toContain('fail-fast: false');
     expect(job).toContain(
       'bun scripts/chef/ci-replay.ts run -- bash scripts/chef/targeted-unit.sh',
+    );
+    expect(job).toContain(
+      "bunx playwright install --with-deps chromium\n        if: ${{ matrix.lane.workspace == 'scripts/browser-fixtures' }}",
+    );
+    expect(job.indexOf('playwright install --with-deps chromium')).toBeLessThan(
+      job.indexOf('bash scripts/chef/targeted-unit.sh'),
     );
     const script = await Bun.file(new URL('./targeted-unit.sh', import.meta.url)).text();
     expect(script).toContain('reporter=(--reporter=junit');
