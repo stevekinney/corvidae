@@ -28,7 +28,7 @@ import {
 } from '../serialization';
 import type { SignedPendingToolApproval } from 'armorer';
 import { detachBestEffortPromise } from '../bureau-construction-support';
-import { isPlainAuthorityRecord } from '../session-authority';
+import { isPlainAuthorityRecord, resolveSessionOwner } from '../session-authority';
 import { isTerminalApprovalBindingError } from '../recovered-run-classification';
 import { ownEntry } from '../own-entry';
 import { resolveCancelDurableRun, resolveWaitForDurableRun } from '../durable-run-waits';
@@ -344,16 +344,18 @@ export function createRunOperations<D extends AgentDefinitions>(
       task.contextId === sessionId &&
       task.origin &&
       isTaskOrigin(task.origin) &&
-      task.origin.kind === 'chat' &&
       !Object.hasOwn(task.origin, 'reviewedTool') &&
-      task.origin.contextId === sessionId &&
-      task.origin.agentName === task.agentName &&
-      !task.agentName?.startsWith('reviewed:')
+      typeof task.agentName === 'string' &&
+      !task.agentName.startsWith('reviewed:') &&
+      (task.origin.kind !== 'chat' ||
+        (task.origin.contextId === sessionId && task.origin.agentName === task.agentName))
     ) {
       await runtime.sessionStore.update(sessionId, (session) => {
         if (
           !session ||
           session.incarnation !== task.incarnation ||
+          session.agentName !== task.agentName ||
+          resolveSessionOwner(session.metadata) !== task.owner ||
           session.metadata['lastRunId'] !== id
         )
           return undefined;
@@ -365,7 +367,7 @@ export function createRunOperations<D extends AgentDefinitions>(
           return undefined;
         if (markers && Object.keys(markers).some((key) => key.startsWith(`approval:${id}:`)))
           return undefined;
-        return { ...session, metadata: { ...session.metadata, deletedOrdinaryChatRunId: id } };
+        return { ...session, metadata: { ...session.metadata, deletedOrdinaryRunId: id } };
       });
     }
     await revokePendingApprovalsForRun(id, {

@@ -5047,7 +5047,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               return 'unresolved';
             return session?.incarnation === incarnation &&
               session?.metadata['lastRunId'] === runId &&
-              session.metadata['deletedOrdinaryChatRunId'] === runId
+              session.metadata['deletedOrdinaryRunId'] === runId
               ? 'ordinary'
               : 'unresolved';
           }

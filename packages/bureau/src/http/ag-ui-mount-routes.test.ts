@@ -30,7 +30,7 @@ import {
   readAgUiStream,
   typesOf,
 } from './ag-ui-stream.test-support.ts';
-import { listHeldTasks } from '../test';
+import { listHeldTasks, waitForTaskState } from '../test';
 import { retireSettledTasks, SHORT_TASK_RETENTION } from '../testing/run-retirement.test-support';
 
 /** Whether two events are the same once each one's own requested id is replaced and the clock reading dropped. */
@@ -72,6 +72,40 @@ async function withHarness<T>(
 }
 
 describe('start', () => {
+  it('retains a conversation after an ordinary API task on the thread is retired', async () => {
+    const runtime = createManualRuntimeServices();
+    await withHarness(
+      {
+        script: [say('First.'), say('API answer.')],
+        storage: 'sqlite',
+        bureauRuntime: runtime,
+        authentication,
+        ...SHORT_TASK_RETENTION,
+      },
+      async ({ bureau, handler }) => {
+        await readAgUiStream(await handler(startRequest(runAgentInput(), as('alice-key'))));
+        const task = await bureau.tasks.start('assistant', 'API input', {
+          contextId: 'thread-1',
+          principal: 'api-key:alice',
+        });
+        await waitForTaskState(bureau, task.id);
+        await waitForCondition(async () => {
+          const record = await bureau.internals.taskRegistry.record(task.id);
+          const session = await bureau.contexts.get('thread-1');
+          return record?.settled !== undefined && session?.metadata['lastRunId'] === task.id;
+        }, 'API task and session settle');
+        await retireSettledTasks(bureau, runtime);
+        expect(await bureau.internals.taskRegistry.record(task.id)).toBeUndefined();
+        const response = await handler(
+          new Request('http://localhost/ag-ui/threads/thread-1/messages', {
+            headers: as('alice-key'),
+          }),
+        );
+        expect(response.status).toBe(200);
+        expect(JSON.stringify(await response.json())).toContain('API answer.');
+      },
+    );
+  });
   it('retains the conversation after its completed run is deleted', async () => {
     const runtime = createManualRuntimeServices();
     await withHarness(
@@ -109,7 +143,7 @@ describe('start', () => {
           (current) =>
             current && {
               ...current,
-              metadata: { ...current.metadata, deletedOrdinaryChatRunId: 'other-run' },
+              metadata: { ...current.metadata, deletedOrdinaryRunId: 'other-run' },
             },
         );
         expect((await handler(request('alice-key'))).status).toBe(404);
@@ -118,7 +152,7 @@ describe('start', () => {
           (current) =>
             current && {
               ...current,
-              metadata: { ...current.metadata, deletedOrdinaryChatRunId: runId },
+              metadata: { ...current.metadata, deletedOrdinaryRunId: runId },
             },
         );
         for (const markers of [null, { [`approval:${runId}:reviewed-call`]: {} }]) {
