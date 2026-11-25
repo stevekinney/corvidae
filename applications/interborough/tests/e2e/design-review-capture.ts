@@ -425,13 +425,19 @@ async function captureViewport(
       witness.theme === colorScheme,
   );
   for (const witness of matchingWitnesses) {
-    for (const target of witness.targets) {
+    const targets = witness.targets.map((target) => {
       const role = /^role:([a-z-]+):(.+)$/.exec(target);
       const locator =
         role === null
           ? page.getByTestId(target)
           : page.getByRole(role[1] as never, { name: role[2], exact: true });
-      if (witness.scrolling === 'outlet') await locator.scrollIntoViewIfNeeded();
+      return { target, locator };
+    });
+    // One scroll, to the first target, then every target is held to the frame the screenshot
+    // takes: scrolling to each in turn could push an earlier one out of the frame unnoticed.
+    if (witness.scrolling === 'outlet' && targets[0] !== undefined)
+      await targets[0].locator.scrollIntoViewIfNeeded();
+    for (const { target, locator } of targets) {
       await expect(locator).toHaveCount(1);
       const box = await locator.boundingBox();
       if (

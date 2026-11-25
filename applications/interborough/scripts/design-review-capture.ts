@@ -625,7 +625,13 @@ export async function captureDesignReview(
   }
   const runs: { scheme: Scheme; exitCode: number; ranNothing: string[] }[] = [];
   const failedWitnesses: CaptureManifest['witnesses'][number][] = [];
+  // The witnesses capture into their own directory, run by run: a broad run's frame of the same
+  // slug would otherwise overwrite the one the targets were checked against, and an earlier run's
+  // frames left in a reused directory would vouch for this one.
+  const witnessDirectory = join(options.out, WITNESS_DIRECTORY);
+  await rm(witnessDirectory, { recursive: true, force: true });
   if (expected !== undefined) {
+    await mkdir(witnessDirectory, { recursive: true });
     const groups = Map.groupBy(
       expected.witnesses,
       (witness) => `${witness.specification}\0${witness.title}\0${witness.theme}`,
@@ -652,7 +658,7 @@ export async function captureDesignReview(
         `design review: witnessing row ${witness.row} ${witness.name}: ${command.join(' ')}\n`,
       );
       const exitCode = await environment.run(command, {
-        INTERBOROUGH_DESIGN_REVIEW_CAPTURE: options.out,
+        INTERBOROUGH_DESIGN_REVIEW_CAPTURE: witnessDirectory,
         INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME: witness.theme,
         INTERBOROUGH_VIEWPORT_WITNESSES: JSON.stringify(witnesses),
         PLAYWRIGHT_JSON_OUTPUT_NAME: report,
@@ -712,7 +718,8 @@ export async function captureDesignReview(
     }
     runs.push({ scheme, exitCode, ranNothing });
   }
-  const captures = await captureCount(options.out);
+  // A narrow run's captures are its witness frames; a broad run's are the plan's.
+  const captures = await captureCount(options.narrow ? witnessDirectory : options.out);
   await writeReviewOrder(options.out);
   const geometry = await auditGeometry(options.out);
   const ranNothing = runs.some((run) => run.ranNothing.length > 0);
@@ -777,15 +784,12 @@ export interface Coverage {
   readonly complete: boolean;
 }
 
-/** Holds the capture's `manifest.jsonl` to an expected-captures manifest, naming each one missing. */
-async function coverageOf(
-  out: string,
-  manifest: CaptureManifest,
-  environment: CaptureEnvironment,
-  includeCaptures: boolean,
-  failedWitnesses: CaptureManifest['witnesses'],
-): Promise<Coverage> {
-  const text = await readFile(join(out, 'manifest.jsonl'), 'utf8').catch(() => '');
+/** The subdirectory of a capture the viewport witness runs write their frames and manifest to. */
+export const WITNESS_DIRECTORY = 'witnesses';
+
+/** The lines of a directory's `manifest.jsonl`, none when it has none. */
+async function capturedLines(directory: string): Promise<CapturedLine[]> {
+  const text = await readFile(join(directory, 'manifest.jsonl'), 'utf8').catch(() => '');
   const lines: CapturedLine[] = [];
   for (const line of text.split('\n')) {
     if (line.trim() === '') continue;
@@ -795,10 +799,24 @@ async function coverageOf(
       // A torn line shows nothing, so what it would have shown is reported missing.
     }
   }
+  return lines;
+}
+
+/** Holds the capture's `manifest.jsonl` to an expected-captures manifest, naming each one missing. */
+async function coverageOf(
+  out: string,
+  manifest: CaptureManifest,
+  environment: CaptureEnvironment,
+  includeCaptures: boolean,
+  failedWitnesses: CaptureManifest['witnesses'],
+): Promise<Coverage> {
+  const lines = await capturedLines(out);
   const missing = includeCaptures ? missingCaptures(manifest.captures, lines) : [];
+  // Witnesses are proven only by the witness runs' own frames, never by a broad run's.
+  const witnessDirectory = join(out, WITNESS_DIRECTORY);
   const physicalLines = (
     await Promise.all(
-      lines.map(async (line) => {
+      (await capturedLines(witnessDirectory)).map(async (line) => {
         const viewport = line.viewport;
         if (
           typeof viewport !== 'string' ||
@@ -808,7 +826,7 @@ async function coverageOf(
           viewport.endsWith('.full.png')
         )
           return undefined;
-        return (await Bun.file(join(out, viewport)).exists()) ? line : undefined;
+        return (await Bun.file(join(witnessDirectory, viewport)).exists()) ? line : undefined;
       }),
     )
   ).filter((line): line is CapturedLine => line !== undefined);
@@ -833,7 +851,13 @@ async function coverageOf(
     const line = failed.has(witness) ? undefined : viewportWitnessProof(witness, physicalLines);
     return line === undefined
       ? []
-      : [{ row: witness.row, name: witness.name, viewport: line.viewport }];
+      : [
+          {
+            row: witness.row,
+            name: witness.name,
+            viewport: `${WITNESS_DIRECTORY}/${line.viewport}`,
+          },
+        ];
   });
   await writeFile(join(out, 'viewport-witnesses.json'), `${JSON.stringify(receipt, null, 2)}\n`);
   return {

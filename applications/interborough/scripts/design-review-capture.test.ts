@@ -1350,8 +1350,9 @@ describe('captureDesignReview', () => {
         expect(only!.variables['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME']).toBe('light');
         expect(JSON.parse(only!.variables['INTERBOROUGH_VIEWPORT_WITNESSES']!)).toEqual([witness]);
         expect(JSON.parse(await readFile(join(out, 'viewport-witnesses.json'), 'utf8'))).toEqual([
-          { row: '12a', name: 'phone-light', viewport: 'screens/first-run.png' },
+          { row: '12a', name: 'phone-light', viewport: 'witnesses/screens/first-run.png' },
         ]);
+        expect(only!.variables['INTERBOROUGH_DESIGN_REVIEW_CAPTURE']).toBe(join(out, 'witnesses'));
         const summary = JSON.parse(await readFile(join(out, 'summary.json'), 'utf8'));
         // A narrow run proves the witnesses, never the broad plan, so no round can count it.
         expect(summary.coverage).toEqual({
@@ -1377,6 +1378,52 @@ describe('captureDesignReview', () => {
             ({ variables }) => variables['INTERBOROUGH_VIEWPORT_WITNESSES'] !== undefined,
           ),
         ).toEqual([true, false]);
+        // The broad run writes elsewhere, so it cannot overwrite the frame the targets were held to.
+        expect(
+          run.commands.map(({ variables }) => variables['INTERBOROUGH_DESIGN_REVIEW_CAPTURE']),
+        ).toEqual([join(out, 'witnesses'), out]);
+      });
+
+      test('a broad frame cannot stand in for a witness frame, nor an earlier run vouch for this one', async () => {
+        const out = join(directory, 'capture');
+        // An earlier run left a proving frame and line in the witness directory.
+        await mkdir(join(out, 'witnesses', 'screens'), { recursive: true });
+        await writeFile(
+          join(out, 'witnesses', 'manifest.jsonl'),
+          witnessLine('screens/first-run.png'),
+        );
+        await writeFile(join(out, 'witnesses', 'screens', 'first-run.png'), 'png');
+        // This run's witness wrote nothing; only the broad run's directory holds a proving line.
+        let call = 0;
+        const environment: CaptureEnvironment = {
+          standardOutput: () => {},
+          standardError: () => {},
+          portIsFree: () => true,
+          async run(_command, variables) {
+            call += 1;
+            const target = variables['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] ?? '';
+            if (call === 1) {
+              await writeFile(
+                variables['PLAYWRIGHT_JSON_OUTPUT_NAME']!,
+                JSON.stringify({ suites: [{ file: 'e2e/first-run.spec.ts', specs: [{}] }] }),
+              );
+              return 0;
+            }
+            await mkdir(join(target, 'screens'), { recursive: true });
+            await writeFile(join(target, 'screens', 'first-run.png'), 'png');
+            await writeFile(join(target, 'manifest.jsonl'), witnessLine('screens/first-run.png'));
+            return 0;
+          },
+        };
+        expect(
+          await captureDesignReview(
+            ['--out', out, '--scheme', 'light', '--expect', await witnessPlan()],
+            environment,
+          ),
+        ).toBe(1);
+        const summary = JSON.parse(await readFile(join(out, 'summary.json'), 'utf8'));
+        expect(summary.coverage.missing).toEqual([]);
+        expect(summary.coverage.missingWitnesses).toEqual([witness]);
       });
 
       test('fails a title that selects no test, or more than one', async () => {
