@@ -18,6 +18,7 @@ import {
   type CatalogToolFixture,
 } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
+import { chooseModel } from './agent-editor-model-support.test-support.ts';
 import Harness from './agent-editor-test-harness.test-harness.svelte';
 
 const copy = AGENT_EDITOR_COPY;
@@ -244,6 +245,7 @@ describe('saving the tools', () => {
     await fireEvent.click(view.getByRole('button', { name: copy.addToolsAction }));
     await fireEvent.click(await view.findByRole('checkbox', { name: 'github__list_repos' }));
     await fireEvent.click(view.getByRole('button', { name: copy.toolPicker.done }));
+    await chooseModel(await view.findByRole('combobox', { name: 'Model' }), 'Claude Sonnet 5');
     await fireEvent.click(view.getByRole('button', { name: copy.createAction }));
     await waitFor(() => expect(router.pathname).toBe('/agents/helper'));
 
