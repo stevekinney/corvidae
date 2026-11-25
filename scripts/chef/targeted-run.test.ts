@@ -720,6 +720,12 @@ describe('the workflow and the manifest', () => {
     expect(job).toContain(
       'bun scripts/chef/ci-replay.ts run -- bash scripts/chef/targeted-unit.sh',
     );
+    expect(job).toContain(
+      "bunx playwright install --with-deps chromium\n        if: ${{ matrix.lane.workspace == 'scripts/browser-fixtures' }}",
+    );
+    expect(job.indexOf('playwright install --with-deps chromium')).toBeLessThan(
+      job.indexOf('bash scripts/chef/targeted-unit.sh'),
+    );
     const script = await Bun.file(new URL('./targeted-unit.sh', import.meta.url)).text();
     expect(script).toContain('reporter=(--reporter=junit');
     expect(script).toContain('bun scripts/bun-test.ts "${reporter[@]}" "${paths[@]}"');
