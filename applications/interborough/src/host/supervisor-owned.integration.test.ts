@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { BUILD_INFO_FILE, readSourceInfo } from './build-info.ts';
 import { startHost } from './host.ts';
 import { readInstanceRecord } from './instance-record.ts';
-import { publishSupervisorReadiness } from './supervisor-readiness.test-support.ts';
+import { publishSupervisorReadiness } from './supervisor-owned.test-support.ts';
 import { runSupervisor, supervisorLeaseIdentity } from './supervisor.ts';
 
 test('remote supervisors do not share a local-home lease', () => {
