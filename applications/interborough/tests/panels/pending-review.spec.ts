@@ -8,10 +8,15 @@ import { pendingReview } from '@lostgradient/plugin-inspectors';
 import type { McpUiHostContext, McpUiResourceCsp } from '@modelcontextprotocol/ext-apps/app-bridge';
 import { expect, test, type Page } from '@playwright/test';
 
+import {
+  designReviewCaptureDirectory,
+  designReviewColorScheme,
+} from '../../scripts/environment-configuration.ts';
 import { buildPanelPage } from '../../src/host/panel-build.ts';
 import { MCP_APP_UI_META } from '../../src/host/panel-mounts.ts';
 import { startSignedInRefundFixture } from '../../src/host/server-integration/signed-in-refund.test-support.ts';
 import { deleteChats, newThreadId, runToEnd } from '../e2e/chat-support.ts';
+import { captureForDesignReview, nextFrame } from '../e2e/design-review-capture.ts';
 import { E2E_BASE_URL } from '../e2e/e2e-constants.ts';
 import { REMEMBER_APPROVAL_AGENT } from '../e2e/regeneration-proof-agent.ts';
 import { bureauCall, waitingReviewOf } from '../e2e/task-support.ts';
@@ -162,8 +167,30 @@ async function open(
 const calls = (page: Page, name: string) =>
   page.evaluate((tool) => window.referenceHost.calls.filter((call) => call.name === tool), name);
 
+async function captureRefundState(page: Page, state: string, ready: () => Promise<void>) {
+  if (designReviewCaptureDirectory() === undefined) return;
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error('A fixed viewport is required');
+  try {
+    for (const size of [
+      { width: 1280, height: 900 },
+      { width: 375, height: 812 },
+    ]) {
+      await page.setViewportSize(size);
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state,
+        source: 'pending-review.spec.ts',
+        ready,
+      });
+    }
+  } finally {
+    await page.setViewportSize(viewport);
+  }
+}
+
 test.describe('the pending-review MCP App', () => {
-  test('a signed-in reviewer decides a real refund through the sandboxed panel', async ({
+  test('/reviews a signed-in reviewer decides a real refund through the sandboxed panel', async ({
     page,
     context,
   }, testInfo) => {
@@ -188,7 +215,7 @@ test.describe('the pending-review MCP App', () => {
         if (url.pathname === '/') {
           await route.fulfill({
             contentType: 'text/html',
-            body: `<!doctype html><title>Reference host</title><script type="module">${hostScript}</script>`,
+            body: `<!doctype html><title>Reference host</title><style>html{color-scheme:light dark}body{margin:0}main.weft-shell-outlet{height:100vh;overflow:auto}iframe{display:block;width:100%;border:0}</style><main class="weft-shell-outlet"><div id="host-outlet"></div></main><script type="module">${hostScript}</script>`,
           });
           return;
         }
@@ -206,14 +233,30 @@ test.describe('the pending-review MCP App', () => {
       const mounted = (await resource.json()) as { html: string; ui: { csp: McpUiResourceCsp } };
       await page.goto('https://settings.example/');
       await page.evaluate(
-        async ({ html, csp, title }) => {
+        async ({ html, csp, title, theme }) => {
           window.referenceHost.usePendingReviewHost();
-          await window.referenceHost.mount(html, csp, {}, title);
+          await window.referenceHost.mount(html, csp, {}, title, { theme });
         },
-        { html: mounted.html, csp: mounted.ui.csp, title: TITLE },
+        {
+          html: mounted.html,
+          csp: mounted.ui.csp,
+          title: TITLE,
+          theme: designReviewColorScheme() ?? 'light',
+        },
       );
       const app = page.frameLocator(`iframe[title="${TITLE}"]`);
       await expect(app.getByText(/\$42\.00 for order order/)).toBeVisible();
+      await captureRefundState(page, 'signed-in pending refund panel', async () => {
+        await expect(app.getByText(/\$42\.00 for order order/)).toBeVisible();
+        const height = await app.locator('body').evaluate((body) => body.scrollHeight);
+        await page.locator(`iframe[title="${TITLE}"]`).evaluate(
+          (frame, size) => {
+            (frame as HTMLIFrameElement).style.height = `${String(size)}px`;
+          },
+          Math.max(height, 240),
+        );
+        await nextFrame(page);
+      });
       await testInfo.attach('signed-in-refund-panel', {
         body: await page.locator(`iframe[title="${TITLE}"]`).screenshot(),
         contentType: 'image/png',
@@ -263,6 +306,9 @@ test.describe('the pending-review MCP App', () => {
       const detail = page.locator('.ib-reviews__detail');
       await expect(detail).toContainText('Refund pending');
       await expect(detail).not.toContainText('Refunded');
+      await captureRefundState(page, 'approved refund pending', async () => {
+        await expect(detail).toContainText('Refund pending');
+      });
       await testInfo.attach('approved-refund-pending-reviews', {
         body: await page.screenshot(),
         contentType: 'image/png',
@@ -271,6 +317,9 @@ test.describe('the pending-review MCP App', () => {
       expect(await fixture.refundStatus()).toBe('succeeded');
       await page.reload();
       await expect(detail).toContainText('Refunded');
+      await captureRefundState(page, 'provider settled refund', async () => {
+        await expect(detail).toContainText('Refunded');
+      });
       await testInfo.attach('provider-settled-refund-reviews', {
         body: await page.screenshot(),
         contentType: 'image/png',

@@ -240,6 +240,8 @@ const SHOWCASE_SPECIFICATIONS = [
   // The schedule editor panel, a document in a sandboxed frame that no page capture sees, in each
   // state it draws (COR-2545). `--grep schedule-editor-states` selects it.
   'tests/panels/schedule-editor-states.spec.ts',
+  // The signed-in Reviews panel and its actual approved and settled refund states (COR-2618).
+  'tests/panels/pending-review.spec.ts',
   // A fork's comparison with its source, the fork dialog's preview, and the run panels on a
   // workflow run's page (COR-2538). `--grep fork-comparison-states` selects it.
   'tests/e2e/fork-comparison-states.spec.ts',

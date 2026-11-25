@@ -715,7 +715,7 @@ test.describe('a tool approval', () => {
     }
   });
 
-  test('shared Reviews approval detail captures a pending Always approval', async ({
+  test('/reviews shared Reviews approval detail captures a pending Always approval', async ({
     page,
     request,
   }) => {
