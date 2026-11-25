@@ -828,7 +828,7 @@ export function addStep(text: string, kind: BuilderStepKind, options: AddStepOpt
 }
 
 /** Removes the step and returns its original document fields for Undo. */
-export function takeStep(text: string, path: StepPath): { text: string; step: Json } | undefined {
+export function removeStep(text: string, path: StepPath): { text: string; step: Json } | undefined {
   let removed: Json | undefined;
   const next = edit(text, (document) =>
     withStep(document, path, (step, list, index) => {
@@ -837,11 +837,6 @@ export function takeStep(text: string, path: StepPath): { text: string; step: Js
     }),
   );
   return removed === undefined ? undefined : { text: next, step: removed };
-}
-
-/** `text` without the step at `path`. */
-export function removeStep(text: string, path: StepPath): string {
-  return takeStep(text, path)?.text ?? text;
 }
 
 /** Inserts the saved step into the current list, retaining edits made elsewhere. */

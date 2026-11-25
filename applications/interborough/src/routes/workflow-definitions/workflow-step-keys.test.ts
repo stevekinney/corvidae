@@ -65,7 +65,7 @@ describe('the keys of a list of steps', () => {
     const keys = new StepKeys();
     keys.keysOf(ROOT, 2);
     const original = ['steps', 0, 'cases', 'old'] as const;
-    const [before, deleted, after] = keys.keysOf(original, 3);
+    const [before, deleted, after] = keys.keysOf(original, 3) as [string, string, string];
     const nested = keys.keysOf([...original, 2, 'steps'], 1);
     const undo = keys.undoPosition(original, 1);
     keys.removed(original, 1);

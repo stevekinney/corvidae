@@ -44,7 +44,6 @@ import {
   setTitleDerivingName,
   setTrigger,
   setWaitDuration,
-  takeStep,
   waitPartsOf,
   type BuilderStep,
   type ListPath,
@@ -488,7 +487,7 @@ describe('the edits', () => {
       title: 'Post the summary',
       extra: { keep: true },
     };
-    const removed = takeStep(JSON.stringify({ description: 'Before', steps: [step] }), 0);
+    const removed = removeStep(JSON.stringify({ description: 'Before', steps: [step] }), 0);
     expect(removed?.step).toEqual(step);
     if (removed === undefined) throw new Error('Expected the removed step.');
     const edited = JSON.stringify({ ...parsed(removed.text), description: 'After' });
@@ -499,8 +498,8 @@ describe('the edits', () => {
   });
 
   test('removeStep removes one step, and ignores an index that is not there', () => {
-    expect((parsed(removeStep(text(), 1))['steps'] as unknown[]).length).toBe(2);
-    expect(removeStep(text(), 9)).toBe(text());
+    expect((parsed(removeStep(text(), 1)?.text ?? '')['steps'] as unknown[]).length).toBe(2);
+    expect(removeStep(text(), 9)).toBeUndefined();
   });
 
   test('setStepTitle leads the step with its title, edits it in place, and removes it when blank', () => {
@@ -613,7 +612,7 @@ describe('the edits', () => {
       expect(setDescription(bad, 'a')).toBe(bad);
       expect(setTrigger(bad, 'signal', 'a')).toBe(bad);
       expect(addStep(bad, 'agent')).toBe(bad);
-      expect(removeStep(bad, 0)).toBe(bad);
+      expect(removeStep(bad, 0)).toBeUndefined();
       expect(moveStep(bad, 0, 1)).toBe(bad);
       expect(setStepField(bad, 0, 'agent', 'a')).toBe(bad);
       expect(setStepTitle(bad, 0, 'a')).toBe(bad);
@@ -664,7 +663,7 @@ describe('values the builder must not flatten or replace', () => {
       expect(addStep(bad, kind)).toBe(bad);
     }
     expect(moveStep(bad, 0, 1)).toBe(bad);
-    expect(removeStep(bad, 0)).toBe(bad);
+    expect(removeStep(bad, 0)).toBeUndefined();
     expect(readBuilder(text(FILE))?.stepsEditable).toBe(true);
     expect(readBuilder('{}')?.stepsEditable).toBe(true);
   });
@@ -864,8 +863,8 @@ describe('a plugin activity, a code workflow and the control-flow kinds', () => 
     ).toEqual(['activity', 'await-signal']);
     expect(moveStep(base, path, -1)).toBe(base);
     const removed = removeStep(base, ['steps', 0, 'steps', 1]);
-    expect((stepsIn(removed)[0] as { steps: unknown[] }).steps).toHaveLength(1);
-    expect(removeStep(base, ['steps', 0, 'steps', 9])).toBe(base);
+    expect((stepsIn(removed?.text ?? '')[0] as { steps: unknown[] }).steps).toHaveLength(1);
+    expect(removeStep(base, ['steps', 0, 'steps', 9])).toBeUndefined();
     // A top-level step is still its own index.
     expect(setStepField(base, 0, 'over', 'rows')).toContain('"over": "rows"');
     expect(setStepField(base, path, 'over', 'rows')).toBe(base);
@@ -981,7 +980,7 @@ describe('a plugin activity, a code workflow and the control-flow kinds', () => 
   test('a file with every kind is lossless: edits and their undoes leave the document as it was', () => {
     const original = parsed(EVERY_KIND);
     let next = addStep(EVERY_KIND, 'wait', { into: ['steps', 4, 'cases', 'approved'] });
-    next = removeStep(next, ['steps', 4, 'cases', 'approved', 1]);
+    next = removeStep(next, ['steps', 4, 'cases', 'approved', 1])?.text ?? next;
     next = setTimeoutDuration(next, 2, '', 'hours');
     next = setTimeoutDuration(next, 2, '2', 'hours');
     const notify = ['steps', 5, 'branches', 'notify', 0] as const;

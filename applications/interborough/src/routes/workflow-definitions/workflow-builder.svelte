@@ -79,7 +79,7 @@
     setTitle,
     setTitleDerivingName,
     setTrigger,
-    takeStep,
+    removeStep,
     type BuilderSchema,
     type ListPath,
     type SchemaKey,
@@ -302,7 +302,7 @@
 
   function deleteStep(list: ListPath, index: number, label: string): void {
     if (locked) return;
-    const removed = takeStep(text, [...list, index]);
+    const removed = removeStep(text, [...list, index]);
     if (removed === undefined) return;
     const position = keys.undoPosition(list, index);
     write(removed.text, () => keys.removed(list, index));
