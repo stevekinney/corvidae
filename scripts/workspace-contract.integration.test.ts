@@ -433,7 +433,7 @@ describe('internal workspace architecture', () => {
         );
         if (await referencesConfigurationFile.exists()) {
           const referencesConfiguration = await referencesConfigurationFile.json();
-          expect(Object.keys(referencesConfiguration).sort(), directory).toEqual([
+          expect(Object.keys(referencesConfiguration).toSorted(), directory).toEqual([
             'files',
             'references',
           ]);
