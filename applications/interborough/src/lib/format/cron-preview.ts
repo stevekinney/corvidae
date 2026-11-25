@@ -69,17 +69,19 @@ function nextIntervalFires(
  * "Tue Nov 3, 9:00 AM", the weekday, month and day without a comma between them and the hour
  * without a leading zero (rows 74e and 74q).
  */
-function fireLabelFormatter(timeZone: string): { format(date: Date): string } {
+function fireLabelFormatter(timeZone: string, zone: boolean): { format(date: Date): string } {
   const day = new Intl.DateTimeFormat(undefined, {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
     timeZone,
   });
+  // With `zone`, the time names the schedule's zone as the builder's row draws it: "11:00 AM CST".
   const time = new Intl.DateTimeFormat(undefined, {
     hour: 'numeric',
     minute: '2-digit',
     timeZone,
+    ...(zone ? { timeZoneName: 'short' as const } : {}),
   });
   return {
     format: (date) =>
@@ -100,19 +102,22 @@ function fireLabelFormatter(timeZone: string): { format(date: Date): string } {
  * `cron-parser`'s, in the value's `timeZone`, and it throws on a malformed
  * expression or an out-of-range field; an interval is a plain fixed-step walk
  * and trusts `count` to be the positive integer `ScheduleValue` documents.
- * Labels are formatted in the value's zone.
+ * Labels are formatted in the value's zone. `options.zone` names that zone after a cron's time
+ * ("Fri Nov 6, 11:00 AM CST", the workflow builder's row 65q); an interval counts elapsed time, so
+ * its fires name none.
  */
 export function computeNextFires(
   value: ScheduleValue,
   count: number,
   from: Date = new Date(),
+  options: { readonly zone?: boolean } = {},
 ): ScheduleFire[] {
   const dates =
     'cron' in value
       ? nextCronFires(value.cron, value.timeZone, count, from)
       : nextIntervalFires(value.every.count, value.every.unit, count, from);
 
-  const formatter = fireLabelFormatter(value.timeZone);
+  const formatter = fireLabelFormatter(value.timeZone, options.zone === true && 'cron' in value);
   return dates.map((date) => ({
     id: date.toISOString(),
     label: formatter.format(date),

@@ -13,6 +13,7 @@
     type ChatRowContext,
     type ChatSubmitEvent,
     type ChatAdapter,
+    type ChatCitationClaim,
     type ResolvedChatArtifact,
   } from '@lostgradient/chat';
   import { Button } from '@lostgradient/cinder';
@@ -29,6 +30,22 @@
   // which keeps the default fixture, its baselines and its axe sweep unchanged.
   const attachmentsEnabled =
     new URLSearchParams(globalThis.location.search).get('attachments') === '1';
+  const questionDockEnabled =
+    new URLSearchParams(globalThis.location.search).get('questionDock') === '1';
+  const productionClaimsEnabled =
+    new URLSearchParams(globalThis.location.search).get('productionClaims') === '1';
+  const citedClaims: readonly ChatCitationClaim[] = [
+    {
+      id: 'revenue',
+      markdown: '[Revenue rose](https://example.test/revenue) in 2025.',
+      sources: [{ label: 'Annual report', url: 'https://example.test/annual-report' }],
+    },
+    {
+      id: 'costs',
+      markdown: '\n\nCosts **fell** in the second half.',
+      sources: [{ label: 'Investor call', detail: 'Transcript' }],
+    },
+  ];
 
   const adapter: ChatAdapter = {
     sendMessage: async () => {},
@@ -40,12 +57,16 @@
     }),
   };
 
-  let basicConversation = $state.raw(
-    appendAssistantMessage(
-      appendUserMessage(createConversation({ id: 'basic-chat' }), 'Can you summarize this plan?'),
-      'The plan is ready to implement.',
-    ),
+  const firstConversation = appendAssistantMessage(
+    appendUserMessage(createConversation({ id: 'basic-chat' }), 'Can you summarize this plan?'),
+    productionClaimsEnabled
+      ? citedClaims.map((claim) => claim.markdown).join('')
+      : 'The plan is ready to implement.',
   );
+  let basicConversation = $state.raw(firstConversation);
+  const claimSourcesByMessageId = productionClaimsEnabled
+    ? new Map([[firstConversation.ids.at(-1)!, citedClaims]])
+    : undefined;
 
   let approvalConversation = appendMessages(
     appendUserMessage(
@@ -110,15 +131,17 @@
         content: null,
         action: {
           type: 'input',
-          message: 'Which room, and for how many people?',
-          schema: {
-            type: 'object',
-            properties: {
-              room: { type: 'string', title: 'Room', minLength: 1 },
-              attendees: { type: 'integer', title: 'Attendees', minimum: 1 },
-            },
-            required: ['room', 'attendees'],
-          },
+          message: questionDockEnabled ? 'Which room?' : 'Which room, and for how many people?',
+          schema: questionDockEnabled
+            ? { enum: ['Juniper', 'Aspen'], type: 'string' }
+            : {
+                type: 'object',
+                properties: {
+                  room: { type: 'string', title: 'Room', minLength: 1 },
+                  attendees: { type: 'integer', title: 'Attendees', minimum: 1 },
+                },
+                required: ['room', 'attendees'],
+              },
         },
       },
     },
@@ -367,6 +390,7 @@
     <Chat
       id="fixture-basic-chat"
       conversation={basicConversation}
+      {claimSourcesByMessageId}
       capabilities={{ attachments: false }}
       onSubmit={handleSubmit}
     />
@@ -388,6 +412,7 @@
       id="fixture-tool-input-chat"
       conversation={inputConversation}
       capabilities={{ attachments: false }}
+      questionPlacement={questionDockEnabled ? 'docked' : 'inline'}
       onInputSubmit={handleInputSubmit}
     />
     <pre data-testid="input-submission-log">{JSON.stringify(inputSubmissions)}</pre>

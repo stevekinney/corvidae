@@ -482,7 +482,8 @@ describe('what a run is waiting on', () => {
     await fireEvent.input(view.getByLabelText('Your answer'), { target: { value: 'staging' } });
     await fireEvent.click(view.getByRole('button', { name: /^Send$/ }));
 
-    expect(await view.findByText(/The Bureau broke/)).not.toBeNull();
+    // The stub says "Bureau"; a screen reads "the server" (the name of the server's own part never shows).
+    expect(await view.findByText(/The server broke/)).not.toBeNull();
     // The question stays open to answer again.
     expect(view.getByLabelText('Your answer')).not.toBeNull();
   });
@@ -526,7 +527,7 @@ describe('what a run is waiting on', () => {
     const view = open(waitingOn('tool-approval', approval.id), { reviews: [approval] });
     stub?.on('bureau.reviews.resolve', () => {
       throw new StubFault('Conflict', 409, 'The review moved on.', {
-        reason: 'REVIEW_ROUND_CHANGED: now at round 2',
+        reason: 'REVIEW_ROUND_CHANGED',
       });
     });
     const reads = stub?.callsTo('bureau.reviews.get').length ?? 0;

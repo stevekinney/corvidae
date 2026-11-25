@@ -41,6 +41,10 @@ export type ContextsDependencies = {
   readonly fork: BureauContexts['fork'];
   /** {@link BureauContexts.regenerate}. */
   readonly regenerate: BureauContexts['regenerate'];
+  /** {@link BureauContexts.discardTurn}. */
+  readonly discardTurn: BureauContexts['discardTurn'];
+  /** {@link BureauContexts.resumeTurn}. */
+  readonly resumeTurn: BureauContexts['resumeTurn'];
   /** {@link BureauContexts.window}. */
   readonly window: BureauContexts['window'];
   /** The Bureau's durable event history read, which {@link BureauContexts.events} narrows to the session owner. */
@@ -72,6 +76,8 @@ export function createContexts(dependencies: ContextsDependencies): BureauContex
     steering: dependencies.steering,
     fork: dependencies.fork,
     regenerate: dependencies.regenerate,
+    discardTurn: dependencies.discardTurn,
+    resumeTurn: dependencies.resumeTurn,
     window: dependencies.window,
     events: (contextId, options) =>
       dependencies.eventHistory({ kind: 'session', id: contextId }, options),

@@ -60,6 +60,7 @@ Pass `defaultSchema` when the editor should own changes after initialization. Om
 | `maxHistory` | `number` | no | — | Maximum history entries (default 100). |
 | `readonly` | `boolean` | no | — | Read-only mode disables all mutations. |
 | `schemaKey` | `string` | no | — | Changing this triggers a full reset (history clears). |
+| `variant` | `"document"` \| `"fields"` | no | `"document"` | `document` (the default) is the whole editor: its validity toolbar, the Form, JSON and Diff views, and the schema's title, description and type. `fields` is the fields table alone, for an object schema whose page already says what it is: Field, Type, Description and Required, each row's actions, and "Add a field", with no document chrome around it. |
 | `view` | `"form"` \| `"json"` \| `"diff"` | no | — | Active view: form / json / diff. Bindable. |
 | `defaultSchema` | `(opaque)` | no | — | Omit `schema` to use this as the initial value of an uncontrolled editor. Not expressible in JSON Schema; see the component types for the signature. |
 | `onRevert` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |

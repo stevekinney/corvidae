@@ -6,7 +6,11 @@
  * version has no notice. Plain functions, so the words are tested without a page.
  */
 import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
-import type { WorkflowImpact, WorkflowImpactChange } from '../../lib/workflow-files.ts';
+import type {
+  SavedWorkflowVersion,
+  WorkflowImpact,
+  WorkflowImpactChange,
+} from '../../lib/workflow-files.ts';
 
 const copy = WORKFLOW_COPY.editor.impact;
 
@@ -71,4 +75,31 @@ export function impactNotice(impact: WorkflowImpact): ImpactNotice | undefined {
     lead: impact.previousVersion === null ? copy.first(version) : copy.compatible(version),
     details: [],
   };
+}
+
+/** The recorded changes on a saved version, in the words used on its History row. */
+export function savedChangeSummary(revision: SavedWorkflowVersion): string | undefined {
+  const history = WORKFLOW_COPY.revisions;
+  if (revision.changes.length === 0) return undefined;
+  const changes = new Set(
+    revision.changes.map((change) => {
+      if (change.breaking) return describeBreakingChange(change);
+      switch (change.kind) {
+        case 'step-added': {
+          const step = revision.steps[change.step - 1];
+          return step?.['kind'] === 'await-signal' && step['review'] === true
+            ? history.addedApproval
+            : history.addedStep(change.step);
+        }
+        case 'step-reworded':
+          return history.rewordedStep(change.step);
+        case 'step-renamed':
+          return history.renamedStep(change.step);
+        default:
+          return 'step' in change ? history.changedStep(change.step) : history.changedFile;
+      }
+    }),
+  );
+  const summary = [...changes].join(', ');
+  return revision.surface === 'web' ? history.editedInBuilder(summary) : summary;
 }

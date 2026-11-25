@@ -24,4 +24,9 @@
   .cinder-choice-grid[data-cinder-variant='card'] {
     grid-auto-rows: 1fr;
   }
+
+  /* Rows sit edge to edge, with the hairline between them and no gap. */
+  .cinder-choice-grid[data-cinder-variant='row'] {
+    gap: 0;
+  }
 }

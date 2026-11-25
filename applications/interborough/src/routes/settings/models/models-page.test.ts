@@ -204,6 +204,7 @@ describe('the providers', () => {
 
     const rows = [...container.querySelectorAll<HTMLElement>('[data-provider]')];
     expect(rows.map((row) => row.dataset['provider'])).toEqual(['anthropic', 'openai', 'gemini']);
+    expect(rows.every((row) => row.matches('li.cinder-grouped-list-item'))).toBe(true);
     expect(rows.map((row) => row.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
       'Anthropic Claude models Connect',
       'OpenAI GPT models Connect',
@@ -475,7 +476,7 @@ describe('connecting a provider', () => {
     const { dialog, field } = await begin(container);
 
     expect(within(dialog).getByRole('heading', { name: copy.title('OpenAI') })).toBeDefined();
-    expect(dialog.textContent).toContain(copy.subtitle.idle);
+    expect(dialog.textContent).toContain(copy.subtitle);
     expect(dialog.getAttribute('aria-describedby')).not.toBeNull();
     expect(within(dialog).getByLabelText(copy.keyLabel)).toBe(field);
     expect(field.value).toBe('');
@@ -517,7 +518,7 @@ describe('connecting a provider', () => {
         },
       },
     ]);
-    expect(dialog.textContent).toContain(copy.subtitle.connected);
+    expect(dialog.textContent).toContain(copy.subtitle);
     const banner = within(dialog).getByTestId('provider-connect-success');
     expect(banner.textContent).toContain(copy.connectedTitle);
     expect(banner.textContent).toContain(copy.models(1));
@@ -563,7 +564,8 @@ describe('connecting a provider', () => {
 
     const { dialog, field } = await connect(container, KEY);
 
-    await waitFor(() => expect(dialog.textContent).toContain(copy.subtitle.testing));
+    await waitFor(() => expect(dialog.textContent).toContain(copy.testing));
+    expect(dialog.textContent).toContain(copy.subtitle);
     // The field shows the key's masked form while it is tested, never the key.
     expect(field.value).toBe(maskedKey('openai'));
     expect(field.value).not.toContain(KEY);
@@ -604,7 +606,7 @@ describe('connecting a provider', () => {
     // Opening it again starts empty.
     const again = await begin(container);
     expect(again.field.value).toBe('');
-    expect(again.dialog.textContent).toContain(copy.subtitle.idle);
+    expect(again.dialog.textContent).toContain(copy.subtitle);
   });
 
   test('puts a refused key at the field with the status and what to do, keeps Cancel, Test and Connect enabled, and saves nothing', async () => {
@@ -614,7 +616,9 @@ describe('connecting a provider', () => {
 
     const { dialog, field } = await connect(container, refused);
 
-    await waitFor(() => expect(dialog.textContent).toContain(copy.subtitle.failed));
+    await waitFor(() =>
+      expect(dialog.textContent).toContain(MODELS_COPY.keyTest.rejected('OpenAI', 401)),
+    );
     expect(dialog.textContent).toContain(MODELS_COPY.keyTest.rejected('OpenAI', 401));
     expect(field.getAttribute('aria-invalid')).toBe('true');
     // The refused key stays masked until the person goes back into the field to change it.
@@ -633,7 +637,7 @@ describe('connecting a provider', () => {
 
     // Typing again takes the refusal away.
     await fireEvent.input(field, { target: { value: KEY } });
-    expect(dialog.textContent).toContain(copy.subtitle.idle);
+    expect(dialog.textContent).toContain(copy.subtitle);
     expect(dialog.textContent).not.toContain(MODELS_COPY.keyTest.rejected('OpenAI', 401));
     expect(
       field.hasAttribute('aria-invalid') && field.getAttribute('aria-invalid') === 'true',
@@ -665,7 +669,7 @@ describe('connecting a provider', () => {
 
     const banner = await within(dialog).findByTestId('provider-connect-success');
     expect(banner.textContent).toContain(copy.testedTitle);
-    expect(dialog.textContent).toContain(copy.subtitle.tested);
+    expect(dialog.textContent).toContain(copy.subtitle);
     expect(writes()).toEqual([
       { method: 'POST', path: '/host/providers/openai/test', body: { apiKey: KEY } },
     ]);
@@ -673,7 +677,7 @@ describe('connecting a provider', () => {
 
     await press(dialog, copy.connect);
 
-    await waitFor(() => expect(dialog.textContent).toContain(copy.subtitle.connected));
+    await waitFor(() => expect(dialog.textContent).toContain(copy.subtitle));
     expect(posts()).toHaveLength(1);
     expect(writes().filter((request) => request.method === 'PUT')).toHaveLength(1);
   });
@@ -727,7 +731,7 @@ describe('connecting a provider', () => {
       const { dialog } = await connect(container, KEY);
 
       await within(dialog).findByTestId('provider-connect-failure');
-      expect(dialog.textContent).toContain(copy.subtitle.saveFailed);
+      expect(dialog.textContent).toContain(copy.subtitle);
       expect(printed(container)).not.toContain(KEY);
       expect(rowOf(container, 'openai/gpt-5')).toBeNull();
       cleanup();
@@ -1088,7 +1092,7 @@ describe('removing a provider’s key', () => {
       const dialog = await ask(container, 'openai');
 
       await waitFor(() =>
-        expect(within(dialog).getByTestId('provider-remove-embedder').textContent).toBe(
+        expect(within(dialog).getByTestId('provider-remove-embedder').textContent?.trim()).toBe(
           'Memory search uses OpenAI from this provider. Removing the key stops it, so search matches words only until you add a key or switch embedders.',
         ),
       );

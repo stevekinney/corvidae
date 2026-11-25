@@ -104,6 +104,7 @@ export const SETTINGS_COPY = {
       memory: { title: 'Memory' },
       storage: { title: 'Storage' },
       remote: { title: 'Remote deployment' },
+      advanced: { title: 'Advanced' },
       preferences: {
         title: 'Your preferences',
         description:

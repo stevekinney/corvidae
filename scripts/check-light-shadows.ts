@@ -247,7 +247,7 @@ export function judgeShadowTokens(
 
 async function main(): Promise<void> {
   // The resolved token files are generated and untracked: a fresh checkout has none.
-  ensureCinderGenerated();
+  await ensureCinderGenerated();
   const paths: string[] = [];
   for (const directory of SCANNED_DIRECTORIES) collectScannedFiles(join(root, directory), paths);
 

@@ -60,6 +60,18 @@ type Global = typeof globalThis & Record<string, unknown>;
  */
 const DOM_REALM_EVENT_GLOBALS = new Set(['CustomEvent']);
 
+/**
+ * happy-dom globals this lane keeps off `globalThis`. happy-dom's `XMLHttpRequest` answers a
+ * synchronous request by starting a child process that makes a real HTTP request to
+ * `http://localhost/…`, and Bun defines no `XMLHttpRequest` of its own. With `window` and
+ * `XMLHttpRequest` both present, the source-map support Playwright bundles (loaded by
+ * `playwright.config.ts`, and by anything that imports `@playwright/test`) takes the process for a
+ * browser and reads each stack frame's file that way, so the first stack it formatted sent a real
+ * request to a closed port and printed an `AggregateError` from a socket (COR-2643). Nothing under
+ * test uses `XMLHttpRequest`; the interface talks through `fetch` and `EventSource`.
+ */
+const DOM_GLOBALS_WITHHELD = new Set(['XMLHttpRequest']);
+
 let happyDomInstalled = false;
 
 /**
@@ -116,6 +128,7 @@ function setupHappyDom(): void {
   const target = globalThis as Global;
 
   for (const key of Object.getOwnPropertyNames(happyWindow)) {
+    if (DOM_GLOBALS_WITHHELD.has(key)) continue;
     if (key in target && !DOM_REALM_EVENT_GLOBALS.has(key)) continue;
     const descriptor = Object.getOwnPropertyDescriptor(happyWindow, key);
     if (!descriptor) continue;
@@ -180,6 +193,14 @@ afterEach(() => {
   if (!(window instanceof Window)) return;
   window.happyDOM.setURL('http://localhost/');
   window.dispatchEvent(new window.PopStateEvent('popstate'));
+});
+
+// The chat pages' session registry is a module-scope singleton too (COR-2293 B2): a chat page a
+// test unmounts with a run still going is retained for a route return, which in a test run would
+// be the next test's page reusing this test's session and its stubs. Each test starts with none.
+const { chatSessions } = await import('../src/routes/chat/chat-session-registry.svelte.ts');
+afterEach(() => {
+  chatSessions.dispose();
 });
 
 // `globalThis.fetch` is process-wide, and the coverage run shares one process across every test

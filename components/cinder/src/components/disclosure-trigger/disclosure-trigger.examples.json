@@ -1,0 +1,13 @@
+{
+  "$schema": "../../../../../internal/component-tooling/src/schemas/examples.schema.json",
+  "component": "disclosure-trigger",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "details",
+      "title": "Details trigger",
+      "description": "A compact labelled trigger controls detail owned by its host.",
+      "code": "<script lang=\"ts\">\n  import { DisclosureTrigger } from '@lostgradient/cinder';\n\n  let open = $state(false);\n</script>\n\n<DisclosureTrigger open={open} controls=\"details\" onclick={() => (open = !open)}>Details</DisclosureTrigger>\n{#if open}<p id=\"details\">More detail.</p>{/if}\n"
+    }
+  ]
+}

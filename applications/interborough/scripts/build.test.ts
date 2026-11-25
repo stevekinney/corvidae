@@ -394,6 +394,26 @@ describe('buildApplication', () => {
     return join(mkdtempSync(join(scratch, 'build-')), 'build');
   }
 
+  it('waits for generated inputs before starting the bundler', async () => {
+    const ready = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const { bundle, calls } = fakeBundle({ 'index.html': 'page' });
+    const build = buildApplication({
+      outdir: outputDirectory(),
+      source: { commit: 'b'.repeat(40), changes: '' },
+      bundle,
+      ensureGenerated: async () => {
+        ready.resolve();
+        await release.promise;
+      },
+    });
+    await ready.promise;
+    expect(calls).toHaveLength(0);
+    release.resolve();
+    await build;
+    expect(calls).toHaveLength(1);
+  });
+
   it('builds the production application into the output directory and lists its files', async () => {
     const outdir = outputDirectory();
     const { bundle, calls } = fakeBundle({

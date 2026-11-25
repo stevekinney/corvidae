@@ -66,7 +66,7 @@ async function buildWorkspaceWebComponents(outdir: string): Promise<void> {
 }
 
 export async function buildFixtures(development = false): Promise<void> {
-  ensureCinderGenerated();
+  await ensureCinderGenerated();
   await buildSuiteFixtures(rootFixtureBuild, development);
   await buildWebComponents(resolve(outputDirectory, 'web-components'));
   await buildWorkspaceWebComponents(resolve(outputDirectory, 'workspace-web-components'));

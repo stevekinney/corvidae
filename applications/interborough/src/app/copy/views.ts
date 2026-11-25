@@ -28,6 +28,8 @@ export type ViewNotFoundCopy = ViewStateCopy & {
   readonly back?: ViewLink;
   /** Leaves out the "Search everything" button, for a page whose only way out is back to its list. */
   readonly searchHidden?: boolean;
+  /** Uses the neutral ErrorState for a route whose missing-resource design calls for it. */
+  readonly neutralError?: true;
 };
 
 export type ViewCopy = {
@@ -86,6 +88,10 @@ export const STALE_DATA_LABEL = 'Showing data from';
 
 /** The label on the control that asks a view to try again. */
 export const RETRY_LABEL = 'Try again';
+
+/** The label and address of the way forward a fault Health can explain offers beside Try again. */
+export const OPEN_HEALTH_LABEL = 'Open Health';
+export const HEALTH_PATH = '/health';
 
 /**
  * What a route says when its code could not be loaded, such as after a rebuild replaced the files

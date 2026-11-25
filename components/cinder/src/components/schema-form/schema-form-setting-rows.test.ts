@@ -72,7 +72,7 @@ const rowOf = (view: Mounted, key: string): HTMLElement =>
 describe('SchemaForm setting-rows variant', () => {
   afterEach(() => cleanup());
 
-  test('draws each top-level property as one row, in schema order, with its label, key, description and control', async () => {
+  test('draws each top-level property as one row, in schema order, with its label, description and control', async () => {
     const view = await mount(plugin);
     const keys = [...view.container.querySelectorAll('[data-cinder-field]')].map((row) =>
       row.getAttribute('data-cinder-field'),
@@ -91,9 +91,7 @@ describe('SchemaForm setting-rows variant', () => {
     expect(text.querySelector('.cinder-form-field__label')?.textContent).toContain(
       'Search address',
     );
-    expect(text.querySelector('.cinder-setting-row__identifier')?.textContent).toBe(
-      'searchAddress',
-    );
+    expect(text.querySelector('.cinder-setting-row__identifier')).toBeNull();
     expect(text.textContent).toContain('The service the search goes to.');
     // The schema requires it, so the row carries the required mark.
     expect(text.querySelector('.cinder-_required-marker')).not.toBeNull();
@@ -456,18 +454,22 @@ describe('SchemaForm setting-rows variant', () => {
     expect(rowOf(view, 'baseURL').textContent).toContain('Base URL');
   });
 
-  test('shows the key beside a title the schema supplies, unless the title is the key in another case', async () => {
+  test('shows the key beside a supplied title only when its words differ from the sentence-case key', async () => {
     const view = await mount({
       type: 'object',
       properties: {
         baseURL: { type: 'string', title: 'Endpoint' },
         models: { type: 'string', title: 'Models' },
+        searchAddress: { type: 'string', title: 'Search address' },
       },
     });
     expect(
       rowOf(view, 'baseURL').querySelector('.cinder-setting-row__identifier')?.textContent,
     ).toBe('baseURL');
     expect(rowOf(view, 'models').querySelector('.cinder-setting-row__identifier')).toBeNull();
+    expect(
+      rowOf(view, 'searchAddress').querySelector('.cinder-setting-row__identifier'),
+    ).toBeNull();
   });
 
   test('starts an optional choice with no default unset, can clear it, and reports it as absent', async () => {

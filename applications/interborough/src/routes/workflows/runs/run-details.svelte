@@ -16,6 +16,7 @@
   } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
 
+  import { COST_COPY } from '../../../app/copy/cost.ts';
   import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
   import { TASK_COPY } from '../../../app/copy/tasks.ts';
   import type { ChatContext } from '../../../lib/bureau-client.ts';
@@ -25,6 +26,8 @@
   import { goalPath } from '../../../lib/identifier-paths.ts';
   import { oneLine } from '../../../lib/one-line.ts';
   import { agentLabel } from '../../../lib/agent-label.ts';
+  import { formatCost } from '../../../lib/format/cost.ts';
+  import { formatTokens } from '../../chat/context-window.ts';
   import { router, scheduleDetailPath, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
   import { classifyRevisionAgainstActive } from '../../../lib/workflow-revision.ts';
@@ -191,6 +194,13 @@
     task?.statusMessage && task.status !== 'canceled' ? oneLine(task.statusMessage) : '',
   );
 
+  const tokens = $derived(
+    task?.usage != null && task.usage.totalTokens > 0
+      ? formatTokens(task.usage.totalTokens)
+      : undefined,
+  );
+  const cost = $derived(formatCost(task?.usage?.costUsd));
+
   const items = $derived.by((): DescriptionListItem[] => {
     const list: DescriptionListItem[] = [];
     if (
@@ -227,12 +237,26 @@
         definition: agentLabel(agentName, undefined),
       });
     }
+    list.push({
+      id: 'run-id',
+      term: RUN_PAGE_COPY.facts.runId,
+      definition: { type: 'identifier', value: runId },
+    });
     if (schedule !== undefined && scheduleRules.scheduleRow) {
       list.push({
         id: 'schedule',
         term: RUN_DETAIL_COPY.schedule,
         definition: scheduleLink,
       });
+    }
+    // What the run used and cost (COR-2525), from the Bureau's own count of it. A run that has taken
+    // no step, or reported no tokens, has no Tokens fact, and one the Bureau priced no request of has
+    // no Cost fact: neither is said as zero.
+    if (tokens !== undefined) {
+      list.push({ id: 'tokens', term: RUN_PAGE_COPY.facts.tokens, definition: tokens });
+    }
+    if (cost !== undefined) {
+      list.push({ id: 'cost', term: COST_COPY.label, definition: cost });
     }
     // When the run started and how long it took are said once, in the header's status line, and the
     // rail does not say them again (rows 54j, 54p, 55d, 55m list its facts without them).
@@ -275,6 +299,7 @@
         definition: {
           type: 'tags',
           tags: tagsFact.tags,
+          emptyLabel: 'None',
           systemTagCount: tagsFact.systemTagCount,
           ...(tagGate.disabled ? {} : { onAddTag: () => (editingTags = true) }),
         },

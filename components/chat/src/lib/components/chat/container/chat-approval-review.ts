@@ -2,7 +2,7 @@ import type { ApprovalState } from '@lostgradient/cinder';
 import type { Message } from '../conversation-model.ts';
 
 /** The words the composer drawer says while an approval waits on the person. */
-export const APPROVAL_DRAWER_TEXT = 'Approval needed.';
+export const APPROVAL_DRAWER_TEXT = 'Waiting for your approval.';
 
 /** The drawer's action: it takes the person to the approval that waits. */
 export const APPROVAL_DRAWER_ACTION = 'Review approval';
@@ -192,11 +192,26 @@ export function approvalArrivalRestShift(
  */
 export function approvalPlacementShift(transcript: HTMLElement, card: HTMLElement): number | null {
   const unit = approvalUnitBox(card);
+  // A trailing host affordance (such as Review in deck) may sit after the decision row. It remains
+  // reachable in the room below that row, but must not make the label and decisions look too tall
+  // for the arrival box and leave the label under the overlaid header after a phone resize.
+  const actionRow = approvalActionRow(card);
   const box = approvalArrivalBox(transcript);
-  if (unit.bottom - unit.top <= 0 || box.bottom - box.top <= 0) return null;
+  // Keep the full labeled unit at its established resting place whenever it fits. Under an overlay
+  // the transcript's end fade is the protected edge; elsewhere the ordinary button clearance is.
+  const fullUnitClearance =
+    approvalOverlayCovered(transcript) > 0
+      ? APPROVAL_END_FADE_CLEARANCE
+      : APPROVAL_BOTTOM_CLEARANCE;
+  const fullUnitFits = unit.bottom + fullUnitClearance - unit.top <= box.bottom - box.top + 0.5;
+  const placementUnit =
+    actionRow === null || fullUnitFits
+      ? unit
+      : { ...unit, bottom: Math.max(unit.top, actionRow.getBoundingClientRect().bottom) };
+  if (placementUnit.bottom - placementUnit.top <= 0 || box.bottom - box.top <= 0) return null;
   const toEnd = transcript.scrollHeight - transcript.clientHeight - transcript.scrollTop;
   return approvalArrivalRestShift(
-    unit,
+    placementUnit,
     box,
     toEnd,
     APPROVAL_BOTTOM_CLEARANCE,

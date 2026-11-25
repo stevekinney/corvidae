@@ -132,6 +132,58 @@ describe('a turn’s tool calls', () => {
     ).toBeNull();
   });
 
+  test('a failed call carries its stored diagnostic, ordinal and Copy error control into the rail', () => {
+    const { container, getByRole } = render(Harness, {
+      props: {
+        entries: [
+          entry({ callId: 'c1' }),
+          entry({
+            callId: 'c2',
+            state: 'failed',
+            summary: 'The source could not be reached.',
+            failure: {
+              code: 'timeout',
+              message: 'GET /source/4471 timed out after 10000 ms',
+              retryable: true,
+            },
+          }),
+        ],
+      },
+    } as never);
+    const failure = container.querySelector('.cinder-tool-call-rail__failure')!;
+    expect(failure.textContent).toContain('Step 2 of 2');
+    expect(failure.querySelector('code')?.textContent).toContain(
+      'timeout: GET /source/4471 timed out after 10000 ms',
+    );
+    expect(getByRole('button', { name: 'Copy error' })).not.toBeNull();
+  });
+
+  test('retries the selected failed call rather than another failed row', async () => {
+    const retried: string[] = [];
+    const { getAllByRole } = render(Harness, {
+      props: {
+        entries: [
+          entry({
+            callId: 'older-failure',
+            state: 'failed',
+            summary: 'The older source failed.',
+            failure: { message: 'older failure', retryable: true },
+          }),
+          entry({
+            callId: 'current-failure',
+            state: 'failed',
+            summary: 'The current source failed.',
+            failure: { message: 'current failure', retryable: true },
+          }),
+        ],
+        onRetryStep: (callId: string) => retried.push(callId),
+      },
+    } as never);
+
+    await fireEvent.click(getAllByRole('button', { name: 'Retry this step' })[1]!);
+    expect(retried).toEqual(['current-failure']);
+  });
+
   test('an interrupted call that only reads says it did not finish, in danger text, with no arrow', () => {
     const { container } = render(Harness, {
       props: {

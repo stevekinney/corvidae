@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2612",
+  "branch": "steve/composable-consent-api-settings",
+  "checkedAt": "4a1c2e9effc3504b3ea094f8e466d1c36953efcb",
+  "briefVersion": "40d63c15b9b6",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Coordinator reports test:connected-apps passed at b29b2e2 including installed Chromium and generated entries."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Coordinator reports test:connected-apps passed at b29b2e2; handler and scoped grant tests passed locally."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Coordinator reports test:connected-apps passed at b29b2e2; PostgreSQL lost-notice and native two-host tool tests passed locally."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "The installed Chromium consumer exercises disclosure, named confirmation, cancel, failure, success, refetch and account switching. The named suite also verifies external management modes and the isolated headless build."
+    }
+  ]
+}

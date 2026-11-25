@@ -40,6 +40,10 @@
     gap: var(--cinder-space-2);
   }
 
+  .cinder-description-list__row[data-cinder-linked] > dd {
+    flex-wrap: nowrap;
+  }
+
   /* A value can be any string a record holds (an identifier, an address, a chat's title), and one
    * unbroken word of it must break inside the list rather than widen every variant's columns. */
   .cinder-description-list__definition {
@@ -66,17 +70,22 @@
     container-type: inline-size;
   }
 
+  /* The label column holds a label and no more: about 10rem at most, so a wide list gives the
+   * value the rest of the width and the two never drift apart. The list draws no frame, fill or
+   * divider of its own, so its rows take no inset at the start: the term sits on the text edge of
+   * what surrounds the list. */
   .cinder-description-list[data-cinder-variant='two-column'] .cinder-description-list__row {
     display: grid;
-    grid-template-columns: minmax(8rem, 1fr) 3fr;
+    grid-template-columns: minmax(8rem, 10rem) 1fr;
     align-items: baseline;
     gap: var(--cinder-space-3);
+    padding-inline: 0;
   }
 
   @supports (grid-template-columns: subgrid) {
     .cinder-description-list[data-cinder-variant='two-column'] {
       display: grid;
-      grid-template-columns: minmax(8rem, 1fr) 3fr;
+      grid-template-columns: minmax(8rem, 10rem) 1fr;
     }
 
     .cinder-description-list[data-cinder-variant='two-column'] .cinder-description-list__row {
@@ -91,10 +100,11 @@
     color: var(--cinder-text-muted);
   }
 
-  /* Collapse two-column to stacked at narrow container widths. */
+  /* Collapse two-column to stacked at narrow container widths, with the term close above its value. */
   @container (max-width: 28rem) {
     .cinder-description-list[data-cinder-variant='two-column'] .cinder-description-list__row {
       grid-template-columns: 1fr;
+      gap: var(--cinder-space-1);
     }
   }
 
@@ -387,19 +397,13 @@
   .cinder-description-list__identifier-group {
     display: inline-flex;
     align-items: center;
-    gap: var(--cinder-space-1);
+    font-size: var(--cinder-text-xs);
   }
 
   .cinder-description-list__identifier {
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-default);
-  }
-
-  /* The copy action is a quiet glyph here, not a bordered button. */
-  .cinder-description-list__identifier-group .cinder-copy-button {
-    border-color: transparent;
-    padding: var(--cinder-space-1);
   }
 
   .cinder-description-list__tags {

@@ -91,7 +91,7 @@ test('compiled definitions commands map every route to Bureau operations', async
     ['agents', 'get', 'test'],
     ['agents', 'create', 'test', '--file', definitionFile],
     ['agents', 'update', 'test', '--file', definitionFile, '--if-revision', 'hash-1'],
-    ['agents', 'delete', 'test', '--if-revision', 'hash-1'],
+    ['agents', 'delete', 'test', '--if-revision', 'hash-1', '--yes'],
     ['agents', 'duplicate', 'plugin:test'],
     ['agents', 'models'],
     ['agents', 'versions', 'list', 'test'],
@@ -130,7 +130,7 @@ test('compiled definitions commands map every route to Bureau operations', async
 // spawn-free: compiled subprocesses are the behavior under test and use the hang guard.
 test('compiled definitions commands cover delete, duplicate, and models', async () => {
   const commands = [
-    ['agents', 'delete', 'test', '--if-revision', 'hash-1'],
+    ['agents', 'delete', 'test', '--if-revision', 'hash-1', '--yes'],
     ['agents', 'duplicate', 'plugin:test'],
     ['agents', 'models'],
   ];
@@ -234,6 +234,7 @@ test('compiled definitions commands fail closed and do not retry mutations', asy
     'denied',
     '--if-revision',
     'hash-1',
+    '--yes',
     '--url',
     `http://127.0.0.1:${server.port}`,
   ]);

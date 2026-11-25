@@ -4,11 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import {
-  CINDER_GENERATED_OUTPUTS,
-  cinderGeneratedStaleness,
-  ensureCinderGenerated,
-} from './ensure-cinder-generated.ts';
+import { CINDER_GENERATED_OUTPUTS, cinderGeneratedStaleness } from './ensure-cinder-generated.ts';
 
 const directories: string[] = [];
 afterEach(() => {
@@ -16,8 +12,7 @@ afterEach(() => {
     rmSync(directory, { recursive: true, force: true });
 });
 
-/** A repository root holding a Cinder package with every output, newer than its one input. */
-function fixture(): { root: string; cinder: string } {
+function fixture(): string {
   const root = mkdtempSync(join(tmpdir(), 'corvidae-ensure-cinder-'));
   directories.push(root);
   const cinder = join(root, 'components/cinder');
@@ -28,40 +23,41 @@ function fixture(): { root: string; cinder: string } {
   };
   touch(join(cinder, 'src/tokens/sets/colors.tokens.json'), 1_000);
   mkdirSync(join(cinder, 'scripts'), { recursive: true });
+  touch(join(root, 'internal/component-tooling/scripts/generate.ts'), 1_000);
+  touch(join(root, 'internal/component-tooling/src/schema.ts'), 1_000);
+  touch(join(root, 'package.json'), 1_000);
+  touch(join(root, 'bun.lock'), 1_000);
+  touch(join(root, 'internal/component-tooling/package.json'), 1_000);
+  touch(join(cinder, 'package.json'), 1_000);
   for (const output of CINDER_GENERATED_OUTPUTS) touch(join(cinder, output), 2_000);
-  return { root, cinder };
+  return cinder;
 }
 
-test('fresh generated files are left alone: the generator is not run', () => {
-  const { root } = fixture();
-  let runs = 0;
-  expect(ensureCinderGenerated({ root, generate: () => ((runs += 1), 0) })).toBe(false);
-  expect(runs).toBe(0);
+test('changed metadata tooling and root package inputs invalidate Cinder outputs', () => {
+  for (const relative of [
+    'internal/component-tooling/scripts/generate.ts',
+    'internal/component-tooling/src/schema.ts',
+    'internal/component-tooling/package.json',
+    'components/cinder/package.json',
+    'package.json',
+    'bun.lock',
+  ]) {
+    const cinder = fixture();
+    const root = join(cinder, '..', '..');
+    utimesSync(join(root, relative), 3_000, 3_000);
+    expect(cinderGeneratedStaleness(cinder)).toBe('an input is newer than the oldest output');
+  }
 });
 
-test('a missing output runs the generator once, and a failing generator is an error', () => {
-  const { root, cinder } = fixture();
+test('reports a missing output and leaves fresh output current', () => {
+  const cinder = fixture();
+  expect(cinderGeneratedStaleness(cinder)).toBeUndefined();
   rmSync(join(cinder, 'src/tokens/resolved/dark.json'));
   expect(cinderGeneratedStaleness(cinder)).toContain('resolved/dark.json is missing');
-  let runs = 0;
-  expect(
-    ensureCinderGenerated({
-      root,
-      generate: () => {
-        runs += 1;
-        writeFileSync(join(cinder, 'src/tokens/resolved/dark.json'), '');
-        return 0;
-      },
-    }),
-  ).toBe(true);
-  expect(runs).toBe(1);
-  expect(ensureCinderGenerated({ root, generate: () => 1 })).toBe(false);
-  rmSync(join(cinder, 'src/styles/tokens-base.css'));
-  expect(() => ensureCinderGenerated({ root, generate: () => 1 })).toThrow('metadata task failed');
 });
 
 test('an input newer than the oldest output is stale, and a test file is not an input', () => {
-  const { cinder } = fixture();
+  const cinder = fixture();
   const input = join(cinder, 'src/tokens/sets/colors.tokens.json');
   utimesSync(input, 3_000, 3_000);
   expect(cinderGeneratedStaleness(cinder)).toBe('an input is newer than the oldest output');
@@ -73,7 +69,7 @@ test('an input newer than the oldest output is stale, and a test file is not an 
 });
 
 test('a temporary input removed after listing does not abort the freshness check', () => {
-  const { cinder } = fixture();
+  const cinder = fixture();
   const temporary = join(cinder, 'src/.forbidden-style-fixture.svelte');
   writeFileSync(temporary, '<style>p { color: red; }</style>');
   const stat = fileSystem.statSync;

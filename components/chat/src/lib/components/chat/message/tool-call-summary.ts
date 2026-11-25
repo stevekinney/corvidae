@@ -229,6 +229,17 @@ export function totalToolCallDuration(
   return durations.reduce<number>((sum, duration) => sum + (duration ?? 0), 0);
 }
 
+/**
+ * A folded repeated row represents accumulated work, so retain a tenth of a second once its total
+ * crosses a second. Individual step durations and ordinary group summaries keep Cinder's compact
+ * duration wording.
+ */
+export function formatRepeatedToolCallDuration(milliseconds: number): string {
+  if (milliseconds < 1_000 || milliseconds % 1_000 === 0) return formatDuration(milliseconds);
+  if (milliseconds >= 60_000) return formatDuration(milliseconds);
+  return `${(milliseconds / 1_000).toFixed(1)} s`;
+}
+
 /** What the group's header says after its step count, one phrase to a field. */
 export type ToolCallSummaryParts = {
   /** The first host-provided semantic sentence for completed work, when one exists. */

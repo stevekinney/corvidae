@@ -45,6 +45,7 @@
     controlInvalid = false,
     fullWidth = false,
     errorMountedOnDemand = false,
+    errorBeforeDescription = false,
     control,
     before,
     after,
@@ -105,6 +106,8 @@
      * mounting when a consumer has a specific reason not to pre-mount.
      */
     errorMountedOnDemand?: boolean | undefined;
+    /** Render the error immediately after the control rather than after the field's supporting content. */
+    errorBeforeDescription?: boolean | undefined;
     control: Snippet;
     before?: Snippet | undefined;
     after?: Snippet | undefined;
@@ -210,6 +213,30 @@
       {#if after}{@render after()}{/if}
     </div>{:else}<FormFieldProvider {context}>{@render control()}</FormFieldProvider>{/if}
 
+  {#snippet errorElement()}
+    {#if error || !errorMountedOnDemand}
+      <p
+        id={errorId}
+        class={classNames('cinder-form-field__error', errorClass)}
+        aria-live="polite"
+        data-cinder-error={error ? '' : undefined}
+      >
+        {#if error}{#if errorGlyph === 'error'}<CircleAlert
+              size={14}
+              aria-hidden="true"
+              class="cinder-form-field__glyph"
+            />{:else}<TriangleAlert
+              size={14}
+              aria-hidden="true"
+              class="cinder-form-field__glyph"
+            />{/if}<span class="cinder-form-field__error-body"
+            ><span class="cinder-form-field__error-text">{error}</span
+            >{#if errorAction}{' '}{@render errorAction()}{/if}</span
+          >{/if}
+      </p>
+    {/if}
+  {/snippet}
+  {#if errorBeforeDescription}{@render errorElement()}{/if}
   {#if description}
     <p id={descriptionId} class={classNames('cinder-form-field__description', descriptionClass)}>
       {description}{#if descriptionAction}{' '}{@render descriptionAction()}{/if}
@@ -235,25 +262,5 @@
     </p>
   {/if}
   {#if message}{@render message()}{/if}
-  {#if error || !errorMountedOnDemand}
-    <p
-      id={errorId}
-      class={classNames('cinder-form-field__error', errorClass)}
-      aria-live="polite"
-      data-cinder-error={error ? '' : undefined}
-    >
-      {#if error}{#if errorGlyph === 'error'}<CircleAlert
-            size={14}
-            aria-hidden="true"
-            class="cinder-form-field__glyph"
-          />{:else}<TriangleAlert
-            size={14}
-            aria-hidden="true"
-            class="cinder-form-field__glyph"
-          />{/if}<span class="cinder-form-field__error-body"
-          ><span class="cinder-form-field__error-text">{error}</span
-          >{#if errorAction}{' '}{@render errorAction()}{/if}</span
-        >{/if}
-    </p>
-  {/if}
+  {#if !errorBeforeDescription}{@render errorElement()}{/if}
 </div>

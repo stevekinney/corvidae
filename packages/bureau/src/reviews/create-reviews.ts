@@ -5,6 +5,7 @@ import type { BureauReviews, PendingReview } from '../bureau-types/reviews.ts';
  * which share its run, session, and audit state and so are built where that state lives.
  */
 export type ReviewsDependencies = {
+  readonly mayRemember: BureauReviews['mayRemember'];
   /** The reviews of the sessions this process holds (tool approvals and session human waits). */
   readonly listSessionReviews: () => PendingReview[];
   /**
@@ -31,6 +32,7 @@ export type ReviewsDependencies = {
  */
 export function createReviews(dependencies: ReviewsDependencies): BureauReviews {
   return {
+    mayRemember: dependencies.mayRemember,
     list: (): PendingReview[] => [
       ...dependencies.listSessionReviews(),
       ...dependencies.listRunHumanWaits(),

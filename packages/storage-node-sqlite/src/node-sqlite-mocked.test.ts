@@ -148,6 +148,7 @@ describe('NodeSQLiteStorage with mocked better-sqlite3', () => {
       scanConsistency: 'snapshot',
       atomicBatch: true,
       conditionalBatch: true,
+      conditionalBatchDeadline: true,
       boundedRangeDelete: false,
     });
 

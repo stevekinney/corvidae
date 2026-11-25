@@ -78,7 +78,7 @@
     }),
     undefined,
   );
-  const listed = $derived<readonly DecisionModelRow[] | undefined>(rows.data);
+  const listed = $derived(rows.data?.rows);
   /** The row the Bureau says a decision goes to now. */
   const answering = $derived(listed?.find((row) => row.answering));
   /** The row the Bureau says the language-model fallback uses. */
@@ -101,21 +101,35 @@
     const applied = effective['decisions.model'];
     return typeof applied === 'string' && applied !== '' ? applied : undefined;
   });
-  /**
-   * Whether the row in force is the one that answers. The Bureau says which row answers (its
-   * `answering` mark); the page only compares its name with the setting. Nothing here decides
-   * whether a row is available, can decide or is allowed.
-   */
-  const inForceAnswers = $derived(
-    answering !== undefined &&
-      inForceName !== undefined &&
-      decisionRowName(answering) === inForceName,
+  function selectedRow(
+    name: unknown,
+    setting: 'configured' | 'configuredFallback',
+  ): DecisionModelRow | undefined {
+    if (typeof name !== 'string' || name === '') return undefined;
+    return (
+      listed?.find((row) => row[setting] === name) ??
+      listed?.find((row) => decisionRowName(row) === name)
+    );
+  }
+
+  const configuredHost = $derived(rows.data?.hostModel);
+  const hostAnswers = $derived(
+    configuredHost !== undefined && configuredHost !== null && configuredHost.name === inForceName,
   );
-  /** Another row answers, or none: the row in force is empty, missing, needs setup or is not allowed. */
+  const inForceAnswers = $derived(
+    hostAnswers ||
+      (answering !== undefined && answering === selectedRow(inForceName, 'configured')),
+  );
   const fallbackAnswers = $derived(listed !== undefined && !inForceAnswers);
 
-  /** What the decision model row says: what it is, or which row answers in its place. */
+  /** What the decision model row says, including when a host model handles part of the routing. */
   const modelDescription = $derived.by(() => {
+    if (hostAnswers && configuredHost !== undefined && configuredHost !== null) {
+      const hostName = modelDisplayName(configuredHost.name);
+      return answering === undefined
+        ? copy.model.hostAnswers(hostName)
+        : copy.model.hostAndFallback(hostName, modelDisplayName(answering.model));
+    }
     if (!fallbackAnswers) return copy.model.description;
     return answering === undefined
       ? copy.model.nothingAnswers
@@ -135,7 +149,7 @@
     if (
       listed !== undefined &&
       storedName !== undefined &&
-      !listed.some((row) => decisionRowName(row) === storedName)
+      !(hostAnswers || selectedRow(storedName, 'configured') !== undefined)
     ) {
       return connectOffered
         ? copy.model.missingWaiting(storedName)
@@ -143,17 +157,23 @@
     }
     return undefined;
   });
-  /** An advisory on the fallback row: the stored row is listed, and the Bureau's fallback never uses it. */
+  /** The choice stays visible when the Bureau cannot use it, alongside the fallback it reports. */
   const fallbackWarning = $derived.by(() => {
     const stored = form.draft('decisions.fallbackModel');
-    if (typeof stored !== 'string' || stored === '') return undefined;
-    const unusable = listed?.find((row) => !row.canBeFallback && decisionRowName(row) === stored);
-    // Named as its select names it ("Jev, TypeSafe"), not by its raw id.
-    return unusable === undefined
-      ? undefined
-      : copy.fallbackModel.unusable(
-          `${modelDisplayName(unusable.model)}, ${providerTitle(unusable.provider)}`,
-        );
+    if (listed === undefined || typeof stored !== 'string' || stored === '') return undefined;
+    const selected = selectedRow(stored, 'configuredFallback');
+    const fallback =
+      fallbackRow === undefined
+        ? copy.fallbackModel.unavailable
+        : copy.fallbackModel.inUse(modelDisplayName(fallbackRow.model));
+    if (selected === undefined) return `${copy.fallbackModel.missing(stored)} ${fallback}`;
+
+    const name = `${modelDisplayName(selected.model)}, ${providerTitle(selected.provider)}`;
+    if (!selected.canBeFallback) return copy.fallbackModel.unusable(name);
+    if (selected.availability === 'needs-setup' && !selected.fallback) {
+      return `${copy.fallbackModel.needsSetup(name)} ${fallback}`;
+    }
+    return undefined;
   });
 
   /**
@@ -165,6 +185,7 @@
   function optionsFor(
     offered: readonly DecisionModelRow[] | undefined,
     current: unknown,
+    setting: 'configured' | 'configuredFallback',
   ): SelectOption[] {
     if (offered === undefined) {
       if (typeof current !== 'string' || current === '') return [];
@@ -183,10 +204,13 @@
     });
     if (typeof current !== 'string' || current === '') return options;
     if (options.some((option) => option.value === current)) return options;
+    if (setting === 'configured' && configuredHost?.name === current) {
+      return [{ value: current, label: modelDisplayName(current) }, ...options];
+    }
     // A stored row the Bureau lists but this select does not offer (the fallback's `unusable`) is
     // named as the other row names it. One the Bureau does not list keeps its own id, unmarked,
     // beside the warning.
-    const known = listed?.find((row) => decisionRowName(row) === current);
+    const known = selectedRow(current, setting);
     return [
       known === undefined
         ? { value: current, label: current }
@@ -281,7 +305,7 @@
             retryLabel: copy.model.tryAgain,
           }
         : undefined,
-      rowChoices: optionsFor(listed, form.draft('decisions.model')),
+      rowChoices: optionsFor(listed, form.draft('decisions.model'), 'configured'),
       warning: modelWarning,
       disabled: choosing,
     })}
@@ -290,7 +314,11 @@
       copy.fallbackModel.label,
       copy.fallbackModel.description,
       {
-        rowChoices: optionsFor(fallbackChoices, form.draft('decisions.fallbackModel')),
+        rowChoices: optionsFor(
+          fallbackChoices,
+          form.draft('decisions.fallbackModel'),
+          'configuredFallback',
+        ),
         emptyLabel: fallbackEmpty,
         warning: fallbackWarning,
         disabled: choosing,

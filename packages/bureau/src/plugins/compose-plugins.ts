@@ -63,6 +63,8 @@ import { HOST_PANEL_OPERATIONS } from '../http/host-panel-operations';
 import { resolveDiagnosticSink } from '../serialization';
 import { createToolApprovalHooks } from '../tool-approval';
 import type { BureauOptions } from '../bureau-types/options';
+import { RUN_TIMELINE_TOOL_NAME } from '../run-timeline-tool';
+import { TASKS_EXPLAIN_TOOL_NAME } from '../tasks-explain-tool';
 import { WORKFLOW_TOOL_NAMES } from '../workflow-tools';
 import {
   createVersionedCatalog,
@@ -104,6 +106,10 @@ export type ComposableOptions = Omit<BureauOptions, 'agentSource' | 'agents'> & 
 
 /** What composition hands the rest of construction. */
 export interface ComposedPlugins<O extends ComposableOptions> {
+  readonly terminalReviewReleases: ReadonlyMap<
+    string,
+    { plugin: string; release: NonNullable<PluginContributions['releases']>[number] }
+  >;
   /** The options with every running plugin's contributions folded in, and `memory` built. */
   readonly options: O;
   /** The contributed tools, by the `plugin:name` an agent file names them with. */
@@ -339,11 +345,12 @@ function checkPlacement(
   if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
     throw refusal(`a placement that is not an object (${JSON.stringify(entry) ?? String(entry)})`);
   }
-  const { kind, path, sidebar, agentTool } = entry as {
+  const { kind, path, sidebar, agentTool, when } = entry as {
     kind?: unknown;
     path?: unknown;
     sidebar?: unknown;
     agentTool?: unknown;
+    when?: unknown;
   };
   if (kind === 'page') {
     if (typeof path !== 'string' || !PANEL_PAGE_PATH_PATTERN.test(path)) {
@@ -371,13 +378,23 @@ function checkPlacement(
     if (
       agentTools !== undefined &&
       !Object.hasOwn(agentTools, agentTool) &&
-      !WORKFLOW_TOOL_NAMES.some((name) => agentTool === `bureau:${name}`)
+      !WORKFLOW_TOOL_NAMES.some((name) => agentTool === `bureau:${name}`) &&
+      agentTool !== `bureau:${RUN_TIMELINE_TOOL_NAME}` &&
+      agentTool !== `bureau:${TASKS_EXPLAIN_TOOL_NAME}`
     ) {
       throw new TypeError(
         `setup returned the panel "${app.name}" opened from unknown agent tool "${agentTool}".`,
       );
     }
-  } else if (kind !== 'run') {
+  } else if (kind === 'run') {
+    // Only a condition the run's page can read: a value it would read as "every run" by accident
+    // is refused, so a plugin that means "failed" never shows its panel on every page.
+    if (when !== undefined && when !== 'failed') {
+      throw refusal(
+        `a run placement with the condition ${JSON.stringify(when) ?? typeof when}, which is not "failed"`,
+      );
+    }
+  } else {
     throw refusal(
       `a placement of kind ${JSON.stringify(kind)}, which is not page, run or chat-tool`,
     );
@@ -732,6 +749,10 @@ export function registersKind(kind: PluginContributionKind, options: ComposableO
 
 /** The accumulated contributions of every running plugin. */
 class Contributed {
+  readonly terminalReviewReleases = new Map<
+    string,
+    { plugin: string; release: NonNullable<PluginContributions['releases']>[number] }
+  >();
   readonly tools: Record<string, Tool> = {};
   readonly activities: { plugin: string; version: string; result: PluginSetupResult }[] = [];
   readonly agentSources: { plugin: string; result: PluginSetupResult }[] = [];
@@ -768,6 +789,22 @@ class Contributed {
     tools: ReadonlyMap<string, Tool>,
     gate: PluginSecretGate | undefined,
   ): void {
+    for (const release of result.releases ?? []) {
+      const key = `${plugin}:${release.name}`;
+      if (this.terminalReviewReleases.has(key))
+        throw new Error(`Duplicate terminal review release: ${key}`);
+      if (
+        [...this.terminalReviewReleases.values()].some(
+          (held) =>
+            held.plugin === plugin &&
+            held.release.agent === release.agent &&
+            held.release.tool === release.tool &&
+            held.release.toolRevision === release.toolRevision,
+        )
+      )
+        throw new Error(`Ambiguous terminal review release: ${key}`);
+      this.terminalReviewReleases.set(key, { plugin, release });
+    }
     const id = (name: string) => formatToolId({ namespace: plugin, name });
     for (const [key, tool] of tools) this.tools[key] = tool;
     if (
@@ -1625,6 +1662,7 @@ export async function composePlugins<O extends ComposableOptions>(
   return {
     options: await withModelCatalog(optionsWith(options, contributed), contributed.providers),
     tools: contributed.tools,
+    terminalReviewReleases: contributed.terminalReviewReleases,
     records,
     shippedContent: shippedContentOf(records),
     unavailableAgents,

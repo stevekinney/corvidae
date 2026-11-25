@@ -6,7 +6,8 @@
  * not the plan prose's shorthand naming — ground truth wins:
  * `status` (repeated), `type`, `tag` (repeated, AND);
  * `attr.<name>[.gt|.lt|.gte|.lte]` (see `attribute-filters.ts`);
- * `id_prefix`, `failure_category` (repeated, OR);
+ * `id_prefix`, `failure_category` (repeated, OR); `failed_step`, `retrying`
+ * (`true` or `false`, COR-2535);
  * `created_at_{gte,gt,lte,lt}` / `updated_at_*` / `execution_deadline_*`;
  * `include=failureCategory` (repeated), `limit` / `offset`.
  */
@@ -93,6 +94,8 @@ export function serializeWorkflowListFilter(filter: WorkflowListQuery): URLSearc
   for (const attribute of filter.attributes ?? []) appendAttributeFilter(params, attribute);
   if (filter.idPrefix !== undefined) params.set('id_prefix', filter.idPrefix);
   appendMultiValue(params, 'failure_category', filter.failureCategory);
+  if (filter.failedStep !== undefined) params.set('failed_step', filter.failedStep);
+  if (filter.retrying !== undefined) params.set('retrying', String(filter.retrying));
   appendAllTimeRanges(params, filter);
   if (filter.includeFailureCategory) params.append('include', 'failureCategory');
   if (filter.limit !== undefined) params.set('limit', String(filter.limit));
@@ -151,6 +154,12 @@ export function parseWorkflowListFilter(params: URLSearchParams): WorkflowListQu
 
   const failureCategory = parseSingleOrMultiValue<FailureCategory>(params, 'failure_category');
   if (failureCategory !== undefined) filter.failureCategory = failureCategory;
+
+  const failedStep = params.get('failed_step');
+  if (failedStep !== null && failedStep !== '') filter.failedStep = failedStep;
+  const retrying = params.get('retrying');
+  if (retrying === 'true') filter.retrying = true;
+  else if (retrying === 'false') filter.retrying = false;
 
   parseAllTimeRanges(params, filter);
   parseIncludeAndPagination(params, filter);

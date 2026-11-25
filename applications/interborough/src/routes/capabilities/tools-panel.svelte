@@ -154,7 +154,7 @@
   {:else if catalog.isPending}
     <CapabilitiesLoading label={copy.tool.loading} />
   {:else if catalog.isError && asked}
-    <ToolPageState kind="failed" onRetry={() => void catalog.refetch()} />
+    <ToolPageState kind="failed" error={catalog.error} onRetry={() => void catalog.refetch()} />
   {:else if catalog.isError}
     <Alert variant="danger">
       <p class="ib-capabilities__alert-title">{copy.tool.loadFailed.title}</p>

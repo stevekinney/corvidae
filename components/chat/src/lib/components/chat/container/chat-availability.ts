@@ -29,7 +29,7 @@ export interface ChatAvailabilityLabels {
   readonly retry: string;
   /** The title of a conversation that could not be read. Default `This conversation couldn’t be loaded`. */
   readonly errorTitle: string;
-  /** The primary button of a conversation that could not be read. Default `Retry`. */
+  /** The primary button of a conversation that could not be read. Default `Try again`. */
   readonly tryAgain: string;
   /** The title of a deleted conversation. Default `This conversation was deleted`. */
   readonly deletedTitle: string;
@@ -59,7 +59,7 @@ export const DEFAULT_CHAT_AVAILABILITY_LABELS: ChatAvailabilityLabels = {
   canceledDescription: 'The conversation was not loaded. Nothing was lost.',
   retry: 'Retry',
   errorTitle: 'This conversation couldn’t be loaded',
-  tryAgain: 'Retry',
+  tryAgain: 'Try again',
   deletedTitle: 'This conversation was deleted',
   deletedDescription: 'It no longer exists, so nothing more can be sent here.',
   unconfiguredTitle: 'Connect a model provider',

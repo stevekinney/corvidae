@@ -6,6 +6,8 @@
  * time between the moments the seed sets, so a time is asserted as the moment it was set to, plus at
  * most {@link SLACK}.
  */
+import { openLocalBungalow } from '@lostgradient/bungalow';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -52,11 +54,15 @@ const SLACK = 60_000;
 
 let home = '';
 let world: SampleWorld;
+/** The steps the seed said it began, in order. */
+const steps: string[] = [];
 
 beforeAll(async () => {
   home = await mkdtemp(join(tmpdir(), 'interborough-sample-world-'));
   world = await seedSampleWorld(join(home, 'home'), {
+    ownership: { root: home, owner: join(import.meta.dir, '../../..') },
     beforeProviderKeyRemoved: createShowcaseEditableAgent,
+    onStep: (step) => steps.push(step),
   });
 });
 
@@ -103,6 +109,58 @@ type ContextRow = {
   updatedAt: string;
   lastMessagePreview: string | null;
 };
+
+describe('the steps of the seed (COR-2632)', () => {
+  test('says each step as it begins: every host started, its work, and its host stopped', () => {
+    expect(steps.slice(0, 3)).toEqual([
+      'Tool runner version 1: starting its host',
+      'Tool runner version 1',
+      'Tool runner version 1: stopping its host',
+    ]);
+    expect(steps).toContain('Oct 23');
+    expect(steps).toContain('Oct 24');
+    expect(steps.slice(-2)).toEqual(['Nov 2: starting its host', 'Nov 2']);
+  });
+
+  test('rejects with an error that names the step that failed', async () => {
+    const failing = await mkdtemp(join(tmpdir(), 'interborough-sample-world-failing-'));
+    try {
+      const seeded = seedSampleWorld(join(failing, 'home'), {
+        ownership: { root: failing, owner: join(import.meta.dir, '../../..') },
+        onStep: (step) => {
+          if (step === 'Tool runner version 1: starting its host') throw new Error('no host today');
+        },
+      });
+      expect(await throwingRejectionOf(seeded)).toThrow(
+        `The sample world's step "Tool runner version 1: starting its host" failed: no host today`,
+      );
+    } finally {
+      await rm(failing, { recursive: true, force: true });
+    }
+  });
+
+  test('closes the session and releases its lease when reporting its stop fails', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'interborough-sample-world-stop-'));
+    const target = join(root, 'home');
+    try {
+      expect(
+        await throwingRejectionOf(
+          seedSampleWorld(target, {
+            ownership: { root, owner: join(import.meta.dir, '../../..') },
+            onStep: (name) => {
+              if (name === 'Tool runner version 1: stopping its host')
+                throw new Error('report failed');
+            },
+          }),
+        ),
+      ).toThrow('report failed');
+      const reopened = await openLocalBungalow({ name: 'interborough', root: target });
+      reopened.close();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('the sample world, part A', () => {
   test('holds the agent file the end-to-end showcase editor opens (COR-2412)', async () => {
@@ -1069,14 +1127,14 @@ describe('the sample world, part B', () => {
     ]);
   });
 
-  test('keeps Release notes’ four versions, the run on 1.2.0, and the files as the Code tabs show them', async () => {
+  test('keeps Release notes’ recorded four-version history and its sole run on 1.2.0', async () => {
     type Revision = {
       version: string;
       savedAt: string;
       surface: string | null;
       compatibility: string | null;
       changes: Array<{ kind: string }>;
-      runs: { count: number; firstRunAt: string | null };
+      runs: { count: number; firstRunAt: string | null; lastRunAt: string | null };
     };
     const { revisions } = await call<{ revisions: Revision[] }>('bureau.workflows.history', {
       id: 'release-notes',
@@ -1109,8 +1167,24 @@ describe('the sample world, part B', () => {
     for (const [index, revision] of revisions.entries()) {
       expectAt(revision.savedAt, saved[index] ?? 0);
     }
-    expect(revisions[1]?.runs.count).toBe(1);
-    expectAt(revisions[1]?.runs.firstRunAt, times.releaseNotesFailed);
+    expect(
+      revisions.map(({ version, runs }) => ({
+        version,
+        count: runs.count,
+        firstRunAt: runs.firstRunAt,
+        lastRunAt: runs.lastRunAt,
+      })),
+    ).toEqual([
+      { version: '1.3.0', count: 0, firstRunAt: null, lastRunAt: null },
+      {
+        version: '1.2.0',
+        count: 1,
+        firstRunAt: new Date(times.releaseNotesFailed).toISOString(),
+        lastRunAt: new Date(times.releaseNotesFailed).toISOString(),
+      },
+      { version: '1.1.0', count: 0, firstRunAt: null, lastRunAt: null },
+      { version: '1.0.0', count: 0, firstRunAt: null, lastRunAt: null },
+    ]);
 
     const workflows = join(home, 'home', 'workflows');
     for (const file of [

@@ -84,7 +84,8 @@ describe('RealmsTab', () => {
 
     const { findByRole, unmount } = renderRealmsTab();
     const banner = await findByRole('alert');
-    expect(banner.textContent).toContain('Not authorized');
+    expect(banner.textContent).toContain('Couldn’t load revision realms');
+    expect(document.querySelector('[data-fault-kind="unauthorized"]')).not.toBeNull();
 
     const reads = () =>
       scripted?.calls.filter(

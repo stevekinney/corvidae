@@ -5,7 +5,7 @@
  * Playwright reuses a server already listening on the end-to-end port outside CI, and on a shared
  * host that is often another checkout's build, or a design-review capture's, on the default port
  * 7399. A gate that screenshots someone else's tree proves nothing, so this script picks a block of
- * free consecutive ports (the suite holds eight, from `endToEndPort()`), exports the first as
+ * free consecutive ports (the suite holds nine, from `endToEndPort()`), exports the first as
  * `INTERBOROUGH_E2E_PORT`, and sets `INTERBOROUGH_E2E_FRESH_SERVER`, which makes
  * `playwright.config.ts` refuse to reuse a server at all. `INTERBOROUGH_E2E_PORT` set by the caller
  * is honored, but only when its whole block is free; otherwise the run exits 2 instead of
@@ -91,8 +91,11 @@ export const hostEnvironment: GatedRunEnvironment = {
 export async function runGatedBrowserSuite(
   argv: readonly string[] = process.argv.slice(2),
   environment: GatedRunEnvironment = hostEnvironment,
+  attempt = 0,
 ): Promise<number> {
-  let first = environment.requestedPort;
+  const argumentsList = [...argv];
+  const requestedPort = environment.requestedPort;
+  let first = requestedPort;
   if (first === undefined) {
     first = findFreePortBlock(END_TO_END_PORT_COUNT, environment.portIsFree);
     if (first === undefined) {
@@ -107,7 +110,40 @@ export async function runGatedBrowserSuite(
     );
     return 2;
   }
-  return environment.run(
+  environment.standardError(
+    `gated browser suite: starting on ports ${String(first)}-${String(first + END_TO_END_PORT_COUNT - 1)}.\n`,
+  );
+  const result = await environment.run(
+    ['bun', 'scripts/run-gated-browser-suite.ts', '--playwright-child', ...argumentsList],
+    { INTERBOROUGH_E2E_PORT: String(first), INTERBOROUGH_E2E_FRESH_SERVER: '1' },
+  );
+  if (result === 73 && requestedPort === undefined && attempt + 1 < SEARCH_ATTEMPTS) {
+    environment.standardError(
+      'gated browser suite: a port was occupied during startup; retrying with a fresh block.\n',
+    );
+    return runGatedBrowserSuite(argumentsList, environment, attempt + 1);
+  }
+  if (result === 73) {
+    environment.standardError(
+      'gated browser suite: a port was occupied during startup; release the occupied port or choose another INTERBOROUGH_E2E_PORT.\n',
+    );
+  }
+  return result;
+}
+
+export function scanCollisionOutput(
+  tail: string,
+  text: string,
+): { tail: string; collision: boolean } {
+  const combined = tail + text;
+  return {
+    tail: combined.slice(-512),
+    collision: combined.includes('INTERBOROUGH_E2E_STARTUP_BIND_COLLISION'),
+  };
+}
+
+async function runPlaywrightChild(argv: readonly string[]): Promise<number> {
+  const child = Bun.spawn(
     [
       'bun',
       '--bun',
@@ -118,17 +154,38 @@ export async function runGatedBrowserSuite(
       '--project=chromium',
       ...argv,
     ],
-    { INTERBOROUGH_E2E_PORT: String(first), INTERBOROUGH_E2E_FRESH_SERVER: '1' },
+    { cwd: applicationDirectory, stdio: ['ignore', 'pipe', 'pipe'] },
   );
+  let collision = false;
+  const forward = async (stream: ReadableStream<Uint8Array>, target: NodeJS.WriteStream) => {
+    const decoder = new TextDecoder();
+    let tail = '';
+    for await (const chunk of stream) {
+      const text = decoder.decode(chunk, { stream: true });
+      const scanned = scanCollisionOutput(tail, text);
+      tail = scanned.tail;
+      collision ||= scanned.collision;
+      target.write(text);
+    }
+  };
+  const [code] = await Promise.all([
+    child.exited,
+    forward(child.stdout, process.stdout),
+    forward(child.stderr, process.stderr),
+  ]);
+  return code !== 0 && collision ? 73 : code;
 }
 
 // The suite runs one Playwright worker (`playwright.config.ts`), so one browser at a time: one host
 // slot, taken whether this script runs under the host lock (`test:browser:interborough`) or
 // directly, as an agent runs one end-to-end spec, after the host is checked for memory.
 if (import.meta.main) {
-  process.exitCode = await withMemoryAdmission(() =>
-    withHostSlots(1, (slots) =>
-      runGatedBrowserSuite(process.argv.slice(2), underHostSlots(hostEnvironment, slots)),
-    ),
-  );
+  process.exitCode =
+    process.argv[2] === '--playwright-child'
+      ? await runPlaywrightChild(process.argv.slice(3))
+      : await withMemoryAdmission(() =>
+          withHostSlots(1, (slots) =>
+            runGatedBrowserSuite(process.argv.slice(2), underHostSlots(hostEnvironment, slots)),
+          ),
+        );
 }

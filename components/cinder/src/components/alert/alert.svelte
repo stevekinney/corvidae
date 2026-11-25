@@ -29,7 +29,11 @@
 
   const resolvedVariant = $derived(variant === 'error' ? 'danger' : variant);
   const DefaultGlyph = $derived(
-    resolvedVariant === 'success' ? CircleCheck : resolvedVariant === 'info' ? Info : TriangleAlert,
+    resolvedVariant === 'success' || resolvedVariant === 'neutral'
+      ? CircleCheck
+      : resolvedVariant === 'info'
+        ? Info
+        : TriangleAlert,
   );
 
   let visible = $state(true);

@@ -12,6 +12,7 @@ import { describe, expect, test } from 'bun:test';
 import { HttpClientError } from '@lostgradient/weft';
 
 import type { FaultTreatment } from '../lib/faults.ts';
+import { router } from '../lib/router.svelte.ts';
 import { RETRY_LABEL } from './copy/views.ts';
 import FaultBoundaryHarness from './fault-boundary.test-harness.svelte';
 
@@ -21,6 +22,18 @@ async function renderHarness(props: {
   onFault?: (treatment: FaultTreatment, error: unknown) => void;
 }) {
   return render(FaultBoundaryHarness, { props });
+}
+
+/**
+ * The tone and role of the Cinder `ErrorState` a fault is drawn on. Every kind is announced as an
+ * alert (`announce`), whatever its tone: danger, warning (`conflict`, `unreachable`) or neutral
+ * (`not-found`, `not-supported`).
+ */
+function rowOf(container: HTMLElement): { tone: string | null; role: string | null } {
+  return {
+    tone: container.querySelector('.cinder-error-state')?.getAttribute('data-cinder-tone') ?? null,
+    role: container.querySelector('.cinder-error-state-body')?.getAttribute('role') ?? null,
+  };
 }
 
 describe('FaultBoundary', () => {
@@ -35,14 +48,14 @@ describe('FaultBoundary', () => {
   });
 
   test('not-found: shows the banner with the server message', async () => {
-    const { findByRole, findByText } = await renderHarness({
+    const { container, findByRole, findByText } = await renderHarness({
       error: new HttpClientError(404, 'workflow wf-1 not found'),
     });
 
-    const banner = await findByRole('alert');
-    expect(banner.getAttribute('data-tone')).toBe('neutral');
+    await findByRole('alert');
     expect(await findByText('Not found')).not.toBeNull();
     expect(await findByText('workflow wf-1 not found')).not.toBeNull();
+    expect(rowOf(container)).toEqual({ tone: 'neutral', role: 'alert' });
   });
 
   test('conflict: spent idempotency key shows the extra explanation', async () => {
@@ -50,10 +63,10 @@ describe('FaultBoundary', () => {
       faultCode: 'Conflict',
       weftCode: 'IdempotencyKeyPurgedError',
     });
-    const { findByRole, findByText } = await renderHarness({ error });
+    const { container, findByRole, findByText } = await renderHarness({ error });
 
-    const banner = await findByRole('alert');
-    expect(banner.getAttribute('data-tone')).toBe('warning');
+    await findByRole('alert');
+    expect(rowOf(container)).toEqual({ tone: 'warning', role: 'alert' });
     expect(await findByText('Conflict')).not.toBeNull();
     expect(
       await findByText(
@@ -73,47 +86,57 @@ describe('FaultBoundary', () => {
 
   test('invalid: shows the invalid-input badge', async () => {
     const error = new HttpClientError(400, 'invalid params', { faultCode: 'InvalidParams' });
-    const { findByRole, findByText } = await renderHarness({ error });
+    const { container, findByRole, findByText } = await renderHarness({ error });
 
-    const banner = await findByRole('alert');
-    expect(banner.getAttribute('data-tone')).toBe('danger');
+    await findByRole('alert');
+    expect(rowOf(container).tone).toBe('danger');
     expect(await findByText('Invalid input')).not.toBeNull();
   });
 
   test('unauthorized (401): shows the not-authorized badge with the server message', async () => {
     const error = new HttpClientError(401, 'no credential', { faultCode: 'Unauthorized' });
-    const { findByRole, findByText } = await renderHarness({ error });
+    const { container, findByRole, findByText } = await renderHarness({ error });
 
-    const banner = await findByRole('alert');
-    expect(banner.getAttribute('data-tone')).toBe('danger');
+    await findByRole('alert');
+    expect(rowOf(container).tone).toBe('danger');
     expect(await findByText('Not authorized')).not.toBeNull();
     expect(await findByText('no credential')).not.toBeNull();
   });
 
   test('unauthorized (403): shows the same not-authorized badge with its own server message', async () => {
     const error = new HttpClientError(403, 'scope denied', { faultCode: 'Forbidden' });
-    const { findByRole, findByText } = await renderHarness({ error });
+    const { container, findByRole, findByText } = await renderHarness({ error });
 
-    const banner = await findByRole('alert');
-    expect(banner.getAttribute('data-tone')).toBe('danger');
+    await findByRole('alert');
+    expect(rowOf(container).tone).toBe('danger');
     expect(await findByText('scope denied')).not.toBeNull();
   });
 
   test('not-supported: shows the not-supported badge', async () => {
     const error = new HttpClientError(501, 'not implemented', { faultCode: 'NotImplemented' });
-    const { findByRole, findByText } = await renderHarness({ error });
+    const { container, findByRole, findByText } = await renderHarness({ error });
 
-    const banner = await findByRole('alert');
-    expect(banner.getAttribute('data-tone')).toBe('neutral');
+    await findByRole('alert');
     expect(await findByText('Not supported')).not.toBeNull();
+    expect(rowOf(container)).toEqual({ tone: 'neutral', role: 'alert' });
+  });
+
+  test('unreachable: a request that got no answer is the warning tone, still announced as an alert', async () => {
+    const { container, findByRole, findByText } = await renderHarness({
+      error: new TypeError('Failed to fetch'),
+    });
+
+    await findByRole('alert');
+    expect(await findByText('Server unreachable')).not.toBeNull();
+    expect(rowOf(container)).toEqual({ tone: 'warning', role: 'alert' });
   });
 
   test('internal: REST-masked 500 shows the try-via-JSON-RPC hint', async () => {
     const error = new HttpClientError(500, 'Internal server error');
-    const { findByRole, findByText } = await renderHarness({ error });
+    const { container, findByRole, findByText } = await renderHarness({ error });
 
-    const banner = await findByRole('alert');
-    expect(banner.getAttribute('data-tone')).toBe('danger');
+    await findByRole('alert');
+    expect(rowOf(container).tone).toBe('danger');
     expect(await findByText('Something went wrong')).not.toBeNull();
     expect(
       await findByText('The REST API hides internal error detail', { exact: false }),
@@ -181,6 +204,137 @@ describe('FaultBoundary', () => {
 
     expect(await findByTestId('recovered')).not.toBeNull();
     expect(queryByRole('alert')).toBeNull();
+  });
+
+  describe('remediation and Retry (COR-2560)', () => {
+    const REMEDIATION = 'Check that the server is running, then try again.';
+
+    test('shows the fault’s remediation as its own line under the description, never as the title', async () => {
+      const error = new HttpClientError(503, 'The server is restarting.', {
+        retryable: true,
+        remediation: REMEDIATION,
+      });
+      const { container, findByText } = await renderHarness({ error });
+
+      const remediation = await findByText(REMEDIATION);
+      expect(remediation.classList.contains('cinder-error-state-remediation')).toBe(true);
+      const title = container.querySelector('.cinder-error-state-title');
+      expect(title?.textContent?.trim()).toBe('Something went wrong');
+      expect(title?.textContent).not.toContain(REMEDIATION);
+      // Description, then remediation, in reading order.
+      const description = await findByText('The server is restarting.');
+      expect(
+        description.compareDocumentPosition(remediation) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    test('shows no remediation line when the fault carries none', async () => {
+      const error = new HttpClientError(503, 'The server is restarting.');
+      const { container, findByText } = await renderHarness({ error });
+
+      await findByText('The server is restarting.');
+      expect(container.querySelector('.cinder-error-state-remediation')).toBeNull();
+    });
+
+    test('offers Retry for a retryable fault', async () => {
+      const error = new HttpClientError(503, 'Unavailable', { retryable: true });
+      const { findByRole } = await renderHarness({ error });
+
+      expect(await findByRole('button', { name: RETRY_LABEL })).not.toBeNull();
+    });
+
+    test('offers Retry for a fault that says nothing about retrying', async () => {
+      const error = new HttpClientError(503, 'Unavailable');
+      const { findByRole } = await renderHarness({ error });
+
+      expect(await findByRole('button', { name: RETRY_LABEL })).not.toBeNull();
+    });
+
+    test('a fault that is not retryable and that Health explains still has a way forward: Open Health', async () => {
+      const error = new HttpClientError(503, 'The server is not ready.', {
+        retryable: false,
+        remediation: 'Open Health to see which part of the server stopped, then start it.',
+      });
+      const { container, findByRole, queryByRole } = await renderHarness({ error });
+
+      const link = await findByRole('link', { name: 'Open Health' });
+      expect(link.getAttribute('href')).toBe('/health');
+      expect(queryByRole('button', { name: RETRY_LABEL })).toBeNull();
+      // The way forward sits in the row's own action region, beside where Try again would be.
+      expect(container.querySelector('.cinder-error-state-action')?.contains(link)).toBe(true);
+    });
+
+    test('Open Health opens inside the application on a plain click, and leaves a modified click to the browser', async () => {
+      router.navigate('/', { replace: true });
+      const error = new HttpClientError(503, 'The server is not ready.');
+      const { findByRole } = await renderHarness({ error });
+      const link = await findByRole('link', { name: 'Open Health' });
+
+      // A click with a modifier is the browser's own: nothing is prevented, the router stays put.
+      const modified = new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true });
+      link.dispatchEvent(modified);
+      expect(modified.defaultPrevented).toBe(false);
+      expect(router.pathname).toBe('/');
+
+      try {
+        await fireEvent.click(link);
+        expect(router.pathname).toBe('/health');
+      } finally {
+        router.navigate('/', { replace: true });
+      }
+    });
+
+    test('a bug the boundary caught while rendering says nothing about the server: no Open Health', async () => {
+      const { findByRole, queryByRole } = await renderHarness({ error: new Error('render bug') });
+
+      await findByRole('alert');
+      expect(queryByRole('link', { name: 'Open Health' })).toBeNull();
+    });
+
+    test('Health’s own pages never offer Open Health', async () => {
+      router.navigate('/health/workers', { replace: true });
+      try {
+        const error = new HttpClientError(503, 'The server is not ready.');
+        const { findByRole, queryByRole } = await renderHarness({ error });
+
+        await findByRole('alert');
+        expect(queryByRole('link', { name: 'Open Health' })).toBeNull();
+      } finally {
+        router.navigate('/', { replace: true });
+      }
+    });
+
+    test('a fault Health cannot explain offers no Open Health', async () => {
+      const error = new HttpClientError(409, 'The workflow changed.', { faultCode: 'Conflict' });
+      const { findByRole, queryByRole } = await renderHarness({ error });
+
+      await findByRole('alert');
+      expect(queryByRole('link', { name: 'Open Health' })).toBeNull();
+    });
+
+    test('the row is a bordered Cinder hairline, with no box of the page’s own', async () => {
+      const error = new HttpClientError(500, 'Internal server error');
+      const { container, findByRole } = await renderHarness({ error });
+
+      await findByRole('alert');
+      const root = container.querySelector('.cinder-error-state');
+      expect(root?.getAttribute('data-cinder-variant')).toBe('row');
+      expect(root?.hasAttribute('data-cinder-bordered')).toBe(true);
+      expect(container.querySelector('.weft-fault-boundary')).toBeNull();
+    });
+
+    test('offers no Retry for a fault that is not retryable, and still shows its remediation', async () => {
+      const error = new HttpClientError(409, 'The workflow changed.', {
+        retryable: false,
+        remediation: 'Read the workflow again, then send the new revision.',
+      });
+      const { findByText, queryByRole } = await renderHarness({ error });
+
+      expect(
+        await findByText('Read the workflow again, then send the new revision.'),
+      ).not.toBeNull();
+      expect(queryByRole('button', { name: RETRY_LABEL })).toBeNull();
+    });
   });
 });
 

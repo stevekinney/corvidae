@@ -13,6 +13,7 @@
     type ChatAttachmentReference,
     type ChatAttachmentUpload,
     type ChatAvailability,
+    type ChatCitationClaim,
     type ChatComposerStatus,
     type ChatRowContext,
     type ChatTurnEvent,
@@ -84,6 +85,7 @@
   let availabilityKind = $state<ChatAvailability['kind'] | undefined>(setup.availability?.kind);
   let statusCleared = $state(false);
   let sources = $state.raw<Record<number, CitationSource[]>>({ ...setup.sources });
+  let claimSources = $state.raw<Record<number, ChatCitationClaim[]>>({ ...setup.claimSources });
   let streamMessageId = $state<string | undefined>();
   let streamContent = $state('');
 
@@ -178,7 +180,8 @@
       Object.hasOwn(setup.approvalDetails, toolCall.id)
         ? setup.approvalDetails[toolCall.id]
         : setup.approvalDetails[toolCall.name],
-    describeToolCall: (toolCall, result) => describeStressCall(toolCall.name, result?.outcome),
+    describeToolCall: (toolCall, result) =>
+      setup.toolPresentations[toolCall.id] ?? describeStressCall(toolCall.name, result?.outcome),
     resolveToolApproval: async (toolCallId, resolution: ApprovalResolution) => {
       approvals = [...approvals, { toolCallId, decision: resolution.decision }];
       if (resolution.decision === 'approve')
@@ -295,6 +298,19 @@
     return map;
   });
 
+  const claimSourcesByMessageId = $derived.by(() => {
+    const map = new Map<string, readonly ChatCitationClaim[]>();
+    for (const [ordinal, claims] of Object.entries(claimSources)) {
+      let seen = -1;
+      for (const id of conversation.ids) {
+        if (conversation.messages[id]?.role !== 'assistant') continue;
+        seen += 1;
+        if (seen === Number(ordinal)) map.set(id, claims);
+      }
+    }
+    return map;
+  });
+
   let safeAreaStylesheet: CSSStyleSheet | undefined;
 
   // What only a host does. A case calls these through a `hook` step.
@@ -381,6 +397,12 @@
   });
 </script>
 
+{#snippet missingSourceActions(context: ChatRowContext)}
+  {#if sourcesByMessageId.get(context.message.id)?.length === 0}
+    <span data-testid="chat-missing-source-notice">Sources unavailable</span>
+  {/if}
+{/snippet}
+
 {#snippet externalApprovalStatus(context: ChatRowContext)}
   {#if context.message.role === 'assistant' && setup.externalApproval}
     <ApprovalCard
@@ -432,6 +454,10 @@
         emptyTitle="Start a conversation"
         emptyDescription="Ask the agent about orders, refunds and the ledger."
         {sourcesByMessageId}
+        {claimSourcesByMessageId}
+        {...stressCase?.scenario === 'missing-source'
+          ? { messageActions: missingSourceActions }
+          : {}}
         {...setup.regenerate ? { onRegenerate: () => {} } : {}}
         onRetryConnection={(messageId) => {
           recordTurnAction('retry-now', messageId);

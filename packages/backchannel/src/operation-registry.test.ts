@@ -18,6 +18,44 @@ import {
   isValidOperationName,
   validateOperationName,
 } from './operation-registry.ts';
+import { principalFromApiKey } from './principal.ts';
+
+it('checks input-dependent policy without invoking the operation', async () => {
+  let calls = 0;
+  const operation = defineOperation({
+    name: 'probe.rename',
+    summary: 'Rename',
+    destructive: true,
+    mcpExposable: true,
+    inputSchema: z.object({ name: z.string() }),
+    outputSchema: z.object({ name: z.string() }),
+    access: { kind: 'public' },
+    transports: { http: false, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false },
+    unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+    authorize: async ({ input }) =>
+      input.name === 'restricted' ? { allowed: false, reason: 'restricted' } : { allowed: true },
+    invoke: async ({ input }) => {
+      calls++;
+      return { name: input.name };
+    },
+  });
+  const registry = createOperationRegistry([operation]);
+  const context = {
+    registry,
+    host: {},
+    principal: principalFromApiKey({ subject: 'user', scopes: [] }),
+    transport: 'mcp' as const,
+  };
+  expect(await operation.checkPolicy({ name: 'allowed' }, context)).toEqual({
+    ok: true,
+    value: undefined,
+  });
+  expect(await operation.checkPolicy({ name: 'restricted' }, context)).toMatchObject({
+    ok: false,
+    fault: { code: 'Forbidden', data: { reason: 'restricted' } },
+  });
+  expect(calls).toBe(0);
+});
 
 describe('validateOperationName', () => {
   it('accepts the canonical weft.<domain>.<action> shape', () => {

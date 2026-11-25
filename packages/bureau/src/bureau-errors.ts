@@ -2,6 +2,7 @@ import { type SignedPendingToolApproval } from 'armorer';
 import type { BureauToolbox } from './runtime-composition-types';
 import { formatReviewAnswerIssues, type ReviewAnswerIssue } from './review-answer';
 import { type TaskRespondRefusal } from './tasks/respond-to-task';
+import type { ResolveReviewResult } from './bureau-types/reviews.ts';
 
 /**
  * Discriminates *why* a `BureauError` with code `NOT_CONFIGURED` was thrown.
@@ -67,7 +68,10 @@ export const APPROVAL_OUTCOME_NOT_WRITTEN_MESSAGE =
   'The decision was recorded, but its outcome could not be written into the conversation, which still shows the approval as pending';
 
 export class ApprovalOutcomeNotWrittenError extends BureauError {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly resolution?: ResolveReviewResult,
+  ) {
     super(message, 'CONFLICT');
     this.name = 'ApprovalOutcomeNotWrittenError';
   }

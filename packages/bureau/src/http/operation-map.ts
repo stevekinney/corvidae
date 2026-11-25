@@ -118,6 +118,25 @@ export const OPERATION_MAP = {
     exempt:
       'composed from the task registry, the workflow runtime’s run read, and the durable engine’s timeline',
   },
+  'bureau.runs.compare': {
+    workspaceClass: 'private-owned',
+    exempt:
+      'composed from the task registry, the workflow runtime’s run read, and the durable engine’s fork comparison',
+  },
+  'bureau.tasks.explain': {
+    workspaceClass: 'private-owned',
+    exempt:
+      'composed from the task registry, the workflow runtime’s run read, the durable engine’s state and timeline, and the audit trail’s guardrail records',
+  },
+  'bureau.tasks.explanation.get': {
+    workspaceClass: 'private-owned',
+    exempt: 'composed from the task registry’s record of the run, which keeps the explanation',
+  },
+  'bureau.tasks.explanation.generate': {
+    workspaceClass: 'private-owned',
+    exempt:
+      'composed from the task registry, the durable engine’s state and timeline, the audit trail’s guardrail records, and the decision model',
+  },
   'bureau.tasks.events': { workspaceClass: 'private-owned', member: 'tasks.events' },
   'bureau.tasks.respond': { workspaceClass: 'private-owned', member: 'tasks.respond' },
 
@@ -136,10 +155,42 @@ export const OPERATION_MAP = {
     workspaceClass: 'private-owned',
     member: 'contexts.regenerate',
   },
+  'bureau.contexts.discardturn': {
+    workspaceClass: 'private-owned',
+    member: 'contexts.discardTurn',
+  },
+  'bureau.contexts.resumeturn': {
+    workspaceClass: 'private-owned',
+    member: 'contexts.resumeTurn',
+  },
   'bureau.contexts.rename': { workspaceClass: 'private-owned', member: 'contexts.rename' },
   'bureau.contexts.archive': { workspaceClass: 'private-owned', member: 'contexts.archive' },
   'bureau.contexts.unarchive': { workspaceClass: 'private-owned', member: 'contexts.unarchive' },
   'bureau.contexts.window': { workspaceClass: 'private-owned', member: 'contexts.window' },
+  'bureau.contexts.share': {
+    workspaceClass: 'explicit-share',
+    exempt: 'an owner-authorized transition of durable session reader metadata',
+  },
+  'bureau.contexts.share.revoke': {
+    workspaceClass: 'explicit-share',
+    exempt: 'an owner-authorized transition of durable session reader metadata',
+  },
+  'bureau.contexts.share.request': {
+    workspaceClass: 'explicit-share',
+    exempt: 'a former reader’s owner-visible request receipt',
+  },
+  'bureau.contexts.share.request.resolve': {
+    workspaceClass: 'explicit-share',
+    exempt: 'an owner resolving a former reader request receipt',
+  },
+  'bureau.contexts.share.requests.list': {
+    workspaceClass: 'explicit-share',
+    exempt: 'an owner-only list of pending former-reader request receipts',
+  },
+  'bureau.contexts.share.status': {
+    workspaceClass: 'explicit-share',
+    exempt: 'a privacy-preserving direct-link state for an existing shared-chat recipient',
+  },
 
   'bureau.reviews.list': { workspaceClass: 'private-owned', member: 'reviews.list' },
   'bureau.reviews.get': { workspaceClass: 'private-owned', member: 'reviews.get' },
@@ -192,6 +243,10 @@ export const OPERATION_MAP = {
   },
   'bureau.workflows.history': { workspaceClass: 'member-shared-read', member: 'workflows.history' },
   'bureau.workflows.impact': { workspaceClass: 'member-shared-read', member: 'workflows.impact' },
+  'bureau.workflows.concurrency': {
+    workspaceClass: 'member-shared-read',
+    member: 'workflows.list',
+  },
   'bureau.workflows.runs.list': { workspaceClass: 'private-owned', member: 'workflows.listRuns' },
   'bureau.workflows.runs.get': { workspaceClass: 'private-owned', member: 'workflows.getRun' },
   'bureau.workflows.runs.cancel': { workspaceClass: 'private-owned', member: 'workflows.cancel' },

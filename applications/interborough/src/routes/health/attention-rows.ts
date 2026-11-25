@@ -4,16 +4,27 @@
  * Bureau's order, which is most recent first, so nothing here sorts. A row states no capacity or
  * threshold figure: only what was measured.
  */
+import { agentLabel } from '../../lib/agent-label.ts';
 import type { AttentionItem } from '../../lib/bureau-attention.ts';
+import { formatCost } from '../../lib/format/cost.ts';
 import { hookPath } from '../../lib/identifier-paths.ts';
-import { scheduleDetailPath } from '../../lib/router.svelte.ts';
+import { scheduleDetailPath, workflowDetailPath } from '../../lib/router.svelte.ts';
 import { providerDisplayName } from '../settings/models/format-model.ts';
 import { HEALTH_ATTENTION_COPY as copy } from './health-copy.ts';
 import { clockTime, dayLabel, joinWords } from './health-times.ts';
 
 /** The glyph a row draws in its tile. */
 export type AttentionGlyph =
-  'provider' | 'storage' | 'schedule' | 'hook' | 'plugin' | 'worker' | 'alert';
+  | 'provider'
+  | 'storage'
+  | 'schedule'
+  | 'hook'
+  | 'plugin'
+  | 'worker'
+  | 'alert'
+  | 'stalled'
+  | 'looping'
+  | 'overspending';
 
 /** A button at the end of a row. */
 export interface AttentionAction {
@@ -160,7 +171,46 @@ export function attentionRow(item: AttentionItem): AttentionRow {
         description: copy.plugin.line(item.at === null ? null : clockTime(item.at)),
         actions: [{ label: copy.plugin.action, href: '/settings/plugins' }],
       };
+    // One run can be stalled, looping and over the threshold at once: each is its own row, and its
+    // id names the kind so the list keeps a row's place when another of the same run changes.
+    case 'run-stalled':
+      return {
+        id: `run-stalled:${item.runId}`,
+        glyph: 'stalled',
+        title: copy.run.stalledTitle(runName(item.agentName)),
+        description: copy.run.stalledLine(clockTime(item.at)),
+        actions: [{ label: copy.run.action, href: workflowDetailPath(item.runId) }],
+      };
+    case 'run-looping':
+      return {
+        id: `run-looping:${item.runId}`,
+        glyph: 'looping',
+        title: copy.run.loopingTitle(runName(item.agentName)),
+        description: copy.run.loopingLine(clockTime(item.at)),
+        actions: [{ label: copy.run.action, href: workflowDetailPath(item.runId) }],
+      };
+    case 'run-overspending':
+      return {
+        id: `run-overspending:${item.runId}`,
+        glyph: 'overspending',
+        title: copy.run.overspendingTitle(runName(item.agentName), formatCost(item.costUsd)),
+        description:
+          item.settledAt === null
+            ? copy.run.overspendingRunningLine(dayAndTime(item.at))
+            : copy.run.overspendingSettledLine(dayAndTime(item.at), dayAndTime(item.settledAt)),
+        actions: [{ label: copy.run.action, href: workflowDetailPath(item.runId) }],
+      };
   }
+}
+
+/** What a run is called on a row: its agent as a person reads it, or "A run" when none is named. */
+function runName(agentName: string | null): string {
+  return agentName === null ? copy.run.unnamed : agentLabel(agentName, undefined);
+}
+
+/** A moment with its day, because a run that overspent is listed for seven days after it settles. */
+function dayAndTime(at: number): string {
+  return `${dayLabel(at)}, ${clockTime(at)}`;
 }
 
 /** The rows for every problem, in the order the Bureau lists them. */

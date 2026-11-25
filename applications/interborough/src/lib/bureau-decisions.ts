@@ -15,15 +15,15 @@ type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
  * `fallback` is the row the language-model fallback uses; `canBeFallback` says whether the Bureau's
  * fallback rule can ever use the row (it returns structured output).
  */
-export type DecisionModelRow = BureauOutput<'bureau.decisions.models'>['rows'][number];
+export type DecisionModels = BureauOutput<'bureau.decisions.models'>;
+export type DecisionModelRow = DecisionModels['rows'][number];
 
 /** The name a decision setting stores for a row: `<provider>/<model>`. */
 export function decisionRowName(row: Pick<DecisionModelRow, 'provider' | 'model'>): string {
   return `${row.provider}/${row.model}`;
 }
 
-/** The rows that can answer decisions, in catalog order, each with its availability. */
-export async function listDecisionModels(options?: Options): Promise<readonly DecisionModelRow[]> {
-  const answer = await bureauClient['bureau.decisions.models']({}, options);
-  return answer.rows;
+/** The rows and host model currently available for decisions. */
+export function listDecisionModels(options?: Options): Promise<DecisionModels> {
+  return bureauClient['bureau.decisions.models']({}, options);
 }

@@ -11,7 +11,6 @@ import type { EngineReview, ListedReview } from '../../lib/bureau-reviews.ts';
 import {
   doneItems,
   inboxKey,
-  inputLine,
   neighbourKey,
   resolutionLabel,
   resolutionTone,
@@ -194,12 +193,5 @@ describe('a row’s second line (rows 25x, 07c, COR-2426)', () => {
       from: 'from Request human input',
     });
     expect(reviewLineTwo(engine(), undefined)).toEqual({ kind: REVIEWS_COPY.workflowReview });
-  });
-});
-
-describe('an approval’s input line (row 26o, COR-2426)', () => {
-  test('puts each argument on one line, its name in words, in the order the tool took them', () => {
-    expect(inputLine({ orderId: '4471', amount: '$42.00' })).toBe('Order ID 4471, Amount $42.00');
-    expect(inputLine({})).toBe('');
   });
 });

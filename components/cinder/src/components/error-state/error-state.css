@@ -20,6 +20,12 @@
     padding-inline: var(--cinder-space-6);
   }
 
+  /* An opt-in readable width: the state stops at about 70 characters, so a row in a wide column
+   * keeps its action beside its title. Off by default. */
+  .cinder-error-state[data-cinder-measure] {
+    max-inline-size: 70ch;
+  }
+
   /* A bordered state draws its own box, as the empty state does, for a body with no container,
    * and pads itself the way the empty state does, so the two read as one family when the box is
    * not in a region of known height. */
@@ -74,6 +80,11 @@
     color: var(--cinder-text-muted);
   }
 
+  .cinder-error-state[data-cinder-tone='warning'] .cinder-error-state-icon {
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+  }
+
   /* Compact fits a list pane: less padding, a smaller neutral disc, and quieter type. */
   .cinder-error-state[data-cinder-size='compact'] {
     padding-block: var(--cinder-space-6);
@@ -120,6 +131,11 @@
   .cinder-error-state[data-cinder-variant='flat'][data-cinder-tone='danger']
     .cinder-error-state-title {
     color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-error-state[data-cinder-variant='flat'][data-cinder-tone='warning']
+    .cinder-error-state-title {
+    color: var(--cinder-status-warning-text);
   }
 
   /* The sentence holds a 380px measure however wide the region is. */
@@ -184,56 +200,6 @@
     max-inline-size: none;
   }
 
-  .cinder-error-state-details-summary {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--cinder-space-1);
-    cursor: pointer;
-    color: var(--cinder-text-default);
-    min-block-size: var(--cinder-space-6);
-    line-height: var(--cinder-leading-normal);
-  }
-
-  .cinder-error-state-details-summary::before {
-    content: '›';
-    display: inline-block;
-    inline-size: 1rem;
-    block-size: 1rem;
-    font-size: var(--cinder-text-lg);
-    line-height: 0.875rem;
-    text-align: center;
-    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
-  }
-
-  .cinder-error-state-details-summary:focus-visible {
-    outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
-    border-radius: var(--cinder-radius-sm);
-  }
-
-  .cinder-error-state-details[open] .cinder-error-state-details-summary::before {
-    transform: rotate(90deg);
-  }
-
-  /* On a coarse pointer the summary keeps its painted box; a pseudo-element, which takes no layout
-     space, reaches 44 by 44. */
-  @media (any-pointer: coarse) {
-    .cinder-error-state-details-summary {
-      position: relative;
-    }
-
-    .cinder-error-state-details-summary::after {
-      content: '';
-      position: absolute;
-      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
-      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
-    }
-  }
-
-  .cinder-error-state-details-summary:hover {
-    color: var(--cinder-text-default);
-  }
-
   .cinder-error-state-detail {
     margin: 0;
     margin-block-start: var(--cinder-space-1);
@@ -276,6 +242,13 @@
     color: var(--cinder-status-danger-text);
   }
 
+  /* In a row the glyph sits on the title's first line, not in the middle of however many lines the
+     words take: it starts at the top and is centred on one line of the title's height. */
+  .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-glyph {
+    align-self: flex-start;
+    margin-block-start: calc((1lh - var(--cinder-space-4)) / 2);
+  }
+
   .cinder-error-state-glyph > svg {
     inline-size: var(--cinder-space-4);
     block-size: var(--cinder-space-4);
@@ -285,7 +258,17 @@
     color: var(--cinder-text-muted);
   }
 
-  .cinder-error-state-text {
+  .cinder-error-state[data-cinder-tone='warning'] .cinder-error-state-glyph {
+    color: var(--cinder-status-warning-text);
+  }
+
+  /* The row's glyph and words: one start-aligned group, so the row's centring (the body's
+   * align-items) places the group and the retry on one centre line, and the glyph stays on the
+   * title's first line however many lines the words take. */
+  .cinder-error-state-lead {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cinder-space-3);
     flex: 1 1 12rem;
     min-inline-size: 0;
     font-size: var(--cinder-text-base);
@@ -293,15 +276,67 @@
     color: var(--cinder-text-default);
   }
 
+  .cinder-error-state-text {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+  }
+
   .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-title,
   .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-description {
-    display: inline;
+    display: block;
     margin: 0;
     max-inline-size: none;
     font-size: inherit;
     font-weight: var(--cinder-font-normal);
     line-height: inherit;
     color: inherit;
+  }
+
+  /* The title is the row's heading: the centred page title's semibold weight (the title and the
+   * sentence under it are one size, so weight and a small gap carry the hierarchy), on a line of
+   * its own, so it never runs on into the sentence under it. */
+  .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-title {
+    margin-block-end: var(--cinder-space-1);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* A title that is the whole sentence has nothing under it to space from, so the gap would only
+   * push the title and glyph above the action's centre line. */
+  .cinder-error-state[data-cinder-variant='row'] .cinder-error-state-title:last-child {
+    margin-block-end: 0;
+  }
+
+  /* A bordered row is a quiet hairline in its tone's border token, never the centred box's grey
+   * panel: the row fills a card's width and its own words carry the weight. The status border
+   * tokens are drawn for a soft fill and read at 1.9:1 (light) to 4.7:1 (dark) on the page
+   * surface, so the hairline mixes each toward transparent, per scheme, to about 1.5:1 against
+   * that surface in both: danger 65% / 32%, warning 65% / 43% (light / dark). The neutral token
+   * is already 1.4:1. */
+  .cinder-error-state[data-cinder-variant='row'][data-cinder-bordered] {
+    /* cinder-allow-raw-color: structural-pattern — a theme-arm mix amount of the danger border token, not a colour literal */
+    --_cinder-error-state-edge: light-dark(
+      color-mix(in oklch, var(--cinder-status-danger-border) 65%, transparent),
+      color-mix(in oklch, var(--cinder-status-danger-border) 32%, transparent)
+    );
+
+    border-color: var(--_cinder-error-state-edge);
+    border-radius: var(--cinder-radius-md);
+    background: none;
+    padding: 0;
+  }
+
+  .cinder-error-state[data-cinder-variant='row'][data-cinder-bordered][data-cinder-tone='warning'] {
+    /* cinder-allow-raw-color: structural-pattern — a theme-arm mix amount of the warning border token, not a colour literal */
+    --_cinder-error-state-edge: light-dark(
+      color-mix(in oklch, var(--cinder-status-warning-border) 65%, transparent),
+      color-mix(in oklch, var(--cinder-status-warning-border) 43%, transparent)
+    );
+  }
+
+  .cinder-error-state[data-cinder-variant='row'][data-cinder-bordered][data-cinder-tone='neutral'] {
+    /* Nothing failed, so the box is the quietest hairline the page draws, the weight its list rows
+       use, not a fourth border weight. */
+    --_cinder-error-state-edge: var(--cinder-border-muted);
   }
 
   /* The next step is not part of the sentence: it takes its own line under it, in the same type. */

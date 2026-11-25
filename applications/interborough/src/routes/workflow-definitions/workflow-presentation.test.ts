@@ -9,6 +9,7 @@ import {
   readyFile,
   sourceDefinition,
 } from '../../lib/workflow-world.test-support.ts';
+import { cadenceText } from '../schedules/schedule-cadence-text.ts';
 import {
   definitionDetails,
   hasDefinitionDetails,
@@ -113,14 +114,10 @@ describe('the segments of the list', () => {
     expect(rowSegment(named('stopped'))).toBe('paused');
   });
 
-  test('list a workflow that cannot load first, and keep the catalog’s order for the rest', () => {
-    expect(sortListRows(workflows).map((row) => row.name)).toEqual([
-      'broken',
-      'flaky',
-      'order-processing',
-      'plain',
-      'stopped',
-    ]);
+  test('places a broken workflow after ready rows and before paused rows', () => {
+    expect(
+      sortListRows([named('stopped'), named('broken'), named('plain')]).map((row) => row.name),
+    ).toEqual(['plain', 'broken', 'stopped']);
   });
 });
 
@@ -130,7 +127,14 @@ describe('a row of the list', () => {
       readyFile('release-notes', {
         title: 'Release notes',
         steps: STEPS,
-        runs: { active: 0, last24Hours: 1, lastRunAt: '2026-10-30T10:07:00-05:00' },
+        runs: {
+          active: 0,
+          current: null,
+          last: { status: 'failed', failedStep: 2 },
+          last24Hours: 1,
+          lastRunAt: '2026-10-30T10:07:00-05:00',
+          total: 1,
+        },
       }),
     );
     const model = workflowListRow(row, undefined, NOW, ZONE);
@@ -138,7 +142,7 @@ describe('a row of the list', () => {
     expect(model.title).toBe('Release notes');
     expect(model.statusWord).toBeNull();
     expect(model.date).toBe('Oct 30');
-    expect(textsOf(model.line)).toEqual(['4 steps', '1 run in 24 hours']);
+    expect(textsOf(model.line)).toEqual(['4 steps', '1 run', 'last run failed at step 2']);
   });
 
   test('shows a file with no title by its identifier alone', () => {
@@ -177,16 +181,33 @@ describe('a row of the list', () => {
       fileRow(
         readyFile('release-notes', {
           steps: STEPS,
-          runs: { active: 1, last24Hours: 2, lastRunAt: '2026-11-02T10:45:00-06:00' },
+          runs: {
+            active: 1,
+            current: {
+              startedAt: '2026-11-02T10:00:00-06:00',
+              status: 'running',
+              step: 2,
+              totalSteps: 4,
+              waitingForSignal: null,
+            },
+            last: { status: 'completed', failedStep: null },
+            last24Hours: 2,
+            lastRunAt: '2026-11-02T10:45:00-06:00',
+            total: 2,
+          },
         }),
       ),
       undefined,
       NOW,
       ZONE,
     );
-    expect(model.date).toBe('Started 10:45 AM');
-    expect(model.line.map((part) => part.status)).toEqual(['Running', undefined, undefined]);
-    expect(textsOf(model.line)).toEqual(['Running', '4 steps', '2 runs in 24 hours']);
+    expect(model.date).toBe('Started 10:00 AM');
+    expect(model.line.map((part) => part.status)).toEqual([
+      'Running, step 2 of 4',
+      undefined,
+      undefined,
+    ]);
+    expect(textsOf(model.line)).toEqual(['Running, step 2 of 4', '4 steps', '2 runs']);
     // A run does not change the workflow's own status.
     expect(model.statusWord).toBeNull();
   });
@@ -217,11 +238,15 @@ describe('a row of the list', () => {
     // The Bureau does not count a file it cannot use, so no count is not "never run".
     expect(workflowListRow(row, undefined, NOW, ZONE).date).toBeNull();
     expect(workflowListRow(row, { runs: null, schedules: null }, NOW, ZONE).date).toBeNull();
-    const never = { runs: { active: 0, last24Hours: 0, lastRunAt: null }, schedules: null };
+    const never = { runs: { running: 0, today: 0, lastRunAt: null }, schedules: null };
     expect(workflowListRow(row, never, NOW, ZONE).date).toBe(WORKFLOW_COPY.list.neverRun);
     // A file that ran and then broke shows when it last ran, not never run.
     const ran = {
-      runs: { active: 0, last24Hours: 0, lastRunAt: '2026-10-24T09:15:00-05:00' },
+      runs: {
+        running: 0,
+        today: 0,
+        lastRunAt: '2026-10-24T09:15:00-05:00',
+      },
       schedules: null,
     };
     expect(workflowListRow(row, ran, NOW, ZONE).date).toBe('Oct 24');
@@ -239,7 +264,7 @@ describe('a row of the list', () => {
       }),
     );
     const engine = {
-      runs: { active: 0, last24Hours: 9, lastRunAt: '2026-10-01T08:00:00-05:00' },
+      runs: { running: 0, today: 9, lastRunAt: '2026-10-01T08:00:00-05:00' },
       schedules: null,
     };
     expect(workflowListRow(row, engine, NOW, ZONE).date).toBe('8:00 AM');
@@ -276,14 +301,18 @@ describe('a row of the list', () => {
     const counted = workflowListRow(
       row,
       {
-        runs: { active: 0, last24Hours: 3, lastRunAt: '2026-11-02T08:00:00-06:00' },
+        runs: {
+          running: 1,
+          today: 3,
+          lastRunAt: '2026-11-02T10:44:00-06:00',
+        },
         schedules: null,
       },
       NOW,
       ZONE,
     );
-    expect(counted.date).toBe('8:00 AM');
-    expect(textsOf(counted.line)).toEqual(['3 runs in 24 hours']);
+    expect(counted.date).toBeNull();
+    expect(textsOf(counted.line)).toEqual(['3 runs today, 1 running, last 2m ago']);
   });
 
   test('counts one step and one run in the singular', () => {
@@ -298,7 +327,65 @@ describe('a row of the list', () => {
       NOW,
       ZONE,
     );
-    expect(textsOf(model.line)).toEqual(['1 step', '1 run in 24 hours']);
+    expect(textsOf(model.line)).toEqual(['1 step', '1 run']);
+  });
+
+  test('says a run with a named signal is waiting even while the engine reports it running', () => {
+    const model = workflowListRow(
+      fileRow(
+        readyFile('release-notes', {
+          paused: false,
+          steps: STEPS,
+          runs: {
+            active: 1,
+            current: {
+              startedAt: '2026-11-02T10:00:00-06:00',
+              status: 'running',
+              step: 2,
+              totalSteps: 4,
+              waitingForSignal: 'approve',
+            },
+            last: { status: 'completed', failedStep: null },
+            last24Hours: 1,
+            lastRunAt: '2026-11-02T10:45:00-06:00',
+            total: 2,
+          },
+        }),
+      ),
+      undefined,
+      NOW,
+      ZONE,
+    );
+    expect(model.statusWord).toBeNull();
+    expect(textsOf(model.line)).toEqual(['Waiting', '4 steps', '2 runs']);
+  });
+
+  test('distinguishes a wait on a person from a wait on a signal', () => {
+    const model = workflowListRow(
+      fileRow(
+        readyFile('release-notes', {
+          steps: STEPS,
+          runs: {
+            active: 1,
+            current: {
+              startedAt: '2026-11-02T10:00:00-06:00',
+              status: 'suspended',
+              step: 2,
+              totalSteps: 4,
+              waitingForSignal: null,
+            },
+            last: null,
+            last24Hours: 1,
+            lastRunAt: '2026-11-02T10:45:00-06:00',
+            total: 1,
+          },
+        }),
+      ),
+      undefined,
+      NOW,
+      ZONE,
+    );
+    expect(textsOf(model.line)).toEqual(['Waiting on you', '4 steps', '1 run']);
   });
 });
 
@@ -427,6 +514,15 @@ describe('a schedule trigger’s spec in words', () => {
     expect(triggerSummary({ kind: 'schedule', spec: '0 9 * * 1-5' })).toMatchObject({
       kind: 'schedule',
       words: expect.stringMatching(/^Weekdays at \d{1,2}:\d{2} [AP]M/),
+    });
+  });
+
+  test('uses the timezone declared by a file schedule to calculate its next start', () => {
+    const cronExpression = '0 11 * * 5';
+    const timeZone = 'America/Chicago';
+    expect(triggerSummary({ kind: 'schedule', spec: cronExpression, timezone: timeZone })).toEqual({
+      kind: 'schedule',
+      words: cadenceText({ cronExpression, timeZone }).full,
     });
   });
 

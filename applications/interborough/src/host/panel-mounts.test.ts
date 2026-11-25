@@ -504,17 +504,21 @@ describe('bounded and cached panel builds (COR-2219)', () => {
     const directory = await cacheDirectory();
     const candidate = await app('one');
     const { counter, build } = countingBuild();
+    const built: boolean[] = [];
     const first = await panelMounts_(contributed(candidate), {
       build,
+      observe: (event) => built.push(event.built),
       cache: createPanelBuildCache({ directory, now: () => Date.now() + 60_000 }),
     });
     expect(counter.runs).toBe(1);
     // A restart: a new cache over the same directory.
     const second = await panelMounts_(contributed(candidate), {
       build,
+      observe: (event) => built.push(event.built),
       cache: createPanelBuildCache({ directory, now: () => Date.now() + 60_000 }),
     });
     expect(counter.runs).toBe(1);
+    expect(built).toEqual([true, false]);
     expect(second.resources[0]?.text).toBe(first.resources[0]?.text);
     expect(second.resources[0]?._meta).toEqual(first.resources[0]?._meta);
   });
@@ -665,7 +669,12 @@ describe('bounded and cached panel builds (COR-2219)', () => {
     const fine = await app('fine');
     const stalling = (options: Parameters<typeof build>[0]) =>
       options.entry === hung.entry.href ? new Promise<never>(() => {}) : build(options);
-    const mounting = panelMounts_(contributed(hung, fine), { build: stalling, clock });
+    const observed: Array<{ plugin: string; panel: string; outcome: string }> = [];
+    const mounting = panelMounts_(contributed(hung, fine), {
+      build: stalling,
+      clock,
+      observe: (event) => observed.push(event),
+    });
     // `fine` settles and clears its timer; only the hung build keeps one.
     await waitUntil(() => timers.size === 1, { message: 'only the stalled build holds a timer' });
     [...timers.values()][0]!.callback();
@@ -678,6 +687,14 @@ describe('bounded and cached panel builds (COR-2219)', () => {
       },
     ]);
     expect(resources.map(({ name }) => name)).toEqual(['fine']);
+    expect(
+      observed
+        .map(({ plugin, panel, outcome }) => ({ plugin, panel, outcome }))
+        .toSorted((a, b) => a.panel.localeCompare(b.panel)),
+    ).toEqual([
+      { plugin: 'test', panel: 'fine', outcome: 'ready' },
+      { plugin: 'test', panel: 'hung', outcome: 'failed' },
+    ]);
   });
 
   it('does not serve a build that finishes after its deadline, and stores it for the next start', async () => {

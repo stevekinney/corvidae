@@ -71,8 +71,11 @@ export interface WorkflowRetryResult {
 
 /** What a caller asks a retry for. */
 export interface WorkflowRetryOptions {
-  /** The step to run again, counted from 1: it must be the step the instance failed at. */
-  readonly step: number;
+  /**
+   * The step to run again, counted from 1: it must be the step the instance failed at. Left out, it
+   * is that step, read from the instance's timeline (COR-2533).
+   */
+  readonly step?: number | undefined;
   /**
    * The caller's identifier of this request. A request repeated with it answers what the first
    * did, and finishes it when the first stopped partway, instead of being refused because the

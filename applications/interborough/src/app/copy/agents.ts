@@ -753,6 +753,7 @@ export const AGENT_PAGE_COPY = {
       const names = kept.flatMap((key) => (key === 'approvals' ? ['tools', 'Asks'] : [key]));
       return `Its own ${nameList(names)} stay as they are here, because a change would replace all of them.`;
     },
+    replaceAsks: 'Replace its Asks',
     exists: (name: string): string =>
       `You already have an agent named ${name}. Open it, or rename or delete it to duplicate this one again.`,
     notLoaded: 'This agent is not loaded now, so it cannot be duplicated.',
@@ -895,11 +896,14 @@ export const AGENT_PAGE_COPY = {
     /** A guardrail the file lists that no enabled plugin offers now. */
     guardrailMissing: 'Not offered by an enabled plugin',
     spendLabel: 'Spend limit per chat',
+    spendRunLabel: 'Spend limit per run',
     spendPlaceholder: 'No limit',
     spendUnit: 'USD',
     spendNote: 'Stops and asks when reached.',
     /** What a failed spend limit is called, and what it went back to when it had none. */
     spendSubject: 'the spend limit',
+    spendRunSubject: 'the per-run spend limit',
+    spendRunRequiresChatClear: 'Clear the chat limit before removing the run limit.',
     noLimit: 'No limit',
   },
   settings: {

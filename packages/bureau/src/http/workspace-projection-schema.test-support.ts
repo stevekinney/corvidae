@@ -177,10 +177,26 @@ const SCHEMA_SAFE_OUTPUTS: Readonly<Record<string, string>> = {
     'The response is the new context identifier and carried effort and permission command outcomes; it does not carry the forked conversation (contexts-fork-operation output schema).',
   'bureau.contexts.regenerate':
     'The response is the context and message identifiers and the committed revision; it does not carry the regenerated answer or any other row (contexts-regenerate-operation output schema).',
+  'bureau.contexts.discardturn':
+    'The response is the context and run identifiers, how many rows were removed and the committed revision; it carries no removed row or any other row (contexts-discard-turn-operation output schema).',
+  'bureau.contexts.resumeturn':
+    'The response is the context, the continuation run and the stopped run identifiers only; it carries no row of the conversation (contexts-resume-turn-operation output schema).',
   'bureau.contexts.archive':
     'The archive receipt contains the context identifier, a changed flag and the archive time, not the title, preview or any message (contextArchiveReceiptSchema).',
   'bureau.contexts.unarchive':
     'The unarchive receipt contains the context identifier, a changed flag and a null archive time, not the title, preview or any message (contextArchiveReceiptSchema).',
+  'bureau.contexts.share':
+    'The sharing receipt contains only the context and grantee identifiers and changed flag (sharingOutput).',
+  'bureau.contexts.share.revoke':
+    'The revoke receipt contains only the context and grantee identifiers and changed flag (sharingOutput).',
+  'bureau.contexts.share.request':
+    'The request receipt contains only the context and requester identifiers and changed flag (sharingOutput).',
+  'bureau.contexts.share.request.resolve':
+    'The resolution receipt contains only the context and requester identifiers and changed flag (sharingOutput).',
+  'bureau.contexts.share.requests.list':
+    'The owner queue projects request timing and safe display labels, never transcript content (requestQueueOutput).',
+  'bureau.contexts.share.status':
+    'The direct-link status exposes metadata only for an admitted reader and otherwise remains not-found (shareStatusOutput).',
   'bureau.notifications.markread':
     'The notification update output is only the count of records updated (notifications operation output schema).',
   'bureau.notifications.dismiss':
@@ -205,6 +221,8 @@ const SCHEMA_SAFE_OUTPUTS: Readonly<Record<string, string>> = {
     'The abort receipt contains only the upload identity and whether an upload was aborted (upload abort output schema).',
   'bureau.workflows.signal':
     'The signal receipt contains started run identifiers and delivered or rejected counts, not the signal payload (workflow signal output schema).',
+  'bureau.workflows.concurrency':
+    'The concurrency snapshot contains only the configured maximum and a running count, not workflow input or result (workflowsConcurrencyOperation).',
   'bureau.goals.cancel':
     'The cancellation receipt contains the goal identifier, outcome, status and revision; it does not return the cancellation reason (goals cancel output schema).',
   'bureau.goals.update':
@@ -225,6 +243,8 @@ const SCHEMA_SAFE_OUTPUTS: Readonly<Record<string, string>> = {
     'historyRuns projects bounded event type, time, step and summary and never returns raw event data (workflow-runtime historyEventOf).',
   'bureau.runs.timeline':
     'projectRunTimeline copies a step’s label, kind, status, start, duration and tries from an allowlist and never an input or output summary (run-timeline.ts).',
+  'bureau.tasks.explain':
+    'The explanation is built from identifiers only: the failure category, the error’s code and kind, the step’s label and the guardrails’ names and outcomes, never an error message, a stack or a flagged text (run-failure-explanation.ts, run-failure-verdicts.ts).',
   'bureau.settings.events':
     'The subscription response is a subscription identifier; its separately inventoried event carries the change (settings event output schema).',
   'bureau.tasks.events':
@@ -267,7 +287,11 @@ export const WORKSPACE_PROJECTION_CONFORMANCE = (() => {
                     'bureau.tasks.list',
                     'bureau.tasks.cancel',
                     'bureau.tasks.inspect',
+                    'bureau.runs.compare',
                     'bureau.tasks.respond',
+                    // A model's explanation is written from the failed run's own error message.
+                    'bureau.tasks.explanation.get',
+                    'bureau.tasks.explanation.generate',
                     'bureau.reviews.resolve',
                     'bureau.audit.query',
                     'bureau.checks.list',

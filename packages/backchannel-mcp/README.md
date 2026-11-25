@@ -44,3 +44,5 @@ export const handler = createOperationHandler({
 ```
 
 The mount serves catalog tools and injected resources. [`@lostgradient/bureau`](../bureau/README.md#mcp-adapter-cor-839-cor-910) is the consumer in this repository.
+
+For a Velveteen application, `mountCatalog` from `@lostgradient/backchannel-mcp/velveteen` registers the catalog, MCP endpoint and discovery routes together. Supply `basePath`, `publicOrigin`, the catalog operations and host, the application's `authenticateApi` function, and `mcp.serverInfo` with an authorization profile. `externalOAuth` from `@lostgradient/mcp/oauth` accepts an issuer, token verifier and current-principal resolver; the resolver returns the Backchannel `principal` and its `delegableScopes`. `hostedOAuth` accepts the application's session callbacks, OAuth store, default scopes and descriptions, and configures its issuer when the catalog starts. The resource URL includes the application's base path; its protected-resource metadata is served at the public root. A missing grantable scope receives an OAuth challenge, while a permanent policy denial remains a catalog fault.

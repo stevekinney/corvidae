@@ -22,7 +22,7 @@
     "test": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.integration.test.ts' --conditions browser --conditions svelte --parallel=4 src scripts",
     "test:slow": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-selected.ts --conditions browser --conditions svelte --parallel=1 .slow.test.ts .integration.test.ts",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts browser",
-    "test:browser": "bun ../../scripts/host-slots.ts --slots=4 -- bun --bun playwright test --config browser/playwright.config.ts --project=chromium --workers=4"
+    "test:browser": "bun ../../scripts/chef/ci-replay.ts isolated -- bun ../../scripts/host-slots.ts --slots=4 -- bun --bun playwright test --config browser/playwright.config.ts --project=chromium --workers=4"
   },
   "dependencies": {
     "@floating-ui/dom": "catalog:",

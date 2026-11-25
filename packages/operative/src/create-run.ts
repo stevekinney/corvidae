@@ -259,6 +259,7 @@ export function createActiveRun(
             }
           : {}),
         ...(durable.onServices ? { onServices: durable.onServices } : {}),
+        ...(durable.beforeLaunch ? { beforeLaunch: durable.beforeLaunch } : {}),
       },
     );
   }
@@ -808,4 +809,9 @@ export interface DurableRunRouting extends DurableActiveRunContext {
    * `DurableActiveRunOptions.onServices`.
    */
   onServices?: ((services: DurableRunDeps) => void) | undefined;
+  /**
+   * Internal durable admission fence, checked after `prepare()` commits and before any lifecycle
+   * hook or workflow execution begins. See `DurableActiveRunOptions.beforeLaunch`.
+   */
+  beforeLaunch?: (() => Promise<void>) | undefined;
 }

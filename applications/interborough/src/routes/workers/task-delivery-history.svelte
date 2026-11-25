@@ -85,7 +85,7 @@
         {/snippet}
       </EmptyState>
     {:else if error}
-      <PanelFault {error} onRetry={() => void deliveriesQuery.refetch()} />
+      <PanelFault {error} subject="deliveries" onRetry={() => void deliveriesQuery.refetch()} />
     {:else if history}
       {#if history.droppedCount > 0}
         <p class="weft-task-deliveries__note" role="status">

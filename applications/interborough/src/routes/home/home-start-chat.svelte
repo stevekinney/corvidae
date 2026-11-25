@@ -99,7 +99,11 @@
 <div data-testid="home-start-chat">
   <HomeCard title={copy.title}>
     {#if agents.data === undefined && agents.isError}
-      <HomeCardError title={copy.failed} onRetry={() => void agents.refetch()} />
+      <HomeCardError
+        title={copy.failed}
+        error={agents.error}
+        onRetry={() => void agents.refetch()}
+      />
     {:else if missing !== undefined}
       <!-- No agent a chat could work with: why, and the step that is missing (COR-2438), never a
            box whose Send does nothing. -->

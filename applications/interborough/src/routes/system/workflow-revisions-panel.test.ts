@@ -113,7 +113,8 @@ describe('WorkflowRevisionsPanel', () => {
       activePointer('order-processing-rev-1'),
     );
     const { findByText, findByRole } = await renderPanel();
-    expect(await findByText('Not found')).not.toBeNull();
+    expect(await findByText('Couldn’t load installed revisions')).not.toBeNull();
+    expect(document.querySelector('[data-fault-kind="not-found"]')).not.toBeNull();
 
     const callsBeforeRetry = scripted.calls.length;
     const retryButton = await findByRole('button', { name: RETRY_LABEL });
@@ -140,7 +141,8 @@ describe('WorkflowRevisionsPanel', () => {
       data: { weftCode: 'Forbidden', httpStatus: 403 },
     });
     const { findByText, findByRole, queryByText } = await renderPanel();
-    expect(await findByText('Not authorized')).not.toBeNull();
+    expect(await findByText('Couldn’t load the active revision')).not.toBeNull();
+    expect(document.querySelector('[data-fault-kind="unauthorized"]')).not.toBeNull();
     // Never silently falls back to "every row is just Installed" — the
     // fault banner replaces the row list entirely.
     expect(queryByText('Installed')).toBeNull();
@@ -218,10 +220,11 @@ describe('WorkflowRevisionsPanel', () => {
     });
 
     const { findByText, queryByText } = await renderPanel();
-    // 'Invalid input' — the panel throws this as an `Unprocessable`-coded
+    // 'invalid' — the panel throws this as an `Unprocessable`-coded
     // `HttpClientError`, not a plain `Error`, specifically so it does NOT
     // hit `query.ts`'s retryable-fault path (see the module's own comment).
-    expect(await findByText('Invalid input')).not.toBeNull();
+    expect(await findByText('Couldn’t load the active revision')).not.toBeNull();
+    expect(document.querySelector('[data-fault-kind="invalid"]')).not.toBeNull();
     // Never silently falls back to "no active revision" for a malformed
     // (as opposed to genuinely absent) active pointer.
     expect(queryByText('No active revision — never activated.')).toBeNull();

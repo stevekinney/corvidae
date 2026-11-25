@@ -108,7 +108,10 @@
   .cinder-choice-grid-item[data-cinder-disabled],
   .cinder-choice-grid-item[data-cinder-disabled] .cinder-choice-grid-item__icon,
   .cinder-choice-grid-item[data-cinder-disabled] .cinder-choice-grid-item__description,
-  .cinder-choice-grid-item[data-cinder-variant='card'][data-cinder-selected][data-cinder-disabled]
+  .cinder-choice-grid-item:is(
+      [data-cinder-variant='card'],
+      [data-cinder-variant='row']
+    )[data-cinder-selected][data-cinder-disabled]
     .cinder-choice-grid-item__title {
     color: var(--cinder-text-disabled);
   }
@@ -221,15 +224,15 @@
     border-color: var(--cinder-border-muted);
   }
 
-  /* A card with no description has one line, so its label centres in the row and the indicator
-   * loses the nudge that aligned it with a first line of a taller card. */
-  .cinder-choice-grid-item[data-cinder-variant='card']:not(
+  /* A card or row with no description has one line, so its label centres in the row and the
+   * indicator loses the nudge that aligned it with a first line of a taller choice. */
+  .cinder-choice-grid-item:is([data-cinder-variant='card'], [data-cinder-variant='row']):not(
       :has(.cinder-choice-grid-item__description)
     ) {
     align-items: center;
   }
 
-  .cinder-choice-grid-item[data-cinder-variant='card']:not(
+  .cinder-choice-grid-item:is([data-cinder-variant='card'], [data-cinder-variant='row']):not(
       :has(.cinder-choice-grid-item__description)
     )
     .cinder-choice-grid-item__indicator {
@@ -237,6 +240,50 @@
   }
 
   .cinder-choice-grid-item[data-cinder-variant='card'][data-cinder-selected] {
+    background: color-mix(in oklch, var(--cinder-accent-solid), var(--cinder-surface) 93%);
+    color: var(--cinder-text-default);
+  }
+
+  /* A row has card semantics and content, but is not a second panel inside its host. */
+  .cinder-choice-grid-item[data-cinder-variant='row'] {
+    --_cinder-choice-card-indicator-size: 1rem;
+
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    justify-content: stretch;
+    gap: var(--cinder-space-2-5) var(--cinder-space-2);
+    min-block-size: var(--_cinder-choice-card-min-block-size, 0);
+    padding: var(--cinder-space-2-5) var(--cinder-space-2);
+    border: 0;
+    border-radius: var(--cinder-radius-md);
+    background: transparent;
+    text-align: start;
+  }
+
+  .cinder-choice-grid-item[data-cinder-variant='row'] {
+    position: relative;
+  }
+
+  .cinder-choice-grid-item[data-cinder-variant='row']
+    + .cinder-choice-grid-item[data-cinder-variant='row']::after {
+    content: '';
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline: var(--cinder-space-2);
+    border-block-start: 1px solid var(--cinder-border-muted);
+    pointer-events: none;
+  }
+
+  @media (hover: hover) {
+    .cinder-choice-grid-item[data-cinder-variant='row']:not([data-cinder-disabled]):not(
+        [data-cinder-selected]
+      ):not([data-cinder-state]):hover {
+      background: var(--cinder-surface-raised);
+    }
+  }
+
+  .cinder-choice-grid-item[data-cinder-variant='row'][data-cinder-selected] {
     background: color-mix(in oklch, var(--cinder-accent-solid), var(--cinder-surface) 93%);
     color: var(--cinder-text-default);
   }
@@ -322,7 +369,10 @@
     line-height: var(--cinder-leading-normal);
   }
 
-  .cinder-choice-grid-item[data-cinder-variant='card'][data-cinder-selected]
+  .cinder-choice-grid-item:is(
+      [data-cinder-variant='card'],
+      [data-cinder-variant='row']
+    )[data-cinder-selected]
     .cinder-choice-grid-item__title {
     color: var(--cinder-text-default);
   }

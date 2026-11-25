@@ -25,6 +25,25 @@ describe('QueryFaultBanner', () => {
     expect(getByText('Something went wrong')).not.toBeNull();
   });
 
+  test('shows the remediation under the message and offers Retry only when the fault can be retried', async () => {
+    const retryable = new HttpClientError(503, 'Unavailable', {
+      retryable: true,
+      remediation: 'Wait a moment, then read it again.',
+    });
+    const first = render(QueryFaultBanner, { props: { error: retryable, onRetry: () => {} } });
+    expect(first.getByText('Wait a moment, then read it again.')).not.toBeNull();
+    expect(first.getByRole('button', { name: RETRY_LABEL })).not.toBeNull();
+    first.unmount();
+
+    const permanent = new HttpClientError(409, 'The review changed.', {
+      retryable: false,
+      remediation: 'Open the review again, then decide.',
+    });
+    const second = render(QueryFaultBanner, { props: { error: permanent, onRetry: () => {} } });
+    expect(second.getByText('Open the review again, then decide.')).not.toBeNull();
+    expect(second.queryByRole('button', { name: RETRY_LABEL })).toBeNull();
+  });
+
   test('Retry calls onRetry', async () => {
     let retried = false;
     const error = new HttpClientError(500, 'boom');

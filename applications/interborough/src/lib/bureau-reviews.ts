@@ -7,6 +7,10 @@
 import { HttpClientError } from '@lostgradient/weft';
 
 import { bureauClient, type BureauOutput, type WithUndefined } from './bureau-api.ts';
+import type { CATALOG_OPERATION_BEHAVIORS } from './generated/operation-behaviors.generated.ts';
+
+type ReviewConflictReason =
+  (typeof CATALOG_OPERATION_BEHAVIORS)['bureau.reviews.resolve']['behavior']['conflictReasons'][number];
 
 /**
  * Where a person decided a tool approval: `chat`, the chat that asked, or `reviews`, the Reviews
@@ -41,6 +45,33 @@ export function reviewWithSource<Review extends ListedReview>(review: Review): R
 }
 
 type Options = { readonly signal?: AbortSignal };
+
+/** A durable, owner-only request to restore a former chat reader. */
+export type ChatAccessRequest =
+  BureauOutput<'bureau.contexts.share.requests.list'>['requests'][number];
+
+export async function listChatAccessRequests(
+  options?: Options,
+): Promise<readonly ChatAccessRequest[]> {
+  const result = await bureauClient['bureau.contexts.share.requests.list']({}, options);
+  return result.requests;
+}
+
+export async function resolveChatAccessRequest(
+  request: ChatAccessRequest,
+  decision: 'grant' | 'deny',
+  options?: Options,
+): Promise<BureauOutput<'bureau.contexts.share.request.resolve'>> {
+  return bureauClient['bureau.contexts.share.request.resolve'](
+    {
+      contextId: request.contextId,
+      granteeOwnerId: request.granteeOwnerId,
+      requestId: request.requestId,
+      decision,
+    },
+    options,
+  );
+}
 
 /** What `bureau.reviews.list` filters and pages by. */
 export type ReviewsQuery = {
@@ -131,39 +162,25 @@ export type ReviewDecision = 'approve' | 'deny' | 'reject';
 export type ReviewResolution = BureauOutput<'bureau.reviews.resolve'>;
 
 /**
- * The token a `Conflict`'s reason begins with when a decision took effect (the tool ran or was
- * refused) and only its write into the session's conversation failed. It is not a resolver that
- * lost (`bureau.reviews.resolve`'s description).
- */
-export const APPROVAL_OUTCOME_NOT_WRITTEN = 'APPROVAL_OUTCOME_NOT_WRITTEN';
-
-/** Whether a fault says the decision took effect and only its outcome was not written. */
-export function isApprovalOutcomeNotWritten(error: unknown): boolean {
-  if (!(error instanceof HttpClientError)) return false;
-  const reason: unknown = error.data?.['reason'];
-  return typeof reason === 'string' && reason.startsWith(`${APPROVAL_OUTCOME_NOT_WRITTEN}:`);
-}
-
-/**
- * The token a `Conflict`'s reason begins with when the review had moved to another round than the
+ * The token in a `Conflict`'s reason when the review had moved to another round than the
  * one sent: a re-gated approval keeps its id, so the decision was made on a request that is no longer
  * the one pending, and nothing was decided (`bureau.reviews.resolve`'s description).
  */
-export const REVIEW_ROUND_CHANGED = 'REVIEW_ROUND_CHANGED';
+export const REVIEW_ROUND_CHANGED = 'REVIEW_ROUND_CHANGED' satisfies ReviewConflictReason;
 
 /** Whether a fault says the review changed while it was read, so the decision was not made. */
 export function isReviewRoundChanged(error: unknown): boolean {
   if (!(error instanceof HttpClientError)) return false;
   const reason: unknown = error.data?.['reason'];
-  return typeof reason === 'string' && reason.startsWith(`${REVIEW_ROUND_CHANGED}:`);
+  return reason === REVIEW_ROUND_CHANGED;
 }
 
 /**
- * The token a `Conflict`'s reason begins with when the review was already resolved with another
+ * The token in a `Conflict`'s reason when the review was already resolved with another
  * decision, by another resolver or because the agent moved on: nothing was decided, and it is no
  * longer waiting (COR-2426, `bureau.reviews.resolve`'s description).
  */
-export const REVIEW_ALREADY_RESOLVED = 'REVIEW_ALREADY_RESOLVED';
+export const REVIEW_ALREADY_RESOLVED = 'REVIEW_ALREADY_RESOLVED' satisfies ReviewConflictReason;
 
 /**
  * Whether a decision found the review no longer waiting: the Bureau says it was already resolved.
@@ -173,7 +190,7 @@ export const REVIEW_ALREADY_RESOLVED = 'REVIEW_ALREADY_RESOLVED';
 export function isReviewNoLongerWaiting(error: unknown): boolean {
   if (!(error instanceof HttpClientError)) return false;
   const reason: unknown = error.data?.['reason'];
-  return typeof reason === 'string' && reason.startsWith(`${REVIEW_ALREADY_RESOLVED}:`);
+  return reason === REVIEW_ALREADY_RESOLVED;
 }
 
 /**

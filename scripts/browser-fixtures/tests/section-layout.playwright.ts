@@ -1,6 +1,27 @@
 import { expect, test } from '@playwright/test';
 import { fixtureRoute } from './layout-fixture.ts';
 
+test('SectionHeading sizes the title by its heading level', async ({ page }) => {
+  await page.goto(fixtureRoute('section-heading'), { waitUntil: 'load' });
+  const title = page.getByRole('heading', { name: 'Project overview' });
+  const styles = await title.evaluate((element) => {
+    const parent = element.parentElement!;
+    const section = document.createElement('h3');
+    const subsection = document.createElement('h4');
+    for (const heading of [section, subsection]) {
+      heading.className = element.className;
+      parent.append(heading);
+    }
+    return [element, section, subsection].map((heading) => {
+      const { fontSize, fontWeight } = getComputedStyle(heading);
+      return { size: Number.parseFloat(fontSize), fontWeight };
+    });
+  });
+  expect(styles[0]!.size).toBeGreaterThan(styles[1]!.size);
+  expect(styles[1]!.size).toBeGreaterThan(styles[2]!.size);
+  expect(styles[2]!.fontWeight).toBe(styles[0]!.fontWeight);
+});
+
 test.describe('Section layout', () => {
   test('a tall Section keeps every child inside a short flex scroll parent', async ({ page }) => {
     await page.goto(fixtureRoute('section'), { waitUntil: 'load' });

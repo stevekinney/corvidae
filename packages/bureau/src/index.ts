@@ -256,6 +256,9 @@ export type {
   MissedRunsAttentionItem,
   PluginAttentionItem,
   ProviderAttentionItem,
+  RunLoopingAttentionItem,
+  RunOverspendingAttentionItem,
+  RunStalledAttentionItem,
   WorkerAttentionItem,
 } from './attention-feed';
 export { WorkerDeploymentRolloutError } from './worker-deployments';
@@ -533,6 +536,7 @@ export {
   RunFailedOutcomeEvent,
   RunGuardrailRecordedEvent,
   RunLoopingEvent,
+  RunOverspendingEvent,
   RunRegisteredEvent,
   RunStalledEvent,
   RunTripwireRecordedEvent,
@@ -697,6 +701,18 @@ export type {
   ForkSessionResult,
   SessionForkRefusalReason,
 } from './session-fork';
+export { SessionResumeRefusedError } from './session-resume';
+export type {
+  ResumeTurnRequest,
+  ResumeTurnResult,
+  SessionResumeRefusalReason,
+} from './session-resume';
+export { SessionDiscardRefusedError } from './session-discard';
+export type {
+  DiscardTurnRequest,
+  DiscardTurnResult,
+  SessionDiscardRefusalReason,
+} from './session-discard';
 export { SessionRegenerateRefusedError } from './session-regenerate';
 export type {
   RegenerateSessionRequest,
@@ -823,6 +839,8 @@ export type {
   PendingToolApprovalReview,
   ApprovalDecisionSurface,
   ResolveReviewInput,
+  ReviewPolicy,
+  ReviewEffect,
   ResolvedReview,
   ReviewResolutionFields,
   ResolveReviewResult,

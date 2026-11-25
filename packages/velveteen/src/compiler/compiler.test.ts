@@ -52,6 +52,47 @@ test("reports malformed source at the compiler boundary", () => {
   if (!result.ok) expect(String(result.error)).toContain("Broken.svelte");
 });
 
+test("plugin loaders emit valid inline maps for components and rune modules", async () => {
+  const directory = await mkdtemp(join(import.meta.dir, "fixture-"));
+  try {
+    const loaders: Array<{
+      filter: RegExp;
+      callback: (args: { path: string }) => Promise<{ contents: string }>;
+    }> = [];
+    const plugin = createSveltePlugin({ css: "injected" });
+    plugin.setup({
+      onResolve() {},
+      onLoad(
+        options: { filter: RegExp },
+        callback: (args: { path: string }) => Promise<{ contents: string }>,
+      ) {
+        loaders.push({ filter: options.filter, callback });
+      },
+    } as unknown as Parameters<typeof plugin.setup>[0]);
+    for (const [name, source] of [
+      ["Fixture.svelte", "<h1>Fixture</h1>"],
+      ["fixture.svelte.ts", "export const value = $state(1);"],
+    ]) {
+      const path = join(directory, name);
+      await Bun.write(path, source);
+      const loader = loaders.find(({ filter }) => filter.test(path));
+      expect(loader).toBeDefined();
+      const output = await loader!.callback({ path });
+      const match = output.contents.match(
+        /sourceMappingURL=data:application\/json;base64,([^\s]+)/,
+      );
+      expect(match).not.toBeNull();
+      const map = JSON.parse(Buffer.from(match![1], "base64").toString());
+      expect(map.version).toBe(3);
+      expect(map.sources.some((source: string) => source.endsWith(name))).toBe(
+        true,
+      );
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("Bun browser build emits JavaScript and external CSS through the plugin", async () => {
   const directory = await mkdtemp(join(import.meta.dir, "fixture-"));
   try {

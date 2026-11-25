@@ -9,6 +9,8 @@
 </script>
 
 <script lang="ts" generics="T extends string = string">
+  import { SvelteSet } from 'svelte/reactivity';
+
   import type { SelectProps } from './select.types.ts';
   import { CONTROL_SIZE_NAMES } from '../../_internal/control-size-names.ts';
   import { resolveFieldControl } from '../../_internal/field-control.ts';
@@ -98,11 +100,15 @@
     context?.errorId === `${field.id}-error` ? `${field.id}-select-error` : `${field.id}-error`,
   );
 
+  // Options may arrive in stages. Remember each concrete invalid value so a reactive parent does
+  // not get the same diagnostic on every unrelated update, while a different invalid value still
+  // identifies the value that needs correction.
+  const warnedInvalidValues = new SvelteSet<T>();
+
   // `devWarn` is dead-code-eliminated from production builds (gated on DEV from
   // esm-env), so the previous `typeof window` guard was redundant for the prod path.
   // It runs inside this $effect, which is client-only, so SSR is not a concern here.
-  // The effect remains because `options` can change reactively (e.g. async load),
-  // and we only want to surface the diagnostic once the list is genuinely empty.
+  // The effect remains because `options` can change reactively (e.g. async load).
   // A native select has no `readonly`: block the picker from opening (pointer and keyboard)
   // and put the value back if anything still changes it. Tab and the other keys stay free.
   function blockWhenReadonly(event: MouseEvent & { currentTarget: HTMLSelectElement }): void {
@@ -131,14 +137,19 @@
   }
 
   $effect(() => {
-    if (presentation === 'listbox') return;
     if (options.length === 0) {
       devWarn(
         '[cinder/Select] options is empty — pass at least one option, or ignore during async load.',
       );
-    } else if (value !== undefined && !options.some((option) => option.value === value)) {
+    } else if (
+      value !== undefined &&
+      value !== '' &&
+      !options.some((option) => option.value === value) &&
+      !warnedInvalidValues.has(value)
+    ) {
+      warnedInvalidValues.add(value);
       devWarn(
-        '[cinder/Select] value does not match any option — pass a value from options or omit it.',
+        `[cinder/Select] value ${JSON.stringify(value)} does not match any option — pass a value from options or omit it.`,
       );
     }
   });
