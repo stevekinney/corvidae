@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2623",
+  "branch": "steve/composable-scoped-read-migration",
+  "checkedAt": "6703aab27978ed4f48cc0152c69a7b8f97a07c25",
+  "briefVersion": "abd4255bcdc1",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "not-met",
+      "evidence": "Scoped application migration remains outstanding, blocked on COR-2684."
+    },
+    {
+      "id": "AC2",
+      "status": "not-met",
+      "evidence": "Application migration and parity verification remain outstanding."
+    },
+    {
+      "id": "AC3",
+      "status": "not-met",
+      "evidence": "Inventory migration and verification remain outstanding."
+    },
+    {
+      "id": "AC4",
+      "status": "not-met",
+      "evidence": "Fixed CLI reads partially migrated; finite list reads and inventory remain outstanding. Existing CLI tests passed."
+    }
+  ]
+}

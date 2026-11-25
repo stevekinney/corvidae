@@ -1,5 +1,6 @@
 import { formatCost } from '../lib/format/cost.ts';
 import {
+  catalogRead,
   faultRefusedBeforeAnyEffect,
   request,
   stream,
@@ -334,19 +335,17 @@ async function getOrInspect(
   const rawId = identifier(parsed);
   if (inspect && kind !== 'task')
     throw Object.assign(new Error('runs inspect supports --kind task only.'), { usage: true });
-  const method = inspect
-    ? 'bureau.tasks.inspect'
+  const step = inspect ? numberOption(parsed, 'step') : undefined;
+  const response = inspect
+    ? await catalogRead(target, parsed, dependencies, 'bureau.tasks.inspect', {
+        taskId: rawId,
+        ...(step === undefined ? {} : { step }),
+      })
     : kind === 'task'
-      ? 'bureau.tasks.get'
-      : 'bureau.workflows.runs.get';
-  const params: RecordValue = inspect
-    ? { taskId: rawId }
-    : kind === 'task'
-      ? { taskId: rawId }
-      : { runId: rawId };
-  if (inspect && option(parsed, 'step') !== undefined)
-    params['step'] = numberOption(parsed, 'step');
-  const response = await rpc(target, parsed, dependencies, method, params);
+      ? await catalogRead(target, parsed, dependencies, 'bureau.tasks.get', { taskId: rawId })
+      : await catalogRead(target, parsed, dependencies, 'bureau.workflows.runs.get', {
+          runId: rawId,
+        });
   const data = withIdentifier(kind, response.data, rawId);
   // A task read as text says how it stands, and what it used and cost (COR-2525); as JSON it is the
   // task as the Bureau answered it, `usage.costUsd` and all.
@@ -503,7 +502,7 @@ async function explain(
       if (written === undefined || parsed.output !== 'text') return response;
       return { ...response, data: modelExplanationText(written) };
     }
-    const response = await rpc(target, parsed, dependencies, 'bureau.tasks.explain', {
+    const response = await catalogRead(target, parsed, dependencies, 'bureau.tasks.explain', {
       runId: rawId,
     });
     const explanation = record(response.data);
