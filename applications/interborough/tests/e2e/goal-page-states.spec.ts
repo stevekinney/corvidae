@@ -444,7 +444,7 @@ for (const width of WIDTHS) {
       });
     });
 
-    test('a connected provider preserves the stopped Tool runner goal in Edit, with its own fields and Save footer (68o, 68p)', async ({
+    test('a connected provider preserves the stopped Tool runner goal in /goals/:goal/edit, with its own fields and Save footer (68o, 68p)', async ({
       page,
     }) => {
       const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
