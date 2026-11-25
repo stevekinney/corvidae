@@ -206,6 +206,70 @@ async function answerAsWorkingGoal(page: Page): Promise<void> {
   });
 }
 
+/** Rewrites only this capture's owner goal view, leaving the sample world and validator catalog intact. */
+async function rewriteGoalView(
+  page: Page,
+  change: (goal: JsonRecord) => JsonRecord,
+): Promise<void> {
+  await page.route(isBureauCall, async (route: Route) => {
+    const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
+    if (body.method !== 'bureau.goals.get') {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const answer = (await response.json()) as { result?: JsonRecord };
+    await route.fulfill({
+      response,
+      json: { ...answer, result: change(answer.result ?? {}) },
+    });
+  });
+}
+
+/** The five release-note failures use the distinct feedback captions from row 67l. */
+async function captionGaveUpAttempts(page: Page): Promise<void> {
+  const feedback = [
+    'Notes didn’t mention the staging fix',
+    'Notes didn’t mention the staging fix',
+    'Notes were over the length limit',
+    'Notes didn’t mention the staging fix',
+    'Notes didn’t mention the staging fix',
+  ];
+  await rewriteGoalView(page, (goal) => ({
+    ...goal,
+    attempts: ((goal['attempts'] as JsonRecord[] | undefined) ?? []).map((attempt) => ({
+      ...attempt,
+      feedback: feedback[Number(attempt['attemptIndex'])] ?? null,
+    })),
+  }));
+}
+
+/** The stopped refund's first check gives the captioned feedback from row 67r. */
+async function captionStoppedAttempt(page: Page): Promise<void> {
+  await rewriteGoalView(page, (goal) => ({
+    ...goal,
+    attempts: ((goal['attempts'] as JsonRecord[] | undefined) ?? []).map((attempt) =>
+      Number(attempt['attemptIndex']) === 0
+        ? { ...attempt, feedback: 'Summary listed 3 of 4 refunds waiting for approval' }
+        : attempt,
+    ),
+  }));
+}
+
+/** The completed scripted goal names its check and the check's own successful reply (67v). */
+async function captionDoneAttempt(page: Page): Promise<void> {
+  await rewriteGoalView(page, (goal) => ({
+    ...goal,
+    validator: { ...(goal['validator'] as JsonRecord), name: 'reply-says-hello' },
+    // The named caption is parameterless; the stock hello phrase would append its config here.
+    validatorConfiguration: null,
+    attempts: ((goal['attempts'] as JsonRecord[] | undefined) ?? []).map((attempt) => ({
+      ...attempt,
+      reason: 'Reply said hello',
+    })),
+  }));
+}
+
 /** Re-proves the captioned working attempt after the capture helper changes the viewport. */
 async function workingGoalReady(page: Page): Promise<void> {
   const attempt = page.locator('[data-attempt]').first();
@@ -236,6 +300,49 @@ async function workingGoalReady(page: Page): Promise<void> {
   ).toBe(true);
 }
 
+async function gaveUpAttemptsReady(page: Page): Promise<void> {
+  await expect(page.getByTestId('goal-attempts-heading')).toContainText('Attempts 5 of 5');
+  const expected = [
+    ['Attempt 5', '8:21 AM', 'took 6 s', 'notes didn’t mention the staging fix'],
+    ['Attempt 4', '8:19 AM', 'took 7 s', 'notes didn’t mention the staging fix'],
+    ['Attempt 3', '8:17 AM', 'took 5 s', 'notes were over the length limit'],
+    ['Attempt 2', '8:15 AM', 'took 6 s', 'notes didn’t mention the staging fix'],
+    ['Attempt 1', '8:13 AM', 'took 8 s', 'notes didn’t mention the staging fix'],
+  ] as const;
+  for (const [index, values] of expected.entries()) {
+    const attempt = page.locator('[data-attempt]').nth(index);
+    for (const value of values) await expect(attempt).toContainText(value);
+    await expect(attempt).toHaveAttribute('data-status-word', 'Check not met');
+  }
+}
+
+async function stoppedAttemptsReady(page: Page): Promise<void> {
+  await expect(page.getByTestId('goal-attempts-heading')).toContainText('Attempts 2 of 5');
+  const newest = page.locator('[data-attempt]').first();
+  await expect(newest).toContainText('Attempt 2');
+  await expect(newest).toContainText('10:07 AM');
+  await expect(newest).toContainText('Tool runner, canceled at 10:08 AM after 1 min 12 s');
+  await expect(newest).toHaveAttribute('data-status-word', 'Canceled');
+  const first = page.locator('[data-attempt]').nth(1);
+  await expect(first).toContainText('Attempt 1');
+  await expect(first).toContainText('10:05 AM');
+  await expect(first).toContainText('Tool runner, took 2 min 5 s');
+  await expect(first).toContainText('summary listed 3 of 4 refunds waiting for approval');
+  await expect(first).toHaveAttribute('data-status-word', 'Check not met');
+}
+
+async function doneAttemptReady(page: Page): Promise<void> {
+  await expect(page.getByTestId('goal-attempts-heading')).toContainText('Attempts 1 of 1');
+  const details = page.getByRole('heading', { name: 'Details' }).locator('..');
+  await expect(details).toContainText('Reply says hello');
+  await expect(details).not.toContainText('"hello"');
+  const attempt = page.locator('[data-attempt]').first();
+  await expect(attempt).toContainText('Attempt 1');
+  await expect(attempt).toContainText('7:48 AM');
+  await expect(attempt).toContainText('Assistant, took 8 s, reply said hello');
+  await expect(attempt).toHaveAttribute('data-status-word', 'Done');
+}
+
 for (const width of WIDTHS) {
   // The routes lead the title, so a design review's route filter (`--grep '/goals'`) runs these.
   test.describe(`/goals/:goal and /goals/new at ${String(width)} pixels`, () => {
@@ -251,6 +358,49 @@ for (const width of WIDTHS) {
         state: 'working',
         source: SOURCE,
         ready: workingGoalReady,
+      });
+    });
+
+    test('a gave-up goal shows the five distinct captioned attempt reasons (67l)', async ({
+      page,
+    }) => {
+      const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+      await captionGaveUpAttempts(page);
+      await openGoal(page, `/goals/${encodeURIComponent(world.goals.draftReleaseNotes)}`, width);
+      await gaveUpAttemptsReady(page);
+      await captureForDesignReview(page, {
+        route: '/goals/:goal',
+        state: 'gave up attempts',
+        source: SOURCE,
+        ready: gaveUpAttemptsReady,
+      });
+    });
+
+    test('a stopped goal shows its canceled attempt and captioned prior feedback (67r)', async ({
+      page,
+    }) => {
+      const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+      await captionStoppedAttempt(page);
+      await openGoal(page, `/goals/${encodeURIComponent(world.goals.summarizeRefunds)}`, width);
+      await stoppedAttemptsReady(page);
+      await captureForDesignReview(page, {
+        route: '/goals/:goal',
+        state: 'stopped attempts',
+        source: SOURCE,
+        ready: stoppedAttemptsReady,
+      });
+    });
+
+    test('a done goal shows the captioned check and successful reply (67v)', async ({ page }) => {
+      const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+      await captionDoneAttempt(page);
+      await openGoal(page, `/goals/${encodeURIComponent(world.goals.sayHello)}`, width);
+      await doneAttemptReady(page);
+      await captureForDesignReview(page, {
+        route: '/goals/:goal',
+        state: 'done attempt',
+        source: SOURCE,
+        ready: doneAttemptReady,
       });
     });
 
