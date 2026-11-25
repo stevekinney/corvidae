@@ -551,7 +551,10 @@ export class ChatSessionState {
         return turn;
       },
       stopGenerating: async (...input: Parameters<NonNullable<typeof adapter.stopGenerating>>) => {
-        if (!this.streaming && this.reconnectAttempt > 0) return this.#stopWhileReconnecting();
+        if (!this.streaming && this.reconnectAttempt > 0) {
+          await this.#stopWhileReconnecting();
+          return;
+        }
         if (this.streaming) this.stopping = true;
         await adapter.stopGenerating?.(...input);
       },
@@ -1102,12 +1105,12 @@ export class ChatSessionState {
     });
   }
 
-  /** Stops the native run while it is parked on an approval or question. */
-  async stopParkedRun(): Promise<void> {
-    if (this.streaming || this.stopping) return;
+  /** Stops the native run that is currently attached, even while its reader finishes an approval. */
+  async stopParkedRun(): Promise<boolean> {
+    if (this.stopping) return false;
     // Chat commands wait for their adapter's acknowledgement. Cancelling a parked run also reads
     // its terminal history, which must not hold the composer event or let a second click race it.
-    void this.#stopWhileReconnecting();
+    return this.#stopWhileReconnecting();
   }
 
   /** Reopens an interrupted attach, preserving the last SSE cursor in the wiring. */
@@ -1437,7 +1440,7 @@ export class ChatSessionState {
    * stopped. When the Bureau did not take the cancellation, or the page knows no run to cancel
    * because it never read one, the failure says so, and Reconnect shows what is going.
    */
-  async #stopWhileReconnecting(): Promise<void> {
+  async #stopWhileReconnecting(): Promise<boolean> {
     const generation = ++this.#retryGeneration;
     this.#readerAbort?.abort();
     if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
@@ -1446,12 +1449,12 @@ export class ChatSessionState {
     this.stopping = true;
     try {
       const cancelled = await this.#wiring.cancelDroppedRun();
-      if (generation !== this.#retryGeneration || this.#abort.signal.aborted) return;
+      if (generation !== this.#retryGeneration || this.#abort.signal.aborted) return false;
       // No run known to cancel (the page never read one before the reads failed) is no stop either.
       if (cancelled !== true) {
         this.failure = CHAT_COPY.stopLine.stopFailed;
         this.disconnected = true;
-        return;
+        return false;
       }
       this.#attachedRun = false;
       this.failure = undefined;
@@ -1466,6 +1469,7 @@ export class ChatSessionState {
         !this.#abort.signal.aborted
       )
         this.#restoreHistory(history, historyToken, historyGeneration);
+      return true;
     } finally {
       this.stopping = false;
     }

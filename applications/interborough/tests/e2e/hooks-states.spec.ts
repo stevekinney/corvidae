@@ -416,6 +416,42 @@ test.describe('/hooks: the hooks list states', () => {
       await checkA11y(`hooks with a hook that gave up at ${width}px`);
     });
 
+    test(`a delivered active hook names its event, action and delivery time, at ${width} pixels`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await answerList(page, [
+        listedHook({
+          id: 'hook-delivered',
+          name: 'Delivered refund audit',
+          events: ['review.requested'],
+          action: { type: 'notify', title: 'Review the refund' },
+          lastDelivery: {
+            id: 'delivery-delivered',
+            kind: 'review.requested',
+            test: false,
+            status: 'delivered',
+            lastAttempt: null,
+            createdAt: Date.UTC(2026, 10, 2, 15),
+            updatedAt: Date.UTC(2026, 10, 2, 15),
+          },
+        }),
+      ]);
+      await page.goto('/hooks');
+      const row = page.locator('li[data-hook="hook-delivered"]');
+
+      await expect(row.locator('[data-status-word="Delivered"]')).toBeVisible();
+      await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'true');
+      await expect(row).toContainText('review.requested');
+      await expect(row).toContainText('Review the refund');
+      await expect(row.locator('.cinder-stacked-list-item__time')).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/hooks',
+        state: '38t delivered active hook',
+        source: SOURCE,
+      });
+    });
+
     test(`a start-workflow target the Bureau cannot load reads Can't load, at ${width} pixels`, async ({
       page,
     }) => {

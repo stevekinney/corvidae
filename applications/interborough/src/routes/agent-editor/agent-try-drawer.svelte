@@ -255,10 +255,11 @@
           conversation={answered(chat.conversation)}
           adapter={describedBy(
             chat.chatAdapter,
-            () => chat.approvals.length > 0,
+            () => chat.approvals.some(({ result }) => !trial.stoppedApproval(result.callId)),
             () => trial.stopParkedRun(chat),
           )}
-          streaming={!trial.stopped(chat) && (chat.streaming || chat.approvals.length > 0)}
+          streaming={chat.streaming ||
+            chat.approvals.some(({ result }) => !trial.stoppedApproval(result.callId))}
           surfaceMode="transparent"
           variant="transcript"
           composerCompact
@@ -273,7 +274,7 @@
                run only (rows 43d, 43e); every other row is Chat's own. -->
           {#snippet row({ toolCallPair }, renderDefault)}
             {@const result = toolCallPair?.result}
-            {#if toolCallPair !== undefined && result !== undefined && result.action?.type === 'approval' && waiting.has(result.callId)}
+            {#if toolCallPair !== undefined && result !== undefined && result.action?.type === 'approval' && waiting.has(result.callId) && !trial.stoppedApproval(result.callId)}
               {@const call = toolCallPair.call}
               {@const name = toolName(call.name)}
               {@const reason = waiting.get(result.callId)?.content}

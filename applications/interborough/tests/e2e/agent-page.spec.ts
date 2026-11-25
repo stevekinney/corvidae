@@ -204,6 +204,12 @@ test.describe('the Instructions tab', () => {
     await expect(
       page.getByRole('main').getByRole('link', { name: 'Edit', exact: true }),
     ).toHaveCount(1);
+    await captureForDesignReview(page, {
+      route: '/agents/:agent/edit?section=references',
+      tab: 'Instructions',
+      state: '39r reference documents source link',
+      source: 'agent-page.spec.ts',
+    });
     await page.getByTestId('agent-no-references').getByRole('link', { name: 'the editor' }).click();
     await expect(page).toHaveURL(new RegExp(`/agents/${id}/edit\\?section=references$`));
     await expect(page.locator('#agent-reference-documents')).toBeFocused();
@@ -276,22 +282,39 @@ test.describe('the Settings tab', () => {
     });
     expect(saved.fault).toBeUndefined();
 
+    for (const instructions of ['Third instructions.', 'Fourth instructions.']) {
+      const current = await readAgent(request, id);
+      const next = await bureau(request, 'bureau.agents.definitions.update', {
+        id,
+        expectedHash: current.hash,
+        definition: { ...current.definition, instructions },
+      });
+      expect(next.fault).toBeUndefined();
+    }
+
     await page.goto(`/agents/${id}/settings`);
 
     const versions = page.getByTestId('agent-versions');
-    await expect(versions.locator('[data-revision]')).toHaveCount(2);
+    await expect(versions.locator('[data-revision]')).toHaveCount(4);
     await captureForDesignReview(page, {
       route: '/agents/:agent/settings',
-      state: 'saved versions read-only list',
+      state: '39t current Version 4 with saved versions',
       source: 'agent-page.spec.ts',
     });
+    await versions.getByRole('button', { name: 'View Version 3' }).click();
+    await captureForDesignReview(page, {
+      route: '/agents/:agent/settings',
+      state: '39u read-only Version 3 detail against current Version 4',
+      source: 'agent-page.spec.ts',
+    });
+    await versions.getByRole('button', { name: /Back/ }).click();
     // Restore asks first, then saves the old version again as the next one (row 38z).
     await versions.getByRole('button', { name: 'Restore Version 1' }).click();
     await page
       .getByRole('dialog', { name: 'Restore Version 1?' })
       .getByRole('button', { name: 'Restore Version 1' })
       .click();
-    await expect(versions.locator('[data-revision]')).toHaveCount(3);
+    await expect(versions.locator('[data-revision]')).toHaveCount(5);
     await captureForDesignReview(page, {
       route: '/agents/:agent/settings',
       state: 'restored version saved list',

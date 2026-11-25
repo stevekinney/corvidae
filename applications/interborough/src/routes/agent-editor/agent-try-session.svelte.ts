@@ -81,8 +81,8 @@ export class AgentTrySession {
   triedWith = $state<string | undefined>(undefined);
   /** The answer to a tool approval that is on its way, or `undefined` when none is. */
   deciding = $state<'approve' | 'deny' | undefined>(undefined);
-  /** A parked run that Stop has cancelled; its lingering card must never resume it. */
-  #stoppedChat = $state<ChatSessionState | undefined>(undefined);
+  /** Approval calls whose native run was confirmed stopped; a lingering card cannot resume them. */
+  #stoppedApprovals = $state<ReadonlySet<string>>(new Set());
   /** Counts starts and ends, so an answer that arrives after an end knows it is too late. */
   #generation = 0;
   readonly #onPageHide = (): void => {
@@ -145,7 +145,7 @@ export class AgentTrySession {
     this.contextId = undefined;
     this.triedWith = undefined;
     this.deciding = undefined;
-    this.#stoppedChat = undefined;
+    this.#stoppedApprovals = new Set();
     this.phase = 'idle';
     chat?.dispose();
     if (contextId !== undefined) await this.#remove(contextId);
@@ -163,7 +163,7 @@ export class AgentTrySession {
       chat === undefined ||
       this.deciding !== undefined ||
       chat.stopping ||
-      this.#stoppedChat === chat
+      this.#stoppedApprovals.has(toolCallId)
     )
       return;
     this.deciding = resolution.decision === 'deny' ? 'deny' : 'approve';
@@ -176,19 +176,19 @@ export class AgentTrySession {
     }
   }
 
-  /** Stops this trial's parked native run; a later approval cannot resume it. */
+  /** Stops this trial's parked native run; only its own approvals are fenced once cancellation wins. */
   async stopParkedRun(chat: ChatSessionState): Promise<void> {
     if (this.chat !== chat) return;
-    // This is the normal session's native-run cancellation route. It starts the cancellation before
-    // the card is hidden, which fences an approval event that arrives in the same render turn.
-    void chat.stopParkedRun();
-    this.#stoppedChat = chat;
-    chat.streaming = false;
+    const approvals = chat.approvals.map(({ result }) => result.callId);
+    // The session snapshots the currently attached native run before its first await. Do not fence
+    // a card or change the transport UI until that exact cancellation was acknowledged.
+    if (!(await chat.stopParkedRun()) || this.chat !== chat) return;
+    this.#stoppedApprovals = new Set([...this.#stoppedApprovals, ...approvals]);
   }
 
-  /** A cancellation that settled fences approvals until this trial starts again. */
-  stopped(chat: ChatSessionState): boolean {
-    return this.#stoppedChat === chat;
+  /** Whether a lingering approval belongs to a native run whose cancellation settled. */
+  stoppedApproval(toolCallId: string): boolean {
+    return this.#stoppedApprovals.has(toolCallId);
   }
 
   async #remove(contextId: string): Promise<void> {

@@ -343,12 +343,18 @@ test.describe('Try it', () => {
   test('/agents/new: at 800px opens Try it as a small right sheet', async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 900 });
     await page.goto('/agents/new');
+    await captureForDesignReview(page, {
+      route: '/agents/new',
+      state: '800px Try it trigger, connected closed',
+      source: 'agent-editor.spec.ts',
+    });
     await page.getByRole('button', { name: words.try.action }).click();
 
     const sheet = page.getByRole('dialog', { name: words.try.title });
     const panel = sheet.locator('.cinder-drawer__panel');
     await expect(panel).toHaveAttribute('data-cinder-placement', 'right');
     await expect(panel).toHaveAttribute('data-cinder-size', 'sm');
+    await expect(panel).toHaveCSS('width', '360px');
     await captureForDesignReview(page, {
       route: '/agents/new',
       state: '800px Try it right sheet',
@@ -367,6 +373,33 @@ test.describe('Try it', () => {
     await captureForDesignReview(page, {
       route: '/agents/new',
       state: '375px Try it bottom sheet',
+      source: 'agent-editor.spec.ts',
+    });
+  });
+
+  test('/agents/new: at 375px presents Asks as a full-width card control', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/agents/new');
+    await addTools(page, ['demo:lookup-order']);
+
+    const table = page.getByTestId('agent-tools-table');
+    const row = table.locator('[data-tool="demo:lookup-order"]');
+    const controls = row.locator('[data-cinder-controls]');
+    const asks = page.getByLabel(AGENT_EDITOR_COPY.newAgent.asksLabel('demo:lookup-order'));
+    await expect(table).toHaveAttribute('data-cinder-stacked', '');
+    await expect(asks).toBeVisible();
+
+    const { askBox, controlBox, riskBox } = await readBoxes(page, {
+      askBox: asks,
+      controlBox: controls,
+      riskBox: row.getByTestId('agent-tool-risk'),
+    });
+    expect(askBox.width).toBeCloseTo(controlBox.width, 1);
+    expect(askBox.height).toBeGreaterThanOrEqual(44);
+    expect(askBox.y).toBeGreaterThan(riskBox.y + riskBox.height);
+    await captureForDesignReview(page, {
+      route: '/agents/new',
+      state: '07a compact Asks control',
       source: 'agent-editor.spec.ts',
     });
   });

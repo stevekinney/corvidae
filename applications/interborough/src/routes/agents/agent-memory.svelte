@@ -45,6 +45,7 @@
 
   import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
   import { MEMORY_COPY } from '../../app/copy/memory.ts';
+  import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { agentMemoryPath } from '../../lib/agent-paths.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { agentsListQuery } from '../../lib/agent-queries.ts';
@@ -219,12 +220,11 @@
         : applied === '' && listing.isFetchNextPageError),
   );
   const activeError = $derived(
-    // An initial list failure owns the entire tab. A failed search with no retained results of its
-    // own does not: keep the initialized frame and its open detail, and let the local alert name
-    // the failed search instead of passing ordinary rows off as stale search results.
+    // The ordinary initial read owns the tab, including its scope-specific 403. A first scoped
+    // read after that list exists does not: keep the controls and selected detail mounted, and let
+    // the local error retry that active branch rather than presenting ordinary rows as its results.
     activeFailed &&
-      (applied === '' || active.data !== undefined) &&
-      memoryFaultOf(active.error).kind !== 'forbidden'
+      (!quarantinedView && applied === '' ? listing.data === undefined : active.data !== undefined)
       ? (active.error ?? new Error(MEMORY_COPY.listFailed))
       : null,
   );
@@ -502,8 +502,10 @@
   error={activeError}
   updatedAt={active.dataUpdatedAt}
   onRetry={() => void active.refetch()}
-  forbiddenDescription={active.data === undefined &&
-  memoryFaultOf(active.error).kind === 'forbidden'
+  forbiddenDescription={!quarantinedView &&
+  applied === '' &&
+  listing.data === undefined &&
+  memoryFaultOf(listing.error).kind === 'forbidden'
     ? MEMORY_COPY.readForbidden
     : undefined}
 >
@@ -548,6 +550,12 @@
     {:else if activeFailed && (applied !== '' || listing.data !== undefined)}
       <Alert variant="danger">
         <p class="ib-memory__alert-title">{MEMORY_COPY.listFailed}</p>
+        <Button
+          variant="secondary"
+          size="sm"
+          onclick={() => void active.refetch()}
+          label={RETRY_LABEL}
+        />
       </Alert>
     {/if}
 

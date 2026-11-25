@@ -407,6 +407,18 @@ describe('the list', () => {
 
     expect(await findByText(AISLE.content)).not.toBeNull();
   });
+
+  test('names the Memory read scope for an initial ordinary-list 403', async () => {
+    bureau({
+      'bureau.memory.list': () => {
+        throw new StubFault('Forbidden', 403, 'No scope.');
+      },
+    });
+    const view = open();
+
+    await view.findByText(MEMORY_COPY.readForbidden);
+    expect(view.getByTestId('agent-tab-failed')).not.toBeNull();
+  });
 });
 
 describe('the search', () => {
@@ -3187,9 +3199,13 @@ describe('a fault the list or search met', () => {
   });
 
   test('says a failed search while a memory is open, and does not read the open memory as a result', async () => {
+    let failing = true;
+    let searches = 0;
     bureau({
       'bureau.memory.search': () => {
-        throw broke();
+        searches += 1;
+        if (failing) throw broke();
+        return { hits: [{ memory: WINDOW, score: 0.8 }] };
       },
     });
     const view = open();
@@ -3207,6 +3223,10 @@ describe('a fault the list or search met', () => {
     // The open memory still leads the list, and says it is not one of its results.
     expect(rowOf(view, AISLE.id).textContent).toContain(MEMORY_COPY.pinnedNote);
     expect(view.queryByText(MEMORY_COPY.noMatch.title('seats'))).toBeNull();
+
+    failing = false;
+    await fireEvent.click(view.getByRole('button', { name: RETRY_LABEL }));
+    await waitFor(() => expect(searches).toBe(2));
   });
 
   test('says a search is loading while a memory is open, rather than listing the open memory alone', async () => {

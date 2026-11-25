@@ -206,7 +206,9 @@
   /** The agent's name as a person reads it, and its description: the listing's, or its definition's. */
   const name = $derived(
     listed?.displayName ??
-      (unavailable || disabled ? agentLabel(definition.data?.name ?? id, undefined) : undefined),
+      (definition.data === undefined
+        ? undefined
+        : agentLabel(definition.data.name ?? id, undefined)),
   );
   const description = $derived(
     listed !== undefined ? listed.description : (definition.data?.description ?? null),
