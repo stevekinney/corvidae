@@ -6,11 +6,10 @@ type InlineConfirmSharedProps = {
   /** Label for the cancelling action. Defaults to `'Cancel'`. @default 'Cancel' */
   cancelLabel?: string;
   /**
-   * Marks the confirming action as destructive: the strip's confirm button takes the danger face,
-   * and a two-press action takes the soft danger face at rest and the solid danger face once
-   * armed, so it looks dangerous before it is pressed and still escalates when armed. A
-   * non-destructive two-press action is primary at rest and danger once armed. Defaults to
-   * `false`.
+   * Marks the confirming action as destructive: the strip's confirm button and a two-press action
+   * take the solid danger face, at rest and armed. An armed two-press action, destructive or not,
+   * also draws a danger ring, so arming is a visible step. A non-destructive two-press action is
+   * primary at rest and danger once armed. Defaults to `false`.
    * @default false
    */
   destructive?: boolean;

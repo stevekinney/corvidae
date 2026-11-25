@@ -31,6 +31,10 @@ The visible prompt labels `role="group"`. On open, focus moves to Cancel, the sa
 
 The visible prompt names the group and both actions have specific visible labels. The component does not use `role="alertdialog"`, `aria-modal`, or a live region because this is an in-flow decision rather than an urgent announcement.
 
+### Two-press arming
+
+A destructive two-press action is the solid danger face at rest and armed (COR-2683). Arming changes the label to the armed label, shows the optional `armedHint`, and draws a danger ring around the button, built like a filled button's focus ring (a 2px page-coloured gap, then `--cinder-status-danger-solid`, which clears 3:1 against the page in both themes). It outranks the Button's own danger focus ring, so a keyboard user who arms the action sees it and it stands in for the focus ring; under forced colours it is a `Highlight` outline. `inline-confirm-two-press.playwright.ts` measures it in both themes. Colour is never the only signal: the label change carries the armed state.
+
 ## Verification
 
 - Verify Cancel receives focus first.
