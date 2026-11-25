@@ -120,6 +120,8 @@ export type ObjectSource = DefinitionSource & {
     path: string,
     options: { readonly limit: number; readonly unlessStamp?: string | undefined },
   ): Promise<SiblingRead>;
+  /** Create another object under this source's prefix only when it is absent. */
+  writeBeside(path: string, bytes: Uint8Array): Promise<void>;
   /** The poll interval, or `undefined` under `watch: false`. */
   readonly pollIntervalMilliseconds: number | undefined;
 };
@@ -188,6 +190,15 @@ export function createObjectSource(
       if (read === undefined) return { kind: 'missing' };
       if (read.bytes.byteLength > limit) return { kind: 'too-large', size: read.bytes.byteLength };
       return { kind: 'found', bytes: read.bytes, stamp: read.etag === '' ? undefined : read.etag };
+    },
+
+    async writeBeside(path, bytes) {
+      const owned = bytes.slice();
+      if (
+        (await operations.put(`${prefix}${path}`, owned, { kind: 'absent' })).outcome === 'refused'
+      ) {
+        throw new SourceConflictError(path, null, 'existing');
+      }
     },
 
     async load(): Promise<readonly DefinitionEntry[]> {

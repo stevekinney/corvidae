@@ -15,6 +15,8 @@
  * @module agent-file-writer
  */
 
+import { createHash } from 'node:crypto';
+
 import {
   AGENT_FILE_SIZE_LIMIT,
   AgentFileConflictError,
@@ -35,9 +37,19 @@ import { isNamespacedIdentifier } from './namespaced-identifier';
 import {
   type AgentSource,
   type DefinitionEntry,
+  SiblingExistsError,
   SourceConflictError,
   SourceReadOnlyError,
 } from './sources/definition-source';
+import { assertReferenceDocument, assertReferencePath } from './sources/reference-path';
+
+const textEncoder = new TextEncoder();
+
+/** A UTF-8 text document staged by an editor to be published with its definition save. */
+export interface AgentReferenceDocument {
+  readonly path: string;
+  readonly text: string;
+}
 
 export interface AgentFileWriterDependencies {
   readonly source: AgentSource;
@@ -71,6 +83,11 @@ export interface AgentFileSaveOptions {
    * never recorded as an edit outside it.
    */
   readonly savedBy?: string | undefined;
+  /**
+   * New reference documents to publish before the definition that names them. A retry may reuse
+   * an already-published document only when its bytes are identical; no caller can replace one.
+   */
+  readonly referenceDocuments?: readonly AgentReferenceDocument[] | undefined;
 }
 
 /** What a successful write reports: the identifier and the hash of the file now on disk. */
@@ -286,6 +303,68 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
     if (problem !== undefined) refuse(problem);
   }
 
+  /** Publish staged documents only after the definition and its current revision were preflighted. */
+  async function writeReferenceDocuments(
+    id: string,
+    definition: AgentFileDefinition,
+    documents: readonly AgentReferenceDocument[] | undefined,
+    reusablePaths: ReadonlySet<string> = new Set(),
+  ): Promise<void> {
+    if (documents === undefined || documents.length === 0) return;
+    const references = new Set(definition.references ?? []);
+    for (const document of documents) {
+      const ownedPrefix = `references/${id}/`;
+      const bytes = textEncoder.encode(document.text);
+      const digest = createHash('sha256').update(bytes).digest('hex');
+      if (
+        !document.path.startsWith(ownedPrefix) ||
+        !document.path.slice(ownedPrefix.length).startsWith(`${digest}/`) ||
+        document.path.slice(ownedPrefix.length) === `${digest}/` ||
+        document.path.slice(ownedPrefix.length).split('/').length !== 2
+      ) {
+        refuse({
+          code: 'invalid-frontmatter',
+          message: `A staged reference document must be under ${JSON.stringify(ownedPrefix)} with its content digest and one filename.`,
+        });
+      }
+      if (!references.has(document.path)) {
+        refuse({
+          code: 'invalid-frontmatter',
+          message: `The staged reference document ${JSON.stringify(document.path)} is not listed in references.`,
+          issues: [
+            { path: 'references', message: 'Every staged document must be listed in references.' },
+          ],
+        });
+      }
+      try {
+        assertReferencePath(document.path);
+        assertReferenceDocument(bytes);
+        await source.writeSibling(document.path, bytes, { definitionId: id });
+      } catch (error) {
+        if (error instanceof SiblingExistsError && reusablePaths.has(document.path)) {
+          const existing = await source.readSibling(document.path, {
+            limit: bytes.byteLength,
+            definitionId: id,
+          });
+          if (
+            existing.kind === 'found' &&
+            existing.bytes.byteLength === bytes.byteLength &&
+            existing.bytes.every((byte, index) => byte === bytes[index])
+          ) {
+            continue;
+          }
+          refuse({ code: 'invalid-frontmatter', message: error.message });
+        }
+        if (error instanceof SiblingExistsError)
+          refuse({ code: 'invalid-frontmatter', message: error.message });
+        if (error instanceof TypeError || error instanceof RangeError) {
+          refuse({ code: 'invalid-frontmatter', message: error.message });
+        }
+        throw error;
+      }
+    }
+  }
+
   return {
     async read(id) {
       // A plugin's agent can be read, only not written.
@@ -309,12 +388,20 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
       return exclusive(async () => {
         checkIdentifier(id);
         const bytes = serializeNewAgentFile(definition);
+        const parsed = parseAgentFile(id, decodeAgentFile(bytes) ?? '');
+        if (parsed.ok) {
+          await writeReferenceDocuments(
+            id,
+            parsed.file.definition,
+            saveOptions?.referenceDocuments,
+          );
+        }
         await checkWritable(id, bytes);
         return replace(id, bytes, null, saveOptions?.savedBy);
       });
     },
 
-    update(id, definition, { expectedHash, savedBy }) {
+    update(id, definition, { expectedHash, savedBy, referenceDocuments }) {
       return exclusive(async () => {
         checkIdentifier(id);
         const current = await readExisting(id, expectedHash);
@@ -345,6 +432,15 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
         if (problem !== undefined) refuse(problem);
         const next = serializeUpdatedAgentFile(id, parsed.file, definition);
         if (next === undefined) return { id, hash: expectedHash };
+        const nextParsed = parseAgentFile(id, decodeAgentFile(next) ?? '');
+        if (nextParsed.ok) {
+          await writeReferenceDocuments(
+            id,
+            nextParsed.file.definition,
+            referenceDocuments,
+            new Set(referenceDocuments?.map((document) => document.path) ?? []),
+          );
+        }
         await checkWritable(id, next, before);
         return replace(id, next, expectedHash, savedBy);
       });

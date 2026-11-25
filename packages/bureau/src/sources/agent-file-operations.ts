@@ -5,7 +5,7 @@
  * @module agent-file-operations
  */
 
-import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { link, mkdir, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 
 /** One entry of the agent directory that could be an agent file. */
 export interface AgentDirectoryEntry {
@@ -40,6 +40,11 @@ export interface AgentFileOperations {
   writeTemporary(path: string, bytes: Uint8Array): Promise<void>;
   /** Move `from` over `to` in one step. */
   rename(from: string, to: string): Promise<void>;
+  /**
+   * Publish a completed same-directory temporary file only when `to` does not exist. `exists`
+   * leaves both names alone. Unlike `rename`, this must never replace an existing target.
+   */
+  publishNew(from: string, to: string): Promise<'published' | 'exists'>;
   /** Delete a file. A file that is already gone is not an error. */
   remove(path: string): Promise<void>;
 }
@@ -112,6 +117,17 @@ export const nodeAgentFileOperations: AgentFileOperations = {
 
   async rename(from, to) {
     await rename(from, to);
+  },
+
+  async publishNew(from, to) {
+    try {
+      // A hard link is an atomic no-clobber publication when both names share a directory.
+      await link(from, to);
+      return 'published';
+    } catch (error) {
+      if (hasErrorCode(error, 'EEXIST')) return 'exists';
+      throw error;
+    }
   },
 
   async remove(path) {

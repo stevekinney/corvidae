@@ -26,6 +26,7 @@
     "@lostgradient/chat": "workspace:*",
     "@lostgradient/cinder": "workspace:*",
     "@lostgradient/cryptography": "workspace:*",
+    "@lostgradient/editor": "workspace:*",
     "@lostgradient/environmentalist": "catalog:",
     "@lostgradient/interborough-plugin": "workspace:*",
     "@lostgradient/memory": "workspace:*",

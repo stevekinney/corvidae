@@ -174,6 +174,17 @@ export type SiblingRead =
   | { readonly kind: 'missing' }
   | { readonly kind: 'too-large'; readonly size: number };
 
+/** A create-only sibling write found a document at its requested path. */
+export class SiblingExistsError extends Error {
+  readonly path: string;
+
+  constructor(path: string) {
+    super(`The reference document ${JSON.stringify(path)} already exists.`);
+    this.name = 'SiblingExistsError';
+    this.path = path;
+  }
+}
+
 /**
  * The source of agent definitions. Beyond the definitions themselves it reads the documents an
  * agent file's `references` name, which sit beside the definitions: see
@@ -212,6 +223,18 @@ export type AgentSource = DefinitionSource & {
       readonly definitionId?: string | undefined;
     },
   ): Promise<SiblingRead>;
+  /**
+   * Create a UTF-8 reference document beside the agent files. The path follows the same safety
+   * rules as {@link AgentSource.readSibling}; `bytes` must be at most the reference-document
+   * limit. It never replaces an existing document: a collision rejects with
+   * {@link SiblingExistsError}. A layered source writes to the layer holding `definitionId`, or
+   * its first owner layer when a new agent has no definition yet.
+   */
+  writeSibling(
+    path: string,
+    bytes: Uint8Array,
+    options?: { readonly definitionId?: string | undefined },
+  ): Promise<void>;
   /**
    * How often, in milliseconds, the source looks for changes on its own: its poll interval. The
    * catalog reads an agent's reference documents again at this period, because nothing else

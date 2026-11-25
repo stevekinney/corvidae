@@ -415,6 +415,39 @@ describe('a new agent', () => {
     expect(getByText(prompt)).not.toBeNull();
   });
 
+  test('stages a text document until Create, and refuses PDFs and oversized files', async () => {
+    const calls = bureau();
+    const { container, findByRole, findByTestId, findByText, getByRole } = mountEditor();
+    await type(await findByRole('textbox', { name: /^Name/ }), 'Researcher');
+    await chooseModel(await findByRole('combobox', { name: 'Model' }), 'Claude Sonnet 5');
+    const upload = container.querySelector<HTMLInputElement>('input[type="file"]');
+    if (upload === null) throw new Error('Expected the document upload input.');
+    await fireEvent.change(upload, {
+      target: {
+        files: [new File(['Use short sentences.\n'], 'style.md', { type: 'text/markdown' })],
+      },
+    });
+    expect((await findByTestId('agent-references')).textContent).toContain('style.md');
+    await fireEvent.change(upload, {
+      target: { files: [new File(['%PDF'], 'document.pdf', { type: 'application/pdf' })] },
+    });
+    expect(await findByText(AGENT_EDITOR_COPY.edit.references.invalidDocument)).not.toBeNull();
+    await fireEvent.change(upload, {
+      target: {
+        files: [new File(['x'.repeat(64 * 1024 + 1)], 'large.txt', { type: 'text/plain' })],
+      },
+    });
+    expect(await findByText(AGENT_EDITOR_COPY.edit.references.documentTooLarge)).not.toBeNull();
+    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.createAction }));
+    await waitFor(() => expect(calls.callsTo('bureau.agents.definitions.create')).toHaveLength(1));
+    const [create] = calls.callsTo('bureau.agents.definitions.create');
+    expect(create?.params['referenceDocuments']).toEqual([
+      expect.objectContaining({
+        path: expect.stringMatching(/^references\/researcher\/[a-f0-9]{64}\/style\.md$/),
+      }),
+    ]);
+  });
+
   test('fills the identifier from the name until it is edited, and creates the agent', async () => {
     const calls = bureau();
     const view = mountEditor();
@@ -436,6 +469,7 @@ describe('a new agent', () => {
     await type(name, 'Something Else');
     expect(identifier.value).toBe('helper');
 
+    await chooseModel(await findByRole('combobox', { name: 'Model' }), 'Claude Sonnet 5');
     await type(getByRole('textbox', { name: /^Instructions/ }), 'Be careful.');
     await openPicker(view);
     await fireEvent.click(getByRole('checkbox', { name: /lookup-order/ }));
@@ -548,6 +582,7 @@ describe('a new agent', () => {
       const { findByRole, findByText, getByRole } = mountEditor();
       const name = await findByRole('textbox', { name: /^Name/ });
       await type(name, 'Tool runner');
+      await chooseModel(await findByRole('combobox', { name: 'Model' }), 'Claude Sonnet 5');
       const save = getByRole('button', { name: AGENT_EDITOR_COPY.createAction });
       await fireEvent.click(save);
 
@@ -578,6 +613,7 @@ describe('a new agent', () => {
       );
       const identifier = getByRole('textbox', { name: /^Identifier/ });
       await type(identifier, 'tool-runner');
+      await chooseModel(await findByRole('combobox', { name: 'Model' }), 'Claude Sonnet 5');
       await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.createAction }));
 
       const message = AGENT_EDITOR_COPY.identifierTaken('tool-runner');
@@ -598,6 +634,7 @@ describe('a new agent', () => {
     });
     const { findByRole, getByRole, findByText } = mountEditor();
     await type(await findByRole('textbox', { name: /^Name/ }), 'Researcher');
+    await chooseModel(await findByRole('combobox', { name: 'Model' }), 'Claude Sonnet 5');
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.createAction }));
 
     expect(await findByText('The model is not offered.')).not.toBeNull();
@@ -612,6 +649,7 @@ describe('a new agent', () => {
     });
     const { findByRole, getByRole, findByText } = mountEditor();
     await type(await findByRole('textbox', { name: /^Name/ }), 'Researcher');
+    await chooseModel(await findByRole('combobox', { name: 'Model' }), 'Claude Sonnet 5');
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.createAction }));
     expect(await findByText('This installation does not let you change agents.')).not.toBeNull();
   });
@@ -767,6 +805,7 @@ describe('the default effort', () => {
     const calls = bureau({ catalog: catalog() });
     const { findByLabelText, findByRole, getByRole } = mountEditor();
     await type(await findByRole('textbox', { name: /^Name/ }), 'Researcher');
+    await chooseModel(await findByRole('combobox', { name: 'Model' }), 'Claude Sonnet 5');
     const select = await findByLabelText(AGENT_EDITOR_COPY.effort.label);
     expect(optionsOf(select)).toEqual(['None', 'Low', 'Medium', 'High']);
     expect((select as HTMLSelectElement).value).toBe('');

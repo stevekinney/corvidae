@@ -15,7 +15,7 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createS3TestServer } from '@lostgradient/testing/s3-server';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { AgentFileConflictError } from './agent-file';
+import { AGENT_REFERENCE_SIZE_LIMIT, AgentFileConflictError } from './agent-file';
 import { readFileAgentBinding } from './agent-file-catalog';
 import type { AgentSnapshot } from './agent-snapshot-store';
 import { agentFileDirectory } from './sources/agent-file-directory';
@@ -292,6 +292,30 @@ describe.each(SOURCES)('agent files over %s', (_name, makeHarness) => {
       kind: 'too-large',
       size: 10,
     });
+  });
+
+  it('creates one UTF-8 reference beside the definitions without replacing a document', async () => {
+    const { harness } = await start();
+    const source = harness.source;
+    await source.writeSibling('docs/style.md', encoder.encode('Be brief.\n'));
+    const found = await source.readSibling('docs/style.md', { limit: 1024 });
+    expect(found.kind).toBe('found');
+    if (found.kind === 'found') expect(new TextDecoder().decode(found.bytes)).toBe('Be brief.\n');
+    const collision = await rejectionOf(
+      source.writeSibling('docs/style.md', encoder.encode('Replace me.\n')),
+    );
+    expect(collision).toBeInstanceOf(Error);
+    expect((collision as Error).message).toContain('already exists');
+    const invalid = await rejectionOf(
+      source.writeSibling('docs/invalid.md', new Uint8Array([0xc3, 0x28])),
+    );
+    expect(invalid).toBeInstanceOf(Error);
+    expect((invalid as Error).message).toContain('UTF-8');
+    const large = await rejectionOf(
+      source.writeSibling('docs/large.md', new Uint8Array(AGENT_REFERENCE_SIZE_LIMIT + 1)),
+    );
+    expect(large).toBeInstanceOf(Error);
+    expect((large as Error).message).toContain('at most');
   });
 
   it('refuses a reference path that leaves the source’s own location, before it reads', async () => {

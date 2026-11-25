@@ -369,7 +369,7 @@
     mutationFn: (form: AgentEditorState) => {
       const request = new AbortController();
       saveRequest = request;
-      const options = { signal: request.signal };
+      const options = { signal: request.signal, referenceDocuments: form.stagedReferenceDocuments };
       return form.mode === 'create'
         ? createAgent(form.identifier, form.toDefinition(), options)
         : updateAgent(form.identifier, form.hash ?? '', form.toDefinition(), options);
