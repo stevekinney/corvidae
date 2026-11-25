@@ -268,6 +268,12 @@ const PARKED_APPROVAL = {
   message: 'Refund order 1001?',
 };
 
+/** The closed tablet capture starts only after its connected editor header is ready to use. */
+async function closedTryItReady(page: Page): Promise<void> {
+  await expect(page.getByRole('heading', { name: 'New agent', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: words.try.action })).toBeVisible();
+}
+
 /** The real AG-UI stream shape for a trial parked on an approval, supplied through its transport seam. */
 function parkedTrialEvents(): string {
   const events = [
@@ -343,10 +349,12 @@ test.describe('Try it', () => {
   test('/agents/new: at 800px opens Try it as a small right sheet', async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 900 });
     await page.goto('/agents/new');
+    await closedTryItReady(page);
     await captureForDesignReview(page, {
       route: '/agents/new',
       state: '800px Try it trigger, connected closed',
       source: 'agent-editor.spec.ts',
+      ready: closedTryItReady,
     });
     await page.getByRole('button', { name: words.try.action }).click();
 

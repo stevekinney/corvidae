@@ -182,6 +182,15 @@ for (const name of NAMES) {
         'data-state',
         'ready',
       );
+      if (name === '/agents/:agent/hooks') {
+        await expect(
+          frame.getByRole('heading', { name: 'Tool runner', exact: true }),
+        ).toBeVisible();
+        await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText(
+          'Tool runner',
+        );
+        await expect(frame.getByRole('button', { name: 'Duplicate', exact: true })).toBeVisible();
+      }
       await captureForDesignReview(page, {
         route: name,
         // `responsive.spec.ts` writes `<route>--ready--…` for the stress seed's pages, so a route it

@@ -10,6 +10,7 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
+import { SAMPLE_NOW, SAMPLE_NOW_MILLISECONDS } from '../../fixtures/sample-now.ts';
 import { AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
 import { bureau, createAgentFile, readAgent, removeAgent } from './agent-support.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
@@ -144,8 +145,14 @@ test.describe('the Hooks tab', () => {
     });
     expect(created.fault).toBeUndefined();
 
+    // The successful read happened at 10:44 AM, before the capture's fixed 10:46 AM. The stale
+    // banner therefore reports the real retained-read time rather than a made-up product value.
+    const loadedAt = SAMPLE_NOW_MILLISECONDS - 2 * 60_000;
+    await page.clock.pauseAt(SAMPLE_NOW);
+    await page.clock.setSystemTime(loadedAt);
     await page.goto(`/agents/${id}/hooks`);
     await expect(page.getByTestId('agent-hooks')).toContainText('Retained audit hook');
+    await page.clock.setSystemTime(SAMPLE_NOW_MILLISECONDS);
 
     let failedReads = 0;
     await page.route('**/jsonrpc', async (route) => {

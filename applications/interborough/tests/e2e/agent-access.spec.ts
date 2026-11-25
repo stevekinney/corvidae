@@ -68,34 +68,37 @@ async function pendingApprovals(request: Parameters<typeof bureau>[0], threadId:
 }
 
 test.describe('the Access tab', () => {
-  test('/agents/:agent/access: at 375px presents Asks as a full-width card control on the editable Access tab', async ({
+  test('/agents/:agent/access: at 320px and 375px presents Asks as a full-width card control on the editable Access tab', async ({
     page,
     request,
   }) => {
     const id = 'e2e-access-asks-compact';
     await agentWithLookup(request, id, { approvals: { 'demo:lookup-order': 'always' } });
-    await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto(`/agents/${id}/access`);
+    for (const width of [320, 375]) {
+      await page.setViewportSize({ width, height: 812 });
+      await page.goto(`/agents/${id}/access`);
 
-    const table = page.getByTestId('agent-access-table');
-    const row = table.locator('[data-tool="demo:lookup-order"]');
-    const controls = row.locator('[data-cinder-stack-label="Asks"]');
-    const asks = lookupAsks(page);
-    await expect(table).toHaveAttribute('data-cinder-stacked', 'true');
-    await expect(asks).toBeVisible();
-    const { askBox, controlBox, riskBox } = await readBoxes(page, {
-      askBox: asks,
-      controlBox: controls,
-      riskBox: row.getByTestId('agent-access-risk'),
-    });
-    expect(askBox.width).toBeCloseTo(controlBox.width, 1);
-    expect(askBox.height).toBeGreaterThanOrEqual(44);
-    expect(askBox.y).toBeGreaterThan(riskBox.y + riskBox.height);
-    expect(
-      await page
-        .locator('main.weft-shell-outlet')
-        .evaluate((outlet) => outlet.scrollWidth <= outlet.clientWidth),
-    ).toBe(true);
+      const table = page.getByTestId('agent-access-table');
+      const row = table.locator('[data-tool="demo:lookup-order"]');
+      const asks = lookupAsks(page);
+      await expect(table).toHaveAttribute('data-cinder-stack-card', 'true');
+      await expect(asks).toBeVisible();
+      await expect(row.locator('.ib-access-row__identifier')).toBeHidden();
+      const { askBox, rowBox, riskBox } = await readBoxes(page, {
+        askBox: asks,
+        rowBox: row,
+        riskBox: row.getByTestId('agent-access-risk'),
+      });
+      expect(askBox.height).toBeGreaterThanOrEqual(44);
+      expect(askBox.y).toBeGreaterThan(riskBox.y + riskBox.height);
+      expect(askBox.x - rowBox.x).toBeCloseTo(rowBox.x + rowBox.width - askBox.x - askBox.width, 1);
+      expect(askBox.width).toBeGreaterThan(rowBox.width / 2);
+      expect(
+        await page
+          .locator('main.weft-shell-outlet')
+          .evaluate((outlet) => outlet.scrollWidth <= outlet.clientWidth),
+      ).toBe(true);
+    }
     await captureForDesignReview(page, {
       route: '/agents/:agent/access',
       state: '07a compact Asks control',

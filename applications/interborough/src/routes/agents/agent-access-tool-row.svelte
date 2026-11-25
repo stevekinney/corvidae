@@ -87,23 +87,23 @@
       onValueChange={allow}
     />
   </Table.Cell>
-  <Table.Cell as="th">
+  <Table.Cell as="th" clamp={false}>
     <span class="ib-access-row__identity">
       <span class="ib-access-row__name">{heading}</span>
       <code class="ib-access-row__identifier">{tool.name}</code>
     </span>
   </Table.Cell>
-  <Table.Cell>
+  <Table.Cell class="ib-access-row__detail">
     {#snippet detail()}
       <span class="ib-access-row__does">{line ?? copy.notInCatalog}</span>
     {/snippet}
   </Table.Cell>
-  <Table.Cell>
+  <Table.Cell stack="status">
     <span class="ib-access-row__risk" data-testid="agent-access-risk"
       >{tool.catalog === undefined ? copy.notInCatalog : riskLabel(tierOf(tool.catalog))}</span
     >
   </Table.Cell>
-  <Table.Cell controls>
+  <Table.Cell controls="fit" class="ib-access-row__asks-cell" data-agent-access-asks>
     <div class="ib-access-row__asks">
       <Select
         id={`access-approval-${tool.name}`}

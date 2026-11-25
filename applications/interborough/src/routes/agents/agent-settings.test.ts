@@ -524,6 +524,8 @@ describe('disabling an agent defined in code (rows 38y and 40d, COR-2429)', () =
     });
     const { findByRole, findByTestId } = mount();
 
+    const header = await findByTestId('agent-header');
+    expect(within(header).getByRole('heading', { name: 'Tool runner' })).toBeVisible();
     const block = await findByTestId('agent-disable');
     expect(block.textContent).toContain('Tool runner is built in');
     await fireEvent.click(within(block).getByRole('button', { name: 'Disable agent' }));

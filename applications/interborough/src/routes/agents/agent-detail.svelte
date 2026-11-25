@@ -204,12 +204,12 @@
     if (overridable) void overrides.refetch();
   }
   /** The agent's name as a person reads it, and its description: the listing's, or its definition's. */
-  const name = $derived(
-    listed?.displayName ??
-      (definition.data === undefined
-        ? undefined
-        : agentLabel(definition.data.name ?? id, undefined)),
-  );
+  const name = $derived.by(() => {
+    const raw =
+      listed?.displayName ??
+      (definition.data === undefined ? undefined : (definition.data.name ?? id));
+    return raw === undefined ? undefined : agentLabel(raw, undefined);
+  });
   const description = $derived(
     listed !== undefined ? listed.description : (definition.data?.description ?? null),
   );
