@@ -4,5 +4,6 @@
     "types": ["bun"]
   },
   "include": ["src", "fixtures", "scripts", "tests", "playwright.config.ts"],
-  "exclude": ["node_modules", "coverage", "build", "test-output"]
+  "exclude": ["node_modules", "coverage", "build", "test-output"],
+  "references": [{ "path": "../../packages/velveteen/tsconfig.source.json" }]
 }
