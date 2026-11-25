@@ -14,6 +14,7 @@
     key,
     density,
     statusColumn,
+    statusTrack,
     trailingTrack,
     trailingAlign,
     groupBy,
@@ -120,6 +121,7 @@
   class={classNames('cinder-data-list', className)}
   role="list"
   style:--cinder-stacked-list-item-trailing-track={trailingTrack}
+  style:--cinder-stacked-list-item-status-track={statusTrack}
   style:--cinder-stacked-list-item-trailing-align={trailingAlign}
 >
   {#if insertionAnnouncement !== undefined}

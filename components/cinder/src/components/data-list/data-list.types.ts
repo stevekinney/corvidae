@@ -49,6 +49,12 @@ export type DataListProps<T> = Omit<
    */
   statusColumn?: boolean;
   /**
+   * The width of the leading status column in every two-line StackedListItem row in the list (a
+   * CSS length, such as `10rem`). Use this only when a list's status words carry qualifiers that
+   * need more room than Cinder's normal status column; titles remain aligned across the list.
+   */
+  statusTrack?: string;
+  /**
    * The width of the trailing column of every two-line StackedListItem row in the list (a CSS
    * length, such as `9rem`): the width of the widest figure a row carries in `trailing` (a cost, a
    * count). The track is then one width in every row, with a trailing region or without, so the

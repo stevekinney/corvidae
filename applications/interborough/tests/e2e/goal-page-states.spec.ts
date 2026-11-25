@@ -9,6 +9,8 @@
  *   world connects no provider, so Start again is held with "Connect a provider" beneath it;
  * - Start again pressed (67n): Draft release notes runs the scripted Assistant, so Start again is
  *   live and opens New goal prefilled with the goal's prompt and check.
+ * - Edit (68o, 68p): Summarize open refunds opens as its Tool runner goal with the connected
+ *   provider state, its own prompt and check prefilled, and the Save footer visible.
  *
  * Not run on this host (the browser suites run on GitHub, `main.yml`).
  */
@@ -35,6 +37,29 @@ const WORKING_GOAL_CREATED = Date.parse('2026-11-02T10:41:00-06:00');
 /** How long the run of the attempt being checked took: the sample world's second attempt's run. */
 const WORKING_ATTEMPT_RUN_MILLISECONDS =
   SAMPLE_WORLD_DURATIONS.summarizeRefundsSecondAttempt * 1000;
+const REFUNDS_PROMPT =
+  'Summarize open refunds. List every refund that is waiting for approval and say why.';
+const RELEASE_NOTES_PROMPT =
+  'Draft release notes from the pull requests merged since the last release. Group them as fixes, features and chores. Keep the notes under 200 words, write in plain language, and be sure to mention the staging fix, which changed how releases are checked before they go out.';
+
+/** Answers the host provider list as connected, without changing the seeded goal or agent records. */
+async function connectProvider(page: Page): Promise<void> {
+  await page.route('**/host/providers', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { providers: Record<string, unknown>[] };
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        providers: body.providers.map((provider) => ({
+          ...provider,
+          hasKey: true,
+          connected: true,
+        })),
+      },
+    });
+  });
+}
 
 /** Opens `path` at `width` and waits until the goal's attempts are listed. */
 async function openGoal(page: Page, path: string, width: number): Promise<void> {
@@ -45,6 +70,32 @@ async function openGoal(page: Page, path: string, width: number): Promise<void> 
   await expect(
     page.getByTestId('goal-attempts-heading').or(page.getByTestId('goal-attempts-empty')),
   ).toBeVisible();
+}
+
+/** Opens an edit form after its data has been read, preserving the page's fixed capture clock. */
+async function openGoalEdit(page: Page, path: string, width: number): Promise<void> {
+  await page.clock.setFixedTime(SAMPLE_NOW);
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto(path);
+  await expect(page.getByRole('heading', { level: 1, name: 'Edit goal' })).toBeVisible();
+}
+
+/** The edit witness holds after the capture helper repeats a phone shot at 320px. */
+async function editGoalReady(page: Page): Promise<void> {
+  await expect(page.getByLabel('What should the agent do?')).toHaveValue(REFUNDS_PROMPT);
+  await expect(
+    page.getByRole('button', { name: /Summary lists every refund waiting for approval/ }),
+  ).toBeVisible();
+  await expect(page.getByLabel('Attempt limit')).toHaveValue('5');
+  await expect(page.getByText('Saving doesn’t start an attempt.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
+}
+
+/** The long prompt remains clamped after a capture helper resizes a phone to 320px. */
+async function gaveUpPromptReady(page: Page): Promise<void> {
+  const asked = page.getByTestId('goal-asked');
+  await expect(asked).toContainText(RELEASE_NOTES_PROMPT);
+  await expect(asked.getByRole('button', { name: 'Show more' })).toBeVisible();
 }
 
 /**
@@ -174,5 +225,38 @@ for (const width of WIDTHS) {
         source: SOURCE,
       });
     });
+
+    test('a connected provider preserves the stopped Tool runner goal in Edit, with its own fields and Save footer (68o, 68p)', async ({
+      page,
+    }) => {
+      const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+      await connectProvider(page);
+      await openGoalEdit(
+        page,
+        `/goals/${encodeURIComponent(world.goals.summarizeRefunds)}/edit`,
+        width,
+      );
+      await editGoalReady(page);
+      await captureForDesignReview(page, {
+        route: '/goals/:goal/edit',
+        state: 'edit goal prefilled',
+        source: SOURCE,
+        ready: editGoalReady,
+      });
+    });
   });
 }
+
+test('the gave-up goal keeps its exact long prompt behind Show more on a phone (67j)', async ({
+  page,
+}) => {
+  const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+  await openGoal(page, `/goals/${encodeURIComponent(world.goals.draftReleaseNotes)}`, 375);
+  await gaveUpPromptReady(page);
+  await captureForDesignReview(page, {
+    route: '/goals/:goal',
+    state: 'gave up, prompt clamped',
+    source: SOURCE,
+    ready: gaveUpPromptReady,
+  });
+});

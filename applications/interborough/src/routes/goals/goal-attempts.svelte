@@ -64,7 +64,9 @@
       <span class="ib-goal-attempts__count">{count}</span>
     </h2>
     <div {@attach followLinks}>
-      <DataList items={[...rows]} key={rowKey} aria-label={copy.attemptsLabel}>
+      <!-- A checking attempt's status is longer than Cinder's ordinary status word. Keep one
+           shared track wide enough for it, so it cannot run into "Attempt N" at desktop widths. -->
+      <DataList items={[...rows]} key={rowKey} statusTrack="10rem" aria-label={copy.attemptsLabel}>
         {#snippet children(row: AttemptRow)}
           <StackedListItem
             href={router.href(workflowDetailPath(row.runId))}

@@ -55,6 +55,8 @@ Pass `groupBy` to put consecutive rows under a header band: it returns `{ key, l
 
 `statusColumn` keeps the 128px status column for rows that have no status, so titles line up down the whole list.
 
+`statusTrack` widens that status column for every two-line row in a list when its status words carry a qualifier. For example, a goal's "Running, checking the result" uses `statusTrack="10rem"` so it remains separate from the row title; omit it to retain Cinder's 128px default.
+
 `trailingTrack` does the same for the trailing column of two-line rows: a list whose rows carry a figure in `trailing` (a cost, a count) passes the width of its widest figure (`trailingTrack="9rem"`), so the track is one width in every row, with a trailing region or without, and the times before it end at one edge. `trailingAlign="baseline"` holds the figure on the first line's baseline instead of centering it on both lines. Pass them only at the widths where rows keep their trailing column; omitted, each row sizes the column by its own content.
 
 ## Rows that change while you watch
