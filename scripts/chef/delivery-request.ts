@@ -117,11 +117,8 @@ import {
 } from './process-runner.ts';
 import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
 import { resolveMainCheckout } from './repository-locations.ts';
-import {
-  dispatchVerificationRun,
-  inputsFromPlan,
-  type VerificationBinding,
-} from './targeted-run.ts';
+import { inputsFromPlan } from './targeted-inputs.ts';
+import { dispatchVerificationRun, type VerificationBinding } from './targeted-run.ts';
 import {
   computeEvidencePlan,
   createVerificationPlan,
