@@ -229,19 +229,12 @@ export type AuthConfig = {
  * });
  * const result = await authenticate(req);
  * if (result.authenticated) {
- *   const method: AuthMethod = result.method;
+ *   const method = result.method;
  *   console.log(method); // 'api-key'
  * }
  * ```
  */
-export type AuthMethod =
-  | 'api-key'
-  | 'jwt'
-  | 'mtls'
-  | 'public'
-  | 'unauthenticated-local'
-  | 'browser-session'
-  | 'connector-token';
+export type AuthMethod = 'api-key' | 'jwt' | 'mtls' | 'public' | 'unauthenticated-local';
 
 /**
  * Shared context carried from the authenticator through the request
@@ -262,7 +255,7 @@ export type AuthMethod =
  */
 export type AuthContext = {
   /** How the caller authenticated. */
-  method: AuthMethod;
+  method: AuthMethod | 'browser-session' | 'connector-token';
   /** The verified JWT claims, when the method is `jwt`. */
   claims?: JWTPayload;
   /** The principal the credential resolved to. */
