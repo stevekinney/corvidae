@@ -127,6 +127,7 @@ import {
   createVerificationPlan,
   digest,
   gateAssignment,
+  supportsAutomaticPullRequestEvidence,
   type Assignment,
   type EvidencePlan,
 } from './verification-plan.ts';
@@ -376,7 +377,11 @@ function reusablePullRequestRun(
   runs: readonly CiEvidenceRun[],
   binding: PullRequestSourceCriteriaBinding | undefined,
 ): CiEvidenceRun | undefined {
-  if (plan.requires_full_run || inputsFromPlan(plan).undispatchable.length > 0 || runs.length !== 1)
+  if (
+    !supportsAutomaticPullRequestEvidence(plan) ||
+    inputsFromPlan(plan).undispatchable.length > 0 ||
+    runs.length !== 1
+  )
     return undefined;
   const candidateRun = runs[0];
   if (candidateRun === undefined || !candidateRun.jobs.includes(PULL_REQUEST_AGGREGATE))
@@ -390,10 +395,7 @@ function reusablePullRequestRun(
     Object.keys(candidateRun.receiptJobs).length !== PULL_REQUEST_RECEIPT_JOBS.length
   )
     return undefined;
-  const browserRequired =
-    plan.fixture_slugs.length > 0 || plan.fixture_specs.length > 0 || plan.e2e_specs.length > 0;
   if (
-    browserRequired ||
     binding === undefined ||
     candidateRun.receiptTestFiles === undefined ||
     plan.unit_tests.some((lane) =>

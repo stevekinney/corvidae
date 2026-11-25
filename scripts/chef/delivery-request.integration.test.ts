@@ -35,6 +35,7 @@ import {
   type ExecutionStateStore,
 } from './execution-state.ts';
 import {
+  changedAnswer,
   greenLandingAnswers,
   jobsAnswer,
   LANDING_RUN_ID,
@@ -449,6 +450,13 @@ scenarios.describe('prepare', () => {
   scenarios.scenario(
     'adopts one complete automatic pull-request receipt for a scoped pull-request delivery',
     async () => {
+      const workspace = 'applications/interborough';
+      const testPath = 'scripts/design-review-rows.test.ts';
+      const observed = workspace + '/' + testPath;
+      const changed = answers({
+        ...changedAnswer(BASE, HEAD, [observed]),
+        [`diff --name-only --diff-filter=d ${BASE}...${HEAD}`]: reply(observed + '\n'),
+      });
       const automatic: CiEvidenceRun = {
         id: 77,
         attempt: 1,
@@ -472,7 +480,7 @@ scenarios.describe('prepare', () => {
           'browser-selection': 'success',
           browser: 'not-applicable',
         },
-        receiptTestFiles: ['scripts/chef/delivery-request.integration.test.ts'],
+        receiptTestFiles: [observed],
         jobs: ['Evidence aggregate'],
       };
       const setup = await harness(
@@ -493,8 +501,8 @@ scenarios.describe('prepare', () => {
             }),
             unit_tests: [
               {
-                workspace: '',
-                paths: ['scripts/chef/delivery-request.integration.test.ts'],
+                workspace,
+                paths: [testPath],
                 full: false,
               },
             ],
@@ -510,11 +518,11 @@ scenarios.describe('prepare', () => {
                 criteria: [
                   {
                     criterionId: 'AC1',
-                    testFiles: ['scripts/chef/delivery-request.integration.test.ts'],
+                    testFiles: [observed],
                   },
                   {
                     criterionId: 'AC2',
-                    testFiles: ['scripts/chef/delivery-request.integration.test.ts'],
+                    testFiles: [observed],
                   },
                 ],
               },
@@ -523,18 +531,18 @@ scenarios.describe('prepare', () => {
                 criteria: [
                   {
                     criterionId: 'AC1',
-                    testFiles: ['scripts/chef/delivery-request.integration.test.ts'],
+                    testFiles: [observed],
                   },
                 ],
               },
             ],
           },
         },
+        changed,
       );
-      const observed = 'scripts/chef/delivery-request.integration.test.ts';
       for (const lane of [
-        { workspace: '', full: false, paths: [observed, 'scripts/another.test.ts'] },
-        { workspace: '', full: true, paths: [] },
+        { workspace, full: false, paths: [testPath, 'scripts/another.test.ts'] },
+        { workspace, full: true, paths: [] },
       ]) {
         const control = lane.full ? 'whole-suite' : 'missing-file';
         const fallback = await harness(
@@ -594,10 +602,18 @@ scenarios.describe('prepare', () => {
             ciProvider: provider(attempt, checkedTree),
           },
         );
-      expect(await validateDeliveryCiEvidence(loaded, { ciProvider: provider(1) })).toBeUndefined();
-      expect(await validateDeliveryCiEvidence(loaded, { ciProvider: provider(2) })).toContain(
-        'CI evidence for run 77',
-      );
+      const pullRequestPlan = () => setup.dependencies.plan([observed], setup.options.worktree);
+      const verify = (attempt: number) =>
+        validateDeliveryCiEvidence(loaded, { ciProvider: provider(attempt), pullRequestPlan });
+      expect(await verify(1)).toBeUndefined();
+      expect(await verify(2)).toContain('CI evidence for run 77');
+      expect(
+        await validateDeliveryCiEvidence(loaded, {
+          ciProvider: provider(1),
+          pullRequestPlan: () => ({ ...pullRequestPlan(), e2e_specs: ['tests/e2e/a.spec.ts'] }),
+        }),
+      ).toContain('cannot cover the full or browser lanes');
+
       expect(await land(1)).toBeUndefined();
       expect(await land(2)).toContain('does not match the pinned pull-request attempt');
       expect(await land(1, '2'.repeat(40))).toContain(`expected ${TREE}`);

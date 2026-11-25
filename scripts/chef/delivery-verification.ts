@@ -12,6 +12,7 @@ import {
   readDeliveryRequest,
   type DeliveryRequest,
 } from './delivery-completion.ts';
+import { repositoryContext } from './evidence-plan.ts';
 import type { ProviderEvidenceTransport } from './evidence-transport.ts';
 import {
   createExecutionStateStore,
@@ -22,8 +23,17 @@ import {
   withProviderTransitionLock,
   type ExecutionStateStore,
 } from './execution-state.ts';
+import { changedPaths } from './landing-plan.ts';
+import { defaultRunner } from './process-runner.ts';
 import { resolveMainCheckout } from './repository-locations.ts';
-import { digest, gateAssignment, type Assignment } from './verification-plan.ts';
+import {
+  computeEvidencePlan,
+  digest,
+  gateAssignment,
+  supportsAutomaticPullRequestEvidence,
+  type Assignment,
+  type EvidencePlan,
+} from './verification-plan.ts';
 
 /** Coordinator-pinned input required before either delivery route can mutate a provider. */
 export interface DeliveryVerification {
@@ -39,11 +49,12 @@ export interface LoadedDeliveryVerification {
   state: ExecutionStateStore;
 }
 
-/** Production defaults authenticate provider facts; callers may inject only those raw dependencies. */
+/** Production defaults authenticate provider facts and read the pull-request plan from the checkout. */
 export interface DeliveryVerificationDependencies {
   state: ExecutionStateStore;
   transport?: ProviderEvidenceTransport;
   ciProvider?: Pick<CiEvidenceProvider, 'findRuns'>;
+  pullRequestPlan?: (request: DeliveryRequest) => EvidencePlan | string;
 }
 
 export interface DeliveryRoute {
@@ -318,14 +329,6 @@ function hasCompletePullRequestCoverage(
     )
   )
     return false;
-  const browserRequired = member.plan.obligations.some((item) =>
-    item.relevantInputs.some(
-      (path) =>
-        path.startsWith('scripts/browser-fixtures/') ||
-        path.startsWith('applications/interborough/'),
-    ),
-  );
-  if (browserRequired) return false;
   if (sourceCriteria === undefined || run.receiptTestFiles === undefined) return false;
   const binding = sourceCriteria.members.find(
     (candidate) => candidate.identifier === member.assignment.identity.identifier,
@@ -347,6 +350,12 @@ function hasCompletePullRequestCoverage(
   return true;
 }
 
+function pullRequestEvidencePlan(request: DeliveryRequest): EvidencePlan | string {
+  const changed = changedPaths(defaultRunner, request.worktree, request.base, request.revision);
+  if (typeof changed === 'string') return changed;
+  return computeEvidencePlan(changed, repositoryContext(request.worktree, new Set<string>()));
+}
+
 /** Require a current authenticated aggregate for the CI runs that carry pre-merge obligations. */
 export async function validateDeliveryCiEvidence(
   verification: LoadedDeliveryVerification,
@@ -366,6 +375,12 @@ export async function validateDeliveryCiEvidence(
   if (mappings.length === 0) return undefined;
   if (!Array.isArray(request.ciEvidence))
     return 'verification request is missing the CI evidence contract';
+  if (mappings.some(({ run }) => run.event === 'pull_request')) {
+    const plan = (partial.pullRequestPlan ?? pullRequestEvidencePlan)(request);
+    if (typeof plan === 'string') return plan;
+    if (!supportsAutomaticPullRequestEvidence(plan))
+      return 'automatic pull-request evidence cannot cover the full or browser lanes in the plan';
+  }
   const manualPlanDigest = batchVerificationPlanDigest(request.members);
   const source =
     partial.ciProvider ??
