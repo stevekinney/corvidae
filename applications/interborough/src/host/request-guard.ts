@@ -230,10 +230,16 @@ export function createSharedWebGuard(
     if (host === null || !hosts.includes(host.toLowerCase())) return fallback(request);
     if (isAmbiguousPath(rawPathOf(request))) return new Response('Forbidden', { status: 403 });
     const supplied = request.headers.get('origin');
-    const needsOrigin = request.headers.get('upgrade')?.toLowerCase() === 'websocket';
+    const socket = request.headers.get('upgrade')?.toLowerCase() === 'websocket';
+    const subscription =
+      request.method === 'GET' &&
+      request.headers.get('accept')?.includes('text/event-stream') === true &&
+      !request.headers.has('authorization');
+    const sameOriginFetch = request.headers.get('sec-fetch-site') === 'same-origin';
     if (
       (supplied !== null && supplied !== origin.origin) ||
-      (needsOrigin && supplied !== origin.origin)
+      (socket && supplied !== origin.origin) ||
+      (subscription && supplied !== origin.origin && !sameOriginFetch)
     )
       return new Response('Forbidden', { status: 403 });
     return undefined;

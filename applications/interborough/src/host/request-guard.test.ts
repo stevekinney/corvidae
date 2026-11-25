@@ -47,6 +47,54 @@ test('shared web sockets require the configured origin and reject ambiguous path
       }),
     )?.status,
   ).toBe(403);
+  for (const origin of [undefined, 'https://evil.example', 'https://settings.example']) {
+    const response = guard(
+      new Request('http://localhost/bureau/events', {
+        headers: {
+          host: 'settings.example',
+          accept: 'text/event-stream',
+          cookie: 'session=value',
+          ...(origin === undefined ? {} : { origin }),
+        },
+      }),
+    );
+    expect(response?.status).toBe(origin === 'https://settings.example' ? undefined : 403);
+  }
+  expect(
+    guard(
+      new Request('http://localhost/bureau/mcp', {
+        headers: {
+          host: 'settings.example',
+          accept: 'text/event-stream',
+          authorization: 'Bearer token',
+        },
+      }),
+    ),
+  ).toBeUndefined();
+  expect(
+    guard(
+      new Request('http://localhost/bureau/events', {
+        headers: {
+          host: 'settings.example',
+          accept: 'text/event-stream',
+          cookie: 'session=value',
+          'sec-fetch-site': 'same-origin',
+        },
+      }),
+    ),
+  ).toBeUndefined();
+  expect(
+    guard(
+      new Request('http://localhost/bureau/events', {
+        headers: {
+          host: 'settings.example',
+          accept: 'text/event-stream',
+          cookie: 'session=value',
+          'sec-fetch-site': 'cross-site',
+        },
+      }),
+    )?.status,
+  ).toBe(403);
 });
 
 function request(headers: Record<string, string>): Request {

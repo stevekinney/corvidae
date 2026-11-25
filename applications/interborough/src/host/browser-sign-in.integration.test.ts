@@ -384,13 +384,21 @@ test('listener binds verified browser identities, revokes private access and res
     await streamStarted.promise;
     const streamPath = `/bureau/ag-ui/runs/${encodeURIComponent(live.id)}`;
     const stream = await send(streamPath, {
-      headers: { cookie: administrator.cookie!, accept: 'text/event-stream' },
+      headers: {
+        cookie: administrator.cookie!,
+        accept: 'text/event-stream',
+        'sec-fetch-site': 'same-origin',
+      },
     });
     expect(stream.status).toBe(200);
     const reader = stream.body!.getReader();
     await reader.read();
     const strangerStream = await send(streamPath, {
-      headers: { cookie: member.cookie!, accept: 'text/event-stream' },
+      headers: {
+        cookie: member.cookie!,
+        accept: 'text/event-stream',
+        'sec-fetch-site': 'same-origin',
+      },
     });
     const strangerStreamText = await strangerStream.text();
     expect(strangerStreamText).toContain('RUN_NOT_FOUND');
