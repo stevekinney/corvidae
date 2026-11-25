@@ -1,7 +1,9 @@
 /**
- * COR-1793: remote credentials come only from the environment Bungalow is given. `Bun.S3Client`
- * signs with the `AWS_SESSION_TOKEN` or `S3_SESSION_TOKEN` the process started with whenever no
- * session token is set, so an open in such a process must fail closed, before any request.
+ * COR-1793: remote credentials come only from the environment Bungalow is given. The default
+ * presigner reads no environment, so an `AWS_SESSION_TOKEN` or `S3_SESSION_TOKEN` the process
+ * started with never reaches a request. `Bun.S3Client` does sign with that ambient token whenever
+ * no session token is set, so an open with a presigner over it must still fail closed, before any
+ * request.
  */
 import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { createS3TestServer } from '@lostgradient/testing/s3-server';
@@ -16,6 +18,9 @@ const GIVEN_TOKEN = 'sentinel-given-session-token';
 const BUCKET = 'sentinel-bucket';
 
 const startProxy = useS3Proxy();
+
+/** Which presigner the child injects: the default, or one over `Bun.S3Client`. */
+type Presigner = 'default' | 'bun-presigner';
 
 type Outcome =
   | {
@@ -44,7 +49,8 @@ function cleanProcessEnvironment(): Record<string, string> {
 async function openInChild(
   endpoint: string,
   processEnvironment: Record<string, string>,
-  givenEnvironment: Record<string, string> = {},
+  givenEnvironment: Record<string, string>,
+  presigner: Presigner,
 ): Promise<Outcome> {
   const environment = {
     NODE_ENV: 'test',
@@ -61,6 +67,7 @@ async function openInChild(
       process.execPath,
       join(import.meta.dir, 'remote-open.test-support.ts'),
       JSON.stringify(environment),
+      presigner,
     ],
     { env: { ...cleanProcessEnvironment(), ...processEnvironment } },
   );
@@ -73,41 +80,64 @@ async function openInChild(
  * boot on Bun's per-test clock. Each records its outcome and the requests its proxy saw.
  */
 async function runCase(
+  presigner: Presigner,
   processEnvironment: Record<string, string>,
   given: Record<string, string> = {},
 ): Promise<{ readonly outcome: Outcome; readonly requests: readonly ProxiedRequest[] }> {
   const server = createS3TestServer({ bucket: BUCKET });
   try {
     const proxy = startProxy(server);
-    const outcome = await openInChild(proxy.endpoint, processEnvironment, given);
+    const outcome = await openInChild(proxy.endpoint, processEnvironment, given, presigner);
     return { outcome, requests: [...proxy.requests] };
   } finally {
     await server.stop();
   }
 }
 
-const ambientCases = [
-  {
-    name: 'AWS_SESSION_TOKEN and static keys',
-    result: await runCase({ AWS_SESSION_TOKEN: AMBIENT_TOKEN }),
-  },
-  {
-    name: 'S3_SESSION_TOKEN and static keys',
-    result: await runCase({ S3_SESSION_TOKEN: AMBIENT_TOKEN }),
-  },
+/** The ambient environments, each run once per presigner. */
+const AMBIENT = [
+  { name: 'AWS_SESSION_TOKEN and static keys', process: { AWS_SESSION_TOKEN: AMBIENT_TOKEN } },
+  { name: 'S3_SESSION_TOKEN and static keys', process: { S3_SESSION_TOKEN: AMBIENT_TOKEN } },
   {
     name: 'AWS_SESSION_TOKEN and an empty S3_SESSION_TOKEN, which is unset',
-    result: await runCase({ AWS_SESSION_TOKEN: AMBIENT_TOKEN }, { S3_SESSION_TOKEN: '' }),
+    process: { AWS_SESSION_TOKEN: AMBIENT_TOKEN },
+    given: { S3_SESSION_TOKEN: '' },
   },
-];
+] as const;
+
+async function ambientCasesFor(presigner: Presigner) {
+  const cases = [];
+  for (const entry of AMBIENT) {
+    cases.push({
+      name: entry.name,
+      result: await runCase(presigner, entry.process, 'given' in entry ? entry.given : {}),
+    });
+  }
+  return cases;
+}
+
+const defaultAmbientCases = await ambientCasesFor('default');
+const bunAmbientCases = await ambientCasesFor('bun-presigner');
 const supplied = await runCase(
+  'bun-presigner',
   { AWS_SESSION_TOKEN: AMBIENT_TOKEN },
   { S3_SESSION_TOKEN: GIVEN_TOKEN },
 );
-const unset = await runCase({});
+const unset = await runCase('bun-presigner', {});
 
-describe('remote mode: a session token the process started with', () => {
-  for (const { name, result } of ambientCases) {
+describe('remote mode: the default presigner ignores a session token the process started with', () => {
+  for (const { name, result } of defaultAmbientCases) {
+    test(`${name}: opens, and no request carries the ambient token`, () => {
+      expect(result.outcome.outcome).toBe('opened');
+      if (result.outcome.outcome !== 'opened') return;
+      expect(result.outcome.sessionToken).toBeNull();
+      expect(result.requests.length).toBeGreaterThan(0);
+    });
+  }
+});
+
+describe('remote mode: a Bun.S3Client presigner and a session token the process started with', () => {
+  for (const { name, result } of bunAmbientCases) {
     test(`${name}: BungalowInputError naming the variables, before any request`, () => {
       expect(result.outcome.outcome).toBe('failed');
       if (result.outcome.outcome !== 'failed') return;

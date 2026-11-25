@@ -322,13 +322,10 @@ describe('the watch mode of the local directory sources (COR-2291)', () => {
 
   test('a remote source keeps polling its bucket on its own interval whatever the directory mode is', () => {
     const home = {
-      s3Client: () =>
-        new Bun.S3Client({
-          accessKeyId: 'test',
-          secretAccessKey: 'test',
-          bucket: 'state',
-          endpoint: 'http://127.0.0.1:9',
-        }),
+      objectStore: () => ({
+        presign: () => 'http://127.0.0.1:9/state/',
+        list: async () => ({ contents: [] }),
+      }),
     } as unknown as Bungalow;
     const remote = { kind: 's3', bucket: 'state', prefix: 'agents/' } as const;
     for (const watch of [false, 'poll'] as const) {
