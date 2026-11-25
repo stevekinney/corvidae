@@ -26,6 +26,27 @@ import type { WeftClient } from './interface.ts';
 
 declare const operations: WeftClient['operations'];
 
+async function readScheduleAndWorkflowProjections(): Promise<void> {
+  const schedules = await operations['weft.schedules.list']({
+    status: ['active', 'paused'],
+    limit: 10,
+    offset: '2',
+  });
+  const schedule = await operations['weft.schedules.get']({ scheduleId: schedules.items[0]!.id });
+  const scheduleStatus: 'active' | 'paused' | 'cancelled' = schedule.status;
+  const nextFire: number | null = schedule.nextFireAt;
+  const total: number = schedules.total;
+  const workflows = await operations['weft.workflows.list']({ scheduleId: schedule.id, limit: 10 });
+  const workflow = await operations['weft.workflows.get']({ workflowId: workflows.items[0]!.id });
+  const workflowId: string = workflow.id;
+  const version: string = workflow.versionTuple.workflowVersion;
+  const events = await operations['weft.workflows.events.list']({ workflowId });
+  const eventType: string = events.events[0]!.type;
+  const input: unknown = workflow.input;
+  void [scheduleStatus, nextFire, total, version, eventType, input];
+}
+void readScheduleAndWorkflowProjections;
+
 /**
  * `weft.tasks.get` — six top-level `oneOf` branches, one of which (`terminal`)
  * is itself a nested `oneOf` of three disposition branches.

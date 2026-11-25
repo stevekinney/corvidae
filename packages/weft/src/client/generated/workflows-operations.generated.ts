@@ -2,6 +2,8 @@
 import type {
   SharedActionAffectedCountConfi_4dea4324,
   SharedActionConfirmationTokenC_9dd0ee71,
+  SharedActivityContractHashActi_8f272040,
+  SharedAgentVersionToolVersions_951e6df7,
   SharedAttributesBulkConcurrenc_dca23546,
   SharedCursorLimitWorkflowId_6c8c3edc,
   SharedGtGteKey_e658e64c,
@@ -130,7 +132,63 @@ export type WorkflowsOperationTypes = {
   };
   'weft.workflows.get': {
     readonly input: { readonly workflowId: string };
-    readonly output: unknown;
+    readonly output: {
+      readonly createdAt: number;
+      readonly error?: string;
+      readonly errorCode?: string;
+      readonly errorStack?: string;
+      readonly executionDeadline?: number;
+      readonly executionStateOwnerId?: string;
+      readonly failedStep?: { readonly index: number; readonly label: string };
+      readonly failureCategory?:
+        'application' | 'timeout' | 'cancellation' | 'resource' | 'system' | null;
+      readonly forkedFrom?: {
+        readonly step: number;
+        readonly workflowExecutionToken?: string;
+        readonly workflowId: string;
+      };
+      readonly id: string;
+      readonly input: unknown;
+      readonly parentWorkflowExecutionToken?: string;
+      readonly parentWorkflowId?: string;
+      readonly restartedFrom?: {
+        readonly replacedAt: number;
+        readonly workflowExecutionToken?: string;
+        readonly workflowId: string;
+      };
+      readonly result?: unknown;
+      readonly revision?: string;
+      readonly startedAt?: number;
+      readonly status:
+        'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out' | 'suspended';
+      readonly tags?: ReadonlyArray<string>;
+      readonly terminalCleanupToken?: string;
+      readonly terminalCommittedBy?: string;
+      readonly terminationReason?: 'history-circuit-breaker' | 'prepared-workflow-abandoned';
+      readonly type: string;
+      readonly updatedAt: number;
+      readonly versionTuple: SharedAgentVersionToolVersions_951e6df7;
+      readonly waitingForSignals?: ReadonlyArray<string>;
+      readonly workerBinding?: {
+        readonly current: SharedActivityContractHashActi_8f272040;
+        readonly history: ReadonlyArray<SharedActivityContractHashActi_8f272040>;
+      };
+      readonly workerVersioningPolicy?:
+        | { readonly maxBindingHistory?: number; readonly mode?: 'pinned' }
+        | {
+            readonly compatibility: {
+              readonly activityContractHash: string;
+              readonly artifactDigest: string;
+              readonly buildId: string;
+              readonly deploymentName: string;
+              readonly manifestDigest: string;
+              readonly workflowRevision: string;
+            };
+            readonly maxBindingHistory?: number;
+            readonly mode: 'auto-upgrade';
+          };
+      readonly workflowExecutionToken?: string;
+    };
     readonly faults: 'NotFound';
   };
   'weft.workflows.list': {
@@ -153,7 +211,27 @@ export type WorkflowsOperationTypes = {
       readonly type?: string;
       readonly updatedAt?: SharedGtGteLt_d9a61361;
     };
-    readonly output: unknown;
+    readonly output: {
+      readonly items: ReadonlyArray<{
+        readonly createdAt: number;
+        readonly executionDeadline?: number;
+        readonly failedStep?: { readonly index: number; readonly label: string };
+        readonly failureCategory?:
+          'application' | 'timeout' | 'cancellation' | 'resource' | 'system';
+        readonly id: string;
+        readonly retrying?: { readonly activity: string; readonly attempt: number };
+        readonly revision?: string;
+        readonly status:
+          'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out' | 'suspended';
+        readonly tags?: ReadonlyArray<string>;
+        readonly type: string;
+        readonly updatedAt: number;
+        readonly version: string;
+      }>;
+      readonly limit: number;
+      readonly offset: number;
+      readonly total: number;
+    };
     readonly faults: 'Unprocessable';
   };
   'weft.workflows.purge': {

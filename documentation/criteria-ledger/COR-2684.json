@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2684",
+  "branch": "steve/composable-weft-read-contract",
+  "checkedAt": "6703aab27978ed4f48cc0152c69a7b8f97a07c25",
+  "briefVersion": "eeedb07382cd",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "not-met",
+      "evidence": "Weft schemas and clients generated; review dictionary and recursive timeline types await generator prerequisites."
+    },
+    {
+      "id": "AC2",
+      "status": "not-met",
+      "evidence": "Schedule coercion and REST/JSON-RPC list and workflow detail parity tested; full compatibility gate awaits completed batch."
+    },
+    {
+      "id": "AC3",
+      "status": "not-met",
+      "evidence": "Direct tests, nested timeline schema and generated type projection pass; generated recursive and dictionary contracts await prerequisites."
+    }
+  ]
+}

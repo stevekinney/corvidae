@@ -24,6 +24,22 @@ export type SharedActionConfirmationTokenC_9dd0ee71 = {
   readonly scope: SharedFilterMatchedSampleLimit_d19cbf0c;
   readonly skippedTeardownPending?: ReadonlyArray<string>;
 };
+export type SharedActivityContractHashActi_8f272040 = {
+  readonly activityContractHash: string;
+  readonly activityContracts: Record<string, unknown>;
+  readonly activityName: string;
+  readonly artifactDigest: string;
+  readonly boundAt: number;
+  readonly buildId: string;
+  readonly checkpointId: string;
+  readonly deploymentName: string;
+  readonly manifestDigest: string;
+  readonly routingGeneration: number;
+  readonly workflowContractHash: string;
+  readonly workflowId: string;
+  readonly workflowRevision: string;
+  readonly workflowType: string;
+};
 export type SharedActivityContractHashArti_d7d91df4 = {
   readonly activityContractHash?: string;
   readonly artifactDigest?: string;
@@ -45,6 +61,11 @@ export type SharedAffectedWorkersHealthInF_c3f6ebcc = {
   readonly inFlight: number;
   readonly target: 'worker';
   readonly workerId: string;
+};
+export type SharedAgentVersionToolVersions_951e6df7 = {
+  readonly agentVersion?: string;
+  readonly toolVersions?: ReadonlyArray<string>;
+  readonly workflowVersion: string;
 };
 export type SharedAttemptAttemptTokenDiges_a17e1950 = {
   readonly attempt: number;
@@ -138,6 +159,38 @@ export type SharedAttributesFailedStepLimi_0c9f0a5f = {
       >;
   readonly tags?: ReadonlyArray<string>;
   readonly type?: string;
+};
+export type SharedBackfillCreatedAtCronExp_9da61c48 = {
+  readonly backfill: boolean;
+  readonly createdAt: number;
+  readonly cronExpression?: string;
+  readonly currentWorkflowId?: string;
+  readonly description?: string;
+  readonly id: string;
+  readonly intervalMs?: number;
+  readonly jitterMs?: number;
+  readonly lastFireAt?: number;
+  readonly lastMissedFireAt?: number;
+  readonly lastSkippedAt?: number;
+  readonly metadata?: Record<string, unknown>;
+  readonly missedFireCount: number;
+  readonly nextFireAt: number | null;
+  readonly overlap: 'skip' | 'queue' | 'cancel-running' | 'allow';
+  readonly pinnedRevision?: string;
+  readonly queuedRuns: ReadonlyArray<{
+    readonly manual?: true;
+    readonly occurrence?: number;
+    readonly queuedAt: number;
+    readonly workflowId: string;
+  }>;
+  readonly revision: number;
+  readonly revisionPolicy: 'active-at-fire' | 'pinned';
+  readonly skippedCount: number;
+  readonly skippedOccurrences?: ReadonlyArray<number>;
+  readonly status: 'active' | 'paused' | 'cancelled';
+  readonly timeZone: string;
+  readonly updatedAt: number;
+  readonly workflowType: string;
 };
 export type SharedBackoffMultiplierInitial_64d024ea = {
   readonly backoffMultiplier: number;
