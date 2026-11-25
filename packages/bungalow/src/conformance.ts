@@ -126,7 +126,8 @@ function lockRules(acquireLock: AcquireLock): readonly Rule[] {
     {
       name: 'release allows the next acquisition',
       run: onFreshRoot(async (_root, acquire) => {
-        (await acquire()).release();
+        const first = await acquire();
+        first.release();
         expect(await failureOf(acquire)).toBeUndefined();
       }),
     },

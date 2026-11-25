@@ -9,7 +9,11 @@ import { assertConfigurationWrite } from './configuration.ts';
 import { injectedDeploymentSecrets, type DeploymentSecrets } from './deployment-secrets.ts';
 import { createEnvironmentSecretProvider } from './environment-secret-provider.ts';
 import { BungalowFilesystemError, BungalowInputError, BungalowStateError } from './errors.ts';
-import { createObjectStore, type BungalowObjectStore } from './object-store.ts';
+import {
+  createObjectStore,
+  ObjectStoreRequestError,
+  type BungalowObjectStore,
+} from './object-store.ts';
 import { createSigV4Presigner, type ObjectPresigner } from './presign.ts';
 import {
   secretVariable,
@@ -380,7 +384,13 @@ export async function openValidatedRemoteBungalow(
   if (existingDeployment === undefined && existingWorkspace === undefined) {
     // An unmarked remote home may bootstrap only when neither backend already holds state.
     const entries = await client.list({ prefix, maxKeys: 1 }).catch((error: unknown) => {
-      throw s3Failure('read workspace identity', { code: codeOf(error) });
+      // An answered listing keeps its status, as every other S3 failure does.
+      throw s3Failure(
+        'read workspace identity',
+        error instanceof ObjectStoreRequestError && error.status !== undefined
+          ? { status: error.status }
+          : { code: codeOf(error) },
+      );
     });
     const racedDeployment = await readObject(client, deploymentKey, 'read deployment ID');
     if (racedDeployment === undefined) {

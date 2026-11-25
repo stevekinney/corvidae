@@ -312,6 +312,15 @@ describe('remote mode: an injected presigner', () => {
     expect(signed).toContain('GET ');
   });
 
+  test('a listing the store answers with a 500 keeps its status as the cause', async () => {
+    const proxy = startProxy(startServer());
+    // The bootstrap's emptiness check is the one listing an open makes: it addresses no key.
+    proxy.intercept(({ key }) => (key === '' ? new Response('', { status: 500 }) : undefined));
+    const error = await rejectionOf(openRemote(proxy.endpoint));
+    expect(error).toBeInstanceOf(BungalowFilesystemError);
+    expect((error as Error).cause).toEqual({ status: 500 });
+  });
+
   test('a factory that returns no function is refused before any request', async () => {
     const proxy = startProxy(startServer());
     const error = await throwingRejectionOf(
@@ -825,7 +834,7 @@ describe('remote mode: the handle', () => {
     expect(secondPage?.contents?.map((entry) => entry.key)).toEqual([`${PREFIX}/agents/b & c.md`]);
     const missing = await rejectionOf(client?.list({}, { bucket: 'another-bucket' }));
     expect(missing).toMatchObject({ name: 'ObjectStoreRequestError', status: 404 });
-    expect(String((missing as Error).message)).not.toContain(ACCESS_KEY_ID);
+    expect((missing as Error).message).not.toContain(ACCESS_KEY_ID);
   });
 
   test('reads the configuration from the bucket, or undefined when absent', async () => {

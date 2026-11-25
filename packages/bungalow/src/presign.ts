@@ -121,7 +121,7 @@ export function createSigV4Presigner(options: SigV4PresignerOptions): ObjectPres
     for (const [name, value] of Object.entries(presign.query ?? {})) parameters.push([name, value]);
     const encoded = parameters
       .map(([name, value]) => [encodeComponent(name), encodeComponent(value)] as const)
-      .sort(([leftName, leftValue], [rightName, rightValue]) =>
+      .toSorted(([leftName, leftValue], [rightName, rightValue]) =>
         leftName === rightName ? compare(leftValue, rightValue) : compare(leftName, rightName),
       );
     const canonicalQuery = encoded.map(([name, value]) => `${name}=${value}`).join('&');
@@ -140,7 +140,7 @@ export function createSigV4Presigner(options: SigV4PresignerOptions): ObjectPres
     );
     const signature = createHmac('sha256', signingKey).update(stringToSign, 'utf8').digest('hex');
     const query = [...encoded, ['X-Amz-Signature', signature] as const]
-      .sort(([left], [right]) => compare(left, right))
+      .toSorted(([left], [right]) => compare(left, right))
       .map(([name, value]) => `${name}=${value}`)
       .join('&');
     return `${origin}${path}?${query}`;

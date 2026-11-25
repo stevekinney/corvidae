@@ -126,7 +126,8 @@ describe('a local home on the portable lock', () => {
     assert.ok(refused instanceof BungalowLockedError);
     assert.equal(refused.holderProcessIdentifier, process.pid);
     first.close();
-    (await openLocal(root)).close();
+    const next = await openLocal(root);
+    next.close();
   });
 
   test('refuses while another process holds it, and admits once that process dies', async () => {
@@ -140,7 +141,8 @@ describe('a local home on the portable lock', () => {
       // SIGKILL: the holder releases nothing itself, so only the kernel can free the lock.
       await holder.kill();
     }
-    (await openLocal(root)).close();
+    const next = await openLocal(root);
+    next.close();
   });
 });
 
@@ -216,7 +218,8 @@ describe('a remote home', () => {
         expectedRevision: current.revision,
       });
       assert.deepEqual(stale, { outcome: 'conflict' });
-      assert.equal((await first.readConfiguration()).text, '{"v":3}\n');
+      const final = await first.readConfiguration();
+      assert.equal(final.text, '{"v":3}\n');
     } finally {
       first.close();
     }

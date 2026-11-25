@@ -98,7 +98,7 @@ describe('createSigV4Presigner', () => {
     expect(url.searchParams.get('list-type')).toBe('2');
     expect(url.searchParams.get('prefix')).toBe('a b/');
     const names = [...url.searchParams.keys()];
-    expect(names).toEqual([...names].sort());
+    expect(names).toEqual(names.toSorted());
   });
 
   test('a different query is a different signature', () => {

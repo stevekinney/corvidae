@@ -48,7 +48,8 @@ async function resolveNode(): Promise<string> {
 }
 
 const node = await resolveNode();
-const nodeVersion = (await runWithHangGuard([node, '--version'])).stdout.toString().trim();
+const versionResult = await runWithHangGuard([node, '--version']);
+const nodeVersion = versionResult.stdout.toString().trim();
 
 // Every child runs here, at module scope, off Bun's per-test clock; each test rethrows its outcome.
 

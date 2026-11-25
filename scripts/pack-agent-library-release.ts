@@ -256,7 +256,7 @@ try {
     readme
       .replace(
         /^## Workspace usage\n\n[^\n]+/m,
-        '## Installation\n\n```sh\n' + 'npm install ' + packageName + '\n```',
+        '## Installation\n\n```sh\nnpm install ' + packageName + '\n```',
       )
       .replaceAll('(#workspace-usage)', '(#installation)'),
   );
