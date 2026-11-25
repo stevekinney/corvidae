@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { z } from 'zod';
 import { createProcessLocalApprovalStateStore } from './approval-binding';
 import {
@@ -34,9 +35,9 @@ describe('getToolboxApprovalOptions', () => {
       reason: 'checked',
     });
     const invalid = approvalOnlyPolicy(() => ({ decision: 'input' }) as never);
-    await expect(invalid.beforeAdmission!(context)).rejects.toThrow(
-      'Unsupported approval-only policy decision',
-    );
+    expect(await rejectionOf(invalid.beforeAdmission!(context))).toMatchObject({
+      message: 'Unsupported approval-only policy decision',
+    });
   });
   it('verifies the original signed call without consuming it and rejects edits', async () => {
     const tool = createTool({

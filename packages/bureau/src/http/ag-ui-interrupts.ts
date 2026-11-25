@@ -286,9 +286,9 @@ export function redactReviewedInterrupt(interrupt: Interrupt): Interrupt {
   const fields =
     raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   const publicFields = Object.fromEntries(
-    ['kind', 'runId', 'sessionId', 'round', 'toolName', 'risk']
-      .filter((key) => Object.hasOwn(fields, key))
-      .map((key) => [key, fields[key]]),
+    Object.entries(fields).filter(([key]) =>
+      ['kind', 'runId', 'sessionId', 'round', 'toolName', 'risk'].includes(key),
+    ),
   );
   return { ...safe, metadata: { [BUREAU_METADATA_KEY]: publicFields } };
 }

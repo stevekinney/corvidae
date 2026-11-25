@@ -93,8 +93,10 @@ describe('createBureauHandler options', () => {
       });
       const denied = get('/v1/health', { cookie: 'session=valid' });
       const allowed = get('/v1/health', { cookie: 'session=valid', 'x-write-token': 'ok' });
-      expect((await handler(denied)).status).toBe(403);
-      expect((await handler(allowed)).status).toBe(200);
+      const deniedResponse = await handler(denied);
+      const allowedResponse = await handler(allowed);
+      expect(deniedResponse.status).toBe(403);
+      expect(allowedResponse.status).toBe(200);
       expect(seen).toEqual([denied, allowed]);
       expect(() =>
         createBureauHandler(bureau, {
@@ -144,14 +146,16 @@ describe('createBureauHandler options', () => {
         { itemId: 'one' },
         { cookie: 'session=valid' },
       );
-      expect((await handler(denied)).status).toBe(403);
+      const deniedResponse = await handler(denied);
+      expect(deniedResponse.status).toBe(403);
       expect(calls).toBe(0);
       const admitted = jsonRpc(
         'fixture.inventory.change',
         { itemId: 'one' },
         { cookie: 'session=valid', 'x-write-token': 'allowed' },
       );
-      expect(await (await handler(admitted)).json()).toMatchObject({ result: { itemId: 'one' } });
+      const admittedResponse = await handler(admitted);
+      expect(await admittedResponse.json()).toMatchObject({ result: { itemId: 'one' } });
       expect(calls).toBe(1);
       expect(requests).toEqual([denied, admitted]);
       const privateInput = jsonRpc(
@@ -159,7 +163,8 @@ describe('createBureauHandler options', () => {
         { itemId: 'one', internalId: 'hidden' },
         { 'x-write-token': 'allowed' },
       );
-      expect(await (await handler(privateInput)).json()).toHaveProperty('error');
+      const privateResponse = await handler(privateInput);
+      expect(await privateResponse.json()).toHaveProperty('error');
       expect(calls).toBe(1);
       const transport = new StreamableHTTPClientTransport(new URL('http://localhost/mcp'), {
         fetch: (url, init) => {

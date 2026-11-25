@@ -6,7 +6,11 @@ import {
 } from '@lostgradient/backchannel/internals';
 import type { z } from 'zod';
 
-import { composeBureauOperations, type BureauHandlerHost } from './create-bureau-handler.ts';
+import {
+  BUREAU_HANDLER_OPERATIONS,
+  composeBureauOperations,
+  type BureauHandlerHost,
+} from './create-bureau-handler.ts';
 
 /**
  * Capture the operations `createBureauHandler` serves as a {@link CatalogSnapshot}: sorted by name,
@@ -28,7 +32,9 @@ export function createBureauCatalogSnapshot(
 ): CatalogSnapshot {
   return snapshotOperationCatalog({
     operations: createOperationRegistry<BureauHandlerHost>(
-      composeBureauOperations(contributions, effects),
+      contributions.length === 0 && effects.length === 0
+        ? BUREAU_HANDLER_OPERATIONS
+        : composeBureauOperations(contributions, effects),
     ).list(),
     restBindings: [],
   });

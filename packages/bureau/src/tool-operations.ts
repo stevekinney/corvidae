@@ -93,7 +93,7 @@ export function reviewedToolOperations(
         `Reviewed selection has unsupported interruption behavior: ${String(interruption)}`,
       );
     const input = projectedInputSchema(
-      tool.configuration.input as z.ZodType,
+      tool.configuration.input,
       tool.configuration.inputJsonSchema,
       selection.request,
     );
@@ -115,9 +115,7 @@ export function reviewedToolOperations(
         throw new Error('Invalid reviewed output');
       return selection.outputSchema.parse(
         Object.fromEntries(
-          Object.keys(selection.outputSchema.shape)
-            .filter((key) => Object.hasOwn(value, key))
-            .map((key) => [key, (value as Record<string, unknown>)[key]]),
+          Object.entries(value).filter(([key]) => Object.hasOwn(selection.outputSchema.shape, key)),
         ),
       );
     };
@@ -283,10 +281,13 @@ export function reviewedToolOperations(
         inputSchema: readSchema,
         outputSchema: selection.outputSchema,
         access: { kind: 'scoped', scopes: { kind: 'allOf', scopes: selection.access.readScopes } },
-        invoke: async ({ input: record, principal }) =>
-          publicOutput(
-            await selection.intents.read({ identifier: record[selection.intentId]!, principal }),
-          ),
+        invoke: async ({ input: record, principal }) => {
+          const identifier = Object.entries(record).find(
+            ([key]) => key === selection.intentId,
+          )?.[1];
+          if (typeof identifier !== 'string') throw new Error('Missing reviewed identifier');
+          return publicOutput(await selection.intents.read({ identifier, principal }));
+        },
       }),
     );
   }
@@ -340,9 +341,7 @@ export function reviewedToolOperations(
         throw new Error('Invalid reviewed arguments');
       return entry.publicSchema.parse(
         Object.fromEntries(
-          Object.keys(entry.publicSchema.shape)
-            .filter((key) => Object.hasOwn(args, key))
-            .map((key) => [key, (args as Record<string, unknown>)[key]]),
+          Object.entries(args).filter(([key]) => Object.hasOwn(entry.publicSchema.shape, key)),
         ),
       );
     },

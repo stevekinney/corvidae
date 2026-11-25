@@ -113,15 +113,13 @@ describe('withAddedTools keeps the base toolbox in force', () => {
         }),
       ]),
     );
-    expect((await toolbox.execute({ name: 'probe', arguments: {} })).result).toBe('alice');
-    expect(
-      (
-        await withChatPermission(toolbox, async () => undefined).execute({
-          name: 'probe',
-          arguments: {},
-        })
-      ).result,
-    ).toBe('alice');
+    const direct = await toolbox.execute({ name: 'probe', arguments: {} });
+    expect(direct.result).toBe('alice');
+    const withPermission = await withChatPermission(toolbox, async () => undefined).execute({
+      name: 'probe',
+      arguments: {},
+    });
+    expect(withPermission.result).toBe('alice');
   });
   it('retains request-context layers when cloning for a run', async () => {
     const toolbox = bindRequestContext(

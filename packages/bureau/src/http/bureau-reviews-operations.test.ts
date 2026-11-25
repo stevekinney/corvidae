@@ -41,6 +41,7 @@ import { mayAccessOwnedResource, ownerOfPrincipal } from './owner-predicate.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
 import type { AgentDefinitions } from '../agent-catalog';
 import { MemoryStorage } from '@lostgradient/storage';
+import { TASK_RECORD_KEY_PREFIX } from '../task-registry';
 import { withWorkspaceMembership } from './workspace-principal.ts';
 import {
   WORKSPACE_PRIVACY_ACTORS,
@@ -1445,9 +1446,8 @@ describe('the reviews operations against a real Bureau', () => {
             }),
           ),
         ).toBeInstanceOf(Error);
-        expect(
-          (await call(handler, 'bureau.reviews.get', { id: review?.id })).result,
-        ).toMatchObject({ status: 'pending', round: 0 });
+        const pendingDetail = await call(handler, 'bureau.reviews.get', { id: review?.id });
+        expect(pendingDetail.result).toMatchObject({ status: 'pending', round: 0 });
         expect(charges).toEqual([]);
         expect(
           await rejectionOf(
@@ -1599,6 +1599,49 @@ describe('the reviews operations against a real Bureau', () => {
 });
 
 describe('workspace privacy for reviews', () => {
+  it('reads, streams, and resolves an ordinary persisted approval from before task origins', async () => {
+    const { opened, task, review } = await openWorkspaceApproval();
+    try {
+      const kv = opened.bureau.internals.kv;
+      if (!kv) throw new Error('Missing task storage');
+      const keys = await kv.list(TASK_RECORD_KEY_PREFIX);
+      const key = keys.find((entry) => entry.endsWith(task.id));
+      if (!key) throw new Error('Missing task record');
+      const record = JSON.parse((await kv.get(key))!) as Record<string, unknown>;
+      delete record['origin'];
+      await kv.set(key, JSON.stringify(record));
+      const legacyDetail = await workspacePrivacyCall(opened, 'owner', 'bureau.reviews.get', {
+        id: review.id,
+      });
+      expect(legacyDetail.body?.result).toBeDefined();
+      const stream = await opened.handler(
+        new Request(
+          `http://localhost/v1/subscriptions/operative.runs.events?runId=${encodeURIComponent(task.id)}`,
+          {
+            headers: {
+              accept: 'text/event-stream',
+              'X-API-Key': WORKSPACE_PRIVACY_ACTORS.owner.key,
+            },
+          },
+        ),
+      );
+      expect(stream.status).toBe(200);
+      await stream.body?.cancel();
+      const legacyResolution = await workspacePrivacyCall(
+        opened,
+        'owner',
+        'bureau.reviews.resolve',
+        {
+          id: review.id,
+          decision: 'reject',
+          reason: 'Not approved',
+        },
+      );
+      expect(legacyResolution.body?.result).toBeDefined();
+    } finally {
+      await opened.dispose();
+    }
+  });
   it('returns approval feedback only to the owner', async () => {
     const { opened, review } = await openWorkspaceApproval();
     try {

@@ -1075,6 +1075,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
     if (review.kind !== 'tool-approval') return;
     const provenance = await reviewedProvenanceOf(review, {
       task: (runId) => core.tasks.record(runId),
+      session: async (sessionId) => runtime.sessionStore?.load(sessionId),
       steps: async (runId) => {
         if (!runtime.durable) throw new Error('No durable checkpoint');
         return runtime.durable.checkpointStore.loadSteps(runId, { strict: true });

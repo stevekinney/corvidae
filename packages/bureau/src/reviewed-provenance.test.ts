@@ -11,7 +11,13 @@ describe('reviewedProvenanceOf', () => {
       callId: 'reviewed-call',
     };
     const approval = { callId: marker.callId };
-    const review = { kind: 'tool-approval', runId: 'run', approval } as never;
+    const review = {
+      kind: 'tool-approval',
+      id: 'approval:run:reviewed-call',
+      runId: 'run',
+      sessionId: 'session',
+      approval,
+    } as never;
     const task = {
       taskId: 'run',
       agentName: marker.agent,
@@ -27,6 +33,20 @@ describe('reviewedProvenanceOf', () => {
     const policy = { verifyReviewed: () => true } as never;
     const dependencies = { task: async () => task, steps: async () => steps, policy };
     expect(await reviewedProvenanceOf(review, dependencies)).toBe('verified');
+    const session = async () => ({
+      metadata: {
+        reviewedApprovalProvenance: {
+          'approval:run:reviewed-call': {
+            kind: 'api',
+            reviewedTool: { ...marker, tool: 'other@1' },
+          },
+        },
+      },
+    });
+    expect(await reviewedProvenanceOf(review, { ...dependencies, session })).toBe('unresolved');
+    expect(
+      await reviewedProvenanceOf(review, { ...dependencies, task: async () => undefined, session }),
+    ).toBe('unresolved');
     expect(await reviewedProvenanceOf(review, { ...dependencies, policy: undefined })).toBe(
       'unresolved',
     );
@@ -49,5 +69,17 @@ describe('reviewedProvenanceOf', () => {
           ({ taskId: 'run', agentName: 'ordinary', origin: { kind: 'api' } }) as never,
       }),
     ).toBe('ordinary');
+    expect(
+      await reviewedProvenanceOf(review, {
+        ...dependencies,
+        task: async () => ({ taskId: 'run', agentName: 'ordinary' }) as never,
+      }),
+    ).toBe('ordinary');
+    expect(
+      await reviewedProvenanceOf(review, {
+        ...dependencies,
+        task: async () => ({ taskId: 'run', agentName: marker.agent }) as never,
+      }),
+    ).toBe('unresolved');
   });
 });

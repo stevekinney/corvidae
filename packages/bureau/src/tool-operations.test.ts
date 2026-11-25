@@ -15,6 +15,7 @@ import { createBureau } from './create-bureau.ts';
 import { createMemoryAssetStorage } from './assets/storage';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { principalFromApiKey, type Principal } from '@lostgradient/backchannel';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createBureauHandler } from './http/create-bureau-handler.ts';
 import { callJsonRpc } from '@lostgradient/backchannel/client';
 import { createOperationClientSources } from '@lostgradient/backchannel/generator';
@@ -22,6 +23,7 @@ import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/cli
 import { waitForCondition } from './test';
 import type { Storage } from '@lostgradient/storage';
 import { hasDefinitionResolver, OPERATIVE_RESOLVE_RUN_OPTIONS } from '@lostgradient/operative';
+import { TASK_RECORD_KEY_PREFIX } from './task-registry';
 
 /** A fixture store whose atomic transitions persist across independently constructed toolboxes. */
 function durableApprovalStore(storage: Storage): ApprovalStateStore {
@@ -74,8 +76,9 @@ function durableApprovalStore(storage: Storage): ApprovalStateStore {
       const entry = await read(binding);
       if (
         !entry ||
-        JSON.stringify(Object.entries(entry.value.binding).toSorted()) !==
-          JSON.stringify(Object.entries(binding).toSorted())
+        JSON.stringify(
+          Object.entries(entry.value.binding).toSorted(([a], [b]) => a.localeCompare(b)),
+        ) !== JSON.stringify(Object.entries(binding).toSorted(([a], [b]) => a.localeCompare(b)))
       )
         throw new Error('Approval binding mismatch');
       await transition(binding, ['issued'], 'reserved');
@@ -184,12 +187,15 @@ describe('reviewedToolOperations', () => {
           await preparationGate;
           return intent;
         },
-        readRun: async ({ runId }) => ({ itemId: (await readIntent(runId)).itemId }),
+        readRun: async ({ runId }) => {
+          const intent = await readIntent(runId);
+          return { itemId: intent.itemId };
+        },
         read: async () => ({ itemId: 'one' }),
-        effect: async (review) => ({
-          kind: 'inventory',
-          itemId: (await readIntent(review.runId)).itemId,
-        }),
+        effect: async (review) => {
+          const intent = await readIntent(review.runId);
+          return { kind: 'inventory', itemId: intent.itemId };
+        },
       },
       access: {
         requestScopes: ['inventory:write'],
@@ -285,12 +291,12 @@ describe('reviewedToolOperations', () => {
       expect([...intentRuns]).toHaveLength(1);
       expect(requested).toMatchObject({ result: { itemId: 'one' } });
       expect(concurrent).toMatchObject({ result: { itemId: 'one' } });
-      expect((await rpc(selection.request, { commandId: 'one', itemId: 'one' })).result).toEqual({
+      const replay = await rpc(selection.request, { commandId: 'one', itemId: 'one' });
+      expect(replay.result).toEqual({
         itemId: 'one',
       });
-      expect(
-        (await rpc(selection.request, { commandId: 'one', itemId: 'other' })).error,
-      ).toBeDefined();
+      const mismatchedReplay = await rpc(selection.request, { commandId: 'one', itemId: 'other' });
+      expect(mismatchedReplay.error).toBeDefined();
       expect(preparations).toBe(1);
       const agent = contribution.agents['reviewed:inventory-adjust']!;
       if (!hasDefinitionResolver(agent)) throw new Error('Missing reviewed agent resolver');
@@ -325,14 +331,17 @@ describe('reviewedToolOperations', () => {
       expect(observed).toEqual([]);
       unsubscribe();
       subscription.unsubscribe();
-      await expect(
-        bureau.tasks.start('reviewed:inventory-adjust', '{}', { principal: 'api-key:requester' }),
-      ).rejects.toThrow();
+      expect(
+        await rejectionOf(
+          bureau.tasks.start('reviewed:inventory-adjust', '{}', { principal: 'api-key:requester' }),
+        ),
+      ).toBeInstanceOf(Error);
       const [review] = bureau.reviews.list();
       expect(review?.kind).toBe('tool-approval');
       if (!review || review.kind !== 'tool-approval') throw new Error('Missing approval');
       expect(review.approval.approvalToken).toBeDefined();
-      expect((await bureau.internals.taskRegistry.record(review.runId))?.origin).toMatchObject({
+      const taskRecord = await bureau.internals.taskRegistry.record(review.runId);
+      expect(taskRecord?.origin).toMatchObject({
         reviewedTool: { tool: tool.id },
       });
       expect(await bureau.internals.reviewedRunState(review.runId)).toBe('verified');
@@ -349,6 +358,21 @@ describe('reviewedToolOperations', () => {
         effect: { kind: 'inventory', itemId: 'one' },
       });
       expect(JSON.stringify(detail)).not.toContain('private:');
+      const kv = bureau.internals.kv;
+      if (!kv) throw new Error('Missing task storage');
+      const recordKeys = await kv.list(TASK_RECORD_KEY_PREFIX);
+      const recordKey = recordKeys.find((key) => key.endsWith(review.runId));
+      if (!recordKey) throw new Error('Missing reviewed task record');
+      const savedRecord = await kv.get(recordKey);
+      if (!savedRecord) throw new Error('Missing reviewed task record content');
+      await kv.delete(recordKey);
+      try {
+        expect(await bureau.internals.reviewedProvenance(review)).toBe('unresolved');
+        const missingTaskReview = await rpc('bureau.reviews.get', { id: review.id });
+        expect(missingTaskReview.error).toBeDefined();
+      } finally {
+        await kv.set(recordKey, savedRecord);
+      }
       for (const method of ['bureau.tasks.get', 'bureau.tasks.inspect']) {
         const taskView = await rpc(method, { taskId: review.runId });
         expect(taskView.result).toBeDefined();
@@ -371,9 +395,8 @@ describe('reviewedToolOperations', () => {
         }),
       );
       try {
-        const tools = (await mcp.listTools()).tools.filter(
-          (entry) => entry.name === selection.request,
-        );
+        const listed = await mcp.listTools();
+        const tools = listed.tools.filter((entry) => entry.name === selection.request);
         expect(tools).toHaveLength(1);
         expect(Object.keys(tools[0]!.inputSchema.properties ?? {}).toSorted()).toEqual([
           'commandId',
@@ -467,15 +490,17 @@ describe('reviewedToolOperations', () => {
           'unresolved',
         );
         expect(await withoutContribution.internals.reviewedProvenance(review)).toBe('unresolved');
-        await expect(
-          withoutContribution.reviews.resolve({
-            id: review.id,
-            decision: 'approve',
-            round: 0,
-            principal: 'api-key:reviewer',
-            reviewer: principalFromApiKey({ subject: 'reviewer', scopes: [] }),
-          }),
-        ).rejects.toThrow();
+        expect(
+          await rejectionOf(
+            withoutContribution.reviews.resolve({
+              id: review.id,
+              decision: 'approve',
+              round: 0,
+              principal: 'api-key:reviewer',
+              reviewer: principalFromApiKey({ subject: 'reviewer', scopes: [] }),
+            }),
+          ),
+        ).toBeInstanceOf(Error);
         expect(calls).toEqual([]);
         expect(diagnostics.some((message) => message.includes('missing-agent'))).toBe(true);
         const missingHandler = createBureauHandler(withoutContribution, {
@@ -514,33 +539,24 @@ describe('reviewedToolOperations', () => {
         expect(missingStreamText).toContain('RUN_NOT_FOUND');
         expect(missingStreamText).not.toContain('private:');
         expect(missingStreamText).not.toContain(review.approval.approvalToken!);
-        expect(
-          (
-            await missingHandler(
-              new Request(`http://localhost/ag-ui/threads/${review.sessionId}/messages`),
-            )
-          ).status,
-        ).toBe(404);
-        expect(
-          (
-            await missingHandler(
-              new Request(
-                `http://localhost/v1/subscriptions/operative.runs.events?runId=${encodeURIComponent(review.runId)}`,
-                { headers: { accept: 'text/event-stream' } },
-              ),
-            )
-          ).status,
-        ).toBe(404);
-        expect(
-          (
-            await missingHandler(
-              new Request(
-                `http://localhost/v1/subscriptions/bureau.tasks.events?taskId=${encodeURIComponent(review.runId)}`,
-                { headers: { accept: 'text/event-stream' } },
-              ),
-            )
-          ).status,
-        ).toBe(404);
+        const missingMessages = await missingHandler(
+          new Request(`http://localhost/ag-ui/threads/${review.sessionId}/messages`),
+        );
+        expect(missingMessages.status).toBe(404);
+        const missingRunEvents = await missingHandler(
+          new Request(
+            `http://localhost/v1/subscriptions/operative.runs.events?runId=${encodeURIComponent(review.runId)}`,
+            { headers: { accept: 'text/event-stream' } },
+          ),
+        );
+        expect(missingRunEvents.status).toBe(404);
+        const missingTaskEvents = await missingHandler(
+          new Request(
+            `http://localhost/v1/subscriptions/bureau.tasks.events?taskId=${encodeURIComponent(review.runId)}`,
+            { headers: { accept: 'text/event-stream' } },
+          ),
+        );
+        expect(missingTaskEvents.status).toBe(404);
       } finally {
         await withoutContribution.dispose();
       }
@@ -585,32 +601,33 @@ describe('reviewedToolOperations', () => {
       } finally {
         await staleBureau.dispose();
       }
-      expect(
-        (await rpc('bureau.reviews.resolve', { id: review.id, decision: 'approve', round: 0 }))
-          .error,
-      ).toBeDefined();
+      const requesterDecision = await rpc('bureau.reviews.resolve', {
+        id: review.id,
+        decision: 'approve',
+        round: 0,
+      });
+      expect(requesterDecision.error).toBeDefined();
       expect(calls).toEqual([]);
       expect(bureau.reviews.list().find((item) => item.id === review.id)?.status).toBe('pending');
-      expect(
-        (
-          await rpc(
-            'bureau.reviews.resolve',
-            { id: review.id, decision: 'approve', round: 0, remember: true },
-            'reviewer',
-          )
-        ).error,
-      ).toBeDefined();
+      const rememberedDecision = await rpc(
+        'bureau.reviews.resolve',
+        { id: review.id, decision: 'approve', round: 0, remember: true },
+        'reviewer',
+      );
+      expect(rememberedDecision.error).toBeDefined();
       expect(bureau.reviews.list().find((item) => item.id === review.id)?.status).toBe('pending');
-      await expect(
-        bureau.reviews.resolve({
-          id: review.id,
-          decision: 'approve',
-          round: 0,
-          principal: 'api-key:reviewer',
-          reviewer: principalFromApiKey({ subject: 'reviewer', scopes: [] }),
-          arguments: { intentId: 'forged', itemId: 'other' },
-        }),
-      ).rejects.toThrow();
+      expect(
+        await rejectionOf(
+          bureau.reviews.resolve({
+            id: review.id,
+            decision: 'approve',
+            round: 0,
+            principal: 'api-key:reviewer',
+            reviewer: principalFromApiKey({ subject: 'reviewer', scopes: [] }),
+            arguments: { intentId: 'forged', itemId: 'other' },
+          }),
+        ),
+      ).toBeInstanceOf(Error);
       expect(bureau.reviews.list().find((item) => item.id === review.id)?.status).toBe('pending');
       expect(
         await rpc(
@@ -620,31 +637,26 @@ describe('reviewedToolOperations', () => {
         ),
       ).toMatchObject({ result: { receipt: 'superseded' } });
       expect(calls).toEqual([]);
-      expect(
-        (
-          await rpc(
-            'bureau.reviews.resolve',
-            { id: review.id, decision: 'approve', round: 1 },
-            'reviewer',
-          )
-        ).result,
-      ).toMatchObject({ receipt: 'applied' });
+      const approved = await rpc(
+        'bureau.reviews.resolve',
+        { id: review.id, decision: 'approve', round: 1 },
+        'reviewer',
+      );
+      expect(approved.result).toMatchObject({ receipt: 'applied' });
       expect(calls).toEqual([signedArguments]);
-      expect((await rpc(selection.request, { commandId: 'two', itemId: 'two' })).result).toEqual({
+      const secondRequest = await rpc(selection.request, { commandId: 'two', itemId: 'two' });
+      expect(secondRequest.result).toEqual({
         itemId: 'two',
       });
       const declined = bureau.reviews.list().find((item) => item.id !== review.id);
       if (!declined || declined.kind !== 'tool-approval')
         throw new Error('Missing declined review');
-      expect(
-        (
-          await rpc(
-            'bureau.reviews.resolve',
-            { id: declined.id, decision: 'deny', round: 0 },
-            'reviewer',
-          )
-        ).result,
-      ).toMatchObject({ receipt: 'applied' });
+      const denied = await rpc(
+        'bureau.reviews.resolve',
+        { id: declined.id, decision: 'deny', round: 0 },
+        'reviewer',
+      );
+      expect(denied.result).toMatchObject({ receipt: 'applied' });
       expect(calls).toEqual([signedArguments]);
       const completedResponse = await handler(
         new Request(`http://localhost/ag-ui/threads/${review.sessionId}/messages`),

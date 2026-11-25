@@ -83,6 +83,12 @@ export function createApprovalPersistence<D extends AgentDefinitions>(
   ): Promise<void> {
     if (!runtime.sessionStore) return;
     const serializedApproval = JSON.parse(JSON.stringify(approval)) as JSONValue;
+    const runId = approval.approvalBinding?.runId;
+    const task = runId ? await core.tasks.record(runId) : undefined;
+    const origin = task?.origin;
+    const reviewed = origin && Object.hasOwn(origin, 'reviewedTool') ? origin : undefined;
+    if (approval.approvalBinding?.agentId.startsWith('reviewed:') && !reviewed)
+      throw new Error('Reviewed approval has no durable provenance');
     const round = pendingApprovalRounds.get(reviewId) ?? 0;
     await runtime.sessionStore.update(sessionId, (session) => ({
       ...session!,
@@ -98,6 +104,16 @@ export function createApprovalPersistence<D extends AgentDefinitions>(
             : {}),
           [reviewId]: serializedApproval,
         },
+        ...(reviewed
+          ? {
+              reviewedApprovalProvenance: {
+                ...(isJsonObject(session!.metadata['reviewedApprovalProvenance'])
+                  ? session!.metadata['reviewedApprovalProvenance']
+                  : {}),
+                [reviewId]: JSON.parse(JSON.stringify(reviewed)) as JSONValue,
+              },
+            }
+          : {}),
         // Written with the override in one update, so a round never outlives or
         // trails the approval it counts.
         pendingApprovalRounds: {

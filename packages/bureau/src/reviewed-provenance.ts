@@ -28,16 +28,41 @@ export async function reviewedProvenanceOf(
   dependencies: {
     readonly task: (runId: string) => Promise<TaskRecord | undefined>;
     readonly steps: (runId: string) => Promise<readonly StepRecord[]>;
+    readonly session?: (
+      sessionId: string,
+    ) => Promise<{ metadata: Record<string, unknown> } | undefined>;
     readonly policy?: ReviewPolicy | undefined;
   },
 ): Promise<ReviewedProvenanceState> {
   try {
     const task = await dependencies.task(review.runId);
-    if (!task || !task.origin || !isTaskOrigin(task.origin) || typeof task.agentName !== 'string')
+    const session =
+      dependencies.session && review.sessionId
+        ? await dependencies.session(review.sessionId)
+        : undefined;
+    const sessionMarkers = session?.metadata['reviewedApprovalProvenance'];
+    if (
+      sessionMarkers !== undefined &&
+      (!sessionMarkers || typeof sessionMarkers !== 'object' || Array.isArray(sessionMarkers))
+    )
       return 'unresolved';
+    const sessionOrigin =
+      sessionMarkers && Object.hasOwn(sessionMarkers, review.id)
+        ? Object.entries(sessionMarkers).find(([key]) => key === review.id)?.[1]
+        : undefined;
+    if (!task) return session && sessionOrigin === undefined ? 'ordinary' : 'unresolved';
+    if (typeof task.agentName !== 'string') return 'unresolved';
+    if (
+      sessionOrigin !== undefined &&
+      JSON.stringify(sessionOrigin) !== JSON.stringify(task.origin)
+    )
+      return 'unresolved';
+    if (!task.origin) return task.agentName.startsWith('reviewed:') ? 'unresolved' : 'ordinary';
+    if (!isTaskOrigin(task.origin)) return 'unresolved';
     const origin = task.origin as unknown as Record<string, unknown>;
     if (!Object.hasOwn(origin, 'reviewedTool'))
       return task.agentName?.startsWith('reviewed:') ? 'unresolved' : 'ordinary';
+    if (dependencies.session && (!session || sessionOrigin === undefined)) return 'unresolved';
     const marker = markerOf(origin['reviewedTool']);
     if (
       !marker ||
