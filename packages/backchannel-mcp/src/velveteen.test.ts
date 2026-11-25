@@ -5,6 +5,27 @@ import { expect, test } from 'bun:test';
 import { z } from 'zod';
 import { mountCatalog } from './velveteen.ts';
 
+test('declares machine endpoints for the hosted issuer path only', () => {
+  const group = mountCatalog({
+    basePath: '/api',
+    publicOrigin: 'https://equipment.example',
+    operations: [],
+    host: {},
+    authenticateApi: async () => new Response(null, { status: 401 }),
+    mcp: {
+      serverInfo: { name: 'equipment', version: '1' },
+      authorization: {
+        issuer: 'https://equipment.example/tenant',
+        verifyAccessToken: async () => null,
+        resolvePrincipal: async () => null,
+        handle: async () => new Response(),
+      },
+    },
+  })['/api']!;
+  expect(group.machineFormPaths()).toEqual(['/tenant/oauth/token', '/tenant/oauth/revoke']);
+  expect(group.rootPaths('/app')).toContain('/tenant/oauth/token');
+});
+
 test.each(['/café space', '/caf%C3%A9%20space'])(
   'advertises canonical catalog paths for %s',
   async (basePath) => {

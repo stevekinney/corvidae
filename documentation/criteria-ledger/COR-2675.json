@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2675",
+  "branch": "steve/composable-oauth-machine-forms",
+  "checkedAt": "939874fdc2a551d3a0fa61a334424c2fdcfb656e",
+  "briefVersion": "ea1b8e5a40f6",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "server.test.ts verifies exact owned paths and rejects cookies, Origin including null and foreign, other methods and content types, undeclared paths and hook redirects; named tests passed."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "velveteen.test.ts verifies issuer-specific token and revocation paths; server.test.ts covers cross-mount rejection and disposal/replacement; lifecycle suite passed."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "catalog-mount.test.ts exchanges a PKCE code and revokes an access token with originless forms; invalid client and verifier fail; browser consent tests passed."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Coordinator ran the unmodified SDK probe on deployed source 87dff5f02edcf531e167476698da2f18da786e42, which contains identical COR-2675 production changes; both reader and editor role checks passed. See scratch/COR-2675-d43781de/staging-receipt.md."
+    }
+  ]
+}
