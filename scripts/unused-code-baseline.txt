@@ -1773,8 +1773,6 @@
 ["exports","scripts/chef/review-threads.ts","parsePullRequest"]
 ["exports","scripts/chef/review-threads.ts","resolveTarget"]
 ["exports","scripts/chef/targeted-run.ts","buildFullRunCommand"]
-["exports","scripts/chef/targeted-run.ts","unitConfigFor"]
-["exports","scripts/chef/targeted-run.ts","validateInputs"]
 ["exports","scripts/chef/transcript-usage.ts","usageProblems"]
 ["exports","scripts/chef/triage.ts","DEFAULT_LIMIT"]
 ["exports","scripts/chef/triage.ts","commandsIn"]

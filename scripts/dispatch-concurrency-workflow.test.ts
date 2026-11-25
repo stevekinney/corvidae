@@ -62,9 +62,11 @@ describe('workflow_dispatch concurrency', () => {
     expect(job).toContain('TURBO_SCM_BASE: origin/main');
     expect(job).toContain('fetch-depth: 0');
     expect(job).toContain('turbo run lint typecheck --affected');
-    // Only the dedicated qualification marker excludes the ordinary lint and type-check job.
+    // A stale Chef decision or the dedicated qualification marker excludes the ordinary job.
     const header = job.slice(0, job.indexOf('\n    steps:\n'));
-    expect(header).toContain("if: ${{ !startsWith(inputs.e2e_specs, 'COR-2653-qualification:') }}");
+    expect(header).toContain(
+      "if: ${{ (inputs.chef_candidate == '' || inputs.chef_candidate == github.sha) && (!startsWith(inputs.e2e_specs, 'COR-2653-qualification:')) }}",
+    );
     expect(header.match(/^\s+if:/gm)).toHaveLength(1);
   });
 

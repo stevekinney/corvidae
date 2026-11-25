@@ -61,6 +61,18 @@ function fixture(
 ) {
   const checkedRevision = options.pullRequest ? 'f'.repeat(40) : input.candidate;
   const runName = input.event === 'workflow_dispatch' ? `P07 ${input.requestKey}` : input.workflow;
+  const reportDirectory = options.pullRequest
+    ? mkdtempSync(join(scratch, 'github-junit-'))
+    : undefined;
+  if (reportDirectory !== undefined) {
+    directories.push(reportDirectory);
+    const junitDirectory = join(reportDirectory, 'test-output', 'junit');
+    mkdirSync(junitDirectory, { recursive: true });
+    writeFileSync(
+      join(junitDirectory, 'tests.xml'),
+      '<testsuite><testcase name="passes" file="scripts/chef/ci-evidence-github.integration.test.ts" /></testsuite>',
+    );
+  }
   const produced = createCiEvidenceWorkflowReceipt({
     environment: {
       GITHUB_REPOSITORY: input.repository,
@@ -82,6 +94,9 @@ function fixture(
       ...(options.pullRequest && !options.browserMismatch
         ? { CI_EVIDENCE_NOT_APPLICABLE: '["browser"]' }
         : {}),
+      ...(reportDirectory === undefined
+        ? {}
+        : { CI_EVIDENCE_TEST_REPORT_DIRECTORY: reportDirectory }),
     },
     eventPayload: options.pullRequest
       ? { pull_request: { base: { sha: input.base }, head: { sha: input.candidate } } }
@@ -340,6 +355,55 @@ scenarios.scenario(
     }
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toContain('does not bind');
+  },
+);
+
+scenarios.scenario(
+  'discovers one automatic pull-request receipt only after it binds its exact merge identity',
+  async () => {
+    const input = request({
+      event: 'pull_request',
+      verificationPlanDigest: createHash('sha256')
+        .update(
+          JSON.stringify({
+            version: 1,
+            event: 'pull_request',
+            workflowPath: '.github/workflows/main.yml',
+            workflowRevision: 'a'.repeat(40),
+            jobs: ['aggregate', 'browser'],
+          }),
+        )
+        .digest('hex'),
+    });
+    const accepted = fixture(input, { pullRequest: true });
+    const runs = await accepted.provider.findAutomaticPullRequestRuns?.({
+      repository: input.repository,
+      resource: input.resource,
+      base: input.base,
+      candidate: input.candidate,
+      integrationTree: input.integrationTree,
+      workflow: input.workflow,
+      workflowPath: input.workflowPath,
+    });
+    expect(runs).toHaveLength(1);
+    expect(runs?.[0]).toMatchObject({
+      checkedRevision: 'f'.repeat(40),
+      base: input.base,
+      head: input.candidate,
+    });
+
+    const wrong = fixture(input, { pullRequest: true, invalidParents: true });
+    expect(
+      await wrong.provider.findAutomaticPullRequestRuns?.({
+        repository: input.repository,
+        resource: input.resource,
+        base: input.base,
+        candidate: input.candidate,
+        integrationTree: input.integrationTree,
+        workflow: input.workflow,
+        workflowPath: input.workflowPath,
+      }),
+    ).toEqual([]);
   },
 );
 

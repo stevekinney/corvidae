@@ -66,6 +66,17 @@ async function evidence(
       workflowPath: '.github/workflows/pull-request.yml',
     };
     request.ciEvidence.push({ ...identity, requestKey: ciEvidenceRequestKey(identity) });
+    for (const member of request.members) {
+      member.providerRuns.push({
+        id: duplicate.id,
+        attempt: 1,
+        obligation: 'AC1:pull-request',
+        job: 'Evidence aggregate',
+        workflow: identity.workflow,
+        workflowPath: identity.workflowPath,
+        event: 'pull_request',
+      });
+    }
   }
   const answers = {
     ...runsAnswer(request.repository, request.revision, listed),

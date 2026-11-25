@@ -213,22 +213,44 @@ export function createGitHubEvidenceTransport(
   };
 }
 
-export function parseJUnit(xml: Uint8Array): { inventory: string[]; assertionPassed: boolean } {
+export function parseJUnit(xml: Uint8Array): {
+  inventory: string[];
+  files: string[];
+  assertionPassed: boolean;
+} {
   const parser = new SaxesParser({ xmlns: false });
   const inventory: string[] = [];
+  const files = new Set<string>();
   let assertionPassed = true;
+  let currentFile: string | undefined;
+  let currentSkipped = false;
+  let currentFailed = false;
   parser.on('opentag', (tag) => {
     if (tag.name === 'testcase') {
       const name = tag.attributes['name'];
       if (typeof name === 'string' && name !== '') inventory.push(name);
+      const file = tag.attributes['file'];
+      currentFile = typeof file === 'string' && file !== '' ? file : undefined;
+      currentSkipped = false;
+      currentFailed = false;
     }
-    if (tag.name === 'failure' || tag.name === 'error') assertionPassed = false;
+    if (tag.name === 'skipped') currentSkipped = true;
+    if (tag.name === 'failure' || tag.name === 'error') {
+      assertionPassed = false;
+      currentFailed = true;
+    }
+  });
+  parser.on('closetag', (tag) => {
+    if (tag.name === 'testcase') {
+      if (currentFile !== undefined && !currentSkipped && !currentFailed) files.add(currentFile);
+      currentFile = undefined;
+    }
   });
   parser.on('error', (error) => {
     throw error;
   });
   parser.write(new TextDecoder('utf-8', { fatal: true }).decode(xml)).close();
-  return { inventory, assertionPassed };
+  return { inventory, files: [...files].toSorted(), assertionPassed };
 }
 export function inspectArtifact(
   bytes: Uint8Array,
