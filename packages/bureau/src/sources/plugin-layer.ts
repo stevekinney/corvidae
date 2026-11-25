@@ -74,5 +74,5 @@ export function pluginLayer<TSource extends DefinitionSource>(
     'writeSibling' in source
       ? { writeSibling: (path: string): Promise<never> => refuse(path) }
       : {};
-  return { ...source, ...layer, ...siblingWriter } as TSource;
+  return { ...source, ...layer, ...siblingWriter };
 }
