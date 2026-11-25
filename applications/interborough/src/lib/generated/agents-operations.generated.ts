@@ -41,6 +41,7 @@ export type AgentsOperationTypes = {
         readonly mimeFamilies: ReadonlyArray<string>;
         readonly modalities: Record<string, unknown>;
         readonly model: string;
+        readonly modelClass?: string;
         readonly parallelTools: boolean;
         readonly parameterCompatibility: ReadonlyArray<string>;
         readonly provider: string;
@@ -71,7 +72,11 @@ export type AgentsOperationTypes = {
     readonly faults: 'Forbidden' | 'InvalidParams';
   };
   'bureau.agents.definitions.create': {
-    readonly input: { readonly definition: SharedA2aApprovalsCard_f4aa02be; readonly id: string };
+    readonly input: {
+      readonly definition: SharedA2aApprovalsCard_f4aa02be;
+      readonly id: string;
+      readonly referenceDocuments?: ReadonlyArray<{ readonly path: string; readonly text: string }>;
+    };
     readonly output: SharedHashId_cce87f20;
     readonly faults:
       'Conflict' | 'Forbidden' | 'InvalidParams' | 'Unprocessable' | 'UnsupportedCapability';
@@ -175,6 +180,7 @@ export type AgentsOperationTypes = {
       readonly definition: SharedA2aApprovalsCard_f4aa02be;
       readonly expectedHash: string;
       readonly id: string;
+      readonly referenceDocuments?: ReadonlyArray<{ readonly path: string; readonly text: string }>;
     };
     readonly output: SharedHashId_cce87f20;
     readonly faults:

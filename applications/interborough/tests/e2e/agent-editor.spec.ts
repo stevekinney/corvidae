@@ -4,13 +4,16 @@
  * and the abilities of the chosen model. The host's home connects one provider (`anthropic`), so
  * the others are not connected. The editor's other fields are in `24-define-agents.spec.ts`; Try it and Duplicate are at the end of this file.
  */
-import type { APIRequestContext, Page } from '@playwright/test';
+import type { APIRequestContext, Page, Route } from '@playwright/test';
 import { existsSync } from 'node:fs';
 
 import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
 import { NAVIGATION_COPY } from '../../src/app/copy/shell.ts';
 import { agentDuplicatePath } from '../../src/lib/agent-paths.ts';
-import { providerDisplayName } from '../../src/routes/settings/models/format-model.ts';
+import {
+  modelDisplayName,
+  providerDisplayName,
+} from '../../src/routes/settings/models/format-model.ts';
 import {
   addTools,
   agentDirectory,
@@ -26,6 +29,49 @@ import { readBoxes } from './read-boxes.ts';
 
 const copy = AGENT_EDITOR_COPY.model;
 const WIDTHS = [375, 1280] as const;
+
+/** Select a runnable fixture row by its catalog declaration, never by a guessed model id. */
+async function selectRunnableModel(page: Page, request: APIRequestContext): Promise<string> {
+  const catalog = await readCatalog(request);
+  const row = catalog.models.find((candidate) => candidate.availability !== 'unavailable');
+  if (row === undefined) throw new Error('Expected the E2E catalog to offer one runnable model.');
+  const model = page.getByRole('combobox', { name: 'Model' });
+  if ((await model.getAttribute('aria-expanded')) !== 'true') await model.click();
+  const display = modelDisplayName(row.model);
+  await page.getByRole('option', { name: new RegExp(`^${display}`) }).click();
+  await expect(model).toHaveValue(display);
+  return display;
+}
+
+/** Gives one real catalog row the exact capabilities the design's Balanced witness declares. */
+async function withBalancedCatalogFixture(page: Page): Promise<void> {
+  await page.route('**/jsonrpc', async (route: Route) => {
+    const call = route.request().postDataJSON() as { method?: string } | null;
+    if (call?.method !== 'bureau.agents.catalog') return route.fallback();
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      result?: { models?: Array<Record<string, unknown>> };
+    };
+    let changed = false;
+    const models = body.result?.models?.map((row) => {
+      if (changed || row['availability'] === 'unavailable') return row;
+      changed = true;
+      return {
+        ...row,
+        modelClass: 'Balanced',
+        contextWindowTokens: 1_000_000,
+        tools: true,
+        structuredOutput: false,
+        streaming: false,
+        modalities: { text: { input: true }, image: { input: true } },
+      };
+    });
+    await route.fulfill({
+      response,
+      json: { ...body, result: { ...body.result, ...(models === undefined ? {} : { models }) } },
+    });
+  });
+}
 
 for (const width of WIDTHS) {
   test.describe(`the model field at ${width} pixels`, () => {
@@ -48,9 +94,9 @@ for (const width of WIDTHS) {
       await page.goto('/agents/new');
       const model = page.getByRole('combobox', { name: 'Model' });
       await expect(model).toBeVisible();
-      // Opened as it stands, with the chosen model in the field, the list is not narrowed to it.
+      await expect(model).toHaveValue('');
+      const selected = await selectRunnableModel(page, request);
       await model.click();
-      await expect(model).toHaveValue('Claude Sonnet 5');
 
       await expect(page.locator('.cinder-_option-group__label').first()).toHaveText('Anthropic');
       for (const provider of unconnected) {
@@ -94,12 +140,12 @@ for (const width of WIDTHS) {
       // Enter on it chooses nothing and leaves the list open.
       await model.press('Enter');
       await expect(model).toHaveAttribute('aria-expanded', 'true');
-      await expect(model).toHaveValue('Claude Sonnet 5');
+      await expect(model).toHaveValue(selected);
 
       // Pressing a provider that is not connected chooses nothing.
       await disabledOption.click({ force: true });
       await page.keyboard.press('Escape');
-      await expect(model).toHaveValue('Claude Sonnet 5');
+      await expect(model).toHaveValue(selected);
 
       // The line under the field links to the page that connects a provider.
       const hint = page.getByTestId('agent-model-unconnected');
@@ -107,6 +153,7 @@ for (const width of WIDTHS) {
         copy.unconnectedLead(unconnected.map(label)).split(' in')[0]!,
       );
       await hint.getByRole('link', { name: copy.settingsLink }).click();
+      await page.getByRole('button', { name: 'Discard and leave' }).click();
       await expect(page).toHaveURL(/\/settings\/models$/);
     });
 
@@ -124,8 +171,10 @@ for (const width of WIDTHS) {
 
     test('/agents/new new-agent model display names filter and show the chosen model abilities', async ({
       page,
+      request,
     }) => {
       await page.goto('/agents/new');
+      await selectRunnableModel(page, request);
       const abilities = page.getByTestId('agent-model-abilities');
       await expect(abilities).toBeVisible();
       await expect(abilities).toContainText(copy.abilities.tools);
@@ -153,7 +202,7 @@ for (const width of WIDTHS) {
       await option.click();
       await expect(model).toHaveValue('Claude Haiku 4.5');
       await expect(abilities).toBeVisible();
-      await expect(abilities).toContainText(/context window/);
+      await expect(abilities).toContainText(/context$/);
       await captureForDesignReview(page, {
         route: '/agents/new',
         state: 'model display name selected',
@@ -161,12 +210,38 @@ for (const width of WIDTHS) {
       });
     });
 
+    test('/agents/new captures the declared Balanced model capabilities', async ({
+      page,
+      request,
+    }) => {
+      await withBalancedCatalogFixture(page);
+      await page.goto('/agents/new');
+      const selected = await selectRunnableModel(page, request);
+      const abilities = page.getByTestId('agent-model-abilities');
+      await expect(abilities).toContainText('Balanced');
+      await expect(abilities).toContainText(copy.abilities.tools);
+      await expect(abilities).toContainText(copy.abilities.images);
+      await expect(abilities).toContainText('1M context');
+      await page.getByRole('combobox', { name: 'Model' }).click();
+      await expect(page.getByRole('option', { name: new RegExp(`^${selected}`) })).toContainText(
+        'Balanced, tools, images, 1M context',
+      );
+      await page.keyboard.press('Escape');
+      await captureForDesignReview(page, {
+        route: '/agents/new',
+        state: 'Balanced, tools, images, 1M context',
+        source: 'agent-editor.spec.ts',
+      });
+    });
+
     test('offers the chosen model’s efforts, and clears one the next model cannot do', async ({
       page,
+      request,
       checkA11y,
     }) => {
       const effort = page.getByLabel(AGENT_EDITOR_COPY.effort.label);
       await page.goto('/agents/new');
+      await selectRunnableModel(page, request);
       await expect(effort.locator('option')).toHaveText([
         'None',
         'Low',
@@ -270,6 +345,7 @@ test.describe('Try it', () => {
     const chatsBefore = await chatRows(request);
     await page.goto('/agents/new');
     await expect(page.locator('[data-view="agent-editor"]')).toHaveAttribute('data-state', 'ready');
+    await selectRunnableModel(page, request);
     // Nothing here is saved: a name and instructions typed into a new agent.
     await page.getByRole('textbox', { name: /^Name/ }).fill('Trial agent');
     await page.getByRole('textbox', { name: /^Instructions/ }).fill('Answer in one word.');
@@ -317,11 +393,13 @@ test.describe('Try it', () => {
     await page.goto('/agents');
     await page.getByRole('link', { name: words.newAction }).first().click();
     await expect(page.locator('[data-view="agent-editor"]')).toHaveAttribute('data-state', 'ready');
+    await selectRunnableModel(page, request);
     const contextId = await startTrial(page, 'Hello');
     expect(await chatFault(request, contextId)).toBeUndefined();
 
     // Back to the list, by the history entry the shell made: the editor unmounts with its chat.
     await page.goBack();
+    await page.getByRole('button', { name: 'Discard and leave' }).click();
     await expect(page).toHaveURL(/\/agents$/);
     await expect.poll(() => chatFault(request, contextId)).toBe('NotFound');
     expect(await chatRows(request, 'try')).toEqual([]);
@@ -340,6 +418,7 @@ test.describe('Try it', () => {
     );
     await page.goto('/agents/new');
     await expect(page.locator('[data-view="agent-editor"]')).toHaveAttribute('data-state', 'ready');
+    await selectRunnableModel(page, request);
     await addTools(page, [refused]);
 
     await drawer(page).getByRole('textbox', { name: 'Message' }).fill('Hello');

@@ -149,6 +149,11 @@
     queryFn: ({ signal }) => getAgentDefinition(agentId ?? '', { signal }),
     enabled: agentId !== undefined,
   }));
+  // The frame admitted this route before constructing the editor. Read its separately seeded
+  // display name once without observing or configuring the frame or mutable detail queries.
+  const frameDisplayName = untrack(() =>
+    queryClient.getQueryData<string>(queryKeys.agents.displayName(agentId ?? '')),
+  );
 
   const source = createQuery(() => ({
     ...stable,
@@ -288,7 +293,7 @@
   const relativePath = $derived(agentRelativePath(invalidAgent?.id ?? editor?.identifier ?? ''));
 
   /** The agent's name as its file says it now, not as it is being typed. */
-  const savedName = $derived(detail.data?.name ?? agentId ?? '');
+  const savedName = $derived(detail.data?.name ?? frameDisplayName ?? agentId ?? '');
 
   // The top bar's trail reads "Agents, Tool runner, Edit" once the agent is read (row 41q).
   usePageLabel(() => ({
@@ -369,7 +374,7 @@
     mutationFn: (form: AgentEditorState) => {
       const request = new AbortController();
       saveRequest = request;
-      const options = { signal: request.signal };
+      const options = { signal: request.signal, referenceDocuments: form.stagedReferenceDocuments };
       return form.mode === 'create'
         ? createAgent(form.identifier, form.toDefinition(), options)
         : updateAgent(form.identifier, form.hash ?? '', form.toDefinition(), options);

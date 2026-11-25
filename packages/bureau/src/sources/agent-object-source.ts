@@ -8,10 +8,10 @@
 import type { Tool } from 'armorer';
 
 import { AGENT_FILE_EXTENSION, AGENT_FILE_SIZE_LIMIT } from '../agent-file';
-import type { AgentSource } from './definition-source';
+import { SiblingExistsError, type AgentSource } from './definition-source';
 import type { ObjectLocation } from './object-operations';
 import { createObjectSource, type ObjectSourceOptions } from './object-source';
-import { assertReferencePath } from './reference-path';
+import { assertReferenceDocument, assertReferencePath } from './reference-path';
 
 /** What {@link agentObjectSource} takes beyond the location. */
 export interface AgentObjectSourceOptions extends ObjectSourceOptions {
@@ -54,6 +54,18 @@ export function agentObjectSource(
     ) {
       assertReferencePath(path);
       return await source.readBeside(path, readOptions);
+    },
+    async writeSibling(path: string, bytes: Uint8Array) {
+      assertReferencePath(path);
+      assertReferenceDocument(bytes);
+      try {
+        await source.writeBeside(path, bytes);
+      } catch (error) {
+        if (error instanceof Error && error.name === 'SourceConflictError') {
+          throw new SiblingExistsError(path);
+        }
+        throw error;
+      }
     },
     ...(options.tools === undefined ? {} : { tools: options.tools }),
   });

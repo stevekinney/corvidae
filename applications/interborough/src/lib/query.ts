@@ -93,6 +93,8 @@ export const queryKeys = {
     definitions: () => ['agents', 'definitions'] as const,
     /** One agent as `bureau.agents.definitions.get` shows it. */
     definition: (id: string) => ['agents', 'definition', id] as const,
+    /** The display name a route-admission probe learned before an editor reads its full definition. */
+    displayName: (id: string) => ['agents', 'display-name', id] as const,
     /** What a person changed on one code agent, and the hash a save names (`bureau.agents.overrides.get`). */
     overrides: (id: string) => ['agents', 'overrides', id] as const,
     /** The versions of one agent that have run (`bureau.agents.definitions.revisions`). */

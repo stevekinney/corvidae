@@ -5,8 +5,8 @@
  * offers, so a save really writes. Every view meets axe at the two widths the application is
  * built for.
  */
-import type { APIRequestContext, Page } from '@playwright/test';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import type { APIRequestContext, Page, Route } from '@playwright/test';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
@@ -90,8 +90,21 @@ async function unkeyedProviders(request: APIRequestContext): Promise<string[]> {
   return body.providers.filter((provider) => !provider.hasKey).map((provider) => provider.name);
 }
 
+/** Pick a real runnable row from the fixture's catalog, rather than baking in a provider/model id. */
+async function selectRunnableModel(page: Page, request: APIRequestContext): Promise<string> {
+  const catalog = await readCatalog(request);
+  const row = catalog.models.find((candidate) => candidate.availability !== 'unavailable');
+  if (row === undefined) throw new Error('Expected this E2E catalog to offer one runnable model.');
+  const model = page.getByRole('combobox', { name: 'Model' });
+  if ((await model.getAttribute('aria-expanded')) !== 'true') await model.click();
+  const label = modelDisplayName(row.model);
+  await page.getByRole('option', { name: new RegExp(`^${label}`) }).click();
+  await expect(model).toHaveValue(label);
+  return label;
+}
+
 test.describe('a new agent', () => {
-  test('preserves child-agent grants through an editor read and save', async ({
+  test('/agents/:agent/edit preserves child-agent grants through an editor read and save', async ({
     page,
     request,
   }) => {
@@ -115,8 +128,77 @@ test.describe('a new agent', () => {
     expect(text).toContain('demo:echo');
   });
 
+  test('/agents/new and /agents/:agent/edit capture reference documents and named loading', async ({
+    page,
+    request,
+  }) => {
+    const directory = await agentDirectory(request);
+    const reference = join(directory, 'references', 'refund-policy.md');
+    await mkdir(join(directory, 'references'), { recursive: true });
+    await writeFile(reference, '# Refund policy\n');
+    try {
+      await page.goto('/agents/new');
+      await expect(page.getByTestId('agent-no-references')).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/agents/new',
+        state: 'reference documents empty',
+        source: '24-define-agents.spec.ts',
+      });
+
+      const referenced = 'e2e-editor-reference-document';
+      await makeAgent(request, referenced, { references: ['references/refund-policy.md'] });
+      await page.goto(`/agents/${referenced}/edit`);
+      await expect(page.getByTestId('agent-references')).toContainText('refund-policy.md');
+      await captureForDesignReview(page, {
+        route: '/agents/:agent/edit',
+        state: 'reference documents populated',
+        source: '24-define-agents.spec.ts',
+      });
+
+      const loading = 'e2e-editor-loading';
+      const loadingName = 'Tool runner';
+      await makeAgent(request, loading, { name: loadingName });
+      const release = Promise.withResolvers<void>();
+      const waiting = Promise.withResolvers<void>();
+      await page.route('**/jsonrpc', async (route: Route) => {
+        const call = route.request().postDataJSON() as {
+          method?: string;
+        } | null;
+        if (call?.method !== 'bureau.agents.catalog') {
+          return route.fallback();
+        }
+        // The view probe seeded only the saved display name, so holding the editor's first catalog
+        // read reaches 43h without manufacturing ready form data.
+        waiting.resolve();
+        await release.promise;
+        return route.fallback();
+      });
+      try {
+        const navigation = page.goto(`/agents/${loading}/edit`);
+        await waiting.promise;
+        await expect(
+          page.getByRole('heading', { level: 1, name: copy.editHeading(loadingName) }),
+        ).toBeVisible();
+        await expect(page.getByTestId('agent-loading')).toBeVisible();
+        await captureForDesignReview(page, {
+          route: '/agents/:agent/edit',
+          state: 'loading agent',
+          source: '24-define-agents.spec.ts',
+        });
+        release.resolve();
+        await navigation;
+        await expect(editor(page)).toHaveAttribute('data-state', 'ready');
+      } finally {
+        release.resolve();
+        await page.unroute('**/jsonrpc');
+      }
+    } finally {
+      await rm(reference, { force: true });
+    }
+  });
+
   for (const width of WIDTHS) {
-    test(`is made from what the catalog offers, and written as a file, at ${width} pixels`, async ({
+    test(`/agents/new is made from what the catalog offers, and written as a file, at ${width} pixels`, async ({
       page,
       request,
       checkA11y,
@@ -135,7 +217,16 @@ test.describe('a new agent', () => {
       expect(unavailable.length).toBeGreaterThan(0);
       expect(unkeyed.length).toBeGreaterThan(0);
       const model = page.getByRole('combobox', { name: 'Model' });
-      // The field holds the chosen model, and opening it as it stands lists every option.
+      // A fresh editor intentionally starts unselected; Save states the missing requirement.
+      await expect(model).toHaveValue('');
+      await page.getByRole('button', { name: copy.createAction }).click();
+      await expect(page.getByText(copy.newAgent.modelRequired)).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/agents/new',
+        state: 'blank model validation',
+        source: '24-define-agents.spec.ts',
+      });
+      // Opening an empty field lists every option, then this fixture selects its declared runnable row.
       await model.click();
       const options = page.locator('.cinder-combobox__option-label');
       // Enabled choices show catalog display names in catalog order. The saved agent uses the ID.
@@ -156,9 +247,10 @@ test.describe('a new agent', () => {
       }
       await expect(options.first()).toHaveText('Claude Sonnet 5');
       await expect(page.locator('.cinder-_option-group__label').first()).toHaveText('Anthropic');
-      // The chosen model's abilities show under the field.
+      const chosenModel = await selectRunnableModel(page, request);
+      // The selected model's abilities show under the field.
       await expect(page.getByTestId('agent-model-abilities')).toBeVisible();
-      await page.keyboard.press('Escape');
+      await expect(model).toHaveValue(chosenModel);
       // A new agent has no tool; the picker offers each tool the catalog lists, once. The count
       // sits beside the Tools title (row 41k).
       const toolsSection = page.getByRole('group', { name: /^Tools/ });
@@ -336,6 +428,7 @@ test.describe('a new agent', () => {
     await expect(toolsSection).toContainText(copy.newAgent.toolCount(1, catalog.tools.length));
     await page.getByRole('textbox', { name: /^Name/ }).fill('E2E Tool Picker');
     await page.getByRole('textbox', { name: /^Instructions/ }).fill('Use the one tool.');
+    await selectRunnableModel(page, request);
     await page.getByRole('button', { name: copy.createAction }).click();
     await expect(page).toHaveURL(/\/agents\/e2e-tool-picker$/);
     const saved = await readAgent(request, 'e2e-tool-picker');

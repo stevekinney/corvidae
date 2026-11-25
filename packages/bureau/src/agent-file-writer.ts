@@ -15,8 +15,12 @@
  * @module agent-file-writer
  */
 
+import { createHash } from 'node:crypto';
+
 import {
   AGENT_FILE_SIZE_LIMIT,
+  AGENT_REFERENCE_SIZE_LIMIT,
+  AGENT_REFERENCES_TOTAL_SIZE_LIMIT,
   AgentFileConflictError,
   AgentFileError,
   type AgentFileDefinition,
@@ -35,9 +39,19 @@ import { isNamespacedIdentifier } from './namespaced-identifier';
 import {
   type AgentSource,
   type DefinitionEntry,
+  SiblingExistsError,
   SourceConflictError,
   SourceReadOnlyError,
 } from './sources/definition-source';
+import { assertReferenceDocument, assertReferencePath } from './sources/reference-path';
+
+const textEncoder = new TextEncoder();
+
+/** A UTF-8 text document staged by an editor to be published with its definition save. */
+interface AgentReferenceDocument {
+  readonly path: string;
+  readonly text: string;
+}
 
 export interface AgentFileWriterDependencies {
   readonly source: AgentSource;
@@ -71,6 +85,11 @@ export interface AgentFileSaveOptions {
    * never recorded as an edit outside it.
    */
   readonly savedBy?: string | undefined;
+  /**
+   * New reference documents to publish before the definition that names them. A retry may reuse
+   * an already-published document only when its bytes are identical; no caller can replace one.
+   */
+  readonly referenceDocuments?: readonly AgentReferenceDocument[] | undefined;
 }
 
 /** What a successful write reports: the identifier and the hash of the file now on disk. */
@@ -266,6 +285,7 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
     id: string,
     bytes: Uint8Array,
     before?: AgentFileDefinition,
+    options: { readonly skipReferences?: boolean } = {},
   ): Promise<void> {
     if (bytes.length > AGENT_FILE_SIZE_LIMIT) {
       refuse({
@@ -282,8 +302,126 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
           : { code: 'not-utf8', message: 'The agent file is not valid UTF-8.' },
       );
     }
-    const problem = await dependencies.validate(id, parsed.file.definition, before);
+    const definition = options.skipReferences
+      ? resolveAgentFileDefinition(id, {
+          ...agentFileInputOf(parsed.file.definition),
+          references: null,
+        })
+      : parsed.file.definition;
+    const problem = await dependencies.validate(id, definition, before);
     if (problem !== undefined) refuse(problem);
+  }
+
+  /**
+   * Publish a fully preflighted document batch. Documents are deliberately published before the
+   * definition which names them: otherwise a catalog can observe an invalid, dangling reference.
+   * A failed final CAS can therefore leave an unreferenced document, which the same byte-identical
+   * retry may adopt, but a malformed batch never publishes any member.
+   */
+  async function writeReferenceDocuments(
+    id: string,
+    definition: AgentFileDefinition,
+    documents: readonly AgentReferenceDocument[] | undefined,
+    reusablePaths: ReadonlySet<string> = new Set(),
+  ): Promise<void> {
+    if (documents === undefined || documents.length === 0) return;
+    const references = new Set(definition.references ?? []);
+    const documentsByPath = new Map<string, Uint8Array>();
+    const prepared = documents.map((document) => ({
+      document,
+      bytes: textEncoder.encode(document.text),
+    }));
+    // Validate the entire batch before publishing its first document, so a bad later document
+    // cannot strand an earlier one beside a definition that never names it.
+    for (const { document, bytes } of prepared) {
+      const ownedPrefix = `references/${id}/`;
+      const digest = createHash('sha256').update(bytes).digest('hex');
+      if (
+        !document.path.startsWith(ownedPrefix) ||
+        !document.path.slice(ownedPrefix.length).startsWith(`${digest}/`) ||
+        document.path.slice(ownedPrefix.length) === `${digest}/` ||
+        document.path.slice(ownedPrefix.length).split('/').length !== 2
+      ) {
+        refuse({
+          code: 'invalid-frontmatter',
+          message: `A staged reference document must be under ${JSON.stringify(ownedPrefix)} with its content digest and one filename.`,
+        });
+      }
+      if (!references.has(document.path)) {
+        refuse({
+          code: 'invalid-frontmatter',
+          message: `The staged reference document ${JSON.stringify(document.path)} is not listed in references.`,
+          issues: [
+            { path: 'references', message: 'Every staged document must be listed in references.' },
+          ],
+        });
+      }
+      if (documentsByPath.has(document.path)) {
+        refuse({
+          code: 'invalid-frontmatter',
+          message: `The staged reference document ${JSON.stringify(document.path)} appears more than once.`,
+        });
+      }
+      try {
+        assertReferencePath(document.path);
+        assertReferenceDocument(bytes);
+      } catch (error) {
+        if (error instanceof TypeError || error instanceof RangeError) {
+          refuse({ code: 'invalid-frontmatter', message: error.message });
+        }
+        throw error;
+      }
+      documentsByPath.set(document.path, bytes);
+    }
+    let total = 0;
+    for (const path of definition.references ?? []) {
+      const staged = documentsByPath.get(path);
+      const read =
+        staged === undefined
+          ? await source.readSibling(path, {
+              limit: AGENT_REFERENCE_SIZE_LIMIT,
+              definitionId: id,
+            })
+          : undefined;
+      const bytes = staged ?? (read?.kind === 'found' ? read.bytes : undefined);
+      if (bytes === undefined) {
+        const message =
+          read?.kind === 'too-large'
+            ? `The reference ${JSON.stringify(path)} is too large.`
+            : `The reference ${JSON.stringify(path)} does not exist.`;
+        refuse({ code: 'invalid-frontmatter', message });
+      }
+      total += bytes.byteLength;
+      if (total > AGENT_REFERENCES_TOTAL_SIZE_LIMIT) {
+        refuse({
+          code: 'invalid-frontmatter',
+          message: `The reference documents total may be at most ${String(AGENT_REFERENCES_TOTAL_SIZE_LIMIT)} bytes.`,
+        });
+      }
+    }
+    for (const { document, bytes } of prepared) {
+      try {
+        await source.writeSibling(document.path, bytes, { definitionId: id });
+      } catch (error) {
+        if (error instanceof SiblingExistsError && reusablePaths.has(document.path)) {
+          const existing = await source.readSibling(document.path, {
+            limit: bytes.byteLength,
+            definitionId: id,
+          });
+          if (
+            existing.kind === 'found' &&
+            existing.bytes.byteLength === bytes.byteLength &&
+            existing.bytes.every((byte, index) => byte === bytes[index])
+          ) {
+            continue;
+          }
+          refuse({ code: 'invalid-frontmatter', message: error.message });
+        }
+        if (error instanceof SiblingExistsError)
+          refuse({ code: 'invalid-frontmatter', message: error.message });
+        throw error;
+      }
+    }
   }
 
   return {
@@ -309,12 +447,22 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
       return exclusive(async () => {
         checkIdentifier(id);
         const bytes = serializeNewAgentFile(definition);
+        const parsed = parseAgentFile(id, decodeAgentFile(bytes) ?? '');
+        if (parsed.ok) {
+          await checkWritable(id, bytes, undefined, { skipReferences: true });
+          await writeReferenceDocuments(
+            id,
+            parsed.file.definition,
+            saveOptions?.referenceDocuments,
+            new Set(saveOptions?.referenceDocuments?.map((document) => document.path) ?? []),
+          );
+        }
         await checkWritable(id, bytes);
         return replace(id, bytes, null, saveOptions?.savedBy);
       });
     },
 
-    update(id, definition, { expectedHash, savedBy }) {
+    update(id, definition, { expectedHash, savedBy, referenceDocuments }) {
       return exclusive(async () => {
         checkIdentifier(id);
         const current = await readExisting(id, expectedHash);
@@ -328,23 +476,24 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
           );
         }
         // The definition is checked even when it changes nothing: an update never reports a
-        // success for a file that would not load.
+        // success for a file that would not load. The reference bytes are checked after staged
+        // files exist, but every other definition constraint is checked before publication.
         const { definition: before } = parsed.file;
-        const problem = await dependencies.validate(
-          id,
-          resolveAgentFileDefinition(id, {
-            ...definition,
-            // A key the update leaves out keeps the file's value, and is checked as the file has it.
-            ...(definition.compaction === undefined ? { compaction: before.compaction } : {}),
-            ...(definition.references === undefined ? { references: before.references } : {}),
-            ...(definition.effort === undefined ? { effort: before.effort } : {}),
-            ...(definition.skills === undefined ? { skills: before.skills } : {}),
-          }),
-          before,
-        );
-        if (problem !== undefined) refuse(problem);
         const next = serializeUpdatedAgentFile(id, parsed.file, definition);
-        if (next === undefined) return { id, hash: expectedHash };
+        if (next === undefined) {
+          await checkWritable(id, current, before);
+          return { id, hash: expectedHash };
+        }
+        const nextParsed = parseAgentFile(id, decodeAgentFile(next) ?? '');
+        if (nextParsed.ok) {
+          await checkWritable(id, next, before, { skipReferences: true });
+          await writeReferenceDocuments(
+            id,
+            nextParsed.file.definition,
+            referenceDocuments,
+            new Set(referenceDocuments?.map((document) => document.path) ?? []),
+          );
+        }
         await checkWritable(id, next, before);
         return replace(id, next, expectedHash, savedBy);
       });

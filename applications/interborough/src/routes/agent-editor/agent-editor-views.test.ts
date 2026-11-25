@@ -76,6 +76,7 @@ describe('the editor’s routes', () => {
       await findByRole('heading', { level: 1, name: AGENT_EDITOR_COPY.createHeading }),
     ).not.toBeNull();
     await waitFor(() => expect(frameOf(container).dataset['state']).toBe('ready'));
+    await findByRole('form', { name: AGENT_EDITOR_COPY.formLabel });
   });
 
   test('/agents/:agent/edit is the editor for that agent, ready once the agent loads', async () => {
@@ -85,11 +86,51 @@ describe('the editor’s routes', () => {
 
     expect(await findByRole('heading', { level: 1, name: 'Edit Researcher' })).not.toBeNull();
     expect(frameOf(container).dataset['state']).toBe('ready');
+    await findByRole('form', { name: AGENT_EDITOR_COPY.formLabel });
     expect(
       calls
         .callsTo('bureau.agents.definitions.get')
         .every((call) => call.params['id'] === 'researcher'),
     ).toBe(true);
+    expect(calls.callsTo('bureau.agents.definitions.get')).toHaveLength(2);
+  });
+
+  test('/agents/:agent/edit keeps the frame-probed display name while its own definition read loads', async () => {
+    const base = readyAgent();
+    if (base.definition === null) throw new Error('expected fixture definition');
+    const toolRunner = {
+      ...base,
+      id: 'tool-runner',
+      name: 'Tool runner',
+      definition: { ...base.definition, name: 'Tool runner' },
+    };
+    let releasePageRead: () => void = () => undefined;
+    let pageReadStarted: () => void = () => undefined;
+    const pageReadHeld = new Promise<void>((resolve) => (releasePageRead = resolve));
+    const secondRead = new Promise<void>((resolve) => (pageReadStarted = resolve));
+    let reads = 0;
+    bureau(async () => {
+      reads += 1;
+      if (reads === 2) {
+        pageReadStarted();
+        await pageReadHeld;
+      }
+      return toolRunner;
+    });
+    landAt('/agents/tool-runner/edit');
+    const { container, findByRole, findByTestId, getByRole } = mountOutlet();
+
+    try {
+      await secondRead;
+      expect(getByRole('heading', { level: 1 }).textContent?.trim()).toBe('Edit Tool runner');
+      expect(await findByTestId('agent-loading')).not.toBeNull();
+      expect(frameOf(container).dataset['state']).toBe('ready');
+    } finally {
+      releasePageRead();
+    }
+
+    expect(reads).toBe(2);
+    expect(await findByRole('form', { name: AGENT_EDITOR_COPY.formLabel })).not.toBeNull();
   });
 });
 
@@ -130,6 +171,7 @@ describe('an agent that cannot be edited', () => {
     const { container } = mountOutlet();
 
     await waitFor(() => expect(frameOf(container).dataset['state']).toBe('not-found'));
+    expect(reads).toBe(3);
     // Not the load-failed alert: the page never said the server did not answer.
     expect(container.textContent).not.toContain(AGENT_EDITOR_COPY.loadFailed.title);
     expect(container.querySelector('form')).toBeNull();
@@ -190,8 +232,10 @@ describe('a file deleted on disk while the editor is open', () => {
   test('turns a save into the not-found state, and writes nothing', async () => {
     const calls = bureau(() => readyAgent());
     landAt('/agents/researcher/edit');
-    const { container, findByRole, getByRole } = mountOutlet();
+    const { container, findByRole } = mountOutlet();
     await findByRole('heading', { level: 1, name: 'Edit Researcher' });
+    const form = await findByRole('form', { name: AGENT_EDITOR_COPY.formLabel });
+    const save = within(form).getByRole('button', { name: AGENT_EDITOR_COPY.saveAction });
 
     // The file is gone: the write says so, and so does every read after it.
     calls.on('bureau.agents.definitions.update', () => {
@@ -200,7 +244,7 @@ describe('a file deleted on disk while the editor is open', () => {
     calls.on('bureau.agents.definitions.get', () => {
       throw faults.notFound('researcher');
     });
-    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
+    await fireEvent.click(save);
 
     expect(await findByRole('heading', { level: 1, name: NOT_FOUND?.title ?? '' })).not.toBeNull();
     await waitFor(() => expect(frameOf(container).dataset['state']).toBe('not-found'));
@@ -211,8 +255,12 @@ describe('a file deleted on disk while the editor is open', () => {
   test('turns a delete into the not-found state as well', async () => {
     const calls = bureau(() => readyAgent());
     landAt('/agents/researcher/edit');
-    const { container, findByRole, getByRole } = mountOutlet();
+    const { container, findByRole } = mountOutlet();
     await findByRole('heading', { level: 1, name: 'Edit Researcher' });
+    const form = await findByRole('form', { name: AGENT_EDITOR_COPY.formLabel });
+    const deleteAction = within(form).getByRole('button', {
+      name: AGENT_EDITOR_COPY.deleteAction,
+    });
 
     calls.on('bureau.agents.definitions.delete', () => {
       throw faults.notFound('researcher');
@@ -220,7 +268,7 @@ describe('a file deleted on disk while the editor is open', () => {
     calls.on('bureau.agents.definitions.get', () => {
       throw faults.notFound('researcher');
     });
-    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.deleteAction }));
+    await fireEvent.click(deleteAction);
     const dialog = await findByRole('dialog', {
       name: AGENT_PAGE_COPY.settings.deleteDialog.title('Researcher'),
     });

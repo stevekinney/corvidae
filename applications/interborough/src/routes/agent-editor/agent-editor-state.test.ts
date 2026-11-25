@@ -36,13 +36,15 @@ describe('slugify', () => {
 });
 
 describe('a new agent', () => {
-  test('starts empty with the catalog’s first model chosen, and cannot save until it is named', () => {
+  test('starts with no model selected, and cannot save until it is named and modeled', () => {
     const form = AgentEditorState.create(catalogFixture());
     expect(form.mode).toBe('create');
-    expect(form.model).toBe('anthropic/claude-sonnet-5');
+    expect(form.model).toBe('');
     expect(form.hash).toBeNull();
     expect(form.canSave).toBe(false);
     form.name = 'Research Assistant';
+    expect(form.canSave).toBe(false);
+    form.model = 'anthropic/claude-sonnet-5';
     expect(form.canSave).toBe(true);
   });
 
@@ -67,6 +69,7 @@ describe('a new agent', () => {
     form.identifier = '-leading';
     expect(form.canSave).toBe(false);
     form.identifier = 'valid-1';
+    form.model = 'anthropic/claude-sonnet-5';
     expect(form.identifierError).toBe('');
     expect(form.canSave).toBe(true);
   });
@@ -78,6 +81,7 @@ describe('a new agent', () => {
     expect(form.identifierError).toBe(AGENT_EDITOR_COPY.identifierReserved);
     expect(form.canSave).toBe(false);
     form.name = 'New Agent';
+    form.model = 'anthropic/claude-sonnet-5';
     expect(form.identifierError).toBe('');
     expect(form.canSave).toBe(true);
     form.identifier = 'new';
@@ -159,7 +163,7 @@ describe('a new agent’s submit', () => {
     form.resetIdentifier();
     expect(form.identifierFollowsName).toBe(true);
     expect(form.identifier).toBe('order-helper');
-    expect(form.firstProblem).toBeUndefined();
+    expect(form.firstProblem).toBe(FIELD_IDS.model);
   });
 
   test('focuses the Model field for a model the Bureau will refuse, and still lets the save go (row 43s)', () => {
@@ -256,6 +260,22 @@ describe('the reference documents of a saved agent (row 41t)', () => {
     expect(form.toDefinition().references).toBeNull();
   });
 
+  test('stages an added document until Save, where it joins the references list', async () => {
+    const form = withDocuments();
+    expect(await form.addReference('style.md', 'Use short sentences.\n')).toBe(true);
+    expect(await form.addReference('style.md', 'Use short sentences.\n')).toBe(false);
+    const [staged] = form.stagedReferenceDocuments;
+    if (staged === undefined) throw new Error('Expected the document to be staged.');
+    expect(staged.path).toMatch(/^references\/researcher\/[a-f0-9]{64}\/style\.md$/);
+    expect(form.stagedReferenceDocuments).toEqual([
+      { path: staged.path, text: 'Use short sentences.\n' },
+    ]);
+    expect(form.toDefinition().references).toEqual([...documents, staged.path]);
+    expect(form.changedParts).toEqual([AGENT_EDITOR_COPY.edit.references.heading]);
+    form.removeReference(staged.path);
+    expect(form.stagedReferenceDocuments).toEqual([]);
+  });
+
   test('ignore a path the file does not list and a path removed twice', () => {
     const form = withDocuments();
     form.removeReference('references/not-there.md');
@@ -333,7 +353,7 @@ describe('a new agent built before its catalog loaded (row 42v)', () => {
     expect(next.name).toBe('Order helper');
     expect(next.description).toBe('Answers order questions');
     expect(next.instructions).toBe('Be brief.');
-    expect(next.model).toBe('anthropic/claude-sonnet-5');
+    expect(next.model).toBe('');
     // What changed is still measured from the empty form.
     expect(next.changedParts).toContain(AGENT_EDITOR_COPY.nameLabel);
   });
@@ -400,6 +420,7 @@ describe('a new agent’s definition', () => {
     form.name = '  Researcher ';
     form.description = '';
     form.instructions = 'Cite everything.';
+    form.model = 'anthropic/claude-sonnet-5';
     form.setTool('lookup-order', true);
     expect(form.toDefinition()).toEqual({
       name: 'Researcher',
@@ -462,11 +483,9 @@ describe('the model the form chooses', () => {
     return detail;
   }
 
-  test('is the first model that can be chosen for a new agent, not one the policy forbids', () => {
-    expect(AgentEditorState.create(catalog).model).toBe('openai/gpt-4.1');
-    expect(AgentEditorState.create(catalog, { restrictions }).model).toBe(
-      'anthropic/claude-sonnet-5',
-    );
+  test('starts unselected even when models are available or policy narrows them', () => {
+    expect(AgentEditorState.create(catalog).model).toBe('');
+    expect(AgentEditorState.create(catalog, { restrictions }).model).toBe('');
   });
 
   test('is none, and cannot be saved, when every model is forbidden', () => {

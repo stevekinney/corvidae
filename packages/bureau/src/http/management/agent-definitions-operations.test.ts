@@ -4,6 +4,7 @@
  * several principals, over the exported list so a later operation is covered without editing
  * it), each operation's results and typed faults, the audit trail, and the A2A opt-in.
  */
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 import { EventType } from '@ag-ui/core';
@@ -322,6 +323,59 @@ describe('results', () => {
     });
     // The agent is in the catalog, and runs, before the call returned.
     expect(served.bureau.agents.find('writer')).toBeDefined();
+  });
+
+  it('publishes staged UTF-8 reference documents with the definition that names them', async () => {
+    const served = await serve();
+    const text = 'Use short sentences.\n';
+    const path = `references/writer/${createHash('sha256').update(text).digest('hex')}/style.md`;
+    const definition = { ...DEFINITION, references: [path] };
+    const created = await callAs(served.owner, 'bureau.agents.definitions.create', {
+      id: 'writer',
+      definition,
+      referenceDocuments: [{ path, text }],
+    });
+    expect(created.error).toBeUndefined();
+    expect(await readFile(`${served.directory}/${path}`, 'utf8')).toBe(text);
+    const detail = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'writer' });
+    expect(detail.result).toMatchObject({
+      definition: { references: [path] },
+      referenceSizes: [{ path, size: 21 }],
+    });
+
+    const retried = await callAs(served.owner, 'bureau.agents.definitions.update', {
+      id: 'writer',
+      expectedHash: created.result?.['hash'],
+      definition,
+      referenceDocuments: [{ path, text }],
+    });
+    expect(retried.error).toBeUndefined();
+  });
+
+  it('refuses an unknown key in each staged reference document before create or update writes', async () => {
+    const served = await serve();
+    const document = {
+      path: 'references/writer/style.md',
+      text: 'Use short sentences.\n',
+      extra: true,
+    };
+    const refusedCreate = await callAs(served.owner, 'bureau.agents.definitions.create', {
+      id: 'writer',
+      definition: DEFINITION,
+      referenceDocuments: [document],
+    });
+    expect(refusedCreate.error?.data?.httpStatus).toBe(400);
+    expect(await Bun.file(ownerPath(served, 'writer')).exists()).toBe(false);
+
+    const hash = await seed(served);
+    const refusedUpdate = await callAs(served.owner, 'bureau.agents.definitions.update', {
+      id: 'researcher',
+      expectedHash: hash,
+      definition: DEFINITION,
+      referenceDocuments: [document],
+    });
+    expect(refusedUpdate.error?.data?.httpStatus).toBe(400);
+    expect(await readFile(ownerPath(served), 'utf8')).toContain('Researcher');
   });
 
   it('lists code-defined agents first, then files by identifier, with their state and hash, and pages', async () => {

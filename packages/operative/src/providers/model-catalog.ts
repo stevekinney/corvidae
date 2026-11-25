@@ -67,6 +67,8 @@ export interface BackendDescriptor {
   readonly endpoint: string;
   readonly model: string; // provider-native, post-alias
   readonly aliases: readonly ModelAlias[];
+  /** A provider- or operator-declared qualitative label for display, if one is available. */
+  readonly modelClass?: string | undefined;
   readonly lifecycle: BackendLifecycleState;
   /**
    * AB-70's `ModalityMatrix`: `Record<Modality, { input: boolean; output:

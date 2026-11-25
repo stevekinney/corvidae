@@ -40,9 +40,9 @@
     FormActions,
     FormSection,
     Input,
-    Textarea,
     Toggle,
   } from '@lostgradient/cinder';
+  import { MarkdownEditor } from '@lostgradient/editor';
   import { Check, X } from '@lucide/svelte';
 
   import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
@@ -99,6 +99,7 @@
   const copy = AGENT_EDITOR_COPY;
   const newCopy = AGENT_EDITOR_COPY.newAgent;
   let pickerOpen = $state(false);
+  let documentError = $state<string | null>(null);
 
   const creating = $derived(editor.mode === 'create');
   const errors = $derived(editor.shownErrors);
@@ -107,6 +108,12 @@
   /** The size of the reference document at `path` as its row says it, or `undefined` when the Bureau did not say. */
   function sizeOf(path: string): string | undefined {
     return referenceSizeText(referenceSizes?.find((entry) => entry.path === path)?.size);
+  }
+
+  /** Storage paths for staged uploads include a verified digest; the editor shows their filename. */
+  function documentName(path: string): string {
+    const generated = /^references\/[^/]+\/[a-f0-9]{64}\/([^/]+)$/.exec(path);
+    return generated?.[1] ?? path;
   }
 
   /** The spend limit as the guardrails line words it, or `null` when the form sets none. */
@@ -119,6 +126,50 @@
   function submit(event: SubmitEvent): void {
     event.preventDefault();
     if (!saving) onSave();
+  }
+
+  async function stageFiles(files: readonly File[]): Promise<void> {
+    documentError = null;
+    for (const file of files) {
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        documentError = copy.edit.references.invalidDocument;
+        continue;
+      }
+      if (file.size > 64 * 1024) {
+        documentError = copy.edit.references.documentTooLarge;
+        continue;
+      }
+      let bytes: Uint8Array;
+      try {
+        bytes = new Uint8Array(await file.arrayBuffer());
+      } catch {
+        documentError = copy.edit.references.invalidDocument;
+        continue;
+      }
+      let text: string;
+      try {
+        text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      } catch {
+        documentError = copy.edit.references.invalidDocument;
+        continue;
+      }
+      if (bytes.byteLength > 64 * 1024) {
+        documentError = copy.edit.references.documentTooLarge;
+        continue;
+      }
+      await editor.addReference(file.name, text);
+    }
+  }
+
+  async function stageDocuments(event: Event): Promise<void> {
+    const input = event.currentTarget as HTMLInputElement;
+    await stageFiles([...(input.files ?? [])]);
+    input.value = '';
+  }
+
+  async function dropDocuments(event: DragEvent): Promise<void> {
+    event.preventDefault();
+    await stageFiles([...(event.dataTransfer?.files ?? [])]);
   }
 </script>
 
@@ -221,52 +272,62 @@
     meta={`${newCopy.instructionsFormat}, ${newCopy.wordCount(editor.instructionWords)}`}
     columns={1}
   >
-    <Textarea
+    <MarkdownEditor
       id="agent-instructions"
-      aria-label={copy.instructionsLabel}
-      description={copy.instructionsDescription}
-      variant="code"
-      rows={8}
+      label={copy.instructionsLabel}
+      mode="source"
+      modeToggleVisible={false}
+      toolbarEnabled={false}
       readonly={saving}
       bind:value={editor.instructions}
     />
   </FormSection>
 
-  {#if !creating}
-    <!-- Read with every chat. A document is taken off the list with the next save (row 41t). -->
-    <FormSection
-      heading={copy.edit.references.heading}
-      meta={copy.edit.references.note}
-      columns={1}
+  <!-- Read with every chat. A document is staged locally until this save (row 41t). -->
+  <FormSection heading={copy.edit.references.heading} meta={copy.edit.references.note} columns={1}>
+    <label
+      class="weft-agent-form__drop-zone"
+      ondragover={(event) => event.preventDefault()}
+      ondrop={dropDocuments}
     >
-      {#if editor.referencesKept.length === 0}
-        <p class="weft-agent-form__note" data-testid="agent-no-references">
-          {copy.edit.references.none}
-        </p>
-      {:else}
-        <ul class="weft-agent-form__references" data-testid="agent-references">
-          {#each keyedByOccurrence(editor.referencesKept, (path) => path) as { key, item: path } (key)}
-            {@const size = sizeOf(path)}
-            <li class="weft-agent-form__reference">
-              <code>{path}</code>
-              {#if size !== undefined}<span class="weft-agent-form__note">{size}</span>{/if}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                iconOnly
-                aria-label={copy.edit.references.removeLabel(path)}
-                disabled={saving}
-                onclick={() => editor.removeReference(path)}
-              >
-                <X size={14} aria-hidden="true" />
-              </Button>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </FormSection>
-  {/if}
+      <input
+        type="file"
+        accept="text/*,.md,.txt"
+        multiple
+        disabled={saving}
+        onchange={stageDocuments}
+      />
+      <strong>{copy.edit.references.add}</strong>
+      <span>{copy.edit.references.drop}</span>
+    </label>
+    {#if documentError !== null}<p role="alert">{documentError}</p>{/if}
+    {#if editor.referencesKept.length === 0}
+      <p class="weft-agent-form__note" data-testid="agent-no-references">
+        {copy.edit.references.none}
+      </p>
+    {:else}
+      <ul class="weft-agent-form__references" data-testid="agent-references">
+        {#each keyedByOccurrence(editor.referencesKept, (path) => path) as { key, item: path } (key)}
+          {@const size = sizeOf(path)}
+          <li class="weft-agent-form__reference">
+            <code>{documentName(path)}</code>
+            {#if size !== undefined}<span class="weft-agent-form__note">{size}</span>{/if}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              iconOnly
+              aria-label={copy.edit.references.removeLabel(path)}
+              disabled={saving}
+              onclick={() => editor.removeReference(path)}
+            >
+              <X size={14} aria-hidden="true" />
+            </Button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </FormSection>
 
   {#if creating && !editor.catalogMissing && editor.toolChoices.length === 0}
     <!-- No tool to choose: the empty state alone, in no fieldset and under no "Tools" heading
@@ -377,6 +438,24 @@
     margin: 0;
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-muted);
+  }
+
+  .weft-agent-form__drop-zone {
+    display: grid;
+    place-items: center;
+    gap: var(--cinder-space-1);
+    padding: var(--cinder-space-4);
+    border: 1px dashed var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
+    color: var(--cinder-text-muted);
+    cursor: pointer;
+  }
+
+  .weft-agent-form__drop-zone input {
+    inline-size: 1px;
+    block-size: 1px;
+    opacity: 0;
+    position: absolute;
   }
 
   /* The identifier the name sets, once, small and monospaced, with Change beside it (row 41e). */

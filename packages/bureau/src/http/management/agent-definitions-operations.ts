@@ -420,6 +420,19 @@ function definitionOf(input: z.infer<typeof definitionInputSchema>): AgentFileDe
 
 const writeResultSchema = z.object({ id: z.string(), hash: z.string() });
 
+const referenceDocumentInputSchema = z
+  .object({
+    path: z.string().min(1),
+    text: z.string(),
+  })
+  .strict()
+  .describe('One UTF-8 reference document staged beside the agent file.');
+
+const referenceDocumentsInput = z
+  .array(referenceDocumentInputSchema)
+  .optional()
+  .describe('UTF-8 reference documents to publish only if this definition write succeeds.');
+
 /** COR-2231 — a duplicate also names what the copy loses; empty for a copy of a file agent. */
 const duplicateResultSchema = writeResultSchema.extend({
   dropped: z.array(z.enum(DROPPED_CODE_AGENT_BEHAVIORS)),
@@ -728,7 +741,11 @@ async function audit(
   });
 }
 
-const createInput = z.object({ id: agentIdentifier, definition: definitionInputSchema });
+const createInput = z.object({
+  id: agentIdentifier,
+  definition: definitionInputSchema,
+  referenceDocuments: referenceDocumentsInput,
+});
 
 export const agentDefinitionsCreateOperation = defineOperation<
   typeof createInput,
@@ -761,6 +778,9 @@ export const agentDefinitionsCreateOperation = defineOperation<
     try {
       const result = await definitions.agents.create(input.id, definitionOf(input.definition), {
         savedBy: ownerOfPrincipal(principal),
+        ...(input.referenceDocuments === undefined
+          ? {}
+          : { referenceDocuments: input.referenceDocuments }),
       });
       await audit(host, principal, 'agent.created', result);
       return result;
@@ -774,6 +794,7 @@ const updateInput = z.object({
   id: agentIdentifier,
   expectedHash: hash,
   definition: definitionInputSchema,
+  referenceDocuments: referenceDocumentsInput,
 });
 
 export const agentDefinitionsUpdateOperation = defineOperation<
@@ -809,6 +830,9 @@ export const agentDefinitionsUpdateOperation = defineOperation<
       const result = await definitions.agents.update(input.id, definitionOf(input.definition), {
         expectedHash: input.expectedHash,
         savedBy: ownerOfPrincipal(principal),
+        ...(input.referenceDocuments === undefined
+          ? {}
+          : { referenceDocuments: input.referenceDocuments }),
       });
       if (result.hash !== input.expectedHash) {
         await audit(host, principal, 'agent.updated', result, input.expectedHash);
@@ -1230,6 +1254,7 @@ const modelSchema = z.object({
   endpoint: z.string(),
   model: z.string(),
   aliases: z.array(z.object({ alias: z.string(), resolvesTo: z.string() })),
+  modelClass: z.string().optional(),
   lifecycle: z.enum(['preview', 'stable', 'deprecated', 'retired']),
   modalities: z.record(z.string(), modalitySupportSchema),
   mimeFamilies: z.array(z.string()),

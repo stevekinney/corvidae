@@ -414,6 +414,8 @@ const catalogModelSchema = z.object({
   provider: z.string(),
   model: z.string(),
   aliases: z.array(z.object({ alias: z.string(), resolvesTo: z.string() })),
+  /** A display class the provider or operator explicitly declared, when present. */
+  modelClass: z.string().optional(),
   /** Where the row is in its life; the Bureau refuses an agent file whose model is `retired`. */
   lifecycle: z.enum(['preview', 'stable', 'deprecated', 'retired']),
   /** `unavailable` is a row turned off in Settings › Models, which agents and plans do not use. */
@@ -701,14 +703,23 @@ function wireDefinition(
 }
 
 /** Writes a new agent file. A taken identifier is a `Conflict` fault. */
+type AgentWriteOptions = Options & {
+  readonly referenceDocuments?: readonly { readonly path: string; readonly text: string }[];
+};
+
 export async function createAgent(
   id: string,
   definition: AgentDefinitionInput,
-  options?: Options,
+  options?: AgentWriteOptions,
 ): Promise<AgentWriteResult> {
+  const { referenceDocuments = [], ...requestOptions } = options ?? {};
   return bureauClient['bureau.agents.definitions.create'](
-    { id, definition: wireDefinition(definition) },
-    options,
+    {
+      id,
+      definition: wireDefinition(definition),
+      ...(referenceDocuments.length === 0 ? {} : { referenceDocuments }),
+    },
+    requestOptions,
   );
 }
 
@@ -717,11 +728,17 @@ export async function updateAgent(
   id: string,
   expectedHash: string,
   definition: AgentDefinitionInput,
-  options?: Options,
+  options?: AgentWriteOptions,
 ): Promise<AgentWriteResult> {
+  const { referenceDocuments = [], ...requestOptions } = options ?? {};
   return bureauClient['bureau.agents.definitions.update'](
-    { id, expectedHash, definition: wireDefinition(definition) },
-    options,
+    {
+      id,
+      expectedHash,
+      definition: wireDefinition(definition),
+      ...(referenceDocuments.length === 0 ? {} : { referenceDocuments }),
+    },
+    requestOptions,
   );
 }
 
