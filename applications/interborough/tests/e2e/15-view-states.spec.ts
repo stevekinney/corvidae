@@ -64,6 +64,18 @@ import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 // 1920 is not listed: every 1280 capture is repeated there (`design-review-capture.ts`).
 const WIDTHS = [375, 1280] as const;
 
+const BOUNDED_LISTS: readonly ViewName[] = ['agents', 'goals', 'runs', 'schedules', 'workflows'];
+
+async function expectListMeasure(page: Page): Promise<void> {
+  const measure = await page.locator('main.weft-shell-outlet').evaluate((outlet) => {
+    const style = getComputedStyle(outlet);
+    return (
+      outlet.clientWidth - parseFloat(style.paddingInlineStart) - parseFloat(style.paddingInlineEnd)
+    );
+  });
+  expect(measure).toBeLessThanOrEqual(960);
+}
+
 /** The hook the hooks list's ready state is shown with; the spec deletes every hook of this name. */
 const HOOK_NAME = 'e2e-view-states';
 
@@ -476,11 +488,18 @@ for (const view of VIEW_NAMES) {
                 ).toBeVisible()
             : undefined;
         await skeletonDrawn?.(page);
+        const boundedList = BOUNDED_LISTS.includes(view);
+        if (boundedList) await expectListMeasure(page);
         await captureForDesignReview(page, {
           route: PATHS[view],
           state: outcome,
           source: '15-view-states.spec.ts',
-          ready: skeletonDrawn,
+          ready: boundedList
+            ? async (shown) => {
+                await skeletonDrawn?.(shown);
+                await expectListMeasure(shown);
+              }
+            : skeletonDrawn,
         });
         await checkA11y(`${view} — ${outcome} at ${width}px`);
         // No view scrolls the page sideways at the phone width, in any state: a table scrolls

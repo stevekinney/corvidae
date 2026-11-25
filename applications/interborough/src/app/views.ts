@@ -40,13 +40,15 @@ export type ViewStateName = (typeof VIEW_STATES)[number];
 
 /**
  * What kind of page a route is (design row 17f). A page's width follows its kind, not its area:
- * `list-detail` is a list with the open item beside it, `table` is a page of rows read across,
+ * `list` holds stacked records, `list-detail` holds the open item beside them,
+ * `table` is a page of rows read across,
  * `editor` is an editor with a side panel, `overview` is cards read across the page in columns
  * (Home), `form` is a form filled in from top to bottom, and `reading` is prose and cards read
  * down the page. `panes` is a page that is nothing but a list and its detail, each pane carrying
  * its own inset (the chats): the outlet pads it not at all.
  */
 export const PAGE_KINDS = [
+  'list',
   'list-detail',
   'panes',
   'table',
@@ -59,12 +61,12 @@ export const PAGE_KINDS = [
 export type PageKind = (typeof PAGE_KINDS)[number];
 
 /**
- * How wide a page is: `reading` centres it in Cinder's 760px reading column, and `full` gives it
- * the whole width of the outlet, and `panes` the whole width and height with no outlet padding. The
+ * How wide a page is: `reading` centres it in the reading column, `list` bounds the content at
+ * the leading gutter, `full` gives it the outlet width, and `panes` removes outlet padding. The
  * shell writes it to the outlet as `data-width`, from the route, so it is on the outlet from the
  * first frame, before the route's code is loaded and before any pane measures its container.
  */
-export const VIEW_WIDTHS = ['reading', 'full', 'panes'] as const;
+export const VIEW_WIDTHS = ['reading', 'list', 'full', 'panes'] as const;
 
 export type ViewWidth = (typeof VIEW_WIDTHS)[number];
 
@@ -73,7 +75,7 @@ export type ViewWidth = (typeof VIEW_WIDTHS)[number];
  * need the room, and a form or prose keeps the reading width.
  */
 export function pageWidth(kind: PageKind): ViewWidth {
-  if (kind === 'panes') return 'panes';
+  if (kind === 'panes' || kind === 'list') return kind;
   return kind === 'form' || kind === 'reading' ? 'reading' : 'full';
 }
 
