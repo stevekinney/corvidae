@@ -204,6 +204,48 @@ const ids = (body: Awaited<ReturnType<typeof call>>) =>
   body.result?.reviews.map((review) => `${review.source}:${review.id}`);
 
 describe('bureau.reviews.list as one inbox (COR-1828)', () => {
+  it('verifies retained protected reviews against matching signed evidence without exposing it', async () => {
+    const initial = resolvedRecord('approval:protected', 1000, 'api-key:tester');
+    if (initial.review.kind !== 'tool-approval') throw new Error('Expected approval');
+    const signed = structuredClone(initial.review);
+    const { approvalToken: _token, ...withoutToken } = initial.review.approval;
+    const record: ResolvedReview = {
+      ...initial,
+      review: { ...initial.review, approval: withoutToken as typeof initial.review.approval },
+    };
+    let current: PendingReview | undefined = signed;
+    const base = hostOf({ resolved: [record] });
+    const host: BureauReviewsOperationHost = {
+      ...base,
+      reviews: { ...base.reviews, get: async () => current },
+      reviewedProvenance: async (review) =>
+        review.approval.approvalToken === 'signed-token' ? 'verified' : 'unresolved',
+      reviewPolicy: {
+        matches: (review) => review.kind === 'tool-approval' && !!review.approval.approvalToken,
+        mayRead: () => true,
+        mayDecide: () => false,
+        publicArguments: () => ({ public: true }),
+        effect: async () => undefined,
+      },
+    };
+    const list = () => call(host, OWNER_KEY, 'bureau.reviews.list', { status: 'resolved' });
+    expect((await list()).result).toMatchObject({
+      total: 1,
+      reviews: [{ id: record.review.id, approval: { arguments: { public: true } } }],
+    });
+    expect(JSON.stringify(await list())).not.toContain('signed-token');
+    expect(
+      (await call(host, OTHER_KEY, 'bureau.reviews.list', { status: 'resolved' })).result?.total,
+    ).toBe(0);
+    current = { ...signed, round: 1 };
+    expect((await list()).result?.total).toBe(0);
+    current = { ...signed, approval: { ...signed.approval, arguments: { changed: true } } };
+    expect((await list()).result?.total).toBe(0);
+    current = { ...signed, approval: { ...signed.approval, approvalToken: 'invalid' } };
+    expect((await list()).result?.total).toBe(0);
+    current = undefined;
+    expect((await list()).result?.total).toBe(0);
+  });
   it('lists pending Bureau and engine reviews oldest request first, across pages', async () => {
     const host = hostOf({
       pending: [pendingApproval('approval:b', 200), pendingApproval('approval:d', 400)],

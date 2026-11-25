@@ -14,22 +14,13 @@ import { assertOperationEngineMethods } from './operation-helpers.ts';
 import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
 import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
 import type { WorkflowState } from '../../core/types.ts';
+import { workflowStateSchema } from './workflow-read-schema.ts';
 
 const getWorkflowInput = z.object({
   workflowId: z.string().min(1).describe('Id of the workflow whose state is read.'),
 });
 
-/**
- * Output schema is intentionally permissive (`z.unknown()`): the state
- * comes from the engine and is already typed at its source via
- * `WorkflowState`. Re-validating the shape here would require mirroring
- * `WorkflowState`'s schema in a second source of truth (drift risk) for
- * no runtime benefit — `invoke` trusts the engine's return value.
- *
- * The cast on `outputSchema` below reattaches the concrete
- * `WorkflowState` type for `defineOperation`'s generic inference.
- */
-const getWorkflowOutput = z.unknown();
+const getWorkflowOutput = workflowStateSchema;
 
 export type GetWorkflowInput = z.infer<typeof getWorkflowInput>;
 export type GetWorkflowOutput = WorkflowState;
@@ -54,7 +45,7 @@ export const getWorkflowOperation = defineOperation({
   // level keys. Top-level strip applies to the path-param + query-string
   // derived input.
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, host: engine }): Promise<WorkflowState> => {
+  invoke: async ({ input, host: engine }) => {
     // The catalog stores `engine: unknown` so the pipeline is transport-
     // neutral; per `operation-catalog.ts`'s JSDoc the concrete adapter
     // (here: REST via serve()) is responsible for passing an `Engine`.
@@ -72,7 +63,41 @@ export const getWorkflowOperation = defineOperation({
       };
       throw notFoundFault;
     }
-    return state;
+    const {
+      failedStep,
+      forkedFrom,
+      restartedFrom,
+      workerBinding,
+      workerVersioningPolicy,
+      ...rest
+    } = state;
+    return {
+      ...rest,
+      versionTuple: { ...state.versionTuple },
+      ...(failedStep === undefined ? {} : { failedStep: { ...failedStep } }),
+      ...(forkedFrom === undefined ? {} : { forkedFrom: { ...forkedFrom } }),
+      ...(restartedFrom === undefined ? {} : { restartedFrom: { ...restartedFrom } }),
+      ...(workerBinding === undefined
+        ? {}
+        : {
+            workerBinding: {
+              ...workerBinding,
+              current: { ...workerBinding.current },
+              history: workerBinding.history.map((binding) => ({ ...binding })),
+            },
+          }),
+      ...(workerVersioningPolicy === undefined
+        ? {}
+        : {
+            workerVersioningPolicy:
+              workerVersioningPolicy.mode === 'auto-upgrade'
+                ? {
+                    ...workerVersioningPolicy,
+                    compatibility: { ...workerVersioningPolicy.compatibility },
+                  }
+                : { ...workerVersioningPolicy },
+          }),
+    };
   },
 });
 
