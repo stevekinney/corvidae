@@ -152,7 +152,8 @@ describe('engine.prepare() / handle.launch() / handle.abandon() (COR-75)', () =>
       status: 'acquired',
     });
     await prepared.abandon().catch(() => {});
-    expect((await second.get(prepared.id))?.status).toBe('pending');
+    const storedWorkflow = await second.get(prepared.id);
+    expect(storedWorkflow?.status).toBe('pending');
     expect(
       await getInternals(second).workflowClaimRegistry!.holderStatus(prepared.id),
     ).toMatchObject({ heldByThisProcess: true });
@@ -192,7 +193,8 @@ describe('engine.prepare() / handle.launch() / handle.abandon() (COR-75)', () =>
       storage.release.resolve();
     }
     await abandoning.catch(() => {});
-    expect((await second.get(prepared.id))?.status).toBe('pending');
+    const storedWorkflow = await second.get(prepared.id);
+    expect(storedWorkflow?.status).toBe('pending');
     expect(
       await getInternals(second).workflowClaimRegistry!.holderStatus(prepared.id),
     ).toMatchObject({ heldByThisProcess: true });
@@ -232,7 +234,8 @@ describe('engine.prepare() / handle.launch() / handle.abandon() (COR-75)', () =>
     await using second = await Engine.create(options);
     const prepared = await first.prepare('prepared-cancel', null, { id: 'prepared-cancel' });
     await second.cancel(prepared.id);
-    expect((await second.get(prepared.id))?.status).toBe('cancelled');
+    const storedWorkflow = await second.get(prepared.id);
+    expect(storedWorkflow?.status).toBe('cancelled');
   });
   it('commits a durable pending record readable via engine.get() before launch(), then launches it', async () => {
     await using engine = new Engine({ storage: new MemoryStorage() });
