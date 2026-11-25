@@ -9,7 +9,7 @@
   "suiteExitCode": 0,
   "componentRenders": {
     "accordion": {
-      "renderedSourceSha": "2b5fa795162529583ee7d8facde155dd346a7f0a",
+      "renderedSourceSha": "2a0143ee0a04a6dc0d5a2b1777e3b4db5e2260f1",
       "suiteExitCode": 0
     },
     "approval-card": {
@@ -28,24 +28,44 @@
       "renderedSourceSha": "0f0b4d1f1bc0f0a08562995eb0b019b453758631",
       "suiteExitCode": 0
     },
+    "markdown-editor": {
+      "renderedSourceSha": "2a0143ee0a04a6dc0d5a2b1777e3b4db5e2260f1",
+      "suiteExitCode": 0
+    },
     "markdown-editor-template-placeholders": {
-      "renderedSourceSha": "2b5fa795162529583ee7d8facde155dd346a7f0a",
+      "renderedSourceSha": "2a0143ee0a04a6dc0d5a2b1777e3b4db5e2260f1",
+      "suiteExitCode": 0
+    },
+    "review-editor": {
+      "renderedSourceSha": "2a0143ee0a04a6dc0d5a2b1777e3b4db5e2260f1",
+      "suiteExitCode": 0
+    },
+    "review-editor-accessibility": {
+      "renderedSourceSha": "2a0143ee0a04a6dc0d5a2b1777e3b4db5e2260f1",
+      "suiteExitCode": 0
+    },
+    "review-editor-comments": {
+      "renderedSourceSha": "2a0143ee0a04a6dc0d5a2b1777e3b4db5e2260f1",
       "suiteExitCode": 0
     },
     "review-editor-diff-comments": {
-      "renderedSourceSha": "2b5fa795162529583ee7d8facde155dd346a7f0a",
+      "renderedSourceSha": "2a0143ee0a04a6dc0d5a2b1777e3b4db5e2260f1",
       "suiteExitCode": 0
     },
     "review-editor-malformed-front-matter": {
-      "renderedSourceSha": "46c7b32ff20062cf12638ccd31f661cf84431b36",
+      "renderedSourceSha": "2a0143ee0a04a6dc0d5a2b1777e3b4db5e2260f1",
+      "suiteExitCode": 0
+    },
+    "review-editor-readonly": {
+      "renderedSourceSha": "2a0143ee0a04a6dc0d5a2b1777e3b4db5e2260f1",
       "suiteExitCode": 0
     },
     "review-editor-scroll": {
-      "renderedSourceSha": "2b5fa795162529583ee7d8facde155dd346a7f0a",
+      "renderedSourceSha": "2a0143ee0a04a6dc0d5a2b1777e3b4db5e2260f1",
       "suiteExitCode": 0
     },
     "token-computation": {
-      "renderedSourceSha": "2b5fa795162529583ee7d8facde155dd346a7f0a",
+      "renderedSourceSha": "2a0143ee0a04a6dc0d5a2b1777e3b4db5e2260f1",
       "suiteExitCode": 0
     },
     "tool-call-rail": {
