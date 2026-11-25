@@ -26,7 +26,7 @@ const { createRawSnippet } = await import('svelte');
 const { tick } = await import('svelte');
 const { default: ApprovalCard } = await import('./approval-card.svelte');
 const { default: ActionRendererFixture } =
-  await import('./approval-card-action-renderer-fixture.test.svelte');
+  await import('./approval-card-action-renderer.fixture.svelte');
 const approvalCardSchema = readComponentSchema('approval-card');
 const { default: CodeHighlighterContextFixture } =
   await import('../../test/fixtures/code-highlighter-context-fixture.svelte');
