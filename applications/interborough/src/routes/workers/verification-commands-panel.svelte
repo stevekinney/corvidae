@@ -69,8 +69,8 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
+    gap: var(--cinder-space-2);
+    font-size: var(--cinder-text-sm);
   }
 
   /* A command wraps instead of scrolling: a long file name would otherwise be a swipe or two past the pane. */
@@ -87,7 +87,6 @@
   }
 
   .weft-verification-commands__label {
-    font-size: var(--cinder-text-sm);
     font-weight: 600;
   }
 </style>

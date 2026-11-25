@@ -145,6 +145,24 @@ describe('storage REST operations', () => {
     ).toBe(false);
   });
 
+  it('accepts the optional deadline capability and continues to reject unknown fields', () => {
+    const profile = new MemoryStorage().capabilities();
+    expect(storageCapabilitiesOperation.outputSchema.parse(profile)).toEqual(profile);
+    const { conditionalBatchDeadline: _deadline, ...withoutDeadline } = profile;
+    expect(storageCapabilitiesOperation.outputSchema.parse(withoutDeadline)).toEqual(
+      withoutDeadline,
+    );
+    expect(
+      storageCapabilitiesOperation.outputSchema.safeParse({
+        ...profile,
+        conditionalBatchDeadline: 'yes',
+      }).success,
+    ).toBe(false);
+    expect(
+      storageCapabilitiesOperation.outputSchema.safeParse({ ...profile, unexpected: true }).success,
+    ).toBe(false);
+  });
+
   it('advertises capability discovery on REST and every JSON-RPC transport', () => {
     const operation = createLiveOperationRegistry().get('weft.storage.capabilities');
 

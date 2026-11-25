@@ -6,6 +6,7 @@ import {
   openStepNumbers,
   stepWaterfall,
   waterfallOrigin,
+  waterfallSpan,
 } from './step-waterfall.ts';
 
 function entry(overrides: Partial<WorkflowTimelineEntry>): WorkflowTimelineEntry {
@@ -161,6 +162,27 @@ describe('stepWaterfall', () => {
       now: 2_000,
     });
     expect(bars.get(0)).toMatchObject({ open: true });
+  });
+});
+
+describe('waterfallSpan', () => {
+  test('is the width every bar is measured against: from the origin to the latest end', () => {
+    const entries = [
+      entry({ step: 0, timestamp: 1_000, duration: 250 }),
+      entry({ step: 1, timestamp: 1_250, duration: 750 }),
+    ];
+    expect(waterfallSpan(entries, { runStartedAt: 900, now: 5_000 })).toBe(1_100);
+    expect(waterfallSpan(entries, { now: 5_000 })).toBe(1_000);
+  });
+
+  test('runs a step still going to the present moment, and stops a finished run at its last step', () => {
+    const entries = [entry({ step: 0, timestamp: 1_000, status: 'running' })];
+    expect(waterfallSpan(entries, { now: 6_000, runStatus: 'running' })).toBe(5_000);
+    expect(waterfallSpan(entries, { now: 6_000, runStatus: 'failed' })).toBe(0);
+  });
+
+  test('is undefined with nothing to measure', () => {
+    expect(waterfallSpan([], { now: 1 })).toBeUndefined();
   });
 });
 

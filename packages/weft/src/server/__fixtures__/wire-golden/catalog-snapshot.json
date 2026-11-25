@@ -25,6 +25,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.activities.complete",
       "outputSchema": {
         "additionalProperties": false,
@@ -93,6 +94,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.activities.fail",
       "outputSchema": {
         "additionalProperties": false,
@@ -137,6 +139,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.alerts.list",
       "outputSchema": {
         "additionalProperties": false,
@@ -231,6 +234,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.catalog.diagnostics",
       "outputSchema": {
         "additionalProperties": false,
@@ -402,6 +406,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.catalog.sources.list",
       "outputSchema": {
         "additionalProperties": false,
@@ -488,6 +493,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.conformance.report",
       "outputSchema": {
         "additionalProperties": false,
@@ -581,6 +587,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.conformance.targets",
       "outputSchema": {
         "additionalProperties": false,
@@ -855,6 +862,7 @@
         "type": "object"
       },
       "kind": "stream",
+      "mcpExposable": false,
       "name": "weft.events.sse",
       "outputSchema": {},
       "producibleFaults": [
@@ -1100,6 +1108,7 @@
         "type": "object"
       },
       "kind": "subscription",
+      "mcpExposable": false,
       "name": "weft.events.subscribe",
       "outputSchema": {
         "additionalProperties": false,
@@ -1147,6 +1156,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.realms.diagnostics",
       "outputSchema": {
         "additionalProperties": false,
@@ -1250,6 +1260,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.recover.all",
       "outputSchema": {
         "additionalProperties": false,
@@ -1295,6 +1306,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.retention.get",
       "outputSchema": {},
       "producibleFaults": [],
@@ -1348,6 +1360,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.reviews.decision.submit",
       "outputSchema": {
         "additionalProperties": false,
@@ -1406,6 +1419,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.reviews.get",
       "outputSchema": {},
       "producibleFaults": [
@@ -1453,6 +1467,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.reviews.list",
       "outputSchema": {
         "additionalProperties": false,
@@ -1647,6 +1662,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.schedules.cancel",
       "outputSchema": {},
       "producibleFaults": [
@@ -1719,6 +1735,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.schedules.create",
       "outputSchema": {
         "additionalProperties": false,
@@ -1771,6 +1788,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.schedules.get",
       "outputSchema": {},
       "producibleFaults": [
@@ -1816,6 +1834,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.schedules.list",
       "outputSchema": {},
       "producibleFaults": [
@@ -1859,6 +1878,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.schedules.missed",
       "outputSchema": {
         "additionalProperties": false,
@@ -1952,6 +1972,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.schedules.pause",
       "outputSchema": {},
       "producibleFaults": [
@@ -1993,6 +2014,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.schedules.resume",
       "outputSchema": {},
       "producibleFaults": [
@@ -2034,6 +2056,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.schedules.runnow",
       "outputSchema": {
         "oneOf": [
@@ -2143,6 +2166,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.schedules.skipnext",
       "outputSchema": {},
       "producibleFaults": [
@@ -2198,6 +2222,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.schedules.unskip",
       "outputSchema": {},
       "producibleFaults": [
@@ -2273,6 +2298,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.schedules.update",
       "outputSchema": {
         "type": "null"
@@ -2366,6 +2392,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.storage.batch",
       "outputSchema": {
         "type": "null"
@@ -2390,7 +2417,7 @@
           "storage:read"
         ]
       },
-      "description": "Report what the connected storage backend guarantees: persistence level, read- after-write and scan consistency, and whether it supports atomic batches, conditional batches, and bounded range deletes. Read-only; available to callers holding storage:read or storage:admin.",
+      "description": "Report what the connected storage backend guarantees: persistence level, read- after-write and scan consistency, and whether it supports atomic batches, conditional batches and their deadline support, and bounded range deletes. Read-only; available to callers holding storage:read or storage:admin.",
       "destructive": false,
       "inputSchema": {
         "additionalProperties": false,
@@ -2398,6 +2425,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.storage.capabilities",
       "outputSchema": {
         "additionalProperties": false,
@@ -2409,6 +2437,9 @@
             "type": "boolean"
           },
           "conditionalBatch": {
+            "type": "boolean"
+          },
+          "conditionalBatchDeadline": {
             "type": "boolean"
           },
           "persistence": {
@@ -2558,6 +2589,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.storage.conditionalbatch",
       "outputSchema": {
         "additionalProperties": false,
@@ -2609,6 +2641,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.storage.delete",
       "outputSchema": {
         "type": "null"
@@ -2649,6 +2682,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.storage.get",
       "outputSchema": {
         "anyOf": [
@@ -2697,6 +2731,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.storage.preview",
       "outputSchema": {
         "anyOf": [
@@ -2804,6 +2839,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.storage.put",
       "outputSchema": {
         "type": "null"
@@ -2869,6 +2905,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.storage.scan",
       "outputSchema": {},
       "producibleFaults": [],
@@ -2898,6 +2935,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.system.lease",
       "outputSchema": {
         "additionalProperties": false,
@@ -2987,6 +3025,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.system.metrics",
       "outputSchema": {},
       "producibleFaults": [],
@@ -3013,6 +3052,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.system.principal",
       "outputSchema": {
         "additionalProperties": false,
@@ -3156,6 +3196,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.system.registry",
       "outputSchema": {
         "additionalProperties": false,
@@ -3207,6 +3248,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.task.queues.list",
       "outputSchema": {
         "additionalProperties": false,
@@ -3329,6 +3371,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.task.queues.tasks",
       "outputSchema": {
         "additionalProperties": false,
@@ -3467,6 +3510,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.tasks.deadletters.get",
       "outputSchema": {
         "additionalProperties": false,
@@ -3642,6 +3686,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.tasks.deadletters.retry",
       "outputSchema": {
         "additionalProperties": false,
@@ -3713,6 +3758,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.tasks.deliveries",
       "outputSchema": {
         "additionalProperties": false,
@@ -3978,6 +4024,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.tasks.diagnostics",
       "outputSchema": {
         "additionalProperties": false,
@@ -4285,6 +4332,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.tasks.diagnostics.deadletters.clear",
       "outputSchema": {
         "additionalProperties": false,
@@ -4351,6 +4399,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.tasks.get",
       "outputSchema": {
         "oneOf": [
@@ -6754,6 +6803,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.updates.result.get",
       "outputSchema": {},
       "producibleFaults": [],
@@ -6788,6 +6838,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.worker.deployments.diagnostics",
       "outputSchema": {
         "additionalProperties": false,
@@ -6851,6 +6902,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.worker.deployments.drain",
       "outputSchema": {
         "oneOf": [
@@ -6984,6 +7036,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.worker.deployments.preview",
       "outputSchema": {
         "additionalProperties": false,
@@ -7056,6 +7109,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.worker.deployments.promote",
       "outputSchema": {
         "additionalProperties": false,
@@ -7133,6 +7187,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.worker.deployments.remove",
       "outputSchema": {
         "additionalProperties": false,
@@ -7199,6 +7254,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.worker.deployments.resume",
       "outputSchema": {
         "oneOf": [
@@ -7322,6 +7378,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.worker.deployments.rollback",
       "outputSchema": {
         "additionalProperties": false,
@@ -7414,6 +7471,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.worker.deployments.setrouting",
       "outputSchema": {
         "additionalProperties": false,
@@ -7494,6 +7552,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.worker.startoverrides.preview",
       "outputSchema": {
         "additionalProperties": false,
@@ -7592,6 +7651,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workers.diagnostics",
       "outputSchema": {
         "additionalProperties": false,
@@ -7818,6 +7878,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workers.drain",
       "outputSchema": {
         "oneOf": [
@@ -7932,6 +7993,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workers.forget",
       "outputSchema": {
         "additionalProperties": false,
@@ -7980,6 +8042,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workers.list",
       "outputSchema": {
         "$defs": {
@@ -8255,6 +8318,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workers.rejections",
       "outputSchema": {
         "additionalProperties": false,
@@ -8344,6 +8408,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workers.resume",
       "outputSchema": {
         "oneOf": [
@@ -8456,6 +8521,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.active.get",
       "outputSchema": {},
       "producibleFaults": [
@@ -8506,6 +8572,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.activities.pending.list",
       "outputSchema": {
         "additionalProperties": false,
@@ -8919,6 +8986,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.aggregate",
       "outputSchema": {
         "additionalProperties": false,
@@ -9001,6 +9069,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.attributes.get",
       "outputSchema": {},
       "producibleFaults": [
@@ -9044,6 +9113,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.attributes.set",
       "outputSchema": {
         "additionalProperties": false,
@@ -9413,6 +9483,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.bulk.cancel",
       "outputSchema": {
         "anyOf": [
@@ -10528,6 +10599,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.bulk.delete",
       "outputSchema": {
         "anyOf": [
@@ -11626,6 +11698,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.bulk.retryfailed",
       "outputSchema": {
         "anyOf": [
@@ -12752,6 +12825,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.bulk.signal",
       "outputSchema": {
         "anyOf": [
@@ -13873,6 +13947,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.bulk.tags",
       "outputSchema": {
         "anyOf": [
@@ -14651,6 +14726,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.cancel",
       "outputSchema": {
         "anyOf": [
@@ -14780,6 +14856,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.checkpoints.get",
       "outputSchema": {},
       "producibleFaults": [
@@ -14820,6 +14897,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.checkpoints.list",
       "outputSchema": {},
       "producibleFaults": [],
@@ -14869,6 +14947,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.compare",
       "outputSchema": {
         "additionalProperties": false,
@@ -15019,6 +15098,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.definitions.get",
       "outputSchema": {
         "additionalProperties": false,
@@ -15212,6 +15292,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.definitions.list",
       "outputSchema": {
         "additionalProperties": false,
@@ -15440,6 +15521,7 @@
         "type": "object"
       },
       "kind": "subscription",
+      "mcpExposable": false,
       "name": "weft.workflows.events",
       "outputSchema": {
         "additionalProperties": false,
@@ -15519,6 +15601,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.events.list",
       "outputSchema": {},
       "producibleFaults": [
@@ -15611,6 +15694,7 @@
         "type": "object"
       },
       "kind": "stream",
+      "mcpExposable": false,
       "name": "weft.workflows.events.sse",
       "outputSchema": {},
       "parameterizedAccess": {
@@ -15676,6 +15760,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.finalizer.get",
       "outputSchema": {
         "anyOf": [
@@ -15831,6 +15916,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.fork",
       "outputSchema": {
         "anyOf": [
@@ -15988,6 +16074,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.get",
       "outputSchema": {},
       "producibleFaults": [
@@ -16302,6 +16389,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.list",
       "outputSchema": {},
       "producibleFaults": [
@@ -16348,6 +16436,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.logs.list",
       "outputSchema": {
         "additionalProperties": false,
@@ -16782,6 +16871,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.purge",
       "outputSchema": {
         "anyOf": [
@@ -17565,6 +17655,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.query",
       "outputSchema": {},
       "producibleFaults": [
@@ -17610,6 +17701,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.refresh",
       "outputSchema": {
         "additionalProperties": false,
@@ -17784,6 +17876,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.refresh.diagnostics",
       "outputSchema": {
         "additionalProperties": false,
@@ -17967,6 +18060,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.replay",
       "outputSchema": {},
       "producibleFaults": [
@@ -18008,6 +18102,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.result.get",
       "outputSchema": {},
       "producibleFaults": [
@@ -18050,6 +18145,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.resume",
       "outputSchema": {
         "additionalProperties": false,
@@ -18110,6 +18206,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.revisions.activate",
       "outputSchema": {},
       "producibleFaults": [
@@ -18154,6 +18251,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.revisions.get",
       "outputSchema": {},
       "producibleFaults": [
@@ -18193,6 +18291,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.revisions.install",
       "outputSchema": {},
       "producibleFaults": [
@@ -18232,6 +18331,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.revisions.list",
       "outputSchema": {},
       "producibleFaults": [
@@ -18274,6 +18374,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.revisions.preload",
       "outputSchema": {},
       "producibleFaults": [
@@ -18316,6 +18417,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.scheduleprovenance.get",
       "outputSchema": {
         "anyOf": [
@@ -18393,6 +18495,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.signal",
       "outputSchema": {
         "additionalProperties": false,
@@ -18471,6 +18574,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.start",
       "outputSchema": {
         "additionalProperties": false,
@@ -18565,6 +18669,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.startorsignal",
       "outputSchema": {
         "additionalProperties": false,
@@ -18635,6 +18740,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.streams.chunks",
       "outputSchema": {
         "additionalProperties": false,
@@ -18702,6 +18808,7 @@
         "type": "object"
       },
       "kind": "stream",
+      "mcpExposable": false,
       "name": "weft.workflows.streams.sse",
       "outputSchema": {
         "additionalProperties": false,
@@ -18754,6 +18861,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.suspend",
       "outputSchema": {},
       "producibleFaults": [
@@ -18797,6 +18905,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.tags.add",
       "outputSchema": {
         "additionalProperties": false,
@@ -18853,6 +18962,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.tags.remove",
       "outputSchema": {
         "additionalProperties": false,
@@ -18906,6 +19016,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.timeline.get",
       "outputSchema": {},
       "producibleFaults": [
@@ -18946,6 +19057,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.timeout",
       "outputSchema": {
         "type": "null"
@@ -19003,6 +19115,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.update",
       "outputSchema": {
         "additionalProperties": false,
@@ -19069,6 +19182,7 @@
         "type": "object"
       },
       "kind": "unary",
+      "mcpExposable": false,
       "name": "weft.workflows.updates.list",
       "outputSchema": {
         "additionalProperties": false,

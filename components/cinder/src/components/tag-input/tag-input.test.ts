@@ -75,6 +75,13 @@ function hiddenValues(container: HTMLElement, name: string): string[] {
 }
 
 describe('TagInput rendering', () => {
+  test('matches an empty medium Input height with even block inset', async () => {
+    const css = await Bun.file(new URL('./tag-input.css', import.meta.url)).text();
+    const control = /\.cinder-tag-input__control\s*\{([^}]*)\}/.exec(css);
+    expect(control?.[1]).toContain('min-block-size: var(--cinder-control-height-md)');
+    expect(control?.[1]).toContain('padding: var(--cinder-space-1) var(--cinder-space-2)');
+  });
+
   test('renders committed tags as a list with the input after it in DOM order', () => {
     const { container } = render(TagInput, {
       props: { value: ['Svelte', 'Bun'] },

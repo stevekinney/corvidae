@@ -1,9 +1,18 @@
 import { activity, Engine, workflow, type WorkflowTimelineEntry } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import { projectRunTimeline, RUN_TIMELINE_ENTRY_LIMIT } from './run-timeline.ts';
+import {
+  failedStepTries,
+  RUN_TIMELINE_ENTRY_LIMIT,
+  runStatusOfTask,
+  serveRunTimeline,
+} from './run-timeline.ts';
 
 const SECRET = 'PRIVATE-STEP-PAYLOAD-5e90';
+
+/** What the run's steps are served as, whatever the run's kind and status. */
+const projectRunTimeline = (entries: readonly WorkflowTimelineEntry[]) =>
+  serveRunTimeline('agent', 'completed', entries);
 
 function entry(overrides: Partial<WorkflowTimelineEntry>): WorkflowTimelineEntry {
   return {
@@ -107,5 +116,74 @@ describe('projectRunTimeline', () => {
     expect(projected.truncated).toBe(true);
     expect(projected.entries[0]?.tries).toBe(2);
     expect(projectRunTimeline(entries.slice(0, 3)).truncated).toBe(false);
+  });
+});
+
+describe('serveRunTimeline', () => {
+  it('serves the run’s kind and status beside its projected steps', () => {
+    const served = serveRunTimeline('agent', 'failed', [entry({ status: 'running' })]);
+    expect(served).toMatchObject({ kind: 'agent', runStatus: 'failed', truncated: false });
+    expect(served.entries).toHaveLength(1);
+  });
+});
+
+describe('runStatusOfTask', () => {
+  it.each([
+    ['submitted', 'pending'],
+    ['working', 'running'],
+    ['input-required', 'suspended'],
+    ['completed', 'completed'],
+    ['failed', 'failed'],
+    ['canceled', 'cancelled'],
+  ] as const)('says a %s task is %s', (state, expected) => {
+    expect(runStatusOfTask(state)).toBe(expected);
+  });
+});
+
+describe('failedStepTries', () => {
+  it('counts the attempts at the step of the last failed entry', () => {
+    expect(
+      failedStepTries([
+        entry({ step: 1, stepIndex: 0 }),
+        entry({ step: 2, stepIndex: 1, status: 'failed' }),
+        entry({ step: 3, stepIndex: 1, status: 'failed' }),
+        entry({ step: 4, stepIndex: 1, status: 'failed' }),
+      ]),
+    ).toBe(3);
+  });
+
+  it('counts a timed-out step, and one with no step index as a single try', () => {
+    expect(failedStepTries([entry({ stepIndex: 2, status: 'timed-out' })])).toBe(1);
+    expect(failedStepTries([entry({ status: 'failed' })])).toBe(1);
+  });
+
+  it('is null for a run with no failed entry, and for none at all', () => {
+    expect(failedStepTries([entry({ stepIndex: 0 }), entry({ stepIndex: 1 })])).toBeNull();
+    expect(failedStepTries([])).toBeNull();
+  });
+
+  it('counts a step the engine really retried until it failed', async () => {
+    let attempts = 0;
+    const broken = activity({
+      name: 'broken',
+      retry: { maxAttempts: 3, initialBackoff: 0, backoffMultiplier: 1, maxBackoff: 0 },
+      execute: async () => {
+        attempts += 1;
+        throw new Error('never works');
+      },
+    });
+    await using engine = new Engine();
+    engine.register(
+      workflow({ name: 'failing' })
+        .activities({ broken })
+        .execute(async function* (ctx) {
+          return yield* ctx.run(broken);
+        }),
+    );
+    const handle = await engine.start('failing', null, { id: 'failing-1' });
+    await handle.result().catch(() => undefined);
+
+    expect(attempts).toBe(3);
+    expect(failedStepTries(await engine.getTimeline('failing-1'))).toBe(3);
   });
 });

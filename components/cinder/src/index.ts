@@ -58,6 +58,9 @@ export type {
   ApprovalToolRisk,
 } from './components/approval-card/index.ts';
 
+export { default as ApprovalGroup } from './components/approval-group/index.ts';
+export type { ApprovalGroupProps } from './components/approval-group/index.ts';
+
 export { default as AreaChart } from './components/area-chart/index.ts';
 export type {
   ChartDataTableVisibility as AreaChartDataTableVisibility,
@@ -360,6 +363,9 @@ export type {
   DiffStatisticsProps,
   DiffStatisticsVariant,
 } from './components/diff-statistics/index.ts';
+
+export { default as DisclosureTrigger } from './components/disclosure-trigger/index.ts';
+export type { DisclosureTriggerProps } from './components/disclosure-trigger/index.ts';
 
 export { default as Divider } from './components/divider/index.ts';
 export type { DividerOrientation, DividerProps, DividerTone } from './components/divider/index.ts';
@@ -1011,8 +1017,15 @@ export {
 } from './components/sidebar/index.ts';
 export type { SidebarProps } from './components/sidebar/index.ts';
 
-export { default as SortableList } from './components/sortable-list/index.ts';
-export type { SortableListProps, SortableReorderMode } from './components/sortable-list/index.ts';
+export {
+  default as SortableList,
+  SortableListEditorRow,
+} from './components/sortable-list/index.ts';
+export type {
+  SortableListEditorRowProps,
+  SortableListProps,
+  SortableReorderMode,
+} from './components/sortable-list/index.ts';
 
 export { default as Skeleton } from './components/skeleton/index.ts';
 export type {

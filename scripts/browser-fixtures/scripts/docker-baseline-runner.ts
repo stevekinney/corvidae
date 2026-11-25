@@ -8,7 +8,8 @@
  * directory the container copies its results into. See
  * `scripts/browser-fixtures/visual-baselines.md`.
  */
-import { rmSync } from 'node:fs';
+import { parseComponentScopeValue } from '@lostgradient/testing';
+import { rmSync, writeFileSync } from 'node:fs';
 import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { constants, cpus, loadavg, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -133,17 +134,90 @@ export type ContainerMode = 'update' | 'visual';
 
 export const PLAYWRIGHT_REPORTERS = '--reporter=line,json';
 
+/** Playwright test-list entries for baselines captured outside the fixture sweep. */
+const interactionScreenshots = new Map<string, string[]>([
+  [
+    'mega-menu',
+    [
+      'mega-menu.playwright.ts > nested submenu keyboard navigation enters, traverses, and exits',
+      'mega-menu.playwright.ts > Accessibility shortcut alternatives wrap without overflowing',
+    ],
+  ],
+  [
+    'popover',
+    [
+      'overlay-positioning.playwright.ts > popover anchors inside transformed and scrolled preview shells',
+    ],
+  ],
+  [
+    'tooltip',
+    [
+      'overlay-positioning.playwright.ts > tooltip anchors inside transformed and scrolled preview shells',
+    ],
+  ],
+]);
+
+/** Share the screenshot selection with the archived Playwright process via its output mount. */
+function writeScreenshotTestList(
+  rawScope: string | undefined,
+  outputDirectory: string,
+): string | undefined {
+  const slugs = parseComponentScopeValue(rawScope);
+  if (slugs.length === 0) return undefined;
+  // The sweep already validates the component names and registers only their matrix cases.
+  const entries = [
+    'components-sweep.playwright.ts',
+    ...slugs.flatMap((slug) => interactionScreenshots.get(slug) ?? []),
+  ];
+  const filename = 'component-screenshots.txt';
+  writeFileSync(join(outputDirectory, filename), entries.join('\n'));
+  return join('/out', filename);
+}
+
+/** Playwright accepts one --test-list. Resolve a caller's list in the archived tree before intersecting it with the component list. */
+function intersectTestLists(extraArguments: readonly string[], screenshotList: string): string {
+  const index = extraArguments.findLastIndex(
+    (arg) => arg === '--test-list' || arg.startsWith('--test-list='),
+  );
+  const option = extraArguments[index];
+  if (option === undefined) return '';
+  const requested =
+    option === '--test-list' ? extraArguments[index + 1] : option.slice('--test-list='.length);
+  if (!requested || requested.startsWith('--')) throw new Error('--test-list needs a file.');
+  const list =
+    'bun --bun playwright test --config scripts/browser-fixtures/playwright.config.ts --list --reporter=list --pass-with-no-tests --test-list';
+  // Let Playwright interpret suite prefixes, project names and source locations in both lists.
+  // The list reporter emits one reusable description per test, separated by ›.
+  return [
+    `${list} ${shellQuote(requested)} > /tmp/requested-tests`,
+    `${list} ${shellQuote(screenshotList)} > /tmp/screenshot-tests`,
+    "sed -n '/ › /p' /tmp/requested-tests | LC_ALL=C sort -u > /tmp/requested-sorted",
+    "sed -n '/ › /p' /tmp/screenshot-tests | LC_ALL=C sort -u > /tmp/screenshot-sorted",
+    `LC_ALL=C comm -12 /tmp/requested-sorted /tmp/screenshot-sorted > ${shellQuote(screenshotList)}`,
+  ]
+    .map((command) => ` && ${command}`)
+    .join('');
+}
+
 /**
  * The command the container runs. It unpacks the archived commit from stdin,
  * installs from the lockfile, generates the fixture inputs, runs the suite, and copies results into `/out`
  * owned by the host user. The suite's exit status is captured before the copy
  * and returned verbatim, so a red suite never exits 0.
  */
-export function containerCommand(mode: ContainerMode, extraArguments: readonly string[]): string {
+export function containerCommand(
+  mode: ContainerMode,
+  extraArguments: readonly string[],
+  selection?: { componentScope: string | undefined; outputDirectory: string },
+): string {
   const script = mode === 'update' ? 'test:browser:update' : 'test:browser:visual';
   // The JSON reporter writes to PLAYWRIGHT_JSON_OUTPUT_FILE (/out/results.json) so the
   // host can name each failure and tell screenshot failures from behavioural ones.
-  const forwarded = ` -- ${[PLAYWRIGHT_REPORTERS, ...extraArguments].map(shellQuote).join(' ')}`;
+  const screenshotList =
+    selection && writeScreenshotTestList(selection.componentScope, selection.outputDirectory);
+  const selectionArguments = screenshotList ? ['--test-list', screenshotList] : [];
+  const intersection = screenshotList ? intersectTestLists(extraArguments, screenshotList) : '';
+  const forwarded = ` -- ${[PLAYWRIGHT_REPORTERS, ...extraArguments, ...selectionArguments].map(shellQuote).join(' ')}`;
   // `--update-snapshots=all` does not rewrite a baseline that already matches within
   // tolerance, so an update first removes every Linux baseline: each one a test uses is
   // then written fresh, and a committed baseline nothing writes is a true orphan.
@@ -152,7 +226,7 @@ export function containerCommand(mode: ContainerMode, extraArguments: readonly s
   const prepareFixtures =
     'bun run --filter @lostgradient/cinder metadata && bun scripts/browser-fixtures/scripts/prepare-manifest.ts';
   return [
-    `mkdir -p /work && cd /work && tar -x && bun install --frozen-lockfile && ${prepareFixtures}${wipe} && touch /tmp/baseline-marker && bun run ${script}${forwarded}`,
+    `mkdir -p /work && cd /work && tar -x && bun install --frozen-lockfile && ${prepareFixtures}${intersection}${wipe} && touch /tmp/baseline-marker && bun run ${script}${forwarded}`,
     'status=$?',
     `find ${LINUX_BASELINE_DIRECTORY} -name '*.png' -newer /tmp/baseline-marker > /out/regenerated.txt 2>/dev/null`,
     `mkdir -p /out/linux && cp -R ${LINUX_BASELINE_DIRECTORY}/. /out/linux/ 2>/dev/null`,

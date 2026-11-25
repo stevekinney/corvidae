@@ -1,5 +1,6 @@
 import { request, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
+import { isDryRun } from './cli-destructive.ts';
 
 type RecordValue = Record<string, unknown>;
 
@@ -122,16 +123,13 @@ async function memory(
       id: identifier(parsed),
       content: memoryInput(parsed),
     });
-  if (action === 'forget') {
-    if (parsed.options.get('yes') !== true)
-      throw Object.assign(new Error('memory forget is destructive; pass --yes to confirm.'), {
-        exitCode: 5,
-      });
+  // `memory forget` cannot be undone: `gateDestructiveAction` asks before this runs.
+  if (action === 'forget')
     return rpc(target, parsed, dependencies, 'bureau.memory.forget', {
       agentId,
       id: identifier(parsed),
+      ...(isDryRun(parsed) ? { dryRun: true } : {}),
     });
-  }
   throw Object.assign(new Error('Usage: memory list|search|get|remember|correct|forget|export.'), {
     usage: true,
   });

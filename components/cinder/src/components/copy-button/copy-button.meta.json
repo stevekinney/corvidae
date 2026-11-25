@@ -6,7 +6,8 @@
   "tags": ["action", "clipboard"],
   "useWhen": [
     "Offering one-click copy of a token, snippet, share link, or code sample.",
-    "Pairing with code-block so readers can grab the rendered source."
+    "Pairing with code-block so readers can grab the rendered source.",
+    "Copying a value in running text with the inline appearance."
   ],
   "avoidWhen": [
     { "reason": "Triggering a generic non-clipboard action — use button instead." },

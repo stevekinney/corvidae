@@ -139,6 +139,11 @@
   color: var(--cinder-text-disabled);
 }
 
+/* The comparison with the source, drawn under the forked-from row that opens it. */
+.weft-lineage-panel__comparison {
+  min-width: 0;
+}
+
 .weft-lineage-panel__note {
   font-size: var(--cinder-text-2xs);
   color: var(--cinder-text-disabled);

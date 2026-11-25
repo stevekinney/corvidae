@@ -28,6 +28,7 @@
     atBottom = $bindable(true),
     unreadCount = $bindable(0),
     newMessageIndicatorVisible = $bindable(false),
+    hostQuestionDocked = $bindable(false),
     ...rest
   }: ChatProps = $props();
 
@@ -66,6 +67,10 @@
 
   function handleNewMessageIndicatorVisibleBindingChange(value: boolean): void {
     newMessageIndicatorVisible = value;
+  }
+
+  function handleHostQuestionDockedBindingChange(value: boolean): void {
+    hostQuestionDocked = value;
   }
 
   // The inner implementation owns the imperative streaming + scroll API. The
@@ -163,8 +168,10 @@
   {atBottom}
   {unreadCount}
   {newMessageIndicatorVisible}
+  {hostQuestionDocked}
   class={mergedClassName}
   onatbottombindingchange={handleAtBottomBindingChange}
   onunreadcountbindingchange={handleUnreadCountBindingChange}
   onNewMessageIndicatorVisibleBindingChange={handleNewMessageIndicatorVisibleBindingChange}
+  onHostQuestionDockedBindingChange={handleHostQuestionDockedBindingChange}
 />

@@ -9,7 +9,7 @@ import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
+import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
 import type { AgentCatalog, AgentDetail } from '../../lib/agent-definitions.ts';
 import {
   catalogFixture,
@@ -154,7 +154,7 @@ describe('a new agent', () => {
     const select = await findByRole('combobox', { name: 'Model' });
 
     const listed = await openModelOptions(select);
-    expect(listed.map(optionLabel)).toEqual(['openai/gpt-4.1', 'anthropic/claude-haiku-5']);
+    expect(listed.map(optionLabel)).toEqual(['GPT 4.1', 'Claude Haiku 5']);
     // A new agent has no tool yet, and the picker offers every tool the catalog lists. The count
     // sits beside the Tools title (row 41k).
     expect(getByRole('group', { name: /^Tools/ }).textContent).toContain(
@@ -793,7 +793,7 @@ describe('the default effort', () => {
     bureau({ catalog: catalog() });
     const { findByRole, findByLabelText, getByText } = mountEditor();
     const select = (await findByLabelText(AGENT_EDITOR_COPY.effort.label)) as HTMLSelectElement;
-    await chooseModel(await findByRole('combobox', { name: 'Model' }), 'openai/gpt-4.1');
+    await chooseModel(await findByRole('combobox', { name: 'Model' }), 'GPT 4.1');
     expect(optionsOf(select)).toEqual(['None']);
     expect(select.disabled).toBe(true);
     expect(getByText(AGENT_EDITOR_COPY.effort.notSupportedByModel)).not.toBeNull();
@@ -814,7 +814,7 @@ describe('the default effort', () => {
     calls.on('bureau.agents.definitions.update', () => {
       throw faults.unprocessable('claude-haiku-5 does not support high effort.');
     });
-    const { findByRole, findByText, getByRole } = mountEditor('researcher');
+    const { findByRole, getByRole, findByText } = mountEditor('researcher');
     await findByRole('textbox', { name: /^Instructions/ });
     // Save stays enabled (W35). The form cannot change the effort, so the save goes to the Bureau.
     const save = getByRole('button', { name: AGENT_EDITOR_COPY.saveAction });
@@ -877,8 +877,10 @@ describe('deleting an agent', () => {
     const { findByRole, getByRole } = mountEditor('researcher');
     await fireEvent.click(await findByRole('button', { name: AGENT_EDITOR_COPY.deleteAction }));
 
-    const dialog = await findByRole('dialog', { name: AGENT_EDITOR_COPY.deleteDialog.title });
-    expect(dialog.textContent).toContain(AGENT_EDITOR_COPY.deleteDialog.description('Researcher'));
+    const dialog = await findByRole('dialog', { name: 'Delete Researcher?' });
+    expect(dialog.textContent).toContain(
+      AGENT_PAGE_COPY.settings.deleteDialog.description(undefined, ''),
+    );
     expect(calls.callsTo('bureau.agents.definitions.delete')).toEqual([]);
 
     await fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
@@ -886,7 +888,10 @@ describe('deleting an agent', () => {
     expect(router.pathname).toBe('/');
 
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.deleteAction }));
-    const again = await findByRole('dialog', { name: AGENT_EDITOR_COPY.deleteDialog.title });
+    const again = await findByRole('dialog', { name: 'Delete Researcher?' });
+    await fireEvent.input(within(again).getByLabelText('Type researcher to confirm'), {
+      target: { value: 'researcher' },
+    });
     await fireEvent.click(
       within(again).getByRole('button', { name: AGENT_EDITOR_COPY.deleteDialog.confirm }),
     );
@@ -907,7 +912,10 @@ describe('deleting an agent', () => {
     });
     const { findByRole, findByText } = mountEditor('researcher');
     await fireEvent.click(await findByRole('button', { name: AGENT_EDITOR_COPY.deleteAction }));
-    const dialog = await findByRole('dialog', { name: AGENT_EDITOR_COPY.deleteDialog.title });
+    const dialog = await findByRole('dialog', { name: 'Delete Researcher?' });
+    await fireEvent.input(within(dialog).getByLabelText('Type researcher to confirm'), {
+      target: { value: 'researcher' },
+    });
     await fireEvent.click(
       within(dialog).getByRole('button', { name: AGENT_EDITOR_COPY.deleteDialog.confirm }),
     );
@@ -916,20 +924,25 @@ describe('deleting an agent', () => {
     expect(router.pathname).toBe('/');
   });
 
-  test('reports a failure it cannot sort, in the Bureau’s words', async () => {
+  test('keeps a generic failure inline and armed for retry', async () => {
     const calls = bureau();
     calls.on('bureau.agents.definitions.delete', () => {
       throw new StubFault('EngineFailure', 500, 'The disk is full.');
     });
-    const { findByRole, findByText, getByRole } = mountEditor('researcher');
+    const { findByRole, findByText } = mountEditor('researcher');
     await fireEvent.click(await findByRole('button', { name: AGENT_EDITOR_COPY.deleteAction }));
-    const dialog = await findByRole('dialog', { name: AGENT_EDITOR_COPY.deleteDialog.title });
+    const dialog = await findByRole('dialog', { name: 'Delete Researcher?' });
+    await fireEvent.input(within(dialog).getByLabelText('Type researcher to confirm'), {
+      target: { value: 'researcher' },
+    });
     await fireEvent.click(
       within(dialog).getByRole('button', { name: AGENT_EDITOR_COPY.deleteDialog.confirm }),
     );
 
     expect(await findByText('The disk is full.')).not.toBeNull();
-    expect(getByRole('alert').textContent).toContain(AGENT_EDITOR_COPY.deleteFailed);
+    expect(within(dialog).getByRole('alert').textContent).toContain(
+      AGENT_PAGE_COPY.settings.deleteFailed,
+    );
     expect(router.pathname).toBe('/');
   });
 });
@@ -963,7 +976,7 @@ describe('the delete in the page header', () => {
     expect(container.querySelector('.weft-agent-form__danger')?.textContent).toContain(
       AGENT_EDITOR_COPY.deleteAction,
     );
-    expect(container.querySelector('.weft-agent-form__footer')?.textContent).not.toContain(
+    expect(container.querySelector('.cinder-form-actions')?.textContent).not.toContain(
       AGENT_EDITOR_COPY.deleteAction,
     );
   });
@@ -1017,7 +1030,10 @@ describe('a file the Bureau cannot use', () => {
     const calls = bureau({ agent: invalid });
     const { findByRole, getByRole } = mountEditor('researcher');
     await fireEvent.click(await findByRole('button', { name: AGENT_EDITOR_COPY.deleteAction }));
-    const dialog = await findByRole('dialog', { name: AGENT_EDITOR_COPY.deleteDialog.title });
+    const dialog = await findByRole('dialog', { name: 'Delete Researcher?' });
+    await fireEvent.input(within(dialog).getByLabelText('Type researcher to confirm'), {
+      target: { value: 'researcher' },
+    });
     await fireEvent.click(
       within(dialog).getByRole('button', { name: AGENT_EDITOR_COPY.deleteDialog.confirm }),
     );

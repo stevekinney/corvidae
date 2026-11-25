@@ -14,6 +14,12 @@
       "title": "Liveness as a status dot",
       "description": "Liveness is a status dot and word above the value, so the value itself stays neutral.",
       "code": "<script lang=\"ts\">\n  import { Spotlight } from '@lostgradient/cinder';\n</script>\n\n<Spotlight value=\"2 need you\" status=\"online\" statusLabel=\"Live\" />\n"
+    },
+    {
+      "id": "badge-value",
+      "title": "A headline with an inline status",
+      "code": "<script lang=\"ts\">\n  import { Badge, Spotlight } from '@lostgradient/cinder';\n</script>\n\n<Spotlight>\n  {#snippet value()}Its last 2 runs <Badge size=\"sm\" variant=\"danger\">Failed</Badge>{/snippet}\n</Spotlight>\n",
+      "description": "The headline includes an inline badge inside the value."
     }
   ]
 }

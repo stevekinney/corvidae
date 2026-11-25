@@ -1,4 +1,4 @@
-import { outcomeOf, rethrow } from '@lostgradient/testing';
+import { outcomeOf, rethrow, throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 
 import {
@@ -83,7 +83,42 @@ for (const [componentName, scenario] of DETERMINISM_SCENARIOS) {
   repeatedRenders.set(`${componentName}/${scenario}`, [first, second]);
 }
 
+let failedWorkerThrow: (() => never) | undefined;
+const failedWorkerRender = await outcomeOf(async () => {
+  incrementRebuildGeneration();
+  try {
+    failedWorkerThrow = await throwingRejectionOf(
+      renderFeaturedExample('failed-component', 'failed-scenario', 'failed-mount', () => [
+        process.execPath,
+        '--eval',
+        'process.stdout.write("worker stdout"); process.stderr.write("worker stderr"); process.exit(17);',
+      ]),
+    );
+  } finally {
+    incrementRebuildGeneration();
+  }
+});
+const signaledWorkerThrow = await throwingRejectionOf(
+  renderFeaturedExample('failed-component', 'failed-scenario', 'failed-mount', () => [
+    process.execPath,
+    '--eval',
+    'process.kill(process.pid, "SIGTERM");',
+  ]),
+);
+
 describe('featured example server renderer', () => {
+  test('reports a failed child exit code and captured output', () => {
+    rethrow(failedWorkerRender);
+    expect(failedWorkerThrow).toBeDefined();
+    expect(failedWorkerThrow!).toThrow(
+      'exit code 17; stdout: "worker stdout"; stderr: "worker stderr"',
+    );
+  });
+
+  test('reports the signal when a worker dies without output', () => {
+    expect(signaledWorkerThrow).toThrow('signal SIGTERM; stdout: ""; stderr: ""');
+  });
+
   test('removes every Svelte hydration marker form without touching authored comments', () => {
     const html =
       '<!----><!--$--><!--/$--><!--$s1--><!--[--><!--[!--><!--[0--><!--[-1--><!--[?{"message":"nope"}--><!--]--><!-- keep -->';

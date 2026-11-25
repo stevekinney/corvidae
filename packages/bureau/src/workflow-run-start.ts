@@ -42,6 +42,8 @@ export interface RunStart {
   readonly origin: TaskOrigin | null;
   /** The schedule that fired the run, or `null` when none did. */
   readonly scheduleId: string | null;
+  /** Present when a person triggered the schedule instead of its cadence firing. */
+  readonly scheduleManual?: true;
 }
 
 /**
@@ -63,6 +65,12 @@ function declaredOrigin(run: RunStartSource): TaskOrigin | null {
  */
 export async function startOfRun(engine: RunStartEngine, run: RunStartSource): Promise<RunStart> {
   const provenance = await engine.getScheduleProvenance(run.id);
-  if (provenance !== null) return { origin: null, scheduleId: provenance.scheduleId };
+  if (provenance !== null) {
+    return {
+      origin: null,
+      scheduleId: provenance.scheduleId,
+      ...(provenance.manual === true ? { scheduleManual: true } : {}),
+    };
+  }
   return { origin: declaredOrigin(run), scheduleId: null };
 }

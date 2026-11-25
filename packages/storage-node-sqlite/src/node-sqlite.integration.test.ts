@@ -257,6 +257,7 @@ it('supports the adapter behavior under Bun when a database constructor is injec
     scanConsistency: 'snapshot',
     atomicBatch: true,
     conditionalBatch: true,
+    conditionalBatchDeadline: true,
     boundedRangeDelete: false,
   });
 

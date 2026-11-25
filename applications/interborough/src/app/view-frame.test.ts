@@ -973,8 +973,12 @@ describe('the Workflows area', () => {
   });
 
   test('a type’s page draws its own loading, so its header and tabs show while the probe is pending (row 63a)', async () => {
-    expect(VIEWS.workflows.pageOwnsLoadingOn).toEqual(['/workflows', '/workflows/:workflow']);
-    expect(VIEWS.workflows.pageOwnsFailureOn).toEqual(['/workflows']);
+    expect(VIEWS.workflows.pageOwnsLoadingOn).toEqual([
+      '/workflows',
+      '/workflows/:workflow',
+      '/workflows/:workflow/run',
+    ]);
+    expect(VIEWS.workflows.pageOwnsFailureOn).toEqual(['/workflows', '/workflows/:workflow/run']);
     restore = installFetchImplementation(() => new Promise<Response>(() => {}));
     const { container, findByTestId, queryByRole } = mount('workflows', {
       parameters: { workflow: 'digest' },

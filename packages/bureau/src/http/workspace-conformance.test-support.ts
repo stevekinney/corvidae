@@ -2,6 +2,30 @@ import type { OPERATION_MAP } from './operation-map.ts';
 
 /** Expected wire outcomes. Membership denial is HTTP; resource faults are protocol encoded. */
 export const WORKSPACE_EXPECTED_OUTCOMES = {
+  'share-owner': [
+    'success',
+    'not-found',
+    'not-found',
+    'not-found',
+    'membership-denied',
+    'membership-denied',
+  ],
+  'share-reader': [
+    'not-found',
+    'success',
+    'not-found',
+    'not-found',
+    'membership-denied',
+    'membership-denied',
+  ],
+  'share-owner-collection': [
+    'own-records',
+    'empty',
+    'empty',
+    'empty',
+    'membership-denied',
+    'membership-denied',
+  ],
   shared: ['success', 'success', 'success', 'success', 'membership-denied', 'membership-denied'],
   administrator: [
     'forbidden',
@@ -128,6 +152,19 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
     ],
   },
   {
+    testFile: 'management/contexts-sharing-operations.test.ts',
+    inputFixture: 'An owner chat with one durable same-workspace reader grant',
+    sentinel: 'PRIVATE-WORKSPACE-CONTENT-8d5c',
+    operations: [
+      ['bureau.contexts.share', 'share-owner'],
+      ['bureau.contexts.share.revoke', 'share-owner'],
+      ['bureau.contexts.share.request', 'share-reader'],
+      ['bureau.contexts.share.request.resolve', 'share-owner'],
+      ['bureau.contexts.share.requests.list', 'share-owner-collection'],
+      ['bureau.contexts.share.status', 'share-reader'],
+    ],
+  },
+  {
     testFile: 'workspace-task-privacy.test.ts',
     inputFixture: 'Owned task, parked wait, and streamed private answer',
     sentinel: 'PRIVATE-TASK-ANSWER-e5b2',
@@ -146,6 +183,28 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
     operations: [['bureau.runs.timeline', 'owner']],
   },
   {
+    testFile: 'management/runs-compare-operation.test.ts',
+    inputFixture: 'A workflow instance with private step input, and a fork of it',
+    sentinel: 'PRIVATE-COMPARE-INPUT-5b8e',
+    operations: [['bureau.runs.compare', 'owner']],
+  },
+  {
+    testFile: 'management/tasks-explain-operation.test.ts',
+    inputFixture: 'An owned failed agent run whose error message holds private text',
+    sentinel: 'PRIVATE-EXPLAIN-ERROR-3b9e',
+    operations: [['bureau.tasks.explain', 'owner']],
+  },
+  {
+    testFile: 'management/tasks-model-explanation-operation.test.ts',
+    inputFixture:
+      'An owned failed agent run whose error message holds private text, explained by a model',
+    sentinel: 'PRIVATE-MODEL-EXPLANATION-2f7d',
+    operations: [
+      ['bureau.tasks.explanation.get', 'owner'],
+      ['bureau.tasks.explanation.generate', 'owner'],
+    ],
+  },
+  {
     testFile: 'workspace-context-privacy.test.ts',
     inputFixture: 'Independent owned context per actor and mutation',
     sentinel: 'PRIVATE-CONTEXT-HISTORY-b0ca',
@@ -157,6 +216,8 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.contexts.steer', 'owner'],
       ['bureau.contexts.fork', 'owner'],
       ['bureau.contexts.regenerate', 'owner'],
+      ['bureau.contexts.discardturn', 'owner'],
+      ['bureau.contexts.resumeturn', 'owner'],
       ['bureau.contexts.rename', 'owner'],
       ['bureau.contexts.archive', 'owner'],
       ['bureau.contexts.unarchive', 'owner'],
@@ -237,6 +298,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.workflows.revisions', 'shared'],
       ['bureau.workflows.history', 'shared'],
       ['bureau.workflows.impact', 'shared'],
+      ['bureau.workflows.concurrency', 'shared'],
       ['bureau.workflows.runs.list', 'owner-collection'],
       ['bureau.workflows.runs.get', 'owner'],
       ['bureau.workflows.runs.cancel', 'owner'],

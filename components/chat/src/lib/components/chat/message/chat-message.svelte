@@ -192,6 +192,8 @@
      * transcript.
      */
     sources?: readonly CitationSource[] | undefined;
+    /** Ordered Markdown blocks with sources for individual claims in this message. */
+    claimSources?: readonly import('../chat.types.ts').ChatCitationClaim[] | undefined;
     /**
      * Whether the sources are open in place under the message line, on a layout wider than a phone
      * (a phone opens them in a bottom sheet). Bindable, like `toolCallExpanded`: `Chat` drives it
@@ -245,11 +247,12 @@
   } from '../utilities/utilities.ts';
   import {
     Button,
+    Badge,
     Callout,
     CircleAlert,
     Collapsible,
     CopyButton,
-    Info,
+    Link,
     Pencil,
     Popover,
     Quote,
@@ -323,6 +326,7 @@
     ontoolcalltoggle,
     onSuggestionSelect,
     sources,
+    claimSources,
     sourcesExpanded = $bindable(false),
     onsourcestoggle,
     turnState,
@@ -427,13 +431,6 @@
     onQuote?.(selectionInside(quoteSources) ?? renderedText(quoteSources));
   }
 
-  // Sources. Only an assistant message shows them, and only when it has at least one; a user
-  // message given the same input never gains the control.
-  const shownSources = $derived(
-    message.role === 'assistant' && sources !== undefined && sources.length > 0
-      ? sources
-      : undefined,
-  );
   let sourcesElement = $state<HTMLElement | null>(null);
   let sourcesWereShown = false;
   let previousKeys: string[] = [];
@@ -477,67 +474,6 @@
     pendingSourceFocus = undefined;
     if (pending.article.isConnected) returnSourceFocus(pending.article, pending.preferAction);
   }
-
-  // Read the old triggers before Svelte removes them. Retry after the update because an open
-  // mobile sheet makes the underlying message inert until the dialog is removed.
-  $effect.pre(() => {
-    const shown = shownSources !== undefined;
-    const currentKeys = shownSources !== undefined ? sourceKeys(shownSources) : [];
-    const active = document.activeElement;
-    const article = articleElement;
-    if (article !== null && sourcesElement !== null && sourcesWereShown) {
-      const anySourceWithdrawn = previousKeys.some((key) => !currentKeys.includes(key));
-      // Focus on a row of the list under the control: the row that was withdrawn hands focus to the
-      // next row that is a link, or to a message action when none is left. A row that stays keeps it.
-      const inPlace = sourcesElement.querySelector('.cinder-citation--in-place') !== null;
-      const focusedRow = active?.closest('.cinder-citation__item') ?? null;
-      const rowPosition =
-        inPlace && focusedRow !== null && sourcesElement.contains(focusedRow)
-          ? Array.from(focusedRow.parentElement?.children ?? []).indexOf(focusedRow)
-          : -1;
-      const rowWithdrawn =
-        rowPosition !== -1 &&
-        shown &&
-        previousKeys[rowPosition] !== undefined &&
-        !currentKeys.includes(previousKeys[rowPosition]!);
-      const withdrawnSource =
-        !inPlace &&
-        rowPosition === -1 &&
-        shown &&
-        anySourceWithdrawn &&
-        sourceOwnsFocus(sourcesElement, active);
-      // The list under the line is not a sheet: only the phone's bottom sheet closes under a
-      // withdrawal and hands focus back once it has gone.
-      const sheetOpen =
-        !inPlace &&
-        ((active !== null && active.closest('dialog') !== null) ||
-          sourcesElement.querySelector('.cinder-citation__marker[aria-expanded="true"]') !== null);
-      if (rowWithdrawn || withdrawnSource || (!shown && sourceOwnsFocus(sourcesElement, active))) {
-        if (rowWithdrawn) {
-          // Said once, through the host's announcer outside the transcript's log when there is one.
-          if (onAnnounce !== undefined) onAnnounce('A source was withdrawn.');
-          else sourceAnnouncement = 'A source was withdrawn.';
-          void moveFocusToNextSourceRow(article, sourcesElement, rowPosition);
-        } else if (withdrawnSource && sheetOpen) {
-          sourceAnnouncement = 'Sources were removed';
-          pendingSourceFocus = { article, preferAction: true };
-        } else {
-          sourceAnnouncement = 'Sources were removed';
-          returnSourceFocus(article, withdrawnSource);
-          void (async () => {
-            await tick();
-            if (article.isConnected && !article.parentElement?.contains(document.activeElement)) {
-              returnSourceFocus(article, withdrawnSource);
-            }
-          })();
-        }
-      } else if (shown && currentKeys.some((key) => !previousKeys.includes(key))) {
-        sourceAnnouncement = '';
-      }
-    }
-    sourcesWereShown = shown;
-    previousKeys = currentKeys;
-  });
 
   // After a withdrawn row leaves the list, focus goes to the row now at its place if that is a
   // link, else to the next link below it, else a message action: never to the page behind.
@@ -783,6 +719,98 @@
   const bodyParts = $derived(
     shownParts.filter((part) => part.type !== 'image' && !(transcript && part.type === 'note')),
   );
+  // Content truncation threshold (characters)
+  const TRUNCATE_THRESHOLD = 500;
+
+  const displayedClaims = $derived.by(() => {
+    if (message.role !== 'assistant' || claimSources === undefined || claimSources.length === 0)
+      return undefined;
+    const markdown = bodyParts.filter((part) => part.type === 'markdown');
+    const content = markdown[0];
+    if (
+      markdown.length !== 1 ||
+      content === undefined ||
+      content.streaming ||
+      (!content.expanded && content.content.length > TRUNCATE_THRESHOLD) ||
+      !claimSources.some((claim) => claim.sources.length > 0) ||
+      new Set(claimSources.map((claim) => claim.id)).size !== claimSources.length ||
+      claimSources.map((claim) => claim.markdown).join('') !== content.content
+    ) {
+      return undefined;
+    }
+    return claimSources;
+  });
+  // The standalone source control belongs to an assistant message whose sources aren't already
+  // presented as inline claims.
+  const shownSources = $derived(
+    message.role === 'assistant' &&
+      sources !== undefined &&
+      sources.length > 0 &&
+      displayedClaims === undefined
+      ? sources
+      : undefined,
+  );
+  // Read the old triggers before Svelte removes them. Retry after the update because an open
+  // mobile sheet makes the underlying message inert until the dialog is removed.
+  $effect.pre(() => {
+    const shown = shownSources !== undefined;
+    const currentKeys = shownSources !== undefined ? sourceKeys(shownSources) : [];
+    const active = document.activeElement;
+    const article = articleElement;
+    if (article !== null && sourcesElement !== null && sourcesWereShown) {
+      const anySourceWithdrawn = previousKeys.some((key) => !currentKeys.includes(key));
+      // Focus on a row of the list under the control: the row that was withdrawn hands focus to the
+      // next row that is a link, or to a message action when none is left. A row that stays keeps it.
+      const inPlace = sourcesElement.querySelector('.cinder-citation--in-place') !== null;
+      const focusedRow = active?.closest('.cinder-citation__item') ?? null;
+      const rowPosition =
+        inPlace && focusedRow !== null && sourcesElement.contains(focusedRow)
+          ? Array.from(focusedRow.parentElement?.children ?? []).indexOf(focusedRow)
+          : -1;
+      const rowWithdrawn =
+        rowPosition !== -1 &&
+        shown &&
+        previousKeys[rowPosition] !== undefined &&
+        !currentKeys.includes(previousKeys[rowPosition]!);
+      const withdrawnSource =
+        !inPlace &&
+        rowPosition === -1 &&
+        shown &&
+        anySourceWithdrawn &&
+        sourceOwnsFocus(sourcesElement, active);
+      // The list under the line is not a sheet: only the phone's bottom sheet closes under a
+      // withdrawal and hands focus back once it has gone.
+      const sheetOpen =
+        !inPlace &&
+        ((active !== null && active.closest('dialog') !== null) ||
+          sourcesElement.querySelector('.cinder-citation__marker[aria-expanded="true"]') !== null);
+      if (rowWithdrawn || withdrawnSource || (!shown && sourceOwnsFocus(sourcesElement, active))) {
+        if (rowWithdrawn) {
+          // Said once, through the host's announcer outside the transcript's log when there is one.
+          if (onAnnounce !== undefined) onAnnounce('A source was withdrawn.');
+          else sourceAnnouncement = 'A source was withdrawn.';
+          void moveFocusToNextSourceRow(article, sourcesElement, rowPosition);
+        } else if (withdrawnSource && sheetOpen) {
+          sourceAnnouncement = 'Sources were removed';
+          pendingSourceFocus = { article, preferAction: true };
+        } else {
+          sourceAnnouncement = 'Sources were removed';
+          returnSourceFocus(article, withdrawnSource);
+          void (async () => {
+            await tick();
+            if (article.isConnected && !article.parentElement?.contains(document.activeElement)) {
+              returnSourceFocus(article, withdrawnSource);
+            }
+          })();
+        }
+      } else if (shown && currentKeys.some((key) => !previousKeys.includes(key))) {
+        sourceAnnouncement = '';
+      }
+    }
+    sourcesWereShown = shown;
+    previousKeys = currentKeys;
+  });
+
   const imageParts = $derived(shownParts.filter((part) => part.type === 'image'));
   // A message that is images and nothing to read: its body may still hold an empty markdown part,
   // so the body element exists with no height. The bubble then insets the tile evenly.
@@ -808,9 +836,6 @@
   const copyImage = $derived.by(() => {
     return imageParts[0] === undefined ? undefined : mediaDisplayUrl(imageParts[0].image);
   });
-
-  // Content truncation threshold (characters)
-  const TRUNCATE_THRESHOLD = 500;
 
   // Accessibility IDs
   const messageId = $derived(idPrefix ? `${idPrefix}-message` : `message-${message.id}`);
@@ -1026,17 +1051,12 @@
 {#snippet turnOutcome()}
   {#if turn.kind === 'stopped'}
     <div class="chat-turn-outcome" data-kind="stopped">
-      <Callout
-        variant="neutral"
-        semantic="note"
-        class="chat-turn-callout chat-turn-stopped-card"
-        {...onDiscardTurn || onContinueTurn ? { action: stoppedTurnActions } : {}}
-      >
-        {#snippet icon()}<Info aria-hidden="true" />{/snippet}
-        <p class="chat-turn-text" dir="auto">
-          {withoutAnswer ? turnWords.stoppedBeforeAnswer : turnWords.stopped}
-        </p>
-      </Callout>
+      <div class="chat-turn-stopped-row">
+        <Badge variant="neutral"
+          >{withoutAnswer ? turnWords.stoppedBeforeAnswer : turnWords.stopped}</Badge
+        >
+        {@render stoppedTurnActions()}
+      </div>
     </div>
   {:else if turn.kind === 'failed'}
     <div class="chat-turn-outcome" data-kind="failed">
@@ -1045,7 +1065,11 @@
         semantic="note"
         class="chat-turn-callout chat-turn-alert"
         title={withoutAnswer ? turnWords.failedBeforeAnswer : turnWords.incomplete}
-        {...onRetryTurn ? { action: retryTurnAction } : {}}
+        {...turn.explanationLink !== undefined
+          ? { action: failedTurnAction }
+          : onRetryTurn
+            ? { action: retryTurnAction }
+            : {}}
       >
         {#snippet icon()}<CircleAlert aria-hidden="true" />{/snippet}
         <p class="chat-turn-text chat-turn-failure-body" dir="auto">
@@ -1056,20 +1080,17 @@
     </div>
   {:else if turn.kind === 'empty'}
     <div class="chat-turn-outcome chat-turn-empty" data-kind="empty">
-      <Callout
-        variant="neutral"
-        semantic="note"
-        class="chat-turn-callout chat-turn-empty-card"
-        {...onRetryTurn ? { action: retryTurnAction } : {}}
-      >
-        {#snippet icon()}<Info aria-hidden="true" />{/snippet}
-        <p class="chat-turn-text" dir="auto" role="status">{turnWords.empty}</p>
+      <div class="chat-turn-empty-row" role="status">
+        <p class="chat-turn-text" dir="auto">{turnWords.empty}</p>
         {#if timeInNotice}
           <time class="chat-turn-time" datetime={createdAtValue}
             ><bdi>{formattedCreatedAt}</bdi></time
           >
         {/if}
-      </Callout>
+        {#if onRetryTurn}
+          {@render retryTurnAction()}
+        {/if}
+      </div>
     </div>
   {/if}
 {/snippet}
@@ -1080,6 +1101,19 @@
     label={turn.kind === 'empty' ? turnWords.tryAgain : turnWords.retry}
     onclick={() => onRetryTurn?.(message.id)}
   />
+{/snippet}
+
+{#snippet failedTurnAction()}
+  <span class="chat-turn-actions">
+    {#if turn.kind === 'failed' && turn.explanationLink !== undefined}
+      <Link color="inherit" underline="always" data-chat-note-link href={turn.explanationLink.href}>
+        {turn.explanationLink.label}
+      </Link>
+    {/if}
+    {#if onRetryTurn}
+      {@render retryTurnAction()}
+    {/if}
+  </span>
 {/snippet}
 
 <div
@@ -1197,6 +1231,7 @@
               {messagePart}
               {approvalLayout}
               {markdownNode}
+              claimSources={displayedClaims}
               quoteSource={canQuote ? message.id : undefined}
               expanded={toolCallExpanded}
               onToggle={toggleToolCallExpanded}
@@ -1960,6 +1995,12 @@
       ) {
       margin-block-end: calc(var(--cinder-touch-target-min) + var(--cinder-space-1));
     }
+
+    /* A citation marker expands its touch target beyond the final prose line. Keep that overhang
+     * out of the persistent action toolbar while leaving transcript time and actions in their lane. */
+    .chat-message-wrapper:has(:global(.cinder-citation)) .chat-message-body {
+      padding-block-end: var(--cinder-space-2);
+    }
   }
 
   /* Shared base for the built-in copy and edit action buttons — small
@@ -2545,6 +2586,13 @@
     gap: var(--cinder-space-2) var(--cinder-space-3);
   }
 
+  .chat-turn-stopped-row {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
   .chat-turn-text {
     display: block;
     min-inline-size: 0;
@@ -2565,6 +2613,15 @@
     margin-inline-start: 0;
   }
 
+  /* Cinder Button keeps the compact 28px painted face and expands its coarse-pointer hit area
+   * to 44px with a pseudo-element. Reserve that whole lane here: otherwise its lower overhang
+   * can fall into the following Message details control on a narrow stopped turn. */
+  @media (any-pointer: coarse) {
+    .chat-turn-actions {
+      padding-block: var(--cinder-space-2);
+    }
+  }
+
   .chat-turn-outcome :global(.chat-turn-action) {
     inline-size: auto;
     min-inline-size: 0;
@@ -2580,6 +2637,24 @@
     display: block;
     color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
+  }
+
+  /* A turn that produced no answer is a transcript row, not a warning surface. Its time and one
+   * recovery action stay on the same dashed line so it owns the otherwise missing reply. */
+  .chat-turn-empty-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2) var(--cinder-space-3);
+    min-block-size: var(--cinder-control-height-xs);
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    border: 1px dashed var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-sm);
+    color: var(--cinder-text-muted);
+  }
+
+  .chat-turn-empty-row .chat-turn-text {
+    flex: 1 1 12rem;
   }
 
   .chat-turn-failure-body {

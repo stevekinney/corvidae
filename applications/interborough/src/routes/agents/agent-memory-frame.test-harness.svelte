@@ -13,13 +13,21 @@
   import { AUTHORIZATION_SCOPES, providePrincipalStore } from '../../lib/scopes.svelte.ts';
   import AgentMemory from './agent-memory.svelte';
 
-  let { agentId }: { agentId: string } = $props();
+  let {
+    agentId,
+    subject = 'tester',
+    memorySharing = true,
+  }: { agentId: string; subject?: string; memorySharing?: boolean } = $props();
 
   provideClient(new HttpClient({ baseUrl: 'http://localhost/api' }));
-  providePrincipalStore().setPrincipal({
-    scopes: AUTHORIZATION_SCOPES,
-    subject: 'tester',
-    unauthenticatedAccess: null,
+  const principalStore = providePrincipalStore();
+  $effect(() => {
+    principalStore.setPrincipal({
+      scopes: AUTHORIZATION_SCOPES,
+      subject,
+      unauthenticatedAccess: null,
+      workspace: { workspaceId: 'test-workspace', actorId: 'tester', memorySharing },
+    });
   });
   const queryClient = createQueryClient();
 </script>

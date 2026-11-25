@@ -5,6 +5,7 @@
  */
 import {
   type BackendDescriptor,
+  type DecisionModel,
   createMockGenerate,
   type GenerateFunction,
 } from '@lostgradient/operative';
@@ -276,9 +277,11 @@ async function openWithCatalog(
     /** The `decisions.model` the Bureau starts with: a catalog row written `<provider>/<model>`. */
     readonly model?: string;
     readonly modelPolicy?: BureauModelPolicyOptions;
+    readonly models?: Readonly<Record<string, DecisionModel>>;
   } = {},
 ): Promise<OpenedBureau> {
   const decisions = {
+    ...(options.models === undefined ? {} : { models: options.models }),
     ...(options.fallbackModel === undefined ? {} : { fallbackModel: options.fallbackModel }),
     ...(options.model === undefined ? {} : { model: options.model }),
   };
@@ -320,6 +323,31 @@ describe('bureau.decisions.models', () => {
     expect(BUREAU_HANDLER_OPERATIONS).toContain(decisionsModelsOperation);
   });
 
+  it('reports the host model kinds and the actual fallback audience', async () => {
+    const makeHost = (kinds: DecisionModel['kinds']): DecisionModel => ({
+      name: 'local',
+      kinds,
+      async decide() {
+        throw new Error('Listing must never ask a model to decide.');
+      },
+    });
+    for (const [kinds, fallbackAnswers] of [
+      [new Set(['boolean', 'structured'] as const), true],
+      [new Set(['boolean', 'choice', 'scale', 'structured'] as const), false],
+    ] as const) {
+      const opened = await openWithCatalog([row('acme', 'fallback')], {
+        model: 'local',
+        models: { local: makeHost(kinds) },
+      });
+      const result = await models(opened);
+      expect(result.error).toBeUndefined();
+      expect(result.result?.['hostModel']).toEqual({ name: 'local', kinds: [...kinds] });
+      expect(result.result?.['rows']).toEqual([
+        expect.objectContaining({ model: 'fallback', answering: fallbackAnswers, fallback: true }),
+      ]);
+    }
+  });
+
   it('lists an available row, a needs-setup row and a decision-only row, and marks the one that answers', async () => {
     const opened = await openWithCatalog([
       row('acme', 'priced-dear', {
@@ -349,6 +377,8 @@ describe('bureau.decisions.models', () => {
         answering: false,
         fallback: false,
         canBeFallback: true,
+        configured: null,
+        configuredFallback: null,
       },
       {
         provider: 'acme',
@@ -358,6 +388,8 @@ describe('bureau.decisions.models', () => {
         answering: true,
         fallback: true,
         canBeFallback: true,
+        configured: null,
+        configuredFallback: null,
       },
       {
         provider: 'ollama',
@@ -368,6 +400,8 @@ describe('bureau.decisions.models', () => {
         fallback: false,
         // It returns structured output: the fallback uses it once its provider has a key.
         canBeFallback: true,
+        configured: null,
+        configuredFallback: null,
       },
       {
         provider: 'typesafe',
@@ -377,6 +411,8 @@ describe('bureau.decisions.models', () => {
         answering: false,
         fallback: false,
         canBeFallback: false,
+        configured: null,
+        configuredFallback: null,
       },
     ]);
   });

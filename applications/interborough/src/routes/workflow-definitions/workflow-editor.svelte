@@ -35,12 +35,13 @@
     Button,
     Callout,
     CodeLocation,
+    ConfirmDialog,
     PageHeader,
     Skeleton,
     Tabs,
   } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import { onMount, untrack } from 'svelte';
+  import { onDestroy, onMount, tick, untrack } from 'svelte';
 
   import {
     CONNECTION_MAX_ATTEMPTS,
@@ -55,7 +56,8 @@
   import { getHostPaths, workflowRelativePath } from '../../lib/host-paths.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys, workflowViewInstance } from '../../lib/query.ts';
-  import { router } from '../../lib/router.svelte.ts';
+  import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
+  import { LeaveGuard, router } from '../../lib/router.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
   import type { CatalogRow } from '../../lib/workflow-catalog.ts';
   import {
@@ -64,13 +66,15 @@
     isApplyFailure,
     updateDefinitionFromText,
     updateWorkflowFile,
+    validateWorkflowDefinition,
     type WorkflowFileDetail,
   } from '../../lib/workflow-files.ts';
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
   import FileProblem from './file-problem.svelte';
+  import { documentProblemFor, type DocumentProblem } from './workflow-issue-line.ts';
   import WorkflowBuilder from './workflow-builder.svelte';
   import { impactNotice } from './workflow-impact.ts';
-  import { locateJsonProblem } from './workflow-source.ts';
+  import { locateJsonProblem } from '@lostgradient/bureau/workflow-json';
 
   const copy = WORKFLOW_COPY;
   const editor = copy.editor;
@@ -122,17 +126,33 @@
   /** The Bureau saved the file and the engine could not follow, so what is on disk is the save. */
   let unapplied = $state(false);
   /** The builder, which takes the person to the line the JSON stops being JSON on. */
-  let builder = $state<{ focusProblem: () => Promise<void> }>();
+  let builder = $state<{
+    focusProblem: () => Promise<void>;
+    hasInvalidSchedule: () => boolean;
+    focusScheduleProblem: () => boolean;
+  }>();
+  /** The line the Bureau refused the document at, until the text changes (row 65z). */
+  let documentProblem = $state<DocumentProblem | null>(null);
+  /** Keep the form locked from the validation request until the write settles. */
+  let saving = $state(false);
+  const lifetime = new AbortController();
+  onDestroy(() => lifetime.abort());
   /** The tab the loading form shows, before the builder takes over. */
   let loadingTab = $state<'builder' | 'json'>('builder');
 
   // The page draws the connection banner itself, in the edit form's own words (row 66c).
   $effect(() => connection.claimBanner());
 
+  // Leaving with changes that are not saved asks first: Cancel, the breadcrumb, a link, back. An
+  // untouched form, and the text it was last filled from, leave at once (row 66h).
+  const leaveGuard = new LeaveGuard(() => loaded !== undefined && text !== (loaded.text ?? ''));
+  $effect(() => leaveGuard.attach());
+
   function fill(file: WorkflowFileDetail): void {
     loaded = file;
     text = file.text ?? '';
     base = file.hash;
+    documentProblem = null;
   }
 
   // Fills the form once, when the file has arrived. Reload fills it again.
@@ -253,11 +273,16 @@
       expectedHash: string;
       definition: Record<string, unknown>;
     }) => updateWorkflowFile(type, expectedHash, definition),
+    onSettled: () => {
+      saving = false;
+    },
     onMutate: () => {
       failure = null;
     },
     onSuccess: () => {
       unapplied = false;
+      // What was typed is saved, so leaving for the workflow's page asks nothing.
+      leaveGuard.release();
       void queryClient.invalidateQueries({ queryKey: ['workflow-catalog'] });
       router.navigate(workflowTypePath(type));
     },
@@ -270,15 +295,41 @@
     },
   }));
 
-  function submit(): void {
-    if (base === null || save.isPending || changedOnDisk) return;
+  async function submit(): Promise<void> {
+    if (base === null || saving || changedOnDisk) return;
+    if (builder?.hasInvalidSchedule() === true) {
+      builder.focusScheduleProblem();
+      return;
+    }
     const parsed = updateDefinitionFromText(text);
     if (!parsed.ok) {
       // The JSON tab marks the line to fix, and the footer says it; Save takes the person there.
       void builder?.focusProblem();
       return;
     }
-    save.mutate({ expectedHash: base, definition: parsed.definition });
+    // The Bureau's own checks first, so a document it refuses is marked at its line on the JSON
+    // tab rather than said as a failure (row 65z). A check that cannot be made leaves it to Save.
+    const asked = text;
+    const expectedHash = base;
+    saving = true;
+    const problem = await documentProblemFor(asked, () =>
+      validateWorkflowDefinition(
+        { id: type, expectedHash, definition: parsed.definition },
+        { signal: lifetime.signal },
+      ),
+    );
+    if (lifetime.signal.aborted || text !== asked || base !== expectedHash) {
+      saving = false;
+      return;
+    }
+    if (problem !== undefined) {
+      saving = false;
+      documentProblem = problem;
+      await tick();
+      void builder?.focusProblem();
+      return;
+    }
+    save.mutate({ expectedHash, definition: parsed.definition });
   }
 
   /**
@@ -321,8 +372,9 @@
       label: editor.saveAction,
       group: copy.builder.shortcutGroup,
       scope: { route: '/workflows/:workflow/edit' },
+      // Below 640 pixels the builder is read-only, so the shortcut saves nothing there either.
       handler: () => {
-        if (editable) submit();
+        if (editable && !phoneViewport.current) void submit();
       },
     }),
   );
@@ -400,7 +452,11 @@
     />
   {/if}
 
-  <PageHeader title={editor.heading(name)} headingLevel={1} />
+  <PageHeader
+    title={editor.heading(name)}
+    headingLevel={1}
+    {...phoneViewport.current && editable ? { description: copy.builder.readOnlyOnScreen } : {}}
+  />
   <p class="weft-workflow-editor__path">
     <span>{hostPaths.data?.mode === 'remote' ? copy.remote.fileLabel : copy.fileLabel}</span>
     <CodeLocation class="weft-code-location" file={filePath} data-testid="workflow-file-path" />
@@ -486,32 +542,33 @@
           {text}
           mode="edit"
           error=""
-          saving={save.isPending}
+          {saving}
           {failure}
           initialTab={loaded.state === 'invalid' ? 'json' : loadingTab}
           jsonId="workflow-editor-text"
           jsonLabel={editor.textLabel}
           jsonDescription={editor.textDescription}
-          backHref={workflowTypePath(type)}
           {...footerStatus === undefined ? {} : { status: footerStatus }}
           {...changedOnDisk ? { notice: changedNotice } : {}}
           {...saveImpact === undefined ? {} : { aboveFooter: impactSnippet }}
+          {documentProblem}
           onTextChange={(next) => {
             text = next;
+            documentProblem = null;
           }}
         >
-          {#snippet actions()}
-            <Button variant="secondary" size="sm" disabled={save.isPending} onclick={cancel}
+          {#snippet actions(readOnly: boolean)}
+            <Button variant="secondary" size="sm" disabled={saving} onclick={cancel}
               >{editor.cancelAction}</Button
             >
             <Button
               data-changes
               type="button"
-              onclick={() => submit()}
+              onclick={() => void submit()}
               variant="primary"
               size="sm"
-              disabled={save.isPending}
-              >{save.isPending ? editor.savingAction : editor.saveAction}</Button
+              disabled={saving || readOnly}
+              >{saving ? editor.savingAction : editor.saveAction}</Button
             >
           {/snippet}
         </WorkflowBuilder>
@@ -519,6 +576,18 @@
     {/if}
   {/if}
 </div>
+
+<!-- Asked before changes that are not saved are left behind (row 66h): the creator's own dialog.
+     Focus starts on Keep editing, Cinder's cancel button. -->
+<ConfirmDialog
+  bind:open={leaveGuard.asking}
+  title={copy.builder.discard.title}
+  description={copy.builder.discard.description}
+  confirmLabel={copy.builder.discard.confirm}
+  cancelLabel={copy.builder.discard.keep}
+  destructive
+  onConfirm={() => leaveGuard.leave()}
+/>
 
 <style>
   .weft-workflow-editor {

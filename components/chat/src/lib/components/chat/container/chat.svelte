@@ -15,6 +15,7 @@
     onatbottombindingchange?: (value: boolean) => void;
     onunreadcountbindingchange?: (value: number) => void;
     onNewMessageIndicatorVisibleBindingChange?: (value: boolean) => void;
+    onHostQuestionDockedBindingChange?: (value: boolean) => void;
   };
 
   export type { ChatAnnounceLevel, ChatProps };
@@ -42,6 +43,7 @@
     resolveMessageSteps,
     resolveMessageSuggestions,
   } from '../utilities/index.ts';
+  import { recordedApprovalReceipts } from '../utilities/recorded-approval-decision.ts';
   import { ChatMessage, ChatDateSeparator } from '../message/index.ts';
   import { ChatInput } from '../input/index.ts';
   import { DEFAULT_SCROLL_CONFIGURATION, isAtBottom } from './scroll-utilities.ts';
@@ -98,9 +100,9 @@
   import ToolCallTimeline from '../message/tool-call-timeline.svelte';
   import type { BodyMessagePart } from '../message/chat-message-parts.ts';
   import { resolveMessageTurnState } from '../message/turn-state.ts';
-  import { resolveTurnLabels } from '../message/turn-labels.ts';
   import { resolveChatLabels } from '../chat-labels.ts';
   import {
+    ApprovalGroup,
     Button,
     ConfirmDialog,
     dockedToBottom,
@@ -136,9 +138,11 @@
     atBottom = $bindable(true),
     unreadCount = $bindable(0),
     newMessageIndicatorVisible = $bindable(false),
+    hostQuestionDocked = $bindable(false),
     onatbottombindingchange,
     onunreadcountbindingchange,
     onNewMessageIndicatorVisibleBindingChange,
+    onHostQuestionDockedBindingChange,
     class: className,
     surfaceMode = 'default',
     scrollFadeVisible = false,
@@ -177,6 +181,7 @@
     composerMarkdownStyling = true,
     composerStatus,
     availability,
+    questionDock,
     questionPlacement = 'inline',
     questionLabels,
     empty,
@@ -196,6 +201,7 @@
     typingParticipants,
     readReceipts,
     sourcesByMessageId,
+    claimSourcesByMessageId,
     adapter,
     onAdapterError,
     onPushMessage,
@@ -218,6 +224,8 @@
     messageTurnState,
     turnLabels,
     labels,
+    currentPrincipal,
+    approvalReceiptHref,
     onRetryConnection,
     onContinueTurn,
     onDiscardTurn,
@@ -250,7 +258,6 @@
     ...rest
   }: ChatImplementationProps = $props();
 
-  const chatWords = $derived(resolveTurnLabels(turnLabels));
   const chatLabels = $derived(resolveChatLabels(labels));
   // Shared Chat words provide defaults for the dock; an explicit questionLabels override always
   // wins so hosts can specialize question vocabulary without changing the rest of Chat.
@@ -511,6 +518,21 @@
     dockedQuestion === undefined ? 1 : dockRound.indexOf(dockedQuestion) + 1,
   );
   const dockedTotal = $derived(dockRound.length);
+  // A host-owned question docks behind any Chat-owned question and only while the composer stays
+  // present. Tell the host before DOM work so it retains the inline row whenever the dock is absent.
+  const hostDocksQuestion = $derived(
+    questionDock !== undefined &&
+      dockedQuestion === undefined &&
+      composerStatus?.kind !== 'blocked' &&
+      !isComposerNoticeStatus(composerStatus) &&
+      !availabilityReplacesComposer(availability),
+  );
+  $effect.pre(() => {
+    const docked = hostDocksQuestion;
+    if (untrack(() => hostQuestionDocked) === docked) return;
+    hostQuestionDocked = docked;
+    onHostQuestionDockedBindingChange?.(docked);
+  });
 
   // Once every question of the round is answered the dock has nothing to ask: the round ends, so a
   // question asked later starts a new one.
@@ -661,6 +683,7 @@
     getAnsweredToolCallIds: () => [
       ...questions.answers.keys(),
       ...commandActions.approvalReceipts.keys(),
+      ...recordedReceipts.keys(),
       ...toolCallIdsWithOwnContent(messages),
     ],
     // Only a host that draws rows or parts itself sees every tool call as its own row: the group
@@ -707,6 +730,36 @@
     });
   }
   const messages = $derived(transcript.messages);
+  // Approvals the conversation records as decided (COR-2282 A5): read from each result row's
+  // `approvalDecision` metadata, so a reload, or a decision made in Reviews, keeps its receipt
+  // with who decided and where.
+  const recordedReceipts = $derived.by(() => {
+    const toolNames = new Map<string, string>();
+    for (const message of messages) {
+      if (message.toolCall !== undefined) toolNames.set(message.toolCall.id, message.toolCall.name);
+    }
+    return recordedApprovalReceipts(messages, {
+      toolName: (toolCallId) => toolNames.get(toolCallId),
+      currentPrincipal,
+      you: chatLabels.you,
+      reviews: chatLabels.decidedInReviews,
+      reviewsHref: approvalReceiptHref,
+    });
+  });
+  // The receipts every approval part reads. A decision made here wins over the record of it, and
+  // its receipt names the reader in the host's word.
+  const approvalReceipts = $derived.by(() => {
+    const held = commandActions.approvalReceipts;
+    if (recordedReceipts.size === 0 && held.size === 0) return held;
+    const merged = new Map(recordedReceipts);
+    for (const [toolCallId, record] of held) {
+      merged.set(toolCallId, {
+        ...record,
+        receipt: { decidedBy: chatLabels.you, ...record.receipt },
+      });
+    }
+    return merged;
+  });
   const lastMessageId = $derived(transcript.lastMessageId);
   const rollbackBoundaryIndex = $derived(transcript.rollbackBoundaryIndex);
   const messageIndexById = $derived(transcript.messageIndexById);
@@ -2651,9 +2704,7 @@
           approvalResolutionInFlightIds={commandActions.approvalResolutionInFlightIds.size > 0
             ? commandActions.approvalResolutionInFlightIds
             : undefined}
-          approvalReceipts={commandActions.approvalReceipts.size > 0
-            ? commandActions.approvalReceipts
-            : undefined}
+          approvalReceipts={approvalReceipts.size > 0 ? approvalReceipts : undefined}
           describeApproval={adapter?.describeApproval
             ? (call, action) => adapter?.describeApproval?.(call, action)
             : undefined}
@@ -2674,6 +2725,9 @@
           toolActivityActive={progressState === 'tool' && activeTurnMessageIds.has(message.id)}
           onSuggestionSelect={handleSuggestionSelect}
           sources={message.role === 'assistant' ? sourcesByMessageId?.get(message.id) : undefined}
+          claimSources={message.role === 'assistant'
+            ? claimSourcesByMessageId?.get(message.id)
+            : undefined}
           sourcesExpanded={sourcesState.isExpanded(message.id)}
           onsourcestoggle={() => void toggleSources(message.id)}
           turnState={resolveMessageTurnState(message, messageTurnState)}
@@ -2749,11 +2803,6 @@
         ])}
         {@const ordinaryPairs = groupPairs.filter(({ message }) => !approvalIds.has(message.id))}
         <div class="chat-tool-call-group">
-          {#if compactApprovalMessages.length > 1}
-            <h3 class="chat-approval-group-heading">
-              {chatWords.approvalWaiting(compactApprovalMessages.length)}
-            </h3>
-          {/if}
           {#if ordinaryPairs.length > 0}
             <ToolCallTimeline
               messageId={renderRow.messages[0]!.id}
@@ -2775,13 +2824,31 @@
             />
           {/if}
           <div class="chat-approval-group-rows">
-            {#each approvalMessages as actionRequiredMessage (actionRequiredMessage.id)}
-              {@render renderMessageRow(
-                { type: 'message', message: actionRequiredMessage },
-                true,
-                compactApprovalMessages.length > 1 ? 'row' : 'decision',
-              )}
-            {/each}
+            {#if compactApprovalMessages.length > 1}
+              <!-- Two or more approvals of one run wait together: Cinder's one bordered group of
+                   compact rows under "2 approvals waiting", whichever message rows they came in
+                   (COR-2282 A3). -->
+              <ApprovalGroup
+                heading={chatLabels.approvalsWaiting(compactApprovalMessages.length)}
+                headingLevel={3}
+              >
+                {#each compactApprovalMessages as actionRequiredMessage (actionRequiredMessage.id)}
+                  {@render renderMessageRow(
+                    { type: 'message', message: actionRequiredMessage },
+                    true,
+                    'row',
+                  )}
+                {/each}
+              </ApprovalGroup>
+            {:else}
+              {#each approvalMessages as actionRequiredMessage (actionRequiredMessage.id)}
+                {@render renderMessageRow(
+                  { type: 'message', message: actionRequiredMessage },
+                  true,
+                  'decision',
+                )}
+              {/each}
+            {/if}
           </div>
           {#each inputMessages.filter((message) => !approvalIds.has(message.id)) as inputMessage (inputMessage.id)}
             {@render renderMessageRow({ type: 'message', message: inputMessage }, true)}
@@ -2967,7 +3034,7 @@
            it), so a toast sits above it; a centred composer is in the middle and not counted. -->
       <div
         class="chat-input-area"
-        data-question-docked={dockedQuestion !== undefined ? '' : undefined}
+        data-question-docked={dockedQuestion !== undefined || hostDocksQuestion ? '' : undefined}
         {@attach composerCentered ? undefined : dockedToBottom()}
       >
         {#if quotes.quotes.length > 0}
@@ -2984,32 +3051,34 @@
             {@render composerLead()}
           </div>
         {/if}
-        {#if approvalWaiting && approvalArrivalSettled && !approvalFullyVisible}
-          <ChatApprovalDrawer
-            labels={chatLabels}
-            draft={composerDraft.trim() !== ''}
-            onreview={reviewPendingApproval}
-          />
-        {/if}
-        {#if followUps.discarded !== undefined}
-          <ChatFollowUpDiscardDrawer
-            discarded={followUps.discarded}
-            labels={chatLabels}
-            onrestore={restoreDiscardedFollowUps}
-            ondismiss={followUps.dismiss}
-          />
-        {/if}
-        {#if followUps.items.length > 0}
-          <ChatFollowUpDrawer
-            id={inputId}
-            items={followUps.items}
-            labels={chatLabels}
-            canSendNow={followUps.canSendNow}
-            onsendnow={followUps.sendNow}
-            onedit={editQueuedFollowUp}
-            onremove={removeQueuedFollowUp}
-          />
-        {/if}
+        <div class="chat-composer-drawers" data-chat-composer-drawers>
+          {#if approvalWaiting && approvalArrivalSettled && !approvalFullyVisible}
+            <ChatApprovalDrawer
+              labels={chatLabels}
+              draft={composerDraft.trim() !== ''}
+              onreview={reviewPendingApproval}
+            />
+          {/if}
+          {#if followUps.discarded !== undefined}
+            <ChatFollowUpDiscardDrawer
+              discarded={followUps.discarded}
+              labels={chatLabels}
+              onrestore={restoreDiscardedFollowUps}
+              ondismiss={followUps.dismiss}
+            />
+          {/if}
+          {#if followUps.items.length > 0}
+            <ChatFollowUpDrawer
+              id={inputId}
+              items={followUps.items}
+              labels={chatLabels}
+              canSendNow={followUps.canSendNow}
+              onsendnow={followUps.sendNow}
+              onedit={editQueuedFollowUp}
+              onremove={removeQueuedFollowUp}
+            />
+          {/if}
+        </div>
         {#if dockedQuestion !== undefined && firstOpenQuestion !== undefined}
           <!-- One dock for the whole round, so focus stays on the previous or next button that was
                pressed; the dock resets its own choice when the question changes. Reply in chat
@@ -3028,6 +3097,10 @@
             onNavigate={moveDock}
             labels={questionDockLabels}
           />
+        {:else if hostDocksQuestion && questionDock !== undefined}
+          <div class="chat-host-question-dock" data-chat-question-dock="host">
+            {@render questionDock()}
+          </div>
         {/if}
         <ChatInput
           labels={chatLabels}
@@ -3714,13 +3787,6 @@
     margin-block-start: var(--cinder-space-4);
   }
 
-  .chat-approval-group-heading {
-    margin: 0 0 var(--cinder-space-2);
-    color: var(--cinder-text-default);
-    font-size: var(--cinder-text-sm);
-    font-weight: var(--cinder-font-semibold);
-  }
-
   .chat-tool-call-group {
     display: flex;
     flex-direction: column;
@@ -3728,6 +3794,23 @@
     inline-size: 100%;
     max-inline-size: var(--cinder-chat-message-max-width, 48rem);
     min-inline-size: 0;
+  }
+
+  /* A source marker reaches 10px below its 24px face on touch. The ordinary narrow row gap is
+   * 8px, leaving a two-pixel overlap with the following step disclosure's 44px target. Reserve
+   * the next spacing token only at this adjacent source-to-step boundary so either control keeps
+   * its own upper and lower tap lane. */
+  :global(.chat-message-wrapper:has(.chat-message-sources, .chat-message-line-sources))
+    + .chat-tool-call-group {
+    margin-block-start: var(--cinder-space-1);
+  }
+
+  /* An empty approval slot can be followed inside the same group by a message-details control.
+   * Reserve this coarse-pointer boundary only; regular answer rows have no such sibling. */
+  @media (any-pointer: coarse) {
+    .chat-tool-call-group > .chat-approval-group-rows:empty + :global(.chat-message-wrapper) {
+      margin-block-start: var(--cinder-space-1);
+    }
   }
 
   /* The answer under a collapsed step row stands as far from the row's text as a message's own
@@ -3841,9 +3924,10 @@
 
   .chat-input-area > :global(.chat-input-shell),
   .chat-input-area > .chat-composer-lead,
-  .chat-input-area > :global(.chat-follow-up-drawer),
-  .chat-input-area > :global(.chat-follow-up-discard),
+  .chat-composer-drawers > :global(.chat-follow-up-drawer),
+  .chat-composer-drawers > :global(.chat-follow-up-discard),
   .chat-input-area > :global(.chat-question-dock),
+  .chat-input-area > .chat-host-question-dock,
   .chat-input-area > .chat-composer-footer {
     max-inline-size: 100%;
     margin-inline: auto;
@@ -3853,6 +3937,51 @@
      attachments survive, and comes back when the question is answered or replied to in chat. */
   .chat-input-area[data-question-docked] > :global(.chat-input-shell) {
     display: none;
+  }
+
+  .chat-host-question-dock {
+    box-sizing: border-box;
+    inline-size: 100%;
+    min-inline-size: 0;
+    max-block-size: min(100%, 80dvh);
+    overflow-y: auto;
+  }
+
+  .chat-composer-drawers {
+    display: contents;
+  }
+
+  @container (max-width: 480px) {
+    .chat-input-area:has(> .chat-composer-drawers > :global(:nth-child(2))) {
+      display: flex;
+      flex-direction: column;
+      max-block-size: 40dvh;
+      overflow-y: auto;
+    }
+
+    .chat-input-area:has(> .chat-composer-drawers > :global(:nth-child(2)))
+      > :global(:not(.chat-composer-drawers)) {
+      flex-shrink: 0;
+    }
+
+    .chat-input-area:has(> .chat-composer-drawers > :global(:nth-child(2)))
+      > :global(.chat-input-shell) {
+      inline-size: 100%;
+    }
+
+    .chat-composer-drawers:has(> :global(:nth-child(2))) {
+      display: block;
+      flex: 0 1 auto;
+      min-block-size: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scroll-padding-block: var(--cinder-space-1);
+    }
+
+    .chat-composer-drawers:has(> :global(:nth-child(2))) :global(.chat-follow-up-drawer-list) {
+      max-block-size: none;
+      overflow-y: visible;
+    }
   }
 
   /* Responsive adjustments: tighten padding at narrow widths.

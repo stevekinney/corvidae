@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 import * as matchers from '@testing-library/jest-dom/matchers';
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
@@ -68,6 +68,65 @@ describe('Select listbox presentation: trigger', () => {
     const { container } = renderListbox({ placeholder: 'Loading models' });
     const placeholder = container.querySelector('[data-cinder-placeholder]');
     expect(placeholder?.textContent).toBe('Loading models');
+  });
+
+  test('keeps the placeholder for an unmatched value and warns once for that value', () => {
+    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { container } = renderListbox({ value: 'retired', placeholder: 'Choose an agent' });
+      expect(container.querySelector('[data-cinder-placeholder]')?.textContent).toBe(
+        'Choose an agent',
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[cinder/Select] value "retired" does not match any option — pass a value from options or omit it.',
+      );
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  test('does not warn for an unset selection or a duplicated matching option', () => {
+    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      renderListbox({ value: undefined, placeholder: 'Choose an agent' });
+      renderListbox({
+        value: 'assistant',
+        options: [
+          { value: 'assistant', label: 'Assistant' },
+          { value: 'assistant', label: 'Assistant duplicate' },
+        ],
+      });
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  test('replaces the placeholder without another warning when async options resolve the value', async () => {
+    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const view = renderListbox({ value: 'retired', placeholder: 'Loading agents' });
+      expect(view.container.querySelector('[data-cinder-placeholder]')?.textContent).toBe(
+        'Loading agents',
+      );
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+
+      await view.rerender({
+        id: 'agent',
+        label: 'Agent',
+        options: [...agents, { value: 'retired', label: 'Retired agent' }],
+        presentation: 'listbox',
+        value: 'retired',
+        placeholder: 'Loading agents',
+      });
+
+      expect(trigger(view.container).textContent).toContain('Retired agent');
+      expect(view.container.querySelector('[data-cinder-placeholder]')).toBeNull();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   test('draws the prefix before the value and hides it from assistive technology', () => {

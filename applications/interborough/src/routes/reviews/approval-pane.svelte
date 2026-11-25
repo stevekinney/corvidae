@@ -10,18 +10,23 @@
     ApprovalCard,
     humanizeIdentifier,
     type ApprovalOperation,
+    type ApprovalCardProps,
     type ApprovalResolution,
+    type ApprovalState,
   } from '@lostgradient/cinder';
 
   import { getConnection } from '../../app/connection.svelte.ts';
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import type { BureauToolApproval } from '../../lib/bureau-reviews.ts';
-  import IdentifierText from '../../lib/identifier-text.svelte';
-  import { approvalQuestion, declaredSummary, reasonSaysAlways } from '../../lib/tool-text.ts';
-  import BureauReviewOperation from './bureau-review-operation.svelte';
-  import { inputParts } from './review-items.ts';
-  import ReviewResolution from './review-resolution.svelte';
+  import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
+  import {
+    approvalQuestion,
+    argumentEntries,
+    declaredSummary,
+    reasonSaysAlways,
+  } from '../../lib/tool-text.ts';
+  import { decidedByName } from './review-items.ts';
   import ReviewSource from './review-source.svelte';
   import type { ReviewOutcome } from './review-outcome.ts';
 
@@ -29,8 +34,8 @@
     readonly review: BureauToolApproval;
     /** The note sent with a denial. The page owns it, so the D key sends what is typed. */
     note: string;
-    /** Whether a decision is being sent, which holds the buttons. */
-    readonly deciding: boolean;
+    /** The decision being sent, which names and holds its matching button. */
+    readonly deciding: 'approve' | 'deny' | undefined;
     /** What became of the last decision, when it was not simply recorded. */
     readonly outcome: ReviewOutcome | undefined;
     readonly onDecide: (resolution: ApprovalResolution) => void;
@@ -38,6 +43,17 @@
 
   let { review, note = $bindable(''), deciding, outcome, onDecide }: ApprovalPaneProps = $props();
 
+  const states = {
+    pending: 'pending',
+    approved: 'approved',
+    denied: 'denied',
+    rejected: 'denied',
+    expired: 'expired',
+    canceled: 'cancelled',
+    revoked: 'unavailable',
+    superseded: 'unavailable',
+  } satisfies Record<BureauToolApproval['status'], ApprovalState>;
+  const principalStore = getPrincipalStore();
   const connection = getConnection();
   const waiting = $derived(review.status === 'pending');
   const toolLabel = $derived(humanizeIdentifier(review.approval.toolName, { casing: 'sentence' }));
@@ -48,97 +64,87 @@
       summary: declaredSummary(review.approval.action.message, review.approval.reason),
     }),
   );
-  const action = $derived(
-    review.approval.action.type === 'approval' ? review.approval.action : undefined,
-  );
-  const operation = $derived(action?.operation);
-  const argsPreview = $derived.by((): unknown => {
-    const args = review.approval.arguments;
-    if (args === null || typeof args !== 'object' || Array.isArray(args)) return args;
-    const { cents, ...fields } = Object.fromEntries(Object.entries(args));
-    if (typeof cents !== 'number') return args;
-    // When the tool supplied a matching currency preview, keep those words beside the other
-    // inputs. Otherwise state the unit without assuming the tool's currency.
-    const amount = /(?:^|\s)(\$\d[\d,]*\.\d{2})\?*$/.exec(question)?.[1];
-    return amount !== undefined && Math.round(Number(amount.replace(/[^\d.]/g, '')) * 100) === cents
-      ? { ...fields, Amount: amount }
-      : { ...fields, 'Amount in cents': cents };
-  });
-  const cardOperation = $derived.by((): ApprovalOperation => {
-    const files = operation?.filesTouched;
-    const preview = { argsPreview, ...(files === undefined ? {} : { filesTouched: [...files] }) };
-    switch (operation?.kind) {
-      case 'file-write':
-        return { kind: 'file-write', filesTouched: [...operation.filesTouched], argsPreview };
-      case 'command':
-        return { kind: 'command', command: operation.command, ...preview };
-      case 'patch':
-        return { kind: 'patch', diff: operation.diff, ...preview };
-      default:
-        return { kind: 'other', ...preview };
-    }
-  });
-  const risk = $derived(action?.risk ?? 'low');
-  let lastDecision = $state<'approve' | 'deny'>('approve');
   /**
    * Whether the tool asks on every call (its mode is Always), which allowing it for the rest of the
    * chat would not change, so the choice is not offered.
    */
   const alwaysAsks = $derived(reasonSaysAlways(review.approval.reason));
+  const action = $derived(
+    review.approval.action.type === 'approval' ? review.approval.action : undefined,
+  );
+  const hasInput = $derived(argumentEntries(review.approval.arguments).length > 0);
+  const operation = $derived.by((): ApprovalOperation => {
+    const declared = action?.operation;
+    const argsPreview = hasInput ? review.approval.arguments : undefined;
+    if (declared === undefined) return { kind: 'other', argsPreview };
+    if (declared.kind === 'file-write') {
+      return { ...declared, filesTouched: [...declared.filesTouched], argsPreview };
+    }
+    const { filesTouched, ...operationFields } = declared;
+    return {
+      ...operationFields,
+      ...(filesTouched === undefined ? {} : { filesTouched: [...filesTouched] }),
+      argsPreview,
+    };
+  });
+  const state = $derived(states[review.status]);
+  const closedNotice = $derived(
+    review.status === 'revoked' || review.status === 'superseded'
+      ? REVIEWS_COPY.approvalClosed[review.status]
+      : undefined,
+  );
+  const resolution = $derived(review.resolution);
+  const optionalCardProps = $derived({
+    ...(action?.expiresAt === undefined ? {} : { expiresAt: action.expiresAt }),
+    ...(alwaysAsks ? {} : { rememberScope: CHAT_COPY.approval.rememberScope }),
+    ...(connection.unreachable ? { disabledReason: CHAT_COPY.approval.unreachable } : {}),
+    ...(deciding === undefined ? {} : { resolving: deciding }),
+    ...(outcome?.tone === 'danger'
+      ? { failure: { summary: outcome.title, detail: outcome.message } }
+      : {}),
+    ...(resolution === undefined
+      ? {}
+      : {
+          decidedBy: decidedByName(
+            resolution.decidedBy,
+            principalStore.principal?.subject ?? undefined,
+          ),
+          decidedAt: resolution.decidedAt,
+          ...(resolution.reason === undefined ? {} : { decisionNote: resolution.reason }),
+        }),
+    ...(review.status === 'rejected' ? { outcomeLabel: REVIEWS_COPY.decided.rejected } : {}),
+    ...(closedNotice === undefined ? {} : { notice: closedNotice }),
+  } satisfies Partial<ApprovalCardProps>);
 </script>
 
-<div class="ib-review-pane" data-kind="tool-approval" data-review={review.id}>
-  {#if waiting}
-    <ApprovalCard
-      layout="row"
-      class="ib-review-pane__decision"
-      headingLevel={2}
-      state="pending"
-      {question}
-      tool={{
-        name: review.approval.toolName,
-        label: toolLabel,
-        risk,
-        irreversible: risk === 'high',
-      }}
-      operation={cardOperation}
-      policyVersion={review.id}
-      idempotencyKey={`${review.id}:${String(review.round)}`}
-      {...action?.expiresAt === undefined ? {} : { expiresAt: action.expiresAt }}
-      {...alwaysAsks ? {} : { rememberScope: CHAT_COPY.approval.rememberScope }}
-      {...connection.unreachable ? { disabledReason: CHAT_COPY.approval.unreachable } : {}}
-      {...deciding ? { resolving: lastDecision } : {}}
-      bind:draftNote={note}
-      onResolve={(resolution) => {
-        lastDecision = resolution.decision === 'deny' ? 'deny' : 'approve';
-        onDecide(resolution);
-      }}
-    >
-      {#snippet context()}<ReviewSource {review} {waiting} />{/snippet}
-    </ApprovalCard>
-  {:else}
-    {@const entries = inputParts(review.approval.arguments)}
-    <p class="ib-review-pane__eyebrow">{REVIEWS_COPY.toolApproval}</p>
-    <h2 class="ib-review-pane__question">
-      <IdentifierText text={question} identifiers={[review.approval.toolName]} />
-    </h2>
+<div data-kind="tool-approval" data-review={review.id}>
+  {#snippet source()}
     <ReviewSource {review} {waiting} />
-    {#if entries.length > 0 || operation !== undefined}
-      <section class="ib-review-pane__input" aria-label={REVIEWS_COPY.inputLabel}>
-        {#if entries.length > 0}
-          <p class="ib-review-pane__input-line" data-testid="review-input-line">
-            <!-- prettier-ignore -->
-            {#each entries as [key, value], index (index)}{#if index > 0}{', '}{/if}<span class="ib-review-pane__input-key">{key}</span> {value}{/each}
-          </p>
-        {/if}
-        {#if operation !== undefined}
-          <BureauReviewOperation {operation} />
-        {/if}
-      </section>
+    {#if !hasInput}
+      <p>{REVIEWS_COPY.noInput}</p>
     {/if}
-    <ReviewResolution {review} />
-  {/if}
-  {#if outcome !== undefined}
+  {/snippet}
+  <ApprovalCard
+    layout="detail"
+    tool={{
+      name: review.approval.toolName,
+      label: toolLabel,
+      risk: action?.risk ?? 'low',
+      irreversible: action?.risk === 'high',
+    }}
+    {operation}
+    policyVersion="bureau-review"
+    idempotencyKey={`${review.id}:${review.round}`}
+    {state}
+    headingLevel={2}
+    {question}
+    context={source}
+    bind:reason={note}
+    noteInitiallyOpen
+    {...optionalCardProps}
+    onResolve={onDecide}
+  />
+  {#if outcome !== undefined && outcome.tone !== 'danger'}
     <Alert variant={outcome.tone}>
       <p class="ib-decision__failure">
         {outcome.title}{outcome.message === '' ? '' : `: ${outcome.message}`}

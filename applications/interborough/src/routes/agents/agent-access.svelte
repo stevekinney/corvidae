@@ -33,7 +33,7 @@
     Checkbox,
     EmptyState,
     FilterBar,
-    Input,
+    NumberInput,
     SectionHeading,
     Skeleton,
     Spinner,
@@ -45,7 +45,8 @@
   import { Check } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
-  import { SvelteSet } from 'svelte/reactivity';
+  import type { Attachment } from 'svelte/attachments';
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
   import {
     CONNECTION_MAX_ATTEMPTS,
@@ -110,6 +111,8 @@
   let { id, detail, pluginTitle = '', unavailable = false, overrides }: Props = $props();
 
   const copy = AGENT_PAGE_COPY.access;
+  const spendFormat: Intl.NumberFormatOptions = { maximumSignificantDigits: 21 };
+  const spendInputText = new SvelteMap<'chat' | 'run', string>();
   const queryClient = useQueryClient();
   const connection = getConnection();
   const toasts = hasToastHost();
@@ -233,6 +236,7 @@
       }
       // A code agent's overrides carry no skills, so its skills stay as they are; its own tools
       // are offered again once taken away.
+      spendInputText.clear();
       form = AgentAccessState.from(
         loaded,
         offered,
@@ -263,6 +267,26 @@
   }
 
   const groups = $derived(form === undefined ? [] : groupAccessRows(form.rows));
+
+  function replaceAsks(state: AgentAccessState): void {
+    const approvals = new Map(state.approvals);
+    const replaced = state.approvalsReplaced;
+    void state.change({
+      key: 'approvals',
+      subject: AGENT_PAGE_COPY.plugin.replaceAsks,
+      restored: AGENT_PAGE_COPY.plugin.overridableKept(['approvals']),
+      apply: () => state.replaceApprovals(),
+      onSaved: () => {
+        state.toolsEditable = true;
+        state.approvalsEditable = true;
+      },
+      undo: () => {
+        state.approvals.clear();
+        for (const [tool, approval] of approvals) state.approvals.set(tool, approval);
+        state.approvalsReplaced = replaced;
+      },
+    });
+  }
   const segments = $derived<FilterSegment[]>([
     { value: 'all', label: copy.all, count: form?.totalCount ?? 'pending' },
     ...groups.map((group) => ({
@@ -313,30 +337,89 @@
     });
   }
 
-  /** Saves a typed spend limit when the field is left, unless it is one the Bureau would refuse. */
-  function commitSpend(state: AgentAccessState): void {
-    const next = state.spendPerChat;
-    const before = state.spendApplied;
-    if (state.spendLimit === undefined || next.trim() === before.trim()) return;
+  /** Keeps the editor's exact text until NumberInput has judged it on blur. */
+  function spendInput(field: 'chat' | 'run'): Attachment<HTMLInputElement> {
+    return (input) => {
+      const update = () => {
+        spendInputText.set(field, input.value);
+      };
+      input.addEventListener('input', update);
+      return () => input.removeEventListener('input', update);
+    };
+  }
+
+  function acceptSpendValue(
+    state: AgentAccessState,
+    field: 'chat' | 'run',
+    value: number | null,
+  ): void {
+    const text = field === 'chat' ? state.spendPerChat : state.spendPerRun;
+    const rawText = spendInputText.get(field) ?? text;
+    spendInputText.delete(field);
+    const next =
+      value === null && rawText.trim() !== '' ? rawText : value === null ? '' : String(value);
+    if (field === 'chat') state.spendPerChat = next;
+    else state.spendPerRun = next;
+    commitSpend(state, field);
+  }
+
+  /** Saves one typed spend limit when the field is left, unless it is one the Bureau would refuse. */
+  function commitSpend(state: AgentAccessState, field: 'chat' | 'run'): void {
+    const next = field === 'chat' ? state.spendPerChat : state.spendPerRun;
+    const before = field === 'chat' ? state.spendApplied : state.spendRunApplied;
+    const limit = field === 'chat' ? state.spendLimit : state.spendRunLimit;
+    if (
+      limit === undefined ||
+      next.trim() === before.trim() ||
+      (field === 'run' && limit === null && state.spendLimit !== null)
+    ) {
+      return;
+    }
     void state.change({
-      key: 'spend',
-      subject: copy.spendSubject,
+      key: field === 'chat' ? 'spend-chat' : 'spend-run',
+      subject: field === 'chat' ? copy.spendSubject : copy.spendRunSubject,
       restored: before.trim() === '' ? copy.noLimit : `${before.trim()} ${copy.spendUnit}`,
       apply: () => {
-        state.spendPerChat = next;
-        state.spendApplied = next;
+        if (field === 'chat') {
+          state.spendPerChat = next;
+          state.spendApplied = next;
+        } else {
+          state.spendPerRun = next;
+          state.spendRunApplied = next;
+        }
       },
       undo: () => {
-        state.spendPerChat = before;
-        state.spendApplied = before;
+        if (field === 'chat') {
+          state.spendPerChat = before;
+          state.spendApplied = before;
+        } else {
+          state.spendPerRun = before;
+          state.spendRunApplied = before;
+        }
       },
     });
   }
 
+  function numericValue(text: string): number | null {
+    const trimmed = text.trim();
+    if (trimmed === '') return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
   const spendError = $derived(
-    form?.spendLimit === undefined && form !== undefined
+    form?.spendLimit === undefined && form !== undefined && form.spendPerChat !== form.spendApplied
       ? AGENT_EDITOR_COPY.limits.errors.spend(LIMIT_BOUNDS.spendUsd)
       : '',
+  );
+  const spendRunError = $derived(
+    form?.spendRunLimit === null && form.spendLimit !== null
+      ? copy.spendRunRequiresChatClear
+      : form?.spendRunLimit === undefined &&
+          form !== undefined &&
+          form.spendPerRun !== form.spendRunApplied
+        ? AGENT_EDITOR_COPY.limits.errors.spend(LIMIT_BOUNDS.spendUsd)
+        : '',
   );
 </script>
 
@@ -499,25 +582,42 @@
     </fieldset>
 
     <div class="ib-access-spend" data-testid="agent-access-spend">
-      <Input
+      <NumberInput
         id="access-spend-per-chat"
         label={copy.spendLabel}
         description={copy.spendNote}
         placeholder={copy.spendPlaceholder}
-        inputmode="decimal"
+        value={numericValue(state.spendPerChat)}
+        format={spendFormat}
         error={spendError}
         disabled={!state.editable}
         readonly={connection.unreachable}
         aria-disabled={connection.unreachable ? 'true' : undefined}
         title={connection.unreachable ? CONNECTION_COPY.changesOff : undefined}
         data-changes
-        bind:value={state.spendPerChat}
-        onchange={() => commitSpend(state)}
-      >
-        {#snippet trailing()}{copy.spendUnit}{/snippet}
-      </Input>
-      {@render saving('spend')}
-      {@render failure('spend')}
+        adornment={copy.spendUnit}
+        inputAttachment={spendInput('chat')}
+        onValueChange={(value) => acceptSpendValue(state, 'chat', value)}
+      />
+      {@render saving('spend-chat')}
+      {@render failure('spend-chat')}
+      <NumberInput
+        id="access-spend-per-run"
+        label={copy.spendRunLabel}
+        value={numericValue(state.spendPerRun)}
+        format={spendFormat}
+        error={spendRunError}
+        disabled={!state.editable}
+        readonly={connection.unreachable}
+        aria-disabled={connection.unreachable ? 'true' : undefined}
+        title={connection.unreachable ? CONNECTION_COPY.changesOff : undefined}
+        data-changes
+        adornment={copy.spendUnit}
+        inputAttachment={spendInput('run')}
+        onValueChange={(value) => acceptSpendValue(state, 'run', value)}
+      />
+      {@render saving('spend-run')}
+      {@render failure('spend-run')}
     </div>
   </section>
 {/snippet}
@@ -555,6 +655,18 @@
   {:else}
     {#if overrides !== undefined}
       <AgentPluginNote {plugin} title={pluginTitle} mode="editable" kept={overrides.keptOwn} />
+      {#if overrides.keptOwn.includes('approvals') && !form.approvalsReplaced}
+        <div class="ib-agent-replace-asks">
+          <Button
+            variant="secondary"
+            size="sm"
+            data-changes
+            onclick={() => {
+              if (form !== undefined) replaceAsks(form);
+            }}>{AGENT_PAGE_COPY.plugin.replaceAsks}</Button
+          >
+        </div>
+      {/if}
     {:else if plugin !== null}
       <AgentPluginNote
         {plugin}

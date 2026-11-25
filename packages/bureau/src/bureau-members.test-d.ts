@@ -130,9 +130,12 @@ export type InternalsMembers = AssertNever<
   >
 >;
 
-// `reviews` has exactly the five operations.
+// `reviews` has exactly the declared operations.
 export type ReviewsMembers = AssertNever<
-  Exclude<keyof BureauReviews, 'list' | 'listResolved' | 'get' | 'resolve' | 'pendingOf'>
+  Exclude<
+    keyof BureauReviews,
+    'list' | 'listResolved' | 'get' | 'resolve' | 'pendingOf' | 'mayRemember'
+  >
 >;
 
 // `schedules` includes the fifteen operations, the creation of a schedule for a workflow, and
@@ -162,7 +165,7 @@ export type SchedulesMembers = AssertNever<
   >
 >;
 
-// `contexts` has exactly the eighteen operations.
+// `contexts` has exactly the twenty operations.
 export type ContextsMembers = AssertNever<
   Exclude<
     keyof BureauContexts,
@@ -182,6 +185,8 @@ export type ContextsMembers = AssertNever<
     | 'window'
     | 'fork'
     | 'regenerate'
+    | 'discardTurn'
+    | 'resumeTurn'
     | 'events'
     | 'subscribeEvents'
   >

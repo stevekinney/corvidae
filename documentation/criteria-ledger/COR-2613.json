@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2613",
+  "branch": "steve/composable-reviews-client-equipment",
+  "checkedAt": "fd156369c257f83acfe957ea7c5e900c24ccef28",
+  "briefVersion": "9dd0e239cd95",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Generated Reviews transport client exposes typed operation inputs, outputs and faults; optional scoped Svelte bindings. Generation test and two sequential generations with git diff --exit-code passed."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Action tests cover synchronous duplicate fencing, trimmed notes, current policy and authority, and fresh rereads with both list and detail invalidation after conflicts and lost replies."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Action tests distinguish applied, superseded, already-resolved, round-changed, outcome-not-written and unknown outcomes, and prohibit refund remembering."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Browser portability test and UI host build pass; host fixtures resolve identical client, control and actions. Production route adoption and removal of host duplicates remain assigned to their adoption issues, outside this issue."
+    }
+  ]
+}

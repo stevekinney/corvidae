@@ -60,6 +60,7 @@
   } from '../../lib/memory-client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { getPrincipalStore, hasPrincipalStore } from '../../lib/scopes.svelte.ts';
   import MemoryAdd from './memory-add.svelte';
   import MemoryChanges, { type ForgetOutcome } from './memory-changes.svelte';
   import MemoryDetail from './memory-detail.svelte';
@@ -83,6 +84,10 @@
   /** The one item of the entry's own list, which is not an item of the memory list. */
   const QUARANTINED_ENTRY = '__quarantined-memories__';
   const agentId = untrack(() => router.current.params['agent'] ?? '');
+  // Only the trusted host directory knows whether another eligible owner exists; an absent answer
+  // is not enough to invite a share that the Bureau may refuse.
+  const principal = hasPrincipalStore() ? getPrincipalStore() : undefined;
+  const sharingAvailable = $derived(principal?.principal?.workspace?.memorySharing === true);
 
   /** What is typed: a search runs as it changes, and a blank one lists. */
   let typed = $state('');
@@ -818,6 +823,7 @@
                 onCorrected={corrected}
                 onCorrectionFailed={correctionFailed}
                 resume={resume?.id === row.id ? resume.content : undefined}
+                {sharingAvailable}
                 onShare={(memory) => governance?.askToShare(memory)}
                 onHold={(id, change) => governance?.changeHold(id, change)}
                 onQuarantine={(memory) => governance?.askToQuarantine(memory)}

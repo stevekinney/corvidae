@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { Container, Link, Spotlight } from '@lostgradient/cinder';
+  import { Badge, Container, Link, Spotlight } from '@lostgradient/cinder';
+
+  const headline = new URLSearchParams(globalThis.location.search).has('headline');
 </script>
 
 <Container
@@ -25,6 +27,14 @@
     </Spotlight>
   </div>
 </Container>
+
+{#if headline}
+  <div data-testid="spotlight-headline">
+    <Spotlight>
+      {#snippet value()}Its last 2 runs <Badge size="sm" variant="danger">Failed</Badge>{/snippet}
+    </Spotlight>
+  </div>
+{/if}
 
 <style>
   :global(.spotlight-fixture-container) {

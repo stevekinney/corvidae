@@ -107,7 +107,7 @@
       {
         "action": "expect",
         "role": "button",
-        "name": "Retry"
+        "name": "Try again"
       },
       {
         "action": "expect",
@@ -490,7 +490,7 @@
         "name": "stopped-to-failed",
         "steps": [
           { "action": "click", "role": "button", "name": "Stop generating" },
-          { "action": "expect-text", "text": "Stopped. The answer above is partial." },
+          { "action": "expect-text", "text": "Stopped by you, partial answer" },
           { "action": "measure-composer-top", "name": "before" },
           { "action": "click", "role": "button", "name": "Continue" },
           {
@@ -646,6 +646,10 @@
         "text": "waiting for approval"
       },
       {
+        "action": "expect-text",
+        "text": "3 steps"
+      },
+      {
         "action": "expect",
         "role": "button",
         "name": "Run export"
@@ -717,10 +721,11 @@
     "title": "A source with a long title and excerpt opens Citation's panel with the title and excerpt on separate rows.",
     "provenance": "issue-named",
     "source": "COR-2263: case 27 at desktop and 320 px shows the strong title and excerpt as adjacent lines with no designed gap.",
-    "rows": ["M4"],
+    "rows": ["M4", "X6"],
     "scenario": "citations",
     "params": {
-      "sourceSet": "contract"
+      "sourceSet": "contract",
+      "inlineClaim": true
     },
     "steps": [
       {
@@ -922,7 +927,7 @@
   {
     "id": 34,
     "slug": "broken-image",
-    "title": "An image that fails to load shows the dashed placeholder with its name and Retry, and no zoom.",
+    "title": "An image that fails to load shows a compact inset row with its icon, filename and Retry, with no zoom.",
     "provenance": "issue-named",
     "source": "COR-2279: case 34 loads an invalid same-origin image in a user message at 320 px.",
     "rows": ["X5"],
@@ -933,7 +938,19 @@
     "steps": [
       {
         "action": "expect-text",
-        "text": "receipt.png"
+        "text": "receipt.png",
+        "scope": "figure[data-unavailable]:has(svg.message-attachment-unavailable-icon)",
+        "exact": true
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Retry loading receipt.png",
+        "scope": "figure[data-unavailable]"
+      },
+      {
+        "action": "expect-absent",
+        "selector": ".message-attachments .message-attachment-button"
       }
     ],
     "variants": [],
@@ -978,10 +995,11 @@
     "title": "A message's Sources open as a list with each excerpt and link; at 768 dark the Sources count reads as distinct from the chat surface.",
     "provenance": "derived",
     "source": "Derived from design row M4, T2; the original definition of this number was lost.",
-    "rows": ["M4", "T2"],
+    "rows": ["M4", "T2", "X6"],
     "scenario": "citations",
     "params": {
-      "sourceSet": "contract"
+      "sourceSet": "contract",
+      "inlineClaim": true
     },
     "steps": [
       {
@@ -1188,7 +1206,18 @@
     "rows": ["M4"],
     "scenario": "missing-source",
     "params": {},
-    "steps": [],
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "Sources unavailable",
+        "scope": ".chat-message-wrapper[data-role='assistant'] .chat-message-line-actions",
+        "exact": true
+      },
+      {
+        "action": "expect-absent",
+        "selector": ".chat-input-area [data-testid='chat-missing-source-notice'], .chat-message-wrapper[data-role='user'] [data-testid='chat-missing-source-notice']"
+      }
+    ],
     "variants": [],
     "focusSweep": false
   },
@@ -1294,6 +1323,10 @@
       {
         "action": "expect-text",
         "text": "1 failed"
+      },
+      {
+        "action": "expect-text",
+        "text": "Checked 2 of 3 sources"
       }
     ],
     "variants": [
@@ -2586,7 +2619,7 @@
       {
         "action": "click",
         "role": "button",
-        "name": "Retry"
+        "name": "Retry now"
       },
       {
         "action": "expect",
@@ -2652,7 +2685,7 @@
       {
         "action": "click",
         "role": "button",
-        "name": "Retry"
+        "name": "Try again"
       },
       {
         "action": "expect",
@@ -2680,9 +2713,13 @@
         "text": "1 failed"
       },
       {
+        "action": "expect-text",
+        "text": "Checked 2 of 3 sources"
+      },
+      {
         "action": "expect",
         "role": "button",
-        "name": "Retry"
+        "name": "Retry this step"
       },
       {
         "action": "expect",

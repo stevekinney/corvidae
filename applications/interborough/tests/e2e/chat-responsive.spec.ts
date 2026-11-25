@@ -32,10 +32,10 @@ const LONG_TITLE = 'Please refund order 4471, it arrived damaged.';
 const REASON = 'Connect a model provider';
 const CONNECT = 'Connect provider';
 
-/** Opens `path` at `width` by 812 pixels on the sample clock. */
-async function open(page: Page, width: number, path: string): Promise<void> {
+/** Opens `path` at the requested viewport on the sample clock. */
+async function open(page: Page, width: number, path: string, height = 812): Promise<void> {
   await page.clock.setFixedTime(SAMPLE_NOW);
-  await page.setViewportSize({ width, height: 812 });
+  await page.setViewportSize({ width, height });
   await page.goto(path);
 }
 
@@ -112,7 +112,13 @@ async function readApprovalPlacement(page: Page) {
     const buttons = [...(decision?.querySelectorAll('button') ?? [])].filter((button) =>
       ['Deny', 'Approve'].includes(button.textContent?.trim() ?? ''),
     );
-    const question = decision?.querySelector('.cinder-approval-card__row-question') ?? null;
+    // Row approvals and the retained decision layout expose the same semantic question as their
+    // heading, with layout-specific classes. Keep both supported so geometry failures identify a
+    // missing rendered heading rather than producing an opaque null box.
+    const question =
+      decision?.querySelector(
+        '.cinder-approval-card__row-question, .cinder-approval-card__decision-title',
+      ) ?? null;
     const questionBox = question?.getBoundingClientRect();
     const questionHit =
       questionBox === undefined
@@ -161,6 +167,7 @@ function expectDecisionInView(read: ApprovalPlacement): void {
  */
 function expectQuestionAndApproveInView(read: ApprovalPlacement): void {
   const transcript = read.transcript!;
+  expect(read.question, 'the approval renders a semantic question heading').not.toBeNull();
   const question = read.question!;
   const approve = read.buttons.at(-1)!.box!;
   for (const [name, box] of [
@@ -222,6 +229,120 @@ async function expectApprovalTitleInView(page: Page): Promise<void> {
 test.describe('Chat on a phone (04y, 06l, 06m)', () => {
   // A button's 44px hit area exists only under a coarse pointer, so the phone is a touch phone.
   test.use({ hasTouch: true, isMobile: true });
+
+  test('opens the decision deck beside the ordinary tool approval controls (COR-2452)', async ({
+    page,
+  }) => {
+    await open(page, 320, `/chats/${SAMPLE_WORLD_THREADS.refund}`, 640);
+    const approval = page.locator('[data-approval-decision]');
+    await expect(approval.getByRole('button', { name: 'Approve', exact: true })).toBeVisible();
+    await approval.getByRole('button', { name: 'Review in deck' }).click();
+    const deck = page.getByRole('dialog', { name: 'Review tool approval' });
+    const irreversible = deck.getByText('Approval can’t be undone.', { exact: true });
+    await expect(deck).toContainText('Refund order 4471 for $42.00?');
+    await expect(irreversible).toBeInViewport({ ratio: 1 });
+    await expect(deck).toContainText('4200');
+    await expect(deck.getByRole('button', { name: 'Back to approval controls' })).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'tool approval decision deck',
+      source: SOURCE,
+    });
+    for (const decision of ['Approve', 'Deny', 'Later']) {
+      const button = deck.getByRole('button', { name: decision, exact: true });
+      await expect(button).toBeInViewport({ ratio: 1 });
+      const bounds = await button.boundingBox();
+      expect(bounds?.height).toBeLessThanOrEqual(36);
+      await button.click({ trial: true });
+    }
+    const reasonField = deck
+      .locator('.cinder-payload-inspector__field')
+      .filter({ has: page.getByText('Reason', { exact: true }) });
+    const reasonValue = reasonField.locator('dd');
+    await expect(reasonValue).toHaveText('Arrived damaged');
+    // Scroll just the modal body. Scrolling the target through Playwright also moves its ancestor
+    // scrollports and the mobile viewport can capture the footer before its new paint.
+    const showLowerPayload = async () => {
+      await deck.locator('.cinder-modal__body').evaluate(async (body) => {
+        body.scrollTop = body.scrollHeight;
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        });
+      });
+      await expect(reasonValue).toBeInViewport({ ratio: 1 });
+      await expect(irreversible).toBeInViewport({ ratio: 1 });
+      for (const name of ['Deny', 'Later', 'Approve']) {
+        await expect(deck.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
+      }
+    };
+    await showLowerPayload();
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'tool approval decision deck payload scrolled',
+      source: SOURCE,
+      ready: showLowerPayload,
+    });
+    await deck.getByRole('button', { name: 'Deny' }).click();
+    await expect(deck.getByRole('button', { name: 'Confirm denial' })).toBeVisible();
+    await expect(deck).toContainText('4200');
+    await deck.getByRole('button', { name: 'Undo' }).click();
+    await expect(deck.getByRole('button', { name: 'Confirm denial' })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(deck).toHaveCount(0);
+    await expect(approval.getByRole('button', { name: 'Review in deck' })).toBeFocused();
+  });
+
+  test('keeps stacked composer drawers within 40 percent of a 640px phone (COR-2452)', async ({
+    page,
+  }) => {
+    await connectProvider(page);
+    await page.clock.setFixedTime(SAMPLE_NOW);
+    await page.setViewportSize({ width: 375, height: 640 });
+    await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    await expect(page.locator('[data-approval-decision]')).toBeVisible();
+    await page.locator('.chat-timeline').first().hover();
+    await page.mouse.wheel(0, -4000);
+    const approval = page.locator('[data-chat-approval-drawer]');
+    await expect(approval).toBeVisible();
+
+    const composer = page.getByRole('textbox', { name: /^Message/ });
+    const queue = page.locator('[data-chat-follow-up-drawer]');
+    for (let index = 1; index <= 8; index += 1) {
+      const followUp = `Please check the shipping record at position ${index}.`;
+      await composer.fill(followUp);
+      await composer.press('Enter');
+      await expect(queue.getByText(followUp)).toBeAttached();
+    }
+    await expect(approval).toBeVisible();
+    const stack = await approval.evaluate((first) => {
+      const second = document.querySelector('[data-chat-follow-up-drawer]')!;
+      const viewport = first.closest<HTMLElement>('[data-chat-composer-drawers]');
+      const inputArea = first.closest<HTMLElement>('.chat-input-area')!;
+      return {
+        drawersHeight:
+          viewport?.getBoundingClientRect().height ??
+          second.getBoundingClientRect().bottom - first.getBoundingClientRect().top,
+        dockHeight: inputArea.getBoundingClientRect().height,
+        viewport: window.innerHeight,
+      };
+    });
+    expect(stack.viewport).toBe(640);
+    expect(stack.drawersHeight).toBeLessThanOrEqual(stack.viewport * 0.4);
+    expect(stack.dockHeight).toBeLessThanOrEqual(stack.viewport * 0.4);
+    await expect(approval.getByRole('button', { name: 'Review approval' })).toBeVisible();
+    await expect(composer).toBeVisible();
+    for (const width of [320, 375]) {
+      await page.setViewportSize({ width, height: 640 });
+      const composerBounds = await composer.boundingBox();
+      expect(composerBounds?.width).toBeGreaterThan(width / 2);
+      await expect(composer).toBeInViewport({ ratio: 1 });
+    }
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'bounded stacked composer drawers',
+      source: SOURCE,
+    });
+  });
 
   test('lists the chats as a screen of its own: the status, a dot, then the latest message on line two (06l)', async ({
     page,
@@ -430,6 +551,7 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
       };
       // The next drawn surface in the docked stack: the blocked row or the composer.
       let next = element.nextElementSibling;
+      next ??= element.closest('[data-chat-composer-drawers]')?.nextElementSibling ?? null;
       while (next !== null && next.getBoundingClientRect().height === 0) {
         next = next.nextElementSibling;
       }
@@ -770,6 +892,21 @@ test.describe('The composer at desktop width', () => {
         .map((element) => element.textContent?.trim()),
     );
     expect(clipped).toEqual([]);
+    // A full control may overflow its left flex group without ellipsizing. It must fold before it
+    // reaches the meter or Send, rather than merely painting its value underneath them.
+    const controlsPastMeter = await composer.locator('.chat-input-footer').evaluate((footer) => {
+      const right = footer.querySelector<HTMLElement>('.chat-input-footer-right')!;
+      const rightEdge = right.getBoundingClientRect().left;
+      return [
+        ...footer.querySelectorAll<HTMLElement>(
+          '.chat-input-attach, [role="combobox"], [data-testid="composer-settings"]',
+        ),
+      ]
+        .filter((control) => control.getBoundingClientRect().width > 0)
+        .filter((control) => control.getBoundingClientRect().right > rightEdge + 0.5)
+        .map((control) => control.getAttribute('aria-label') ?? control.textContent?.trim());
+    });
+    expect(controlsPastMeter).toEqual([]);
     if ((await composer.getAttribute('data-controls-folded')) !== null) {
       await expect(settings).toBeVisible();
       await expect(page.getByRole('combobox', { name: /Permissions/ })).toHaveCount(0);

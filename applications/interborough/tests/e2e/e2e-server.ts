@@ -17,11 +17,19 @@
  * The fixtures start workflows after the host is listening, so their lifecycle events land in the
  * fleet feed's replay buffer exactly as a workflow started after boot would.
  */
-import type { BureauOwnTools } from '@lostgradient/bureau';
+import { principalFromApiKey } from '@lostgradient/backchannel';
+import { openBungalow } from '@lostgradient/bungalow';
+import { BUREAU_SCOPES, type BureauOwnTools, type WorkspaceMembership } from '@lostgradient/bureau';
 import { createAgent, stopWhen, type GenerateFunction } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { exitWhenOrphaned } from '@lostgradient/testing/exit-when-orphaned';
-import { createWorkflowLogStore, Engine, LongPollWorker, RemoteWorker } from '@lostgradient/weft';
+import {
+  AUTHORIZATION_SCOPES,
+  createWorkflowLogStore,
+  Engine,
+  LongPollWorker,
+  RemoteWorker,
+} from '@lostgradient/weft';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -32,6 +40,7 @@ import { seedSampleWorld } from '../../fixtures/sample-world-seed.ts';
 import { seedWorkflowRevisions } from '../../fixtures/workflow-revisions.ts';
 import { seed, workflows } from '../../fixtures/workflows.ts';
 import { buildCheckoutApplication } from '../../scripts/build.ts';
+import { browserQualification } from '../../scripts/environment-configuration.ts';
 import { bindHome, enableDemoPlugin } from '../../src/host/demo-plugin-home.ts';
 import { startHost, type Host } from '../../src/host/host.ts';
 import { workspacePlugins } from '../../src/host/plugins.ts';
@@ -44,6 +53,7 @@ import {
   E2E_BUREAU_PORT,
   E2E_CANCELLATION_GRACE_PERIOD_MS,
   E2E_CANCELLING_TASK_OPERATION_ID,
+  E2E_CHAT_SHARING_PORT,
   E2E_CONNECT_PORT,
   E2E_DEPLOYMENT_NAME,
   E2E_FIRST_RUN_PORT,
@@ -58,11 +68,21 @@ import {
   E2E_RECONNECT_GRACE_PERIOD_MS,
   E2E_SHOWCASE_PORT,
   E2E_TASK_OPERATION_ID,
+  isBindCollision,
 } from './e2e-constants.ts';
 
 import { createEchoAgents } from './echo-agent.ts';
+import {
+  createFailingAgents,
+  EXPLAINER_AGENT_NAME,
+  failureExplainerAgent,
+} from './failure-explanation-agents.ts';
 import { createJourneyProviderResolver, createRecallAgents } from './journey-agent.ts';
-import { seedCancellationRequest, seedLedgerEvidence } from './ledger-evidence-seed.ts';
+import {
+  seedCancellationRequest,
+  seedLedgerEvidence,
+  seedQueuedTaskEvidence,
+} from './ledger-evidence-seed.ts';
 import { createModelAgents } from './model-agents.ts';
 import { pagePanelPlugins } from './page-panel-plugins.ts';
 import { createQuestionAgents } from './question-agents.ts';
@@ -79,6 +99,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 let startupComplete = false;
+process.on('uncaughtExceptionMonitor', (error) => {
+  if (!startupComplete && isBindCollision(error)) {
+    process.stderr.write('INTERBOROUGH_E2E_STARTUP_BIND_COLLISION\n');
+  }
+});
 let startupCleanupPromise: Promise<void> | undefined;
 const startupCleanup: Array<() => Promise<void>> = [];
 const startupInFlight = new Set<Promise<unknown>>();
@@ -366,9 +391,13 @@ let fixtureEngine: Awaited<ReturnType<typeof createFixtureEngine>> | undefined;
 // is its own. Two more again (`question-agents.ts`) ask the person more than one thing.
 const barrier = createBarrier();
 const showcaseStartup = trackStartupPromise(
-  seedSampleWorld(join(scratch, 'showcase-home', '.interborough'), {
+  seedSampleWorld(join(scratch, 'showcase-home'), {
+    ownership: { root: scratch, owner: join(import.meta.dir, '../../../..') },
     host: { port: E2E_SHOWCASE_PORT, buildDirectory },
     beforeProviderKeyRemoved: createShowcaseEditableAgent,
+    // Each step of the story is a phase of its own, so a seed that never settles leaves the step
+    // it stopped on as the last showcase line of the startup log (COR-2632).
+    onStep: (step) => reportStartupPhase(`showcase: ${step}`),
   }).then(({ host: started }) => {
     startupCleanup.push(() => started.close());
     reportStartupPhase('showcase-ready');
@@ -384,8 +413,12 @@ const host = await startHost({
       ...createQuestionAgents(),
       ...createModelAgents(),
       ...createRegenerationProofAgent(),
+      ...createFailingAgents(),
     },
-    withBureauTools: { 'workflow-revision': workflowRevisionAgent },
+    withBureauTools: {
+      'workflow-revision': workflowRevisionAgent,
+      [EXPLAINER_AGENT_NAME]: failureExplainerAgent,
+    },
   },
   environment: { INTERBOROUGH_HOME: home },
   // A chat whose first message carries an access marker is scripted to call a tool (`access-provider.ts`).
@@ -474,29 +507,7 @@ startupCleanup.push(async () => {
 for (let wait = 0; wait < 200 && !longPollWorker.ready; wait += 1) await Bun.sleep(25);
 if (!longPollWorker.ready) throw new Error('The E2E long-poll worker did not register.');
 
-await server.dispatchTask({
-  operationId: E2E_TASK_OPERATION_ID,
-  workflowId: 'e2e-ledger-workflow',
-  workflowExecutionToken: 'e2e-ledger-token',
-  workflowType: 'order-processing',
-  activityName: 'reserveInventory',
-  input: { orderId: 'e2e-ledger-order' },
-  queue: 'default',
-  priority: 9,
-  headers: { traceparent: '00-e2e-ledger-trace-e2e-span-01' },
-  retryPolicy: {
-    maxAttempts: 3,
-    initialBackoff: '5m',
-    backoffMultiplier: 2,
-    maxBackoff: '10m',
-  },
-});
-
-for (let attempt = 0; attempt < 5; attempt += 1) {
-  const result = await server.getTaskResult(E2E_TASK_OPERATION_ID);
-  if (result?.status === 'pending' && result.state === 'queued') break;
-  await new Promise((resolve) => setTimeout(resolve, 20));
-}
+await seedQueuedTaskEvidence(server, E2E_TASK_OPERATION_ID);
 
 // COR-124: a leased task on its second, heartbeating attempt, plus requested
 // and acknowledged cancellations, all produced by a real worker against this
@@ -648,6 +659,94 @@ const secondaryResults = await Promise.allSettled([
       throw error;
     }
   })(),
+  trackStartupPromise(
+    (async () => {
+      // This is deliberately not the local-caller fixture: browser credential subjects, trusted
+      // actor IDs, and durable owners all differ, while both members resolve from one directory.
+      const sharingHome = join(scratch, 'chat-sharing-home');
+      await bindHome(sharingHome);
+      const bungalow = await openBungalow({
+        name: 'interborough',
+        environment: { INTERBOROUGH_HOME: sharingHome },
+      });
+      const workspaceId = bungalow.workspaceId;
+      bungalow.close();
+      const members = new Map<string, WorkspaceMembership>([
+        [
+          'chat-owner-browser-subject',
+          {
+            version: 1,
+            workspaceId,
+            actorId: 'chat-owner-actor',
+            actorKind: 'user',
+            owner: 'chat-sharing:owner',
+            displayName: 'Avery Owner',
+            membershipRevision: 'chat-sharing-1',
+            capabilities: ['workspace:use'],
+          },
+        ],
+        [
+          'chat-reader-browser-subject',
+          {
+            version: 1,
+            workspaceId,
+            actorId: 'chat-reader-actor',
+            actorKind: 'user',
+            owner: 'chat-sharing:reader',
+            displayName: 'Reader Member',
+            membershipRevision: 'chat-sharing-1',
+            capabilities: ['workspace:use'],
+          },
+        ],
+      ]);
+      const credentials = new Map([
+        ['chat-owner-browser-key', 'chat-owner-browser-subject'],
+        ['chat-reader-browser-key', 'chat-reader-browser-subject'],
+      ]);
+      let started: Host | undefined;
+      try {
+        started = await startHost({
+          environment: { INTERBOROUGH_HOME: sharingHome },
+          extraAgents: { agents: createTextEchoAgents() },
+          port: E2E_CHAT_SHARING_PORT,
+          buildDirectory,
+          workspaceAuthentication: {
+            authentication: {
+              resolveApiKeyPrincipal: async (key) => {
+                const subject = credentials.get(key);
+                return subject === undefined
+                  ? null
+                  : principalFromApiKey({
+                      subject,
+                      scopes: [...AUTHORIZATION_SCOPES, ...BUREAU_SCOPES],
+                    });
+              },
+            },
+            memorySharingAvailable: async (member) =>
+              [...members.values()].some(
+                (candidate) =>
+                  candidate.workspaceId === member.workspaceId &&
+                  candidate.owner !== member.owner &&
+                  candidate.actorKind === 'user',
+              ),
+            workspace: {
+              workspaceId,
+              resolveMembership: async ({ subject }) => members.get(subject ?? '') ?? null,
+              resolveOwnerMembership: async (owner) =>
+                [...members.values()].find((member) => member.owner === owner) ?? null,
+            },
+          },
+        });
+        await started.bureau.plugins.ready();
+        trackStartupResource(started);
+        reportStartupPhase('chat-sharing-ready');
+        return started;
+      } catch (error) {
+        await started?.close();
+        throw error;
+      }
+    })(),
+  ),
 ]);
 
 const failedSecondary = secondaryResults.find((result) => result.status === 'rejected');
@@ -658,24 +757,51 @@ if (failedSecondary !== undefined) {
   throw failedSecondary.reason;
 }
 
-const [bureauHost, journeyHost, firstRunHost, connectHost, showcaseHost, pluginPagesHost] =
-  secondaryResults.map((result) => {
-    if (result.status === 'rejected') throw result.reason;
-    return result.value;
-  }) as [Host, Host, Host, ConnectHost, Host, Host];
-startupComplete = true;
-process.off('SIGINT', handleStartupSignal);
-process.off('SIGTERM', handleStartupSignal);
+const [
+  bureauHost,
+  journeyHost,
+  firstRunHost,
+  connectHost,
+  showcaseHost,
+  pluginPagesHost,
+  chatSharingHost,
+] = secondaryResults.map((result) => {
+  if (result.status === 'rejected') throw result.reason;
+  return result.value;
+}) as [Host, Host, Host, ConnectHost, Host, Host, Host];
 
 // The barrier's control: the one route a spec uses to learn that a run is waiting and to let it
 // go. It binds loopback only and exists in this process alone, never in the host. The journey's
 // host holds its runs on a barrier of its own, under `/journey`.
 let cancellationRequests = 0;
+let qualificationReleased = false;
+let qualificationStarted = false;
 let maintenanceStatus: { readonly done: boolean; readonly error?: string } = { done: true };
 const barrierControl = Bun.serve({
   hostname: '127.0.0.1',
   port: E2E_BARRIER_PORT,
   routes: {
+    '/identity': {
+      GET: async () =>
+        Response.json({
+          run: browserQualification().run,
+          build: await Bun.file(join(buildDirectory, 'build-info.json')).json(),
+          port: E2E_PORT,
+        }),
+    },
+    '/qualification': {
+      GET: () => Response.json({ released: qualificationReleased, started: qualificationStarted }),
+      POST: () => {
+        qualificationReleased = true;
+        return Response.json({ released: true });
+      },
+    },
+    '/qualification/ready': {
+      POST: () => {
+        qualificationStarted = true;
+        return Response.json({ started: true });
+      },
+    },
     '/waiting': { GET: () => Response.json({ waiting: barrier.waiting() }) },
     '/release': {
       POST: () => {
@@ -740,6 +866,9 @@ const barrierControl = Bun.serve({
     },
   },
 });
+startupComplete = true;
+process.off('SIGINT', handleStartupSignal);
+process.off('SIGTERM', handleStartupSignal);
 
 process.stdout.write(
   [
@@ -749,6 +878,7 @@ process.stdout.write(
     `Interborough E2E first-run host listening on ${firstRunHost.url}`,
     `Interborough E2E showcase host listening on ${showcaseHost.url}`,
     `Interborough E2E plugin-page host listening on ${pluginPagesHost.url}`,
+    `Interborough E2E chat-sharing host listening on ${chatSharingHost.url}`,
     `Interborough E2E connect host listening on http://127.0.0.1:${E2E_CONNECT_PORT}/`,
     `Registered E2E fleet worker under deployment "${E2E_DEPLOYMENT_NAME}"`,
     'Seeded COR-124 attempt, lease, and cancellation evidence',
@@ -767,6 +897,7 @@ async function shutDown(): Promise<void> {
   await fleetWorker.disconnect();
   await connectHost.stop();
   await pluginPagesHost.close();
+  await chatSharingHost.close();
   await showcaseHost.close();
   await firstRunHost.close();
   await journeyHost.close();
@@ -777,5 +908,9 @@ async function shutDown(): Promise<void> {
   process.exit(0);
 }
 
-process.on('SIGINT', () => void shutDown());
-process.on('SIGTERM', () => void shutDown());
+let shutdownPromise: Promise<void> | undefined;
+const requestShutdown = (): void => {
+  shutdownPromise ??= shutDown();
+};
+process.on('SIGINT', requestShutdown);
+process.on('SIGTERM', requestShutdown);

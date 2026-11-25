@@ -134,6 +134,12 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     // A workflow's page is neutral and has one way back, the list (board PageWorkflow, row 63h).
     notFound: { ...WORKFLOW_COPY.page.notFound, searchHidden: true },
     notFoundByPattern: {
+      '/workflows/:workflow': {
+        ...WORKFLOW_COPY.page.notFound,
+        back: { label: 'Back to workflows', href: '/workflows' },
+        searchHidden: true,
+        neutralError: true,
+      },
       '/workflows/:workflow/edit': {
         title: 'This workflow doesn’t exist',
         description:

@@ -21,8 +21,8 @@ export interface ChatComposerBlockedAction {
 /**
  * The line under the composer, or the whole composer.
  *
- * - `waiting`: a tool approval is waiting on the user. With `steers`, a message
- *   sent now goes to the run as input instead of starting a new turn.
+ * - `waiting`: a tool approval is waiting on the user. With `queues`, the line says that a message
+ *   sent now is queued until the decision, as Chat holds it in Up next while an approval waits.
  * - `steering`: the chat is working, so a message sent now steers the run.
  * - `note`: a sentence of the host's own, such as when a changed setting applies.
  * - `reconnecting`: the transport lost the run's stream and is trying again. A notice above the
@@ -44,7 +44,7 @@ export interface ChatComposerBlockedAction {
  *   access.
  */
 export type ChatComposerStatus =
-  | { kind: 'waiting'; steers?: boolean }
+  | { kind: 'waiting'; queues?: boolean }
   | { kind: 'steering' }
   | { kind: 'note'; text: string }
   | { kind: 'reconnecting'; attempt: number }
@@ -144,8 +144,8 @@ export function composerStatusText(status: ChatComposerStatus): string {
   if (status.kind === 'steering') return 'A message now steers the run.';
   if (status.kind === 'note') return status.text;
   if (status.kind === 'waiting') {
-    return status.steers
-      ? 'Waiting for your approval. A message now steers the run.'
+    return status.queues
+      ? 'Waiting for your approval. Anything you send now queues until you decide.'
       : 'Waiting for your approval';
   }
   if (status.kind === 'reconnecting') {

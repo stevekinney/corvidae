@@ -98,6 +98,15 @@ describe('Chip surface and CSS contracts', () => {
     expect(body).toContain('box-sizing: border-box');
   });
 
+  test('a coarse pointer keeps the painted toggle compact and expands only its hit area', () => {
+    expect(chipCss).toMatch(
+      /@media \(any-pointer: coarse\) \{\s*button\.cinder-chip \{[^}]*min-block-size: var\(--_cinder-compact-control-height\)/s,
+    );
+    expect(chipCss).toMatch(
+      /button\.cinder-chip::before \{[^}]*position: absolute;[^}]*--cinder-touch-target-min/s,
+    );
+  });
+
   test('remove button hover uses a circular hover surface without overriding variant color', () => {
     const body = cssRuleBody('.cinder-chip__remove:hover:not(:disabled)');
     expect(body).toContain('background-color: var(--cinder-surface-hover)');

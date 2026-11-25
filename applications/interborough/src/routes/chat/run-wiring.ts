@@ -153,6 +153,11 @@ export type RunUsage = {
   readonly inputTokens?: number;
   readonly outputTokens?: number;
   readonly totalTokens?: number;
+  /**
+   * What the run cost in US dollars (COR-2525), present only when the Bureau priced the run: a run
+   * with no priced request sends `null`, which is no cost here, never `0`.
+   */
+  readonly costUsd?: number;
 };
 
 /**
@@ -213,6 +218,8 @@ export type ChatRunWiringOptions = {
   readonly agentName: () => string;
   /** Replaces `fetch`, for tests. */
   readonly fetch?: Fetcher;
+  /** Reads the redacted transcript projection for a shared reader. */
+  readonly sharedRead?: boolean;
   /**
    * Told when a run this page started has begun (its `RUN_STARTED` arrived). A run attached to
    * began elsewhere and does not call it.
@@ -428,20 +435,27 @@ function onRoundOf(interrupt: Interrupt, entry: ResumeEntry): ResumeEntry {
  * that carries none. Only a count that is a finite number is kept; the entries are merged in order.
  * A run that reported nothing arrives as counts of zero (the Bureau fills them in), and a run that
  * called a model used at least one token, so counts that are all zero are no usage, not "0" tokens.
+ * The cost (`costUsd`, COR-2525) is kept when it is a finite, non-negative number and left out
+ * when it is `null`, which is what a run with no priced request carries.
  */
 export function usageOfTerminal(event: unknown): RunUsage | undefined {
   if (!isRecord(event) || event['type'] !== 'RUN_FINISHED' || !Array.isArray(event['usage'])) {
     return undefined;
   }
   const counts: { inputTokens?: number; outputTokens?: number; totalTokens?: number } = {};
+  let costUsd: number | undefined;
   for (const entry of event['usage'] as unknown[]) {
     if (!isRecord(entry)) continue;
     for (const key of ['inputTokens', 'outputTokens', 'totalTokens'] as const) {
       const value = entry[key];
       if (typeof value === 'number' && Number.isFinite(value) && value >= 0) counts[key] = value;
     }
+    const cost = entry['costUsd'];
+    if (typeof cost === 'number' && Number.isFinite(cost) && cost >= 0) costUsd = cost;
   }
-  return Object.values(counts).some((count) => count > 0) ? counts : undefined;
+  const used = Object.values(counts).some((count) => count > 0);
+  if (!used && costUsd === undefined) return undefined;
+  return { ...(used ? counts : {}), ...(costUsd === undefined ? {} : { costUsd }) };
 }
 
 /** The Bureau's own identifier for the run an event belongs to, which the cancel route takes. */
@@ -681,6 +695,15 @@ function textOf(message: ConversationHistory['messages'][string]): string {
 
 /** The result row an interrupt parks its tool call on, until the user decides. */
 function approvalRow(interrupt: Interrupt, toolCallId: string): ToolResult {
+  const detail =
+    isRecord(interrupt.metadata) && isRecord(interrupt.metadata[BUREAU_METADATA_KEY])
+      ? interrupt.metadata[BUREAU_METADATA_KEY]
+      : {};
+  const disclosure = detail as {
+    readonly irreversible?: unknown;
+    readonly consequence?: unknown;
+    readonly why?: unknown;
+  };
   return {
     callId: toolCallId,
     outcome: 'action_required',
@@ -693,6 +716,13 @@ function approvalRow(interrupt: Interrupt, toolCallId: string): ToolResult {
       policyVersion: 'bureau',
       idempotencyKey: interrupt.id,
       ...(interrupt.expiresAt === undefined ? {} : { expiresAt: interrupt.expiresAt }),
+      ...(typeof disclosure.irreversible === 'boolean'
+        ? { irreversible: disclosure.irreversible }
+        : {}),
+      ...(typeof disclosure.consequence === 'string'
+        ? { consequence: disclosure.consequence }
+        : {}),
+      ...(typeof disclosure.why === 'string' ? { why: disclosure.why } : {}),
     },
   };
 }
@@ -1720,6 +1750,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       try {
         messages = await getThreadMessages(threadId, {
           fetch: send,
+          ...(options.sharedRead === true ? { shared: true } : {}),
           ...(signal === undefined ? {} : { signal }),
         });
       } catch (error) {
@@ -1738,6 +1769,10 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         ),
         options.agentName(),
       );
+      // A shared reader receives the deliberately redacted transcript projection only. It must not
+      // enrich that view through the owner's run or task routes, even when a separately privileged
+      // reader could call those routes itself.
+      if (options.sharedRead === true) return thread;
       // The stream said why a run stopped while it was watched and does not say it again, so the
       // run's own record is read. The line is a courtesy: a record that cannot be read leaves the
       // thread as it is rather than failing the page's read of it.

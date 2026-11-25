@@ -131,6 +131,16 @@ function requestOf(input: z.infer<typeof decideInput>): DecisionRequest {
 const modelsInput = z.object({});
 
 const modelsOutput = z.object({
+  hostModel: z
+    .object({
+      name: z.string(),
+      kinds: z.array(decideInput.shape.kind),
+    })
+    .nullable()
+    .describe(
+      'The configured host-registered model and the kinds it answers before any catalog row.',
+    ),
+
   rows: z
     .array(
       z.object({
@@ -149,7 +159,7 @@ const modelsOutput = z.object({
         answering: z
           .boolean()
           .describe(
-            'Whether a decision goes to this row now, as `bureau.decisions.decide` chooses it: the row `decisions.model` names when it is in the catalog, can decide and is available, else the `fallback` row. A named row the model policy forbids refuses every decision, so no row is marked. At most one row is marked.',
+            'The catalog row that can answer under the current settings after the host model serves its declared kinds. At most one catalog row is marked.',
           ),
         fallback: z
           .boolean()
@@ -160,6 +170,18 @@ const modelsOutput = z.object({
           .boolean()
           .describe(
             'Whether this row can be the language-model fallback at all: it returns structured output, the rule `chooseFallbackRow` applies before availability. A decision-only row cannot, however `decisions.fallbackModel` is saved. A `needs-setup` row that returns structured output can: it is the fallback once its provider has a key.',
+          ),
+        configured: z
+          .string()
+          .nullable()
+          .describe(
+            'The exact `decisions.model` value when it resolves to this row, including a saved alias. Otherwise null.',
+          ),
+        configuredFallback: z
+          .string()
+          .nullable()
+          .describe(
+            'The exact effective `decisions.fallbackModel` setting when it resolves to this row, including a saved alias. Otherwise null.',
           ),
       }),
     )
@@ -181,7 +203,7 @@ export const decisionsModelsOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the models that can answer decisions',
   description:
-    'Returns `rows`: every row of the deployment’s model catalog that can answer a decision, natively (the row declares decision kinds) or through structured output, in catalog order, each with its `provider`, `model`, `availability` (`available`, or `needs-setup` when its provider has no key saved or the model is off), `decisionOnly` (a row that only decides and is no chat model), `answering` (the row a decision goes to now: the row `decisions.model` names when it is in the catalog, can decide and is available, else the fallback’s; none when the named row is forbidden by the model policy, which refuses every decision) and `fallback` (the row the language-model fallback uses: `decisions.fallbackModel` when that row is available and returns structured output, otherwise the cheapest priced such row) and `canBeFallback` (whether the row can be the fallback at all: it returns structured output, so a decision-only row cannot be, and a `needs-setup` row that returns structured output can). A row the model policy forbids is left out. The rows are read again on every call. Settings lists them for the choice of `decisions.model` and `decisions.fallbackModel`, so the call is a read of the settings and requires `bureau.settings:read`.',
+    'Returns `hostModel`, the configured host-registered model’s name and the decision kinds it answers first, or `null`. The `rows` list has every row of the deployment’s model catalog that can answer a decision, natively (the row declares decision kinds) or through structured output, in catalog order, each with its `provider`, `model`, `availability` (`available`, or `needs-setup` when its provider has no key saved or the model is off), `decisionOnly` (a row that only decides and is no chat model), `answering` (for kinds the host model does not answer, the available catalog row named by `decisions.model` when it can decide, or the fallback row otherwise. No catalog row is marked when the host model answers every kind or policy denies the configured catalog row), `fallback` (the row the language-model fallback uses), `canBeFallback` (whether this row can be the fallback at all), and canonical configured-row marks for `decisions.model` and `decisions.fallbackModel`. A row the model policy forbids is left out. The rows are read again on every call. Settings lists them for the choice of `decisions.model` and `decisions.fallbackModel`, so the call is a read of the settings and requires `bureau.settings:read`.',
   destructive: false,
   tags: ['Decisions'],
   inputSchema: modelsInput,
@@ -191,7 +213,13 @@ export const decisionsModelsOperation = defineOperation<
   discoverable: true,
   transports,
   unknownKeyPolicy,
-  invoke: async ({ host }) => ({ rows: host.decisions.models().map((row) => ({ ...row })) }),
+  invoke: async ({ host }) => {
+    const { rows, hostModel } = host.decisions.models();
+    return {
+      rows: [...rows],
+      hostModel: hostModel === null ? null : { name: hostModel.name, kinds: [...hostModel.kinds] },
+    };
+  },
 });
 
 export const decisionsDecideOperation = defineOperation<

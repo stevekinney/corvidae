@@ -14,12 +14,14 @@ import {
   type GatedRunEnvironment,
   hostEnvironment,
   runGatedBrowserSuite,
+  scanCollisionOutput,
 } from './run-gated-browser-suite.ts';
 
 function fakeEnvironment(options: {
   readonly isFree?: (port: number) => boolean;
   readonly requestedPort?: number;
   readonly exitCode?: number;
+  readonly collisions?: number;
 }): {
   readonly environment: GatedRunEnvironment;
   readonly errors: string[];
@@ -36,7 +38,8 @@ function fakeEnvironment(options: {
       requestedPort: options.requestedPort,
       run: async (command, variables) => {
         runs.push({ command, variables });
-        return options.exitCode ?? 0;
+        const bindCollision = runs.length <= (options.collisions ?? 0);
+        return bindCollision ? 73 : (options.exitCode ?? 0);
       },
     },
   };
@@ -77,19 +80,29 @@ describe('findFreePortBlock', () => {
   });
 });
 
+test('detects a collision marker split across chunks or followed by a long suffix', () => {
+  const first = scanCollisionOutput('', 'INTERBOROUGH_E2E_STARTUP_BIND_');
+  expect(first.collision).toBe(false);
+  expect(scanCollisionOutput(first.tail, `COLLISION${'x'.repeat(1024)}`).collision).toBe(true);
+  expect(
+    scanCollisionOutput('', `INTERBOROUGH_E2E_STARTUP_BIND_COLLISION${'x'.repeat(1024)}`).collision,
+  ).toBe(true);
+});
+
 describe('runGatedBrowserSuite', () => {
+  test('the package browser command enters the gated launcher', async () => {
+    const manifest = await Bun.file(new URL('../package.json', import.meta.url)).json();
+    expect(manifest.scripts['test:browser']).toContain('scripts/run-gated-browser-suite.ts');
+  });
+
   test('runs the chromium project on a free block with server reuse refused', async () => {
     const { environment, runs } = fakeEnvironment({});
     expect(await runGatedBrowserSuite(['--grep', 'chat'], environment)).toBe(0);
     expect(runs).toHaveLength(1);
     expect(runs[0]?.command).toEqual([
       'bun',
-      '--bun',
-      'playwright',
-      'test',
-      '--config',
-      'playwright.config.ts',
-      '--project=chromium',
+      'scripts/run-gated-browser-suite.ts',
+      '--playwright-child',
       '--grep',
       'chat',
     ]);
@@ -100,6 +113,30 @@ describe('runGatedBrowserSuite', () => {
   test('passes a failing exit code through', async () => {
     const { environment } = fakeEnvironment({ exitCode: 1 });
     expect(await runGatedBrowserSuite([], environment)).toBe(1);
+  });
+
+  test('retries a startup bind collision only for an unconfigured port', async () => {
+    const automatic = fakeEnvironment({ collisions: 1 });
+    expect(await runGatedBrowserSuite([], automatic.environment)).toBe(0);
+    expect(automatic.runs).toHaveLength(2);
+    const override = fakeEnvironment({ requestedPort: 31000, collisions: 1 });
+    expect(await runGatedBrowserSuite([], override.environment)).toBe(73);
+    expect(override.runs).toHaveLength(1);
+  });
+
+  test('keeps the original arguments when a caller changes its array during startup', async () => {
+    const argumentsList = ['--grep', 'original'];
+    const { environment, runs } = fakeEnvironment({ collisions: 1 });
+    const run = environment.run;
+    const guarded = {
+      ...environment,
+      run: async (...input: Parameters<typeof run>) => {
+        argumentsList[1] = 'changed';
+        return run(...input);
+      },
+    };
+    expect(await runGatedBrowserSuite(argumentsList, guarded)).toBe(0);
+    expect(runs[1]?.command.slice(-2)).toEqual(['--grep', 'original']);
   });
 
   test('exits 2 without running when no block is free', async () => {
@@ -120,6 +157,12 @@ describe('runGatedBrowserSuite', () => {
     expect(await runGatedBrowserSuite([], taken.environment)).toBe(2);
     expect(taken.runs).toHaveLength(0);
     expect(taken.errors.join('')).toContain('never reuses a server');
+    const sharingTaken = fakeEnvironment({
+      requestedPort: 31000,
+      isFree: (port) => port !== 31008,
+    });
+    expect(await runGatedBrowserSuite([], sharingTaken.environment)).toBe(2);
+    expect(sharingTaken.runs).toHaveLength(0);
   });
 });
 

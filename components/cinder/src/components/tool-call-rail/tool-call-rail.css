@@ -49,8 +49,18 @@
   }
 
   button.cinder-tool-call-rail__summary {
+    position: relative;
     align-self: flex-start;
     cursor: pointer;
+  }
+
+  /* The summary is a compact disclosure on desktop. Its 24px minimum pointer target is centred
+   * on the painted line and therefore does not make the rail taller. */
+  button.cinder-tool-call-rail__summary::before {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((100% - 1.5rem) / 2));
+    inset-inline: 0;
   }
 
   button.cinder-tool-call-rail__summary:focus-visible,
@@ -379,6 +389,20 @@
     min-inline-size: 0;
   }
 
+  .cinder-tool-call-rail__failure-step {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-tool-call-rail__failure-diagnostic {
+    max-inline-size: 100%;
+    overflow-wrap: anywhere;
+    color: var(--cinder-text-default);
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    white-space: pre-wrap;
+  }
+
   .cinder-tool-call-rail__failure-glyph {
     flex: none;
     inline-size: 0.875rem;
@@ -547,8 +571,31 @@
     .cinder-tool-call-rail__row {
       grid-template-columns: minmax(0, 1fr) auto;
       row-gap: 0;
-      min-block-size: var(--cinder-touch-target-min);
-      padding-block: var(--cinder-space-1-5);
+      min-block-size: 2.75rem;
+      padding-block: var(--cinder-space-0-5);
+      position: relative;
+    }
+
+    /* Two text lines fit the 44px painted row. The target is the same size, so adjacent timeline
+       rows retain their own taps rather than being covered by an overlapping extension. */
+    .cinder-tool-call-rail__row::before {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2)) 0;
+    }
+
+    @media (any-pointer: coarse) {
+      /* The coarse summary extends 12px below its 20px face. Reserve exactly that reach after
+       * the existing 6px rhythm so its target stops before the first row's target begins. */
+      button.cinder-tool-call-rail__summary {
+        margin-block-end: calc(
+          var(--cinder-space-1-5) + (var(--cinder-touch-target-min) - 1.25rem) / 2
+        );
+      }
+
+      button.cinder-tool-call-rail__summary::before {
+        inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      }
     }
 
     .cinder-tool-call-rail__name,

@@ -8,6 +8,12 @@
       "title": "Basic copy button",
       "description": "Click to copy. The button enters a confirmation state for a brief moment.",
       "code": "<script lang=\"ts\">\n  import { CopyButton } from '@lostgradient/cinder';\n</script>\n\n<div class=\"example-preview-row\" style=\"align-items: center;\">\n  <code\n    style=\"padding: 0.25rem 0.5rem; background-color: var(--cinder-surface-inset); color: var(--cinder-text-default); border-radius: 4px;\"\n    >npx cinder install</code\n  >\n  <CopyButton value=\"npx cinder install\" label=\"Copy install command\" />\n</div>\n"
+    },
+    {
+      "id": "inline",
+      "title": "Copy an inline value",
+      "code": "<script lang=\"ts\">\n  import { CopyButton } from '@lostgradient/cinder';\n</script>\n\n<p>Build 2026.11.21<CopyButton appearance=\"inline\" value=\"2026.11.21\" /></p>\n",
+      "description": "The glyph follows the value at the size of the surrounding text."
     }
   ]
 }

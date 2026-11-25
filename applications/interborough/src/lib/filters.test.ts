@@ -76,6 +76,24 @@ describe('serializeWorkflowListFilter — matches the REST grammar exactly', () 
     expect(params.toString()).toBe('failure_category=timeout&failure_category=resource');
   });
 
+  test('failed_step and retrying, as Weft’s REST parser reads them (COR-2535)', () => {
+    const params = serializeWorkflowListFilter({ failedStep: 'charge-card', retrying: true });
+    expect(params.toString()).toBe('failed_step=charge-card&retrying=true');
+    // `retrying=false` is a filter too: the workflows that are not retrying.
+    expect(serializeWorkflowListFilter({ retrying: false }).toString()).toBe('retrying=false');
+    expect(
+      parseWorkflowListFilter(new URLSearchParams('failed_step=charge-card&retrying=true')),
+    ).toEqual({
+      failedStep: 'charge-card',
+      retrying: true,
+    });
+    expect(parseWorkflowListFilter(new URLSearchParams('retrying=false'))).toEqual({
+      retrying: false,
+    });
+    // A value that is no filter is none, so an address carrying one still lists.
+    expect(parseWorkflowListFilter(new URLSearchParams('failed_step=&retrying=maybe'))).toEqual({});
+  });
+
   test('created_at_{gte,gt,lte,lt}', () => {
     const params = serializeWorkflowListFilter({ createdAt: { gte: 1, gt: 2, lte: 3, lt: 4 } });
     expect(params.get('created_at_gte')).toBe('1');

@@ -1,0 +1,63 @@
+{
+  "name": "@lostgradient/api-key-settings",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Optional API key management operations and settings for applications.",
+  "exports": {
+    "./backchannel": "./src/backchannel.ts",
+    "./svelte": "./src/svelte.ts",
+    "./ui": {
+      "types": "./src/ui.d.ts",
+      "svelte": "./src/ApiKeySettings.svelte",
+      "default": "./src/ApiKeySettings.svelte"
+    }
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts && bun ../../scripts/check-inherited-key-reads.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts",
+    "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
+    "test": "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.integration.test.ts'",
+    "test:slow": "bun run generate:check && bun run --cwd ../../components/cinder tokens:seed && bun ../../scripts/bun-test-selected.ts .integration.test.ts && bun ../../scripts/bun-test-selected.ts src/backchannel.test.ts src/ApiKeySettings.test.ts",
+    "test:api-keys:settings": "bun run generate:check && bun run --cwd ../../components/cinder tokens:seed && bun ../../scripts/bun-test.ts src/backchannel.test.ts src/ApiKeySettings.test.ts && bun ../../scripts/bun-test.ts tests/installed-page.integration.test.ts",
+    "generate": "bun scripts/generate.ts",
+    "generate:check": "bun scripts/generate.ts --check"
+  },
+  "dependencies": {
+    "@lostgradient/backchannel": "workspace:*",
+    "@lostgradient/backchannel-svelte": "workspace:*",
+    "@lostgradient/credentials": "workspace:*",
+    "zod": "catalog:"
+  },
+  "peerDependencies": {
+    "@lostgradient/cinder": "workspace:*",
+    "@tanstack/svelte-query": "catalog:",
+    "svelte": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "@lostgradient/cinder": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@lostgradient/backchannel-mcp": "workspace:*",
+    "@lostgradient/cinder": "workspace:*",
+    "@lostgradient/storage": "workspace:*",
+    "@lostgradient/testing": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
+    "@tanstack/svelte-query": "catalog:",
+    "@modelcontextprotocol/client": "catalog:",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "playwright": "catalog:",
+    "prettier": "catalog:",
+    "svelte": "catalog:",
+    "svelte-check": "catalog:",
+    "typescript": "catalog:"
+  },
+  "files": [
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "sideEffects": false
+}

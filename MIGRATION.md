@@ -27,10 +27,13 @@ This inventory records the consolidation boundaries and validation evidence. The
 | `/Users/stevekinney/Developer/agent-bureau/packages/lifecycle` | `packages/lifecycle` | `lifecycle` | `@lostgradient/lifecycle` | Library |
 | `/Users/stevekinney/Developer/weft/packages/weft` | `packages/weft` | `@lostgradient/weft` | `@lostgradient/weft` | Library |
 | `/Users/stevekinney/Developer/weft/packages/weft` (operation layer, extracted) | `packages/backchannel` | `@lostgradient/weft` | `@lostgradient/backchannel` | Library |
+| New in COR-2603 | `packages/backchannel-armorer` | — | `@lostgradient/backchannel-armorer` | Library |
+| New in COR-2604 | `packages/backchannel-svelte` | — | `@lostgradient/backchannel-svelte` | Library |
 | `/Users/stevekinney/Developer/weft/packages/weft-ui` | `components/weft-ui` | `@lostgradient/weft-ui` | `@lostgradient/weft-ui` | Browser component library |
 | `/Users/stevekinney/Developer/cinder/packages/components` | `components/cinder` | `@lostgradient/cinder` | `@lostgradient/cinder` | Browser component library |
 | `/Users/stevekinney/Developer/cinder/packages/chat` | `components/chat` | `@lostgradient/chat` | `@lostgradient/chat` | Browser component library |
 | `/Users/stevekinney/Developer/cinder/packages/editor` | `components/editor` | `@lostgradient/editor` | `@lostgradient/editor` | Browser component library |
+| `stevekinney/cinder:packages/mcp` | `packages/cinder-mcp` | `@lostgradient/cinder-mcp` | `@lostgradient/cinder-mcp` | Library |
 | `/Users/stevekinney/Developer/cinder/packages/markdown` | `packages/markdown` | `@lostgradient/markdown` | `@lostgradient/markdown` | Library |
 | `/Users/stevekinney/Developer/cinder/packages/testing` | `packages/testing` | `@cinder/testing` | `@lostgradient/testing` | Library |
 | `/Users/stevekinney/Developer/cinder/labs/chat-room` | `applications/chat-room`, later `applications/desktop`, since removed | `@cinder/chat-room-lab` | `@lostgradient/chat-room`, later `@lostgradient/desktop` | Application |
@@ -60,10 +63,11 @@ Arrows run from consumer to provider. Every manifest edge appears below, includi
 | --- | --- | --- |
 | `@lostgradient/playground` | `@lostgradient/chat`, `@lostgradient/cinder`, `@lostgradient/editor`, `@lostgradient/markdown`, `@lostgradient/testing` | `@lostgradient/typescript` |
 | `@lostgradient/chat` | `@lostgradient/cinder`, `conversationalist`, `@lostgradient/markdown` | `@lostgradient/testing`, `@lostgradient/typescript` |
+| `@lostgradient/cinder-mcp` | `@lostgradient/cinder` | `@lostgradient/typescript` |
 | `@lostgradient/cinder` | `@lostgradient/markdown` | `@lostgradient/testing`, `@lostgradient/typescript` |
 | `@lostgradient/editor` | `@lostgradient/cinder`, `@lostgradient/markdown` | `@lostgradient/testing`, `@lostgradient/typescript` |
 | `@lostgradient/weft-ui` | `@lostgradient/cinder`, `@lostgradient/markdown`, `@lostgradient/weft` | `@lostgradient/testing`, `@lostgradient/typescript` |
-| `armorer` | `@lostgradient/cryptography`, `@lostgradient/embeddings`, `@lostgradient/lifecycle`, `@lostgradient/tool-protocol` | `@lostgradient/typescript` |
+| `armorer` | `@lostgradient/cryptography`, `@lostgradient/lifecycle`, `@lostgradient/mcp` | `@lostgradient/testing`, `@lostgradient/typescript` |
 | `@lostgradient/bureau` | `armorer`, `conversationalist`, `@lostgradient/lifecycle`, `@lostgradient/memory`, `@lostgradient/operative`, `@lostgradient/skills`, `@lostgradient/tool-protocol`, `@lostgradient/weft` | `@lostgradient/typescript` |
 | `conversationalist` | `@lostgradient/lifecycle`, `@lostgradient/tool-protocol` | `@lostgradient/typescript` |
 | `@lostgradient/cryptography` | None | `@lostgradient/typescript` |
@@ -82,6 +86,9 @@ Arrows run from consumer to provider. Every manifest edge appears below, includi
 | `@lostgradient/tool-protocol` | `@lostgradient/lifecycle` | `@lostgradient/typescript` |
 | `@lostgradient/typescript` | None | None |
 | `@lostgradient/backchannel` | None | `@lostgradient/storage`, `@lostgradient/testing`, `@lostgradient/typescript` |
+| `@lostgradient/backchannel-armorer` | `@lostgradient/backchannel`, `armorer` | `@lostgradient/typescript` |
+| `@lostgradient/backchannel-svelte` | `@lostgradient/backchannel` | `@lostgradient/testing`, `@lostgradient/typescript` |
+| `@lostgradient/mcp` | `@lostgradient/storage`, `@lostgradient/storage-postgres` | `@lostgradient/testing`, `@lostgradient/typescript` |
 | `@lostgradient/weft` | `@lostgradient/backchannel` | `@lostgradient/typescript` |
 | Repository root | None | `@lostgradient/chat`, `@lostgradient/cinder`, `conversationalist`, `@lostgradient/editor`, `@lostgradient/testing`, `@lostgradient/typescript` |
 
@@ -101,6 +108,7 @@ A root override consolidates SvelteKit and Express on `cookie@0.7.2`. This remov
 | `conversationalist` | `@anthropic-ai/sdk`, `js-yaml`, `zod` |
 | `@lostgradient/evaluation` | `zod` |
 | `@lostgradient/editor` | `@floating-ui/dom`, `@milkdown/ctx`, `@milkdown/kit`, `@milkdown/prose`, `esm-env`, `prosemirror-inputrules`, `prosemirror-model`, `prosemirror-state`, `prosemirror-view`, `svelte` |
+| `@lostgradient/cinder-mcp` | `@modelcontextprotocol/sdk`, `zod` |
 | `@lostgradient/markdown` | `@shikijs/engine-oniguruma`, `@shikijs/langs`, `@shikijs/types`, `@types/mdast`, `@types/unist`, `comlink`, `diff-match-patch`, `hast-util-sanitize`, `js-yaml`, `rehype-katex`, `rehype-sanitize`, `rehype-stringify`, `remark-gfm`, `remark-math`, `remark-parse`, `remark-rehype`, `remark-stringify`, `shiki`, `unified`, `unist-util-visit` |
 | `@lostgradient/memory` | `zod` |
 | `@lostgradient/operative` | `@lostgradient/environmentalist`, `@opentelemetry/api`, `zod` |
@@ -111,6 +119,8 @@ A root override consolidates SvelteKit and Express on `cookie@0.7.2`. This remov
 | `@lostgradient/skills` | `gray-matter`, `zod` |
 | `@lostgradient/testing` | `@axe-core/playwright`, `@playwright/test`, `@testing-library/svelte`, `happy-dom`, `postcss-value-parser`, `svelte`, `typescript`, `zod` |
 | `@lostgradient/backchannel` | `zod` |
+| `@lostgradient/backchannel-armorer` | `zod` |
+| `@lostgradient/backchannel-svelte` | `@tanstack/svelte-query`, `svelte` (peers) |
 | `@lostgradient/weft` | `@msgpack/msgpack`, `@valibot/to-json-schema`, `valibot`, `zod` |
 | `@lostgradient/weft-ui` | `@shikijs/langs`, `@shikijs/themes`, `@tanstack/svelte-query`, `cron-parser`, `lucide-svelte`, `svelte` |
 

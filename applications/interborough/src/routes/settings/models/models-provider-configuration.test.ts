@@ -223,6 +223,21 @@ describe('connecting a provider whose plugin has settings', () => {
     expect(pluginWrites()).toEqual([]);
   });
 
+  test('keeps the Settings heading closer to its first setting than to the key section', async () => {
+    const { container } = open();
+    await loaded(container);
+    const dialog = await beginConnect(container);
+    const configuration = within(dialog).getByTestId('provider-configuration');
+    expect(configuration.getAttribute('data-has-heading')).toBe('');
+
+    const source = await Bun.file(
+      new URL('./provider-configuration.svelte', import.meta.url),
+    ).text();
+    expect(source).toMatch(
+      /\.ib-provider-configuration\[data-has-heading\]\s*\{\s*gap:\s*var\(--cinder-space-2\);/,
+    );
+  });
+
   test('draws the required field and not the optional one', async () => {
     const { container } = open({
       providers: [{ plugin: 'openai', name: 'openai', configuration: GATEWAY_SCHEMA }],
@@ -469,7 +484,8 @@ describe('connecting a provider whose plugin has settings', () => {
     });
     await fireEvent.click(within(dialog).getByRole('button', { name: copy.connect }));
 
-    await waitFor(() => expect(dialog.textContent).toContain('baseURL must be a URL.'));
+    await waitFor(() => expect(dialog.textContent).toContain('must be a URL.'));
+    expect(dialog.textContent).not.toContain('baseURL must be a URL.');
     expect(baseUrlField(dialog).getAttribute('aria-invalid')).toBe('true');
     expect(within(dialog).queryByTestId('provider-connect-success')).toBeNull();
     expect(keyWrites()).toEqual([]);
@@ -548,6 +564,58 @@ describe('connecting a provider whose plugin has settings', () => {
 
 describe('managing a provider whose plugin has settings', () => {
   const copy = MODELS_COPY.manageDialog;
+
+  test.each(['escape', 'backdrop', 'remove', 'replace'] as const)(
+    'preserves a dirty draft until the person confirms %s',
+    async (intent) => {
+      const { container } = open();
+      await loaded(container);
+      const dialog = await beginManage(container);
+      const documentBody = within(container.ownerDocument.body);
+      const draft = 'https://working.example/v1';
+      await fireEvent.input(baseUrlField(dialog), { target: { value: draft } });
+      await within(dialog).findByRole('button', { name: copy.save });
+
+      const requestLeave = async (current: HTMLElement) => {
+        if (intent === 'escape') {
+          const view = current.ownerDocument.defaultView;
+          if (view === null) throw new Error('Expected the dialog to belong to a window');
+          await fireEvent(current, new view.Event('cancel', { cancelable: true }));
+        } else if (intent === 'backdrop') {
+          await fireEvent.click(current);
+        } else {
+          const label = intent === 'remove' ? copy.removeKey : copy.replaceKey;
+          await fireEvent.click(within(current).getByRole('button', { name: label }));
+        }
+      };
+      await requestLeave(dialog);
+      let confirmation = await documentBody.findByRole('dialog', {
+        name: 'Discard provider settings?',
+      });
+      await fireEvent.click(within(confirmation).getByRole('button', { name: 'Keep editing' }));
+      const kept = await documentBody.findByRole('dialog', { name: 'Anthropic' });
+      expect(baseUrlField(kept).value).toBe(draft);
+      expect(pluginWrites()).toEqual([]);
+
+      await requestLeave(kept);
+      confirmation = await documentBody.findByRole('dialog', {
+        name: 'Discard provider settings?',
+      });
+      await fireEvent.click(within(confirmation).getByRole('button', { name: 'Discard changes' }));
+      if (intent === 'escape' || intent === 'backdrop') {
+        const reopened = await beginManage(container);
+        expect(baseUrlField(reopened).value).not.toBe(draft);
+      } else {
+        const label =
+          intent === 'remove'
+            ? MODELS_COPY.removeDialog.title('Anthropic')
+            : MODELS_COPY.replaceDialog.title('Anthropic');
+        expect(await documentBody.findByRole('dialog', { name: label })).not.toBeNull();
+      }
+      expect(pluginWrites()).toEqual([]);
+      expect(keyWrites()).toEqual([]);
+    },
+  );
 
   test('draws the stored settings and keeps Done while nothing changed, saving nothing', async () => {
     const { container } = open();
@@ -687,7 +755,8 @@ describe('managing a provider whose plugin has settings', () => {
     await fireEvent.input(baseUrlField(dialog), { target: { value: 'nope' } });
     await fireEvent.click(await within(dialog).findByRole('button', { name: copy.save }));
 
-    await waitFor(() => expect(dialog.textContent).toContain('baseURL must be a URL.'));
+    await waitFor(() => expect(dialog.textContent).toContain('must be a URL.'));
+    expect(dialog.textContent).not.toContain('baseURL must be a URL.');
     expect(pluginHost!.stored['anthropic']).toBeUndefined();
     expect(within(dialog).getByRole('button', { name: copy.save })).toBeDefined();
   });

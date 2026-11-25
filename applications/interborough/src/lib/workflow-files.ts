@@ -77,12 +77,6 @@ export type CodeWorkflowListing = CodeEntry;
 /** One file as `bureau.workflows.get` shows it, with its text and its live schedule. */
 export type WorkflowFileDetail = AbsentTolerant<BureauOutput<'bureau.workflows.get'>>;
 
-/** A version of the workflow's document that has run. */
-export type WorkflowRevision = BureauOutput<'bureau.workflows.revisions'>['revisions'][number];
-
-/** A revision's compatibility with the current revision: `{ compatible: true }`, or the reasons it is not. */
-export type WorkflowCompatibility = NonNullable<WorkflowRevision['compatibility']>;
-
 /**
  * A workflow that code registered, as `bureau.workflows.internal.get` shows it. `source.text` is
  * the workflow's description followed by its registered contract as JSON; the code is not exposed.
@@ -150,18 +144,17 @@ export async function getWorkflowFile(id: string, options?: Options): Promise<Wo
   return bureauClient['bureau.workflows.get']({ id }, options);
 }
 
-/** The versions of the workflow that have run, most recently run first. */
-export async function listWorkflowRevisions(
+/** The run revisions together with the count of every saved version, including unrun ones. */
+export async function getWorkflowRevisionSummary(
   id: string,
   options?: Options,
-): Promise<readonly WorkflowRevision[]> {
-  const answer = await bureauClient['bureau.workflows.revisions']({ id }, options);
-  return answer.revisions;
+): Promise<Pick<BureauOutput<'bureau.workflows.revisions'>, 'revisions' | 'savedVersionCount'>> {
+  return bureauClient['bureau.workflows.revisions']({ id }, options);
 }
 
 /**
  * The steps of the newest version the Bureau saved of a workflow's file, as `bureau.workflows.history`
- * lists them. Unlike {@link listWorkflowRevisions} it holds a version that never ran, and it still
+ * lists them. Unlike {@link getWorkflowRevisionSummary} it holds a version that never ran, and it still
  * answers for a workflow whose file cannot load or was deleted, so a schedule row can say which
  * agent such a workflow ran. `undefined` when the workflow has no saved version.
  */
@@ -169,18 +162,31 @@ export async function getLatestSavedSteps(
   id: string,
   options?: Options,
 ): Promise<readonly Readonly<Record<string, unknown>>[] | undefined> {
-  const { revisions } = await bureauClient['bureau.workflows.history']({ id }, options);
-  return revisions[0]?.steps;
+  const [latest] = await listWorkflowSavedVersions(id, options);
+  return latest?.steps;
 }
 
-type SavedVersion = BureauOutput<'bureau.workflows.history'>['revisions'][number];
+/** One saved version of a file, including versions that never ran. */
+export type SavedWorkflowVersion = BureauOutput<'bureau.workflows.history'>['revisions'][number];
+
+/** The versions of the workflow's file, newest first. */
+export async function listWorkflowSavedVersions(
+  id: string,
+  options?: Options,
+): Promise<readonly SavedWorkflowVersion[]> {
+  const { revisions } = await bureauClient['bureau.workflows.history']({ id }, options);
+  return revisions;
+}
 
 /**
  * One saved version of a workflow: its number (`1.2.0`) and the engine revision it registered as,
  * and the version's steps as written, titles included, which the engine's revision drops.
  */
-export type WorkflowVersionLabel = Pick<SavedVersion, 'version' | 'current' | 'workflowVersion'> & {
-  readonly steps?: SavedVersion['steps'] | undefined;
+export type WorkflowVersionLabel = Pick<
+  SavedWorkflowVersion,
+  'version' | 'current' | 'workflowVersion'
+> & {
+  readonly steps?: SavedWorkflowVersion['steps'] | undefined;
 };
 
 /**
@@ -192,8 +198,7 @@ export async function listWorkflowVersionLabels(
   id: string,
   options?: Options,
 ): Promise<readonly WorkflowVersionLabel[]> {
-  const { revisions } = await bureauClient['bureau.workflows.history']({ id }, options);
-  return revisions;
+  return listWorkflowSavedVersions(id, options);
 }
 
 /** A code-defined workflow's description and registered contract. Anything the caller may not read is a `NotFound` fault. */
@@ -208,10 +213,16 @@ export async function getCodeWorkflow(id: string, options?: Options): Promise<Co
 export async function startWorkflowFile(
   id: string,
   input: unknown,
+  idempotencyKey: string | undefined,
   options?: Options,
 ): Promise<WorkflowStartResult> {
   return bureauClient['bureau.workflows.start'](
-    { id, surface: 'web', ...(input === undefined ? {} : { input }) },
+    {
+      id,
+      surface: 'web',
+      ...(input === undefined ? {} : { input }),
+      ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+    },
     options,
   );
 }
@@ -247,6 +258,49 @@ export async function createWorkflowFile(
 }
 
 type RunSummary = BureauOutput<'bureau.workflows.runs.list'>['runs'][number];
+
+const validationSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('ok'), id: z.string(), hash: z.string() }),
+  z.object({
+    status: z.literal('invalid'),
+    code: z.string(),
+    issues: z.array(z.object({ path: z.string(), message: z.string() })),
+  }),
+  z.object({
+    status: z.literal('conflict'),
+    id: z.string(),
+    reason: z.string(),
+    currentHash: z.string().optional(),
+  }),
+]);
+
+/** What `bureau.workflows.validate` answers: the draft would be written, is refused with issues, or conflicts. */
+export type WorkflowValidation = z.infer<typeof validationSchema>;
+
+/**
+ * Asks the Bureau whether a draft would be written, with the same checks as a write and without
+ * writing (`bureau.workflows.validate`): `id` alone for a new workflow, with `expectedHash` for an
+ * edit of the file that hashes to it. A refusal names the issues by their paths (COR-2432).
+ */
+export async function validateWorkflowDefinition(
+  draft: {
+    readonly id?: string;
+    readonly expectedHash?: string;
+    readonly definition: WorkflowDefinitionInput;
+  },
+  options?: Options,
+): Promise<WorkflowValidation> {
+  return validationSchema.parse(
+    await bureauClient['bureau.workflows.validate'](
+      {
+        ...(draft.id === undefined ? {} : { id: draft.id }),
+        ...(draft.expectedHash === undefined ? {} : { expectedHash: draft.expectedHash }),
+        definition: wireDefinition(draft.definition),
+      },
+      options,
+    ),
+  );
+}
 
 /**
  * One workflow-file run summary returned by the Bureau list operation, as
@@ -333,14 +387,14 @@ export async function getWorkflowRunHistory(
   return bureauClient['bureau.workflows.runs.history']({ runId, limit: 500 }, options);
 }
 
-/** The newest `limit` instances of one workflow file. */
+/** The newest `limit` instances of one workflow file and whether it has an older page. */
 export async function listWorkflowFileRuns(
   id: string,
   limit: number,
   options?: Options,
-): Promise<readonly WorkflowFileRun[]> {
+): Promise<{ readonly runs: readonly WorkflowFileRun[]; readonly hasMore: boolean }> {
   const page = await bureauClient['bureau.workflows.runs.list']({ workflow: id, limit }, options);
-  return page.runs.map(workflowRunOf);
+  return { runs: page.runs.map(workflowRunOf), hasMore: page.nextOffset !== null };
 }
 
 /** Replaces the workflow's file, if it still hashes to `expectedHash`. */

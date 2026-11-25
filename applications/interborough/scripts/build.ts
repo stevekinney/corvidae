@@ -33,12 +33,14 @@ import {
   UNKNOWN_COMMIT,
   type BuildInfo,
 } from '../src/host/build-info.ts';
+import { processEnvironment } from '../src/host/environment-configuration.ts';
 import {
   assertCleanBuild,
   browserBuildOptions,
   BUILD_ASSET_DIRECTORY,
   pruneUnlinkedStylesheets,
 } from './browser-build.ts';
+import { warmSvelteTransforms } from './warm-svelte-transforms.ts';
 
 /** The `@lostgradient/interborough` package root. */
 export const PACKAGE_DIRECTORY = fileURLToPath(new URL('..', import.meta.url));
@@ -214,11 +216,22 @@ export async function buildApplication(
      * Makes sure Cinder's generated files exist before the bundler imports them. Every caller,
      * Turbo or not, goes through here; a test supplies a no-op.
      */
-    readonly ensureGenerated?: () => void;
+    readonly ensureGenerated?: () => void | Promise<void>;
   } = {},
 ): Promise<ApplicationBuild> {
-  (options.ensureGenerated ?? ensureCinderGenerated)();
+  const generationStarted = performance.now();
+  const generated = await (options.ensureGenerated ?? ensureCinderGenerated)();
+  if (processEnvironment()['INTERBOROUGH_STARTUP_PROFILE'] === '1') {
+    console.error(
+      `STARTUP ${JSON.stringify({ stage: 'cinder', milliseconds: performance.now() - generationStarted, generated })}`,
+    );
+  }
+  const bundleStarted = performance.now();
   const development = options.development ?? false;
+  const warmTransforms =
+    development && options.bundle === undefined
+      ? await warmSvelteTransforms(join(PACKAGE_DIRECTORY, '.cache', 'svelte-transforms'))
+      : undefined;
   const directory =
     options.outdir === undefined
       ? DEFAULT_BUILD_DIRECTORY
@@ -235,6 +248,7 @@ export async function buildApplication(
         entrypoints: [ENTRY_HTML_PATH],
         outdir: staging,
         development,
+        ...(warmTransforms === undefined ? {} : { sveltePlugin: warmTransforms.plugin }),
         commit: displayedCommit(source),
       }),
       minify: !development,
@@ -260,6 +274,11 @@ export async function buildApplication(
     await writeFile(join(staging, BUILD_INFO_FILE), `${JSON.stringify(source)}\n`);
     if (development) await retainPreviousAssets(staging, directory);
     await replaceDirectory(staging, directory);
+    if (processEnvironment()['INTERBOROUGH_STARTUP_PROFILE'] === '1') {
+      console.error(
+        `STARTUP ${JSON.stringify({ stage: 'ui-bundle', milliseconds: performance.now() - bundleStarted, transforms: warmTransforms?.statistics })}`,
+      );
+    }
     return { directory, files: [...files, BUILD_INFO_FILE].toSorted(), metafile };
   } finally {
     await rm(staging, { recursive: true, force: true });

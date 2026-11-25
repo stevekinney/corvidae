@@ -1,6 +1,6 @@
 # Text
 
-A run of text in one of the typography variants `h1` to `h5`, `caption`, `body` and `code`. Color is inherited from the container.
+A run of text in one of the typography variants `display`, `h1` to `h5`, `caption`, `body` and `code`. `display` renders an `h1` at the display size. Color is inherited from the container.
 
 ## Usage
 
@@ -67,6 +67,7 @@ A run of text in one of the typography variants `h1` to `h5`, `caption`, `body` 
 | `clamp` | `number` | no | — | Holds the text to this many lines; a "Show more" button appears only while the text is cut off. |
 | `class` | `string` | no | — | Additional classes merged onto the root element. |
 | `expanded` | `boolean` | no | `false` | Whether a clamped run is open to its full length. |
+| `measure` | `boolean` | no | `false` | Holds the run to a readable line length of 70 characters. Off by default, so no existing text moves. |
 | `tailLength` | `number` | no | `4` | With `truncate="middle"`, how many characters at the end of the text stay visible. |
 | `text` | `string` | no | — | The plain text to cut with `truncate`. |
 | `truncate` | `"middle"` \| `"end"` | no | — | Cuts the text in the middle, or ends it with an ellipsis, when it is too long for one line. Needs `text`. |

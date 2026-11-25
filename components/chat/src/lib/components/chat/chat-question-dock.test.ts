@@ -7,7 +7,7 @@
 
 /// <reference lib="dom" />
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
-import { tick } from 'svelte';
+import { createRawSnippet, tick } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import {
@@ -51,6 +51,8 @@ afterAll(() => {
 
 const { render, fireEvent, cleanup } = await import('@testing-library/svelte');
 const { default: Chat } = await import('./chat.svelte');
+const { default: HostQuestionDockHarness } =
+  await import('./host-question-dock-harness.test.svelte');
 
 afterEach(() => {
   cleanup();
@@ -209,12 +211,17 @@ describe('a docked question', () => {
     expect(container.querySelector('[data-cinder-tool-input]')).toBeNull();
   });
 
-  test('draws a radio card per choice with its description and the key that chooses it', async () => {
+  test('draws a flat radio row per choice with its description and the key that chooses it', async () => {
     const { container } = mountDocked('dock-radios', ENVIRONMENT);
     await settle();
 
     const radios = radiosOf(container);
     expect(radios).toHaveLength(3);
+    expect(radios.map((radio) => radio.getAttribute('data-cinder-variant'))).toEqual([
+      'row',
+      'row',
+      'row',
+    ]);
     expect(
       radios.map((radio) => radio.querySelector('.chat-question-dock-choice-label')?.textContent),
     ).toEqual(['Staging', 'Production', 'Canary']);
@@ -230,20 +237,39 @@ describe('a docked question', () => {
     );
   });
 
-  test('leaves its radios the height and rest border Cinder gives them', async () => {
+  test('keeps the compact choice keys visible on coarse pointers', async () => {
     const source = await Bun.file(
       new URL('./question/chat-question-dock.svelte', import.meta.url),
     ).text();
 
-    expect(source).not.toContain('--_cinder-choice-card-min-block-size');
+    expect(source).not.toMatch(
+      /@media \(any-pointer: coarse\) \{\s*\.chat-question-dock-key \{\s*display: none;/su,
+    );
+  });
+
+  test('keeps one dock frame while its radio rows remain flat touch targets', async () => {
+    const source = await Bun.file(
+      new URL('./question/chat-question-dock.svelte', import.meta.url),
+    ).text();
+
+    expect(source).toContain('--_cinder-choice-card-min-block-size: 3.25rem;');
     expect(source).toContain('max-block-size: min(100%, 80dvh);');
     expect(source).toContain('chat-question-dock-options-scroll');
     expect(source).toContain('chat-question-dock-completion');
-    expect(source).toContain('--cinder-border-muted');
+    const dock = /\.chat-question-dock\s*\{([^}]*)\}/u.exec(source)?.[1] ?? '';
+    expect(dock).toContain('border: 1px solid var(--cinder-border);');
+    expect(dock).toContain('border-radius: var(--cinder-radius-lg);');
+    expect(dock).not.toContain('background:');
+    expect(dock).not.toContain('padding:');
+    expect(dock).not.toContain('padding:');
+    expect(source).toMatch(
+      /\.chat-question-dock-body :global\(\.cinder-choice-grid-item\[data-cinder-variant='row'\]\)\s*\{[^}]*--_cinder-choice-card-min-block-size: 3.25rem;/,
+    );
     expect(source).not.toContain('chat-question-dock-body cinder-_scroll-fade');
     expect(source).toContain('overflow-y: auto;');
-    expect(source).toContain('@media (any-pointer: coarse)');
-    expect(source).toContain('display: none;');
+    expect(source).not.toMatch(
+      /@media \(any-pointer: coarse\) \{\s*\.chat-question-dock-key \{\s*display: none;/su,
+    );
   });
 
   test('draws the pager as a row of its own at the leading edge, not a slot at the trailing end', async () => {
@@ -954,5 +980,56 @@ describe('a composer that is replaced', () => {
     await settle();
 
     expect(dockOf(container)).toBeNull();
+  });
+});
+
+describe('a host-owned docked question (COR-2437 AC6)', () => {
+  const hostQuestion = createRawSnippet(() => ({
+    render: () => '<fieldset data-host-question><legend>Which environment?</legend></fieldset>',
+  }));
+
+  test('reports its live dock before the host removes the inline question', async () => {
+    const { container } = render(HostQuestionDockHarness, {
+      id: 'host-question-live',
+      conversation: appendUserMessage(
+        createConversationHistory({ id: 'host-question-live' }),
+        'Deploy',
+      ),
+      questionDock: hostQuestion,
+    });
+    await settle();
+
+    expect(container.querySelector('[data-bound]')?.getAttribute('data-bound')).toBe('true');
+    expect(
+      container.querySelector('[data-chat-question-dock="host"] [data-host-question]'),
+    ).not.toBeNull();
+  });
+
+  test('keeps the host wrapper flat while preserving its bounded scroll region', async () => {
+    const source = await Bun.file(new URL('./container/chat.svelte', import.meta.url)).text();
+    const dock = /\.chat-host-question-dock\s*\{([^}]*)\}/u.exec(source)?.[1] ?? '';
+
+    expect(dock).toContain('max-block-size: min(100%, 80dvh);');
+    expect(dock).toContain('overflow-y: auto;');
+    expect(dock).not.toContain('border:');
+    expect(dock).not.toContain('border-radius:');
+    expect(dock).not.toContain('background:');
+    expect(dock).not.toContain('padding:');
+  });
+
+  test('reports false when a blocked composer keeps the host question inline', async () => {
+    const { container } = render(HostQuestionDockHarness, {
+      id: 'host-question-blocked',
+      conversation: appendUserMessage(
+        createConversationHistory({ id: 'host-question-blocked' }),
+        'Deploy',
+      ),
+      questionDock: hostQuestion,
+      composerStatus: { kind: 'blocked', reason: 'Connect a model provider to chat' },
+    });
+    await settle();
+
+    expect(container.querySelector('[data-bound]')?.getAttribute('data-bound')).toBe('false');
+    expect(container.querySelector('[data-chat-question-dock="host"]')).toBeNull();
   });
 });

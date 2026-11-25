@@ -247,6 +247,10 @@ import {
 } from './workflow-runtime';
 import { createBureauWorkerDeployments } from './worker-deployments';
 import { everySchedule, readAttention } from './attention-feed';
+import { readRunVerdicts } from './run-failure-verdicts';
+import { createRunTimelineTool } from './run-timeline-tool';
+import { runStatusOfTask, serveRunTimeline } from './run-timeline';
+import { createTasksExplainTool } from './tasks-explain-tool';
 import { createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
 import { createWorkflowRevisionLedger } from './workflow-revision-ledger';
@@ -285,6 +289,7 @@ import { createSessionInputSettlement } from './session-input-settlement';
 import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-owner-suffix';
 import { createForkLedger } from './session-fork';
 import { createRegenerateLedger } from './session-regenerate';
+import { createDiscardLedger } from './session-discard';
 import {
   type BureauSteeringGate,
   createSteeringCommandLedger,
@@ -385,6 +390,8 @@ import {
   createSessionRegeneration,
   type SessionRegenerationPeers,
 } from './bureau-seams/session-regeneration';
+import { createSessionDiscard, type SessionDiscardPeers } from './bureau-seams/session-discard';
+import { createSessionResume, type SessionResumePeers } from './bureau-seams/session-resume';
 import {
   createSteeringAdmission,
   type SteeringAdmissionPeers,
@@ -444,6 +451,8 @@ type BureauPeers = EventHistoryPeers &
   SessionInputAdmissionPeers &
   SessionForksPeers &
   SessionRegenerationPeers &
+  SessionDiscardPeers &
+  SessionResumePeers &
   SteeringAdmissionPeers &
   RecoveredRunsPeers &
   SessionsPeers &
@@ -589,6 +598,60 @@ async function constructBureau<const D extends AgentDefinitions>(
             }),
           }),
         )),
+    // COR-2543: why a run failed is a read of the run, not workflow management, so the tool does
+    // not wait for a workflow directory. An agent run is a task with a record, and an id the
+    // registry does not hold is read as an instance of a workflow file, as `bureau.tasks.explain`
+    // reads it.
+    createTasksExplainTool({
+      workspace: workspace,
+      ownerOfRun: (runId) => ownerOf({ kind: 'run', id: runId }),
+      task: async (runId) => taskRegistryHolder.current?.get(runId),
+      workflowInstance: async (runId) =>
+        (await workflowRuntime?.workflows.getRun(runId)) !== undefined,
+      runState: async (runId) => {
+        const state = await durableEngine()?.get(runId);
+        return state === null || state === undefined
+          ? undefined
+          : {
+              status: state.status,
+              failureCategory: state.failureCategory,
+              errorCode: state.errorCode,
+              failedStep: state.failedStep,
+            };
+      },
+      runTimeline: async (runId) => durableEngine()?.getTimeline(runId),
+      runVerdicts: async (runId, kind) =>
+        taskRegistryHolder.current === undefined
+          ? []
+          : readRunVerdicts(
+              { trail: auditTrailInstance, tasks: taskRegistryHolder.current },
+              runId,
+              kind,
+            ),
+    }),
+    // COR-2542: a run's timeline is a read of the run, not workflow management, so the tool does
+    // not wait for a workflow directory. An agent run is a task with a record, and an id the
+    // registry does not hold is read as an instance of a workflow file, as `bureau.runs.timeline`
+    // reads it.
+    createRunTimelineTool({
+      workspace: workspace,
+      ownerOfRun: (runId) => ownerOf({ kind: 'run', id: runId }),
+      runTimeline: async (runId) => {
+        const task = await taskRegistryHolder.current?.get(runId);
+        if (task !== undefined) {
+          const entries = await durableEngine()?.getTimeline(runId);
+          return entries === undefined
+            ? 'unsupported'
+            : serveRunTimeline('agent', runStatusOfTask(task.status), entries);
+        }
+        const workflowRun = await workflowRuntime?.workflows.getRun(runId);
+        if (workflowRun === undefined) return undefined;
+        const entries = await durableEngine()?.getTimeline(runId);
+        return entries === undefined
+          ? 'unsupported'
+          : serveRunTimeline('workflow', workflowRun.status, entries);
+      },
+    }),
   ];
   // COR-2009 — the code-defined agents built from Bureau's own tools join `agents` before any
   // plugin is composed, so a plugin agent of the same name is a clash, as with any host agent.
@@ -1489,6 +1552,7 @@ async function constructBureau<const D extends AgentDefinitions>(
    */
   const expiredSteeringTransitions = new Map<string, readonly SteeringGateTransition[]>();
   const core: BureauCore<D> = {
+    terminalReviewReleases: composedPlugins.terminalReviewReleases,
     options,
     workspace,
     assetServiceHolder,
@@ -1722,6 +1786,12 @@ async function constructBureau<const D extends AgentDefinitions>(
     set outboxDrainInFlight(value) {
       outboxDrainInFlight = value;
     },
+    get outboxDrainAdmissionClosed() {
+      return outboxDrainAdmissionClosed;
+    },
+    set outboxDrainAdmissionClosed(value) {
+      outboxDrainAdmissionClosed = value;
+    },
     get maintenanceAdmissionClosed() {
       return maintenanceAdmissionClosed;
     },
@@ -1817,6 +1887,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     },
     get regenerateLedger() {
       return regenerateLedger;
+    },
+    get discardLedger() {
+      return discardLedger;
     },
     get persistentDurableStorage() {
       return persistentDurableStorage;
@@ -2397,6 +2470,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     getContextWindow,
   } = createSessionForks<D>(core, peers);
   const { regenerateSession } = createSessionRegeneration<D>(core, peers);
+  const { discardSessionTurn } = createSessionDiscard<D>(core, peers);
+  const { resumeSessionTurn } = createSessionResume<D>(core, peers);
   const { admitSteeringRequest, resolveLiveSessionPreAdmission, liveSessionRunIdsEverywhere } =
     createSteeringAdmission<D>(core, peers);
   const {
@@ -2587,6 +2662,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   } = createSessionInputGates<D>(core, peers);
   const {
     grantFieldsOf,
+    grantLoosensReview,
     approvedCallAuditOf,
     recordApprovedCall,
     buildReviewDecisionAuditRecord,
@@ -4204,6 +4280,11 @@ async function constructBureau<const D extends AgentDefinitions>(
   let outboxRetryTimerHandle: RuntimeTimeoutHandle;
   let outboxRetryTimerArmedForMs: number | undefined;
   let outboxDrainInFlight: Promise<void> | undefined;
+  // COR-2639: terminal session saves that shutdown itself starts must still
+  // trigger a drain, but once shutdown reaches its final outbox-drain
+  // snapshot no later post-commit append may start or join one against this
+  // host's closing storage.
+  let outboxDrainAdmissionClosed = false;
 
   // AB-388 (Codex review, PR #597, "Fence maintenance admission once
   // shutdown starts"): closed SYNCHRONOUSLY (no `await` in between) as the
@@ -4427,6 +4508,12 @@ async function constructBureau<const D extends AgentDefinitions>(
    * prefix of its own.
    */
   const regenerateLedger = createRegenerateLedger(runtime.kv, runtimeServices);
+
+  /**
+   * COR-2437 — the turn discard command ledger: a duplicate of `discardSessionTurn`, even after a
+   * restart, returns the original result and removes nothing more.
+   */
+  const discardLedger = createDiscardLedger(runtime.kv, runtimeServices);
 
   // Build the bureau object first so the audit trail (and webhook notifier)
   // can subscribe to its action events via addEventListener. The audit trail
@@ -4803,6 +4890,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         .toSorted((a, b) => b.decidedAt - a.decidedAt || (a.review.id < b.review.id ? -1 : 1));
     },
     listSessionReviews: listPendingReviews,
+    mayRemember: grantLoosensReview,
     listRunHumanWaits: () => [...runHumanWaits.list(), ...workflowReviewWaits.list()],
     get: getReview,
     pendingOf: pendingHumanWaitsOfRun,
@@ -4854,6 +4942,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     steering: getSessionSteering,
     fork: forkSession,
     regenerate: regenerateSession,
+    discardTurn: discardSessionTurn,
+    resumeTurn: resumeSessionTurn,
     window: getContextWindow,
     eventHistory: readEventHistory,
     subscribeEventHistory: subscribeToEventHistory,
@@ -4918,6 +5008,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         hooks: async () => (await hooksInstance?.hooks.list()) ?? [],
         plugins: () => pluginRegistry.plugins.list(),
         pluginsComposedAt: constructedAtMilliseconds,
+        runs: () => tasks.attentionRuns(),
         ...(options.attention === undefined ? {} : { contributed: options.attention }),
       }),
     reviews,
@@ -4927,6 +5018,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     audit,
     notifications: notificationsComposition.notifications,
     internals: {
+      reviewPolicy: options.reviewPolicy,
       hasExplicitId: options.id !== undefined,
       get taskRetention() {
         return taskRetentionOf(currentSettings());

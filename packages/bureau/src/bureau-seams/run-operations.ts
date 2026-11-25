@@ -474,7 +474,7 @@ export function createRunOperations<D extends AgentDefinitions>(
       // cancel-then-terminal at exactly one step rather than two.
       await peers.runTerminalCheckpointCleanup(runId);
       // COR-772 — only a committed cancellation applies the child policy.
-      await core.childTopology.parentCancelled(runId, 'Cancelled via cancelDurableRun');
+      await core.childTopology.parentCancelled(runId, 'Canceled via cancelDurableRun');
       // COR-1476 — the run has ended: its session's input is settled here, so
       // the caller returns with the cancellation already reflected in every
       // receipt, and again by its terminal listener, which finds nothing left.

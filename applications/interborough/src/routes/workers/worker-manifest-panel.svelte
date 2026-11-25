@@ -55,7 +55,7 @@
       <Skeleton height="8rem" />
     </div>
   {:else if error}
-    <PanelFault {error} />
+    <PanelFault {error} subject="the worker manifest" />
   {:else if diagnostics === null}
     <EmptyState
       kind="done"

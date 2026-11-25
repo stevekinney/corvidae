@@ -563,7 +563,8 @@ export async function buildRelease(
   if (status.trim() !== '') throw new Error('Release inputs are dirty');
   const generatedCinder =
     operations.generatedCinder ?? join(REPOSITORY_ROOT, 'components', 'cinder');
-  if (operations.generatedCinder === undefined) ensureCinderGenerated({ root: REPOSITORY_ROOT });
+  if (operations.generatedCinder === undefined)
+    await ensureCinderGenerated({ root: REPOSITORY_ROOT });
   await mkdir(options.outdir, { recursive: true });
   const targetRoot = join(options.outdir, 'interborough');
   const archive = join(options.outdir, `interborough-${options.version}-darwin-arm64.tar.gz`);

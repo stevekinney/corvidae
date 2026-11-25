@@ -27,11 +27,6 @@ export function confirmPhrase(verb: string, matched: number): string {
   return `${verb} ${matched} workflow${matched === 1 ? '' : 's'}`;
 }
 
-/** `true` when `input` matches `phrase` case-insensitively, trimmed — the `ConfirmDialog`/`AlertDialog` type-to-confirm rule (plan §10.6). */
-export function confirmPhraseMatches(input: string, phrase: string): boolean {
-  return input.trim().toLowerCase() === phrase.toLowerCase();
-}
-
 /**
  * One-line filter summary chip (design: `status:failed, type:payment-capture`).
  * Dimensions appear in the same order as `BulkOperationFilterSummary`'s own

@@ -75,7 +75,10 @@ function lookupRun(url: string, init?: RequestInit): Response | undefined {
 
 async function lookedUp() {
   restore = bureau(
-    { 'bureau.contexts.get': () => CONTEXT, 'bureau.reviews.list': () => ({ reviews: [] }) },
+    {
+      'bureau.contexts.get': () => CONTEXT,
+      'bureau.reviews.list': () => ({ reviews: [] }),
+    },
     lookupRun,
   ).restore;
   landAt('/chats/session-1');

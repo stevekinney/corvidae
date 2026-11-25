@@ -52,6 +52,7 @@ export type ConnectHostOptions = {
   readonly buildDirectory: string;
   readonly port: number;
   readonly onStartupResource?: (stop: () => Promise<void>) => void;
+  readonly signal?: AbortSignal;
 };
 
 const SUPERVISOR = join(import.meta.dir, '..', '..', 'src', 'host', 'supervisor.ts');
@@ -99,6 +100,7 @@ function watchOutput(stream: ReadableStream<Uint8Array>): { listening: Promise<v
 
 /** Starts the servers, then the host under the supervisor, and resolves once the host is listening. */
 export async function startConnectHost(options: ConnectHostOptions): Promise<ConnectHost> {
+  const signal = options.signal;
   let bearer: TestServer | undefined;
   let oauth: OAuthMcpServer | undefined;
   let pets: TestServer | undefined;
@@ -106,6 +108,7 @@ export async function startConnectHost(options: ConnectHostOptions): Promise<Con
     bearer = await startMcpServer(E2E_CONNECT_TOKEN);
     oauth = await startOAuthMcpServer();
     pets = await startPetsService();
+    signal?.throwIfAborted();
     const startedSupervisor = Bun.spawn([process.execPath, '--no-install', SUPERVISOR, 'serve'], {
       env: {
         ...process.env,
@@ -115,7 +118,7 @@ export async function startConnectHost(options: ConnectHostOptions): Promise<Con
       },
       stdin: 'ignore',
       stdout: 'pipe',
-      stderr: 'inherit',
+      stderr: 'pipe',
     });
     let stopped = false;
     const stop = async (): Promise<void> => {
@@ -130,9 +133,27 @@ export async function startConnectHost(options: ConnectHostOptions): Promise<Con
       throw new Error("The connect host's supervisor did not expose stdout.");
     }
     const { listening } = watchOutput(startedSupervisor.stdout);
+    let bindCollision = false;
+    const stderr = (async () => {
+      const decoder = new TextDecoder();
+      let tail = '';
+      for await (const chunk of startedSupervisor.stderr) {
+        const text = decoder.decode(chunk, { stream: true });
+        process.stderr.write(text);
+        const combined = tail + text;
+        bindCollision ||= combined.includes('EADDRINUSE');
+        tail = combined.slice(-512);
+      }
+    })();
     await Promise.race([
       listening,
-      startedSupervisor.exited.then((code) => {
+      startedSupervisor.exited.then(async (code) => {
+        await stderr;
+        if (bindCollision)
+          throw Object.assign(
+            new Error(`The connect host's port ${String(options.port)} is occupied.`),
+            { code: 'EADDRINUSE' },
+          );
         throw new Error(
           `The connect host's supervisor exited with ${String(code)} before it listened.`,
         );

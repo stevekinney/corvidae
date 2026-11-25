@@ -1,0 +1,39 @@
+{
+  "issue": "COR-2538",
+  "branch": "worktree-agent-a1e66e5258d991376",
+  "checkedAt": "5aa4b9252cdc5e0d12e1394a958d2bf47691e564",
+  "briefVersion": "a01825d1cece",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "lineage-panel.svelte offers Compare with source on every run with forkedFrom and reads weft.workflows.compare for the run's own id alone, with no session state; lineage-panel.test.ts 'a fork opens its comparison from its own id alone' and 'a run that is not a fork has no compare action' pass. Design round 1: on a fork the Lineage panel and its comparison now lead the page ahead of the operator tabs (run-detail.svelte; run-detail-engine-runs.test.ts 'puts a fork's lineage ... ahead of the operator tabs'). The reload and new-session path is tests/e2e/fork-comparison.spec.ts, written and not run on this host. Owner, 2026-11-22: run-page panels mount on workflow runs, refined: a card mounts only when it has something to say about the run (a fork's Inspector tab holds the run comparison card; see COR-2544)."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "fork-comparison-data.ts fetchForkComparison reads weft.workflows.compare and follows nextCursor (fork-comparison.test.ts); divergence.ts, divergence-view.svelte, run-step-timeline-selection.ts and their tests are deleted, so the browser aligns nothing; the Checkpoints tab shows the same server comparison after a fork. Design round 1: the step list is Cinder's ListDetail over SelectableRow, the same components as the run comparison panel; the open row is marked aria-current, the placeholder leads its pane, and the detail stacks under the list narrow (fork-comparison.test.ts 'draws the steps as the same Cinder list as the panel')."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "fork-comparison.test.ts 'selecting a changed step shows its output difference in the diff viewer' reads the JsonDiffViewer group 'Output differences, step 2' and the changed id 1 -> 2; non-JSON summaries are read as text (parseSummary, tested in packages/interborough-plugin run-comparison.test.ts)."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "fork-comparison.test.ts 'shows the shared steps collapsed and the steps the fork ran again': the shared step is absent until the '1 step the same as the source' disclosure opens; one word, Same, marks a kept step and a step that ran again the same (design round 1); fork-comparison.spec.ts asserts aria-expanded false and no [data-shared-step] before it is opened (spec not run here)."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "fork-dialog.test.ts 'ForkDialog fork preview (COR-2538)': kept and re-run steps from weft.workflows.fork with dryRun, Create fork disabled until the answer lands, a new request and no stale answer when the step or the typed revision changes, a refused preview framed as the revision conflict (a warning Callout under role=alert, in the person's words: That revision isn't loaded, so the fork can't run on it; never the engine's text) with Create fork disabled, nothing asked for a non-number or without workflows:write. Design round 1: a different revision is one warning Callout that replaces the Retains line (no revision id printed), the preview has no box of its own, Create fork is a normal-width button, the success line names the fork by its workflow and links to its id. tests/fixture-seed.test.ts pins on a real engine that the dry run for the fork spec's candidate revision is refused with WorkflowRevisionUnavailableError reason 'not-registered', and that the newest checkpoint keeps one step and reruns one."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "tests/e2e/fork-comparison.spec.ts forks the seeded fork-comparison run from the first checkpoint row, reloads on the fork, opens the comparison from the lineage panel (no tab to open now) and reads the changed ticket in the diff viewer. NOT RUN: browser suites are barred on this host; the premise is proven on a real engine by tests/fixture-seed.test.ts. The design-review capture states are in tests/e2e/fork-comparison-states.spec.ts, with leaf locators (tests/panels/diff-rows.ts), exact text matches and captures at 375 and 320 (also not run here)."
+    }
+  ]
+}

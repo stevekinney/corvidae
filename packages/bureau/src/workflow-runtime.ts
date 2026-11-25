@@ -42,6 +42,7 @@ import {
   type WorkflowCompatibilityVerdict,
   type WorkflowDocument,
   type WorkflowState,
+  type WorkflowSummary,
   type WorkflowEvent,
   type WorkflowStatus,
 } from '@lostgradient/weft';
@@ -267,6 +268,14 @@ export interface WorkflowRunSummary {
   readonly updatedAt: string;
   /** What started the instance, when the runtime recorded an origin. */
   readonly origin: TaskOrigin | null;
+  /** The engine's record of the schedule that fired the instance. */
+  readonly schedule: { readonly id: string; readonly manual: boolean } | null;
+  /** The number of steps in the revision and the step the instance reached, both from one. */
+  readonly steps: { readonly total: number; readonly at: number | null } | null;
+  /** The signal an unfinished instance waits for, or `null`. */
+  readonly awaitingSignal: string | null;
+  /** The bounded engine failure message for a failed instance, or `null`. */
+  readonly failure: string | null;
 }
 
 /** One instance with what started it and how it ended. */
@@ -388,6 +397,8 @@ export function describeCodeWorkflow(
 
 /** A revision of a workflow that has run, with whether it is compatible with the workflow's current revision. */
 export interface WorkflowRevisionReport extends WorkflowRevision {
+  /** Retained runs of this exact engine revision, or null when the total is unavailable. */
+  readonly runs: WorkflowHistoryRuns | null;
   /**
    * Weft's compatibility verdict for this revision against the file's current revision
    * (`checkWorkflowCompatibility` over the manifests of the two documents): `{ compatible: true }`,
@@ -415,8 +426,9 @@ export interface WorkflowHistoryEntry extends WorkflowRevisionRecord {
   /**
    * The runs that started while this version was the newest. A run started on the version current
    * when it was created, so a run's version is the newest one saved at or before its start.
+   * A truncated scan leaves the totals unavailable.
    */
-  readonly runs: WorkflowHistoryRuns;
+  readonly runs: WorkflowHistoryRuns | null;
 }
 
 /** What saving a definition would do, for the builder's compatibility notice (COR-2009). */
@@ -427,12 +439,25 @@ export interface WorkflowImpact extends WorkflowRevisionPlan {
 
 /** How busy one workflow is: what the workflow list shows beside each row. */
 export interface WorkflowRunCounts {
+  /** Every retained instance of this workflow that the reader may see. */
+  readonly total: number;
   /** Instances that have not finished: pending, running, or suspended. */
   readonly active: number;
   /** Instances created in the last 24 hours. */
   readonly last24Hours: number;
   /** When the newest instance was created, or `null` when the workflow has had none. */
   readonly lastRunAt: string | null;
+  /** The newest instance's durable state and failed document step, or `null` when there is none. */
+  readonly last: { readonly status: WorkflowStatus; readonly failedStep: number | null } | null;
+  /** The newest unfinished instance's progress and signal wait, or `null` when none is active. */
+  readonly current: {
+    /** When this unfinished instance was created. */
+    readonly startedAt: string;
+    readonly status: Extract<WorkflowStatus, 'pending' | 'running' | 'suspended'>;
+    readonly step: number | null;
+    readonly totalSteps: number | null;
+    readonly waitingForSignal: string | null;
+  } | null;
 }
 
 export interface WorkflowRunFilter {
@@ -637,6 +662,13 @@ export interface BureauWorkflows {
    * at most once per failure.
    */
   readonly retryRun: (runId: string, options: WorkflowRetryOptions) => Promise<WorkflowRetryResult>;
+  /**
+   * COR-2533 — the step {@link retryRun} would run again for `runId`, counted from 1, or `undefined`
+   * when it would refuse (the instance is not failed, failed outside a step, or at a step or on a
+   * version that cannot run again) or the run is no instance of a workflow file. It makes the
+   * checks the retry makes and then changes nothing.
+   */
+  readonly retryableStep: (runId: string) => Promise<number | undefined>;
   /** Read a bounded, sanitized history projection for one workflow-file run. */
   readonly historyRuns: (
     runId: string,
@@ -1614,6 +1646,27 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     workflowVersion: string,
     runId: string,
   ): Promise<void> {
+    const document = await retryDocumentOf(id, workflowVersion, runId);
+    await withRegistration(async () => {
+      await noteRegistered(
+        await registerBureauWorkflowDocuments(engine, registrationHost, {
+          active: [],
+          retained: [document],
+        }),
+      );
+    });
+  }
+
+  /**
+   * COR-2424 — the document of the revision `workflowVersion` of workflow `id`, read from its
+   * stored snapshot, when an instance pinned to it can run on it again; otherwise the
+   * `version-unavailable` refusal. It registers nothing, so asking changes nothing.
+   */
+  async function retryDocumentOf(
+    id: string,
+    workflowVersion: string,
+    runId: string,
+  ): Promise<WorkflowDocument> {
     const unavailable = (why: string): WorkflowRetryRefusedError =>
       new WorkflowRetryRefusedError(
         'version-unavailable',
@@ -1640,14 +1693,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       if (!(error instanceof WorkflowDocumentValidationError)) throw error;
       throw unavailable(`it no longer validates against this Bureau (${error.message})`);
     }
-    await withRegistration(async () => {
-      await noteRegistered(
-        await registerBureauWorkflowDocuments(engine, registrationHost, {
-          active: [],
-          retained: [document],
-        }),
-      );
-    });
+    return document;
   }
 
   /** COR-2424 — the retry requests of each instance this process is carrying out. */
@@ -1762,11 +1808,14 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         `Run "${runId}" cannot run again: the steps of the version it ran (${workflowVersion}) are no longer recorded.`,
       );
     }
-    await checkRetryStep(state, written.steps, retryOptions.step);
+    // A request that names no step runs the step the instance failed at. An instance that failed
+    // outside a step has none, and `checkRetryStep` refuses it in its own words.
+    const step = retryOptions.step ?? (await failedStepNumber(runId)) ?? 1;
+    await checkRetryStep(state, written.steps, step);
     await registerRevisionForRetry(id, workflowVersion, runId);
     const request: WorkflowRetryRequest = {
       retryId,
-      step: retryOptions.step,
+      step,
       requestedAt: options.runtime.clock.nowISO(),
       failureAt: state.updatedAt,
     };
@@ -1800,10 +1849,19 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       const after: WorkflowState | null | undefined = await engine.get(runId);
       if (after?.status === 'failed') await clearPending();
       if (error instanceof WorkflowRevisionUnavailableError) {
-        throw new WorkflowRetryRefusedError(
-          'version-unavailable',
-          runId,
-          `Run "${runId}" cannot run again on the version it ran: ${error.message}`,
+        // A refusal says nothing changed, so it is only true of an instance still failed. One that
+        // reactivated before its resume failed is running again: that is a failure after the
+        // change, which the caller must not answer by asking again as if nothing had happened.
+        if (after?.status === 'failed') {
+          throw new WorkflowRetryRefusedError(
+            'version-unavailable',
+            runId,
+            `Run "${runId}" cannot run again on the version it ran: ${error.message}`,
+          );
+        }
+        throw new Error(
+          `Run "${runId}" was reactivated, but could not resume on the version it ran: ${error.message}`,
+          { cause: error },
         );
       }
       throw error;
@@ -1833,7 +1891,42 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       pending: null,
       applied: request,
     });
-    return answer(retryOptions.step);
+    return answer(step);
+  }
+
+  /** COR-2533 — the step `runId` failed at, counted from 1, or `undefined` when it failed outside one. */
+  async function failedStepNumber(runId: string): Promise<number | undefined> {
+    const index = failedStepIndexOf(await engine.getTimeline(runId));
+    return index === undefined ? undefined : index + 1;
+  }
+
+  /**
+   * COR-2533 — {@link BureauWorkflows.retryableStep}: the checks a retry makes before it changes
+   * anything, with the step it would run, and nothing written.
+   */
+  async function retryableStepNow(runId: string): Promise<number | undefined> {
+    const state: WorkflowState | null | undefined = await engine.get(runId);
+    if (
+      state === null ||
+      state === undefined ||
+      state.status !== 'failed' ||
+      !(await isWorkflowType(state.type))
+    ) {
+      return undefined;
+    }
+    const id = bureauNameOf(state.type);
+    const workflowVersion = state.versionTuple.workflowVersion;
+    const written = await revisionOf(id, workflowVersion);
+    const step = await failedStepNumber(runId);
+    if (written === undefined || step === undefined) return undefined;
+    try {
+      await checkRetryStep(state, written.steps, step);
+      await retryDocumentOf(id, workflowVersion, runId);
+    } catch (error) {
+      if (error instanceof WorkflowRetryRefusedError) return undefined;
+      throw error;
+    }
+    return step;
   }
 
   /**
@@ -2038,7 +2131,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   async function cancelUnrecoverable(unrecoverable: readonly Unrecoverable[]): Promise<void> {
     for (const entry of unrecoverable) {
       for (const runId of entry.runIds) {
-        const reason = `Cancelled at startup because it cannot resume: ${entry.reason}.`;
+        const reason = `Canceled at startup because it cannot resume: ${entry.reason}.`;
         try {
           await snapshots.recordCancellation({
             schemaVersion: 1,
@@ -2052,7 +2145,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           await engine.cancel(runId);
           if (entry.pin !== undefined) options.onPinnedUnavailable?.(pinnedIdOf(entry.pin), runId);
           options.diagnose(
-            `Cancelled instance "${runId}" of workflow "${entry.id}": ${entry.reason}.`,
+            `Canceled instance "${runId}" of workflow "${entry.id}": ${entry.reason}.`,
             undefined,
           );
         } catch (error) {
@@ -2231,7 +2324,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     input?: unknown;
   }): Promise<WorkflowRunSummary> {
     // COR-2546: the origin a Bureau start declared, never one a schedule's caller wrote.
-    const { origin } = await startOfRun(engine, state);
+    const { origin, scheduleId, scheduleManual } = await startOfRun(engine, state);
     return {
       id: state.id,
       workflow: bureauNameOf(state.type),
@@ -2240,6 +2333,48 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       createdAt: new Date(state.createdAt).toISOString(),
       updatedAt: new Date(state.updatedAt).toISOString(),
       origin,
+      schedule: scheduleId === null ? null : { id: scheduleId, manual: scheduleManual === true },
+      steps: null,
+      awaitingSignal: null,
+      failure: null,
+    };
+  }
+
+  /** The progress a workflow list and detail show for the revision a run actually used. */
+  async function progressOf(
+    runId: string,
+    type: string,
+    workflowVersion: string,
+    state: WorkflowState | null | undefined,
+  ): Promise<Pick<WorkflowRunSummary, 'steps' | 'awaitingSignal' | 'failure'>> {
+    if (state === null || state === undefined) {
+      return { steps: null, awaitingSignal: null, failure: null };
+    }
+
+    const revision = await revisionOf(bureauNameOf(type), workflowVersion);
+    const total =
+      revision === undefined ? undefined : workflowFileStepsInCanonicalOrder(revision.steps).length;
+    const events =
+      total === undefined || state.status === 'completed'
+        ? undefined
+        : await engine.getEvents(runId);
+    const latestStep = events?.findLast((event) => event.type === 'file-workflow:step-started');
+    const index = latestStep?.data['step'];
+    const at =
+      total === undefined
+        ? null
+        : state.status === 'completed'
+          ? total
+          : typeof index === 'number' && Number.isSafeInteger(index) && index >= 0
+            ? index + 1
+            : null;
+    const unfinished = IN_FLIGHT_STATUSES.includes(state.status);
+    const failed = state.status === 'failed' || state.status === 'timed-out';
+
+    return {
+      steps: total === undefined ? null : { total, at },
+      awaitingSignal: unfinished ? (state.waitingForSignals?.[0] ?? null) : null,
+      failure: failed && state.error !== undefined ? state.error.slice(0, 1000) : null,
     };
   }
 
@@ -2290,25 +2425,50 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     };
   }
 
-  /** Stamp the first and last start of every revision of workflow `id` that has an instance in the engine. */
-  async function syncRunHistory(id: string): Promise<void> {
-    const bounds = new Map<string, { first: number; last: number }>();
+  /** Read retained runs up to the shared history limit and report whether the scan reached the end. */
+  async function readRetainedRunHistory(id: string) {
+    const runs: WorkflowSummary[] = [];
+    let total: number | undefined;
     for (let offset = 0; offset < RUNS_READ_LIMIT_PER_WORKFLOW;) {
-      const page = await engine.list({ type: weftNameOf(id), limit: 100, offset });
-      for (const summary of page.items) {
-        const known = bounds.get(summary.version);
-        bounds.set(summary.version, {
-          first: Math.min(known?.first ?? summary.createdAt, summary.createdAt),
-          last: Math.max(known?.last ?? summary.createdAt, summary.createdAt),
-        });
-      }
+      const limit = Math.min(100, RUNS_READ_LIMIT_PER_WORKFLOW - offset);
+      const page = await engine.list({ type: weftNameOf(id), limit, offset });
+      if (total !== undefined && page.total !== total) break;
+      total = page.total;
+      runs.push(...page.items);
       offset += page.items.length;
-      if (page.items.length === 0 || offset >= page.total) break;
+      if (offset >= total) {
+        // A new or pruned run can shift the offsets between otherwise valid pages.
+        const distinct = new Set(runs.map((run) => run.id));
+        return { runs, complete: distinct.size === runs.length };
+      }
+      if (page.items.length === 0) break;
     }
-    for (const [version, { first, last }] of bounds) {
-      await snapshots.stampRun(id, version, new Date(first).toISOString());
-      if (last !== first) await snapshots.stampRun(id, version, new Date(last).toISOString());
+    return { runs, complete: false };
+  }
+
+  /** Stamp the observed run times for each stored revision; report totals after a complete scan. */
+  async function syncRunHistory(
+    id: string,
+  ): Promise<ReadonlyMap<string, WorkflowHistoryRuns> | undefined> {
+    const scan = await readRetainedRunHistory(id);
+    const bounds = new Map<string, { count: number; first: number; last: number }>();
+    for (const summary of scan.runs) {
+      const known = bounds.get(summary.version);
+      bounds.set(summary.version, {
+        count: (known?.count ?? 0) + 1,
+        first: Math.min(known?.first ?? summary.createdAt, summary.createdAt),
+        last: Math.max(known?.last ?? summary.createdAt, summary.createdAt),
+      });
     }
+    const runs = new Map<string, WorkflowHistoryRuns>();
+    for (const [version, { count, first, last }] of bounds) {
+      const firstRunAt = new Date(first).toISOString();
+      const lastRunAt = new Date(last).toISOString();
+      await snapshots.stampRun(id, version, firstRunAt);
+      if (last !== first) await snapshots.stampRun(id, version, lastRunAt);
+      runs.set(version, { count, firstRunAt, lastRunAt });
+    }
+    return scan.complete ? runs : undefined;
   }
 
   async function knownTypes(): Promise<string[]> {
@@ -2664,6 +2824,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   async function withCompatibility(
     id: string,
     revisions: readonly WorkflowRevision[],
+    runs?: ReadonlyMap<string, WorkflowHistoryRuns>,
   ): Promise<readonly WorkflowRevisionReport[]> {
     const current = catalog.find(id);
     const manifestOf = async (document: WorkflowDocument) => {
@@ -2680,15 +2841,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     const currentManifest = current === undefined ? undefined : await manifestOf(current.document);
     return Promise.all(
       revisions.map(async (revision): Promise<WorkflowRevisionReport> => {
+        const facts = { ...revision, runs: runs?.get(revision.workflowVersion) ?? null };
         if (current === undefined || currentManifest === undefined) {
-          return { ...revision, compatibility: null };
+          return { ...facts, compatibility: null };
         }
         if (revision.workflowVersion === current.version) {
-          return { ...revision, compatibility: { compatible: true } };
+          return { ...facts, compatibility: { compatible: true } };
         }
         const manifest = await manifestOf(revision.document);
         return {
-          ...revision,
+          ...facts,
           compatibility:
             manifest === undefined ? null : checkWorkflowCompatibility(currentManifest, manifest),
         };
@@ -2970,9 +3132,9 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       await Promise.allSettled(pendingStamps);
       // The engine's own record of when each revision's instances began is the source of truth: a
       // start event can arrive after the call that made the instance, or never (a crash).
-      await syncRunHistory(id);
+      const runs = await syncRunHistory(id);
       const revisions = await snapshots.revisions(id);
-      if (revisions.length > 0) return withCompatibility(id, revisions);
+      if (revisions.length > 0) return withCompatibility(id, revisions, runs);
       if (catalog.list().some((entry) => entry.id === id)) return [];
       const stored = await snapshots.snapshotsOf(id);
       return stored.length > 0 ? [] : undefined;
@@ -2983,13 +3145,8 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       if (records.length === 0) {
         return catalog.list().some((entry) => entry.id === id) ? [] : undefined;
       }
-      const starts: number[] = [];
-      for (let offset = 0; offset < RUNS_READ_LIMIT_PER_WORKFLOW;) {
-        const page = await engine.list({ type: weftNameOf(id), limit: 100, offset });
-        starts.push(...page.items.map((summary) => summary.createdAt));
-        offset += page.items.length;
-        if (page.items.length === 0 || offset >= page.total) break;
-      }
+      const scan = await readRetainedRunHistory(id);
+      const starts = scan.runs.map((summary) => summary.createdAt);
       const savedAt = records.map((record) => Date.parse(record.savedAt));
       const runsOf = (index: number): WorkflowHistoryRuns => {
         const from = savedAt[index]!;
@@ -3006,7 +3163,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         .map((record, index): WorkflowHistoryEntry => ({
           ...record,
           current: exists && index === records.length - 1,
-          runs: runsOf(index),
+          runs: scan.complete ? runsOf(index) : null,
         }))
         .toReversed();
     },
@@ -3034,7 +3191,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           : (await isWorkflowType(filter.workflow))
             ? [filter.workflow]
             : [];
-      const found: WorkflowRunSummary[] = [];
+      const found: Array<{
+        readonly summary: WorkflowRunSummary;
+        readonly type: string;
+        readonly state: WorkflowState | null | undefined;
+      }> = [];
       for (const type of types) {
         for (let offset = 0; offset < RUNS_READ_LIMIT_PER_WORKFLOW;) {
           const page = await engine.list({
@@ -3067,7 +3228,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
             ) {
               continue;
             }
-            found.push(await summarize({ ...run, input: state?.input }));
+            found.push({
+              summary: await summarize({ ...run, input: state?.input }),
+              type,
+              state,
+            });
           }
           offset += page.items.length;
           if (page.items.length === 0 || offset >= page.total) break;
@@ -3075,9 +3240,17 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       }
       const ordered = found.toSorted(
         (left, right) =>
-          right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id),
+          right.summary.createdAt.localeCompare(left.summary.createdAt) ||
+          left.summary.id.localeCompare(right.summary.id),
       );
-      const runs = ordered.slice(filter.offset, filter.offset + filter.limit);
+      const runs = await Promise.all(
+        ordered
+          .slice(filter.offset, filter.offset + filter.limit)
+          .map(async ({ summary, type, state }) => ({
+            ...summary,
+            ...(await progressOf(summary.id, type, summary.workflowVersion, state)),
+          })),
+      );
       return {
         runs,
         nextOffset:
@@ -3089,34 +3262,80 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       try {
         // The Bureau's clock, which the engine stamps each run's `createdAt` by (COR-2009).
         const now = options.runtime.clock.now();
+        const type = weftNameOf(id);
         // Two index-narrowed reads answer the counts. The engine intersects the type index with the
         // status or created-at index before it loads any state, so each read loads only the
         // instances it counts, and `limit: 1` bounds the reply.
-        const [active, recent] = await Promise.all([
-          engine.list({ type: weftNameOf(id), status: [...IN_FLIGHT_STATUSES], limit: 1 }),
-          engine.list({
-            type: weftNameOf(id),
-            createdAt: { gte: now - RECENT_RUN_WINDOW_MS },
-            limit: 1,
-          }),
+        const [all, active, recent] = await Promise.all([
+          engine.list({ type, limit: 1 }),
+          engine.list({ type, status: [...IN_FLIGHT_STATUSES], limit: 1 }),
+          engine.list({ type, createdAt: { gte: now - RECENT_RUN_WINDOW_MS }, limit: 1 }),
         ]);
         // The engine lists newest first, so the first item of a page is the newest in its window.
         // A workflow that ran today already has its newest instance; only a quiet one widens the
         // window, and an unfiltered read of its whole history is the last resort.
-        let newest = recent.items[0];
-        for (const windowMs of [QUIET_RUN_WINDOW_MS, undefined]) {
-          if (newest !== undefined) break;
-          const page = await engine.list({
-            type: weftNameOf(id),
-            ...(windowMs === undefined ? {} : { createdAt: { gte: now - windowMs } }),
-            limit: 1,
-          });
-          newest = page.items[0];
+        let newest = all.items[0];
+        if (newest === undefined) {
+          for (const windowMs of [QUIET_RUN_WINDOW_MS, undefined]) {
+            const page = await engine.list({
+              type,
+              ...(windowMs === undefined ? {} : { createdAt: { gte: now - windowMs } }),
+              limit: 1,
+            });
+            newest = page.items[0];
+            if (newest !== undefined) break;
+          }
         }
+        const newestActive = active.items[0];
+        const current =
+          newestActive === undefined
+            ? null
+            : await (async () => {
+                const state = await engine.get(newestActive.id);
+                if (state === null || state === undefined) return null;
+                if (!IN_FLIGHT_STATUSES.includes(state.status)) return null;
+                const revision = await revisionOf(id, newestActive.version);
+                const totalSteps =
+                  revision === undefined
+                    ? null
+                    : workflowFileStepsInCanonicalOrder(revision.steps).length;
+                const events = await engine.getEvents(newestActive.id);
+                const startedStep = events.findLast(
+                  (event) => event.type === 'file-workflow:step-started',
+                );
+                const index = startedStep?.data['step'];
+                return {
+                  startedAt: new Date(newestActive.createdAt).toISOString(),
+                  status: state.status as Extract<
+                    WorkflowStatus,
+                    'pending' | 'running' | 'suspended'
+                  >,
+                  step:
+                    typeof index === 'number' && Number.isSafeInteger(index) && index >= 0
+                      ? index + 1
+                      : null,
+                  totalSteps,
+                  waitingForSignal: state.waitingForSignals?.[0] ?? null,
+                };
+              })();
+        const failedStepIndex =
+          newest?.failedStep === undefined
+            ? undefined
+            : failedStepIndexOf(await engine.getTimeline(newest.id));
+        const last =
+          newest === undefined
+            ? null
+            : {
+                status: newest.status,
+                failedStep: failedStepIndex === undefined ? null : failedStepIndex + 1,
+              };
         return {
+          total: all.total,
           active: active.total,
           last24Hours: recent.total,
           lastRunAt: newest === undefined ? null : new Date(newest.createdAt).toISOString(),
+          last,
+          current,
         };
       } catch (error) {
         // A count the engine would not give is left out, never shown as zero, and never withholds
@@ -3151,6 +3370,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           tags: state.tags,
           input: state.input,
         })),
+        ...(await progressOf(runId, state.type, state.versionTuple.workflowVersion, state)),
         trigger: state.input,
         ...(state.result === undefined ? {} : { result: state.result }),
         ...(error === undefined ? {} : { error }),
@@ -3195,6 +3415,8 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       );
       return result;
     },
+
+    retryableStep: retryableStepNow,
 
     async historyRuns(runId, limit) {
       const state = await engine.get(runId);

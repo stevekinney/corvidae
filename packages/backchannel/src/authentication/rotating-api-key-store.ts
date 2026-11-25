@@ -28,13 +28,13 @@
  * @module server/authentication/rotating-api-key-store
  */
 
-import type { AuthorizationScope } from '../authorization-scope.ts';
-import { principalFromApiKey, type AuthenticatedPrincipal } from '../principal.ts';
 import {
   createConstantTimeApiKeyEntry,
   findConstantTimeApiKeyMatch,
   type ConstantTimeApiKeyEntry,
-} from './constant-time-api-key.ts';
+} from '@lostgradient/credentials/api-key-verification';
+import type { AuthorizationScope } from '../authorization-scope.ts';
+import { principalFromApiKey, type AuthenticatedPrincipal } from '../principal.ts';
 
 /**
  * Registration options for a single key in a {@link RotatingApiKeyStore}.

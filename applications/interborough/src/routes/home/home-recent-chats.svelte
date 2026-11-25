@@ -72,6 +72,7 @@
     {#if chats.data === undefined && chats.isError}
       <HomeCardError
         title={HOME_COPY.states.cardFailed.recent}
+        error={chats.error}
         onRetry={() => void chats.refetch()}
       />
     {:else if chats.data === undefined}

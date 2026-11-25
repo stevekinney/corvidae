@@ -43,6 +43,7 @@
     ConfirmDialog,
     EmptyState,
     ErrorState,
+    FormActions,
     Input,
     Link,
     PageHeader,
@@ -77,7 +78,7 @@
     type HookActionType,
   } from '../../lib/bureau-hooks.ts';
   import { hookActionKindId, listContributedKinds } from '../../lib/bureau-plugin-kinds.ts';
-  import { classifyFault, faultTreatment } from '../../lib/faults.ts';
+  import { classifyFault, faultErrorStateAdvice, faultTreatment } from '../../lib/faults.ts';
   import { getHostPaths } from '../../lib/host-paths.ts';
   import { getPlugins } from '../../lib/host-plugins.ts';
   import { hookPath } from '../../lib/identifier-paths.ts';
@@ -960,7 +961,15 @@
     {/if}
 
     {#if !isNew && existing.isError}
-      <Alert variant="danger">{copy.loadFailed}</Alert>
+      <ErrorState
+        variant="row"
+        bordered
+        title={copy.loadFailed}
+        description=""
+        headingLevel={hook !== undefined && standing !== undefined ? 2 : 1}
+        retryLabel={RETRY_LABEL}
+        {...faultErrorStateAdvice(existing.error, readAgain)}
+      />
     {:else if stopped}
       <ErrorState
         bordered
@@ -1297,26 +1306,28 @@
                 <p class="ib-hook-editor__alert-body">{copy.staleDescription}</p>
               </Alert>
             {/if}
-            <div class="ib-hook-editor__actions">
-              {#if !isDefault}
-                <Button type="submit" variant="primary" disabled={saving.isPending}
-                  >{isNew ? copy.check.create : copy.check.save}</Button
-                >
-              {/if}
-              <!-- Off is `aria-disabled`, not `disabled`: the button stays in the tab order, so the
+            <FormActions>
+              {#snippet end()}
+                {#if !isDefault}
+                  <Button type="submit" variant="primary" disabled={saving.isPending}
+                    >{isNew ? copy.check.create : copy.check.save}</Button
+                  >
+                {/if}
+                <!-- Off is `aria-disabled`, not `disabled`: the button stays in the tab order, so the
                    reason below it can be read from the button itself, and Cinder ignores the press. -->
-              <Button
-                data-changes
-                variant="secondary"
-                aria-disabled={canTest ? undefined : 'true'}
-                aria-describedby={testReason === undefined ? undefined : TEST_REASON_ID}
-                loading={testing.isPending}
-                onclick={() => void sendTest()}
-              >
-                {#snippet leadingIcon()}<Play aria-hidden="true" />{/snippet}
-                {copy.check.test}
-              </Button>
-            </div>
+                <Button
+                  data-changes
+                  variant="secondary"
+                  aria-disabled={canTest ? undefined : 'true'}
+                  aria-describedby={testReason === undefined ? undefined : TEST_REASON_ID}
+                  loading={testing.isPending}
+                  onclick={() => void sendTest()}
+                >
+                  {#snippet leadingIcon()}<Play aria-hidden="true" />{/snippet}
+                  {copy.check.test}
+                </Button>
+              {/snippet}
+            </FormActions>
             {#if testResult !== null}
               <!-- The actions are passed only for a result with a link: Cinder draws its actions box
                    for any snippet, and an empty one wraps to a line of its own on a narrow phone. -->
@@ -1352,7 +1363,7 @@
         </form>
         {#if !isNew}
           <aside id={LOG_ID} class="ib-hook-editor__aside" tabindex="-1">
-            <HookDeliveries {hookId} events={hook?.events ?? []} />
+            <HookDeliveries {hookId} events={hook?.events ?? []} hookName={hook?.name ?? null} />
           </aside>
         {/if}
       </div>
@@ -1500,12 +1511,6 @@
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
     overflow-wrap: anywhere;
-  }
-
-  .ib-hook-editor__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-2);
   }
 
   .ib-hook-editor__alert-title {

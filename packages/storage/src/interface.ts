@@ -176,6 +176,7 @@ export interface Storage extends Disposable {
   conditionalBatch?(
     conditions: ConditionalBatchCondition[],
     operations: BatchOperation[],
+    deadline?: number,
   ): Promise<boolean>;
   has?(key: string): Promise<boolean>;
   deletePrefix?(prefix: string): Promise<number>;
@@ -420,6 +421,7 @@ export async function storageConditionalBatch(
   storage: Pick<Storage, 'capabilities'> & { conditionalBatch?: Storage['conditionalBatch'] },
   conditions: ConditionalBatchCondition[],
   operations: BatchOperation[],
+  deadline?: number,
 ): Promise<boolean> {
   assertStorageBatchOperationCount('conditionalBatch conditions', conditions.length);
   assertStorageBatchOperationCount('conditionalBatch operations', operations.length);
@@ -428,11 +430,14 @@ export async function storageConditionalBatch(
   // method but honestly reports conditionalBatch: false (e.g. a remote HTTP
   // backend known to lack CAS) must not silently execute the swap.
   requireStorageCapability(storage, 'conditionalBatch', 'storageConditionalBatch');
+  if (deadline !== undefined && !storage.capabilities().conditionalBatchDeadline) {
+    throw new Error('Storage does not support conditional batch deadlines');
+  }
   if (typeof storage.conditionalBatch !== 'function') {
     throw new Error(
       'This storage backend reports conditionalBatch capability but does not implement the conditionalBatch() method.',
     );
   }
 
-  return storage.conditionalBatch(conditions, operations);
+  return storage.conditionalBatch(conditions, operations, deadline);
 }

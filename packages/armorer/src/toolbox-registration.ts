@@ -118,6 +118,7 @@ function createToolOptionsBase(
   return {
     name: configuration.identity.name,
     description: configuration.display.description,
+    ...(configuration.inputJsonSchema ? { inputSchema: configuration.inputJsonSchema } : {}),
     runtime: context.runtime,
     ...baseToolMetadata(configuration),
     input: configuration.input,

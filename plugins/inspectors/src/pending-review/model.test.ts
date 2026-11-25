@@ -171,25 +171,30 @@ describe('the pending-review model', () => {
 
   it('recognizes a decision that took effect but whose outcome was not written', () => {
     expect(
-      isOutcomeNotWritten({
-        isError: true,
-        content: [{ type: 'text', text: 'Conflict: APPROVAL_OUTCOME_NOT_WRITTEN: x' }],
-      }),
+      isOutcomeNotWritten({ receipt: 'applied', warning: 'APPROVAL_OUTCOME_NOT_WRITTEN' }),
     ).toBe(true);
-    expect(
-      isOutcomeNotWritten({ isError: true, content: [{ type: 'text', text: 'NotFound' }] }),
-    ).toBe(false);
+    expect(isOutcomeNotWritten({ receipt: 'applied', warning: 'OTHER' })).toBe(false);
   });
 
   it('recognizes a decision refused because the review moved to another round', () => {
     expect(
       isRoundChanged({
         isError: true,
-        content: [{ type: 'text', text: 'Conflict: REVIEW_ROUND_CHANGED: now at round 1' }],
+        structuredContent: { code: 'Conflict', data: { reason: 'REVIEW_ROUND_CHANGED' } },
       }),
     ).toBe(true);
     expect(
       isRoundChanged({ isError: true, content: [{ type: 'text', text: 'Conflict: lost' }] }),
+    ).toBe(false);
+    expect(
+      isRoundChanged({
+        isError: true,
+        structuredContent: {
+          code: 'Conflict',
+          message: 'REVIEW_ROUND_CHANGED',
+          data: { reason: 'OTHER' },
+        },
+      }),
     ).toBe(false);
   });
 

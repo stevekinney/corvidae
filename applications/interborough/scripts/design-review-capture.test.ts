@@ -92,6 +92,8 @@ describe('parseArguments', () => {
       'tests/e2e/health-overview.spec.ts',
       'tests/e2e/health-states.spec.ts',
       'tests/e2e/health-workers-states.spec.ts',
+      'tests/e2e/13-verify-worker-contracts.spec.ts',
+      'tests/e2e/06-explore-task-ledger.spec.ts',
       'tests/e2e/health-storage.spec.ts',
       'tests/e2e/health-audit.spec.ts',
       'tests/e2e/health-audit-states.spec.ts',
@@ -109,6 +111,9 @@ describe('parseArguments', () => {
       'tests/e2e/home-activity.spec.ts',
       'tests/e2e/chat-list.spec.ts',
       'tests/e2e/chat-page.spec.ts',
+      'tests/e2e/chat-sharing.spec.ts',
+      'tests/e2e/27-agent-memory.spec.ts',
+      'tests/e2e/27-agent-memory-share.spec.ts',
       'tests/e2e/chat-responsive.spec.ts',
       'tests/e2e/chat-tool-call-turn.spec.ts',
       'tests/e2e/chat-states.spec.ts',
@@ -116,14 +121,26 @@ describe('parseArguments', () => {
       'tests/e2e/chat-new.spec.ts',
       'tests/e2e/chat-new-states.spec.ts',
       'tests/e2e/chat-new-workflows.spec.ts',
+      'tests/e2e/workflows-list-states.spec.ts',
+      'tests/e2e/workflow-detail-states.spec.ts',
       'tests/e2e/agent-duplicate.spec.ts',
+      'tests/e2e/agent-editor.spec.ts',
       'tests/e2e/agent-plugin-editing.spec.ts',
+      'tests/e2e/plugin-page.spec.ts',
       'tests/e2e/chat-availability.spec.ts',
       'tests/e2e/chat-archive.spec.ts',
       'tests/e2e/workflow-builder-cards.spec.ts',
+      'tests/e2e/workflow-builder-states.spec.ts',
+      'tests/e2e/run-setup.spec.ts',
       'tests/e2e/runs-states.spec.ts',
+      'tests/e2e/runs-failure-filters.spec.ts',
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
+      'tests/e2e/run-failure-explanation.spec.ts',
+      'tests/e2e/failure-explanation-chat.spec.ts',
+      'tests/e2e/run-explain-further.spec.ts',
+      'tests/e2e/run-cost-states.spec.ts',
+      'tests/e2e/run-attention-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
       'tests/e2e/checks-states.spec.ts',
       'tests/e2e/capabilities-states.spec.ts',
@@ -132,8 +149,16 @@ describe('parseArguments', () => {
       // The view states are a showcase specification too, run once where first listed.
       'tests/e2e/15-view-states.spec.ts',
       'tests/e2e/agents-reviews-design-states.spec.ts',
+      'tests/e2e/31-reviews.spec.ts',
       'tests/e2e/hooks.spec.ts',
       'tests/e2e/hooks-states.spec.ts',
+      'tests/e2e/fault-remediation.spec.ts',
+      'tests/e2e/confirm-dialog-states.spec.ts',
+      'tests/panels/schedule-editor-states.spec.ts',
+      'tests/e2e/fork-comparison-states.spec.ts',
+      'tests/panels/run-comparison-states.spec.ts',
+      'tests/panels/failure-explanation-states.spec.ts',
+      'tests/panels/run-timeline-states.spec.ts',
       'tests/e2e/responsive.spec.ts',
     ]);
     expect(options.grep).toBeUndefined();
@@ -171,6 +196,8 @@ describe('parseArguments', () => {
       'tests/e2e/health-overview.spec.ts',
       'tests/e2e/health-states.spec.ts',
       'tests/e2e/health-workers-states.spec.ts',
+      'tests/e2e/13-verify-worker-contracts.spec.ts',
+      'tests/e2e/06-explore-task-ledger.spec.ts',
       'tests/e2e/health-storage.spec.ts',
       'tests/e2e/health-audit.spec.ts',
       'tests/e2e/health-audit-states.spec.ts',
@@ -188,6 +215,9 @@ describe('parseArguments', () => {
       'tests/e2e/home-activity.spec.ts',
       'tests/e2e/chat-list.spec.ts',
       'tests/e2e/chat-page.spec.ts',
+      'tests/e2e/chat-sharing.spec.ts',
+      'tests/e2e/27-agent-memory.spec.ts',
+      'tests/e2e/27-agent-memory-share.spec.ts',
       'tests/e2e/chat-responsive.spec.ts',
       'tests/e2e/chat-tool-call-turn.spec.ts',
       'tests/e2e/chat-states.spec.ts',
@@ -195,14 +225,26 @@ describe('parseArguments', () => {
       'tests/e2e/chat-new.spec.ts',
       'tests/e2e/chat-new-states.spec.ts',
       'tests/e2e/chat-new-workflows.spec.ts',
+      'tests/e2e/workflows-list-states.spec.ts',
+      'tests/e2e/workflow-detail-states.spec.ts',
       'tests/e2e/agent-duplicate.spec.ts',
+      'tests/e2e/agent-editor.spec.ts',
       'tests/e2e/agent-plugin-editing.spec.ts',
+      'tests/e2e/plugin-page.spec.ts',
       'tests/e2e/chat-availability.spec.ts',
       'tests/e2e/chat-archive.spec.ts',
       'tests/e2e/workflow-builder-cards.spec.ts',
+      'tests/e2e/workflow-builder-states.spec.ts',
+      'tests/e2e/run-setup.spec.ts',
       'tests/e2e/runs-states.spec.ts',
+      'tests/e2e/runs-failure-filters.spec.ts',
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
+      'tests/e2e/run-failure-explanation.spec.ts',
+      'tests/e2e/failure-explanation-chat.spec.ts',
+      'tests/e2e/run-explain-further.spec.ts',
+      'tests/e2e/run-cost-states.spec.ts',
+      'tests/e2e/run-attention-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
       'tests/e2e/checks-states.spec.ts',
       'tests/e2e/capabilities-states.spec.ts',
@@ -210,8 +252,16 @@ describe('parseArguments', () => {
       'tests/e2e/list-empty-states.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
       'tests/e2e/agents-reviews-design-states.spec.ts',
+      'tests/e2e/31-reviews.spec.ts',
       'tests/e2e/hooks.spec.ts',
       'tests/e2e/hooks-states.spec.ts',
+      'tests/e2e/fault-remediation.spec.ts',
+      'tests/e2e/confirm-dialog-states.spec.ts',
+      'tests/panels/schedule-editor-states.spec.ts',
+      'tests/e2e/fork-comparison-states.spec.ts',
+      'tests/panels/run-comparison-states.spec.ts',
+      'tests/panels/failure-explanation-states.spec.ts',
+      'tests/panels/run-timeline-states.spec.ts',
     ]);
     expect(specificationsOf(['--data', 'stress'])).toEqual([
       'tests/e2e/responsive.spec.ts',
@@ -234,6 +284,8 @@ describe('parseArguments', () => {
       'tests/e2e/health-overview.spec.ts',
       'tests/e2e/health-states.spec.ts',
       'tests/e2e/health-workers-states.spec.ts',
+      'tests/e2e/13-verify-worker-contracts.spec.ts',
+      'tests/e2e/06-explore-task-ledger.spec.ts',
       'tests/e2e/health-storage.spec.ts',
       'tests/e2e/health-audit.spec.ts',
       'tests/e2e/health-audit-states.spec.ts',
@@ -251,6 +303,9 @@ describe('parseArguments', () => {
       'tests/e2e/home-activity.spec.ts',
       'tests/e2e/chat-list.spec.ts',
       'tests/e2e/chat-page.spec.ts',
+      'tests/e2e/chat-sharing.spec.ts',
+      'tests/e2e/27-agent-memory.spec.ts',
+      'tests/e2e/27-agent-memory-share.spec.ts',
       'tests/e2e/chat-responsive.spec.ts',
       'tests/e2e/chat-tool-call-turn.spec.ts',
       'tests/e2e/chat-states.spec.ts',
@@ -258,14 +313,26 @@ describe('parseArguments', () => {
       'tests/e2e/chat-new.spec.ts',
       'tests/e2e/chat-new-states.spec.ts',
       'tests/e2e/chat-new-workflows.spec.ts',
+      'tests/e2e/workflows-list-states.spec.ts',
+      'tests/e2e/workflow-detail-states.spec.ts',
       'tests/e2e/agent-duplicate.spec.ts',
+      'tests/e2e/agent-editor.spec.ts',
       'tests/e2e/agent-plugin-editing.spec.ts',
+      'tests/e2e/plugin-page.spec.ts',
       'tests/e2e/chat-availability.spec.ts',
       'tests/e2e/chat-archive.spec.ts',
       'tests/e2e/workflow-builder-cards.spec.ts',
+      'tests/e2e/workflow-builder-states.spec.ts',
+      'tests/e2e/run-setup.spec.ts',
       'tests/e2e/runs-states.spec.ts',
+      'tests/e2e/runs-failure-filters.spec.ts',
       'tests/e2e/run-page-states.spec.ts',
       'tests/e2e/run-page-live-states.spec.ts',
+      'tests/e2e/run-failure-explanation.spec.ts',
+      'tests/e2e/failure-explanation-chat.spec.ts',
+      'tests/e2e/run-explain-further.spec.ts',
+      'tests/e2e/run-cost-states.spec.ts',
+      'tests/e2e/run-attention-states.spec.ts',
       'tests/e2e/goal-page-states.spec.ts',
       'tests/e2e/checks-states.spec.ts',
       'tests/e2e/capabilities-states.spec.ts',
@@ -273,8 +340,16 @@ describe('parseArguments', () => {
       'tests/e2e/list-empty-states.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
       'tests/e2e/agents-reviews-design-states.spec.ts',
+      'tests/e2e/31-reviews.spec.ts',
       'tests/e2e/hooks.spec.ts',
       'tests/e2e/hooks-states.spec.ts',
+      'tests/e2e/fault-remediation.spec.ts',
+      'tests/e2e/confirm-dialog-states.spec.ts',
+      'tests/panels/schedule-editor-states.spec.ts',
+      'tests/e2e/fork-comparison-states.spec.ts',
+      'tests/panels/run-comparison-states.spec.ts',
+      'tests/panels/failure-explanation-states.spec.ts',
+      'tests/panels/run-timeline-states.spec.ts',
       'tests/e2e/responsive.spec.ts',
     ]);
     // `--specs` alone keeps meaning what it always meant: one of the stress specifications.
@@ -562,6 +637,7 @@ describe('captureForDesignReview readiness', () => {
       });
       expect(events).toEqual([
         'ready',
+        'ready',
         'screenshot',
         'viewport:1280x901',
         'ready',
@@ -570,6 +646,7 @@ describe('captureForDesignReview readiness', () => {
         'ready',
         // The 1280 capture is repeated at 1920 by 1080, with its own stretch for the whole page.
         'viewport:1920x1080',
+        'ready',
         'ready',
         'screenshot',
         'viewport:1920x1081',
@@ -700,6 +777,7 @@ describe('nextFrame', () => {
     // page outgrew its viewport. Here a frame comes only as a layout observation, as it does then.
     const scope = globalThis as unknown as Record<string, unknown>;
     const saved = {
+      document: scope['document'],
       requestAnimationFrame: scope['requestAnimationFrame'],
       ResizeObserver: scope['ResizeObserver'],
     };
@@ -709,6 +787,7 @@ describe('nextFrame', () => {
     // a ResizeObserver loop error, so each observation must start outside any callback.
     let delivering = false;
     let observedWhileDelivering = 0;
+    scope['document'] ??= { documentElement: {} };
     scope['requestAnimationFrame'] = () => {
       animationFramesAsked += 1;
       return 0;
@@ -740,6 +819,8 @@ describe('nextFrame', () => {
     try {
       await nextFrame(page as never);
     } finally {
+      if (saved.document === undefined) delete scope['document'];
+      else scope['document'] = saved.document;
       scope['requestAnimationFrame'] = saved.requestAnimationFrame;
       scope['ResizeObserver'] = saved.ResizeObserver;
     }

@@ -16,6 +16,7 @@ import {
   updateStreamingMessage,
   type ChatApprovalDetails,
   type ChatCapabilities,
+  type ChatCitationClaim,
   type ChatTurnLabels,
   type ChatTurnState,
   type ConversationHistory,
@@ -76,6 +77,8 @@ export interface StressSetup {
   reasoning: Record<number, ReasoningInfo>;
   /** Sources by the assistant turn's position, from zero. */
   sources: Record<number, CitationSource[]>;
+  /** Claim-level sources by the assistant turn's position, from zero. */
+  claimSources: Record<number, ChatCitationClaim[]>;
   /** Shows Regenerate, Copy and Quote under replies. */
   regenerate: boolean;
   /** A draft the host puts back in the composer when the page loads. */
@@ -90,6 +93,8 @@ export interface StressSetup {
   withdrawable: boolean;
   /** Host wording for a turn's step summary, when a scenario has semantic count-bearing copy. */
   turnLabels?: Partial<ChatTurnLabels>;
+  /** Per-call host wording used only by fixtures that exercise a constrained step title. */
+  toolPresentations: Record<string, ToolCallPresentation>;
 }
 
 /** The empty setup every scenario starts from. */
@@ -106,10 +111,12 @@ function baseSetup(conversation: ConversationHistory): StressSetup {
     approvalDetails: {},
     reasoning: {},
     sources: {},
+    claimSources: {},
     regenerate: true,
     secondChat: false,
     emptyPrompts: [],
     withdrawable: false,
+    toolPresentations: {},
   };
 }
 
@@ -669,6 +676,13 @@ const scenarios: Record<StressScenarioName, Scenario> = {
         { document: 'refunds' },
         { status: 'ok' },
       );
+      conversation = withCall(
+        conversation,
+        'read-orders',
+        'list_orders',
+        { limit: 20 },
+        { status: 'ok' },
+      );
       conversation = withApproval(
         conversation,
         'export-ledger',
@@ -678,6 +692,14 @@ const scenarios: Record<StressScenarioName, Scenario> = {
       setup.approvalDetails[LONG_TOOL] = {
         irreversible: true,
         approveLabel: 'Run export',
+      };
+      setup.capabilities = { attachments: true };
+      setup.uploads = 'ready';
+      setup.toolPresentations['read-policy'] = {
+        verb: 'Read',
+        tense: 'past',
+        detail: 'the regional chargeback and refund policy for orders awaiting reconciliation',
+        kind: 'fetch',
       };
     } else {
       conversation = withCall(
@@ -702,6 +724,9 @@ const scenarios: Record<StressScenarioName, Scenario> = {
         'The audit service returned 503 after three tries, so the source could not be read.',
       );
       conversation = appendAssistantMessage(conversation, 'Two of three sources were readable.');
+      setup.turnLabels = {
+        stepsDone: (worked, total) => `Checked ${worked} of ${total} sources`,
+      };
     }
     setup.conversation = conversation;
     if (shape === 'approval') {
@@ -935,6 +960,11 @@ const scenarios: Record<StressScenarioName, Scenario> = {
       param<'contract' | undefined>(stressCase, 'sourceSet', undefined) === 'contract'
         ? SOURCE_LIST_CONTRACT_SOURCES
         : SAMPLE_SOURCES;
+    if (param(stressCase, 'inlineClaim', false)) {
+      const markdown = 'The policy permits this refund because the charge was duplicated.';
+      setup.conversation = appendAssistantMessage(setup.conversation, markdown);
+      setup.claimSources[1] = [{ id: 'duplicate-charge', markdown, sources: [SAMPLE_SOURCES[0]!] }];
+    }
     setup.withdrawable = param(stressCase, 'withdrawable', false);
     return setup;
   },

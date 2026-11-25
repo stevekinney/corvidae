@@ -11,10 +11,10 @@ import {
   createWorkflowFile,
   deleteWorkflowFile,
   getWorkflowFile,
+  getWorkflowRevisionSummary,
   isIdentifierTaken,
   listWorkflowFileRuns,
   listWorkflowFiles,
-  listWorkflowRevisions,
   parseWorkflowText,
   pauseWorkflowFile,
   resumeWorkflowFile,
@@ -113,8 +113,9 @@ describe('the operations', () => {
         },
       }),
     );
-    const revisions = await listWorkflowRevisions('one');
-    expect(revisions.map((revision) => revision.workflowVersion)).toEqual(['v1']);
+    const summary = await getWorkflowRevisionSummary('one');
+    expect(summary.savedVersionCount).toBe(1);
+    expect(summary.revisions.map((revision) => revision.workflowVersion)).toEqual(['v1']);
   });
 
   test('every write names the hash it read, and answers the hash now on disk', async () => {
@@ -330,7 +331,8 @@ describe('the newest instances of a file', () => {
         ],
       }),
     );
-    const runs = await listWorkflowFileRuns('one', 5);
+    const { runs, hasMore } = await listWorkflowFileRuns('one', 5);
+    expect(hasMore).toBe(false);
     expect(runs.map((run) => [run.id, run.status])).toEqual([
       ['new', 'running'],
       ['old', 'completed'],
@@ -339,6 +341,9 @@ describe('the newest instances of a file', () => {
       workflow: 'one',
       limit: 5,
     });
+    const firstPage = await listWorkflowFileRuns('one', 1);
+    expect(firstPage.runs.map((run) => run.id)).toEqual(['new']);
+    expect(firstPage.hasMore).toBe(true);
   });
 
   test('accepts every persisted origin shape, including person starts', async () => {
@@ -365,7 +370,7 @@ describe('the newest instances of a file', () => {
         ],
       }),
     );
-    const runs = await listWorkflowFileRuns('one', 10);
+    const { runs } = await listWorkflowFileRuns('one', 10);
     const kinds = runs.map((run) => run.origin?.kind).filter((kind) => kind !== undefined);
     expect(kinds.toSorted((left, right) => left.localeCompare(right))).toEqual([
       'agent',

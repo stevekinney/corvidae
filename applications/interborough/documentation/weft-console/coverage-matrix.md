@@ -94,7 +94,7 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.workflows.cancel` | exposed | `src/routes/workflows/runs/run-engine.svelte.ts` | `cancel` | `src/routes/workflows/runs/run-detail-engine.test.ts` |  |  |
 | `weft.workflows.checkpoints.get` | exposed | `src/routes/workflows/detail/checkpoints/checkpoints-data.ts` |  | `src/routes/workflows/detail/checkpoints/checkpoints-data.test.ts` |  |  |
 | `weft.workflows.checkpoints.list` | exposed | `src/routes/workflows/detail/checkpoints/checkpoints-data.ts` |  | `src/routes/workflows/detail/checkpoints/checkpoints-data.test.ts` |  |  |
-| `weft.workflows.compare` | tracked |  |  |  | COR-2538 |  |
+| `weft.workflows.compare` | exposed | `src/routes/workflows/detail/checkpoints/fork-comparison-data.ts` |  | `src/routes/workflows/detail/checkpoints/fork-comparison.test.ts` | COR-2538 |  |
 | `weft.workflows.definitions.get` | not-in-dashboard |  |  |  |  | Weft's own dashboard lists a workflow's revisions through `weft.workflows.revisions.list` and its registry from `weft.system.registry`; the definitions catalog serves the Interborough workflows page. |
 | `weft.workflows.definitions.list` | not-in-dashboard |  |  |  |  | Weft's own dashboard lists a workflow's revisions through `weft.workflows.revisions.list` and its registry from `weft.system.registry`; the definitions catalog serves the Interborough workflows page. |
 | `weft.workflows.events.list` | exposed | `src/routes/workflows/detail/events-tab.svelte` | `getEvents` | `src/routes/workflows/detail/events-tab.test.ts` |  |  |

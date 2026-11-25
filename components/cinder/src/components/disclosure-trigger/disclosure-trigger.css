@@ -1,0 +1,48 @@
+@layer cinder.components {
+  .cinder-disclosure-trigger {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: var(--cinder-space-1-5);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--cinder-text-default);
+    font: inherit;
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-medium);
+    line-height: var(--cinder-leading-snug);
+    text-align: start;
+    cursor: pointer;
+  }
+  .cinder-disclosure-trigger__chevron {
+    flex: none;
+    inline-size: 14px;
+    block-size: 14px;
+    /* An SVG's `1lh` is its own normal line-height. Match the trigger label's text metrics
+       explicitly so the glyph tracks its first line in every consumer. */
+    margin-block-start: calc((var(--cinder-text-sm) * var(--cinder-leading-snug) - 14px) / 2);
+    color: var(--cinder-text-muted);
+    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+  .cinder-disclosure-trigger[aria-expanded='true'] .cinder-disclosure-trigger__chevron {
+    transform: rotate(90deg);
+  }
+  .cinder-disclosure-trigger:dir(rtl)[aria-expanded='false'] .cinder-disclosure-trigger__chevron {
+    transform: scaleX(-1);
+  }
+  .cinder-disclosure-trigger__label {
+    min-inline-size: 0;
+  }
+  /* A disclosure is a control even when its face is only a line of metadata. Use actual control
+     height here instead of an overflowing pseudo-element: adjacent disclosures can otherwise own
+     one another's overhang on a touch screen. */
+  @media (any-pointer: coarse) {
+    .cinder-disclosure-trigger {
+      min-block-size: var(--cinder-touch-target-min);
+    }
+  }
+  .cinder-disclosure-trigger:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+}

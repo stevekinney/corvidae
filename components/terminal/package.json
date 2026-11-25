@@ -19,7 +19,7 @@
     "metadata": "bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts --package-root .",
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts browser && bun ../../scripts/check-inherited-key-reads.ts && bun ../../internal/component-tooling/scripts/generate-component-artifacts.ts --package-root . --check",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts browser",
-    "test:browser": "bun ../../scripts/host-slots.ts --slots=4 -- bun --bun playwright test --config browser/playwright.config.ts --project=chromium --workers=4",
+    "test:browser": "bun ../../scripts/chef/ci-replay.ts isolated -- bun ../../scripts/host-slots.ts --slots=4 -- bun --bun playwright test --config browser/playwright.config.ts --project=chromium --workers=4",
     "test:browser:engines": "bun ../../scripts/host-slots.ts --slots=4 -- bun browser/scripts/run-terminal-browser.ts --workers=4",
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
     "release:check": "bun ../../scripts/check-documentation-coverage.ts && bun ../../scripts/check-documentation-code-blocks.ts",
