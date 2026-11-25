@@ -14,6 +14,7 @@ import { AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
 import { bureau, createAgentFile, readAgent, removeAgent } from './agent-support.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
+import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 import { expectTabOpen } from './workflow-support.ts';
@@ -264,45 +265,10 @@ test.describe('the Instructions tab', () => {
 });
 
 test.describe('the Settings tab', () => {
-  test('/agents/:agent/settings: restores an older version as a new version', async ({
+  test('/agents/:agent/settings: opens the persisted showcase Version 3 read-only against Version 4', async ({
     page,
-    request,
   }) => {
-    const id = 'e2e-page-versions';
-    agents.add(id);
-    const created = await createAgentFile(request, id, {
-      instructions: 'First instructions.',
-      model: 'anthropic/claude-haiku-5-5',
-      approvals: { 'demo:lookup-order': 'never' },
-    });
-    const before = await readAgent(request, id);
-    const saved = await bureau(request, 'bureau.agents.definitions.update', {
-      id,
-      expectedHash: created.hash,
-      definition: {
-        ...before.definition,
-        instructions: 'Second instructions.',
-      },
-    });
-    expect(saved.fault).toBeUndefined();
-
-    for (const change of [
-      { instructions: 'Third instructions.', model: 'anthropic/claude-sonnet-5-5' },
-      {
-        instructions: 'Fourth instructions.',
-        tools: ['demo:lookup-order', 'demo:issue-refund'],
-      },
-    ]) {
-      const current = await readAgent(request, id);
-      const next = await bureau(request, 'bureau.agents.definitions.update', {
-        id,
-        expectedHash: current.hash,
-        definition: { ...current.definition, ...change },
-      });
-      expect(next.fault).toBeUndefined();
-    }
-
-    await page.goto(`/agents/${id}/settings`);
+    await page.goto(`${E2E_SHOWCASE_URL}/agents/tool-runner/settings`);
 
     const versions = page.getByTestId('agent-versions');
     await expect(versions.locator('[data-revision]')).toHaveCount(4);
@@ -319,7 +285,7 @@ test.describe('the Settings tab', () => {
     );
     await expect(versionView).toContainText('Version 4 is the current version.');
     await expect(versionView.getByTestId('agent-version-instructions')).toContainText(
-      'Third instructions.',
+      'Look an order up with lookup-order before you answer anything about it.',
     );
     await expect(versionView.getByTestId('agent-version-tools')).toContainText(
       'Lookup order (Never)',
@@ -332,7 +298,40 @@ test.describe('the Settings tab', () => {
       state: '39u read-only Version 3 detail against current Version 4',
       source: 'agent-page.spec.ts',
     });
-    await versions.getByRole('button', { name: 'Versions' }).click();
+  });
+
+  test('/agents/:agent/settings: restores an older version as a new version', async ({
+    page,
+    request,
+  }) => {
+    const id = 'e2e-page-versions';
+    agents.add(id);
+    const created = await createAgentFile(request, id, { instructions: 'First instructions.' });
+    const before = await readAgent(request, id);
+    const saved = await bureau(request, 'bureau.agents.definitions.update', {
+      id,
+      expectedHash: created.hash,
+      definition: {
+        ...before.definition,
+        instructions: 'Second instructions.',
+      },
+    });
+    expect(saved.fault).toBeUndefined();
+
+    for (const instructions of ['Third instructions.', 'Fourth instructions.']) {
+      const current = await readAgent(request, id);
+      const next = await bureau(request, 'bureau.agents.definitions.update', {
+        id,
+        expectedHash: current.hash,
+        definition: { ...current.definition, instructions },
+      });
+      expect(next.fault).toBeUndefined();
+    }
+
+    await page.goto(`/agents/${id}/settings`);
+
+    const versions = page.getByTestId('agent-versions');
+    await expect(versions.locator('[data-revision]')).toHaveCount(4);
     // Restore asks first, then saves the old version again as the next one (row 38z).
     await versions.getByRole('button', { name: 'Restore Version 1' }).click();
     await page
