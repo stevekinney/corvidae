@@ -11,7 +11,6 @@ import { assertOperationEngineMethods } from './operation-helpers.ts';
 
 import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
 import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
-import type { ScheduleSummary } from '../../core/types.ts';
 import { scheduleSummarySchema } from './schedule-read-schema.ts';
 
 const getScheduleInput = z.object({
@@ -21,7 +20,6 @@ const getScheduleInput = z.object({
 const getScheduleOutput = scheduleSummarySchema;
 
 export type GetScheduleInput = z.infer<typeof getScheduleInput>;
-export type GetScheduleOutput = ScheduleSummary;
 
 export const getScheduleOperation = defineOperation({
   name: 'weft.schedules.get',

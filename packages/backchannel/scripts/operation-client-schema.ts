@@ -335,6 +335,8 @@ function containsReference(node: TypeNode): boolean {
       return node.fields.some((field) => containsReference(field.value));
     case 'primitive':
       return false;
+    default:
+      throw new Error(`Unsupported schema node: ${JSON.stringify(node satisfies never)}`);
   }
 }
 

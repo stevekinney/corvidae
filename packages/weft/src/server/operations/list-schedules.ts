@@ -12,12 +12,7 @@ import { z } from 'zod';
 
 import { defineOperation } from '@lostgradient/backchannel';
 import { type UnknownRestBinding, invalidParamsFault } from '@lostgradient/backchannel/internals';
-import type {
-  PaginatedResult,
-  ScheduleFilter,
-  ScheduleStatus,
-  ScheduleSummary,
-} from '../../core/types.ts';
+import type { ScheduleFilter, ScheduleStatus } from '../../core/types.ts';
 import { assertOperationEngineMethods } from './operation-helpers.ts';
 import { scheduleSummarySchema } from './schedule-read-schema.ts';
 
@@ -68,7 +63,6 @@ const listSchedulesShape = z
 const listSchedulesOutput = listSchedulesShape;
 
 export type ListSchedulesInput = z.infer<typeof listSchedulesInput>;
-export type ListSchedulesOutput = PaginatedResult<ScheduleSummary>;
 
 /** Apply the status filter dimension, normalizing scalar to single-element form. */
 function applyStatusFilter(filter: ScheduleFilter, input: ListSchedulesInput): void {

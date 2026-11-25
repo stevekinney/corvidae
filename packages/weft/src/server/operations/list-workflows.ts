@@ -10,7 +10,7 @@ import {
   normalizeListFilter,
 } from '../../core/list-filter-validation.ts';
 import { coerceStartWorkflowTags } from '../../core/start-workflow-validation.ts';
-import type { ListFilter, PaginatedResult, WorkflowSummary } from '../../core/types.ts';
+import type { ListFilter } from '../../core/types.ts';
 import { extractListFilterFromQuery } from './list-filter-query-extractor.ts';
 import { assertOperationEngineMethods, shapeRestFault } from './operation-helpers.ts';
 import { workflowSummarySchema } from './workflow-read-schema.ts';
@@ -73,7 +73,6 @@ const listWorkflowsShape = z
 const listWorkflowsOutput = listWorkflowsShape;
 
 export type ListWorkflowsInput = z.infer<typeof listWorkflowsInput>;
-export type ListWorkflowsOutput = PaginatedResult<WorkflowSummary>;
 
 export const listWorkflowsOperation = defineOperation({
   name: 'weft.workflows.list',

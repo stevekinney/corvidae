@@ -3,7 +3,6 @@ import { assertOperationEngineMethods } from './operation-helpers.ts';
 
 import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
 import type { UnknownRestBinding } from '@lostgradient/backchannel/internals';
-import type { WorkflowEvent } from '../../core/types.ts';
 
 const getWorkflowEventsInput = z.object({
   workflowId: z.string().min(1).describe('Id of the workflow whose recorded events are listed.'),
@@ -24,7 +23,6 @@ const getWorkflowEventsShape = z
 const getWorkflowEventsOutput = getWorkflowEventsShape;
 
 export type GetWorkflowEventsInput = z.infer<typeof getWorkflowEventsInput>;
-export type GetWorkflowEventsOutput = { events: WorkflowEvent[] };
 
 export const getWorkflowEventsOperation = defineOperation({
   name: 'weft.workflows.events.list',

@@ -86,12 +86,28 @@ describe('createOperationClientSources for a catalog that is not Weft', () => {
     const options = fixtureOptions({
       portableEntries: true,
       outputDirectory: directory,
-      runtimeSpecifier: join(import.meta.dir, '../src/client/index.ts'),
+      runtimeSpecifier: './runtime.ts',
     });
     const sources = await createOperationClientSources(snapshot, options);
     expect([...sources]).toEqual([...(await createOperationClientSources(snapshot, options))]);
     const files = new Map(
       [...sources].map(([name, contents]) => [join(directory, name), contents]),
+    );
+    // Keep this program focused on the generated entrypoints; the real client runtime is
+    // separately typechecked by the workspace and the Weft generated-client witness.
+    files.set(
+      join(directory, 'runtime.ts'),
+      `
+      type Operations = Record<string, { input: unknown; output: unknown }>;
+      export type CatalogClient<T extends Operations> = {
+        readonly [K in keyof T]: (input: T[K]['input']) => Promise<T[K]['output']>
+      };
+      export type CatalogTransport = (name: string, input: unknown) => Promise<unknown>;
+      export type JsonRpcHttpConnection = { baseUrl: string };
+      export type ClientRestOperationBinding = unknown;
+      export declare function httpJsonRpcTransport(connection: JsonRpcHttpConnection): CatalogTransport;
+      export declare function createCatalogClient<T extends Operations>(names: readonly (keyof T)[], transport: CatalogTransport): CatalogClient<T>;
+    `,
     );
     const consumer = join(directory, 'consumer.ts');
     files.set(
@@ -125,6 +141,7 @@ describe('createOperationClientSources for a catalog that is not Weft', () => {
       module: ts.ModuleKind.Preserve,
       moduleResolution: ts.ModuleResolutionKind.Bundler,
       allowImportingTsExtensions: true,
+      types: [],
     };
     const host = ts.createCompilerHost(compilerOptions);
     const readFile = host.readFile.bind(host);
