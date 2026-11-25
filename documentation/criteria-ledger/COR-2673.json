@@ -1,0 +1,19 @@
+{
+  "issue": "COR-2673",
+  "branch": "steve/composable-catalog-gate-import",
+  "checkedAt": "179955d8af92a11eeaf2819b5268b2b395f45fdf",
+  "briefVersion": "2565adbd5183",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Source diff imports the existing mapping directly from targeted-inputs.ts and leaves dispatch and mapping unchanged; 69 regression tests passed."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "with-turborepo-cache bun run typecheck:root exited 0; delivery-request and targeted-run tests passed (69 tests)."
+    }
+  ]
+}
