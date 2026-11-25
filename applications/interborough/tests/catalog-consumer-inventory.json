@@ -4919,6 +4919,48 @@
       "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
     },
     {
+      "route": "HEAD /settings/api-keys",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "A browser session is required before forwarding the private settings page request."
+    },
+    {
+      "route": "POST /settings/api-keys",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "The private Velveteen settings application handles the guarded page action."
+    },
+    {
+      "route": "HEAD /settings/connected-apps",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "A browser session is required before forwarding the private settings page request."
+    },
+    {
+      "route": "POST /settings/connected-apps",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "The private Velveteen settings application handles the guarded page action."
+    },
+    {
+      "route": "GET /_assets/*",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "The private Velveteen build serves only its declared browser artifacts under this prefix."
+    },
+    {
+      "route": "HEAD /_assets/*",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "The private Velveteen build serves only its declared browser artifacts under this prefix."
+    },
+    {
+      "route": "POST /_remote/*",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "Private Velveteen remotes require the verified browser session and same origin."
+    },
+    {
       "route": "GET /.well-known/oauth-authorization-server",
       "protocol": "HTTP",
       "owner": "Interborough shared browser host",

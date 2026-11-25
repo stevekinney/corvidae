@@ -8,16 +8,29 @@ import {
   reviewedRefundContribution,
 } from '@lostgradient/plugin-demo/refunds';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createRemoteClient } from '@lostgradient/velveteen/remote/client';
+import { defineRemote } from '@lostgradient/velveteen/remote/server';
 import { createApplication } from '@lostgradient/velveteen/server';
 import { createProcessLocalApprovalStateStore, createToolbox } from 'armorer';
 import { expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as client from 'openid-client';
 import { startHost } from '../host.ts';
 
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+
+const privateRemotes = {
+  member: defineRemote({
+    kind: 'command',
+    validate: () => null,
+    handle: (_input, event) =>
+      (event.locals['interboroughWorkspace'] as WorkspaceMembership).actorId,
+  }),
+};
+const clientScript = 'export const loaded = true;';
 
 test('listener binds verified browser identities, revokes private access and resumes consent', async () => {
   const key = await crypto.subtle.generateKey(
@@ -297,16 +310,33 @@ test('listener binds verified browser identities, revokes private access and res
             },
           ],
         };
+        await mkdir(join(home, 'browser'), { recursive: true });
+        await writeFile(join(home, 'browser/client.js'), clientScript);
         const generation = {
           directory: home,
           manifest: {
             version: 1,
             basePath: '',
             routing,
-            client: { file: 'client.js', url: '/client.js', stylesheets: [], nodes: {} },
+            client: {
+              file: 'browser/client.js',
+              url: '/_assets/client.js',
+              stylesheets: [],
+              nodes: {},
+            },
             server: { file: 'server.js', nodes: {} },
             routes: {},
-            assets: [],
+            assets: [
+              {
+                file: 'browser/client.js',
+                url: '/_assets/client.js',
+                target: 'browser',
+                contentType: 'text/javascript',
+                bytes: clientScript.length,
+                sha256: createHash('sha256').update(clientScript).digest('hex'),
+                immutable: true,
+              },
+            ],
             outputs: [],
           },
         };
@@ -316,6 +346,11 @@ test('listener binds verified browser identities, revokes private access and res
             {
               page: async () => ({ default: {} }),
               pageServer: async () => ({
+                actions: {
+                  default: (event: { locals: Record<string, unknown> }) => ({
+                    actor: (event.locals['interboroughWorkspace'] as WorkspaceMembership).actorId,
+                  }),
+                },
                 load: async (event: { fetch: typeof fetch }) => {
                   const response = await event.fetch('/api/v1/principal');
                   const identity = await response.json();
@@ -338,6 +373,7 @@ test('listener binds verified browser identities, revokes private access and res
           generation: generation as never,
           registry: registry as never,
           hooks,
+          remotes: privateRemotes,
         });
       },
       keyManagement: {
@@ -659,6 +695,48 @@ test('listener binds verified browser identities, revokes private access and res
     expect(adminPageText).not.toContain('owner:member');
     expect(memberPageText).toContain('owner:member');
     expect(memberPageText).not.toContain('owner:admin');
+    const browserAsset = await send('/_assets/client.js', {});
+    expect(browserAsset.status).toBe(200);
+    expect(await browserAsset.text()).toBe(clientScript);
+    const assetHead = await send('/_assets/client.js', { method: 'HEAD' });
+    expect(assetHead.status).toBe(200);
+    expect(await assetHead.text()).toBe('');
+    const pageAction = (origin: string, cookie?: string) =>
+      send('/settings/api-keys', {
+        method: 'POST',
+        headers: {
+          origin,
+          ...(cookie ? { cookie } : {}),
+          'content-type': 'application/x-www-form-urlencoded',
+          'x-velveteen-action': 'true',
+        },
+        body: '',
+      });
+    const anonymousAction = await pageAction('https://settings.example');
+    expect(anonymousAction.status).toBe(401);
+    const foreignAction = await pageAction('https://outside.example', member.cookie);
+    expect(foreignAction.status).toBe(403);
+    const ownAction = await pageAction('https://settings.example', member.cookie);
+    expect(ownAction.status).toBe(200);
+    expect(await ownAction.text()).toContain('member');
+
+    const remote = createRemoteClient<typeof privateRemotes>({
+      baseURL: 'https://settings.example',
+      invalidate: () => {},
+      fetch: (input, init) => {
+        const request = new Request(input, init);
+        const headers = new Headers(request.headers);
+        headers.set('origin', 'https://settings.example');
+        headers.set('cookie', administrator.cookie!);
+        return send(new URL(request.url).pathname, {
+          method: request.method,
+          body: request.body,
+          headers: Object.fromEntries(headers),
+        });
+      },
+    });
+    expect(await remote.call('member', null)).toBe('admin');
+
     const listKeys = (cookie: string) =>
       send('/key-admin/jsonrpc', {
         method: 'POST',
