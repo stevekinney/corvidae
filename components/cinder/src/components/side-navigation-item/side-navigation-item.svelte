@@ -111,8 +111,11 @@
   });
   // A collapsed row shows its label (and count) in a tooltip, since the label is not drawn; an
   // expanded row shows the same words as its name only when a count adds something to the label.
+  // An expanded disabled row that shows its reason, its own or its group's, has every word on
+  // screen, so it draws no tooltip repeating them (COR-2680). A collapsed rail row still needs one.
+  const reasonShown = $derived(!collapsed && (reasonText ?? groupReason) !== undefined);
   const tooltipText = $derived(
-    props.label === undefined
+    props.label === undefined || reasonShown
       ? undefined
       : collapsed
         ? (reasonText ?? groupReason) !== undefined
@@ -228,6 +231,7 @@
     aria-describedby={describedBy}
     class={classNames('cinder-side-navigation-item', props.class)}
     data-cinder-reason={reasonText === undefined ? undefined : ''}
+    data-cinder-tooltip={tooltipText === undefined ? undefined : ''}
     data-cinder-collapsed={collapsed ? '' : undefined}
     data-cinder-has-icon={hasIcon ? '' : undefined}
     variant="vertical"

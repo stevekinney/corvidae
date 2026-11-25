@@ -258,3 +258,19 @@ describe('side navigation group: shared reason (COR-2680)', () => {
     expect(declaration(clipped, 'display')).toBeUndefined();
   });
 });
+
+describe('side navigation item: hover feedback for a tooltip (COR-2680)', () => {
+  test('a disabled row that answers hover with a tooltip shows a hover tint', () => {
+    const strip = (selector: string) => selector.replaceAll(/\s+/g, '');
+    const wanted = strip(
+      ".cinder-side-navigation-item[aria-disabled='true'][data-cinder-tooltip]:hover",
+    );
+    let tint: string | undefined;
+    parse(sideNavigationItemCss).walkRules((rule) => {
+      if (rule.selectors.some((candidate) => strip(candidate) === wanted)) {
+        tint = declaration(rule, 'background-color');
+      }
+    });
+    expect(tint).toBe('color-mix(in oklch, var(--cinder-border-ink), transparent 96%)');
+  });
+});

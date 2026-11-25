@@ -43,7 +43,7 @@ export function toneOf(element: Element): Tone {
     foreground[2] * alpha + background[2] * (1 - alpha),
     1,
   ];
-  const [lighter, darker] = [luminance(blended), luminance(background)].sort((a, b) => b - a);
+  const [lighter, darker] = [luminance(blended), luminance(background)].toSorted((a, b) => b - a);
   return {
     contrast: (lighter! + 0.05) / (darker! + 0.05),
     fontSize: Number.parseFloat(getComputedStyle(element).fontSize),

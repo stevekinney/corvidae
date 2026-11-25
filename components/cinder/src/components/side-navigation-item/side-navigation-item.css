@@ -117,6 +117,15 @@
     white-space: normal;
   }
 
+  /* A row that answers hover with a tooltip shows that it heard the pointer (COR-2680). An enabled
+   * row already tints on hover; a disabled one, which shows no other hover state, takes the same
+   * neutral ink tint while its tooltip is the only thing hover does. */
+  @media (hover: hover) {
+    .cinder-side-navigation-item[aria-disabled='true'][data-cinder-tooltip]:hover {
+      background-color: color-mix(in oklch, var(--cinder-border-ink), transparent 96%);
+    }
+  }
+
   /* ----------------------------------------
  * Collapsed: an icon rail
  *
