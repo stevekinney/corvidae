@@ -19,6 +19,7 @@ import {
   pauseWorkflowFile,
   resumeWorkflowFile,
   signalWorkflows,
+  startWorkflowFile,
   updateDefinitionFromText,
   updateWorkflowFile,
 } from './workflow-files.ts';
@@ -169,6 +170,35 @@ describe('the operations', () => {
     });
     await signalWorkflows({ name: 'no-payload' });
     expect(stub.callsTo('bureau.workflows.signal')[1]?.params).toEqual({ name: 'no-payload' });
+  });
+
+  test('start and signal preserve JSON payloads, null, and omission', async () => {
+    stub = installWorkflowWorld(emptyWorld({ files: [readyFile('one')] }));
+    const nested: unknown = JSON.parse('{"entries":[null,true,4,{"__proto__":{"value":1}}]}');
+    await startWorkflowFile('one', nested, undefined);
+    await startWorkflowFile('one', null, undefined);
+    await startWorkflowFile('one', undefined, undefined);
+    expect(stub.callsTo('bureau.workflows.start').map((call) => call.params)).toEqual([
+      { id: 'one', surface: 'web', input: nested },
+      { id: 'one', surface: 'web', input: null },
+      { id: 'one', surface: 'web' },
+    ]);
+    await signalWorkflows({ name: 'signal', payload: nested });
+    await signalWorkflows({ name: 'signal', payload: null });
+    await signalWorkflows({ name: 'signal' });
+    expect(stub.callsTo('bureau.workflows.signal').map((call) => call.params)).toEqual([
+      { name: 'signal', payload: nested },
+      { name: 'signal', payload: null },
+      { name: 'signal' },
+    ]);
+    expect(await rejectionOf(startWorkflowFile('one', { bad: 1n }, undefined))).toBeInstanceOf(
+      Error,
+    );
+    expect(
+      await rejectionOf(signalWorkflows({ name: 'signal', payload: { bad: 1n } })),
+    ).toBeInstanceOf(Error);
+    expect(stub.callsTo('bureau.workflows.start')).toHaveLength(3);
+    expect(stub.callsTo('bureau.workflows.signal')).toHaveLength(3);
   });
 
   test('signal keeps the workflows whose input schema refused the payload, with their issues', async () => {

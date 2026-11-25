@@ -22,7 +22,11 @@ import {
   defineOperation,
   principalFromApiKey,
 } from '@lostgradient/backchannel';
-import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
+import {
+  createOperationRegistry,
+  executeOperation,
+  handleJsonRpcHttpRequest,
+} from '@lostgradient/backchannel/internals';
 import { Engine } from '../../core/engine.ts';
 import { handleRequest } from '../handler.ts';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
@@ -133,6 +137,75 @@ describe('weft.schedules.list', () => {
     if (result.ok) throw new Error('expected invalid workflowType fault');
     expect(result.fault.code).toBe('InvalidParams');
     expect(result.fault.message).toBe('Query parameter "workflowType" must be a string');
+  });
+
+  it('keeps JSON-RPC coercion and field-specific fault ordering', async () => {
+    engine = createListSchedulesTestEngine();
+    const registry = createLiveOperationRegistry();
+    const principal = principalFromApiKey({ subject: 'svc', scopes: ['schedules:read'] });
+    const context = { principal, host: engine, transport: 'jsonRpcStdio' as const, registry };
+
+    const page = await executeOperation(
+      'weft.schedules.list',
+      { limit: [2], offset: null },
+      context,
+    );
+    expect(page.ok).toBe(true);
+    if (!page.ok) throw new Error('expected a page');
+    expect(page.value).toMatchObject({ limit: 2, offset: 0 });
+
+    const invalid = await executeOperation(
+      'weft.schedules.list',
+      { status: 42, workflowType: 42, limit: {} },
+      context,
+    );
+    expect(invalid.ok).toBe(false);
+    if (invalid.ok) throw new Error('expected a validation fault');
+    expect(invalid.fault.message).toBe(
+      'Query parameter "status" must be one of active, paused, cancelled',
+    );
+  });
+
+  it('returns the same paginated schedules over REST and JSON-RPC', async () => {
+    engine = createListSchedulesTestEngine();
+    await engine.schedule('echo', { private: true }, '0 * * * *', {
+      id: 'parity-schedule',
+      metadata: { nested: { opaque: true } },
+    });
+    const principal = principalFromApiKey({ subject: 'svc', scopes: ['schedules:read'] });
+    const rest = await handleRequest(
+      new Request('http://localhost/v1/schedules?limit=1&offset=0'),
+      engine,
+      {
+        operationRegistry: listSchedulesTestRegistry,
+        restBindings: [listSchedulesRestBinding],
+        authContext: { method: 'api-key', principal },
+      },
+    );
+    const rpc = await handleJsonRpcHttpRequest(
+      new Request('http://localhost/jsonrpc', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'weft.schedules.list',
+          params: { limit: 1, offset: 0 },
+        }),
+      }),
+      { registry: listSchedulesTestRegistry, host: engine, principal },
+    );
+    expect(rest.status).toBe(200);
+    expect(rpc.status).toBe(200);
+    const restBody = await rest.json();
+    const rpcBody = await rpc.json();
+    expect(rpcBody.result).toEqual(restBody);
+    expect(restBody).toMatchObject({
+      total: 1,
+      limit: 1,
+      offset: 0,
+      items: [{ id: 'parity-schedule', metadata: { nested: { opaque: true } } }],
+    });
   });
 
   it('accepts valid status values: active, paused, cancelled', async () => {

@@ -19,7 +19,7 @@ export type AuditOperationTypes = {
       | {
           readonly nextCursor: string | null;
           readonly records: ReadonlyArray<{
-            readonly detail: Record<string, unknown> | null;
+            readonly detail: Record<string, string | number | boolean> | null;
             readonly principal: string | null;
             readonly resource: string;
             readonly sequence: number | null;
