@@ -134,6 +134,7 @@ describe.each([
     // directory too, and do not invalidate the cache when a runtime file changes.
     expect(inputs).toContain(`$TURBO_ROOT$/${directory}**`);
     expect(covers(entrypoint)).toBe(true);
+    expect(Object.hasOwn(plannedTask(task).inputs, directory + 'playwright.config.ts')).toBe(true);
     const reachableRootHelpers = [...seen].filter(isRootHelper);
     const dynamicDomains = new Map([
       [
@@ -230,8 +231,7 @@ describe.each([
       expect(metadataInputs).toContain('$TURBO_ROOT$/internal/component-tooling/scripts/**');
       expect(metadataInputs).toContain('$TURBO_ROOT$/internal/component-tooling/src/**');
     }
-    if (job === 'interborough')
-      expect(reachableRootHelpers).toContain('scripts/ensure-cinder-generated.ts');
+    expect(reachableRootHelpers).toContain('scripts/ensure-cinder-generated.ts');
     // The group starts this fixed executable by path, which the static import graph cannot see.
     if (reachableRootHelpers.includes('scripts/owned-process-group.ts')) {
       const group = readFileSync(resolve(root, 'scripts/owned-process-group.ts'), 'utf8');
