@@ -10,12 +10,13 @@ test.each([
 ])('the fixture grants explicit scopes at %s to %s', async (path, subject) => {
   using fetchMock = spyOn(globalThis, 'fetch').mockImplementation(
     Object.assign(
-      async () => Response.json({
-        issuer: 'https://identity.test',
-        authorization_endpoint: 'https://identity.test/authorize',
-        token_endpoint: 'https://identity.test/token',
-        jwks_uri: 'https://identity.test/keys',
-      }),
+      async () =>
+        Response.json({
+          issuer: 'https://identity.test',
+          authorization_endpoint: 'https://identity.test/authorize',
+          token_endpoint: 'https://identity.test/token',
+          jwks_uri: 'https://identity.test/keys',
+        }),
       { preconnect: globalThis.fetch.preconnect },
     ),
   );
