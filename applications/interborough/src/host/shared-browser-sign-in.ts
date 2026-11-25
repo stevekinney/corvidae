@@ -438,7 +438,9 @@ export function sharedBrowserRoutes(
   const page = onOrigin((request) => privateServer.fetch(shared.publicRequest(request)));
   return {
     ...routes,
-    '/settings/api-keys': { GET: page },
-    '/settings/connected-apps': { GET: page },
+    '/settings/api-keys': { GET: page, HEAD: page, POST: page },
+    '/settings/connected-apps': { GET: page, HEAD: page, POST: page },
+    '/_assets/*': { GET: page, HEAD: page },
+    '/_remote/*': { POST: page },
   };
 }

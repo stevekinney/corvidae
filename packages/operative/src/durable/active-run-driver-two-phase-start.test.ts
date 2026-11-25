@@ -10,6 +10,7 @@
 import { createManualRuntimeServices, HookRegistry } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { WorkflowAlreadyExistsError } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
@@ -109,6 +110,7 @@ describe('a fresh durable run started in two phases (COR-297)', () => {
       'reservation superseded',
     );
     await first.activeRun.result;
+    expect(first.events).toEqual([]);
     expect(await statusOf(context, runId)).toBe('pending');
     const hook = deferredStartHook();
     const retry = startRun(context, runId, hook.hooks, {
@@ -119,6 +121,25 @@ describe('a fresh durable run started in two phases (COR-297)', () => {
     hook.release();
     const result = await retry.activeRun.result;
     expect(result.finishReason).toBe('stop-condition');
+    context.engine[Symbol.dispose]();
+  });
+  it('does not announce completion when a reserved workflow is already running', async () => {
+    const context = await buildContext();
+    context.spy.engine.prepare = async () => {
+      throw new WorkflowAlreadyExistsError('reserved-existing');
+    };
+    context.spy.engine.adoptPrepared = async () => {
+      throw new WorkflowAlreadyExistsError('reserved-existing');
+    };
+    const { activeRun, events } = startRun(
+      context,
+      'reserved-existing',
+      new HookRegistry<OperativeHookMap>(),
+      { adoptReserved: true },
+    );
+    expect(await throwingRejectionOf(activeRun.durablyStarted)).toThrow();
+    await activeRun.result;
+    expect(events).toEqual([]);
     context.engine[Symbol.dispose]();
   });
   it('does not cancel or settle a successor after a reserved launch loses its claim', async () => {

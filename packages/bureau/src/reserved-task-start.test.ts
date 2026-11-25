@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'bun:test';
-import { createAgent } from '@lostgradient/operative';
-import { MemoryStorage, type Storage } from '@lostgradient/storage';
+import { createAgent, createSessionStore } from '@lostgradient/operative';
+import { MemoryStorage, textValueStore, type Storage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createBureau } from './create-bureau.ts';
+import { readSteeringLogEntries, readSteeringLogHead } from './steering-log.ts';
 
 describe('reserved task admission', () => {
   it('refuses reserved starts without workflow-lease ownership before admission', async () => {
@@ -38,87 +39,167 @@ describe('reserved task admission', () => {
       await bureau.dispose();
     }
   });
-  it('does not let the old claimant roll back a successor which starts first', async () => {
+  for (const blockedKey of ['wf:reserved-race', 'bureau-task:v1:reserved-race'])
+    it(`does not settle the successor when the old claimant loses at ${blockedKey}`, async () => {
+      const storage = new MemoryStorage();
+      const reached = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const finish = Promise.withResolvers<void>();
+      let armed = true;
+      const wrapped = new Proxy(storage, {
+        get(target, property, receiver) {
+          if (property === 'conditionalBatch')
+            return async (...args: Parameters<NonNullable<Storage['conditionalBatch']>>) => {
+              if (
+                armed &&
+                args[1].some(
+                  (operation) => operation.type === 'put' && operation.key === blockedKey,
+                )
+              ) {
+                armed = false;
+                reached.resolve();
+                await release.promise;
+              }
+              return target.conditionalBatch(...args);
+            };
+          const value: unknown = Reflect.get(target, property, receiver);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+      const options = {
+        durable: true as const,
+        requestAuthorityValidator: () => true,
+        agents: {
+          assistant: createAgent({
+            generate: async () => {
+              await finish.promise;
+              return { content: 'done', toolCalls: [] };
+            },
+          }),
+        },
+      };
+      const first = await createBureau({ ...options, storage: wrapped });
+      const second = await createBureau({ ...options, storage });
+      const context = {
+        authority: {
+          principalId: 'alice',
+          tenantId: 'tenant',
+          ownerId: 'alice',
+          capabilities: [],
+          authorizationRevision: 'v1',
+        },
+      };
+      try {
+        const old = first.tasks.start('assistant', 'hello', {
+          principal: 'alice',
+          commandId: 'command',
+          requestContext: context,
+          reservation: { runId: 'reserved-race', sessionId: 'reserved-race-session', fence: 1 },
+        });
+        void old.catch(() => {});
+        await reached.promise;
+        const successor = await second.tasks.start('assistant', 'hello', {
+          principal: 'alice',
+          commandId: 'command',
+          requestContext: context,
+          reservation: { runId: 'reserved-race', sessionId: 'reserved-race-session', fence: 2 },
+        });
+        release.resolve();
+        await old.catch(() => {});
+        await first.internals.taskRegistry.flush();
+        const kv = textValueStore(storage);
+        const session = await createSessionStore(kv).load('reserved-race-session');
+        expect(session?.metadata).toMatchObject({
+          lastRunStatus: 'running',
+          reservedStartFence: 2,
+        });
+        if (!session) throw new Error('Missing successor session');
+        const head = await readSteeringLogHead(kv, session.id, session.incarnation);
+        const events = await readSteeringLogEntries(
+          kv,
+          session.id,
+          session.incarnation,
+          0,
+          head.sequence,
+        );
+        expect(events.filter((event) => event.type === 'run-ended')).toEqual([]);
+        expect(await second.tasks.get('reserved-race').then((value) => value?.status)).not.toBe(
+          'failed',
+        );
+        finish.resolve();
+        await successor.result();
+        expect(await second.tasks.get('reserved-race')).toMatchObject({
+          id: 'reserved-race',
+          status: 'completed',
+        });
+      } finally {
+        release.resolve();
+        finish.resolve();
+        await first.dispose();
+        await second.dispose();
+      }
+    });
+  it('ends steering when the failing reserved starter still owns its claim', async () => {
     const storage = new MemoryStorage();
-    const reached = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<void>();
-    const finish = Promise.withResolvers<void>();
-    let armed = true;
     const wrapped = new Proxy(storage, {
       get(target, property, receiver) {
         if (property === 'conditionalBatch')
           return async (...args: Parameters<NonNullable<Storage['conditionalBatch']>>) => {
             if (
-              armed &&
               args[1].some(
-                (operation) => operation.type === 'put' && operation.key === 'wf:reserved-race',
+                (operation) =>
+                  operation.type === 'put' && operation.key === 'bureau-task:v1:reserved-owned',
               )
-            ) {
-              armed = false;
-              reached.resolve();
-              await release.promise;
-            }
+            )
+              throw new Error('injected admission failure');
             return target.conditionalBatch(...args);
           };
         const value: unknown = Reflect.get(target, property, receiver);
         return typeof value === 'function' ? value.bind(target) : value;
       },
     });
-    const options = {
-      durable: true as const,
+    const bureau = await createBureau({
+      storage: wrapped,
+      durable: true,
       requestAuthorityValidator: () => true,
       agents: {
-        assistant: createAgent({
-          generate: async () => {
-            await finish.promise;
-            return { content: 'done', toolCalls: [] };
-          },
-        }),
+        assistant: createAgent({ generate: async () => ({ content: 'done', toolCalls: [] }) }),
       },
-    };
-    const first = await createBureau({ ...options, storage: wrapped });
-    const second = await createBureau({ ...options, storage });
-    const context = {
-      authority: {
-        principalId: 'alice',
-        tenantId: 'tenant',
-        ownerId: 'alice',
-        capabilities: [],
-        authorizationRevision: 'v1',
-      },
-    };
+    });
     try {
-      const old = first.tasks.start('assistant', 'hello', {
-        principal: 'alice',
-        commandId: 'command',
-        requestContext: context,
-        reservation: { runId: 'reserved-race', sessionId: 'reserved-race-session', fence: 1 },
-      });
-      void old.catch(() => {});
-      await reached.promise;
-      const successor = await second.tasks.start('assistant', 'hello', {
-        principal: 'alice',
-        commandId: 'command',
-        requestContext: context,
-        reservation: { runId: 'reserved-race', sessionId: 'reserved-race-session', fence: 2 },
-      });
-      release.resolve();
-      await old.catch(() => {});
-      await first.internals.taskRegistry.flush();
-      expect(await second.tasks.get('reserved-race').then((value) => value?.status)).not.toBe(
-        'failed',
+      expect(
+        await throwingRejectionOf(
+          bureau.tasks.start('assistant', 'hello', {
+            principal: 'alice',
+            commandId: 'owned',
+            reservation: { runId: 'reserved-owned', sessionId: 'reserved-owned-session', fence: 1 },
+            requestContext: {
+              authority: {
+                principalId: 'alice',
+                tenantId: 'tenant',
+                ownerId: 'alice',
+                capabilities: [],
+                authorizationRevision: 'v1',
+              },
+            },
+          }),
+        ),
+      ).toThrow('injected admission failure');
+      const kv = textValueStore(storage);
+      const session = await createSessionStore(kv).load('reserved-owned-session');
+      expect(session?.metadata['lastRunStatus']).toBe('error');
+      if (!session) throw new Error('Missing failed session');
+      const head = await readSteeringLogHead(kv, session.id, session.incarnation);
+      const events = await readSteeringLogEntries(
+        kv,
+        session.id,
+        session.incarnation,
+        0,
+        head.sequence,
       );
-      finish.resolve();
-      await successor.result();
-      expect(await second.tasks.get('reserved-race')).toMatchObject({
-        id: 'reserved-race',
-        status: 'completed',
-      });
+      expect(events.filter((event) => event.type === 'run-ended')).toHaveLength(1);
     } finally {
-      release.resolve();
-      finish.resolve();
-      await first.dispose();
-      await second.dispose();
+      await bureau.dispose();
     }
   });
   it('starts and replays the reserved run and session', async () => {

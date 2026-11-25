@@ -83,7 +83,11 @@ import {
   requestTextOf,
   validateCreateRunRequest,
 } from '../run-request-validation';
-import { type SteeringLogEvent, steeringSessionRunTag } from '../steering-log';
+import {
+  type SteeringLogEvent,
+  ReservedRunSteeringFenceLostError,
+  steeringSessionRunTag,
+} from '../steering-log';
 import {
   isTrustedReviewedOrigin,
   type TaskOrigin,
@@ -167,6 +171,7 @@ export interface RunCreationPeers {
     incarnation: string,
     event: Exclude<SteeringLogEvent, { type: 'admit' | 'refused' }>,
     allowExistingPromotion?: boolean,
+    reservationCondition?: { readonly key: string; readonly expectedValue: string },
   ) => Promise<void>;
   /** `runtime.kv`, when this Bureau keeps durable steering. */
   readonly durableSteeringStore: () => ConditionalTextValueStore | undefined;
@@ -1113,16 +1118,48 @@ export function createRunCreation<D extends AgentDefinitions>(
         // Promoted but never started, so no terminal listener will ever log
         // its end: log it here, or every process would count this run as
         // starting and keep a pause bound to it accepted.
-        peers.logRunBoundarySteering(sessionId, steeringGate, {
+        const endEvent = {
           type: 'run-ended',
           runId,
           now: runtimeServices.clock.nowISO(),
-        });
+        } as const;
         // COR-1476 — a run that never starts has ended: it releases its gate
         // and, with no other run on the session, cancels the input left open.
         // Tracked rather than awaited, as a terminal listener's settlement is,
         // so a write that must be retried never holds this caller's rejection.
-        peers.trackSessionInputSettlement(peers.settleSessionInputsAfterRunEnd(sessionId, runId));
+        const settleFailedStart = async () => {
+          if (
+            request.reservation !== undefined &&
+            ledgerClaim !== undefined &&
+            steeringKv &&
+            steeringSession
+          ) {
+            try {
+              await peers.enqueueSteering(sessionId, () =>
+                peers.appendThenApplySteering(
+                  steeringKv,
+                  sessionId,
+                  steeringSession.incarnation,
+                  endEvent,
+                  false,
+                  ledgerClaim.condition,
+                ),
+              );
+              peers.logRunBoundarySteering(sessionId, steeringGate, endEvent);
+              peers.trackSessionInputSettlement(
+                peers.settleSessionInputsAfterRunEnd(sessionId, runId),
+              );
+            } catch (fenceError) {
+              if (!(fenceError instanceof ReservedRunSteeringFenceLostError)) throw fenceError;
+            }
+          } else {
+            peers.logRunBoundarySteering(sessionId, steeringGate, endEvent);
+            peers.trackSessionInputSettlement(
+              peers.settleSessionInputsAfterRunEnd(sessionId, runId),
+            );
+          }
+        };
+        await settleFailedStart();
         await markStartFailed(error);
         throw error;
       }
