@@ -265,13 +265,14 @@ describe('the reference documents of a saved agent (row 41t)', () => {
     expect(await form.addReference('style.md', 'Use short sentences.\n')).toBe(true);
     expect(await form.addReference('style.md', 'Use short sentences.\n')).toBe(false);
     const [staged] = form.stagedReferenceDocuments;
-    expect(staged?.path).toMatch(/^references\/researcher\/[a-f0-9]{64}\/style\.md$/);
+    if (staged === undefined) throw new Error('Expected the document to be staged.');
+    expect(staged.path).toMatch(/^references\/researcher\/[a-f0-9]{64}\/style\.md$/);
     expect(form.stagedReferenceDocuments).toEqual([
-      { path: staged?.path, text: 'Use short sentences.\n' },
+      { path: staged.path, text: 'Use short sentences.\n' },
     ]);
-    expect(form.toDefinition().references).toEqual([...documents, staged?.path]);
+    expect(form.toDefinition().references).toEqual([...documents, staged.path]);
     expect(form.changedParts).toEqual([AGENT_EDITOR_COPY.edit.references.heading]);
-    form.removeReference(staged!.path);
+    form.removeReference(staged.path);
     expect(form.stagedReferenceDocuments).toEqual([]);
   });
 
