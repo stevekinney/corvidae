@@ -5,17 +5,18 @@
  * @module agent-file-directory
  */
 
-import { isAbsolute, relative, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
 import type { Tool } from 'armorer';
 
 import { AGENT_FILE_EXTENSION, AGENT_FILE_SIZE_LIMIT } from '../agent-file';
 import { nodeAgentFileOperations } from './agent-file-operations';
 import { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './watched-directory';
-import type { AgentSource, SiblingRead } from './definition-source';
+import { SiblingExistsError, type AgentSource, type SiblingRead } from './definition-source';
 import { createDirectorySource, type DirectorySourceOptions } from './directory-source';
 import { pluginLayer } from './plugin-layer';
-import { assertReferencePath } from './reference-path';
+import { assertReferenceDocument, assertReferencePath } from './reference-path';
 
 /** What {@link agentFileDirectory} takes beyond the directory itself. */
 export interface AgentFileDirectoryOptions extends DirectorySourceOptions {
@@ -49,10 +50,7 @@ export function agentFileDirectory(
   );
   const operations = options.operations ?? nodeAgentFileOperations;
   const root = resolve(path);
-  async function readSibling(
-    sibling: string,
-    readOptions: { readonly limit: number; readonly unlessStamp?: string | undefined },
-  ): Promise<SiblingRead> {
+  function targetOf(sibling: string): string {
     assertReferencePath(sibling);
     const target = resolve(root, ...sibling.split('/'));
     const inside = relative(root, target);
@@ -62,6 +60,13 @@ export function agentFileDirectory(
         `The reference path ${JSON.stringify(sibling)} is outside the directory.`,
       );
     }
+    return target;
+  }
+  async function readSibling(
+    sibling: string,
+    readOptions: { readonly limit: number; readonly unlessStamp?: string | undefined },
+  ): Promise<SiblingRead> {
+    const target = targetOf(sibling);
     const info = await operations.stat(target);
     if (info === undefined) return { kind: 'missing' };
     if (info.size > readOptions.limit) return { kind: 'too-large', size: info.size };
@@ -73,9 +78,25 @@ export function agentFileDirectory(
     if (bytes.byteLength > readOptions.limit) return { kind: 'too-large', size: bytes.byteLength };
     return { kind: 'found', bytes, stamp };
   }
+  async function writeSibling(sibling: string, bytes: Uint8Array): Promise<void> {
+    const target = targetOf(sibling);
+    assertReferenceDocument(bytes);
+    const owned = bytes.slice();
+    await operations.makeDirectory(dirname(target));
+    const temporary = `${target}.${randomUUID()}.tmp`;
+    await operations.writeTemporary(temporary, owned);
+    try {
+      if ((await operations.publishNew(temporary, target)) === 'exists') {
+        throw new SiblingExistsError(sibling);
+      }
+    } finally {
+      await operations.remove(temporary);
+    }
+  }
   const agentSource: AgentSource = Object.assign(source, {
     kind: 'agent' as const,
     readSibling,
+    writeSibling,
     ...(options.watch === false
       ? {}
       : { referencePollMilliseconds: DIRECTORY_POLL_INTERVAL_MILLISECONDS }),

@@ -162,6 +162,10 @@ export const AGENT_EDITOR_COPY = {
       heading: 'Reference documents',
       note: 'Read with every chat',
       none: 'No reference documents',
+      add: 'Add a document',
+      drop: 'or drop files here',
+      invalidDocument: 'Choose a UTF-8 text document, not a PDF.',
+      documentTooLarge: 'A reference document may be at most 64 KB.',
       removeLabel: (path: string): string => `Remove ${path}`,
     },
     /** The demoted block at the foot of the form that holds the delete (row 41x). */

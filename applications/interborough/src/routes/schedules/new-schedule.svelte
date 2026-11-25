@@ -65,7 +65,7 @@
   import { defaultAgentQuery } from '../../lib/default-agent.ts';
   import { faultErrorStateAdvice, faultTreatment, isNetworkFailure } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { router, scheduleDetailPath } from '../../lib/router.svelte.ts';
+  import { LeaveGuard, router, scheduleDetailPath } from '../../lib/router.svelte.ts';
   import { getPrincipalStore, principalQueryScope, scopeGate } from '../../lib/scopes.svelte.ts';
   import {
     CATALOG_STALE_TIME_MS,
@@ -356,8 +356,6 @@
   /** Whether the create has taken longer than {@link SLOW_CREATE_MS}. */
   let slow = $state(false);
   let controller: AbortController | undefined;
-  /** Leaving was chosen, or a schedule was made: the page no longer asks. */
-  let leaving = false;
 
   $effect(() => {
     if (!creating) {
@@ -449,7 +447,7 @@
       inputField?.clear();
     },
     onSuccess: (id) => {
-      leaving = true;
+      leaveGuard.release();
       invalidateSchedules();
       void queryClient.invalidateQueries({ queryKey: ['workflow-catalog'] });
       router.navigate(scheduleDetailPath(id), { force: true });
@@ -686,31 +684,13 @@
       draft.agentName.trim() !== opened.agentName.trim(),
   );
   const started = $derived(isDraftStarted(draft, opened));
-  let discarding = $state(false);
-  let destination = LIST_PATH;
+  const leaveGuard = new LeaveGuard(() => started);
+  $effect(() => leaveGuard.attach());
   // A different workflow is a new attempt at the message that said one cannot be moved to.
   $effect(() => {
     void draft.workflowType;
     moved = false;
   });
-  $effect(() =>
-    router.guardLeaving((next) => {
-      if (leaving || !started) return true;
-      destination = next;
-      discarding = true;
-      return false;
-    }),
-  );
-
-  function discardAndLeave(): void {
-    leaving = true;
-    router.navigate(destination, { force: true });
-  }
-
-  function warnBeforeUnload(event: BeforeUnloadEvent): void {
-    if (started && !leaving) event.preventDefault();
-  }
-
   /** The cadence of a schedule that runs more often than the builder counts, as it is read, until the cadence is changed. */
   const exactCadence =
     target !== undefined && isSubMinuteInterval(cadenceOf(target.schedule))
@@ -756,8 +736,6 @@
     leave(event, path);
   }
 </script>
-
-<svelte:window onbeforeunload={warnBeforeUnload} />
 
 <section
   class="ib-schedule-new"
@@ -1062,11 +1040,11 @@
 {/snippet}
 
 <ConfirmDialog
-  bind:open={discarding}
+  bind:open={leaveGuard.asking}
   title={target === undefined ? copy.discard.title : editCopy.discard.title}
   description={target === undefined ? copy.discard.description : editCopy.discard.description}
   confirmLabel={copy.discard.confirm}
   cancelLabel={copy.discard.keep}
   destructive
-  onConfirm={discardAndLeave}
+  onConfirm={() => leaveGuard.leave()}
 />

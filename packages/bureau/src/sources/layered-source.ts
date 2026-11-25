@@ -155,10 +155,31 @@ export function layeredAgentSource(sources: readonly AgentSource[]): AgentSource
     return holder.readSibling(path, options);
   }
 
+  async function writeSibling(
+    path: string,
+    bytes: Uint8Array,
+    options: { readonly definitionId?: string | undefined } = {},
+  ): Promise<void> {
+    const { definitionId } = options;
+    let holder: AgentSource | undefined;
+    if (definitionId !== undefined && isNamespacedIdentifier(definitionId)) {
+      holder = layers.plugins.get(namespaceOf(definitionId));
+    } else {
+      if (definitionId !== undefined && layers.owners.length > 1) {
+        holder = await ownerHolding(layers.owners, definitionId);
+      }
+      holder ??= layers.owners[0];
+    }
+    if (holder === undefined)
+      throw new TypeError('This agent source has no owner layer to write a reference document.');
+    await holder.writeSibling(path, bytes, options);
+  }
+
   return {
     ...layeredDefinitionSource(layers),
     kind: 'agent',
     readSibling,
+    writeSibling,
     ...(Object.keys(tools).length === 0 ? {} : { tools }),
     ...(polls.length === 0 ? {} : { referencePollMilliseconds: Math.min(...polls) }),
   };

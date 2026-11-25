@@ -6,7 +6,7 @@
  * @module reference-path
  */
 
-import { agentReferencePathProblem } from '../agent-file';
+import { AGENT_REFERENCE_SIZE_LIMIT, agentReferencePathProblem } from '../agent-file';
 
 /** Throws a `TypeError` naming the path when it cannot be a reference path. */
 export function assertReferencePath(path: unknown): asserts path is string {
@@ -14,5 +14,21 @@ export function assertReferencePath(path: unknown): asserts path is string {
   const problem = agentReferencePathProblem(path);
   if (problem !== undefined) {
     throw new TypeError(`The reference path ${JSON.stringify(path)} ${problem}.`);
+  }
+}
+
+const textDecoder = new TextDecoder('utf-8', { fatal: true });
+
+/** Refuse bytes that cannot become one supported reference document before a source writes them. */
+export function assertReferenceDocument(bytes: Uint8Array): void {
+  if (bytes.byteLength > AGENT_REFERENCE_SIZE_LIMIT) {
+    throw new RangeError(
+      `A reference document may be at most ${String(AGENT_REFERENCE_SIZE_LIMIT)} bytes.`,
+    );
+  }
+  try {
+    textDecoder.decode(bytes);
+  } catch {
+    throw new TypeError('A reference document must be valid UTF-8 text.');
   }
 }

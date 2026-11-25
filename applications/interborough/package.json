@@ -31,6 +31,7 @@
     "@lostgradient/cinder": "workspace:*",
     "@lostgradient/credentials": "workspace:*",
     "@lostgradient/cryptography": "workspace:*",
+    "@lostgradient/editor": "workspace:*",
     "@lostgradient/environmentalist": "catalog:",
     "@lostgradient/interborough-plugin": "workspace:*",
     "@lostgradient/memory": "workspace:*",

@@ -8,10 +8,11 @@ import {
   type DefinitionEntry,
   type DefinitionSourceChange,
   hashDefinitionBytes,
+  SiblingExistsError,
   SourceConflictError,
   type WorkflowSource,
 } from '../sources/definition-source.ts';
-import { assertReferencePath } from '../sources/reference-path.ts';
+import { assertReferenceDocument, assertReferencePath } from '../sources/reference-path.ts';
 
 export interface MemoryDefinitionSource<TSource extends AgentSource | WorkflowSource> {
   readonly source: TSource;
@@ -85,6 +86,12 @@ export function createMemoryDefinitionSource<TKind extends 'agent' | 'workflow'>
       if (options.unlessStamp === stamp) return { kind: 'unchanged' };
       siblingContentReads += 1;
       return { kind: 'found', bytes: held.bytes, stamp };
+    },
+    async writeSibling(path: string, bytes: Uint8Array) {
+      assertReferencePath(path);
+      assertReferenceDocument(bytes);
+      if (siblings.has(path)) throw new SiblingExistsError(path);
+      siblings.set(path, { bytes: bytes.slice(), version: (siblingVersion += 1) });
     },
     watch(listener: (change: DefinitionSourceChange) => void) {
       listeners.add(listener);

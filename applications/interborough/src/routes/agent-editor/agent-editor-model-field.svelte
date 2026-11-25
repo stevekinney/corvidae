@@ -41,12 +41,18 @@
   /** The prefix of the value that stands for a provider with no key, which is never a model. */
   const UNCONNECTED = 'unconnected:';
 
+  /** The compact capability caption used by the agent editor's model picker. */
+  function contextCaption(context: string): string {
+    return `${context} context`;
+  }
+
   function abilityLine(choice: ModelChoice): string {
     if (choice.row === undefined) return '';
     const abilities = abilitiesOf(choice.row);
     return abilitiesSentence([
-      copy.context(abilities.context),
+      ...(choice.row.modelClass === undefined ? [] : [choice.row.modelClass]),
       ...abilities.has.map((ability) => copy.abilities[ability]),
+      contextCaption(abilities.context),
     ]);
   }
 
@@ -155,13 +161,15 @@
       aria-label={copy.abilitiesLabel}
       data-testid="agent-model-abilities"
     >
+      {#if chosen?.row?.modelClass !== undefined}
+        <span>{chosen.row.modelClass}</span>
+      {/if}
       {#each abilities.has as ability (ability)}
         <span>{copy.abilities[ability]}</span>
       {:else}
         <span>{copy.textOnly}</span>
       {/each}
-      <span>{copy.context(abilities.context)}</span>
-      <span>{copy.maxOutput(abilities.maxOutput)}</span>
+      <span>{contextCaption(abilities.context)}</span>
     </div>
   {/if}
 

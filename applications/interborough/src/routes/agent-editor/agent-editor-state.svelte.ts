@@ -352,7 +352,12 @@ export class AgentEditorState {
    * lands in the directory they sit in (a plugin's agent is refused by the Bureau); a trial runs
    * without them, because there is no file for them to sit beside.
    */
-  readonly references: readonly string[];
+  references = $state<readonly string[]>([]);
+
+  /** New document bytes staged in this form until its definition save succeeds. */
+  #stagedReferences = $state<
+    readonly { readonly name: string; readonly digest: string; readonly text: string }[]
+  >([]);
 
   /**
    * The reference documents a person removed from a saved agent's form (row 41t). The documents
@@ -415,7 +420,9 @@ export class AgentEditorState {
       keptModel(this.#writtenModel, catalog, context.hostProviders),
     );
     if (definition === null) {
-      this.#model = firstAvailableModel(this.modelGroups);
+      // A fresh agent must make an explicit model choice. A copied scripted agent keeps the
+      // established fallback below, because its source already supplies the rest of a definition.
+      this.#model = '';
       return;
     }
     this.name = definition.name;
@@ -459,8 +466,8 @@ export class AgentEditorState {
   /**
    * This new agent's form again, built from a catalog that has now been read, with what was typed
    * carried over: the name, the identifier if it was typed, the description, the instructions and
-   * the A2A switch. The model is the first one offered, and what counts as changed is still
-   * measured from the form as it was first built.
+   * the A2A switch. The model remains unselected until the person chooses it, and what counts as
+   * changed is still measured from the form as it was first built.
    */
   withCatalog(catalog: AgentCatalog, context: ModelContext = {}): AgentEditorState {
     const next = new AgentEditorState('create', catalog, undefined, context);
@@ -470,7 +477,7 @@ export class AgentEditorState {
     next.instructions = this.instructions;
     next.a2a = this.a2a;
     next.#attempted = this.#attempted;
-    // The model the catalog starts the form on was not chosen by the person, so it is no change.
+    // The blank model was not chosen by the person, so it is no change.
     const chosen = next.#parts();
     next.#baseline =
       this.#baseline === undefined ? undefined : { ...this.#baseline, model: chosen.model };
@@ -723,7 +730,43 @@ export class AgentEditorState {
 
   /** The reference documents the form keeps, in the file's order: what a save of a saved agent writes (row 41t). */
   get referencesKept(): readonly string[] {
-    return this.references.filter((path) => !this.#removedReferences.includes(path));
+    return [
+      ...this.references.filter((path) => !this.#removedReferences.includes(path)),
+      ...this.#stagedReferences.map((document) => this.stagedReferencePath(document)),
+    ];
+  }
+
+  /** Documents that must be published beside the file when this form saves. */
+  get stagedReferenceDocuments(): readonly { readonly path: string; readonly text: string }[] {
+    return this.#stagedReferences.map((document) => ({
+      path: this.stagedReferencePath(document),
+      text: document.text,
+    }));
+  }
+
+  /** Adds a locally staged document once; it becomes durable only with a successful save. */
+  async addReference(name: string, text: string): Promise<boolean> {
+    const digest = Array.from(
+      new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))),
+      (byte) => byte.toString(16).padStart(2, '0'),
+    ).join('');
+    if (
+      this.#stagedReferences.some(
+        (document) => document.name === name && document.digest === digest,
+      )
+    ) {
+      return false;
+    }
+    this.#stagedReferences = [...this.#stagedReferences, { name, digest, text }];
+    return true;
+  }
+
+  /** A staged upload belongs only to the agent this save writes, with its filename still visible. */
+  private stagedReferencePath(document: {
+    readonly name: string;
+    readonly digest: string;
+  }): string {
+    return `references/${this.identifier}/${document.digest}/${document.name}`;
   }
 
   /**
@@ -896,12 +939,13 @@ export class AgentEditorState {
   toDefinition(): AgentDefinitionInput {
     return {
       ...this.toTryDefinition(),
-      ...(this.mode === 'create' && this.references.length > 0
-        ? { references: this.references }
+      ...(this.mode === 'create' && this.referencesKept.length > 0
+        ? { references: this.referencesKept }
         : {}),
       // A saved agent leaves its documents to the file, unless one was removed: then the list
       // without it is written, and `null` once none is left.
-      ...(this.mode === 'edit' && this.#removedReferences.length > 0
+      ...(this.mode === 'edit' &&
+      (this.#removedReferences.length > 0 || this.#stagedReferences.length > 0)
         ? { references: this.referencesKept.length === 0 ? null : this.referencesKept }
         : {}),
     };

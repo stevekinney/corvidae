@@ -52,9 +52,11 @@ const catalog = (): AgentCatalog =>
         provider: 'anthropic',
         model: 'claude-sonnet-5',
         aliases: [{ alias: 'sonnet', resolvesTo: 'claude-sonnet-5' }],
+        modelClass: 'Balanced',
         contextWindowTokens: 1_000_000,
         maxOutputTokens: 64_000,
-        structuredOutput: true,
+        structuredOutput: false,
+        streaming: false,
         modalities: { text: { input: true }, image: { input: true } },
       },
       { provider: 'openai', model: 'gpt-4.1', tools: false, streaming: false, modalities: {} },
@@ -119,7 +121,7 @@ describe('the models of a new agent', () => {
     const calls = bureau();
     const { findByRole, getByRole } = mountEditor();
     const field = await findByRole('combobox', { name: 'Model' });
-    expect(field).toHaveValue('Claude Sonnet 5');
+    expect(field).toHaveValue('');
 
     await openModelOptions(field, { clear: false });
     await fireEvent.input(field, { target: { value: 'gPt 4.1' } });
@@ -158,13 +160,13 @@ describe('the models of a new agent', () => {
     ]);
   });
 
-  test('are all listed when the field is opened as it stands, with the chosen model in it', async () => {
+  test('are all listed when the blank field is opened', async () => {
     bureau({ hostProviders: [{ name: 'anthropic', hasKey: true, connected: true }] });
     const { findByRole } = mountEditor();
     const field = await findByRole('combobox', { name: 'Model' });
-    expect(field).toHaveValue('Claude Sonnet 5');
+    expect(field).toHaveValue('');
 
-    // Nothing is cleared: the text is the chosen model's name, which must not narrow the list to it.
+    // Nothing is typed, so opening the blank field must not narrow the list.
     await openModelOptions(field, { clear: false });
     expect(groupsOf()).toEqual([
       { name: 'Anthropic', options: ['Claude Sonnet 5'] },
@@ -196,7 +198,7 @@ describe('the models of a new agent', () => {
     // Pressing it chooses nothing.
     await fireEvent.mouseDown(gemini as HTMLElement);
     await closeModelList(await findByRole('combobox', { name: 'Model' }));
-    expect(await findByRole('combobox', { name: 'Model' })).toHaveValue('Claude Sonnet 5');
+    expect(await findByRole('combobox', { name: 'Model' })).toHaveValue('');
 
     // The line under the field names the provider and links to the page that connects it.
     const hint = getByTestId('agent-model-unconnected');
@@ -221,15 +223,16 @@ describe('the models of a new agent', () => {
     expect(second.queryByTestId('agent-model-unconnected')).toBeNull();
   });
 
-  test('show the abilities of the chosen model, and of the next one once it is chosen', async () => {
+  test('shows the declared class and abilities of the selected model, and of the next one once it is chosen', async () => {
     bureau();
     const { findByRole, getByTestId } = mountEditor();
     const field = await findByRole('combobox', { name: 'Model' });
+    await chooseModel(field, 'Claude Sonnet 5');
     const abilities = getByTestId('agent-model-abilities');
 
-    expect(within(abilities).getByText(copy.context('1M'))).not.toBeNull();
-    expect(within(abilities).getByText(copy.maxOutput('64K'))).not.toBeNull();
-    for (const ability of ['tools', 'images', 'structuredOutput', 'streaming'] as const) {
+    expect(within(abilities).getByText('Balanced')).not.toBeNull();
+    expect(within(abilities).getByText('1M context')).not.toBeNull();
+    for (const ability of ['tools', 'images'] as const) {
       expect(within(abilities).getByText(copy.abilities[ability])).not.toBeNull();
     }
     expect(abilities).toHaveAccessibleName(copy.abilitiesLabel);
@@ -237,18 +240,19 @@ describe('the models of a new agent', () => {
     await chooseModel(field, 'GPT 4.1');
 
     await waitFor(() => expect(within(abilities).getByText(copy.textOnly)).not.toBeNull());
-    expect(within(abilities).getByText(copy.context('200K'))).not.toBeNull();
+    expect(within(abilities).getByText('200K context')).not.toBeNull();
     expect(within(abilities).queryByText(copy.abilities.tools)).toBeNull();
     expect(within(abilities).queryByText(copy.abilities.images)).toBeNull();
+    expect(within(abilities).queryByText('Balanced')).toBeNull();
   });
 
   test('describe each model they can offer by what it can do', async () => {
     bureau();
     const { findByRole } = mountEditor();
     const options = await openModelOptions(await findByRole('combobox', { name: 'Model' }));
-    // One line, as a sentence reads: lower case after the first part (design review 3).
+    // One line, with an explicit class first and later parts in sentence case (design review 3).
     expect(optionDescription(options[0] as HTMLElement)).toBe(
-      '1M context window, tools, images, structured output, streaming',
+      'Balanced, tools, images, 1M context',
     );
   });
 });
@@ -259,7 +263,7 @@ describe('a model the model policy forbids', () => {
     policyRevision: 2,
   };
 
-  test('is listed with its reason, cannot be chosen, and is never the default', async () => {
+  test('is listed with its reason, cannot be chosen, and starts unselected', async () => {
     bureau({
       catalog: catalogFixture({
         models: [
@@ -272,8 +276,7 @@ describe('a model the model policy forbids', () => {
     });
     const { findByRole } = mountEditor();
     const field = await findByRole('combobox', { name: 'Model' });
-    // The first model that is not forbidden.
-    expect(field).toHaveValue('Claude Sonnet 5');
+    expect(field).toHaveValue('');
 
     const options = await openModelOptions(field);
     const byName = Object.fromEntries(options.map((option) => [optionLabel(option), option]));
@@ -288,7 +291,7 @@ describe('a model the model policy forbids', () => {
 
     await fireEvent.mouseDown(byName['GPT 4.1'] as HTMLElement);
     await closeModelList(field);
-    expect(field).toHaveValue('Claude Sonnet 5');
+    expect(field).toHaveValue('');
   });
 
   test('leaves a new agent nothing to save when every model is forbidden', async () => {
@@ -314,7 +317,7 @@ describe('a model the model policy forbids', () => {
       },
     });
     const { findByRole } = mountEditor();
-    expect(await findByRole('combobox', { name: 'Model' })).toHaveValue('Claude Sonnet 5');
+    expect(await findByRole('combobox', { name: 'Model' })).toHaveValue('');
   });
 });
 
@@ -331,7 +334,7 @@ describe('a model turned off or retired', () => {
     });
     const { findByRole } = mountEditor();
     const field = await findByRole('combobox', { name: 'Model' });
-    expect(field).toHaveValue('Current');
+    expect(field).toHaveValue('');
     const options = await openModelOptions(field);
     expect(
       options.map((option) => [optionLabel(option), optionDescription(option) === '' ? '' : 'x']),
