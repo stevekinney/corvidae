@@ -78,6 +78,7 @@ function collectCounts(
   else counts.set(key, { count: 1, node });
 
   if (node.kind === 'array') collectCounts(node.element, counts);
+  else if (node.kind === 'record' && node.value !== undefined) collectCounts(node.value, counts);
   else if (node.kind === 'union') for (const member of node.members) collectCounts(member, counts);
   else if (node.kind === 'object')
     for (const field of node.fields) collectCounts(field.value, counts);
@@ -152,6 +153,7 @@ function countAliasReferences(
   /** Count alias references among the children of `node` (not `node` itself). */
   const countChildren = (node: TypeNode) => {
     if (node.kind === 'array') visitChild(node.element);
+    else if (node.kind === 'record' && node.value !== undefined) visitChild(node.value);
     else if (node.kind === 'union') for (const member of node.members) visitChild(member);
     else if (node.kind === 'object') for (const field of node.fields) visitChild(field.value);
   };
@@ -190,6 +192,7 @@ function countAliasReferences(
       countChildren(node);
     }
     if (node.kind === 'array') collectBodies(node.element);
+    else if (node.kind === 'record' && node.value !== undefined) collectBodies(node.value);
     else if (node.kind === 'union') for (const member of node.members) collectBodies(member);
     else if (node.kind === 'object') for (const field of node.fields) collectBodies(field.value);
   };
