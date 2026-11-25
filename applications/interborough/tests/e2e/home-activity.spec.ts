@@ -955,8 +955,10 @@ async function holdArrivalsOnReviewLink(page: Page, width: number) {
 test.describe('Home activity: following a held row (COR-2227, F7-26)', () => {
   test('activity followed by Enter at 1280: Home is left with no page error', async ({ page }) => {
     await holdArrivalsOnReviewLink(page, 1280);
+    const origin = new URL(page.url()).origin;
     await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(/\/reviews$/);
+    await expectReviewsSettled(page);
+    expect(new URL(page.url()).origin).toBe(origin);
     await page.goBack();
     await bandsReady(page);
   });
@@ -966,8 +968,13 @@ test.describe('Home activity: following a held row (COR-2227, F7-26)', () => {
 
     test('activity followed by a tap at 375: Home is left with no page error', async ({ page }) => {
       const link = await holdArrivalsOnReviewLink(page, 375);
+      const origin = new URL(page.url()).origin;
       await link.tap();
-      await expect(page).toHaveURL(/\/reviews$/);
+      await expect(page.locator('[data-review-row]').first()).toBeVisible();
+      await expect(page).toHaveURL(
+        (url) =>
+          url.origin === origin && url.pathname === '/reviews' && url.searchParams.size === 0,
+      );
       await page.goBack();
       await bandsReady(page);
     });
