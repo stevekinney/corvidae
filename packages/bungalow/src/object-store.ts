@@ -98,13 +98,39 @@ function element(xml: string, name: string): string | undefined {
   return match?.[1] === undefined ? undefined : decodeXml(match[1]);
 }
 
-/** Read a `ListBucketResult` document. */
+/** What a listing that is not a complete `ListBucketResult` rejects with. */
+function malformedListing(): ObjectStoreRequestError {
+  return new ObjectStoreRequestError('MalformedListing', undefined);
+}
+
+/** How many times `<name>` opens (with or without attributes) in `xml`. */
+function openings(xml: string, name: string): number {
+  return xml.match(new RegExp(`<${name}[\\s>]`, 'g'))?.length ?? 0;
+}
+
+/**
+ * Read a `ListBucketResult` document, or reject one that is not complete. A truncated or malformed
+ * answer must never read as an empty page: an empty page is what lets a remote open bootstrap a
+ * fresh identity over existing content. The document must open and close `ListBucketResult` once,
+ * every `Contents` must close and hold a `Key`, `IsTruncated` must be `true` or `false`, a
+ * truncated page must name its continuation token, and a `KeyCount` must match the keys.
+ */
 function parseListing(xml: string): ObjectListing {
+  const body = xml.trim();
+  if (
+    openings(body, 'ListBucketResult') !== 1 ||
+    !/<ListBucketResult[\s>]/.test(body) ||
+    !body.endsWith('</ListBucketResult>')
+  ) {
+    throw malformedListing();
+  }
+  const blocks = [...body.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)];
+  if (blocks.length !== openings(body, 'Contents')) throw malformedListing();
   const contents: ListedObjectEntry[] = [];
-  for (const match of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
+  for (const match of blocks) {
     const block = match[1] ?? '';
     const key = element(block, 'Key');
-    if (key === undefined) continue;
+    if (key === undefined || key === '') throw malformedListing();
     const entry: ListedObjectEntry = { key };
     const eTag = element(block, 'ETag');
     if (eTag !== undefined) entry.eTag = eTag;
@@ -114,11 +140,17 @@ function parseListing(xml: string): ObjectListing {
     if (lastModified !== undefined) entry.lastModified = lastModified;
     contents.push(entry);
   }
-  const listing: ObjectListing = { contents, isTruncated: element(xml, 'IsTruncated') === 'true' };
-  const token = element(xml, 'NextContinuationToken');
+  const truncated = element(body, 'IsTruncated');
+  if (truncated !== 'true' && truncated !== 'false') throw malformedListing();
+  const listing: ObjectListing = { contents, isTruncated: truncated === 'true' };
+  const token = element(body, 'NextContinuationToken');
   if (token !== undefined) listing.nextContinuationToken = token;
-  const keyCount = element(xml, 'KeyCount');
-  if (keyCount !== undefined && /^\d+$/.test(keyCount)) listing.keyCount = Number(keyCount);
+  if (listing.isTruncated && (token === undefined || token === '')) throw malformedListing();
+  const keyCount = element(body, 'KeyCount');
+  if (keyCount !== undefined) {
+    if (!/^\d+$/.test(keyCount) || Number(keyCount) !== contents.length) throw malformedListing();
+    listing.keyCount = Number(keyCount);
+  }
   return listing;
 }
 

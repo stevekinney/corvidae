@@ -321,6 +321,51 @@ describe('remote mode: an injected presigner', () => {
     expect((error as Error).cause).toEqual({ status: 500 });
   });
 
+  // Codex review on #1286: a 200 whose body is not a complete listing once read as an empty page,
+  // which let the bootstrap write fresh identity markers over existing content.
+  const MALFORMED_LISTINGS = [
+    ['a truncated document', '<ListBucketResult><Contents><Key>sentinel-prefix/agents/a.md</Key>'],
+    [
+      'an unclosed Contents',
+      '<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>a</Key></ListBucketResult>',
+    ],
+    [
+      'a Contents with no Key',
+      '<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Size>1</Size></Contents></ListBucketResult>',
+    ],
+    ['no IsTruncated', '<ListBucketResult><KeyCount>0</KeyCount></ListBucketResult>'],
+    [
+      'a truncated page with no token',
+      '<ListBucketResult><IsTruncated>true</IsTruncated></ListBucketResult>',
+    ],
+    [
+      'a KeyCount the keys contradict',
+      '<ListBucketResult><KeyCount>3</KeyCount><IsTruncated>false</IsTruncated></ListBucketResult>',
+    ],
+    ['an empty body', ''],
+    ['an HTML page', '<html><body>ok</body></html>'],
+  ] as const;
+  for (const [name, body] of MALFORMED_LISTINGS) {
+    test(`a listing answered 200 with ${name} refuses the open before any write`, async () => {
+      const proxy = startProxy(startServer());
+      proxy.intercept(({ key }) => (key === '' ? new Response(body, { status: 200 }) : undefined));
+      const error = await rejectionOf(openRemote(proxy.endpoint));
+      expect(error).toBeInstanceOf(BungalowFilesystemError);
+      expect((error as Error).cause).toEqual({ code: 'MalformedListing' });
+      expect(proxy.requests.filter(({ method }) => method === 'PUT')).toEqual([]);
+    });
+  }
+
+  test('a malformed listing rejects objectStore().list rather than reading as empty', async () => {
+    const proxy = startProxy(startServer());
+    using bungalow = await openRemote(proxy.endpoint);
+    proxy.intercept(({ key }) =>
+      key === '' ? new Response('<ListBucketResult><Contents>', { status: 200 }) : undefined,
+    );
+    const error = await rejectionOf(bungalow.objectStore()?.list({ prefix: `${PREFIX}/` }));
+    expect(error).toMatchObject({ name: 'ObjectStoreRequestError', code: 'MalformedListing' });
+  });
+
   test('a factory that returns no function is refused before any request', async () => {
     const proxy = startProxy(startServer());
     const error = await throwingRejectionOf(
