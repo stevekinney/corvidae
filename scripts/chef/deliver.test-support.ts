@@ -91,8 +91,8 @@ export async function createDeliveryFixture(
   directory: string,
   worktree: string,
   route = 'pull-request',
-  /** `dispatch`: a manual dispatch, whose pinned digest is the batch digest unless `stale`. */
-  identity: { dispatch?: boolean; stale?: boolean; none?: boolean } = {},
+  /** A manual dispatch pins the batch digest unless `stale`. */
+  identity: { stale?: boolean; none?: boolean } = {},
 ): Promise<{ binding: DeliveryVerification; dependencies: DeliveryVerificationDependencies }> {
   const state = createExecutionStateStore({
     stateDirectory: join(directory, 'state'),
@@ -189,14 +189,10 @@ export async function createDeliveryFixture(
   // `none`: a request that pins no CI run, as one covered by a targeted run has none to pin.
   if (identity.none !== true)
     request.ciEvidence = [
-      identity.dispatch === true
-        ? landingIdentity(request, {
-            event: 'workflow_dispatch',
-            ...(identity.stale === true
-              ? {}
-              : { verificationPlanDigest: batchVerificationPlanDigest(request.members) }),
-          })
-        : landingIdentity(request),
+      landingIdentity(request, {
+        verificationPlanDigest:
+          identity.stale === true ? undefined : batchVerificationPlanDigest(request.members),
+      }),
     ];
   const text = JSON.stringify(request);
   const file = join(directory, 'verification.json');

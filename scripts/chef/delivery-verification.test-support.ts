@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
 import type { DeliveryRequest } from './delivery-completion.ts';
+import { batchVerificationPlanDigest } from './delivery-completion.ts';
 import type {
   DeliveryVerification,
   DeliveryVerificationDependencies,
@@ -167,10 +168,6 @@ export async function createDeliveryVerificationFixture(
   const { plan, providerRuns, ...common } = source;
   const request: DeliveryRequest = {
     ...common,
-    // A conflicting branch has no integration tree to pin, and is refused before any evidence.
-    ...(options.landing === true && /^[0-9a-f]{40,64}$/.test(common.integrationTree)
-      ? { ciEvidence: [landingIdentity(common)] }
-      : {}),
     worktree: directory,
     members: [
       {
@@ -187,6 +184,13 @@ export async function createDeliveryVerificationFixture(
       },
     ],
   };
+  // A conflicting branch has no integration tree to pin, and is refused before any evidence.
+  if (options.landing === true && /^[0-9a-f]{40,64}$/.test(common.integrationTree))
+    request.ciEvidence = [
+      landingIdentity(common, {
+        verificationPlanDigest: batchVerificationPlanDigest(request.members),
+      }),
+    ];
   const text = JSON.stringify(request);
   const file = join(outputDirectory, 'verification.json');
   writeFileSync(file, text);
