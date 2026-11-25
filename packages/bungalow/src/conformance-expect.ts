@@ -19,8 +19,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function definedKeys(value: Record<string, unknown>): string[] {
-  return Object.keys(value).filter((key) => value[key] !== undefined);
+function definedEntries(value: Record<string, unknown>): [string, unknown][] {
+  return Object.entries(value).filter(([, entry]) => entry !== undefined);
 }
 
 function equal(left: unknown, right: unknown): boolean {
@@ -38,10 +38,12 @@ function equal(left: unknown, right: unknown): boolean {
       left.every((byte, index) => byte === right[index])
     );
   }
-  const leftKeys = definedKeys(left);
-  const rightKeys = definedKeys(right);
-  if (leftKeys.length !== rightKeys.length) return false;
-  return leftKeys.every((key) => Object.hasOwn(right, key) && equal(left[key], right[key]));
+  const leftEntries = definedEntries(left);
+  const rightValues = new Map(definedEntries(right));
+  if (leftEntries.length !== rightValues.size) return false;
+  return leftEntries.every(
+    ([key, value]) => rightValues.has(key) && equal(value, rightValues.get(key)),
+  );
 }
 
 function matches(actual: unknown, expected: unknown): boolean {

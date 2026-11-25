@@ -6,11 +6,11 @@
  * It imports only the package source and Node built-ins: no `bun:` module, no `Bun` global, and no
  * `@lostgradient/testing` helper, so a pass here means the package itself runs on Node. It covers
  * a local open on the portable lock, the lock refusing a second holder in this process and in
- * another, the default lock's refusal on Node, local secrets and configuration, a remote open's
+ * another Node process the parent started (`BUNGALOW_NODE_HELD_ROOT`, `BUNGALOW_NODE_HOLDER_PID`),
+ * the default lock's refusal on Node, local secrets and configuration, a remote open's
  * conditional writes and listing, and the runner-neutral conformance suites under `node:test`.
  */
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -45,40 +45,6 @@ async function rejection(promise: Promise<unknown>): Promise<unknown> {
     return error;
   }
   throw new Error('Expected a rejection.');
-}
-
-/**
- * A second Node process that holds the portable lock on `root` until its stdin closes. Resolves
- * with its process identifier once it reports that it holds the lock, and a way to kill it.
- */
-async function holdInAnotherProcess(
-  root: string,
-): Promise<{ readonly pid: number; kill(): Promise<void> }> {
-  const child = spawn(
-    process.execPath,
-    [join(import.meta.dirname, 'node-lock-holder.test-support.ts'), root],
-    { stdio: ['pipe', 'pipe', 'inherit'] },
-  );
-  const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
-  const line = await new Promise<string>((resolve, reject) => {
-    let buffer = '';
-    child.stdout.setEncoding('utf8');
-    child.stdout.on('data', (chunk: string) => {
-      buffer += chunk;
-      const newline = buffer.indexOf('\n');
-      if (newline !== -1) resolve(buffer.slice(0, newline));
-    });
-    child.once('exit', () => reject(new Error(`The holder exited early: ${buffer}`)));
-  });
-  assert.equal(line, 'HELD');
-  assert.ok(child.pid !== undefined);
-  return {
-    pid: child.pid,
-    async kill() {
-      child.kill('SIGKILL');
-      await exited;
-    },
-  };
 }
 
 describe('on Node', () => {
@@ -130,19 +96,15 @@ describe('a local home on the portable lock', () => {
     next.close();
   });
 
-  test('refuses while another process holds it, and admits once that process dies', async () => {
-    const root = temporaryRoot();
-    const holder = await holdInAnotherProcess(root);
-    try {
-      const refused = await rejection(openLocal(root));
-      assert.ok(refused instanceof BungalowLockedError);
-      assert.equal(refused.holderProcessIdentifier, holder.pid);
-    } finally {
-      // SIGKILL: the holder releases nothing itself, so only the kernel can free the lock.
-      await holder.kill();
-    }
-    const next = await openLocal(root);
-    next.close();
+  test('refuses while another Node process holds it, naming that process', async () => {
+    // The parent started the holder (test processes start through its hang guard) and names it
+    // here; after this suite it kills the holder and checks that the root is free again.
+    const root = process.env['BUNGALOW_NODE_HELD_ROOT'];
+    const holder = Number(process.env['BUNGALOW_NODE_HOLDER_PID']);
+    assert.ok(root !== undefined && Number.isSafeInteger(holder) && holder > 0);
+    const refused = await rejection(openLocal(root));
+    assert.ok(refused instanceof BungalowLockedError);
+    assert.equal(refused.holderProcessIdentifier, holder);
   });
 });
 

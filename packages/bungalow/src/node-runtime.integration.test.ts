@@ -53,27 +53,47 @@ const nodeVersion = versionResult.stdout.toString().trim();
 
 // Every child runs here, at module scope, off Bun's per-test clock; each test rethrows its outcome.
 
+/**
+ * The Node suite, with a second Node process holding one root on the portable lock while it runs.
+ * Afterwards the holder is killed with SIGKILL, so it releases nothing itself, and a third Node
+ * process must then be admitted: only the kernel can have freed the lock.
+ */
+let holderAnswer = '';
+let afterHolderDied = '';
 const suite = await outcomeOf(async () => {
   const server = createS3TestServer({ bucket: 'node-bucket' });
+  const heldRoot = temporaryRoot();
   try {
-    const result = await runWithHangGuard(
-      [node, '--test', '--test-reporter=tap', join(HERE, 'node-runtime.test-support.ts')],
-      {
-        env: {
-          ...processEnvironment(),
-          BUNGALOW_NODE_S3_ENDPOINT: server.endpoint,
-          BUNGALOW_NODE_S3_BUCKET: server.bucket,
+    const holder = await startHolder(node, heldRoot, 'portable');
+    holderAnswer = holder.answer;
+    try {
+      const result = await runWithHangGuard(
+        [node, '--test', '--test-reporter=tap', join(HERE, 'node-runtime.test-support.ts')],
+        {
+          env: {
+            ...processEnvironment(),
+            BUNGALOW_NODE_S3_ENDPOINT: server.endpoint,
+            BUNGALOW_NODE_S3_BUCKET: server.bucket,
+            BUNGALOW_NODE_HELD_ROOT: heldRoot,
+            BUNGALOW_NODE_HOLDER_PID: String(holder.pid),
+          },
         },
-      },
-    );
-    const output = result.stdout.toString();
-    if (result.exitCode !== 0 || !/^# fail 0$/m.test(output) || /^# pass 0$/m.test(output)) {
-      throw new Error(
-        `node --test failed under ${nodeVersion}:\n${output}\n${result.stderr.toString()}`,
       );
+      const output = result.stdout.toString();
+      if (result.exitCode !== 0 || !/^# fail 0$/m.test(output) || /^# pass 0$/m.test(output)) {
+        throw new Error(
+          `node --test failed under ${nodeVersion}:\n${output}\n${result.stderr.toString()}`,
+        );
+      }
+    } finally {
+      await holder.stop();
     }
+    const next = await startHolder(node, heldRoot, 'portable');
+    afterHolderDied = next.answer;
+    await next.stop();
   } finally {
     await server.stop();
+    rmSync(heldRoot, { recursive: true, force: true });
   }
 });
 
@@ -93,8 +113,8 @@ async function startHolder(runtime: string, root: string, lock: 'portable' | 'de
   return {
     pid: child.pid,
     answer: text.trim(),
+    /** SIGKILL, with stdin still open, so the holder never runs its own `close()`. */
     async stop() {
-      await child.stdin.end();
       child.kill('SIGKILL');
       await child.exited;
     },
@@ -153,6 +173,12 @@ const nodeHoldsPortable = await outcomeOf(async () => {
 describe(`Bungalow on native Node (${nodeVersion})`, () => {
   test('the Node subset passes under node --test', () => {
     rethrow(suite);
+  });
+
+  test('a SIGKILLed Node holder frees the portable lock for the next Node process', () => {
+    rethrow(suite);
+    expect(holderAnswer).toBe('HELD');
+    expect(afterHolderDied).toBe('HELD');
   });
 });
 
