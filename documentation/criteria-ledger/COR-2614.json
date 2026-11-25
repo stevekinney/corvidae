@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2614",
+  "branch": "steve/composable-reviewed-contributions",
+  "checkedAt": "fc9ce01c81480f6fa411767a0153a7b60d25c87b",
+  "briefVersion": "543c524e5893",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "tool-operations.test.ts: pinned catalog, schemas, access and rejection of unsupported hooks; Armorer approval-only policy test"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "tool-operations.test.ts: 96 assertions, durable reopen, pre-decision missing provenance, native regate, replay and authority"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "tool-operations.test.ts: generated catalog and real JSON-RPC/MCP matching public values"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "tool-operations.test.ts and create-bureau-handler.test.ts: non-payment contribution, cookie policy, registrar and callbacks"
+    }
+  ]
+}
