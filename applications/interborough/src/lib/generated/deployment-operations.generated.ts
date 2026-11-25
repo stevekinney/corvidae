@@ -17,7 +17,10 @@ export type DeploymentOperationTypes = {
             readonly modality: string;
           }>;
           readonly mimeFamilies: ReadonlyArray<string>;
-          readonly modalities: Record<string, unknown>;
+          readonly modalities: Record<
+            string,
+            { readonly input: boolean; readonly output: boolean }
+          >;
         } | null;
         readonly name: string;
         readonly tools?: ReadonlyArray<string>;

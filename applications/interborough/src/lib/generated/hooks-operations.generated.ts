@@ -2,7 +2,7 @@
 import type {
   SharedActionCreatedAtDeclaredB_05496490,
   SharedActionCreatedAtDeclaredB_7f1f9c4c,
-  SharedActionTypeAttemptsCreate_605da491,
+  SharedActionTypeAttemptsCreate_94e70c6b,
   SharedConfigurationKindPlugin_6e16570b,
   SharedConfigurationKindPlugin_dcec41c8,
   SharedDryRunEffectsTarget_b07628bd,
@@ -41,18 +41,18 @@ export type HooksOperationTypes = {
   'bureau.hooks.deliveries': {
     readonly input: { readonly hookId: string; readonly limit?: number };
     readonly output: {
-      readonly deliveries: ReadonlyArray<SharedActionTypeAttemptsCreate_605da491>;
+      readonly deliveries: ReadonlyArray<SharedActionTypeAttemptsCreate_94e70c6b>;
     };
     readonly faults: 'NotFound' | 'UnsupportedCapability';
   };
   'bureau.hooks.deliveries.retry': {
     readonly input: { readonly deliveryId: string; readonly hookId: string };
-    readonly output: SharedActionTypeAttemptsCreate_605da491;
+    readonly output: SharedActionTypeAttemptsCreate_94e70c6b;
     readonly faults: 'InvalidParams' | 'NotFound' | 'UnsupportedCapability';
   };
   'bureau.hooks.draft.test': {
     readonly input: { readonly signingSecret?: string; readonly url: string };
-    readonly output: SharedActionTypeAttemptsCreate_605da491;
+    readonly output: SharedActionTypeAttemptsCreate_94e70c6b;
     readonly faults: 'Forbidden' | 'InvalidParams' | 'UnsupportedCapability';
   };
   'bureau.hooks.duplicate': {
@@ -155,7 +155,7 @@ export type HooksOperationTypes = {
   };
   'bureau.hooks.test': {
     readonly input: { readonly hookId: string };
-    readonly output: SharedActionTypeAttemptsCreate_605da491;
+    readonly output: SharedActionTypeAttemptsCreate_94e70c6b;
     readonly faults: 'InvalidParams' | 'NotFound' | 'UnsupportedCapability';
   };
   'bureau.hooks.update': {

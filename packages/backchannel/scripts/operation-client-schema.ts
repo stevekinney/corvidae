@@ -7,7 +7,7 @@ export type TypeNode =
   | { readonly kind: 'primitive'; readonly text: string }
   | { readonly kind: 'array'; readonly element: TypeNode }
   | { readonly kind: 'union'; readonly members: ReadonlyArray<TypeNode> }
-  | { readonly kind: 'record' }
+  | { readonly kind: 'record'; readonly value?: TypeNode }
   | { readonly kind: 'object'; readonly fields: ReadonlyArray<ObjectField> };
 
 export type ObjectField = {
@@ -65,9 +65,9 @@ function unionBranches(
  * exactly the schema subset the emitter supports: primitives, arrays,
  * string `enum` literal unions, primitive `const` literals, `type: []` unions,
  * `anyOf`/`oneOf` unions, objects (honoring `required`), no-`properties` objects
- * as `Record<string, unknown>`, and an `unknown` fallback for every other schema
+ * as string-keyed records, and an `unknown` fallback for every other schema
  * feature (non-string `enum`, `allOf`, co-occurring combinators,
- * additionalProperties, nullable patterns).
+ * mixed properties and additionalProperties, nullable patterns).
  */
 export function schemaToNode(schema: Record<string, unknown>): TypeNode {
   const constant = schema['const'];
@@ -165,6 +165,13 @@ function arraySchemaNode(items: unknown): TypeNode {
 
 function objectSchemaNode(schema: Record<string, unknown>): TypeNode {
   const properties = schema['properties'];
+  const additionalProperties = schema['additionalProperties'];
+  if (
+    isRecord(additionalProperties) &&
+    (!isRecord(properties) || Object.keys(properties).length === 0)
+  ) {
+    return { kind: 'record', value: schemaToNode(additionalProperties) };
+  }
   if (!isRecord(properties)) return { kind: 'record' };
   const required = new Set(
     Array.isArray(schema['required'])
@@ -209,7 +216,7 @@ export function renderNode(
     case 'primitive':
       return node.text;
     case 'record':
-      return 'Record<string, unknown>';
+      return `Record<string, ${node.value === undefined ? 'unknown' : renderChild(node.value)}>`;
     case 'array':
       return `ReadonlyArray<${renderChild(node.element)}>`;
     case 'union':

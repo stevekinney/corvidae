@@ -23,6 +23,32 @@ describe('schemaToNode + renderNode — emitted text contract', () => {
     expect(renderInline({ type: 'null' })).toBe('null');
   });
 
+  it('renders schema-defined dictionary values without changing opaque objects', () => {
+    expect(
+      renderInline({
+        type: 'object',
+        additionalProperties: { type: 'string', enum: ['approved', 'rejected'] },
+      }),
+    ).toBe('Record<string, "approved" | "rejected">');
+    expect(
+      renderInline({
+        type: 'object',
+        properties: {},
+        additionalProperties: {
+          type: 'object',
+          properties: { count: { type: ['integer', 'null'] } },
+          required: ['count'],
+        },
+      }),
+    ).toBe('Record<string, { readonly "count": number | null; }>');
+    expect(renderInline({ type: 'object', additionalProperties: {} })).toBe(
+      'Record<string, unknown>',
+    );
+    expect(renderInline({ type: 'object', properties: {}, additionalProperties: false })).toBe(
+      '{  }',
+    );
+  });
+
   it('renders arrays as ReadonlyArray', () => {
     expect(renderInline({ type: 'array', items: { type: 'string' } })).toBe(
       'ReadonlyArray<string>',

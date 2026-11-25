@@ -15,7 +15,18 @@ export type WorkerDiagnosticsOperationTypes = {
           readonly runtimeName: string;
           readonly runtimeVersion: string;
           readonly sdkVersion: string;
-          readonly workflows: Record<string, unknown>;
+          readonly workflows: Record<
+            string,
+            {
+              readonly activities: Record<
+                string,
+                { readonly contractHash: string; readonly implementationRevision: string }
+              >;
+              readonly contractHash: string;
+              readonly workflowRevision: string;
+              readonly workflowVersion: string;
+            }
+          >;
         };
         readonly instance: {
           readonly connectedAt: number;
