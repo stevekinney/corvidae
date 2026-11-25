@@ -122,13 +122,14 @@ describe("server application", () => {
       expect(
         await form("/api/embedded").then((response) => response.text()),
       ).toBe("issuer");
-      for (const headers of [
+      const deniedHeaders: Record<string, string>[] = [
         { origin: "null" },
         { origin: "https://foreign.test" },
         { cookie: "session=x" },
         { "content-type": "text/plain" },
         { "content-type": "multipart/form-data" },
-      ])
+      ];
+      for (const headers of deniedHeaders)
         expect(
           await form("/oauth/token", headers).then(
             (response) => response.status,
