@@ -1,8 +1,7 @@
 import type { Snippet } from 'svelte';
 import type { DataAttributes, PadUnion } from '../../_internal/union-props.ts';
 import type {
-  NavigationItemButtonExtra,
-  NavigationItemLinkExtra,
+  NavigationItemElementExtra,
   NavigationItemSharedHtmlAttributes,
 } from '../navigation-item/navigation-item.types.ts';
 import type { StatusDotStatus } from '../status-dot/status-dot.types.ts';
@@ -27,10 +26,15 @@ import type { StatusDotStatus } from '../status-dot/status-dot.types.ts';
  */
 export type SideNavigationItemProps = NavigationItemSharedHtmlAttributes &
   DataAttributes &
-  PadUnion<NavigationItemLinkExtra | NavigationItemButtonExtra> & {
+  PadUnion<NavigationItemElementExtra> & {
     /** Marks this item as the currently active destination; emits `aria-current` and applies active visual styling. */
     active?: boolean;
-    /** Prevents interaction: removes the item from the tab order, blocks clicks, and applies disabled visual styling. */
+    /**
+     * Prevents interaction: removes the item from the tab order, blocks clicks, and draws the row
+     * in the disabled text colour at the regular weight, so it differs from an enabled row by more
+     * than colour. Give the reason with `disabledReason`. A button-form row (no `href`) needs no
+     * `onclick` while this is `true`; a plain `boolean` may be `false`, so it still needs one.
+     */
     disabled?: boolean;
     /**
      * The `aria-current` token emitted while `active` is true. Defaults to `'page'`,
@@ -82,9 +86,22 @@ export type SideNavigationItemProps = NavigationItemSharedHtmlAttributes &
     /**
      * The words that follow the label in the accessible name and tooltip when `count` is zero or
      * absent: "nothing needs attention" gives "Health, nothing needs attention". Without it a row
-     * with no count is named by its label alone.
+     * with no count is named by its label alone. It is never drawn, so it is no place for the
+     * reason a row is disabled: use `disabledReason`, which is.
      */
     emptyLabel?: string;
+    /**
+     * Why the row is off ("Open a task queue first"). While `disabled` is set it is drawn under the
+     * label as a second line, in the disabled colour at the extra-small size so it never reads
+     * louder than the name, starting where the label's text starts, so it reads on a phone and with
+     * no hover. Inside a `SideNavigation.Group` with its own `disabledReason`, a row draws this
+     * only when it differs from the group's; a row with none, or the same, is described by the
+     * group's reason instead. It is the row's description
+     * (`aria-describedby`), and `label` stays its name. A collapsed (icon-rail) row keeps it as its
+     * description and says it in the tooltip ("Workers, Open a task queue first"). Ignored while
+     * the row is enabled. Pass `label` with it, or the reason joins the name.
+     */
+    disabledReason?: string;
     /**
      * A status dot shown beside the label (or on the icon when collapsed) in place of the numeric
      * count, for a row whose state is a signal and not a figure. The dot is hidden from assistive

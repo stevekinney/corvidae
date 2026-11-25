@@ -157,6 +157,7 @@
                 )}</code
               >
               <CopyButton
+                appearance="inline"
                 value={item.definition.value}
                 label={`Copy ${item.term}`}
                 copiedLabel={`${item.term} copied`}
@@ -175,8 +176,8 @@
                     </li>
                   {/each}
                 </ul>
-              {:else if !tags.systemTagCount && !tags.onAddTag}
-                <span class="cinder-description-list__empty">No tags</span>
+              {:else if !tags.systemTagCount && (tags.emptyLabel !== undefined || !tags.onAddTag)}
+                <span class="cinder-description-list__empty">{tags.emptyLabel ?? 'No tags'}</span>
               {/if}
               {#if tags.systemTagCount}
                 <span class="cinder-description-list__system-tags">

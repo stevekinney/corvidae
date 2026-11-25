@@ -368,10 +368,19 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
    * provider whose key is not saved keeps its rows `unavailable`, and counts as absent here so the
    * fallback answers). Read on every decision.
    */
-  const chosenRowNow = (): BackendDescriptor | undefined => {
-    const name = dependencies.settings()['decisions.model'];
+  const configuredRow = (
+    name: string | undefined,
+    descriptors: readonly BackendDescriptor[],
+  ): BackendDescriptor | undefined => {
     if (name === undefined || Object.hasOwn(registered, name)) return undefined;
-    const row = findDecisionRow(dependencies.models.catalog().descriptors, name);
+    return findDecisionRow(descriptors, name);
+  };
+
+  const chosenRowNow = (): BackendDescriptor | undefined => {
+    const row = configuredRow(
+      dependencies.settings()['decisions.model'],
+      dependencies.models.catalog().descriptors,
+    );
     return row === undefined || row.availability === 'unavailable' ? undefined : row;
   };
 
@@ -496,26 +505,45 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
 
   const decisions: BureauDecisions = {
     models() {
-      const { permitted, policy, row: fallbackRow } = fallbackNow();
-      // The row `modelFor` goes to: the one `decisions.model` names when it is in the catalog, can
-      // decide and is not `unavailable` (a policy that forbids it refuses the decision, so no row
-      // answers), else the fallback's. Read from the same lookups `decide` uses.
-      const chosen = chosenRowNow();
-      const answering =
-        chosen !== undefined && canDecide(chosen)
+      const { descriptors, permitted, policy, row: fallbackRow } = fallbackNow();
+      const configuredName = dependencies.settings()['decisions.model'];
+      const fallbackName = fallbackModelNow();
+      const configured = configuredRow(configuredName, descriptors);
+      const configuredFallback = findDecisionRow(descriptors, fallbackName);
+      const registeredModel = hostModelNow();
+      const hostModel =
+        configuredName !== undefined &&
+        registeredModel !== undefined &&
+        registeredModel.kinds.size > 0
+          ? { name: configuredName, kinds: [...registeredModel.kinds] }
+          : null;
+      const hostCoverage: Record<DecisionKind, boolean> = {
+        boolean: registeredModel?.kinds.has('boolean') === true,
+        choice: registeredModel?.kinds.has('choice') === true,
+        scale: registeredModel?.kinds.has('scale') === true,
+        structured: registeredModel?.kinds.has('structured') === true,
+      };
+      const chosen = configured?.availability === 'unavailable' ? undefined : configured;
+      const answering = Object.values(hostCoverage).every(Boolean)
+        ? undefined
+        : chosen !== undefined && canDecide(chosen)
           ? modelPolicyDenialOf(chosen, policy) === undefined
             ? chosen
             : undefined
           : fallbackRow;
-      return permitted.filter(canDecide).map((row) => ({
+      const rows = permitted.filter(canDecide).map((row) => ({
         provider: row.provider,
         model: row.model,
-        availability: row.availability === 'unavailable' ? 'needs-setup' : 'available',
+        availability:
+          row.availability === 'unavailable' ? ('needs-setup' as const) : ('available' as const),
         decisionOnly: row.decisions?.only === true,
         answering: row === answering,
         fallback: row === fallbackRow,
         canBeFallback: canBeFallback(row),
+        configured: row === configured ? (configuredName ?? null) : null,
+        configuredFallback: row === configuredFallback ? fallbackName : null,
       }));
+      return { rows, hostModel };
     },
     async decide<Request extends DecisionRequest>(
       request: Request,

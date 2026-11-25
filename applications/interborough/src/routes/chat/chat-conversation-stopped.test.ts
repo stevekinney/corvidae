@@ -8,6 +8,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { router } from '../../lib/router.svelte.ts';
 import ChatConversation from './chat-conversation.svelte';
 import ChatToasts from './chat-toasts.test-harness.svelte';
 import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
@@ -241,6 +242,41 @@ describe('a chat whose run failed on a call', () => {
           ?.textContent,
       ).toContain('Interrupted, may have run'),
     );
+  });
+
+  test('AC3 (COR-2533): the stop line links to the failed run’s explanation on the Run page, and the failed attempt keeps it after Retry', async () => {
+    const { served, view } = open('dangerous');
+    const { container, findByRole, findByText } = view;
+
+    const link = await findByRole('link', { name: 'Why it failed' });
+    expect(link.getAttribute('href')).toBe('/runs/task-1#failure-explanation');
+    // On the status line of the run that failed, beside its Retry.
+    expect(link.closest('.chat-note')?.textContent).toContain(
+      'The reply stopped while Issue refund was running',
+    );
+    expect(link.closest('.chat-note')?.querySelector('button')?.textContent).toContain('Retry');
+    // The link and Retry are one group with a Cinder space between them, never touching.
+    const retryButton = link.closest('.chat-note')?.querySelector('button');
+    const group = link.closest('.cinder-stack');
+    expect(group).not.toBeNull();
+    expect(group?.contains(retryButton ?? null)).toBe(true);
+    expect(group?.getAttribute('style') ?? '').toContain('var(--cinder-space-3)');
+
+    // Clicked, it navigates inside the app, to the section's fragment: the Run page scrolls to it.
+    await fireEvent.click(link);
+    expect(router.pathname).toBe('/runs/task-1');
+    expect(router.hash).toBe('#failure-explanation');
+    landAt('/chats/session-1');
+
+    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(served.started).toHaveLength(1));
+    await findByText('Refunded.');
+    // The failed attempt stays on record, with its line and its link, and no Retry.
+    const links = [...container.querySelectorAll('a[data-chat-explain-link]')];
+    expect(links.map((anchor) => anchor.getAttribute('href'))).toEqual([
+      '/runs/task-1#failure-explanation',
+    ]);
+    expect(container.querySelector('.chat-note button')).toBeNull();
   });
 
   test('says the call did not finish and nothing was changed for a tool that only reads', async () => {

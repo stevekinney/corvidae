@@ -2,13 +2,13 @@
 
 Bungalow binds each local home or remote bucket prefix to one durable `workspaceId`. The marker is claimed atomically after the stable `deployment-id` is loaded and before the caller can compose recovery, plugins, or writes. An existing nonempty local home without its persisted deployment identity refuses to open; a marker mismatch is never repaired automatically. The workspace identity is trusted host configuration, not an HTTP request value.
 
-`@lostgradient/bungalow` resolves and prepares an application's home: where its database and content live, its configuration, its secrets, its logs, and its deployment identity. Locally the home is a directory, `~/.interborough` or wherever `INTERBOROUGH_HOME` points for Interborough. Remotely it is a Postgres database, an S3-compatible bucket, and environment variables (see [Remote mode](#remote-mode)). Bungalow targets macOS and Linux only, and it is a private source package that is not published.
+`@lostgradient/bungalow` resolves and prepares an application's home: where its database and content live, its configuration, its secrets, its logs, and its deployment identity. Locally the home is a directory, `~/.interborough` or wherever `INTERBOROUGH_HOME` points for Interborough. Remotely it is a Postgres database, an S3-compatible bucket, and environment variables (see [Remote mode](#remote-mode)). Bungalow runs on Bun on macOS and Linux.
 
 Bungalow hands out locations for the database and content, and reads the configuration, the secrets, and the deployment ID itself. It never connects to a database, parses configuration, or reads the contents of a content location. Storage engines belong in Weft. It has no runtime dependencies: remote mode uses Bun's built-in `Bun.S3Client` and `fetch`.
 
 ## Workspace usage
 
-Declare `"@lostgradient/bungalow": "workspace:*"` in the consuming workspace's dependencies and install from the Corvidae root with `bun install`. The package exports TypeScript source directly and has no build or publication step.
+Declare `"@lostgradient/bungalow": "workspace:*"` in the consuming workspace's dependencies and install from the Corvidae root with `bun install`. The workspace exports TypeScript source directly. The npm release workflow packages the root API and the `/conformance` test entry point.
 
 ## Choosing the root
 
@@ -253,6 +253,8 @@ async function openRemoteHome(databaseWorkspaceClaim: DatabaseWorkspaceClaim) {
 ```
 
 `deploymentSecrets.write` throws `BungalowStateError` in remote mode, since secrets come from the environment. `writeConfiguration` instead returns `read-only` unless the trusted composition explicitly enabled `writableConfiguration`. The remaining remote configuration and S3 behavior is unchanged.
+
+Local homes trust processes running as the same operating-system user; separate directories do not establish separate security principals. The Interborough disposable service fixture exercises a separate profile with service-issued credentials, a fixture-only namespace policy, and ownership-checked resets. That simulated profile does not establish authorization for a production deployment or grant access to production resources.
 
 Remote mode requires the trusted application to supply `databaseWorkspaceClaim`. Before bootstrapping an empty prefix, Bungalow calls it with an undefined identity; the application must reject an existing nonempty database. Once the deployment identity is persisted, Bungalow calls it with that identity and the `s3://` resource location. The application must atomically claim one fixed key in the raw database, accept only an identical existing binding, and reject conflicts regardless of connection URL spelling. Only then does Bungalow publish `workspace-id`. Interborough implements this through its PostgreSQL storage adapter and reuses that adapter for the host. An empty prefix may retain only its newly generated `deployment-id` if the database claim fails; reopening retries that same identity. Existing content without a deployment identity requires restoring the original identity from backup.
 

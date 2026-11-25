@@ -17,6 +17,7 @@ import {
   type InspectorModel,
   isStaleInspection,
   type TaskEventElement,
+  WORKFLOW_RUN_NOTICE,
 } from './model.ts';
 import { createInspectorView } from './view.svelte.ts';
 
@@ -152,6 +153,11 @@ async function start(): Promise<void> {
   app.ontoolinput = (params) => {
     const id = params.arguments?.['taskId'];
     if (typeof id === 'string' && id !== taskId) watch(id);
+    // A run's page opens the panel on a workflow instance with the run's id and no task: there is
+    // no task to inspect, and the page says so rather than waiting for one.
+    else if (id === undefined && params.arguments?.['runKind'] === 'workflow') {
+      view.notice = WORKFLOW_RUN_NOTICE;
+    }
   };
   // The result that opened the page is its first render, whether or not the host lets it call back.
   app.ontoolresult = (result) => {

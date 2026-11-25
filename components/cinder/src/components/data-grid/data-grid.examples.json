@@ -43,7 +43,7 @@
       "id": "csv-import",
       "title": "Parsed CSV import",
       "description": "Parses static CSV text with parseDelimitedText and passes the derived columns/rows straight into DataGrid.",
-      "code": "<script lang=\"ts\">\n  import { DataGrid, parseDelimitedText } from '@lostgradient/cinder';\n\n  const csv = `id,customer,status\nORD-1001,Ada Lovelace,Packed\nORD-1002,Grace Hopper,Shipped\nORD-1003,Alan Turing,Queued\n`;\n\n  const parsed = parseDelimitedText(csv, { delimiter: ',' });\n  const rows = parsed.rows.map((row, index) => ({ ...row, __rowIndex: String(index) }));\n</script>\n\n<DataGrid\n  {rows}\n  columns={parsed.columns}\n  getRowId={(row) => row.__rowIndex}\n  aria-label=\"Imported orders\"\n/>\n"
+      "code": "<script lang=\"ts\">\n  import { DataGrid, parseDelimitedText, type DataGridColumnDef } from '@lostgradient/cinder';\n\n  type ImportedOrder = {\n    id: string;\n    customer: string;\n    status: string;\n    rowIdentity: string;\n  };\n\n  const csv = `id,customer,status\nORD-1001,Ada Lovelace,Packed\nORD-1002,Grace Hopper,Shipped\nORD-1003,Alan Turing,Queued\n`;\n\n  const parsed = parseDelimitedText(csv, { delimiter: ',' });\n  const rows: ImportedOrder[] = (parsed.rows as Omit<ImportedOrder, 'rowIdentity'>[]).map(\n    (order, index) => ({ ...order, rowIdentity: String(index) }),\n  );\n  const columns = parsed.columns as DataGridColumnDef<ImportedOrder>[];\n</script>\n\n<DataGrid\n  {rows}\n  {columns}\n  getRowId={(row: ImportedOrder) => row.rowIdentity}\n  aria-label=\"Imported orders\"\n/>\n"
     }
   ]
 }

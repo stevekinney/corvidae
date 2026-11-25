@@ -22,6 +22,40 @@ Import components, utilities, types, and metadata from this one entry point. Com
 
 [Editor](../editor/README.md) and [Markdown](../../packages/markdown/README.md) own their respective product APIs in separate workspaces. Syntax highlighting dependencies used by Cinder's `CodeBlock` are declared directly by Cinder.
 
+## Web Components
+
+From the repository root, run `bun components/cinder/scripts/build-web-components.ts`. Serve the resulting `components/cinder/dist/web-components/` directory over HTTP and open `index.html` to try the [plain HTML example](./src/web-components/example.html). The build compiles the Cinder source components directly and bundles the Svelte runtime. Load the module and stylesheet in the page.
+
+```html
+<link rel="stylesheet" href="./web-components.css" />
+<script type="module" src="./web-components.js"></script>
+```
+
+The stylesheet supplies the page theme, and the build includes `web-components.d.ts` for TypeScript consumers. The accordion uses the shared Cinder styles in its shadow root.
+
+Each entry in the Cinder component manifest gets a `cinder-<id>` element. The build reads the corresponding prop schema to choose attribute conversions, such as Boolean presence, numbers, and JSON arrays. Assign structured values, DOM references, and callbacks directly as JavaScript properties. Use kebab-case in HTML for camel-case property names. Component props that share a name with a native element property use a `component` prefix, as in `component-id` and `componentId`.
+
+Use authored HTML for static `children`. To supply a named content region, use its snippet name as the `slot` attribute. For content that receives live data, assign the corresponding `render` property. For example, `renderRow` receives the current item and row context from VirtualList. Return a DOM node or a string. Strings are rendered as text.
+
+```html
+<template id="rows">
+  <cinder-virtual-list item-height="32" height="128px"></cinder-virtual-list>
+</template>
+<script type="module">
+  await customElements.whenDefined('cinder-virtual-list');
+  const template = document.querySelector('#rows');
+  const list = template.content.querySelector('cinder-virtual-list');
+  list.items = ['Daily digest', 'As they arrive'];
+  list.renderRow = (item, { index }) => `${index + 1}. ${item}`;
+  template.replaceWith(list);
+</script>
+```
+
+- `<cinder-avatar>` accepts `name`, `src`, `alt`, `size`, and `shape`. It inherits Cinder theme tokens from the page.
+- `<cinder-button>` accepts `label`, `variant`, `size`, `disabled`, and `loading`. Use `type="submit"` inside a form.
+- `<cinder-select>` accepts `label`, `name`, `value`, `required`, and `disabled`. Add `<option>` children with `value`, `disabled`, or `selected` attributes as needed, or set the `options` JavaScript property with objects containing `value` and `label`. The native select bubbles `change` and participates in form submission.
+- `<cinder-accordion>` takes direct `<cinder-accordion-item heading="…">` children. Each item's HTML becomes its panel content. Use `disabled` on an item to disable its trigger, or `multiple` on the parent to allow multiple expanded panels.
+
 ## Token utilities
 
 Import `@lostgradient/cinder/utilities.css` alongside Cinder's base styles to opt into unprefixed classes such as `gap-3`, `padding-inline-3`, `margin-block-start-4`, `text-muted`, `background-surface-raised`, and `rounded-medium`. The stylesheet is generated with Cinder's metadata and uses the same CSS variables as its components. A theme override applies anywhere the variable is in scope.
@@ -218,6 +252,6 @@ From the Corvidae root, `bunx turbo run lint typecheck test --filter=@lostgradie
 
 ### Component authoring checklist
 
-Before adding a component, search the inventory and compose an existing primitive when it already provides the behavior. A new component needs its own behavior, state, or accessibility semantics; presentation differences belong in props, variants, or documented presets. Check the [machine-readable prop conventions](./scripts/component-conventions-props.ts) before naming public props, and use `Input` and `FormField` for form controls. Add a substantive test, README, stylesheet registration, generated artifacts, and the required root export. Record the design review in `*.a11y.md`; novel interaction models also need a human accessibility review covering focus, keyboard behavior, and announcements.
+Before adding a component, search the inventory and compose an existing primitive when it already provides the behavior. A new component needs its own behavior, state, or accessibility semantics; presentation differences belong in props, variants, or documented presets. Check the [machine-readable prop conventions](../../internal/component-tooling/scripts/component-conventions-props.ts) before naming public props, and use `Input` and `FormField` for form controls. Add a substantive test, README, stylesheet registration, generated artifacts, and the required root export. Record the design review in `*.a11y.md`; novel interaction models also need a human accessibility review covering focus, keyboard behavior, and announcements.
 
-The machine-readable checklist lives in [`component-conventions-props.ts`](./scripts/component-conventions-props.ts). Its checks are enforced by `components:check` and the focused [prop-convention checker](./scripts/check-prop-conventions.ts); the generated README link points here so the guidance stays with the current source rules.
+The machine-readable checklist lives in [`component-conventions-props.ts`](../../internal/component-tooling/scripts/component-conventions-props.ts). Its checks are enforced by `bun run lint` (its `lint:checks` step runs `check:prop-conventions`, the [prop-convention checker](../../internal/component-tooling/scripts/check-prop-conventions.ts)); the generated README link points here so the guidance stays with the current source rules.

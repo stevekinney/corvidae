@@ -18,6 +18,15 @@
     color: var(--cinder-text-default);
   }
 
+  /* The suggestions float on a surface that has its own edge, so the active row is not boxed again
+   * inside it: its raised fill is the cursor, as the rows of a menu read, and a ring around it is
+   * a second frame. Forced colours keep the shared `outline: Highlight` cursor. The floating
+   * surface keeps its own edge, `--cinder-border` (16% ink, about 1.2:1 on the surface), which is
+   * the one frame left. */
+  .cinder-autocomplete__option.cinder-_option-row[data-cinder-active] {
+    box-shadow: none;
+  }
+
   /*
    * The active/keyboard-highlighted row treatment is owned by the shared
    * `.cinder-_option-row[data-cinder-active]` rules in

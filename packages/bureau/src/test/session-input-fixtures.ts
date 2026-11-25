@@ -172,16 +172,21 @@ export function seamStorage(real: Storage): StorageSeam {
         };
       }
       if (property === 'conditionalBatch') {
-        return async (conditions: ConditionalBatchCondition[], operations: BatchOperation[]) => {
+        return async (
+          conditions: ConditionalBatchCondition[],
+          operations: BatchOperation[],
+          deadline?: number,
+        ) => {
           const matched = await beforeWrite(operations);
           const committed = await (
             target as Storage & {
               conditionalBatch: (
                 conditions: ConditionalBatchCondition[],
                 operations: BatchOperation[],
+                deadline?: number,
               ) => Promise<boolean>;
             }
-          ).conditionalBatch(conditions, operations);
+          ).conditionalBatch(conditions, operations, deadline);
           if (committed) afterWrite(matched, operations);
           return committed;
         };

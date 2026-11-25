@@ -260,11 +260,37 @@ export function toInterrupt(review: PendingReview): Interrupt {
         round: review.round,
         toolName: review.approval.toolName,
         ...(wire?.action.type === 'approval'
-          ? { risk: wire.action.risk, operation: wire.action.operation }
+          ? {
+              risk: wire.action.risk,
+              operation: wire.action.operation,
+              // COR-2438: what a person deciding needs, each only when the tool declared it.
+              ...(wire.action.irreversible === undefined
+                ? {}
+                : { irreversible: wire.action.irreversible }),
+              ...(wire.action.consequence === undefined
+                ? {}
+                : { consequence: wire.action.consequence }),
+              ...(wire.action.why === undefined ? {} : { why: wire.action.why }),
+            }
           : {}),
       },
     },
   };
+}
+
+/** A reviewed tool's policy text may contain server-owned arguments. */
+export function redactReviewedInterrupt(interrupt: Interrupt): Interrupt {
+  if (interrupt.reason !== 'tool-approval') return interrupt;
+  const { message: _message, metadata, ...safe } = interrupt;
+  const raw = metadata?.[BUREAU_METADATA_KEY];
+  const fields =
+    raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const publicFields = Object.fromEntries(
+    Object.entries(fields).filter(([key]) =>
+      ['kind', 'runId', 'sessionId', 'round', 'toolName', 'risk'].includes(key),
+    ),
+  );
+  return { ...safe, metadata: { [BUREAU_METADATA_KEY]: publicFields } };
 }
 
 /**

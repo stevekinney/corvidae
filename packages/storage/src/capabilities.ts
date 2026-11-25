@@ -104,6 +104,8 @@ export type StorageCapabilities = {
   atomicBatch: boolean;
   /** `conditionalBatch()` compare-and-swap preconditions are supported. */
   conditionalBatch: boolean;
+  /** Conditional batches enforce an absolute deadline within the transaction. */
+  conditionalBatchDeadline?: boolean;
   /**
    * The adapter's bounded-delete methods — `deletePrefix()` and, when present,
    * `deleteRange()` — are implemented natively against the backend's own range

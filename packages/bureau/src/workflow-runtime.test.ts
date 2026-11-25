@@ -607,7 +607,7 @@ describe('retention keeps the trace of an instance still in flight (COR-1583)', 
       runId: 'digest-run',
       id: 'digest',
       workflowVersion: 'sha256:pinned',
-      reason: 'Cancelled at startup because it cannot resume: for the test.',
+      reason: 'Canceled at startup because it cannot resume: for the test.',
       cancelledAt: '2020-01-01T00:00:00.000Z',
     });
 

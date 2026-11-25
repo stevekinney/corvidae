@@ -10,7 +10,8 @@
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import type { WorkflowProblem } from '../../lib/workflow-files.ts';
-  import { problemSentence, type JsonProblem } from './workflow-source.ts';
+  import type { JsonProblem } from '@lostgradient/bureau/workflow-json';
+  import { problemSentence } from './workflow-source.ts';
 
   interface Props {
     /** The file's name with its extension, such as `order-refund.json`. */

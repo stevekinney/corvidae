@@ -19,9 +19,19 @@ import { isMetadataExport, sourceExportViolations } from './workspace-exports';
 const root = join(import.meta.dir, '..');
 const componentLibraries = ['cinder', 'chat', 'editor', 'terminal'];
 const verificationLibraries = ['testing', 'evaluation'];
+function checksSourcesAfterReferenceBuild(command: string): boolean {
+  const [build, ...checks] = command.split(' && ');
+  return (
+    /^tsc -b (?:\.\/)?tsconfig\.references\.json$/.test(build ?? '') &&
+    checks.some((check) =>
+      /^svelte-check\b.*\s--tsconfig (?:\.\/)?tsconfig\.json(?:\s|$)/.test(check),
+    )
+  );
+}
 const libraries = [
   'backchannel',
   'backchannel-mcp',
+  'cinder-mcp',
   'bureau',
   'interborough-plugin',
   'operative',
@@ -61,11 +71,16 @@ function publicWorkspaceName(directoryName: string): string {
 
 /** The complete, exact set of current workspace names, per the COR-1284 ruling. */
 const expectedWorkspaceNames = new Set([
+  '@lostgradient/api-key-settings',
+  '@lostgradient/connected-apps',
   '@lostgradient/backchannel',
+  '@lostgradient/backchannel-armorer',
   '@lostgradient/backchannel-mcp',
+  '@lostgradient/backchannel-svelte',
   '@lostgradient/weft',
   '@lostgradient/velveteen',
   '@lostgradient/cinder',
+  '@lostgradient/cinder-mcp',
   '@lostgradient/chat',
   '@lostgradient/editor',
   '@lostgradient/markdown',
@@ -75,10 +90,15 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/operative-openai',
   '@lostgradient/operative-typesafe',
   '@lostgradient/cryptography',
+  '@lostgradient/credentials',
+  '@lostgradient/equipment-fixture',
+  '@lostgradient/equipment-armorer',
+  '@lostgradient/equipment-catalog',
   '@lostgradient/evaluation',
   '@lostgradient/lifecycle',
   '@lostgradient/bungalow',
   '@lostgradient/bureau',
+  '@lostgradient/bureau-client',
   '@lostgradient/interborough-plugin',
   '@lostgradient/plugin-anthropic',
   '@lostgradient/plugin-demo',
@@ -92,6 +112,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/plugin-voyage',
   '@lostgradient/plugin-workspace',
   '@lostgradient/memory',
+  '@lostgradient/mcp',
   '@lostgradient/storage',
   '@lostgradient/storage-bun-sqlite',
   '@lostgradient/storage-cloudflare',
@@ -217,6 +238,19 @@ const versionedFixtureSource = await listVersionedFixtureSource();
 const libraryConfigurations = await libraryApplicationConfigurations();
 
 describe('internal workspace architecture', () => {
+  test('reference-only builds must be followed by the full Svelte source check', () => {
+    expect(checksSourcesAfterReferenceBuild('tsc -b tsconfig.references.json')).toBe(false);
+    expect(
+      checksSourcesAfterReferenceBuild(
+        'tsc -b tsconfig.references.json && svelte-check --tsconfig ./tsconfig.browser.json',
+      ),
+    ).toBe(false);
+    expect(
+      checksSourcesAfterReferenceBuild(
+        'tsc -b tsconfig.references.json && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings',
+      ),
+    ).toBe(true);
+  });
   test('validation runs root self-tests once and retains sequential quality and audit gates', async () => {
     const { scripts = {} } = await readManifest('.');
     // The whole chain runs under one host lock, so a validate keeps its place from lint to audit
@@ -394,7 +428,25 @@ describe('internal workspace architecture', () => {
           ? await typescriptConfigurationFile.json()
           : {};
       if ((typescriptConfiguration.references ?? []).length > 0) {
-        expect(scripts['typecheck'], directory).toMatch(/^tsc -b (?:\.\/)?tsconfig\.json\b/);
+        const referencesConfigurationFile = Bun.file(
+          join(root, directory, 'tsconfig.references.json'),
+        );
+        if (await referencesConfigurationFile.exists()) {
+          const referencesConfiguration = await referencesConfigurationFile.json();
+          expect(Object.keys(referencesConfiguration).toSorted(), directory).toEqual([
+            'files',
+            'references',
+          ]);
+          expect(referencesConfiguration.files, directory).toEqual([]);
+          expect(referencesConfiguration.references, directory).toEqual(
+            typescriptConfiguration.references,
+          );
+          expect(checksSourcesAfterReferenceBuild(scripts['typecheck'] ?? ''), directory).toBe(
+            true,
+          );
+        } else {
+          expect(scripts['typecheck'], directory).toMatch(/^tsc -b (?:\.\/)?tsconfig\.json\b/);
+        }
       }
       // A library that emits declarations for its consumers does so through the `types` task,
       // which `typecheck` depends on, so Turborepo orders and caches the emit.
@@ -617,6 +669,21 @@ describe('internal workspace architecture', () => {
   test('the discovered workspace names are exactly the COR-1284 rule, no more and no fewer', async () => {
     const manifests = await workspaceManifests();
     expect(new Set(manifests.keys())).toEqual(expectedWorkspaceNames);
+  });
+
+  test('API key settings keep server, headless, and optional UI entries separate', async () => {
+    const settings = await readManifest('packages/api-key-settings');
+    const credentials = await readManifest('packages/credentials');
+    expect(Object.keys(settings.exports ?? {}).toSorted()).toEqual([
+      './backchannel',
+      './svelte',
+      './ui',
+    ]);
+    expect(settings.dependencies?.['@lostgradient/credentials']).toBe('workspace:*');
+    expect(settings.dependencies?.['@lostgradient/backchannel-svelte']).toBe('workspace:*');
+    expect(settings.peerDependencies?.['@lostgradient/cinder']).toBe('workspace:*');
+    expect(credentials.dependencies?.['@lostgradient/api-key-settings']).toBeUndefined();
+    expect(credentials.dependencies?.['@lostgradient/backchannel-svelte']).toBeUndefined();
   });
 
   for (const library of libraries) {

@@ -1,4 +1,4 @@
-import { type AnyToolbox, createToolbox } from 'armorer';
+import { type AnyToolbox, type ToolConfiguration, createToolbox } from 'armorer';
 
 type ToolboxLayer = {
   readonly inner: AnyToolbox;
@@ -20,6 +20,22 @@ export function withToolboxLayer(
   const wrapped = apply(inner);
   layers.set(wrapped, { inner, apply });
   return wrapped;
+}
+
+/** Clone a toolbox for one run while retaining every registered behavior layer. */
+export function cloneToolbox(base: AnyToolbox): AnyToolbox {
+  const layer = layers.get(base);
+  return layer === undefined
+    ? base.extend()
+    : withToolboxLayer(cloneToolbox(layer.inner), layer.apply);
+}
+
+/** Extend the underlying toolbox and reapply its outer behavior layers. */
+export function extendToolbox(base: AnyToolbox, entries: readonly ToolConfiguration[]): AnyToolbox {
+  const layer = layers.get(base);
+  return layer === undefined
+    ? base.extend(...entries)
+    : withToolboxLayer(extendToolbox(layer.inner, entries), layer.apply);
 }
 
 /**

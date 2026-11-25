@@ -84,10 +84,9 @@ import {
 } from './delivery-verification.ts';
 import { readExecutionSnapshot } from './execution-state.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
-import { describeVerified, type MainRunReader } from './land-queue.ts';
 import { validateLandingEvidence } from './landing-evidence.ts';
 import { mainCiComparisonWarning, mainCiHealth, mainCiWarning } from './main-ci.ts';
-import { acceptMovedBase } from './moved-base.ts';
+import { acceptMovedBase, describeConflicts, mergeHeadOnto } from './moved-base.ts';
 import {
   defaultRunner,
   emitResult,
@@ -99,7 +98,6 @@ import {
 import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
 import { listThreads, ReviewThreadsError } from './review-threads.ts';
 import { totalUsage, type UsageTotals } from './transcript-usage.ts';
-import type { EvidencePlan } from './verification-plan.ts';
 
 export { UsageError };
 
@@ -147,10 +145,10 @@ export interface MergeGateReport {
   /** Set when `main`'s latest `main.yml` run failed or could not be read; a warning, never a refusal. */
   mainHealthWarning?: string;
   /**
-   * The commits on `origin/<default>` since the evidence that main's own CI had already verified
-   * and the landing queue therefore did not count, one line per `main.yml` run. Absent when none.
+   * The commits of `origin/<default>` that the head was merged onto after its evidence, oldest
+   * first, so the landing comment can name them. Absent when `main` had not moved.
    */
-  verifiedOnMain?: string[];
+  mergedMainCommits?: string[];
   /** Whether the pull request was declared a repair of a red `main` (`--fixes-main`). */
   fixesMain?: boolean;
   /** The step that failed, or `null` when every step passed. */
@@ -169,10 +167,6 @@ export interface MergeGateDependencies {
   /** Blocks between fetch retries and mergeability reads; defaults to `Bun.sleepSync`. */
   sleep: (milliseconds: number) => void;
   verification: DeliveryVerificationDependencies;
-  /** The evidence plan of a changed-file list, read from `worktree`, for a moved base; a test supplies one. */
-  evidencePlan: (changed: string[], worktree: string) => EvidencePlan;
-  /** Main's own `main.yml` push runs, for a moved base; defaults to `gh run list`. */
-  mainRuns: MainRunReader;
 }
 
 interface PullRequestView {
@@ -333,15 +327,23 @@ async function mergeGateCore(
     return fail('threads', `read ${listing.seen} of ${listing.total} review threads.`);
   if (listing.unresolved > 0)
     return fail('threads', `${listing.unresolved} review thread(s) are unresolved.`);
-  const verificationTree = git('merge-tree', '--write-tree', report.base ?? '', head);
-  const integrationTree = verificationTree.stdout.split('\n')[0]?.trim() ?? '';
-  if (verificationTree.code !== 0 || !/^[0-9a-f]{40,64}$/.test(integrationTree))
-    return fail('conflict', 'could not derive the current integration tree for verification.');
+  const integration = mergeHeadOnto(git, report.base ?? '', head);
+  if ('conflicts' in integration)
+    return fail(
+      'conflict',
+      `the pull request conflicts with origin/${defaultBranch}${describeConflicts(integration.conflicts)}; merge it in, resolve the conflict, and return the new head for acceptance.`,
+    );
+  if ('failure' in integration)
+    return fail(
+      'conflict',
+      `could not derive the current integration tree for verification: ${integration.failure}`,
+    );
+  const integrationTree = integration.tree;
   // The identity the verification chain attests: the actual base and tree, or, when main moved
-  // after the evidence, the attested ones, but only when the landing queue classified every new
-  // commit (outside the plan, or verified by a green `main.yml` push run on main) and Git shows the
-  // tree about to land is the attested tree plus exactly those commits (`moved-base.ts`). Any other
-  // movement keeps the actual values and is refused below as a stale base.
+  // after the evidence and the head merges into it cleanly (the merge above), the attested ones.
+  // A moved base never needs a new evidence run: only a conflict refuses (owner decision,
+  // 2026-11-21), and `acceptMovedBase` (`moved-base.ts`) checks the attested base and tree still
+  // describe this head.
   let attested = { base: report.base ?? '', tree: integrationTree };
   let landed: { landedBase: string; landedTree: string } | undefined;
   const { request } = verification;
@@ -353,16 +355,12 @@ async function mergeGateCore(
       base: report.base,
       tree: integrationTree,
       attested: { base: request.base, tree: request.integrationTree },
-      defaultBranch,
-      repository,
-      dependencies: partial,
     });
     if ('problem' in moved)
       return fail('verification', `verification request has a stale base: ${moved.problem}`);
     attested = { base: request.base, tree: request.integrationTree };
     landed = { landedBase: report.base, landedTree: integrationTree };
-    const verifiedOnMain = describeVerified(moved.classified.verified);
-    if (verifiedOnMain.length > 0) report.verifiedOnMain = verifiedOnMain;
+    if (moved.mergedIn.length > 0) report.mergedMainCommits = moved.mergedIn;
   }
   const verificationProblem = validateDeliveryVerification(
     verification,
@@ -381,7 +379,7 @@ async function mergeGateCore(
   if (ciEvidenceProblem !== undefined) return fail('verification', ciEvidenceProblem);
   const landingProblem = await validateLandingEvidence(
     verification,
-    { route: 'pull-request', defaultBranch },
+    { route: 'pull-request', defaultBranch, integrationTree },
     {
       runner,
       ...(partial.verification?.ciProvider === undefined
@@ -721,8 +719,10 @@ export function renderMergeGate(report: MergeGateReport, dryRun: boolean): strin
     lines.push(
       `WARNING main health: ${report.mainHealthWarning}${report.fixesMain === true ? ' Merged as the declared fix.' : ''}`,
     );
-  for (const verified of report.verifiedOnMain ?? [])
-    lines.push(`base moved, accepted without a new run: main commits ${verified}`);
+  if (report.mergedMainCommits !== undefined)
+    lines.push(
+      `base moved, landed without a new run: merged onto main commits ${report.mergedMainCommits.map((sha) => sha.slice(0, 12)).join(', ')}`,
+    );
   if (report.failedStep !== null) {
     lines.push(`FAILED at ${report.failedStep}: ${report.detail ?? ''}`);
     if (report.merged)

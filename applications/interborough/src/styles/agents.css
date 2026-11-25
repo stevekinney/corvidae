@@ -232,6 +232,10 @@
   font-size: var(--cinder-text-sm);
 }
 
+.ib-agent-replace-asks {
+  align-self: start;
+}
+
 /* The agent file's body, rendered: long words and code break or scroll inside the outlet. */
 .ib-agent-document {
   max-inline-size: 48rem;

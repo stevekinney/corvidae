@@ -55,6 +55,11 @@ export interface DurableActiveRunOptions {
    * (COR-297). A throw rejects `durablyStarted` and nothing is prepared.
    */
   onServices?: ((services: DurableRunDeps) => void) | undefined;
+  /**
+   * An internal admission fence, checked after `prepare()` commits but before the durable start is
+   * acknowledged or any start lifecycle/effect runs. A rejection abandons the prepared record.
+   */
+  beforeLaunch?: (() => Promise<void>) | undefined;
   livenessClock?: StallWatchdogClock | undefined;
   livenessOwner?: string | undefined;
 }

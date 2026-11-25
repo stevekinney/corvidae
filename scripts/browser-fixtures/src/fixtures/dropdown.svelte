@@ -7,7 +7,51 @@
   // the default fixture, its baselines and its axe sweep stay as they are.
   const disabledReason =
     new URLSearchParams(globalThis.location.search).get('disabled-reason') === '1';
+  // COR-2664: radio and checkbox items that draw a check mark, behind their own query parameter.
+  const checkable = new URLSearchParams(globalThis.location.search).get('checkable') === '1';
+  let namespace = $state('default');
 </script>
+
+{#if checkable}
+  <div id="example-mount-checkable">
+    <Dropdown id="dropdown-checkable" placement="bottom-start">
+      <Dropdown.Trigger>Namespace</Dropdown.Trigger>
+      <Dropdown.Menu>
+        <Dropdown.Group ariaLabelledby="dropdown-checkable-namespaces">
+          <Dropdown.Label id="dropdown-checkable-namespaces">Namespaces</Dropdown.Label>
+          {#each ['default', 'payments', 'billing-reconciliation'] as name (name)}
+            <Dropdown.Item
+              itemRole="menuitemradio"
+              checked={namespace === name}
+              onclick={() => (namespace = name)}
+            >
+              {name}
+            </Dropdown.Item>
+          {/each}
+          <Dropdown.Item
+            itemRole="menuitemradio"
+            disabled
+            disabledReason="This connection cannot read it."
+          >
+            temporal-system
+          </Dropdown.Item>
+        </Dropdown.Group>
+        <Dropdown.Separator />
+        <Dropdown.Group ariaLabelledby="dropdown-checkable-columns">
+          <Dropdown.Label id="dropdown-checkable-columns">Columns</Dropdown.Label>
+          <Dropdown.Item itemRole="menuitemcheckbox" checked closeOnSelect={false}>
+            <GitBranch aria-hidden="true" size={14} />
+            Branch
+          </Dropdown.Item>
+          <Dropdown.Item itemRole="menuitemcheckbox" closeOnSelect={false}>
+            <Pencil aria-hidden="true" size={14} />
+            Author
+          </Dropdown.Item>
+        </Dropdown.Group>
+      </Dropdown.Menu>
+    </Dropdown>
+  </div>
+{/if}
 
 {#if disabledReason}
   <div id="example-mount-disabled-reason">

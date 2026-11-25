@@ -134,7 +134,7 @@ test('connects a provider after testing its key, adds its models with no restart
   // found by its label, not by being a password input.
   const field = dialog.getByLabel(MODELS_COPY.connectDialog.keyLabel);
   await expect(field).toBeVisible();
-  await expect(dialog).toContainText(MODELS_COPY.connectDialog.subtitle.idle);
+  await expect(dialog).toContainText(MODELS_COPY.connectDialog.subtitle);
 
   // The key is asked for before anything is sent, at the field.
   await dialog.getByRole('button', { name: MODELS_COPY.connectDialog.connect }).click();
@@ -144,7 +144,7 @@ test('connects a provider after testing its key, adds its models with no restart
   await field.fill(`${KEY}-rejected-key`);
   await dialog.getByRole('button', { name: MODELS_COPY.connectDialog.connect }).click();
   await expect(dialog).toContainText(MODELS_COPY.keyTest.rejected('Gemini', 401));
-  await expect(dialog).toContainText(MODELS_COPY.connectDialog.subtitle.failed);
+  await expect(dialog).toContainText(MODELS_COPY.connectDialog.subtitle);
   const refused = await snapshotOf(request);
   expect(refused.providers.find((entry) => entry.name === 'gemini')?.hasKey).toBe(false);
 
@@ -172,7 +172,7 @@ test('connects a provider after testing its key, adds its models with no restart
   await expect(page.getByTestId('provider-connect-success')).toContainText(
     MODELS_COPY.connectDialog.connectedTitle,
   );
-  await expect(dialog).toContainText(MODELS_COPY.connectDialog.subtitle.connected);
+  await expect(dialog).toContainText(MODELS_COPY.connectDialog.subtitle);
   await dialog.getByRole('button', { name: MODELS_COPY.connectDialog.done }).click();
   await expect(dialog).toBeHidden();
   await expect(row).toContainText(MODELS_COPY.providers.connected);

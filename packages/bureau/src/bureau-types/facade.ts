@@ -43,7 +43,7 @@ import type { BureauAudit } from './audit';
 import type { BureauContexts } from './contexts';
 import type { ServerFrame } from './frames';
 import type { ExpiredRecordRemoval, RetentionWindowOption } from './options';
-import type { BureauReviews } from './reviews';
+import type { BureauReviews, ReviewPolicy } from './reviews';
 import type { BureauSchedules } from './schedules';
 import type { BureauAgents, BureauTasks } from './tasks';
 
@@ -233,6 +233,15 @@ export interface BureauDiagnostics {
  * is part of its surface, and the project may reshape them without a deprecation period.
  */
 export interface BureauInternals {
+  readonly reviewPolicy?: ReviewPolicy | undefined;
+  readonly reviewedProvenance: (
+    review: import('./reviews').PendingToolApprovalReview,
+  ) => Promise<import('../reviewed-provenance').ReviewedProvenanceState>;
+  readonly reviewedRunState: (
+    runId: string,
+    sessionId?: string,
+    incarnation?: string,
+  ) => Promise<import('../reviewed-provenance').ReviewedProvenanceState>;
   /**
    * Whether {@link BureauOptions.id} was supplied. `false` means {@link Bureau.id}
    * is a generated identifier that changes on every restart, which

@@ -63,6 +63,7 @@ export const bunSqliteSpec: RawHandleAdapterSpec = {
     scanConsistency: 'snapshot',
     atomicBatch: true,
     conditionalBatch: true,
+    conditionalBatchDeadline: true,
     boundedRangeDelete: true,
   },
   child: {

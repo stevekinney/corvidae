@@ -22,6 +22,13 @@ const settingRow = (page: Page, key: string) => page.locator(`[data-setting="${k
 const humanInputSwitch = (page: Page) =>
   settingRow(page, 'tools.humanInput').getByRole('switch', { name: 'Human input' });
 
+async function openAdvancedSettings(page: Page): Promise<void> {
+  const disclosure = page.getByRole('button', { name: 'Advanced' });
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  await disclosure.click();
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+}
+
 type Snapshot = { values: Record<string, unknown>; revision: number };
 
 async function snapshotOf(request: APIRequestContext): Promise<Snapshot> {
@@ -99,6 +106,7 @@ for (const width of WIDTHS) {
     for (const section of sections) {
       await page.goto(section.path);
       await expect(page.locator('[data-view="settings"]')).toHaveAttribute('data-state', 'ready');
+      if (section.path === '/settings') await openAdvancedSettings(page);
       for (const key of section.keys) {
         // A value that has none is Not set, with a button to set it; every other has a control.
         await expect(
@@ -117,6 +125,7 @@ for (const width of WIDTHS) {
 test('shows the key the host locked read-only, with the reason', async ({ page, request }) => {
   const before = await revisionOf(request);
   await page.goto('/settings');
+  await openAdvancedSettings(page);
 
   const row = settingRow(page, E2E_LOCKED_SETTING);
   await expect(row).toHaveAttribute('data-locked', 'true');
@@ -209,6 +218,7 @@ test('saves a number as its field is left, and puts nothing else in the update',
   const original = await valueOf(request, 'logs.maximumLinesPerRun');
   try {
     await page.goto('/settings');
+    await openAdvancedSettings(page);
     const row = settingRow(page, 'logs.maximumLinesPerRun');
     await expect(row).toBeVisible();
     const field = row.getByRole('spinbutton', { name: 'Maximum lines per run' });
@@ -247,6 +257,7 @@ test('edits an object without JSON, and a model name from the catalog', async ({
   const original = await valueOf(request, 'engine.history');
   try {
     await page.goto('/settings');
+    await openAdvancedSettings(page);
     const receipts = settingRow(page, 'engine.history');
     await expect(receipts.locator('textarea')).toHaveCount(0);
     // The summarizer model is a choice of the catalog's rows, never a typed `provider/model`.

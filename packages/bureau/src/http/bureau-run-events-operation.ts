@@ -24,7 +24,12 @@ import { defineOperation } from '@lostgradient/backchannel';
 import { type BureauOwnershipHost } from './owner-predicate.ts';
 
 /** What the wrapper reads from the handler's `host`. */
-export type BureauRunEventsOperationHost = RunEventsOperationHost & BureauOwnershipHost;
+export type BureauRunEventsOperationHost = RunEventsOperationHost &
+  BureauOwnershipHost & {
+    readonly reviewedRunState?: (
+      runId: string,
+    ) => Promise<import('../reviewed-provenance').ReviewedProvenanceState>;
+  };
 
 const noRuns: RunEventsOperationHost = { runFeeds: { get: () => undefined } };
 
@@ -53,11 +58,13 @@ export const bureauRunEventsSubscriptionOperation = defineOperation<
   unknownKeyPolicy: runEventsSubscriptionOperation.unknownKeyPolicy,
   invoke: async (context) => {
     const { host, input, principal } = context;
-    const allowed = host.ownership.mayAccess({
-      principal,
-      resourceOwner: await host.ownership.runOwner(input.runId),
-      operatorScope: 'bureau.tasks:read',
-    });
+    const allowed =
+      (await host.reviewedRunState?.(input.runId)) !== 'unresolved' &&
+      host.ownership.mayAccess({
+        principal,
+        resourceOwner: await host.ownership.runOwner(input.runId),
+        operatorScope: 'bureau.tasks:read',
+      });
     return runEventsSubscriptionOperation.invoke({
       ...context,
       host: allowed ? host : noRuns,

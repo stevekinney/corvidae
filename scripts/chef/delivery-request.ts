@@ -6,7 +6,7 @@
 //   bun scripts/chef/delivery-request.ts prepare --branch <branch> --head <sha> --worktree <path>
 //       --base <sha> --run <id> [--project <name>] --issue <ID> [--issue <ID> ...]
 //       [--route branch|pull-request] [--no-track] [--no-close] [--leave-open <ID> ...]
-//       [--classification behavior|no-behavior] [--context <json>] [--wait-minutes <n>]
+//       [--classification behavior|no-behavior] [--context <json>] [--source-criteria <json>] [--wait-minutes <n>]
 //       [--config <file>] [--json]
 //   bun scripts/chef/delivery-request.ts check --file <json> --digest <sha256>
 //       [--head <sha>] [--state-directory <dir>] [--config <file>] [--json]
@@ -53,9 +53,10 @@
 // derives the current base, head and integration tree from git (`git fetch origin <default>`;
 // `--head`, else the worktree's HEAD), then `validateDeliveryVerification`,
 // `validateDeliveryCiEvidence` and `validateLandingEvidence`, and prints each refusal. Run it from
-// a checkout that has the head fetched. A base that has moved is refused even for a branch route,
-// which `deliver.ts` accepts only when the new commits touch nothing the evidence covers: `check`
-// is conservative. The lease and the pull-request threads are `deliver.ts`'s own steps.
+// a checkout that has the head fetched. A base that has moved needs no new evidence run (owner
+// decision, 2026-11-21): `check` accepts it, as `deliver.ts` does, when the request's base is an
+// ancestor of the current one and the head still merges into it without a conflict
+// (`moved-base.ts`). The lease and the pull-request threads are `deliver.ts`'s own steps.
 //
 // Exit codes: `prepare` 0 request written and run dispatched or reused, 1 refused (a git, Linear,
 // lease, authority or evidence condition, printed); `check` 0 when `deliver.ts` would proceed past
@@ -72,6 +73,8 @@ import {
   ciEvidenceRequestKey,
   type CiEvidenceProvider,
   type CiEvidenceRequest,
+  type CiEvidenceRun,
+  type PullRequestSourceCriteriaBinding,
 } from './ci-evidence.ts';
 import {
   batchVerificationPlanDigest,
@@ -103,6 +106,7 @@ import {
 import { validateLandingEvidence } from './landing-evidence.ts';
 import { changedPaths } from './landing-plan.ts';
 import { createClient, LinearError, readProject } from './linear.ts';
+import { acceptMovedMain } from './moved-base.ts';
 import {
   defaultRunner,
   emitResult,
@@ -113,12 +117,14 @@ import {
 } from './process-runner.ts';
 import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
 import { resolveMainCheckout } from './repository-locations.ts';
+import { inputsFromPlan } from './targeted-inputs.ts';
 import { dispatchVerificationRun, type VerificationBinding } from './targeted-run.ts';
 import {
   computeEvidencePlan,
   createVerificationPlan,
   digest,
   gateAssignment,
+  supportsAutomaticPullRequestEvidence,
   type Assignment,
   type EvidencePlan,
 } from './verification-plan.ts';
@@ -132,6 +138,10 @@ export { UsageError };
 export const EVIDENCE_JOB = 'Root checks, scripts tests, audit';
 const EVIDENCE_WORKFLOW = 'Main';
 const EVIDENCE_WORKFLOW_PATH = '.github/workflows/main.yml';
+const PULL_REQUEST_WORKFLOW = 'Pull request';
+const PULL_REQUEST_WORKFLOW_PATH = '.github/workflows/pull-request.yml';
+const PULL_REQUEST_AGGREGATE = 'Evidence aggregate';
+const PULL_REQUEST_RECEIPT_JOBS = ['static', 'workspaces', 'tests', 'browser-selection', 'browser'];
 
 const ISSUE = /^[A-Z][A-Z0-9]*-[1-9]\d*$/;
 const COMMIT = /^[0-9a-f]{40}$/;
@@ -155,6 +165,8 @@ export interface PrepareOptions {
   classification?: 'behavior' | 'no-behavior' | undefined;
   /** The verified design sources `brief.ts --context` takes; an issue that links a design needs them. */
   sourceContext?: ReadonlyMap<string, string> | undefined;
+  /** Coordinator-approved, per-member test bindings required before automatic PR reuse. */
+  sourceCriteria?: PullRequestSourceCriteriaBinding | undefined;
   waitMinutes: number;
 }
 
@@ -195,7 +207,7 @@ export interface PrepareDependencies {
   /** The execution-state resource of the project lease `run` holds, or a thrown reason. */
   leaseResource: (project: string, run: string) => Promise<string>;
   plan: (changed: string[], worktree: string) => EvidencePlan;
-  provider: Pick<CiEvidenceProvider, 'findRuns'>;
+  provider: Pick<CiEvidenceProvider, 'findRuns' | 'findAutomaticPullRequestRuns'>;
   readJobs: (runId: number) => RunJob[];
   wait: (milliseconds: number) => Promise<void>;
   dispatch: (ref: string, binding: VerificationBinding, cwd: string) => string[];
@@ -233,6 +245,60 @@ function validatePrepare(options: PrepareOptions): void {
     throw new UsageError('--no-track needs --no-close: an issue is closed only when tracked.');
   if (!Number.isSafeInteger(options.waitMinutes) || options.waitMinutes < 0)
     throw new UsageError('--wait-minutes must be a whole number of minutes.');
+}
+
+function freezeSourceCriteriaBinding(
+  value: PullRequestSourceCriteriaBinding | undefined,
+  members: readonly DeliveryMember[],
+): PullRequestSourceCriteriaBinding | undefined {
+  if (value === undefined) return undefined;
+  if (value.version !== 1 || !Array.isArray(value.members))
+    throw new UsageError('--source-criteria must be a version 1 member binding.');
+  const expected = members.map((member) => ({
+    identifier: member.assignment.identity.identifier,
+    criteria:
+      member.assignment.criteria.length === 0 && member.assignment.classification === 'no-behavior'
+        ? ['STATIC']
+        : member.assignment.criteria.map((criterion) => criterion.id),
+  }));
+  if (value.members.length !== expected.length)
+    throw new UsageError('--source-criteria must bind every accepted member.');
+  const frozen = value.members.map((member, index) => {
+    const accepted = expected[index];
+    if (
+      accepted === undefined ||
+      member.identifier !== accepted.identifier ||
+      !Array.isArray(member.criteria) ||
+      member.criteria.length !== accepted.criteria.length
+    )
+      throw new UsageError('--source-criteria does not match the accepted member order.');
+    const criteria = member.criteria.map((criterion) => {
+      if (
+        typeof criterion?.criterionId !== 'string' ||
+        !Array.isArray(criterion.testFiles) ||
+        criterion.testFiles.length === 0 ||
+        !criterion.testFiles.every((path) => /^[A-Za-z0-9_./-]+\.test\.ts$/.test(path)) ||
+        new Set(criterion.testFiles).size !== criterion.testFiles.length
+      )
+        throw new UsageError('--source-criteria contains an invalid test-file binding.');
+      return { criterionId: criterion.criterionId, testFiles: [...criterion.testFiles].toSorted() };
+    });
+    if (
+      criteria
+        .map((criterion) => criterion.criterionId)
+        .toSorted()
+        .join() !== [...accepted.criteria].toSorted().join() ||
+      new Set(criteria.map((criterion) => criterion.criterionId)).size !== criteria.length
+    )
+      throw new UsageError('--source-criteria must bind every criterion exactly once.');
+    return {
+      identifier: member.identifier,
+      criteria: criteria.toSorted((left, right) =>
+        left.criterionId.localeCompare(right.criterionId),
+      ),
+    };
+  });
+  return { version: 1, members: frozen };
 }
 
 /** The assignments, accepted for `merge`: one consequential action added, the identity re-digested. */
@@ -300,6 +366,51 @@ function membersOf(
       blockers: [],
     };
   });
+}
+
+/** Automatic PR evidence is useful only for a scoped plan and its complete concrete inventory. */
+function reusablePullRequestRun(
+  plan: EvidencePlan,
+  runs: readonly CiEvidenceRun[],
+  binding: PullRequestSourceCriteriaBinding | undefined,
+): CiEvidenceRun | undefined {
+  if (
+    !supportsAutomaticPullRequestEvidence(plan) ||
+    inputsFromPlan(plan).undispatchable.length > 0 ||
+    runs.length !== 1
+  )
+    return undefined;
+  const candidateRun = runs[0];
+  if (candidateRun === undefined || !candidateRun.jobs.includes(PULL_REQUEST_AGGREGATE))
+    return undefined;
+  if (
+    PULL_REQUEST_RECEIPT_JOBS.some((job) =>
+      job === 'browser'
+        ? !['success', 'not-applicable'].includes(candidateRun.receiptJobs[job] ?? '')
+        : candidateRun.receiptJobs[job] !== 'success',
+    ) ||
+    Object.keys(candidateRun.receiptJobs).length !== PULL_REQUEST_RECEIPT_JOBS.length
+  )
+    return undefined;
+  if (
+    binding === undefined ||
+    candidateRun.receiptTestFiles === undefined ||
+    plan.unit_tests.some((lane) =>
+      lane.paths.some(
+        (path) =>
+          !candidateRun.receiptTestFiles?.includes(
+            lane.workspace ? `${lane.workspace}/${path}` : path,
+          ),
+      ),
+    ) ||
+    binding.members.some((member) =>
+      member.criteria.some((criterion) =>
+        criterion.testFiles.some((path) => !candidateRun.receiptTestFiles?.includes(path)),
+      ),
+    )
+  )
+    return undefined;
+  return candidateRun;
 }
 
 function frozenFingerprint(members: readonly DeliveryMember[]): string {
@@ -397,6 +508,7 @@ export async function prepare(
   dependencies: PrepareDependencies,
 ): Promise<PrepareResult> {
   validatePrepare(options);
+  const sourceCriteriaInput = structuredClone(options.sourceCriteria);
   const { runner, repository } = dependencies;
   const cwd = options.worktree;
   const worktreeHead = git(runner, cwd, ['rev-parse', 'HEAD']);
@@ -462,9 +574,11 @@ export async function prepare(
       options.close,
       options.leaveOpen,
       options.classification ?? null,
+      sourceCriteriaInput ?? null,
     ]),
   );
   let members: DeliveryMember[] | undefined;
+  let sourceCriteria: PullRequestSourceCriteriaBinding | undefined;
   let authority: Authority | undefined;
   // The operation lock freezes current Linear assignments and their held authorities before the
   // request-key provider transition. A retry must prove the same batch still exists; it cannot
@@ -545,6 +659,7 @@ export async function prepare(
         throw new UsageError(
           'the accepted batch changed after its operation freeze; push a new head and prepare a fresh identity.',
         );
+      sourceCriteria = freezeSourceCriteriaBinding(sourceCriteriaInput, frozen);
       members = frozen;
       authority = authorities?.[0] ?? authority;
       if (pending.members === undefined) {
@@ -578,11 +693,14 @@ export async function prepare(
     workflowPath: EVIDENCE_WORKFLOW_PATH,
     workflowRevision: options.head,
     event: 'workflow_dispatch',
+    ...(sourceCriteria === undefined ? {} : { sourceCriteria }),
   } satisfies Omit<CiEvidenceRequest, 'requestKey'>;
-  const identity: CiEvidenceRequest = {
+  const manualIdentity: CiEvidenceRequest = {
     ...identityInput,
     requestKey: ciEvidenceRequestKey(identityInput),
   };
+  let identity = manualIdentity;
+  let automaticRun: CiEvidenceRun | undefined;
   const attempts = Math.ceil((options.waitMinutes * 60_000) / POLL_INTERVAL_MILLISECONDS);
 
   // One dispatch per request key, ever: the attempt is recorded under the key's lock before the
@@ -598,6 +716,52 @@ export async function prepare(
         dependencies.state,
         [deliveryAuthority, ...frozenMembers.flatMap((member) => member.authority ?? [])],
         async () => {
+          if (
+            options.route === 'pull-request' &&
+            !plan.requires_full_run &&
+            !dispatchAttempted(pendingFile, manualIdentity.requestKey) &&
+            dependencies.provider.findAutomaticPullRequestRuns !== undefined
+          ) {
+            // A provider error is not proof and cannot block the frozen manual request path.
+            try {
+              const reusable = reusablePullRequestRun(
+                plan,
+                await dependencies.provider.findAutomaticPullRequestRuns({
+                  repository,
+                  resource: deliveryAuthority.resource,
+                  base: options.base,
+                  candidate: options.head,
+                  integrationTree,
+                  workflow: PULL_REQUEST_WORKFLOW,
+                  workflowPath: PULL_REQUEST_WORKFLOW_PATH,
+                }),
+                sourceCriteria,
+              );
+              if (reusable !== undefined) {
+                const automaticIdentity = {
+                  repository,
+                  resource: deliveryAuthority.resource,
+                  base: options.base,
+                  candidate: options.head,
+                  integrationTree,
+                  verificationPlanDigest: reusable.verificationPlanDigest,
+                  workflow: PULL_REQUEST_WORKFLOW,
+                  workflowPath: PULL_REQUEST_WORKFLOW_PATH,
+                  workflowRevision: reusable.workflowRevision,
+                  event: 'pull_request' as const,
+                  ...(sourceCriteria === undefined ? {} : { sourceCriteria }),
+                };
+                identity = {
+                  ...automaticIdentity,
+                  requestKey: ciEvidenceRequestKey(automaticIdentity),
+                };
+                automaticRun = reusable;
+                return;
+              }
+            } catch {
+              // The manually bound full run remains the only fallback after an unreadable receipt.
+            }
+          }
           const found = await dependencies.provider.findRuns(identity);
           if (found.length > 1)
             throw new UsageError(
@@ -626,14 +790,16 @@ export async function prepare(
         },
       ),
   );
-  const observed = await poll(attempts, dependencies, async () => {
-    try {
-      const runs = await dependencies.provider.findRuns(identity);
-      return runs.length === 1 ? runs[0] : undefined;
-    } catch {
-      return undefined;
-    }
-  });
+  const observed =
+    automaticRun ??
+    (await poll(attempts, dependencies, async () => {
+      try {
+        const runs = await dependencies.provider.findRuns(identity);
+        return runs.length === 1 ? runs[0] : undefined;
+      } catch {
+        return undefined;
+      }
+    }));
   if (observed === undefined)
     throw new UsageError(
       `no run carries request key ${identity.requestKey} yet; run the same command again (it dispatches nothing twice).`,
@@ -646,22 +812,28 @@ export async function prepare(
   const job = await poll(attempts, dependencies, () =>
     dependencies
       .readJobs(runId)
-      .find((candidate) => candidate.name === EVIDENCE_JOB && candidate.runner !== ''),
+      .find(
+        (candidate) =>
+          candidate.name === (automaticRun === undefined ? EVIDENCE_JOB : PULL_REQUEST_AGGREGATE) &&
+          candidate.runner !== '',
+      ),
   );
   if (job === undefined)
     throw new UsageError(
-      `run ${runId}'s job "${EVIDENCE_JOB}" has no runner yet; run the same command again (it dispatches nothing twice).`,
+      `run ${runId}'s job "${automaticRun === undefined ? EVIDENCE_JOB : PULL_REQUEST_AGGREGATE}" has no runner yet; run the same command again (it dispatches nothing twice).`,
     );
 
   const finished: DeliveryMember[] = members.map((member: DeliveryMember) => ({
     ...member,
     providerRuns: member.plan.obligations.map((obligation) => ({
       id: runId,
+      ...(automaticRun === undefined ? {} : { attempt: automaticRun.attempt }),
       obligation: `${obligation.criterionId}:${obligation.commandOrProviderJob}`,
-      job: EVIDENCE_JOB,
-      workflow: EVIDENCE_WORKFLOW,
-      workflowPath: EVIDENCE_WORKFLOW_PATH,
-      event: 'workflow_dispatch',
+      job: automaticRun === undefined ? EVIDENCE_JOB : PULL_REQUEST_AGGREGATE,
+      workflow: automaticRun === undefined ? EVIDENCE_WORKFLOW : PULL_REQUEST_WORKFLOW,
+      workflowPath:
+        automaticRun === undefined ? EVIDENCE_WORKFLOW_PATH : PULL_REQUEST_WORKFLOW_PATH,
+      event: automaticRun === undefined ? 'workflow_dispatch' : 'pull_request',
     })),
   }));
   const request: DeliveryRequest = {
@@ -795,6 +967,20 @@ export async function check(
     return [
       `the current base, head or integration tree could not be derived (merge-tree exit ${merged.code}): the head conflicts with origin/${defaultBranch} or is not fetched`,
     ];
+  // A moved base never needs a new evidence run (owner decision, 2026-11-21): when the head merges
+  // into the current base cleanly, the attested identity stands, as `deliver.ts` reads it.
+  let attested = { base, tree: integrationTree };
+  if (base !== request.base) {
+    const moved = acceptMovedMain(
+      (...args: string[]) => runner(['git', ...args], { cwd }),
+      { base: request.base, tree: request.integrationTree },
+      head,
+      base,
+      integrationTree,
+    );
+    if ('problem' in moved) return [`verification request has a stale base: ${moved.problem}`];
+    attested = { base: request.base, tree: request.integrationTree };
+  }
   // Each validator stands alone, and a thrown error is its refusal, as it is `deliver.ts`'s.
   const steps: (() => Promise<string | undefined> | string | undefined)[] = [
     () =>
@@ -803,8 +989,8 @@ export async function check(
         {
           repository: request.repository,
           revision: head,
-          base,
-          integrationTree,
+          base: attested.base,
+          integrationTree: attested.tree,
           route,
           action: 'merge',
         },
@@ -814,7 +1000,7 @@ export async function check(
     () =>
       validateLandingEvidence(
         loaded,
-        { route, defaultBranch },
+        { route, defaultBranch, integrationTree },
         {
           runner,
           ...(dependencies.verification.ciProvider === undefined
@@ -947,6 +1133,7 @@ export async function run(
       'route',
       'classification',
       'context',
+      'source-criteria',
       'wait-minutes',
       'config',
       'file',
@@ -1022,6 +1209,13 @@ export async function run(
     ...(parsed.values['context'] === undefined
       ? {}
       : { sourceContext: sourceContext(resolve(parsed.values['context'])) }),
+    ...(parsed.values['source-criteria'] === undefined
+      ? {}
+      : {
+          sourceCriteria: JSON.parse(
+            readFileSync(resolve(parsed.values['source-criteria']), 'utf8'),
+          ) as PullRequestSourceCriteriaBinding,
+        }),
     waitMinutes: Number(parsed.values['wait-minutes'] ?? '10'),
   };
   validatePrepare(options);

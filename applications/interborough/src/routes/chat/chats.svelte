@@ -58,6 +58,7 @@
   import ListPageEmpty from '../../app/list-page-empty.svelte';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { getContext, listAgents, listContexts } from '../../lib/bureau-client.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { listBureauReviews } from '../../lib/bureau-reviews.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import { clockTime, viewerTimeZone } from '../../lib/format/clock.ts';
@@ -235,24 +236,21 @@
   const wide = $derived(paneWidth >= WIDE_PANE_WIDTH);
   // The segments need room for their three labels on one line. In a pane dragged narrower than
   // that, as the long turn's frame draws it (row 21p), they give way to the search, and what was
-  // chosen narrows nothing, like on a phone. An unmeasured pane shows them.
+  // chosen narrows nothing. An unmeasured pane shows them.
   const segmentsFit = $derived(paneWidth === 0 || paneWidth >= SEGMENTS_MINIMUM_WIDTH);
 
-  // A phone's list is a screen of its own with no search or segments (row 06l), so what was typed
-  // or chosen on a wider screen narrows nothing there, and comes back when the screen is wide again.
   let typed = $state('');
   let chosen = $state<ChatSegment>('all');
-  const search = $derived(phone.current ? '' : typed);
   /**
    * The archived chats are a view of the list of their own (COR-2285 V5), named in the address
    * (`?view=archived`), so it can be reloaded, opened in another tab, and kept while one of its chats
    * is opened. The status segments are not drawn there: they count the chats that are not archived.
-   * The search narrows what is shown, so in this view it searches the archived chats.
+   * Desktop search narrows the archived chats. On a phone search and status apply to active chats.
    */
   const showingArchived = $derived(router.current.search.get(VIEW_PARAMETER) === ARCHIVED_VIEW);
-  const segment = $derived<ChatSegment>(
-    phone.current || !segmentsFit || showingArchived ? 'all' : chosen,
-  );
+  const searchAvailable = $derived(!phone.current || !showingArchived);
+  const search = $derived(searchAvailable ? typed : '');
+  const segment = $derived<ChatSegment>(!segmentsFit || showingArchived ? 'all' : chosen);
   // Whether any chat is archived, for the Archived chats row at the end of the list: one chat is
   // asked for, and the archived list itself is read only when it is shown.
   const anyArchived = createQuery(
@@ -542,7 +540,7 @@
       headingLevel={3}
       title={CHAT_COPY.list.failedTitle}
       description={CHAT_COPY.list.failedDescription}
-      onRetry={() => void shownList.refetch()}
+      {...faultErrorStateAdvice(shownList.error, () => void shownList.refetch())}
     />
   {:else if listState === 'first-use' && isNew}
     <!-- The first chat is being started beside it: the new chat's pane is the one thing to say
@@ -708,8 +706,9 @@
           </SectionHeading>
         </div>
         <!-- No search or segments over nothing: they come with the first chat (owner report, 2026-11-19). -->
-        {#if !phone.current && listState !== 'first-use'}
+        {#if searchAvailable && listState !== 'first-use'}
           <SearchField
+            class="ib-chats__search"
             size="md"
             aria-label={CHAT_COPY.list.searchLabel}
             placeholder={CHAT_COPY.list.searchPlaceholder}

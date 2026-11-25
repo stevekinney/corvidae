@@ -339,3 +339,37 @@ describe('the deadline a tool approval interrupt carries (COR-2280)', () => {
     expect(JSON.stringify(projected)).not.toContain('binding-nonce');
   });
 });
+
+describe('what a person deciding needs, on the review and the interrupt (COR-2438)', () => {
+  function explained(fields: Record<string, unknown>): PendingReview {
+    const review = gatedApproval(undefined, undefined);
+    if (review.kind !== 'tool-approval') throw new Error('expected a tool approval');
+    return {
+      ...review,
+      approval: { ...review.approval, action: { ...review.approval.action, ...fields } },
+    };
+  }
+
+  it('carries irreversible, consequence and why from the action to both', () => {
+    const fields = {
+      irreversible: true,
+      consequence: 'Charges the card $5.00.',
+      why: 'The customer asked for the upgrade.',
+    };
+    const review = explained(fields);
+    const projected = projectReview(review);
+    if (projected.kind !== 'tool-approval') throw new Error('expected a tool approval');
+    expect(projected.approval.action).toMatchObject(fields);
+    expect(toInterrupt(review).metadata?.[BUREAU_METADATA_KEY]).toMatchObject(fields);
+  });
+
+  it('adds none of them for an action stored before they existed', () => {
+    const review = explained({});
+    const projected = projectReview(review);
+    const interrupt = JSON.stringify(toInterrupt(review));
+    for (const field of ['irreversible', 'consequence', 'why']) {
+      expect(JSON.stringify(projected)).not.toContain(`"${field}"`);
+      expect(interrupt).not.toContain(`"${field}"`);
+    }
+  });
+});

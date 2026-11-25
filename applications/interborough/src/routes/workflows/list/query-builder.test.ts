@@ -2,8 +2,13 @@ import { describe, expect, test } from 'bun:test';
 
 import { appendAttributeFilter, parseAttributeFilters } from '../../../lib/attribute-filters.ts';
 import {
+  attributeFiltersToInvocationConditions,
   attributeFiltersToQueryConditionRows,
   createEmptyQueryConditionRow,
+  invocationConditionsToAttributeFilters,
+  invocationConditionsToFailureFilters,
+  invocationConditionsToRawPreview,
+  QUERY_FAILURE_FIELD_OPTIONS,
   queryConditionRowsToAttributeFilters,
   queryConditionRowsToRawPreview,
   type QueryConditionRow,
@@ -16,6 +21,93 @@ function row(
 ): QueryConditionRow {
   return { id: createEmptyQueryConditionRow().id, key, operator, value };
 }
+
+/** The values of the two built-in fields, which no search attribute's name starts with. */
+const FAILED_STEP_FIELD = '@failedStep';
+const RETRYING_FIELD = '@retrying';
+
+describe('the built-in fields, Failed at step and Retrying (COR-2535)', () => {
+  const condition = (field: string, operator: string, value: string) => ({
+    id: createEmptyQueryConditionRow().id,
+    field,
+    operator,
+    value,
+  });
+
+  test('are the list’s own filters, and no search attribute', () => {
+    const conditions = [
+      condition(FAILED_STEP_FIELD, 'eq', ' charge-card '),
+      condition(RETRYING_FIELD, 'eq', 'true'),
+      condition('customerTier', 'eq', 'gold'),
+    ];
+    expect(invocationConditionsToFailureFilters(conditions)).toEqual({
+      failedStep: 'charge-card',
+      retrying: true,
+    });
+    expect(invocationConditionsToAttributeFilters(conditions)).toEqual([
+      { key: 'customerTier', value: 'gold' },
+    ]);
+  });
+
+  test('keep a search attribute that has the same name apart', () => {
+    const conditions = [condition('failedStep', 'eq', 'x'), condition('retrying', 'eq', 'true')];
+    expect(invocationConditionsToFailureFilters(conditions)).toEqual({});
+    expect(invocationConditionsToAttributeFilters(conditions)).toEqual([
+      { key: 'failedStep', value: 'x' },
+      { key: 'retrying', value: true },
+    ]);
+  });
+
+  test('apply only as "is", with a value, and Retrying only as true or false', () => {
+    expect(
+      invocationConditionsToFailureFilters([
+        condition(FAILED_STEP_FIELD, 'gt', 'a'),
+        condition(FAILED_STEP_FIELD, 'eq', '  '),
+        condition(RETRYING_FIELD, 'eq', 'maybe'),
+        condition(RETRYING_FIELD, 'lte', 'true'),
+      ]),
+    ).toEqual({});
+    expect(
+      invocationConditionsToFailureFilters([
+        condition(RETRYING_FIELD, 'eq', 'true'),
+        condition(RETRYING_FIELD, 'eq', 'false'),
+      ]),
+    ).toEqual({ retrying: false });
+  });
+
+  test('are seeded from the list’s filter, and read back out of it unchanged', () => {
+    const seeded = attributeFiltersToInvocationConditions([{ key: 'tier', value: 'gold' }], {
+      failedStep: 'charge-card',
+      retrying: false,
+    });
+    expect(seeded.map(({ field, operator, value }) => [field, operator, value])).toEqual([
+      [FAILED_STEP_FIELD, 'eq', 'charge-card'],
+      [RETRYING_FIELD, 'eq', 'false'],
+      ['tier', 'eq', 'gold'],
+    ]);
+    expect(invocationConditionsToFailureFilters(seeded)).toEqual({
+      failedStep: 'charge-card',
+      retrying: false,
+    });
+    expect(invocationConditionsToAttributeFilters(seeded)).toEqual([
+      { key: 'tier', value: 'gold' },
+    ]);
+    expect(invocationConditionsToRawPreview(seeded)).toEqual({
+      and: [
+        { failedStep: { eq: 'charge-card' } },
+        { retrying: { eq: false } },
+        { tier: { eq: 'gold' } },
+      ],
+    });
+  });
+
+  test('are offered as fields, Retrying as a boolean', () => {
+    expect(QUERY_FAILURE_FIELD_OPTIONS).toEqual([
+      { value: FAILED_STEP_FIELD, label: 'Failed at step' },
+      { value: RETRYING_FIELD, label: 'Retrying', type: 'boolean' },
+    ]);
+  });
+});
 
 describe('queryConditionRowsToAttributeFilters', () => {
   test('drops blank rows (no key or no value yet)', () => {

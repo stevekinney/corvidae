@@ -64,9 +64,22 @@
   min-inline-size: 0;
 }
 
+/* Keep review inputs and decisions together on wide detail panes. */
+.ib-reviews__detail [data-kind='tool-approval'],
+.ib-reviews__detail .ib-review-detail {
+  max-inline-size: 48rem;
+}
+
+@media (min-width: 64rem) {
+  .ib-reviews__detail [data-kind='tool-approval'],
+  .ib-reviews__detail .ib-review-detail {
+    max-inline-size: min(48rem, calc(100% - var(--cinder-space-4)));
+  }
+}
+
 /* ── The open review ──────────────────────────────────────────────────────────── */
 
-.ib-review-pane {
+.ib-review-detail {
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-3);
@@ -74,14 +87,14 @@
 }
 
 /* The open question: its content scrolls and its footer stays in view, with what the agent does next. */
-.ib-review-pane__content {
+.ib-review-detail__content {
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-3);
   min-inline-size: 0;
 }
 
-.ib-review-pane__footer {
+.ib-review-detail__footer {
   position: sticky;
   inset-block-end: 0;
   display: flex;
@@ -92,7 +105,7 @@
   background: var(--cinder-surface);
 }
 
-.ib-review-pane__footer-note {
+.ib-review-detail__footer-note {
   flex: 1;
   margin: 0;
   color: var(--cinder-text-muted);
@@ -100,7 +113,7 @@
   overflow-wrap: anywhere;
 }
 
-.ib-review-pane__question {
+.ib-review-detail__question {
   margin: 0;
   font-size: var(--cinder-text-lg);
   font-weight: 600;
@@ -108,17 +121,22 @@
 }
 
 /* The small line over an open review's heading: what kind of ask it is. */
-.ib-review-pane__eyebrow {
+.ib-review-detail__eyebrow {
   margin: 0;
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);
   font-weight: 500;
 }
 
-/* Match the transcript's reading measure for approval details and their actions. */
-.ib-review-pane[data-kind='tool-approval'] {
-  inline-size: 100%;
-  max-inline-size: 47.5rem;
+/* Under an approval's heading: the tool it wants to run, and how risky that is. */
+.ib-review-detail__wants {
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.ib-review-detail__code {
+  font-family: var(--cinder-font-mono);
 }
 
 /* The workflow's draft, with the button that copies it beside its title. */
@@ -173,7 +191,7 @@
   overflow-wrap: anywhere;
 }
 
-.ib-review-pane__note {
+.ib-review-detail__note {
   margin: 0;
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);
@@ -182,41 +200,48 @@
 
 /* The pick hint names number keys; a touch-only device has none at hand, so it is not drawn. */
 @media (hover: none) and (pointer: coarse) {
-  .ib-review-pane__hint {
+  .ib-review-detail__hint {
     display: none;
   }
 }
 
-.ib-review-pane__input,
-.ib-review-pane__answer {
+.ib-review-detail__input,
+.ib-review-detail__decision,
+.ib-review-detail__answer {
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-2);
   min-inline-size: 0;
 }
 
-.ib-review-pane__input .ib-tool__details {
+.ib-review-detail__input .ib-tool__details {
   padding-inline-start: 0;
 }
 
 /* What an approval's call was given, on one line (row 26o). */
-.ib-review-pane__input-line {
+.ib-review-detail__input-line {
   margin: 0;
   font-size: var(--cinder-text-sm);
   overflow-wrap: anywhere;
 }
 
+.ib-review-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2);
+}
+
 /* Cinder's Button reaches a 44px target through its own hit area, so the buttons keep their size. */
 
 /* What a workflow's author says above the draft (row 25o). */
-.ib-review-pane__intro {
+.ib-review-detail__intro {
   margin: 0;
   font-size: var(--cinder-text-sm);
   overflow-wrap: anywhere;
 }
 
 /* What an agent said when it asked, collapsed under its first words (row 25f). */
-.ib-review-pane__said-text {
+.ib-review-detail__said-text {
   margin: 0;
   font-size: var(--cinder-text-sm);
   white-space: pre-wrap;
@@ -224,7 +249,7 @@
 }
 
 /* The input line: each name muted, so names and values read apart (row 26o). */
-.ib-review-pane__input-key {
+.ib-review-detail__input-key {
   color: var(--cinder-text-muted);
 }
 
@@ -281,49 +306,6 @@
 
 .ib-review-notice__message {
   margin: 0;
-}
-
-.weft-query-fault {
-  display: flex;
-  align-items: center;
-  gap: var(--cinder-space-2-5, 10px);
-  margin: 16px;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  border: 1px solid var(--cinder-border);
-  border-radius: var(--cinder-radius-md);
-  background: var(--cinder-surface-raised);
-  flex-wrap: wrap;
-}
-
-.weft-query-fault[data-tone='warning'] {
-  border-color: var(--cinder-status-warning-border);
-  background: var(--cinder-status-warning-background);
-}
-
-.weft-query-fault[data-tone='danger'] {
-  border-color: var(--cinder-status-danger-border);
-  background: var(--cinder-status-danger-background);
-}
-
-.weft-query-fault__icon {
-  flex: none;
-  color: var(--cinder-text-subtle);
-}
-
-.weft-query-fault[data-tone='warning'] .weft-query-fault__icon {
-  color: var(--cinder-status-warning-text);
-}
-
-.weft-query-fault[data-tone='danger'] .weft-query-fault__icon {
-  color: var(--cinder-status-danger-text);
-}
-
-.weft-query-fault__message {
-  flex: 1 1 auto;
-  min-width: 160px;
-  margin: 0;
-  font-size: var(--cinder-text-sm);
-  color: var(--cinder-text-default);
 }
 
 .weft-review-artifact-sections {
@@ -408,31 +390,4 @@
   border: 1px solid var(--cinder-border);
   border-radius: var(--cinder-radius-md);
   background: var(--cinder-surface-canvas);
-}
-
-/* What an approval would run (bureau-review-operation.svelte) */
-.weft-bureau-review-operation {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-1);
-}
-
-.weft-bureau-review-operation__label {
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
-}
-
-.weft-bureau-review-operation__diff {
-  margin: 0;
-  padding: var(--cinder-space-3);
-  border: 1px solid var(--cinder-border-muted);
-  border-radius: var(--cinder-radius-md);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.weft-bureau-review-operation__files {
-  margin: 0;
-  padding-inline-start: var(--cinder-space-5);
-  overflow-wrap: anywhere;
 }

@@ -381,6 +381,10 @@
     overflow: hidden;
   }
 
+  .controls-formatting :global(.toolbar-separator) {
+    margin-inline: var(--cinder-space-0-5);
+  }
+
   .controls-diff-statistics {
     display: flex;
     align-items: center;

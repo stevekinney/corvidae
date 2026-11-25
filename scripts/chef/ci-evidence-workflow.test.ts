@@ -78,6 +78,12 @@ describe('createCiEvidenceWorkflowReceipt', () => {
   });
 
   test('uses the pull request payload for base and candidate while retaining the merge checkout', () => {
+    const reports = artifactFixture();
+    mkdirSync(join(reports, 'test-output', 'junit'), { recursive: true });
+    writeFileSync(
+      join(reports, 'test-output', 'junit', 'actual.xml'),
+      '<testsuite file="scripts/chef/ci-evidence-workflow.test.ts"><testcase name="passes" file="scripts/chef/ci-evidence-workflow.test.ts" /></testsuite>',
+    );
     const receipt = createCiEvidenceWorkflowReceipt({
       environment: environment({
         GITHUB_EVENT_NAME: 'pull_request',
@@ -86,6 +92,7 @@ describe('createCiEvidenceWorkflowReceipt', () => {
         VERIFICATION_REQUEST: undefined,
         VERIFICATION_PLAN: undefined,
         VERIFICATION_BASE: undefined,
+        CI_EVIDENCE_TEST_REPORT_DIRECTORY: reports,
       }),
       eventPayload: { pull_request: { base: { sha: sha('b') }, head: { sha: sha('d') } } },
       git,
@@ -101,6 +108,30 @@ describe('createCiEvidenceWorkflowReceipt', () => {
     });
     expect(receipt.planDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(receipt.requestKey).toBe('');
+    expect(receipt.testFiles).toEqual(['scripts/chef/ci-evidence-workflow.test.ts']);
+  });
+
+  test('keeps a passing skipped-only pull-request report non-adoptable', () => {
+    const reports = artifactFixture();
+    mkdirSync(join(reports, 'packages', 'one', 'test-output', 'junit'), { recursive: true });
+    writeFileSync(
+      join(reports, 'packages', 'one', 'test-output', 'junit', 'skipped.xml'),
+      '<testsuite><testcase name="later" file="src/x.test.ts"><skipped /></testcase></testsuite>',
+    );
+    const receipt = createCiEvidenceWorkflowReceipt({
+      environment: environment({
+        GITHUB_EVENT_NAME: 'pull_request',
+        GITHUB_WORKFLOW_REF:
+          'stevekinney/corvidae/.github/workflows/pull-request.yml@refs/pull/17/merge',
+        VERIFICATION_REQUEST: undefined,
+        VERIFICATION_PLAN: undefined,
+        VERIFICATION_BASE: undefined,
+        CI_EVIDENCE_TEST_REPORT_DIRECTORY: reports,
+      }),
+      eventPayload: { pull_request: { base: { sha: sha('b') }, head: { sha: sha('d') } } },
+      git,
+    });
+    expect(receipt.testFiles).toBeUndefined();
   });
 
   test('uses the push payload instead of manual dispatch values', () => {
@@ -115,6 +146,27 @@ describe('createCiEvidenceWorkflowReceipt', () => {
       git,
     });
     expect(receipt).toMatchObject({ event: 'push', base: sha('b'), candidate: sha('c') });
+    expect(receipt.planDigest).toMatch(/^[0-9a-f]{64}$/);
+    expect(receipt.requestKey).toBe('');
+  });
+
+  test('a scheduled run records the checked-out latest commit with checkout-derived identity', () => {
+    const receipt = createCiEvidenceWorkflowReceipt({
+      environment: environment({
+        GITHUB_EVENT_NAME: 'schedule',
+        VERIFICATION_REQUEST: undefined,
+        VERIFICATION_PLAN: undefined,
+        VERIFICATION_BASE: undefined,
+      }),
+      eventPayload: {},
+      git,
+    });
+    expect(receipt).toMatchObject({
+      event: 'schedule',
+      base: sha('b'),
+      candidate: sha('c'),
+      checkedRevision: sha('c'),
+    });
     expect(receipt.planDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(receipt.requestKey).toBe('');
   });
@@ -166,7 +218,7 @@ describe('createCiEvidenceWorkflowReceipt', () => {
 
   test('aggregates run-scoped JUnit bundles on a later attempt without new uploads from every job', () => {
     const directory = artifactFixture();
-    const jobs = ['junit-root', ...Array.from({ length: 7 }, (_, index) => `junit-tests-${index}`)];
+    const jobs = ['junit-root', ...Array.from({ length: 9 }, (_, index) => `junit-tests-${index}`)];
     for (const job of jobs) {
       const bundle = join(directory, job);
       mkdirSync(bundle);
@@ -181,6 +233,26 @@ describe('createCiEvidenceWorkflowReceipt', () => {
     expect(receipt.reports).toEqual(
       Object.fromEntries(jobs.map((job) => [job, { reports: 1, testCases: 1 }])),
     );
+    const matrix = readFileSync(join(import.meta.dir, '../../.github/workflows/main.yml'), 'utf8')
+      .split('  tests:\n')[1]
+      ?.split('    env:\n')[0];
+    expect(matrix?.match(/^          - name:/gm)).toHaveLength(jobs.length - 1);
+    const lastReport = join(directory, jobs.at(-1)!, 'fast.xml');
+    for (const content of [
+      null,
+      '<testsuite/>',
+      '<testsuite><testcase name="fails"><failure/></testcase></testsuite>',
+    ]) {
+      if (content === null) rmSync(lastReport);
+      else writeFileSync(lastReport, content);
+      expect(() =>
+        createCiEvidenceWorkflowReceipt({
+          environment: environment({ CI_EVIDENCE_ARTIFACT_DIRECTORY: directory }),
+          eventPayload: {},
+          git,
+        }),
+      ).toThrow(CiEvidenceWorkflowError);
+    }
   });
 
   test('rejects partially supplied manual verification identity fields', () => {
@@ -214,6 +286,30 @@ describe('CI evidence workflow producers', () => {
   const main = readFileSync(join(root, '.github/workflows/main.yml'), 'utf8');
   const pullRequest = readFileSync(join(root, '.github/workflows/pull-request.yml'), 'utf8');
 
+  test('a paused push records both slow jobs as inapplicable while a manual or scheduled run still requires them', () => {
+    expect(main).toContain("schedule:\n    - cron: '17 9 * * *'");
+    for (const name of ['tests-slow', 'browser']) {
+      const job = main.split(`\n  ${name}:\n`)[1]?.split(/\n  [a-z-]+:\n/)[0];
+      expect(job).toContain(
+        "if: ${{ (inputs.chef_candidate == '' || inputs.chef_candidate == github.sha) && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true') }}",
+      );
+    }
+    // A scheduled run shares the push group and never cancels or is cancelled by one.
+    expect(main).toContain(
+      "group: ${{ github.event_name == 'workflow_dispatch' && format('main-dispatch-{0}', github.ref) || 'main' }}",
+    );
+    expect(main).toContain("cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}");
+    expect(main).toContain(
+      `CI_EVIDENCE_NOT_APPLICABLE: \${{ github.event_name == 'push' && vars.PAUSE_AUTOMATIC_SLOW_TESTS == 'true' && '["tests-slow","browser"]' || '[]' }}`,
+    );
+    expect(pullRequest).toContain(
+      "TEST_LANES: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS == 'true' && '--fast-only' || '--isolated' }}",
+    );
+    expect(pullRequest).toContain(
+      "id: select\n        if: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}",
+    );
+  });
+
   test('installs the producer and preserves required job bundles across partial reruns', () => {
     expect(main).toContain('bun scripts/chef/ci-evidence-workflow.ts ci-evidence-receipt.json');
     expect(main).toContain('name: ci-evidence-receipt-${{ github.run_attempt }}');
@@ -234,6 +330,8 @@ describe('CI evidence workflow producers', () => {
   test('produces independent pull-request evidence with explicit browser non-applicability', () => {
     expect(pullRequest).toContain('name: Evidence aggregate');
     expect(pullRequest.split('\n  evidence:')[1]).toContain('bun install --frozen-lockfile');
+    expect(pullRequest).toContain('name: ci-evidence-tests');
+    expect(pullRequest).toContain('CI_EVIDENCE_TEST_REPORT_DIRECTORY: ci-evidence-tests');
     expect(pullRequest).toContain('CI_EVIDENCE_NEEDS: ${{ toJSON(needs) }}');
     expect(pullRequest).toContain('CI_EVIDENCE_NOT_APPLICABLE:');
     expect(pullRequest).toContain(
@@ -246,7 +344,7 @@ describe('CI evidence workflow producers', () => {
 describe('validateJUnitArtifacts', () => {
   const expected = [
     'junit-root-2',
-    ...Array.from({ length: 7 }, (_, index) => `junit-tests-${index}-2`),
+    ...Array.from({ length: 9 }, (_, index) => `junit-tests-${index}-2`),
   ];
   const report = (body = '<testcase name="passes"/>') =>
     new TextEncoder().encode(`<testsuite>${body}</testsuite>`);

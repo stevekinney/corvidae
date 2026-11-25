@@ -62,3 +62,214 @@ test.describe('flat by default, framed on request', () => {
     await expect(flat).toHaveCSS('border-top-width', '0px');
   });
 });
+
+test.describe('flat Collapsible touch reach', () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  for (const width of [320, 375]) {
+    test(`the flat Collapsible reaches 44px without covering its panel control at ${String(width)}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(fixtureRoute('collapsible'), { waitUntil: 'load' });
+      const trigger = page
+        .getByTestId('collapsible-nested-flat')
+        .getByRole('button', { name: 'Tracking events', exact: true });
+      await trigger.scrollIntoViewIfNeeded();
+      await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+      await trigger.evaluate((button) => {
+        const panel = document.getElementById(button.getAttribute('aria-controls') ?? '');
+        const panelContent = panel?.firstElementChild;
+        if (panelContent === null || panelContent === undefined) {
+          throw new Error('The Collapsible trigger must name its panel.');
+        }
+        const control = document.createElement('button');
+        control.type = 'button';
+        control.textContent = 'Inside tracking';
+        control.addEventListener('click', () => {
+          control.textContent = 'Tracking activated';
+        });
+        panelContent.prepend(control);
+      });
+
+      const adjacent = page.getByRole('button', { name: 'Inside tracking' });
+      await adjacent.tap();
+      await expect(page.getByRole('button', { name: 'Tracking activated' })).toBeVisible();
+      await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+      const measured = await trigger.evaluate((button) => {
+        const bounds = button.getBoundingClientRect();
+        const x = bounds.x + bounds.width / 2;
+        const centreY = bounds.y + bounds.height / 2;
+        const top = centreY - 21.5;
+        const bottom = centreY + 21.5;
+        return {
+          coarse: window.matchMedia('(any-pointer: coarse)').matches,
+          drawnHeight: bounds.height,
+          x,
+          top,
+          bottom,
+          edgesReachTrigger: [top, bottom].map((y) =>
+            button.contains(document.elementFromPoint(x, y)),
+          ),
+        };
+      });
+      expect(measured.coarse).toBe(true);
+      expect(measured.drawnHeight).toBeLessThan(44);
+      expect(measured.edgesReachTrigger).toEqual([true, true]);
+      await page.touchscreen.tap(measured.x, measured.top);
+      await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      await page.touchscreen.tap(measured.x, measured.bottom);
+      await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    });
+  }
+});
+
+/**
+ * COR-2634: a Collapsible's open, disabled, chevron and flat styles apply to that Collapsible alone,
+ * never to one nested in its panel. Each nested element is compared with the same element of a
+ * top-level reference that has the values the nested one should show, read on the same page. The
+ * label's weight is not compared: `cinder-_label-text` sets the same semibold weight the flat label
+ * rule does, so the comparison would hold under the leaking rules too.
+ */
+test.describe('nested Collapsible isolation', () => {
+  type Part = 'trigger' | 'chevron' | 'panel-inner';
+  type Page = import('@playwright/test').Page;
+
+  const PART_SELECTOR: Record<Part, string> = {
+    trigger: ':scope > .cinder-collapsible__trigger',
+    chevron: ':scope > .cinder-collapsible__trigger > .cinder-collapsible__chevron',
+    'panel-inner': ':scope > .cinder-collapsible__panel > .cinder-collapsible__panel-inner',
+  };
+
+  /** The Collapsible nested directly in the panel of the case's outer one. */
+  const nested = (page: Page, testId: string, part: Part) =>
+    page
+      .getByTestId(testId)
+      .locator(
+        ':scope > .cinder-collapsible > .cinder-collapsible__panel > .cinder-collapsible__panel-inner > .cinder-collapsible',
+      )
+      .locator(PART_SELECTOR[part]);
+
+  /** A top-level reference Collapsible, which carries its `data-testid` on its root. */
+  const reference = (page: Page, testId: string, part: Part) =>
+    page.getByTestId(testId).locator(PART_SELECTOR[part]);
+
+  const read = (locator: ReturnType<Page['locator']>, property: string) =>
+    locator.evaluate((element, name) => getComputedStyle(element).getPropertyValue(name), property);
+
+  const load = (page: Page) => page.goto(fixtureRoute('collapsible'), { waitUntil: 'load' });
+
+  test.beforeEach(async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await load(page);
+  });
+
+  async function expectMatchingStyles(
+    page: Page,
+    testId: string,
+    referenceId: string,
+    part: Part,
+    properties: readonly string[],
+  ) {
+    const actual = nested(page, testId, part);
+    const expected = reference(page, referenceId, part);
+    for (const property of properties) {
+      await expect
+        .soft(actual, `${testId}: ${part} ${property}`)
+        .toHaveCSS(property, await read(expected, property));
+    }
+  }
+
+  for (const [testId, referenceId, property] of [
+    ['collapsible-nested-closed', 'collapsible-reference-flat-closed', 'transform'],
+    ['collapsible-nested-disabled-outer', 'collapsible-reference-flat-closed', 'color'],
+    ['collapsible-nested-start', 'collapsible-reference-flat-start-closed', 'transform'],
+  ] as const) {
+    test(`${testId}: chevron ${property}, at rest`, async ({ page }) => {
+      await expectMatchingStyles(page, testId, referenceId, 'chevron', [property]);
+    });
+  }
+
+  test('closed framed trigger keeps both bottom corners', async ({ page }) => {
+    await expectMatchingStyles(
+      page,
+      'collapsible-nested-framed-closed',
+      'collapsible-reference-default-closed',
+      'trigger',
+      ['border-end-start-radius', 'border-end-end-radius'],
+    );
+  });
+
+  test('framed trigger and panel keep their resting styles inside a flat Collapsible', async ({
+    page,
+  }) => {
+    const testId = 'collapsible-nested-framed-in-flat';
+    const referenceId = 'collapsible-reference-default-open';
+    await expectMatchingStyles(page, testId, referenceId, 'trigger', [
+      'padding-top',
+      'background-color',
+      'border-start-start-radius',
+    ]);
+    await expectMatchingStyles(page, testId, referenceId, 'panel-inner', [
+      'padding-top',
+      'background-color',
+      'border-end-start-radius',
+    ]);
+  });
+
+  test('collapsible-nested-closed: chevron transform, after opening', async ({ page }) => {
+    const expected = await read(
+      reference(page, 'collapsible-reference-flat-open', 'chevron'),
+      'transform',
+    );
+    await nested(page, 'collapsible-nested-closed', 'trigger').click();
+    await expect(nested(page, 'collapsible-nested-closed', 'trigger')).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    await expect(nested(page, 'collapsible-nested-closed', 'chevron')).toHaveCSS(
+      'transform',
+      expected,
+    );
+  });
+
+  test('framed trigger and chevron keep their hover colors inside a flat Collapsible', async ({
+    page,
+  }) => {
+    const testId = 'collapsible-nested-framed-in-flat';
+    const referenceId = 'collapsible-reference-default-open';
+    await reference(page, referenceId, 'trigger').hover();
+    const background = await read(reference(page, referenceId, 'trigger'), 'background-color');
+    const color = await read(reference(page, referenceId, 'chevron'), 'color');
+    await nested(page, testId, 'trigger').hover();
+    await expect.soft(nested(page, testId, 'trigger')).toHaveCSS('background-color', background);
+    await expect.soft(nested(page, testId, 'chevron')).toHaveCSS('color', color);
+  });
+
+  test('collapsible-nested-framed-in-flat: trigger background-color, pressed', async ({ page }) => {
+    // Releasing the mouse toggles a trigger, so each side is read while held, on a fresh page.
+    // Disable transitions for this comparison, so neither background read samples a frame.
+    const disableTransition = () =>
+      page.addStyleTag({
+        content: '.cinder-collapsible__trigger { transition: none !important; }',
+      });
+    await disableTransition();
+    const referenceTrigger = reference(page, 'collapsible-reference-default-open', 'trigger');
+    await referenceTrigger.hover();
+    await page.mouse.down();
+    expect(await referenceTrigger.evaluate((element) => element.matches(':active'))).toBe(true);
+    const expected = await read(referenceTrigger, 'background-color');
+    await page.mouse.up();
+
+    await page.reload({ waitUntil: 'load' });
+    await disableTransition();
+    const nestedTrigger = nested(page, 'collapsible-nested-framed-in-flat', 'trigger');
+    await nestedTrigger.hover();
+    await page.mouse.down();
+    expect(await nestedTrigger.evaluate((element) => element.matches(':active'))).toBe(true);
+    await expect(nestedTrigger).toHaveCSS('background-color', expected);
+    await page.mouse.up();
+  });
+});

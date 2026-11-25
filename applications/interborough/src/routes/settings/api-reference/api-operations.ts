@@ -237,3 +237,17 @@ export function buildApiOperations(document: OpenApiDocumentLike): readonly ApiO
 export function operationGroups(operations: readonly ApiOperation[]): readonly string[] {
   return [...new Set(operations.map((operation) => operation.group))];
 }
+
+/**
+ * What the Operations tab shows when `shown` has nothing in it: `none` when the server lists no operation
+ * at all (the state alone, with no group select or count over it, COR-2548), `group` when the chosen
+ * group has none left (the select stays, so another group can be chosen), or `undefined` when there
+ * are rows to show.
+ */
+export function operationsEmptiness(
+  operations: readonly ApiOperation[],
+  shown: readonly ApiOperation[],
+): 'none' | 'group' | undefined {
+  if (operations.length === 0) return 'none';
+  return shown.length === 0 ? 'group' : undefined;
+}

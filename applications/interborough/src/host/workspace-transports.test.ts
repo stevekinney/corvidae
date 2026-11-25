@@ -85,6 +85,13 @@ async function authenticatedHost(
               })
             : null,
       },
+      memorySharingAvailable: async (member) =>
+        [...members.values()].some(
+          (candidate) =>
+            candidate.workspaceId === member.workspaceId &&
+            candidate.owner !== member.owner &&
+            candidate.actorKind === 'user',
+        ),
       workspace: {
         workspaceId,
         resolveMembership: async ({ subject }: { subject: string | undefined }) =>
@@ -106,6 +113,22 @@ function request(host: Host, path: string, actor: string, init: RequestInit = {}
 }
 
 describe('injected workspace transport authority', () => {
+  test('projects memory-sharing availability without exposing a recipient', async () => {
+    const { host, members, workspaceId } = await authenticatedHost();
+    const first = await request(host, '/api/v1/principal', 'member');
+    expect(first.status).toBe(200);
+    const firstPrincipal = await first.json();
+    expect(firstPrincipal.workspace).toMatchObject({ memorySharing: true });
+
+    for (const [subject, member] of members) {
+      if (subject !== 'member' && member.workspaceId === workspaceId) members.delete(subject);
+    }
+    const singleton = await request(host, '/api/v1/principal', 'member');
+    expect(singleton.status).toBe(200);
+    const singletonPrincipal = await singleton.json();
+    expect(singletonPrincipal.workspace).toMatchObject({ memorySharing: false });
+  });
+
   test('stops a live stream when its credential is remapped before a private result', async () => {
     const release = Promise.withResolvers<void>();
     const started = Promise.withResolvers<void>();

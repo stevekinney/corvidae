@@ -49,6 +49,19 @@ export type DataListProps<T> = Omit<
    */
   statusColumn?: boolean;
   /**
+   * The width of the trailing column of every two-line StackedListItem row in the list (a CSS
+   * length, such as `9rem`): the width of the widest figure a row carries in `trailing` (a cost, a
+   * count). The track is then one width in every row, with a trailing region or without, so the
+   * times before it end at one edge. Omit it and each row sizes the track by its own content.
+   * Pass it only at the widths where rows keep their trailing column.
+   */
+  trailingTrack?: string;
+  /**
+   * Where a two-line row's trailing region sits against the row's lines: `center` (the default)
+   * centers it on both lines, `baseline` holds it on the first line's baseline.
+   */
+  trailingAlign?: 'center' | 'baseline';
+  /**
    * Group consecutive items under a header band, newest group first as the items arrive. Each
    * group is a nested list named by its header, so a screen reader announces the day. Items are
    * not reordered; pass them already sorted.

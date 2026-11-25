@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, jest, test } from 'bun:test';
 
 import { A2APeerError } from './peer-client-types.ts';
 import { createScriptedPeer, type ScriptedPeerOptions } from './peer-client.test-support.ts';
@@ -60,19 +60,73 @@ describe('A2A peer client review round 3', () => {
     expect(card.cardUrl).toBe(`https://peer.example${cardPath}`);
   });
 
-  test('a stream that never emits its first event fails with a timeout', async () => {
+  test('a first-event deadline aborts the stalled opening request', async () => {
+    let openingSignal: AbortSignal | undefined;
     const { client } = connect(
       {
-        intercept: (_request, method) =>
-          method === 'SendStreamingMessage'
-            ? new Response(new ReadableStream({ start() {} }), {
-                headers: { 'content-type': 'text/event-stream' },
-              })
-            : undefined,
+        intercept: (request, method) => {
+          if (method !== 'SendStreamingMessage') return undefined;
+          openingSignal = request.signal;
+          return new Response(
+            new ReadableStream({
+              start(controller) {
+                request.signal.addEventListener(
+                  'abort',
+                  () => controller.error(request.signal.reason),
+                  { once: true },
+                );
+              },
+            }),
+            { headers: { 'content-type': 'text/event-stream' } },
+          );
+        },
       },
       { taskTimeoutMs: 30, attempts: 1 },
     );
     expect(await codeOf(client.send({ text: 'hi' }))).toBe('timeout');
+    expect(openingSignal?.aborted).toBe(true);
+  });
+
+  test('aborts a stalled card body and lets the next caller load the card', async () => {
+    const opened = Promise.withResolvers<AbortSignal>();
+    let stalledBody: ReadableStreamDefaultController | undefined;
+    let stall = true;
+    const { client } = connect(
+      {
+        intercept: (request, method) => {
+          if (method !== 'card' || !stall) return undefined;
+          return new Response(
+            new ReadableStream({
+              start(controller) {
+                stalledBody = controller;
+                request.signal.addEventListener(
+                  'abort',
+                  () => controller.error(request.signal.reason),
+                  { once: true },
+                );
+                opened.resolve(request.signal);
+              },
+            }),
+            { headers: { 'content-type': 'application/json' } },
+          );
+        },
+      },
+      { requestTimeoutMs: 100, attempts: 1 },
+    );
+    jest.useFakeTimers();
+    try {
+      const pending = codeOf(client.card());
+      const signal = await opened.promise;
+      jest.advanceTimersByTime(100);
+      if (!signal.aborted) stalledBody?.close();
+      expect(signal.aborted).toBe(true);
+      expect(await pending).toBe('unreachable');
+      stall = false;
+      const card = await client.card();
+      expect(card.name).toBe('Echo Agent');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test('send uses the request as it was when send was called', async () => {

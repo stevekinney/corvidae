@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2630",
+  "branch": "steve/composable-hosted-probes",
+  "checkedAt": "b32d7f5554faad9d8ee84629a5cbedbf540e219a",
+  "briefVersion": "75d856a5f148",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "The parameterized Inspector, deployed smoke and OAuth commands at source b32d7f5554faad9d8ee84629a5cbedbf540e219a ran against https://equipment-catalog-production.up.railway.app/api/mcp and https://equipment-armorer-production.up.railway.app/mcp. The full OAuth runs completed synthetic sign-in, consent, SDK initialization and revocation. Both deployments use source 252bb369ccf5f3cf4fd59d341b79805f44ca2d1f: catalog deployment 7128e424-5808-4dce-b524-0d4b230183eb and Armorer deployment 54681288-60c3-4105-a717-7e519a7198ea. The probes derive from Protokit 012ff2d58fadc7a24d0951a2ba425c37aa8d03a9."
+    },
+    {
+      "id": "AC2",
+      "status": "not-met",
+      "evidence": "Steve's four real hosted Claude and ChatGPT client journeys, including sign-in, tool calls, access changes and revocation, remain outstanding."
+    },
+    {
+      "id": "AC3",
+      "status": "not-met",
+      "evidence": "Public resource challenges and synthetic OAuth runs passed, but live hosted-client registration, redirects and all four client checks remain outstanding."
+    }
+  ]
+}

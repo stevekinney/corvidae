@@ -3,7 +3,7 @@
  * peer that answers with a message, a `CancelTask` that leaves the task running, and a failing
  * recovery lookup. A scripted peer answers the rest as the real handler would.
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, jest, test } from 'bun:test';
 
 import { A2APeerError } from './peer-client-types.ts';
 import { createScriptedPeer, type ScriptedPeerOptions } from './peer-client.test-support.ts';
@@ -73,6 +73,110 @@ describe('a streaming peer that closes before answering', () => {
   });
 });
 
+test('aborts an opening stream when its first task fails validation', async () => {
+  let openingSignal: AbortSignal | undefined;
+  const { client } = connect({
+    intercept: async (request, method) => {
+      if (method !== 'SendStreamingMessage') return undefined;
+      openingSignal = request.signal;
+      const body = (await request.clone().json()) as { id: number };
+      const result = {
+        task: {
+          id: 'x'.repeat(1025),
+          contextId: 'context-1',
+          status: { state: 'TASK_STATE_WORKING' },
+        },
+      };
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({ jsonrpc: '2.0', id: body.id, result })}\n\n`,
+              ),
+            );
+            request.signal.addEventListener(
+              'abort',
+              () => controller.error(request.signal.reason),
+              { once: true },
+            );
+          },
+        }),
+        { headers: { 'content-type': 'text/event-stream' } },
+      );
+    },
+  });
+
+  const failure = await failureOf(client.send({ text: 'hi' }));
+  expect(failure.code).toBe('protocol');
+  expect(openingSignal?.aborted).toBe(true);
+});
+
+test('accepts a continuation whose first response already contains its next question', async () => {
+  const task = { id: 'task-1', contextId: 'context-1' };
+  function question(text: string) {
+    return {
+      ...task,
+      status: {
+        state: 'TASK_STATE_INPUT_REQUIRED',
+        message: { messageId: text, role: 'ROLE_AGENT', parts: [{ text }] },
+      },
+    };
+  }
+  let receivedContinuation = false;
+  const { client, peer } = connect(
+    {
+      card: nonStreaming,
+      intercept: (request, method) => {
+        if (method === 'GetTask') {
+          return answer(request, question(receivedContinuation ? 'second' : 'first'));
+        }
+        if (method !== 'SendMessage') return undefined;
+        receivedContinuation = true;
+        return answer(request, { task: question('second') });
+      },
+    },
+    { taskTimeoutMs: 100 },
+  );
+
+  const continuation = await client.send({ text: 'answer', taskId: task.id });
+  expect(await continuation.result()).toMatchObject({
+    state: 'input-required',
+    taskId: task.id,
+    message: 'second',
+  });
+  expect(peer.methods().filter((method) => method === 'GetTask')).toHaveLength(1);
+});
+
+test('returns the next question when reopening an already applied continuation', async () => {
+  const messageId = 'sent-before-response-was-lost';
+  const task = {
+    id: 'task-1',
+    contextId: 'context-1',
+    status: { state: 'TASK_STATE_INPUT_REQUIRED' },
+    history: [
+      { messageId, role: 'ROLE_USER', parts: [{ text: 'answer' }] },
+      { messageId: 'next-question', role: 'ROLE_AGENT', parts: [{ text: 'confirm?' }] },
+    ],
+  };
+  const { client, peer } = connect(
+    {
+      card: nonStreaming,
+      intercept: (request, method) => {
+        if (method === 'GetTask') return answer(request, task);
+        return method === 'SendMessage' ? answer(request, { task }) : undefined;
+      },
+    },
+    { taskTimeoutMs: 100 },
+  );
+
+  const replay = await client.send({ text: 'answer', taskId: task.id, messageId });
+
+  expect(await replay.result()).toMatchObject({ state: 'input-required', taskId: task.id });
+  expect(peer.methods()).not.toContain('SendMessage');
+  expect(peer.methods()).not.toContain('CancelTask');
+});
+
 describe('a polling peer that answers with a message instead of a task', () => {
   test('settles with the message, which leaves nothing to cancel', async () => {
     const { peer, client } = connect({
@@ -135,6 +239,58 @@ describe('a CancelTask the peer answers without canceling', () => {
     expect(outcome).toMatchObject({ state: 'canceled', cancelConfirmed: false });
     expect(outcome.cancelError).toContain('the peer left the task working');
   });
+});
+
+describe('a cancellation response that stalls after headers', () => {
+  test.each(['CancelTask', 'GetTask'] as const)(
+    'bounds the %s response body',
+    async (stalledMethod) => {
+      const opened = Promise.withResolvers<AbortSignal>();
+      let stalledBody: ReadableStreamDefaultController | undefined;
+      const { client } = connect(
+        {
+          intercept: async (request, method) => {
+            if (method === stalledMethod) {
+              return new Response(
+                new ReadableStream({
+                  start(controller) {
+                    stalledBody = controller;
+                    request.signal.addEventListener(
+                      'abort',
+                      () => controller.error(request.signal.reason),
+                      { once: true },
+                    );
+                    opened.resolve(request.signal);
+                  },
+                }),
+                { headers: { 'content-type': 'application/json' } },
+              );
+            }
+            if (method !== 'CancelTask') return undefined;
+            const body = (await request.clone().json()) as { id: number };
+            return Response.json({
+              jsonrpc: '2.0',
+              id: body.id,
+              error: { code: -32002, message: 'Task not cancelable' },
+            });
+          },
+        },
+        { taskTimeoutMs: 100 },
+      );
+      const task = await client.send({ text: 'hang' });
+      jest.useFakeTimers();
+      try {
+        const cancellation = task.cancel();
+        const signal = await opened.promise;
+        jest.advanceTimersByTime(100);
+        if (!signal.aborted) stalledBody?.close();
+        expect(signal.aborted).toBe(true);
+        expect(await cancellation).toMatchObject({ state: 'canceled', cancelConfirmed: false });
+      } finally {
+        jest.useRealTimers();
+      }
+    },
+  );
 });
 
 describe('a cancel the peer refuses as not cancelable', () => {

@@ -72,6 +72,57 @@ describe('InlineConfirm', () => {
     expect(confirmations).toBe(1);
   });
 
+  test('a destructive two-press action is solid danger at rest and marks itself armed (COR-2683)', async () => {
+    const view = render(InlineConfirm, {
+      presentation: 'two-press',
+      confirmLabel: 'Delete namespace',
+      destructive: true,
+    });
+
+    // At rest it is the solid danger face, the region's one primary; arming keeps the face and
+    // marks the wrapper, which draws a danger ring around the button.
+    const atRest = view.getByRole('button', { name: 'Delete namespace' });
+    expect(atRest.classList.contains('button-variant-danger')).toBe(true);
+    expect(atRest.classList.contains('button-variant-soft-danger')).toBe(false);
+    const wrapper = view.container.querySelector('.cinder-inline-confirm__two-press')!;
+    expect(wrapper.hasAttribute('data-cinder-armed')).toBe(false);
+    await fireEvent.click(atRest);
+    const armed = view.getByRole('button', { name: 'Press again to delete namespace' });
+    expect(armed.classList.contains('button-variant-danger')).toBe(true);
+    expect(wrapper.hasAttribute('data-cinder-armed')).toBe(true);
+  });
+
+  test('an armed two-press action draws a gapped danger ring, and an outline in forced colours', () => {
+    // The cascade against the Button's focus ring is measured in Chromium
+    // (inline-confirm-two-press.playwright.ts); this pins the declared recipe.
+    const css = readFileSync(new URL('./inline-confirm.css', import.meta.url), 'utf8').replaceAll(
+      /\s+/g,
+      ' ',
+    );
+    expect(css).toContain(
+      'box-shadow: 0 0 0 var(--_cinder-focus-ring-filled-gap) var(--cinder-ring-offset-color), 0 0 0 calc(var(--_cinder-focus-ring-filled-gap) + var(--cinder-ring-width)) var(--cinder-status-danger-solid);',
+    );
+    expect(css).toContain(
+      '.cinder-inline-confirm__two-press[data-cinder-armed] .cinder-button.button-variant-danger:focus-visible',
+    );
+    expect(css).toMatch(
+      /@media \(forced-colors: active\) \{ \.cinder-inline-confirm__two-press\[data-cinder-armed\] \.cinder-button \{ outline: var\(--cinder-ring-width\) solid Highlight;/,
+    );
+  });
+
+  test('a non-destructive two-press action is primary at rest and danger once armed', async () => {
+    const view = render(InlineConfirm, {
+      presentation: 'two-press',
+      confirmLabel: 'Refund',
+    });
+
+    const atRest = view.getByRole('button', { name: 'Refund' });
+    expect(atRest.classList.contains('button-variant-primary')).toBe(true);
+    await fireEvent.click(atRest);
+    const armed = view.getByRole('button', { name: 'Press again to refund' });
+    expect(armed.classList.contains('button-variant-danger')).toBe(true);
+  });
+
   test('keeps the keyboard escape hint visible only for fine pointers', async () => {
     const { container, getByRole } = render(InlineConfirm, {
       presentation: 'two-press',

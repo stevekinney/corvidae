@@ -180,12 +180,12 @@ const publishInputResults = await (async () => {
   const directory = await mkdtemp(join(tmpdir(), 'interborough-package-inputs-'));
   try {
     const source = 'a'.repeat(40);
-    const validateInputs = (publish: boolean, protectedRef: boolean) =>
+    const validateInputs = (publish: boolean, protectedRef: boolean, version = '1.0.0') =>
       runWithHangGuard(['bash', '-e', '-o', 'pipefail', '-c', validate], {
         env: {
           ...rootScriptEnvironment(),
           SOURCE_SHA: source,
-          VERSION: '1.0.0',
+          VERSION: version,
           PUBLISH: String(publish),
           GITHUB_REF: 'refs/heads/main',
           GITHUB_REF_PROTECTED: String(protectedRef),
@@ -196,7 +196,27 @@ const publishInputResults = await (async () => {
     const unprotected = await validateInputs(true, false);
     const protectedMain = await validateInputs(true, true);
     const rehearsal = await validateInputs(false, false);
-    return { unprotected, protectedMain, rehearsal };
+    const emptyVersion = await validateInputs(true, true, '');
+    const multiline = await validateInputs(false, false, '1.0.0\nextra');
+    const carriageReturn = await validateInputs(false, false, '1.0.0\rextra');
+    const verify = workflow.jobs.publish.steps[0]?.run;
+    if (verify === undefined) throw new Error('The publish workflow has no source check');
+    const verifySource = (tested: string) =>
+      runWithHangGuard(['bash', '-e', '-c', verify], {
+        env: { ...rootScriptEnvironment(), SOURCE_SHA: tested, GITHUB_SHA: source },
+      });
+    const matchingSource = await verifySource(source);
+    const mismatchedSource = await verifySource('b'.repeat(40));
+    return {
+      unprotected,
+      protectedMain,
+      rehearsal,
+      emptyVersion,
+      multiline,
+      carriageReturn,
+      matchingSource,
+      mismatchedSource,
+    };
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -207,19 +227,51 @@ test('only protected main can validate a pinned source for npm publishing', () =
   expect(publishInputResults.protectedMain.success).toBe(true);
   expect(publishInputResults.rehearsal.success).toBe(true);
   expect(workflow.jobs.publish.if).toBe(
-    "${{ inputs.publish && github.ref == 'refs/heads/main' && github.ref_protected }}",
+    "${{ github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main' && github.ref_protected }}",
   );
+  expect(workflow.jobs.verify.if).toBe(workflow.jobs.publish.if);
+});
+
+test('rejects empty versions and line breaks before exporting release outputs', () => {
+  expect(publishInputResults.emptyVersion.success).toBe(false);
+  expect(publishInputResults.multiline.success).toBe(false);
+  expect(publishInputResults.carriageReturn.success).toBe(false);
+});
+
+test('publishing independently checks that the tested source matches the dispatch', () => {
+  expect(workflow.jobs.publish.steps[0]?.name).toBe('Verify tested source matches the dispatch');
+  expect(publishInputResults.matchingSource.success).toBe(true);
+  expect(publishInputResults.mismatchedSource.success).toBe(false);
+});
+
+test('rehearses only a main push that changes the npm workflow', async () => {
+  const releaseWorkflow = await readFile(
+    resolve(import.meta.dir, '../../../.github/workflows/interborough-npm-release.yml'),
+    'utf8',
+  );
+  expect(releaseWorkflow).toContain(
+    '  push:\n    branches: [main]\n    paths: [.github/workflows/interborough-npm-release.yml]',
+  );
+  expect(releaseWorkflow).toContain(
+    "SOURCE_SHA: ${{ github.event_name == 'push' && github.sha || inputs.source_sha }}",
+  );
+  expect(releaseWorkflow).toContain(
+    "VERSION: ${{ github.event_name == 'push' && '0.0.0-candidate.0' || inputs.version }}",
+  );
+  expect(releaseWorkflow).toContain(
+    "PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}",
+  );
+  expect(releaseWorkflow).toContain('version: ${{ steps.release-inputs.outputs.version }}');
 });
 
 test('the package, publish and verify jobs use the same versioned artifact name', () => {
-  const name = 'interborough-${{ inputs.version }}-darwin-arm64-npm-package';
   expect(
     workflow.jobs.package.steps.find((step) => step.name === 'Upload tested package')?.with?.name,
-  ).toBe(name);
+  ).toBe('interborough-${{ steps.release-inputs.outputs.version }}-darwin-arm64-npm-package');
   for (const job of [workflow.jobs.publish, workflow.jobs.verify])
     expect(
       job.steps.find((step) => step.uses?.startsWith('actions/download-artifact@'))?.with?.name,
-    ).toBe(name);
+    ).toBe('interborough-${{ needs.package.outputs.version }}-darwin-arm64-npm-package');
 });
 
 const publishDecisions = await (async () => {

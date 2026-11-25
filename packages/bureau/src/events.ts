@@ -130,6 +130,34 @@ export class RunLoopingEvent extends Event {
 }
 
 /**
+ * A run cost more than the workspace's spend threshold (COR-2527), found after one of its steps and
+ * recorded on the task, which then reads `overspending`. It is published once for a run, from the
+ * write that recorded it: a run that stays over the threshold at its next step announces nothing,
+ * and the run is never stopped by it.
+ */
+export class RunOverspendingEvent extends Event {
+  /** The event kind, as the event feed publishes it. */
+  static readonly type = 'run.overspending' as const;
+
+  /** The run's identifier. */
+  readonly runId: string;
+  /** The instant, as ISO 8601 on the Bureau's clock, a step found the run over the threshold. */
+  readonly since: string;
+  /** What the run had cost by then, in US dollars. */
+  readonly costUsd: number;
+  /** The spend threshold in force at that step, in US dollars. */
+  readonly thresholdUsd: number;
+
+  constructor(runId: string, since: string, costUsd: number, thresholdUsd: number) {
+    super(RunOverspendingEvent.type);
+    this.runId = runId;
+    this.since = since;
+    this.costUsd = costUsd;
+    this.thresholdUsd = thresholdUsd;
+  }
+}
+
+/**
  * A run's spend crossed one of its budget's warning fractions (COR-2096), as the run recorded it.
  * The feed publishes the fraction, the spend, the budget and the model, never request content.
  */
@@ -1521,6 +1549,8 @@ export interface BureauEventMap extends EventMap {
   [RunStalledEvent.type]: RunStalledEvent;
   /** A run's toolbox reported a loop (COR-2526). */
   [RunLoopingEvent.type]: RunLoopingEvent;
+  /** A run cost more than the workspace's spend threshold (COR-2527). */
+  [RunOverspendingEvent.type]: RunOverspendingEvent;
   [RunRegisteredEvent.type]: RunRegisteredEvent;
   [RunSettledEvent.type]: RunSettledEvent;
   /** A run ended without failing and without being aborted (COR-2095). */

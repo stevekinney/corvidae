@@ -218,6 +218,7 @@
     {
       "patterns": [
         "src/exports/**",
+        "src/web-components/**",
         "src/index.ts",
         "src/styles/index.css",
         "src/styles/all.css",

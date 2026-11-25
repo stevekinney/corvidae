@@ -98,7 +98,9 @@
   const narrowViewport = useViewportBelow(() => sheetBreakpoint);
   const sheet = $derived(narrowViewport.current && !isChromeless);
 
-  const bodyOverflowFade = overflowFade({ markScrollable: true });
+  // The body joins the tab order only while it scrolls, so text-only modal content remains
+  // reachable by keyboard after a person tabs past the close control.
+  const bodyOverflowFade = overflowFade({ keyboardScrollable: true, markScrollable: true });
   // Owns focus capture/restore, body scroll lock, escape-stack participation
   // (a no-op handler — Modal handles Escape via the native <dialog> `cancel`
   // event, but still needs a stack entry so non-dialog overlays above it

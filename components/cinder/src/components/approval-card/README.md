@@ -41,6 +41,8 @@ Presentational human-in-the-loop approval surface for reviewing a tool operation
 
 `layout="row"` is the one approval row used in a chat transcript and beneath a tool call in a step rail. It sits on a neutral raised surface, never a warning fill, and the risk glyph carries the alert.
 
+The optional `decisionReview` snippet adds a review action to the row. It receives the guarded Approve or Deny callback and whether decisions are disabled. That callback submits the same note and approval scope as the row’s buttons.
+
 ```svelte
 <script lang="ts">
   import { ApprovalCard } from '@lostgradient/cinder';
@@ -98,7 +100,7 @@ Once decided, the green outcome line leads ("Approved by you 10:33 AM today Tool
 The host owns the answer, so it tells the card where the answer stands:
 
 - `resolving="approve"` writes "Approving…" with a spinner on Approve and turns Deny off; `resolving="deny"` does the same for Deny ("Denying…"). The note and the checkbox stop taking changes, the approval stays pending, and a second press is ignored until the host clears `resolving`.
-- `failure={{ summary, detail }}` writes a tinted, bordered danger message (an `Alert`, announced as it appears: "Couldn't approve. Interborough couldn't reach the agent. Nothing was refunded.") below the input, with the summary in bold. Nothing was decided, so Deny and Approve stay live and Approve is the retry; the card draws no second "Try again".
+- `failure={{ summary, detail }}` writes a bordered danger message below the input and announces it when it appears. Name the requested action in the summary, such as “Couldn’t approve,” and give the reason in the detail. Describe the durable outcome only when the host has evidence for it. In a pending review, the same Deny and Approve actions let the person retry.
 - An approval that passed its `expiresAt` is `expired`: read-only, with no Deny or Approve, and, in the `card` and `detail` layouts, a notice that says when it expired in the viewer's time zone ("This approval expired at 10:15 AM CST, the time its request set."); the `row` and `decision` layouts say "Expired before a decision" and leave the time to the host. Pass `notice` to write your own sentence for any read-only approval, such as what was refunded or what happened elsewhere.
 - `result` writes what a decided approval led to ("Result: Refunded $18.50 to the original card."), and `decidedIn` says where it was decided when that was not here ("Approved by you in Reviews at 10:44 AM", with `decidedBy` and `decidedAt`). In the `card` layout a decision made elsewhere replaces the whole card with a check glyph, that sentence and one more: "Refund order 4471 for $42.00, Issue refund." followed by `notice`, such as "The run is continuing, so this page changed. You don't need to do anything here." Nothing of the card is left to answer, so nobody answers twice.
 - `footnote` writes a muted line under the buttons while the approval waits, such as what happens once you decide. It goes with the buttons.
@@ -153,12 +155,14 @@ The card title defaults to an `h3` with section headings one level deeper. Pass 
 | `idempotencyKey` | `string` | yes | — | Idempotency key that makes repeated decisions durable. |
 | `inputLabel` | `string` | no | — | What the payload is called, such as `Runs with`: the name of the input rows in the row and decision layouts and of the Input block on the detail page (default `Input`), and of the arguments in the card (default `<tool> arguments`). |
 | `layout` | `"card"` \| `"row"` \| `"detail"` \| `"decision"` | no | `"card"` | Layout: the full `card`, the shared `row` (one approval inside a transcript or beneath a tool call), the approval's own `detail` page, or the explicit `decision` surface with its retained receipt. Default `'card'`. |
+| `noteInitiallyOpen` | `boolean` | no | — | Opens the decision note field when the card first renders. |
 | `notice` | `string` | no | — | A notice written beneath a read-only approval, such as why it expired or what happened elsewhere. Without one, an approval that passed its `expiresAt` says when it expired. |
 | `operation` | { argsPreview?: `unknown`; command: `string`; filesTouched?: `string`[]; kind: `"command"` } \| { argsPreview?: `unknown`; filesTouched: `string`[]; kind: `"file-write"` } \| { argsPreview?: `unknown`; diff: `string`; filesTouched?: `string`[]; kind: `"patch"` } \| { argsPreview?: `unknown`; filesTouched?: `string`[]; kind: `"other"` } | yes | — | Operation details shown to the approver. |
 | `outcomeLabel` | `string` | no | — | Names the decision for a request that is not a tool approval, in place of Approved or Denied, such as `Answered` for a question: "Answered by you in Reviews at 10:44 AM". The request's question is then the sentence beneath, with no tool named. |
 | `pauseSentence` | `string` | no | — | Shared approval context accepted by callers; the compact decision layout does not repeat a generic pause sentence. |
 | `policyVersion` | `string` | yes | — | Policy version that produced the approval request. |
 | `question` | `string` | no | — | The question the approval asks, such as `Refund order 4471 for $42.00?`. Default `Run <tool>?`. |
+| `reason` | `string` | no | — | A host-owned decision note, retained when the host changes the open approval. |
 | `rememberScope` | `string` | no | — | Offers "Allow <tool> for <scope>" as a checkbox on its own line before Deny and Approve, with the scope written after "for", such as `the rest of this chat`. Leave it out for a tool set to Always. |
 | `requestedAt` | `string` | no | — | When the approval was asked, as an ISO timestamp. Written as relative time ("4 min ago") while the approval is pending. |
 | `resolving` | `"approve"` \| `"deny"` | no | — | The answer that is on its way: `approve` writes "Approving…" with a spinner on Approve, `deny` writes "Denying…" on Deny, and both buttons, the note and the checkbox turn off until the host clears it. |
@@ -178,6 +182,7 @@ The card title defaults to an `h3` with section headings one level deeper. Pass 
 | `view` | `"fields"` \| `"json"` | no | `"fields"` | Which view of the arguments the card and the detail page show, Fields or JSON; the row and decision layouts write the input as rows in the open. Bindable, so one switch can govern every payload on a page. Default `fields`. |
 | `why` | `string` | no | — | Why the agent wants to do this, written by the host and offered in the `decision` layout as a disclosure named "Why the agent wants to do this". |
 | `context` | `(opaque)` | no | — | A line of context written above the question, such as "Test chat, this runs for real". Not expressible in JSON Schema; see the component types for the signature. |
+| `decisionReview` | `(opaque)` | no | — | An additional row-layout review control. It shares the row’s note, scope and guarded submit. Not expressible in JSON Schema; see the component types for the signature. |
 | `onAskAgain` | `(opaque)` | no | — | Requests a fresh approval after this one has expired in the decision layout. Not expressible in JSON Schema; see the component types for the signature. |
 | `onResolve` | `(opaque)` | no | — | Called for approve, approve-with-edits, and deny with the complete resolution payload. Not expressible in JSON Schema; see the component types for the signature. |
 

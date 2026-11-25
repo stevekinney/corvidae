@@ -252,6 +252,11 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       category: 'hairline',
     },
   ],
+  'components/cinder/src/components/error-state/error-state.css': [
+    // A neutral bordered row draws its box in the muted hairline a list row uses. The alias feeds
+    // `border-color` on the row, a 1px edge, so it is no fill (COR-2534).
+    { declaration: '--_cinder-error-state-edge: var(--cinder-border-muted);', category: 'alias' },
+  ],
   'components/cinder/src/components/divider/divider.css': [
     { declaration: 'background-color: var(--cinder-border-muted);', category: 'hairline' },
     { declaration: 'background-color: var(--cinder-border-strong);', category: 'hairline' },

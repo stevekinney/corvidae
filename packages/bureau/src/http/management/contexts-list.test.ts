@@ -5,6 +5,8 @@ import {
   createAgentSession,
   createSessionStore,
   type GenerateFunction,
+  summarizeSession,
+  withSessionReadGrant,
 } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { Conversation, createConversationHistory } from 'conversationalist';
@@ -78,6 +80,74 @@ const editor = createAgent({ name: 'editor', generate: answering() });
 const catalog = { agents: { writer, editor }, generate: answering() };
 
 describe('bureau.contexts.list', () => {
+  it('omits a shared row when its id is replaced while the directory admission is in flight', async () => {
+    const shared = {
+      ...createAgentSession({
+        id: 'reused-shared-id',
+        agentName: 'default',
+        conversationHistory: createConversationHistory(),
+        metadata: withSessionReadGrant(
+          {},
+          {
+            owner: 'workspace-a:bob',
+            workspaceId: 'workspace-a',
+            actorId: 'bob',
+            sessionIncarnation: 'shared-incarnation',
+            grantedBy: 'workspace-a:alice',
+            grantedAt: '2026-11-23T00:00:00.000Z',
+          },
+        ),
+        runs: [],
+      }),
+      incarnation: 'shared-incarnation',
+    };
+    const replacement = {
+      ...createAgentSession({
+        id: shared.id,
+        agentName: 'private-agent',
+        conversationHistory: createConversationHistory(),
+        metadata: { owner: 'workspace-a:alice' },
+        runs: [],
+      }),
+      incarnation: 'replacement-incarnation',
+    };
+    let current = shared;
+    const principal = {
+      method: 'api-key',
+      scopes: new Set<string>(),
+      workspace: {
+        workspaceId: 'workspace-a',
+        actorId: 'bob',
+        actorKind: 'user' as const,
+        owner: 'workspace-a:bob',
+        membershipRevision: 'one',
+        capabilities: ['workspace:use' as const],
+      },
+    };
+    const host = {
+      ownership: { mayAccess: () => false, runOwner: async () => undefined },
+      workspaceAuthority: () => async () => {
+        current = replacement;
+        return true;
+      },
+      contexts: {
+        internals: { sessionStore: {} },
+        list: async () => [summarizeSession(shared)],
+        get: async () => current,
+      },
+      tasks: { activityOf: async () => new Map() },
+    };
+
+    const body = (await contextsListOperation.invoke({
+      input: {},
+      host,
+      principal,
+    } as never)) as { contexts: { id: string; title: string | null; agentName: string }[] };
+
+    // The replacement title/agent must never cross the shared projection boundary.
+    expect(body.contexts).toEqual([]);
+  });
+
   it('forbids allOwners and filters a workspace administrator’s legacy scope', async () => {
     await withBureau(
       {

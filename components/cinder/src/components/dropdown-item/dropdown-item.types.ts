@@ -20,7 +20,11 @@ type DropdownItemBase = Omit<HTMLAttributes<HTMLElement>, 'class'> & {
   variant?: DropdownItemVariant;
   /** ARIA role for the row. Use `menuitemcheckbox` or `menuitemradio` for selectable menu items. */
   itemRole?: DropdownItemRole;
-  /** Checked state for checkbox and radio menu items. Omitted for normal menu items. */
+  /**
+   * Checked state for checkbox and radio menu items. A checked `menuitemradio` or
+   * `menuitemcheckbox` item draws a leading check mark, and every such item reserves its space, so
+   * the labels of a group start at one edge. Omitted for normal menu items.
+   */
   checked?: boolean;
   /** When true, adds leading padding to align the item with items that have a leading icon or indicator. Default `false`. */
   inset?: boolean;
@@ -130,7 +134,12 @@ export type DropdownItemProps = SharedHtmlAttributes &
     variant?: DropdownItemVariant;
     /** ARIA role for the row. Use `menuitemcheckbox` or `menuitemradio` for selectable menu items. */
     itemRole?: DropdownItemRole;
-    /** Checked state for checkbox and radio menu items. Omitted for normal menu items. */
+    /**
+     * Checked state for checkbox and radio menu items. A checked `menuitemradio` or
+     * `menuitemcheckbox` item draws a leading check mark, and every such item reserves its space,
+     * so the labels of a group start at one edge. The mark is hidden from assistive technology;
+     * `aria-checked` carries the state. Omitted for normal menu items.
+     */
     checked?: boolean;
     /** When true, adds leading padding to align the item with items that have a leading icon or indicator. Default `false`. */
     inset?: boolean;
@@ -143,7 +152,7 @@ export type DropdownItemProps = SharedHtmlAttributes &
     disabled?: boolean | undefined;
     /**
      * Why the item is off. While `disabled` is set it is drawn under the label as a second line in
-     * the muted text colour, and it is the item's description (`aria-describedby`), so it reads on
+     * the disabled colour at the extra-small size, never louder than the label, and it is the item's description (`aria-describedby`), so it reads on
      * a phone and by keyboard with no hover. Ignored while the item is enabled. Use it in place of
      * a `title`, which touch never shows.
      */

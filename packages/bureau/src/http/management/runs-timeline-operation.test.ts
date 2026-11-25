@@ -65,7 +65,13 @@ describe('bureau.runs.timeline for an agent run', () => {
     const response = await rpc(opened.handler, 'bureau.runs.timeline', { runId }, 'alice-key');
 
     expect(response.error).toBeUndefined();
-    expect(response.result).toMatchObject({ runId, kind: 'agent', truncated: false });
+    // The run has finished, so a reader knows no step of it is still going.
+    expect(response.result).toMatchObject({
+      runId,
+      kind: 'agent',
+      runStatus: 'completed',
+      truncated: false,
+    });
     const entries = entriesOf(response);
     expect(entries.length).toBeGreaterThan(0);
     expect(entries.map((entry) => [entry.step, entry.label, entry.status])).toEqual(
@@ -126,7 +132,12 @@ describe('bureau.runs.timeline for a workflow run', () => {
     for (const key of ['operator-key', 'workflows-reader-key']) {
       const response = await rpc(served.keyed, 'bureau.runs.timeline', { runId }, key);
       expect([key, response.error]).toEqual([key, undefined]);
-      expect(response.result).toMatchObject({ runId, kind: 'workflow', truncated: false });
+      expect(response.result).toMatchObject({
+        runId,
+        kind: 'workflow',
+        runStatus: 'completed',
+        truncated: false,
+      });
       expect(entriesOf(response).map((entry) => [entry.step, entry.label, entry.status])).toEqual(
         engineTimeline.map((entry) => [entry.step, entry.operationLabel, entry.status]),
       );

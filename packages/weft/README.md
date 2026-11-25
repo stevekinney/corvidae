@@ -523,6 +523,8 @@ await using server = serve({ engine, port: 7233 });
 
 Endpoints under `/api/v1/` cover the full lifecycle: start workflows, list, signal, update, query, cancel, fork, and stream events. JSON-RPC over WebSocket also exposes workflow and fleet event subscriptions for operator UIs that need live state without polling. Content negotiation supports JSON and MessagePack. `engine.workflows` and the matching `/v1/registry/` operations expose the durable workflow catalog for admin tooling — install a revision's manifest and activate it as the advertised active revision — bookkeeping only, never workflow execution routing; see [`workflow-versioning.md`](documentation/guides/workflow-versioning.md#engineworkflows-public-catalog-control). `workflowSource()` pairs a typed, serializable source descriptor with a never-serialized loader capability, so one workflow can register lazily while another stays eagerly registered; `engine.registerSource()` records the candidate without importing it, and `engine.resolveWorkflowSource()` (or its `engine.workflows.preload()` alias) loads, validates, and installs it into the same catalog with single-flight deduplication per `(name, revision)`. Every execution entry point — `start()`, `startOrSignal()`, `schedule()`, `fork()`, `resume()`, and recovery — awaits resolution for a lazy type before running any handler code, with bounded diagnostics and process-local events for the load pipeline; see [Engine Integration](documentation/guides/workflow-versioning.md#engine-integration-wft-1516).
 
+`engine.runConcurrency()` is a per-engine-process snapshot: it reports only the counted, top-level runs that this engine is executing, plus this engine's counted starts waiting for a slot. It excludes suspended runs, children, and workflow types the cap leaves uncounted. Engines can share storage without sharing this snapshot; each process reports only its own cap state. Bureau exposes its bound engine's `max` and running count as `bureau.workflows.concurrency`, so an operator UI can describe that process's next available slot without storage-wide over-counting.
+
 Workflow and fleet event feeds resume from an opaque `Cursor` string. Treat a cursor as a token: pass back exactly what an envelope's `cursor` field gave you, and never build or compare one by hand. When a consumer needs the underlying sequence position (for example to compare against a retention floor), use the codec exported from `@lostgradient/backchannel`:
 
 - `encodeCursor(sequence: number): Cursor` encodes a non-negative integer sequence and throws on a negative or non-integer input.
@@ -579,7 +581,7 @@ The scope each operation requires:
 | `weft.workflows.attributes.get`, `weft.workflows.attributes.set` | `attributes:read`, `attributes:write` |
 | `weft.workflows.streams.chunks`, `weft.workflows.streams.sse` | `streams:read` |
 | `weft.schedules.create`, `weft.schedules.update`, `weft.schedules.pause`, `weft.schedules.resume`, `weft.schedules.skipnext`, `weft.schedules.unskip`, `weft.schedules.runnow`, `weft.schedules.cancel` | `schedules:write` |
-| `weft.reviews.get`, `weft.reviews.decision.submit` | `reviews:read`, `reviews:write` |
+| `weft.reviews.list`, `weft.reviews.get`, `weft.reviews.decision.submit` | `reviews:read`, `reviews:write` |
 | `weft.retention.get` | `system:read` |
 | `weft.workflows.definitions.list`, `weft.workflows.definitions.get` | `system:read` or `workflows:read` (either one) |
 | `weft.system.principal` | none (public) |

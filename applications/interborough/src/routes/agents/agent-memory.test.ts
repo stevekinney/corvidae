@@ -39,7 +39,19 @@ afterEach(() => {
   stub = undefined;
 });
 
-const mount = (page: unknown) => render(MemoryToasts, { props: { page } } as never);
+/** The direct page tests use an explicit eligible workspace principal, as the shell does. */
+const mount = (page: unknown) =>
+  render(MemoryToasts, {
+    props: {
+      page,
+      principal: {
+        scopes: [],
+        subject: 'tester',
+        unauthenticatedAccess: null,
+        workspace: { workspaceId: 'test-workspace', actorId: 'tester', memorySharing: true },
+      },
+    },
+  } as never);
 
 /** What the agent is called where the page names it (`AGENT` in the shared support). */
 const AGENT_NAME = 'Assistant';
@@ -2000,6 +2012,19 @@ describe('adding a memory', () => {
 });
 
 describe('sharing a memory', () => {
+  test('does not offer sharing on the local single-owner host', async () => {
+    bureau();
+    landAt('/agents/assistant/memory');
+    const view = render(FramedMemory, {
+      props: { agentId: 'assistant', memorySharing: false },
+    } as never);
+    const detail = await openDetails(view, AISLE.content);
+
+    expect(
+      within(detail).queryByRole('button', { name: MEMORY_COPY.govern.share.action }),
+    ).toBeNull();
+  });
+
   async function shareDialog() {
     const served = bureau({
       'bureau.memory.share': (params) => ({

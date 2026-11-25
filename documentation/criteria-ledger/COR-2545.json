@@ -1,0 +1,49 @@
+{
+  "issue": "COR-2545",
+  "branch": "chef/cor-2545-schedule-editor",
+  "checkedAt": "d96cca81e7c3eec58a3d9e47772ebc17d24f112b",
+  "briefVersion": "87dd9b5509a0",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Unchanged this round (packages/bureau/src/http/management/schedules-panel-writes.test.ts, last run at round 2)."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Unchanged flows; this round the saving state reads the Button's own live region (schedule-editor-states.spec.ts, CI only) and the editor unit tests pass (inspectors src/schedule-editor, exit 0, 43 pass). tests/panels specs not run locally."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Unchanged this round (panel-routes-schedule-writes.test.ts, last run at round 2)."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Unchanged this round (panel-routes.test.ts and panel-routes-schedule-writes.test.ts, last run at round 2)."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "Unchanged this round; the half-save wording change in save-message.ts leaves the field-error path alone (save-message.test.ts, exit 0)."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "Unchanged this round (plugins/inspectors/src/plugin.test.ts)."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "Unchanged this round (plugins/inspectors/src/plugin.test.ts)."
+    },
+    {
+      "id": "AC8",
+      "status": "met-on-branch",
+      "evidence": "Unchanged this round; check-plugin-identities.ts passed inside this round's lint:root run."
+    }
+  ]
+}

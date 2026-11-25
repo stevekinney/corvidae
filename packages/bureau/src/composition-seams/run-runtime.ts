@@ -63,7 +63,7 @@ import { defaultBureauAgentName, withDefaultToolboxRequestContext } from '../run
 import { holdGenerateToModelPolicy } from '../code-agent-model-policy';
 import { ownerOrLocal } from '../owner-of-record';
 import { serializeUnknownError } from '../serialization';
-import { withAddedTools, withToolboxLayer } from '../toolbox-additions';
+import { cloneToolbox, withAddedTools, withToolboxLayer } from '../toolbox-additions';
 import { withChatPermission } from '../tool-approval';
 
 /** The callables run runtime reads from elsewhere in `buildRuntimeComposition`. */
@@ -260,11 +260,11 @@ export function createRunRuntimeSeam(core: CompositionCore, peers: RunRuntimePee
     // the same cross-run isolation the Bureau-wide toolbox gets.
     let toolbox: AnyToolbox =
       sessionAgent !== undefined
-        ? sessionAgent.options.toolbox.extend()
+        ? cloneToolbox(sessionAgent.options.toolbox)
         : options.toolbox !== undefined
-          ? baseToolbox.extend()
+          ? cloneToolbox(baseToolbox)
           : hasSkillTools
-            ? fallbackToolbox.extend()
+            ? cloneToolbox(fallbackToolbox)
             : createUnavailableToolbox();
     // COR-567 — one registry per run. Per-run rather than per-composition
     // because these hooks close over this run's session, memory and skill

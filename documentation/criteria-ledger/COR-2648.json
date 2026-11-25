@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2648",
+  "branch": "chef/cor-2648-error-state-glyph",
+  "checkedAt": "c01291bffc82e69e41638a012dfd74aa182c2939",
+  "briefVersion": "ff0daf09bc52",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Coordinator design review round 1: glyph centre 0.5px from the title's ink centre on the one-line no-provider row (was 4.5px); title-only row gap fixed in c01291bf"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Coordinator design review round 1: only the glyph's own box moved on /reviews, run-hooks C3-16 and Home"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "error-state.test.ts asserts the glyph and title share the start-aligned .cinder-error-state-lead group, and that a title-only row's title has no trailing margin"
+    }
+  ]
+}

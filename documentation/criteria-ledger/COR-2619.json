@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2619",
+  "branch": "steve/composable-review-adoption",
+  "checkedAt": "2031e4f31bcabc30468295192ba4558f39dbb655",
+  "briefVersion": "6b60aae48de4",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Inventory checked at 868ee45a08; identical test blob b0e6c68bd451ebca1a624509f2d24c5228730b38 passed as catalog-consumer-inventory.slow.test.ts in the candidate worktree."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "The unchanged inventory test validates served operations, supported bindings, classifications and transport fields; selected slow runner passed."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "The unchanged inventory test scans imports and transport sites and rejects unlisted, replaced, property, injected and aliased fetch fixtures; selected slow runner passed."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Inventory records host, AG-UI, asset, OAuth and sandbox protocol boundaries; no production transport was modified."
+    }
+  ]
+}

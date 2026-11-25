@@ -106,13 +106,14 @@ function serveArchivable(archivedAt: string | null = null) {
 }
 
 describe('the More menu', () => {
-  test('offers Archive after Export and above Delete, as Rename and Delete are offered', async () => {
+  test('offers Share chat first, and Archive after Export above Delete', async () => {
     serveArchivable();
     const view = mount();
 
     await openMenu(view);
 
     expect(view.getAllByRole('menuitem').map((item) => item.textContent?.trim())).toEqual([
+      'Share chat',
       MORE.rename,
       MORE.branch,
       MORE.export,

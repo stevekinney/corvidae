@@ -9,7 +9,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { openBungalow } from '@lostgradient/bungalow';
+import { openBungalow, openLocalBungalow, type RootLock } from '@lostgradient/bungalow';
 
 /** Whether `value` is a plain object, so its keys can be read. */
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -36,12 +36,18 @@ async function readDocument(path: string): Promise<Record<string, unknown>> {
  * tool sources, workflow files) is bound first, so the host finds an identity beside the files.
  * Binding an already bound home changes nothing.
  */
-export async function bindHome(home: string): Promise<void> {
+export async function bindHome(
+  home: string,
+  acquireLock?: (root: string) => RootLock,
+): Promise<void> {
   await mkdir(home, { recursive: true });
-  const bungalow = await openBungalow({
-    name: 'interborough',
-    environment: { NODE_ENV: 'test', INTERBOROUGH_HOME: home },
-  });
+  const bungalow =
+    acquireLock === undefined
+      ? await openBungalow({
+          name: 'interborough',
+          environment: { NODE_ENV: 'test', INTERBOROUGH_HOME: home },
+        })
+      : await openLocalBungalow({ name: 'interborough', root: home, acquireLock });
   bungalow.close();
 }
 
@@ -52,8 +58,9 @@ export async function bindHome(home: string): Promise<void> {
 export async function setPluginsEnabled(
   home: string,
   choices: Readonly<Record<string, boolean>>,
+  acquireLock?: (root: string) => RootLock,
 ): Promise<void> {
-  await bindHome(home);
+  await bindHome(home, acquireLock);
   const path = join(home, 'configuration.json');
   const document = await readDocument(path);
   const plugins: Record<string, unknown> = isRecord(document['plugins'])

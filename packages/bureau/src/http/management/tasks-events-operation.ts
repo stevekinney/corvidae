@@ -387,6 +387,9 @@ export function createTaskEventProjector(
 
 /** What the operation reads from the handler's `host`. */
 export type BureauTaskEventsOperationHost = BureauOwnershipHost & {
+  readonly reviewedRunState?: (
+    runId: string,
+  ) => Promise<import('../../reviewed-provenance').ReviewedProvenanceState>;
   readonly tasks: Pick<TaskRegistry, 'get' | 'ownerOf' | 'record' | 'onSettled' | 'onChanged'>;
   readonly taskHistory: Pick<BureauTasks, 'events' | 'subscribeEvents'>;
   readonly runtime?: Pick<RuntimeServices, 'identifiers' | 'clock'>;
@@ -710,6 +713,8 @@ export const tasksEventsOperation = defineOperation<
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
   invoke: async ({ input, host, principal }) => {
     const { taskId } = input;
+    if ((await host.reviewedRunState?.(taskId)) === 'unresolved')
+      throw resourceNotFound('task', taskId);
     if (!(await mayAccessTask(host, principal, taskId, 'bureau.tasks:read'))) {
       throw resourceNotFound('task', taskId);
     }

@@ -11,6 +11,7 @@ import { Window } from 'happy-dom';
 
 import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
 import { humanWaitFixture, toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
+import type { BureauToolApproval } from '../../lib/bureau-reviews.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import {
   emptyBureauWorld,
@@ -201,14 +202,76 @@ describe('the reviews page', () => {
 });
 
 describe('deciding a Bureau tool approval', () => {
+  test('renders approval details through Chat’s public shared approval row (COR-2426)', async () => {
+    const source = await Bun.file(new URL('./approval-pane.svelte', import.meta.url)).text();
+
+    expect(source).toContain("from '@lostgradient/chat'");
+    expect(source).toContain('<ToolApprovalPart');
+    expect(source).not.toContain('<ApprovalCard');
+  });
+
+  test('shared approval detail maps all fields and raw JSON', async () => {
+    const approval = toolApprovalFixture({
+      approval: {
+        ...APPROVAL.approval,
+        toolName: 'issue-refund',
+        arguments: { orderId: '4471', amount: '$42.00', reason: 'Arrived damaged' },
+        action: {
+          type: 'approval',
+          risk: 'high',
+          operation: { kind: 'other' },
+          message: 'Refund order 4471 for $42.00?',
+          consequence: 'Sends $42.00 back to the original card.',
+        },
+      },
+    });
+    const { container, findByRole, findByText } = open({ reviews: [approval] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+
+    expect(container.querySelector('[data-cinder-layout="detail"]')).not.toBeNull();
+    expect(await findByRole('heading', { name: 'Refund order 4471 for $42.00?' })).not.toBeNull();
+    expect(await findByText('Order ID')).not.toBeNull();
+    expect(await findByText('Amount')).not.toBeNull();
+    expect(await findByText('Reason')).not.toBeNull();
+    expect(container.querySelector('.cinder-approval-card__detail-risk')?.textContent?.trim()).toBe(
+      "Can't be undone. Sends $42.00 back to the original card.",
+    );
+    const input = await findByRole('group', { name: 'Input' });
+    const consequence = container.querySelector('.cinder-approval-card__consequence');
+    if (!(consequence instanceof HTMLElement)) throw new Error('Missing declared tool consequence');
+    expect(consequence?.textContent).toBe('Sends $42.00 back to the original card.');
+    expect(input.compareDocumentPosition(consequence) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+      0,
+    );
+    await fireEvent.click(await findByRole('radio', { name: 'JSON' }));
+    const json = container.querySelector('.cinder-json-viewer')?.textContent?.replace(/\s+/g, '');
+    expect(json).toContain('{orderId:"4471"amount:"$42.00"reason:"Arriveddamaged"}');
+    expect(consequence?.textContent).toBe('Sends $42.00 back to the original card.');
+  });
+
+  test('checking remember alone sends no decision', async () => {
+    const { container, getByLabelText } = open({ reviews: [APPROVAL] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+
+    await fireEvent.click(getByLabelText(/allow .* for the rest of this chat/i));
+
+    expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
+  });
+
   test('shows the tool and what it was given before it is decided', async () => {
     const { container, findByRole } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
     await findByRole('button', { name: 'Approve' });
-    const input = await findByRole('group', { name: 'Input' });
-    expect(input.textContent?.replace(/\s+/g, ' ')).toContain('Order ID order-1001');
-    expect(input.textContent?.replace(/\s+/g, ' ')).toContain('Amount in cents 4200');
+    // What it was given, on one line with each name in words (row 26o, COR-2426), the names muted
+    // apart from the values (design review 1).
+    const input = container.querySelector('.cinder-payload-inspector');
+    expect(input?.textContent).toContain('Order ID');
+    expect(input?.textContent).toContain('order-1001');
+    expect(input?.textContent).toContain('Cents');
+    expect(input?.textContent).toContain('4200');
   });
 
   test('approves through bureau.reviews.resolve with the review’s id and round, and the row goes', async () => {
@@ -231,7 +294,7 @@ describe('deciding a Bureau tool approval', () => {
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
     await fireEvent.click(
-      await findByRole('checkbox', { name: 'Allow Issue refund for the rest of this chat' }),
+      await findByRole('checkbox', { name: /allow .* for the rest of this chat/i }),
     );
     await approveRefund(findByRole);
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
@@ -248,7 +311,7 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.input(getByLabelText('Note Optional'), {
+    await fireEvent.input(getByLabelText('Note (optional)'), {
       target: { value: '  Go ahead, but only this once.  ' },
     });
     await approveRefund(findByRole);
@@ -262,15 +325,15 @@ describe('deciding a Bureau tool approval', () => {
     });
   });
 
-  test('sends the note typed before Allow for the rest of the chat as the reason', async () => {
+  test('sends the note typed before an approved remembered decision as the reason', async () => {
     const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.input(getByLabelText('Note Optional'), {
+    await fireEvent.input(getByLabelText('Note (optional)'), {
       target: { value: 'Fine for this chat.' },
     });
     await fireEvent.click(
-      await findByRole('checkbox', { name: 'Allow Issue refund for the rest of this chat' }),
+      await findByRole('checkbox', { name: /allow .* for the rest of this chat/i }),
     );
     await approveRefund(findByRole);
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
@@ -295,8 +358,8 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    expect(await findByLabelText('Note Optional')).not.toBeNull();
-    expect(container.textContent).toContain('Note Optional');
+    expect(await findByLabelText('Note (optional)')).not.toBeNull();
+    expect(container.textContent).toContain('Note (optional)');
   });
 
   test('says the approval was not remembered when the Bureau could not store the grant', async () => {
@@ -311,7 +374,7 @@ describe('deciding a Bureau tool approval', () => {
       remembered: false,
     }));
     await fireEvent.click(
-      await findByRole('checkbox', { name: 'Allow Issue refund for the rest of this chat' }),
+      await findByRole('checkbox', { name: /allow .* for the rest of this chat/i }),
     );
     await approveRefund(findByRole);
     await findByText(REVIEWS_COPY.notRemembered.title);
@@ -321,7 +384,7 @@ describe('deciding a Bureau tool approval', () => {
     const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.input(getByLabelText('Note Optional'), {
+    await fireEvent.input(getByLabelText('Note (optional)'), {
       target: { value: 'Wrong order.' },
     });
     await fireEvent.click(await findByRole('button', { name: 'Deny' }));
@@ -345,6 +408,29 @@ describe('deciding a Bureau tool approval', () => {
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).not.toHaveProperty('reason');
   });
 
+  test('shows Denying while the matching denial is held in flight', async () => {
+    const { container, findByRole, getByRole, queryByRole } = open({ reviews: [APPROVAL] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+    let release: () => void = () => {};
+    stub?.on(
+      'bureau.reviews.resolve',
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    await fireEvent.click(await findByRole('button', { name: 'Deny' }));
+    await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve')).toHaveLength(1));
+    try {
+      await waitFor(() => expect(getByRole('button', { name: 'Denying…' })).not.toBeNull());
+      expect(queryByRole('button', { name: 'Approving…' })).toBeNull();
+    } finally {
+      release();
+    }
+  });
+
   test('opens the review after the one decided', async () => {
     const { container, findByRole } = open({ reviews: [APPROVAL, QUESTION] });
     await waitFor(() => expect(rows(container).length).toBe(2));
@@ -366,7 +452,7 @@ describe('deciding a Bureau tool approval', () => {
     );
   });
 
-  test('says the decision was not recorded when the Bureau refuses it, and keeps the review', async () => {
+  test('names an approval failure and keeps the pending review when the durable outcome is unknown', async () => {
     const { container, findByRole, findByText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
@@ -374,8 +460,9 @@ describe('deciding a Bureau tool approval', () => {
       throw new Error('The Bureau broke.');
     });
     await approveRefund(findByRole);
-    await findByText(new RegExp(REVIEWS_COPY.decisionFailed));
+    await findByText(new RegExp(REVIEWS_COPY.approvalFailed.approve));
     expect(rows(container).length).toBe(1);
+    expect(container.textContent).not.toMatch(/Nothing (?:was refunded|changed)/);
   });
 });
 
@@ -388,8 +475,8 @@ describe('the keys that act on the open review', () => {
     expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
 
     await openRow(container, 0);
-    await waitFor(() => expect(getByLabelText('Note Optional')).not.toBeNull());
-    await fireEvent.input(getByLabelText('Note Optional'), {
+    await waitFor(() => expect(getByLabelText('Note (optional)')).not.toBeNull());
+    await fireEvent.input(getByLabelText('Note (optional)'), {
       target: { value: 'Not today.' },
     });
     press('d');
@@ -415,6 +502,31 @@ describe('the keys that act on the open review', () => {
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toMatchObject({
       id: APPROVAL.id,
+      decision: 'approve',
+    });
+  });
+
+  test('A approves a reversible request in one press', async () => {
+    const reversibleApproval = toolApprovalFixture({
+      approval: {
+        ...APPROVAL.approval,
+        action: {
+          type: 'approval',
+          message: 'Look up this order?',
+          operation: { kind: 'other' },
+          risk: 'medium',
+        },
+      },
+    });
+    const { container, findByRole, queryByText } = open({ reviews: [reversibleApproval] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+    await findByRole('heading', { name: 'Look up this order?' });
+    expect(queryByText("Can't be undone.")).toBeNull();
+    press('a');
+    await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
+    expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toMatchObject({
+      id: reversibleApproval.id,
       decision: 'approve',
     });
   });
@@ -477,9 +589,12 @@ describe('one list failing', () => {
       new StubFault('EngineFailure', 500, 'The Bureau broke.'),
       {},
     );
-    await findByText('The Bureau broke.');
-    expect(container.querySelector('[data-view="reviews"]')?.getAttribute('data-state')).toBe(
-      'ready',
+    // The stub says "Bureau"; the page reads "the server".
+    await findByText('The server broke.');
+    await waitFor(() =>
+      expect(container.querySelector('[data-view="reviews"]')?.getAttribute('data-state')).toBe(
+        'ready',
+      ),
     );
     expect(container.textContent).not.toContain(REVIEWS_COPY.allCaughtUp);
   });
@@ -496,7 +611,12 @@ describe('one list failing', () => {
 });
 
 describe('the approval’s details', () => {
-  const operation = (extra: Record<string, unknown>) =>
+  type ToolOperation = Extract<
+    BureauToolApproval['approval']['action'],
+    { type: 'approval' }
+  >['operation'];
+
+  const operation = (toolOperation: ToolOperation) =>
     toolApprovalFixture({
       requestedAt: Date.now() - 120_000,
       approval: {
@@ -505,44 +625,77 @@ describe('the approval’s details', () => {
           type: 'approval',
           message: 'Run it?',
           risk: 'high',
-          operation: { kind: 'command', command: '', ...extra } as never,
+          operation: toolOperation,
         },
       },
     });
 
   test('shows what the approval would run: the command and the files, without a click', async () => {
-    const approval = operation({ command: 'bun run deploy', filesTouched: ['dist/app.js'] });
+    const approval = operation({
+      kind: 'command',
+      command: 'bun run deploy',
+      filesTouched: ['dist/app.js'],
+    });
     const { container, findByText } = open({ reviews: [approval] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
     await findByText('bun run deploy');
     expect(container.textContent).toContain('dist/app.js');
-    expect(container.textContent).toContain('File touched');
+    expect(container.textContent).toContain('It wants to run Issue refund');
   });
 
-  test('keeps the inbox usable when the operation lists one path twice', async () => {
+  test('keeps a non-unified patch readable and collapses its repeated path', async () => {
     const approval = operation({
       kind: 'patch',
-      diff: 'diff --git a/dist/app.js b/dist/app.js\n--- a/dist/app.js\n+++ b/dist/app.js\n@@ -1 +1 @@\n-old\n+new',
+      diff: 'Replace the installed file with the generated output.',
       filesTouched: ['dist/app.js', 'dist/app.js'],
     });
-    const { container, findByRole } = open({ reviews: [approval] });
+    const { container, findByText } = open({ reviews: [approval] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await findByRole('button', { name: 'Copy path dist/app.js' });
+    await findByText('Replace the installed file with the generated output.');
     expect(container.textContent).not.toContain('Something went wrong');
+    const paths = container.querySelectorAll('.cinder-approval-card__file-path');
+    expect([...paths].map((path) => path.textContent)).toEqual(['dist/app.js']);
+  });
+
+  test('shows the beginning of a long unified patch and lets the operator open the rest', async () => {
+    const lines = Array.from({ length: 1500 }, (_, index) => `+line-${index + 1}`);
+    const diff = [
+      'diff --git a/dist/app.js b/dist/app.js',
+      '--- a/dist/app.js',
+      '+++ b/dist/app.js',
+      '@@ -0,0 +1,1500 @@',
+      ...lines,
+    ].join('\n');
+    const approval = operation({ kind: 'patch', diff, filesTouched: ['dist/app.js'] });
+    const { container, findByRole, getByRole } = open({ reviews: [approval] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+
+    await findByRole('heading', { name: 'Run it?' });
+    const viewer = getByRole('region', { name: 'Changes' });
+    expect(viewer.textContent).toContain('Showing 1000 of 1500 changed lines');
+    expect(viewer.textContent).toContain('line-1000');
+    expect(viewer.textContent).not.toContain('line-1500');
+
+    await fireEvent.click(getByRole('button', { name: 'Show the whole diff' }));
+    await waitFor(() => expect(viewer.textContent).toContain('line-1500'));
   });
 });
 
 describe('a decision that took effect', () => {
-  const NOT_WRITTEN =
-    'APPROVAL_OUTCOME_NOT_WRITTEN: The decision was recorded, but its outcome could not be written into the conversation.';
-
   /** Answers as the Bureau does: the decision is committed, so the review leaves the pending list, and then the write fails. */
   function writeFails(world: BureauWorld, decidedId: string): void {
     stub?.on('bureau.reviews.resolve', () => {
       world.reviews = world.reviews.filter((review) => review.id !== decidedId);
-      throw new StubFault('Conflict', 409, 'The decision was recorded.', { reason: NOT_WRITTEN });
+      return {
+        id: decidedId,
+        kind: 'tool-approval',
+        decision: 'approve',
+        receipt: 'applied',
+        warning: 'APPROVAL_OUTCOME_NOT_WRITTEN',
+      };
     });
   }
 
@@ -581,7 +734,7 @@ describe('a decision that took effect', () => {
       await waitFor(() => expect(rows(container).length).toBe(others));
       await findByText(REVIEWS_COPY.outcomeNotWritten.title);
       expect(container.textContent).toContain(REVIEWS_COPY.outcomeNotWritten.message);
-      expect(queryByText(REVIEWS_COPY.decisionFailed)).toBeNull();
+      expect(queryByText(REVIEWS_COPY.approvalFailed.approve)).toBeNull();
       expect(stub.callsTo('bureau.reviews.list').length).toBeGreaterThan(reads);
     });
   }
@@ -618,7 +771,7 @@ describe('a decision that took effect', () => {
       });
     });
     await approveRefund(findByRole);
-    await findByText(new RegExp(REVIEWS_COPY.decisionFailed));
+    await findByText(new RegExp(REVIEWS_COPY.approvalFailed.approve));
   });
 });
 
@@ -643,12 +796,14 @@ describe('what became of a decision', () => {
       throw new Error('The Bureau broke.');
     });
     await approveRefund(findByRole);
-    await findByText(new RegExp(REVIEWS_COPY.decisionFailed));
+    await findByText(new RegExp(REVIEWS_COPY.approvalFailed.approve));
 
     // The other review, opened, carries no trace of the first one's failure.
     await openRow(container, 1);
     await waitFor(() =>
-      expect(queryByText(new RegExp(REVIEWS_COPY.decisionFailed))?.outerHTML ?? null).toBeNull(),
+      expect(
+        queryByText(new RegExp(REVIEWS_COPY.approvalFailed.approve))?.outerHTML ?? null,
+      ).toBeNull(),
     );
   });
 });
@@ -692,7 +847,7 @@ describe('a decision on a review that changed while it was read (COR-1714)', () 
     await openRow(container, 0);
     stub?.on('bureau.reviews.resolve', () => {
       throw new StubFault('Conflict', 409, 'The review moved on.', {
-        reason: 'REVIEW_ROUND_CHANGED: now at round 1',
+        reason: 'REVIEW_ROUND_CHANGED',
       });
     });
     const reads = stub?.callsTo('bureau.reviews.list').length ?? 0;
@@ -701,7 +856,7 @@ describe('a decision on a review that changed while it was read (COR-1714)', () 
 
     await findByText(new RegExp(REVIEWS_COPY.roundChanged.title));
     expect(container.textContent).toContain(REVIEWS_COPY.roundChanged.message);
-    expect(queryByText(new RegExp(REVIEWS_COPY.decisionFailed))).toBeNull();
+    expect(queryByText(new RegExp(REVIEWS_COPY.approvalFailed.approve))).toBeNull();
     expect(container.textContent).not.toContain('REVIEW_ROUND_CHANGED');
     await waitFor(() => expect(stub?.callsTo('bureau.reviews.list').length).toBeGreaterThan(reads));
     expect(rows(container).length).toBe(1);
@@ -800,7 +955,7 @@ describe('answering a Bureau question', () => {
     await openRow(container, 0);
     stub?.on('bureau.tasks.respond', () => {
       throw new StubFault('Conflict', 409, 'The task has no open wait for signal "environment"', {
-        reason: 'REVIEW_ALREADY_RESOLVED: The task has no open wait for signal "environment"',
+        reason: 'REVIEW_ALREADY_RESOLVED',
       });
     });
 
@@ -874,6 +1029,7 @@ describe('an engine review', () => {
       message: 'Here is the draft. Approve it to publish, or send it back with a note.',
       artifact: {
         title: 'Release notes for 2.4',
+        release: 'Release 2.4',
         summary: 'Refunds now ask for approval before money moves. Order lookups are faster.',
       },
     });
@@ -893,6 +1049,8 @@ describe('an engine review', () => {
     expect(rows(container)[0]?.textContent?.includes(pending.reviewType)).toBe(false);
     // The draft is said once, as flat rows in one Draft block with one copy button (row 25p).
     const fields = await findByTestId('review-draft-fields');
+    expect(fields.textContent).toContain('Release');
+    expect(fields.textContent).toContain('Release 2.4');
     expect(fields.textContent).toContain('Refunds now ask for approval before money moves.');
     expect(container.querySelectorAll('.cinder-payload-inspector')).toHaveLength(0);
     expect(container.querySelectorAll('.ib-review-draft button[aria-label]').length).toBe(1);
@@ -903,6 +1061,9 @@ describe('an engine review', () => {
     const intro = await findByTestId('review-intro');
     expect(intro.textContent).toBe(
       'Here is the draft. Approve it to publish, or send it back with a note.',
+    );
+    expect(container.querySelector('.ib-review-detail__eyebrow')?.textContent).toBe(
+      'Review requested by a workflow',
     );
   });
 
@@ -1052,6 +1213,28 @@ describe('the Done tab', () => {
     ).toBe(true);
   });
 
+  for (const [status, cardState, notice] of [
+    ['canceled', 'cancelled', undefined],
+    ['revoked', 'unavailable', REVIEWS_COPY.approvalClosed.revoked],
+    ['superseded', 'unavailable', REVIEWS_COPY.approvalClosed.superseded],
+  ] as const) {
+    test(`opens a ${status} approval as a truthful read-only record`, async () => {
+      const approval = toolApprovalFixture({ status });
+      const { container, queryByRole } = open(
+        { reviews: [approval] },
+        AUTHORIZATION_SCOPES,
+        '/reviews?tab=done',
+      );
+      await waitFor(() => expect(rows(container).length).toBe(1));
+      await openRow(container, 0);
+      const card = container.querySelector('[data-cinder-layout="detail"]');
+      expect(card?.getAttribute('data-cinder-state')).toBe(cardState);
+      if (notice !== undefined) expect(card?.textContent).toContain(notice);
+      expect(queryByRole('button', { name: /^Approve$/ })).toBeNull();
+      expect(queryByRole('button', { name: /^Deny$/ })).toBeNull();
+    });
+  }
+
   test('counts every decided review in its segment, beyond the page it has read (COR-2426)', async () => {
     // Thirty decided reviews: the tab reads 25 at a time, and the Bureau says how many there are.
     const decided = Array.from({ length: 30 }, (_, index) =>
@@ -1082,17 +1265,17 @@ describe('the Done tab', () => {
   });
 
   test('shows a decided review read only, with who decided it and the reason', async () => {
-    const { container, queryByRole, findByTestId } = open(
+    const { container, queryByRole, findByText } = open(
       { reviews: [denied] },
       AUTHORIZATION_SCOPES,
       '/reviews?tab=done',
     );
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    const resolved = await findByTestId('review-resolution');
-    expect(resolved.textContent).toContain('Denied');
-    expect(resolved.textContent).toContain('steve');
-    expect(resolved.textContent).toContain('Wrong customer.');
+    await findByText('Wrong customer.', { exact: true });
+    const resolved = container.querySelector('.cinder-approval-card__outcome');
+    expect(resolved?.textContent).toContain('Denied');
+    expect(resolved?.textContent).toContain('steve');
     expect(queryByRole('button', { name: 'Approve' })).toBeNull();
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
     expect(container.textContent).toContain('Refund');

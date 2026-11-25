@@ -261,7 +261,7 @@ describe('a canceled read', () => {
 });
 
 describe('a history that could not be loaded', () => {
-  test('is an ErrorState with the cause, a primary Retry and a secondary All conversations, and no composer', async () => {
+  test('is an ErrorState with the cause, a primary Try again and a secondary All conversations, and no composer', async () => {
     const calls: string[] = [];
     const { container } = mountWith('availability-error', {
       kind: 'error',
@@ -280,7 +280,7 @@ describe('a history that could not be loaded', () => {
       'Interborough didn’t send it back. Nothing was lost.',
     );
     expect(state.textContent).toContain('HTTP 500');
-    const retry = buttonNamed(container, 'Retry')!;
+    const retry = buttonNamed(container, 'Try again')!;
     const list = buttonNamed(container, 'All conversations')!;
     expect(retry.classList.contains('button-variant-primary')).toBe(true);
     expect(list.classList.contains('button-variant-secondary')).toBe(true);
@@ -299,7 +299,7 @@ describe('a history that could not be loaded', () => {
       onRetry: () => undefined,
     });
 
-    expect(buttonNamed(container, 'Retry')).not.toBeUndefined();
+    expect(buttonNamed(container, 'Try again')).not.toBeUndefined();
     expect(buttonNamed(container, 'All conversations')).toBeUndefined();
   });
 });

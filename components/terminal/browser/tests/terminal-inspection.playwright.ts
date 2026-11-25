@@ -122,6 +122,40 @@ test.describe('the accessible output dialog', () => {
     await expect.poll(async () => await lastClipboardWrite(page)).toMatch(/bun run build/);
   });
 
+  test('the footer Copy is the size of Refresh, Download and Close (COR-2440)', async ({
+    terminalPage,
+  }) => {
+    const page = await terminalPage.open();
+    await exportButton(page).click();
+    const footer = (name: string) =>
+      dialog(page).locator('.cinder-modal__footer').getByRole('button', { name, exact: true });
+    await expect(footer('Copy')).toBeVisible();
+    const faces = await Promise.all(
+      ['Refresh', 'Copy', 'Download', 'Close'].map((name) =>
+        footer(name).evaluate((button) => {
+          const style = getComputedStyle(button);
+          return {
+            height: button.getBoundingClientRect().height,
+            fontSize: style.fontSize,
+            paddingInline: style.paddingInlineStart,
+          };
+        }),
+      ),
+    );
+    for (const face of faces) expect(face).toEqual(faces[2]);
+  });
+
+  test('the toolbar takes three rows at 375 px (COR-2440)', async ({ terminalPage }) => {
+    const page = await terminalPage.open({ viewport: 'mobile' });
+    const rows = await page
+      .locator('.cinder-terminal__inspection')
+      .evaluate(
+        (toolbar) =>
+          new Set([...toolbar.querySelectorAll('button')].map((button) => button.offsetTop)).size,
+      );
+    expect(rows).toBe(3);
+  });
+
   test('listed links are visible https text only, and a keyboard press activates one', async ({
     terminalPage,
   }) => {

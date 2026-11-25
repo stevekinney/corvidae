@@ -27,6 +27,7 @@
   import Shell from './shell/shell.svelte';
   import ToastHost, { provideToastHost } from './toast-host.svelte';
   import { WorkspaceLifetime } from './workspace-lifetime.ts';
+  import { chatSessions } from '../routes/chat/chat-session-registry.svelte.ts';
 
   // The `<ToastHost>` below serves every view in the shell, so a view never
   // mounts a second one of its own.
@@ -63,6 +64,9 @@
       phase = { status: 'ready', client, principal, queryClient };
       return () => {
         phase = { status: 'resolving' };
+        // Retained Chat sessions contain transcript state and callbacks bound to this shell's
+        // principal. A refresh tears this shell down before opening the next resolved identity.
+        chatSessions.dispose();
         void queryClient.cancelQueries();
         queryClient.clear();
       };

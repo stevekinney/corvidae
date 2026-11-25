@@ -29,6 +29,7 @@ import {
 
 import {
   withWorkspaceMembership,
+  resolveWorkspaceOwner,
   workspaceOwnerAuthority,
   type WorkspaceMembershipOptions,
 } from './workspace-principal.ts';
@@ -53,6 +54,8 @@ import {
   type Principal,
   unauthenticatedLocalAuthContext,
 } from '@lostgradient/backchannel';
+import type { RegistrableOperation } from '@lostgradient/backchannel/internals';
+import type { z } from 'zod';
 import {
   type ConditionalTextValueStore,
   MemoryStorage,
@@ -83,6 +86,7 @@ import {
   createPrunedCommandLedger,
 } from '../command-ledger.ts';
 import { isReservedOwnerSubject } from '../owner-of-record.ts';
+import { readRunVerdicts } from '../run-failure-verdicts.ts';
 import { type AgUiOptions, createAgUiMount } from './ag-ui-mount.ts';
 import { type BureauA2AMountOptions, createBureauA2AMount } from './a2a-mount.ts';
 import { type BureauMcpOptions, createBureauMcpMount } from './mcp-mount.ts';
@@ -108,6 +112,7 @@ import type { BureauNotifications } from '../notifications/notification-types.ts
 import { describeCodeWorkflow } from '../workflow-runtime.ts';
 import {
   bureauReviewsOperations,
+  reviewsOperationsWithEffects,
   type BureauReviewsOperationHost,
 } from './bureau-reviews-operations.ts';
 import { bureauRunEventsSubscriptionOperation } from './bureau-run-events-operation.ts';
@@ -146,6 +151,14 @@ import {
   contextsRegenerateOperation,
 } from './management/contexts-regenerate-operation.ts';
 import {
+  type BureauContextsDiscardTurnOperationHost,
+  contextsDiscardTurnOperation,
+} from './management/contexts-discard-turn-operation.ts';
+import {
+  type BureauContextsResumeTurnOperationHost,
+  contextsResumeTurnOperation,
+} from './management/contexts-resume-turn-operation.ts';
+import {
   type BureauContextsRenameOperationHost,
   contextsRenameOperation,
 } from './management/contexts-rename-operation.ts';
@@ -171,6 +184,15 @@ import {
   contextsGetOperation,
   contextsListOperation,
 } from './management/contexts-operations.ts';
+import {
+  type BureauContextsSharingOperationHost,
+  contextsRevokeShareOperation,
+  contextsRequestShareOperation,
+  contextsResolveShareRequestOperation,
+  contextsListShareRequestsOperation,
+  contextsShareStatusOperation,
+  contextsShareOperation,
+} from './management/contexts-sharing-operations.ts';
 import {
   type BureauAgentDefinitionsOperationHost,
   bureauAgentDefinitionsOperations,
@@ -263,6 +285,19 @@ import {
   type BureauRunsTimelineOperationHost,
   runsTimelineOperation,
 } from './management/runs-timeline-operation.ts';
+import {
+  type BureauRunsCompareOperationHost,
+  runsCompareOperation,
+} from './management/runs-compare-operation.ts';
+import {
+  type BureauTasksExplainOperationHost,
+  tasksExplainOperation,
+} from './management/tasks-explain-operation.ts';
+import {
+  type BureauTasksModelExplanationOperationHost,
+  tasksExplanationGenerateOperation,
+  tasksExplanationGetOperation,
+} from './management/tasks-model-explanation-operation.ts';
 import {
   type BureauEventsCatalogOperationHost,
   eventsCatalogOperation,
@@ -362,6 +397,8 @@ export type BureauHandlerSource = Pick<
     | 'steering'
     | 'fork'
     | 'regenerate'
+    | 'discardTurn'
+    | 'resumeTurn'
     | 'subscribeEvents'
   >;
   readonly schedules: Pick<
@@ -387,6 +424,9 @@ export type BureauHandlerSource = Pick<
   readonly internals: Pick<
     BureauInternals,
     | 'hasExplicitId'
+    | 'reviewPolicy'
+    | 'reviewedProvenance'
+    | 'reviewedRunState'
     | 'taskRetention'
     | 'kv'
     | 'eventFeed'
@@ -426,7 +466,10 @@ export type BureauHandlerSource = Pick<
 type AgentDescription = { readonly name: string; readonly description?: string | undefined };
 
 /** What every operation `createBureauHandler` serves reads from `host`. */
-export type BureauHandlerHost = BureauEventsOperationHost &
+export type BureauHandlerHost = {
+  readonly reviewedTasks: Pick<BureauTasks, 'start'>;
+  readonly reviewedRunState: BureauInternals['reviewedRunState'];
+} & BureauEventsOperationHost &
   RunEventsOperationHost &
   BureauReviewsOperationHost &
   BureauOwnershipHost &
@@ -436,15 +479,21 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauTasksOperationHost &
   BureauTasksInspectOperationHost &
   BureauRunsTimelineOperationHost &
+  BureauRunsCompareOperationHost &
+  BureauTasksExplainOperationHost &
+  BureauTasksModelExplanationOperationHost &
   BureauTaskEventsOperationHost &
   BureauTasksRespondOperationHost &
   BureauContextsOperationHost &
+  BureauContextsSharingOperationHost &
   BureauContextsInputOperationHost &
   BureauContextsRetractOperationHost &
   BureauContextsForgetGrantsOperationHost &
   BureauContextsSteerOperationHost &
   BureauContextsForkOperationHost &
   BureauContextsRegenerateOperationHost &
+  BureauContextsDiscardTurnOperationHost &
+  BureauContextsResumeTurnOperationHost &
   BureauContextsRenameOperationHost &
   BureauContextsArchiveOperationHost &
   BureauContextsUnarchiveOperationHost &
@@ -561,6 +610,12 @@ export type BureauHandlerOptions = {
    * credential is authenticated by it, and A2A requires one (COR-1904).
    */
   readonly authentication?: AuthConfig;
+  /** Host-owned request authentication, including the host's cookie write policy. */
+  readonly authenticateRequest?: OperationHandlerAuthenticate;
+  /** Explicit catalog contributions served by this deployment. */
+  readonly operations?: readonly RegistrableOperation<BureauHandlerHost>[];
+  /** Public effect schemas contributed to this deployment's Reviews responses. */
+  readonly reviewEffects?: readonly z.ZodObject[];
   /** Server-supplied current membership for this runtime's workspace, resolved after authentication. */
   readonly workspace?: WorkspaceMembershipOptions;
   /**
@@ -643,6 +698,9 @@ const OPTION_NAMES: ReadonlySet<string> = new Set([
   'signing',
   'pushNotifications',
   'authentication',
+  'authenticateRequest',
+  'operations',
+  'reviewEffects',
   'workspace',
   'unauthenticatedAccess',
   'mounts',
@@ -863,6 +921,10 @@ export const BUREAU_HANDLER_OPERATIONS = [
   tasksGetOperation,
   tasksInspectOperation,
   runsTimelineOperation,
+  runsCompareOperation,
+  tasksExplainOperation,
+  tasksExplanationGetOperation,
+  tasksExplanationGenerateOperation,
   tasksCancelOperation,
   tasksEventsOperation,
   tasksRespondOperation,
@@ -875,10 +937,18 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsSteerOperation,
   contextsForkOperation,
   contextsRegenerateOperation,
+  contextsDiscardTurnOperation,
+  contextsResumeTurnOperation,
   contextsRenameOperation,
   contextsArchiveOperation,
   contextsUnarchiveOperation,
   contextsWindowOperation,
+  contextsShareOperation,
+  contextsRevokeShareOperation,
+  contextsRequestShareOperation,
+  contextsResolveShareRequestOperation,
+  contextsListShareRequestsOperation,
+  contextsShareStatusOperation,
   ...bureauAgentDefinitionsOperations,
   ...bureauAgentOverridesOperations,
   ...bureauAgentDisableOperations,
@@ -904,6 +974,20 @@ export const BUREAU_HANDLER_OPERATIONS = [
   ...bureauWorkerDeploymentsOperations,
   ...bureauHooksOperations,
 ] as const;
+
+/** Compose the same operation set for the handler and its offline catalog. */
+export function composeBureauOperations(
+  contributions: readonly RegistrableOperation<BureauHandlerHost>[] = [],
+  effects: readonly z.ZodObject[] = [],
+): readonly RegistrableOperation<BureauHandlerHost>[] {
+  const replacements = new Map(
+    reviewsOperationsWithEffects(effects).map((operation) => [operation.name, operation]),
+  );
+  return [
+    ...BUREAU_HANDLER_OPERATIONS.map((operation) => replacements.get(operation.name) ?? operation),
+    ...contributions,
+  ];
+}
 
 /**
  * The principal every request is served as under `unauthenticatedAccess:
@@ -1331,10 +1415,15 @@ export function buildBureauHandlerHost(
   a2aAgents: readonly string[],
   skills?: BureauHandlerOptions['skills'],
   workspace?: WorkspaceMembershipOptions,
+  contributions: readonly RegistrableOperation<BureauHandlerHost>[] = [],
+  effects: readonly z.ZodObject[] = [],
 ): BureauHandlerHost {
-  const operations = describeOperations(BUREAU_HANDLER_OPERATIONS);
+  const operations = describeOperations(composeBureauOperations(contributions, effects));
   return {
+    reviewedTasks: bureau.tasks,
     workspaceAuthority: (principal) => workspaceOwnerAuthority(workspace, principal),
+    resolveWorkspaceOwner: async (owner) =>
+      workspace === undefined ? undefined : resolveWorkspaceOwner(workspace, owner),
     // A Bureau owns exactly one feed, so the registry answers for its id alone.
     bureauFeeds: {
       get: (bureauId) => (bureauId === bureau.id ? bureau.internals.eventFeed : undefined),
@@ -1342,7 +1431,13 @@ export function buildBureauHandlerHost(
     runFeeds: bureau.internals.runEventFeeds,
     // COR-2016: a decision through `bureau.reviews.resolve` continues the chat as its resume does.
     reviewContinuation: createReviewContinuation(bureau),
+    ...(bureau.internals.reviewPolicy === undefined
+      ? {}
+      : { reviewPolicy: bureau.internals.reviewPolicy }),
+    reviewedProvenance: bureau.internals.reviewedProvenance,
+    reviewedRunState: bureau.internals.reviewedRunState,
     reviews: {
+      mayRemember: (review) => bureau.reviews.mayRemember(review),
       list: () => bureau.reviews.list(),
       listResolved: (filter) => bureau.reviews.listResolved(filter),
       get: (id) => bureau.reviews.get(id),
@@ -1358,6 +1453,47 @@ export function buildBureauHandlerHost(
     inspect: (id, options) => bureau.tasks.inspect(id, options),
     // The engine's own timeline of a run, read by `bureau.runs.timeline` after it has authorized.
     runTimeline: async (runId) => bureau.durableEngine()?.getTimeline(runId),
+    // The engine's own lineage and comparison of a run, read by `bureau.runs.compare` after it has
+    // authorized the fork and, once it knows it, the source.
+    runForkSource: async (runId) => {
+      const engine = bureau.durableEngine();
+      if (engine === undefined) return undefined;
+      const state = await engine.get(runId);
+      return { forkedFrom: state?.forkedFrom?.workflowId };
+    },
+    runComparison: async (runId, compareOptions) =>
+      bureau.durableEngine()?.compare(runId, {
+        ...(compareOptions.limit === undefined ? {} : { limit: compareOptions.limit }),
+        ...(compareOptions.cursor === undefined ? {} : { cursor: compareOptions.cursor }),
+      }),
+    // What `bureau.tasks.explain` reads of a run it has authorized: the engine's state of it, and the
+    // guardrails the audit trail holds for it (and, for a workflow instance, for its steps).
+    runState: async (runId) => {
+      const state = await bureau.durableEngine()?.get(runId);
+      return state === null || state === undefined
+        ? undefined
+        : {
+            status: state.status,
+            failureCategory: state.failureCategory,
+            errorCode: state.errorCode,
+            failedStep: state.failedStep,
+          };
+    },
+    runVerdicts: (runId, kind) =>
+      readRunVerdicts(
+        { trail: bureau.internals.auditTrail, tasks: bureau.internals.taskRegistry },
+        runId,
+        kind,
+      ),
+    // COR-2534: where a model's longer explanation of a failed run is kept and dated, and the
+    // catalog that prices the model that wrote it. `decisions` is the Bureau's configured model.
+    modelExplanations: {
+      record: (taskId) => bureau.internals.taskRegistry.record(taskId),
+      recordModelExplanation: (taskId, explanation, fence) =>
+        bureau.internals.taskRegistry.recordModelExplanation(taskId, explanation, fence),
+      now: () => bureau.runtimeServices.clock.nowISO(),
+    },
+    catalog: () => bureau.models.catalog().descriptors,
     taskHistory: bureau.tasks,
     contexts: {
       list: (listOptions) => bureau.contexts.list(listOptions),
@@ -1375,6 +1511,8 @@ export function buildBureauHandlerHost(
       steer: (id, request) => bureau.contexts.steer(id, request),
       fork: (id, request) => bureau.contexts.fork(id, request),
       regenerate: (id, request) => bureau.contexts.regenerate(id, request),
+      discardTurn: (id, request) => bureau.contexts.discardTurn(id, request),
+      resumeTurn: (id, request) => bureau.contexts.resumeTurn(id, request),
       get lifecycle() {
         return bureau.lifecycle;
       },
@@ -1422,6 +1560,7 @@ export function buildBureauHandlerHost(
     },
     dryRun: dryRunEffectsOf(bureau),
     workflows: bureau.workflows,
+    workflowConcurrency: () => bureau.durableEngine()?.runConcurrency() ?? undefined,
     codeWorkflow: (id) => {
       if (bureau.workflows !== undefined) return bureau.workflows.getCode(id);
       const engine = bureau.durableEngine();
@@ -1541,7 +1680,10 @@ export function createBureauHandler(
     fail('workspace must match the Bureau construction binding');
   }
   const unauthenticatedAccess = resolveUnauthenticatedAccess(options);
-  assertAuthentication(options.authentication, unauthenticatedAccess);
+  if (options.authenticateRequest !== undefined && options.authentication !== undefined)
+    fail('authenticateRequest and authentication cannot both be configured');
+  if (options.authenticateRequest === undefined)
+    assertAuthentication(options.authentication, unauthenticatedAccess);
   assertA2AAgents(bureau, options.a2aAgents);
   assertAgUi(bureau, options);
   assertA2A(bureau, options);
@@ -1555,8 +1697,13 @@ export function createBureauHandler(
     options.a2aAgents ?? [],
     options.skills,
     options.workspace,
+    options.operations,
+    options.reviewEffects,
   );
-  const authenticate = handlerAuthenticate(options.authentication, unauthenticatedAccess);
+  const authenticate =
+    options.authenticateRequest ??
+    handlerAuthenticate(options.authentication, unauthenticatedAccess);
+  const operations = composeBureauOperations(options.operations, options.reviewEffects);
 
   const mounts: WorkspaceClassifiedMount[] = [
     classifyWorkspaceMount(createAssetsMount(bureau.assets!, options.workspace), 'explicit-share'),
@@ -1593,7 +1740,7 @@ export function createBureauHandler(
       : (options.mounts ?? []).map(registerWorkspaceMount)),
   ];
   const handler = createOperationHandler({
-    operations: BUREAU_HANDLER_OPERATIONS,
+    operations,
     scopeVocabulary: WEFT_SCOPE_VOCABULARY,
     host,
     authenticate:
@@ -1616,7 +1763,7 @@ export function createBureauHandler(
     encodeBinary: encode,
   });
   const resourceInventory: BureauResourceInventoryEntry[] = [
-    ...BUREAU_HANDLER_OPERATIONS.map((operation): BureauResourceInventoryEntry => ({
+    ...operations.map((operation): BureauResourceInventoryEntry => ({
       kind: 'operation',
       key: operation.name,
       workspaceClass: Object.hasOwn(OPERATION_MAP, operation.name)

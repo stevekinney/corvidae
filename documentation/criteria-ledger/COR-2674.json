@@ -1,0 +1,19 @@
+{
+  "issue": "COR-2674",
+  "branch": "steve/composable-supervisor-readiness",
+  "checkedAt": "a565af3ab7",
+  "briefVersion": "05a5ed1fabb9",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "supervisor-owned.integration.test.ts deterministic partial-write test passed; final path absent during write and first read returns bound URL."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "bun scripts/bun-test.ts applications/interborough/src/host/supervisor-owned.integration.test.ts exited 0 with all 3 tests passing."
+    }
+  ]
+}

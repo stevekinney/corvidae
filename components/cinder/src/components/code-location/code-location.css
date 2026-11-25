@@ -11,5 +11,6 @@
   }
   .cinder-code-location code {
     font-family: var(--cinder-font-mono);
+    font-size: inherit;
   }
 }

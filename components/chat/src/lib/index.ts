@@ -1,6 +1,4 @@
 import ChatComponent from './components/chat/index.ts';
-
-export default ChatComponent;
 export { default as A2uiSurface } from './a2ui/a2ui-surface.svelte';
 export {
   A2UI_SURFACE_CATALOG_ID,
@@ -25,6 +23,12 @@ export {
   type ChatComposerMentionRange,
 } from './components/chat-composer-popover/chat-composer-mention.ts';
 export * from './components/chat/index.ts';
+export { default as ToolApprovalPart } from './components/chat/message/parts/tool-approval-part.svelte';
+export type { ToolApprovalPartProps } from './components/chat/message/parts/tool-approval-part.svelte';
+export type {
+  ToolApprovalAction,
+  ToolApprovalMessagePart,
+} from './components/chat/utilities/types.ts';
 export {
   AGUIChatTransportError,
   AG_UI_UNSUPPORTED_EVENT_TYPES,
@@ -71,3 +75,5 @@ export {
   type ChatStreamDecodeOptions,
   type ChatStreamEvent,
 } from './session/stream-event-codec.ts';
+
+export default ChatComponent;

@@ -78,6 +78,8 @@ export type Harness = {
 
 export type HarnessOptions = {
   readonly script: readonly ScriptedGenerateStep[];
+  readonly retention?: BureauOptions['retention'];
+  readonly reviewPolicy?: Parameters<typeof createBureau>[0]['reviewPolicy'];
   /** Trusted directory shared by HTTP authentication and durable dispatch. */
   readonly workspace?: Parameters<typeof createBureauHandler>[1]['workspace'];
   readonly toolbox?: Toolbox;
@@ -175,6 +177,7 @@ async function build(
   if (options.backends !== undefined) withBackendDescriptors(generate, options.backends);
   const bureau = await createBureau<AgentDefinitions>({
     id: 'ag-ui-fixture',
+    ...(options.reviewPolicy === undefined ? {} : { reviewPolicy: options.reviewPolicy }),
     ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
     agents: {
       ...Object.fromEntries(
@@ -213,6 +216,7 @@ async function build(
     // The handler serves the asset operations and the content route, so it needs the service.
     assets: { storage: createMemoryAssetStorage() },
     ...(options.bureauRuntime === undefined ? {} : { runtime: options.bureauRuntime }),
+    ...(options.retention === undefined ? {} : { retention: options.retention }),
     ...(options.maintenance === undefined ? {} : { maintenance: options.maintenance }),
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
     ...(options.memory === undefined ? {} : { memory: options.memory }),

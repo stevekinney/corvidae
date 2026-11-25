@@ -187,6 +187,89 @@ describe('the rows', () => {
     expect(row.actions[0]?.href).toBe('/health/workers?worker=w%2F1');
   });
 
+  test('a stalled run is named by its agent, says when it was seen to stall, and opens the run (COR-2528)', () => {
+    const row = attentionRow({
+      kind: 'run-stalled',
+      area: 'runs',
+      at: AT,
+      runId: 'run-9',
+      agentName: 'tool-runner',
+    });
+    expect(row.id).toBe('run-stalled:run-9');
+    expect(row.glyph).toBe('stalled');
+    expect(row.title).toBe('Tool runner stopped making progress');
+    expect(row.description).toMatch(
+      /^Seen stalled at \d{1,2}:\d{2} (AM|PM)\. It last made progress before then, and it is still running\.$/,
+    );
+    expect(row.actions).toEqual([{ label: 'View run', href: '/runs/run-9' }]);
+  });
+
+  test('a looping run with no agent is "A run", and says it keeps running', () => {
+    const row = attentionRow({
+      kind: 'run-looping',
+      area: 'runs',
+      at: AT,
+      runId: 'run/10',
+      agentName: null,
+    });
+    expect(row.id).toBe('run-looping:run/10');
+    expect(row.glyph).toBe('looping');
+    expect(row.title).toBe('A run is repeating itself');
+    expect(row.description).toContain('It keeps running until you stop it.');
+    expect(row.actions[0]?.href).toBe('/runs/run%2F10');
+  });
+
+  test('a run over the spend threshold says what it cost, never the threshold, and says when it finished', () => {
+    const running = attentionRow({
+      kind: 'run-overspending',
+      area: 'runs',
+      at: AT,
+      runId: 'run-11',
+      agentName: 'tool-runner',
+      costUsd: 12.3456,
+      thresholdUsd: 10,
+      settledAt: null,
+    });
+    expect(running.glyph).toBe('overspending');
+    expect(running.title).toBe('Tool runner has cost $12.35, over the spend threshold');
+    expect(running.description).toMatch(
+      /^Found over the threshold at Nov \d, \d{1,2}:\d{2} (AM|PM)\. It keeps running until you stop it\.$/,
+    );
+    expect(`${running.title} ${running.description}`).not.toMatch(/\$10|10\.00/);
+
+    const settled = attentionRow({
+      kind: 'run-overspending',
+      area: 'runs',
+      at: AT,
+      runId: 'run-11',
+      agentName: null,
+      costUsd: null,
+      thresholdUsd: 10,
+      settledAt: Date.UTC(2026, 10, 3, 9, 30),
+    });
+    expect(settled.title).toBe('A run is over the spend threshold');
+    expect(settled.description).toMatch(
+      /^Found over the threshold at Nov \d, \d{1,2}:\d{2} (AM|PM)\. The run finished at Nov \d, \d{1,2}:\d{2} (AM|PM)\.$/,
+    );
+  });
+
+  test('one run that is stalled and over the threshold is two rows with two identifiers', () => {
+    const rows = attentionRows([
+      { kind: 'run-stalled', area: 'runs', at: AT, runId: 'run-1', agentName: null },
+      {
+        kind: 'run-overspending',
+        area: 'runs',
+        at: AT,
+        runId: 'run-1',
+        agentName: null,
+        costUsd: 20,
+        thresholdUsd: 10,
+        settledAt: null,
+      },
+    ]);
+    expect(rows.map((row) => row.id)).toEqual(['run-stalled:run-1', 'run-overspending:run-1']);
+  });
+
   test('another alert rule opens Alerts, and a rule this build has no sentence for says its metric', () => {
     const failing = attentionRow({
       kind: 'alert',

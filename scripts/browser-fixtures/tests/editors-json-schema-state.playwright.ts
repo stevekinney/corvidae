@@ -131,8 +131,8 @@ test.describe('JSON schema editor state contracts', () => {
     await editor.getByRole('tab', { name: /^Form/ }).click();
 
     // Resting state: the outer table summarises item type inline.
-    await expect(editor.getByRole('row', { name: /tags/ })).toContainText('array of string');
-    await expect(editor.getByRole('row', { name: /addresses/ })).toContainText('array of object');
+    await expect(editor.getByRole('row', { name: /tags/ })).toContainText('List of text');
+    await expect(editor.getByRole('row', { name: /addresses/ })).toContainText('List of object');
 
     // Expanding a scalar-item array reveals its own item-type selector,
     // scoped to the items schema (not the property itself) — hence "items

@@ -134,6 +134,7 @@ export class PostgresKeyValueStorage implements Storage {
       scanConsistency: 'snapshot',
       atomicBatch: true,
       conditionalBatch: true,
+      conditionalBatchDeadline: true,
       boundedRangeDelete: true,
     };
   }
@@ -362,6 +363,7 @@ export class PostgresKeyValueStorage implements Storage {
   async conditionalBatch(
     conditions: ConditionalBatchCondition[],
     operations: BatchOperation[],
+    deadline?: number,
   ): Promise<boolean> {
     assertStorageBatchOperationCount('conditionalBatch conditions', conditions.length);
     assertStorageBatchOperationCount('conditionalBatch operations', operations.length);
@@ -394,7 +396,12 @@ export class PostgresKeyValueStorage implements Storage {
               return false;
             }
             await writeBatchNetEffect(client, this.#queries, netEffect, writtenAt);
-            return true;
+            if (deadline === undefined) return true;
+            const result = await client.query(
+              'SELECT extract(epoch FROM clock_timestamp()) * 1000 < $1 AS valid',
+              [deadline],
+            );
+            return result.rows[0]?.['valid'] === true;
           },
           // Only COMMIT when the CAS actually wrote (returned true). A precondition
           // mismatch (false) wrote nothing, so ROLL BACK — committing a read-only

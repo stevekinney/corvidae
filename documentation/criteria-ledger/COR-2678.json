@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2678",
+  "branch": "codex/cor-2678-a2a-park-deadline",
+  "checkedAt": "523ed7d225255016b5b7022c96d9844c1c518f47",
+  "briefVersion": "ce4acd56598d",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "The manual runtime holds the safety-net poll, waits for admission, then advances to the captured deadline timer."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "The focused A2A test observes CommandTimeoutError and the same admitted task remains working; a stalled checkpoint remains governed by the shared test hang guard."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "No wall-clock deadline remains. The direct suite passed and the alternating candidate/base focused control passed three times each."
+    }
+  ]
+}

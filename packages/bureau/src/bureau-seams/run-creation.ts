@@ -82,7 +82,12 @@ import {
   validateCreateRunRequest,
 } from '../run-request-validation';
 import { type SteeringLogEvent, steeringSessionRunTag } from '../steering-log';
-import { type TaskOrigin, taskOriginOfStart, taskOriginTag } from '../task-origin';
+import {
+  isTrustedReviewedOrigin,
+  type TaskOrigin,
+  taskOriginOfStart,
+  taskOriginTag,
+} from '../task-origin';
 import type { TaskToolGrant } from '../task-registry';
 import { attachRunEventFeed } from '../run-event-feed-attachment.ts';
 import { bindRunWorkspaceAuthority } from '../run-authority.ts';
@@ -211,6 +216,16 @@ export interface RunCreationPeers {
  * has nothing to drift from; the case only keeps the resolution union narrowed, and a run that did
  * reach it would be refused as recovery refuses it.
  */
+function ordinaryRunProvenance(
+  origin: TaskOrigin,
+  agentName: string,
+  runId: string,
+): string | null {
+  return !Object.hasOwn(origin, 'reviewedTool') && !agentName.startsWith('reviewed:')
+    ? runId
+    : null;
+}
+
 function unresolvedStart(
   agentName: string,
   resolution: Extract<
@@ -255,6 +270,15 @@ function continuationRecord(
   };
 }
 
+/** Notifies an internal caller only after the session save that named its allocated run. */
+function notifySessionSaved(
+  request: SessionTaskFields,
+  runId: string,
+  session: AgentSession | undefined,
+): void {
+  if (session !== undefined) request.onSessionSaved?.(runId, session);
+}
+
 /** Builds the run creation functions of one Bureau. Synchronous, and registers nothing. */
 export function createRunCreation<D extends AgentDefinitions>(
   core: BureauCore<D>,
@@ -288,59 +312,43 @@ export function createRunCreation<D extends AgentDefinitions>(
     inFlightSessionDeletions,
   } = core;
 
-  async function createRunFromRequest(
-    request: CreateRunRequest & SessionTaskFields,
-  ): Promise<CreatedRunSummary> {
-    validateCreateRunRequest(request);
-    // COR-718 — the owner of record: stored once, below, and unchanged afterward. A
-    // host that states no principal owns the run as `anonymous:local`; one that
-    // states anything but text is refused here, before anything is persisted.
-    const owner = ownerFromPrincipal(request.principal, toBadRequest);
-    core.assertRunAdmissionOpen('run');
-
+  const requireLedgerForRequest = (request: CreateRunRequest): void => {
     if (request.runCreationRequestId !== undefined) requireRunCreationLedger();
+  };
 
-    const sessionId = request.sessionId?.trim() ?? runtimeServices.identifiers.next('session');
-    // COR-1481 — a context being deleted takes no new task: it reads as one that does
-    // not exist, until the deletion has committed and the id may name a new incarnation.
+  const rejectDeletingSession = (sessionId: string): void => {
     if (inFlightSessionDeletions.has(sessionId)) {
       throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
     }
-    const runId = runtimeServices.identifiers.next('run');
-    // The text that stands for the request where only text fits: flow control,
-    // and the session's `lastUserMessage`.
-    const requestText = requestTextOf(request);
+  };
 
-    // COR-1577 — which agent this run is. A session is bound to the agent of the run that
-    // created it, so an existing session decides; a new one takes the named agent, or the
-    // default `bureau`. Every refusal here lands before anything is persisted.
-    const { session, conversation } = await peers.loadConversation(sessionId);
-    const baseConversationHistory = conversation.current;
-    rejectUnopenableNewSessionIdentifier('"sessionId"', sessionId, session !== undefined);
+  const assertRunCreationStillOpen = (sessionId: string): void => {
+    core.assertRunAdmissionOpen('run');
+    if (inFlightSessionDeletions.has(sessionId)) {
+      throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
+    }
+  };
 
-    // COR-718 — a session belongs to the owner of the run that created it. A
-    // different principal starting a run on it is refused exactly as a session
-    // that does not exist is, so an identifier grants nothing.
+  /** Resolves the session-bound agent before a run has claimed any durable state. */
+  async function resolveSessionStart(
+    sessionId: string,
+    session: AgentSession | undefined,
+    request: CreateRunRequest & SessionTaskFields,
+    owner: string,
+    runId: string,
+  ): Promise<{ agentName: string; sessionAgent: SessionAgentRun; triedRun: boolean }> {
     if (session && !isSessionAuthorityAuthorized(session.metadata, owner)) {
       throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
     }
     const agentName = resolveRunAgentName(sessionId, session, request.agentName);
-    // COR-1911 — a tried agent belongs to the one context that was started with it: a name that
-    // is held for another context, or for none, is an agent that does not exist.
+    if (
+      agentName.startsWith('reviewed:') &&
+      (!isTrustedReviewedOrigin(request.origin) || request.origin.reviewedTool.agent !== agentName)
+    ) {
+      throw new BureauError('Reviewed tool agent not found', 'NOT_FOUND');
+    }
     const triedRun = isTryAgentName(agentName);
     if (triedRun) peers.assertTriedAgentBelongsTo(agentName, sessionId);
-    // COR-1867 — where the task came from, as its record and its run's `origin:<kind>` tag keep
-    // it. A chat's identifiers are this start's own, never the caller's.
-    const taskOrigin: TaskOrigin = taskOriginOfStart(request.origin, {
-      sessionId,
-      agentName,
-      owner,
-    });
-    // COR-323 — every run belongs to a catalog agent. The implicit `bureau` agent, which ran on
-    // Bureau-wide `generate`/`toolbox` options, no longer exists, so a session stored under it
-    // answers as any unknown agent does.
-    // COR-2429 — the command id a start carries is the only evidence it gives; whether it may run
-    // on a disabled agent is `admitsRunOnDisabledAgent`'s to decide (`continuationRecord`).
     const resolution = await runtime.resolveSessionAgentRun(
       agentName,
       runId,
@@ -356,7 +364,51 @@ export function createRunCreation<D extends AgentDefinitions>(
       );
     }
     if (resolution.status !== 'resolved') throw unresolvedStart(agentName, resolution);
-    const sessionAgent: SessionAgentRun = resolution.run;
+    return { agentName, sessionAgent: resolution.run, triedRun };
+  }
+
+  async function createRunFromRequest(
+    request: CreateRunRequest & SessionTaskFields,
+  ): Promise<CreatedRunSummary> {
+    validateCreateRunRequest(request);
+    // COR-718 — the owner of record: stored once, below, and unchanged afterward. A
+    // host that states no principal owns the run as `anonymous:local`; one that
+    // states anything but text is refused here, before anything is persisted.
+    const owner = ownerFromPrincipal(request.principal, toBadRequest);
+    core.assertRunAdmissionOpen('run');
+
+    requireLedgerForRequest(request);
+
+    const sessionId = request.sessionId?.trim() ?? runtimeServices.identifiers.next('session');
+    // COR-1481 — a context being deleted takes no new task: it reads as one that does
+    // not exist, until the deletion has committed and the id may name a new incarnation.
+    rejectDeletingSession(sessionId);
+    const runId = runtimeServices.identifiers.next('run');
+    // The text that stands for the request where only text fits: flow control,
+    // and the session's `lastUserMessage`.
+    const requestText = requestTextOf(request);
+
+    // COR-1577 — which agent this run is. A session is bound to the agent of the run that
+    // created it, so an existing session decides; a new one takes the named agent, or the
+    // default `bureau`. Every refusal here lands before anything is persisted.
+    const { session, conversation } = await peers.loadConversation(sessionId);
+    const baseConversationHistory = conversation.current;
+    rejectUnopenableNewSessionIdentifier('"sessionId"', sessionId, session !== undefined);
+
+    const { agentName, sessionAgent, triedRun } = await resolveSessionStart(
+      sessionId,
+      session,
+      request,
+      owner,
+      runId,
+    );
+    // COR-1867 — where the task came from, as its record and its run's `origin:<kind>` tag keep
+    // it. A chat's identifiers are this start's own, never the caller's.
+    const taskOrigin: TaskOrigin = taskOriginOfStart(request.origin, {
+      sessionId,
+      agentName,
+      owner,
+    });
     // Request beats agent, and agent beats Bureau, for what the run is seeded and capped with.
     const effectiveSystemPrompt = sessionAgent?.instructions ?? runtime.systemPrompt;
     const effectiveMaximumSteps = sessionAgent?.options.maximumSteps ?? runtime.maximumSteps;
@@ -485,7 +537,10 @@ export function createRunCreation<D extends AgentDefinitions>(
 
       if (request.message !== undefined) conversation.appendUserMessage(request.message);
       if (request.inputParts !== undefined) appendAgentInput(conversation, request.inputParts);
-      appendRequestRows(conversation, request.appendMessages);
+      appendRequestRows(
+        conversation,
+        request.appendMessagesForRun?.(runId) ?? request.appendMessages,
+      );
       // A run answers the row the conversation ends in: a user message, or a
       // tool result (the outcome of an approval) with nothing newer.
       assertConversationAnswerable(conversation);
@@ -534,6 +589,9 @@ export function createRunCreation<D extends AgentDefinitions>(
         conversation,
         {
           lastRunId: runId,
+          // Bind ordinary provenance to the same session update as the latest run. A reviewed
+          // run clears it, and a later run can never inherit another run's classification.
+          ordinaryRunId: ordinaryRunProvenance(taskOrigin, agentName, runId),
           lastRunStatus: 'running',
           // This run's own starting entry: durable steering counts it as
           // starting, until its `promoted` entry is logged and for a bounded
@@ -600,7 +658,10 @@ export function createRunCreation<D extends AgentDefinitions>(
         undefined,
         // COR-2285 — this save starts the run, so it refuses a context archived meanwhile.
         true,
+        // COR-2437 — a continuation's own judgment, decided inside the same atomic update.
+        request.startGuard,
       );
+      notifySessionSaved(request, runId, savedAsRunning);
 
       // F3 — opt-in `requestHumanInput` wiring for a REAL durable run
       // (`options.humanInput`). This closes the tracked wiring gap: the tool's
@@ -776,6 +837,25 @@ export function createRunCreation<D extends AgentDefinitions>(
       // rejects this run instead of letting it start outside shutdown's snapshot.
       let activeRun: ReturnType<typeof createActiveRun>;
       let startedRunOptions: RunOptions;
+      // A continuation can lose its durable admission race after `prepare()` has written its
+      // shell. Its driver still emits a terminal result so local teardown runs, but that result
+      // must not put the rejected continuation marker back into a session another Bureau already
+      // restored. This is deliberately scoped to the `beforeLaunch` rejection: ordinary terminal
+      // errors retain their usual conversation save.
+      let admissionRejectedBeforeLaunch = false;
+      const authorizeTaskAdmission = request.authorizeTaskAdmission;
+      const confirmTaskAdmission = request.confirmTaskAdmission;
+      const rejectTaskAdmission = request.rejectTaskAdmission;
+      let preserveRejectedContinuation = false;
+      let localAdmissionAuthorized = false;
+      const localTaskAdmission = (() => {
+        if (runtime.durable !== undefined) return undefined;
+        return authorizeTaskAdmission;
+      })();
+      const preserveRejectedLocalContinuation = async (): Promise<void> => {
+        if (!localAdmissionAuthorized) return;
+        preserveRejectedContinuation = (await rejectTaskAdmission?.(runId)) === false;
+      };
       // COR-1707 — with no session store, nothing saves the context's rows or claims what they
       // reference, so the task holds its own rows, its input included, under its run for the
       // task's life, as a catalog run does; its end releases them (the terminal listeners below).
@@ -793,7 +873,9 @@ export function createRunCreation<D extends AgentDefinitions>(
           // The text the run began with, whether it came as `message` or as an appended user row.
           message: request.message ?? (requestText === '' ? undefined : requestText),
           tools: toolGrant,
+          admissionFence: request.taskAdmissionFence?.(runId),
         });
+        await request.assertTaskAdmissionLive?.(runId);
         // COR-1476 — inside the block below, so a gate that cannot be built
         // (its session read fails) ends the promoted run like any other start
         // failure: its end is logged and its session's input settled.
@@ -802,13 +884,10 @@ export function createRunCreation<D extends AgentDefinitions>(
           runId,
           runSessionIncarnations.get(runId) ?? savedAsRunning?.incarnation,
         );
-        core.assertRunAdmissionOpen('run');
         // COR-1481 — the fence again, now that the session is saved and before the run
         // registers: a deletion that began during the awaits above has already looked
         // for this session's runs and would not find this one.
-        if (inFlightSessionDeletions.has(sessionId)) {
-          throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
-        }
+        assertRunCreationStillOpen(sessionId);
         startedRunOptions = {
           generate: runRuntime.generate,
           toolbox: runToolbox,
@@ -871,6 +950,18 @@ export function createRunCreation<D extends AgentDefinitions>(
             ? {}
             : { withTraceContext: request.withTraceContext }),
         };
+        // Durable runs claim this receipt in their post-prepare `beforeLaunch` fence. An in-memory
+        // run has no such boundary, so it claims only after all synchronous preparation succeeded,
+        // immediately before irreversible local creation. Keep the optional call outside the
+        // ordinary path: `await undefined` adds a microtask to every normal in-memory start.
+        if (localTaskAdmission !== undefined) {
+          await localTaskAdmission(runId, 'local');
+          localAdmissionAuthorized = true;
+          // Authorization is durable and asynchronous. Re-establish COR-690/COR-1481's
+          // synchronous fence immediately before local creation, so a shutdown or deletion that
+          // started while the receipt was claimed cannot miss this run.
+          assertRunCreationStillOpen(sessionId);
+        }
         activeRun = createActiveRun(
           startedRunOptions,
           // Route through the durable engine when one was composed (durable
@@ -902,6 +993,18 @@ export function createRunCreation<D extends AgentDefinitions>(
                 ],
                 ...(humanInputEmitter ? { emitter: humanInputEmitter } : {}),
                 ...(durableServicesOnServices ? { onServices: durableServicesOnServices } : {}),
+                ...(authorizeTaskAdmission === undefined
+                  ? {}
+                  : {
+                      beforeLaunch: async () => {
+                        try {
+                          await authorizeTaskAdmission(runId, 'durable');
+                        } catch (error) {
+                          admissionRejectedBeforeLaunch = true;
+                          throw error;
+                        }
+                      },
+                    }),
               }
             : undefined,
           // AB-214 review (PRRT_kwDORvupsc6esZTF): thread the authenticated
@@ -911,7 +1014,8 @@ export function createRunCreation<D extends AgentDefinitions>(
           { owner },
         );
       } catch (error) {
-        await core.tasks.discard(runId).catch(() => undefined);
+        await preserveRejectedLocalContinuation();
+        if (!preserveRejectedContinuation) await core.tasks.discard(runId).catch(() => undefined);
         // Promoted but never started, so no terminal listener will ever log
         // its end: log it here, or every process would count this run as
         // starting and keep a pause bound to it accepted.
@@ -1050,30 +1154,32 @@ export function createRunCreation<D extends AgentDefinitions>(
           frame: createRunFinishedFrame({ runId, report }, runtimeServices.clock.now),
         });
 
-        peers.persistTerminalSession(
-          () =>
-            peers.saveRunTerminalSession(
+        if (!admissionRejectedBeforeLaunch) {
+          peers.persistTerminalSession(
+            () =>
+              peers.saveRunTerminalSession(
+                runId,
+                sessionId,
+                event.conversation,
+                {
+                  lastRunId: runId,
+                  lastRunStatus,
+                  lastFinishReason: event.finishReason,
+                  ...(isFailureFinishReason(event.finishReason)
+                    ? { lastError: serializeUnknownError(event.error) }
+                    : {}),
+                },
+                agentName,
+                baseConversationHistory,
+              ),
+            {
               runId,
               sessionId,
-              event.conversation,
-              {
-                lastRunId: runId,
-                lastRunStatus,
-                lastFinishReason: event.finishReason,
-                ...(isFailureFinishReason(event.finishReason)
-                  ? { lastError: serializeUnknownError(event.error) }
-                  : {}),
-              },
-              agentName,
-              baseConversationHistory,
-            ),
-          {
-            runId,
-            sessionId,
-            status: lastRunStatus,
-            spend: { agentName, owner, costEstimate: event.costEstimate },
-          },
-        );
+              status: lastRunStatus,
+              spend: { agentName, owner, costEstimate: event.costEstimate },
+            },
+          );
+        }
       });
 
       activeRun.once('run.aborted', (event) => {
@@ -1111,47 +1217,49 @@ export function createRunCreation<D extends AgentDefinitions>(
           frame: createRunFinishedFrame({ runId, report }, runtimeServices.clock.now),
         });
 
-        peers.persistTerminalSession(
-          () =>
-            // Persist the conversation carried on the abort event, NOT the
-            // launch-time `conversation` closure. On the durable path the workflow
-            // mutates per-step checkpoint snapshots, so a run that aborts after
-            // checkpointed steps (e.g. when engine.cancel() wins the abort race)
-            // reconstructs its abort RunResult from the checkpoint — the event's
-            // conversation reflects those steps, whereas the closure still holds
-            // only the seed transcript. For the in-memory loop the event carries
-            // the same mutated instance, so this is correct on both paths.
-            peers.saveRunTerminalSession(
+        if (!admissionRejectedBeforeLaunch) {
+          peers.persistTerminalSession(
+            () =>
+              // Persist the conversation carried on the abort event, NOT the
+              // launch-time `conversation` closure. On the durable path the workflow
+              // mutates per-step checkpoint snapshots, so a run that aborts after
+              // checkpointed steps (e.g. when engine.cancel() wins the abort race)
+              // reconstructs its abort RunResult from the checkpoint — the event's
+              // conversation reflects those steps, whereas the closure still holds
+              // only the seed transcript. For the in-memory loop the event carries
+              // the same mutated instance, so this is correct on both paths.
+              peers.saveRunTerminalSession(
+                runId,
+                sessionId,
+                event.conversation,
+                {
+                  lastRunId: runId,
+                  lastRunStatus: 'aborted',
+                  // Write lastFinishReason too so an aborted session's metadata is
+                  // internally consistent (status + finishReason agree) and a prior
+                  // run's stale lastFinishReason on the same session can't linger. This
+                  // is also what boot recovery now relies on: a recovered run that
+                  // aborts settles through THIS listener (settleRecoveredRun is gone),
+                  // so the field must be written here, not only on the old recovery path.
+                  lastFinishReason: 'aborted',
+                  lastError: serializeUnknownError(event.error),
+                  // COR-2009 — why the run ended, when the run did not end itself: the host
+                  // stopped it. Written on every abort, so an earlier run's reason never lingers.
+                  lastRunEndReason: runsStoppedByShutdown.has(activeRun)
+                    ? SESSION_END_REASON_HOST_STOPPED
+                    : null,
+                },
+                agentName,
+                baseConversationHistory,
+              ),
+            {
               runId,
               sessionId,
-              event.conversation,
-              {
-                lastRunId: runId,
-                lastRunStatus: 'aborted',
-                // Write lastFinishReason too so an aborted session's metadata is
-                // internally consistent (status + finishReason agree) and a prior
-                // run's stale lastFinishReason on the same session can't linger. This
-                // is also what boot recovery now relies on: a recovered run that
-                // aborts settles through THIS listener (settleRecoveredRun is gone),
-                // so the field must be written here, not only on the old recovery path.
-                lastFinishReason: 'aborted',
-                lastError: serializeUnknownError(event.error),
-                // COR-2009 — why the run ended, when the run did not end itself: the host
-                // stopped it. Written on every abort, so an earlier run's reason never lingers.
-                lastRunEndReason: runsStoppedByShutdown.has(activeRun)
-                  ? SESSION_END_REASON_HOST_STOPPED
-                  : null,
-              },
-              agentName,
-              baseConversationHistory,
-            ),
-          {
-            runId,
-            sessionId,
-            status: 'aborted',
-            spend: { agentName, owner, costEstimate: event.costEstimate },
-          },
-        );
+              status: 'aborted',
+              spend: { agentName, owner, costEstimate: event.costEstimate },
+            },
+          );
+        }
       });
 
       activeRun.once('run.error', (_event) => {
@@ -1200,6 +1308,17 @@ export function createRunCreation<D extends AgentDefinitions>(
       store.register(activeRun, runId);
       registeredForRecovery = true;
       runSessionIdentifiers.set(activeRun, sessionId);
+      if (runtime.durable === undefined && confirmTaskAdmission !== undefined) {
+        try {
+          await confirmTaskAdmission(runId);
+        } catch (error) {
+          diagnose({
+            level: 'error',
+            scope: 'continuation-admission',
+            message: `[bureau] Could not confirm registered continuation "${runId}": ${serializeUnknownError(error)}`,
+          });
+        }
+      }
 
       // AB-361/AB-34: the started-work control contract says an
       // acknowledged durable run is durable — a caller that holds this

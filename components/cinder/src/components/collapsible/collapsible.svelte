@@ -41,7 +41,7 @@
   // disclosure never draws a box inside the box of the one that holds it.
   const nested = getCollapsibleNestingContext() === true;
   setCollapsibleNestingContext();
-  const flat = $derived(variant === 'flat' || (nested && !framed));
+  const flat = $derived(variant === 'flat' || variant === 'disclosure' || (nested && !framed));
 
   // Slide duration mirrors --cinder-duration-base (200ms); collapse to 0 when the
   // user prefers reduced motion.
@@ -95,6 +95,7 @@
   class={classNames('cinder-collapsible', className)}
   data-cinder-chevron={chevron === 'start' ? 'start' : undefined}
   data-cinder-variant={flat ? 'flat' : undefined}
+  data-cinder-disclosure={variant === 'disclosure' ? '' : undefined}
   data-cinder-expanded={open ? '' : undefined}
   data-cinder-disabled={disabled ? '' : undefined}
 >

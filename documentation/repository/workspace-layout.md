@@ -14,6 +14,10 @@ The full rules behind AGENTS.md "Workspace and dependencies", "Release intent" a
 ## Release intent
 
 - Per-change publishing is paused, and this workspace carries no `.changeset/` directory. Release intent for a batch backport is written in `stevekinney/corvidae-mirror`, next to the tooling that carries it to the mirrors, when the backport is made.
+- Release Markdown first, then Cinder, followed by Editor and Cinder MCP. `.github/workflows/cinder-npm-release.yml` builds each tarball from the dispatched Corvidae commit and tests a clean install. Pass the exact published Markdown version for the Cinder and Editor builds, and the exact published Cinder version for Editor and Cinder MCP. Its `publish` input defaults to `false`. Configure each npm trusted publisher for this workflow and the `cinder-npm-publish` GitHub environment, which allows deployments only from the protected `main` branch.
+- Release `armorer` before `conversationalist` with the same workflow. Set `armorer-version` to the exact version on npm when releasing Conversationalist. Both keep their unscoped names. The packer includes private implementation dependencies as internal modules and checks the resulting npm packages in separate Node and Bun consumers.
+- Release Chat after Cinder, Markdown, and Conversationalist. Use the same workflow with their exact published versions in the `cinder-version`, `markdown-version`, and `conversationalist-version` inputs.
+- The first Corvidae release of `@lostgradient/cinder` uses the current `components/cinder` layout. The family split keeps the public npm name and publishing workflow. Its release package must include the private family code and assets without requiring registry entries for the families.
 - `scripts/published-exports.json` (each public package's `exports` map, which Weft's documentation check and Markdown's import-graph test resolve against) is updated by hand after a backport.
 - Interborough release automation belongs in Corvidae: build from a pinned source revision and verify the installed artifact on each supported target before publishing it. Corvidae GitHub Releases can host the compiled archives and checksums.
 

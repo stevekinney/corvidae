@@ -124,6 +124,7 @@ export type PreparedWorkflowContext = {
   readonly workflowId: string;
   readonly type: string;
   readonly options: StartWorkflowOptions | undefined;
+  readonly claimEpoch: Uint8Array | undefined;
   inFlightRevision: string | undefined;
   phase: 'prepared' | 'launched' | 'abandoned';
   reservationReleased: boolean;
@@ -328,6 +329,10 @@ export async function prepareWorkflow(
         workflowId,
         type,
         options,
+        claimEpoch:
+          internals.options.ownershipMode === 'workflow-lease'
+            ? (internals.workflowClaimRegistry?.currentEpochBytes(workflowId) ?? undefined)
+            : undefined,
         inFlightRevision,
         phase: 'prepared',
         reservationReleased: false,

@@ -26,10 +26,16 @@
  */
 
 import { unwatchFile, watchFile, type Stats } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
+import { ensureCinderGenerated } from '../../../../scripts/ensure-cinder-generated.ts';
 import { seedSampleWorld } from '../../fixtures/sample-world-seed.ts';
-import { buildBrowserApplication, stopBrowserBuilds } from './browser-build.ts';
+import {
+  buildBrowserApplication,
+  startWithBrowserBuild,
+  stopBrowserBuilds,
+} from './browser-build.ts';
 import { connectionLines } from './connection-details.ts';
 import { developmentPluginPaths } from './development-plugin-flag.ts';
 import { processEnvironment, resolveBuildDirectory } from './environment-configuration.ts';
@@ -49,6 +55,9 @@ if (pluginPaths === undefined) {
 
 const packageRoot = join(import.meta.dir, '..', '..');
 const repositoryRoot = join(packageRoot, '..', '..');
+if (showcase && !processEnvironment()['INTERBOROUGH_SHOWCASE_ROOT']) {
+  await mkdir(join(repositoryRoot, 'tmp', 'interborough-fixtures'), { recursive: true });
+}
 
 const ENTRY_PAGE = join(packageRoot, 'index.html');
 
@@ -68,7 +77,14 @@ const REBUILD_DELAY_MILLISECONDS = 100;
 
 const buildOptions = { outdir: buildDirectory, inputsFile: BUILD_INPUTS_FILE };
 
-await buildBrowserApplication(buildOptions);
+// Both the browser and the host's panels consume Cinder's generated files.
+const cinderStarted = performance.now();
+const cinderGenerated = await ensureCinderGenerated();
+if (environment['INTERBOROUGH_STARTUP_PROFILE'] === '1') {
+  console.info(
+    `STARTUP ${JSON.stringify({ stage: 'cinder', milliseconds: performance.now() - cinderStarted, generated: cinderGenerated })}`,
+  );
+}
 
 let stopping: Promise<never> | undefined;
 
@@ -89,11 +105,24 @@ const hostOptions = {
     await shutDown(RESTART_EXIT_CODE);
   },
 } satisfies HostOptions;
-const host: Host = showcase
-  ? await seedSampleWorld(environment['INTERBOROUGH_HOME']!, { host: hostOptions }).then(
-      (world) => world.host,
-    )
-  : await startHost(hostOptions);
+const host: Host = await startWithBrowserBuild({
+  build: () => buildBrowserApplication(buildOptions),
+  start: (browserReady) => {
+    const options = { ...hostOptions, browserReady };
+    return showcase
+      ? seedSampleWorld(environment['INTERBOROUGH_HOME']!, {
+          host: options,
+          ownership: {
+            root:
+              environment['INTERBOROUGH_SHOWCASE_ROOT'] ||
+              join(repositoryRoot, 'tmp', 'interborough-fixtures'),
+            owner: repositoryRoot,
+          },
+        }).then((world) => world.host)
+      : startHost(options);
+  },
+  stop: stopBrowserBuilds,
+});
 console.info(`Interborough is listening on ${host.url}`);
 console.info(`Its state lives in ${host.stateDescription}`);
 for (const line of connectionLines(host.url)) console.info(line);

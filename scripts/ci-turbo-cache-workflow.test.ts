@@ -110,6 +110,63 @@ describe('Turborepo cache in the workflows', () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
+  test('the final cache action retains replay after an earlier failure or a save failure', () => {
+    const action = Bun.YAML.parse(
+      readFileSync(resolve(root, '.github/actions/turbo-cache/save/action.yml'), 'utf8'),
+    ) as {
+      runs: {
+        steps: {
+          id?: string;
+          if?: string;
+          uses?: string;
+          run?: string;
+          'continue-on-error'?: boolean;
+          with?: Record<string, string>;
+        }[];
+      };
+    };
+    const steps = action.runs.steps;
+    const cache = steps.findIndex((step) => step.id === 'cache');
+    const replay = steps.findIndex((step) => step.id === 'replay');
+    const upload = steps.findIndex((step) => step.uses?.startsWith('actions/upload-artifact@'));
+    const fail = steps.findIndex((step) => step.run === 'exit 1');
+    expect(cache).toBe(0);
+    expect(steps[cache]?.if).toBe('${{ !cancelled() }}');
+    expect(steps[cache]?.['continue-on-error']).toBe(true);
+    expect(cache < replay && replay < upload && upload < fail).toBe(true);
+    expect(steps[replay]?.if).toBe(
+      "${{ always() && inputs.replay_name != '' && inputs.prior_status == 'success' && steps.cache.outcome == 'failure' }}",
+    );
+    expect(steps[replay]?.run).toContain('bash -c "$CI_REPLAY_STAGE"');
+    expect(steps[upload]?.if).toBe("${{ always() && steps.replay.outcome == 'success' }}");
+    expect(steps[upload]?.with?.['path']).toBe('${{ runner.temp }}/ci-replay-artifact');
+    expect(steps[fail]?.if).toBe("${{ always() && steps.cache.outcome == 'failure' }}");
+    for (const workflow of ['targeted-checks.yml', 'browser-suites.yml']) {
+      const fixture = jobs().find((job) => job.workflow === workflow && job.id === 'fixtures')!;
+      const screenshot = fixture.lines.findIndex((line) =>
+        line.includes('name: playwright-fixtures-'),
+      );
+      const save = fixture.lines.findIndex((line) => line.includes(`uses: ${saveStep}`));
+      expect(screenshot).toBeGreaterThan(-1);
+      expect(screenshot).toBeLessThan(save);
+      expect(
+        fixture.lines
+          .slice(screenshot - 4, screenshot)
+          .some((line) => line.includes('if: ${{ failure() }}')),
+      ).toBe(true);
+    }
+    for (const [prior, cacheOutcome, beforeSave, afterSave, failed] of [
+      ['failure', 'success', true, false, true],
+      ['success', 'success', false, false, false],
+      ['success', 'failure', false, true, true],
+      ['failure', 'failure', true, false, true],
+    ] as const) {
+      expect(prior === 'failure').toBe(beforeSave);
+      expect(prior === 'success' && cacheOutcome === 'failure').toBe(afterSave);
+      expect(prior === 'failure' || cacheOutcome === 'failure').toBe(failed);
+    }
+  });
+
   test('no job deletes the cache directory', () => {
     for (const job of jobs()) {
       expect(job.lines.filter((line) => /\.turbo\b|turbo prune/u.test(line))).toEqual([]);
@@ -155,13 +212,14 @@ describe('Turborepo cache in the workflows', () => {
   // The two most expensive suites: each shard replays only when its inputs, its slice and its
   // renderer are the same, so the shard and the image must stay in the task's hash.
   describe.each([
-    { job: 'fixtures', task: '//#ci:browser-fixtures', script: 'ci:browser-fixtures' },
+    { job: 'fixtures', task: '//#ci:browser-fixtures', script: 'ci:browser-fixtures', shards: 4 },
     {
       job: 'interborough',
       task: '//#ci:browser-interborough',
       script: 'ci:browser-interborough',
+      shards: 6,
     },
-  ])('the $job browser suite', ({ job, task, script }) => {
+  ])('the $job browser suite', ({ job, task, script, shards }) => {
     const turbo = JSON.parse(readFileSync(resolve(root, 'turbo.json'), 'utf8')) as {
       tasks: Record<
         string,
@@ -198,7 +256,10 @@ describe('Turborepo cache in the workflows', () => {
 
     test('sets the shard and the image the job runs in, and the script uses the shard', () => {
       const body = jobBody?.lines.join('\n') ?? '';
-      expect(body).toContain('PLAYWRIGHT_SHARD: ${{ matrix.shard }}/4');
+      expect(body).toContain(
+        `shard: [${Array.from({ length: shards }, (_, index) => index + 1).join(', ')}]`,
+      );
+      expect(body).toContain('PLAYWRIGHT_SHARD: ${{ matrix.shard }}/' + String(shards));
       const image = /^\s+image: (.+)$/mu.exec(body)?.[1];
       expect(image).toBeDefined();
       expect(body).toContain(`PLAYWRIGHT_BASE_IMAGE: ${image}`);

@@ -216,6 +216,7 @@ export const AUDIT_EVENT_COPY = {
   chatTarget: (title: string): string => `Chat › ${title}`,
   scheduleRan: 'Started a scheduled run',
   createdSchedule: 'Created a schedule',
+  updatedSchedule: 'Changed a schedule',
   pausedSchedule: 'Paused a schedule',
   resumedSchedule: 'Resumed a schedule',
   canceledSchedule: 'Canceled a schedule',

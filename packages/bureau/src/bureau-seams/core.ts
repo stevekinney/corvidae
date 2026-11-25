@@ -87,6 +87,7 @@ import type { createDiagnosticDispatcher, subscribeEventFeed } from '../bureau-e
 import type { createFireReviewSeeds } from '../fire-review-seeds';
 import type { createForkLedger } from '../session-fork';
 import type { createRegenerateLedger } from '../session-regenerate';
+import type { createDiscardLedger } from '../session-discard';
 import type { createGoalAttemptFenceHost } from '../goal-attempt-fence';
 import type { createGoalValidatorCatalog } from '../goal-validator-catalog';
 import type { createGoalWorkflowHost } from '../goal-ports';
@@ -217,6 +218,14 @@ export type ReviewAuditAttachment = {
   detail: unknown;
   principal: string;
   decisionRequest?: ReviewDecisionRequest;
+  terminalRelease?: {
+    handler: string;
+    identifier: string;
+    runId: string;
+    reviewId: string;
+    round: number;
+    toolRevision: string;
+  };
 };
 
 /** What a chat run's terminal event reports about its spend and who ran it (COR-1915). */
@@ -241,6 +250,13 @@ export type ScheduledFireApprovalEnding =
  * factory's top: read `core.x` where it is used, so the read happens at call time.
  */
 export interface BureauCore<D extends AgentDefinitions> {
+  readonly terminalReviewReleases?: ReadonlyMap<
+    string,
+    {
+      plugin: string;
+      release: import('@lostgradient/interborough-plugin').PluginRelease;
+    }
+  >;
   /** The resolved options, final once `runtime` exists. */
   readonly options: LayeredBureauOptions<D>;
   /** The workspace membership this Bureau is bound to, if any. */
@@ -377,6 +393,7 @@ export interface BureauCore<D extends AgentDefinitions> {
        * the retry came from.
        */
       decisionSurface?: ApprovalDecisionSurface | undefined;
+      terminalRelease?: ReviewAuditAttachment['terminalRelease'];
     }
   >;
   /** Pending tool approvals overridden in this process. */
@@ -547,6 +564,8 @@ export interface BureauCore<D extends AgentDefinitions> {
   outboxRetryTimerArmedForMs: number | undefined;
   /** The outbox drain in flight. */
   outboxDrainInFlight: Promise<void> | undefined;
+  /** Whether shutdown has stopped admitting new outbox drains. */
+  outboxDrainAdmissionClosed: boolean;
   /** Whether shutdown has closed maintenance admission. */
   maintenanceAdmissionClosed: boolean;
   /** The automatic run ownership prune timer. */
@@ -604,6 +623,8 @@ export interface BureauCore<D extends AgentDefinitions> {
   readonly forkLedger: ReturnType<typeof createForkLedger>;
   /** The answer regeneration ledger (COR-2296). */
   readonly regenerateLedger: ReturnType<typeof createRegenerateLedger>;
+  /** The turn discard ledger (COR-2437). */
+  readonly discardLedger: ReturnType<typeof createDiscardLedger>;
   /** The durable storage, when it persists. */
   readonly persistentDurableStorage:
     NonNullable<RuntimeComposition['durable']>['engine']['storage'] | undefined;

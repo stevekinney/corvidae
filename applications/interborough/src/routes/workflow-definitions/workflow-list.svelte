@@ -5,8 +5,8 @@
    * are joined; `workflow-row.svelte` says a row). The header is "Workflows", its subtitle, and the
    * labelled primary New workflow. Segments (All, Paused, Problems) partition the rows, each with the
    * number of rows it shows, counted from the same rows (`workflow-presentation.ts`). A workflow that
-   * cannot load is listed first with its file and its problem, so a broken workflow is never silently
-   * missing, and a source that failed to load shows the category of the failure.
+   * cannot load follows ready files and comes before paused files, with its file and problem, so a
+   * broken workflow is never silently missing, and a source that failed to load shows its category.
    *
    * The types Interborough registers itself to run agents, goals and its heartbeat are not
    * workflows a person starts, so a secondary "Internal workflows (N)" in the header, beside New
@@ -14,11 +14,10 @@
    * same catalog, and it is not drawn while the list loads or when the engine holds none of them.
    *
    * With no workflow besides those the page is the one list-page empty state (`ListPageEmpty`): the
-   * header stays, there is no filter row, the state has New workflow, Ask an agent (a new chat with
-   * an agent that can create workflows) and, when the engine holds them, a way to the internal
-   * workflows it names; the folder a file can be added to is behind a closed "Where workflow files
-   * live" row with Copy. The frame leaves that state to this page (`pageOwnsEmptyOn` in
-   * `app/views.ts`).
+   * header stays, there is no filter row, and the state has New workflow, Ask an agent (a new chat
+   * with an agent that can create workflows), and a small direct file-location hint. The header
+   * keeps the separate Internal workflows affordance. The frame leaves that state to this page
+   * (`pageOwnsEmptyOn` in `app/views.ts`).
    */
   import {
     Button,
@@ -26,22 +25,25 @@
     EmptyState,
     ErrorState,
     FilterBar,
+    Link,
     PageHeader,
     Skeleton,
     StaleRegion,
+    Text,
   } from '@lostgradient/cinder';
   import { Search } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
+  import { tick } from 'svelte';
 
   import { getConnection } from '../../app/connection.svelte.ts';
-  import FileLocationDetail from '../../app/file-location-detail.svelte';
   import ListPageEmpty from '../../app/list-page-empty.svelte';
   import { CONNECTION_COPY, RETRY_LABEL } from '../../app/copy/views.ts';
   import { VIEW_COPY } from '../../app/copy/view-pages.ts';
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { getClient } from '../../lib/client.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { followLinks } from '../../lib/follow-links.ts';
-  import { getHostPaths } from '../../lib/host-paths.ts';
+  import { getProviders } from '../../lib/host-providers.ts';
   import { newChatFromWorkflowsPath } from '../../lib/new-chat-address.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -103,17 +105,26 @@
     undefined,
   );
 
-  // Where the files are, for the hint of the empty state. A host that does not say is not asked
-  // again, and the hint names the usual place.
-  const hostPaths = createQuery(
+  const providers = createQuery(
     () => ({
-      queryKey: queryKeys.hostPaths(),
-      queryFn: ({ signal }) => getHostPaths({ signal }),
+      queryKey: queryKeys.hostProviders(),
+      queryFn: ({ signal }) => getProviders({ signal }),
+      enabled: catalog.isSuccess && workflows.length === 0,
       retry: false,
     }),
     undefined,
   );
-  const directory = $derived(hostPaths.data?.workflowDirectory ?? copy.empty.hintDirectory);
+  const needsProvider = $derived(
+    providers.data !== undefined &&
+      !providers.data.providers.some((provider) => provider.connected),
+  );
+  const askUnavailable = $derived(
+    needsProvider
+      ? copy.empty.needsProvider
+      : providers.isPending
+        ? copy.empty.checkingProvider
+        : undefined,
+  );
 
   // The clock the dates are counted from, read again whenever the rows or their counts are.
   const now = $derived.by(() => {
@@ -123,27 +134,55 @@
   });
 
   let segment = $state<ListSegment>('all');
+  let search = $state('');
+  let filterBar = $state<HTMLElement>();
   const counts = $derived(segmentCounts(workflows));
   const segments = $derived([
     { value: 'all', label: copy.segments.all, count: counts.all },
     { value: 'paused', label: copy.segments.paused, count: counts.paused },
     { value: 'problems', label: copy.segments.problems, count: counts.problems },
   ]);
-  const visible = $derived(
-    workflows
-      .filter((row) => inSegment(row, segment))
+  const visible = $derived.by(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return workflows
+      .filter(
+        (row) =>
+          inSegment(row, segment) &&
+          (query === '' ||
+            row.name.toLocaleLowerCase().includes(query) ||
+            row.file?.title?.toLocaleLowerCase().includes(query) === true),
+      )
       .map((row) => ({
         row,
         model: workflowListRow(row, activity.data?.get(row.name), now),
-      })),
-  );
+      }));
+  });
 
   const newPath = workflowNewPath();
   const internalPath = internalWorkflowsPath();
   const askPath = newChatFromWorkflowsPath();
+  const providersPath = '/settings/models';
 
   function chooseSegment(value: string): void {
     segment = value === 'paused' || value === 'problems' ? value : 'all';
+  }
+
+  async function clearFilters(): Promise<void> {
+    search = '';
+    segment = 'all';
+    await tick();
+    const localSearch = filterBar?.querySelector<HTMLInputElement>('input[type="search"]');
+    if (localSearch) {
+      localSearch.focus();
+      return;
+    }
+    // The narrow and medium searches live in portalled popovers. Once a page-level Clear filters
+    // button disappears, put focus on FilterBar's persistent local trigger instead.
+    filterBar
+      ?.querySelector<HTMLButtonElement>(
+        '.cinder-filter-bar__menu-button, .cinder-filter-bar__search-button',
+      )
+      ?.focus();
   }
 
   function go(event: MouseEvent, path: string): void {
@@ -183,55 +222,55 @@
         description={VIEW_COPY.workflows.error.description}
         headingLevel={2}
         retryLabel={RETRY_LABEL}
-        onRetry={() => void catalog.refetch()}
+        {...faultErrorStateAdvice(catalog.error, () => void catalog.refetch())}
       />
     {:else if catalog.isPending}
       <Skeleton variant="list" rows={5} label={VIEW_COPY.workflows.loading.title} />
     {:else if workflows.length === 0}
-      <!-- The internal workflows are the secondary action when this host has them. -->
       <ListPageEmpty
         view="workflows"
         title={copy.empty.title}
-        description={engineRows.length > 0
-          ? `${copy.empty.description} ${copy.empty.internal(engineRows.length)}`
-          : copy.empty.description}
+        description={copy.empty.description}
         create={{
           label: WORKFLOW_COPY.newAction,
           href: router.href(newPath),
           onclick: (event) => go(event, newPath),
         }}
         secondary={[
-          engineRows.length > 0
-            ? {
-                label: copy.empty.internalAction,
-                href: router.href(internalPath),
-                onclick: (event) => go(event, internalPath),
-              }
-            : {
-                label: copy.empty.askAction,
-                href: router.href(askPath),
-                onclick: (event) => go(event, askPath),
-              },
+          {
+            label: copy.empty.askAction,
+            href: router.href(askPath),
+            onclick: (event) => go(event, askPath),
+            ...(askUnavailable === undefined ? {} : { inertReason: askUnavailable }),
+          },
         ]}
         data-testid="workflows-empty"
       >
-        <FileLocationDetail
-          label={copy.empty.files.label}
-          lead={copy.empty.files.lead}
-          {directory}
-          copyLabel={copy.empty.files.copyLabel}
-          copiedLabel={copy.empty.files.copiedLabel}
-          data-testid="workflows-file-location"
-        />
+        {#if needsProvider}
+          <Text class="ib-workflows__hint">
+            {copy.empty.needsProvider}
+            <Link href={router.href(providersPath)} onclick={(event) => go(event, providersPath)}>
+              {copy.empty.connectProvider}
+            </Link>
+          </Text>
+        {/if}
+        <Text class="ib-workflows__hint" data-testid="workflows-file-hint">
+          {copy.empty.fileHint}
+        </Text>
       </ListPageEmpty>
     {:else}
-      <FilterBar
-        aria-label={copy.segmentsLabel}
-        searchVisible={false}
-        {segments}
-        segmentValue={segment}
-        onSegmentChange={chooseSegment}
-      />
+      <div bind:this={filterBar}>
+        <FilterBar
+          aria-label={copy.segmentsLabel}
+          searchQuery={search}
+          searchPlaceholder={copy.searchPlaceholder}
+          searchAriaLabel={copy.searchLabel}
+          {segments}
+          segmentValue={segment}
+          onSegmentChange={chooseSegment}
+          onSearchChange={(query) => (search = query)}
+        />
+      </div>
 
       {#if visible.length === 0}
         <EmptyState
@@ -240,12 +279,12 @@
           description={copy.noMatch.description}
           headingLevel={2}
           clearFiltersLabel={copy.clearAction}
-          onClearFilters={() => (segment = 'all')}
+          onClearFilters={clearFilters}
         >
           {#snippet icon()}<Search aria-hidden="true" />{/snippet}
         </EmptyState>
       {:else}
-        <div {@attach followLinks}>
+        <div class="ib-records__bounded-list" {@attach followLinks}>
           <DataList
             items={visible}
             key={(item) => item.row.name}

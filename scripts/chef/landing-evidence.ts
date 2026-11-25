@@ -48,11 +48,21 @@ export interface LandingDependencies {
 export interface LandingRoute {
   route: 'branch' | 'pull-request';
   defaultBranch: string;
+  /** The tree the caller just derived for the candidate against its current base. */
+  integrationTree?: string;
 }
 
 const FULL_WORKFLOW = '.github/workflows/main.yml';
 const PULL_REQUEST_WORKFLOW = '.github/workflows/pull-request.yml';
 const TARGETED_WORKFLOW = '.github/workflows/targeted-checks.yml';
+const FULL_RECEIPT_JOBS = [
+  'root',
+  'workspaces',
+  'tests',
+  'tests-slow',
+  'browser',
+  'test-durations',
+] as const;
 
 /** The workflows whose runs on a head are judged. */
 export const landingWorkflows: ReadonlySet<string> = new Set([
@@ -116,7 +126,12 @@ const BAD_JOB = new Set([
 ]);
 
 /** A problem when a run's jobs cannot be read or one of them did not go green. */
-function jobsProblem(runner: Runner, repository: string, run: ListedRun): string | undefined {
+function jobsProblem(
+  runner: Runner,
+  repository: string,
+  run: ListedRun,
+  allowEmpty = false,
+): string | undefined {
   const answer = runner([
     'gh',
     'api',
@@ -125,7 +140,8 @@ function jobsProblem(runner: Runner, repository: string, run: ListedRun): string
   if (answer.code !== 0) return `the jobs of run ${run.id} could not be read`;
   try {
     const jobs = (JSON.parse(answer.stdout) as { jobs?: unknown }).jobs;
-    if (!Array.isArray(jobs) || jobs.length === 0) return `run ${run.id} lists no jobs`;
+    if (!Array.isArray(jobs)) return `run ${run.id} has an invalid job list`;
+    if (!allowEmpty && jobs.length === 0) return `run ${run.id} lists no jobs`;
     const bad = (jobs as { name?: unknown; conclusion?: unknown }[]).find((job) =>
       BAD_JOB.has(String(job.conclusion)),
     );
@@ -137,13 +153,36 @@ function jobsProblem(runner: Runner, repository: string, run: ListedRun): string
   }
 }
 
+interface BoundRuns {
+  ids: ReadonlySet<number>;
+  reusableFullIds: ReadonlySet<number>;
+}
+
+function hasCompleteFullReceipt(
+  receiptJobs: Record<string, 'success' | 'not-applicable'>,
+): boolean {
+  return FULL_RECEIPT_JOBS.every((name) => receiptJobs[name] === 'success');
+}
+
+function allowsPullRequestDuplicateReuse(changed: readonly string[]): boolean {
+  return !changed.some(
+    (path) =>
+      path.startsWith('.github/') ||
+      path === 'package.json' ||
+      path === 'turbo.json' ||
+      /^scripts\/affected-tests(?:[-.].*)?\.ts$/.test(path),
+  );
+}
+
 async function checkDigests(
   verification: LoadedDeliveryVerification,
   listed: readonly ListedRun[],
   source: Pick<CiEvidenceProvider, 'findRuns'>,
-): Promise<string | undefined> {
+): Promise<BoundRuns | string> {
   const { request } = verification;
   const batch = batchVerificationPlanDigest(request.members);
+  const ids = new Set<number>();
+  const reusableFullIds = new Set<number>();
   for (const identity of request.ciEvidence ?? []) {
     if (identity.requestKey !== ciEvidenceRequestKey(identity))
       return 'a CI evidence identity does not match its request key';
@@ -158,14 +197,50 @@ async function checkDigests(
     const run = observed[0];
     if (observed.length !== 1 || run === undefined || 'state' in run)
       return `CI evidence for ${identity.workflowPath} is not one finished authenticated run`;
-    if (!listed.some((entry) => entry.id === run.id))
-      return `run ${run.id} is not among the workflow runs on the head`;
-    if (run.checkedRevision !== request.revision || run.head !== request.revision)
+    const listedRun = listed.find((entry) => entry.id === run.id);
+    if (listedRun === undefined) return `run ${run.id} is not among the workflow runs on the head`;
+    if (listedRun.path !== identity.workflowPath)
+      return `run ${run.id} is listed as ${listedRun.path}, not ${identity.workflowPath}`;
+    // For a PR, the provider authenticates both parents of GitHub's synthetic merge checkout.
+    if (
+      run.head !== request.revision ||
+      (identity.event !== 'pull_request' && run.checkedRevision !== request.revision)
+    )
       return `run ${run.id} checked ${run.checkedRevision}, not the head ${request.revision}`;
+    if (
+      run.checkedTree !== request.integrationTree ||
+      run.integrationTree !== request.integrationTree
+    )
+      return `run ${run.id} checked tree ${run.checkedTree} and reported integration tree ${run.integrationTree}; expected ${request.integrationTree}`;
+    if (identity.event === 'pull_request') {
+      if (run.event !== 'pull_request' || run.base !== request.base)
+        return `run ${run.id} did not check the proposed pull-request merge`;
+      const pinned = request.members.flatMap((member) =>
+        member.providerRuns.filter((binding) => binding.event === 'pull_request'),
+      );
+      if (
+        pinned.length === 0 ||
+        pinned.some((binding) => binding.id !== run.id || binding.attempt !== run.attempt)
+      )
+        return `run ${run.id} does not match the pinned pull-request attempt`;
+    }
     if (run.verificationPlanDigest !== expected || run.requestKey !== identity.requestKey)
       return `run ${run.id} carries evidence digest ${run.verificationPlanDigest}, not the pinned ${expected}`;
+    const fullReceipt =
+      identity.workflowPath === FULL_WORKFLOW && hasCompleteFullReceipt(run.receiptJobs);
+    if (identity.workflowPath === FULL_WORKFLOW && !fullReceipt)
+      return `pinned main.yml evidence run ${run.id} does not have a complete full receipt`;
+    ids.add(run.id);
+    if (
+      identity.event === 'workflow_dispatch' &&
+      identity.workflowPath === FULL_WORKFLOW &&
+      listedRun.status === 'completed' &&
+      listedRun.conclusion === 'success' &&
+      fullReceipt
+    )
+      reusableFullIds.add(run.id);
   }
-  return undefined;
+  return { ids, reusableFullIds };
 }
 
 function checkRuns(
@@ -174,18 +249,29 @@ function checkRuns(
   defaultBranch: string,
   listed: readonly ListedRun[],
   plan: LandingPlan,
-  bound: boolean,
+  bound: BoundRuns,
+  reusePullRequestDuplicates: boolean,
 ): string | undefined {
   const covering: ListedRun[] = [];
   for (const run of listed.filter((entry) => landingWorkflows.has(entry.path))) {
-    if (run.status !== 'completed') return `run ${run.id} (${run.path}) has not finished`;
+    const unpinnedPullRequestDuplicate =
+      run.path === PULL_REQUEST_WORKFLOW &&
+      !bound.ids.has(run.id) &&
+      reusePullRequestDuplicates &&
+      bound.reusableFullIds.size > 0;
+    if (run.status !== 'completed') {
+      if (!unpinnedPullRequestDuplicate) return `run ${run.id} (${run.path}) has not finished`;
+      const problem = jobsProblem(runner, repository, run, true);
+      if (problem !== undefined) return problem;
+      continue;
+    }
     if (run.conclusion === 'success') {
       const problem = jobsProblem(runner, repository, run);
       if (problem !== undefined) return problem;
       const covers =
         run.path === TARGETED_WORKFLOW
           ? !plan.requiresFullRun && run.title === targetedRunName(plan.digest)
-          : bound;
+          : bound.ids.has(run.id);
       if (covers) covering.push(run);
       continue;
     }
@@ -230,9 +316,9 @@ export async function validateLandingEvidence(
   if (elsewhere !== undefined)
     return `run ${elsewhere.id} is on ${elsewhere.head}, not the head ${request.revision}`;
 
-  const bound = (request.ciEvidence ?? []).length > 0;
-  if (bound) {
-    const digestProblem = await checkDigests(
+  let bound: BoundRuns = { ids: new Set(), reusableFullIds: new Set() };
+  if ((request.ciEvidence ?? []).length > 0) {
+    const result = await checkDigests(
       verification,
       listed,
       dependencies.ciProvider ??
@@ -241,7 +327,8 @@ export async function validateLandingEvidence(
           cwd: request.worktree,
         }),
     );
-    if (digestProblem !== undefined) return digestProblem;
+    if (typeof result === 'string') return result;
+    bound = result;
   }
 
   const changed = changedPaths(runner, request.worktree, request.base, request.revision);
@@ -254,6 +341,7 @@ export async function validateLandingEvidence(
     listed,
     plan,
     bound,
+    route.integrationTree === request.integrationTree && allowsPullRequestDuplicateReuse(changed),
   );
   if (runProblem !== undefined) return runProblem;
 

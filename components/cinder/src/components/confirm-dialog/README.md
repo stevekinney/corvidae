@@ -4,7 +4,7 @@ Pre-wired modal dialog for user-initiated binary decisions: "proceed" or "cancel
 
 See the [dialog preset boundary](https://github.com/stevekinney/cinder/blob/main/docs/decisions/dialog-presets.md) for the preserved role, acknowledgement, and dismissal contract.
 
-Below a 760px viewport (`sheetBelow`, which accepts any CSS length, or `false` for the centred dialog) the dialog is a bottom sheet: a grabber, a compact Cancel beside the confirmation, which fills the rest of the row (above Cancel when the two do not fit), both drawn at the button's painted height and reaching 44px through its hit area. Cancel keeps initial focus, the corner close button is not drawn, and Escape still closes it.
+Below a 760px viewport, the dialog is a bottom sheet with a grabber. Cancel stays compact when both actions fit on one row. When they stack, both buttons fill the available width, with confirmation above Cancel. Both have a 44px hit area and Cancel keeps initial focus. Escape closes the sheet. Set `sheetBelow` to a CSS length to adjust the breakpoint or to `false` for the centred dialog at every width.
 
 ## Dialog model
 
@@ -27,7 +27,7 @@ The key distinction between ConfirmDialog and AlertDialog is _who initiates_ the
 
 ## Choosing something else
 
-- When the dialog body needs rich content beyond a list and a note (a form, several sections, markup around controls) — compose [`Modal`](../modal/README.md) directly instead. A plain list or a short note goes in `options`; see [A list or a note in `options`](#a-list-or-a-note-in-options).
+- When the dialog body needs rich content beyond a list, a note and a few labelled controls (a long form of many fields, several sections, markup around controls) — compose [`Modal`](../modal/README.md) directly instead. A plain list, a short note, or one or two labelled controls that change what the confirmation does (a checkbox, a reason field) go in `options`; see [A list or a note in `options`](#a-list-or-a-note-in-options).
 - When more than two actions are needed — use [`Modal`](../modal/README.md) with a custom `footer` snippet.
 - When the dialog is triggered by a system event or out-of-band condition requiring mandatory acknowledgement — use [`AlertDialog`](../alert-dialog/README.md) instead.
 - Non-blocking notifications — use a toast or inline alert that does not interrupt the flow.
@@ -100,6 +100,50 @@ Put what each choice does in `options`. A plain `<ul>` as a direct child is draw
 </ConfirmDialog>
 ```
 
+Cancel keeps the first focus. The exception is a form in `options` that the person fills in before anything can be confirmed: put `autofocus` on its first field and that field, which comes before Cancel in the dialog, takes the first focus instead.
+
+## Waiting for the answer: `pending`
+
+Set `pending` while what the dialog confirms is still being worked out, such as a count the server has not answered. The description and options regions show a skeleton that keeps the room the answer will take, `pendingLabel` is announced once as a status, and the confirm button cannot be pressed. Cancel stays enabled and keeps the first focus, so a person can leave while the answer is in flight. The typed field waits with the rest of the body, and entering `pending` clears what was typed, so a new answer is confirmed afresh. Nothing describes the dialog while it waits; `aria-describedby` returns with the description.
+
+```svelte
+<ConfirmDialog
+  bind:open
+  title="Purge finished workflows?"
+  description="Permanently deletes {matched} finished workflows matching this filter. This can’t be undone."
+  destructive
+  {pending}
+  pendingLabel="Counting the workflows a purge would delete"
+  typeToConfirm="purge {matched} workflows"
+  confirmLabel="Purge {matched} workflows"
+  onConfirm={purge}
+/>
+```
+
+## A different next step after a failure: `errorAction`
+
+By default a failure keeps the confirm button armed, so pressing it again is the retry. When that is the wrong next step, set `errorAction` to `{ label, onAction }`: the action is drawn in the failure callout and the confirm button is not drawn while the failure shows. Use it for a preview that must be counted again, or work that cannot be repeated as it was. `errorTone="warning"` draws a refusal nothing was done about, such as a stale preview, as a warning instead of a danger callout. Clear `error` and the confirm button returns. Below the sheet breakpoint a lone action normally fills the footer row, but here Cancel (relabel it "Close" with `cancelLabel`) is the only button of the row and the callout's action is what leads, so Close is compact at the inline end instead of a full-width button that outweighs it (an owner exception to the lone-action rule, 2026-11-21). A dialog with nothing to confirm and no failure action keeps the full-width Close.
+
+```svelte
+<ConfirmDialog
+  bind:open
+  title="Purge finished workflows?"
+  description="Permanently deletes {count} finished workflows matching this filter. This can’t be undone."
+  destructive
+  confirmLabel="Purge {count} workflows"
+  closeOnConfirm={false}
+  error={stale ? 'Nothing was purged. Check the new count before you purge.' : undefined}
+  errorTitle={stale ? 'The matching workflows changed' : undefined}
+  errorTone="warning"
+  errorAction={{ label: 'Refresh preview', onAction: refresh }}
+  onConfirm={purge}
+/>
+```
+
+## A form that is not valid yet, and nothing to confirm
+
+`confirmEnabled={false}` disables the confirm button while the answer it confirms is incomplete, such as a form in `options` that is not valid yet. `confirmVisible={false}` draws no confirm button when there is nothing to confirm, such as the answer to a finished action: Cancel is then the one action, so name it with `cancelLabel` ("Close").
+
 ## Props
 
 <!-- generated:props:start -->
@@ -111,21 +155,27 @@ Put what each choice does in `options`. A plain `<ul>` as a direct child is draw
 | `cancelLabel` | `string` | no | `"Cancel"` | Label for the cancel button, which ALWAYS renders. |
 | `class` | `string` | no | — | Optional extra class on the underlying <Modal>. Destructured as `class: className` per repo convention. |
 | `closeOnConfirm` | `boolean` | no | `true` | Whether the dialog closes itself when the confirm button is pressed. Set `false` when the confirmed work can fail and the page needs the dialog to stay open to show it: the page then closes the dialog with `open = false` once the work succeeds. |
+| `confirmEnabled` | `boolean` | no | `true` | Whether the confirm button can be pressed. Set `false` while the answer it confirms is incomplete, such as a form in `options` that is not valid yet. The typed confirmation and `pending` disable it as well. |
 | `confirmLabel` | `string` | yes | — | Confirm button label. Required — no default. Name the action being confirmed: - Destructive: "Delete", "Discard changes", "Remove from organization". - Non-destructive: "Save", "Continue", "Publish". Never use "OK" or "Confirm" in production — they don't describe the action. |
+| `confirmVisible` | `boolean` | no | `true` | Whether the confirm button is drawn. Set `false` when there is nothing to confirm, such as the answer to a finished action: Cancel is then the one action, so name it with `cancelLabel` ("Close"). |
 | `destructive` | `boolean` | no | — | When true, the confirm button uses variant="danger". The cancel button still receives default focus regardless — color is never the sole destructive signal. |
 | `error` | `string` | no | — | Why the confirmed work failed, in a danger callout between the body and the actions that is announced as it appears: "Nothing was deleted." The dialog stays open, the typed text stays, and the confirm button stays armed under its own label, so pressing it again is the retry. Clear it to hide the callout. |
-| `errorTitle` | `string` | no | — | Bold lead sentence of the failure, such as "Couldn’t delete the agent.", set before `error`. Shown only with `error`. |
+| `errorTitle` | `string` | no | — | Title of the failure callout, such as "Couldn’t delete the agent.", drawn on its own line above `error` as every Callout title is. Shown only with `error`. |
+| `errorTone` | `"danger"` \| `"warning"` | no | `"danger"` | Tone of the failure callout: `danger` (the default) for work that failed, `warning` for a refusal that nothing was done about, such as a preview that went stale before it was confirmed. |
 | `open` | `boolean` | yes | — | Controls visibility. Bindable. |
-| `sheetBelow` | `string` \| `false` | no | `"760px"` | Viewport width below which the dialog is a bottom sheet: a grabber, a compact Cancel beside the confirmation, which fills the rest of the row (above Cancel when the two do not fit), both drawn at the button's painted height and reaching 44px through its hit area, with Cancel keeping initial focus. A CSS length such as `"760px"`, or `false` for the centred dialog at every width. |
+| `pending` | `boolean` | no | `false` | True while what the dialog confirms is still being worked out, such as a count the server has not answered: the description and options show a skeleton, the typed field waits, and the confirm button cannot be pressed. Cancel stays enabled and focusable. Entering `pending` clears the typed text, so a new answer is confirmed afresh. |
+| `pendingLabel` | `string` | no | `"Loading"` | What the skeleton is waiting for, announced once as a status when `pending` starts, such as "Counting the workflows a purge would delete". |
+| `sheetBelow` | `string` \| `false` | no | `"760px"` | Viewport width below which the dialog is a bottom sheet. Cancel stays compact when both actions fit on one row. When the actions stack, both fill the row width, with confirmation above Cancel. Both have 44px hit areas and Cancel keeps initial focus. A CSS length such as `"760px"`, or `false` for the centred dialog at every width. |
 | `title` | `string` | yes | — | Modal title; passed through to <Modal>. |
-| `typeToConfirm` | `string` | no | — | When set, renders a labelled text input and disables the confirm button until the trimmed input matches this value case-insensitively. |
+| `typeToConfirm` | `string` | no | — | When set, renders a labelled text input and disables the confirm button until the trimmed input matches this value case-insensitively. The input sits in the footer, above the buttons it gates and outside the scrolling body, so a long description or list never pushes it out of view and it is always in view with the confirm button. |
 | `typeToConfirmLabel` | `string` | no | — | Visible label for the typed-confirmation input. Defaults to `Type "<value>" to confirm`. |
 | `confirmIcon` | `(opaque)` | no | — | Glyph at the start of the confirm button, such as a restart, stop or trash icon. Decorative: the label names the action. Not expressible in JSON Schema; see the component types for the signature. |
 | `description` | `(opaque)` | no | — | Optional body description — a short sentence or two. Rendered as a single <p> and wired to aria-describedby. A string is plain text; a snippet may add phrasing content inside the sentence, such as a key in `<code>`. Anything bigger than a sentence (a list, a code block, a checkbox) goes in `options`, below it. Screen readers announce aria-describedby targets as one continuous run, so keep the description short either way. Not expressible in JSON Schema; see the component types for the signature. |
+| `errorAction` | `(opaque)` | no | — | An action in the failure callout, in place of the confirm button. Without it, the failure keeps the confirm button armed and pressing it again is the retry. With it, the confirm button is gone while the failure shows, because pressing it again is the wrong next step (a preview that must be counted again, work that cannot be repeated as it was), and the callout offers the right one: `label` names it and `onAction` runs it. Shown only with `error`. Not expressible in JSON Schema; see the component types for the signature. |
 | `onCancel` | `(opaque)` | no | — | Called when the user cancels (cancel button, Escape, or backdrop per the dialog's policy). Not expressible in JSON Schema; see the component types for the signature. |
 | `onConfirm` | `(opaque)` | yes | — | Fired when the user activates the confirm button. Required. The component closes itself after, unless `closeOnConfirm` is `false`. Not expressible in JSON Schema; see the component types for the signature. |
 | `onExitComplete` | `(opaque)` | no | — | Fired once the underlying modal's exit transition has completed. Not expressible in JSON Schema; see the component types for the signature. |
-| `options` | `(opaque)` | no | — | Content rendered below the description and above the typed confirmation: a checkbox that changes what the confirmation does, or the exact command about to run in a code block. The description says what the dialog does; the options say what each choice does. Keep the description short, and keep controls here labelled. Not expressible in JSON Schema; see the component types for the signature. |
+| `options` | `(opaque)` | no | — | Content rendered below the description and above the typed confirmation: a checkbox that changes what the confirmation does, or the exact command about to run in a code block. The description says what the dialog does; the options say what each choice does. Keep the description short, and keep controls here labelled. Cancel keeps the first focus unless a control here carries `autofocus`: it comes before Cancel in the dialog, so it takes the first focus instead. Use that for a form the person fills in before anything can be confirmed. Not expressible in JSON Schema; see the component types for the signature. |
 | `triggerRef` | `(opaque)` | no | — | Forwarded to <Modal>; focus is restored here on close. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

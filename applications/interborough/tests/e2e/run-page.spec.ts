@@ -17,7 +17,7 @@ import {
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
 import { expectEngineMissesForRuns, taskOfSession } from './task-support.ts';
-import { openHowItRan } from './workflow-support.ts';
+import { openHowItRan, openSendUpdate } from './workflow-support.ts';
 
 const WIDTHS = [375, 768, 1280] as const;
 
@@ -131,7 +131,7 @@ test('a signal, an update and a query are sent from the section on the page, wit
   ).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  await section.getByRole('button', { name: 'Send an update' }).click();
+  await openSendUpdate(section);
   await expect(section.getByLabel('Update name')).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });

@@ -200,6 +200,7 @@ for (const viewport of VIEWPORTS) {
 
     await moreButton(page).click();
     await expect(page.getByRole('menuitem')).toHaveText([
+      'Share chat',
       new RegExp(MORE.rename),
       new RegExp(MORE.branch),
       new RegExp(MORE.export),

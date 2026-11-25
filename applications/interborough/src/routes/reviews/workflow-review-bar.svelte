@@ -49,7 +49,7 @@
   }
 </script>
 
-<div class="ib-review-pane__decision" data-testid="workflow-review-bar">
+<div class="ib-review-detail__decision" data-testid="workflow-review-bar">
   <Textarea
     id={`review-${reviewId}-note`}
     label={REVIEWS_COPY.noteLabel}
@@ -64,7 +64,7 @@
 <!-- Cinder's docked bar (row 25q): it stays at the end of the pane as it scrolls, and below its own
      32rem the note takes the whole row and the buttons sit under it at the trailing edge. -->
 <DockedActionBar label={REVIEWS_COPY.workflow.decisionLabel}>
-  <p class="ib-review-pane__footer-note">{REVIEWS_COPY.workflow.footer}</p>
+  <p class="ib-review-detail__footer-note">{REVIEWS_COPY.workflow.footer}</p>
   {#snippet actions()}
     <Tooltip text={submitGate.title ?? ''}>
       <Button

@@ -166,7 +166,7 @@
         description="The server holds no dead letter for this task. It may have been cleared since this page loaded."
       />
     {:else if error}
-      <PanelFault {error} onRetry={() => void retained.refetch()} />
+      <PanelFault {error} subject="the dead letter" onRetry={() => void retained.refetch()} />
     {:else if payload?.kind === 'value'}
       <p class="weft-task-deliveries__note">
         Retained value, {formatBytes(payload.serializedBytes)} serialized

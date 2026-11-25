@@ -428,6 +428,13 @@
   min-inline-size: 0;
 }
 
+/* The compact action's touch area extends below the title line. Keep it clear of phone search. */
+@media (max-width: 639.98px) and (any-pointer: coarse) {
+  .ib-chats__title:has(+ .ib-chats__search) {
+    padding-block-end: var(--cinder-space-1);
+  }
+}
+
 /* The archived view's way back sits above its title, its chevron lined up with the title's start. */
 .ib-chats__back-row {
   display: flex;

@@ -3,8 +3,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { join } from 'node:path';
 
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
-import type { CiEvidenceProvider, CiEvidenceRequest } from './ci-evidence.ts';
-import { branchRunner } from './deliver.test-support.ts';
+import type { CiEvidenceProvider, CiEvidenceRequest, CiEvidenceRun } from './ci-evidence.ts';
+import { branchRunner, MERGE_TREE } from './deliver.test-support.ts';
 import {
   batchVerificationPlanDigest,
   readDeliveryRequest,
@@ -23,6 +23,7 @@ import {
 } from './delivery-request.ts';
 import {
   loadDeliveryVerification,
+  validateDeliveryCiEvidence,
   validateDeliveryVerification,
   type DeliveryVerificationDependencies,
 } from './delivery-verification.ts';
@@ -34,12 +35,14 @@ import {
   type ExecutionStateStore,
 } from './execution-state.ts';
 import {
+  changedAnswer,
   greenLandingAnswers,
   jobsAnswer,
   LANDING_RUN_ID,
   landingRun,
   runsAnswer,
 } from './landing-evidence.test-support.ts';
+import { validateLandingEvidence } from './landing-evidence.ts';
 import type { Runner, RunnerResult } from './process-runner.ts';
 import { createScenarios } from './scenario.test-support.ts';
 import { dispatchVerificationRun } from './targeted-run.ts';
@@ -441,6 +444,192 @@ scenarios.describe('prepare', () => {
       const second = await prepare(setup.options, setup.dependencies);
       expect(setup.dispatched).toHaveLength(1);
       expect(second).toMatchObject({ digest: first.digest, file: first.file, dispatched: false });
+    },
+  );
+
+  scenarios.scenario(
+    'adopts one complete automatic pull-request receipt for a scoped pull-request delivery',
+    async () => {
+      const workspace = 'applications/interborough';
+      const testPath = 'scripts/design-review-rows.test.ts';
+      const observed = workspace + '/' + testPath;
+      const changed = answers({
+        ...changedAnswer(BASE, HEAD, [observed]),
+        [`diff --name-only --diff-filter=d ${BASE}...${HEAD}`]: reply(observed + '\n'),
+      });
+      const automatic: CiEvidenceRun = {
+        id: 77,
+        attempt: 1,
+        repository: REPOSITORY,
+        head: HEAD,
+        base: BASE,
+        integrationTree: TREE,
+        event: 'pull_request',
+        workflow: 'Pull request',
+        workflowPath: '.github/workflows/pull-request.yml',
+        workflowRevision: HEAD,
+        verificationPlanDigest: 'd'.repeat(64),
+        requestKey: 'e'.repeat(64),
+        receiptRequestKey: '',
+        checkedRevision: 'f'.repeat(40),
+        checkedTree: TREE,
+        receiptJobs: {
+          static: 'success',
+          workspaces: 'success',
+          tests: 'success',
+          'browser-selection': 'success',
+          browser: 'not-applicable',
+        },
+        receiptTestFiles: [observed],
+        jobs: ['Evidence aggregate'],
+      };
+      const setup = await harness(
+        {
+          provider: {
+            findRuns: async () => {
+              throw new Error('automatic evidence must not dispatch or poll a manual run');
+            },
+            findAutomaticPullRequestRuns: async () => [automatic],
+          },
+          readJobs: () => [{ name: 'Evidence aggregate', runner: RUNNER_NAME, startedAt: 't' }],
+          plan: (changed) => ({
+            ...computeEvidencePlan(changed, {
+              knownSlugs: new Set(),
+              paths: new Set(changed),
+              read: () => undefined,
+              selectUnitTests: () => [],
+            }),
+            unit_tests: [
+              {
+                workspace,
+                paths: [testPath],
+                full: false,
+              },
+            ],
+          }),
+        },
+        {
+          route: 'pull-request',
+          sourceCriteria: {
+            version: 1,
+            members: [
+              {
+                identifier: 'COR-1',
+                criteria: [
+                  {
+                    criterionId: 'AC1',
+                    testFiles: [observed],
+                  },
+                  {
+                    criterionId: 'AC2',
+                    testFiles: [observed],
+                  },
+                ],
+              },
+              {
+                identifier: 'COR-2',
+                criteria: [
+                  {
+                    criterionId: 'AC1',
+                    testFiles: [observed],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        changed,
+      );
+      for (const lane of [
+        { workspace, full: false, paths: [testPath, 'scripts/another.test.ts'] },
+        { workspace, full: true, paths: [] },
+      ]) {
+        const control = lane.full ? 'whole-suite' : 'missing-file';
+        const fallback = await harness(
+          {
+            mainCheckout: join(sandbox, control),
+            plan: (changed, cwd) => ({
+              ...setup.dependencies.plan(changed, cwd),
+              unit_tests: [lane],
+            }),
+          },
+          { route: 'pull-request', sourceCriteria: setup.options.sourceCriteria },
+          answers(),
+          control,
+        );
+        fallback.dependencies.provider.findAutomaticPullRequestRuns = async () => [automatic];
+        const prepared = await fallback.prepared();
+        expect(prepared.dispatched).toBe(true);
+        expect(fallback.dispatched).toHaveLength(1);
+      }
+      const binding = setup.options.sourceCriteria!;
+      const invalid = { ...binding, members: [] };
+      const invalidError = await rejectionOf(
+        prepare({ ...setup.options, sourceCriteria: invalid }, setup.dependencies),
+      );
+      expect(String(invalidError)).toContain('--source-criteria must bind every accepted member');
+      const result = await setup.prepared();
+      const request = readDeliveryRequest(result.file, result.digest);
+      expect(result.dispatched).toBe(false);
+      expect(setup.dispatched).toEqual([]);
+      expect(request.ciEvidence?.[0]).toMatchObject({
+        event: 'pull_request',
+        workflowPath: '.github/workflows/pull-request.yml',
+        workflowRevision: HEAD,
+      });
+      const loaded = loadDeliveryVerification(
+        { file: result.file, digest: result.digest, stateDirectory: setup.state.stateDirectory },
+        { state: setup.state },
+      );
+      const provider = (attempt: number, checkedTree = TREE) => ({
+        findRuns: async (identity: CiEvidenceRequest) => [
+          { ...automatic, requestKey: identity.requestKey, attempt, checkedTree },
+        ],
+      });
+      const land = (attempt: number, checkedTree = TREE) =>
+        validateLandingEvidence(
+          loaded,
+          { route: 'pull-request', defaultBranch: 'main' },
+          {
+            runner: runnerOf(
+              answers({
+                ...runsAnswer(REPOSITORY, HEAD, [
+                  { id: automatic.id, head_sha: HEAD, path: automatic.workflowPath },
+                ]),
+                ...jobsAnswer(REPOSITORY, automatic.id),
+              }),
+            ).runner,
+            ciProvider: provider(attempt, checkedTree),
+          },
+        );
+      const pullRequestPlan = () => setup.dependencies.plan([observed], setup.options.worktree);
+      const verify = (attempt: number) =>
+        validateDeliveryCiEvidence(loaded, { ciProvider: provider(attempt), pullRequestPlan });
+      expect(await verify(1)).toBeUndefined();
+      expect(await verify(2)).toContain('CI evidence for run 77');
+      expect(
+        await validateDeliveryCiEvidence(loaded, {
+          ciProvider: provider(1),
+          pullRequestPlan: () => ({ ...pullRequestPlan(), e2e_specs: ['tests/e2e/a.spec.ts'] }),
+        }),
+      ).toContain('cannot cover the full or browser lanes');
+
+      expect(await land(1)).toBeUndefined();
+      expect(await land(2)).toContain('does not match the pinned pull-request attempt');
+      expect(await land(1, '2'.repeat(40))).toContain(`expected ${TREE}`);
+      for (const member of request.members)
+        expect(member.providerRuns).toEqual(
+          member.plan.obligations.map((obligation) =>
+            expect.objectContaining({
+              id: 77,
+              attempt: 1,
+              obligation: `${obligation.criterionId}:${obligation.commandOrProviderJob}`,
+              job: 'Evidence aggregate',
+              workflowPath: '.github/workflows/pull-request.yml',
+              event: 'pull_request',
+            }),
+          ),
+        );
     },
   );
 
@@ -983,7 +1172,9 @@ scenarios.describe('check', () => {
           }),
         ),
       );
-      expect(moved).toContain('verification request has a stale base');
+      // The request's base is not an ancestor of this main, so the moved base is refused.
+      expect(moved.join('\n')).toContain('verification request has a stale base');
+      expect(moved.join('\n')).toContain('is not an ancestor of main');
 
       const elsewhere = await check(
         { ...base, digest: result.digest, head: 'b'.repeat(40) },
@@ -1002,6 +1193,51 @@ scenarios.describe('check', () => {
       expect(wrong[0]).toContain('does not load');
     },
   );
+
+  // Owner decision, 2026-11-21: a moved base never needs a new evidence run. When the head merges
+  // into the new base without a conflict, `check` proceeds, as `deliver.ts` does; a conflict is the
+  // refusal, with its paths.
+  scenarios.scenario(
+    'accepts a moved base the head merges into cleanly, and names a conflict',
+    async () => {
+      const setup = await harness();
+      const result = await setup.prepared();
+      const base = { file: result.file, stateDirectory: setup.state.stateDirectory };
+      const newBase = 'd'.repeat(40);
+      const movedMain = {
+        'rev-parse refs/remotes/origin/main^{commit}': reply(`${newBase}\n`),
+        [`merge-tree --write-tree ${newBase} ${HEAD}`]: reply(`${TREE}\n`),
+        [`merge-base --is-ancestor ${BASE} ${newBase}`]: reply(),
+        [`${MERGE_TREE} ${BASE} ${HEAD}`]: reply(`${TREE}\0`),
+      };
+      const accepted = await check(
+        { ...base, digest: result.digest },
+        checkDependencies(
+          setup,
+          setup.dispatched[0] ?? [],
+          answers({
+            ...movedMain,
+            [`${MERGE_TREE} ${newBase} ${HEAD}`]: reply(`${TREE}\0`),
+            [`rev-list --reverse ${BASE}..${newBase}`]: reply(`${newBase}\n`),
+          }),
+        ),
+      );
+      expect(accepted).toEqual([]);
+
+      const conflicted = await check(
+        { ...base, digest: result.digest },
+        checkDependencies(
+          setup,
+          setup.dispatched[0] ?? [],
+          answers({
+            ...movedMain,
+            [`${MERGE_TREE} ${newBase} ${HEAD}`]: reply(`${TREE}\0a.ts\0`, 1),
+          }),
+        ),
+      );
+      expect(conflicted.join('\n')).toContain('conflicts with main at a.ts');
+    },
+  );
 });
 
 scenarios.describe('the real branch merge', () => {
@@ -1009,11 +1245,6 @@ scenarios.describe('the real branch merge', () => {
   async function landPrepared(bound: boolean) {
     const setup = await harness({}, {}, answers(), bound ? 'state-bound' : 'state-unbound');
     const result = await setup.prepared();
-    // The landing queue reads the worktree's workspaces from its manifest.
-    writeFileSync(
-      join(setup.options.worktree, 'package.json'),
-      JSON.stringify({ name: 'widgets', workspaces: [] }),
-    );
     const configPath = join(sandbox, 'repository.json');
     writeFileSync(
       configPath,
@@ -1032,13 +1263,8 @@ scenarios.describe('the real branch merge', () => {
       ? providerFor(setup.dispatched[0] ?? [])
       : { findRuns: async () => [] };
     {
-      const world = branchRunner(sandbox, {
-        [`diff -z --name-only --diff-filter=d ${BASE}...${HEAD}`]: reply('a.ts\0'),
-        // main has not moved since the head's merge base: the landing queue has nothing to classify.
-        [`rev-parse --verify ${HEAD}^{commit}`]: reply(`${HEAD}\n`),
-        [`rev-parse --verify ${BASE}^{commit}`]: reply(`${BASE}\n`),
-        [`rev-list --reverse ${BASE}..${BASE}`]: reply(''),
-      });
+      // `main` has not moved since the request's base, so the moved-base check is not asked.
+      const world = branchRunner(sandbox);
       writeFileSync(world.messageFile, 'COR-1: Add widgets\n');
       return directMerge(
         {
@@ -1057,7 +1283,6 @@ scenarios.describe('the real branch merge', () => {
         {
           runner: world.runner,
           guards: () => ({ ok: true, failures: [] }),
-          evidencePlan: setup.dependencies.plan,
           verification: { state: setup.state, transport: transportFor(), ciProvider: provider },
         },
       );

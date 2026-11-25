@@ -25,6 +25,7 @@
     Select,
     Textarea,
   } from '@lostgradient/cinder';
+  import type { Snippet } from 'svelte';
 
   import { GOALS_COPY } from '../../app/copy/goals.ts';
   import type { AgentSummary } from '../../lib/bureau-client.ts';
@@ -48,7 +49,9 @@
     /** The agent list could not be read. */
     agentsFailed: boolean;
     /** The list of checks could not be read. */
-    checksFailed: boolean;
+    checksFailed?: boolean;
+    /** An optional recovery surface drawn directly below the Check field. */
+    checkRecovery?: Snippet;
     /** Whether a provider holds a key, or `undefined` while that is not known. */
     providerConnected: boolean | undefined;
     /** The scripted agent the alert offers instead, when the catalog has one. */
@@ -72,7 +75,8 @@
     mode,
     agents,
     agentsFailed,
-    checksFailed,
+    checksFailed = false,
+    checkRecovery,
     providerConnected,
     scripted,
     busy,
@@ -224,6 +228,7 @@
       options={checkOptions}
       bind:value={form.check}
     />
+    {@render checkRecovery?.()}
     {#if choice !== undefined && choice.listed && choice.configuration !== null}
       <div class="ib-goal-form__settings" data-testid="goal-check-settings">
         <ContributedConfigurationForm

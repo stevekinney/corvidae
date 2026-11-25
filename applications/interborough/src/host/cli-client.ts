@@ -10,13 +10,24 @@ import { readPreferences } from './cli-client-preferences.ts';
 import { request, type CliTarget } from './cli-client-transport.ts';
 import { executeConfiguration } from './cli-configuration.ts';
 import { executeDefinitions } from './cli-definitions.ts';
+import {
+  CLI_DESTRUCTIVE_ACTIONS,
+  confirmIrreversible,
+  gateDestructiveAction,
+  isDestructiveAction,
+  isDryRun,
+} from './cli-destructive.ts';
 import { executeMcp } from './cli-mcp.ts';
 import { executeMemory } from './cli-memory.ts';
 import { executeAudit, executeRuns } from './cli-runs.ts';
 import { liveInstanceUrl } from './instance-record.ts';
 import { worktreeHomeFor } from './worktree-instance.ts';
-/** Version of the CLI JSON envelope. */
-export const CLI_SCHEMA_VERSION = 1;
+/**
+ * Version of the CLI JSON envelope. Version 2 (COR-2519) changed `error.code` from `CLI_<exit
+ * status>` to the server's `FaultCode`, or a named `CLI_` code for an error the CLI raised itself,
+ * and added `error.exitCode` and `error.remediation`.
+ */
+export const CLI_SCHEMA_VERSION = 2;
 /** Default loopback management endpoint. */
 export const CLI_DEFAULT_URL = 'http://127.0.0.1:7234';
 
@@ -68,6 +79,38 @@ export type Parsed = {
   readonly url?: string;
 };
 type CliFailure = Error & { status?: number; usage?: boolean; exitCode?: CliExitCode };
+
+/**
+ * Every `error.code` the CLI raises itself, by the exit status it comes with. A fault the server
+ * raised reports its own `FaultCode` instead; one that carried none (an HTTP error from a host
+ * route) falls back to the code of its exit status. `CLI_CONNECTION_FAILED` is the only code whose
+ * `retryable` is `true`.
+ */
+const CLI_LOCAL_ERROR_CODES = Object.freeze({
+  failed: 'CLI_FAILED',
+  usage: 'CLI_USAGE',
+  authorization: 'CLI_AUTHORIZATION',
+  conflict: 'CLI_CONFLICT',
+  inputRequired: 'CLI_INPUT_REQUIRED',
+  connectionFailed: 'CLI_CONNECTION_FAILED',
+  outcomeUnknown: 'CLI_OUTCOME_UNKNOWN',
+  interrupted: 'CLI_INTERRUPTED',
+} as const);
+
+/** A named code for an error the CLI raised itself. */
+type CliLocalErrorCode = (typeof CLI_LOCAL_ERROR_CODES)[keyof typeof CLI_LOCAL_ERROR_CODES];
+
+const LOCAL_ERROR_CODE_BY_EXIT: Readonly<Record<Exclude<CliExitCode, 0>, CliLocalErrorCode>> =
+  Object.freeze({
+    1: CLI_LOCAL_ERROR_CODES.failed,
+    2: CLI_LOCAL_ERROR_CODES.usage,
+    3: CLI_LOCAL_ERROR_CODES.authorization,
+    4: CLI_LOCAL_ERROR_CODES.conflict,
+    5: CLI_LOCAL_ERROR_CODES.inputRequired,
+    6: CLI_LOCAL_ERROR_CODES.connectionFailed,
+    7: CLI_LOCAL_ERROR_CODES.outcomeUnknown,
+    130: CLI_LOCAL_ERROR_CODES.interrupted,
+  });
 
 /** Injectable process boundaries used by the command client. */
 export type CliClientDependencies = {
@@ -130,6 +173,7 @@ export const CLI_OPERATION_MAPPINGS = Object.freeze({
   ],
   chats: [
     'POST /bureau/ag-ui/runs/:run/cancel',
+    'bureau.tasks.cancel',
     'bureau.contexts.list',
     'bureau.contexts.get',
     'bureau.contexts.input',
@@ -146,8 +190,12 @@ export const CLI_OPERATION_MAPPINGS = Object.freeze({
     'bureau.tasks.get',
     'bureau.tasks.inspect',
     'bureau.tasks.cancel',
+    'bureau.tasks.explain',
+    'bureau.tasks.explanation.get',
+    'bureau.tasks.explanation.generate',
     'bureau.workflows.runs.list',
     'bureau.workflows.runs.get',
+    'bureau.workflows.runs.retry',
     'weft.workflows.cancel',
   ],
   events: [
@@ -274,6 +322,7 @@ const optionNames = new Set([
   'url',
   'workspace',
   'yes',
+  'dry-run',
   'agent',
   'message-file',
   'message',
@@ -364,6 +413,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'input-file',
     'limit',
     'yes',
+    'dry-run',
   ],
   chat: [
     'help',
@@ -404,6 +454,8 @@ const commandOptions: Record<string, readonly string[]> = {
     'provider',
     'run',
     'task-id',
+    'yes',
+    'dry-run',
   ],
   reviews: [
     'help',
@@ -416,7 +468,6 @@ const commandOptions: Record<string, readonly string[]> = {
     'review-id',
     'round',
     'reason',
-    'yes',
   ],
   runs: [
     'GET /bureau/v1/subscriptions/bureau.tasks.events',
@@ -446,6 +497,8 @@ const commandOptions: Record<string, readonly string[]> = {
     'wait',
     'step',
     'status',
+    'model',
+    'dry-run',
   ],
   events: [
     'help',
@@ -492,6 +545,8 @@ const commandOptions: Record<string, readonly string[]> = {
     'expected-revision',
     'revision',
     'message',
+    'yes',
+    'dry-run',
   ],
   workflows: [
     'help',
@@ -529,6 +584,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'limit',
     'offset',
     'yes',
+    'dry-run',
   ],
   assets: [
     'GET /bureau/assets/:asset/content',
@@ -558,6 +614,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'occurrence',
     'limit',
     'offset',
+    'dry-run',
   ],
   goals: [
     'help',
@@ -572,6 +629,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'expected-revision',
     'limit',
     'offset',
+    'dry-run',
   ],
   hooks: [
     'help',
@@ -586,6 +644,8 @@ const commandOptions: Record<string, readonly string[]> = {
     'expected-revision',
     'secret-output',
     'limit',
+    'yes',
+    'dry-run',
   ],
   providers: [
     'help',
@@ -601,6 +661,8 @@ const commandOptions: Record<string, readonly string[]> = {
     'expected-revision',
     'secret-file',
     'secret-stdin',
+    'yes',
+    'dry-run',
   ],
   models: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace'],
   tools: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace'],
@@ -617,6 +679,8 @@ const commandOptions: Record<string, readonly string[]> = {
     'file',
     'expected-revision',
     'no-open',
+    'yes',
+    'dry-run',
   ],
   plugins: [
     'help',
@@ -627,6 +691,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'timeout',
     'workspace',
     'expected-revision',
+    'dry-run',
   ],
   skills: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'workspace'],
   settings: [
@@ -658,7 +723,7 @@ const helpText: Record<string, string> = {
   chat: 'Usage: interborough chat --agent <name> [message]\n\n  --message-file <path>  Read one message from a file',
   chats: 'Usage: interborough chats <list|get|send|fork|rename|delete|configure> [options]',
   reviews: 'Usage: interborough reviews <list|get|approve|reject> [options]',
-  runs: 'Usage: interborough runs <list|get|inspect|watch|cancel> [options]\n\n  --kind task|workflow  Required for get, inspect, watch and cancel; list defaults to task\n  --output jsonl       Emit one typed watch record per line',
+  runs: 'Usage: interborough runs <list|get|inspect|explain|retry|watch|cancel> [options]\n\n  --kind task|workflow  Required for get, inspect, watch and cancel; list defaults to task\n  explain <id>         Why a failed run failed, from what Bureau stored (either kind of run)\n  explain <id> --model  Ask a model to explain a failed agent run at more length; it spends tokens and is stored on the run\n  retry <id>           Run a failed workflow run again from the step it failed at; --step N names it\n  --output jsonl       Emit one typed watch record per line',
   events:
     'Usage: interborough events watch [options]\n\n  --kind task|workflow  Required for watch',
   audit: 'Usage: interborough audit list [options]',
@@ -744,8 +809,12 @@ const optionValueSyntax: Record<string, string> = {
 
 function isBooleanOption(command: string, option: string): boolean {
   return (
-    ['all', 'help', 'no-input', 'yes', 'overwrite', 'secret-stdin', 'no-open'].includes(option) ||
-    ((option === 'wait' || option === 'include-runs') && command === 'workflows')
+    ['all', 'help', 'no-input', 'yes', 'dry-run', 'overwrite', 'secret-stdin', 'no-open'].includes(
+      option,
+    ) ||
+    ((option === 'wait' || option === 'include-runs') && command === 'workflows') ||
+    // `runs explain --model` asks a model to write the explanation; elsewhere `--model` names one.
+    (option === 'model' && command === 'runs')
   );
 }
 
@@ -868,6 +937,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** Whether an operation's input schema is an object with a `dryRun` property. */
+function inputTakesDryRun(inputSchema: unknown): boolean {
+  const properties = isRecord(inputSchema) ? inputSchema['properties'] : undefined;
+  return isRecord(properties) && Object.hasOwn(properties, 'dryRun');
+}
+
 function parse(arguments_: readonly string[]): Parsed | CliResult {
   const [command = '', ...rest] = arguments_;
   if (!(command in commandOptions)) return usage(`Unknown command: ${command || '<missing>'}`);
@@ -917,6 +992,10 @@ function parse(arguments_: readonly string[]): Parsed | CliResult {
     return usage('JSONL output is only supported for streams.');
   if (outputValue === 'jsonl' && command === 'api' && values.get('help') !== true)
     return usage('JSONL output is only supported for streaming API calls.');
+  if (values.get('dry-run') === true && !isDestructiveAction(command, positional[0]))
+    return usage(
+      `Option --dry-run applies only to: ${Object.keys(CLI_DESTRUCTIVE_ACTIONS).join(', ')}.`,
+    );
   const timeoutValue = values.get('timeout');
   const timeout = timeoutValue === undefined ? 30_000 : Number(timeoutValue);
   if (!Number.isInteger(timeout) || timeout <= 0)
@@ -1098,9 +1177,8 @@ function makeCliFailure(message: string, properties: Partial<CliFailure> = {}): 
   return Object.assign(new Error(message), properties);
 }
 
-function isCliExitCode(value: unknown): value is CliExitCode {
+function isCliFailureExitCode(value: unknown): value is Exclude<CliExitCode, 0> {
   return (
-    value === 0 ||
     value === 1 ||
     value === 2 ||
     value === 3 ||
@@ -1137,6 +1215,7 @@ async function execute(
     );
   const resolved = await resolveTarget(parsed, dependencies);
   if ('exitCode' in resolved) return targetResolutionFailure(resolved);
+  await gateDestructiveAction(parsed, dependencies);
   if (parsed.command === 'open') {
     await (
       dependencies.open ??
@@ -1324,10 +1403,18 @@ async function execute(
           `Operation is not a supported unary JSON-RPC operation: ${parsed.arguments[1]}.`,
           { usage: true },
         );
-      if (operation.destructive && parsed.options.get('yes') !== true)
+      // `--dry-run` sets `dryRun: true` on the input, over one the input carries, so it needs an
+      // operation whose input takes one; a dry run changes nothing, so it needs no confirmation.
+      if (isDryRun(parsed) && !inputTakesDryRun(operation.inputSchema))
         throw makeCliFailure(
-          `Operation ${parsed.arguments[1]} is destructive; pass --yes to confirm.`,
-          { exitCode: 5 },
+          `api: ${parsed.arguments[1]} does not support --dry-run: its input has no dryRun field.`,
+          { usage: true },
+        );
+      if (operation.destructive && !isDryRun(parsed))
+        await confirmIrreversible(
+          parsed,
+          dependencies,
+          `${CLI_DESTRUCTIVE_ACTIONS['api call']!.subject} ${parsed.arguments[1]} (destructive)`,
         );
       const input = inputFile ?? inputOption;
       const inputText =
@@ -1344,6 +1431,7 @@ async function execute(
       } catch {
         throw makeCliFailure('Input must contain valid JSON.', { usage: true });
       }
+      if (isDryRun(parsed)) params = isRecord(params) ? { ...params, dryRun: true } : params;
       const response = await request(resolved, '/jsonrpc', parsed, dependencies, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -1365,22 +1453,89 @@ async function execute(
   throw Object.assign(new Error(`Unsupported command: ${parsed.command}`), { usage: true });
 }
 
+/** What a failed command reports: the fault's own words when the server raised one. */
+type FailureDetails = {
+  readonly exitCode: Exclude<CliExitCode, 0>;
+  readonly message: string;
+  /** The server's `FaultCode`. */
+  readonly faultCode?: string;
+  readonly retryable?: boolean;
+  readonly remediation?: string;
+  /** The request never reached a server that answered. */
+  readonly connectionFailed?: boolean;
+  readonly identifiers?: unknown;
+};
+
+/**
+ * The result of a failed command. JSON and JSONL print `{ schemaVersion, error: { code, exitCode,
+ * message, retryable, remediation? }, identifiers? }` on stdout; `code` is the server's
+ * `FaultCode` or a `CLI_` code from {@link CLI_LOCAL_ERROR_CODES}. Text prints the message on
+ * stderr, then a `Try:` line when the server sent a remediation. Exit codes are not changed here.
+ */
+function failureResult(output: OutputFormat, details: FailureDetails): CliResult {
+  const { exitCode, message, remediation } = details;
+  const code =
+    details.faultCode ??
+    (exitCode === 7
+      ? CLI_LOCAL_ERROR_CODES.outcomeUnknown
+      : details.connectionFailed === true
+        ? CLI_LOCAL_ERROR_CODES.connectionFailed
+        : LOCAL_ERROR_CODE_BY_EXIT[exitCode]);
+  const rendered = {
+    schemaVersion: CLI_SCHEMA_VERSION,
+    error: {
+      code,
+      exitCode,
+      message,
+      retryable: details.retryable ?? code === CLI_LOCAL_ERROR_CODES.connectionFailed,
+      ...(remediation === undefined ? {} : { remediation }),
+    },
+    ...(isRecord(details.identifiers) ? { identifiers: details.identifiers } : {}),
+  };
+  return {
+    stdout: output === 'text' && exitCode !== 5 && exitCode !== 130 ? '' : JSON.stringify(rendered),
+    stderr:
+      output === 'text' && remediation !== undefined ? `${message}\nTry: ${remediation}` : message,
+    exitCode,
+  };
+}
+
+/** The `--output` a command line asks for, read before it parses, so a usage error can honor it. */
+function requestedOutput(arguments_: readonly string[]): OutputFormat {
+  for (let index = 0; index < arguments_.length; index += 1) {
+    const argument = arguments_[index];
+    const value =
+      argument === '--output'
+        ? arguments_[index + 1]
+        : argument?.startsWith('--output=') === true
+          ? argument.slice('--output='.length)
+          : undefined;
+    if (value === 'json' || value === 'jsonl') return value;
+  }
+  return 'text';
+}
+
 /** Execute one command through the host HTTP APIs. */
 export async function executeCli(
   arguments_: readonly string[],
   dependencies: CliClientDependencies = {},
 ): Promise<CliResult> {
   const parsed = parse(arguments_);
-  if ('exitCode' in parsed) return parsed;
+  if ('exitCode' in parsed)
+    return parsed.exitCode === 0
+      ? parsed
+      : failureResult(requestedOutput(arguments_), {
+          exitCode: parsed.exitCode,
+          message: parsed.stderr,
+        });
   try {
     const result = await execute(parsed, dependencies);
     if (result.metadata?.['error'] !== undefined) {
       const error = result.metadata['error'];
-      return {
-        stdout: '',
-        stderr: typeof error === 'string' ? error : JSON.stringify(error),
+      return failureResult(parsed.output, {
         exitCode: 3,
-      };
+        message: typeof error === 'string' ? error : JSON.stringify(error),
+      });
     }
     return {
       stdout:
@@ -1400,42 +1555,48 @@ export async function executeCli(
     const status =
       isRecord(error) && typeof error['status'] === 'number' ? error['status'] : undefined;
     const usageError = isRecord(error) && error['usage'] === true;
+    // A dry run changes nothing, so a failure of one never leaves a mutation's outcome unknown.
     const mutation =
-      parsed.command === 'restart' ||
-      (parsed.command === 'memory' &&
-        ['remember', 'correct', 'forget'].includes(parsed.arguments[0] ?? '')) ||
-      (parsed.command === 'assets' && parsed.arguments[0] === 'upload') ||
-      (parsed.command === 'api' && parsed.arguments[0] === 'call') ||
-      (['providers', 'tool-sources', 'plugins', 'settings'].includes(parsed.command) &&
-        [
-          'connect',
-          'disconnect',
-          'add',
-          'update',
-          'probe',
-          'authorize',
-          'remove',
-          'enable',
-          'disable',
-          'set',
-        ].includes(parsed.arguments[0] ?? '')) ||
-      (parsed.command === 'runs' && parsed.arguments[0] === 'cancel') ||
-      (['schedules', 'goals', 'hooks'].includes(parsed.command) &&
-        [
-          'create',
-          'update',
-          'pause',
-          'resume',
-          'run',
-          'skip-next',
-          'cancel',
-          'replace-secret',
-          'delete',
-          'test',
-        ].includes(parsed.arguments[0] ?? ''));
-    const exitCode: CliExitCode = dependencies.signal?.aborted
+      !isDryRun(parsed) &&
+      (parsed.command === 'restart' ||
+        (parsed.command === 'memory' &&
+          ['remember', 'correct', 'forget'].includes(parsed.arguments[0] ?? '')) ||
+        (parsed.command === 'assets' && parsed.arguments[0] === 'upload') ||
+        (parsed.command === 'api' && parsed.arguments[0] === 'call') ||
+        (['providers', 'tool-sources', 'plugins', 'settings'].includes(parsed.command) &&
+          [
+            'connect',
+            'disconnect',
+            'add',
+            'update',
+            'probe',
+            'authorize',
+            'remove',
+            'enable',
+            'disable',
+            'set',
+          ].includes(parsed.arguments[0] ?? '')) ||
+        (parsed.command === 'runs' && ['cancel', 'retry'].includes(parsed.arguments[0] ?? '')) ||
+        // `explain --model` writes the task's record and spends tokens (COR-2534).
+        (parsed.command === 'runs' &&
+          parsed.arguments[0] === 'explain' &&
+          parsed.options.get('model') === true) ||
+        (['schedules', 'goals', 'hooks'].includes(parsed.command) &&
+          [
+            'create',
+            'update',
+            'pause',
+            'resume',
+            'run',
+            'skip-next',
+            'cancel',
+            'replace-secret',
+            'delete',
+            'test',
+          ].includes(parsed.arguments[0] ?? '')));
+    const exitCode: Exclude<CliExitCode, 0> = dependencies.signal?.aborted
       ? 130
-      : isRecord(error) && isCliExitCode(error['exitCode'])
+      : isRecord(error) && isCliFailureExitCode(error['exitCode'])
         ? error['exitCode']
         : usageError
           ? 2
@@ -1449,20 +1610,15 @@ export async function executeCli(
                   ? 7
                   : 1;
     const message = error instanceof Error ? error.message : String(error);
-    const renderedFailure = {
-      schemaVersion: CLI_SCHEMA_VERSION,
-      error: { code: `CLI_${exitCode}`, message, retryable: exitCode === 6 },
-      ...(isRecord(error) && isRecord(error['identifiers'])
-        ? { identifiers: error['identifiers'] }
-        : {}),
-    };
-    return {
-      stdout:
-        parsed.output === 'text' && exitCode !== 5 && exitCode !== 130
-          ? ''
-          : JSON.stringify(renderedFailure),
-      stderr: message,
+    const fault = isRecord(error) ? error : {};
+    return failureResult(parsed.output, {
       exitCode,
-    };
+      message,
+      ...(typeof fault['faultCode'] === 'string' ? { faultCode: fault['faultCode'] } : {}),
+      ...(typeof fault['retryable'] === 'boolean' ? { retryable: fault['retryable'] } : {}),
+      ...(typeof fault['remediation'] === 'string' ? { remediation: fault['remediation'] } : {}),
+      ...(fault['connectionFailed'] === true ? { connectionFailed: true } : {}),
+      ...(isRecord(fault['identifiers']) ? { identifiers: fault['identifiers'] } : {}),
+    });
   }
 }

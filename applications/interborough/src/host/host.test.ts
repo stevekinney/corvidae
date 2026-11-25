@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { AUTHORIZATION_SCOPES, MCP_LEGACY_PROTOCOL_VERSION } from '@lostgradient/weft';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -46,7 +47,12 @@ afterEach(async () => {
   }
 });
 
-type Principal = { method: string; subject: string | null; scopes: string[] };
+type Principal = {
+  method: string;
+  subject: string | null;
+  scopes: string[];
+  workspace?: { readonly memorySharing?: boolean };
+};
 
 async function statusOf(host: Host, path: string): Promise<number> {
   const response = await fetch(new URL(path, host.url));
@@ -60,6 +66,34 @@ async function principalOver(host: Host, headers: HeadersInit = {}): Promise<Pri
 }
 
 describe('the host’s listener', () => {
+  test('waits for the browser build before binding, and releases the home if it fails', async () => {
+    const home = await scratch('interborough-home-');
+    const reservation = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response() });
+    const port = reservation.port!;
+    await reservation.stop(true);
+    const reached = Promise.withResolvers<void>();
+    const gate = Promise.withResolvers<void>();
+    const ready: PromiseLike<void> = {
+      then(resolve, reject) {
+        reached.resolve();
+        return gate.promise.then(resolve, reject);
+      },
+    };
+    const starting = startHost({
+      environment: { INTERBOROUGH_HOME: home },
+      port,
+      browserReady: ready,
+    });
+    await reached.promise;
+    const probe = Bun.serve({ hostname: '127.0.0.1', port, fetch: () => new Response() });
+    await probe.stop(true);
+    const failure = new Error('browser build failed');
+    gate.reject(failure);
+    expect(await rejectionOf(starting)).toBe(failure);
+    const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port });
+    hosts.push(host);
+    expect(host.url.port).toBe(String(port));
+  });
   test('the Bureau principal reports the explicit local workspace owner', async () => {
     const host = await start();
     const response = await fetch(new URL('/bureau/jsonrpc', host.url), {
@@ -103,6 +137,7 @@ describe('the identity of every request', () => {
     const principal = await principalOver(host);
     expect(principal.subject).toBe('anonymous:local');
     expect([...principal.scopes].toSorted()).toEqual([...AUTHORIZATION_SCOPES].toSorted());
+    expect(principal.workspace).toMatchObject({ memorySharing: false });
   });
 
   test('a credential the caller sends does not change who it is', async () => {
@@ -172,6 +207,10 @@ describe('the identity of every request', () => {
     const tools = (listed.result?.['tools'] ?? []) as Array<{ name: string }>;
     const names = tools.map((tool) => tool.name);
     expect(names).toContain('bureau.reviews.list');
+    // A model's longer explanation of a failed run is kept off MCP, so a model cannot spend tokens
+    // asking another model to explain a run (COR-2534); the stored-facts explanation is on it.
+    expect(names).toContain('bureau.tasks.explain');
+    expect(names.filter((name) => name.startsWith('bureau.tasks.explanation.'))).toEqual([]);
     // The run inspector is an injected `ui://` resource, linked from `bureau.tasks.inspect` (COR-910).
     const inspect = (tools as Array<{ name: string; _meta?: unknown }>).find(
       (tool) => tool.name === 'bureau.tasks.inspect',
@@ -190,6 +229,16 @@ describe('the identity of every request', () => {
       'bureau.reviews.resolve',
       'bureau.workflows.get',
       'bureau.workflows.update',
+      'bureau.runs.compare',
+      // The schedule editor's reads (COR-2545); its writes are host-only and never listed here.
+      'bureau.schedules.list',
+      'bureau.schedules.get',
+      'bureau.agents.list',
+      'bureau.workflows.list',
+      'bureau.tasks.get',
+      // The failure explanation's one read (COR-2543).
+      'bureau.tasks.explain',
+      'bureau.runs.timeline',
     ]);
     const visibilities = Object.fromEntries(
       (tools as Array<{ name: string; _meta?: { ui?: { visibility?: unknown } } }>).map((tool) => [
@@ -212,7 +261,18 @@ describe('the identity of every request', () => {
         uri: 'ui://inspectors/workflow-revision-review/v1',
         mimeType: 'text/html;profile=mcp-app',
       },
+      { uri: 'ui://inspectors/schedule-editor/v1', mimeType: 'text/html;profile=mcp-app' },
+      { uri: 'ui://inspectors/run-timeline/v1', mimeType: 'text/html;profile=mcp-app' },
+      { uri: 'ui://inspectors/failure-explanation/v1', mimeType: 'text/html;profile=mcp-app' },
+      { uri: 'ui://inspectors/run-comparison/v1', mimeType: 'text/html;profile=mcp-app' },
     ]);
+    // The failure explanation opens from the explain tool (COR-2543).
+    const explain = (tools as Array<{ name: string; _meta?: unknown }>).find(
+      (tool) => tool.name === 'bureau.tasks.explain',
+    );
+    expect(explain?._meta).toMatchObject({
+      ui: { resourceUri: 'ui://inspectors/failure-explanation/v1' },
+    });
     // The pending-review app opens from the existing `bureau.reviews.list`; it adds no tool name.
     const reviewList = tools.find((tool) => tool.name === 'bureau.reviews.list') as {
       _meta?: unknown;

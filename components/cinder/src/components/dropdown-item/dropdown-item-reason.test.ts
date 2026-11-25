@@ -13,6 +13,8 @@ setupHappyDom();
 const { render, fireEvent, waitFor, cleanup } = await import('@testing-library/svelte');
 const { default: Fixture } =
   await import('../../test/fixtures/dropdown-item-reason-fixture.svelte');
+const { default: CheckFixture } =
+  await import('../../test/fixtures/dropdown-item-check-fixture.svelte');
 
 afterEach(() => {
   cleanup();
@@ -89,5 +91,23 @@ describe('DropdownItem disabledReason', () => {
     expect(textOf(open.getAttribute('aria-describedby'))).toBe(
       'Also read this. Nothing to open yet.',
     );
+  });
+
+  test('a checkable item with a reason keeps its check slot on the label line (COR-2664)', async () => {
+    const result = render(CheckFixture, { props: { density: 'spacious' } });
+    await fireEvent.click(
+      requiredInstance(result.container.querySelector('.trigger'), HTMLElement),
+    );
+    await waitFor(() => expect(document.body.querySelector('[role="menu"]')).not.toBeNull());
+    const spacious = Array.from(
+      document.body.querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
+    )[2]!;
+    const [label, reason] = Array.from(spacious.children);
+    expect(label?.className).toContain('cinder-dropdown-item__label');
+    expect(label?.firstElementChild?.className).toContain('cinder-dropdown-item__check');
+    expect(label?.querySelector('.cinder-dropdown-item__check svg')).not.toBeNull();
+    expect(reason?.className).toContain('cinder-dropdown-item__reason');
+    expect(spacious.querySelectorAll('.cinder-dropdown-item__check')).toHaveLength(1);
+    expect(textOf(spacious.getAttribute('aria-labelledby'))).toBe('Spacious');
   });
 });

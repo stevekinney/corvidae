@@ -9,7 +9,13 @@
         "scripts/**/*.slow.test.ts",
         "scripts/**/*.bench.ts",
         "scripts/**/*.playwright.ts",
-        "scripts/chef/evaluate-outcomes.ts"
+        "scripts/affected-tests.ts",
+        "scripts/chef/evaluate-outcomes.ts",
+        "scripts/chef/staged-check.ts",
+        "scripts/cinder-release-consumer.ts",
+        "scripts/owned-process-gate.ts",
+        "scripts/ensure-cinder-owned.test-support.ts",
+        "scripts/owned-process-lease.test-support.ts"
       ],
       "project": ["scripts/**/*.ts"]
     },
@@ -49,6 +55,30 @@
         "!src/**/*.test.ts!",
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!",
+        "!src/lib/components/chat/host-question-dock-harness.test.svelte!"
+      ]
+    },
+    "components/cinder": {
+      "entry": [
+        "src/index.ts",
+        "src/web-components/browser-renderer.svelte.ts!",
+        "src/web-components/element-lifecycle.ts!",
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "src/{components,lib/components}/*/*-fixtures.ts",
+        "**/*.playwright.ts",
+        "**/*.spec.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!"
       ]
     },
@@ -71,6 +101,89 @@
         "!src/**/*.bench.ts!"
       ]
     },
+    "packages/mcp": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts",
+        "src/connector-smoke-inspector.ts!",
+        "src/deployed-oauth.ts!",
+        "src/deployed-smoke.ts!"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
+      ]
+    },
+    "packages/backchannel-svelte": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
+      ]
+    },
+    "packages/bureau-client": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,svelte}!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
+      ]
+    },
+    "packages/bureau": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts",
+        "src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts",
+        "src/hooks/recipient-recovery-child.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!",
+        "!src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts!",
+        "!src/hooks/recipient-recovery-child.ts!"
+      ]
+    },
     "packages/backchannel": {
       "entry": [
         "**/*.test.ts",
@@ -78,7 +191,8 @@
         "**/*.slow.test.ts",
         "**/*.bench.ts",
         "src/authentication/credential-stores.test-d.ts",
-        "src/client/__fixtures__/remote-client-entry.ts"
+        "src/client/__fixtures__/remote-client-entry.ts",
+        "src/__fixtures__/probe-client/{fetch,portable}-operation-client.generated.ts"
       ],
       "project": [
         "src/**/*.ts!",
@@ -89,6 +203,7 @@
         "!src/**/*.bench.ts!",
         "!src/authentication/credential-stores.test-d.ts!",
         "!src/client/__fixtures__/remote-client-entry.ts!",
+        "!src/__fixtures__/probe-client/{fetch,portable}-operation-client.generated.ts!",
         "!src/{scope-vocabulary,transport-conformance-framed,transport-conformance-http}.test-support.ts!"
       ]
     },
@@ -115,7 +230,8 @@
         "**/*.bench.ts",
         "**/*.fixture.svelte",
         "**/*.playwright.ts",
-        "**/*.spec.ts"
+        "**/*.spec.ts",
+        "scripts/generate-component-metadata-worker.ts"
       ],
       "project": [
         "src/**/*.ts!",
@@ -150,12 +266,25 @@
       "project": ["src/**/*.ts!", "!src/**/*.test.ts!", "scripts/**/*.ts"]
     },
     "scripts/browser-fixtures": {
-      "entry": ["tests/**/*.playwright.ts"],
+      "entry": [
+        "tests/**/*.playwright.ts",
+        "src/fixtures/tool-call-rail.svelte",
+        "src/fixtures/backchannel-svelte.svelte",
+        "fixtures/workspace-web-components.ts"
+      ],
       "project": ["src/**/*.{ts,svelte}", "scripts/**/*.ts", "tests/**/*.playwright.ts"]
     },
     "scripts/groom": {
       "entry": ["**/*.test.ts"],
       "project": ["**/*.ts"]
+    },
+    "applications/equipment-armorer": {
+      "entry": ["src/server.ts!"],
+      "project": ["src/**/*.ts!"]
+    },
+    "applications/equipment-catalog": {
+      "entry": ["src/server.ts!", "src/routes/**/*.svelte!", "scripts/probe-deployment.ts!"],
+      "project": ["src/**/*.{ts,svelte}!", "scripts/**/*.ts!"]
     },
     "applications/interborough": {
       "entry": [
@@ -167,7 +296,9 @@
         "**/*.playwright.ts",
         "**/*.spec.ts",
         "scripts/browser-build.ts!",
-        "src/host/{cli,dev,serve}.ts!"
+        "scripts/startup-process-control.ts",
+        "src/host/{cli,dev,serve}.ts!",
+        "src/host/supervisor-owned.test-support.ts"
       ],
       "project": [
         "src/**/*.{ts,svelte}!",
@@ -175,7 +306,8 @@
         "!src/**/*.test.ts!",
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
-        "!src/**/*.bench.ts!"
+        "!src/**/*.bench.ts!",
+        "!src/routes/chat/chat-session-registry.test-support.svelte.ts!"
       ]
     },
     "applications/playground": {

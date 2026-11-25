@@ -155,9 +155,12 @@
 </script>
 
 {#if presentation === 'two-press'}
-  <span class={classNames('cinder-inline-confirm__two-press', className)}>
+  <span
+    class={classNames('cinder-inline-confirm__two-press', className)}
+    data-cinder-armed={armed ? '' : undefined}
+  >
     <Button
-      variant={armed ? 'danger' : 'primary'}
+      variant={destructive || armed ? 'danger' : 'primary'}
       size="sm"
       {mutating}
       disabled={disabled || loading}

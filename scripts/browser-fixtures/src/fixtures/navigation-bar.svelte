@@ -30,7 +30,7 @@
           >Docs</NavigationItem
         >
         <NavigationItem {variant} href="#blog" active={active === 'blog'}>Blog</NavigationItem>
-        <NavigationItem {variant} disabled onclick={() => {}}>Billing</NavigationItem>
+        <NavigationItem {variant} disabled>Billing</NavigationItem>
       {/snippet}
       {#snippet actions()}<Button variant="primary" size="sm" label="Sign up" />{/snippet}
     </NavigationBar>

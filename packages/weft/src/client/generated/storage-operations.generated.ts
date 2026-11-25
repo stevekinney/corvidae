@@ -7,6 +7,7 @@ export type StorageOperationTypes = {
       readonly atomicBatch: boolean;
       readonly boundedRangeDelete: boolean;
       readonly conditionalBatch: boolean;
+      readonly conditionalBatchDeadline?: boolean;
       readonly persistence: 'ephemeral' | 'local' | 'remote';
       readonly readAfterWrite: 'linearizable' | 'session' | 'eventual';
       readonly scanConsistency: 'snapshot' | 'best-effort';
