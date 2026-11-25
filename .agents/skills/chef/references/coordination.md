@@ -12,7 +12,6 @@ Default to direct execution for small cohesive work, decided at planning. Once a
 
 ## Keep contexts small
 
-- A leased coordinator above about 200K tokens brings the note up to date and compacts at the next batch boundary; a hook denies its Agent, Workflow and `start_session` calls until it does. Workers and unleased sessions are never fenced.
 - At each batch boundary, record `lastCtx` (`transcript-usage.ts`) and tokens per merged change in the note. When tokens per merged change double from the run's earlier batches, stop dispatching and ask the owner.
 - Every connected tool costs about 43 tokens on every call of every agent. On Claude Code, at run start, list the connectors with `mcp__ccd_connectors__session_connectors_status`, turn off each one the run does not need with `mcp__ccd_connectors__set_session_connector_enabled` (keep Linear and any the scope names), and record the list in the note before dispatching. Before any stop, turn each recorded connector back on and read the status back. Codex has no session connector switch.
 - Resume an agent only while its context is small; otherwise dispatch a fresh one with the brief, open findings, and commit range.

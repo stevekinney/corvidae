@@ -37,6 +37,7 @@ function facts(overrides: Partial<GeometryFacts> = {}): GeometryFacts {
     overlaps: [],
     insets: [],
     chrome: null,
+    tooltips: [],
     ...overrides,
   };
 }
@@ -75,6 +76,7 @@ function button(inline: number, block: number, overrides: Partial<ControlFact> =
     labelRuns: 1,
     parent: 0,
     unreached: null,
+    weight: null,
     ...overrides,
     // Nothing extends the area that takes a tap, or pads the layout, unless a test says so.
     hit: overrides.hit ?? overrides.layout ?? rect,
@@ -804,6 +806,84 @@ describe('auditGeometry', () => {
     await writeFile(join(measured, 'geometry', 'agents.json'), JSON.stringify(facts()));
     expect(await runGeometryAudit(['--capture', measured], write)).toBe(0);
     expect(written.out).toContain('0 geometry findings from 1 measured captures');
+  });
+});
+
+describe('tooltip-far', () => {
+  const tooltip = (
+    horizontalGap: number,
+    verticalGap: number,
+  ): GeometryFacts['tooltips'][number] => ({
+    name: 'div.cinder-tooltip',
+    anchor: 'button.cinder-button',
+    horizontalGap,
+    verticalGap,
+    sample: 'Copy',
+  });
+
+  test('flags a tooltip 100px from the element it describes', () => {
+    const found = audit(facts({ tooltips: [tooltip(0, 100)] }), capture());
+    expect(rules(found)).toEqual(['tooltip-far']);
+    expect(found[0]?.subject).toBe('div.cinder-tooltip for button.cinder-button');
+    expect(found[0]?.measured).toContain('100px');
+  });
+
+  test('flags a tooltip beside its anchor that shares no vertical span with it', () => {
+    const found = audit(facts({ tooltips: [tooltip(8, 8)] }), capture());
+    expect(found[0]?.measured).toContain('shares no vertical span');
+  });
+
+  test('passes a tooltip at Cinder offset above or beside its row', () => {
+    expect(
+      audit(facts({ tooltips: [tooltip(0, 8), tooltip(8, 0), tooltip(16, 0)] }), capture()),
+    ).toEqual([]);
+  });
+
+  test('reports nothing when no tooltip is visible', () => {
+    expect(audit(facts(), capture())).toEqual([]);
+  });
+});
+
+describe('primary-lighter', () => {
+  const weighted = (
+    variant: string,
+    contrast: number,
+    outlined: boolean,
+    overrides: Partial<ControlFact> = {},
+  ): ControlFact =>
+    button(16, 8, { variant, text: variant, weight: { contrast, outlined }, ...overrides });
+
+  test('flags a soft-danger primary beside an outlined secondary', () => {
+    const found = audit(
+      facts({ controls: [weighted('soft-danger', 1.2, false), weighted('secondary', 3.4, true)] }),
+      capture(),
+    );
+    expect(rules(found)).toEqual(['primary-lighter']);
+    expect(found[0]?.subject).toBe('button.cinder-button[size=md][variant=soft-danger]');
+    expect(found[0]?.measured).toContain('1.2:1');
+  });
+
+  test('passes a solid danger primary beside an outlined secondary', () => {
+    expect(
+      audit(
+        facts({ controls: [weighted('danger', 5.1, false), weighted('secondary', 3.4, true)] }),
+        capture(),
+      ),
+    ).toEqual([]);
+  });
+
+  test('compares only buttons that share a parent', () => {
+    expect(
+      audit(
+        facts({
+          controls: [
+            weighted('primary', 1.2, false),
+            weighted('secondary', 3.4, true, { parent: 1 }),
+          ],
+        }),
+        capture(),
+      ),
+    ).toEqual([]);
   });
 });
 

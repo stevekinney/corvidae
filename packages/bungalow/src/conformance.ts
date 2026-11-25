@@ -1,21 +1,21 @@
 /**
  * Conformance checks for what Bungalow lets a host bring: a lock, a deployment-secret store, a
  * secret provider, or a whole home. Each `check…` function rejects with a message naming the first
- * rule the subject breaks; each `describe…` function registers the same rules as `bun:test` cases,
- * so a failing rule is a failing case. A failure names the subject and the rule and nothing else:
- * no compared value, key, path, or cause, because the subject may hold a secret. A check makes its own temporary roots or asks the factory
- * it is given for a fresh subject, and removes or releases what it made.
+ * rule the subject breaks; each `describe…` function registers the same rules as cases of the
+ * runner it is given (`{ describe, test }` from `bun:test` or `node:test`), so a failing rule is a
+ * failing case. A failure names the subject and the rule and nothing else: no compared value, key,
+ * path, or cause, because the subject may hold a secret. A check makes its own temporary roots or
+ * asks the factory it is given for a fresh subject, and removes or releases what it made.
  *
- * This module imports the test runner, so it is reachable only through
- * `@lostgradient/bungalow/conformance` and never from the package's index.
+ * The module imports no test runner, so it loads on Bun and Node alike. It is still reachable only
+ * through `@lostgradient/bungalow/conformance` and never from the package's index.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { describe, expect, test } from 'bun:test';
-
-import type { Bungalow } from './bungalow.ts';
+import type { AcquireLock, Bungalow } from './bungalow.ts';
+import { expect } from './conformance-expect.ts';
 import type { DeploymentSecrets } from './deployment-secrets.ts';
 import { BungalowInputError, BungalowLockedError, BungalowStateError } from './errors.ts';
 import type { RootLock } from './lock.ts';
@@ -55,8 +55,20 @@ async function runRules(subject: string, rules: readonly Rule[]): Promise<void> 
   for (const rule of rules) await runRule(subject, rule);
 }
 
+/**
+ * The two functions of a test runner the `describe…` functions register cases with. `bun:test`
+ * and `node:test` both provide them: pass `{ describe, test }` from either.
+ */
+export type ConformanceRunner = {
+  /** Group the cases of one subject under `name`. */
+  readonly describe: (name: string, body: () => void) => unknown;
+  /** Register one rule as a case. */
+  readonly test: (name: string, body: () => Promise<void>) => unknown;
+};
+
 /** Register each rule as one case under a `describe` block. */
-function registerRules(subject: string, rules: readonly Rule[]): void {
+function registerRules(runner: ConformanceRunner, subject: string, rules: readonly Rule[]): void {
+  const { describe, test } = runner;
   describe(subject, () => {
     for (const rule of rules) test(rule.name, () => runRule(subject, rule));
   });
@@ -78,14 +90,15 @@ const INVALID_KEYS = ['', 'UPPER', 'has space', '../escape', 'a/b', '-leading', 
 /* Root lock                                                                                  */
 /* ------------------------------------------------------------------------------------------ */
 
-function lockRules(acquireLock: (root: string) => RootLock): readonly Rule[] {
+function lockRules(acquireLock: AcquireLock): readonly Rule[] {
   /** Run `use` against a fresh root, and release whatever it acquired before removing the root. */
   const onFreshRoot =
-    (use: (root: string, acquire: () => RootLock) => Promise<void>) => async (): Promise<void> => {
+    (use: (root: string, acquire: () => Promise<RootLock>) => Promise<void>) =>
+    async (): Promise<void> => {
       const root = mkdtempSync(join(tmpdir(), 'bungalow-lock-conformance-'));
       const held: RootLock[] = [];
-      const acquire = (): RootLock => {
-        const lock = acquireLock(root);
+      const acquire = async (): Promise<RootLock> => {
+        const lock = await acquireLock(root);
         held.push(lock);
         return lock;
       };
@@ -106,21 +119,22 @@ function lockRules(acquireLock: (root: string) => RootLock): readonly Rule[] {
     {
       name: 'a second acquisition of a held root throws BungalowLockedError',
       run: onFreshRoot(async (_root, acquire) => {
-        acquire();
+        await acquire();
         expect(await failureOf(acquire)).toBeInstanceOf(BungalowLockedError);
       }),
     },
     {
       name: 'release allows the next acquisition',
       run: onFreshRoot(async (_root, acquire) => {
-        acquire().release();
+        const first = await acquire();
+        first.release();
         expect(await failureOf(acquire)).toBeUndefined();
       }),
     },
     {
       name: 'release is safe to call twice',
       run: onFreshRoot(async (_root, acquire) => {
-        const first = acquire();
+        const first = await acquire();
         first.release();
         expect(await failureOf(() => first.release())).toBeUndefined();
         expect(await failureOf(acquire)).toBeUndefined();
@@ -134,13 +148,13 @@ function lockRules(acquireLock: (root: string) => RootLock): readonly Rule[] {
  * release allows the next acquisition, and release is safe to call twice. The check makes its own
  * temporary root. Rejects with a message naming the first rule broken.
  */
-export async function checkRootLock(acquireLock: (root: string) => RootLock): Promise<void> {
+export async function checkRootLock(acquireLock: AcquireLock): Promise<void> {
   await runRules('The lock', lockRules(acquireLock));
 }
 
-/** Register the rules of {@link checkRootLock} as `bun:test` cases. */
-export function describeRootLock(acquireLock: (root: string) => RootLock): void {
-  registerRules('root lock conformance', lockRules(acquireLock));
+/** Register the rules of {@link checkRootLock} as cases of `runner`. */
+export function describeRootLock(runner: ConformanceRunner, acquireLock: AcquireLock): void {
+  registerRules(runner, 'root lock conformance', lockRules(acquireLock));
 }
 
 /* ------------------------------------------------------------------------------------------ */
@@ -246,12 +260,13 @@ export async function checkDeploymentSecrets(
   await runRules('The deployment secrets', deploymentSecretsRules(create, seed));
 }
 
-/** Register the rules of {@link checkDeploymentSecrets} as `bun:test` cases. */
+/** Register the rules of {@link checkDeploymentSecrets} as cases of `runner`. */
 export function describeDeploymentSecrets(
+  runner: ConformanceRunner,
   create: DeploymentSecretsFactory,
   seed?: ConformanceSeed,
 ): void {
-  registerRules('deployment secrets conformance', deploymentSecretsRules(create, seed));
+  registerRules(runner, 'deployment secrets conformance', deploymentSecretsRules(create, seed));
 }
 
 /* ------------------------------------------------------------------------------------------ */
@@ -559,12 +574,13 @@ export async function checkSecretProvider(
   await runRules('The secret provider', secretProviderRules(create, seed));
 }
 
-/** Register the rules of {@link checkSecretProvider} as `bun:test` cases. */
+/** Register the rules of {@link checkSecretProvider} as cases of `runner`. */
 export function describeSecretProvider(
+  runner: ConformanceRunner,
   create: SecretProviderFactory,
   seed?: ConformanceSeed,
 ): void {
-  registerRules('secret provider conformance', secretProviderRules(create, seed));
+  registerRules(runner, 'secret provider conformance', secretProviderRules(create, seed));
 }
 
 /* ------------------------------------------------------------------------------------------ */
@@ -643,7 +659,7 @@ function homeRules(open: OpenHome): readonly Rule[] {
       const key = 'conformance-key';
       const calls: readonly [string, () => unknown][] = [
         ['content', () => home.content('conformance-content')],
-        ['s3Client', () => home.s3Client()],
+        ['objectStore', () => home.objectStore()],
         ['readConfiguration', () => home.readConfiguration()],
         ['writeConfiguration', () => home.writeConfiguration('{}', { expectedRevision: null })],
         ['deploymentSecrets.read', () => home.deploymentSecrets.read(key)],
@@ -737,7 +753,7 @@ function homeRules(open: OpenHome): readonly Rule[] {
  * Check a whole home. `open` opens the same backing home on every call, with the workspace identity
  * the options give or the home's own, and the check closes what it opens before it opens again.
  * The rules come from the handle: `deploymentId` and `workspaceId` are the same on reopen; a
- * different configured `workspaceId` is refused; `content`, `s3Client`, `readConfiguration`,
+ * different configured `workspaceId` is refused; `content`, `objectStore`, `readConfiguration`,
  * `writeConfiguration`, and the members of `deploymentSecrets` throw `BungalowStateError` after
  * `close` (a secret provider is not asked to: its factory is given no way to know); `close` is
  * idempotent; `content` refuses reserved and malformed names; and
@@ -751,7 +767,7 @@ export async function checkBungalow(open: OpenHome): Promise<void> {
   await runRules('The home', homeRules(open));
 }
 
-/** Register the rules of {@link checkBungalow} as `bun:test` cases. */
-export function describeBungalow(open: OpenHome): void {
-  registerRules('home conformance', homeRules(open));
+/** Register the rules of {@link checkBungalow} as cases of `runner`. */
+export function describeBungalow(runner: ConformanceRunner, open: OpenHome): void {
+  registerRules(runner, 'home conformance', homeRules(open));
 }
