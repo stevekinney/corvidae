@@ -28,7 +28,10 @@ import { readBoxes } from './read-boxes.ts';
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
 const SOURCE = 'goal-page-states.spec.ts';
-const WIDTHS = [1280, 375] as const;
+const WIDTHS =
+  process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] === undefined
+    ? ([1920, 1280, 375, 320] as const)
+    : ([1280, 375] as const);
 
 type JsonRecord = Record<string, unknown>;
 
@@ -137,8 +140,8 @@ async function editGoalReady(page: Page): Promise<void> {
     `${REFUNDS_CHECK_LABEL}, version 1`,
   );
   await expect(page.getByLabel('Phrase')).toHaveValue('waiting for approval');
-  await expect(page.getByRole('combobox', { name: 'Agent' })).toHaveText('Tool runner');
-  await expect(page.getByLabel('Attempt limit')).toHaveValue('5');
+  await expect(page.getByRole('combobox', { name: 'Agent' })).toHaveValue('tool-runner');
+  await expect(page.getByRole('spinbutton', { name: 'Attempt limit' })).toHaveValue('5');
   await expect(page.getByText('Saving doesn’t start an attempt.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save' })).toBeEnabled();
 }
@@ -211,18 +214,25 @@ async function workingGoalReady(page: Page): Promise<void> {
   await expect(attempt).toContainText('Agent took 1 min 12 s');
   await expect(attempt).toContainText('10:44 AM');
   await expect(page.locator('[data-attempt]').nth(1)).toContainText(
-    'Summary listed 3 of 4 refunds waiting for approval',
+    'summary listed 3 of 4 refunds waiting for approval',
   );
-  const status = attempt.locator('.cinder-stacked-list-item__status');
-  const statusLabel = status.locator('.cinder-status-dot__label');
+  const statusDot = attempt.getByRole('img', { name: 'Running, checking the result' });
+  await expect(statusDot).toBeVisible();
+  const status = statusDot.locator(
+    'xpath=ancestor::*[contains(@class, "cinder-stacked-list-item__status")][1]',
+  );
+  const statusLabel = statusDot.locator('.cinder-status-dot__label');
   const title = attempt.locator('.cinder-stacked-list-item__title');
   await expect(statusLabel).toHaveText('Running, checking the result');
-  const boxes = await readBoxes(page, { statusLabel, title });
-  expect(boxes.statusLabel.x + boxes.statusLabel.width).toBeLessThanOrEqual(boxes.title.x);
+  const boxes = await readBoxes(page, { status, statusLabel, title });
+  const width = page.viewportSize()?.width;
+  if (width !== undefined && width <= 375) {
+    expect(boxes.title.y + boxes.title.height).toBeLessThanOrEqual(boxes.status.y);
+  } else {
+    expect(boxes.statusLabel.x + boxes.statusLabel.width).toBeLessThanOrEqual(boxes.title.x);
+  }
   expect(
-    await statusLabel.evaluate(
-      (element: HTMLElement) => element.scrollWidth <= element.clientWidth,
-    ),
+    await status.evaluate((element: HTMLElement) => element.scrollWidth <= element.clientWidth),
   ).toBe(true);
 }
 
