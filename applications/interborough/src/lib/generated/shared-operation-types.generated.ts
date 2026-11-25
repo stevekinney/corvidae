@@ -891,3 +891,91 @@ export type SharedReasonRequestedAt_eb87c207 = {
 };
 export type SharedTitleType_d5f800b6 = { readonly title: string | null; readonly type: 'notify' };
 export type SharedTypeUrl_4cb7ae9a = { readonly type: 'webhook'; readonly url: string };
+export type CatalogDefinition_16cdf80fe02ee71dadb363113b7d6750093796d105b973645a0ee8a92355f595_3960da567c3e33d9afd2d83fef91264febf1a59feff46c7d7c4e2a4bca56e8e9 =
+  | string
+  | number
+  | boolean
+  | null
+  | ReadonlyArray<CatalogDefinition_16cdf80fe02ee71dadb363113b7d6750093796d105b973645a0ee8a92355f595_3960da567c3e33d9afd2d83fef91264febf1a59feff46c7d7c4e2a4bca56e8e9>
+  | {
+      readonly [
+        key: string
+      ]: CatalogDefinition_16cdf80fe02ee71dadb363113b7d6750093796d105b973645a0ee8a92355f595_3960da567c3e33d9afd2d83fef91264febf1a59feff46c7d7c4e2a4bca56e8e9;
+    };
+export type CatalogDefinition_16cdf80fe02ee71dadb363113b7d6750093796d105b973645a0ee8a92355f595_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8 =
+  | string
+  | number
+  | boolean
+  | null
+  | ReadonlyArray<CatalogDefinition_16cdf80fe02ee71dadb363113b7d6750093796d105b973645a0ee8a92355f595_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8>
+  | {
+      readonly [
+        key: string
+      ]: CatalogDefinition_16cdf80fe02ee71dadb363113b7d6750093796d105b973645a0ee8a92355f595_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8;
+    };
+export type CatalogDefinition_9694c759226b0b87dfa7c792f52ae09f149ba2ee121769328d8d09a41ea6b73a_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8 =
+  | string
+  | number
+  | boolean
+  | null
+  | ReadonlyArray<CatalogDefinition_9694c759226b0b87dfa7c792f52ae09f149ba2ee121769328d8d09a41ea6b73a_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8>
+  | {
+      readonly [
+        key: string
+      ]: CatalogDefinition_9694c759226b0b87dfa7c792f52ae09f149ba2ee121769328d8d09a41ea6b73a_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8;
+    };
+export type CatalogDefinition_a5ef944d20ffa9d925c757c1dd76e201c0acd03b0a7f9e34fc1e6e49465e9d1d_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8 =
+  | string
+  | number
+  | boolean
+  | null
+  | ReadonlyArray<CatalogDefinition_a5ef944d20ffa9d925c757c1dd76e201c0acd03b0a7f9e34fc1e6e49465e9d1d_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8>
+  | {
+      readonly [
+        key: string
+      ]: CatalogDefinition_a5ef944d20ffa9d925c757c1dd76e201c0acd03b0a7f9e34fc1e6e49465e9d1d_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8;
+    };
+export type CatalogDefinition_a666a0f8edcbffe6e8bcf794c6bf2f7dd924c8f08ca0a437b33e637aa22a2e8c_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8 =
+  | string
+  | number
+  | boolean
+  | null
+  | ReadonlyArray<CatalogDefinition_a666a0f8edcbffe6e8bcf794c6bf2f7dd924c8f08ca0a437b33e637aa22a2e8c_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8>
+  | {
+      readonly [
+        key: string
+      ]: CatalogDefinition_a666a0f8edcbffe6e8bcf794c6bf2f7dd924c8f08ca0a437b33e637aa22a2e8c_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8;
+    };
+export type CatalogDefinition_c77439803aab5525421c3fcccf0303fedf7089c21d39a5ba6c7ce509348e831c_3960da567c3e33d9afd2d83fef91264febf1a59feff46c7d7c4e2a4bca56e8e9 =
+  | string
+  | number
+  | boolean
+  | null
+  | ReadonlyArray<CatalogDefinition_c77439803aab5525421c3fcccf0303fedf7089c21d39a5ba6c7ce509348e831c_3960da567c3e33d9afd2d83fef91264febf1a59feff46c7d7c4e2a4bca56e8e9>
+  | {
+      readonly [
+        key: string
+      ]: CatalogDefinition_c77439803aab5525421c3fcccf0303fedf7089c21d39a5ba6c7ce509348e831c_3960da567c3e33d9afd2d83fef91264febf1a59feff46c7d7c4e2a4bca56e8e9;
+    };
+export type CatalogDefinition_c77439803aab5525421c3fcccf0303fedf7089c21d39a5ba6c7ce509348e831c_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8 =
+  | string
+  | number
+  | boolean
+  | null
+  | ReadonlyArray<CatalogDefinition_c77439803aab5525421c3fcccf0303fedf7089c21d39a5ba6c7ce509348e831c_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8>
+  | {
+      readonly [
+        key: string
+      ]: CatalogDefinition_c77439803aab5525421c3fcccf0303fedf7089c21d39a5ba6c7ce509348e831c_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8;
+    };
+export type CatalogDefinition_f743a60b58c5c3c8f4d71c60082283ee595b82aee48b64f95bc5f314cd950146_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8 =
+  | string
+  | number
+  | boolean
+  | null
+  | ReadonlyArray<CatalogDefinition_f743a60b58c5c3c8f4d71c60082283ee595b82aee48b64f95bc5f314cd950146_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8>
+  | {
+      readonly [
+        key: string
+      ]: CatalogDefinition_f743a60b58c5c3c8f4d71c60082283ee595b82aee48b64f95bc5f314cd950146_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8;
+    };

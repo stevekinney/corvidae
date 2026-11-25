@@ -72,6 +72,7 @@ function unionBranches(
  * mixed properties and additionalProperties, nullable patterns).
  */
 type ReferenceContext = {
+  readonly root: Record<string, unknown>;
   readonly definitions: Record<string, unknown>;
   readonly prefix: string;
   readonly used: Set<string>;
@@ -120,6 +121,7 @@ export function parseSchema(schema: Record<string, unknown>): {
   const definitions =
     Object.hasOwn(schema, '$defs') && isRecord(schema['$defs']) ? schema['$defs'] : {};
   const context: ReferenceContext = {
+    root: schema,
     definitions,
     prefix: createHash('sha256').update(JSON.stringify(schema)).digest('hex'),
     used: new Set(),
@@ -139,6 +141,9 @@ export function schemaToNode(schema: Record<string, unknown>): TypeNode {
 }
 
 function parseNode(schema: Record<string, unknown>, context: ReferenceContext): TypeNode {
+  // A nested $id rebases local references; the root's definitions are no longer their document.
+  if (schema !== context.root && Object.hasOwn(schema, '$id'))
+    context = { ...context, definitions: {} };
   if (Object.hasOwn(schema, '$ref')) {
     const name = referencedName(schema['$ref']);
     const siblings = Object.keys(schema).filter(

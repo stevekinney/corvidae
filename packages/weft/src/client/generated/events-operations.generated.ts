@@ -3,7 +3,13 @@
 export type EventsOperationTypes = {
   'weft.workflows.events.list': {
     readonly input: { readonly workflowId: string };
-    readonly output: unknown;
+    readonly output: {
+      readonly events: ReadonlyArray<{
+        readonly data: Record<string, unknown>;
+        readonly timestamp: number;
+        readonly type: string;
+      }>;
+    };
     readonly faults: 'NotFound';
   };
 };

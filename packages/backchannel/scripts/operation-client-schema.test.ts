@@ -30,6 +30,22 @@ describe('schemaToNode + renderNode — emitted text contract', () => {
     expect(parsed.root.kind).toBe('reference');
     expect(parsed.definitions.size).toBe(1);
   });
+
+  it('does not resolve a rebased nested document against its parent definitions', () => {
+    const parsed = parseSchema({
+      $defs: { item: { type: 'string' } },
+      type: 'object',
+      properties: {
+        nested: {
+          $id: 'other.json',
+          type: 'object',
+          properties: { item: { $ref: '#/$defs/item' } },
+        },
+      },
+    });
+    expect(renderNode(parsed.root, NO_ALIASES)).toContain('"item"?: unknown');
+    expect(parsed.definitions.size).toBe(0);
+  });
   // These assertions pin the exact TypeScript text the generator emits for each
   // supported schema feature. Snapshot schemas arrive key-sorted, so on the real
   // catalog this matches the pre-refactor `Object.entries` order byte-for-byte;

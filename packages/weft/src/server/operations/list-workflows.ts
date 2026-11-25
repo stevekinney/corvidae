@@ -13,6 +13,7 @@ import { coerceStartWorkflowTags } from '../../core/start-workflow-validation.ts
 import type { ListFilter, PaginatedResult, WorkflowSummary } from '../../core/types.ts';
 import { extractListFilterFromQuery } from './list-filter-query-extractor.ts';
 import { assertOperationEngineMethods, shapeRestFault } from './operation-helpers.ts';
+import { workflowSummarySchema } from './workflow-read-schema.ts';
 
 const listIncludeSchema = z
   .union([z.string(), z.array(z.string()).min(1)])
@@ -61,7 +62,15 @@ const listWorkflowsInput = z
       ),
   })
   .strict();
-const listWorkflowsOutput = z.unknown();
+const listWorkflowsShape = z
+  .object({
+    items: z.array(workflowSummarySchema),
+    total: z.number(),
+    offset: z.number(),
+    limit: z.number(),
+  })
+  .passthrough();
+const listWorkflowsOutput = listWorkflowsShape;
 
 export type ListWorkflowsInput = z.infer<typeof listWorkflowsInput>;
 export type ListWorkflowsOutput = PaginatedResult<WorkflowSummary>;
@@ -85,7 +94,7 @@ export const listWorkflowsOperation = defineOperation({
   producibleFaults: ['Unprocessable'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, host: engine }): Promise<ListWorkflowsOutput> => {
+  invoke: async ({ input, host: engine }) => {
     assertOperationEngineMethods(engine, ['list']);
     const e = engine;
     const { include, ...filterInput } = input;
@@ -120,10 +129,21 @@ export const listWorkflowsOperation = defineOperation({
       const includeFailureCategory = Array.isArray(include)
         ? include.includes('failureCategory')
         : include === 'failureCategory';
-      return await e.list(
+      const page = await e.list(
         filter,
         includeFailureCategory ? { includeFailureCategory: true } : undefined,
       );
+      return {
+        ...page,
+        items: page.items.map((item) => {
+          const { failedStep, retrying, ...rest } = item;
+          return {
+            ...rest,
+            ...(failedStep === undefined ? {} : { failedStep: { ...failedStep } }),
+            ...(retrying === undefined ? {} : { retrying: { ...retrying } }),
+          };
+        }),
+      };
     } catch (error) {
       if (error instanceof WorkflowListScanCapExceededError) throw toUnprocessable(error);
       throw error;

@@ -26,6 +26,43 @@ import type { WeftClient } from './interface.ts';
 
 declare const operations: WeftClient['operations'];
 
+async function readScheduleAndWorkflowProjections(): Promise<void> {
+  const schedules = await operations['weft.schedules.list']({
+    status: ['active', 'paused'],
+    limit: 10,
+    offset: '2',
+  });
+  const schedule = await operations['weft.schedules.get']({ scheduleId: schedules.items[0]!.id });
+  const scheduleStatus: 'active' | 'paused' | 'cancelled' = schedule.status;
+  const nextFire: number | null = schedule.nextFireAt;
+  const total: number = schedules.total;
+  const workflows = await operations['weft.workflows.list']({ scheduleId: schedule.id, limit: 10 });
+  const workflow = await operations['weft.workflows.get']({ workflowId: workflows.items[0]!.id });
+  const workflowId: string = workflow.id;
+  const version: string = workflow.versionTuple.workflowVersion;
+  const events = await operations['weft.workflows.events.list']({ workflowId });
+  const eventType: string = events.events[0]!.type;
+  const input: unknown = workflow.input;
+  void [scheduleStatus, nextFire, total, version, eventType, input];
+}
+void readScheduleAndWorkflowProjections;
+
+async function readRecursiveTimelineAndReview(): Promise<void> {
+  const timeline = await operations['weft.workflows.timeline.get']({ workflowId: 'wf' });
+  const outcome: 'fulfilled' | 'rejected' | 'won' | 'lost' | undefined =
+    timeline[0]?.children?.[0]?.branches?.[0]?.outcome;
+  const reviews = await operations['weft.reviews.list']({ status: 'completed' });
+  const completed = reviews.items.find((review) => review.status === 'completed');
+  if (completed?.status === 'completed') {
+    const decision: 'approved' | 'rejected' | undefined = completed.sectionDecisions?.['section'];
+    // @ts-expect-error section decisions cannot have arbitrary values
+    const invalid: 'other' = completed.sectionDecisions!['section'];
+    void [decision, invalid];
+  }
+  void outcome;
+}
+void readRecursiveTimelineAndReview;
+
 /**
  * `weft.tasks.get` — six top-level `oneOf` branches, one of which (`terminal`)
  * is itself a nested `oneOf` of three disposition branches.

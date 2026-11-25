@@ -19,8 +19,22 @@ import type {
   ScheduleSummary,
 } from '../../core/types.ts';
 import { assertOperationEngineMethods } from './operation-helpers.ts';
+import { scheduleSummarySchema } from './schedule-read-schema.ts';
 
 const VALID_SCHEDULE_STATUSES = new Set<string>(['active', 'paused', 'cancelled']);
+
+// The operation owns validation and fault ordering below. Metadata describes the JSON values
+// which can pass that validation without rejecting invalid values before they reach it.
+const paginationInput = () =>
+  z.unknown().meta({
+    anyOf: [
+      { type: 'number' },
+      { type: 'string' },
+      { type: 'boolean' },
+      { type: 'null' },
+      { type: 'array', items: {} },
+    ],
+  });
 
 function isValidScheduleStatus(value: string): value is ScheduleStatus {
   return VALID_SCHEDULE_STATUSES.has(value);
@@ -29,20 +43,29 @@ function isValidScheduleStatus(value: string): value is ScheduleStatus {
 const listSchedulesInput = z.object({
   status: z
     .unknown()
+    .meta({ anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] })
     .optional()
     .describe('Return only schedules in this state: "active", "paused", or "cancelled".'),
   workflowType: z
     .unknown()
+    .meta({ type: 'string' })
     .optional()
     .describe('Return only schedules that start this workflow type.'),
-  limit: z.unknown().optional().describe('Maximum number of schedules to return.'),
-  offset: z
-    .unknown()
+  limit: paginationInput().optional().describe('Maximum number of schedules to return.'),
+  offset: paginationInput()
     .optional()
     .describe('Number of schedules to skip before the first returned, for paging.'),
 });
 
-const listSchedulesOutput = z.unknown();
+const listSchedulesShape = z
+  .object({
+    items: z.array(scheduleSummarySchema),
+    total: z.number(),
+    offset: z.number(),
+    limit: z.number(),
+  })
+  .passthrough();
+const listSchedulesOutput = listSchedulesShape;
 
 export type ListSchedulesInput = z.infer<typeof listSchedulesInput>;
 export type ListSchedulesOutput = PaginatedResult<ScheduleSummary>;
@@ -124,7 +147,7 @@ export const listSchedulesOperation = defineOperation({
   discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, host: engine }): Promise<ListSchedulesOutput> => {
+  invoke: async ({ input, host: engine }) => {
     assertOperationEngineMethods(engine, ['listSchedules']);
     const e = engine;
 
@@ -132,7 +155,14 @@ export const listSchedulesOperation = defineOperation({
     // validation order is pinned by the tests below.
     const filter = validateListSchedulesQuery(input);
 
-    return e.listSchedules(filter);
+    const page = await e.listSchedules(filter);
+    return {
+      ...page,
+      items: page.items.map((schedule) => ({
+        ...schedule,
+        queuedRuns: schedule.queuedRuns.map((run) => ({ ...run })),
+      })),
+    };
   },
 });
 

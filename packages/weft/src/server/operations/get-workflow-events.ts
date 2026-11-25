@@ -8,7 +8,20 @@ import type { WorkflowEvent } from '../../core/types.ts';
 const getWorkflowEventsInput = z.object({
   workflowId: z.string().min(1).describe('Id of the workflow whose recorded events are listed.'),
 });
-const getWorkflowEventsOutput = z.unknown();
+const getWorkflowEventsShape = z
+  .object({
+    events: z.array(
+      z
+        .object({
+          type: z.string(),
+          timestamp: z.number(),
+          data: z.record(z.string(), z.unknown()),
+        })
+        .passthrough(),
+    ),
+  })
+  .passthrough();
+const getWorkflowEventsOutput = getWorkflowEventsShape;
 
 export type GetWorkflowEventsInput = z.infer<typeof getWorkflowEventsInput>;
 export type GetWorkflowEventsOutput = { events: WorkflowEvent[] };
@@ -30,7 +43,7 @@ export const getWorkflowEventsOperation = defineOperation({
   producibleFaults: ['NotFound'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, host: engine }): Promise<GetWorkflowEventsOutput> => {
+  invoke: async ({ input, host: engine }) => {
     assertOperationEngineMethods(engine, ['get', 'getEvents']);
     const e = engine;
     const state = await e.get(input.workflowId);
@@ -43,7 +56,7 @@ export const getWorkflowEventsOperation = defineOperation({
       throw fault;
     }
 
-    return { events: await e.getEvents(input.workflowId) };
+    return { events: (await e.getEvents(input.workflowId)).map((event) => ({ ...event })) };
   },
 });
 
