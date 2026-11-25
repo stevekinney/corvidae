@@ -5,6 +5,21 @@ import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 import type { EquipmentEnvironment } from './environment-configuration.ts';
 
+export function publicRequest(request: Request, origin: string): Request | Response {
+  const publicOrigin = new URL(origin);
+  const host = request.headers.get('host')?.toLowerCase();
+  const defaultPort = publicOrigin.protocol === 'https:' ? '443' : '80';
+  if (
+    host !== publicOrigin.host &&
+    !(publicOrigin.port === '' && host === `${publicOrigin.hostname}:${defaultPort}`)
+  )
+    return new Response('Invalid host', { status: 400 });
+  const url = new URL(request.url);
+  url.protocol = publicOrigin.protocol;
+  url.host = publicOrigin.host;
+  return new Request(url, request);
+}
+
 export function fixtureScopes(subject: string, reader: string, editor: string) {
   if (!reader || !editor || reader === editor)
     throw new Error('Fixture identities must be distinct');
