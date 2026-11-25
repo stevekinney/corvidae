@@ -216,6 +216,10 @@ export interface RunCreationPeers {
  * has nothing to drift from; the case only keeps the resolution union narrowed, and a run that did
  * reach it would be refused as recovery refuses it.
  */
+function ordinaryRunProvenance(origin: TaskOrigin, agentName: string, runId: string): string | null {
+  return !Object.hasOwn(origin, 'reviewedTool') && !agentName.startsWith('reviewed:') ? runId : null;
+}
+
 function unresolvedStart(
   agentName: string,
   resolution: Extract<
@@ -579,6 +583,9 @@ export function createRunCreation<D extends AgentDefinitions>(
         conversation,
         {
           lastRunId: runId,
+          // Bind ordinary provenance to the same session update as the latest run. A reviewed
+          // run clears it, and a later run can never inherit another run's classification.
+          ordinaryRunId: ordinaryRunProvenance(taskOrigin, agentName, runId),
           lastRunStatus: 'running',
           // This run's own starting entry: durable steering counts it as
           // starting, until its `promoted` entry is logged and for a bounded

@@ -28,11 +28,10 @@ import {
 } from '../serialization';
 import type { SignedPendingToolApproval } from 'armorer';
 import { detachBestEffortPromise } from '../bureau-construction-support';
-import { isPlainAuthorityRecord, resolveSessionOwner } from '../session-authority';
+import { isPlainAuthorityRecord } from '../session-authority';
 import { isTerminalApprovalBindingError } from '../recovered-run-classification';
 import { ownEntry } from '../own-entry';
 import { resolveCancelDurableRun, resolveWaitForDurableRun } from '../durable-run-waits';
-import { isTaskOrigin } from '../task-origin';
 
 /** The callables run operations reads from elsewhere in `constructBureau`. */
 export interface RunOperationsPeers {
@@ -336,40 +335,6 @@ export function createRunOperations<D extends AgentDefinitions>(
       throw new BureauError('Cannot delete a running run', 'CONFLICT');
     }
 
-    const sessionId = peers.getRunSessionIdentifier(runState);
-    const task = await core.tasks.record(id);
-    if (
-      runtime.sessionStore &&
-      task &&
-      task.contextId === sessionId &&
-      task.origin &&
-      isTaskOrigin(task.origin) &&
-      !Object.hasOwn(task.origin, 'reviewedTool') &&
-      typeof task.agentName === 'string' &&
-      !task.agentName.startsWith('reviewed:') &&
-      (task.origin.kind !== 'chat' ||
-        (task.origin.contextId === sessionId && task.origin.agentName === task.agentName))
-    ) {
-      await runtime.sessionStore.update(sessionId, (session) => {
-        if (
-          !session ||
-          session.incarnation !== task.incarnation ||
-          session.agentName !== task.agentName ||
-          resolveSessionOwner(session.metadata) !== task.owner ||
-          session.metadata['lastRunId'] !== id
-        )
-          return undefined;
-        const markers = session.metadata['reviewedApprovalProvenance'];
-        if (
-          markers !== undefined &&
-          (!markers || typeof markers !== 'object' || Array.isArray(markers))
-        )
-          return undefined;
-        if (markers && Object.keys(markers).some((key) => key.startsWith(`approval:${id}:`)))
-          return undefined;
-        return { ...session, metadata: { ...session.metadata, deletedOrdinaryRunId: id } };
-      });
-    }
     await revokePendingApprovalsForRun(id, {
       status: 'revoked',
       principal: 'system:run-deletion',
@@ -378,6 +343,7 @@ export function createRunOperations<D extends AgentDefinitions>(
     // them intact if it fails, and before anything is removed, so a failure here leaves the run in
     // place and a second delete retries, instead of orphaning the surfaces.
     await core.surfaces?.removeTask(id);
+    const sessionId = peers.getRunSessionIdentifier(runState);
     const ownerPrincipal = runAttribution.get(id)?.principal;
     const ownerIncarnation = runSessionIncarnations.get(id);
     runSessionIdentifiers.delete(runState.activeRun);

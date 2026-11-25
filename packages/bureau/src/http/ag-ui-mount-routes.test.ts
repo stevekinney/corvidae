@@ -128,7 +128,8 @@ describe('start', () => {
         const response = await handler(request('alice-key'));
         expect(response.status).toBe(200);
         expect(JSON.stringify(await response.json())).toContain('Hello there.');
-        expect((await handler(request('bob-key'))).status).toBe(404);
+        const nonownerResponse = await handler(request('bob-key'));
+        expect(nonownerResponse.status).toBe(404);
         const store = bureau.internals.sessionStore!;
         const session = await store.load('thread-1');
         expect(session).toBeDefined();
@@ -143,16 +144,17 @@ describe('start', () => {
           (current) =>
             current && {
               ...current,
-              metadata: { ...current.metadata, deletedOrdinaryRunId: 'other-run' },
+              metadata: { ...current.metadata, ordinaryRunId: 'other-run' },
             },
         );
-        expect((await handler(request('alice-key'))).status).toBe(404);
+        const mismatchedResponse = await handler(request('alice-key'));
+        expect(mismatchedResponse.status).toBe(404);
         await store.update(
           'thread-1',
           (current) =>
             current && {
               ...current,
-              metadata: { ...current.metadata, deletedOrdinaryRunId: runId },
+              metadata: { ...current.metadata, ordinaryRunId: runId },
             },
         );
         for (const markers of [null, { [`approval:${runId}:reviewed-call`]: {} }]) {
@@ -164,7 +166,8 @@ describe('start', () => {
                 metadata: { ...current.metadata, reviewedApprovalProvenance: markers },
               },
           );
-          expect((await handler(request('alice-key'))).status).toBe(404);
+          const unresolvedResponse = await handler(request('alice-key'));
+          expect(unresolvedResponse.status).toBe(404);
         }
       },
     );
