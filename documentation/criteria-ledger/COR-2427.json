@@ -1,7 +1,7 @@
 {
   "issue": "COR-2427",
   "branch": "codex/cor-2427-agent-pages",
-  "checkedAt": "18ff0d0e7ebe103ab9634e57a051973a6f28eee6",
+  "checkedAt": "22f1c07265f990beb0dc94857154a5074e92cc42",
   "briefVersion": "1a8364945e88",
   "status": "READY",
   "criteria": [
@@ -17,7 +17,7 @@
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "The showcase Hooks witness now asserts the human-facing Tool runner heading, breadcrumb, and Duplicate affordance."
+      "evidence": "The showcase Hooks witness asserts the human-facing Tool runner heading and breadcrumb; the unrelated Duplicate affordance remains covered by its dedicated specs."
     },
     {
       "id": "AC4",
