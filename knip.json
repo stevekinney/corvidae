@@ -62,6 +62,8 @@
     "components/cinder": {
       "entry": [
         "src/index.ts",
+        "src/web-components/browser-renderer.svelte.ts!",
+        "src/web-components/element-lifecycle.ts!",
         "**/*.test.ts",
         "**/*.integration.test.ts",
         "**/*.slow.test.ts",
