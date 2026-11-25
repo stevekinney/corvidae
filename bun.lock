@@ -1212,10 +1212,13 @@
     "plugins/inspectors": {
       "name": "@lostgradient/plugin-inspectors",
       "dependencies": {
+        "@lostgradient/bureau-client": "workspace:*",
         "@lostgradient/interborough-plugin": "workspace:*",
         "@modelcontextprotocol/ext-apps": "catalog:",
+        "@tanstack/svelte-query": "catalog:",
       },
       "devDependencies": {
+        "@lostgradient/backchannel": "workspace:*",
         "@lostgradient/bureau": "workspace:*",
         "@lostgradient/cinder": "workspace:*",
         "@lostgradient/testing": "workspace:*",

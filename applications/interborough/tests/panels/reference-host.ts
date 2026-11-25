@@ -17,6 +17,7 @@ type ToolHandler = (args: Record<string, unknown>) => unknown;
 type RawToolResult = {
   content: { type: 'text'; text: string }[];
   structuredContent?: Record<string, unknown>;
+  _meta?: Record<string, unknown>;
   isError?: boolean;
 };
 

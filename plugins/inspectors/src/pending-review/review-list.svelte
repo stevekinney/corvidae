@@ -6,19 +6,30 @@
    * decide. The page redraws in place, so focus and a half-typed reason survive every poll.
    */
   import { Button, Section, Text, Textarea } from '@lostgradient/cinder';
+  import {
+    ReviewApprovalButtons,
+    type ToolApprovalActions,
+  } from '@lostgradient/bureau-client/reviews/ui';
+  import type { ActionableReview } from './model.ts';
 
   import { IDLE_ROW, type ReviewsView } from './view.svelte.ts';
 
   /** What the page asks of its script: each decision, and the steps of writing a rejection. */
   type Handlers = {
-    readonly onDecide: (id: string, decision: 'approve' | 'deny') => void;
     readonly onOpenReject: (id: string) => void;
     readonly onCancelReject: (id: string) => void;
     readonly onDraft: (id: string, text: string) => void;
-    readonly onReject: (id: string) => void;
   };
 
-  let { view, handlers }: { view: ReviewsView; handlers: Handlers } = $props();
+  let {
+    view,
+    handlers,
+    actionsFor,
+  }: {
+    view: ReviewsView;
+    handlers: Handlers;
+    actionsFor(review: ActionableReview): ToolApprovalActions;
+  } = $props();
 </script>
 
 <p role="status" aria-live="polite" id="reviews-status" class="panel-status">
@@ -36,7 +47,9 @@
 
   {#each view.views as item (item.id)}
     {@const row = view.rows.get(item.id) ?? IDLE_ROW}
-    {@const locked = !item.decidable || row.busy}
+    {@const actions =
+      item.actionableReview === undefined ? undefined : actionsFor(item.actionableReview)}
+    {@const locked = !item.decidable || actions === undefined || actions.disabled}
     <Section title={item.title}>
       <ul aria-label={`Details of ${item.title}`} class="panel-list">
         {#each item.detail as line, index (index)}
@@ -46,29 +59,28 @@
       {#if row.outcome !== null}
         <p class="panel-outcome">{row.outcome}</p>
       {/if}
-      <div role="group" aria-label={`Decide ${item.title}`} class="panel-actions">
-        <Button
-          id={`approve-${item.id}`}
-          variant="primary"
-          label="Approve"
-          disabled={locked}
-          onclick={() => handlers.onDecide(item.id, 'approve')}
-        />
-        <Button
-          id={`deny-${item.id}`}
-          variant="secondary"
-          label="Deny"
-          disabled={locked}
-          onclick={() => handlers.onDecide(item.id, 'deny')}
-        />
-        <Button
-          id={`open-${item.id}`}
-          variant="secondary"
-          label="Reject with feedback"
-          disabled={locked}
-          onclick={() => handlers.onOpenReject(item.id)}
-        />
-      </div>
+      {#if actions}
+        <ReviewApprovalButtons {actions} label={`Decide ${item.title}`} class="panel-actions">
+          <Button
+            id={`open-${item.id}`}
+            variant="secondary"
+            label="Reject with feedback"
+            disabled={locked}
+            onclick={() => handlers.onOpenReject(item.id)}
+          />
+        </ReviewApprovalButtons>
+      {:else}
+        <div role="group" aria-label={`Decide ${item.title}`} class="panel-actions">
+          <Button id={`approve-${item.id}`} variant="primary" label="Approve" disabled />
+          <Button id={`deny-${item.id}`} variant="secondary" label="Deny" disabled />
+          <Button
+            id={`open-${item.id}`}
+            variant="secondary"
+            label="Reject with feedback"
+            disabled
+          />
+        </div>
+      {/if}
       {#if row.rejecting && item.decidable}
         <div class="panel-reject">
           <Textarea
@@ -84,14 +96,14 @@
               id={`send-${item.id}`}
               variant="primary"
               label="Send rejection"
-              disabled={row.busy || row.draft.trim() === ''}
-              onclick={() => handlers.onReject(item.id)}
+              disabled={locked || row.draft.trim() === ''}
+              onclick={() => actions?.reject(row.draft)}
             />
             <Button
               id={`cancel-${item.id}`}
               variant="secondary"
               label="Cancel"
-              disabled={row.busy}
+              disabled={locked}
               onclick={() => handlers.onCancelReject(item.id)}
             />
           </div>

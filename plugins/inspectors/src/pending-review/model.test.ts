@@ -1,19 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import {
-  bureauReviewsOf,
-  describeResolution,
-  describeStatus,
-  isOutcomeNotWritten,
-  isReview,
-  isReviewList,
-  isRoundChanged,
-  MAXIMUM_PAGES,
-  readPendingQueue,
-  type Review,
-  type ReviewPage,
-  viewReview,
-} from './model.ts';
+import { viewReview, type Review } from './model.ts';
 
 const approval: Review = {
   id: 'r1',
@@ -37,66 +24,23 @@ const approval: Review = {
 };
 
 describe('the pending-review model', () => {
-  it('recognizes the list and one review, and refuses anything else', () => {
-    expect(isReviewList({ reviews: [approval] })).toBe(true);
-    expect(isReviewList({ reviews: [{ id: 1 }] })).toBe(false);
-    expect(isReviewList(null)).toBe(false);
-    expect(isReview(approval)).toBe(true);
-    expect(isReview({ reviews: [] })).toBe(false);
+  it('shows the refund amount and reconciliation status without claiming settlement', () => {
+    const view = viewReview(
+      {
+        ...approval,
+        effect: {
+          kind: 'refund',
+          orderId: 'order-1',
+          cents: 4200,
+          currency: 'USD',
+          status: 'needs-reconciliation',
+        },
+      },
+      0,
+    );
+    expect(view.detail).toContain('$42.00 for order order-1. Needs reconciliation.');
+    expect(view.detail.join(' ')).not.toContain('Refunded');
   });
-
-  it('accepts a list that carries a workflow review of the engine, and keeps only the Bureau’s own', () => {
-    const engine = { id: 'engine-1', kind: 'engine-review', source: 'engine', status: 'pending' };
-    const page = { reviews: [engine, approval], nextPageToken: null };
-
-    expect(isReviewList(page)).toBe(true);
-    expect(isReviewList({ reviews: [{ id: 'x', kind: 'something-else' }] })).toBe(false);
-    expect(isReviewList({ reviews: [], nextPageToken: 7 })).toBe(false);
-    expect(isReview(engine)).toBe(false);
-    expect(bureauReviewsOf(page as ReviewPage).map((review) => review.id)).toEqual([approval.id]);
-  });
-
-  it('follows the pages of the queue and drops the engine reviews between them', async () => {
-    const second = { ...approval, id: 'approval:run-2:call-2' };
-    const pages = new Map<string | undefined, ReviewPage>([
-      [
-        undefined,
-        { reviews: [approval, { id: 'engine-1', kind: 'engine-review' }], nextPageToken: 'p2' },
-      ],
-      ['p2', { reviews: [second], nextPageToken: null }],
-    ]);
-    const asked: Array<string | undefined> = [];
-
-    const queue = await readPendingQueue(async (token) => {
-      asked.push(token);
-      return pages.get(token);
-    });
-
-    expect(asked).toEqual([undefined, 'p2']);
-    expect(queue).toEqual({ reviews: [approval, second], truncated: false });
-  });
-
-  it('fails the whole read when a page cannot be read, and stops at the page bound', async () => {
-    expect(
-      await readPendingQueue(async (token) =>
-        token === undefined ? { reviews: [approval], nextPageToken: 'p2' } : undefined,
-      ),
-    ).toBeUndefined();
-
-    let reads = 0;
-    const endless = await readPendingQueue(async () => {
-      reads += 1;
-      return {
-        reviews: [{ ...approval, id: `approval:run-${reads}:call` }],
-        nextPageToken: `p${reads}`,
-      };
-    });
-
-    expect(reads).toBe(MAXIMUM_PAGES);
-    expect(endless?.truncated).toBe(true);
-    expect(endless?.reviews).toHaveLength(MAXIMUM_PAGES);
-  });
-
   it('shows what a reviewer decides on and offers a decision while it is pending', () => {
     const view = viewReview(approval, Date.parse('2026-01-01T00:00:00Z'));
     expect(view.title).toBe('worker asks to run shell');
@@ -167,44 +111,5 @@ describe('the pending-review model', () => {
       0,
     );
     expect(wait.decidable).toBe(false);
-  });
-
-  it('recognizes a decision that took effect but whose outcome was not written', () => {
-    expect(
-      isOutcomeNotWritten({ receipt: 'applied', warning: 'APPROVAL_OUTCOME_NOT_WRITTEN' }),
-    ).toBe(true);
-    expect(isOutcomeNotWritten({ receipt: 'applied', warning: 'OTHER' })).toBe(false);
-  });
-
-  it('recognizes a decision refused because the review moved to another round', () => {
-    expect(
-      isRoundChanged({
-        isError: true,
-        structuredContent: { code: 'Conflict', data: { reason: 'REVIEW_ROUND_CHANGED' } },
-      }),
-    ).toBe(true);
-    expect(
-      isRoundChanged({ isError: true, content: [{ type: 'text', text: 'Conflict: lost' }] }),
-    ).toBe(false);
-    expect(
-      isRoundChanged({
-        isError: true,
-        structuredContent: {
-          code: 'Conflict',
-          message: 'REVIEW_ROUND_CHANGED',
-          data: { reason: 'OTHER' },
-        },
-      }),
-    ).toBe(false);
-  });
-
-  it('words each outcome, and says a superseded decision did not resolve the review', () => {
-    expect(describeResolution('approve', 'applied')).toBe('Approved.');
-    expect(describeResolution('deny', 'applied')).toBe('Denied.');
-    expect(describeResolution('reject', 'applied')).toBe('Rejected with feedback.');
-    expect(describeResolution('approve', 'superseded')).toContain('still pending');
-    expect(describeStatus('approved')).toBe('already approved');
-    expect(describeStatus('expired')).toBe('expired');
-    expect(describeStatus('mystery')).toBe('mystery');
   });
 });

@@ -4,6 +4,7 @@
  * out, so the rules that matter are tested without a browser: only pending, unexpired reviews offer
  * a decision, and the page never offers a decision the operation would refuse.
  */
+import type { ReviewsOperationTypes } from '@lostgradient/bureau-client/reviews';
 
 /** One review as `bureau.reviews.list` answers it. Unknown fields are ignored. */
 export type Review = {
@@ -16,6 +17,15 @@ export type Review = {
   readonly round?: number;
   readonly signalName?: string;
   readonly prompt?: string;
+  readonly effect?:
+    | {
+        readonly kind: 'refund';
+        readonly orderId: string;
+        readonly cents: number;
+        readonly currency: 'USD';
+        readonly status: string;
+      }
+    | undefined;
   readonly approval?: {
     readonly toolName: string;
     readonly arguments?: unknown;
@@ -35,6 +45,11 @@ export type Review = {
   };
 };
 
+export type ActionableReview = Extract<
+  ReviewsOperationTypes['bureau.reviews.get']['output'],
+  { kind: 'tool-approval' }
+>;
+
 /** What the reader sees and may do for one review. */
 export type ReviewView = {
   readonly id: string;
@@ -44,89 +59,14 @@ export type ReviewView = {
   readonly expired: boolean;
   /** Whether approve, deny, and reject are offered. */
   readonly decidable: boolean;
+  readonly actionableReview?: ActionableReview | undefined;
 };
 
 const MAX_ARGUMENT_CHARACTERS = 400;
 
-/**
- * A workflow review of the durable engine, which `bureau.reviews.list` lists beside the Bureau's own
- * for a caller who may read them (COR-1828). It is answered through the engine, never decided here,
- * so the page keeps only its identity.
- */
-export type EngineReview = { readonly id: string; readonly kind: 'engine-review' };
-
-/** One page of `bureau.reviews.list`: its items of either source, and where the next page starts. */
-export type ReviewPage = {
-  readonly reviews: ReadonlyArray<Review | EngineReview>;
-  readonly nextPageToken?: string | null;
-};
-
-/** How many reviews one page asks for, the most `bureau.reviews.list` allows. */
+/** The page size and maximum number of pages read by this panel. */
 export const PAGE_LIMIT = 100;
-
-/**
- * How many pages one refresh follows: with {@link PAGE_LIMIT}, the 1,000 oldest pending reviews. A
- * queue longer than that is shown cut off and says so, rather than reading without end.
- */
 export const MAXIMUM_PAGES = 10;
-
-function hasKind(value: unknown, kinds: readonly string[]): value is { id: string } {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'id' in value &&
-    typeof value.id === 'string' &&
-    'kind' in value &&
-    typeof value.kind === 'string' &&
-    kinds.includes(value.kind)
-  );
-}
-
-/** Whether `value` is the shape of a review list page, engine reviews included. */
-export function isReviewList(value: unknown): value is ReviewPage {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'reviews' in value &&
-    Array.isArray(value.reviews) &&
-    value.reviews.every((review: unknown) =>
-      hasKind(review, ['tool-approval', 'human-wait', 'engine-review']),
-    ) &&
-    (!('nextPageToken' in value) ||
-      value.nextPageToken === null ||
-      typeof value.nextPageToken === 'string')
-  );
-}
-
-/** Whether `value` is one review of the Bureau's own, as `bureau.reviews.get` answers. */
-export function isReview(value: unknown): value is Review {
-  return hasKind(value, ['tool-approval', 'human-wait']);
-}
-
-/** The reviews of `page` this page can show and decide: the Bureau's own, never an engine review. */
-export function bureauReviewsOf(page: ReviewPage): Review[] {
-  return page.reviews.filter((review): review is Review => review.kind !== 'engine-review');
-}
-
-/**
- * Reads the pending queue page by page, oldest first, until no page remains or
- * {@link MAXIMUM_PAGES} have been read. `undefined` is a page that could not be read, so the
- * whole read failed rather than showing a queue with a hole in it.
- */
-export async function readPendingQueue(
-  readPage: (pageToken: string | undefined) => Promise<ReviewPage | undefined>,
-): Promise<{ reviews: Review[]; truncated: boolean } | undefined> {
-  const reviews: Review[] = [];
-  let pageToken: string | undefined;
-  for (let read = 0; read < MAXIMUM_PAGES; read += 1) {
-    const page = await readPage(pageToken);
-    if (page === undefined) return undefined;
-    reviews.push(...bureauReviewsOf(page));
-    if (typeof page.nextPageToken !== 'string') return { reviews, truncated: false };
-    pageToken = page.nextPageToken;
-  }
-  return { reviews, truncated: true };
-}
 
 function preview(value: unknown): string {
   let text: string;
@@ -157,6 +97,25 @@ export function viewReview(review: Review, now: number): ReviewView {
   let title: string;
   if (review.kind === 'tool-approval') {
     title = `${agent} asks to run ${review.approval?.toolName ?? 'a tool'}`;
+    if (review.effect?.kind === 'refund') {
+      const amount = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: review.effect.currency,
+      }).format(review.effect.cents / 100);
+      const status =
+        review.effect.status === 'succeeded'
+          ? 'Refunded'
+          : review.effect.status === 'needs-reconciliation'
+            ? 'Needs reconciliation'
+            : review.effect.status === 'provider-pending'
+              ? 'Refund pending'
+              : review.effect.status === 'failed'
+                ? 'Refund failed'
+                : review.status === 'approved'
+                  ? 'Approved'
+                  : 'Awaiting approval';
+      detail.push(`${amount} for order ${review.effect.orderId}. ${status}.`);
+    }
     const action = review.approval?.action;
     if (action?.type === 'approval') {
       detail.push(`Risk: ${action.risk ?? 'unknown'}`);
@@ -195,76 +154,4 @@ export function viewReview(review: Review, now: number): ReviewView {
     // shown, and answered through the task, never approved from here.
     decidable: review.kind === 'tool-approval' && review.status === 'pending' && !expired,
   };
-}
-
-/** A review's status in words, for a decision that was not made because it is no longer pending. */
-export function describeStatus(status: string): string {
-  switch (status) {
-    case 'pending':
-      return 'still pending';
-    case 'approved':
-    case 'denied':
-    case 'rejected':
-      return `already ${status}`;
-    case 'expired':
-      return 'expired';
-    case 'canceled':
-      return 'canceled with its run';
-    case 'superseded':
-      return 'replaced by a newer approval';
-    case 'revoked':
-      return 'revoked';
-    default:
-      return status;
-  }
-}
-
-/** Whether a successful receipt says its outcome row could not be written. */
-export function isOutcomeNotWritten(result: unknown): boolean {
-  return (
-    typeof result === 'object' &&
-    result !== null &&
-    'warning' in result &&
-    result.warning === 'APPROVAL_OUTCOME_NOT_WRITTEN'
-  );
-}
-
-/** The token `bureau.reviews.resolve` puts in a Conflict whose review had moved to another round than the one sent. */
-export const ROUND_CHANGED = 'REVIEW_ROUND_CHANGED';
-
-/** Whether an error result from `resolve` says the review moved to another round, so nothing was decided. */
-export function isRoundChanged(result: unknown): boolean {
-  if (
-    typeof result !== 'object' ||
-    result === null ||
-    !('isError' in result) ||
-    result.isError !== true ||
-    !('structuredContent' in result)
-  )
-    return false;
-  const fault = result.structuredContent;
-  if (
-    typeof fault !== 'object' ||
-    fault === null ||
-    !('code' in fault) ||
-    fault.code !== 'Conflict' ||
-    !('data' in fault)
-  )
-    return false;
-  const data = fault.data;
-  return (
-    typeof data === 'object' && data !== null && 'reason' in data && data.reason === ROUND_CHANGED
-  );
-}
-
-/** What a decision's receipt tells the reader. */
-export function describeResolution(
-  decision: 'approve' | 'deny' | 'reject',
-  receipt: string,
-): string {
-  if (receipt === 'superseded') {
-    return 'The approval was gated again and is still pending. Review the new request.';
-  }
-  if (decision === 'approve') return 'Approved.';
-  return decision === 'deny' ? 'Denied.' : 'Rejected with feedback.';
 }

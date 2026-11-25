@@ -9,16 +9,18 @@
     note = '',
     children,
     controls,
+    class: className,
   }: {
     actions: ToolApprovalActions;
     label: string;
     note?: string;
     children?: Snippet;
     controls?: Snippet;
+    class?: string;
   } = $props();
 </script>
 
-<div role="group" aria-label={label}>
+<div role="group" aria-label={label} class={className}>
   {#if controls}
     {@render controls()}
   {:else}

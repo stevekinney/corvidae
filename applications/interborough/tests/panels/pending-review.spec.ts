@@ -10,6 +10,10 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { buildPanelPage } from '../../src/host/panel-build.ts';
 import { MCP_APP_UI_META } from '../../src/host/panel-mounts.ts';
+import { deleteChats, newThreadId, runToEnd } from '../e2e/chat-support.ts';
+import { E2E_BASE_URL } from '../e2e/e2e-constants.ts';
+import { REMEMBER_APPROVAL_AGENT } from '../e2e/regeneration-proof-agent.ts';
+import { bureauCall, waitingReviewOf } from '../e2e/task-support.ts';
 import {
   expectFollowsHost,
   firstDurationSeconds,
@@ -42,6 +46,7 @@ test.beforeAll(async () => {
 });
 
 const review = (id: string, overrides: Record<string, unknown> = {}) => ({
+  source: 'bureau',
   id,
   runId: `run-${id}`,
   kind: 'tool-approval',
@@ -61,7 +66,13 @@ const review = (id: string, overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-async function open(page: Page, reviews: unknown[], scheme?: Scheme) {
+async function open(
+  page: Page,
+  reviews: unknown[],
+  scheme?: Scheme,
+  snapshotOnly = false,
+  trustedRefund = false,
+) {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.route(`${HOST_ORIGIN}/`, (route) =>
@@ -79,14 +90,25 @@ async function open(page: Page, reviews: unknown[], scheme?: Scheme) {
       reviews: { id: string }[];
       title: string;
       hostContext: unknown;
+      snapshotOnly: boolean;
+      trustedRefund: boolean;
     }
   >(
-    async ({ html, csp, reviews: queue, title, hostContext }) => {
+    async ({ html, csp, reviews: queue, title, hostContext, snapshotOnly, trustedRefund }) => {
       const host = window.referenceHost;
+      if (snapshotOnly) {
+        host.withoutServerTools = true;
+        host.toolResult = {
+          content: [{ type: 'text', text: 'Opening snapshot' }],
+          structuredContent: { reviews: queue },
+        };
+      }
       const state = { queue: [...queue] as { id: string; status: string }[] };
       Object.assign(window, { queueState: state });
       host.handlers['bureau.reviews.list'] = () => ({
         reviews: state.queue.filter((item) => item.status === 'pending'),
+        nextPageToken: null,
+        total: state.queue.filter((item) => item.status === 'pending').length,
       });
       host.handlers['bureau.reviews.get'] = (args) => {
         const found = state.queue.find((item) => item.id === args['id']);
@@ -104,6 +126,23 @@ async function open(page: Page, reviews: unknown[], scheme?: Scheme) {
           receipt: 'applied',
         };
       };
+      if (trustedRefund) {
+        const metadata = { 'interborough.reviewEligibility': [{ id: 'protected', round: 0 }] };
+        host.rawHandlers['bureau.reviews.list'] = () => ({
+          content: [],
+          structuredContent: {
+            reviews: state.queue.filter((item) => item.status === 'pending'),
+            nextPageToken: null,
+            total: state.queue.filter((item) => item.status === 'pending').length,
+          },
+          _meta: metadata,
+        });
+        host.rawHandlers['bureau.reviews.get'] = (args) => ({
+          content: [],
+          structuredContent: state.queue.find((item) => item.id === args['id']),
+          _meta: metadata,
+        });
+      }
       await host.mount(html, csp, {}, title, hostContext as McpUiHostContext | undefined);
     },
     {
@@ -112,6 +151,8 @@ async function open(page: Page, reviews: unknown[], scheme?: Scheme) {
       reviews: reviews as { id: string }[],
       title: TITLE,
       hostContext: scheme === undefined ? undefined : hostContextFor(scheme),
+      snapshotOnly,
+      trustedRefund,
     },
   );
   return { errors, app: page.frameLocator(`iframe[title="${TITLE}"]`) };
@@ -121,6 +162,142 @@ const calls = (page: Page, name: string) =>
   page.evaluate((tool) => window.referenceHost.calls.filter((call) => call.name === tool), name);
 
 test.describe('the pending-review MCP App', () => {
+  test('approves a real ordinary review through the mounted panel and host bridge', async ({
+    page,
+    request,
+  }) => {
+    const threadId = newThreadId('pending-panel-real-approval');
+    try {
+      await runToEnd(
+        request,
+        REMEMBER_APPROVAL_AGENT,
+        threadId,
+        'Record the harmless fixture value',
+      );
+      const waiting = await waitingReviewOf(request, threadId);
+      const displayed = (await bureauCall(request, 'bureau.reviews.get', { id: waiting.id })) as {
+        id: string;
+        round: number;
+        status: string;
+      };
+      expect(displayed.status).toBe('pending');
+      const resource = await request.get(
+        `${E2E_BASE_URL}/host/plugins/inspectors/apps/${pendingReview.name}`,
+      );
+      expect(resource.ok()).toBe(true);
+      const mounted = (await resource.json()) as { html: string; ui: { csp: McpUiResourceCsp } };
+      const forwarded: Array<{ name: string; arguments: Record<string, unknown> }> = [];
+      await page.exposeFunction(
+        'forwardPendingReview',
+        async (name: string, args: Record<string, unknown>) => {
+          forwarded.push({ name, arguments: args });
+          const response = await request.post(
+            `${E2E_BASE_URL}/host/plugins/inspectors/apps/${pendingReview.name}/tool-calls`,
+            { data: { name, arguments: args } },
+          );
+          const body = (await response.json()) as Record<string, unknown>;
+          return Array.isArray(body['content'])
+            ? body
+            : {
+                isError: true,
+                content: [{ type: 'text', text: 'The host refused the operation.' }],
+              };
+        },
+      );
+      await page.route(`${HOST_ORIGIN}/`, (route) =>
+        route.fulfill({
+          contentType: 'text/html',
+          body: `<!doctype html><title>Reference host</title><script type="module">${hostScript}</script>`,
+        }),
+      );
+      await page.goto(`${HOST_ORIGIN}/`);
+      await page.evaluate(
+        async ({ html, csp, title, tools }) => {
+          const host = window.referenceHost;
+          const forward = (
+            window as unknown as Record<string, (...args: unknown[]) => Promise<never>>
+          )['forwardPendingReview']!;
+          for (const tool of tools) host.rawHandlers[tool] = (args) => forward(tool, args);
+          await host.mount(html, csp, {}, title);
+        },
+        {
+          html: mounted.html,
+          csp: mounted.ui.csp,
+          title: TITLE,
+          tools: pendingReview.allowedTools,
+        },
+      );
+      const app = page.frameLocator(`iframe[title="${TITLE}"]`);
+      const section = app.getByRole('region').filter({ hasText: 'remember-proof-mutation' });
+      await section.getByRole('button', { name: 'Approve' }).click();
+      await expect
+        .poll(() => forwarded.filter((call) => call.name === 'bureau.reviews.resolve'))
+        .toHaveLength(1);
+      expect(
+        forwarded.find((call) => call.name === 'bureau.reviews.resolve')?.arguments,
+      ).toMatchObject({ id: displayed.id, round: displayed.round, decision: 'approve' });
+      await expect
+        .poll(
+          async () =>
+            (
+              (await bureauCall(request, 'bureau.reviews.get', { id: displayed.id })) as {
+                status: string;
+              }
+            ).status,
+        )
+        .toBe('approved');
+    } finally {
+      await deleteChats([threadId]);
+    }
+  });
+
+  test('shows an uncorrelated missing-round snapshot read-only', async ({ page }) => {
+    const item = review('snapshot');
+    delete (item as { round?: number }).round;
+    const { app } = await open(page, [item], undefined, true);
+    await expect(app.getByRole('heading', { level: 2 })).toBeVisible();
+    await expect(app.getByRole('button', { name: 'Approve' })).toBeDisabled();
+    expect(await calls(page, 'bureau.reviews.resolve')).toHaveLength(0);
+  });
+
+  test('keeps a protected refund read-only when serverTools is the only authority', async ({
+    page,
+  }) => {
+    const protectedReview = review('protected', {
+      effect: {
+        kind: 'refund',
+        refundId: 'refund-1',
+        orderId: 'order-1',
+        cents: 4200,
+        currency: 'USD',
+        status: 'admitted',
+      },
+    });
+    const { app } = await open(page, [protectedReview]);
+    await expect(app.getByText(/\$42\.00 for order order-1/)).toBeVisible();
+    await expect(app.getByRole('button', { name: 'Approve' })).toBeDisabled();
+    expect(await calls(page, 'bureau.reviews.resolve')).toHaveLength(0);
+  });
+
+  test('uses matching trusted-parent eligibility for a protected review', async ({ page }) => {
+    const protectedReview = review('protected', {
+      effect: {
+        kind: 'refund',
+        refundId: 'refund-1',
+        orderId: 'order-1',
+        cents: 4200,
+        currency: 'USD',
+        status: 'admitted',
+      },
+    });
+    const { app } = await open(page, [protectedReview], undefined, false, true);
+    const approve = app.getByRole('button', { name: 'Approve' });
+    await expect(approve).toBeEnabled();
+    await approve.click();
+    await expect(app.getByRole('status')).toHaveText('Approved.');
+    const [call] = await calls(page, 'bureau.reviews.resolve');
+    expect(call?.arguments).toMatchObject({ id: 'protected', round: 0, decision: 'approve' });
+  });
   test('lists the current reviews and offers each its three decisions', async ({ page }) => {
     const { app, errors } = await open(page, [review('a'), review('b', { agentName: 'other' })]);
     await expect(app.getByRole('heading', { level: 1, name: 'Pending reviews (2)' })).toBeVisible();
@@ -143,6 +320,54 @@ test.describe('the pending-review MCP App', () => {
     await page.keyboard.press('Enter');
     await expect(app.getByRole('status')).toHaveText('Approved.');
     await expect(app.getByRole('heading', { level: 1 })).toHaveText('Pending reviews (0)');
+    expect(await calls(page, 'bureau.reviews.resolve')).toHaveLength(1);
+  });
+
+  test('fences a double click and keyboard activation while a decision is pending', async ({
+    page,
+  }) => {
+    const { app } = await open(page, [review('a')]);
+    await page.evaluate(() => {
+      window.referenceHost.handlers['bureau.reviews.resolve'] = async () => {
+        await new Promise<void>((resolve) => {
+          Object.assign(window, { releaseReview: resolve });
+        });
+        return { id: 'a', kind: 'tool-approval', decision: 'approve', receipt: 'applied' };
+      };
+    });
+    const approve = app.getByRole('button', { name: 'Approve' });
+    await approve.click();
+    await expect
+      .poll(async () => {
+        const resolved = await calls(page, 'bureau.reviews.resolve');
+        return resolved.length;
+      })
+      .toBe(1);
+    await approve.dispatchEvent('click');
+    await approve.dispatchEvent('click');
+    await approve.dispatchEvent('keydown', { key: 'Enter' });
+    expect(await calls(page, 'bureau.reviews.resolve')).toHaveLength(1);
+    await page.evaluate(() => (window as unknown as { releaseReview(): void }).releaseReview());
+  });
+
+  test('reconciles a lost response before allowing another decision', async ({ page }) => {
+    const { app } = await open(page, [review('a')]);
+    await page.evaluate(() => {
+      window.referenceHost.handlers['bureau.reviews.resolve'] = () => {
+        (
+          window as unknown as { queueState: { queue: { status: string }[] } }
+        ).queueState.queue[0]!.status = 'approved';
+        throw new Error('response lost');
+      };
+    });
+    await app.getByRole('button', { name: 'Approve' }).click();
+    await expect(app.getByRole('status')).toContainText('could not be confirmed');
+    await expect
+      .poll(async () => {
+        const reads = await calls(page, 'bureau.reviews.get');
+        return reads.length;
+      })
+      .toBeGreaterThan(1);
     expect(await calls(page, 'bureau.reviews.resolve')).toHaveLength(1);
   });
 
@@ -196,9 +421,7 @@ test.describe('the pending-review MCP App', () => {
       ).queueState.queue[0]!.status = 'approved';
     });
     await app.getByRole('button', { name: 'Deny' }).click();
-    await expect(
-      app.getByText('This review is already approved. It was not decided.'),
-    ).toBeVisible();
+    await expect(app.getByText('This review is no longer pending.')).toBeVisible();
     expect(await calls(page, 'bureau.reviews.resolve')).toHaveLength(0);
   });
 
@@ -225,7 +448,7 @@ test.describe('the pending-review MCP App', () => {
       };
     });
     await app.getByRole('button', { name: 'Approve' }).click();
-    await expect(app.getByRole('status')).toContainText('The decision was refused');
+    await expect(app.getByRole('status')).toContainText('The decision could not be confirmed');
     await expect(app.getByRole('heading', { level: 2 })).toBeVisible();
     const resolves = await calls(page, 'bureau.reviews.resolve');
     expect(resolves).toHaveLength(1);
@@ -269,12 +492,13 @@ test.describe('the pending-review MCP App', () => {
       });
     });
     await app.getByRole('button', { name: 'Approve' }).click();
-    await expect(app.getByRole('status')).toContainText('Approved. Warning');
+    await expect(app.getByRole('status')).toContainText('The decision took effect');
     await expect(app.getByRole('status')).not.toContainText('refused');
   });
 
   test('lists a human wait without offering to approve it', async ({ page }) => {
     const wait = {
+      source: 'bureau',
       id: 'w',
       runId: 'run-w',
       kind: 'human-wait',
@@ -324,6 +548,8 @@ test.describe('the pending-review MCP App', () => {
     await page.evaluate(() => {
       window.referenceHost.handlers['bureau.reviews.list'] = () => ({
         reviews: (window as unknown as { queueState: { queue: unknown[] } }).queueState.queue,
+        nextPageToken: null,
+        total: (window as unknown as { queueState: { queue: unknown[] } }).queueState.queue.length,
       });
     });
     await expect(app.getByRole('status')).toHaveText('Reconnected.');

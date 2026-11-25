@@ -3,32 +3,48 @@ import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, it } from 'bun:test';
 import { tick } from 'svelte';
 
-import { viewReview } from './model.ts';
+import { viewReview, type ReviewView } from './model.ts';
 import ReviewList from './review-list.svelte';
 import { createReviewsView, type ReviewsView } from './view.svelte.ts';
 
 const review = {
+  source: 'bureau' as const,
   id: 'r<1>',
   runId: 'run-1',
+  sessionId: 'session-1',
   kind: 'tool-approval' as const,
-  status: 'pending',
+  status: 'pending' as const,
   agentName: '<b>worker</b>',
   requestedAt: 0,
-  approval: { toolName: 'shell' },
+  ageMilliseconds: 0,
+  round: 0,
+  approval: {
+    callId: 'call-1',
+    toolName: 'shell',
+    arguments: {},
+    action: { type: 'input' as const },
+  },
 };
 
-function open(views = [viewReview(review, 0)]) {
+function open(views: ReviewView[] = [{ ...viewReview(review, 0), actionableReview: review }]) {
   const calls: string[] = [];
   const view: ReviewsView = createReviewsView();
   view.views = views;
   const handlers = {
-    onDecide: (id: string, decision: 'approve' | 'deny') => calls.push(`${decision}:${id}`),
     onOpenReject: (id: string) => calls.push(`open:${id}`),
     onCancelReject: (id: string) => calls.push(`cancel:${id}`),
     onDraft: (id: string, text: string) => calls.push(`draft:${id}:${text}`),
-    onReject: (id: string) => calls.push(`reject:${id}`),
   };
-  return { view, calls, ...render(ReviewList, { props: { view, handlers } }) };
+  const actionsFor = () => ({
+    disabled: false,
+    canRemember: false,
+    approve: () => calls.push(`approve:${review.id}`),
+    deny: () => calls.push(`deny:${review.id}`),
+    reject: () => calls.push(`reject:${review.id}`),
+    remember() {},
+    async reconcile() {},
+  });
+  return { view, calls, ...render(ReviewList, { props: { view, handlers, actionsFor } }) };
 }
 
 describe('the pending-review page, drawn with Cinder (COR-2218)', () => {
@@ -58,15 +74,10 @@ describe('the pending-review page, drawn with Cinder (COR-2218)', () => {
     expect(container.textContent).toContain('Nothing is waiting for a decision.');
   });
 
-  it('calls the handler once per click and disables every decision while one is in flight', async () => {
-    const { view, calls, getByRole } = open();
+  it('calls the shared approval action', async () => {
+    const { calls, getByRole } = open();
     (getByRole('button', { name: 'Approve' }) as HTMLButtonElement).click();
     expect(calls).toEqual(['approve:r<1>']);
-    view.rows.set('r<1>', { busy: true, outcome: null, rejecting: false, draft: '' });
-    await tick();
-    for (const name of ['Approve', 'Deny', 'Reject with feedback']) {
-      expect((getByRole('button', { name }) as HTMLButtonElement).disabled, name).toBe(true);
-    }
   });
 
   it('offers no decision for an expired review', () => {
@@ -82,10 +93,16 @@ describe('the pending-review page, drawn with Cinder (COR-2218)', () => {
     expect([...container.querySelectorAll('button')].every((button) => button.disabled)).toBe(true);
   });
 
+  it('keeps an uncorrelated snapshot without a round read-only', () => {
+    const { round: _round, ...snapshot } = review;
+    const { container } = open([viewReview(snapshot, 0)]);
+    expect(container.querySelector('h2')?.textContent).toContain('worker');
+    expect([...container.querySelectorAll('button')].every((button) => button.disabled)).toBe(true);
+  });
+
   it('shows what happened to a review under it, and in the live region', async () => {
     const { view, container } = open();
     view.rows.set('r<1>', {
-      busy: false,
       outcome: 'Approved.',
       rejecting: false,
       draft: '',
@@ -99,7 +116,7 @@ describe('the pending-review page, drawn with Cinder (COR-2218)', () => {
   it('requires a non-blank reason to send a rejection and keeps the draft and focus across a redraw', async () => {
     const { view, calls, container, getByLabelText, getByRole } = open();
     const rejecting = (draft: string) =>
-      view.rows.set('r<1>', { busy: false, outcome: null, rejecting: true, draft });
+      view.rows.set('r<1>', { outcome: null, rejecting: true, draft });
     rejecting('  ');
     await tick();
     const send = () => getByRole('button', { name: 'Send rejection' }) as HTMLButtonElement;
@@ -115,7 +132,7 @@ describe('the pending-review page, drawn with Cinder (COR-2218)', () => {
     // A poll redraws the list: the reason box is the same element, with its text and the focus.
     reason.focus();
     reason.setSelectionRange(2, 5);
-    view.views = [viewReview(review, 1)];
+    view.views = [{ ...viewReview(review, 1), actionableReview: review }];
     view.announcement = '1 new review.';
     await tick();
     expect(getByLabelText('Feedback for the agent')).toBe(reason);
@@ -128,7 +145,7 @@ describe('the pending-review page, drawn with Cinder (COR-2218)', () => {
 
   it('reports what is typed into the reason box', async () => {
     const { view, calls, getByLabelText } = open();
-    view.rows.set('r<1>', { busy: false, outcome: null, rejecting: true, draft: '' });
+    view.rows.set('r<1>', { outcome: null, rejecting: true, draft: '' });
     await tick();
     await fireEvent.input(getByLabelText('Feedback for the agent'), { target: { value: 'no' } });
     expect(calls).toEqual(['draft:r<1>:no']);

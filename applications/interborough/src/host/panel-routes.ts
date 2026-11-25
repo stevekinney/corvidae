@@ -54,6 +54,14 @@ type Refuse = (request: Request) => Response | undefined;
 /** Sends a request to the Bureau's handler, with the `/bureau` prefix already removed. */
 export type CallBureau = (request: Request) => Promise<Response>;
 
+/** A host-side decision derived from the authenticated caller and the current review. */
+export type PanelReviewEligibility = (
+  request: Request,
+  id: string,
+  round: number,
+  purpose: 'read' | 'resolve',
+) => Promise<'ordinary' | 'authorized' | 'denied'>;
+
 const JSON_HEADERS = { 'x-content-type-options': 'nosniff', 'cache-control': 'no-store' };
 
 function refusal(status: number, error: string, message: string): Response {
@@ -99,7 +107,12 @@ function toolErrorOf(message: unknown): Record<string, unknown> | undefined {
  * The routes to merge into the host's `routes`. `apps` is what the host built at startup and
  * `callBureau` reaches the Bureau's handler.
  */
-export function panelRoutes(apps: readonly ServedPanel[], refuse: Refuse, callBureau: CallBureau) {
+export function panelRoutes(
+  apps: readonly ServedPanel[],
+  refuse: Refuse,
+  callBureau: CallBureau,
+  reviewEligibility?: PanelReviewEligibility,
+) {
   // Snapshotted once, so nothing a caller does to the list afterwards changes what a panel may call.
   const served = apps.map((each) => ({ ...each, allowedTools: [...each.allowedTools] }));
   const find = (plugin: string, name: string) =>
@@ -127,6 +140,23 @@ export function panelRoutes(apps: readonly ServedPanel[], refuse: Refuse, callBu
     }
     if (!name.startsWith(BUREAU_TOOL_PREFIX) || !app.allowedTools.includes(name)) {
       return refusal(403, 'forbidden-tool', 'This panel may not call that tool.');
+    }
+    const reviewsPanel = app.uri === 'ui://inspectors/pending-review/v1';
+    if (reviewsPanel && name === 'bureau.reviews.resolve') {
+      const id = Object.hasOwn(args, 'id') ? Reflect.get(args, 'id') : undefined;
+      const round = Object.hasOwn(args, 'round') ? Reflect.get(args, 'round') : undefined;
+      if (
+        Object.hasOwn(args, 'decisionSurface') ||
+        typeof id !== 'string' ||
+        id.length === 0 ||
+        typeof round !== 'number' ||
+        !Number.isSafeInteger(round) ||
+        round < 0 ||
+        !reviewEligibility ||
+        (await reviewEligibility(request, id, round, 'resolve')) === 'denied'
+      ) {
+        return refusal(403, 'forbidden', 'This panel may not decide that review.');
+      }
     }
     const hostOnly = app.hostOnlyTools.includes(name);
     // A host-only tool goes to `/jsonrpc`, which also answers operations no MCP client may call, so
@@ -186,6 +216,47 @@ export function panelRoutes(apps: readonly ServedPanel[], refuse: Refuse, callBu
     }
     // Nothing the Bureau said is repeated: an error may hold a path or a value.
     if (result === undefined) return refusal(502, 'failed', 'The tool did not answer.');
+    if (reviewsPanel && (name === 'bureau.reviews.list' || name === 'bureau.reviews.get')) {
+      const content = result['structuredContent'];
+      const value =
+        content && typeof content === 'object' && !Array.isArray(content) ? content : undefined;
+      const reviews =
+        value && 'reviews' in value && Array.isArray(value.reviews) ? value.reviews : [value];
+      const authorized: { id: string; round: number }[] = [];
+      if (reviewEligibility && result['isError'] !== true) {
+        for (const review of reviews) {
+          if (
+            !review ||
+            typeof review !== 'object' ||
+            !Object.hasOwn(review, 'id') ||
+            !Object.hasOwn(review, 'round')
+          )
+            continue;
+          const effect = Object.hasOwn(review, 'effect')
+            ? Reflect.get(review, 'effect')
+            : undefined;
+          if (
+            !effect ||
+            typeof effect !== 'object' ||
+            !Object.hasOwn(effect, 'kind') ||
+            Reflect.get(effect, 'kind') !== 'refund'
+          )
+            continue;
+          const id = Reflect.get(review, 'id');
+          const round = Reflect.get(review, 'round');
+          if (
+            typeof id === 'string' &&
+            id.length > 0 &&
+            typeof round === 'number' &&
+            Number.isSafeInteger(round) &&
+            round >= 0 &&
+            (await reviewEligibility(request, id, round, 'read')) === 'authorized'
+          )
+            authorized.push({ id, round });
+        }
+      }
+      result['_meta'] = { 'interborough.reviewEligibility': authorized };
+    }
     return Response.json(result, { headers: JSON_HEADERS });
   }
 
