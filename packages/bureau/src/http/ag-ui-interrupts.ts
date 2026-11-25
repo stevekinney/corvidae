@@ -278,6 +278,21 @@ export function toInterrupt(review: PendingReview): Interrupt {
   };
 }
 
+/** A reviewed tool's policy text may contain server-owned arguments. */
+export function redactReviewedInterrupt(interrupt: Interrupt): Interrupt {
+  if (interrupt.reason !== 'tool-approval') return interrupt;
+  const { message: _message, metadata, ...safe } = interrupt;
+  const raw = metadata?.[BUREAU_METADATA_KEY];
+  const fields =
+    raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const publicFields = Object.fromEntries(
+    ['kind', 'runId', 'sessionId', 'round', 'toolName', 'risk']
+      .filter((key) => Object.hasOwn(fields, key))
+      .map((key) => [key, fields[key]]),
+  );
+  return { ...safe, metadata: { [BUREAU_METADATA_KEY]: publicFields } };
+}
+
 /**
  * The key that identifies a set of interrupts in the command ledger: the sorted
  * `[id, round]` pairs, serialized as JSON. A join with delimiters would not be

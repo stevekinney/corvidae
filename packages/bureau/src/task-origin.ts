@@ -79,6 +79,34 @@ export interface ScheduleTaskOrigin {
 export interface ApiTaskOrigin {
   /** Discriminant. */
   readonly kind: 'api';
+  /** Server-owned provenance for a reviewed tool's one permitted call. */
+  readonly reviewedTool?: ReviewedToolProvenance;
+}
+
+export interface ReviewedToolProvenance {
+  readonly agent: string;
+  readonly tool: string;
+  readonly step: number;
+  readonly result: number;
+  readonly callId: string;
+}
+
+const trustedReviewedOrigins = new WeakSet<object>();
+
+/** An internal capability: a wire-supplied object cannot create a reviewed origin. */
+export function reviewedToolOrigin(provenance: ReviewedToolProvenance): ApiTaskOrigin {
+  const origin = Object.freeze({
+    kind: 'api' as const,
+    reviewedTool: Object.freeze({ ...provenance }),
+  });
+  trustedReviewedOrigins.add(origin);
+  return origin;
+}
+
+export function isTrustedReviewedOrigin(
+  origin: unknown,
+): origin is ApiTaskOrigin & { readonly reviewedTool: ReviewedToolProvenance } {
+  return typeof origin === 'object' && origin !== null && trustedReviewedOrigins.has(origin);
 }
 
 /**
@@ -260,6 +288,7 @@ export function isTaskOriginKind(value: unknown): value is TaskOriginKind {
 export function parseStartTaskOrigin(value: unknown): StartTaskOrigin | undefined {
   if (value === undefined) return undefined;
   if (!isRecordOf(value)) throw new TypeError('"options.origin" must be an object');
+  if (isTrustedReviewedOrigin(value)) return value;
   const kind = value['kind'];
   if (kind === 'chat' || kind === 'api') return { kind };
   if (kind === 'person') {
@@ -291,6 +320,7 @@ export function taskOriginOfStart(
   declared: StartTaskOrigin | undefined,
   start: { readonly sessionId: string; readonly agentName: string; readonly owner: string },
 ): TaskOrigin {
+  if (isTrustedReviewedOrigin(declared)) return declared;
   if (declared === undefined || declared.kind === 'api') return { kind: 'api' };
   if (declared.kind === 'person') {
     return { kind: 'person', principal: start.owner, surface: declared.surface };

@@ -64,7 +64,7 @@ import {
   type Tool,
 } from 'armorer';
 
-import { withToolboxLayer } from './toolbox-additions';
+import { extendToolbox, withToolboxLayer } from './toolbox-additions';
 
 /** The values a tool's `approvals` entry may take. */
 export const TOOL_APPROVAL_MODES = ['never', 'on-changes', 'always', 'blocked'] as const;
@@ -405,8 +405,9 @@ export function withChatPermission(
     // Nothing to hold yet, and a toolbox that refuses every call keeps its refusal. A new object
     // all the same: a layer's result must not be the toolbox it wraps.
     if (held.length === 0) return { ...inner };
-    return inner.extend(
-      ...held.map((tool) => ({
+    return extendToolbox(
+      inner,
+      held.map((tool) => ({
         ...tool,
         policy: withChatPermissionDecision(tool.policy, standingOf(tool)),
         policyContext: async (context: ToolPolicyContext) => ({

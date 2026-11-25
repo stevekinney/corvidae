@@ -501,6 +501,25 @@ describe('the tool-approval action projection', () => {
 });
 
 describe('bureau.reviews.get', () => {
+  it('projects only public arguments without changing the stored signed call', async () => {
+    const review = toolApprovalReview();
+    if (review.kind !== 'tool-approval') throw new Error('expected tool approval');
+    review.approval.arguments = { itemId: 'one', internalId: 'private' };
+    const handler = serve({
+      ...stubHost({ get: async () => review }),
+      reviewPolicy: {
+        matches: () => true,
+        mayRead: () => true,
+        mayDecide: () => true,
+        publicArguments: () => ({ itemId: 'one' }),
+        effect: async () => undefined,
+      },
+    });
+    const response = await call(handler, 'bureau.reviews.get', { id: review.id });
+    expect(response.result).toMatchObject({ approval: { arguments: { itemId: 'one' } } });
+    expect(JSON.stringify(response.result)).not.toContain('private');
+    expect(review.approval.arguments).toEqual({ itemId: 'one', internalId: 'private' });
+  });
   it('projects the current remember permission and fails closed when unavailable', async () => {
     const review = toolApprovalReview();
     const permitted = serve(stubHost({ get: async () => review, mayRemember: async () => true }));
@@ -1413,6 +1432,22 @@ describe('the reviews operations against a real Bureau', () => {
           remember: true,
         });
         expect(remembered.error).toBeDefined();
+        expect(charges).toEqual([]);
+        expect(
+          await rejectionOf(
+            bureau.reviews.resolve({
+              id: review!.id,
+              decision: 'approve',
+              principal: 'api-key:tester',
+              reviewer: principalFromApiKey({ subject: 'tester', scopes: [] }),
+              round: 0,
+              arguments: { cents: 1 },
+            }),
+          ),
+        ).toBeInstanceOf(Error);
+        expect(
+          (await call(handler, 'bureau.reviews.get', { id: review?.id })).result,
+        ).toMatchObject({ status: 'pending', round: 0 });
         expect(charges).toEqual([]);
         expect(
           await rejectionOf(

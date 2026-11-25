@@ -520,6 +520,7 @@
         "@a2a-js/sdk": "catalog:",
         "@ag-ui/core": "catalog:",
         "@lostgradient/backchannel": "workspace:*",
+        "@lostgradient/backchannel-armorer": "workspace:*",
         "@lostgradient/backchannel-mcp": "workspace:*",
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/interborough-plugin": "workspace:*",

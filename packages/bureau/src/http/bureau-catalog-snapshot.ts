@@ -2,9 +2,11 @@ import type { CatalogSnapshot } from '@lostgradient/backchannel';
 import {
   createOperationRegistry,
   snapshotOperationCatalog,
+  type RegistrableOperation,
 } from '@lostgradient/backchannel/internals';
+import type { z } from 'zod';
 
-import { BUREAU_HANDLER_OPERATIONS, type BureauHandlerHost } from './create-bureau-handler.ts';
+import { composeBureauOperations, type BureauHandlerHost } from './create-bureau-handler.ts';
 
 /**
  * Capture the operations `createBureauHandler` serves as a {@link CatalogSnapshot}: sorted by name,
@@ -20,9 +22,14 @@ import { BUREAU_HANDLER_OPERATIONS, type BureauHandlerHost } from './create-bure
  * console.log(snapshot.operations.some((operation) => operation.name === 'bureau.tasks.list'));
  * ```
  */
-export function createBureauCatalogSnapshot(): CatalogSnapshot {
+export function createBureauCatalogSnapshot(
+  contributions: readonly RegistrableOperation<BureauHandlerHost>[] = [],
+  effects: readonly z.ZodObject[] = [],
+): CatalogSnapshot {
   return snapshotOperationCatalog({
-    operations: createOperationRegistry<BureauHandlerHost>(BUREAU_HANDLER_OPERATIONS).list(),
+    operations: createOperationRegistry<BureauHandlerHost>(
+      composeBureauOperations(contributions, effects),
+    ).list(),
     restBindings: [],
   });
 }

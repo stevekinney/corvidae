@@ -80,12 +80,37 @@ function matches(schema: Schema, value: unknown): boolean {
 
 const schemas: Readonly<Record<string, Schema>> = reviewsOutputSchemas;
 
+/** Omit effects the portable contract does not understand before exposing a review to a caller. */
+function publicReview(value: unknown): unknown {
+  if (!value || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value;
+  const source = value as Record<string, unknown>;
+  if (source['kind'] !== 'tool-approval' || !Object.hasOwn(source, 'effect')) return value;
+  const effect = source['effect'];
+  if (!effect || typeof effect !== 'object' || Array.isArray(effect)) return value;
+  const kind = (effect as Record<string, unknown>)['kind'];
+  const known = schemas['bureau.reviews.get']?.oneOf?.find(
+    (branch) => branch.properties?.['kind']?.const === 'tool-approval',
+  )?.properties?.['effect']?.properties?.['kind']?.const;
+  if (typeof kind !== 'string' || kind.length === 0 || kind === known) return value;
+  const copy = { ...source };
+  delete copy['effect'];
+  return copy;
+}
+
+function withoutUnknownEffects(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const source = value as Record<string, unknown>;
+  if (!Array.isArray(source['reviews'])) return publicReview(value);
+  return { ...source, reviews: source['reviews'].map(publicReview) };
+}
+
 /** Validate the declared Reviews outputs without changing the caller's transport or input. */
 export function validatedReviewsTransport(transport: CatalogTransport): CatalogTransport {
   return async (name, input, options) => {
     if (!Object.hasOwn(schemas, name) || name === 'opening')
       throw new TypeError(`Unsupported Reviews operation: ${name}`);
-    const value = await transport(name, input, options);
+    const value = withoutUnknownEffects(await transport(name, input, options));
     if (!matches(schemas[name]!, value)) throw new TypeError(`Invalid ${name} response`);
     return value;
   };
@@ -96,6 +121,7 @@ export function validatedReviewsTransport(transport: CatalogTransport): CatalogT
 
 /** Parse uncorrelated panel opening data as display-only; no authority is inferred. */
 export function parseReviewsOpeningSnapshot(value: unknown): ReviewsOpeningSnapshot | undefined {
+  value = withoutUnknownEffects(value);
   if (!matches(schemas['opening']!, value)) return undefined;
   let copy: unknown;
   try {

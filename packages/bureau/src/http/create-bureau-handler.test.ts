@@ -5,8 +5,15 @@ import {
   SessionCreatedEvent,
   SteeringAcceptedEvent,
 } from '@lostgradient/operative';
-import { type OperationHandlerMount, principalFromApiKey } from '@lostgradient/backchannel';
+import {
+  defineOperation,
+  type OperationHandlerMount,
+  principalFromApiKey,
+  unauthenticatedLocalAuthContext,
+} from '@lostgradient/backchannel';
 import { describe, expect, it } from 'bun:test';
+import { z } from 'zod';
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 
 import { createMemoryAssetStorage } from '../assets/storage';
 import { createBureau } from '../create-bureau.ts';
@@ -70,6 +77,114 @@ async function withBureau<T>(
 }
 
 describe('createBureauHandler options', () => {
+  it('uses a host request authenticator before serving any route', async () => {
+    await withBureau({}, async (bureau) => {
+      const seen: Request[] = [];
+      const handler = createBureauHandler(bureau, {
+        authenticateRequest: async (request) => {
+          seen.push(request);
+          return request.headers.has('x-write-token')
+            ? {
+                method: 'api-key',
+                principal: principalFromApiKey({ subject: 'alice', scopes: [] }),
+              }
+            : new Response('Forbidden', { status: 403 });
+        },
+      });
+      const denied = get('/v1/health', { cookie: 'session=valid' });
+      const allowed = get('/v1/health', { cookie: 'session=valid', 'x-write-token': 'ok' });
+      expect((await handler(denied)).status).toBe(403);
+      expect((await handler(allowed)).status).toBe(200);
+      expect(seen).toEqual([denied, allowed]);
+      expect(() =>
+        createBureauHandler(bureau, {
+          authentication: allScopes,
+          authenticateRequest: async () => new Response(null, { status: 401 }),
+        }),
+      ).toThrow();
+    });
+  });
+  it('serves contributed operations through the host request and cookie write policy', async () => {
+    await withBureau({}, async (bureau) => {
+      const requests: Request[] = [];
+      let calls = 0;
+      const operation = defineOperation({
+        name: 'fixture.inventory.change',
+        summary: 'Change inventory',
+        mcpExposable: true,
+        behavior: { kind: 'command' },
+        destructive: false,
+        inputSchema: z.strictObject({ itemId: z.string() }),
+        outputSchema: z.strictObject({ itemId: z.string() }),
+        access: { kind: 'authenticated' },
+        transports: {
+          http: false,
+          jsonRpcHttp: true,
+          jsonRpcWebSocket: false,
+          jsonRpcStdio: false,
+        },
+        unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+        invoke: async ({ input }) => {
+          calls++;
+          return input;
+        },
+      });
+      const handler = createBureauHandler(bureau, {
+        operations: [operation],
+        mcp: {},
+        authenticateRequest: async (request) => {
+          requests.push(request);
+          return request.headers.get('x-write-token') === 'allowed'
+            ? unauthenticatedLocalAuthContext()
+            : new Response('Forbidden', { status: 403 });
+        },
+      });
+      const denied = jsonRpc(
+        'fixture.inventory.change',
+        { itemId: 'one' },
+        { cookie: 'session=valid' },
+      );
+      expect((await handler(denied)).status).toBe(403);
+      expect(calls).toBe(0);
+      const admitted = jsonRpc(
+        'fixture.inventory.change',
+        { itemId: 'one' },
+        { cookie: 'session=valid', 'x-write-token': 'allowed' },
+      );
+      expect(await (await handler(admitted)).json()).toMatchObject({ result: { itemId: 'one' } });
+      expect(calls).toBe(1);
+      expect(requests).toEqual([denied, admitted]);
+      const privateInput = jsonRpc(
+        'fixture.inventory.change',
+        { itemId: 'one', internalId: 'hidden' },
+        { 'x-write-token': 'allowed' },
+      );
+      expect(await (await handler(privateInput)).json()).toHaveProperty('error');
+      expect(calls).toBe(1);
+      const transport = new StreamableHTTPClientTransport(new URL('http://localhost/mcp'), {
+        fetch: (url, init) => {
+          const request = new Request(url, init);
+          request.headers.set('x-write-token', 'allowed');
+          return handler(request);
+        },
+      });
+      const client = new Client({ name: 'fixture', version: '1.0.0' });
+      await client.connect(transport);
+      try {
+        const tools = await client.listTools();
+        expect(tools.tools.filter((tool) => tool.name === operation.name)).toHaveLength(1);
+        expect(tools.tools.find((tool) => tool.name === operation.name)?.inputSchema).toMatchObject(
+          {
+            properties: { itemId: { type: 'string' } },
+            required: ['itemId'],
+          },
+        );
+      } finally {
+        await client.close();
+      }
+      expect(calls).toBe(1);
+    });
+  });
   const workspaceBinding = (): WorkspaceMembershipOptions => ({
     workspaceId: 'workspace-a',
     resolveMembership: async ({ subject }) => ({

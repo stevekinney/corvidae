@@ -21,6 +21,19 @@ const list = { reviews: [review], total: 1, nextPageToken: null };
 const receipt = { id: review.id, kind: 'tool-approval', decision: 'approve', receipt: 'applied' };
 
 describe('the portable Reviews boundary', () => {
+  it('omits unknown effects while rejecting malformed known effects', async () => {
+    const unknown = { ...review, effect: { kind: 'inventory', publicId: 'one' } };
+    const client = createReviewsClientWithTransport(async () => unknown);
+    expect(await client['bureau.reviews.get']({ id: review.id })).toEqual(review);
+    expect(parseReviewsOpeningSnapshot({ reviews: [unknown] })?.reviews[0]).toEqual(review);
+    const malformed = createReviewsClientWithTransport(async () => ({
+      ...review,
+      effect: { kind: 'refund', refundId: 9 },
+    }));
+    expect(await rejectionOf(malformed['bureau.reviews.get']({ id: review.id }))).toMatchObject({
+      message: 'Invalid bureau.reviews.get response',
+    });
+  });
   it('builds without dynamic code evaluation for a sandbox content security policy', async () => {
     const build = await Bun.build({
       entrypoints: [

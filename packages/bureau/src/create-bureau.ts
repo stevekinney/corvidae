@@ -2,6 +2,8 @@ import {
   resolveWorkspaceOwner,
   runtimeWorkspaceOwnerAuthority,
 } from './http/workspace-principal.ts';
+import { reviewedProvenanceOf } from './reviewed-provenance.ts';
+import { isTaskOrigin } from './task-origin.ts';
 import {
   CompletableEventTarget,
   createDefaultRuntimeServices,
@@ -5019,6 +5021,41 @@ async function constructBureau<const D extends AgentDefinitions>(
     notifications: notificationsComposition.notifications,
     internals: {
       reviewPolicy: options.reviewPolicy,
+      reviewedProvenance: (review) =>
+        reviewedProvenanceOf(review, {
+          task: (runId) => tasks.record(runId),
+          steps: async (runId) => {
+            if (!runtime.durable) throw new Error('No durable checkpoint');
+            return runtime.durable.checkpointStore.loadSteps(runId, { strict: true });
+          },
+          policy: options.reviewPolicy,
+        }),
+      reviewedRunState: async (runId) => {
+        try {
+          const task = await tasks.record(runId);
+          if (
+            !task ||
+            !task.origin ||
+            !isTaskOrigin(task.origin) ||
+            typeof task.agentName !== 'string'
+          )
+            return 'unresolved';
+          if (!Object.hasOwn(task.origin, 'reviewedTool'))
+            return task.agentName.startsWith('reviewed:') ? 'unresolved' : 'ordinary';
+          const review = await reviews.get(`approval:${runId}:reviewed-call`);
+          if (!review || review.kind !== 'tool-approval') return 'unresolved';
+          return reviewedProvenanceOf(review, {
+            task: (id) => tasks.record(id),
+            steps: async (id) => {
+              if (!runtime.durable) throw new Error('No durable checkpoint');
+              return runtime.durable.checkpointStore.loadSteps(id, { strict: true });
+            },
+            policy: options.reviewPolicy,
+          });
+        } catch {
+          return 'unresolved';
+        }
+      },
       hasExplicitId: options.id !== undefined,
       get taskRetention() {
         return taskRetentionOf(currentSettings());
