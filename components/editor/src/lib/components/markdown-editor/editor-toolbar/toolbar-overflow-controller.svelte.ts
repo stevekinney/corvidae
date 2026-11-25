@@ -192,6 +192,8 @@ export class ToolbarOverflowController {
         : node.ownerDocument.defaultView?.ResizeObserver;
     if (typeof Constructor !== 'function') return null;
     return new Constructor((entries) => {
+      // The trigger ghost can acquire its layout after the toolbar attachment runs.
+      this.triggerWidth = elements().triggerGhost?.getBoundingClientRect().width ?? 0;
       for (const entry of entries) {
         const current = elements();
         if (entry.target === node) this.containerWidth = entry.contentRect.width;
@@ -216,7 +218,6 @@ export class ToolbarOverflowController {
     if (leadingWidth > 0 || this.groupWidths.leading === 0) {
       this.groupWidths = { ...this.groupWidths, leading: leadingWidth };
     }
-    this.triggerWidth = elements().triggerGhost?.getBoundingClientRect().width ?? 0;
     measureActions();
     measureGroups();
     const listenerRoot = node.ownerDocument;

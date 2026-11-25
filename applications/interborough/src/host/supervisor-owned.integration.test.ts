@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { BUILD_INFO_FILE, readSourceInfo } from './build-info.ts';
 import { startHost } from './host.ts';
 import { readInstanceRecord } from './instance-record.ts';
+import { publishSupervisorReadiness } from './supervisor-owned.test-support.ts';
 import { runSupervisor, supervisorLeaseIdentity } from './supervisor.ts';
 
 test('remote supervisors do not share a local-home lease', () => {
@@ -197,4 +198,27 @@ test('retiring a killed supervisor leaves the sibling usable', () => {
   expect(digest()).toBe(beforeDigest);
   expect(existsSync(join(root, 'retained.log'))).toBe(true);
   expect(readFileSync(join(root, 'retained.log'), 'utf8')).toContain('Started the host');
+});
+
+test('publishes the complete remote URL only after its temporary write finishes', async () => {
+  const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('remote') });
+  const ready = join(root, 'publication-ready');
+  const writing = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  try {
+    const publication = publishSupervisorReadiness(ready, server.url.href, async (path, value) => {
+      await Bun.write(path, value.slice(0, 1));
+      writing.resolve();
+      await release.promise;
+      await Bun.write(path, value);
+    });
+    await writing.promise;
+    expect(existsSync(ready)).toBe(false);
+    release.resolve();
+    await publication;
+    expect(readFileSync(ready, 'utf8')).toBe(server.url.href);
+  } finally {
+    release.resolve();
+    await server.stop(true);
+  }
 });

@@ -39,15 +39,13 @@ export interface ComputeToolbarOverflowInput {
    */
   availableWidth: number | null;
   /**
-   * The toolbar's flex `gap`, in pixels. Charged once for every group that
-   * ends up inline (the boundary before it, whether that boundary is
-   * against the toolbar edge or against the previous group -- both are
-   * one flex gap) and once more if the overflow trigger is needed.
+   * The toolbar's flex gap, in pixels. Charge it between adjacent inline groups
+   * and between the last group and the overflow trigger when it is shown.
    */
   gap: number;
   /**
    * The "More formatting" trigger's own rendered width, in pixels -- NOT
-   * including its leading gap (see `gap`). Only charged against the budget
+   * including any gap next to a group (see `gap`). Only charged against the budget
    * when at least one group doesn't fit; a trigger that isn't shown
    * shouldn't shrink the budget for groups that do fit.
    */
@@ -80,19 +78,20 @@ export function computeToolbarOverflow({
     return { visibleGroupIds: groups.map((group) => group.id), overflowGroupIds: [] };
   }
 
-  const totalWidthAllInline = groups.reduce((sum, group) => sum + gap + group.width, 0);
+  const groupWidth = groups.reduce((sum, group) => sum + group.width, 0);
+  const totalWidthAllInline = groupWidth + Math.max(0, groups.length - 1) * gap;
   if (totalWidthAllInline <= availableWidth) {
     return { visibleGroupIds: groups.map((group) => group.id), overflowGroupIds: [] };
   }
 
-  const budget = availableWidth - (gap + triggerWidth);
+  const budget = availableWidth - triggerWidth;
   const visibleGroupIds: string[] = [];
   const overflowGroupIds: string[] = [];
   let used = 0;
   let overflowing = false;
 
   for (const group of groups) {
-    const cost = gap + group.width;
+    const cost = group.width + gap; // The gap after this group leads to another group or the trigger.
     if (!overflowing && used + cost <= budget) {
       used += cost;
       visibleGroupIds.push(group.id);
