@@ -11,6 +11,11 @@ import {
   hasDefinitionResolver,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
 } from '@lostgradient/operative';
+import {
+  createAdmittedRefundTool,
+  createFakeProcessor,
+  createRefundLedger,
+} from '@lostgradient/plugin-demo/refunds';
 import { MemoryStorage } from '@lostgradient/storage';
 import {
   advanceTimersByTime,
@@ -27,11 +32,8 @@ import {
   verifyToolboxPendingApproval,
 } from 'armorer';
 import { describe, expect, it } from 'bun:test';
-import { createRefundLedger } from './refund-ledger.ts';
-import { refundOperations, reviewedRefundContribution } from './refund-operations.ts';
-import { createFakeProcessor } from './refund-processor.ts';
+import { refundOperations, reviewedRefundContribution } from '../refund-operations.ts';
 import { durableApprovalStore } from './refund.test-support.ts';
-import { createAdmittedRefundTool } from './tools.ts';
 
 describe('refund operations', () => {
   it('retries a live workflow claim without another request or host restart', async () => {
@@ -381,7 +383,7 @@ describe('refund operations', () => {
         return true;
       },
       async isRequester(
-        principal: Parameters<import('./refund-operations.ts').RefundAccess['isRequester']>[0],
+        principal: Parameters<import('../refund-operations.ts').RefundAccess['isRequester']>[0],
       ) {
         return principal.method === 'api-key' && principal.subject === 'alice';
       },

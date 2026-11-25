@@ -127,7 +127,9 @@
       },
       "devDependencies": {
         "@axe-core/playwright": "catalog:",
+        "@lostgradient/lifecycle": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
+        "@modelcontextprotocol/client": "catalog:",
         "@playwright/test": "catalog:",
         "@testing-library/dom": "catalog:",
         "@testing-library/jest-dom": "catalog:",
@@ -1147,8 +1149,6 @@
     "plugins/demo": {
       "name": "@lostgradient/plugin-demo",
       "dependencies": {
-        "@lostgradient/backchannel": "workspace:*",
-        "@lostgradient/bureau": "workspace:*",
         "@lostgradient/interborough-plugin": "workspace:*",
         "@lostgradient/operative": "workspace:*",
         "@lostgradient/operative-anthropic": "workspace:*",
@@ -1158,11 +1158,10 @@
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@lostgradient/lifecycle": "workspace:*",
+        "@lostgradient/bureau": "workspace:*",
         "@lostgradient/storage-bun-sqlite": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
-        "@modelcontextprotocol/client": "catalog:",
         "@types/bun": "catalog:",
         "oxlint": "catalog:",
         "typescript": "catalog:",

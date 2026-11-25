@@ -1,7 +1,7 @@
 {
   "extends": "../../../tsconfig.json",
   "compilerOptions": { "customConditions": ["svelte"] },
-  "include": ["*.ts", "../../ambient.d.ts"],
+  "include": ["*.ts", "../refund-operations.ts", "../../ambient.d.ts"],
   "exclude": ["node_modules"],
   "references": [{ "path": "../../../../../packages/velveteen/tsconfig.source.json" }]
 }
