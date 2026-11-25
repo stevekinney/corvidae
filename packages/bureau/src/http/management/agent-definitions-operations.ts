@@ -420,10 +420,18 @@ function definitionOf(input: z.infer<typeof definitionInputSchema>): AgentFileDe
 
 const writeResultSchema = z.object({ id: z.string(), hash: z.string() });
 
-const referenceDocumentInputSchema = z.object({
-  path: z.string().min(1),
-  text: z.string(),
-});
+const referenceDocumentInputSchema = z
+  .object({
+    path: z.string().min(1),
+    text: z.string(),
+  })
+  .strict()
+  .describe('One UTF-8 reference document staged beside the agent file.');
+
+const referenceDocumentsInput = z
+  .array(referenceDocumentInputSchema)
+  .optional()
+  .describe('UTF-8 reference documents to publish only if this definition write succeeds.');
 
 /** COR-2231 — a duplicate also names what the copy loses; empty for a copy of a file agent. */
 const duplicateResultSchema = writeResultSchema.extend({
@@ -736,7 +744,7 @@ async function audit(
 const createInput = z.object({
   id: agentIdentifier,
   definition: definitionInputSchema,
-  referenceDocuments: z.array(referenceDocumentInputSchema).optional(),
+  referenceDocuments: referenceDocumentsInput,
 });
 
 export const agentDefinitionsCreateOperation = defineOperation<
@@ -786,7 +794,7 @@ const updateInput = z.object({
   id: agentIdentifier,
   expectedHash: hash,
   definition: definitionInputSchema,
-  referenceDocuments: z.array(referenceDocumentInputSchema).optional(),
+  referenceDocuments: referenceDocumentsInput,
 });
 
 export const agentDefinitionsUpdateOperation = defineOperation<

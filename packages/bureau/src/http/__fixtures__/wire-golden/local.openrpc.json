@@ -12449,6 +12449,32 @@
             "minLength": 1,
             "type": "string"
           }
+        },
+        {
+          "name": "referenceDocuments",
+          "required": false,
+          "schema": {
+            "description": "UTF-8 reference documents to publish only if this definition write succeeds.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One UTF-8 reference document staged beside the agent file.",
+              "properties": {
+                "path": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "text"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
         }
       ],
       "result": {
@@ -12898,6 +12924,28 @@
             "maxLength": 64,
             "minLength": 1,
             "type": "string"
+          },
+          "referenceDocuments": {
+            "description": "UTF-8 reference documents to publish only if this definition write succeeds.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One UTF-8 reference document staged beside the agent file.",
+              "properties": {
+                "path": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "text"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -13370,6 +13418,32 @@
             "minLength": 1,
             "type": "string"
           }
+        },
+        {
+          "name": "referenceDocuments",
+          "required": false,
+          "schema": {
+            "description": "UTF-8 reference documents to publish only if this definition write succeeds.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One UTF-8 reference document staged beside the agent file.",
+              "properties": {
+                "path": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "text"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
         }
       ],
       "result": {
@@ -13824,6 +13898,28 @@
             "maxLength": 64,
             "minLength": 1,
             "type": "string"
+          },
+          "referenceDocuments": {
+            "description": "UTF-8 reference documents to publish only if this definition write succeeds.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One UTF-8 reference document staged beside the agent file.",
+              "properties": {
+                "path": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "text"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -15990,6 +16086,9 @@
                     "type": "object"
                   },
                   "model": {
+                    "type": "string"
+                  },
+                  "modelClass": {
                     "type": "string"
                   },
                   "parallelTools": {

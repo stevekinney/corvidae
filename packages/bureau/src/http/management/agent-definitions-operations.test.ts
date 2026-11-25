@@ -352,6 +352,32 @@ describe('results', () => {
     expect(retried.error).toBeUndefined();
   });
 
+  it('refuses an unknown key in each staged reference document before create or update writes', async () => {
+    const served = await serve();
+    const document = {
+      path: 'references/writer/style.md',
+      text: 'Use short sentences.\n',
+      extra: true,
+    };
+    const refusedCreate = await callAs(served.owner, 'bureau.agents.definitions.create', {
+      id: 'writer',
+      definition: DEFINITION,
+      referenceDocuments: [document],
+    });
+    expect(refusedCreate.error?.data?.httpStatus).toBe(400);
+    expect(await Bun.file(ownerPath(served, 'writer')).exists()).toBe(false);
+
+    const hash = await seed(served);
+    const refusedUpdate = await callAs(served.owner, 'bureau.agents.definitions.update', {
+      id: 'researcher',
+      expectedHash: hash,
+      definition: DEFINITION,
+      referenceDocuments: [document],
+    });
+    expect(refusedUpdate.error?.data?.httpStatus).toBe(400);
+    expect(await readFile(ownerPath(served), 'utf8')).toContain('Researcher');
+  });
+
   it('lists code-defined agents first, then files by identifier, with their state and hash, and pages', async () => {
     const served = await serve();
     await served.put('b-agent.md', agentFileText({ model: KNOWN_MODEL }));
