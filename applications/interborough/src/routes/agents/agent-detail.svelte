@@ -85,7 +85,6 @@
   import { AgentOverridesBinding, isOverridable, overridableDetail } from './agent-overrides.ts';
   import AgentChats from './agent-chats.svelte';
   import AgentDuplicateDialog from './agent-duplicate-dialog.svelte';
-  import AgentFacts from './agent-facts.svelte';
   import AgentHooks from './agent-hooks.svelte';
   import AgentInstructions from './agent-instructions.svelte';
   import AgentMemory from './agent-memory.svelte';
@@ -535,7 +534,7 @@
 
 {#snippet unavailableBanner()}
   {#if unavailable && plugin !== null}
-    <AgentUnavailableBanner {id} name={name ?? id} {plugin} {pluginTitle} />
+    <AgentUnavailableBanner name={name ?? id} {plugin} {pluginTitle} />
   {/if}
 {/snippet}
 
@@ -608,10 +607,6 @@
           </p>
         {/if}
       </div>
-
-      {#if listed !== undefined}
-        <AgentFacts agent={listed} detailed detail={definition.data} />
-      {/if}
 
       <Tabs bind:value={activeTab} onValueChangeRequest={requestTab} activateOnFocus={false}>
         <Tabs.List label={copy.tabsLabel}>

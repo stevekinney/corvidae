@@ -22,10 +22,10 @@
   import { RESTART_COPY } from '../../app/copy/restart.ts';
   import RestartDialog from '../../app/restart/restart-dialog.svelte';
   import { router } from '../../lib/router.svelte.ts';
-  import { listBureauReviews } from '../../lib/bureau-reviews.ts';
   import { listRunningTasks } from '../../lib/bureau-tasks.ts';
   import { queryKeys } from '../../lib/query.ts';
   import type { RestartRefusal } from '../../app/restart/host-restart-flow.svelte.ts';
+  import { usePendingReviewsCount } from '../reviews/pending-reviews-count.svelte.ts';
   import { RestartFlow } from '../settings/plugins/restart-flow.svelte.ts';
 
   interface Props {
@@ -54,17 +54,9 @@
     }),
     undefined,
   );
-  const reviews = createQuery(
-    () => ({
-      queryKey: queryKeys.bureauReviews.list(),
-      queryFn: ({ signal }) => listBureauReviews({ signal }),
-      enabled: open,
-      retry: false,
-    }),
-    undefined,
-  );
+  const reviews = usePendingReviewsCount();
   const running = $derived(runningTasks.data?.length ?? 0);
-  const waiting = $derived(reviews.data?.length ?? 0);
+  const waiting = $derived(reviews.count() ?? 0);
 
   // The runs going now come first when there are any; the note never says that nothing is running.
   const work = $derived(

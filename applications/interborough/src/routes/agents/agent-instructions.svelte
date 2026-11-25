@@ -99,6 +99,15 @@
   }
 
   const settingsPath = $derived(agentTabPath(id, 'settings'));
+  const referencesEditorPath = $derived(`${editPath}?section=references`);
+
+  function goToReferencesEditor(event: MouseEvent): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    router.navigate(referencesEditorPath);
+  }
 
   function goToSettings(event: MouseEvent): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -129,7 +138,7 @@
 {/snippet}
 
 {#snippet editorLink(label: string)}
-  <a href={router.href(editPath)} onclick={goToEditor}>{label}</a>
+  <a href={router.href(referencesEditorPath)} onclick={goToReferencesEditor}>{label}</a>
 {/snippet}
 
 <div class="ib-agent-instructions" data-testid="agent-instructions">

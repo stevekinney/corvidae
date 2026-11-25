@@ -162,7 +162,15 @@
         {/snippet}
         {#snippet title()}{text.title}{/snippet}
         {#snippet meta()}
-          {#if text.line !== ''}<span class="ib-hooks__line">{text.line}</span>{/if}
+          {#if text.line !== ''}
+            <span class="ib-hooks__line">
+              {#each hook.events as event, index (event)}
+                {#if index > 0},
+                {/if}<code class="ib-hooks__event">{event}</code>
+              {/each}
+              {hook.events.length > 0 ? ': ' : ''}{text.line}
+            </span>
+          {/if}
         {/snippet}
         {#snippet trailing()}
           {#snippet theSwitch()}
@@ -220,5 +228,9 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     line-clamp: 2;
+  }
+
+  .ib-hooks__event {
+    font-family: var(--cinder-font-mono);
   }
 </style>

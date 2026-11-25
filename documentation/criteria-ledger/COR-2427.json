@@ -1,0 +1,130 @@
+{
+  "issue": "COR-2427",
+  "branch": "codex/cor-2427-agent-pages",
+  "checkedAt": "9532cd446aaa6c3a68b9c0e220a4bc00fea49789",
+  "briefVersion": "1a8364945e88",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-main"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-main"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch"
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch"
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch"
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch"
+    },
+    {
+      "id": "AC8",
+      "status": "met-on-main"
+    },
+    {
+      "id": "AC9",
+      "status": "met-on-main"
+    },
+    {
+      "id": "AC10",
+      "status": "met-on-main"
+    },
+    {
+      "id": "AC11",
+      "status": "met-on-main"
+    },
+    {
+      "id": "AC12",
+      "status": "met-on-main"
+    },
+    {
+      "id": "AC13",
+      "status": "met-on-main"
+    },
+    {
+      "id": "AC14",
+      "status": "met-on-main"
+    },
+    {
+      "id": "AC15",
+      "status": "met-on-main"
+    },
+    {
+      "id": "AC16",
+      "status": "met-on-main"
+    },
+    {
+      "id": "AC17",
+      "status": "met-on-main"
+    },
+    {
+      "id": "AC18",
+      "status": "met-on-main",
+      "evidence": "Positive Assistant/Echo sample premise retained; exact label-count conflict recorded for coordinator."
+    },
+    {
+      "id": "AC19",
+      "status": "met-on-branch"
+    },
+    {
+      "id": "AC20",
+      "status": "met-on-main"
+    },
+    {
+      "id": "AC21",
+      "status": "met-on-main"
+    },
+    {
+      "id": "AC22",
+      "status": "met-on-main"
+    },
+    {
+      "id": "AC23",
+      "status": "met-on-branch"
+    },
+    {
+      "id": "AC24",
+      "status": "met-on-branch"
+    },
+    {
+      "id": "AC25",
+      "status": "met-on-branch"
+    },
+    {
+      "id": "AC26",
+      "status": "met-on-branch"
+    },
+    {
+      "id": "AC27",
+      "status": "met-on-branch"
+    },
+    {
+      "id": "AC28",
+      "status": "met-on-branch"
+    },
+    {
+      "id": "AC29",
+      "status": "met-on-branch"
+    },
+    {
+      "id": "AC30",
+      "status": "met-on-branch"
+    }
+  ]
+}

@@ -18,6 +18,7 @@ export const MEMORY_COPY = {
   loadMore: 'Load more',
   loading: 'Loading memories',
   listFailed: 'The memories could not be loaded.',
+  readForbidden: 'Reading memories needs the bureau.memory:read scope.',
   /** Under an open memory the list or search does not hold, which the list leads with. */
   pinnedNote: 'Open now, not in this list',
   /**

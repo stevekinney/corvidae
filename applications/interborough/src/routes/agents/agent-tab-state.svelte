@@ -34,11 +34,14 @@
     updatedAt: number;
     /** Reads the tab again. */
     onRetry: () => void;
+    /** A scope-specific explanation for a forbidden initial read. */
+    forbiddenDescription?: string | undefined;
     /** The tab's body, drawn once there is data to show. */
     children: Snippet;
   }
 
-  let { tab, shape, pending, error, updatedAt, onRetry, children }: Props = $props();
+  let { tab, shape, pending, error, updatedAt, onRetry, forbiddenDescription, children }: Props =
+    $props();
 
   const copy = AGENT_PAGE_COPY.tabState;
   const failed = $derived(error !== null && error !== undefined);
@@ -59,7 +62,9 @@
     <ErrorState
       variant="flat"
       title={copy.failedTitle}
-      description={copy.failedDescription(status)}
+      description={status === 403 && forbiddenDescription !== undefined
+        ? forbiddenDescription
+        : copy.failedDescription(status)}
       headingLevel={2}
       retryLabel={RETRY_LABEL}
       {...faultErrorStateAdvice(error, onRetry)}

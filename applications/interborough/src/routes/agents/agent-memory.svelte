@@ -45,7 +45,6 @@
 
   import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
   import { MEMORY_COPY } from '../../app/copy/memory.ts';
-  import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { agentMemoryPath } from '../../lib/agent-paths.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { agentsListQuery } from '../../lib/agent-queries.ts';
@@ -211,6 +210,17 @@
   const MORE_KEY = '__load-more__';
 
   const active = $derived(quarantinedView ? quarantinedListing : applied === '' ? listing : search);
+  // Infinite queries retain their old pages when a later page fails. Treat that failure as stale as
+  // well, so Load more and a search never replace known memory with a generic error state.
+  const activeFailed = $derived(
+    active.isError ||
+      (quarantinedView
+        ? quarantinedListing.isFetchNextPageError
+        : applied === '' && listing.isFetchNextPageError),
+  );
+  const activeError = $derived(
+    activeFailed ? (active.error ?? new Error(MEMORY_COPY.listFailed)) : null,
+  );
   /** Every memory the list or the search holds, before the kind filter, less those just forgotten. */
   const base = $derived.by<MemoryRowData[]>(() => held.filter((row) => !hidden.has(row.id)));
   const held = $derived.by<MemoryRowData[]>(() => {
@@ -479,9 +489,13 @@
   tab={AGENT_PAGE_COPY.tabs.memory}
   shape="rows"
   pending={listing.isPending}
-  error={listing.data === undefined ? listing.error : null}
+  error={activeError}
   updatedAt={listing.dataUpdatedAt}
   onRetry={() => void listing.refetch()}
+  forbiddenDescription={listing.data === undefined &&
+  memoryFaultOf(listing.error).kind === 'forbidden'
+    ? MEMORY_COPY.readForbidden
+    : undefined}
 >
   <div class="ib-memory" data-agent={agentId} bind:this={pane}>
     {#if notice !== undefined}
@@ -521,12 +535,9 @@
         <p class="ib-memory__alert-title">{MEMORY_COPY.quarantinedView.forbiddenTitle}</p>
         <p class="ib-memory__alert-body">{MEMORY_COPY.govern.refusal.forbidden.description}</p>
       </Alert>
-    {:else if active.isError && (applied !== '' || listing.data !== undefined)}
+    {:else if activeFailed && (applied !== '' || listing.data !== undefined)}
       <Alert variant="danger">
         <p class="ib-memory__alert-title">{MEMORY_COPY.listFailed}</p>
-        <Button variant="secondary" size="sm" onclick={() => void active.refetch()}
-          >{RETRY_LABEL}</Button
-        >
       </Alert>
     {/if}
 
@@ -560,7 +571,7 @@
           <Skeleton height="1.5rem" width="50%" />
           <Skeleton height="6rem" />
         </div>
-      {:else if active.isError}
+      {:else if activeFailed}
         <!-- The fault is reported above the list, so this is not read as an empty agent. -->
       {:else if quarantinedView && base.length === 0}
         <EmptyState

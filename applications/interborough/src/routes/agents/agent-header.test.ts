@@ -7,7 +7,7 @@
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { AGENT_PAGE_COPY, AGENTS_COPY } from '../../app/copy/agents.ts';
+import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
 import {
   catalogFixture,
   installBureauStub,
@@ -210,14 +210,9 @@ describe('the skills the header names (sweep S65, COR-2429)', () => {
       .map((row) => row.getAttribute('data-skill'));
     expect(granted).toEqual(['cite', 'summarize']);
 
-    const facts = await findByTestId('agent-facts');
-    const named = await waitFor(() => {
-      const list = within(facts).getByRole('list', { name: AGENTS_COPY.skillsLabel });
-      const items = [...list.querySelectorAll('li')].map((item) => item.textContent?.trim());
-      expect(items).toHaveLength(granted.length);
-      return items;
-    });
-    expect(named).toEqual(['Cite', 'Summarize']);
+    // The Access tab is the single detailed source of skills. The shared header stays compact.
+    expect(granted).toEqual(['cite', 'summarize']);
+    expect(document.querySelector('[data-testid="agent-facts"]')).toBeNull();
   });
 });
 
@@ -416,9 +411,7 @@ describe('the page of an agent a disabled plugin ships', () => {
       await fireEvent.click(
         within(banner).getByRole('button', { name: AGENT_PAGE_COPY.unavailable.enable }),
       );
-      expect(
-        await findByRole('dialog', { name: 'Enable the Demo plugin and restart?' }),
-      ).not.toBeNull();
+      expect(await findByRole('dialog', { name: 'Enable Demo and restart?' })).not.toBeNull();
     });
   }
 });

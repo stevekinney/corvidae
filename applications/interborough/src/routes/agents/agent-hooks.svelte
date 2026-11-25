@@ -12,6 +12,7 @@
   import { Plus } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
+  import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
   import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { listHooks } from '../../lib/bureau-hooks.ts';
   import { classifyFault } from '../../lib/faults.ts';
@@ -20,6 +21,7 @@
   import { HOOKS_COPY } from '../hooks/hook-copy.ts';
   import HookRows from '../hooks/hook-rows.svelte';
   import HooksUnavailable from '../hooks/hooks-unavailable.svelte';
+  import AgentTabState from './agent-tab-state.svelte';
 
   interface Props {
     /** The agent's identifier. */
@@ -62,34 +64,43 @@
   </Button>
 {/snippet}
 
-<div class="ib-agent-hooks" data-testid="agent-hooks">
-  {#if unavailable}
-    <HooksUnavailable headingLevel={2} />
-  {:else if hooks.isError}
-    <Alert variant="danger">
-      <p class="ib-agent-hooks__failed">{copy.loadFailed}</p>
-      <Button variant="secondary" size="sm" onclick={() => void hooks.refetch()}
-        >{RETRY_LABEL}</Button
-      >
-    </Alert>
-  {:else if hooks.isPending}
-    <Skeleton height="4rem" />
-  {:else if hooks.data !== undefined && hooks.data.length === 0}
-    <EmptyState
-      kind="first-use"
-      title={copy.emptyTitle(name)}
-      description={copy.emptyDescription}
-      headingLevel={2}
-      action={newHook}
-    />
-  {:else if hooks.data !== undefined}
-    <div class="ib-agent-hooks__intro">
-      <p class="ib-agent-hooks__line">{copy.intro(name)}</p>
-      {@render newHook()}
-    </div>
-    <HookRows hooks={hooks.data} />
-  {/if}
-</div>
+<AgentTabState
+  tab={AGENT_PAGE_COPY.tabs.hooks}
+  shape="rows"
+  pending={hooks.isPending}
+  error={hooks.error}
+  updatedAt={hooks.dataUpdatedAt}
+  onRetry={() => void hooks.refetch()}
+>
+  <div class="ib-agent-hooks" data-testid="agent-hooks">
+    {#if unavailable}
+      <HooksUnavailable headingLevel={2} />
+    {:else if hooks.isError}
+      <Alert variant="danger">
+        <p class="ib-agent-hooks__failed">{copy.loadFailed}</p>
+        <Button variant="secondary" size="sm" onclick={() => void hooks.refetch()}
+          >{RETRY_LABEL}</Button
+        >
+      </Alert>
+    {:else if hooks.isPending}
+      <Skeleton height="4rem" />
+    {:else if hooks.data !== undefined && hooks.data.length === 0}
+      <EmptyState
+        kind="first-use"
+        title={copy.emptyTitle(name)}
+        description={copy.emptyDescription}
+        headingLevel={2}
+        action={newHook}
+      />
+    {:else if hooks.data !== undefined}
+      <div class="ib-agent-hooks__intro">
+        <p class="ib-agent-hooks__line">{copy.intro(name)}</p>
+        {@render newHook()}
+      </div>
+      <HookRows hooks={hooks.data} />
+    {/if}
+  </div>
+</AgentTabState>
 
 <style>
   .ib-agent-hooks {

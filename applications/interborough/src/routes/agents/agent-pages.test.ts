@@ -606,7 +606,7 @@ describe('one agent’s page', () => {
     expect(container.textContent?.match(/Chat 1/g)).toHaveLength(1);
   });
 
-  test('shows a file agent’s model, tools and skills, and its chats, with the name once and no file version', async () => {
+  test('keeps a file agent’s facts out of the shared header, and its chats under it', async () => {
     const served = serve(FILE_AGENT, {
       model: 'anthropic/sonnet',
       tools: ['lookup-order'],
@@ -617,9 +617,8 @@ describe('one agent’s page', () => {
 
     const { container, findByText } = mount(AgentDetail);
 
-    await findByText('Sonnet, Anthropic');
-    expect(container.textContent).toContain('lookup-order');
-    expect(container.textContent).toContain('Cite');
+    await findByText('Finds sources.');
+    expect(container.querySelector('[data-testid="agent-facts"]')).toBeNull();
     // The header names no file version: the versions live in the Settings tab.
     expect(container.querySelector('[data-testid="agent-file-version"]')).toBeNull();
     expect(container.textContent).not.toContain('File version');
@@ -634,7 +633,7 @@ describe('one agent’s page', () => {
     ).toMatchObject({ agentName: 'researcher', sortBy: 'updatedAt', sortOrder: 'desc' });
   });
 
-  test('shows two skills that share a name, which only their identifiers tell apart', async () => {
+  test('does not add skills to the shared header', async () => {
     const twin = (id: string) => ({ id, name: 'Cite', description: 'Cites sources', tags: [] });
     serve(FILE_AGENT, {
       model: 'anthropic/sonnet',
@@ -646,12 +645,12 @@ describe('one agent’s page', () => {
 
     const { container, findByText } = mount(AgentDetail);
 
-    await findByText('Sonnet, Anthropic');
+    await findByText('Finds sources.');
     expect(container.textContent).not.toContain('Something went wrong');
-    expect(container.querySelectorAll('ul[aria-label="Skills"] li')).toHaveLength(2);
+    expect(container.querySelector('[data-testid="agent-facts"]')).toBeNull();
   });
 
-  test('shows a tool its listing names twice once for each time, rather than failing on a repeated key', async () => {
+  test('does not add listing tools to the shared header', async () => {
     serve({ ...AGENT, tools: ['search-web', 'search-web'] });
     landAt('/agents/assistant');
 
@@ -659,10 +658,10 @@ describe('one agent’s page', () => {
 
     await findByText('Answers every message.');
     expect(container.textContent).not.toContain('Something went wrong');
-    expect(container.querySelectorAll('ul[aria-label="Tools"] li')).toHaveLength(2);
+    expect(container.querySelector('[data-testid="agent-facts"]')).toBeNull();
   });
 
-  test('shows a file agent’s tool its definition names twice, beside two skills of one name', async () => {
+  test('does not add a file’s tools or skills to the shared header', async () => {
     const twin = (id: string) => ({ id, name: 'Cite', description: 'Cites sources', tags: [] });
     serve(FILE_AGENT, {
       model: 'anthropic/sonnet',
@@ -674,10 +673,9 @@ describe('one agent’s page', () => {
 
     const { container, findByText } = mount(AgentDetail);
 
-    await findByText('Sonnet, Anthropic');
+    await findByText('Finds sources.');
     expect(container.textContent).not.toContain('Something went wrong');
-    expect(container.querySelectorAll('ul[aria-label="Tools"] li')).toHaveLength(2);
-    expect(container.querySelectorAll('ul[aria-label="Skills"] li')).toHaveLength(2);
+    expect(container.querySelector('[data-testid="agent-facts"]')).toBeNull();
   });
 
   test('says a code agent whose listing names an empty list has no tools', async () => {
@@ -686,10 +684,8 @@ describe('one agent’s page', () => {
 
     const { container, findByText } = mount(AgentDetail);
 
-    await findByText('No tools');
-    expect(container.querySelector('[data-testid="agent-facts"]')?.textContent).toContain(
-      'No tools',
-    );
+    await findByText('Answers every message.');
+    expect(container.querySelector('[data-testid="agent-facts"]')).toBeNull();
   });
 
   test('claims nothing about the tools of an agent whose listing is silent', async () => {
@@ -714,10 +710,8 @@ describe('one agent’s page', () => {
 
     const { container, findByText } = mount(AgentDetail);
 
-    await findByText('Sonnet, Anthropic');
-    expect(container.querySelector('[data-testid="agent-facts"]')?.textContent).toContain(
-      'No tools',
-    );
+    await findByText('Finds sources.');
+    expect(container.querySelector('[data-testid="agent-facts"]')).toBeNull();
     expect(container.textContent).not.toContain('Skills');
   });
 
@@ -729,10 +723,10 @@ describe('one agent’s page', () => {
 
     const action = await findByRole('link', { name: 'New chat' });
     const shown = container.textContent ?? '';
-    // Its tools come from its listing, named as a file agent's are.
-    for (const present of ['Assistant', 'Answers every message.', 'search-web', 'send-mail']) {
+    for (const present of ['Assistant', 'Answers every message.']) {
       expect(shown).toContain(present);
     }
+    expect(container.querySelector('[data-testid="agent-facts"]')).toBeNull();
     // Where it is defined is not worded, and it has no file version.
     for (const absent of [
       'Defined in',
@@ -751,7 +745,7 @@ describe('one agent’s page', () => {
     );
   });
 
-  test('names the model of a code-defined agent that has one, from the models it allows', async () => {
+  test('does not add a code agent’s model to the shared header', async () => {
     const withModel = { ...AGENT, media: { modalities: {}, mimeFamilies: [], mediaLimits: [] } };
     const served = bureau({
       'bureau.agents.list': () => ({ agents: [withModel] }),
@@ -768,9 +762,10 @@ describe('one agent’s page', () => {
 
     const { container, findByText } = mount(AgentDetail);
 
-    await findByText('claude-haiku');
+    await findByText('Answers every message.');
     expect(container.textContent).not.toContain('Scripted');
-    expect(served.calls.some((call) => call.method === 'bureau.agents.models')).toBe(true);
+    expect(container.querySelector('[data-testid="agent-facts"]')).toBeNull();
+    expect(served.calls.some((call) => call.method === 'bureau.agents.models')).toBe(false);
   });
 
   test('puts the memory count on a Memory tab, and choosing the tab shows the memory in the page', async () => {

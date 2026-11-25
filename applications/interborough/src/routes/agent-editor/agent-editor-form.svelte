@@ -44,6 +44,7 @@
     Toggle,
   } from '@lostgradient/cinder';
   import { Check, X } from '@lucide/svelte';
+  import { tick } from 'svelte';
 
   import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
   import { agentTabPath } from '../../lib/agent-paths.ts';
@@ -103,6 +104,17 @@
   const creating = $derived(editor.mode === 'create');
   const errors = $derived(editor.shownErrors);
   const accessPath = $derived(agentTabPath(editor.identifier, 'access'));
+  let referencesSection = $state<HTMLElement | undefined>(undefined);
+
+  // The Instructions tab links here after the editor has mounted. A query survives the app router
+  // (which does not own hash fragments) and keeps this navigable on a reload.
+  $effect(() => {
+    if (router.search.get('section') !== 'references' || referencesSection === undefined) return;
+    void tick().then(() => {
+      referencesSection?.scrollIntoView({ block: 'start' });
+      referencesSection?.focus();
+    });
+  });
 
   /** The size of the reference document at `path` as its row says it, or `undefined` when the Bureau did not say. */
   function sizeOf(path: string): string | undefined {
@@ -234,38 +246,40 @@
 
   {#if !creating}
     <!-- Read with every chat. A document is taken off the list with the next save (row 41t). -->
-    <FormSection
-      heading={copy.edit.references.heading}
-      meta={copy.edit.references.note}
-      columns={1}
-    >
-      {#if editor.referencesKept.length === 0}
-        <p class="weft-agent-form__note" data-testid="agent-no-references">
-          {copy.edit.references.none}
-        </p>
-      {:else}
-        <ul class="weft-agent-form__references" data-testid="agent-references">
-          {#each keyedByOccurrence(editor.referencesKept, (path) => path) as { key, item: path } (key)}
-            {@const size = sizeOf(path)}
-            <li class="weft-agent-form__reference">
-              <code>{path}</code>
-              {#if size !== undefined}<span class="weft-agent-form__note">{size}</span>{/if}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                iconOnly
-                aria-label={copy.edit.references.removeLabel(path)}
-                disabled={saving}
-                onclick={() => editor.removeReference(path)}
-              >
-                <X size={14} aria-hidden="true" />
-              </Button>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </FormSection>
+    <div id="agent-reference-documents" tabindex="-1" bind:this={referencesSection}>
+      <FormSection
+        heading={copy.edit.references.heading}
+        meta={copy.edit.references.note}
+        columns={1}
+      >
+        {#if editor.referencesKept.length === 0}
+          <p class="weft-agent-form__note" data-testid="agent-no-references">
+            {copy.edit.references.none}
+          </p>
+        {:else}
+          <ul class="weft-agent-form__references" data-testid="agent-references">
+            {#each keyedByOccurrence(editor.referencesKept, (path) => path) as { key, item: path } (key)}
+              {@const size = sizeOf(path)}
+              <li class="weft-agent-form__reference">
+                <code>{path}</code>
+                {#if size !== undefined}<span class="weft-agent-form__note">{size}</span>{/if}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
+                  aria-label={copy.edit.references.removeLabel(path)}
+                  disabled={saving}
+                  onclick={() => editor.removeReference(path)}
+                >
+                  <X size={14} aria-hidden="true" />
+                </Button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </FormSection>
+    </div>
   {/if}
 
   {#if creating && !editor.catalogMissing && editor.toolChoices.length === 0}
