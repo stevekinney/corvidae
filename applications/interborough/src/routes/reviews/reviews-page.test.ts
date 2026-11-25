@@ -20,7 +20,11 @@ import {
   type BureauWorldStub,
 } from '../../lib/bureau-world.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
-import { AUTHORIZATION_SCOPES, type AuthorizationScope } from '../../lib/scopes.svelte.ts';
+import {
+  AUTHORIZATION_SCOPES,
+  type AuthorizationScope,
+  type PrincipalStore,
+} from '../../lib/scopes.svelte.ts';
 import { shortcuts } from '../../lib/shortcuts.ts';
 import Harness from './reviews-shell.test-harness.svelte';
 
@@ -105,6 +109,85 @@ const RESPONDED = {
 };
 
 describe('the reviews page', () => {
+  test('opens an approval without a render fault', async () => {
+    const { container, queryByRole } = open({ reviews: [APPROVAL] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+    const fault = queryByRole('button', { name: 'Svelte error' });
+    if (fault) {
+      await fireEvent.click(fault);
+      throw new Error(container.querySelector('pre')?.textContent ?? 'Svelte render fault');
+    }
+    expect(queryByRole('button', { name: 'Approve' })).not.toBeNull();
+  });
+  test('shows the authorized refund summary and distinguishes an approved decision from a settled refund', async () => {
+    const review = toolApprovalFixture({
+      effect: {
+        kind: 'refund',
+        refundId: 'refund-1',
+        orderId: 'order-1001',
+        cents: 4200,
+        currency: 'USD',
+        status: 'provider-pending',
+      },
+    });
+    const { container, findByText } = open({ reviews: [review] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+    await findByText(/\$42\.00.*order order-1001.*Refund pending/);
+    expect(container.textContent).not.toContain('Refunded');
+  });
+  test('does not send or display a late decision after the actor changes', async () => {
+    stub = installBureauWorld(emptyBureauWorld({ reviews: [APPROVAL] }));
+    let principal!: PrincipalStore;
+    let finishRead!: (value: unknown) => void;
+    stub.on(
+      'bureau.reviews.get',
+      () =>
+        new Promise((resolve) => {
+          finishRead = resolve;
+        }),
+    );
+    router.navigate('/reviews', { replace: true });
+    const { container, findByRole } = render(Harness, {
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+        onPrincipal: (store: PrincipalStore) => {
+          principal = store;
+        },
+      },
+    } as never);
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+    await approveRefund(findByRole);
+    await waitFor(() => expect(stub?.callsTo('bureau.reviews.get').length).toBe(1));
+    stub.on('bureau.reviews.list', () => ({ reviews: [], nextPageToken: null, total: 0 }));
+    principal.setPrincipal({
+      workspace: { workspaceId: 'workspace-a', actorId: 'actor-b' },
+      scopes: AUTHORIZATION_SCOPES,
+      subject: 'other',
+      unauthenticatedAccess: null,
+    });
+    finishRead(APPROVAL);
+    await waitFor(() => expect(rows(container)).toHaveLength(0));
+    expect(stub.callsTo('bureau.reviews.resolve')).toHaveLength(0);
+  });
+  test('loads every waiting page and keeps the navigation count in sync', async () => {
+    const reviews = Array.from({ length: 101 }, (_, index) =>
+      toolApprovalFixture({
+        id: `approval:${index}`,
+        runId: `run:${index}`,
+        sessionId: `session:${index}`,
+      }),
+    );
+    const { container } = open({ reviews });
+    await waitFor(() => expect(rows(container)).toHaveLength(101));
+    expect(container.textContent).toContain('101');
+    expect(
+      stub?.callsTo('bureau.reviews.list').some((call) => call.params['pageToken'] === '100'),
+    ).toBe(true);
+  });
   test('draws its heading, the J and K hint and placeholder rows while its list is read (row 26a)', async () => {
     stub = installBureauWorld(emptyBureauWorld());
     // The list is still being read: the Bureau has not answered.

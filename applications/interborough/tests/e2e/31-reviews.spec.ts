@@ -374,6 +374,123 @@ test.describe('a tool approval', () => {
     expect(resolves).toHaveLength(1);
   });
 
+  test('reconciles a lost decision response without sending the decision twice', async ({
+    page,
+    request,
+  }) => {
+    const { review, threadId } = await waitingRefund(page, request, 'reviews-lost-response');
+    const resolves = recordResolves(page);
+    await page.route('**/jsonrpc', async (route) => {
+      const call = route.request().postDataJSON() as { method?: string; params?: { id?: string } };
+      if (call.method !== 'bureau.reviews.resolve' || call.params?.id !== review.id)
+        return route.fallback();
+      await route.fetch();
+      await route.abort('failed');
+    });
+    await approveReview(paneOf(page));
+    await expect.poll(async () => refundRan(await threadMessages(request, threadId))).toBe(true);
+    await expect
+      .poll(
+        async () =>
+          (
+            (await bureauCall(request, 'bureau.reviews.get', { id: review.id })) as {
+              status: string;
+            }
+          ).status,
+      )
+      .not.toBe('pending');
+    expect(resolves).toHaveLength(1);
+  });
+
+  test('keeps a denied reviewer from deciding the displayed approval', async ({
+    page,
+    request,
+  }) => {
+    const { review, threadId } = await waitingRefund(page, request, 'reviews-denied-reviewer');
+    const resolves = recordResolves(page);
+    await page.route('**/jsonrpc', async (route) => {
+      const call = route.request().postDataJSON() as {
+        method?: string;
+        id?: string;
+        params?: { id?: string };
+      };
+      if (call.method !== 'bureau.reviews.resolve' || call.params?.id !== review.id)
+        return route.fallback();
+      await route.fulfill({
+        json: {
+          jsonrpc: '2.0',
+          id: call.id,
+          error: {
+            code: -32000,
+            message: 'Forbidden',
+            data: { httpStatus: 403, weftCode: 'Forbidden' },
+          },
+        },
+      });
+    });
+    await approveReview(paneOf(page));
+    await expect(page.getByText(REVIEWS_COPY.approvalFailed.approve)).toBeVisible();
+    expect(refundRan(await threadMessages(request, threadId))).toBe(false);
+    expect(await bureauCall(request, 'bureau.reviews.get', { id: review.id })).toMatchObject({
+      status: 'pending',
+    });
+    expect(resolves).toHaveLength(1);
+  });
+
+  test('fences repeated clicks and shortcuts while the decision is in flight', async ({
+    page,
+    request,
+  }) => {
+    const { review, threadId } = await waitingRefund(page, request, 'reviews-duplicate-decision');
+    const resolves = recordResolves(page);
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/jsonrpc', async (route) => {
+      const call = route.request().postDataJSON() as { method?: string; params?: { id?: string } };
+      if (call.method !== 'bureau.reviews.resolve' || call.params?.id !== review.id)
+        return route.fallback();
+      await held;
+      await route.continue();
+    });
+    try {
+      await approveReview(paneOf(page));
+      await expect.poll(() => resolves.length).toBe(1);
+      const pendingButton = paneOf(page).getByRole('button', { name: /Approving/ });
+      await pendingButton.dispatchEvent('click');
+      await pendingButton.dispatchEvent('click');
+      await page.keyboard.press('a');
+      await page.keyboard.press('d');
+      expect(resolves).toHaveLength(1);
+    } finally {
+      release();
+    }
+    await expect.poll(async () => refundRan(await threadMessages(request, threadId))).toBe(true);
+    expect(resolves).toHaveLength(1);
+  });
+
+  test('keeps a same-round draft and focus during a queue refresh', async ({ page, request }) => {
+    await waitingRefund(page, request, 'reviews-draft-refresh');
+    let reads = 0;
+    await page.route('**/jsonrpc', async (route) => {
+      const call = route.request().postDataJSON() as { method?: string };
+      if (call.method === 'bureau.reviews.list') reads++;
+      await route.fallback();
+    });
+    const note = paneOf(page).getByRole('textbox', { name: 'Note (optional)' });
+    await note.fill('Keep this draft');
+    await runToEnd(
+      request,
+      'demo:tool-runner',
+      newThreadId('reviews-refresh-event'),
+      'Refund order-1001',
+    );
+    await expect.poll(() => reads).toBeGreaterThan(0);
+    await expect(note).toHaveValue('Keep this draft');
+    await expect(note).toBeFocused();
+  });
+
   test('approved from the inbox runs the tool, and its row goes', async ({
     page,
     request,

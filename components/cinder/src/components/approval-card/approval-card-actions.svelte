@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { untrack, type Snippet } from 'svelte';
   import Button from '../button/button.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';
   // Load JsonEditor first to preserve the order its styles and InlineConfirm's Button styles enter the layer.
@@ -40,6 +40,7 @@
     argumentsValue: unknown;
     /** Resolution sink; the parent guards actionability before forwarding. */
     resolve: (resolution: ApprovalResolution) => void;
+    actionRenderer?: Snippet<[Snippet]> | undefined;
   };
 
   let {
@@ -56,6 +57,7 @@
     canEditArguments,
     argumentsValue,
     resolve,
+    actionRenderer,
   }: ApprovalCardActionsProps = $props();
 
   const reasonId = $derived(`${idBase}-resolution-reason`);
@@ -177,81 +179,88 @@
   {#if disabledReason !== undefined}
     <p id={disabledReasonId} class="cinder-approval-card__reason" dir="auto">{disabledReason}</p>
   {/if}
-  <div class="cinder-approval-card__action-row" role="group" aria-label="Approval actions">
-    {#if !noteOpen}
-      <ApprovalCardNoteToggle
-        disabled={isBusy}
-        fieldId={reasonId}
-        onOpen={() => (noteOpen = true)}
-      />
-    {/if}
-    <div class="cinder-approval-card__action-buttons">
-      <Button
-        type="button"
-        variant="secondary"
-        data-cinder-approval-deny
-        mutating
-        disabled={isBusy && resolving !== 'deny'}
-        aria-disabled={disabledReason === undefined ? undefined : 'true'}
-        loading={resolving === 'deny'}
-        loadingStatus="Denying…"
-        aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
-        onclick={() => {
-          approvalArmed = false;
-          emitResolution('deny');
-        }}
-      >
-        {resolving === 'deny' ? 'Denying…' : 'Deny'}
-      </Button>
-      {#if canEditArguments}
+  {#snippet actionControls()}
+    <div class="cinder-approval-card__action-row" role="group" aria-label="Approval actions">
+      {#if !noteOpen}
+        <ApprovalCardNoteToggle
+          disabled={isBusy}
+          fieldId={reasonId}
+          onOpen={() => (noteOpen = true)}
+        />
+      {/if}
+      <div class="cinder-approval-card__action-buttons">
         <Button
           type="button"
           variant="secondary"
+          data-cinder-approval-deny
           mutating
-          disabled={isBusy}
-          onclick={toggleEditingArguments}
-          aria-expanded={editingArguments}
-          aria-controls={editingArguments ? editRegionId : undefined}
-        >
-          Approve with edits
-        </Button>
-      {/if}
-      {#if irreversible}
-        <InlineConfirm
-          presentation="two-press"
-          bind:armed={approvalArmed}
-          confirmLabel="Approve"
-          armedHint="Reverts in 3 seconds."
-          armedEscapeHint="Escape cancels."
-          {requestKey}
-          mutating
-          disabled={isBusy}
-          blocked={disabledReason !== undefined}
-          loading={resolving === 'approve'}
-          loadingLabel="Approving…"
-          ariaDescribedBy={disabledReason === undefined ? armHintId : disabledReasonId}
-          hintClass="cinder-approval-card__arm-hint"
-          hintId={armHintId}
-          onConfirm={() => emitResolution('approve')}
-        />
-      {:else}
-        <Button
-          type="button"
-          variant="primary"
-          data-cinder-approval-approve
-          mutating
-          disabled={isBusy && resolving !== 'approve'}
+          disabled={isBusy && resolving !== 'deny'}
           aria-disabled={disabledReason === undefined ? undefined : 'true'}
-          loading={resolving === 'approve'}
-          loadingStatus="Approving…"
+          loading={resolving === 'deny'}
+          loadingStatus="Denying…"
           aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
-          onclick={() => emitResolution('approve')}
+          onclick={() => {
+            approvalArmed = false;
+            emitResolution('deny');
+          }}
         >
-          {resolving === 'approve' ? 'Approving…' : 'Approve'}
+          {resolving === 'deny' ? 'Denying…' : 'Deny'}
         </Button>
-      {/if}
+        {#if canEditArguments}
+          <Button
+            type="button"
+            variant="secondary"
+            mutating
+            disabled={isBusy}
+            onclick={toggleEditingArguments}
+            aria-expanded={editingArguments}
+            aria-controls={editingArguments ? editRegionId : undefined}
+          >
+            Approve with edits
+          </Button>
+        {/if}
+        {#if irreversible}
+          <InlineConfirm
+            presentation="two-press"
+            bind:armed={approvalArmed}
+            confirmLabel="Approve"
+            armedHint="Reverts in 3 seconds."
+            armedEscapeHint="Escape cancels."
+            {requestKey}
+            mutating
+            disabled={isBusy}
+            blocked={disabledReason !== undefined}
+            loading={resolving === 'approve'}
+            loadingLabel="Approving…"
+            ariaDescribedBy={disabledReason === undefined ? armHintId : disabledReasonId}
+            hintClass="cinder-approval-card__arm-hint"
+            hintId={armHintId}
+            onConfirm={() => emitResolution('approve')}
+          />
+        {:else}
+          <Button
+            type="button"
+            variant="primary"
+            data-cinder-approval-approve
+            mutating
+            disabled={isBusy && resolving !== 'approve'}
+            aria-disabled={disabledReason === undefined ? undefined : 'true'}
+            loading={resolving === 'approve'}
+            loadingStatus="Approving…"
+            aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
+            onclick={() => emitResolution('approve')}
+          >
+            {resolving === 'approve' ? 'Approving…' : 'Approve'}
+          </Button>
+        {/if}
+      </div>
     </div>
-  </div>
+  {/snippet}
+  {#if actionRenderer}
+    {@render actionRenderer(actionControls)}
+  {:else}
+    {@render actionControls()}
+  {/if}
   {#if editingArguments && canEditArguments}
     <div id={editRegionId} class="cinder-approval-card__editor">
       <JsonEditor

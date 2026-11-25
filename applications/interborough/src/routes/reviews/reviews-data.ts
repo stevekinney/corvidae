@@ -33,12 +33,8 @@ import {
   listBureauReviews,
   listPendingReviews,
   pageReviews,
-  resolveBureauReview,
-  type ApprovalDecisionSurface,
   type BureauReview,
   type ListedReview,
-  type ReviewDecision,
-  type ReviewResolution,
 } from '../../lib/bureau-reviews.ts';
 import { respondToTask, type TaskRespondAnswer } from '../../lib/bureau-tasks.ts';
 import { faultTreatment } from '../../lib/faults.ts';
@@ -180,55 +176,6 @@ export function submitReviewDecisionMutation(
     mutationFn: ({ reviewId, options }: SubmitReviewDecisionVariables) =>
       client.submitReview(reviewId, options),
     onSuccess: () => {
-      void invalidateReviewQueries(queryClient);
-    },
-  }));
-}
-
-export interface ResolveBureauReviewVariables {
-  readonly id: string;
-  readonly decision: ReviewDecision;
-  readonly reason?: string;
-  /** The round of the tool approval the row showed, so a review gated again since is not decided. */
-  readonly round?: number;
-  /** Approve and allow the tool for the rest of the chat. Only an approval of a tool takes it. */
-  readonly remember?: boolean;
-  /**
-   * Where the decision was made, which only a tool approval takes: the Reviews page sends
-   * `reviews`, so the chat that asked names Reviews after a reload (COR-2292).
-   */
-  readonly decisionSurface?: ApprovalDecisionSurface;
-}
-
-/** What a decision came to: the Bureau's answer, or that it took effect and its outcome was not written. */
-export type ResolveBureauReviewResult = ReviewResolution & {
-  /** Set when the decision took effect and only its write into the conversation failed. */
-  readonly outcomeNotWritten?: true;
-};
-
-/**
- * Mutation for `bureau.reviews.resolve`. Whether the decision took effect or lost a race, the lists
- * are asked again at once, because either way the review is not what they last showed. A decision
- * whose outcome the Bureau could not write into the conversation took effect, so it is a result
- * and not a failure, and no toast says it failed.
- */
-export function resolveBureauReviewMutation(): CreateMutationResult<
-  ResolveBureauReviewResult,
-  Error,
-  ResolveBureauReviewVariables
-> {
-  const queryClient = useQueryClient();
-
-  return createMutation(() => ({
-    mutationFn: async (variables: ResolveBureauReviewVariables) => {
-      const result = await resolveBureauReview(variables);
-      return 'warning' in result && result.warning === 'APPROVAL_OUTCOME_NOT_WRITTEN'
-        ? { ...result, outcomeNotWritten: true as const }
-        : result;
-    },
-    // The Reviews pane owns the inline outcome and retry for this mutation.
-    onError: () => undefined,
-    onSettled: () => {
       void invalidateReviewQueries(queryClient);
     },
   }));

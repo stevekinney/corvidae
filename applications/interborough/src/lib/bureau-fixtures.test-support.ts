@@ -53,6 +53,7 @@ export function toolApprovalFixture(
         operation: { kind: 'other' },
       },
       policyPauseTier: 'capability',
+      mayRemember: true,
     },
     ...overrides,
   };

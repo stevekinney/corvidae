@@ -11,10 +11,11 @@
     children,
   }: Omit<ApprovalHost, 'catalog'> & { children: Snippet } = $props();
   const catalog = getCatalogHost();
+  const authorize = untrack(() => authorized);
   setReviewsHost(
     Object.assign(catalog, {
       catalog,
-      authorized: (review: Parameters<ApprovalHost['authorized']>[0]) => authorized(review),
+      authorized: (review: Parameters<ApprovalHost['authorized']>[0]) => authorize(review),
       decisionSurface: untrack(() => decisionSurface),
       onOutcome: (...args: Parameters<NonNullable<ApprovalHost['onOutcome']>>) =>
         onOutcome?.(...args),

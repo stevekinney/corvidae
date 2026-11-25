@@ -1,12 +1,19 @@
 import type { CatalogHost } from '@lostgradient/backchannel-svelte';
-import { SvelteMap } from 'svelte/reactivity';
 import type { ReviewsOperationTypes } from '../generated/reviews-operations.generated.ts';
 import { validatedReviewsTransport } from './validation.ts';
 
-type Review = Extract<
+type DeclaredReview = Extract<
   ReviewsOperationTypes['bureau.reviews.get']['output'],
   { kind: 'tool-approval' }
 >;
+type OptionalKeys<Value> = {
+  [Key in keyof Value]-?: object extends Pick<Value, Key> ? Key : never;
+}[keyof Value];
+type Review = {
+  [
+    Key in keyof DeclaredReview as Key extends OptionalKeys<DeclaredReview> ? never : Key
+  ]: DeclaredReview[Key];
+} & { [Key in OptionalKeys<DeclaredReview>]?: DeclaredReview[Key] | undefined };
 type Choice = ReviewsOperationTypes['bureau.reviews.resolve']['input'];
 type Receipt = ReviewsOperationTypes['bureau.reviews.resolve']['output'];
 export type ApprovalOutcome =
@@ -22,10 +29,11 @@ export type ApprovalHost = {
   readonly authorized: (review: Review) => boolean;
   readonly decisionSurface?: 'reviews' | undefined;
   readonly onOutcome?:
-    ((seen: { id: string; round: number }, outcome: ApprovalOutcome) => void) | undefined;
+    | ((seen: { id: string; round: number }, outcome: ApprovalOutcome, receipt?: Receipt) => void)
+    | undefined;
 };
 type Target = { busy: boolean; uncertain: boolean; invalid: boolean };
-const scopes = new WeakMap<CatalogHost, SvelteMap<string, Target>>();
+const scopes = new WeakMap<CatalogHost, Map<string, Target>>();
 
 export function useApprovalDecision(host: ApprovalHost) {
   const { catalog, authorized, decisionSurface, onOutcome } = host;
@@ -34,7 +42,7 @@ export function useApprovalDecision(host: ApprovalHost) {
   );
   let targets = scopes.get(catalog);
   if (!targets) {
-    targets = new SvelteMap();
+    targets = new Map();
     scopes.set(catalog, targets);
   }
   const scope = targets;
@@ -69,8 +77,8 @@ export function useApprovalDecision(host: ApprovalHost) {
         Date.parse(review.approval.action.expiresAt) > Date.now());
     const mayRemember = () =>
       actionable() && review.effect?.kind !== 'refund' && review.approval.mayRemember === true;
-    const report = (outcome: ApprovalOutcome, captured: Review) => {
-      if (!catalog.disposed && authorized(captured)) onOutcome?.({ ...seen }, outcome);
+    const report = (outcome: ApprovalOutcome, captured: Review, receipt?: Receipt) => {
+      if (!catalog.disposed && authorized(captured)) onOutcome?.({ ...seen }, outcome, receipt);
     };
     const capture = () => JSON.parse(JSON.stringify(review)) as Review;
     const invalidate = () => catalog.invalidate(['bureau.reviews.list', 'bureau.reviews.get']);
@@ -162,6 +170,7 @@ export function useApprovalDecision(host: ApprovalHost) {
               ? 'outcome-not-written'
               : 'applied',
           captured,
+          result,
         );
       } catch (error) {
         if (!dispatched) {
