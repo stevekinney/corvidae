@@ -21,6 +21,7 @@ import {
 } from './secret-provider.ts';
 import { generateUlid } from './ulid.ts';
 
+const runner = { describe, test };
 const roots: string[] = [];
 const homes: Bungalow[] = [];
 function temporaryRoot(): string {
@@ -59,7 +60,7 @@ describe('the local secret provider conforms', () => {
       transitions: true,
     });
   });
-  describeSecretProvider(create);
+  describeSecretProvider(runner, create);
 });
 
 describe('the environment secret provider conforms', () => {
@@ -68,7 +69,7 @@ describe('the environment secret provider conforms', () => {
   test('cannot prepare, so the read-only rules apply', () => {
     expect(create('workspace-a').capabilities.prepare).toBe(false);
   });
-  describeSecretProvider(create, SEED);
+  describeSecretProvider(runner, create, SEED);
 });
 
 describe('the secret provider of a read-only local home conforms', () => {
@@ -77,7 +78,7 @@ describe('the secret provider of a read-only local home conforms', () => {
     expect(provider.capabilities.prepare).toBe(false);
     expect(await provider.readLegacy(SEED.key)).toBe(SEED.value);
   });
-  describeSecretProvider(readOnlyHomeProvider, SEED);
+  describeSecretProvider(runner, readOnlyHomeProvider, SEED);
 });
 
 describe('secret providers', () => {
