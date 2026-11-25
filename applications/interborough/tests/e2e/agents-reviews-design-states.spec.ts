@@ -17,6 +17,7 @@
 import type { APIRequestContext, Locator, Page, Route } from '@playwright/test';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 
 import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
@@ -606,14 +607,17 @@ for (const width of WIDTHS) {
         reason: 'the test answers the workflow review’s decision with a 500, for its error toast',
       });
       await page.setViewportSize({ width, height: 900 });
-      const now = Date.now();
+      // The capture fixture fixes the browser's clock to the sample world. Use that clock rather
+      // than the Node runner's real time, otherwise this review can land in the browser's future.
+      const now = await page.evaluate(() => Date.now());
+      const waitingAge = 25 * 60 * 60_000;
       const workflowReview = {
         source: 'engine',
         kind: 'engine-review',
         id: 'design-release-notes-review',
         runId: 'release-notes-7f3a',
-        requestedAt: now - 12 * 60_000,
-        ageMilliseconds: 12 * 60_000,
+        requestedAt: now - waitingAge,
+        ageMilliseconds: waitingAge,
         status: 'pending',
         reviewType: 'content',
         reviewers: ['you'],
@@ -622,8 +626,9 @@ for (const width of WIDTHS) {
         step: 'Collect merged changes',
         message: 'Here is the draft. Approve it to publish, or send it back with a note.',
         artifact: {
-          title: 'Release 4.2',
-          summary: 'Faster refunds, a clearer Reviews page, and agents you can disable.',
+          title: 'Release notes for 2.4',
+          release: 'Release 2.4',
+          summary: 'Refunds now ask for approval before money moves. Order lookups are faster.',
         },
       };
       await standIn(page, 'bureau.reviews.list', async (route, call) => {
@@ -646,7 +651,27 @@ for (const width of WIDTHS) {
       await page.goto(`/reviews?review=${encodeURIComponent(`engine:${workflowReview.id}`)}`);
       await expect(page.getByTestId('review-intro')).toHaveText(workflowReview.message);
       // The list row says the draft's title, as the pane's heading does (row 25o).
-      await expect(page.getByRole('heading', { level: 2, name: 'Release 4.2' })).toBeVisible();
+      await expect(
+        page.getByRole('heading', { level: 2, name: 'Release notes for 2.4' }),
+      ).toBeVisible();
+      const draftFields = page.getByTestId('review-draft-fields');
+      await expect(draftFields.getByText('Title', { exact: true })).toBeVisible();
+      await expect(draftFields.getByText('Release notes for 2.4', { exact: true })).toBeVisible();
+      await expect(draftFields.getByText('Release', { exact: true })).toBeVisible();
+      await expect(draftFields.getByText('Release 2.4', { exact: true })).toBeVisible();
+      await expect(draftFields.getByText('Summary', { exact: true })).toBeVisible();
+      await expect(
+        draftFields.getByText(
+          'Refunds now ask for approval before money moves. Order lookups are faster.',
+          { exact: true },
+        ),
+      ).toBeVisible();
+      await expect(page.locator('.ib-review-detail__eyebrow')).toHaveText(
+        'Review requested by a workflow',
+      );
+      await expect(page.getByTestId('review-source')).toContainText(
+        'Asked by the Release notes workflow, step Collect merged changes, waiting 1 day',
+      );
       // On a phone, Send back and Approve are in view above the tab bar before anything is
       // scrolled (row 25q).
       const approve = page.locator('.cinder-docked-action-bar').getByRole('button', {
@@ -696,6 +721,101 @@ for (const width of WIDTHS) {
         route: '/reviews',
         tab: 'done',
         state: 'more than one page',
+        source: SOURCE,
+      });
+    });
+  });
+
+  test.describe(`/reviews named approvals at ${width} pixels`, () => {
+    test.use({ timezoneId: SAMPLE_TIME_ZONE });
+
+    test(`/reviews captures named approvals under Today and Yesterday at ${width} pixels`, async ({
+      page,
+    }) => {
+      await page.clock.setFixedTime(SAMPLE_NOW);
+      await page.setViewportSize({ width, height: 900 });
+      const now = await page.evaluate(() => Date.now());
+      const today = now - 13 * 60_000;
+      const yesterday = now - (23 * 60 + 41) * 60_000;
+      const review = (
+        id: string,
+        toolName: string,
+        orderId: string,
+        cents: number,
+        message: string,
+        status: 'approved' | 'denied',
+        decidedAt: number,
+      ) => ({
+        source: 'bureau',
+        kind: 'tool-approval',
+        id,
+        runId: `${id}-run`,
+        sessionId: `${id}-session`,
+        agentName: 'demo:tool-runner',
+        requestedAt: decidedAt - 60_000,
+        ageMilliseconds: now - decidedAt + 60_000,
+        status,
+        round: 0,
+        approval: {
+          callId: `${id}-call`,
+          toolName,
+          arguments: { orderId, cents },
+          action: { type: 'approval', message, risk: 'medium', operation: { kind: 'other' } },
+        },
+        resolution: {
+          decision: status === 'approved' ? 'approve' : 'deny',
+          decidedBy: 'anonymous:local',
+          decidedAt,
+          decisionSurface: 'reviews',
+        },
+      });
+      const reviews = [
+        review(
+          'design-today-refund',
+          'demo:issue-refund',
+          '4472',
+          1850,
+          'Refund order 4472 for $18.50?',
+          'approved',
+          today,
+        ),
+        review(
+          'design-yesterday-triage',
+          'demo:triage-refunds',
+          '4398',
+          4200,
+          'Triage refund request for order 4398?',
+          'denied',
+          yesterday,
+        ),
+      ];
+      await standIn(page, 'bureau.reviews.list', async (route, call) => {
+        await changedAnswer(route, (result) => {
+          if (call.params?.['status'] === 'resolved') {
+            result['reviews'] = reviews;
+            result['total'] = reviews.length;
+            result['nextPageToken'] = null;
+          }
+        });
+      });
+      await page.goto('/reviews?tab=done');
+      const done = page.getByRole('main');
+      await expect(done).toContainText('Today');
+      await expect(done).toContainText('Yesterday');
+      const todayRow = page.locator('[data-review-row="bureau:design-today-refund"]');
+      const yesterdayRow = page.locator('[data-review-row="bureau:design-yesterday-triage"]');
+      await expect(todayRow).toContainText('Refund order 4472 for $18.50?');
+      await expect(todayRow).toContainText('Approved by you');
+      await expect(todayRow).toContainText(/10:33\s*AM/);
+      await expect(todayRow).toContainText('Tool runner');
+      await expect(yesterdayRow).toContainText('Triage refund request for order 4398?');
+      await expect(yesterdayRow).toContainText('Denied by you');
+      await expect(yesterdayRow).toContainText(/11:05\s*AM/);
+      await expect(yesterdayRow).toContainText('Tool runner');
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        tab: 'done',
+        state: 'named approvals by day',
         source: SOURCE,
       });
     });
