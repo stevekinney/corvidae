@@ -72,6 +72,37 @@ describe('InlineConfirm', () => {
     expect(confirmations).toBe(1);
   });
 
+  test('a destructive two-press action looks dangerous at rest and escalates when armed', async () => {
+    const view = render(InlineConfirm, {
+      presentation: 'two-press',
+      confirmLabel: 'Delete namespace',
+      destructive: true,
+    });
+
+    // At rest it is a soft danger face, never the primary one; arming escalates it to the solid
+    // danger face, so the second press is visibly different from the first.
+    const atRest = view.getByRole('button', { name: 'Delete namespace' });
+    expect(atRest.classList.contains('button-variant-soft-danger')).toBe(true);
+    expect(atRest.classList.contains('button-variant-primary')).toBe(false);
+    await fireEvent.click(atRest);
+    const armed = view.getByRole('button', { name: 'Press again to delete namespace' });
+    expect(armed.classList.contains('button-variant-danger')).toBe(true);
+    expect(armed.classList.contains('button-variant-soft-danger')).toBe(false);
+  });
+
+  test('a non-destructive two-press action is primary at rest and danger once armed', async () => {
+    const view = render(InlineConfirm, {
+      presentation: 'two-press',
+      confirmLabel: 'Refund',
+    });
+
+    const atRest = view.getByRole('button', { name: 'Refund' });
+    expect(atRest.classList.contains('button-variant-primary')).toBe(true);
+    await fireEvent.click(atRest);
+    const armed = view.getByRole('button', { name: 'Press again to refund' });
+    expect(armed.classList.contains('button-variant-danger')).toBe(true);
+  });
+
   test('keeps the keyboard escape hint visible only for fine pointers', async () => {
     const { container, getByRole } = render(InlineConfirm, {
       presentation: 'two-press',
