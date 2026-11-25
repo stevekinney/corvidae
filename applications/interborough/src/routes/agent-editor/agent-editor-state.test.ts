@@ -271,6 +271,8 @@ describe('the reference documents of a saved agent (row 41t)', () => {
     ]);
     expect(form.toDefinition().references).toEqual([...documents, staged?.path]);
     expect(form.changedParts).toEqual([AGENT_EDITOR_COPY.edit.references.heading]);
+    form.removeReference(staged!.path);
+    expect(form.stagedReferenceDocuments).toEqual([]);
   });
 
   test('ignore a path the file does not list and a path removed twice', () => {

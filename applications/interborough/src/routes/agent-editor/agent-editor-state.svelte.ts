@@ -476,6 +476,7 @@ export class AgentEditorState {
     next.description = this.description;
     next.instructions = this.instructions;
     next.a2a = this.a2a;
+    next.#stagedReferences = this.#stagedReferences;
     next.#attempted = this.#attempted;
     // The blank model was not chosen by the person, so it is no change.
     const chosen = next.#parts();
@@ -775,6 +776,13 @@ export class AgentEditorState {
    * a new agent's form (whose documents are a copy's, kept whole) change nothing.
    */
   removeReference(path: string): void {
+    const staged = this.#stagedReferences.find(
+      (document) => this.stagedReferencePath(document) === path,
+    );
+    if (staged !== undefined) {
+      this.#stagedReferences = this.#stagedReferences.filter((document) => document !== staged);
+      return;
+    }
     if (this.mode !== 'edit' || !this.references.includes(path)) return;
     if (this.#removedReferences.includes(path)) return;
     this.#removedReferences = [...this.#removedReferences, path];
