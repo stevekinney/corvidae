@@ -80,7 +80,7 @@ describe('the default tables', () => {
   });
 
   test('refuse a bucket location with no S3 client, as before', () => {
-    const home = { s3Client: () => undefined } as unknown as Bungalow;
+    const home = { objectStore: () => undefined } as unknown as Bungalow;
     const content = { kind: 's3', bucket: 'state', prefix: 'agents/' } as const;
     expect(() => createAgentSource(home, content, {})).toThrow('no S3 client');
     expect(() => createWorkflowSource(home, content)).toThrow('no S3 client');

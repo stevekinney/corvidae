@@ -1,9 +1,16 @@
-import type { Bungalow, DatabaseWorkspaceClaim, OpenRemoteBungalowOptions } from './bungalow.ts';
+import type {
+  Bungalow,
+  DatabaseWorkspaceClaim,
+  OpenRemoteBungalowOptions,
+  PresignerFactory,
+} from './bungalow.ts';
 import type { ConfigurationSnapshot, ConfigurationWriteResult } from './configuration.ts';
 import { assertConfigurationWrite } from './configuration.ts';
 import { injectedDeploymentSecrets, type DeploymentSecrets } from './deployment-secrets.ts';
 import { createEnvironmentSecretProvider } from './environment-secret-provider.ts';
 import { BungalowFilesystemError, BungalowInputError, BungalowStateError } from './errors.ts';
+import { createObjectStore, type BungalowObjectStore } from './object-store.ts';
+import { createSigV4Presigner, type ObjectPresigner } from './presign.ts';
 import {
   secretVariable,
   validateRemoteDescriptor,
@@ -62,7 +69,7 @@ async function discard(response: Response): Promise<void> {
  * COR-1759 proved: `Bun.S3Client.write` silently drops a conditional header.
  */
 async function send(
-  client: Bun.S3Client,
+  client: BungalowObjectStore,
   key: string,
   operation: S3Operation,
   method: 'GET' | 'PUT',
@@ -78,7 +85,7 @@ async function send(
 
 /** The object's text, or `undefined` when the store answers 404. */
 async function readObject(
-  client: Bun.S3Client,
+  client: BungalowObjectStore,
   key: string,
   operation: S3Operation,
 ): Promise<string | undefined> {
@@ -97,7 +104,7 @@ async function readObject(
 
 /** Read bytes and revision from one HTTP response, never separate GET and HEAD requests. */
 async function readConfigurationObject(
-  client: Bun.S3Client,
+  client: BungalowObjectStore,
   key: string,
 ): Promise<ConfigurationSnapshot> {
   const response = await send(client, key, 'read configuration', 'GET');
@@ -120,7 +127,7 @@ async function readConfigurationObject(
 
 /** An uncertain response is observed once; equal content alone cannot prove which writer committed. */
 async function reconcileConfiguration(
-  client: Bun.S3Client,
+  client: BungalowObjectStore,
   key: string,
 ): Promise<ConfigurationWriteResult> {
   try {
@@ -134,7 +141,7 @@ async function reconcileConfiguration(
  * Write a new deployment ID only if none exists. A 412 means another instance wrote first, which
  * is as good as success: the caller reads back whichever value the store kept.
  */
-async function createDeploymentId(client: Bun.S3Client, key: string): Promise<void> {
+async function createDeploymentId(client: BungalowObjectStore, key: string): Promise<void> {
   const response = await send(client, key, 'write deployment ID', 'PUT', {
     headers: { 'If-None-Match': '*' },
     body: `${generateUlid()}\n`,
@@ -145,7 +152,7 @@ async function createDeploymentId(client: Bun.S3Client, key: string): Promise<vo
 }
 
 async function bindWorkspaceId(
-  client: Bun.S3Client,
+  client: BungalowObjectStore,
   workspaceKey: string,
   deploymentId: string,
   configured?: string,
@@ -183,7 +190,7 @@ async function bindWorkspaceId(
  * a conditional create and then all read the one value the store kept, so they agree. An object
  * that is absent again after the write is a failed read, not a reason to write again.
  */
-async function loadDeploymentId(client: Bun.S3Client, key: string): Promise<string> {
+async function loadDeploymentId(client: BungalowObjectStore, key: string): Promise<string> {
   let stored = await readObject(client, key, 'read deployment ID');
   if (stored === undefined) {
     await createDeploymentId(client, key);
@@ -200,35 +207,53 @@ async function loadDeploymentId(client: Bun.S3Client, key: string): Promise<stri
 }
 
 /**
- * The client the descriptor describes, with every option set explicitly: the bucket is the
- * descriptor's, never `S3_BUCKET`, and requests are path-style. Bun refuses some endpoints in its
- * constructor with a message that quotes the endpoint, so that failure keeps only its code.
+ * The default presigner: SigV4 over `node:crypto`, signing with exactly the descriptor's
+ * credentials, path-style, for the descriptor's bucket, never `S3_BUCKET`. It reads no process
+ * environment, so no ambient session token can reach a request.
  */
-function s3Client(descriptor: RemoteBungalowDescriptor): Bun.S3Client {
+export const defaultPresigner: PresignerFactory = (descriptor) =>
+  createSigV4Presigner({
+    endpoint: descriptor.endpoint,
+    region: descriptor.region,
+    accessKeyId: descriptor.accessKeyId,
+    secretAccessKey: descriptor.secretAccessKey,
+    sessionToken: descriptor.sessionToken,
+    bucket: descriptor.bucket,
+  });
+
+/**
+ * The object-store client the descriptor describes, over the injected presigner or the default.
+ * A presigner factory may refuse an endpoint with a message that quotes it, so that failure keeps
+ * only its code.
+ */
+function objectStoreFor(
+  descriptor: RemoteBungalowDescriptor,
+  presignerFactory: PresignerFactory,
+): BungalowObjectStore {
+  if (typeof presignerFactory !== 'function') {
+    throw new BungalowInputError('The presigner must be a function.');
+  }
+  let presign: ObjectPresigner;
   try {
-    return new Bun.S3Client({
-      endpoint: descriptor.endpoint,
-      region: descriptor.region,
-      accessKeyId: descriptor.accessKeyId,
-      secretAccessKey: descriptor.secretAccessKey,
-      ...(descriptor.sessionToken === undefined ? {} : { sessionToken: descriptor.sessionToken }),
-      bucket: descriptor.bucket,
-      virtualHostedStyle: false,
-    });
+    presign = presignerFactory(descriptor);
   } catch (error) {
     throw new BungalowInputError('The S3_ variables do not describe a usable S3 client.', {
       cause: { code: codeOf(error) },
     });
   }
+  if (typeof presign !== 'function') {
+    throw new BungalowInputError('The presigner factory must return a function.');
+  }
+  return createObjectStore(presign);
 }
 
 /**
- * Refuse a key that a request URL would not address exactly. Bun's presigned URL turns `\\` into
- * `/`, and URL parsing drops `.` segments and resolves `..`, so such a key would read and write a
+ * Refuse a key that a request URL would not address exactly. A presigner may turn `\\` into `/`
+ * (Bun's does), and URL parsing drops `.` segments and resolves `..`, so such a key would read and write a
  * different object than the location Bungalow hands out, and two prefixes would share one home.
  * `normalizeBucketPrefix` refuses the known cases; this checks the URL itself, before any request.
  */
-function assertExactlyAddressed(client: Bun.S3Client, bucket: string, key: string): void {
+function assertExactlyAddressed(client: BungalowObjectStore, bucket: string, key: string): void {
   let path: string;
   try {
     path = decodeURIComponent(
@@ -247,15 +272,16 @@ function assertExactlyAddressed(client: Bun.S3Client, bucket: string, key: strin
 }
 
 /**
- * Refuse a client that would sign with a session token nobody gave Bungalow. The decision is that
- * remote credentials come only from the environment Bungalow is given, but `Bun.S3Client` falls
- * back to the `AWS_SESSION_TOKEN` or `S3_SESSION_TOKEN` the process had when it started whenever
- * no `sessionToken` option is set, or it is `''`, and no option turns that off. The probe is a
+ * Refuse a presigner that would sign with a session token nobody gave Bungalow. The decision is
+ * that remote credentials come only from the environment Bungalow is given. The default presigner
+ * reads no environment, but an injected one may: `Bun.S3Client` falls back to the
+ * `AWS_SESSION_TOKEN` or `S3_SESSION_TOKEN` the process had when it started whenever no
+ * `sessionToken` option is set, or it is `''`, and no option turns that off. The probe is a
  * presigned URL, so nothing is sent, and its query shows exactly what every request would carry.
  * A token the given environment supplies is the intended one. Names only, never a value.
  */
 function assertNoAmbientSessionToken(
-  client: Bun.S3Client,
+  client: BungalowObjectStore,
   descriptor: RemoteBungalowDescriptor,
   key: string,
 ): void {
@@ -272,8 +298,9 @@ function assertNoAmbientSessionToken(
   }
   if (signed) {
     throw new BungalowInputError(
-      'The process environment sets AWS_SESSION_TOKEN or S3_SESSION_TOKEN, which Bun would sign ' +
-        'every request with, but the environment given to Bungalow sets no S3_SESSION_TOKEN. ' +
+      'The presigner signs every request with a session token, such as the AWS_SESSION_TOKEN or ' +
+        'S3_SESSION_TOKEN the process started with, but the environment given to Bungalow sets ' +
+        'no S3_SESSION_TOKEN. ' +
         'Set S3_SESSION_TOKEN in the given environment, or unset AWS_SESSION_TOKEN and ' +
         'S3_SESSION_TOKEN in the process.',
     );
@@ -322,11 +349,12 @@ export async function openValidatedRemoteBungalow(
     databaseWorkspaceClaim,
     secretProvider: secretProviderFactory,
     deploymentSecrets: deploymentSecretsFactory,
+    presigner = defaultPresigner,
   } = options;
   const writableConfiguration = options.writableConfiguration === true;
   const { bucket, prefix } = configuration;
   const secrets = configuration.secrets ?? new Map<string, string>();
-  const client = s3Client(configuration);
+  const client = objectStoreFor(configuration, presigner);
   const deploymentKey = `${prefix}deployment-id`;
   const workspaceKey = `${prefix}workspace-id`;
   const configurationKey = `${prefix}configuration.json`;
@@ -451,7 +479,7 @@ export async function openValidatedRemoteBungalow(
     logs: undefined,
     deploymentId,
     workspaceId,
-    s3Client() {
+    objectStore() {
       assertOpen();
       return client;
     },

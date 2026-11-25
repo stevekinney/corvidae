@@ -9,12 +9,7 @@ import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-
 import { createS3TestServer, type S3TestServer } from '@lostgradient/testing/s3-server';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import {
-  openBungalow,
-  openBungalowWithDependencies,
-  openTemporaryBungalow,
-  type OpenRemoteBungalowOptions,
-} from './bungalow.ts';
+import { openBungalow, openTemporaryBungalow, type OpenRemoteBungalowOptions } from './bungalow.ts';
 import type { DeploymentSecretsContext } from './deployment-secrets.ts';
 import { resolveBungalowDescriptor } from './descriptor.ts';
 import { processEnvironment } from './environment-configuration.ts';
@@ -26,6 +21,7 @@ import {
   TEST_NAME,
   useTemporaryDirectories,
 } from './fixtures.test-support.ts';
+import { createSigV4Presigner } from './presign.ts';
 import type { RemoteBungalowDescriptor } from './remote-configuration.ts';
 import { openRemoteBungalow, openValidatedRemoteBungalow } from './remote.ts';
 import { useS3Proxy } from './s3-proxy.test-support.ts';
@@ -248,22 +244,86 @@ describe('remote mode: the lock', () => {
     const acquireLock = (): never => {
       throw new Error('flock was requested');
     };
-    using remote = await openBungalowWithDependencies(
-      {
+    using remote = await openBungalow({
+      name: TEST_NAME,
+      environment: remoteEnvironment(server.endpoint),
+      databaseWorkspaceClaim: async () => {},
+      acquireLock,
+    });
+    expect(remote.mode).toBe('remote');
+    const local = await throwingRejectionOf(
+      openBungalow({
+        name: TEST_NAME,
+        environment: homeEnvironment(temporaryDirectory()),
+        acquireLock,
+      }),
+    );
+    expect(local).toThrow('flock was requested');
+  });
+
+  test('a local open never asks for the presigner, which a remote open through the same option does', async () => {
+    const server = startServer();
+    const presigner = (): never => {
+      throw new Error('a presigner was requested');
+    };
+    using local = await openBungalow({
+      name: TEST_NAME,
+      environment: homeEnvironment(temporaryDirectory()),
+      presigner,
+    });
+    expect(local.mode).toBe('local');
+    const remote = await throwingRejectionOf(
+      openBungalow({
         name: TEST_NAME,
         environment: remoteEnvironment(server.endpoint),
         databaseWorkspaceClaim: async () => {},
+        presigner,
+      }),
+    );
+    // The factory's own message is replaced: a presigner may quote the endpoint.
+    expect(remote).toThrow(BungalowInputError);
+  });
+});
+
+describe('remote mode: an injected presigner', () => {
+  test('signs every request, and conditional writes still go through fetch', async () => {
+    const proxy = startProxy(startServer());
+    const signed: string[] = [];
+    using bungalow = await openBungalow({
+      name: TEST_NAME,
+      environment: remoteEnvironment(proxy.endpoint),
+      databaseWorkspaceClaim: async () => {},
+      writableConfiguration: true,
+      presigner: (descriptor) => {
+        const inner = createSigV4Presigner(descriptor);
+        return (key, options) => {
+          signed.push(`${options?.method ?? 'GET'} ${key}`);
+          return inner(key, options);
+        };
       },
-      { acquireLock },
+    });
+    expect(await bungalow.writeConfiguration('{}\n', { expectedRevision: null })).toEqual({
+      outcome: 'committed',
+    });
+    expect(await bungalow.writeConfiguration('{}\n', { expectedRevision: null })).toEqual({
+      outcome: 'conflict',
+    });
+    expect(signed).toContain(`PUT ${CONFIGURATION_KEY}`);
+    expect(signed).toContain('GET ');
+  });
+
+  test('a factory that returns no function is refused before any request', async () => {
+    const proxy = startProxy(startServer());
+    const error = await throwingRejectionOf(
+      openBungalow({
+        name: TEST_NAME,
+        environment: remoteEnvironment(proxy.endpoint),
+        databaseWorkspaceClaim: async () => {},
+        presigner: () => 'not a function' as never,
+      }),
     );
-    expect(remote.mode).toBe('remote');
-    const local = await throwingRejectionOf(
-      openBungalowWithDependencies(
-        { name: TEST_NAME, environment: homeEnvironment(temporaryDirectory()) },
-        { acquireLock },
-      ),
-    );
-    expect(local).toThrow('flock was requested');
+    expect(error).toThrow(BungalowInputError);
+    expect(proxy.requests).toEqual([]);
   });
 });
 
@@ -738,14 +798,34 @@ describe('remote mode: the handle', () => {
       bucket: BUCKET,
       prefix: `${PREFIX}/workflows/`,
     });
-    const client = bungalow.s3Client();
-    expect(client).toBeInstanceOf(Bun.S3Client);
+    const client = bungalow.objectStore();
     const url = client?.presign('probe') ?? '';
     expect(url.startsWith(`${server.endpoint}/${BUCKET}/probe?`)).toBe(true);
     expect(url).toContain(ACCESS_KEY_ID);
     expect(url).toContain(SESSION_TOKEN);
     server.put(`${PREFIX}/agents/a.md`, 'agent');
-    expect(await client?.file(`${PREFIX}/agents/a.md`).text()).toBe('agent');
+    server.put(`${PREFIX}/agents/b & c.md`, 'other');
+    const object = await fetch(client?.presign(`${PREFIX}/agents/a.md`) ?? '');
+    expect(await object.text()).toBe('agent');
+    const listing = await client?.list({ prefix: `${PREFIX}/agents/` });
+    expect(listing?.contents?.map((entry) => entry.key)).toEqual([
+      `${PREFIX}/agents/a.md`,
+      `${PREFIX}/agents/b & c.md`,
+    ]);
+    expect(listing?.contents?.[0]?.eTag).toBe(object.headers.get('etag') ?? 'missing');
+    expect(listing?.contents?.[0]?.size).toBe(5);
+    const firstPage = await client?.list({ prefix: `${PREFIX}/agents/`, maxKeys: 1 });
+    expect(firstPage?.isTruncated).toBe(true);
+    const secondPage = await client?.list({
+      prefix: `${PREFIX}/agents/`,
+      ...(firstPage?.nextContinuationToken === undefined
+        ? {}
+        : { continuationToken: firstPage.nextContinuationToken }),
+    });
+    expect(secondPage?.contents?.map((entry) => entry.key)).toEqual([`${PREFIX}/agents/b & c.md`]);
+    const missing = await rejectionOf(client?.list({}, { bucket: 'another-bucket' }));
+    expect(missing).toMatchObject({ name: 'ObjectStoreRequestError', status: 404 });
+    expect(String((missing as Error).message)).not.toContain(ACCESS_KEY_ID);
   });
 
   test('reads the configuration from the bucket, or undefined when absent', async () => {
@@ -836,7 +916,7 @@ describe('remote mode: the handle', () => {
     bungalow.close();
     bungalow.close();
     bungalow[Symbol.dispose]();
-    expect(() => bungalow.s3Client()).toThrow(BungalowStateError);
+    expect(() => bungalow.objectStore()).toThrow(BungalowStateError);
     expect(() => bungalow.content('agents')).toThrow(BungalowStateError);
     expect(await throwingRejectionOf(bungalow.deploymentSecrets.read('api-key'))).toThrow(
       BungalowStateError,
@@ -853,8 +933,8 @@ describe('remote mode: the handle', () => {
     ]);
   });
 
-  test('a local Bungalow has no S3 client', async () => {
+  test('a local Bungalow has no object store', async () => {
     using bungalow = await openTemporaryBungalow({ name: TEST_NAME });
-    expect(bungalow.s3Client()).toBeUndefined();
+    expect(bungalow.objectStore()).toBeUndefined();
   });
 });

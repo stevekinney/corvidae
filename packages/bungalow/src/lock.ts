@@ -5,12 +5,14 @@ import {
   fstatSync,
   ftruncateSync,
   readSync,
+  statSync,
   writeSync,
 } from 'node:fs';
+import { createServer, type Server } from 'node:net';
 import { join } from 'node:path';
 
 import { openEntry, readEntry } from './entry-guard.ts';
-import { sanitizeCause } from './error-code.ts';
+import { errorCode, sanitizeCause } from './error-code.ts';
 import {
   BungalowError,
   BungalowFilesystemError,
@@ -33,6 +35,14 @@ export type LockAttempt = 'acquired' | 'contended' | { readonly errno: number };
 export type LockOperations = {
   tryLock(descriptor: number): LockAttempt;
 };
+
+/**
+ * Block the thread for `milliseconds` without spinning, on Bun and Node alike. The lock is taken
+ * synchronously and polls only a few times, briefly, while a holder starts or finishes.
+ */
+function sleepSync(milliseconds: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
 
 /** The platform's `O_CLOEXEC`, which Node's `constants` leaves undefined on macOS. */
 const CLOSE_ON_EXEC_FLAG = { darwin: 0x01000000, linux: 0x80000 } as const;
@@ -71,9 +81,11 @@ export async function loadSystemLockOperations(): Promise<NativeLock> {
   try {
     ffi = await import('bun:ffi');
   } catch (error) {
-    throw new BungalowUnsupportedError('Bungalow could not load the C library for flock(2).', {
-      cause: sanitizeCause(error),
-    });
+    throw new BungalowUnsupportedError(
+      'The default lock needs bun:ffi, which only Bun has. On another runtime, such as Node, ' +
+        'pass acquirePortableLock as acquireLock.',
+      { cause: sanitizeCause(error) },
+    );
   }
   const { dlopen, FFIType, read } = ffi;
   const flockDefinition = { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 } as const;
@@ -162,6 +174,133 @@ export async function defaultAcquireLock(): Promise<(root: string) => RootLock> 
   return (root) => acquireRootLock(root, operations);
 }
 
+/** `O_EXLOCK` on macOS: take a `flock(2)` exclusive lock as part of `open(2)`. */
+const OPEN_EXCLUSIVE_LOCK_DARWIN = 0x20;
+/** A Linux abstract socket name lives in no filesystem; the kernel frees it when its holder goes. */
+const ABSTRACT_SOCKET_PREFIX = '\0@lostgradient/bungalow/lock/';
+/** The lock is already held when the descriptor is opened, so the kernel needs no second ask. */
+const ALREADY_LOCKED: LockOperations = { tryLock: () => 'acquired' };
+
+/**
+ * The single-instance lock for a host without `bun:ffi`, such as Node 22 or later. It runs on Bun
+ * too. Inject it as `acquireLock`. Like the default, the kernel arbitrates it, so two openers
+ * cannot both hold a root and a holder that dies loses the lock at once, with nothing stale to
+ * reclaim. The mechanism differs by platform:
+ *
+ * - macOS: `<root>/lock` opened with `O_EXLOCK | O_NONBLOCK`, which takes the same `flock(2)`
+ *   lock as the default. A Bun process on the default lock and a Node process on this one exclude
+ *   each other.
+ * - Linux: Node cannot call `flock(2)`, so the lock is a listening abstract Unix socket named for
+ *   the root directory's device and inode. It excludes only openers in the same network
+ *   namespace: two containers that share a volume but not a network namespace can both hold it.
+ *   It does not see the default `flock(2)` lock, so a Bun process on the default and a Node process
+ *   on this one can both hold one root. A home shared between runtimes on Linux injects this lock
+ *   on every runtime.
+ *
+ * Either way the holder writes its process identifier as the first line of `<root>/lock`, as the
+ * default does, so a refused opener names it in `BungalowLockedError`.
+ */
+export async function acquirePortableLock(root: string): Promise<RootLock> {
+  const platform = process.platform;
+  if (platform === 'darwin') return acquireExclusiveOpenLock(root);
+  if (platform === 'linux') return acquireSocketLock(root);
+  throw new BungalowUnsupportedError(
+    `Bungalow's portable lock supports macOS and Linux, not ${platform}.`,
+  );
+}
+
+/** Whether a failure to take a kernel lock means another holder has it. */
+function isContended(error: unknown): boolean {
+  const code = errorCode(error);
+  return code === 'EAGAIN' || code === 'EWOULDBLOCK';
+}
+
+function acquireExclusiveOpenLock(root: string): RootLock {
+  const lockPath = join(root, LOCK_FILE);
+  for (let polls = 0; ; polls += 1) {
+    let descriptor: number;
+    try {
+      descriptor = openEntry(
+        lockPath,
+        'lock file',
+        'file',
+        openFlags() | OPEN_EXCLUSIVE_LOCK_DARWIN,
+        0o600,
+      );
+    } catch (error) {
+      if (!isContended(error)) return wrap('open the lock file', error);
+      // As with the default: an empty file means the holder is starting or finishing.
+      const holder = readHolder(lockPath);
+      if (holder !== undefined || polls >= HOLDER_READ_ATTEMPTS) {
+        throw new BungalowLockedError(root, holder);
+      }
+      sleepSync(HOLDER_READ_INTERVAL_MILLISECONDS);
+      continue;
+    }
+    return acquireOpenedRootLock(descriptor, root, ALREADY_LOCKED, lockPath);
+  }
+}
+
+/** Listen on `address`, or resolve the error that refused it. */
+function listen(
+  address: string,
+): Promise<{ readonly server: Server } | { readonly error: unknown }> {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.once('error', (error) => resolve({ error }));
+    server.listen(address, () => resolve({ server }));
+  });
+}
+
+async function acquireSocketLock(root: string): Promise<RootLock> {
+  const lockPath = join(root, LOCK_FILE);
+  let address: string;
+  try {
+    // The device and inode, not the path, so two paths to one directory share one lock.
+    const status = statSync(root, { bigint: true });
+    address = `${ABSTRACT_SOCKET_PREFIX}${status.dev}:${status.ino}`;
+  } catch (error) {
+    return wrap('inspect the root directory', error);
+  }
+  let server: Server;
+  for (let polls = 0; ; polls += 1) {
+    const attempt = await listen(address);
+    if ('server' in attempt) {
+      server = attempt.server;
+      break;
+    }
+    if (errorCode(attempt.error) !== 'EADDRINUSE') return wrap('take the lock', attempt.error);
+    const holder = readHolder(lockPath);
+    if (holder !== undefined || polls >= HOLDER_READ_ATTEMPTS) {
+      throw new BungalowLockedError(root, holder);
+    }
+    sleepSync(HOLDER_READ_INTERVAL_MILLISECONDS);
+  }
+  // A held lock must not keep the process alive: the handle's `close()` releases it.
+  server.unref();
+  let recorded: RootLock;
+  try {
+    const descriptor = openEntry(lockPath, 'lock file', 'file', openFlags(), 0o600);
+    recorded = acquireOpenedRootLock(descriptor, root, ALREADY_LOCKED, lockPath);
+  } catch (error) {
+    server.close();
+    if (error instanceof BungalowError) throw error;
+    return wrap('open the lock file', error);
+  }
+  let listening = true;
+  return {
+    release() {
+      // The holder record goes first, so no contender that gets the socket reads a stale holder.
+      // A retried release after `recorded` threw skips it (it runs at most once) and closes.
+      recorded.release();
+      if (listening) {
+        listening = false;
+        server.close();
+      }
+    },
+  };
+}
+
 /** Take ownership of an already opened lock descriptor and lock its file. */
 export async function acquireLocalRootLockDescriptor(
   descriptor: number,
@@ -240,7 +379,7 @@ function acquireOpenedRootLock(
       if (holder !== undefined || polls >= HOLDER_READ_ATTEMPTS) {
         throw new BungalowLockedError(root, holder);
       }
-      Bun.sleepSync(HOLDER_READ_INTERVAL_MILLISECONDS);
+      sleepSync(HOLDER_READ_INTERVAL_MILLISECONDS);
       attempt = operations.tryLock(descriptor);
     }
     if (attempt !== 'acquired') {
