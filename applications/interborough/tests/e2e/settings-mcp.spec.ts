@@ -39,6 +39,25 @@ test.describe('Settings › MCP', () => {
     await open(page);
   });
 
+  test('aligns the restart banner with the content on desktop', async ({ page }) => {
+    const banner = page.getByTestId('settings-restart-summary');
+    const content = page.getByRole('group', { name: MCP_COPY.groupLabel });
+    await expect(banner).toBeVisible();
+
+    for (const width of [1280, 1920]) {
+      await page.setViewportSize({ width, height: 1080 });
+      const [bannerBounds, contentBounds] = await Promise.all([
+        banner.boundingBox(),
+        content.boundingBox(),
+      ]);
+      expect(bannerBounds).not.toBeNull();
+      expect(contentBounds).not.toBeNull();
+      expect(bannerBounds!.x).toBeCloseTo(contentBounds!.x, 0);
+      expect(bannerBounds!.width).toBeCloseTo(contentBounds!.width, 0);
+      await captureForDesignReview(page, { route: ROUTE, state: 'restart-banner', source: SOURCE });
+    }
+  });
+
   test('reads the endpoint address, and the configuration for Claude Code and for any other client', async ({
     page,
     checkA11y,
