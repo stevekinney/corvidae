@@ -5,7 +5,12 @@ type InlineConfirmSharedProps = {
   confirmLabel: string;
   /** Label for the cancelling action. Defaults to `'Cancel'`. @default 'Cancel' */
   cancelLabel?: string;
-  /** Marks the confirming action as destructive. Defaults to `false`. @default false */
+  /**
+   * Marks the confirming action as destructive: the strip's confirm button, and a two-press
+   * action at rest as well as armed, take the danger face. A non-destructive two-press action is
+   * primary at rest and danger once armed. Defaults to `false`.
+   * @default false
+   */
   destructive?: boolean;
   /**
    * The strip sits flush inside a bordered container. At the container's start or end it drops

@@ -157,7 +157,7 @@
 {#if presentation === 'two-press'}
   <span class={classNames('cinder-inline-confirm__two-press', className)}>
     <Button
-      variant={armed ? 'danger' : 'primary'}
+      variant={destructive || armed ? 'danger' : 'primary'}
       size="sm"
       {mutating}
       disabled={disabled || loading}

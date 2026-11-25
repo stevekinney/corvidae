@@ -2,7 +2,7 @@
 
 `InlineConfirm` keeps a confirmation in document flow for reversible actions. It uses a labelled `role="group"`, focuses Cancel on open, and restores focus to the trigger when dismissed.
 
-Use `presentation="two-press"` for an irreversible action. It renders one named primary action, arms on the first press, resets after three seconds or Escape, and never renders a competing Cancel action.
+Use `presentation="two-press"` for an irreversible action. It renders one named action, arms on the first press, resets after three seconds or Escape, and never renders a competing Cancel action. The action is primary at rest and danger once armed; with `destructive` it is danger at rest too, so a delete or terminate looks dangerous before it is pressed.
 
 ## Usage
 
@@ -44,7 +44,7 @@ Use `presentation="two-press"` for an irreversible action. It renders one named 
 | `cancelLabel` | `string` | no | `"Cancel"` | Label for the cancelling action. Defaults to `'Cancel'`. |
 | `class` | `string` | no | — | Additional class merged with the component's root class. |
 | `confirmLabel` | `string` | yes | — | Label for the confirming action. |
-| `destructive` | `boolean` | no | `false` | Marks the confirming action as destructive. Defaults to `false`. |
+| `destructive` | `boolean` | no | `false` | Marks the confirming action as destructive: the strip's confirm button, and a two-press action at rest as well as armed, take the danger face. A non-destructive two-press action is primary at rest and danger once armed. Defaults to `false`. |
 | `disabled` | `boolean` | no | — | Disables and disarms two-press presentation. |
 | `flush` | `boolean` | no | `false` | The strip sits flush inside a bordered container. At the container's start or end it drops its own rule there instead of doubling the container's edge. Defaults to `false`. |
 | `hintClass` | `string` | no | — | Additional class merged with the two-press status hint. |
