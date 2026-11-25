@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cinder Web Components</title>
+    <link rel="stylesheet" href="./web-components.css" />
+    <script type="module" src="./web-components.js"></script>
+    <style>
+      main {
+        max-inline-size: 36rem;
+        margin-inline: auto;
+        padding: var(--cinder-space-6);
+        display: grid;
+        gap: var(--cinder-space-5);
+      }
+      cinder-button {
+        justify-self: start;
+      }
+      output:empty {
+        display: none;
+      }
+      header,
+      form {
+        display: grid;
+        gap: var(--cinder-space-3);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <cinder-avatar name="Ada Lovelace" size="lg"></cinder-avatar>
+        <h1>Ada Lovelace</h1>
+      </header>
+      <form>
+        <cinder-select name="delivery" label="Notification delivery">
+          <option value="daily" selected>Daily digest</option>
+          <option value="instant">As they arrive</option>
+        </cinder-select>
+        <cinder-button type="submit" variant="secondary" label="Read form value"></cinder-button>
+        <output aria-live="polite"></output>
+      </form>
+      <cinder-accordion>
+        <cinder-accordion-item heading="Daily digest">
+          <p>Receive one email with the day’s updates.</p>
+        </cinder-accordion-item>
+        <cinder-accordion-item heading="As they arrive">
+          <p>Receive an email for each update.</p>
+        </cinder-accordion-item>
+      </cinder-accordion>
+    </main>
+    <script type="module">
+      const form = document.querySelector('form');
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        form.querySelector('output').value = new URLSearchParams(new FormData(form)).toString();
+      });
+    </script>
+  </body>
+</html>

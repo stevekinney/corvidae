@@ -10,6 +10,8 @@
  * ======================================== */
 
   .cinder-accordion {
+    container-name: cinder-accordion;
+    container-type: inline-size;
     display: flex;
     flex-direction: column;
     inline-size: 100%;

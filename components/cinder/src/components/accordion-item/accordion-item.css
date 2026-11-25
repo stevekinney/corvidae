@@ -52,6 +52,15 @@
       color var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
+  @container cinder-accordion (inline-size < 30rem) {
+    .cinder-accordion-item__trigger {
+      padding-block: min(
+        var(--cinder-accordion-item-trigger-padding-block, var(--cinder-space-4)),
+        var(--cinder-space-3)
+      );
+    }
+  }
+
   /* Sticky-hover suppression on touch. */
   @media (hover: hover) {
     .cinder-accordion-item__trigger:hover:not(:disabled) {
