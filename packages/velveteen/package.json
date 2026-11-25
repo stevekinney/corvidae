@@ -17,6 +17,7 @@
     "./create": "./src/create.ts"
   },
   "scripts": {
+    "types": "tsc -b tsconfig.source.json",
     "create": "bun src/create.ts",
     "test:native": "bun ../../scripts/bun-test.ts ./bun-primitives.test.ts",
     "test:inventory": "bun tests/inventory/check-inventory.ts",

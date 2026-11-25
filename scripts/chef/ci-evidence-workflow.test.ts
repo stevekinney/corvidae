@@ -218,7 +218,7 @@ describe('createCiEvidenceWorkflowReceipt', () => {
 
   test('aggregates run-scoped JUnit bundles on a later attempt without new uploads from every job', () => {
     const directory = artifactFixture();
-    const jobs = ['junit-root', ...Array.from({ length: 7 }, (_, index) => `junit-tests-${index}`)];
+    const jobs = ['junit-root', ...Array.from({ length: 9 }, (_, index) => `junit-tests-${index}`)];
     for (const job of jobs) {
       const bundle = join(directory, job);
       mkdirSync(bundle);
@@ -233,6 +233,26 @@ describe('createCiEvidenceWorkflowReceipt', () => {
     expect(receipt.reports).toEqual(
       Object.fromEntries(jobs.map((job) => [job, { reports: 1, testCases: 1 }])),
     );
+    const matrix = readFileSync(join(import.meta.dir, '../../.github/workflows/main.yml'), 'utf8')
+      .split('  tests:\n')[1]
+      ?.split('    env:\n')[0];
+    expect(matrix?.match(/^          - name:/gm)).toHaveLength(jobs.length - 1);
+    const lastReport = join(directory, jobs.at(-1)!, 'fast.xml');
+    for (const content of [
+      null,
+      '<testsuite/>',
+      '<testsuite><testcase name="fails"><failure/></testcase></testsuite>',
+    ]) {
+      if (content === null) rmSync(lastReport);
+      else writeFileSync(lastReport, content);
+      expect(() =>
+        createCiEvidenceWorkflowReceipt({
+          environment: environment({ CI_EVIDENCE_ARTIFACT_DIRECTORY: directory }),
+          eventPayload: {},
+          git,
+        }),
+      ).toThrow(CiEvidenceWorkflowError);
+    }
   });
 
   test('rejects partially supplied manual verification identity fields', () => {
@@ -324,7 +344,7 @@ describe('CI evidence workflow producers', () => {
 describe('validateJUnitArtifacts', () => {
   const expected = [
     'junit-root-2',
-    ...Array.from({ length: 7 }, (_, index) => `junit-tests-${index}-2`),
+    ...Array.from({ length: 9 }, (_, index) => `junit-tests-${index}-2`),
   ];
   const report = (body = '<testcase name="passes"/>') =>
     new TextEncoder().encode(`<testsuite>${body}</testsuite>`);
