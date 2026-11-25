@@ -14,7 +14,7 @@
  * `status` is moot) — not exercised here; see the module's getter doc.
  */
 import { render, waitFor } from '@testing-library/svelte';
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 
 import { FleetEventSource } from '../lib/live-source/fleet-event-source.svelte.ts';
 import { startLiveSourceTestServer } from '../lib/live-source/live-source-test-server.test-support.ts';
@@ -41,6 +41,23 @@ function startUnreachableFleetServer(): { baseUrl: string; stop: () => void } {
 }
 
 describe('EngineStatusController (integration, real server)', () => {
+  test('disabled shared sessions never open the fleet stream or health poll, even for subscribers', async () => {
+    const fetcher = spyOn(globalThis, 'fetch');
+    const controller = new EngineStatusController(
+      { baseUrl: 'https://settings.example', headers: {} },
+      { enabled: false },
+    );
+    const unsubscribe = controller.fleetSource.subscribe(() => {});
+    try {
+      await Promise.resolve();
+      expect(fetcher).not.toHaveBeenCalled();
+      expect(controller.fleetSource.status).toBe('closed');
+    } finally {
+      unsubscribe();
+      controller.dispose();
+      fetcher.mockRestore();
+    }
+  });
   test('status becomes live against a real server', async () => {
     const server = await startLiveSourceTestServer();
     const controller = new EngineStatusController({

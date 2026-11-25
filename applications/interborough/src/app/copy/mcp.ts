@@ -19,7 +19,7 @@ export const MCP_COPY = {
     heading: 'Claude Code',
     description: 'Run this once in a terminal to add Interborough to Claude Code.',
     sharedDescription:
-      'Run this once to add Interborough to Claude Code, then run claude mcp login interborough to sign in.',
+      'Run this once to add Interborough to Claude Code, then use its MCP login command to sign in.',
     copy: 'Copy the Claude Code command',
   },
   generic: {

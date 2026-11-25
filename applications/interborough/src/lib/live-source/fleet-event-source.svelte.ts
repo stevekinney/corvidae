@@ -52,6 +52,8 @@ export interface FleetEventFilter {
  * optional server-side filter.
  */
 export interface FleetEventSourceConfig {
+  /** Disable the deployment-wide feed when this session cannot use it. */
+  readonly enabled?: boolean;
   /** Same-origin-relative (`''`, `'/api'`) or absolute; never includes `/v1/events/sse` itself. */
   readonly baseUrl: string;
   readonly headers?: Record<string, string>;
@@ -184,6 +186,7 @@ export class FleetEventSource implements LiveSource<FleetEventFrame> {
   }
 
   readonly #baseUrl: string;
+  readonly #enabled: boolean;
   readonly #headers: Record<string, string>;
   readonly #connectionFilter: FleetEventFilter | undefined;
   readonly #computeReconnectDelayMs: (attempt: number) => number;
@@ -209,6 +212,7 @@ export class FleetEventSource implements LiveSource<FleetEventFrame> {
   #connected: ReturnType<typeof Promise.withResolvers<void>> = Promise.withResolvers();
 
   constructor(config: FleetEventSourceConfig) {
+    this.#enabled = config.enabled ?? true;
     this.#baseUrl = config.baseUrl;
     this.#headers = config.headers ?? {};
     this.#connectionFilter = config.filter;
@@ -262,7 +266,13 @@ export class FleetEventSource implements LiveSource<FleetEventFrame> {
   }
 
   #ensureConnected(): void {
-    if (this.#closed || this.#abortController !== null || this.#reconnectTimer !== null) return;
+    if (
+      !this.#enabled ||
+      this.#closed ||
+      this.#abortController !== null ||
+      this.#reconnectTimer !== null
+    )
+      return;
     this.#connected = Promise.withResolvers();
     this.#setReconnectAttempt(0);
     void this.#connect();
