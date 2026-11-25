@@ -61,6 +61,30 @@ test('numeric enum attributes reach source components as numbers', async ({ page
   );
 });
 
+test('nullable numeric attributes preserve zero and positive match counts', async ({ page }) => {
+  await page.goto('/web-components/index.html');
+  await page.evaluate(async () => {
+    await customElements.whenDefined('cinder-find-bar');
+    const findBar = document.createElement('cinder-find-bar');
+    findBar.setAttribute('value', 'needle');
+    findBar.setAttribute('match-count', '0');
+    Object.assign(findBar, { onNext: () => undefined });
+    document.body.append(findBar);
+  });
+
+  const findBar = page.locator('cinder-find-bar');
+  const status = findBar.getByRole('status');
+  const next = findBar.getByRole('button', { name: 'Next match' });
+  await expect(findBar).toHaveJSProperty('matchCount', 0);
+  await expect(status).toHaveText('No matches');
+  await expect(next).toBeDisabled();
+
+  await findBar.evaluate((element) => element.setAttribute('match-count', '2'));
+  await expect(findBar).toHaveJSProperty('matchCount', 2);
+  await expect(status).toHaveText('1 of 2');
+  await expect(next).toBeEnabled();
+});
+
 test('VirtualList passes live row data to a plain JavaScript renderer', async ({ page }) => {
   await page.goto('/web-components/index.html');
   await page.evaluate(async () => {

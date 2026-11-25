@@ -36,7 +36,7 @@ function attributeType(
   const values = (schema.enum ?? [schema.const]).filter((value) => value != null);
   if (values.length > 0 && values.every((value) => typeof value === 'number')) return 'Number';
   if (values.length > 0 && values.every((value) => typeof value === 'boolean')) return 'Boolean';
-  const variants = schema.anyOf?.map(attributeType);
+  const variants = schema.anyOf?.filter((variant) => variant.type !== 'null').map(attributeType);
   const first = variants?.[0];
   return first !== undefined && variants?.every((variant) => variant === first) ? first : undefined;
 }
