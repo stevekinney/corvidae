@@ -1,13 +1,14 @@
 {
   "issue": "COR-2427",
   "branch": "codex/cor-2427-agent-pages",
-  "checkedAt": "6fb9a32a21312d32c5687996134721ae7c6f7150",
+  "checkedAt": "dd91dbfd6315fb3094d5426b84646f34e33dc731",
   "briefVersion": "1a8364945e88",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
-      "status": "met-on-main"
+      "status": "met-on-branch",
+      "evidence": "The exact 320px and 375px Access card browser witness passed; the coordinator retains formal capture-review disposition."
     },
     {
       "id": "AC2",
@@ -15,7 +16,8 @@
     },
     {
       "id": "AC3",
-      "status": "met-on-branch"
+      "status": "met-on-branch",
+      "evidence": "The showcase Hooks witness now asserts the human-facing Tool runner heading, breadcrumb, and Duplicate affordance."
     },
     {
       "id": "AC4",
@@ -28,7 +30,7 @@
     {
       "id": "AC6",
       "status": "met-on-branch",
-      "evidence": "39g fixture uses visibilitychange and proves the intercepted bureau.hooks.list request before capture; coordinator owns browser/design capture."
+      "evidence": "The retained Hooks fixture reads successfully at 10:44 AM and fails at the fixed 10:46 AM state."
     },
     {
       "id": "AC7",
@@ -45,7 +47,7 @@
     {
       "id": "AC10",
       "status": "met-on-branch",
-      "evidence": "43g parked Stop browser witness passed in the recorded correction run."
+      "evidence": "The parked Stop browser witness passed in the recorded correction run."
     },
     {
       "id": "AC11",
@@ -53,7 +55,8 @@
     },
     {
       "id": "AC12",
-      "status": "met-on-main"
+      "status": "met-on-branch",
+      "evidence": "The 800px closed-state fixture waits for the ready header and Try it trigger before capture; the right-sheet browser witness passed."
     },
     {
       "id": "AC13",
@@ -62,17 +65,17 @@
     {
       "id": "AC14",
       "status": "met-on-branch",
-      "evidence": "Added 375px browser witness; not launched locally by owner policy."
+      "evidence": "The existing 375px collapsed Access-tab browser witness is retained."
     },
     {
       "id": "AC15",
       "status": "met-on-branch",
-      "evidence": "Added 800px right-sm sheet witness; not launched locally by owner policy."
+      "evidence": "The exact 800px right-sm sheet browser witness passed."
     },
     {
       "id": "AC16",
       "status": "met-on-branch",
-      "evidence": "Added 375px bottom-sheet witness; not launched locally by owner policy."
+      "evidence": "The existing 375px bottom-sheet browser witness is retained."
     },
     {
       "id": "AC17",
@@ -81,7 +84,7 @@
     {
       "id": "AC18",
       "status": "met-on-main",
-      "evidence": "Positive Assistant/Echo sample premise retained; exact label-count conflict recorded for coordinator."
+      "evidence": "The previously documented literal-label conflict remains a coordinator decision; no sample-name special case was introduced."
     },
     {
       "id": "AC19",
@@ -98,7 +101,7 @@
     {
       "id": "AC22",
       "status": "met-on-branch",
-      "evidence": "chat-stop-parked and parked Try it cancellation regression pass."
+      "evidence": "chat-stop-parked and parked Try it cancellation regressions pass."
     },
     {
       "id": "AC23",
@@ -127,7 +130,7 @@
     {
       "id": "AC29",
       "status": "met-on-branch",
-      "evidence": "Added editor-anchor browser witness; not launched locally by owner policy."
+      "evidence": "The editor-anchor browser witness is retained."
     },
     {
       "id": "AC30",
