@@ -80,6 +80,8 @@ export type UnauthenticatedAccessPolicy = 'warn' | 'allow' | 'reject';
 
 /** Who the server says the caller is and the scopes it granted them. */
 export interface Principal {
+  /** Authentication method reported by the host, when the host resolved this principal. */
+  method?: z.infer<typeof hostPrincipalSchema>['method'];
   /** Server-resolved identity used to isolate browser data. */
   workspace?: {
     readonly workspaceId: string;
@@ -373,6 +375,7 @@ export async function resolveHostPrincipal(
   if (result.method === 'browser-session' && result.workspace.membershipRevision === undefined)
     throw new Error('Browser session membership revision unavailable');
   return {
+    method: result.method,
     scopes: result.method === 'unauthenticated' ? [] : result.scopes.filter(isConsoleScope),
     subject: result.subject,
     unauthenticatedAccess: result.method === 'unauthenticated' ? 'warn' : null,

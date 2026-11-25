@@ -155,6 +155,7 @@ test('boot uses the host-resolved principal and rejects an absent workspace', as
       fetcher,
     ),
   ).toEqual({
+    method: 'api-key',
     scopes: ['system:read'],
     subject: 'credential',
     unauthenticatedAccess: null,
@@ -193,6 +194,7 @@ test('browser session introspection pins the mapped member and membership revisi
     }),
   );
   expect(principal).toEqual({
+    method: 'browser-session',
     subject: 'person',
     scopes: ['system:read'],
     unauthenticatedAccess: null,

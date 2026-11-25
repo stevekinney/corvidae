@@ -21,7 +21,11 @@
   import type { FleetEventSource } from '../../lib/live-source/fleet-event-source.svelte.ts';
   import ToastHost, { provideToastHost } from '../toast-host.svelte';
   import { createQueryClient } from '../../lib/query.ts';
-  import { providePrincipalStore, type AuthorizationScope } from '../../lib/scopes.svelte.ts';
+  import {
+    providePrincipalStore,
+    type AuthorizationScope,
+    type Principal,
+  } from '../../lib/scopes.svelte.ts';
   import RouteOutlet from './route-outlet.svelte';
   // Every route's component, loaded before any test that mounts this harness starts its clock.
   // The import is what loads them; the harness only names the result so the import stays.
@@ -30,6 +34,7 @@
   interface RouteOutletHarnessProps {
     client: HttpClient;
     scopes: readonly AuthorizationScope[];
+    method?: Principal['method'];
     /** The shell's Bureau feed, provided to the views and applied to the cache. */
     bureauEvents?: BureauEventSource;
     /** The shell's engine feed, provided to the views and applied to the cache. */
@@ -43,6 +48,7 @@
   let {
     client,
     scopes,
+    method,
     bureauEvents,
     fleetEvents,
     keyboard,
@@ -58,7 +64,9 @@
   provideKeyboardPreferences(
     untrack(() => keyboard) ?? new KeyboardPreferences(window.localStorage),
   );
+  const initialMethod = untrack(() => method);
   providePrincipalStore().setPrincipal({
+    ...(initialMethod === undefined ? {} : { method: initialMethod }),
     scopes: untrack(() => scopes),
     subject: 'tester',
     unauthenticatedAccess: null,
