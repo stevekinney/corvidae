@@ -2,10 +2,14 @@ import { defineOperation, type Principal } from '@lostgradient/backchannel';
 import type { Bureau, BureauReviews, BureauTasks } from '@lostgradient/bureau';
 import { reviewedToolOperations } from '@lostgradient/bureau/tool-operations';
 import { definePlugin } from '@lostgradient/interborough-plugin';
+import {
+  REFUND_TOOL_REVISION,
+  type createRefundLedger,
+  type Refund,
+} from '@lostgradient/plugin-demo/refunds';
 import { WorkflowClaimUnavailableError } from '@lostgradient/weft';
 import type { AnyToolbox, ApprovalStateStore, ToolRequestContext } from 'armorer';
 import { z } from 'zod';
-import { REFUND_TOOL_REVISION, type createRefundLedger, type Refund } from './refund-ledger.ts';
 
 /** The host supplies current merchant authority on every request, including retries. */
 export interface RefundAccess {

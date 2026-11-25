@@ -5,7 +5,6 @@ import {
   createAdmittedRefundTool,
   createFakeProcessor,
   createRefundLedger,
-  reviewedRefundContribution,
 } from '@lostgradient/plugin-demo/refunds';
 import inspectors from '@lostgradient/plugin-inspectors';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -20,6 +19,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as client from 'openid-client';
 import { startHost } from '../host.ts';
+import { reviewedRefundContribution } from '../refund-operations.ts';
 import { createSyntheticIssuer } from './synthetic-issuer.test-support.ts';
 
 const privateRemotes = {

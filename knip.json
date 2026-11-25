@@ -298,7 +298,7 @@
         "**/*.spec.ts",
         "scripts/browser-build.ts!",
         "scripts/startup-process-control.ts",
-        "src/host/{cli,dev,serve}.ts!",
+        "src/host/{cli,dev,serve,refund-operations}.ts!",
         "src/host/supervisor-owned.test-support.ts"
       ],
       "project": [
@@ -306,6 +306,7 @@
         "scripts/**/*.ts",
         "!src/**/*.test.ts!",
         "!src/**/*.test-harness.svelte!",
+        "!src/**/*.test-support.ts!",
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!",

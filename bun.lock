@@ -129,7 +129,9 @@
       },
       "devDependencies": {
         "@axe-core/playwright": "catalog:",
+        "@lostgradient/lifecycle": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
+        "@modelcontextprotocol/client": "catalog:",
         "@playwright/test": "catalog:",
         "@testing-library/dom": "catalog:",
         "@testing-library/jest-dom": "catalog:",
@@ -138,7 +140,7 @@
         "@types/js-yaml": "catalog:",
         "fake-indexeddb": "catalog:",
         "happy-dom": "catalog:",
-        "openid-client": "6.9.1",
+        "openid-client": "catalog:",
         "oxlint": "catalog:",
         "oxlint-tsgolint": "catalog:",
         "prettier": "catalog:",
@@ -659,7 +661,7 @@
       "name": "@lostgradient/credentials",
       "dependencies": {
         "@lostgradient/storage": "workspace:*",
-        "openid-client": "6.9.1",
+        "openid-client": "catalog:",
       },
       "devDependencies": {
         "@lostgradient/mcp": "workspace:*",
@@ -1149,8 +1151,6 @@
     "plugins/demo": {
       "name": "@lostgradient/plugin-demo",
       "dependencies": {
-        "@lostgradient/backchannel": "workspace:*",
-        "@lostgradient/bureau": "workspace:*",
         "@lostgradient/interborough-plugin": "workspace:*",
         "@lostgradient/operative": "workspace:*",
         "@lostgradient/operative-anthropic": "workspace:*",
@@ -1160,11 +1160,10 @@
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@lostgradient/lifecycle": "workspace:*",
+        "@lostgradient/bureau": "workspace:*",
         "@lostgradient/storage-bun-sqlite": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
-        "@modelcontextprotocol/client": "catalog:",
         "@types/bun": "catalog:",
         "oxlint": "catalog:",
         "typescript": "catalog:",
@@ -1502,6 +1501,7 @@
     "lmdb": "^3.5.9",
     "micromark-util-decode-numeric-character-reference": "^2.0.0",
     "openai": "^7.8.0",
+    "openid-client": "6.9.1",
     "oxlint": "^1.83.0",
     "oxlint-tsgolint": "^7.0.2001",
     "pg": "^8.11.0",

@@ -77,7 +77,9 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "catalog:",
+    "@lostgradient/lifecycle": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
+    "@modelcontextprotocol/client": "catalog:",
     "@playwright/test": "catalog:",
     "@testing-library/dom": "catalog:",
     "@testing-library/jest-dom": "catalog:",
@@ -86,7 +88,7 @@
     "@types/js-yaml": "catalog:",
     "fake-indexeddb": "catalog:",
     "happy-dom": "catalog:",
-    "openid-client": "6.9.1",
+    "openid-client": "catalog:",
     "oxlint": "catalog:",
     "oxlint-tsgolint": "catalog:",
     "prettier": "catalog:",

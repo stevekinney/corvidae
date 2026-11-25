@@ -4,7 +4,7 @@ import {
   createAdmittedRefundTool,
   createFakeProcessor,
   createRefundLedger,
-  reviewedRefundContribution,
+  recoverRefund,
 } from '@lostgradient/plugin-demo/refunds';
 import inspectors from '@lostgradient/plugin-inspectors';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -13,8 +13,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as client from 'openid-client';
-import { recoverRefund } from '../../../../../plugins/demo/src/refund-processor.ts';
 import { startHost } from '../host.ts';
+import { reviewedRefundContribution } from '../refund-operations.ts';
 import { createSyntheticIssuer } from './synthetic-issuer.test-support.ts';
 
 /** Separate model and signed-in reviewer on the real panel listener. */
