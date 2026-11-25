@@ -116,6 +116,8 @@ test('COR-2605 requires a coordinator decision for standalone CI on the reviewed
   }
 });
 
+type WorkflowJob = { if: string; steps?: { name?: string; if?: string; run?: string }[] };
+
 for (const workflow of ['main', 'targeted-checks']) {
   test(`${workflow} refuses a moved revision before starting the evidence jobs`, async () => {
     const source = await Bun.file(
@@ -123,18 +125,28 @@ for (const workflow of ['main', 'targeted-checks']) {
     ).text();
     const parsed = Bun.YAML.parse(source) as {
       concurrency: { group: string };
-      jobs: Record<string, { if: string }>;
+      jobs: Record<string, WorkflowJob>;
     };
     expect(parsed.concurrency.group).toContain("'-stale-candidate'");
-    const { 'stale-candidate': rejected, ...evidence } = parsed.jobs;
-    expect(rejected?.if).toContain(
-      "inputs.chef_candidate != '' && inputs.chef_candidate != github.sha",
-    );
-    expect(Object.keys(evidence).length).toBeGreaterThan(0);
-    for (const [name, job] of Object.entries(evidence)) {
-      expect(job.if, name).toContain(
-        "inputs.chef_candidate == '' || inputs.chef_candidate == github.sha",
-      );
+    const refusal = "inputs.chef_candidate != '' && inputs.chef_candidate != github.sha";
+    const accepts = "inputs.chef_candidate == '' || inputs.chef_candidate == github.sha";
+    const { 'stale-candidate': stale, evidence, ...verification } = parsed.jobs;
+    if (workflow === 'main') {
+      // Bound delivery requires every provider job to succeed, so a conditional extra job
+      // would invalidate every green Main receipt. Reuse the existing evidence job.
+      expect(stale).toBeUndefined();
+      expect(evidence?.steps?.[0]?.if).toContain(refusal);
+      expect(evidence?.steps?.[0]?.run).toContain('exit 1');
+      for (const step of evidence?.steps?.slice(1) ?? []) {
+        if (step.if?.includes('always()')) expect(step.if).toContain(accepts);
+      }
+    } else {
+      expect(stale?.if).toContain(refusal);
+      expect(stale?.steps?.[0]?.run).toContain('exit 1');
+    }
+    expect(Object.keys(verification).length).toBeGreaterThan(0);
+    for (const [name, job] of Object.entries(verification)) {
+      expect(job.if, name).toContain(accepts);
     }
   });
 }
