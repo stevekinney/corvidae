@@ -5,7 +5,16 @@ export type SettingsOperationTypes = {
     readonly input: {};
     readonly output: {
       readonly effective: Record<string, unknown>;
-      readonly keys: Record<string, unknown>;
+      readonly keys: Record<
+        string,
+        {
+          readonly apply: 'live' | 'restart';
+          readonly lockReason?: 'deployment' | 'shared-storage';
+          readonly locked: boolean;
+          readonly pendingRestart: boolean;
+          readonly problem?: string;
+        }
+      >;
       readonly persisted: boolean;
       readonly revision: number;
       readonly running: Record<string, unknown>;

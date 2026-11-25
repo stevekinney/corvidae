@@ -24,7 +24,7 @@ import {
   subscriptionTypesSource,
   type OperationDomainName,
 } from './operation-client-domains.ts';
-import { schemaToNode } from './operation-client-schema.ts';
+import { canonicalKey, parseSchema, renderNode } from './operation-client-schema.ts';
 import { svelteClientSource } from './operation-client-svelte.ts';
 
 export type { OperationDomainName } from './operation-client-domains.ts';
@@ -232,28 +232,36 @@ export async function createOperationClientSources(
 
   const subscriptionOperations = selectSubscriptions(snapshot, options);
 
-  const roots = [
-    ...clientOperations.flatMap((operation) => [
-      schemaToNode(operation.inputSchema),
-      schemaToNode(operation.outputSchema),
-    ]),
+  const schemaRoots = [
+    ...clientOperations.flatMap((operation) => [operation.inputSchema, operation.outputSchema]),
     ...subscriptionOperations.flatMap((operation) => [
-      schemaToNode(operation.inputSchema),
-      schemaToNode(operation.eventSchema ?? {}),
+      operation.inputSchema,
+      operation.eventSchema ?? {},
     ]),
   ];
+  const parsedRoots = schemaRoots.map(parseSchema);
+  const definitions = new Map(parsedRoots.flatMap((parsed) => [...parsed.definitions]));
+  const roots = [...parsedRoots.map((parsed) => parsed.root), ...definitions.values()];
 
   const { aliasNameByKey, nodeByKey } = selectAliases(roots);
+  const allAliases = new Map(aliasNameByKey);
+  for (const name of definitions.keys())
+    allAliases.set(canonicalKey({ kind: 'reference', name }), name);
   const domains = operationDomains(clientOperations, options.domainName);
   const imports = domains
     .map((domain) => `import type { ${domain.typeName} } from './${domain.fileName}';`)
     .join('\n');
   const types = domains.map((domain) => domain.typeName).join(' & ') || '{}';
-  const aliasDeclarations = renderAliasDeclarations(aliasNameByKey, nodeByKey);
+  const aliasDeclarations = [
+    ...renderAliasDeclarations(aliasNameByKey, nodeByKey),
+    ...[...definitions.entries()]
+      .toSorted(([left], [right]) => compareStrings(left, right))
+      .map(([name, node]) => `type ${name} = ${renderNode(node, allAliases)};`),
+  ];
 
   const sources = new Map<string, string>();
   for (const domain of domains)
-    sources.set(domain.fileName, operationDomainSource(domain, aliasNameByKey));
+    sources.set(domain.fileName, operationDomainSource(domain, allAliases));
   if (aliasDeclarations.length)
     sources.set(
       'shared-operation-types.generated.ts',
@@ -263,7 +271,7 @@ export async function createOperationClientSources(
   if (subscriptionOperations.length)
     sources.set(
       SUBSCRIPTION_TYPES_FILE,
-      subscriptionTypesSource(subscriptionOperations, aliasNameByKey),
+      subscriptionTypesSource(subscriptionOperations, allAliases),
     );
 
   const names = exampleNames(

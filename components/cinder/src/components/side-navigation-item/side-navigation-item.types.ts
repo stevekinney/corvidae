@@ -92,8 +92,11 @@ export type SideNavigationItemProps = NavigationItemSharedHtmlAttributes &
     emptyLabel?: string;
     /**
      * Why the row is off ("Open a task queue first"). While `disabled` is set it is drawn under the
-     * label as a second line, in the muted text colour at the extra-small size, starting where the
-     * label's text starts, so it reads on a phone and with no hover. It is the row's description
+     * label as a second line, in the disabled colour at the extra-small size so it never reads
+     * louder than the name, starting where the label's text starts, so it reads on a phone and with
+     * no hover. Inside a `SideNavigation.Group` with its own `disabledReason`, a row draws this
+     * only when it differs from the group's; a row with none, or the same, is described by the
+     * group's reason instead. It is the row's description
      * (`aria-describedby`), and `label` stays its name. A collapsed (icon-rail) row keeps it as its
      * description and says it in the tooltip ("Workers, Open a task queue first"). Ignored while
      * the row is enabled. Pass `label` with it, or the reason joins the name.

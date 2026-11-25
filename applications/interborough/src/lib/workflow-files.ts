@@ -17,6 +17,21 @@ import type { Fetcher } from './bureau-client.ts';
 /** Where a call is sent from: an abort signal, and a `fetch` for a caller that is not a page. */
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
+type WorkflowJson = Exclude<BureauInput<'bureau.workflows.start'>['input'], undefined>;
+
+function isWorkflowJson(value: unknown): value is WorkflowJson {
+  return z.json().safeParse(value).success;
+}
+
+/** Preserve the same JSON serialization the transport applies, including own `__proto__` keys. */
+function workflowJson(value: unknown): WorkflowJson {
+  const serialized = JSON.stringify(value);
+  if (serialized === undefined) throw new TypeError('Workflow input must be JSON.');
+  const parsed: unknown = JSON.parse(serialized);
+  if (!isWorkflowJson(parsed)) throw new TypeError('Workflow input must be JSON.');
+  return parsed;
+}
+
 type ListedWorkflow = BureauOutput<'bureau.workflows.list'>['workflows'][number];
 type CodeEntry = Extract<ListedWorkflow, { readonly kind: 'code' }>;
 type FileEntry = Exclude<ListedWorkflow, { readonly kind: 'code' }>;
@@ -220,7 +235,7 @@ export async function startWorkflowFile(
     {
       id,
       surface: 'web',
-      ...(input === undefined ? {} : { input }),
+      ...(input === undefined ? {} : { input: workflowJson(input) }),
       ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
     },
     options,
@@ -482,7 +497,10 @@ export async function signalWorkflows(
   input: { readonly name: string; readonly payload?: unknown },
   options?: Options,
 ): Promise<SignalResult> {
-  const params = input.payload === undefined ? { name: input.name } : input;
+  const params =
+    input.payload === undefined
+      ? { name: input.name }
+      : { name: input.name, payload: workflowJson(input.payload) };
   return bureauClient['bureau.workflows.signal'](params, options);
 }
 

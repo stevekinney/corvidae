@@ -51,7 +51,7 @@ export type ReviewsOperationTypes = {
             readonly reviewType: string;
             readonly reviewer: string;
             readonly reviewers: ReadonlyArray<string>;
-            readonly sectionDecisions?: Record<string, unknown>;
+            readonly sectionDecisions?: Record<string, 'approved' | 'rejected'>;
             readonly status: 'completed';
             readonly step?: string;
             readonly timeout?: number;

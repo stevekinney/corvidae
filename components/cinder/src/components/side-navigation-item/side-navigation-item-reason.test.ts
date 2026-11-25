@@ -179,4 +179,36 @@ describe('SideNavigationItem disabledReason', () => {
       ),
     );
   });
+
+  test('an expanded disabled row that shows its reason draws no tooltip repeating it (COR-2680)', async () => {
+    // A counted row is the control: its tooltip appears once anchors resolve, so by then the
+    // disabled row has had the same chance to draw one.
+    const counted = render(SideNavigationItem, {
+      props: { href: '/h', label: 'Health', count: 3, children: labelSnippet('Health') },
+    });
+    await waitFor(() => expect(counted.container.querySelector('[role="tooltip"]')).not.toBeNull());
+    const { container } = renderTemporalRow({ emptyLabel: 'nothing to show' });
+    expect(container.querySelector('[role="tooltip"]')).toBeNull();
+    expect(
+      container.querySelector('[data-cinder-navigation-item]')?.hasAttribute('data-cinder-tooltip'),
+    ).toBe(false);
+  });
+
+  test('a collapsed disabled row keeps its tooltip and marks itself for hover feedback', async () => {
+    const { container } = render(SideNavigationItem, {
+      props: {
+        href: '/workers',
+        disabled: true,
+        label: 'Workers',
+        disabledReason: REASON,
+        collapsed: true,
+        icon: iconSnippet(),
+        children: labelSnippet('Workers'),
+      },
+    });
+    await waitFor(() => expect(document.querySelector('[role="tooltip"]')).not.toBeNull());
+    expect(
+      container.querySelector('[data-cinder-navigation-item]')?.hasAttribute('data-cinder-tooltip'),
+    ).toBe(true);
+  });
 });
