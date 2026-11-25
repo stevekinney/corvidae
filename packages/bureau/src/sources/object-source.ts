@@ -194,9 +194,8 @@ export function createObjectSource(
 
     async writeBeside(path, bytes) {
       const owned = bytes.slice();
-      if (
-        (await operations.put(`${prefix}${path}`, owned, { kind: 'absent' })).outcome === 'refused'
-      ) {
+      const result = await operations.put(`${prefix}${path}`, owned, { kind: 'absent' });
+      if (result.outcome === 'refused') {
         throw new SourceConflictError(path, null, 'existing');
       }
     },

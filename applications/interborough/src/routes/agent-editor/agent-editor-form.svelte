@@ -128,9 +128,7 @@
     if (!saving) onSave();
   }
 
-  async function stageDocuments(event: Event): Promise<void> {
-    const input = event.currentTarget as HTMLInputElement;
-    const files = [...(input.files ?? [])];
+  async function stageFiles(files: readonly File[]): Promise<void> {
     documentError = null;
     for (const file of files) {
       if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
@@ -141,14 +139,31 @@
         documentError = copy.edit.references.documentTooLarge;
         continue;
       }
-      const text = await file.text();
-      if (new TextEncoder().encode(text).byteLength > 64 * 1024) {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      let text: string;
+      try {
+        text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      } catch {
+        documentError = copy.edit.references.invalidDocument;
+        continue;
+      }
+      if (bytes.byteLength > 64 * 1024) {
         documentError = copy.edit.references.documentTooLarge;
         continue;
       }
       await editor.addReference(file.name, text);
     }
+  }
+
+  async function stageDocuments(event: Event): Promise<void> {
+    const input = event.currentTarget as HTMLInputElement;
+    await stageFiles([...(input.files ?? [])]);
     input.value = '';
+  }
+
+  async function dropDocuments(event: DragEvent): Promise<void> {
+    event.preventDefault();
+    await stageFiles([...(event.dataTransfer?.files ?? [])]);
   }
 </script>
 
@@ -264,7 +279,11 @@
 
   <!-- Read with every chat. A document is staged locally until this save (row 41t). -->
   <FormSection heading={copy.edit.references.heading} meta={copy.edit.references.note} columns={1}>
-    <label class="weft-agent-form__drop-zone">
+    <label
+      class="weft-agent-form__drop-zone"
+      ondragover={(event) => event.preventDefault()}
+      ondrop={dropDocuments}
+    >
       <input
         type="file"
         accept="text/*,.md,.txt"
