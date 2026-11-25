@@ -1,5 +1,9 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import { isWeftErrorLike, WorkflowAlreadyExistsError } from '@lostgradient/weft';
+import {
+  isWeftErrorLike,
+  WorkflowAlreadyExistsError,
+  WorkflowClaimUnavailableError,
+} from '@lostgradient/weft';
 import type { AnyToolbox } from 'armorer';
 import { Conversation } from 'conversationalist';
 import type { GeneratedMediaAdmission } from '../generated-media';
@@ -233,6 +237,15 @@ export async function driveDurableRun(
     }
   } catch (error) {
     rejectDurablyStarted(error);
+    if (
+      adoptReserved &&
+      (error instanceof WorkflowClaimUnavailableError ||
+        (isWeftErrorLike(error) && error.code === 'WorkflowAlreadyExistsError') ||
+        (error instanceof Error && 'code' in error && error.code === 'EngineDeposedError'))
+    ) {
+      reachability.unreachable = true;
+      return makeInterruptedRunResult(conversation);
+    }
     return errorResult(error);
   }
   try {
@@ -245,6 +258,10 @@ export async function driveDurableRun(
       // The fence failure remains the outcome; recovery will classify a record the engine kept.
     }
     rejectDurablyStarted(error);
+    if (adoptReserved) {
+      reachability.unreachable = true;
+      return makeInterruptedRunResult(conversation);
+    }
     // A retired continuation lost a durable ownership race before it could launch. It must still
     // settle its local ActiveRun for Bureau teardown, but must not run user error hooks for work
     // another process has explicitly replaced.
