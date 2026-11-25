@@ -123,6 +123,7 @@
     "$.models[].modalities.*.output",
     "$.models[].modalities.*.sourceForms",
     "$.models[].model",
+    "$.models[].modelClass",
     "$.models[].parallelTools",
     "$.models[].parameterCompatibility",
     "$.models[].provider",
