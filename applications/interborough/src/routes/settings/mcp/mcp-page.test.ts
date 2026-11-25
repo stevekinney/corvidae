@@ -24,13 +24,14 @@ afterEach(() => {
 
 const ENDPOINT = 'http://localhost/bureau/mcp';
 
-function open() {
+function open(method?: 'browser-session') {
   stub = installSettingsBureau(servedSettings(), {});
   landAt('/settings/mcp');
   return render(RouteOutletHarness, {
     props: {
       client: new HttpClient({ baseUrl: 'http://localhost/api' }),
       scopes: AUTHORIZATION_SCOPES,
+      ...(method === undefined ? {} : { method }),
     },
   } as never);
 }
@@ -85,6 +86,19 @@ describe('Settings › MCP', () => {
     expect(description?.textContent).toContain(
       'It needs no sign-in: the host listens on this computer only.',
     );
+  });
+
+  test('explains shared OAuth sign-in and limited grants while preserving connection details', async () => {
+    const view = open('browser-session');
+    const group = await view.findByRole('group', { name: MCP_COPY.groupLabel });
+    expect(within(group).getByText(MCP_COPY.endpoint.sharedDescription)).not.toBeNull();
+    expect(within(group).getByText(MCP_COPY.claudeCode.sharedDescription)).not.toBeNull();
+    expect(group.textContent).toContain('Use a client that supports MCP OAuth');
+    expect(group.textContent).not.toContain('It needs no sign-in');
+    expect(within(group).getByTestId('mcp-claude-code').textContent).toContain(
+      claudeCodeAddCommand('interborough', ENDPOINT),
+    );
+    expect(within(group).getByTestId('mcp-generic').textContent).toContain(`"url": "${ENDPOINT}"`);
   });
 
   test('sets .mcp.json in code and names the HTTP transport', async () => {
