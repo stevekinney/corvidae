@@ -248,6 +248,12 @@ describe('side navigation group: shared reason (COR-2680)', () => {
     expect(declaration(reason, 'font-size')).toBe('var(--cinder-text-xs)');
   });
 
+  test('the group reason sits with its header, not with its rows', () => {
+    const [reason] = rulesFor(groupCss, '.cinder-side-navigation-group__reason');
+    expect(declaration(reason, 'margin')).toBe('calc(var(--cinder-space-1) * -1) 0 0');
+    expect(declaration(reason, 'padding-block')).toBe('0 var(--cinder-space-2)');
+  });
+
   test('a collapsed rail clips the group reason and keeps it for its rows', () => {
     const [clipped] = rulesFor(
       groupCss,

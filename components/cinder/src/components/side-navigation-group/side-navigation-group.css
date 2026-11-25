@@ -160,8 +160,10 @@
   /* The group's shared reason for its disabled rows (COR-2680): said once, quieter than the rows it
    * covers, never brighter than a disabled name. It starts where the rows' text starts. */
   .cinder-side-navigation-group__reason {
-    margin: 0;
-    padding-block: 0 var(--cinder-space-1);
+    /* It belongs to the header: tucked up into the trigger's bottom padding, with twice the
+       rows' 4px gap before the first row, so it never reads as a row itself. */
+    margin: calc(var(--cinder-space-1) * -1) 0 0;
+    padding-block: 0 var(--cinder-space-2);
     padding-inline: calc(var(--cinder-space-3) + var(--cinder-space-2)) var(--cinder-space-2);
     color: var(--cinder-text-disabled);
     font-size: var(--cinder-text-xs);
