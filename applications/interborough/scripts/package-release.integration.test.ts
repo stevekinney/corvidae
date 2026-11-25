@@ -180,12 +180,12 @@ const publishInputResults = await (async () => {
   const directory = await mkdtemp(join(tmpdir(), 'interborough-package-inputs-'));
   try {
     const source = 'a'.repeat(40);
-    const validateInputs = (publish: boolean, protectedRef: boolean) =>
+    const validateInputs = (publish: boolean, protectedRef: boolean, version = '1.0.0') =>
       runWithHangGuard(['bash', '-e', '-o', 'pipefail', '-c', validate], {
         env: {
           ...rootScriptEnvironment(),
           SOURCE_SHA: source,
-          VERSION: '1.0.0',
+          VERSION: version,
           PUBLISH: String(publish),
           GITHUB_REF: 'refs/heads/main',
           GITHUB_REF_PROTECTED: String(protectedRef),
@@ -196,7 +196,25 @@ const publishInputResults = await (async () => {
     const unprotected = await validateInputs(true, false);
     const protectedMain = await validateInputs(true, true);
     const rehearsal = await validateInputs(false, false);
-    return { unprotected, protectedMain, rehearsal };
+    const multiline = await validateInputs(false, false, '1.0.0\nextra');
+    const carriageReturn = await validateInputs(false, false, '1.0.0\rextra');
+    const verify = workflow.jobs.publish.steps[0]?.run;
+    if (verify === undefined) throw new Error('The publish workflow has no source check');
+    const verifySource = (tested: string) =>
+      runWithHangGuard(['bash', '-e', '-c', verify], {
+        env: { ...rootScriptEnvironment(), SOURCE_SHA: tested, GITHUB_SHA: source },
+      });
+    const matchingSource = await verifySource(source);
+    const mismatchedSource = await verifySource('b'.repeat(40));
+    return {
+      unprotected,
+      protectedMain,
+      rehearsal,
+      multiline,
+      carriageReturn,
+      matchingSource,
+      mismatchedSource,
+    };
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -210,6 +228,17 @@ test('only protected main can validate a pinned source for npm publishing', () =
     "${{ github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main' && github.ref_protected }}",
   );
   expect(workflow.jobs.verify.if).toBe(workflow.jobs.publish.if);
+});
+
+test('rejects versions with line breaks before exporting release outputs', () => {
+  expect(publishInputResults.multiline.success).toBe(false);
+  expect(publishInputResults.carriageReturn.success).toBe(false);
+});
+
+test('publishing independently checks that the tested source matches the dispatch', () => {
+  expect(workflow.jobs.publish.steps[0]?.name).toBe('Verify tested source matches the dispatch');
+  expect(publishInputResults.matchingSource.success).toBe(true);
+  expect(publishInputResults.mismatchedSource.success).toBe(false);
 });
 
 test('rehearses only a main push that changes the npm workflow', async () => {

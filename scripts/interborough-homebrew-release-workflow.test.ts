@@ -28,6 +28,7 @@ describe('Interborough Homebrew release workflow', () => {
     expect(workflow).toContain(
       "PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}",
     );
+    expect(workflow).toContain(String.raw`*$'\n'*|*$'\r'*)`);
     expect(workflow).toContain('version: ${{ steps.release-inputs.outputs.version }}');
   });
 
@@ -65,6 +66,10 @@ describe('Interborough Homebrew release workflow', () => {
       'shasum -a 256 -c "interborough-$VERSION-darwin-arm64.tar.gz.sha256"',
     );
     expect(workflow).toContain('gh release create "$TAG"');
+    expect(workflow.indexOf('Verify tested source matches the dispatch')).toBeLessThan(
+      workflow.indexOf('Verify downloaded archive digest'),
+    );
+    expect(workflow).toContain('test "$SOURCE_SHA" = "$GITHUB_SHA"');
     expect(workflow).toContain('SOURCE_SHA: ${{ needs.package.outputs.source_sha }}');
     expect(workflow).toContain('--repo "$GITHUB_REPOSITORY"');
     expect(workflow).toContain('--verify-tag');
