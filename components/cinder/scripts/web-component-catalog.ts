@@ -23,6 +23,14 @@ const formAttributes = new Map<string, PropertyOptions['type']>([
   ['form', undefined],
   ['disabled', 'Boolean'],
   ['required', 'Boolean'],
+  ['readonly', 'Boolean'],
+  ['multiple', 'Boolean'],
+  ['minlength', 'Number'],
+  ['maxlength', 'Number'],
+  ['pattern', undefined],
+  ['min', undefined],
+  ['max', undefined],
+  ['step', undefined],
   ['value', undefined],
 ]);
 

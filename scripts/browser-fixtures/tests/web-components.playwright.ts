@@ -45,6 +45,31 @@ test('generated controls publish source defaults and user-edited values', async 
   await expect(slider).toHaveJSProperty('value', 6);
 });
 
+test('native Input constraints reach the editable control', async ({ page }) => {
+  await page.goto('/web-components/index.html');
+  await page.evaluate(async () => {
+    await customElements.whenDefined('cinder-input');
+    const form = document.createElement('form');
+    form.id = 'validation-form';
+    form.innerHTML =
+      '<cinder-input component-id="account" value="bad" readonly pattern="[A-Z]{3}" minlength="3" maxlength="3"></cinder-input>';
+    document.body.append(form);
+  });
+
+  const form = page.locator('#validation-form');
+  const host = form.locator('cinder-input');
+  const input = form.getByRole('textbox');
+  await expect(input).not.toBeEditable();
+  await expect(input).toHaveJSProperty('minLength', 3);
+  await expect(input).toHaveJSProperty('maxLength', 3);
+
+  await host.evaluate((element) => element.removeAttribute('readonly'));
+  await expect(input).toBeEditable();
+  expect(await form.evaluate((element: HTMLFormElement) => element.checkValidity())).toBe(false);
+  await input.fill('ABC');
+  expect(await form.evaluate((element: HTMLFormElement) => element.checkValidity())).toBe(true);
+});
+
 test('numeric enum attributes reach source components as numbers', async ({ page }) => {
   await page.goto('/web-components/index.html');
   await page.evaluate(() => {
