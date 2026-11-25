@@ -4316,6 +4316,8 @@
 ["files","packages/bungalow/src/fixtures.test-support.ts","packages/bungalow/src/fixtures.test-support.ts"]
 ["files","packages/bungalow/src/lock-children.test-support.ts","packages/bungalow/src/lock-children.test-support.ts"]
 ["files","packages/bungalow/src/lock-holder.test-support.ts","packages/bungalow/src/lock-holder.test-support.ts"]
+["files","packages/bungalow/src/node-lock-holder.test-support.ts","packages/bungalow/src/node-lock-holder.test-support.ts"]
+["files","packages/bungalow/src/node-runtime.test-support.ts","packages/bungalow/src/node-runtime.test-support.ts"]
 ["files","packages/bungalow/src/remote-open.test-support.ts","packages/bungalow/src/remote-open.test-support.ts"]
 ["files","packages/bungalow/src/s3-proxy.test-support.ts","packages/bungalow/src/s3-proxy.test-support.ts"]
 ["files","packages/bureau/src/a2ui/a2ui.test-support.ts","packages/bureau/src/a2ui/a2ui.test-support.ts"]

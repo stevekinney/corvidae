@@ -99,7 +99,7 @@ function element(xml: string, name: string): string | undefined {
 }
 
 /** Read a `ListBucketResult` document. */
-export function parseListing(xml: string): ObjectListing {
+function parseListing(xml: string): ObjectListing {
   const contents: ListedObjectEntry[] = [];
   for (const match of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
     const block = match[1] ?? '';
