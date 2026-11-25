@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 
 import { processEnvironment } from './environment-configuration.ts';
+import { publishSupervisorReadiness } from './supervisor-readiness.test-support.ts';
 import { runSupervisor } from './supervisor.ts';
 
 const root = process.argv[2];
@@ -12,7 +13,7 @@ if (root === undefined) {
     port: Number(processEnvironment()['INTERBOROUGH_PORT']),
     fetch: () => new Response('remote'),
   });
-  await Bun.write(ready, server.url.href);
+  await publishSupervisorReadiness(ready, server.url.href);
   await new Promise(() => {});
 } else {
   process.chdir(root);
