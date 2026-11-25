@@ -1,0 +1,59 @@
+{
+  "issue": "COR-2425",
+  "branch": "codex/cor-2425-goals-polish",
+  "checkedAt": "3e18c9445",
+  "briefVersion": "620a4696943c",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "not-met",
+      "evidence": "Corrected phone ordering is unit-tested; corrected 375/320 capture and design-reviewer verdict are pending."
+    },
+    {
+      "id": "AC2",
+      "status": "not-met",
+      "evidence": "Coordinator-owned captured-screen design review is pending."
+    },
+    {
+      "id": "AC3",
+      "status": "not-met",
+      "evidence": "Corrected 67x fixture and geometry witness type-check; browser capture/design-review verdict is pending."
+    },
+    {
+      "id": "AC4",
+      "status": "not-met",
+      "evidence": "Capture witnesses exist; coordinator-owned design-review verdict is pending."
+    },
+    {
+      "id": "AC5",
+      "status": "not-met",
+      "evidence": "Captioned Edit fixture and truthful selected-check witness type-check; coordinator-owned design-review verdict is pending."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-main",
+      "evidence": "Existing owner-only Bureau view coverage in packages/bureau/src/http/management/goals-operations.test.ts."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-main",
+      "evidence": "Existing identifier-path and goal-page row coverage ships on the base."
+    },
+    {
+      "id": "AC8",
+      "status": "met-on-main",
+      "evidence": "Existing continue-policy regression in packages/operative/src/goal-decision.test.ts ships on the base."
+    },
+    {
+      "id": "AC9",
+      "status": "needs-decision",
+      "evidence": "The brief identifies this as a persisted-format change; no production/wire authorization was granted."
+    },
+    {
+      "id": "AC10",
+      "status": "met-on-main",
+      "evidence": "The base carries the single-commit view-frame fixture correction."
+    }
+  ]
+}
