@@ -814,30 +814,28 @@ async function coverageOf(
   const missing = includeCaptures ? missingCaptures(manifest.captures, lines) : [];
   // Witnesses are proven only by the witness runs' own frames, never by a broad run's.
   const witnessDirectory = join(out, WITNESS_DIRECTORY);
-  const physicalLines = (
-    await Promise.all(
-      (await capturedLines(witnessDirectory)).map(async (line) => {
-        const viewport = line.viewport;
-        if (
-          typeof viewport !== 'string' ||
-          !viewport.startsWith('screens/') ||
-          !viewport.endsWith('.png') ||
-          viewport.includes('..') ||
-          viewport.endsWith('.full.png')
-        )
-          return undefined;
-        return (await Bun.file(join(witnessDirectory, viewport)).exists()) ? line : undefined;
-      }),
-    )
-  ).filter((line): line is CapturedLine => line !== undefined);
+  const witnessLines = await capturedLines(witnessDirectory);
+  const framed = await Promise.all(
+    witnessLines.map(async (line) => {
+      const viewport = line.viewport;
+      if (
+        typeof viewport !== 'string' ||
+        !viewport.startsWith('screens/') ||
+        !viewport.endsWith('.png') ||
+        viewport.includes('..') ||
+        viewport.endsWith('.full.png')
+      )
+        return undefined;
+      return (await Bun.file(join(witnessDirectory, viewport)).exists()) ? line : undefined;
+    }),
+  );
+  const physicalLines = framed.filter((line): line is CapturedLine => line !== undefined);
   // A witness whose run selected no single test, or failed, is missing whatever frames exist.
   const failed = new Set(failedWitnesses);
-  const missingWitnesses = [
-    ...new Set([
-      ...failedWitnesses,
-      ...missingViewportWitnesses(manifest.witnesses, physicalLines),
-    ]),
-  ].sort((left, right) => manifest.witnesses.indexOf(left) - manifest.witnesses.indexOf(right));
+  const unproven = new Set(missingViewportWitnesses(manifest.witnesses, physicalLines));
+  const missingWitnesses = manifest.witnesses.filter(
+    (witness) => failed.has(witness) || unproven.has(witness),
+  );
   for (const entry of missing)
     environment.standardError(`design review: ${describeMissing(entry)}\n`);
   const hint = wideCaptureHint(missing);

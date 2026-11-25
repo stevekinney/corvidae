@@ -10,7 +10,8 @@ import { measureGeometry } from '@lostgradient/testing/design-review-geometry-pr
 
 import { physicalWitnessTitle } from './design-review-capture.ts';
 
-test('constructs the exact grep title for a physical witness', ({}, info) => {
+test('constructs the exact grep title for a physical witness', () => {
+  const info = test.info();
   expect(physicalWitnessTitle()).toBe(
     [info.project.name, 'e2e/design-review-geometry-probe.spec.ts', info.title].join(' '),
   );
