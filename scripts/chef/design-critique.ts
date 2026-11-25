@@ -12,8 +12,9 @@
 // `rows` prints, as JSON, the issue's design row IDs, its literal pixel criteria (such as
 // COR-2444's 700px threshold) and its description: what the critique checks the rows against.
 // `write` takes the critique's JSON (`rows`, `checked`, `conflicts`; see
-// `design-rows-resolved.ts`), validates it against the issue (every row declares states, every
-// literal criterion is checked, every conflict is a decision or a deferral with a reason) and
+// `design-rows-resolved.ts`), validates it against the issue (every row declares states, each
+// with its physical viewport witness: a Playwright specification, one literal title, a fixture
+// world and named viewport profiles; every literal criterion is checked, every conflict is a decision or a deferral with a reason) and
 // writes `<briefs directory>/<ID>/rows.resolved.json`, the file `brief.ts` requires. The briefs
 // directory is the main checkout's `tmp/chef/briefs` unless `--out-dir` names another.
 //

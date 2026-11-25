@@ -90,6 +90,25 @@ export function designReviewColorScheme(): DesignReviewColorScheme | undefined {
   throw new Error(`INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME must be light or dark, not "${raw}".`);
 }
 
+/**
+ * The viewport witnesses a narrow design-review run asks its one test to prove (COR-2574), from
+ * `INTERBOROUGH_VIEWPORT_WITNESSES`: the JSON list `scripts/design-review-capture.ts` sets, or an
+ * empty list when it is unset. A value that is not a JSON list is refused rather than ignored.
+ */
+export function viewportWitnessesJson(): unknown[] {
+  const raw = process.env['INTERBOROUGH_VIEWPORT_WITNESSES'];
+  if (raw === undefined || raw === '') return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = undefined;
+  }
+  if (!Array.isArray(parsed))
+    throw new Error('INTERBOROUGH_VIEWPORT_WITNESSES is not a valid witness manifest.');
+  return parsed;
+}
+
 /** The candidate source SHA an installed-release evidence run must verify, when supplied. */
 export function expectedReleaseSourceSha(): string | undefined {
   const value = process.env['CORVIDAE_EXPECTED_RELEASE_SHA'];
