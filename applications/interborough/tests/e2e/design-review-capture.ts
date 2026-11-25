@@ -27,6 +27,7 @@ import { measureGeometry } from '@lostgradient/testing/design-review-geometry-pr
 import {
   designReviewCaptureDirectory,
   designReviewColorScheme,
+  viewportWitnessesJson,
 } from '../../scripts/environment-configuration.ts';
 import {
   E2E_FIRST_RUN_PORT,
@@ -178,15 +179,8 @@ interface ViewportWitness {
 }
 
 function viewportWitnesses(): readonly ViewportWitness[] {
-  const text = process.env['INTERBOROUGH_VIEWPORT_WITNESSES'];
-  if (text === undefined) return [];
-  try {
-    const parsed: unknown = JSON.parse(text);
-    if (!Array.isArray(parsed)) throw new Error('not an array');
-    return parsed as ViewportWitness[];
-  } catch {
-    throw new Error('INTERBOROUGH_VIEWPORT_WITNESSES is not a valid witness manifest.');
-  }
+  // `design-review-capture.ts` writes this list from a plan `parseCaptureManifest` validated.
+  return viewportWitnessesJson() as ViewportWitness[];
 }
 
 /**
