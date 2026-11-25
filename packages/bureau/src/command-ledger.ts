@@ -1036,6 +1036,8 @@ export type RunCreationAttempt =
   | { readonly kind: 'replay'; readonly result: CreatedRunSummary }
   | {
       readonly kind: 'claimed';
+      /** The exact durable claim used to fence a reserved run's steering cleanup. */
+      readonly condition: { readonly key: string; readonly expectedValue: string };
       /** Refuses a claimant superseded by a later reserved admission. */
       assertCurrent(): Promise<void>;
       /**
@@ -1500,6 +1502,7 @@ export function createRunCreationLedger(
 
       return {
         kind: 'claimed',
+        condition: { key, expectedValue: JSON.stringify(entry) },
         async assertCurrent() {
           const current = await ledger.read(entry.identity);
           if (JSON.stringify(current) !== JSON.stringify(entry))

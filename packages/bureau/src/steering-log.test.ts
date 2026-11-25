@@ -47,6 +47,39 @@ const applied: SteeringLogEvent = {
 };
 
 describe('steering log', () => {
+  it('fences a reserved run end at the same commit as its steering append', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    await kv.set('reservation', 'first');
+    const head = await readSteeringLogHead(kv, 'session-1', 'inc-1');
+    const reached = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const held = new Proxy(kv, {
+      get(target, property, receiver) {
+        if (property === 'conditionalBatch')
+          return async (...args: Parameters<typeof kv.conditionalBatch>) => {
+            reached.resolve();
+            await release.promise;
+            return target.conditionalBatch(...args);
+          };
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const append = appendSteeringLogEvent(
+      held,
+      'session-1',
+      'inc-1',
+      head,
+      { type: 'run-ended', runId: 'run-1', now: '2026-09-02T00:00:02.000Z' },
+      null,
+      { key: 'reservation', expectedValue: 'first' },
+    );
+    await reached.promise;
+    await kv.set('reservation', 'successor');
+    release.resolve();
+    expect(await append).toEqual({ status: 'key-taken' });
+    expect(await readSteeringLogHead(kv, 'session-1', 'inc-1')).toEqual(head);
+  });
   it('appends in order and reads back exactly what was appended', async () => {
     const kv = textValueStore(new MemoryStorage());
     const empty = await readSteeringLogHead(kv, 'session-1', 'inc-1');

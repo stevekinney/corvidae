@@ -34,6 +34,7 @@ import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import {
   SteeringLogCorruptError,
   SteeringLogSealedError,
+  ReservedRunSteeringFenceLostError,
   type SteeringLogEvent,
   appendSteeringLogEvent,
   deleteEndedSteeringLogEntries,
@@ -715,6 +716,7 @@ export function createSteeringLog<D extends AgentDefinitions>(
     incarnation: string,
     event: Exclude<SteeringLogEvent, { type: 'admit' | 'refused' }>,
     allowExistingPromotion = false,
+    reservationCondition?: { readonly key: string; readonly expectedValue: string },
   ): Promise<void> {
     for (let attempt = 0; attempt < STEERING_APPEND_ATTEMPTS; attempt += 1) {
       const cursor = await catchUpSteering(kv, sessionId, incarnation);
@@ -749,7 +751,15 @@ export function createSteeringLog<D extends AgentDefinitions>(
           'CONFLICT',
         );
       }
-      const appended = await appendSteeringLogEvent(kv, sessionId, incarnation, cursor.head, event);
+      const appended = await appendSteeringLogEvent(
+        kv,
+        sessionId,
+        incarnation,
+        cursor.head,
+        event,
+        null,
+        reservationCondition,
+      );
       if (appended.status === 'appended') {
         applyToCursor(cursor, event);
         cursor.applied += 1;
@@ -761,6 +771,8 @@ export function createSteeringLog<D extends AgentDefinitions>(
         announceSteeringTransitions(cursor.gate, (announced) => emitter.dispatch(announced));
         return;
       }
+      if (appended.status === 'key-taken' && reservationCondition !== undefined)
+        throw new ReservedRunSteeringFenceLostError();
     }
     throw steeringContention(sessionId);
   }

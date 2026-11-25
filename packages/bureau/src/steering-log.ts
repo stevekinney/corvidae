@@ -102,6 +102,13 @@ export class SteeringLogSealedError extends Error {
   }
 }
 
+export class ReservedRunSteeringFenceLostError extends Error {
+  constructor() {
+    super('Reserved run steering fence was superseded');
+    this.name = 'ReservedRunSteeringFenceLostError';
+  }
+}
+
 /** Where a bureau-wide `(principal, id)` idempotency key was admitted. */
 export interface SteeringKeyBinding {
   readonly sessionId: string;
@@ -489,6 +496,7 @@ export async function appendSteeringLogEvent(
   head: SteeringLogHead,
   event: SteeringLogEvent,
   expectedBinding: string | null = null,
+  reservationCondition?: { readonly key: string; readonly expectedValue: string },
 ): Promise<SteeringLogAppendResult> {
   if (!isReadableSteeringLogEvent(event, sessionId)) {
     throw new SteeringLogCorruptError(
@@ -502,6 +510,7 @@ export async function appendSteeringLogEvent(
   const conditions: { key: string; expectedValue: string | null }[] = [
     { key: headKey(sessionId, incarnation), expectedValue: head.raw },
   ];
+  if (reservationCondition !== undefined) conditions.push(reservationCondition);
   const operations: { type: 'set'; key: string; value: string }[] = [
     { type: 'set', key: entryKey(sessionId, incarnation, sequence), value: JSON.stringify(event) },
     { type: 'set', key: headKey(sessionId, incarnation), value: nextHead },
