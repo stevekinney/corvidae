@@ -219,8 +219,18 @@
         : applied === '' && listing.isFetchNextPageError),
   );
   const activeError = $derived(
-    activeFailed ? (active.error ?? new Error(MEMORY_COPY.listFailed)) : null,
+    // An initial list failure owns the entire tab. A failed search with no retained results of its
+    // own does not: keep the initialized frame and its open detail, and let the local alert name
+    // the failed search instead of passing ordinary rows off as stale search results.
+    activeFailed &&
+      (applied === '' || active.data !== undefined) &&
+      memoryFaultOf(active.error).kind !== 'forbidden'
+      ? (active.error ?? new Error(MEMORY_COPY.listFailed))
+      : null,
   );
+  // Once the initial list has arrived, a different scope (search, filters or quarantined) owns
+  // only the results region. Keep the tab frame and its controls mounted while that request reads.
+  const framePending = $derived(active.isPending && listing.data === undefined);
   /** Every memory the list or the search holds, before the kind filter, less those just forgotten. */
   const base = $derived.by<MemoryRowData[]>(() => held.filter((row) => !hidden.has(row.id)));
   const held = $derived.by<MemoryRowData[]>(() => {
@@ -488,12 +498,12 @@
 <AgentTabState
   tab={AGENT_PAGE_COPY.tabs.memory}
   shape="rows"
-  pending={listing.isPending}
+  pending={framePending}
   error={activeError}
-  updatedAt={listing.dataUpdatedAt}
-  onRetry={() => void listing.refetch()}
-  forbiddenDescription={listing.data === undefined &&
-  memoryFaultOf(listing.error).kind === 'forbidden'
+  updatedAt={active.dataUpdatedAt}
+  onRetry={() => void active.refetch()}
+  forbiddenDescription={active.data === undefined &&
+  memoryFaultOf(active.error).kind === 'forbidden'
     ? MEMORY_COPY.readForbidden
     : undefined}
 >

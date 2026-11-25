@@ -510,7 +510,11 @@ for (const width of WIDTHS) {
       await expect(
         page.getByTestId('agent-tab-loading').locator('.cinder-skeleton').first(),
       ).toBeVisible();
-      await captureForDesignReview(page, { route, state: 'loading', source: SOURCE });
+      await captureForDesignReview(page, {
+        route,
+        state: '39e agent tab loading',
+        source: SOURCE,
+      });
       release();
       await expect(page.getByTestId('agent-tab-loading')).toHaveCount(0);
       await page.unroute('**/jsonrpc');

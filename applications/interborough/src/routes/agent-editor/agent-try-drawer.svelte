@@ -125,10 +125,19 @@
   }
 
   /** The chat's adapter with the words of a tool call that is running, or that finished. */
-  function describedBy(adapter: ChatAdapter, stopParkedRun: () => Promise<void>): ChatAdapter {
+  function describedBy(
+    adapter: ChatAdapter,
+    parked: () => boolean,
+    stopParkedRun: () => Promise<void>,
+  ): ChatAdapter {
     return {
       ...adapter,
-      stopGenerating: stopParkedRun,
+      stopGenerating: async (...input) => {
+        // A run can still have its reader attached for the event that carried an approval. The
+        // approval, rather than the reader, says this is the trial's parked native run.
+        if (parked()) return stopParkedRun();
+        return adapter.stopGenerating?.(...input);
+      },
       describeToolCall: (call, result) => {
         const name = toolName(call.name);
         return result === undefined
@@ -244,8 +253,12 @@
         <Chat
           id={`try-${chat.sessionId}`}
           conversation={answered(chat.conversation)}
-          adapter={describedBy(chat.chatAdapter, () => trial.stopParkedRun(chat))}
-          streaming={chat.streaming || chat.approvals.length > 0}
+          adapter={describedBy(
+            chat.chatAdapter,
+            () => chat.approvals.length > 0,
+            () => trial.stopParkedRun(chat),
+          )}
+          streaming={!trial.stopped(chat) && (chat.streaming || chat.approvals.length > 0)}
           surfaceMode="transparent"
           variant="transcript"
           composerCompact

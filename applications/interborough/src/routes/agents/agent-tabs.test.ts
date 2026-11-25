@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
 import { RETRY_LABEL } from '../../app/copy/views.ts';
 import { readyAgent, StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
@@ -250,7 +251,7 @@ describe('the Instructions tab', () => {
       'Documents are added and removed in the editor, so each change becomes a version.',
     );
     expect(within(note).getByRole('link', { name: 'Edit agent' }).getAttribute('href')).toBe(
-      '/agents/researcher/edit',
+      '/agents/researcher/edit?section=references',
     );
     // The header holds the one Edit; the tab does not repeat it (sweep S51).
     const edits = await findAllByRole('link', { name: 'Edit' });
@@ -271,7 +272,7 @@ describe('the Instructions tab', () => {
     );
     expect(within(line).getAllByRole('link')).toHaveLength(1);
     expect(within(line).getByRole('link', { name: 'the editor' }).getAttribute('href')).toBe(
-      '/agents/researcher/edit',
+      '/agents/researcher/edit?section=references',
     );
     expect(container.querySelector('[data-cinder-kind="first-use"]')).toBeNull();
     expect(container.textContent).not.toContain('No reference documents');
@@ -427,7 +428,7 @@ describe('the Hooks tab', () => {
     });
     landAt('/agents/researcher/hooks');
     const view = mount();
-    await view.findByText(HOOKS_COPY.agentTab.loadFailed);
+    await view.findByRole('heading', { name: AGENT_PAGE_COPY.tabState.failedTitle });
     failing = false;
     await fireEvent.click(view.getByRole('button', { name: RETRY_LABEL }));
     await view.findByRole('link', {

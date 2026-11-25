@@ -1,7 +1,7 @@
 {
   "issue": "COR-2427",
   "branch": "codex/cor-2427-agent-pages",
-  "checkedAt": "c77feb78d0a0a26ecb6d761785e522b0f5cb887c",
+  "checkedAt": "022e2f5b89aae290f6a30bb2fc5ec1f4b2077995",
   "briefVersion": "1a8364945e88",
   "status": "READY",
   "criteria": [
@@ -27,7 +27,8 @@
     },
     {
       "id": "AC6",
-      "status": "met-on-branch"
+      "status": "met-on-branch",
+      "evidence": "39g fixture uses visibilitychange and proves the intercepted bureau.hooks.list request before capture; coordinator owns browser/design capture."
     },
     {
       "id": "AC7",
@@ -43,7 +44,8 @@
     },
     {
       "id": "AC10",
-      "status": "met-on-main"
+      "status": "met-on-branch",
+      "evidence": "43g parked Stop browser witness passed in the recorded correction run."
     },
     {
       "id": "AC11",

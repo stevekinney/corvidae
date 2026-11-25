@@ -81,6 +81,8 @@ export class AgentTrySession {
   triedWith = $state<string | undefined>(undefined);
   /** The answer to a tool approval that is on its way, or `undefined` when none is. */
   deciding = $state<'approve' | 'deny' | undefined>(undefined);
+  /** A parked run that Stop has cancelled; its lingering card must never resume it. */
+  #stoppedChat = $state<ChatSessionState | undefined>(undefined);
   /** Counts starts and ends, so an answer that arrives after an end knows it is too late. */
   #generation = 0;
   readonly #onPageHide = (): void => {
@@ -143,6 +145,7 @@ export class AgentTrySession {
     this.contextId = undefined;
     this.triedWith = undefined;
     this.deciding = undefined;
+    this.#stoppedChat = undefined;
     this.phase = 'idle';
     chat?.dispose();
     if (contextId !== undefined) await this.#remove(contextId);
@@ -156,7 +159,13 @@ export class AgentTrySession {
    */
   async resolveApproval(toolCallId: string, resolution: ApprovalResolution): Promise<void> {
     const chat = this.chat;
-    if (chat === undefined || this.deciding !== undefined || chat.stopping) return;
+    if (
+      chat === undefined ||
+      this.deciding !== undefined ||
+      chat.stopping ||
+      this.#stoppedChat === chat
+    )
+      return;
     this.deciding = resolution.decision === 'deny' ? 'deny' : 'approve';
     try {
       await chat.controller.adapter.resolveToolApproval?.(toolCallId, resolution);
@@ -170,8 +179,16 @@ export class AgentTrySession {
   /** Stops this trial's parked native run; a later approval cannot resume it. */
   async stopParkedRun(chat: ChatSessionState): Promise<void> {
     if (this.chat !== chat) return;
-    ++this.#generation;
-    await chat.stopParkedRun();
+    // This is the normal session's native-run cancellation route. It starts the cancellation before
+    // the card is hidden, which fences an approval event that arrives in the same render turn.
+    void chat.stopParkedRun();
+    this.#stoppedChat = chat;
+    chat.streaming = false;
+  }
+
+  /** A cancellation that settled fences approvals until this trial starts again. */
+  stopped(chat: ChatSessionState): boolean {
+    return this.#stoppedChat === chat;
   }
 
   async #remove(contextId: string): Promise<void> {

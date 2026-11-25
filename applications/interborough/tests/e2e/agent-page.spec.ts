@@ -13,6 +13,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
 import { bureau, createAgentFile, readAgent, removeAgent } from './agent-support.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, test } from './fixtures.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 import { expectTabOpen } from './workflow-support.ts';
@@ -40,7 +41,7 @@ async function chat(request: APIRequestContext, message: string): Promise<string
   return threadId;
 }
 
-test('at 375px the Access tab is one collapsed Tab: Access select, not a visible tab bar', async ({
+test('/agents/:agent/access: at 375px the Access tab is one collapsed Tab: Access select, not a visible tab bar', async ({
   page,
   request,
 }) => {
@@ -54,6 +55,11 @@ test('at 375px the Access tab is one collapsed Tab: Access select, not a visible
   await expect(tabs).toHaveAttribute('data-cinder-collapsed', '');
   await expect(tabs.locator('.cinder-select')).toContainText(/Tab:\s*Access/);
   await expect(tabs.getByRole('tablist')).toBeHidden();
+  await captureForDesignReview(page, {
+    route: '/agents/:agent/access',
+    state: '375px collapsed Access tab',
+    source: 'agent-page.spec.ts',
+  });
 });
 
 test.describe('the Chats tab', () => {
@@ -121,8 +127,66 @@ test.describe('the Chats tab', () => {
   });
 });
 
+test.describe('the Hooks tab', () => {
+  test('/agents/:agent/hooks: keeps its retained rows under the 39g stale warning', async ({
+    page,
+    request,
+  }) => {
+    const id = 'e2e-page-hooks-stale';
+    agents.add(id);
+    await createAgentFile(request, id);
+    const created = await bureau(request, 'bureau.hooks.create', {
+      name: 'Retained audit hook',
+      events: ['review.requested'],
+      scope: { kind: 'agent', id },
+      action: { type: 'notify', title: 'Audit the review' },
+    });
+    expect(created.fault).toBeUndefined();
+
+    await page.goto(`/agents/${id}/hooks`);
+    await expect(page.getByTestId('agent-hooks')).toContainText('Retained audit hook');
+
+    let failedReads = 0;
+    await page.route('**/jsonrpc', async (route) => {
+      const call = route.request().postDataJSON() as { method?: string; id?: unknown };
+      if (call.method !== 'bureau.hooks.list') {
+        await route.fallback();
+        return;
+      }
+      failedReads += 1;
+      await route.fulfill({
+        json: {
+          jsonrpc: '2.0',
+          id: call.id,
+          error: {
+            code: -32000,
+            message: 'The Hooks read failed.',
+            data: { httpStatus: 503, weftCode: 'Unavailable' },
+          },
+        },
+      });
+    });
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
+
+    await expect.poll(() => failedReads).toBe(1);
+    await expect(page.getByTestId('agent-tab-stale')).toBeVisible();
+    await expect(page.getByTestId('agent-hooks')).toContainText('Retained audit hook');
+    await expect(page.getByRole('link', { name: 'Edit', exact: true })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    await captureForDesignReview(page, {
+      route: '/agents/:agent/hooks',
+      tab: 'Hooks',
+      state: '39g retained stale',
+      source: 'agent-page.spec.ts',
+    });
+    await page.unroute('**/jsonrpc');
+  });
+});
+
 test.describe('the Instructions tab', () => {
-  test('renders the body as a document, leaves Edit to the header, and says there are no reference documents', async ({
+  test('/agents/:agent/edit?section=references: renders the body as a document, leaves Edit to the header, and says there are no reference documents', async ({
     page,
     request,
   }) => {
@@ -143,6 +207,11 @@ test.describe('the Instructions tab', () => {
     await page.getByTestId('agent-no-references').getByRole('link', { name: 'the editor' }).click();
     await expect(page).toHaveURL(new RegExp(`/agents/${id}/edit\\?section=references$`));
     await expect(page.locator('#agent-reference-documents')).toBeFocused();
+    await captureForDesignReview(page, {
+      route: '/agents/:agent/edit?section=references',
+      state: 'reference documents deep-link focus',
+      source: 'agent-page.spec.ts',
+    });
   });
 
   test('gives each tab its own path, which a reload keeps, and replaces an old ?tab= address', async ({
@@ -189,7 +258,10 @@ test.describe('the Instructions tab', () => {
 });
 
 test.describe('the Settings tab', () => {
-  test('restores an older version as a new version', async ({ page, request }) => {
+  test('/agents/:agent/settings: restores an older version as a new version', async ({
+    page,
+    request,
+  }) => {
     const id = 'e2e-page-versions';
     agents.add(id);
     const created = await createAgentFile(request, id, { instructions: 'First instructions.' });
@@ -208,6 +280,11 @@ test.describe('the Settings tab', () => {
 
     const versions = page.getByTestId('agent-versions');
     await expect(versions.locator('[data-revision]')).toHaveCount(2);
+    await captureForDesignReview(page, {
+      route: '/agents/:agent/settings',
+      state: 'saved versions read-only list',
+      source: 'agent-page.spec.ts',
+    });
     // Restore asks first, then saves the old version again as the next one (row 38z).
     await versions.getByRole('button', { name: 'Restore Version 1' }).click();
     await page
@@ -215,6 +292,11 @@ test.describe('the Settings tab', () => {
       .getByRole('button', { name: 'Restore Version 1' })
       .click();
     await expect(versions.locator('[data-revision]')).toHaveCount(3);
+    await captureForDesignReview(page, {
+      route: '/agents/:agent/settings',
+      state: 'restored version saved list',
+      source: 'agent-page.spec.ts',
+    });
     const restored = await readAgent(request, id);
     expect(restored.definition?.instructions).toBe('First instructions.');
   });

@@ -96,6 +96,7 @@
     allowedToolCount,
     chatUsageByAgent,
     copiedFromNotice,
+    mergedSkills,
     newChatPath,
     tabCountText,
   } from './agent-presentation.ts';
@@ -210,6 +211,13 @@
   const description = $derived(
     listed !== undefined ? listed.description : (definition.data?.description ?? null),
   );
+  // The header stays compact, but its count is the same merged set Access grants: skills declared
+  // by the agent itself plus grants, with a duplicate name counted once (COR-2429 AC26).
+  const skillCount = $derived.by(() => {
+    const declared = definition.data?.definition ?? definition.data?.codeDefinition;
+    if (declared === undefined || declared === null) return undefined;
+    return mergedSkills(declared.card, declared.skills ?? []).length;
+  });
   // A copy whose source has changed since it was made (COR-2234): the Bureau answers the version the
   // source is at now beside the one the copy recorded, and the page compares the two and nothing else.
   const copiedFrom = $derived(copiedFromNotice(definition.data, agents.data, name));
@@ -580,6 +588,11 @@
             {:else}
               <StatusDot size="sm" status={status.tone} label={status.text} />
             {/if}
+          </p>
+        {/if}
+        {#if skillCount !== undefined}
+          <p class="ib-agent__status" data-testid="agent-skills-count">
+            {copy.access.skillsTitle(skillCount)}
           </p>
         {/if}
         {#if copiedFrom !== undefined}

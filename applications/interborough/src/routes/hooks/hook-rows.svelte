@@ -34,6 +34,7 @@
   import { hookPath } from '../../lib/identifier-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { HOOKS_COPY } from './hook-copy.ts';
   import {
     failingFirst,
@@ -164,7 +165,7 @@
         {#snippet meta()}
           {#if text.line !== ''}
             <span class="ib-hooks__line">
-              {#each hook.events as event, index (event)}
+              {#each keyedByOccurrence(hook.events, (event) => event) as { key, item: event }, index (key)}
                 {#if index > 0},
                 {/if}<code class="ib-hooks__event">{event}</code>
               {/each}

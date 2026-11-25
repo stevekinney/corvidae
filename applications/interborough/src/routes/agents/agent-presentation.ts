@@ -3,6 +3,27 @@ import type { AgentDetail } from '../../lib/agent-definitions.ts';
 import type { AgentSummary, ChatContext } from '../../lib/bureau-client.ts';
 import { viewerTimeZone } from '../../lib/format/clock.ts';
 import { formatBytes } from '../../lib/format/index.ts';
+import { skillHeading } from '../capabilities/capability-presentation.ts';
+
+/** The header and Access tab's shared, de-duplicated skill identity. */
+export type MergedSkill = { readonly id: string; readonly name: string };
+
+/**
+ * The skills an agent declares plus the skills it is granted, in the same order and with the same
+ * de-duplication Access uses. The compact header count deliberately consumes this selector instead
+ * of reviving the removed model/tool/skill facts row.
+ */
+export function mergedSkills(
+  card: readonly { readonly id: string; readonly name: string }[],
+  granted: readonly string[],
+): readonly MergedSkill[] {
+  const own = card.map((skill) => ({ id: skill.id, name: skill.name }));
+  const named = new Set(own.map((skill) => skill.name));
+  const added = [...new Set(granted)]
+    .filter((name) => !named.has(name))
+    .map((name) => ({ id: name, name: skillHeading({ name }) }));
+  return [...own, ...added];
+}
 
 /** The path that opens a new chat with `agent`. */
 export function newChatPath(agent: string): string {

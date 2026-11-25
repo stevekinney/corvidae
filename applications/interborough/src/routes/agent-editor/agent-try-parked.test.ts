@@ -4,6 +4,7 @@
  * that the test chat runs for real, and Approve answers this test run (rows 43d, 43e). An agent
  * with `references` is tried without them, and Try it names them.
  */
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
@@ -295,7 +296,8 @@ describe('Try it, parked on an approval', () => {
     expect(cancels[0]).toContain('/runs/native-1/cancel');
     // The approval's delayed click reaches the stale card but cannot create a resume after Stop.
     await fireEvent.click(view.getByRole('button', { name: /^Approve\b/ }));
-    await waitFor(() => expect(resumes).toEqual([]));
+    await quietFor(50);
+    expect(resumes).toEqual([]);
   });
 });
 

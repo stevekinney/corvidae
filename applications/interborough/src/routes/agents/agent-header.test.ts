@@ -210,8 +210,10 @@ describe('the skills the header names (sweep S65, COR-2429)', () => {
       .map((row) => row.getAttribute('data-skill'));
     expect(granted).toEqual(['cite', 'summarize']);
 
-    // The Access tab is the single detailed source of skills. The shared header stays compact.
+    // The shared header keeps the same merged count, while Access remains the detailed source.
     expect(granted).toEqual(['cite', 'summarize']);
+    const skillsCount = await findByTestId('agent-skills-count');
+    expect(skillsCount.textContent).toContain('2 skills');
     expect(document.querySelector('[data-testid="agent-facts"]')).toBeNull();
   });
 });

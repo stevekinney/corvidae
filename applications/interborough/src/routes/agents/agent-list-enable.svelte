@@ -136,6 +136,7 @@
   });
 
   function confirm(): void {
+    if (flow.running || flow.phase === 'unconfirmed' || flow.phase === 'back') return;
     notRestarted = undefined;
     applied = { plugins: titles, agents: [...agents] };
     void flow.run(

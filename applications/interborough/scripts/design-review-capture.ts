@@ -174,6 +174,8 @@ const SHOWCASE_SPECIFICATIONS = [
   // Workflow detail, its runs and its More menu on the PageWorkflow board (COR-2431).
   'tests/e2e/workflow-detail-states.spec.ts',
   'tests/e2e/agent-duplicate.spec.ts',
+  // The agent-page tab frame supplies the narrow Access and reference-editor witnesses (COR-2427).
+  'tests/e2e/agent-page.spec.ts',
   'tests/e2e/agent-editor.spec.ts',
   'tests/e2e/agent-plugin-editing.spec.ts',
   // These populated pages live on the fixture plugin host, outside the sample world.

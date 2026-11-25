@@ -8,12 +8,11 @@
    * with the switch worded Active. An agent with none shows the empty state naming it, whose New
    * hook is secondary too (board PageAgent, rows 38s, 38t and 39q; sweep S51).
    */
-  import { Alert, Button, EmptyState, Skeleton } from '@lostgradient/cinder';
+  import { Button, EmptyState } from '@lostgradient/cinder';
   import { Plus } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
-  import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { listHooks } from '../../lib/bureau-hooks.ts';
   import { classifyFault } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -44,7 +43,9 @@
     undefined,
   );
   const unavailable = $derived(
-    hooks.isError && classifyFault(hooks.error)?.kind === 'not-supported',
+    hooks.data === undefined &&
+      hooks.isError &&
+      classifyFault(hooks.error)?.kind === 'not-supported',
   );
   const newHookPath = $derived(`/hooks/new?agent=${encodeURIComponent(id)}`);
 
@@ -68,22 +69,13 @@
   tab={AGENT_PAGE_COPY.tabs.hooks}
   shape="rows"
   pending={hooks.isPending}
-  error={hooks.error}
+  error={unavailable ? null : hooks.error}
   updatedAt={hooks.dataUpdatedAt}
   onRetry={() => void hooks.refetch()}
 >
   <div class="ib-agent-hooks" data-testid="agent-hooks">
     {#if unavailable}
       <HooksUnavailable headingLevel={2} />
-    {:else if hooks.isError}
-      <Alert variant="danger">
-        <p class="ib-agent-hooks__failed">{copy.loadFailed}</p>
-        <Button variant="secondary" size="sm" onclick={() => void hooks.refetch()}
-          >{RETRY_LABEL}</Button
-        >
-      </Alert>
-    {:else if hooks.isPending}
-      <Skeleton height="4rem" />
     {:else if hooks.data !== undefined && hooks.data.length === 0}
       <EmptyState
         kind="first-use"
@@ -123,9 +115,5 @@
     margin: 0;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
-  }
-
-  .ib-agent-hooks__failed {
-    margin: 0 0 8px;
   }
 </style>

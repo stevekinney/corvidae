@@ -260,8 +260,87 @@ async function startTrial(page: Page, message: string): Promise<string> {
   return contextId ?? '';
 }
 
+const PARKED_TRIAL = { contextId: 'try-parked', agentName: 'try:parked', taskId: 'try-task' };
+const PARKED_APPROVAL = {
+  id: 'approval:native-parked:refund',
+  reason: 'tool-approval',
+  toolCallId: 'call-refund',
+  message: 'Refund order 1001?',
+};
+
+/** The real AG-UI stream shape for a trial parked on an approval, supplied through its transport seam. */
+function parkedTrialEvents(): string {
+  const events = [
+    {
+      type: 'RUN_STARTED',
+      threadId: PARKED_TRIAL.contextId,
+      runId: 'run-parked',
+      metadata: { '@lostgradient/bureau': { runId: 'native-parked' } },
+    },
+    {
+      type: 'MESSAGES_SNAPSHOT',
+      messages: [
+        { id: 'user-1', role: 'user', content: 'Refund it' },
+        {
+          id: 'step-1',
+          role: 'assistant',
+          toolCalls: [
+            {
+              id: PARKED_APPROVAL.toolCallId,
+              type: 'function',
+              function: { name: 'issue-refund', arguments: '{"cents":4200}' },
+            },
+          ],
+        },
+        {
+          id: 'result-1',
+          role: 'tool',
+          toolCallId: PARKED_APPROVAL.toolCallId,
+          content: 'requires approval',
+          metadata: {
+            'conversationalist:toolResult': {
+              outcome: 'action_required',
+              action: {
+                type: 'approval',
+                message: PARKED_APPROVAL.message,
+                risk: 'high',
+                operation: { argsPreview: { cents: 4200 }, kind: 'other' },
+                policyVersion: 'policy:1',
+                idempotencyKey: PARKED_APPROVAL.id,
+              },
+              content: 'requires approval',
+            },
+          },
+        },
+      ],
+    },
+    {
+      type: 'TOOL_CALL_START',
+      toolCallId: PARKED_APPROVAL.toolCallId,
+      toolCallName: 'issue-refund',
+    },
+    { type: 'TOOL_CALL_ARGS', toolCallId: PARKED_APPROVAL.toolCallId, delta: '{"cents":4200}' },
+    { type: 'TOOL_CALL_END', toolCallId: PARKED_APPROVAL.toolCallId },
+    {
+      type: 'TOOL_CALL_RESULT',
+      messageId: 'result-1',
+      toolCallId: PARKED_APPROVAL.toolCallId,
+      content: 'requires approval',
+      role: 'tool',
+    },
+    {
+      type: 'RUN_FINISHED',
+      threadId: PARKED_TRIAL.contextId,
+      runId: 'run-parked',
+      metadata: { '@lostgradient/bureau': { runId: 'native-parked' } },
+      outcome: { type: 'interrupt', interrupts: [PARKED_APPROVAL] },
+    },
+  ];
+  return events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('');
+}
+
 test.describe('Try it', () => {
-  test('at 800px opens Try it as a small right sheet', async ({ page }) => {
+  test('/agents/new: at 800px opens Try it as a small right sheet', async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 900 });
     await page.goto('/agents/new');
     await page.getByRole('button', { name: words.try.action }).click();
@@ -270,9 +349,14 @@ test.describe('Try it', () => {
     const panel = sheet.locator('.cinder-drawer__panel');
     await expect(panel).toHaveAttribute('data-cinder-placement', 'right');
     await expect(panel).toHaveAttribute('data-cinder-size', 'sm');
+    await captureForDesignReview(page, {
+      route: '/agents/new',
+      state: '800px Try it right sheet',
+      source: 'agent-editor.spec.ts',
+    });
   });
 
-  test('at 375px opens Try it as a bottom sheet', async ({ page }) => {
+  test('/agents/new: at 375px opens Try it as a bottom sheet', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/agents/new');
     await page.getByRole('button', { name: words.try.action }).click();
@@ -280,6 +364,43 @@ test.describe('Try it', () => {
     await expect(
       page.getByRole('dialog', { name: words.try.title }).locator('.cinder-drawer__panel'),
     ).toHaveAttribute('data-cinder-placement', 'bottom');
+    await captureForDesignReview(page, {
+      route: '/agents/new',
+      state: '375px Try it bottom sheet',
+      source: 'agent-editor.spec.ts',
+    });
+  });
+
+  test('/agents/new: captures 43g with Stop beside a parked approval', async ({ page }) => {
+    await page.route('**/jsonrpc', async (route) => {
+      const call = route.request().postDataJSON() as { method?: string; id?: unknown };
+      if (call.method === 'bureau.agents.try') {
+        await route.fulfill({ json: { jsonrpc: '2.0', id: call.id, result: PARKED_TRIAL } });
+        return;
+      }
+      if (call.method === 'bureau.contexts.delete') {
+        await route.fulfill({ json: { jsonrpc: '2.0', id: call.id, result: {} } });
+        return;
+      }
+      await route.fallback();
+    });
+    await page.route(`**/bureau/ag-ui/threads/${PARKED_TRIAL.contextId}/run`, async (route) => {
+      await route.fulfill({
+        body: parkedTrialEvents(),
+        contentType: 'text/event-stream',
+      });
+    });
+    await page.goto('/agents/new');
+    await startTrial(page, 'Refund it');
+
+    const panel = drawer(page);
+    await expect(panel.getByTestId('agent-try-approval')).toContainText(PARKED_APPROVAL.message);
+    await expect(panel.getByRole('button', { name: 'Stop generating' })).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/agents/new',
+      state: '43g parked Stop',
+      source: 'agent-editor.spec.ts',
+    });
   });
 
   test('chats with the unsaved draft, writes no file or memory, and ends the chat on Reset', async ({

@@ -3193,13 +3193,17 @@ describe('a fault the list or search met', () => {
       },
     });
     const view = open();
-    await openDetails(view, AISLE.content);
+    const detail = await openDetails(view, AISLE.content);
 
     await fireEvent.input(view.getByLabelText(MEMORY_COPY.searchLabel), {
       target: { value: 'seats' },
     });
 
     await view.findByText(MEMORY_COPY.listFailed);
+    // A query scoped to search did not retain any results, so the ordinary list stays out of its
+    // result set while the initialized controls and the open memory remain available.
+    expect(view.getByLabelText(MEMORY_COPY.searchLabel)).toBeEnabled();
+    expect(detail.textContent).toContain(AISLE.content);
     // The open memory still leads the list, and says it is not one of its results.
     expect(rowOf(view, AISLE.id).textContent).toContain(MEMORY_COPY.pinnedNote);
     expect(view.queryByText(MEMORY_COPY.noMatch.title('seats'))).toBeNull();
