@@ -70,6 +70,25 @@ async function withBureau<T>(
 }
 
 describe('createBureauHandler options', () => {
+  it('uses a host request authenticator before serving any route', async () => {
+    await withBureau({}, async (bureau) => {
+      const seen: Request[] = [];
+      const handler = createBureauHandler(bureau, {
+        authenticateRequest: async (request) => {
+          seen.push(request);
+          return request.headers.has('x-write-token')
+            ? { method: 'api-key', principal: principalFromApiKey({ subject: 'alice', scopes: [] }) }
+            : new Response('Forbidden', { status: 403 });
+        },
+      });
+      const denied = get('/v1/health', { cookie: 'session=valid' });
+      const allowed = get('/v1/health', { cookie: 'session=valid', 'x-write-token': 'ok' });
+      expect((await handler(denied)).status).toBe(403);
+      expect((await handler(allowed)).status).toBe(200);
+      expect(seen).toEqual([denied, allowed]);
+      expect(() => createBureauHandler(bureau, { authentication: allScopes, authenticateRequest: async () => new Response(null, { status: 401 }) })).toThrow();
+    });
+  });
   const workspaceBinding = (): WorkspaceMembershipOptions => ({
     workspaceId: 'workspace-a',
     resolveMembership: async ({ subject }) => ({

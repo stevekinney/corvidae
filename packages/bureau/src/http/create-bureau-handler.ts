@@ -602,6 +602,8 @@ export type BureauHandlerOptions = {
    * credential is authenticated by it, and A2A requires one (COR-1904).
    */
   readonly authentication?: AuthConfig;
+  /** Host-owned request authentication, including the host's cookie write policy. */
+  readonly authenticateRequest?: OperationHandlerAuthenticate;
   /** Server-supplied current membership for this runtime's workspace, resolved after authentication. */
   readonly workspace?: WorkspaceMembershipOptions;
   /**
@@ -684,6 +686,7 @@ const OPTION_NAMES: ReadonlySet<string> = new Set([
   'signing',
   'pushNotifications',
   'authentication',
+  'authenticateRequest',
   'workspace',
   'unauthenticatedAccess',
   'mounts',
@@ -1644,7 +1647,10 @@ export function createBureauHandler(
     fail('workspace must match the Bureau construction binding');
   }
   const unauthenticatedAccess = resolveUnauthenticatedAccess(options);
-  assertAuthentication(options.authentication, unauthenticatedAccess);
+  if (options.authenticateRequest !== undefined && options.authentication !== undefined)
+    fail('authenticateRequest and authentication cannot both be configured');
+  if (options.authenticateRequest === undefined)
+    assertAuthentication(options.authentication, unauthenticatedAccess);
   assertA2AAgents(bureau, options.a2aAgents);
   assertAgUi(bureau, options);
   assertA2A(bureau, options);
@@ -1659,7 +1665,8 @@ export function createBureauHandler(
     options.skills,
     options.workspace,
   );
-  const authenticate = handlerAuthenticate(options.authentication, unauthenticatedAccess);
+  const authenticate =
+    options.authenticateRequest ?? handlerAuthenticate(options.authentication, unauthenticatedAccess);
 
   const mounts: WorkspaceClassifiedMount[] = [
     classifyWorkspaceMount(createAssetsMount(bureau.assets!, options.workspace), 'explicit-share'),
