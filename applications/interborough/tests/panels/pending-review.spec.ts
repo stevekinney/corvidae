@@ -229,7 +229,7 @@ test.describe('the pending-review MCP App', () => {
       const resource = await fixture.send('/host/plugins/inspectors/apps/pending-review', {
         headers: { cookie },
       });
-      expect(resource.ok()).toBe(true);
+      expect(resource.status).toBe(200);
       const mounted = (await resource.json()) as { html: string; ui: { csp: McpUiResourceCsp } };
       await page.goto('https://settings.example/');
       await page.evaluate(
@@ -271,6 +271,7 @@ test.describe('the pending-review MCP App', () => {
         headers: { cookie, origin: 'https://settings.example', 'content-type': 'application/json' },
         body: JSON.stringify({ name: 'bureau.reviews.get', arguments: { id } }),
       });
+      expect(read.status).toBe(200);
       expect(await read.json()).toMatchObject({ structuredContent: { id, status: 'approved' } });
       await expect.poll(() => fixture.refundStatus()).toBe('provider-pending');
       await page.route('**/bureau/jsonrpc', async (route) => {

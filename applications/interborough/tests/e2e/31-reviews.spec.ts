@@ -656,7 +656,7 @@ test.describe('a tool approval', () => {
     expect(refundRan(await threadMessages(request, denied.threadId))).toBe(false);
   });
 
-  test('shared Reviews approval detail remembers an On changes approval only when approved', async ({
+  test('/reviews shared approval detail remembers an On changes approval only when approved', async ({
     page,
     request,
   }) => {
@@ -703,7 +703,7 @@ test.describe('a tool approval', () => {
     ).toHaveCount(0);
   });
 
-  test('shared Reviews approval detail captures a pending On changes approval', async ({
+  test('/reviews shared approval detail captures a pending On changes approval', async ({
     page,
     request,
   }) => {
