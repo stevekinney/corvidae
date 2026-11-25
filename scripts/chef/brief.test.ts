@@ -307,20 +307,22 @@ describe('charter rules', () => {
     expect(rule).toContain('never to `main`');
     expect(rule).toContain('do not wait for the focused checks before that push');
     expect(rule).toContain('still gate ready-for-review');
-    expect(rule).toContain('record the dispatch it prints in the ready-for-review receipt');
+    expect(rule).toContain(
+      'include its plan and the exact candidate SHA in the ready-for-review receipt',
+    );
     for (const path of ['.claude/agents/chef-worker.md', '.codex/agents/chef-worker.toml']) {
       const text = readFileSync(join(import.meta.dir, '../..', path), 'utf8');
       expect(text).toContain(`${pushRule.charAt(0).toUpperCase()}${pushRule.slice(1)}`);
     }
   });
 
-  test('requires every rendered brief to record one final branch CI receipt', () => {
+  test('requires every rendered brief to hand the final CI plan to the coordinator', () => {
     expect(pushRule).toContain(
-      'After the final push run `bun scripts/chef/targeted-run.ts` once per batch',
+      'After the final push run `bun scripts/chef/targeted-run.ts --dry-run --json` once per batch',
     );
-    expect(pushRule).not.toContain('When the brief requires branch CI');
+    expect(pushRule).toContain('The coordinator decides whether to dispatch discretionary CI.');
     expect(renderBrief(issue(description), { paths: [], verify: [], model: 'Sonnet' })).toContain(
-      'record the dispatch it prints in the ready-for-review receipt',
+      'include its plan and the exact candidate SHA in the ready-for-review receipt',
     );
   });
 
@@ -348,7 +350,7 @@ describe('charter rules', () => {
       agents,
       'local checks run only direct tests (owner decision, 2026-11-16)',
     ],
-    ['the full suite only for a one-way door', agents, 'to a one-way door'],
+    ['the full suite applies to a one-way door', agents, 'to a one-way door'],
     ['delivery runs no gate', agents, 'delivery runs no gate'],
     [
       'a red `main` is a warning',
@@ -402,8 +404,7 @@ describe('charter rules', () => {
       'interborough end-to-end suite',
       'design-review capture',
       '`validate` or `harden` on this host',
-      '`bun scripts/chef/targeted-run.ts`',
-      'do not wait on it',
+      'include the dry-run ci plan in the handoff for the coordinator',
       'read the failing test names',
       "download the failing shard's artifact",
     ])

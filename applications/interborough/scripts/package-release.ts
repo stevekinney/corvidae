@@ -164,9 +164,11 @@ async function packageRelease(
     );
     await assertManifest(staging, version);
     const packedOutput = await run(['npm', 'pack', '--ignore-scripts', '--json'], staging);
-    const packed = JSON.parse(packedOutput) as PackedPackage[];
-    const entry = packed[0];
+    // npm emits a list or an object keyed by package name, depending on its version.
+    const packed = Object.values(JSON.parse(packedOutput) as Record<string, PackedPackage>);
+    const [entry] = packed;
     if (
+      packed.length !== 1 ||
       entry === undefined ||
       typeof entry.filename !== 'string' ||
       typeof entry.integrity !== 'string'

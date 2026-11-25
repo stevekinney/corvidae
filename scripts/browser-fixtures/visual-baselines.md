@@ -97,7 +97,7 @@ After the pull request merges, run the same visual command against the merged co
 
 When this host cannot start Docker, a baseline that changed can come from a `main.yml` run instead (COR-2457). The fixtures job runs in the renderer's image and, when it fails, uploads `playwright-fixtures-<shard>` with the `*-actual.png` files Playwright wrote for each failed comparison. Those come from the baseline renderer.
 
-- Commit the change and push the branch, then run `bun scripts/chef/targeted-run.ts` (it dispatches `main.yml` when the plan requires a full run) and wait for the run.
+- Commit and push the branch. Send the candidate SHA and `bun scripts/chef/targeted-run.ts --dry-run --json` plan to the coordinator for a dispatch decision.
 - Run `bun scripts/browser-fixtures/scripts/baselines-from-run.ts <run-id>`. It downloads the run's `playwright-fixtures-*` artifacts into a temporary directory (printed at the end), and lists each actual with the baseline it would replace, as `changed`, `new`, or `unmatched`. It copies nothing.
 - Look at the images before `--write`. An actual is whatever the renderer drew, including a regression; classify each one as described in the review report below.
 - Run the same command with `--write` to copy the changed (and new) actuals over the baselines, then commit them.
