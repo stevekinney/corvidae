@@ -83,14 +83,16 @@ test.describe('the outlet pads a page and nothing else does', () => {
     page,
   }) => {
     await page.setViewportSize(DESKTOP);
-    await page.goto('/runs');
+    await page.goto('/health/workers');
     const outlet = page.locator('main.weft-shell-outlet');
+    await expect(outlet).toHaveAttribute('data-width', 'full');
     await expect(outlet).toHaveCSS('padding-top', '16px');
     await expect(outlet).toHaveCSS('padding-left', '24px');
     await expect(outlet).toHaveCSS('padding-right', '24px');
     await page.setViewportSize({ width: 375, height: 812 });
     await expect(outlet).toHaveCSS('padding-top', '12px');
     await expect(outlet).toHaveCSS('padding-left', '16px');
+    await expect(outlet).toHaveCSS('padding-right', '16px');
   });
 });
 
