@@ -1,7 +1,7 @@
 {
   "issue": "COR-2425",
   "branch": "codex/cor-2425-goals-polish",
-  "checkedAt": "3e18c9445",
+  "checkedAt": "4f16dbae0",
   "briefVersion": "620a4696943c",
   "status": "BLOCKED",
   "criteria": [
@@ -47,8 +47,8 @@
     },
     {
       "id": "AC9",
-      "status": "needs-decision",
-      "evidence": "The brief identifies this as a persisted-format change; no production/wire authorization was granted."
+      "status": "met-on-main",
+      "evidence": "Existing COR-2425 coverage in packages/bureau/src/http/management/goals-operations.test.ts and goal-edit-in-flight.test.ts; attemptAgentName is fenced through goal-attempt-fence, goals-composition and goal-conversation."
     },
     {
       "id": "AC10",
