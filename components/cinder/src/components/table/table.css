@@ -624,6 +624,19 @@
     color: var(--cinder-text-default);
   }
 
+  /* A row that mixes a compact choice (a checkbox or switch) with a field keeps the compact
+   * choice on its own natural width, then gives the changing field the whole inset on the next
+   * line. Without this, both controls share the same flex line and the field loses its usable
+   * width. Rows whose controls are all fields or all compact controls keep their existing layout. */
+  .cinder-table[data-cinder-stacked]
+    .cinder-table__body
+    .cinder-table__row:has(> .cinder-table__cell[data-cinder-controls='fit']):has(
+      > .cinder-table__cell[data-cinder-controls]:not([data-cinder-controls='fit'])
+    )
+    > .cinder-table__cell[data-cinder-controls]:not([data-cinder-controls='fit']) {
+    flex-basis: 100%;
+  }
+
   .cinder-table[data-cinder-stacked] .cinder-table__cell-text {
     max-inline-size: 100%;
   }

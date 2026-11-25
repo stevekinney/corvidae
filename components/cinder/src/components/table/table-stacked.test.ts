@@ -187,6 +187,15 @@ describe('Table stackBelow', () => {
     expect(css).toMatch(/overflow-wrap: break-word;/);
     expect(css).not.toMatch(/overflow-wrap: anywhere;/);
   });
+
+  test('a mixed compact-and-filling control row gives only the field the full inset', async () => {
+    const css = stripCinderComponentsLayer(
+      await Bun.file(new URL('./table.css', import.meta.url)).text(),
+    );
+    expect(css).toMatch(
+      /\.cinder-table\[data-cinder-stacked\][\s\S]*?:has\(> \.cinder-table__cell\[data-cinder-controls='fit'\]\):has\(\s*> \.cinder-table__cell\[data-cinder-controls\]:not\(\[data-cinder-controls='fit'\]\)\s*\)[\s\S]*?> \.cinder-table__cell\[data-cinder-controls\]:not\(\[data-cinder-controls='fit'\]\)\s*\{\s*flex-basis: 100%;/,
+    );
+  });
 });
 
 describe('Table scroll and stack by container', () => {

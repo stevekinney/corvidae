@@ -90,8 +90,8 @@
   <Table.Cell as="th" clamp={false}>
     <span class="ib-access-row__identity">
       <span class="ib-access-row__name">{heading}</span>
-      <code class="ib-access-row__identifier">{tool.name}</code>
     </span>
+    {#snippet detail()}<code class="ib-access-row__identifier">{tool.name}</code>{/snippet}
   </Table.Cell>
   <Table.Cell class="ib-access-row__detail">
     {#snippet detail()}
@@ -103,7 +103,7 @@
       >{tool.catalog === undefined ? copy.notInCatalog : riskLabel(tierOf(tool.catalog))}</span
     >
   </Table.Cell>
-  <Table.Cell controls="fit" class="ib-access-row__asks-cell" data-agent-access-asks>
+  <Table.Cell controls>
     <div class="ib-access-row__asks">
       <Select
         id={`access-approval-${tool.name}`}

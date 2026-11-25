@@ -526,28 +526,6 @@
   min-inline-size: 0;
 }
 
-/* Access uses Cinder's fitted table cards below its stack threshold. Its checkbox remains on the
- * title and risk lines, while the one changing control needs the whole card inset below them. The
- * tool identifier and explanatory prose have already done their job in the desktop table; a phone
- * card keeps the person-facing name and risk only (row 07a). */
-.ib-access-table[data-cinder-stack-card] .ib-access-row__identifier,
-.ib-access-table[data-cinder-stack-card] .ib-access-row__detail {
-  display: none;
-}
-
-.ib-access-table[data-cinder-stack-card] .ib-access-row__asks-cell[data-agent-access-asks] {
-  grid-column: 1 / -1;
-  grid-row: 3;
-  order: 3;
-  justify-content: stretch;
-  min-block-size: 2.75rem;
-  margin-inline-start: 0;
-}
-
-.ib-access-table[data-cinder-stack-card] .ib-access-row__asks {
-  inline-size: 100%;
-}
-
 /* A row's own save in flight (row 39j): the spinner and its word beside the control. */
 .ib-access-row__saving {
   display: inline-flex;

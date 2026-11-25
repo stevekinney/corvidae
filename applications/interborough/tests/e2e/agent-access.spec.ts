@@ -68,20 +68,20 @@ async function pendingApprovals(request: Parameters<typeof bureau>[0], threadId:
 }
 
 test.describe('the Access tab', () => {
-  test('/agents/:agent/access: at 320px and 375px presents Asks as a full-width card control on the editable Access tab', async ({
+  test('/agents/:agent/access: at 320px, 375px, 417px and 639px presents Asks as a full-width stacked control on the editable Access tab', async ({
     page,
     request,
   }) => {
     const id = 'e2e-access-asks-compact';
     await agentWithLookup(request, id, { approvals: { 'demo:lookup-order': 'always' } });
-    for (const width of [320, 375]) {
+    for (const width of [320, 375, 417, 639]) {
       await page.setViewportSize({ width, height: 812 });
       await page.goto(`/agents/${id}/access`);
 
       const table = page.getByTestId('agent-access-table');
       const row = table.locator('[data-tool="demo:lookup-order"]');
       const asks = lookupAsks(page);
-      await expect(table).toHaveAttribute('data-cinder-stack-card', 'true');
+      await expect(table).toHaveAttribute('data-cinder-stacked', 'true');
       await expect(asks).toBeVisible();
       await expect(row.locator('.ib-access-row__identifier')).toBeHidden();
       const { askBox, rowBox, riskBox } = await readBoxes(page, {
@@ -99,6 +99,8 @@ test.describe('the Access tab', () => {
           .evaluate((outlet) => outlet.scrollWidth <= outlet.clientWidth),
       ).toBe(true);
     }
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(`/agents/${id}/access`);
     await captureForDesignReview(page, {
       route: '/agents/:agent/access',
       state: '07a compact Asks control',
