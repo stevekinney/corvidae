@@ -50,6 +50,11 @@ export interface ControlFact {
   readonly unreached: readonly string[] | null;
   /** A number shared by the controls of one parent, so controls in one row can be told apart. */
   readonly parent: number;
+  /**
+   * How strongly its face reads against its parent's surface: the WCAG contrast ratio of its fill,
+   * or of its border where the fill is transparent (`outlined`). `null` when it paints neither.
+   */
+  readonly weight: { readonly contrast: number; readonly outlined: boolean } | null;
   /** Whether it fills its container's inline size and at least half the viewport. */
   readonly fullWidth: boolean;
   /** Whether it draws a box of its own, a border or a fill, so its padding is something a person sees. */
@@ -151,6 +156,18 @@ export interface ChromeFact {
   readonly bottom: number;
 }
 
+/** A tooltip on show, and where it sits against the element that `aria-describedby` or `aria-labelledby` ties it to. */
+export interface TooltipFact {
+  readonly name: string;
+  /** The element it describes. */
+  readonly anchor: string;
+  /** The empty distance between the two boxes along the inline axis, 0 where they overlap. */
+  readonly horizontalGap: number;
+  /** The same along the block axis. */
+  readonly verticalGap: number;
+  readonly sample: string;
+}
+
 /** What the probe measured on one captured page. */
 export interface GeometryFacts {
   readonly viewport: { readonly width: number; readonly height: number };
@@ -168,6 +185,8 @@ export interface GeometryFacts {
   readonly insets: readonly InsetFact[];
   /** `null` when nothing on the page scrolls. */
   readonly chrome: ChromeFact | null;
+  /** The tooltips visible when the page was measured; empty when none was open. */
+  readonly tooltips: readonly TooltipFact[];
 }
 
 /** The fields of a manifest line the audit reads. */
@@ -229,6 +248,8 @@ export const GEOMETRY_THRESHOLDS = {
   lineHeightsPerSizeMaximum: 2,
   /** Text smaller than this is not readable. */
   fontSizeMinimum: 11,
+  /** A tooltip's nearest edge sits no further than this from what it describes: twice Cinder's own 8px offset. */
+  tooltipDistanceMaximum: 16,
   /** A border between surface and content should read no more strongly than this. */
   structuralBorderContrastMaximum: 1.5,
   /**
@@ -334,6 +355,15 @@ export const GEOMETRY_RULES = {
   'text-tiny': {
     title: 'Text too small',
     principle: `No text is smaller than ${GEOMETRY_THRESHOLDS.fontSizeMinimum} pixels.`,
+  },
+  'tooltip-far': {
+    title: 'Tooltips far from their anchor',
+    principle: `A visible tooltip's nearest edge is at most ${GEOMETRY_THRESHOLDS.tooltipDistanceMaximum} pixels from the element it describes (twice Cinder's 8 pixel offset), and one placed beside it shares a vertical span with it. It reports only on a capture that shows a tooltip.`,
+  },
+  'primary-lighter': {
+    title: 'Primary action lighter than its sibling',
+    principle:
+      'Among buttons in one row, a primary, danger or soft-danger button reads at least as strongly against its parent as the secondary or outlined button beside it: the contrast of its fill, or of its border where the fill is transparent, is never lower.',
   },
   'border-heavy': {
     title: 'Heavy borders',
@@ -829,6 +859,60 @@ function auditLeadingSpace(facts: GeometryFacts, capture: GeometryCapture): Geom
   return findings;
 }
 
+const STRONG_VARIANTS = new Set(['primary', 'danger', 'soft-danger']);
+
+function auditTooltips(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
+  const limit = GEOMETRY_THRESHOLDS.tooltipDistanceMaximum;
+  const findings: GeometryFinding[] = [];
+  for (const tooltip of facts.tooltips) {
+    const distance = Math.hypot(tooltip.horizontalGap, tooltip.verticalGap);
+    // A tooltip above or below its anchor overlaps it along the inline axis; one beside it has to
+    // share a vertical span with it, or it points at the row above or below.
+    const offRow = tooltip.horizontalGap > 0 && tooltip.verticalGap > 0;
+    if (distance <= limit && !offRow) continue;
+    findings.push({
+      rule: 'tooltip-far',
+      subject: `${tooltip.name} for ${tooltip.anchor}`,
+      measured: `"${tooltip.sample}" is ${round(distance)}px from its anchor${offRow ? ' and shares no vertical span with it' : ''}, over the ${limit}px limit`,
+      capture,
+    });
+  }
+  return findings;
+}
+
+function auditWeights(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
+  const findings: GeometryFinding[] = [];
+  const rows = new Map<number, ControlFact[]>();
+  for (const control of facts.controls) {
+    if (control.kind !== 'button' || control.weight === null) continue;
+    const row = rows.get(control.parent);
+    if (row === undefined) rows.set(control.parent, [control]);
+    else row.push(control);
+  }
+  const label = (control: ControlFact): string =>
+    control.text === '' ? control.accessibleLabel : control.text;
+  for (const row of rows.values()) {
+    const quiet = row.filter(
+      (control) => control.variant === 'secondary' || control.weight?.outlined === true,
+    );
+    for (const strong of row) {
+      if (!STRONG_VARIANTS.has(strong.variant) || strong.weight === null) continue;
+      const strongContrast = strong.weight.contrast;
+      const stronger = quiet
+        .filter((control) => (control.weight?.contrast ?? 0) > strongContrast)
+        .toSorted((left, right) => (right.weight?.contrast ?? 0) - (left.weight?.contrast ?? 0))[0];
+      if (stronger?.weight == null) continue;
+      findings.push({
+        rule: 'primary-lighter',
+        subject: `${strong.name}[variant=${strong.variant}]`,
+        measured: `"${label(strong)}" reads ${round(strongContrast)}:1 against its parent, below "${label(stronger)}" beside it at ${round(stronger.weight.contrast)}:1 (${stronger.weight.outlined ? 'border' : 'fill'})`,
+        capture,
+      });
+    }
+  }
+  return findings;
+}
+
 /** Holds one capture's measured facts to every rule. */
 export function auditCapture(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
   return [
@@ -841,6 +925,8 @@ export function auditCapture(facts: GeometryFacts, capture: GeometryCapture): Ge
     ...auditOverlaps(facts, capture),
     ...auditInsets(facts, capture),
     ...auditChrome(facts, capture),
+    ...auditTooltips(facts, capture),
+    ...auditWeights(facts, capture),
   ];
 }
 
