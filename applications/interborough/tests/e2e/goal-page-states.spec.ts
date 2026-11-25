@@ -19,6 +19,7 @@ import type { Page, Route } from '@playwright/test';
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { SAMPLE_WORLD_DURATIONS } from '../../fixtures/sample-world-history.ts';
 import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
+import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 import { isBureauCall } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
@@ -29,7 +30,7 @@ test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
 const SOURCE = 'goal-page-states.spec.ts';
 const WIDTHS =
-  process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] === undefined
+  designReviewCaptureDirectory() === undefined
     ? ([1920, 1280, 375, 320] as const)
     : ([1280, 375] as const);
 
