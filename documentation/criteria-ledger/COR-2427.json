@@ -1,14 +1,14 @@
 {
   "issue": "COR-2427",
   "branch": "codex/cor-2427-agent-pages",
-  "checkedAt": "dd91dbfd6315fb3094d5426b84646f34e33dc731",
+  "checkedAt": "18ff0d0e7ebe103ab9634e57a051973a6f28eee6",
   "briefVersion": "1a8364945e88",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "The exact 320px and 375px Access card browser witness passed; the coordinator retains formal capture-review disposition."
+      "evidence": "The prior exact 320px and 375px Access browser witness passed; the shared Cinder mixed-control regression now covers the full-width field and the browser fixture additionally names 417px and 639px for coordinator-hosted proof."
     },
     {
       "id": "AC2",
