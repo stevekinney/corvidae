@@ -1,7 +1,7 @@
 {
   "issue": "COR-2427",
   "branch": "codex/cor-2427-agent-pages",
-  "checkedAt": "9532cd446aaa6c3a68b9c0e220a4bc00fea49789",
+  "checkedAt": "c77feb78d0a0a26ecb6d761785e522b0f5cb887c",
   "briefVersion": "1a8364945e88",
   "status": "READY",
   "criteria": [
@@ -59,15 +59,18 @@
     },
     {
       "id": "AC14",
-      "status": "met-on-main"
+      "status": "met-on-branch",
+      "evidence": "Added 375px browser witness; not launched locally by owner policy."
     },
     {
       "id": "AC15",
-      "status": "met-on-main"
+      "status": "met-on-branch",
+      "evidence": "Added 800px right-sm sheet witness; not launched locally by owner policy."
     },
     {
       "id": "AC16",
-      "status": "met-on-main"
+      "status": "met-on-branch",
+      "evidence": "Added 375px bottom-sheet witness; not launched locally by owner policy."
     },
     {
       "id": "AC17",
@@ -92,7 +95,8 @@
     },
     {
       "id": "AC22",
-      "status": "met-on-main"
+      "status": "met-on-branch",
+      "evidence": "chat-stop-parked and parked Try it cancellation regression pass."
     },
     {
       "id": "AC23",
@@ -120,7 +124,8 @@
     },
     {
       "id": "AC29",
-      "status": "met-on-branch"
+      "status": "met-on-branch",
+      "evidence": "Added editor-anchor browser witness; not launched locally by owner policy."
     },
     {
       "id": "AC30",
