@@ -24,7 +24,7 @@ Wrap the app inside the region so route components (descendants) can call `useTo
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `maxStack` | `number` | `5` | Maximum simultaneous toasts in **each** region (polite and assertive each hold up to this many). Overflow drops the oldest. |
+| `maxStack` | `number` | `5` | Maximum simultaneous ordinary toasts in **each** region. Active Undo toasts remain until acted on or dismissed with `dismissUndo()`. Overflow drops the oldest ordinary toast. |
 | `defaultDuration` | `number` | `5000` | Auto-dismiss duration in milliseconds. `0` makes a toast sticky. Overridable per-call via `ToastOptions.duration`. |
 | `position` | `'top-left' \| 'top-center' \| 'top-right' \| 'bottom-left' \| 'bottom-center' \| 'bottom-right'` | `'bottom-right'` | Viewport anchor for both live-region channels. |
 | `class` | `string` | — | Additional class names merged with `.cinder-toast-region`. |
@@ -62,7 +62,7 @@ Import the hook from the toast-region subpath. Call `useToast()` from anywhere i
 
 `variant` is not just a visual prop — it picks which live region the toast announces through. Polite variants (`info`, `success`, `warning`) queue behind the user's current screen-reader focus; the assertive `danger` variant interrupts. See the [Two regions, two priorities](./toast-region/toast-region.a11y.md#two-regions-two-priorities) table in the a11y doc for the exact ARIA mapping.
 
-`maxStack` applies _per stack_: a region can hold up to `maxStack` polite toasts **and** `maxStack` assertive toasts simultaneously.
+`maxStack` applies _per stack_: a region can hold up to `maxStack` ordinary polite toasts **and** `maxStack` ordinary assertive toasts simultaneously. Active Undo toasts remain available in either stack until their action runs or `dismissUndo()` is called.
 
 > [!TIP] Match urgency to variant. `success` ("Saved") is informational and belongs on the polite stack. `warning` ("Session expires soon") is notable but non-interrupting. `danger` ("Failed to save") interrupts because the user needs to know _now_.
 

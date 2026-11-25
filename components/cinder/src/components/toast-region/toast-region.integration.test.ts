@@ -339,7 +339,7 @@ describe('useToast api', () => {
     });
   });
 
-  test('maxStack keeps every Undo while dropping an ordinary toast', async () => {
+  test('maxStack retains Undo actions and caps ordinary toasts independently', async () => {
     let api: ToastApi | null = null;
     const { container } = render(Wrapper, {
       maxStack: 2,
@@ -350,13 +350,27 @@ describe('useToast api', () => {
     await waitFor(() => expect(api).not.toBeNull());
     api!.show('Undo A', { undo: () => {} });
     api!.show('Undo B', { undo: () => {} });
+    api!.show('Undo C', { undo: () => {} });
+    api!.show('Ordinary A', { duration: 0 });
+    api!.show('Ordinary B', { duration: 0 });
+    await waitFor(() => {
+      const politeText = container.querySelector('[role="status"]')?.textContent ?? '';
+      expect(politeText).toContain('Undo A');
+      expect(politeText).toContain('Undo B');
+      expect(politeText).toContain('Undo C');
+      expect(politeText).toContain('Ordinary A');
+      expect(politeText).toContain('Ordinary B');
+      expect(container.querySelectorAll('[data-cinder-undo]').length).toBe(3);
+    });
     api!.show('Ordinary C', { duration: 0 });
     await waitFor(() => {
       const politeText = container.querySelector('[role="status"]')?.textContent ?? '';
       expect(politeText).toContain('Undo A');
       expect(politeText).toContain('Undo B');
-      expect(politeText).not.toContain('Ordinary C');
-      expect(container.querySelectorAll('[data-cinder-undo]').length).toBe(2);
+      expect(politeText).toContain('Undo C');
+      expect(politeText).not.toContain('Ordinary A');
+      expect(politeText).toContain('Ordinary B');
+      expect(politeText).toContain('Ordinary C');
     });
   });
 

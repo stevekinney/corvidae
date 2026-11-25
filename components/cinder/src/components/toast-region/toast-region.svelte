@@ -124,6 +124,10 @@
   const removalTimers: Map<string, () => void> = new Map();
   const generations: Map<string, number> = new Map();
   let regionElement: HTMLElement | null = $state(null);
+  let politeChannel: HTMLDivElement | null = $state(null);
+  let assertiveChannel: HTMLDivElement | null = $state(null);
+  let politeChannelOverflows = $state(false);
+  let assertiveChannelOverflows = $state(false);
   let nextId = 0;
   let isPointerInsideRegion = false;
   let isFocusInsideRegion = false;
@@ -177,6 +181,27 @@
   function shouldPauseTimers(): boolean {
     return isPointerInsideRegion || isFocusInsideRegion;
   }
+
+  $effect(() => {
+    // Reading both stacks reruns this measurement after Svelte has rendered a new toast.
+    void politeStack;
+    void assertiveStack;
+    const region = regionElement;
+    const polite = politeChannel;
+    const assertive = assertiveChannel;
+    if (region === null || polite === null || assertive === null) return;
+
+    const measure = (): void => {
+      politeChannelOverflows = polite.scrollHeight > polite.clientHeight;
+      assertiveChannelOverflows = assertive.scrollHeight > assertive.clientHeight;
+    };
+    measure();
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : undefined;
+    observer?.observe(region);
+    observer?.observe(polite);
+    observer?.observe(assertive);
+    return () => observer?.disconnect();
+  });
 
   function show(message: string, options: ToastOptions = {}): string {
     if (destroyed) return options.id ?? `cinder-toast-${++nextId}`;
@@ -259,12 +284,12 @@
 
   function dismissOverflow(variant: ToastVariant): void {
     const stack = getCurrentStack(variant);
-    const activeToasts = stack.filter((toast) => !toast.leaving);
-    if (activeToasts.length <= maxStack) return;
+    const ordinaryToasts = stack.filter((toast) => !toast.leaving && !toast.undo);
+    if (ordinaryToasts.length <= maxStack) return;
 
     // An Undo represents a still-recoverable destructive action. It remains available until it is
     // acted on or its owner leaves the page, even when ordinary notifications fill the stack.
-    const oldest = activeToasts.find((toast) => !toast.undo);
+    const oldest = ordinaryToasts[0];
     if (oldest) beginDismiss(oldest.id, 'overflow');
   }
 
@@ -761,23 +786,27 @@
     onfocusout={handleRegionFocusOut}
   >
     <div
+      bind:this={politeChannel}
       role="status"
       aria-live="polite"
       aria-atomic="true"
       aria-relevant="additions"
       class="cinder-toast-region__channel"
+      data-cinder-overflowing={politeChannelOverflows ? '' : undefined}
     >
       {#each politeStack as toast, index (`${toast.id}:${toast.generation}`)}
         {@render toastItem(toast, index)}
       {/each}
     </div>
     <div
+      bind:this={assertiveChannel}
       role="alert"
       aria-live="assertive"
       aria-atomic="true"
       aria-relevant="additions"
       class="cinder-toast-region__channel"
       data-cinder-stack="assertive"
+      data-cinder-overflowing={assertiveChannelOverflows ? '' : undefined}
     >
       {#each assertiveStack as toast, index (`${toast.id}:${toast.generation}`)}
         {@render toastItem(toast, index)}
