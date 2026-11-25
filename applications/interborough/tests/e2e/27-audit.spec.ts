@@ -7,7 +7,9 @@
 import type { Page } from '@playwright/test';
 
 import { AUDIT_COPY } from '../../src/app/copy/audit.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 const WIDTHS = [375, 1280] as const;
 
@@ -96,6 +98,12 @@ test.describe('compact audit controls on touch', () => {
         expect(geometry.target).toBeGreaterThanOrEqual(44);
         expect(geometry.reaches).toBe(true);
       }
+      await captureForDesignReview(page, {
+        route: '/health/audit',
+        state: `compact touch controls at ${String(width)} pixels`,
+        source: '27-audit.spec.ts',
+        ready: () => expect(events(page).first()).toBeVisible(),
+      });
       await page.getByRole('combobox', { name: AUDIT_COPY.actionLabel, exact: true }).focus();
       await page.keyboard.press('ArrowDown');
       await expect(page.getByRole('listbox')).toBeVisible();
@@ -117,25 +125,26 @@ test('the audit content keeps a readable desktop measure', async ({ page }) => {
   const exportButton = page.getByRole('button', { name: AUDIT_COPY.exportAction });
   await expect(table).toBeVisible();
   await expect(detail).toBeVisible();
-  const [area, tableBox, detailBox, controlsBox, exportBox] = await Promise.all([
-    audit.boundingBox(),
-    table.boundingBox(),
-    detail.boundingBox(),
-    controls.boundingBox(),
-    exportButton.boundingBox(),
-  ]);
-  if (
-    area === null ||
-    tableBox === null ||
-    detailBox === null ||
-    controlsBox === null ||
-    exportBox === null
-  )
-    throw new Error('Audit content must be visible');
+  const { area, tableBox, detailBox, controlsBox, exportBox } = await readBoxes(page, {
+    area: audit,
+    tableBox: table,
+    detailBox: detail,
+    controlsBox: controls,
+    exportBox: exportButton,
+  });
   expect(area.width).toBeLessThanOrEqual(960);
   expect(detailBox.x).toBeGreaterThanOrEqual(tableBox.x + tableBox.width);
   for (const box of [tableBox, detailBox, controlsBox, exportBox]) {
     expect(box.x).toBeGreaterThanOrEqual(area.x);
     expect(box.x + box.width).toBeLessThanOrEqual(area.x + area.width + 1);
   }
+  await captureForDesignReview(page, {
+    route: '/health/audit',
+    state: 'bounded desktop detail',
+    source: '27-audit.spec.ts',
+    ready: async () => {
+      await expect(table).toBeVisible();
+      await expect(detail).toBeVisible();
+    },
+  });
 });
