@@ -231,6 +231,49 @@ async function waitingRememberApproval(page: Page, request: APIRequestContext, n
   }
 }
 
+/** Exercise the checkbox's expanded hit area with real coarse-pointer events. */
+async function checkRememberTouchTarget(page: Page, checkbox: Locator): Promise<void> {
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error('A fixed viewport is required');
+  const session = await page.context().newCDPSession(page);
+  try {
+    await page.setViewportSize({ width: 320, height: 640 });
+    await session.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    await expect
+      .poll(() => page.evaluate(() => matchMedia('(any-pointer: coarse)').matches))
+      .toBe(true);
+    const row = checkbox.locator('xpath=ancestor::div[contains(@class,"cinder-checkbox-row")]');
+    await row.scrollIntoViewIfNeeded();
+    const box = await row.boundingBox();
+    if (!box) throw new Error('The remember target is not visible');
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    for (const [index, y] of [box.y + 3, box.y + box.height - 3].entries()) {
+      const x = box.x + 3;
+      expect(
+        await row.evaluate(
+          (element, point) => {
+            const target = document.elementFromPoint(point.x, point.y);
+            return target !== null && (element === target || element.contains(target));
+          },
+          { x, y },
+        ),
+      ).toBe(true);
+      await session.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x, y }],
+      });
+      await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      if (index === 0) await expect(checkbox).toBeChecked();
+      else await expect(checkbox).not.toBeChecked();
+    }
+  } finally {
+    await session.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+    await session.detach();
+    await page.setViewportSize(viewport);
+  }
+}
+
 /** Captures an approval in the two board widths, restoring the suite's desktop viewport afterwards. */
 async function captureApprovalAtWidths(
   page: Page,
@@ -627,9 +670,21 @@ test.describe('a tool approval', () => {
       const remember = paneOf(page).getByRole('checkbox', {
         name: /allow .* for the rest of this chat/i,
       });
+      await checkRememberTouchTarget(page, remember);
       await remember.check();
       await expect.poll(() => resolves).toHaveLength(0);
+      const receiptResponse = page.waitForResponse((response) => {
+        if (!response.url().includes('/jsonrpc')) return false;
+        const body = response.request().postDataJSON() as {
+          method?: string;
+          params?: { id?: string };
+        };
+        return body.method === 'bureau.reviews.resolve' && body.params?.id === review.id;
+      });
       await approveReview(paneOf(page));
+      const response = await receiptResponse;
+      const receipt = (await response.json()) as { result?: { remembered?: boolean } };
+      expect(receipt.result?.remembered).toBe(true);
 
       await expect(rowOf(page, review)).toHaveCount(0);
       expect(resolves[0]).toMatchObject({ id: review.id, decision: 'approve', remember: true });
@@ -697,14 +752,26 @@ test.describe('a tool approval', () => {
               .scrollIntoViewIfNeeded();
           },
         });
-        await pane.getByRole('textbox', { name: 'Note (optional)' }).focus();
-        await page.keyboard.press('Tab');
-        await expect(pane.getByRole('button', { name: 'Deny', exact: true })).toBeFocused();
-        await expect(pane.locator('button:focus-visible')).toHaveCount(1);
         await captureForDesignReview(page, {
           route: '/reviews',
           state: 'pending approval keyboard focus',
           source: '31-reviews.spec.ts',
+          ready: async () => {
+            await pane.getByRole('textbox', { name: 'Note (optional)' }).focus();
+            await page.keyboard.press('Tab');
+            const focused = pane.getByRole('button', { name: 'Deny', exact: true });
+            await expect(focused).toBeFocused();
+            await focused.scrollIntoViewIfNeeded();
+            await expect(pane.locator('button:focus-visible')).toHaveCount(1);
+            const box = await focused.boundingBox();
+            const size = page.viewportSize();
+            expect(box).not.toBeNull();
+            expect(size).not.toBeNull();
+            expect(box!.x).toBeGreaterThanOrEqual(0);
+            expect(box!.y).toBeGreaterThanOrEqual(0);
+            expect(box!.x + box!.width).toBeLessThanOrEqual(size!.width);
+            expect(box!.y + box!.height).toBeLessThanOrEqual(size!.height);
+          },
         });
       } finally {
         await page.setViewportSize(viewport);

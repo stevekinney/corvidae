@@ -13,6 +13,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as client from 'openid-client';
+import { recoverRefund } from '../../../../../plugins/demo/src/refund-processor.ts';
 import { startHost } from '../host.ts';
 import { createSyntheticIssuer } from './synthetic-issuer.test-support.ts';
 
@@ -188,6 +189,7 @@ export async function startSignedInRefundFixture() {
     if (result.status !== 303) throw new Error('Synthetic reviewer sign-in failed');
     return result.headers.getSetCookie()[0]!.split(';')[0]!;
   }
+  let refundId: string | undefined;
   async function requestRefund() {
     const response = await fetch(new URL('/bureau/jsonrpc', host.url), {
       method: 'POST',
@@ -201,6 +203,7 @@ export async function startSignedInRefundFixture() {
     });
     const answer = (await response.json()) as { result?: { refundId: string } };
     if (!answer.result) throw new Error('Synthetic refund request failed');
+    refundId = answer.result.refundId;
     await refundWorker?.idle();
     const entry = await ledger.get(answer.result.refundId);
     if (!entry?.reviewId) throw new Error('Synthetic refund review missing');
@@ -211,6 +214,19 @@ export async function startSignedInRefundFixture() {
     send,
     signIn,
     requestRefund,
+    async refundStatus() {
+      const entry = refundId ? await ledger.get(refundId) : undefined;
+      return entry?.status;
+    },
+    async settleRefund() {
+      if (!refundId) throw new Error('No synthetic refund was requested');
+      const entry = await ledger.get(refundId);
+      if (entry?.status !== 'provider-pending')
+        throw new Error('Synthetic refund is not provider-pending');
+      await processor.update(entry.providerKey, 'succeeded');
+      if (!(await recoverRefund(ledger, processor, refundId, 10)))
+        throw new Error('Synthetic refund did not settle');
+    },
     async close() {
       await host.close();
       provider.stop(true);

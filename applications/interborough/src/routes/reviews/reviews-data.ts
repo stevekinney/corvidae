@@ -18,6 +18,7 @@ import type {
 import {
   createMutation,
   createQuery,
+  isCancelledError,
   useQueryClient,
   type CreateMutationResult,
   type CreateQueryResult,
@@ -39,6 +40,21 @@ import { invalidateReviewQueries } from '../../lib/review-queries.ts';
 
 /** How often the list and the count ask what is waiting, while the feed that carries it is not live. */
 export const REVIEW_POLL_MILLISECONDS = 5_000;
+
+/** Refresh both review lists when another caller has already decided a review. */
+export async function refreshGoneReviews(
+  waiting: () => Promise<unknown>,
+  done: () => Promise<unknown>,
+) {
+  const refresh = async (read: () => Promise<unknown>) => {
+    try {
+      await read();
+    } catch (error) {
+      if (!isCancelledError(error)) throw error;
+    }
+  };
+  await Promise.all([refresh(waiting), refresh(done)]);
+}
 
 /**
  * The options of the engine's `reviews.list({status})` query. Only the pending list is polled: a

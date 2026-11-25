@@ -219,6 +219,9 @@ test.describe('the pending-review MCP App', () => {
         contentType: 'image/png',
       });
       await app.getByRole('button', { name: 'Approve' }).click();
+      await expect(app.getByRole('status')).toContainText('This review changed while you read it');
+      await expect(app.getByRole('button', { name: 'Approve' })).toBeEnabled();
+      await app.getByRole('button', { name: 'Approve' }).click();
       await expect(app.getByRole('status')).toHaveText('Approved.');
       const read = await fixture.send('/host/plugins/inspectors/apps/pending-review/tool-calls', {
         method: 'POST',
@@ -226,6 +229,52 @@ test.describe('the pending-review MCP App', () => {
         body: JSON.stringify({ name: 'bureau.reviews.get', arguments: { id } }),
       });
       expect(await read.json()).toMatchObject({ structuredContent: { id, status: 'approved' } });
+      await expect.poll(() => fixture.refundStatus()).toBe('provider-pending');
+      await page.route('**/bureau/jsonrpc', async (route) => {
+        const call = route.request().postDataJSON() as {
+          id: unknown;
+          method?: string;
+          params?: unknown;
+        };
+        if (call.method !== 'bureau.reviews.list' && call.method !== 'bureau.reviews.get')
+          return route.fallback();
+        const response = await fixture.send(
+          '/host/plugins/inspectors/apps/pending-review/tool-calls',
+          {
+            method: 'POST',
+            headers: {
+              cookie,
+              origin: 'https://settings.example',
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({ name: call.method, arguments: call.params ?? {} }),
+          },
+        );
+        const result = (await response.json()) as { structuredContent?: unknown };
+        if (!response.ok || result.structuredContent === undefined)
+          throw new Error('The signed-in review read failed');
+        await route.fulfill({
+          json: { jsonrpc: '2.0', id: call.id, result: result.structuredContent },
+        });
+      });
+      await page.goto(
+        `${E2E_BASE_URL}/reviews?tab=done&review=${encodeURIComponent(`bureau:${id}`)}`,
+      );
+      const detail = page.locator('.ib-reviews__detail');
+      await expect(detail).toContainText('Refund pending');
+      await expect(detail).not.toContainText('Refunded');
+      await testInfo.attach('approved-refund-pending-reviews', {
+        body: await page.screenshot(),
+        contentType: 'image/png',
+      });
+      await fixture.settleRefund();
+      expect(await fixture.refundStatus()).toBe('succeeded');
+      await page.reload();
+      await expect(detail).toContainText('Refunded');
+      await testInfo.attach('provider-settled-refund-reviews', {
+        body: await page.screenshot(),
+        contentType: 'image/png',
+      });
     } finally {
       await fixture.close();
     }

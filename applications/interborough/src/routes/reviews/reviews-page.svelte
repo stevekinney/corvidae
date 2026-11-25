@@ -43,7 +43,11 @@
   import type { ReviewDecisionSubmission } from './review-decision-form.svelte';
   import { doneItems, inboxKey, waitingItems } from './review-items.ts';
   import type { ReviewOutcome } from './review-outcome.ts';
-  import { answerHumanWaitMutation, submitReviewDecisionMutation } from './reviews-data.ts';
+  import {
+    answerHumanWaitMutation,
+    refreshGoneReviews,
+    submitReviewDecisionMutation,
+  } from './reviews-data.ts';
   import ReviewsPanel from './reviews-panel.svelte';
 
   const TABS = ['waiting', 'done'] as const;
@@ -242,8 +246,7 @@
   /** A decision found `review` no longer waiting: the panel says so in its place, and both lists are read again. */
   function gone(review: { readonly source: 'bureau'; readonly id: string }): void {
     refusedKey = inboxKey(review);
-    void waitingQuery.refetch();
-    void doneQuery.refetch();
+    void refreshGoneReviews(waitingQuery.refetch, doneQuery.refetch);
   }
 
   function submitDecision(
