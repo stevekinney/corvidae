@@ -154,7 +154,11 @@ jobs:
           - name: packages
             filter: --filter=./packages/* --filter=!@lostgradient/weft --filter=!@lostgradient/bureau
           - name: applications, plugins, testing
-            filter: --filter=./applications/* --filter=./plugins/* --filter=./testing/*
+            filter: --filter=./applications/* --filter=./plugins/* --filter=./testing/* --filter=!@lostgradient/interborough
+          - name: interborough host
+            lane: host
+          - name: interborough ui
+            lane: ui
           - name: bureau
             filter: --filter=@lostgradient/bureau
           # This shard ran Weft's coverage run until COR-2370 and now runs its `test` task.
@@ -185,6 +189,12 @@ jobs:
       - run: printf '%s\n' /usr/lib/postgresql/*/bin | tail -n 1 >> "$GITHUB_PATH"
       # The `test` task `bun run validate` runs for every workspace, not a coverage run.
       - run: bunx turbo run test --continue ${{ matrix.filter }}
+        if: ${{ matrix.lane == '' }}
+      # Match the metadata prerequisites of the workspace's Turborepo test task.
+      - run: bunx turbo run metadata --filter=@lostgradient/interborough...
+        if: ${{ matrix.lane != '' }}
+      - run: bun run --cwd applications/interborough test:${{ matrix.lane }}
+        if: ${{ matrix.lane != '' }}
       # JUnit is required aggregate evidence, not a best-effort diagnostic upload.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
