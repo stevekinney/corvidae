@@ -45,7 +45,7 @@
   import type { ReviewOutcome } from './review-outcome.ts';
   import {
     answerHumanWaitMutation,
-    refreshGoneReviews,
+    refreshObservedReviews,
     submitReviewDecisionMutation,
   } from './reviews-data.ts';
   import ReviewsPanel from './reviews-panel.svelte';
@@ -150,7 +150,7 @@
   onMount(() => {
     // poll-reason: fallback
     const timer = setInterval(() => {
-      if (!bureauLive() || !fleetLive()) void waitingQuery.refetch().catch(() => undefined);
+      if (!bureauLive() || !fleetLive()) void refreshObservedReviews(waitingQuery.refetch);
     }, 5000);
     const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
       if (
@@ -233,7 +233,10 @@
   const faults = $derived<readonly { error: unknown; retry: () => void }[]>(
     (activeTab === 'done' ? [doneQuery] : [waitingQuery])
       .filter((query) => query.isError)
-      .map((query) => ({ error: query.error, retry: () => void query.refetch() })),
+      .map((query) => ({
+        error: query.error,
+        retry: () => void refreshObservedReviews(query.refetch),
+      })),
   );
 
   /** What became of the last decision or answer on a review, when it did not simply take effect. */
@@ -246,7 +249,7 @@
   /** A decision found `review` no longer waiting: the panel says so in its place, and both lists are read again. */
   function gone(review: { readonly source: 'bureau'; readonly id: string }): void {
     refusedKey = inboxKey(review);
-    void refreshGoneReviews(waitingQuery.refetch, doneQuery.refetch);
+    void refreshObservedReviews(waitingQuery.refetch, doneQuery.refetch);
   }
 
   function submitDecision(
