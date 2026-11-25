@@ -31,6 +31,7 @@
 
   const copy = MCP_COPY;
   const connection = mcpConnection(discoveryOrigin(getClient()));
+  const loginCommand = ['claude', 'mcp', 'login', connection.name].join(' ');
   const principal = getPrincipalStore();
   const shared = $derived(principal.principal?.method === 'browser-session');
 
@@ -75,7 +76,9 @@
   >
     <div class="ib-mcp__code" data-testid="mcp-claude-code">
       <CodeBlock
-        code={connection.claudeCode.command}
+        code={shared
+          ? `${connection.claudeCode.command}\n${loginCommand}`
+          : connection.claudeCode.command}
         copyLabel={copy.claudeCode.copy}
         copyable
         wrap
