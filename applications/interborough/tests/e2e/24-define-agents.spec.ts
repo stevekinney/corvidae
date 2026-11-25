@@ -166,7 +166,8 @@ test.describe('a new agent', () => {
         if (call?.method !== 'bureau.agents.catalog') {
           return route.fallback();
         }
-        // The view probe seeded the detail, so holding the editor's first catalog read reaches 43h.
+        // The view probe seeded only the saved display name, so holding the editor's first catalog
+        // read reaches 43h without manufacturing ready form data.
         waiting.resolve();
         await release.promise;
         return route.fallback();
