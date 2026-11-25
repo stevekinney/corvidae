@@ -61,6 +61,8 @@ async function withBalancedCatalogFixture(page: Page): Promise<void> {
         modelClass: 'Balanced',
         contextWindowTokens: 1_000_000,
         tools: true,
+        structuredOutput: false,
+        streaming: false,
         modalities: { text: { input: true }, image: { input: true } },
       };
     });
