@@ -196,6 +196,7 @@ const publishInputResults = await (async () => {
     const unprotected = await validateInputs(true, false);
     const protectedMain = await validateInputs(true, true);
     const rehearsal = await validateInputs(false, false);
+    const emptyVersion = await validateInputs(true, true, '');
     const multiline = await validateInputs(false, false, '1.0.0\nextra');
     const carriageReturn = await validateInputs(false, false, '1.0.0\rextra');
     const verify = workflow.jobs.publish.steps[0]?.run;
@@ -210,6 +211,7 @@ const publishInputResults = await (async () => {
       unprotected,
       protectedMain,
       rehearsal,
+      emptyVersion,
       multiline,
       carriageReturn,
       matchingSource,
@@ -230,7 +232,8 @@ test('only protected main can validate a pinned source for npm publishing', () =
   expect(workflow.jobs.verify.if).toBe(workflow.jobs.publish.if);
 });
 
-test('rejects versions with line breaks before exporting release outputs', () => {
+test('rejects empty versions and line breaks before exporting release outputs', () => {
+  expect(publishInputResults.emptyVersion.success).toBe(false);
   expect(publishInputResults.multiline.success).toBe(false);
   expect(publishInputResults.carriageReturn.success).toBe(false);
 });
@@ -249,8 +252,12 @@ test('rehearses only a main push that changes the npm workflow', async () => {
   expect(releaseWorkflow).toContain(
     '  push:\n    branches: [main]\n    paths: [.github/workflows/interborough-npm-release.yml]',
   );
-  expect(releaseWorkflow).toContain('SOURCE_SHA: ${{ inputs.source_sha || github.sha }}');
-  expect(releaseWorkflow).toContain("VERSION: ${{ inputs.version || '0.0.0-candidate.0' }}");
+  expect(releaseWorkflow).toContain(
+    "SOURCE_SHA: ${{ github.event_name == 'push' && github.sha || inputs.source_sha }}",
+  );
+  expect(releaseWorkflow).toContain(
+    "VERSION: ${{ github.event_name == 'push' && '0.0.0-candidate.0' || inputs.version }}",
+  );
   expect(releaseWorkflow).toContain(
     "PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}",
   );

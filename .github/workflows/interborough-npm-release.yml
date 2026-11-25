@@ -32,8 +32,8 @@ jobs:
       source_sha: ${{ steps.release-inputs.outputs.source_sha }}
       version: ${{ steps.release-inputs.outputs.version }}
     env:
-      SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
-      VERSION: ${{ inputs.version || '0.0.0-candidate.0' }}
+      SOURCE_SHA: ${{ github.event_name == 'push' && github.sha || inputs.source_sha }}
+      VERSION: ${{ github.event_name == 'push' && '0.0.0-candidate.0' || inputs.version }}
       PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
     steps:
       - name: Validate immutable inputs
