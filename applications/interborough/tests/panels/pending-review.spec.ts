@@ -274,7 +274,8 @@ test.describe('the pending-review MCP App', () => {
       expect(read.status).toBe(200);
       expect(await read.json()).toMatchObject({ structuredContent: { id, status: 'approved' } });
       await expect.poll(() => fixture.refundStatus()).toBe('provider-pending');
-      await page.route('**/bureau/jsonrpc', async (route) => {
+      await page.route(`${E2E_BASE_URL}/jsonrpc`, async (route) => {
+        if (route.request().method() !== 'POST') return route.fallback();
         const call = route.request().postDataJSON() as {
           id: unknown;
           method?: string;
