@@ -1,4 +1,9 @@
-import type { Bungalow, ContentLocation, DatabaseLocation } from '@lostgradient/bungalow';
+import type {
+  Bungalow,
+  BungalowObjectStore,
+  ContentLocation,
+  DatabaseLocation,
+} from '@lostgradient/bungalow';
 import type { SettingLockReason } from '@lostgradient/bureau';
 import type { SkillSource } from '@lostgradient/bureau/skills';
 import { DEFAULT_SOURCE_PRECEDENCE } from '@lostgradient/bureau/skills';
@@ -152,9 +157,9 @@ export type ContentKind = {
 /** The content kinds a host knows, keyed by the `kind` of a {@link ContentLocation}. */
 export type ContentKinds = Readonly<Record<string, ContentKind>>;
 
-/** The `Bun.S3Client` remote mode holds, or an error: a bucket location with no client is a bug. */
-function requireClient(bungalow: Bungalow): Bun.S3Client {
-  const client = bungalow.s3Client();
+/** The object store remote mode holds, or an error: a bucket location with no client is a bug. */
+function requireClient(bungalow: Bungalow): BungalowObjectStore {
+  const client = bungalow.objectStore();
   if (client === undefined) throw new Error('The home names a bucket but has no S3 client.');
   return client;
 }

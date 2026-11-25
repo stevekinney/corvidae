@@ -23,6 +23,15 @@ export type SideNavigationGroupProps = Omit<HTMLLiAttributes, 'id' | 'class'> & 
   expanded?: boolean;
   /** When true, the disclosure button is disabled. Default: false. */
   disabled?: boolean;
+  /**
+   * One reason that covers the group's disabled rows ("Choose a connection first"), drawn once
+   * between the group's header and its rows, in the disabled colour at the extra-small size, and
+   * the description of every disabled row in the group. A row draws its own `disabledReason` only
+   * when it says something different; a row that repeats the group's reason draws nothing. It is
+   * hidden with the rows while the group is collapsed, and clipped in a collapsed icon rail, where
+   * it stays the rows' description.
+   */
+  disabledReason?: string;
   /** Optional leading icon rendered inside the header button before the label. */
   icon?: Snippet;
   /** Optional trailing badge rendered inside the header button after the label, before the chevron. */

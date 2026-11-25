@@ -9,8 +9,15 @@
 
 import { describe, expect, it } from 'bun:test';
 
-import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
-import { createOperationRegistry } from '@lostgradient/backchannel/internals';
+import {
+  type OperationFault,
+  defineOperation,
+  principalFromApiKey,
+} from '@lostgradient/backchannel';
+import {
+  createOperationRegistry,
+  handleJsonRpcHttpRequest,
+} from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import { type WorkflowContext, workflow } from '../../core/types.ts';
@@ -50,6 +57,44 @@ describe('weft.workflows.get', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/json');
     expect(await response.json()).toMatchObject({ id: handle.id });
+  });
+
+  it('preserves opaque input and returns identical detail over REST and JSON-RPC', async () => {
+    await using engine = createEngine();
+    const input = { nested: { arbitrary: [1, null, { value: true }] } };
+    const handle = await engine.start('hold', input, {});
+    await waitForWorkflowStatus(engine, handle.id, 'running');
+    const rest = await handleRequest(
+      new Request(`http://localhost/v1/workflows/${handle.id}`),
+      engine,
+      {
+        operationRegistry: registry,
+        restBindings: bindings,
+      },
+    );
+    const rpc = await handleJsonRpcHttpRequest(
+      new Request('http://localhost/jsonrpc', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'weft.workflows.get',
+          params: { workflowId: handle.id },
+        }),
+      }),
+      {
+        registry,
+        host: engine,
+        principal: principalFromApiKey({ subject: 'reader', scopes: ['workflows:read'] }),
+      },
+    );
+    expect(rest.status).toBe(200);
+    expect(rpc.status).toBe(200);
+    const restBody = await rest.json();
+    const rpcBody = await rpc.json();
+    expect(rpcBody.result).toEqual(restBody);
+    expect(restBody).toMatchObject({ id: handle.id, status: 'running', input });
   });
 
   it('returns 404 with the error-message body when the workflow does not exist', async () => {

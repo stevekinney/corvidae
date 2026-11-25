@@ -798,7 +798,7 @@ describe('internal workspace architecture', () => {
         // Design system artifact under `tmp/` (components/cinder/README.md "Design system"); they
         // build no package output and publish nothing from the workspace.
         if (library === 'cinder' && command.startsWith('design-system:')) continue;
-        // `release:check` is the pre-backport sweep of documentation and published-surface checks
+        // `release:check` is the pre-release sweep of documentation and published-surface checks
         // (COR-2370); it packs, publishes, and releases nothing.
         if (command === 'release:check') continue;
         expect(command).not.toMatch(/build|pack|publish|release|prepare|postinstall/);

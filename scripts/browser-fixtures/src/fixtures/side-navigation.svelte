@@ -34,6 +34,12 @@
         Workers
       </SideNavigation.Item>
     </SideNavigation>
+    <SideNavigation ariaLabel="Shared reason">
+      <SideNavigation.Group label="Connection" disabledReason="Choose a connection first">
+        <SideNavigation.Item disabled label="Namespaces">Namespaces</SideNavigation.Item>
+        <SideNavigation.Item disabled label="Workflows">Workflows</SideNavigation.Item>
+      </SideNavigation.Group>
+    </SideNavigation>
   </div>
 {/if}
 

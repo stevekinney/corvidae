@@ -351,7 +351,8 @@ function createHostedOAuth(configuration: Options) {
         headers: {
           'content-type': 'text/html; charset=utf-8',
           'cache-control': 'no-store',
-          'content-security-policy': "default-src 'none'; form-action 'self'; base-uri 'none'",
+          // Chromium applies form-action to the redirect after the form submission.
+          'content-security-policy': `default-src 'none'; form-action 'self' ${new URL(redirect).origin}; base-uri 'none'`,
           'x-content-type-options': 'nosniff',
         },
       },

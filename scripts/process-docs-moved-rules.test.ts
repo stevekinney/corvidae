@@ -113,7 +113,7 @@ const movedRules: [rule: string, destination: string, phrase: string][] = [
   [
     'release intent',
     `${repository}/workspace-layout.md`,
-    'Release intent for a batch backport is written in `stevekinney/corvidae-mirror`',
+    'Packages publish to npm from Corvidae through the `npm library release` workflow',
   ],
   ['.worktreeinclude', `${repository}/workspace-layout.md`, 'Do not add `.worktreeinclude`'],
   [

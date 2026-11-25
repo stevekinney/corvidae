@@ -116,6 +116,31 @@ describe('weft.workflows.timeline.get', () => {
     ]);
   });
 
+  it('preserves nested coordinator branches and children in the output contract', () => {
+    const nested = {
+      index: 1,
+      operationId: 'nested',
+      operationType: 'activity',
+      operationLabel: 'inner',
+      outcome: 'won' as const,
+      futureField: { retained: true },
+    };
+    const parent = { ...nested, operationId: 'parent', branches: [nested] };
+    const timeline = [
+      {
+        step: 1,
+        operationType: 'race',
+        operationLabel: 'outer',
+        inputSummary: '',
+        timestamp: 5,
+        status: 'completed' as const,
+        branches: [parent],
+        children: [parent],
+      },
+    ];
+    expect(getWorkflowTimelineOperation.outputSchema.parse(timeline)).toEqual(timeline);
+  });
+
   it('returns 404 with the canonical error body when the workflow does not exist', async () => {
     engine = createEngine();
 
