@@ -7,7 +7,6 @@
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { CHAT_COPY } from '../../app/copy/chat.ts';
 import { dateLine, viewerTimeZone, zoneLabel } from '../../lib/format/clock.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import Chats from './chats.svelte';
@@ -238,39 +237,97 @@ describe('searching', () => {
 });
 
 describe('the states of the list', () => {
-  test('first use is the page-level state with New chat and no empty detail pane (17u)', async () => {
-    const served = bureau({
-      'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
-      'bureau.reviews.list': () => ({ reviews: [] }),
-    });
+  /** The Bureau with no chat at all, these agents and these providers. */
+  function serveNoChats(
+    agents: readonly unknown[],
+    providers: readonly { id: string; connected: boolean }[],
+  ) {
+    const served = bureau(
+      {
+        'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
+        'bureau.reviews.list': () => ({ reviews: [] }),
+        'bureau.agents.list': () => ({ agents }),
+      },
+      (url) =>
+        url.endsWith('/host/providers')
+          ? Response.json({
+              configurationRevision: 'fixture-revision',
+              providers: providers.map((provider) => ({
+                name: provider.id,
+                configured: provider.connected,
+                connected: provider.connected,
+                hasKey: provider.connected,
+              })),
+              catalog: [],
+              models: [],
+            })
+          : undefined,
+    );
     restore = served.restore;
+  }
+
+  test('first use is one page with "No chats yet" and the only primary New chat, and no list pane beside it (17u, COR-2438 21a, 21d)', async () => {
+    serveNoChats([{ ...AGENT, media: null }], []);
     landAt('/chats');
 
-    const { findByRole, queryByRole, container } = mount();
+    const { findByRole, container, queryByRole } = mount();
 
     const title = await findByRole('heading', { level: 2, name: 'No chats yet' });
     const state = title.closest('.cinder-empty-state') as HTMLElement;
-    expect(state.closest('[data-cinder-bordered], .cinder-card')).toBeNull();
-    expect(
-      state.querySelector('.cinder-empty-state-icon svg.lucide-message-square'),
-    ).not.toBeNull();
     expect(state.textContent).toContain('Start one with an agent.');
-    expect(
-      within(state)
-        .getByRole('link', { name: 'New chat' })
-        .classList.contains('button-variant-primary'),
-    ).toBe(true);
-    // The header's New chat is labelled too, and nothing searches or filters nothing.
-    expect(
-      container.querySelector('.cinder-page-header a[href="/chats/new"]')?.textContent?.trim(),
-    ).toBe('New chat');
-    expect(container.querySelector('.cinder-search-field')).toBeNull();
-    expect(container.querySelector('.cinder-segmented-control')).toBeNull();
-    expect(container.querySelector('.cinder-page-header')?.textContent).toContain(
-      CHAT_COPY.list.description,
+    await waitFor(() =>
+      expect(within(state).getByRole('link', { name: 'New chat' }).classList).toContain(
+        'button-variant-primary',
+      ),
     );
+    // One empty state: no list pane, and no second state where a chat would open.
     expect(container.querySelectorAll('.cinder-empty-state')).toHaveLength(1);
+    expect(container.querySelectorAll('.button-variant-primary')).toHaveLength(1);
+    expect(queryByRole('region', { name: 'Chats' })).toBeNull();
     expect(queryByRole('region', { name: 'Open chat' })).toBeNull();
+    expect(state.closest('[data-cinder-bordered], .cinder-card')).toBeNull();
+    expect(state.querySelector('.cinder-empty-state-icon svg')).not.toBeNull();
+    expect(container.querySelector('.cinder-search-field, .cinder-segmented-control')).toBeNull();
+    expect(container.textContent).not.toContain('No chat open');
+  });
+
+  test('first use with no provider and no agent asks for a provider first, never New chat (COR-2438 21b)', async () => {
+    serveNoChats([], []);
+    landAt('/chats');
+
+    const { findByRole, container } = mount();
+
+    const title = await findByRole('heading', { level: 2, name: 'Connect a provider first' });
+    const state = title.closest('.cinder-empty-state') as HTMLElement;
+    const action = within(state).getByRole('link', { name: 'Connect a provider' });
+    expect(action.getAttribute('href')).toBe('/settings/models');
+    expect(container.querySelector('a[href="/chats/new"]')).toBeNull();
+  });
+
+  test('first use with a provider and no agent asks for an agent (COR-2438 21b)', async () => {
+    serveNoChats([], [{ id: 'anthropic', connected: true }]);
+    landAt('/chats');
+
+    const { findByRole, container } = mount();
+
+    const title = await findByRole('heading', { level: 2, name: 'Create an agent first' });
+    const state = title.closest('.cinder-empty-state') as HTMLElement;
+    expect(within(state).getByRole('link', { name: 'Create an agent' }).getAttribute('href')).toBe(
+      '/agents/new',
+    );
+    expect(container.querySelector('a[href="/chats/new"]')).toBeNull();
+  });
+
+  test('a new chat with no chat at all draws one empty state, the new chat’s, never the list’s beside it (COR-2438 21a)', async () => {
+    serveNoChats([], []);
+    landAt('/chats/new');
+
+    const { findByTestId, container } = mount();
+
+    const state = await findByTestId('new-chat-not-ready');
+    expect(state.textContent).toContain('Connect a provider first');
+    expect(container.querySelectorAll('.cinder-empty-state')).toHaveLength(1);
+    expect(container.textContent).not.toContain('No chats yet');
   });
 
   test('loading is skeleton rows under the live header, after 300 milliseconds (17w)', async () => {
@@ -321,10 +378,11 @@ describe('the states of the list', () => {
     ).toBe(true);
     const pane = await findByRole('region', { name: 'Open chat' });
     expect(pane).not.toBeNull();
-    // The list is not there to choose from, so the pane does not point at it.
+    // The list is not there to choose from, so the pane does not point at it: a quiet hint, with no
+    // second empty state beside the list's (COR-2438).
     expect(pane.textContent).not.toContain('Choose a chat from the list');
-    expect(within(pane).getByRole('heading', { name: 'No chat open' })).not.toBeNull();
-    expect(within(pane).getByRole('link', { name: 'New chat' })).not.toBeNull();
+    expect(within(pane).getByTestId('chats-no-chat-open').textContent?.trim()).toBe('No chat open');
+    expect(pane.querySelector('.cinder-empty-state')).toBeNull();
     expect(await findByRole('searchbox', { name: 'Search chats' })).not.toBeNull();
 
     healthy = true;
@@ -335,7 +393,7 @@ describe('the states of the list', () => {
 });
 
 describe('the list on a phone and a modified click', () => {
-  test('a phone’s list is its own screen titled Chat, with no search or segments (06l)', async () => {
+  test('a phone’s list is its own screen titled Chat, with Search and status segments (06l)', async () => {
     serveChats();
     landAt('/chats');
     const original = window.matchMedia;
@@ -348,11 +406,16 @@ describe('the list on a phone and a modified click', () => {
       removeListener: () => {},
     })) as unknown as typeof window.matchMedia;
     try {
-      const { findByRole, queryByRole } = mount();
+      const { container, findByRole } = mount();
 
       const heading = await findByRole('heading', { level: 1 });
       expect(heading.textContent?.trim()).toBe('Chat');
-      expect(queryByRole('searchbox', { name: 'Search chats' })).toBeNull();
+      expect(await findByRole('searchbox', { name: 'Search chats' })).not.toBeNull();
+      const status = await findByRole('radiogroup', { name: 'Status' });
+      for (const name of [/^All/, /^Waiting on you/, /^Done/]) {
+        expect(within(status).getByRole('radio', { name })).not.toBeNull();
+      }
+      expect(container.querySelector('.chat-input-wrapper')).toBeNull();
     } finally {
       window.matchMedia = original;
     }

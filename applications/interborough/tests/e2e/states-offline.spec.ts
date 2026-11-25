@@ -19,7 +19,12 @@ import { CONNECTION_COPY } from '../../src/app/copy/views.ts';
 import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { expectWaiting, newThreadId, releaseBarrier, runToEnd, startRun } from './chat-support.ts';
 import { expect, test, type PageErrorLog } from './fixtures.ts';
-import { expectEngineMissesForRuns, taskOfSession, waitingReviewOf } from './task-support.ts';
+import {
+  approveReview,
+  expectEngineMissesForRuns,
+  taskOfSession,
+  waitingReviewOf,
+} from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
 /** Counts the console errors and failed requests an outage makes the page report. */
@@ -171,7 +176,7 @@ test.describe('the server stops answering while a page with data is open', () =>
     const review = await waitingReviewOf(request, threadId);
     await page.goto(`/reviews?review=${encodeURIComponent(`bureau:${review.id}`)}`);
     const row = page.locator(`[data-review-row="bureau:${review.id}"]`);
-    const pane = page.locator('.ib-review-pane');
+    const pane = page.locator('.ib-reviews__detail');
     const approve = pane.getByRole('button', { name: 'Approve' });
     await expect(approve).toBeVisible();
     const operations = recordOperations(page);
@@ -194,7 +199,7 @@ test.describe('the server stops answering while a page with data is open', () =>
 
     await expect(banner(page)).toHaveCount(0);
     await expect(approve).not.toHaveAttribute('aria-disabled', 'true');
-    await approve.click();
+    await approveReview(pane);
     await expect(row).toHaveCount(0);
     expect(operations).toContain('bureau.reviews.resolve');
 
@@ -273,20 +278,20 @@ test.describe('the server stops answering while a page with data is open', () =>
     await refocus(page);
     await expect(banner(page)).toBeVisible();
 
-    // While the host is down the composer gives way to the blocked row (COR-2014 row 17b): there is
-    // no field to press Enter in and no Send button, so nothing leaves.
-    const blocked = page.getByRole('group', { name: 'Composer unavailable' });
-    await expect(blocked).toContainText('Sending is off until Interborough is reachable');
-    await expect(composer).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Send message' })).toHaveCount(0);
-    await page.keyboard.press('Enter');
+    // While the host is down the offline drawer sits above the composer (COR-2284 C5): the box keeps
+    // what was typed, Send is off, and Enter sends nothing.
+    const offline = page.locator('[data-chat-composer-drawer="offline"]');
+    await expect(offline).toContainText('Your draft is saved here');
+    await expect(composer).toHaveValue('Sent after the host is back');
+    await expect(page.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    await composer.press('Enter');
     expect(starts).toEqual([]);
 
     await startHost(page);
 
-    // The composer comes back with what was typed, and Enter sends it.
+    // The drawer goes, the box still holds what was typed, and Enter sends it.
     await expect(banner(page)).toHaveCount(0);
-    await expect(blocked).toHaveCount(0);
+    await expect(offline).toHaveCount(0);
     await expect(composer).toBeEditable();
     await expect(composer).toHaveValue('Sent after the host is back');
     await composer.press('Enter');

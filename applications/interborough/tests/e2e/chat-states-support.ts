@@ -78,6 +78,25 @@ interface Operation {
 const operationOf = (route: Route): Operation =>
   JSON.parse(route.request().postData() ?? '{}') as Operation;
 
+/** The sample world’s durable failed workflow run, which Chat’s failure link can open. */
+async function failedRunId(request: APIRequestContext): Promise<string> {
+  const response = await request.post(`${E2E_SHOWCASE_URL}/bureau/jsonrpc`, {
+    data: {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'bureau.workflows.runs.list',
+      params: { workflow: 'release-notes', limit: 10 },
+    },
+  });
+  const body = (await response.json()) as {
+    result?: { runs?: Array<{ id?: unknown; status?: unknown }> };
+  };
+  const run = body.result?.runs?.find((candidate) => candidate.status === 'failed');
+  if (typeof run?.id !== 'string')
+    throw new Error('The sample world has no failed Release notes run.');
+  return run.id;
+}
+
 /** Opens `path` at 1280 pixels on the sample clock (or at `now`) and waits until the page holds its state. */
 export async function open(
   page: Page,
@@ -99,7 +118,9 @@ export async function openStatesChat(
   request: APIRequestContext,
   chat: StatesChat,
   now: string | number = SAMPLE_NOW,
-): Promise<void> {
+  /** Fields of the chat's record to answer differently, such as the Bureau's `activity`. */
+  contextOverrides: Record<string, unknown> = {},
+): Promise<{ readonly failedRunId?: string }> {
   const read = await request.post(`${E2E_SHOWCASE_URL}/bureau/jsonrpc`, {
     data: {
       jsonrpc: '2.0',
@@ -110,7 +131,11 @@ export async function openStatesChat(
   });
   const kind = ((await read.json()) as { result: Record<string, unknown> }).result;
   const thread = threadOf(chat);
-  const context = contextOf(chat, kind);
+  const context = { ...contextOf(chat, kind), ...contextOverrides };
+  const explanationRunId = chat === 'failed-partway' ? await failedRunId(request) : undefined;
+  const tasks = tasksOf(chat).map((task) =>
+    explanationRunId === undefined ? task : { ...task, id: explanationRunId },
+  );
   await page.route('**/jsonrpc', async (route) => {
     const body = operationOf(route);
     // The chat list and the bell read the Bureau's recent runs of every chat; this chat's run is
@@ -126,7 +151,7 @@ export async function openStatesChat(
           ...listed,
           result: {
             ...listed.result,
-            tasks: [...tasksOf(chat), ...(listed.result?.tasks ?? [])],
+            tasks: [...tasks, ...(listed.result?.tasks ?? [])],
           },
         },
       });
@@ -151,7 +176,7 @@ export async function openStatesChat(
         json: {
           jsonrpc: '2.0',
           id: body.id,
-          result: { tasks: tasksOf(chat), nextPageToken: null },
+          result: { tasks, nextPageToken: null },
         },
       });
       return;
@@ -169,4 +194,5 @@ export async function openStatesChat(
   );
   await open(page, `/chats/${thread}`, now);
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
+  return explanationRunId === undefined ? {} : { failedRunId: explanationRunId };
 }

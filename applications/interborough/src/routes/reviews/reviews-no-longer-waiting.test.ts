@@ -126,17 +126,18 @@ describe('a review that left while it was open', () => {
     stub?.on('bureau.reviews.resolve', () => {
       world.reviews = world.reviews.filter((review) => review.id !== APPROVAL.id);
       throw new StubFault('Conflict', 409, 'Review is already resolved', {
-        reason: `REVIEW_ALREADY_RESOLVED: Review with id "${APPROVAL.id}" is already resolved`,
+        reason: 'REVIEW_ALREADY_RESOLVED',
       });
     });
 
     await fireEvent.click(getByRole('button', { name: 'Approve' }));
+    await fireEvent.click(getByRole('button', { name: 'Press again to approve' }));
 
     await until(() => expect(getByTestId('review-gone')).not.toBeNull());
     expect(getByTestId('review-gone').textContent).toContain(REVIEWS_COPY.noLongerWaiting.message);
     // Not a failure: no fault toast, no danger alert, and no decision bar to press again.
     expect(container.ownerDocument.querySelector('.cinder-toast')).toBeNull();
-    expect(container.textContent?.includes(REVIEWS_COPY.decisionFailed)).toBe(false);
+    expect(container.textContent?.includes(REVIEWS_COPY.approvalFailed.approve)).toBe(false);
     expect(queryByRole('button', { name: 'Approve' })).toBeNull();
     expect(getByRole('button', { name: REVIEWS_COPY.noLongerWaiting.next })).not.toBeNull();
     // Its row stays a moment, then leaves, and that is announced.
@@ -164,8 +165,9 @@ describe('a review that left while it was open', () => {
     });
 
     await fireEvent.click(getByRole('button', { name: 'Approve' }));
+    await fireEvent.click(getByRole('button', { name: 'Press again to approve' }));
 
-    await until(() => expect(container.textContent).toContain(REVIEWS_COPY.decisionFailed));
+    await until(() => expect(container.textContent).toContain(REVIEWS_COPY.approvalFailed.approve));
     jest.advanceTimersByTime(NO_LONGER_WAITING_LINGER_MILLISECONDS + 5_000);
     await until(() =>
       expect(container.querySelector(`[data-review-row="${APPROVAL_KEY}"]`)).not.toBeNull(),

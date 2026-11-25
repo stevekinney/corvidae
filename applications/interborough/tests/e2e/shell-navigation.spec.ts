@@ -6,6 +6,7 @@
  */
 import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
 import { expect, test } from './fixtures.ts';
+import { chordKeyboard } from './shortcut-support.ts';
 
 const DESKTOP = { width: 1280, height: 800 } as const;
 
@@ -26,6 +27,11 @@ const SHORTCUTS = [
   { letter: 'n', path: '/settings', label: VIEW_COPY.settings.label },
 ] as const;
 
+/** Whether `pathname` is the view at `path`: the view itself, or an item it opened under it. */
+function inView(pathname: string, path: string): boolean {
+  return pathname === path || (path !== '/' && pathname.startsWith(`${path}/`));
+}
+
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize(DESKTOP);
 });
@@ -36,15 +42,23 @@ test('each g shortcut opens its destination, and the sidebar marks it current', 
   await page.goto('/agents');
   const navigation = page.getByRole('navigation', { name: 'Views' });
   await expect(navigation).toBeVisible();
-  for (const shortcut of SHORTCUTS) {
-    await page.keyboard.press('g');
-    await page.keyboard.press(shortcut.letter);
-    // The path is what the shortcut opens. A page may name its first row in the query once it
-    // has loaded (Reviews adds `?review=`), so the query is not this test's subject.
-    await expect(page).toHaveURL((url) => url.pathname === shortcut.path);
-    await expect(
-      navigation.getByRole('link', { name: new RegExp(`^${shortcut.label}`) }),
-    ).toHaveAttribute('aria-current', 'page');
+  // Each chord is typed at the times a person presses it: Chat opens its first chat, and painting
+  // that transcript can hold the page for over a second, which `page.keyboard.press` would spend
+  // between the two keys (`shortcut-support.ts`).
+  const keyboard = await chordKeyboard(page);
+  try {
+    for (const shortcut of SHORTCUTS) {
+      await keyboard.press(shortcut.letter);
+      // The path is what the shortcut opens. A page may name its first row in the query once it
+      // has loaded (Reviews adds `?review=`), or open it under its own path (Chat opens its first
+      // chat at `/chats/<id>` when there is one), so neither is this test's subject.
+      await expect(page).toHaveURL((url) => inView(url.pathname, shortcut.path));
+      await expect(
+        navigation.getByRole('link', { name: new RegExp(`^${shortcut.label}`) }),
+      ).toHaveAttribute('aria-current', 'page');
+    }
+  } finally {
+    await keyboard.detach();
   }
 });
 

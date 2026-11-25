@@ -253,6 +253,7 @@ function createToolboxBase(entries: ToolboxEntries = [], options: ToolboxOptions
     readOnly,
     allowMutation,
     allowDangerous,
+    opaqueToolFactory: options.toolFactory !== undefined,
   });
 
   return api;

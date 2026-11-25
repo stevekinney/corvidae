@@ -93,6 +93,7 @@ describe.skipIf(database === null)('live Neon driver', () => {
       scanConsistency: 'snapshot',
       atomicBatch: true,
       conditionalBatch: true,
+      conditionalBatchDeadline: true,
       boundedRangeDelete: true,
     },
   });

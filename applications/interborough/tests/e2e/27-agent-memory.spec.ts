@@ -17,6 +17,7 @@ import { AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
 import { MEMORY_COPY } from '../../src/app/copy/memory.ts';
 import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
+import { captureOpenMenuForDesignReview } from './design-review-capture.ts';
 import { expect, test } from './fixtures.ts';
 import { TEXT_ECHO_AGENT_NAME, TEXT_ECHO_SOLO_AGENT_NAME } from './text-echo-agent.ts';
 
@@ -60,7 +61,7 @@ async function forgetFromDetails(page: Page, text: string) {
   await expect(rowOf(page, text)).toHaveCount(0);
 }
 
-test.describe('the memory page', () => {
+test.describe('the memory page /agents/:agent/memory', () => {
   test('lists a memory a chat stored, searches it, and shows where it came from', async ({
     page,
     request,
@@ -316,13 +317,9 @@ test.describe('the memory page', () => {
     );
   });
 
-  // The end-to-end host is a single-owner workspace: it knows `local-owner` and nothing else, so
-  // the Bureau refuses a grantee it cannot resolve as a member. A successful share is covered by
-  // Bureau's own tests (`memory-operations.test.ts`).
-  test('refuses to share a memory with an owner the workspace does not know, and changes nothing', async ({
-    page,
-    request,
-  }) => {
+  // The normal end-to-end host is the local single-owner workspace, so the page does not invite a
+  // share the Bureau could only refuse. The credentialed two-owner host covers the positive flow.
+  test('does not offer sharing on the single-owner host', async ({ page, request }) => {
     const label = uniqueLabel('Share me');
     await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('memory-share'), label);
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -330,26 +327,20 @@ test.describe('the memory page', () => {
     await openDetails(page, label);
 
     await openMoreOptions(page);
-    await detailOf(page).getByRole('button', { name: MEMORY_COPY.govern.share.action }).click();
-    const dialog = page.getByRole('dialog', { name: MEMORY_COPY.govern.share.dialog.title });
-    const owner = dialog.getByLabel(MEMORY_COPY.govern.share.dialog.label);
-    const submit = dialog.getByRole('button', { name: MEMORY_COPY.govern.share.dialog.submit });
-    await owner.fill('another-owner');
-    await submit.click();
-
-    // The refusal is said inside the dialog, which stays open with what was typed still in it.
-    const refusal = dialog.locator('[data-governance-refusal="not-found"]');
-    await expect(refusal).toHaveText(MEMORY_COPY.govern.failed);
-    await expect(dialog).toContainText(MEMORY_COPY.correct.refusal['not-found'].description);
-    await expect(owner).toHaveValue('another-owner');
-
-    // Nothing was shared, nothing is left pending, and the control can be pressed again.
-    await expect(page.getByText(MEMORY_COPY.govern.share.outcome.granted.title)).toHaveCount(0);
-    await expect(page.locator('[data-governance-outcome]')).toHaveCount(0);
-    await expect(submit).toBeEnabled();
-
-    await dialog.getByRole('button', { name: MEMORY_COPY.govern.share.dialog.cancel }).click();
-    await expect(dialog).toHaveCount(0);
+    await expect(
+      detailOf(page).getByRole('button', { name: MEMORY_COPY.govern.share.action }),
+    ).toHaveCount(0);
+    await captureOpenMenuForDesignReview(page, {
+      route: '/agents/:agent/memory',
+      state: 'single-owner more options',
+      tab: 'Memory',
+      source: '27-agent-memory.spec.ts',
+      ready: async (capturePage) => {
+        const more = detailOf(capturePage).locator('details');
+        await more.locator('summary').scrollIntoViewIfNeeded();
+        if ((await more.getAttribute('open')) === null) await more.locator('summary').click();
+      },
+    });
     await expect(rowOf(page, label)).toHaveCount(1);
   });
 

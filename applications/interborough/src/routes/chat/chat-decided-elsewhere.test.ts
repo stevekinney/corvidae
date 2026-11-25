@@ -75,7 +75,9 @@ function decidedThread(decision: Record<string, unknown>, content: unknown) {
       ],
     },
     {
-      id: 'result-1',
+      // Durable Bureau histories name a tool result with its run, step and provider call. The
+      // receipt derives its Reviews identity from that persisted row on a later route mount.
+      id: 'native-1:step:0:result:call-refund',
       role: 'tool',
       toolCallId: 'call-refund',
       content: JSON.stringify(content),
@@ -155,11 +157,11 @@ describe('an approval decided on another page', () => {
     );
 
     await until(() => expect(container.querySelector('[data-approval-decision]')).toBeNull());
-    const row = container.querySelector('.cinder-approval-card--row');
-    expect(row?.querySelector('h4')?.textContent).toBe('Refund order 4471 for $42.00?');
+    const row = container.querySelector('.cinder-approval-card--decision');
+    expect(row?.querySelector('h4')?.textContent).toContain('Refund order 4471 for $42.00?');
     expect(
-      row?.querySelector('.cinder-approval-card__outcome')?.textContent?.replace(/\s+/g, ' '),
-    ).toMatch(/^\s*Approved by you in Reviews\s*\d{1,2}:\d{2} [AP]M\s*$/);
+      row?.querySelector('.cinder-approval-card__settled-note')?.textContent?.replace(/\s+/g, ' '),
+    ).toMatch(/^\s*Approved by you in Reviews, 4:46 PM\s*$/);
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
     expect(queryByRole('button', { name: 'Approve' })).toBeNull();
     // The rail row speaks for the same decision in its own words.
@@ -188,11 +190,40 @@ describe('an approval decided on another page', () => {
     expect(getByTestId('chat-decision-announcement').textContent?.trim()).toBe(
       'Denied in Reviews. Refund order 4471 for $42.00.',
     );
-    const row = container.querySelector('.cinder-approval-card--row');
+    const row = container.querySelector('.cinder-approval-card--decision');
     expect(row?.textContent).toContain('Denied by you in Reviews');
     expect(row?.querySelector('.cinder-approval-card__decision-note')?.textContent).toContain(
       'Check the carrier’s claim first.',
     );
+  });
+
+  test('is still one receipt, with Reviews a link, when the page mounts again on a phone (CI run 44323536625)', async () => {
+    // A phone width stacks the chat list and the open chat, so the chat page mounts again and its
+    // memory of what it watched is gone: the receipt is read from the decision the Bureau recorded,
+    // with where it was made, as a Reviews decision always records it (COR-2292).
+    const thread = decidedThread({ ...APPROVED, decisionSurface: 'reviews' }, { refunded: 4200 });
+    const first = await decidedAway(thread);
+    await until(() =>
+      expect(first.container.querySelectorAll('.cinder-approval-card--decision')).toHaveLength(1),
+    );
+    first.unmount();
+
+    const narrow = mount();
+    await settle(20);
+    await until(() =>
+      expect(narrow.container.querySelectorAll('.cinder-approval-card--decision')).toHaveLength(1),
+    );
+    const card = narrow.container.querySelector('.cinder-approval-card--decision');
+    expect(
+      card
+        ?.querySelector('.cinder-approval-card__settled-note')
+        ?.textContent?.replace(/\s+/g, ' ')
+        .trim(),
+    ).toBe('Approved by you in Reviews, 4:46 PM');
+    expect(card?.querySelector('a[href]')?.getAttribute('href')).toContain(
+      `/reviews?tab=done&review=${encodeURIComponent('bureau:approval:native-1:call-refund')}`,
+    );
+    expect(narrow.container.querySelector('[data-approval-decision]')).toBeNull();
   });
 
   test('announces nothing when the thread carries no record that a person decided it', async () => {
@@ -204,12 +235,12 @@ describe('an approval decided on another page', () => {
 
     await until(() => expect(container.querySelector('[data-approval-decision]')).toBeNull());
     expect(getByTestId('chat-decision-announcement').textContent?.trim()).toBe('');
-    expect(container.querySelector('.cinder-approval-card--row')).toBeNull();
+    expect(container.querySelector('.cinder-approval-card--decision')).toBeNull();
   });
 });
 
 describe('the run a decision on another page continues the chat with (design row 18j)', () => {
-  test('is joined once it starts: Running, Stop in Send’s place, and a message now steers the run', async () => {
+  test('is joined once it starts: Running, Stop in Send’s place, and a message sent now waits for the run', async () => {
     const thread = decidedThread(APPROVED, { refunded: 4200 });
     let decided = false;
     let continued = false;
@@ -285,20 +316,22 @@ describe('the run a decision on another page continues the chat with (design row
     expect(container.querySelector('button[aria-label="Send message"]')).toBeNull();
     // The chat is read again on joining, so its title reads Running, not what it read while it
     // waited on the approval.
-    await until(() =>
-      expect(container.querySelector('[role="img"][aria-label="Running"]')).not.toBeNull(),
-    );
-    expect(container.querySelector('[role="img"][aria-label="Waiting on you"]')).toBeNull();
+    // The status beside the title is a Badge (COR-2438).
+    const status = () =>
+      container
+        .querySelector('[data-testid="chat-header"] .cinder-page-header__status .cinder-badge')
+        ?.textContent?.trim();
+    await until(() => expect(status()).toBe('Running'));
     await until(() =>
       expect(container.querySelector('.chat-input-status')?.textContent?.trim()).toBe(
-        'A message now steers the run.',
+        'A message sent now waits until this run finishes.',
       ),
     );
     // The decision is still said once, and its row stays collapsed.
     expect(getByTestId('chat-decision-announcement').textContent?.trim()).toBe(
       'Approved in Reviews. Refund order 4471 for $42.00.',
     );
-    expect(container.querySelector('.cinder-approval-card__outcome')?.textContent).toContain(
+    expect(container.querySelector('.cinder-approval-card__settled-note')?.textContent).toContain(
       'Approved by you in Reviews',
     );
     // While the continuation goes, the rail row reads as that run (18i).

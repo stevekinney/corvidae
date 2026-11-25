@@ -198,7 +198,7 @@ describe('Chat composer drawer for a waiting approval', () => {
 
     expect(drawer).not.toBeNull();
     expect(drawer?.querySelector('.chat-approval-drawer-text')?.textContent?.trim()).toBe(
-      'Approval needed.',
+      'Waiting for your approval.',
     );
     expect(getByRole(drawer, 'button', { name: 'Review approval' })).not.toBeNull();
   });
@@ -322,7 +322,8 @@ describe('Chat composer drawer for a waiting approval', () => {
     const shell = container.querySelector('.chat-input-shell')!;
 
     expect(drawer.compareDocumentPosition(shell) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(drawer.parentElement).toBe(shell.parentElement);
+    const drawers = drawer.closest('[data-chat-composer-drawers]');
+    expect(drawers !== null && drawers.parentElement === shell.parentElement).toBe(true);
   });
 
   test('Review approval scrolls to the card and focuses it without answering it', async () => {
@@ -376,6 +377,26 @@ describe('Chat composer drawer for a waiting approval', () => {
     expect(drawerOf(container)).toBeNull();
   });
 
+  // COR-2438: after a decision refused because the run had stopped, the host drew the card as no
+  // longer waiting, but the result still asked, so the reminder appeared over the composer and
+  // pushed it 70px up.
+  test('says nothing for an approval the host says no run waits on, and Send stays Send', async () => {
+    const { container } = render(Chat, {
+      id: 'chat-drawer-lapsed',
+      conversation: approvalConversation('drawer-lapsed'),
+      adapter: { sendMessage: async () => undefined, sendRunInput: async () => undefined },
+      lapsedApprovals: new Set(['call']),
+    });
+    await arrivalFrame();
+    await arrivalFrame();
+
+    expect(drawerOf(container)).toBeNull();
+    await fireEvent.input(composerOf(container), { target: { value: 'one more thing' } });
+    await tick();
+    expect(sendButton(container).getAttribute('aria-label')).toBe('Send message');
+    expect(drawerOf(container)).toBeNull();
+  });
+
   test('leaves the blocked composer to say why on its own row', () => {
     const { container } = render(Chat, {
       id: 'chat-drawer-blocked',
@@ -426,7 +447,7 @@ describe('Chat composer drawer for a waiting approval', () => {
   });
 
   test('a draft makes the reminder and the Queue description say what a send does now', async () => {
-    const note = 'Messages you send now wait until you decide.';
+    const note = 'Anything you send now queues until you decide.';
     const { container } = render(Chat, {
       id: 'chat-drawer-queue-note',
       conversation: approvalConversation('drawer-queue-note'),
@@ -437,13 +458,13 @@ describe('Chat composer drawer for a waiting approval', () => {
     await settledDrawer(container);
 
     // An empty composer keeps the short form, and Queue's note does not exist yet.
-    expect(reminder()).toBe('Approval needed.');
+    expect(reminder()).toBe('Waiting for your approval.');
     expect(container.querySelector('#chat-drawer-queue-note-input-queue-note')).toBeNull();
 
     await fireEvent.input(composerOf(container), { target: { value: 'one more thing' } });
     await tick();
 
-    expect(reminder()).toBe(`Approval needed. ${note}`);
+    expect(reminder()).toBe(`Waiting for your approval. ${note}`);
     const describedBy = sendButton(container).getAttribute('aria-describedby') ?? '';
     const noteElement = describedBy
       .split(' ')
@@ -614,10 +635,9 @@ describe('Chat approval receipt', () => {
     await tick();
 
     const receipt = getByRole(container, 'article', { name: 'Approved: Refund' });
-    expect(receipt.querySelector('.cinder-approval-card__settled-note')?.textContent?.trim()).toBe(
-      'Approved by you',
-    );
-    expect(receipt.nextElementSibling?.textContent?.trim()).toMatch(/\d{1,2}:\d{2} [AP]M$/);
+    expect(
+      receipt.querySelector('.cinder-approval-card__settled-note')?.textContent?.trim(),
+    ).toMatch(/^Approved by you, \d{1,2}:\d{2} [AP]M$/);
     expect(queryByRole(receipt, 'button', { name: 'Refund' })).toBeNull();
   });
 
@@ -643,9 +663,9 @@ describe('Chat approval receipt', () => {
 
     const receipt = getByRole(view.container, 'article', { name: APPROVED_REFUND });
     expect(receipt.getAttribute('data-cinder-state')).toBe('approved');
-    expect(receipt.querySelector('.cinder-approval-card__settled-note')?.textContent?.trim()).toBe(
-      'Approved by you',
-    );
+    expect(
+      receipt.querySelector('.cinder-approval-card__settled-note')?.textContent?.trim(),
+    ).toMatch(/^Approved by you, \d{1,2}:\d{2} [AP]M$/);
     expect(drawerOf(view.container)).toBeNull();
   });
 
@@ -675,9 +695,9 @@ describe('Chat approval receipt', () => {
 
     const receipt = getByRole(view.container, 'article', { name: APPROVED_REFUND });
     expect(receipt.getAttribute('data-cinder-state')).toBe('approved');
-    expect(receipt.querySelector('.cinder-approval-card__settled-note')?.textContent?.trim()).toBe(
-      'Approved by you',
-    );
+    expect(
+      receipt.querySelector('.cinder-approval-card__settled-note')?.textContent?.trim(),
+    ).toMatch(/^Approved by you, \d{1,2}:\d{2} [AP]M$/);
   });
 
   test('a decided call keeps its own row beside a neighbouring completed call, so the receipt is not folded into a group', async () => {

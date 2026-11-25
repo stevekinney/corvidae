@@ -23,8 +23,29 @@ type ComponentPage = {
     viewport: Viewport;
     fixtureName?: string;
     fixtureContentHash?: string;
+    hasTouch?: boolean;
   }): Promise<import('@playwright/test').Page>;
 };
+
+/** Pending syntax highlighters report this state while their render is unresolved. */
+export const PENDING_HIGHLIGHT_SELECTOR = '[data-cinder-highlight-state="pending"]';
+/** A fixture-local region that intentionally holds its highlighter for a dedicated interaction test. */
+export const FIXTURE_PENDING_HIGHLIGHT_REGION_SELECTOR = '[data-cinder-fixture-highlight-pending]';
+
+/** Mobile fixture captures exercise the same coarse-pointer rules that a phone uses. */
+export function hasTouchForViewport(viewport: Viewport): boolean {
+  return viewport.name === 'mobile';
+}
+
+async function uncontrolledPendingHighlightCount(
+  page: import('@playwright/test').Page,
+): Promise<number> {
+  return await page
+    .locator(PENDING_HIGHLIGHT_SELECTOR)
+    .evaluateAll((elements, pendingRegionSelector) => {
+      return elements.filter((element) => element.closest(pendingRegionSelector) === null).length;
+    }, FIXTURE_PENDING_HIGHLIGHT_REGION_SELECTOR);
+}
 
 function fixtureCategory(fixture: ManifestFixtureEntry): FixtureCategory {
   return fixture.category;
@@ -93,6 +114,7 @@ export async function runFixtureSweep(
     viewport,
     fixtureName: fixture.name,
     fixtureContentHash: fixture.fixtureContentHash,
+    hasTouch: hasTouchForViewport(viewport),
   });
 
   const key = {
@@ -121,6 +143,8 @@ export async function runFixtureSweep(
 
   // Every fixture has a resting-state capture. Interaction fixtures
   // use a second key so their resulting state remains pixel-checked.
+  // A fixture can leave a deliberately unresolved highlighter inside its own marked region.
+  await expect.poll(() => uncontrolledPendingHighlightCount(page)).toBe(0);
   await captureState(
     page,
     restingKey,

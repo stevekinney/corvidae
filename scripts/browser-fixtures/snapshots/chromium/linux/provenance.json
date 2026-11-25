@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "componentScope": "all",
-  "renderedSourceSha": "c4df6770515c5637d0bc0b03ecb51fd626037b95",
+  "renderedSourceSha": "b4d31e9092a59f76dd4bc65a8e983ed901603257",
   "playwrightVersion": "1.63.0",
   "osCodename": "jammy",
   "architecture": "arm64",
@@ -9,91 +9,27 @@
   "suiteExitCode": 0,
   "componentRenders": {
     "approval-card": {
-      "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
-      "suiteExitCode": 0
-    },
-    "autocomplete": {
-      "renderedSourceSha": "a17fd8684b0f91f5cf98b5df6ab4d16ece806eaa",
-      "suiteExitCode": 0
-    },
-    "breadcrumbs": {
-      "renderedSourceSha": "1a759c92705147aaaeed3f921c6f737b883d5ce4",
-      "suiteExitCode": 0
-    },
-    "card": {
-      "renderedSourceSha": "a2e95b1b4f5dbb85eb7dc2890bc7e81c5cfaf39c",
+      "renderedSourceSha": "46c7b32ff20062cf12638ccd31f661cf84431b36",
       "suiteExitCode": 0
     },
     "chat": {
-      "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
+      "renderedSourceSha": "0f0b4d1f1bc0f0a08562995eb0b019b453758631",
       "suiteExitCode": 0
     },
     "chat-composer-popover": {
-      "renderedSourceSha": "a2e95b1b4f5dbb85eb7dc2890bc7e81c5cfaf39c",
-      "suiteExitCode": 0
-    },
-    "chat-mcp-app": {
-      "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
+      "renderedSourceSha": "46c7b32ff20062cf12638ccd31f661cf84431b36",
       "suiteExitCode": 0
     },
     "chat-sub-session": {
-      "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
+      "renderedSourceSha": "0f0b4d1f1bc0f0a08562995eb0b019b453758631",
       "suiteExitCode": 0
     },
-    "checkbox": {
-      "renderedSourceSha": "a17fd8684b0f91f5cf98b5df6ab4d16ece806eaa",
+    "review-editor-malformed-front-matter": {
+      "renderedSourceSha": "46c7b32ff20062cf12638ccd31f661cf84431b36",
       "suiteExitCode": 0
     },
-    "checkbox-group": {
-      "renderedSourceSha": "a17fd8684b0f91f5cf98b5df6ab4d16ece806eaa",
-      "suiteExitCode": 0
-    },
-    "combobox": {
-      "renderedSourceSha": "a17fd8684b0f91f5cf98b5df6ab4d16ece806eaa",
-      "suiteExitCode": 0
-    },
-    "copy-button": {
-      "renderedSourceSha": "e82a0e20638e642ec7a91da8de31fe30f27ce056",
-      "suiteExitCode": 0
-    },
-    "description-list": {
-      "renderedSourceSha": "1f67af3141c057b52134c578aff3a9e26e13e930",
-      "suiteExitCode": 0
-    },
-    "form-field": {
-      "renderedSourceSha": "dff1b871e1bb8ae4e81fdb83abcb7fc22fbaabe7",
-      "suiteExitCode": 0
-    },
-    "multi-select": {
-      "renderedSourceSha": "a17fd8684b0f91f5cf98b5df6ab4d16ece806eaa",
-      "suiteExitCode": 0
-    },
-    "number-input": {
-      "renderedSourceSha": "a17fd8684b0f91f5cf98b5df6ab4d16ece806eaa",
-      "suiteExitCode": 0
-    },
-    "page-header": {
-      "renderedSourceSha": "1a759c92705147aaaeed3f921c6f737b883d5ce4",
-      "suiteExitCode": 0
-    },
-    "schema-form": {
-      "renderedSourceSha": "2c1dd08e6818d3f33badb9148af72c4e85aa60a5",
-      "suiteExitCode": 0
-    },
-    "sidebar": {
-      "renderedSourceSha": "e82a0e20638e642ec7a91da8de31fe30f27ce056",
-      "suiteExitCode": 0
-    },
-    "skip-link": {
-      "renderedSourceSha": "e82a0e20638e642ec7a91da8de31fe30f27ce056",
-      "suiteExitCode": 0
-    },
-    "stacked-list-item": {
-      "renderedSourceSha": "b89a8de7628a80a3e4eccc96c941761633368743",
-      "suiteExitCode": 0
-    },
-    "surface": {
-      "renderedSourceSha": "e82a0e20638e642ec7a91da8de31fe30f27ce056",
+    "tool-call-rail": {
+      "renderedSourceSha": "0f0b4d1f1bc0f0a08562995eb0b019b453758631",
       "suiteExitCode": 0
     }
   }

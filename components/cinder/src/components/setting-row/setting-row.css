@@ -102,6 +102,13 @@
     font-size: var(--cinder-text-sm);
   }
 
+  /* A setting can sit in a wide page column, but its explanatory sentence stays at a readable
+     measure. Notes and warnings retain the row's full available width because their contents can
+     be operational detail rather than prose. */
+  .cinder-setting-row__field .cinder-form-field__description {
+    max-inline-size: var(--cinder-content-width-prose);
+  }
+
   /* The status, managed and error lines sit one step under the description. */
   .cinder-setting-row__status:empty {
     display: none;
@@ -190,6 +197,20 @@
     outline: var(--cinder-ring-width) solid var(--cinder-ring-color);
     outline-offset: 2px;
     border-radius: var(--cinder-radius-sm);
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-setting-row__retry {
+      position: relative;
+    }
+
+    /* Keep the inline link's line height while making the button easier to touch. */
+    .cinder-setting-row__retry::after {
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: 0;
+      content: '';
+    }
   }
 
   /* Narrow: the label and its description lead, the control stacks under them, and the status, the

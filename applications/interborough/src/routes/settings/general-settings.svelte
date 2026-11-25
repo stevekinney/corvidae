@@ -14,6 +14,7 @@
    */
   import {
     CopyableValue,
+    Collapsible,
     FormSection,
     Segment,
     SegmentedControl,
@@ -256,22 +257,36 @@
 
 <div class="weft-general__content" role="group" aria-label={SETTINGS_COPY.formLabel}>
   {#each sections as section (section.id)}
-    <FormSection
-      grouped
-      heading={SETTINGS_COPY.general.sections[section.id].title}
-      {...section.id === 'runs'
-        ? { description: SETTINGS_COPY.general.sections.runs.description }
-        : {}}
-    >
-      {#if section.id === 'storage'}
-        {@render backendRow(false)}
-      {:else if section.id === 'remote'}
-        {@render backendRow(true)}
-      {/if}
-      {#each section.keys as key (key)}
-        {@render field(key, section.id === 'remote')}
-      {/each}
-    </FormSection>
+    {#if section.id === 'advanced'}
+      <Collapsible
+        trigger={SETTINGS_COPY.general.sections.advanced.title}
+        chevron="start"
+        variant="flat"
+        idBase="weft-settings-advanced"
+        data-testid="settings-advanced"
+      >
+        {#each section.keys as key (key)}
+          {@render field(key, false)}
+        {/each}
+      </Collapsible>
+    {:else}
+      <FormSection
+        grouped
+        heading={SETTINGS_COPY.general.sections[section.id].title}
+        {...section.id === 'runs'
+          ? { description: SETTINGS_COPY.general.sections.runs.description }
+          : {}}
+      >
+        {#if section.id === 'storage'}
+          {@render backendRow(false)}
+        {:else if section.id === 'remote'}
+          {@render backendRow(true)}
+        {/if}
+        {#each section.keys as key (key)}
+          {@render field(key, section.id === 'remote')}
+        {/each}
+      </FormSection>
+    {/if}
   {/each}
 
   <FormSection

@@ -159,7 +159,11 @@
       {/each}
     </div>
   {:else if rawQuery.isError}
-    <QueryFaultBanner error={rawQuery.error} onRetry={() => rawQuery.refetch()} />
+    <QueryFaultBanner
+      error={rawQuery.error}
+      subject="the raw metrics"
+      onRetry={() => rawQuery.refetch()}
+    />
   {:else}
     <div class="weft-metrics-tab__raw-actions">
       <Button

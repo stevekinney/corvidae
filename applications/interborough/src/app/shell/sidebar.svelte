@@ -15,9 +15,7 @@
    * name and the fold button sit in Cinder's `brand` slot, New chat is the `primaryAction`, and the
    * current destination is a raised white pill.
    *
-   * The sidebar takes one of three forms (`./shell-navigation.svelte.ts`): the 190px column, the
-   * 76px rail (an icon over its label) with an overlay that opens the column over the page, and the
-   * 280px drawer behind the phone's tab bar.
+   * The sidebar is an inline column on desktop and a 280px drawer on smaller screens.
    */
   import {
     Button,
@@ -67,11 +65,14 @@
 
   const mode = $derived(shell.mode);
   const collapsed = $derived(shell.collapsed);
-  const overlay = $derived(mode === 'rail' && !collapsed);
+
+  $effect(() => {
+    if (mode === 'expanded') shell.close();
+  });
 
   /** The class that gives the sidebar's one element its form, for the shell's stylesheet. */
   const sidebarClass = $derived(
-    `weft-shell-sidebar weft-shell-sidebar--${mode}${collapsed ? ' weft-shell-sidebar--collapsed' : ''}${overlay ? ' weft-shell-sidebar--overlay' : ''}`,
+    `weft-shell-sidebar weft-shell-sidebar--${mode}${collapsed ? ' weft-shell-sidebar--collapsed' : ''}`,
   );
 
   function destinationsIn(group: DestinationGroup): readonly Destination[] {
@@ -103,7 +104,6 @@
     }
     event.preventDefault();
     router.navigate(path);
-    // A drawer and an overlay close on navigation; the person's own preference is never touched.
     shell.close();
   }
 
@@ -135,148 +135,129 @@
   }
 </script>
 
-<svelte:window
-  onkeydown={(event) => {
-    if (event.key === 'Escape' && overlay) shell.close();
-  }}
-/>
-
-{#if overlay}
-  <!-- The scrim over the page behind an expanded rail. Escape and the collapse button close it too. -->
-  <button
-    type="button"
-    class="weft-shell-sidebar-scrim"
-    aria-label={NAVIGATION_COPY.collapseSidebar}
-    tabindex="-1"
-    onclick={() => shell.close()}
-  ></button>
-{/if}
-<div class="weft-shell-sidebar-slot" data-mode={mode}>
-  <Sidebar
-    label={NAVIGATION_COPY.productName}
-    closeLabel={NAVIGATION_COPY.closeNavigation}
-    mobileBreakpoint={DRAWER_BREAKPOINT}
-    railLabels={mode === 'rail'}
-    bind:collapsed={() => shell.collapsed, (value) => (shell.collapsed = value)}
-    class={sidebarClass}
-  >
-    {#snippet navigation()}
-      {#snippet brandRow()}
-        <div class="weft-shell-sidebar__brand">
-          <span class="weft-shell-sidebar__name">{NAVIGATION_COPY.productName}</span>
-          <span class="weft-shell-sidebar__commit" title={NAVIGATION_COPY.builtFromCommit}
-            >{buildCommit()}</span
-          >
-          <Button
-            variant="ghost"
-            iconOnly
-            size="sm"
-            aria-label={collapsed ? NAVIGATION_COPY.expandSidebar : NAVIGATION_COPY.collapseSidebar}
-            aria-expanded={!collapsed}
-            onclick={toggleCollapsed}
-          >
-            {#if collapsed}
-              <PanelLeftOpen aria-hidden="true" size={16} />
-            {:else}
-              <PanelLeftClose aria-hidden="true" size={16} />
-            {/if}
-          </Button>
-        </div>
-      {/snippet}
-      {#snippet newChatAction()}
-        <!-- Cinder draws the control: a neutral, sidebar-wide row with an accent plus, this label,
+<Sidebar
+  label={NAVIGATION_COPY.productName}
+  closeLabel={NAVIGATION_COPY.closeNavigation}
+  mobileBreakpoint={DRAWER_BREAKPOINT}
+  bind:collapsed={() => shell.collapsed, (value) => (shell.collapsed = value)}
+  class={sidebarClass}
+>
+  {#snippet navigation()}
+    {#snippet brandRow()}
+      <div class="weft-shell-sidebar__brand">
+        <span class="weft-shell-sidebar__name">{NAVIGATION_COPY.productName}</span>
+        <span class="weft-shell-sidebar__commit" title={NAVIGATION_COPY.builtFromCommit}
+          >{buildCommit()}</span
+        >
+        <Button
+          variant="ghost"
+          iconOnly
+          size="sm"
+          aria-label={collapsed ? NAVIGATION_COPY.expandSidebar : NAVIGATION_COPY.collapseSidebar}
+          aria-expanded={!collapsed}
+          onclick={toggleCollapsed}
+        >
+          {#if collapsed}
+            <PanelLeftOpen aria-hidden="true" size={16} />
+          {:else}
+            <PanelLeftClose aria-hidden="true" size={16} />
+          {/if}
+        </Button>
+      </div>
+    {/snippet}
+    {#snippet newChatAction()}
+      <!-- Cinder draws the control: a neutral, sidebar-wide row with an accent plus, this label,
              and the key as plain text. The key's name is `aria-keyshortcuts`, so the glyph is
              decoration. -->
-        <button
-          type="button"
-          aria-keyshortcuts={showNewChatKey ? NEW_CHAT_KEY.toUpperCase() : undefined}
-          onclick={onNewChat}
-        >
-          {SHORTCUT_COPY.newChat}
-          {#if showNewChatKey}
-            <span data-cinder-shortcut aria-hidden="true">{NEW_CHAT_KEY.toUpperCase()}</span>
-          {/if}
-        </button>
-      {/snippet}
-      {#snippet destinationItem(destination: Destination)}
-        {@const Icon = destination.icon}
-        {@const label = VIEW_COPY[destination.view].label}
-        {#if destination.view === 'reviews'}
-          <SideNavigationItem
-            href={router.href(destination.path)}
-            {label}
-            count={reviewsCount}
-            countLabel={NAVIGATION_COPY.reviewsCountLabel}
-            active={isActivePath(destination.path)}
-            onclick={(event) => onNavClick(event, destination.path)}
-          >
-            {#snippet icon()}<Icon size="1rem" />{/snippet}
-            {label}
-          </SideNavigationItem>
-        {:else if destination.view === 'health'}
-          <SideNavigationItem
-            href={router.href(destination.path)}
-            {label}
-            {...healthSignal}
-            active={isActivePath(destination.path)}
-            onclick={(event) => onNavClick(event, destination.path)}
-          >
-            {#snippet icon()}<Icon size="1rem" />{/snippet}
-            {label}
-          </SideNavigationItem>
-        {:else}
-          <SideNavigationItem
-            href={router.href(destination.path)}
-            {label}
-            active={isActivePath(destination.path)}
-            onclick={(event) => onNavClick(event, destination.path)}
-          >
-            {#snippet icon()}<Icon size="1rem" />{/snippet}
-            {label}
-          </SideNavigationItem>
+      <button
+        type="button"
+        aria-keyshortcuts={showNewChatKey ? NEW_CHAT_KEY.toUpperCase() : undefined}
+        onclick={onNewChat}
+      >
+        {SHORTCUT_COPY.newChat}
+        {#if showNewChatKey}
+          <span data-cinder-shortcut aria-hidden="true">{NEW_CHAT_KEY.toUpperCase()}</span>
         {/if}
-      {/snippet}
-      {#snippet pluginItem(entry: PluginDestination)}
-        {@const Icon = entry.icon}
+      </button>
+    {/snippet}
+    {#snippet destinationItem(destination: Destination)}
+      {@const Icon = destination.icon}
+      {@const label = VIEW_COPY[destination.view].label}
+      {#if destination.view === 'reviews'}
         <SideNavigationItem
-          href={router.href(entry.path)}
-          label={entry.title}
-          badge={PLUGIN_PAGE_COPY.badge}
-          active={router.pathname === entry.path}
-          onclick={(event) => onNavClick(event, entry.path)}
+          href={router.href(destination.path)}
+          {label}
+          count={reviewsCount}
+          countLabel={NAVIGATION_COPY.reviewsCountLabel}
+          active={isActivePath(destination.path)}
+          onclick={(event) => onNavClick(event, destination.path)}
         >
           {#snippet icon()}<Icon size="1rem" />{/snippet}
-          {entry.title}
+          {label}
         </SideNavigationItem>
-      {/snippet}
-      <SideNavigation
-        ariaLabel={NAVIGATION_COPY.destinations}
-        class="weft-shell-side-navigation"
-        brand={mode === 'drawer' ? undefined : brandRow}
-        primaryAction={newChatAction}
+      {:else if destination.view === 'health'}
+        <SideNavigationItem
+          href={router.href(destination.path)}
+          {label}
+          {...healthSignal}
+          active={isActivePath(destination.path)}
+          onclick={(event) => onNavClick(event, destination.path)}
+        >
+          {#snippet icon()}<Icon size="1rem" />{/snippet}
+          {label}
+        </SideNavigationItem>
+      {:else}
+        <SideNavigationItem
+          href={router.href(destination.path)}
+          {label}
+          active={isActivePath(destination.path)}
+          onclick={(event) => onNavClick(event, destination.path)}
+        >
+          {#snippet icon()}<Icon size="1rem" />{/snippet}
+          {label}
+        </SideNavigationItem>
+      {/if}
+    {/snippet}
+    {#snippet pluginItem(entry: PluginDestination)}
+      {@const Icon = entry.icon}
+      <SideNavigationItem
+        href={router.href(entry.path)}
+        label={entry.title}
+        badge={PLUGIN_PAGE_COPY.badge}
+        active={router.pathname === entry.path}
+        onclick={(event) => onNavClick(event, entry.path)}
       >
-        {#each DESTINATION_GROUPS as group (group)}
-          {#if group === 'home'}
+        {#snippet icon()}<Icon size="1rem" />{/snippet}
+        {entry.title}
+      </SideNavigationItem>
+    {/snippet}
+    <SideNavigation
+      ariaLabel={NAVIGATION_COPY.destinations}
+      class="weft-shell-side-navigation"
+      brand={mode === 'drawer' ? undefined : brandRow}
+      primaryAction={newChatAction}
+    >
+      {#each DESTINATION_GROUPS as group (group)}
+        {#if group === 'home'}
+          {#each destinationsIn(group) as destination (destination.path)}
+            {@render destinationItem(destination)}
+          {/each}
+        {:else}
+          <SideNavigationGroup
+            label={NAVIGATION_COPY.groups[group]}
+            collapsible={false}
+            labelVisibility="hidden"
+            class={group === 'system' ? 'weft-shell-nav-system' : ''}
+          >
             {#each destinationsIn(group) as destination (destination.path)}
               {@render destinationItem(destination)}
             {/each}
-          {:else}
-            <SideNavigationGroup
-              label={NAVIGATION_COPY.groups[group]}
-              collapsible={false}
-              labelVisibility="hidden"
-              class={group === 'system' ? 'weft-shell-nav-system' : ''}
-            >
-              {#each destinationsIn(group) as destination (destination.path)}
-                {@render destinationItem(destination)}
-              {/each}
-              {#each pluginsIn(group) as entry (entry.path)}
-                {@render pluginItem(entry)}
-              {/each}
-            </SideNavigationGroup>
-          {/if}
-        {/each}
-      </SideNavigation>
-    {/snippet}
-  </Sidebar>
-</div>
+            {#each pluginsIn(group) as entry (entry.path)}
+              {@render pluginItem(entry)}
+            {/each}
+          </SideNavigationGroup>
+        {/if}
+      {/each}
+    </SideNavigation>
+  {/snippet}
+</Sidebar>

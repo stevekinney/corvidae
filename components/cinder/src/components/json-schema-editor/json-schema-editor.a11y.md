@@ -25,16 +25,17 @@ The property table has the accessible name `Schema properties`. A nested table t
 
 | Column | Header | Contents |
 | --- | --- | --- |
-| 1 | `Property key` | `<th scope="row">` holding the disclosure button, whose own text is the property key. |
-| 2 | `Type` | The type summary text (for example `string`, `object`, `array of string`). |
+| 1 | `Field` | `<th scope="row">` holding the disclosure button, whose own text is the property key. |
+| 2 | `Type` | The type in words (for example `Text`, `Date`, `Object`, `List of text`). |
 | 3 | `Description` | The schema's `description`, when present. |
-| 4 | (visually hidden) `Actions` | Required checkbox, move up, move down, and delete. |
+| 4 | `Required` | The required checkbox, named by the property key. |
+| 5 | (visually hidden) `Actions` | Move up, move down, and delete. |
 
 Every header cell uses `<th scope="col">`, so a screen reader announcing a cell also announces its column ("Type: object"). A row with nested validation errors carries `data-cinder-invalid` and shows a danger badge in the key cell, labelled with the error count and the property key.
 
-Below depth 0, the `<thead>` stays in the DOM — so `<th scope="col">` associations still hold for every cell — but is visually hidden. Nesting a header band inside every expanded row would repeat the same four column names at every depth for no benefit; the table's `aria-label` already carries the identifying information a nested table needs.
+Below depth 0, the `<thead>` stays in the DOM — so `<th scope="col">` associations still hold for every cell — but is visually hidden. Nesting a header band inside every expanded row would repeat the same five column names at every depth for no benefit; the table's `aria-label` already carries the identifying information a nested table needs.
 
-An expanded row's detail is a sibling `<tr>` whose single `<td>` spans all four columns (`colspan="4"`). That cell holds the property-name input, the type and constraint editors, and — for an object property — the nested `Properties of <key>` table. The `aria-live` announcement paragraph, the rename error `Alert`, and the `Add property` button all render outside the `<table>` element; a `<table>` only validly contains `<caption>`/`<thead>`/`<tbody>`/`<tfoot>`/`<tr>`, and a stray child would be silently reparented by the HTML parser.
+An expanded row's detail is a sibling `<tr>` whose single `<td>` spans all five columns (`colspan="5"`). That cell holds the property-name input, the type and constraint editors, and — for an object property — the nested `Properties of <key>` table. The `aria-live` announcement paragraph, the rename error `Alert`, and the `Add a field` button all render outside the `<table>` element; a `<table>` only validly contains `<caption>`/`<thead>`/`<tbody>`/`<tfoot>`/`<tr>`, and a stray child would be silently reparented by the HTML parser.
 
 ## Focus management
 
@@ -45,7 +46,7 @@ Focus is never moved on mount, on SSR, or on any change originating outside the 
 | Expand a row | Stays on the disclosure button, which is now `Collapse <key> property` with `aria-expanded="true"`. Focus does not enter the revealed row. |
 | Collapse a row | Stays on the disclosure button. |
 | Move a row up or down | Stays on the pressed control, which travels with the row to its new position. A move that lands the row first or last disables that direction's control; focus does not jump elsewhere. |
-| Delete a row | Moves to the next row's disclosure button; if the deleted row was last, to the previous row's; if the table is now empty, to the `Add property` button. |
+| Delete a row | Moves to the next row's disclosure button; if the deleted row was last, to the previous row's; if the table is now empty, to the `Add a field` button. |
 | Add a property | The new row opens expanded, with focus placed in its property-name input. |
 | Rename a property | Stays in the name input. The rename commits on blur. |
 | Edit JSON | Moves into the JSON textarea after it is rendered. |
@@ -92,7 +93,7 @@ The Type select covers `any`, `string`, `number`, `integer`, `boolean`, `enum`, 
 
 The enum table's Description column has nowhere to live in a bare JSON Schema `enum` — it is just an array of values. Typing a description promotes the whole enum to `oneOf: [{const, description?}, …]`, which is real, valid JSON Schema in every supported draft; clearing every description demotes back to a bare `enum`. This is visible as a real schema change in the JSON and Diff views, not a hidden side effect. A `oneOf` that already looks like a real composition (any branch carrying a keyword other than `const`/`description`) is never treated as an enum — it renders through the ordinary composition editor instead, so an authored `oneOf` is never silently reinterpreted.
 
-An `array`-typed property's detail row renders an "Array items" section that is itself a full nested property editor scoped to `items` — the same Type select (accessible name `items type`), the same enum table when items are enum-typed, and the same recursive `Properties of items` table when items are objects. Nothing about item editing is a separate, cut-down control set; it reuses the exact editor a top-level property gets, just rooted at `${path}/items` instead of `${path}`. At rest, the Type cell of an array property summarizes its items inline — `array of string`, `array of object`, `array of enum`, `array of any` — so the item type is visible without expanding the row.
+An `array`-typed property's detail row renders an "Array items" section that is itself a full nested property editor scoped to `items` — the same Type select (accessible name `items type`), the same enum table when items are enum-typed, and the same recursive `Properties of items` table when items are objects. Nothing about item editing is a separate, cut-down control set; it reuses the exact editor a top-level property gets, just rooted at `${path}/items` instead of `${path}`. At rest, the Type cell of an array property summarizes its items inline — `List of text`, `List of object`, `List of choice`, `List of any value` — so the item type is visible without expanding the row.
 
 Do not rely on color, icon shape, placeholder text, or a control's column position as the only way to communicate state or available actions.
 

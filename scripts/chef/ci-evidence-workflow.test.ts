@@ -119,6 +119,27 @@ describe('createCiEvidenceWorkflowReceipt', () => {
     expect(receipt.requestKey).toBe('');
   });
 
+  test('a scheduled run records the checked-out latest commit with checkout-derived identity', () => {
+    const receipt = createCiEvidenceWorkflowReceipt({
+      environment: environment({
+        GITHUB_EVENT_NAME: 'schedule',
+        VERIFICATION_REQUEST: undefined,
+        VERIFICATION_PLAN: undefined,
+        VERIFICATION_BASE: undefined,
+      }),
+      eventPayload: {},
+      git,
+    });
+    expect(receipt).toMatchObject({
+      event: 'schedule',
+      base: sha('b'),
+      candidate: sha('c'),
+      checkedRevision: sha('c'),
+    });
+    expect(receipt.planDigest).toMatch(/^[0-9a-f]{64}$/);
+    expect(receipt.requestKey).toBe('');
+  });
+
   test('records an unbound manual run with checkout-derived identity when no verification fields are supplied', () => {
     const receipt = createCiEvidenceWorkflowReceipt({
       environment: environment({
@@ -213,6 +234,30 @@ describe('CI evidence workflow producers', () => {
   const root = join(import.meta.dir, '..', '..');
   const main = readFileSync(join(root, '.github/workflows/main.yml'), 'utf8');
   const pullRequest = readFileSync(join(root, '.github/workflows/pull-request.yml'), 'utf8');
+
+  test('a paused push records both slow jobs as inapplicable while a manual or scheduled run still requires them', () => {
+    expect(main).toContain("schedule:\n    - cron: '17 9 * * *'");
+    for (const name of ['tests-slow', 'browser']) {
+      const job = main.split(`\n  ${name}:\n`)[1]?.split(/\n  [a-z-]+:\n/)[0];
+      expect(job).toContain(
+        "if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}",
+      );
+    }
+    // A scheduled run shares the push group and never cancels or is cancelled by one.
+    expect(main).toContain(
+      "group: ${{ github.event_name == 'workflow_dispatch' && format('main-dispatch-{0}', github.ref) || 'main' }}",
+    );
+    expect(main).toContain("cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}");
+    expect(main).toContain(
+      `CI_EVIDENCE_NOT_APPLICABLE: \${{ github.event_name == 'push' && vars.PAUSE_AUTOMATIC_SLOW_TESTS == 'true' && '["tests-slow","browser"]' || '[]' }}`,
+    );
+    expect(pullRequest).toContain(
+      "TEST_LANES: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS == 'true' && '--fast-only' || '--isolated' }}",
+    );
+    expect(pullRequest).toContain(
+      "id: select\n        if: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}",
+    );
+  });
 
   test('installs the producer and preserves required job bundles across partial reruns', () => {
     expect(main).toContain('bun scripts/chef/ci-evidence-workflow.ts ci-evidence-receipt.json');

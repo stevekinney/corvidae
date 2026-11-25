@@ -1,10 +1,11 @@
 {
   "name": "@lostgradient/plugin-inspectors",
   "private": true,
-  "description": "An Interborough plugin that contributes the run inspector, pending-review and workflow revision review interface panels, served as ui:// resources.",
+  "description": "An Interborough plugin that contributes the run inspector, pending-review, workflow revision review, schedule editor, run timeline, failure explanation and run comparison interface panels, served as ui:// resources.",
   "type": "module",
   "exports": {
-    ".": "./src/plugin.ts"
+    ".": "./src/plugin.ts",
+    "./failure-explanation": "./src/failure-explanation/index.ts"
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-inherited-key-reads.ts",

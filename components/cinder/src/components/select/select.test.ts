@@ -171,7 +171,7 @@ describe('Select', () => {
       expect(selectEl).not.toBeNull();
       expect(selectEl.selectedIndex).toBe(-1);
       expect(warnSpy).toHaveBeenCalledWith(
-        '[cinder/Select] value does not match any option — pass a value from options or omit it.',
+        '[cinder/Select] value "missing" does not match any option — pass a value from options or omit it.',
       );
     } finally {
       warnSpy.mockRestore();
@@ -469,6 +469,17 @@ describe('Select — required marker', () => {
     expect(marker).not.toBeNull();
     expect(marker?.getAttribute('aria-hidden')).toBe('true');
     expect(marker?.textContent).toBe('');
+  });
+});
+
+describe('Select — docked listbox sheet geometry', () => {
+  test('lets the docked panel restore the shared floating surface viewport width', () => {
+    const styles = readSelectStyles();
+    const docked =
+      /\.cinder-select__panel\.cinder-popover\[data-cinder-sheet='docked'\]\s*\{([^}]*)\}/.exec(
+        styles,
+      )?.[1];
+    expect(docked).toContain('max-inline-size: none');
   });
 });
 

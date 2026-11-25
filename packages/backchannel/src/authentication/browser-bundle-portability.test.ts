@@ -98,7 +98,7 @@ function nodeCryptoResolutions(evidence: NodeCryptoEvidence): NodeCryptoFinding[
 
 const packageRoot = join(import.meta.dir, '..', '..');
 const indexPath = join(packageRoot, 'src', 'index.ts');
-// The package depends on Zod alone, so nothing is left external.
+// Bundle the package and its dependencies to check the complete browser entry.
 const externals: string[] = [];
 
 interface BundleOutcome {
@@ -195,9 +195,7 @@ describe('authentication browser bundle portability', () => {
 
   it('really includes the authentication path in the bundle', () => {
     const inputs = Object.keys(healthy.metafile?.inputs ?? {});
-    expect(inputs.some((key) => key.endsWith('src/authentication/constant-time-api-key.ts'))).toBe(
-      true,
-    );
+    expect(inputs.some((key) => key.endsWith('src/api-key-verification.ts'))).toBe(true);
     const output = [...healthy.files.values()].join('\n');
     // A literal that only the authentication source holds (`api-key.ts`).
     expect(output).toContain('resolveApiKeyPrincipal threw:');

@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2654",
+  "branch": "steve/cor-2654-warm-transforms",
+  "checkedAt": "b6cf80efe7380154d5b77dc29b0b784d8803faa9",
+  "briefVersion": "66735689f949",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Run 45432170781 records revision-bound startup stages, all seven panel outcomes, a successful Settings request and a persisted change after reload; see warm-transform-c3-verified-scope.json."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Run 45432170781 records concurrent separate-home starts, repeated install markers, resource/cache conditions and a separate production build (43.4261 s) with persisted Settings at 72.1530 s; see warm-transform-c3-verified-scope.json."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Run 45432170781 records three completed cold pairs, medians 90.2063 s to 69.2141 s (23.2713% improvement), matching inventories, three warm actions with 2712 hits and zero misses, seven reused ready panels and a changed panel marker. Run 45434816837 artifact 14942048040 confirms the changed token, computed browser value, persisted Settings and restoration. The first run's token-only false negative is retained; see warm-transform-c3-verified-scope.json and warm-transform-token-recovery-provider/14942048040.json."
+    }
+  ]
+}

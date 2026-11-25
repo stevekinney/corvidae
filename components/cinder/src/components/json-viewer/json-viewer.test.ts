@@ -32,6 +32,19 @@ describe('JsonViewer flat styling', () => {
     expect(css).not.toContain("data-cinder-type='boolean'");
     expect(css).not.toContain('--cinder-status-');
   });
+
+  test('keeps disclosure targets at least 44px and disjoint on a coarse pointer', async () => {
+    const css = await Bun.file(new URL('./json-viewer.css', import.meta.url)).text();
+    const coarse = /@media \(any-pointer: coarse\)\s*\{([\s\S]*?)\n  \}/.exec(css)?.[1] ?? '';
+    const toggle = /\.cinder-json-viewer__toggle\s*\{([^}]*)\}/.exec(coarse)?.[1] ?? '';
+
+    expect(coarse).not.toBe('');
+    // Tree disclosures may be adjacent or nested, so their actual boxes—not overlapping pseudos—own
+    // the complete coarse-pointer target.
+    expect(toggle).toContain('min-inline-size: var(--cinder-touch-target-min)');
+    expect(toggle).toContain('min-block-size: var(--cinder-touch-target-min)');
+    expect(coarse).not.toContain('.cinder-json-viewer__toggle::');
+  });
 });
 
 describe('JsonViewer', () => {

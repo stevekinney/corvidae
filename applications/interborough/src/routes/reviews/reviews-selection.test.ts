@@ -69,6 +69,13 @@ function rows(container: HTMLElement): HTMLElement[] {
   return [...container.querySelectorAll<HTMLElement>('[data-review-row]')];
 }
 
+async function approveRefund(
+  findByRole: (role: string, options: { name: string }) => Promise<HTMLElement>,
+): Promise<void> {
+  await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+  await fireEvent.click(await findByRole('button', { name: 'Press again to approve' }));
+}
+
 /** The key of the row that holds focus, or `null` when focus is on no row. */
 function focusedRowKey(): string | null {
   return (
@@ -151,7 +158,7 @@ describe('the segments', () => {
     await findByRole('radio', { name: /^Done\s*,\s*1$/ });
 
     await fireEvent.click(rows(container)[0]!);
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await findByRole('radio', { name: /^Waiting\s*,\s*1$/ });
     await findByRole('radio', { name: /^Done\s*,\s*2$/ });
   });
@@ -163,7 +170,7 @@ describe('deciding a review', () => {
     const { container, findByLabelText, findByRole, findByTestId } = open({
       reviews: [APPROVAL, QUESTION],
     });
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await waitFor(() => expect(router.search.get('review')).toBe(QUESTION_KEY));
     await findByLabelText('Your answer');
     await waitFor(() => expect(rows(container).length).toBe(1));
@@ -190,7 +197,7 @@ describe('deciding a review', () => {
   test('is not announced as a review that is no longer waiting', async () => {
     measuredAt(1200);
     const { container, findByRole, queryByTestId } = open({ reviews: [APPROVAL, QUESTION] });
-    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await approveRefund(findByRole);
     await waitFor(() => expect(router.search.get('review')).toBe(QUESTION_KEY));
     expect(queryByTestId('review-gone')).toBeNull();
     expect(container.textContent).not.toContain(REVIEWS_COPY.noLongerWaiting.message);
@@ -206,7 +213,7 @@ describe('Enter on a row', () => {
     // nothing: it would otherwise press whatever holds focus by then.
     const notCancelled = await fireEvent.keyDown(primary, { key: 'Enter' });
     expect(notCancelled).toBe(false);
-    const note = await findByLabelText('Note Optional');
+    const note = await findByLabelText('Note (optional)');
     await waitFor(() => expect(document.activeElement === note).toBe(true));
     expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
   });
@@ -232,28 +239,31 @@ describe('Enter on a row', () => {
 });
 
 describe('an approval', () => {
-  test('says what it wants to run and how risky that is, and offers the note as Add a note', async () => {
-    const { container, findByTestId, getByLabelText, getByText } = open({ reviews: [APPROVAL] });
+  test('uses the shared detail with its tool, declared risk, and note', async () => {
+    const { container, getByLabelText, getByText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await fireEvent.click(rows(container)[0]!);
-    const wants = await findByTestId('review-wants');
-    expect(wants.textContent).toContain(REVIEWS_COPY.wantsToRun);
-    expect(wants.textContent).toContain('Issue refund');
-    expect(wants.querySelector('code')?.textContent).toBe('issue-refund');
-    expect(wants.textContent).toContain(REVIEWS_COPY.risk.high);
+    expect(container.querySelector('[data-cinder-layout="detail"]')).not.toBeNull();
+    expect(container.textContent).toContain('Issue refund');
+    expect(container.textContent).toContain('issue-refund');
+    expect(container.textContent).toContain('Dangerous');
     expect(
-      getByText(REVIEWS_COPY.toolApproval, { selector: '.ib-review-pane__eyebrow' }),
+      getByText(REVIEWS_COPY.toolApproval, {
+        selector: '.cinder-approval-card__detail-eyebrow span',
+      }),
     ).not.toBeNull();
-    expect(getByLabelText('Note Optional').getAttribute('placeholder')).toBe(
+    expect(getByLabelText('Note (optional)').getAttribute('placeholder')).toBe(
       REVIEWS_COPY.notePlaceholder,
     );
   });
 
-  test('offers Allow for the rest of the chat', async () => {
+  test('offers a remembered-approval checkbox', async () => {
     const { container, findByRole } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await fireEvent.click(rows(container)[0]!);
-    expect(await findByRole('button', { name: REVIEWS_COPY.allowForChat })).not.toBeNull();
+    expect(
+      await findByRole('checkbox', { name: /allow .* for the rest of this chat/i }),
+    ).not.toBeNull();
   });
 
   test('does not offer it for a tool that asks every time, which allowing would not change', async () => {
@@ -268,7 +278,7 @@ describe('an approval', () => {
     await waitFor(() => expect(rows(container).length).toBe(1));
     await fireEvent.click(rows(container)[0]!);
     await findByRole('button', { name: 'Approve' });
-    expect(queryByRole('button', { name: REVIEWS_COPY.allowForChat })).toBeNull();
+    expect(queryByRole('checkbox', { name: /allow .* for the rest of this chat/i })).toBeNull();
   });
 });
 

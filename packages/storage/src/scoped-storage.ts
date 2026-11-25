@@ -190,6 +190,7 @@ export class ScopedStorage implements Storage {
   async conditionalBatch(
     conditions: ConditionalBatchCondition[],
     operations: BatchOperation[],
+    deadline?: number,
   ): Promise<boolean> {
     return storageConditionalBatch(
       this.#storage,
@@ -198,6 +199,7 @@ export class ScopedStorage implements Storage {
         expectedValue: condition.expectedValue,
       })),
       this.#toInnerOperations(operations),
+      deadline,
     );
   }
 

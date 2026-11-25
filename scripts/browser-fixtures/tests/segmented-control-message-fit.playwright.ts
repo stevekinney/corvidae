@@ -26,7 +26,7 @@ for (const fixtureName of ['described-narrow', 'error-narrow'] as const) {
       const root = document.querySelector('[data-testid="narrow-container"]');
       const control = root?.querySelector('.cinder-segmented-control-container') ?? null;
       const message = root?.querySelector(
-        '.cinder-form-field__description, .cinder-form-field__error',
+        '.cinder-form-field__error[data-cinder-error], .cinder-form-field__description',
       );
       const group = root?.querySelector('[role="radiogroup"]') ?? null;
       return {

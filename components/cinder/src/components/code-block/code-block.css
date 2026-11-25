@@ -20,7 +20,10 @@
      * radius, the same step cards and dialogs use. At the control radius it read
      * as a hard-cornered plate at panel width. */
     border-radius: var(--cinder-radius-lg);
-    overflow: hidden;
+    /* The CopyButton owns a 44px coarse-pointer pseudo-target. Let it reach past the painted
+     * 24px face at this shell's edge; the viewport below is the only code/content scroller and
+     * keeps its own overflow clipping. */
+    overflow: visible;
     user-select: none;
   }
 
@@ -257,9 +260,8 @@
   }
 
   /* On a touch screen the copy button keeps its painted 24px box. CopyButton gives it the 44px hit
-   * area through a pseudo-element, so the block's layout never grows for a finger; the block's
-   * rounded clip trims that area's outer 6px at the top and inline end, and the painted 24px stays
-   * whole. */
+   * area through a pseudo-element, so the block's layout never grows for a finger. The shell leaves
+   * that target reachable at its outer edges; the viewport keeps code/content clipping. */
 
   .cinder-code-block .cinder-code-block__meta .cinder-copy-button:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
@@ -319,8 +321,10 @@
   .cinder-code-block--wrap .cinder-code-block__pre,
   .cinder-code-block--wrap :where(pre.shiki) {
     width: auto;
-    /* Break at whitespace; a token (a flag such as --notify) breaks inside itself only when it is
-     * longer than the whole line. `anywhere` would break any token wherever it ends. */
+    /* Break at whitespace and at the `<wbr>` after each slash, dot, colon and hyphen
+     * (`code-block-lines.ts`, since a browser offers no break after a slash); a part longer than
+     * the whole line breaks inside itself only then. `anywhere` would break any token wherever it
+     * ends. */
     overflow-wrap: break-word;
     white-space: pre-wrap;
   }
@@ -362,6 +366,20 @@
     text-indent: 0;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    vertical-align: top;
+  }
+
+  /* A word with a slash, dot, colon or hyphen in it (a URL, a path) is one box, like a flag: one
+   * that fits a row moves to the next row whole, and one wider than a row breaks inside itself at
+   * its `<wbr>`s, which sit after each of those, and never inside a part. A part wider than the
+   * row still breaks inside itself. */
+  .cinder-code-block--wrap .cinder-code-block__word {
+    display: inline-block;
+    max-inline-size: 100%;
+    /* The word is a box of its own, so it does not inherit its line's hanging indent. */
+    text-indent: 0;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
     vertical-align: top;
   }
 
@@ -544,14 +562,22 @@
      * button is the same 24px box as the meta row's, so Copy looks the same size in either stack. */
     --_cinder-code-block-float-size: 1.5rem;
     /* The coarse-pointer hit area is `touch-target-min` square and centred on the face, so it
-     * overhangs the face by half the difference. The root clips its overflow, so the inset is at
-     * least that overhang and the whole target stays inside the block. */
+     * overhangs the face by half the difference. The inset keeps the painted face aligned with the
+     * code's end padding while the shell leaves the target's outer edges reachable. */
     --_cinder-code-block-float-inset: max(
       var(--cinder-space-2),
       calc((var(--cinder-touch-target-min) - var(--_cinder-code-block-float-size)) / 2)
     );
-    --_cinder-code-block-float-reserve: calc(
+    /* The clipped root needs just enough block space for Copy's target. Visible language or status
+     * metadata can be wider inline, but must not turn that inline measurement into extra height.
+     * The component measures the painted metadata after mount, while this fallback keeps the
+     * original Copy-only rail during server rendering. */
+    --_cinder-code-block-float-target-size: calc(
       var(--_cinder-code-block-float-size) + 2 * var(--_cinder-code-block-float-inset)
+    );
+    --_cinder-code-block-float-reserve: max(
+      var(--_cinder-code-block-float-target-size),
+      var(--_cinder-code-block-float-meta-width, 0px)
     );
     /* The distance from the block's top to the middle of the first line: the block's padding plus
      * half a line box. The button is centred on it and, in a wrapping block, so is the end of the
@@ -568,9 +594,9 @@
     background: var(--cinder-code-block-background);
   }
 
-  /* The block is at least as tall as the button, so the clipped root never cuts it off. */
+  /* The block is at least as tall as Copy's target, so the clipped root never cuts it off. */
   .cinder-code-block--floating-meta:has(> .cinder-code-block__meta) {
-    min-block-size: var(--_cinder-code-block-float-reserve);
+    min-block-size: var(--_cinder-code-block-float-target-size);
   }
 
   /* A scrolling block keeps the scrollport's actual inline size independent from the copy rail.
@@ -612,8 +638,8 @@
     inset-block-start: var(--_cinder-code-block-first-line-centre);
     inset-inline-end: 0;
     z-index: 1;
-    /* The inset keeps the button's whole coarse hit area, which reaches past its painted edge,
-     * inside the block's clipped box. */
+    /* The inset aligns the painted button with the code's end padding. Its coarse target may reach
+     * past the shell, which intentionally leaves that interactive edge unclipped. */
     padding: 0 var(--_cinder-code-block-float-inset);
     transform: translateY(-50%);
   }

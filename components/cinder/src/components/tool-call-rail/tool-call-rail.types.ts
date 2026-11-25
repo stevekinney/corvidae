@@ -8,7 +8,8 @@ import type { HTMLAttributes } from 'svelte/elements';
  * - `approved`: finished after a person approved it; a green dot, because the approval is what the
  *   row is about ("Approved by you 10:33 AM, $18.50 refunded").
  * - `running`: under way; a spinner in place of the dot and "Running…" in place of a result.
- * - `waiting`: parked on a person's decision; an amber shield and "Waiting on you". It never folds.
+ * - `waiting`: parked on a person's decision; an amber shield and a warning "Waiting on you" Badge
+ *   right after the name. It never folds.
  * - `expired`: an approval deadline passed before a person decided; a neutral clock and "Approval
  *   expired". It never folds and is not a tool failure.
  * - `denied`: a person refused it; a neutral prohibition glyph and neutral words, never red and
@@ -60,6 +61,8 @@ export type ToolCallRailCall = {
    * block.
    */
   failure?: string | undefined;
+  /** The stored diagnostic for a failed call, shown below its human summary and available to copy. */
+  diagnostic?: string | undefined;
   /**
    * Whether the `children` snippet draws content under this call's row, such as the approval that
    * a `waiting` call is waiting on, or the approved one under a call that has been decided.
@@ -104,6 +107,12 @@ export type ToolCallRailLabels = {
   details?: string | undefined;
   /** The link on a failed call that asks the agent to retry. Defaults to "Ask the agent to retry". */
   retry?: string | undefined;
+  /** The ordinal beside a failed call. Defaults to `Step N of M`. */
+  step?: ((position: number, total: number) => string) | undefined;
+  /** The accessible name of the diagnostic copy control. Defaults to `Copy error`. */
+  copyError?: string | undefined;
+  /** The label after a diagnostic was copied. Defaults to `Copied`. */
+  errorCopied?: string | undefined;
   /** The link on a failed call that copies its input. Defaults to "Copy input". */
   copyInput?: string | undefined;
 };

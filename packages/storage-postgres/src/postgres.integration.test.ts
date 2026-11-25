@@ -16,6 +16,7 @@ import {
   runStorageWriteTimeContract,
 } from '@lostgradient/storage/testing';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createPGliteTestFixture } from './pglite.test-support.ts';
 import { PostgresStorage } from './postgres.ts';
 
@@ -42,6 +43,7 @@ runStorageCapabilityConformance('PostgresStorage', {
     scanConsistency: 'snapshot',
     atomicBatch: true,
     conditionalBatch: true,
+    conditionalBatchDeadline: true,
     boundedRangeDelete: true,
   },
 });
@@ -289,6 +291,48 @@ describe.skipIf(database === null)('PostgresStorage (live pg)', () => {
     expect(await storage.get('batch:kept')).toEqual(encode('value'));
     expect(await storage.get('batch:gone')).toBeNull();
     await storage.deletePrefix('batch:');
+  });
+
+  it('rejects and rolls back a conditional write whose deadline expires while blocked', async () => {
+    await using storage = await createLivePostgresStorage();
+    await storage.put('session', encode('active'));
+    await storage.put('grant', encode('old'));
+    const pool = new Pool({ connectionString: live().url });
+    const locker = await pool.connect();
+    let pending: Promise<boolean> | undefined;
+    try {
+      await locker.query('BEGIN');
+      await locker.query(`SELECT key FROM ${LIVE_TABLE} WHERE key = $1 FOR UPDATE`, ['grant']);
+      const deadline = Date.now() + 2_000;
+      pending = storage.conditionalBatch(
+        [{ key: 'session', expectedValue: encode('active') }],
+        [
+          { type: 'put', key: 'grant', value: encode('new') },
+          { type: 'put', key: 'code', value: encode('new') },
+        ],
+        deadline,
+      );
+      await waitUntil(
+        async () => {
+          const result = await pool.query(
+            `SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE $1) AS blocked`,
+            [`INSERT INTO "%${LIVE_TABLE}%`],
+          );
+          return result.rows[0].blocked === true;
+        },
+        { message: 'conditional write to wait for its locked row' },
+      );
+      await waitUntil(() => Date.now() >= deadline, { message: 'transaction deadline to expire' });
+      await locker.query('COMMIT');
+      expect(await pending).toBe(false);
+      expect(await storage.get('grant')).toEqual(encode('old'));
+      expect(await storage.get('code')).toBeNull();
+    } finally {
+      await locker.query('ROLLBACK');
+      locker.release();
+      if (pending) await pending;
+      await pool.end();
+    }
   });
 
   /**

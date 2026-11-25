@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 
+import { createProbeClientWithFetch } from '../__fixtures__/probe-client/fetch-operation-client.generated.ts';
 import { createProbeClient } from '../__fixtures__/probe-client/operation-client.generated.ts';
 import { testEventSchema } from '../handler/operation-handler.test-support.ts';
 import type { SubscriptionMessage } from './subscription-client.ts';
@@ -7,6 +8,7 @@ import type { SubscriptionMessage } from './subscription-client.ts';
 // The client below is generated from the fixture catalog, whose `probe.jobs.watch` subscription
 // declares `testEventSchema` as its `eventSchema`.
 const client = createProbeClient({ baseUrl: '/api' });
+const fetchClient = createProbeClientWithFetch({ baseUrl: '/api' });
 const controller = new AbortController();
 
 const messages = client['probe.jobs.watch'](
@@ -15,6 +17,17 @@ const messages = client['probe.jobs.watch'](
 );
 
 type Message = typeof messages extends AsyncIterable<infer Each> ? Each : never;
+type FetchMessage =
+  ReturnType<(typeof fetchClient)['probe.jobs.watch']> extends AsyncIterable<infer Each>
+    ? Each
+    : never;
+export const fetchParity: FetchMessage extends Message
+  ? Message extends FetchMessage
+    ? true
+    : false
+  : false = true;
+// @ts-expect-error subscriptions without an HTTP route are excluded.
+fetchClient['probe.jobs.audit'];
 type EventMessage = Extract<Message, { readonly type: 'event' }>;
 type SchemaEvent = z.output<typeof testEventSchema>;
 

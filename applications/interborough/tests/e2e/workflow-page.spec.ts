@@ -197,18 +197,18 @@ test.describe('the tab in the address', () => {
 });
 
 test.describe('the Runs tab', () => {
-  test('keeps the bar, every count at 0, over the compact empty state, whose hint names Start run', async ({
+  test('shows the shared first-use state without filters and names the header’s Start run', async ({
     page,
     checkA11y,
   }) => {
     await page.goto(`/workflows/${SEEDED_WORKFLOWS.digest}?tab=runs`);
     const runs = detail(page).getByTestId('workflow-recent-runs');
-    await expect(runs).toContainText(WORKFLOW_COPY.page.runs.emptyTitle);
-    await expect(runs.getByTestId('workflow-runs-hint')).toHaveText(
-      WORKFLOW_COPY.page.runs.emptyHint,
-    );
-    await expect(runs.getByRole('radio', { name: /^All\s*,\s*0$/ })).toBeVisible();
-    await expect(runs.getByRole('button', { name: TASK_COPY.startedByLabel })).toBeVisible();
+    const copy = WORKFLOW_COPY.page.runs;
+    const empty = runs.getByRole('group', { name: copy.emptyTitle });
+    await expect(empty).toHaveAttribute('data-cinder-kind', 'first-use');
+    await expect(runs.getByTestId('workflow-runs-hint')).toHaveText(copy.emptyHint);
+    await expect(runs.getByLabel(copy.filtersLabel, { exact: true })).toHaveCount(0);
+    await expect(runs.getByRole('button', { name: TASK_COPY.startedByLabel })).toHaveCount(0);
     // The action is the header's Start run; the empty state draws none of its own.
     await expect(runs.getByRole('button', { name: WORKFLOW_COPY.page.startAction })).toHaveCount(0);
     await expect(
@@ -235,7 +235,15 @@ test.describe('the Runs tab', () => {
     const runs = detail(page).getByTestId('workflow-recent-runs');
     const row = runs.locator(`[data-run="${runId}"]`);
     await expect(row).toBeVisible();
-    await expect(row).toContainText(TASK_COPY.list.kinds.person);
+    await expect(row).toContainText(WORKFLOW_COPY.page.runs.waitingSignalLabel);
+    await expect(row).toContainText(
+      [
+        TASK_COPY.list.kinds['agent-run'],
+        TASK_COPY.list.startedByViewer,
+        TASK_COPY.list.waitingForWorkflowSignal('e2e-page-runs-row-wait'),
+        TASK_COPY.list.stepOf(1, 1),
+      ].join(TASK_COPY.list.separator),
+    );
     await expect(runs.getByRole('radio', { name: /^All\s*,\s*1$/ })).toBeVisible();
     await expect(row.getByRole('link').first()).toHaveAttribute(
       'href',
@@ -427,7 +435,10 @@ test.describe('Start run', () => {
 });
 
 test.describe('the History tab', () => {
-  test('shows each version’s verdict against the current revision', async ({ page, request }) => {
+  test('shows both saved versions with their recorded compatibility and run counts', async ({
+    page,
+    request,
+  }) => {
     const id = 'e2e-page-history';
     created.add(id);
     await createWorkflowFile(request, id, {
@@ -439,7 +450,7 @@ test.describe('the History tab', () => {
     });
     expect((started.result as { started: string[] }).started).toHaveLength(1);
     const read = await bureau(request, 'bureau.workflows.get', { id });
-    await bureau(request, 'bureau.workflows.update', {
+    const updated = await bureau(request, 'bureau.workflows.update', {
       id,
       expectedHash: (read.result as { hash: string }).hash,
       definition: {
@@ -449,15 +460,23 @@ test.describe('the History tab', () => {
       },
     });
 
+    expect(updated.fault).toBeUndefined();
     await page.goto(`/workflows/${id}?tab=history`);
-    const version = detail(page).getByTestId('workflow-revisions').locator('[data-version]');
-    await expect(version).toHaveCount(1);
-    await expect(version.getByTestId('workflow-revision-verdict')).toContainText(
-      WORKFLOW_COPY.revisions.incompatible,
+    const versions = detail(page).getByTestId('workflow-revisions').locator('[data-version]');
+    await expect(versions).toHaveCount(2);
+    const current = versions.nth(0);
+    const initial = versions.nth(1);
+    const copy = WORKFLOW_COPY.revisions;
+    await expect(current.getByTestId('workflow-revision-title')).toContainText(
+      `Version 1.1.0, ${copy.current}`,
     );
-    await expect(version.getByTestId('workflow-revision-reasons')).toContainText(
-      WORKFLOW_COPY.revisions.reason('artifact-revision-mismatch'),
+    await expect(current.getByTestId('workflow-revision-verdict')).toContainText(copy.incompatible);
+    await expect(current).toContainText(copy.noRunsOnVersion);
+    await expect(initial.getByTestId('workflow-revision-title')).toContainText(
+      `Version 1.0.0, ${copy.older}`,
     );
+    await expect(initial.getByTestId('workflow-revision-verdict')).toContainText(copy.noComparison);
+    await expect(initial).toContainText(copy.runsOnVersion(1));
 
     await expect
       .poll(async () => {

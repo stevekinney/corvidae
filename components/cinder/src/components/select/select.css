@@ -596,8 +596,11 @@
     color: var(--cinder-text-muted);
   }
 
-  /* Docked sheet on a phone: clear the safe area. */
+  /* Docked sheet on a phone: clear the safe area and restore the shared floating surface's
+   * viewport width. This component's anchored-panel cap above otherwise wins the equal-specificity
+   * shared rule and leaves a 16px sliver of the page visible at the inline end. */
   .cinder-select__panel.cinder-popover[data-cinder-sheet='docked'] {
+    max-inline-size: none;
     padding-block-end: max(var(--cinder-space-1), env(safe-area-inset-bottom));
   }
 

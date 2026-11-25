@@ -15,16 +15,17 @@ import {
   billingThreadWithPartialReply,
   ENDED_PARTIAL_REPLY,
   endedOnToolCallMessages,
-  FAILED_PARTWAY_CAUSE,
   failedPartwayMessages,
   HELD_BY_PLUGIN_REASON,
   heldByPluginMessages,
   tasksOf,
 } from '../../../fixtures/chat-states.ts';
 import { CHAT_COPY } from '../../app/copy/chat.ts';
+import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import type { ProvidersSnapshot } from '../../lib/host-providers.ts';
 import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import ChatConversation from './chat-conversation.svelte';
+import ChatToasts from './chat-toasts.test-harness.svelte';
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
@@ -170,11 +171,39 @@ describe('a chat the server ended when it restarted (19b, 19c)', () => {
   });
 });
 
+// COR-2438: a chat whose run stopped with a call still parked on its approval offered Approve and
+// Deny, and Approve did nothing but say "No approval is waiting for this tool call."
+describe('a chat whose approval nothing waits on any more', () => {
+  test('never shows it waiting: no Approve or Deny, the reason, and no Waiting badge', async () => {
+    serve(heldByPluginMessages(), { hasKey: true, connected: true, context: { activity: 'idle' } });
+    const { container, findByText, queryByRole } = mount();
+
+    expect(await findByText(CHAT_COPY.approval.lapsed)).not.toBeNull();
+    expect(queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(queryByRole('button', { name: 'Deny' })).toBeNull();
+    const rows = [...container.querySelectorAll('[data-cinder-tool-call-row]')];
+    expect(rows.some((row) => row.textContent?.includes(CHAT_COPY.tools.noLongerWaiting))).toBe(
+      true,
+    );
+    // No warning Waiting badge: the row's Badge after the name is the neutral "No longer waiting".
+    const badges = [...container.querySelectorAll('.cinder-tool-call-rail__name > .cinder-badge')];
+    expect(badges.map((badge) => badge.textContent?.trim())).toEqual([
+      CHAT_COPY.tools.noLongerWaiting,
+    ]);
+    expect(badges.map((badge) => badge.getAttribute('data-cinder-variant'))).toEqual(['neutral']);
+    // Chat is told too, so no reminder rises over the composer for an approval nobody can answer.
+    expect(container.querySelector('[data-chat-approval-drawer]')).toBeNull();
+  });
+});
+
 describe('a chat waiting on an approval with no provider connected (19h)', () => {
   const messages = heldByPluginMessages();
+  // The Bureau says the chat waits on its person, as it does for a chat whose run has no live
+  // stream to attach to and an approval pending: the approval is still waiting (COR-2438).
+  const waiting = { activity: 'awaiting-input' };
 
   test('keeps Approve and Deny enabled, and leaves the Connect prompt to the blocked row alone (COR-2327 N4)', async () => {
-    serve(messages, { hasKey: false, connected: false });
+    serve(messages, { hasKey: false, connected: false, context: waiting });
     const { container, findByRole } = mount();
 
     const approve = await findByRole('button', { name: 'Approve' });
@@ -194,7 +223,7 @@ describe('a chat waiting on an approval with no provider connected (19h)', () =>
   });
 
   test('says nothing about a provider when one is connected', async () => {
-    serve(messages, { hasKey: true, connected: true });
+    serve(messages, { hasKey: true, connected: true, context: waiting });
     const { container, findByRole } = mount();
 
     await findByRole('button', { name: 'Approve' });
@@ -258,7 +287,7 @@ describe('an approval of an agent a disabled plugin holds back (19k, 20f)', () =
 
 describe('a reply that failed partway (19p)', () => {
   test('keeps the partial text, then the status line with Retry, and reads Failed', async () => {
-    serve(failedPartwayMessages(), {
+    const served = serve(failedPartwayMessages(), {
       answers: {
         'bureau.tasks.list': () => ({
           tasks: tasksOf('failed-partway').map((task) => ({ ...task, contextId: 'session-1' })),
@@ -269,19 +298,149 @@ describe('a reply that failed partway (19p)', () => {
     const { container, findByText, findByRole } = mount();
 
     expect(await findByText(/I can refund the full amount to the$/)).not.toBeNull();
-    const line = await findByText(
-      `The reply stopped partway: ${FAILED_PARTWAY_CAUSE.replace(/\.$/, '').replace(/^T/, 't')}.`,
-    );
-    expect(line.closest('.chat-note')?.hasAttribute('data-failed')).toBe(true);
+    const line = await findByText('This answer is incomplete.');
+    expect(line.closest('.chat-turn-outcome')?.getAttribute('data-kind')).toBe('failed');
     expect(await findByRole('button', { name: 'Retry' })).not.toBeNull();
+    const explanation = await findByRole('link', { name: 'Why it failed' });
+    expect(explanation.getAttribute('href')).toBe('/runs/run-states-failed#failure-explanation');
+    expect(explanation.closest('.chat-turn-outcome')?.getAttribute('data-kind')).toBe('failed');
     await waitFor(() =>
       expect(container.querySelector('[data-testid="chat-header"]')?.textContent).toContain(
         'Failed',
       ),
     );
+    await waitFor(() =>
+      expect(served.calls.some((call) => call.method === 'bureau.tasks.list')).toBe(true),
+    );
+    expect(container.querySelector('.weft-chat-strip')).toBeNull();
   });
 });
 
+describe('a reply the person stopped (COR-2437)', () => {
+  const BILLING = [{ id: 'user-1', role: 'user', content: 'Rename the billing tables' }] as Record<
+    string,
+    unknown
+  >[];
+  const canceled = (): unknown => ({
+    tasks: [
+      {
+        ...tasksOf('failed-partway')[0],
+        id: 'run-billing',
+        contextId: 'session-1',
+        status: 'canceled',
+        finishReason: 'aborted',
+        statusMessage: null,
+      },
+    ],
+    nextPageToken: null,
+  });
+
+  test('is Stopped on the turn with Discard and Continue, and no duplicate status line under it', async () => {
+    serve(billingThreadWithPartialReply(BILLING), { answers: { 'bureau.tasks.list': canceled } });
+    const { container, findByText, findByRole } = mount();
+
+    expect(await findByText(ENDED_PARTIAL_REPLY)).not.toBeNull();
+    const discard = await findByRole('button', { name: 'Discard' });
+    expect(discard.closest('.chat-turn-outcome')?.getAttribute('data-kind')).toBe('stopped');
+    expect(await findByRole('button', { name: 'Continue' })).not.toBeNull();
+    expect(container.textContent).not.toContain('The run was stopped.');
+  });
+
+  test('Discard removes the reply through the Bureau by its run, and the turn reads as the person’s message alone', async () => {
+    const thread = billingThreadWithPartialReply(BILLING);
+    const served = serve(thread, {
+      answers: {
+        'bureau.tasks.list': canceled,
+        'bureau.contexts.discardturn': (params) => {
+          // The Bureau removed the run's rows: the thread read again holds the person's message.
+          thread.splice(BILLING.length);
+          return { contextId: 'session-1', runId: params['runId'], removed: 1, revision: 4 };
+        },
+      },
+    });
+    const { container, findByText, findByRole } = mount();
+    expect(await findByText(ENDED_PARTIAL_REPLY)).not.toBeNull();
+
+    await fireEvent.click(await findByRole('button', { name: 'Discard' }));
+
+    await waitFor(() => expect(container.textContent?.includes(ENDED_PARTIAL_REPLY)).toBe(false));
+    const call = served.calls.find((entry) => entry.method === 'bureau.contexts.discardturn');
+    expect(call?.params).toMatchObject({ contextId: 'session-1', runId: 'run-billing' });
+    expect(String(call?.params['commandId'])).toMatch(/^discard:/);
+    expect(container.textContent).toContain('Rename the billing tables');
+    expect(container.querySelector('.chat-turn-outcome') === null).toBe(true);
+    // The run's task still says it was stopped, so the person's message keeps the plain line that
+    // says so, which tells why it has no reply, and offers nothing more to do.
+    expect(
+      notes(container).map((note) => note.textContent?.replaceAll(/\s+/g, ' ').trim()),
+    ).toEqual(['Stopped The run was stopped.']);
+    expect(notes(container)[0]?.querySelector('button') === null).toBe(true);
+  });
+});
+
+// COR-2437 review: a command the Bureau answered as in doubt stays in doubt for as long as it is
+// sent again, so the page sends a new one; it keeps a command only after a definite refusal of it.
+describe('the command a Discard or a Continue is sent under', () => {
+  const BILLING = [{ id: 'user-1', role: 'user', content: 'Rename the billing tables' }] as Record<
+    string,
+    unknown
+  >[];
+  const canceled = (): unknown => ({
+    tasks: [
+      {
+        ...tasksOf('failed-partway')[0],
+        id: 'run-billing',
+        contextId: 'session-1',
+        status: 'canceled',
+        finishReason: 'aborted',
+        statusMessage: null,
+      },
+    ],
+    nextPageToken: null,
+  });
+
+  for (const [method, button] of [
+    ['bureau.contexts.discardturn', 'Discard'],
+    ['bureau.contexts.resumeturn', 'Continue'],
+  ] as const) {
+    test(`${button} sends a new command after an answer of in doubt, and the same one after a definite refusal`, async () => {
+      const answers = [
+        new StubFault('Conflict', 409, 'in doubt', { reason: 'command-in-doubt' }),
+        new StubFault('Conflict', 409, 'refused', { reason: 'history-changed' }),
+        new StubFault('Conflict', 409, 'refused', { reason: 'history-changed' }),
+      ];
+      const served = serve(billingThreadWithPartialReply(BILLING), {
+        answers: {
+          'bureau.tasks.list': canceled,
+          [method]: () => {
+            throw answers.shift() ?? new Error('no more answers');
+          },
+        },
+      });
+      // A refused Discard or Continue says so in a toast, so the shell's toast host is beside it.
+      const { findByRole } = render(ChatToasts, {
+        props: {
+          page: ChatConversation,
+          pageProps: { sessionId: 'session-1', title: 'Plan the week', agentName: 'tool-runner' },
+          client: createQueryClient(),
+        },
+      } as never);
+      const commands = () =>
+        served.calls
+          .filter((entry) => entry.method === method)
+          .map((entry) => String(entry.params['commandId']));
+
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        await fireEvent.click(await findByRole('button', { name: button }));
+        await waitFor(() => expect(commands().length).toBe(attempt));
+      }
+
+      const [first, second, third] = commands();
+      expect(second).not.toBe(first);
+      expect(third).toBe(second);
+    });
+  }
+});
 describe('an existing chat with no message yet (COR-2285 V1)', () => {
   const withExamples = {
     'bureau.agents.list': () => ({
@@ -349,7 +508,13 @@ describe('a chat whose history has not arrived yet (COR-2327 B3)', () => {
       {
         'bureau.agents.list': withExamples['bureau.agents.list'],
         'bureau.agents.models': () => ({ selectable: true, models: [SONNET], default: SONNET }),
-        'bureau.contexts.get': () => ({ ...CONTEXT, agentName: 'tool-runner', configVersion: 1 }),
+        // Waiting on its person, so the approval the history holds is still waiting (COR-2438).
+        'bureau.contexts.get': () => ({
+          ...CONTEXT,
+          agentName: 'tool-runner',
+          configVersion: 1,
+          activity: 'awaiting-input',
+        }),
         'bureau.contexts.window': () => ({
           maxTokens: 200_000,
           usedEstimated: 76_000,

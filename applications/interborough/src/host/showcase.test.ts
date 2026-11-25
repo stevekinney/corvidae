@@ -33,12 +33,12 @@ describe('splitShowcaseFlag', () => {
 });
 
 describe('showcaseEnvironment', () => {
-  test('defaults the home to tmp/interborough-showcase in the repository, and keeps the rest', () => {
+  test('defaults the home to tmp/interborough-fixtures/showcase in the repository, and keeps the rest', () => {
     const environment = showcaseEnvironment({ INTERBOROUGH_PORT: '7000' }, '/repository');
-    expect(environment['INTERBOROUGH_HOME']).toBe('/repository/tmp/interborough-showcase');
+    expect(environment['INTERBOROUGH_HOME']).toBe('/repository/tmp/interborough-fixtures/showcase');
     expect(environment['INTERBOROUGH_PORT']).toBe('7000');
     expect(showcaseEnvironment({ INTERBOROUGH_HOME: '' }, '/repository')['INTERBOROUGH_HOME']).toBe(
-      '/repository/tmp/interborough-showcase',
+      '/repository/tmp/interborough-fixtures/showcase',
     );
   });
 
@@ -47,7 +47,7 @@ describe('showcaseEnvironment', () => {
       { INTERBOROUGH_HOME: '/Users/me/.interborough' },
       '/repository',
     );
-    expect(environment['INTERBOROUGH_HOME']).toBe('/repository/tmp/interborough-showcase');
+    expect(environment['INTERBOROUGH_HOME']).toBe('/repository/tmp/interborough-fixtures/showcase');
   });
 
   test('uses INTERBOROUGH_SHOWCASE_HOME when it names a directory', () => {
@@ -56,6 +56,14 @@ describe('showcaseEnvironment', () => {
         INTERBOROUGH_HOME: '/Users/me/.interborough',
         INTERBOROUGH_SHOWCASE_HOME: '/scratch/showcase',
       },
+      '/repository',
+    );
+    expect(environment['INTERBOROUGH_HOME']).toBe('/scratch/showcase');
+  });
+
+  test('places the default home inside an explicit disposable root', () => {
+    const environment = showcaseEnvironment(
+      { INTERBOROUGH_SHOWCASE_ROOT: '/scratch' },
       '/repository',
     );
     expect(environment['INTERBOROUGH_HOME']).toBe('/scratch/showcase');

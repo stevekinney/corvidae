@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2609",
+  "branch": "steve/composable-velveteen-host",
+  "checkedAt": "c16cd59fc2cfc6e07cd16faf48aeb4cdadf78fb8",
+  "briefVersion": "1608f66a7761",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Exact c16cd59f direct starter Chromium passed. An unrelated installed consumer built and started in development and production, mounted the service, and rendered the protected catalog. Public generated Fetch and Svelte read paths and the added operation both executed."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Exact c16cd59f direct starter Chromium passed. Initial hydration read only initial. A was aborted and later settled. Final B was unchanged and reads were exactly [initial,A,B]. The ambiguous command ran once."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Named test:server passed 53 on exact initial source. The fixture-only c1 corrects no server or server-test input. Both external and event.fetch cases witnessed withdrawal of response authority and propagation of stream cancellation."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Exact c16cd59f direct starter Chromium passed. The added operation regenerated and was called through both clients. The transport and router compared byte for byte before and after regeneration."
+    }
+  ]
+}

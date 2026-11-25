@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2650",
+  "branch": "steve/cor-2650-run-inspector-browser",
+  "checkedAt": "2ffea241b86c1439272605a655bbaa4fcdf6eab4",
+  "briefVersion": "c3d2cebdeabb",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Keyboard activation and held/settled timeline probe implemented; browser CI pending."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Seeded history and single slow-update assertions preserved; browser CI pending."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Controlled timeline route barrier; no added sleeps, retries, deadlines, or skipped assertions."
+    }
+  ]
+}

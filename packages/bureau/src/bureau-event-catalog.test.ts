@@ -102,6 +102,7 @@ import {
   ToolErrorRecordedEvent,
   ToolPolicyDeniedRecordedEvent,
   RunLoopingEvent,
+  RunOverspendingEvent,
   RunRemovedEvent,
   RunSettledEvent,
   RunStalledEvent,
@@ -271,6 +272,9 @@ const EVENTS: Record<
   },
   'run.looping': {
     sparsest: () => new RunLoopingEvent('run-1', '2026-11-19T12:00:00.000Z', 'warning'),
+  },
+  'run.overspending': {
+    sparsest: () => new RunOverspendingEvent('run-1', '2026-11-19T12:00:00.000Z', 0.5, 0.25),
   },
   'tool.policy-denied': {
     sparsest: () =>
@@ -909,6 +913,13 @@ describe('the guardrail, budget and tool kinds (COR-2096)', () => {
       ['runId', false],
       ['since', false],
       ['level', false],
+    ],
+    // COR-2527: an overspending run names the run, when a step found it over, what it cost then and the threshold.
+    'run.overspending': [
+      ['runId', false],
+      ['since', false],
+      ['costUsd', false],
+      ['thresholdUsd', false],
     ],
     'tool.policy-denied': TOOL_FIELDS,
     'tool.error': [...TOOL_FIELDS, ['errorCode', false]],

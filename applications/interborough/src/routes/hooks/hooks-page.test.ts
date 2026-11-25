@@ -13,6 +13,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { chooseFilterOption } from '../../../tests/dom.test-support.ts';
 import { RETRY_LABEL } from '../../app/copy/views.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
+import { taskFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import {
   installBureauStub,
   StubFault,
@@ -146,6 +147,8 @@ function open(
     /** A home that keeps hooks off answers every hooks call with this fault. */
     off?: boolean;
     workflows?: { id: string; state: string; paused: boolean }[];
+    /** Runs named by a delivery body, returned through the normal owner-checked task read. */
+    tasks?: ReturnType<typeof taskFixture>[];
     schedules?: unknown[];
     /** A remote home says so at `/host/paths`. */
     hostMode?: 'local' | 'remote';
@@ -306,6 +309,11 @@ function open(
         rows.map((candidate) => (candidate === target ? sent : candidate)),
       );
       return sent;
+    },
+    'bureau.tasks.get': (params) => {
+      const task = options.tasks?.find((candidate) => candidate.id === params['taskId']);
+      if (task === undefined) throw new StubFault('NotFound', 404, 'No such task.');
+      return task;
     },
     'bureau.events.catalog': () => ({ events: CATALOG }),
     'bureau.agents.list': () => ({ agents: [AGENT] }),
@@ -704,6 +712,19 @@ describe('the hook editor', () => {
     expect(chosen.querySelector('code')).toBeNull();
   });
 
+  test('keeps the Check actions in one Cinder FormActions group, Save hook before Send a test event', async () => {
+    const { view } = open([], { path: '/hooks/new' });
+    await view.findByRole('heading', { level: 1, name: HOOKS_COPY.editor.newTitle });
+
+    const actions = view.getByRole('group', { name: 'Form actions' });
+    expect(actions).toHaveClass('cinder-form-actions');
+    expect(
+      within(actions)
+        .getAllByRole('button')
+        .map((button) => button.textContent?.trim()),
+    ).toEqual([HOOKS_COPY.editor.check.create, HOOKS_COPY.editor.check.test]);
+  });
+
   test('makes a webhook hook from an event and an address, which the Bureau signs with a secret it makes', async () => {
     const { view } = open([], { path: '/hooks/new' });
     await view.findByRole('heading', { level: 1, name: HOOKS_COPY.editor.newTitle });
@@ -1046,9 +1067,11 @@ describe('the hook editor', () => {
     expect(actions?.querySelectorAll('a')).toHaveLength(1);
     expect(actions?.textContent?.trim()).toBe(HOOKS_COPY.editor.webhook.seePayload);
     // The result sits directly under the buttons, and Save hook is first.
-    const buttons = view.getByRole('button', { name: HOOKS_COPY.editor.check.test }).parentElement;
-    expect(buttons?.firstElementChild?.textContent).toContain(HOOKS_COPY.editor.check.save);
-    expect(buttons?.nextElementSibling).toBe(result);
+    const formActions = view.getByRole('group', { name: 'Form actions' });
+    expect(within(formActions).getAllByRole('button')[0]?.textContent?.trim()).toBe(
+      HOOKS_COPY.editor.check.save,
+    );
+    expect(formActions.nextElementSibling === result).toBe(true);
     await within(deliveries).findByText(HOOKS_COPY.editor.deliveries.testEvent);
     await waitFor(() => expect(deliveries.textContent).toContain('Delivered, 200 OK'));
   });
@@ -1498,8 +1521,8 @@ describe('the steps of a saved hook', () => {
     const { view } = open([hook('alpha')], { path: '/hooks/alpha' });
     const sentence = await view.findByTestId('hook-sentence');
     expect(sentence.textContent).toBe('When a review is waiting, send a webhook to example.com.');
-    const save = view.getByRole('button', { name: HOOKS_COPY.editor.check.save });
-    expect(sentence.nextElementSibling).toBe(save.parentElement);
+    const formActions = view.getByRole('group', { name: 'Form actions' });
+    expect(sentence.nextElementSibling === formActions).toBe(true);
   });
 
   test('on a phone When and Then are one-line summaries that open to their fields', async () => {
@@ -1667,6 +1690,40 @@ describe('while the hook is read', () => {
     expect(view.queryByTestId('hook-header')).toBeNull();
     expect(view.container.querySelector('h2.ib-hook-step__title')).toBeNull();
     expect(view.queryByRole('button', { name: HOOKS_COPY.editor.check.save })).toBeNull();
+  });
+
+  test('retries a failed hook read and restores the editor', async () => {
+    const refuse: Record<string, StubFault> = {
+      'bureau.hooks.get': new StubFault('EngineFailure', 500, 'It broke.'),
+    };
+    const { view } = open([hook('alpha')], { path: '/hooks/alpha', refuse });
+
+    await view.findByRole('heading', { level: 1, name: HOOKS_COPY.editor.loadFailed });
+    expect(view.getAllByText(HOOKS_COPY.editor.loadFailed)).toHaveLength(1);
+    expect(view.queryByLabelText(HOOKS_COPY.editor.check.nameLabel)).toBeNull();
+
+    const failedReads = stub?.callsTo('bureau.hooks.get').length ?? 0;
+    delete refuse['bureau.hooks.get'];
+    await fireEvent.click(view.getByRole('button', { name: RETRY_LABEL }));
+
+    await view.findByLabelText(HOOKS_COPY.editor.check.nameLabel);
+    expect(stub?.callsTo('bureau.hooks.get').length).toBeGreaterThan(failedReads);
+  });
+
+  test('keeps a stale hook header and places its failed refresh below it', async () => {
+    const refuse: Record<string, StubFault> = {};
+    const { view } = open([hook('alpha')], { path: '/hooks/alpha', refuse });
+    await view.findByTestId('hook-header');
+
+    const reads = stub?.callsTo('bureau.hooks.get').length ?? 0;
+    refuse['bureau.hooks.get'] = new StubFault('EngineFailure', 500, 'It broke.');
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.get').length).toBeGreaterThan(reads));
+    await view.findByRole('heading', { level: 2, name: HOOKS_COPY.editor.loadFailed });
+    expect(view.getByTestId('hook-header')).not.toBeNull();
+    expect(view.getAllByText(HOOKS_COPY.editor.loadFailed)).toHaveLength(1);
   });
 });
 
@@ -1885,7 +1942,7 @@ describe('a hook’s delivery log', () => {
         headers: {},
         body: JSON.stringify({
           kind: 'run.error',
-          payload: { runId: 'run-1', step: 2, error: 'GitHub didn’t answer (HTTP 503)' },
+          payload: { runId: 'run-1', step: 2, errorCode: 'upstream-unavailable' },
         }),
       },
     });
@@ -1930,12 +1987,13 @@ describe('a hook’s delivery log', () => {
       deliveries: {
         alpha: [gaveUpDelivery('alpha'), delivery('alpha', 'delivered', { id: 'delivery-ok' })],
       },
+      tasks: [taskFixture({ id: 'run-1', workflow: { type: 'release-notes' } as never })],
     });
     const deliveries = await view.findByTestId('hook-deliveries');
     await within(deliveries).findByTestId('hook-delivery-list');
     expect(within(deliveries).getByRole('heading', { name: copy.heading })).not.toBeNull();
     expect(logItem(deliveries, 'delivery-gave-up')?.textContent).toContain('Gave up');
-    expect(logItem(deliveries, 'delivery-gave-up')?.textContent).toContain('A run fails');
+    expect(logItem(deliveries, 'delivery-gave-up')?.textContent).toContain('Release notes');
     expect(logItem(deliveries, 'delivery-ok')?.textContent).toContain('Delivered, 200 OK');
     expect(deliveries.textContent).not.toContain(String.fromCodePoint(0xb7));
 
@@ -1964,6 +2022,14 @@ describe('a hook’s delivery log', () => {
     const { view } = open([hook('alpha')], {
       path: '/hooks/alpha',
       deliveries: { alpha: [gaveUpDelivery('alpha')] },
+      tasks: [
+        taskFixture({
+          id: 'run-1',
+          workflow: { type: 'release-notes' } as never,
+          failure: { step: { label: 'Collect merged changes' } } as never,
+          statusMessage: 'GitHub did not answer (HTTP 503)',
+        }),
+      ],
     });
     const deliveries = await view.findByTestId('hook-deliveries');
     await within(deliveries).findByTestId('hook-delivery-list');
@@ -1974,11 +2040,11 @@ describe('a hook’s delivery log', () => {
       'events.pagerduty.com answered 410 Gone on all 8 tries, so Interborough stopped. The webhook URL may have been removed. Check the URL, then retry.',
     );
     const facts = within(item).getByTestId('hook-delivery-facts');
-    // The row above names the event in words, so the facts do not say it again; its raw kind shows
-    // only beside an event that reads alike (R10-23).
-    expect(facts.textContent).not.toContain(copy.facts.event);
+    // The authorized run makes this event fact identify the named record, including its raw kind.
+    expect(facts.textContent).toContain(copy.facts.event);
     expect(item.textContent).toContain('A run fails');
-    expect(facts.textContent).not.toContain('run.error');
+    expect(facts.textContent).toContain('Release notes');
+    expect(facts.textContent).toContain('run.error');
     expect(facts.textContent).toContain('events.pagerduty.com');
     expect(facts.textContent).toContain('410 Gone');
 
@@ -1991,7 +2057,14 @@ describe('a hook’s delivery log', () => {
     const payload = within(item).getByTestId('hook-delivery-payload');
     expect(payload.textContent).toContain(copy.payloadLabel);
     expect(payload.textContent).toContain('A run fails (run.error)');
-    expect(payload.textContent).toContain('GitHub didn’t answer (HTTP 503)');
+    expect(payload.textContent).toContain('upstream-unavailable');
+    expect(payload.textContent).not.toContain('GitHub did not answer (HTTP 503)');
+    const related = await within(item).findByTestId('hook-delivery-related-run');
+    expect(within(related).getByRole('link', { name: 'Release notes' }).getAttribute('href')).toBe(
+      '/runs/run-1',
+    );
+    expect(related.textContent).toContain('Step: Collect merged changes');
+    expect(related.textContent).toContain('Error: GitHub did not answer (HTTP 503)');
     expect(within(item).getByRole('button', { name: copy.retry })).not.toBeNull();
   });
 

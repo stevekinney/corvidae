@@ -114,6 +114,7 @@ async function main(): Promise<number> {
       'bureau.reviews.resolve',
       'bureau.workflows.get',
       'bureau.workflows.update',
+      'bureau.runs.compare',
     ]);
     const listedTools: Array<{ name: string; _meta?: { ui?: { visibility?: unknown } } }> =
       tools?.result?.tools ?? [];

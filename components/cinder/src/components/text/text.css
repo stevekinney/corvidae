@@ -19,6 +19,12 @@
     text-wrap: wrap;
   }
 
+  /* An opt-in readable measure: the run stops at about 70 characters, as a Section's description
+     stops at 60, so prose in a wide column keeps a comfortable line. Off by default. */
+  .cinder-text[data-cinder-measure] {
+    max-inline-size: 70ch;
+  }
+
   .cinder-text[data-cinder-variant='display'] {
     font-size: var(--cinder-text-display);
     font-weight: var(--cinder-font-semibold);

@@ -60,6 +60,22 @@
     min-block-size: var(--cinder-control-height-xs);
   }
 
+  /* A toggle chip is compact information in a filter row, including on touch. Its 44px coarse
+   * target is an invisible extension, not the painted 44px control-height token. */
+  @media (any-pointer: coarse) {
+    button.cinder-chip {
+      position: relative;
+      min-block-size: var(--_cinder-compact-control-height);
+    }
+
+    button.cinder-chip::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+  }
+
   /* ----------------------------------------
  * Size variants
  * ---------------------------------------- */

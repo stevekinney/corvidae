@@ -1,6 +1,30 @@
 import type { HumanInputSchema, PeerCallJournalEntry } from '@lostgradient/operative';
 import type { PendingToolApproval, SignedPendingToolApproval, ToolExecutionResult } from 'armorer';
 import type { ReviewDecisionRequest } from '../review-decision-record';
+import type { Principal } from '@lostgradient/backchannel';
+
+/** Trusted host policy for approvals whose authority and public effect are domain-specific. */
+export interface ReviewPolicy {
+  matches(review: PendingReview): boolean;
+  mayRead(review: PendingReview, principal: Principal): boolean | Promise<boolean>;
+  mayDecide(review: PendingReview, principal: Principal): boolean | Promise<boolean>;
+  effect(review: PendingReview): Promise<ReviewEffect | undefined>;
+}
+
+export interface ReviewEffect {
+  kind: 'refund';
+  refundId: string;
+  orderId: string;
+  cents: number;
+  currency: 'USD';
+  status:
+    | 'admitted'
+    | 'submitting'
+    | 'provider-pending'
+    | 'succeeded'
+    | 'failed'
+    | 'needs-reconciliation';
+}
 
 // ── Review queue (AB-20) ─────────────────────────────────────────────
 
@@ -144,6 +168,8 @@ export type SessionPendingReview =
  */
 export type ApprovalDecisionSurface = 'chat' | 'reviews';
 export interface ResolveReviewInput {
+  /** Verified by a trusted ingress; never populated from a request payload. */
+  reviewer?: Principal;
   /** The {@link PendingReview.id} to resolve. */
   id: string;
   /**
@@ -326,6 +352,8 @@ export interface ResolvedReview {
  * `bureau.reviews.*` operations served by `createBureauHandler` delegate to these members.
  */
 export interface BureauReviews {
+  /** Whether a remembered grant would loosen the current policy for this review. */
+  mayRemember(review: PendingReview): Promise<boolean>;
   /**
    * List every parked run awaiting human review (AB-20): armorer's
    * `needs_approval` tool-approval flow AND durable `requestHumanInput`

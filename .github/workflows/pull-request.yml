@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: pull-request-${{ github.event.pull_request.number }}
@@ -22,6 +23,38 @@ env:
   # Vercel Remote Cache, shared with the owner's machine; empty (a fork), remote caching is off.
   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
   TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+  CI_REPLAY_HEAD: ${{ github.event.pull_request.head.sha }}
+  CI_REPLAY_BASE: ${{ github.event.pull_request.base.sha }}
+  CI_REPLAY_FALLBACK: |
+    head=null; base=null; tree=null
+    [[ "${CI_REPLAY_HEAD:-}" =~ ^[a-f0-9]{40}$ ]] && head="\"$CI_REPLAY_HEAD\""
+    [[ "${CI_REPLAY_BASE:-}" =~ ^[a-f0-9]{40}$ ]] && base="\"$CI_REPLAY_BASE\""
+    if [ "$base" = null ]; then
+      candidate=$(git rev-parse origin/main 2>/dev/null || true)
+      [[ "$candidate" =~ ^[a-f0-9]{40}$ ]] && base="\"$candidate\""
+    fi
+    candidate=$(git rev-parse 'HEAD^{tree}' 2>/dev/null || true)
+    [[ "$candidate" =~ ^[a-f0-9]{40}$ ]] && tree="\"$candidate\""
+    printf '{"runId":%s,"attempt":%s,"job":"%s","head":%s,"base":%s,"tree":%s,"jobId":null,"jobIdUnavailable":"replay producer unavailable","toolchain":null,"command":null,"commandUnavailable":"replay producer unavailable","selection":[],"selectionUnavailable":"replay producer unavailable","assertion":null,"assertionUnavailable":"replay producer unavailable or failed","artifacts":{"junit":{"link":null,"reason":"replay producer unavailable"},"trace":{"link":null,"reason":"raw browser traces are not retained"}}}\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_JOB" "$head" "$base" "$tree" > "$RUNNER_TEMP/ci-replay-record.json"
+
+  CI_REPLAY_STAGE: |
+    set -eu
+    umask 077
+    stage="$RUNNER_TEMP/ci-replay-artifact"
+    mkdir -m 700 "$stage"
+    source="$RUNNER_TEMP/ci-replay-record.json"
+    [ -f "$source" ] && [ ! -L "$source" ]
+    cp -P "$source" "$stage/ci-replay-record.json"
+    [ -f "$stage/ci-replay-record.json" ] && [ ! -L "$stage/ci-replay-record.json" ]
+    if grep -Fq '"link": "ci-replay-junit.xml"' "$stage/ci-replay-record.json"; then
+      source="$RUNNER_TEMP/ci-replay-junit.xml"
+      if [ -f "$source" ] && [ ! -L "$source" ] && cp -P "$source" "$stage/ci-replay-junit.xml" && [ -f "$stage/ci-replay-junit.xml" ] && [ ! -L "$stage/ci-replay-junit.xml" ]; then
+        :
+      else
+        rm -f "$stage/ci-replay-junit.xml"
+        bun -e 'const fs = require("node:fs"); const path = process.argv[1]; const record = JSON.parse(fs.readFileSync(path, "utf8")); if (record?.artifacts?.junit?.link !== "ci-replay-junit.xml") process.exit(1); record.artifacts.junit = {link: null, reason: "sanitized JUnit unavailable at staging"}; fs.writeFileSync(path, JSON.stringify(record, null, 2) + String.fromCharCode(10), {mode: 0o600});' "$stage/ci-replay-record.json"
+      fi
+    fi
 
 jobs:
   static:
@@ -37,17 +70,47 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun --version
-      - run: bun install --frozen-lockfile
+      - run: bun scripts/chef/ci-replay.ts run -- bun install --frozen-lockfile
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
       - uses: ./.github/actions/turbo-cache/restore
         with:
           name: pr-static
-      - run: bun run format:check
-      - run: bun run lint:root
+      - run: bun scripts/chef/ci-replay.ts run -- bun run format:check
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
+      - run: bun scripts/chef/ci-replay.ts run -- bun run lint:root
         if: ${{ !cancelled() }}
-      - run: bun run typecheck:root
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
+      - run: bun scripts/chef/ci-replay.ts run -- bun run typecheck:root
         if: ${{ !cancelled() }}
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
+      - name: Retain first-failure replay record
+        id: replay
+        if: ${{ failure() }}
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
+        run: |
+          if command -v bun >/dev/null && [ -f scripts/chef/ci-replay.ts ]; then
+            bun scripts/chef/ci-replay.ts finalize || { [ -f "$RUNNER_TEMP/ci-replay-record.json" ] || bash -c "$CI_REPLAY_FALLBACK"; }
+          else
+            bash -c "$CI_REPLAY_FALLBACK"
+          fi
+          bash -c "$CI_REPLAY_STAGE"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ failure() && steps.replay.outcome == 'success' }}
+        with:
+          name: replay-static-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-replay-artifact
+          if-no-files-found: error
       - uses: ./.github/actions/turbo-cache/save
         if: ${{ !cancelled() }}
+        with:
+          replay_name: replay-static-${{ github.run_attempt }}
+          prior_status: ${{ job.status }}
+          replay_token: ${{ github.token }}
 
   workspaces:
     name: Affected workspaces lint and type-check
@@ -62,16 +125,42 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun --version
-      - run: bun install --frozen-lockfile
+      - run: bun scripts/chef/ci-replay.ts run -- bun install --frozen-lockfile
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
       - uses: ./.github/actions/turbo-cache/restore
         with:
           name: pr-workspaces
       # No Bun test worker starts here, so the test pool does not bound these tasks; the standard
       # runner has 4 vCPUs and 16 GB (public repositories). The root `turbo.json` caps at 34%, one
       # task here, for the shared 12-core development host.
-      - run: bunx turbo run lint typecheck --affected --continue --concurrency=4
+      - run: bun scripts/chef/ci-replay.ts run -- bunx turbo run lint typecheck --affected --continue --concurrency=4
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
+      - name: Retain first-failure replay record
+        id: replay
+        if: ${{ failure() }}
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
+        run: |
+          if command -v bun >/dev/null && [ -f scripts/chef/ci-replay.ts ]; then
+            bun scripts/chef/ci-replay.ts finalize || { [ -f "$RUNNER_TEMP/ci-replay-record.json" ] || bash -c "$CI_REPLAY_FALLBACK"; }
+          else
+            bash -c "$CI_REPLAY_FALLBACK"
+          fi
+          bash -c "$CI_REPLAY_STAGE"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ failure() && steps.replay.outcome == 'success' }}
+        with:
+          name: replay-workspaces-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-replay-artifact
+          if-no-files-found: error
       - uses: ./.github/actions/turbo-cache/save
         if: ${{ !cancelled() }}
+        with:
+          replay_name: replay-workspaces-${{ github.run_attempt }}
+          prior_status: ${{ job.status }}
+          replay_token: ${{ github.token }}
 
   tests:
     name: Affected fast-lane tests
@@ -88,25 +177,55 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun --version
-      - run: bun install --frozen-lockfile
+      - run: bun scripts/chef/ci-replay.ts run -- bun install --frozen-lockfile
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
       - uses: ./.github/actions/turbo-cache/restore
         with:
           name: pr-tests
       # A change that reaches the root workspace runs `test:browser-fixtures`, which needs Chromium.
-      - run: bunx playwright install --with-deps chromium
+      - run: bun scripts/chef/ci-replay.ts run -- bunx playwright install --with-deps chromium
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
       # Component packages' derived metadata (schemas, variables, manifests) is generated, not
       # committed: the steps below run tests and servers outside Turborepo, so make it first.
-      - run: bunx turbo run metadata
+      - run: bun scripts/chef/ci-replay.ts run -- bunx turbo run metadata
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
       # The Postgres suites start a disposable cluster with `initdb` and `pg_ctl` from PATH; the
       # runner image installs PostgreSQL but leaves its binaries off PATH (as in `main.yml`).
-      - run: printf '%s\n' /usr/lib/postgresql/*/bin | tail -n 1 >> "$GITHUB_PATH"
-      # `--isolated` adds the serial slow and integration lanes, narrowed to the selection: a
-      # change that reaches no such test runs none, so a broken integration test fails before merge
-      # at the cost of only the tests the change reaches. The `main` workflow's slow job runs them
-      # all, but only after the merge.
-      - run: bun scripts/affected-tests.ts run --isolated --base "$TURBO_SCM_BASE"
+      - run: bun scripts/chef/ci-replay.ts run -- bash scripts/chef/prepare-postgres-path.sh
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
+      - name: Run affected tests
+        env:
+          TEST_LANES: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS == 'true' && '--fast-only' || '--isolated' }}
+          CI_REPLAY_TOKEN: ${{ github.token }}
+        run: bun scripts/chef/ci-replay.ts run -- bun scripts/affected-tests.ts run "$TEST_LANES" --base "$TURBO_SCM_BASE"
+      - name: Retain first-failure replay record
+        id: replay
+        if: ${{ failure() }}
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
+        run: |
+          if command -v bun >/dev/null && [ -f scripts/chef/ci-replay.ts ]; then
+            bun scripts/chef/ci-replay.ts finalize || { [ -f "$RUNNER_TEMP/ci-replay-record.json" ] || bash -c "$CI_REPLAY_FALLBACK"; }
+          else
+            bash -c "$CI_REPLAY_FALLBACK"
+          fi
+          bash -c "$CI_REPLAY_STAGE"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ failure() && steps.replay.outcome == 'success' }}
+        with:
+          name: replay-tests-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-replay-artifact
+          if-no-files-found: error
       - uses: ./.github/actions/turbo-cache/save
         if: ${{ !cancelled() }}
+        with:
+          replay_name: replay-tests-${{ github.run_attempt }}
+          prior_status: ${{ job.status }}
+          replay_token: ${{ github.token }}
 
   # The browser suites run only when the change reaches them, by the selection the `workspaces` job
   # uses: Turborepo's affected packages, which include a workspace's dependents. Their own workflow
@@ -119,27 +238,45 @@ jobs:
       fixtures: ${{ steps.select.outputs.fixtures }}
       interborough: ${{ steps.select.outputs.interborough }}
     steps:
+      - name: Report paused browser suites
+        if: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS == 'true' }}
+        run: echo 'Automatic browser suites are paused. Use the Main workflow to run them manually.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}
         with:
           fetch-depth: 0
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}
         with:
           bun-version-file: package.json
-      - run: bun install --frozen-lockfile
+      - run: bun scripts/chef/ci-replay.ts run -- bun install --frozen-lockfile
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
+        if: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}
       - id: select
+        if: ${{ vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}
+        run: bun scripts/chef/ci-replay.ts run -- bash scripts/chef/select-browser-suites.sh
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
+      - name: Retain first-failure replay record
+        id: replay
+        if: ${{ failure() }}
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
         run: |
-          affected="$(bunx turbo ls --affected --output=json | jq -r '.packages.items[].name')"
-          workflow=false
-          if git diff --name-only "$TURBO_SCM_BASE...HEAD" | grep -qx '.github/workflows/browser-suites.yml'; then
-            workflow=true
+          if command -v bun >/dev/null && [ -f scripts/chef/ci-replay.ts ]; then
+            bun scripts/chef/ci-replay.ts finalize || { [ -f "$RUNNER_TEMP/ci-replay-record.json" ] || bash -c "$CI_REPLAY_FALLBACK"; }
+          else
+            bash -c "$CI_REPLAY_FALLBACK"
           fi
-          reaches() { [ "$workflow" = true ] || grep -qx "$1" <<< "$affected"; }
-          if reaches @lostgradient/browser-fixtures; then fixtures=true; else fixtures=false; fi
-          if reaches @lostgradient/interborough; then interborough=true; else interborough=false; fi
-          echo "fixtures=$fixtures" >> "$GITHUB_OUTPUT"
-          echo "interborough=$interborough" >> "$GITHUB_OUTPUT"
-          echo "Chromium fixtures: $fixtures; Interborough end-to-end: $interborough"
+          bash -c "$CI_REPLAY_STAGE"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ failure() && steps.replay.outcome == 'success' }}
+        with:
+          name: replay-browser-selection-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-replay-artifact
+          if-no-files-found: error
 
   browser:
     name: Browser suites
@@ -164,18 +301,40 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: package.json
-      - run: bun install --frozen-lockfile
+      - run: bun scripts/chef/ci-replay.ts run -- bun install --frozen-lockfile
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
       # A pull-request receipt names the PR head and base from the authenticated event payload;
       # the checked revision remains the merge checkout and is never presented as the PR head.
       - name: Record pull-request checkout identity and planned job states
+        id: receipt
         env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
           CI_EVIDENCE_NEEDS: ${{ toJSON(needs) }}
           CI_EVIDENCE_NOT_APPLICABLE: ${{ needs.browser-selection.outputs.fixtures != 'true' && needs.browser-selection.outputs.interborough != 'true' && '["browser"]' || '[]' }}
           CI_EVIDENCE_EXPECTED_JOBS: '["static","workspaces","tests","browser-selection","browser"]'
-        run: bun scripts/chef/ci-evidence-workflow.ts ci-evidence-receipt.json
+        run: bun scripts/chef/ci-replay.ts run -- bun scripts/chef/ci-evidence-workflow.ts ci-evidence-receipt.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ always() }}
         with:
           name: ci-evidence-receipt-${{ github.run_attempt }}
           path: ci-evidence-receipt.json
+          if-no-files-found: error
+      - name: Retain first-failure replay record
+        id: replay
+        if: ${{ always() && job.status == 'failure' }}
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
+        run: |
+          if command -v bun >/dev/null && [ -f scripts/chef/ci-replay.ts ]; then
+            bun scripts/chef/ci-replay.ts finalize || { [ -f "$RUNNER_TEMP/ci-replay-record.json" ] || bash -c "$CI_REPLAY_FALLBACK"; }
+          else
+            bash -c "$CI_REPLAY_FALLBACK"
+          fi
+          bash -c "$CI_REPLAY_STAGE"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ failure() && steps.replay.outcome == 'success' }}
+        with:
+          name: replay-evidence-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-replay-artifact
           if-no-files-found: error

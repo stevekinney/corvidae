@@ -35,7 +35,9 @@
       {...statusLabel ? { label: statusLabel } : {}}
     />
   {/if}
-  <p class="cinder-spotlight__value">{value}</p>
+  <p class="cinder-spotlight__value">
+    {#if typeof value === 'string'}{value}{:else}{@render value()}{/if}
+  </p>
   {#if caveat && action}
     <div class="cinder-spotlight__action">{@render action()}</div>
     <p class="cinder-spotlight__caveat">{@render caveat()}</p>

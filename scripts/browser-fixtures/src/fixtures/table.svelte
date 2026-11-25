@@ -2,6 +2,7 @@
   import {
     Button,
     Card,
+    DataTable,
     Table,
     TableBody,
     TableCell,
@@ -11,6 +12,8 @@
     type TableDensity,
   } from '@lostgradient/cinder';
 
+  const showCurrent = new URLSearchParams(globalThis.location.search).has('current');
+  let openContributor = $state('ada');
   const headerTokens = new URLSearchParams(globalThis.location.search).get('header-tokens') === '1';
   const densities = ['comfortable', 'condensed', 'spacious'] as const satisfies TableDensity[];
 
@@ -158,6 +161,32 @@
     </div>
   </div>
 </div>
+
+{#if showCurrent}
+  <div data-testid="plain-current">
+    <Table aria-label="Current contributor">
+      <TableHeader><TableRow><TableHeaderCell>Name</TableHeaderCell></TableRow></TableHeader>
+      <TableBody>
+        <TableRow current><TableCell>Ada Lovelace</TableCell></TableRow>
+        <TableRow><TableCell>Grace Hopper</TableCell></TableRow>
+      </TableBody>
+    </Table>
+  </div>
+  <div data-testid="data-open">
+    <DataTable
+      columns={[{ key: 'name', label: 'Name' }]}
+      rows={[{ id: 'ada', name: 'Ada Lovelace' }]}
+      openRowId={openContributor}
+      onRowOpen={(row) => (openContributor = row.id)}
+    />
+  </div>
+  <div data-testid="stacked-current">
+    <Table aria-label="Current contributor at narrow width" fit>
+      <TableHeader><TableRow><TableHeaderCell>Name</TableHeaderCell></TableRow></TableHeader>
+      <TableBody><TableRow current><TableCell>Ada Lovelace</TableCell></TableRow></TableBody>
+    </Table>
+  </div>
+{/if}
 
 <style>
   .table-fixture {

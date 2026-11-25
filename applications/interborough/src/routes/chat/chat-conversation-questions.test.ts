@@ -213,7 +213,7 @@ describe('a question with choices', () => {
     const { bodies } = serve(ask(CHOICES));
     const { findByRole, findByText } = await open();
     await findByRole('radio', { name: 'staging' });
-    expect(await findByText('Press 1 to 9 to pick a choice.')).not.toBeNull();
+    expect(await findByText('Press 1 to 2 to pick a choice.')).not.toBeNull();
 
     expect(press('9')).toBe(true);
     expect(bodies).toHaveLength(1);
@@ -329,10 +329,16 @@ describe('a question in the transcript, answered with an Undo window', () => {
 
   test('is the last item of the transcript, with the payload’s own descriptions', async () => {
     serve(ask(RELEASE_CHOICES));
-    const { container, findByText } = await open();
+    const { container, findByRole, findByText } = await open();
 
     expect(await findByText('Deploys to the staging site')).not.toBeNull();
     expect(await findByText('Deploys to the live site')).not.toBeNull();
+    await fireEvent.click(await findByRole('button', { name: 'Reply in chat' }));
+    await waitFor(() =>
+      expect(
+        container.querySelector('.weft-chat-question')?.closest('.chat-timeline'),
+      ).not.toBeNull(),
+    );
     const question = container.querySelector('.weft-chat-question');
     expect(question?.closest('.chat-timeline')).not.toBeNull();
     // The card is after the last message, before the transcript's end sentinel.
@@ -358,6 +364,13 @@ describe('a question in the transcript, answered with an Undo window', () => {
     expect(staging.getAttribute('aria-checked')).toBe('true');
     expect(getAllByRole('button', { name: /Undo/ })).toHaveLength(1);
     expect(container.querySelector('textarea')?.hasAttribute('readonly')).toBe(true);
+    // The held answer owns this dock until Undo settles, so it cannot move into the transcript.
+    const replyInChat = await findByRole('button', { name: 'Reply in chat' });
+    expect(replyInChat).toBeDisabled();
+    expect(replyInChat.getAttribute('title')).toBe(
+      'Reply in chat is available after Undo expires.',
+    );
+    expect(staging.closest('[data-docked]')).not.toBeNull();
     // Nothing has gone to the run yet, and the number keys pick nothing more.
     expect(bodies).toHaveLength(1);
     expect(press('2')).toBe(true);

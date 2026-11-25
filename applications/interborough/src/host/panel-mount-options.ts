@@ -63,6 +63,9 @@ export function hostPanelMountOptions(options: {
   return {
     ...(prebuiltDirectory === undefined ? {} : { prebuiltDirectory }),
     dependencies: variableOf(environment, PLUGIN_RUNTIME_DIRECTORY_VARIABLE) ?? HOST_DEPENDENCIES,
+    ...(environment['INTERBOROUGH_STARTUP_PROFILE'] === '1'
+      ? { observe: (event) => log(`STARTUP ${JSON.stringify({ stage: 'panel', ...event })}`) }
+      : {}),
     cache: createPanelBuildCache({
       ...(cacheDirectory === undefined ? {} : { directory: cacheDirectory }),
       report: log,

@@ -13,6 +13,11 @@ function ruleOf(source: string, selector: string): string {
 // their own, and the transcript and its composer share one reading column centred in the pane. The
 // browser specifications measure the result; these keep the rules from being dropped.
 describe('the chat page’s layout', () => {
+  test('lets the outlet shrink above the phone tabs instead of letting its composer overflow them', async () => {
+    const rule = ruleOf(await read('./foundation.css'), '.weft-shell-main');
+    expect(rule).toMatch(/min-height:\s*0;/);
+  });
+
   test('the list and the open chat draw no frame around them', async () => {
     const rule = ruleOf(await read('./chat.css'), '.ib-chats');
     expect(rule).not.toMatch(/(^|[\s;{])border(-radius)?\s*:/);
@@ -63,9 +68,16 @@ describe('the chat page’s layout', () => {
     const source = await read('../routes/chat/chat-conversation.svelte');
     expect(source).toContain('class="weft-chat-head cinder-translucent-surface"');
     // Chat owns the property's name; the page writes it through Chat's constant.
-    expect(source).toContain(
-      'owner.style.setProperty(\n        CHAT_OVERLAY_INSET_START_PROPERTY,',
-    );
+    expect(source).toMatch(/owner\.style\.setProperty\(\s*CHAT_OVERLAY_INSET_START_PROPERTY,/);
+  });
+
+  // COR-2438: at 375 the details' Copy session ID ran to 398, past the screen.
+  test('the chat details are as wide as their content, at most 360px and never wider than the screen', async () => {
+    const rule = ruleOf(await read('./chat.css'), '.weft-chat-details');
+    expect(rule).toMatch(/inline-size:\s*max-content/);
+    expect(rule).toMatch(/max-inline-size:\s*min\(22\.5rem, calc\(100vw - 2\.5rem\)\)/);
+    // A percentage of the popover follows the popover's own first, narrow placement.
+    expect(rule).not.toMatch(/max-inline-size:[^;]*%/);
   });
 
   test('the conversation is one centred reading column of at most 760px', async () => {

@@ -268,7 +268,7 @@ export function createProbeClient(connection: JsonRpcHttpConnection): CatalogOpe
     ),
     ...createSubscriptionClient<SubscriptionOperationTypes>(
       SUBSCRIPTION_OPERATION_NAMES,
-      sseSubscriptionTransport({ ...connection, routePrefix: "/v1/subscriptions" }),
+      sseSubscriptionTransport({ ...connection, routePrefix: "/probe/v1/subscriptions" }),
     ),
   };
 }

@@ -48,6 +48,7 @@
     density = 'comfortable',
     scrollable = true,
     stackBelow = '640px',
+    fit = false,
     cell,
     rowMessage,
     hasRowMessage,
@@ -618,6 +619,7 @@
     {stickyHeader}
     {density}
     scrollable={false}
+    {fit}
     {stackBelow}
     bind:sort
   >

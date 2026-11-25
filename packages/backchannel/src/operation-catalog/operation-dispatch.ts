@@ -39,6 +39,7 @@ export async function dispatchOperation<Input, SchemaOutput, Host>(
   const prepared = await prepareTypedInput(operation, rawInput, context);
   if (!prepared.ok) return prepared;
   try {
+    if (context.transport === 'mcp') context.signal?.throwIfAborted();
     return await invokeWithInterceptors(operation, prepared.value, context);
   } catch (error) {
     return { ok: false, fault: classifyEngineError(error, operation, context.faultPolicy) };
@@ -55,6 +56,7 @@ async function invokeWithInterceptors<Input, SchemaOutput, Host>(
   const invoke = async (): Promise<DispatchResult<unknown>> => {
     if (settled)
       return { ok: false, fault: { code: 'EngineFailure', message: 'internal error', data: {} } };
+    if (context.transport === 'mcp') context.signal?.throwIfAborted();
     const value = await operation.invoke(invocation);
     tracePipeline(context.pipelineTrace, 'invoked');
     if (operation.kind === 'subscription' && isSubscriptionInvocation(value)) {
@@ -155,4 +157,14 @@ async function prepareTypedInput<Input, SchemaOutput, Host>(
   if (authorizationFailure !== null) return authorizationFailure;
   tracePipeline(context.pipelineTrace, 'authorized');
   return { ok: true, value: invocation };
+}
+
+/** Evaluate transport, access, input, and application policy without invoking the operation. */
+export async function checkOperationPolicy<Input, SchemaOutput, Host>(
+  operation: OperationMetadata<Input, SchemaOutput, Host>,
+  rawInput: unknown,
+  context: DispatchContext<Host>,
+): Promise<DispatchResult<void>> {
+  const result = await prepareTypedInput(operation, rawInput, context);
+  return result.ok ? { ok: true, value: undefined } : result;
 }

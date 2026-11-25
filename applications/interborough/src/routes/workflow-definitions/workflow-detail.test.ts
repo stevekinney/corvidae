@@ -21,6 +21,7 @@ import {
   invalidFile,
   readyFile,
   runFixture,
+  savedVersionFixture,
   scheduleFixture,
   sourceDefinition,
   STUB_WORKFLOW_DIRECTORY,
@@ -70,7 +71,7 @@ function open(path: string, overrides: Partial<World> = {}) {
         scheduleFixture('elsewhere', 'something-else'),
       ],
       revisions: { digest: [REVISION] },
-      // Weft has an installed version that never ran; the Bureau's history must not show it.
+      // An engine-only install did not save the file, so it does not belong to its History.
       installedRevisions: { digest: [{ revision: 'version-saved-never-ran' }] },
       ...overrides,
     }),
@@ -284,7 +285,10 @@ describe('a code-defined type', () => {
     const all = [...root.querySelectorAll('a')].find(
       (link) => link.textContent?.trim() === WORKFLOW_COPY.runsAction,
     );
-    expect(all?.getAttribute('href')).toBe('/workflows/order-processing/runs');
+    expect(all?.getAttribute('href')).toBe('/health/runs?type=order-processing');
+    all?.click();
+    await waitFor(() => expect(router.pathname).toBe('/health/runs'));
+    expect(router.current.search.get('type')).toBe('order-processing');
   });
 
   test('shows its newest runs, newest first, each a link to the run', async () => {
@@ -316,6 +320,21 @@ describe('a code-defined type', () => {
     );
     // A run that has ended says how long it took, at the end of line two.
     expect(runs[1]?.textContent).toContain('3 s');
+  });
+
+  test('keeps a slash in the workflow type as one Health Runs filter value', async () => {
+    const { container } = open('/workflows/invoices%2Feu', {
+      definitions: [codeDefinition('invoices/eu')],
+    });
+    const root = await ready(container);
+    await openTab(root, TABS.runs);
+    const all = [...root.querySelectorAll('a')].find(
+      (link) => link.textContent?.trim() === WORKFLOW_COPY.runsAction,
+    );
+    expect(all?.getAttribute('href')).toBe('/health/runs?type=invoices%2Feu');
+    all?.click();
+    await waitFor(() => expect(router.pathname).toBe('/health/runs'));
+    expect(router.current.search.get('type')).toBe('invoices/eu');
   });
 
   test('shows the compact empty state when nothing has run it, whose hint names the header’s Start run', async () => {
@@ -434,7 +453,11 @@ describe('an agent-authored type', () => {
   test('leads with its title and identifier, what it is for, what starts it, and the agent it runs as, and shows Active by absence', async () => {
     const { container } = open('/workflows/digest', {
       files: [
-        readyFile('digest', { description: 'Writes the daily digest.', title: 'Daily digest' }),
+        readyFile('digest', {
+          description: 'Writes the daily digest.',
+          title: 'Daily digest',
+          agent: null,
+        }),
       ],
     });
     const root = await ready(container);
@@ -505,32 +528,69 @@ describe('an agent-authored type', () => {
     expect(signals?.textContent).not.toContain('pause-it');
   });
 
-  test('keeps the versions that have run on the History tab, shows none the engine merely installed, and cannot activate', async () => {
-    const { container } = open('/workflows/digest');
+  test('shows file versions that never ran and excludes engine-only installs', async () => {
+    const { container } = open('/workflows/digest', {
+      savedVersions: {
+        digest: [
+          savedVersionFixture('1.2.0', { runs: { count: 0, firstRunAt: null, lastRunAt: null } }),
+          savedVersionFixture('1.1.0', { current: false }),
+        ],
+      },
+    });
     const root = await ready(container);
     expect(testId(root, 'workflow-revisions')).toBeNull();
 
     await openTab(root, TABS.history);
     await waitFor(() =>
-      expect(testId(root, 'workflow-revisions')?.textContent).toContain('version-ran'),
+      expect(testId(root, 'workflow-revisions')?.textContent).toContain('Version 1.2.0'),
     );
-
     const revisions = testId(root, 'workflow-revisions');
+    expect(revisions?.textContent).toContain('Version 1.1.0');
     expect(revisions?.textContent).not.toContain('version-saved-never-ran');
     expect(stub?.callsTo('weft.workflows.revisions.list')).toEqual([]);
-    // The page reads the versions once, for the tab's count, and the tab shows that same list.
-    expect(stub?.callsTo('bureau.workflows.revisions')).toHaveLength(1);
-    expect(stub?.callsTo('bureau.workflows.revisions')[0]?.params).toEqual({ id: 'digest' });
-    // The only control on a version is the one that copies its hash; nothing activates it.
-    expect(revisions?.querySelector('button:not([aria-label^="Copy version"])')).toBeNull();
+    expect(stub?.callsTo('bureau.workflows.history')[0]?.params).toEqual({ id: 'digest' });
     expect(root.textContent).not.toContain('Activate');
+  });
+
+  test('uses the last saved trigger and shows four history versions even when none ran', async () => {
+    const { container } = open('/workflows/broken', {
+      savedVersions: {
+        broken: [
+          savedVersionFixture('1.3.0', {
+            trigger: { kind: 'signal', name: 'refund-requested' },
+            description: 'Waits for a person to approve an order refund.',
+            steps: [{ kind: 'activity', handler: 'agent', input: { agent: 'tool-runner' } }],
+          }),
+          ...['1.2.0', '1.1.0', '1.0.0'].map((version) =>
+            savedVersionFixture(version, { current: false }),
+          ),
+        ],
+      },
+    });
+    const root = await ready(container);
+    await waitFor(() =>
+      expect(testId(root, 'workflow-line-starts')?.querySelector('code')?.textContent).toBe(
+        'refund-requested',
+      ),
+    );
+    expect(testId(root, 'workflow-description')?.textContent).toContain('approve an order refund');
+    await waitFor(() =>
+      expect(
+        [...root.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent?.trim()),
+      ).toContain(WORKFLOW_COPY.page.tabWithCount(TABS.history, 4)),
+    );
+    expect(testId(root, 'workflow-line-last-run')?.textContent).toContain('Never run');
   });
 
   test('puts the number of runs and of versions after the labels of Runs and History once they are known', async () => {
     const { container } = open('/workflows/digest', {
       runs: [
         runFixture('digest-run-1', 'digest', { createdAt: 1_760_000_000_000 }),
-        runFixture('digest-run-2', 'digest', { createdAt: 1_760_000_100_000, status: 'failed' }),
+        runFixture('digest-run-2', 'digest', {
+          createdAt: 1_760_000_100_000,
+          status: 'failed',
+          steps: { total: 4, at: 2 },
+        }),
       ],
     });
     const root = await ready(container);
@@ -551,7 +611,26 @@ describe('an agent-authored type', () => {
         '/workflows/digest/runs/digest-run-2',
       ),
     );
-    expect(last?.textContent).toContain('Failed');
+    expect(last?.textContent?.replace(/\s+/g, ' ')).toContain('Failed at step 2');
+  });
+
+  test('names the awaited signal and links the last run’s time', async () => {
+    const { container } = open('/workflows/digest', {
+      runs: [
+        runFixture('waiting', 'digest', {
+          status: 'suspended',
+          awaitingSignal: 'notes-approved',
+          createdAt: Date.now(),
+        }),
+      ],
+    });
+    const root = await ready(container);
+    await waitFor(() => {
+      const line = testId(root, 'workflow-line-last-run');
+      expect(line?.querySelector('code')?.textContent).toBe('notes-approved');
+      expect(line?.querySelector('a')?.textContent).toContain('today,');
+      expect(line?.querySelector('a')?.getAttribute('href')).toBe('/workflows/digest/runs/waiting');
+    });
   });
 
   test('shows the rest, with no definition of its own, when the engine has none for the file yet', async () => {
@@ -662,6 +741,12 @@ describe('an invalid file', () => {
       expect(testId(root, 'workflow-file-path')?.textContent).toBe('workflows/broken.json'),
     );
     expect(testId(root, 'workflow-file-source')?.textContent).toContain('"name": "broken"');
+    await fireEvent.click(getByRole('link', { name: WORKFLOW_COPY.editAction }));
+    await waitFor(() =>
+      expect(`${router.pathname}?${router.search.toString()}`).toBe(
+        '/workflows/broken/edit?tab=json',
+      ),
+    );
   });
 
   test('says which line a file’s JSON stops on, marks the line before it, and offers Edit as JSON', async () => {
@@ -689,7 +774,12 @@ describe('an invalid file', () => {
         WORKFLOW_COPY.page.problem.missingComma(3),
       ),
     );
-    expect(getByRole('button', { name: WORKFLOW_COPY.page.problem.editAsJson })).not.toBeNull();
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.page.problem.editAsJson }));
+    await waitFor(() =>
+      expect(`${router.pathname}?${router.search.toString()}`).toBe(
+        '/workflows/broken/edit?tab=json',
+      ),
+    );
   });
 
   test('has no action at all when it has no hash, because nothing can be written against it', async () => {
@@ -736,6 +826,9 @@ describe('pause, resume, and delete', () => {
     await ready(view.container);
 
     const dialog = await openDeleteDialog(view, 'digest');
+    expect(dialog.textContent).toContain(
+      'The file digest.json is removed from the workflows directory relative to the configured Interborough home.',
+    );
     // Nothing is deleted until it is confirmed.
     expect(stub?.callsTo('bureau.workflows.delete')).toEqual([]);
     await fireEvent.click(
@@ -851,8 +944,46 @@ async function openSignalDialog(view: ReturnType<typeof open>): Promise<HTMLElem
 }
 
 describe('send signal', () => {
-  test('is a dialog the menu opens, and is not on the Overview where people read', async () => {
+  test('omits the signal action when there is neither a signal start nor a run waiting', async () => {
     const view = open('/workflows/digest');
+    const root = await ready(view.container);
+    await waitFor(() =>
+      expect(testId(root, 'workflow-line-last-run')?.textContent).toContain('Never run'),
+    );
+    await fireEvent.click(await view.findByRole('button', { name: WORKFLOW_COPY.page.menu.label }));
+    const menuItems = await view.findAllByRole('menuitem');
+    expect(menuItems.map((item) => item.textContent?.trim())).toEqual([
+      WORKFLOW_COPY.page.menu.duplicate,
+      expect.stringContaining(WORKFLOW_COPY.page.menu.pause),
+      WORKFLOW_COPY.page.menu.delete,
+    ]);
+  });
+
+  test('offers the signal action when older runs are outside the headline page', async () => {
+    const view = open('/workflows/digest', {
+      files: [readyFile('digest', { paused: true })],
+      runs: [
+        runFixture('older-waiter', 'digest', {
+          status: 'running',
+          awaitingSignal: 'approve',
+          createdAt: 1_759_999_999_999,
+        }),
+        ...Array.from({ length: 20 }, (_, index) => runFixture(`newer-${String(index)}`, 'digest')),
+      ],
+    });
+    const root = await ready(view.container);
+    await waitFor(() => {
+      expect(testId(root, 'workflow-line-last-run')?.textContent).toContain('Done');
+    });
+    await fireEvent.click(await view.findByRole('button', { name: WORKFLOW_COPY.page.menu.label }));
+    await view.findByRole('menuitem', { name: WORKFLOW_COPY.page.menu.duplicate });
+    expect(view.getByRole('menuitem', { name: WORKFLOW_COPY.page.menu.sendSignal })).not.toBeNull();
+  });
+
+  test('is a dialog the menu opens, and is not on the Overview where people read', async () => {
+    const view = open('/workflows/digest', {
+      runs: [runFixture('waiting', 'digest', { status: 'running', awaitingSignal: 'approve' })],
+    });
     const root = await ready(view.container);
     expect(testId(root, 'workflow-signal')).toBeNull();
     await openSignalDialog(view);
@@ -860,7 +991,9 @@ describe('send signal', () => {
   });
 
   test('starts with the first awaited signal name when the trigger is not a signal', async () => {
-    const view = open('/workflows/digest');
+    const view = open('/workflows/digest', {
+      runs: [runFixture('waiting', 'digest', { status: 'suspended', awaitingSignal: 'approve' })],
+    });
     await ready(view.container);
     await openSignalDialog(view);
     expect(
@@ -888,7 +1021,9 @@ describe('send signal', () => {
   });
 
   test('sends the name and the parsed payload, and shows how many were started and reached', async () => {
-    const view = open('/workflows/digest');
+    const view = open('/workflows/digest', {
+      runs: [runFixture('waiting', 'digest', { status: 'suspended', awaitingSignal: 'approve' })],
+    });
     await ready(view.container);
     stub!.world.signalAnswer = { started: ['run-1'], delivered: ['run-2', 'run-3'], rejected: [] };
     const form = await openSignalDialog(view);
@@ -909,7 +1044,9 @@ describe('send signal', () => {
   });
 
   test('sends no payload when the editor is empty', async () => {
-    const view = open('/workflows/digest');
+    const view = open('/workflows/digest', {
+      runs: [runFixture('waiting', 'digest', { status: 'suspended', awaitingSignal: 'approve' })],
+    });
     await ready(view.container);
     const form = await openSignalDialog(view);
     await fireEvent.click(view.getByRole('button', { name: WORKFLOW_COPY.signal.sendAction }));
@@ -918,7 +1055,9 @@ describe('send signal', () => {
   });
 
   test('refuses a payload that is not JSON, and sends nothing', async () => {
-    const view = open('/workflows/digest');
+    const view = open('/workflows/digest', {
+      runs: [runFixture('waiting', 'digest', { status: 'suspended', awaitingSignal: 'approve' })],
+    });
     await ready(view.container);
     await openSignalDialog(view);
     await fireEvent.input(view.getByRole('textbox', { name: WORKFLOW_COPY.signal.payloadLabel }), {
@@ -930,7 +1069,9 @@ describe('send signal', () => {
   });
 
   test('does not send without a name', async () => {
-    const view = open('/workflows/digest');
+    const view = open('/workflows/digest', {
+      runs: [runFixture('waiting', 'digest', { status: 'suspended', awaitingSignal: 'approve' })],
+    });
     await ready(view.container);
     await openSignalDialog(view);
     await fireEvent.input(view.getByRole('textbox', { name: WORKFLOW_COPY.signal.nameLabel }), {
@@ -940,7 +1081,9 @@ describe('send signal', () => {
   });
 
   test('closes with Close, and the form is gone', async () => {
-    const view = open('/workflows/digest');
+    const view = open('/workflows/digest', {
+      runs: [runFixture('waiting', 'digest', { status: 'suspended', awaitingSignal: 'approve' })],
+    });
     await ready(view.container);
     await openSignalDialog(view);
     await fireEvent.click(view.getByRole('button', { name: WORKFLOW_COPY.page.menu.closeSignal }));
@@ -1024,7 +1167,7 @@ describe('a part of the page that fails', () => {
 
   test('says the revision history could not be loaded, and shows the rest', async () => {
     const { container } = open('/workflows/digest');
-    stub?.on('bureau.workflows.revisions', () => {
+    stub?.on('bureau.workflows.history', () => {
       throw workflowFaults.unprocessable('No history.');
     });
     const root = await ready(container);
@@ -1192,7 +1335,9 @@ describe('a write the Bureau made and the engine could not apply', () => {
 
 describe('a signal that fails', () => {
   test('shows the failure beside the form, in the words copy.ts holds', async () => {
-    const view = open('/workflows/digest');
+    const view = open('/workflows/digest', {
+      runs: [runFixture('waiting', 'digest', { status: 'suspended', awaitingSignal: 'approve' })],
+    });
     await ready(view.container);
     stub?.on('bureau.workflows.signal', () => {
       throw new StubFault('Unavailable', 503, 'Delivered to: run-1', {
@@ -1210,7 +1355,9 @@ describe('a signal that fails', () => {
   });
 
   test('clears the failure when the next send succeeds', async () => {
-    const view = open('/workflows/digest');
+    const view = open('/workflows/digest', {
+      runs: [runFixture('waiting', 'digest', { status: 'suspended', awaitingSignal: 'approve' })],
+    });
     await ready(view.container);
     let sends = 0;
     stub?.on('bureau.workflows.signal', () => {
@@ -1347,7 +1494,12 @@ describe('the links on a type’s page', () => {
     ]);
     await openTab(root, TABS.runs);
     clickEach([
-      ['/workflows/digest/runs', root.querySelector<HTMLAnchorElement>('a[href$="/runs"]')],
+      [
+        '/health/runs',
+        [...root.querySelectorAll<HTMLAnchorElement>('a')].find(
+          (link) => link.textContent?.trim() === WORKFLOW_COPY.runsAction,
+        ) ?? null,
+      ],
     ]);
   });
 });

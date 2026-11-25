@@ -7,6 +7,11 @@
   min-width: 0;
 }
 
+/* Keep names and right-aligned row facts within the view’s readable measure. */
+.ib-records__bounded-list {
+  max-inline-size: 60rem;
+}
+
 /* Count, filters, primary action: one row that wraps instead of widening the page. */
 .ib-records-toolbar {
   display: flex;
@@ -30,6 +35,12 @@
 
 .ib-records-toolbar__action {
   margin-inline-start: auto;
+}
+
+/* The Runs filter bar's Failed at step field (COR-2535): one chip's width, so the bar still fits its row. */
+.ib-runs__failed-step {
+  inline-size: 12rem;
+  min-width: 0;
 }
 
 .ib-records__more {

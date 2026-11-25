@@ -13,6 +13,7 @@ import * as content from '../fixtures/showcase-content.ts';
 import { routes } from '../src/app/routes.ts';
 import { matchRoute } from '../src/lib/router.svelte.ts';
 import {
+  SHOWCASE_ROUTES_COVERED_ELSEWHERE,
   showcaseAddresses,
   showcaseVariantNames,
   showcaseVariants,
@@ -49,11 +50,21 @@ const SEED: SampleWorldRecords = {
   toolSource: 'github',
 };
 
-const PATTERNS = routes.filter((route) => route.redirect === undefined).map((r) => r.pattern);
+const PATTERNS = routes
+  .filter(
+    (route) =>
+      route.redirect === undefined && !SHOWCASE_ROUTES_COVERED_ELSEWHERE.includes(route.pattern),
+  )
+  .map((r) => r.pattern);
 
 describe('the showcase specification’s routes', () => {
-  test('has an address for every route that renders, and for no other', () => {
+  test('has an address for every shared-showcase route, and for no other', () => {
     expect(Object.keys(showcaseAddresses(SEED)).toSorted()).toEqual(PATTERNS.toSorted());
+  });
+
+  test('leaves the file-agent editor to its dedicated host', () => {
+    expect(SHOWCASE_ROUTES_COVERED_ELSEWHERE).toEqual(['/agents/:agent/edit']);
+    expect(showcaseAddresses(SEED)).not.toHaveProperty('/agents/:agent/edit');
   });
 
   test('opens each route’s address on that route', () => {

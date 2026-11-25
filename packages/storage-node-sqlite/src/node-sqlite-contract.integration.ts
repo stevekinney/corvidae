@@ -21,6 +21,7 @@ runStorageCapabilityConformance('NodeSQLiteStorage', {
     scanConsistency: 'snapshot',
     atomicBatch: true,
     conditionalBatch: true,
+    conditionalBatchDeadline: true,
     boundedRangeDelete: false,
   },
 });

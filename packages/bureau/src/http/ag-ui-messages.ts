@@ -168,6 +168,32 @@ export function snapshotMessages(history: ConversationHistory): AgUiMessage[] {
   }
 }
 
+/**
+ * The deliberately small conversation view for an explicitly shared reader.
+ * It does not reuse the owner snapshot: that carries asset sources, metadata and
+ * non-conversation rows which are useful to the owner but not part of a read grant.
+ */
+export function sharedSnapshotMessages(history: ConversationHistory): AgUiMessage[] {
+  return history.ids.flatMap((id) => {
+    const row = getOwn(history.messages, id);
+    if (row === undefined || row.hidden || (row.role !== 'user' && row.role !== 'assistant'))
+      return [];
+    const content =
+      typeof row.content === 'string'
+        ? row.content
+        : row.content
+            .filter((part) => part.type === 'text')
+            .map((part) => part.text)
+            .join('');
+    return [{ id: row.id, role: row.role, content: withoutInternalAttachmentLinks(content) }];
+  });
+}
+
+/** Stored Markdown can name an owner-only attachment; a reader never receives its URL. */
+function withoutInternalAttachmentLinks(content: string): string {
+  return content.replace(/!?\[[^\]]*\]\((?:\/attachments\/|bureau:)[^)]+\)/g, '');
+}
+
 /** The row a human's answer appends to a run's conversation: its id, and the text the run renders. */
 export type AnswerRow = { readonly id: string; readonly content: string };
 

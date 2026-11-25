@@ -5,6 +5,7 @@ import type { HTMLAttributes } from 'svelte/elements';
 export type AlertVariant =
   | 'info'
   | 'success'
+  | 'neutral'
   | 'warning'
   | 'danger'
   /** @deprecated Use `danger`. */

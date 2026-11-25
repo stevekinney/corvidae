@@ -25,9 +25,11 @@ export type ChoiceGridSize = 'sm';
  * How each item is drawn. `tile` is the centered quiz-style answer tile (the default). `card` is
  * a left-aligned selectable card with a radio or checkbox indicator, an optional icon beside the
  * title, and an optional description under it, for choosing between a few options that each need
- * a sentence of explanation, such as a source type.
+ * a sentence of explanation, such as a source type. `row` draws the card's content as flat rows
+ * with no box of their own, a hairline between them, for choices that sit inside a panel that
+ * already has an edge.
  */
-export type ChoiceGridVariant = 'tile' | 'card';
+export type ChoiceGridVariant = 'tile' | 'card' | 'row';
 
 /**
  * Shape of the context object provided to ChoiceGridItem children.
@@ -136,8 +138,10 @@ export type ChoiceGridProps = Omit<
   /**
    * How items are drawn. `'tile'` (the default) keeps the centered quiz tile; `'card'` draws a
    * left-aligned card with a radio (or checkbox when `multiple`) indicator, so each choice can carry
-   * an icon and a one-sentence description. Selection, roving focus and ARIA roles are identical in
-   * both. `size` applies to tiles only.
+   * an icon and a one-sentence description. `'row'` draws the card's content as flat rows with no
+   * border or fill of their own and a hairline between them, for choices inside a panel that already
+   * has an edge. Selection, roving focus and ARIA roles are identical in all three. `size` applies
+   * to tiles only.
    * @default 'tile'
    */
   variant?: ChoiceGridVariant;

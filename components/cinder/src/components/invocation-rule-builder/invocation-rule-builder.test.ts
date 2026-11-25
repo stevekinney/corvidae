@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import { readComponentSchema } from '@lostgradient/component-tooling/scripts/lib/metadata-files.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
@@ -14,6 +15,8 @@ import type {
 } from './invocation-rule-builder.types.ts';
 
 setupHappyDom();
+
+const stylesheet = readFileSync(new URL('./invocation-rule-builder.css', import.meta.url), 'utf8');
 
 const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
 const { default: InvocationRuleBuilder } = await import('./invocation-rule-builder.svelte');
@@ -1019,6 +1022,63 @@ describe('InvocationRuleBuilder', () => {
       expect(valueInput.tagName).toBe('INPUT');
       expect(valueInput.type).toBe('checkbox');
       expect(valueInput.checked).toBe(true);
+    });
+
+    test('a boolean row says its operator as plain text instead of offering a select (COR-2535)', () => {
+      const rule = makeRule({
+        conditions: [
+          makeCondition({ id: 'c1', field: 'enabled', value: 'true' }),
+          makeCondition({ id: 'c2', field: 'label', value: 'foo' }),
+        ],
+      });
+      const { container } = renderConditionsOnlyBuilder([rule]);
+      expect(
+        container.querySelector('[aria-label="Operator for condition 1 of PR Review Rule"]'),
+      ).toBeNull();
+      expect(
+        container.querySelector('.cinder-invocation-rule-builder__condition-fixed-operator')
+          ?.textContent,
+      ).toBe('is');
+      // The other row keeps its operator select.
+      expect(
+        container.querySelector('[aria-label="Operator for condition 2 of PR Review Rule"]'),
+      ).not.toBeNull();
+    });
+
+    test('a boolean value is a Cinder Checkbox, and its operator is always emitted as eq', async () => {
+      const rule = makeRule({
+        conditions: [makeCondition({ field: 'enabled', operator: 'gt', value: 'false' })],
+      });
+      const { container, onValueChange } = renderConditionsOnlyBuilder([rule]);
+      const checkbox = container.querySelector<HTMLInputElement>(
+        '[aria-label="Value for condition 1 of PR Review Rule"]',
+      )!;
+      expect(checkbox.classList.contains('cinder-checkbox')).toBe(true);
+
+      await fireEvent.click(checkbox);
+
+      const [nextRules] = onValueChange.mock.calls[0]!;
+      expect(nextRules[0].conditions[0].value).toBe('true');
+      expect(nextRules[0].conditions[0].operator).toBe('eq');
+    });
+
+    test('every condition row of a conditions-only list shares one column grid, and full mode keeps its own rows', () => {
+      const rule = makeRule({
+        conditions: [
+          makeCondition({ id: 'c1', field: 'enabled', value: 'true' }),
+          makeCondition({ id: 'c2', field: 'label', value: 'foo' }),
+        ],
+      });
+      const { container } = renderConditionsOnlyBuilder([rule]);
+      const list = container.querySelector('.cinder-invocation-rule-builder__conditions');
+      expect(list?.hasAttribute('data-cinder-columns')).toBe(true);
+      // Four cells in each row (field, operator, value, remove), so the subgrid columns line up.
+      for (const row of container.querySelectorAll('.cinder-invocation-rule-builder__condition')) {
+        expect(row.children).toHaveLength(4);
+      }
+      expect(stylesheet).toMatch(
+        /__conditions\[data-cinder-columns\]\s*>\s*\.cinder-invocation-rule-builder__condition\s*\{[^}]*grid-template-columns:\s*subgrid/,
+      );
     });
 
     test('renders a select with declared options for an enum-typed field', () => {

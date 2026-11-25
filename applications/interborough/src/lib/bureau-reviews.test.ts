@@ -5,7 +5,6 @@ import type { Fetcher } from './bureau-client.ts';
 import { humanWaitFixture, toolApprovalFixture } from './bureau-fixtures.test-support.ts';
 import {
   getBureauReview,
-  isApprovalOutcomeNotWritten,
   isReviewNoLongerWaiting,
   isReviewRoundChanged,
   listBureauReviews,
@@ -84,6 +83,33 @@ describe('the Bureau’s review operations', () => {
     expect(reviews.map((review) => review.kind)).toEqual(['tool-approval', 'engine-review']);
   });
 
+  test('keeps an approval’s irreversible, consequence and why, and reads a review without them (COR-2438)', async () => {
+    const explained = toolApprovalFixture({
+      approval: {
+        ...TOOL_APPROVAL.approval,
+        action: {
+          type: 'approval',
+          message: 'Refund order-1001?',
+          risk: 'high',
+          operation: { kind: 'other' },
+          irreversible: true,
+          consequence: 'Sends $42.00 back to the card.',
+          why: 'The order arrived damaged.',
+        },
+      },
+    });
+    const stub = answering({ reviews: [explained, TOOL_APPROVAL] });
+    const [withFields, without] = await withFetch(stub.fetch, () => listBureauReviews());
+    expect(withFields?.kind === 'tool-approval' && withFields.approval.action).toMatchObject({
+      irreversible: true,
+      consequence: 'Sends $42.00 back to the card.',
+      why: 'The order arrived damaged.',
+    });
+    expect(without?.kind === 'tool-approval' && without.approval.action).toEqual(
+      TOOL_APPROVAL.approval.action,
+    );
+  });
+
   test('get reads one review by its id', async () => {
     const stub = answering(HUMAN_WAIT);
     const review = await withFetch(stub.fetch, () => getBureauReview(HUMAN_WAIT.id));
@@ -129,9 +155,8 @@ describe('the Bureau’s review operations', () => {
   test('tells a review that changed while it was read from every other Conflict', () => {
     const conflict = (reason: unknown) =>
       new HttpClientError(409, 'Conflict', { faultCode: 'Conflict', data: { reason } });
-    const changed = conflict('REVIEW_ROUND_CHANGED: now at round 3');
+    const changed = conflict('REVIEW_ROUND_CHANGED');
     expect(isReviewRoundChanged(changed)).toBe(true);
-    expect(isApprovalOutcomeNotWritten(changed)).toBe(false);
     expect(isReviewRoundChanged(conflict('Another resolver won.'))).toBe(false);
     expect(isReviewRoundChanged(conflict('APPROVAL_OUTCOME_NOT_WRITTEN: x'))).toBe(false);
     expect(isReviewRoundChanged(new Error('REVIEW_ROUND_CHANGED: now at round 3'))).toBe(false);
@@ -140,9 +165,7 @@ describe('the Bureau’s review operations', () => {
   test('tells a review that was already resolved, or is gone, from every other fault (COR-2426)', () => {
     const conflict = (reason: unknown) =>
       new HttpClientError(409, 'Conflict', { faultCode: 'Conflict', data: { reason } });
-    expect(
-      isReviewNoLongerWaiting(conflict('REVIEW_ALREADY_RESOLVED: Review "x" is resolved')),
-    ).toBe(true);
+    expect(isReviewNoLongerWaiting(conflict('REVIEW_ALREADY_RESOLVED'))).toBe(true);
     // A NotFound also answers a caller who may not decide it, so it is not taken as gone.
     expect(isReviewNoLongerWaiting(new HttpClientError(404, 'No pending review'))).toBe(false);
     expect(isReviewNoLongerWaiting(conflict('REVIEW_ROUND_CHANGED: now at round 3'))).toBe(false);

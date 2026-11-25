@@ -1004,7 +1004,7 @@
       }
     },
     {
-      "description": "Lists the system problems that need attention now, most recent first: an alert rule that is firing (`alert`), a schedule that missed runs in the last seven days and has not run since (`missed-runs`), an enabled hook whose newest delivery failed or gave up (`hook-failed`), a plugin that did not load (`plugin-not-loaded`), and what the host reports, such as no model provider connected (`no-provider`). `count` is the number of items, and `checks` counts the same items by area. Reviews waiting on a person are never listed. Requires `bureau.diagnostics:read`.",
+      "description": "Lists the system problems that need attention now, most recent first: an alert rule that is firing (`alert`), a schedule that missed runs in the last seven days and has not run since (`missed-runs`), an enabled hook whose newest delivery failed or gave up (`hook-failed`), a plugin that did not load (`plugin-not-loaded`), and what the host reports, such as no model provider connected (`no-provider`). A run that is alive but making no progress (`run-stalled`), a run whose toolbox reported a loop (`run-looping`) and a run that cost more than the `runs.spendThresholdUsd` setting (`run-overspending`, listed while it runs and for seven days after it settles) each name their run; none of them stops it. `count` is the number of items, and `checks` counts the same items by area. Reviews waiting on a person are never listed. Requires `bureau.diagnostics:read`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -1462,6 +1462,174 @@
                       "queue",
                       "waiting",
                       "failedForGood"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "agentName": {
+                        "description": "The agent the run is of, or `null`.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "area": {
+                        "description": "The check the problem counts under.",
+                        "enum": [
+                          "storage",
+                          "schedules",
+                          "providers",
+                          "hooks",
+                          "plugins",
+                          "workers",
+                          "runs"
+                        ],
+                        "type": "string"
+                      },
+                      "at": {
+                        "description": "When the Bureau saw the run stall, in epoch milliseconds.",
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "run-stalled",
+                        "type": "string"
+                      },
+                      "runId": {
+                        "description": "The run that stalled.",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "area",
+                      "at",
+                      "runId",
+                      "agentName"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "agentName": {
+                        "description": "The agent the run is of, or `null`.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "area": {
+                        "description": "The check the problem counts under.",
+                        "enum": [
+                          "storage",
+                          "schedules",
+                          "providers",
+                          "hooks",
+                          "plugins",
+                          "workers",
+                          "runs"
+                        ],
+                        "type": "string"
+                      },
+                      "at": {
+                        "description": "When the first loop was reported, in epoch milliseconds.",
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "run-looping",
+                        "type": "string"
+                      },
+                      "runId": {
+                        "description": "The run that is looping.",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "area",
+                      "at",
+                      "runId",
+                      "agentName"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "agentName": {
+                        "description": "The agent the run is of, or `null`.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "area": {
+                        "description": "The check the problem counts under.",
+                        "enum": [
+                          "storage",
+                          "schedules",
+                          "providers",
+                          "hooks",
+                          "plugins",
+                          "workers",
+                          "runs"
+                        ],
+                        "type": "string"
+                      },
+                      "at": {
+                        "description": "When a step found the run over the spend threshold, in epoch milliseconds.",
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "costUsd": {
+                        "description": "What the run has cost so far, or in total once it settled, in US dollars.",
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "kind": {
+                        "const": "run-overspending",
+                        "type": "string"
+                      },
+                      "runId": {
+                        "description": "The run that cost more than the threshold.",
+                        "type": "string"
+                      },
+                      "settledAt": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "When the run settled, in epoch milliseconds, or `null` while it runs."
+                      },
+                      "thresholdUsd": {
+                        "description": "The spend threshold in force when the step found the run over, in US dollars.",
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "area",
+                      "at",
+                      "runId",
+                      "agentName",
+                      "costUsd",
+                      "thresholdUsd",
+                      "settledAt"
                     ],
                     "type": "object"
                   }
@@ -1977,10 +2145,11 @@
           "name": "attention",
           "required": false,
           "schema": {
-            "description": "Only the tasks whose `attention` lists this kind: `stalled` for a run that is alive but making no progress outside a declared wait, `looping` for a run whose toolbox reported a loop. A task that has ended lists neither, and the schedule tick’s runs and the instances of workflow files, which have no record to hold one, match nothing.",
+            "description": "Only the tasks whose `attention` lists this kind: `stalled` for a run that is alive but making no progress outside a declared wait, `looping` for a run whose toolbox reported a loop, `overspending` for a run a step found over the spend threshold (it stays after the run settles). A task that has ended lists neither of the first two, and the schedule tick’s runs and the instances of workflow files, which have no record to hold one, match nothing.",
             "enum": [
               "stalled",
-              "looping"
+              "looping",
+              "overspending"
             ],
             "type": "string"
           }
@@ -2154,7 +2323,8 @@
                     "items": {
                       "enum": [
                         "stalled",
-                        "looping"
+                        "looping",
+                        "overspending"
                       ],
                       "type": "string"
                     },
@@ -2812,10 +2982,11 @@
             "type": "string"
           },
           "attention": {
-            "description": "Only the tasks whose `attention` lists this kind: `stalled` for a run that is alive but making no progress outside a declared wait, `looping` for a run whose toolbox reported a loop. A task that has ended lists neither, and the schedule tick’s runs and the instances of workflow files, which have no record to hold one, match nothing.",
+            "description": "Only the tasks whose `attention` lists this kind: `stalled` for a run that is alive but making no progress outside a declared wait, `looping` for a run whose toolbox reported a loop, `overspending` for a run a step found over the spend threshold (it stays after the run settles). A task that has ended lists neither of the first two, and the schedule tick’s runs and the instances of workflow files, which have no record to hold one, match nothing.",
             "enum": [
               "stalled",
-              "looping"
+              "looping",
+              "overspending"
             ],
             "type": "string"
           },
@@ -2961,7 +3132,8 @@
               "items": {
                 "enum": [
                   "stalled",
-                  "looping"
+                  "looping",
+                  "overspending"
                 ],
                 "type": "string"
               },
@@ -4174,7 +4346,8 @@
                   "items": {
                     "enum": [
                       "stalled",
-                      "looping"
+                      "looping",
+                      "overspending"
                     ],
                     "type": "string"
                   },
@@ -4852,7 +5025,7 @@
       }
     },
     {
-      "description": "Returns the steps of one run in the order it took them, for drawing a waterfall: each entry’s `label`, `operationType`, `status`, `timestamp` (its start, in epoch milliseconds), `duration` (milliseconds, absent while it runs) and `tries` (how many attempts the engine made at the step, this one included). `runId` is an agent run’s task id or a workflow instance’s id, and `kind` says which. No step’s input or output is returned, only names and timings. An agent run is read with the access `bureau.tasks.get` asks and a workflow instance with the access `bureau.workflows.runs.get` asks; any other run, a run the caller may not read, and a run that does not exist are all `NotFound`. A run of more than 1000 entries is cut and `truncated` is true.",
+      "description": "Returns the steps of one run in the order it took them, for drawing a waterfall: each entry’s `label`, `operationType`, `status`, `timestamp` (its start, in epoch milliseconds), `duration` (milliseconds, absent while it runs) and `tries` (how many attempts the engine made at the step, this one included). `runId` is an agent run’s task id or a workflow instance’s id, and `kind` says which; `runStatus` says where the run stands (`pending`, `running`, `suspended`, `completed`, `failed`, `cancelled` or `timed-out`), so a reader can tell a step the run has left from one it is still in. No step’s input or output is returned, only names and timings. An agent run is read with the access `bureau.tasks.get` asks and a workflow instance with the access `bureau.workflows.runs.get` asks; any other run, a run the caller may not read, and a run that does not exist are all `NotFound`. A run of more than 1000 entries is cut and `truncated` is true.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -4959,6 +5132,19 @@
             "runId": {
               "type": "string"
             },
+            "runStatus": {
+              "description": "Where the run stands as the timeline is read. A run that is `completed`, `failed`, `cancelled` or `timed-out` has finished, so no step of it is still going, whatever its last entry says.",
+              "enum": [
+                "pending",
+                "running",
+                "suspended",
+                "completed",
+                "failed",
+                "cancelled",
+                "timed-out"
+              ],
+              "type": "string"
+            },
             "truncated": {
               "description": "True when the run has more than 1000 entries.",
               "type": "boolean"
@@ -4967,6 +5153,7 @@
           "required": [
             "runId",
             "kind",
+            "runStatus",
             "entries",
             "truncated"
           ],
@@ -4987,6 +5174,691 @@
         "properties": {
           "runId": {
             "description": "The identifier of the run: an agent run’s task id, or a workflow instance’s id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Takes the id of a workflow run made by forking another and returns the run it was forked from (`sourceRunId`), the `forkPoint` (the source checkpoint step the fork started from) and the two runs aligned by durable step: each step's `index`, whether it is `shared` (before the fork point, so both sides are the source's entry) and, for `source` and `fork`, the `operationType`, `label`, `status`, `input` and `output` the engine summarizes, with payload fields redacted as the timeline read redacts them. A side is absent when that run has no entry for the step. Pages by step: `limit` (100 by default, at most 1000) and `nextCursor`. The fork and its source are each read with the access `bureau.workflows.runs.get` asks; a run the caller may not read, a source the caller may not read, a run that is no instance of a workflow file, and a run that does not exist are all `NotFound`. A run that is not a fork is `Unprocessable`, and its message says what to do.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/Unprocessable"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.runs.compare",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "cursor",
+          "required": false,
+          "schema": {
+            "description": "The nextCursor of the previous page; omit it for the first page.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "description": "Steps in a page. Defaults to 100; at most 1000.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        {
+          "name": "runId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the fork: a workflow instance’s id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "forkPoint": {
+              "description": "The source checkpoint step the fork started from.",
+              "type": "number"
+            },
+            "nextCursor": {
+              "description": "Pass as `cursor` for the next page; absent on the last.",
+              "type": "string"
+            },
+            "runId": {
+              "description": "The fork that was compared.",
+              "type": "string"
+            },
+            "sourceRunId": {
+              "description": "The run the fork was made from.",
+              "type": "string"
+            },
+            "steps": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "fork": {
+                    "additionalProperties": false,
+                    "description": "The fork’s entry for the step.",
+                    "properties": {
+                      "input": {
+                        "description": "The step’s input as the engine summarizes it, redacted: JSON text.",
+                        "type": "string"
+                      },
+                      "label": {
+                        "description": "What the step is: an activity’s name, `sleep`, `await-signal`.",
+                        "type": "string"
+                      },
+                      "operationType": {
+                        "description": "The kind of operation the step is, such as `activity`.",
+                        "type": "string"
+                      },
+                      "output": {
+                        "description": "The step’s output or error in the same form; absent while the step runs.",
+                        "type": "string"
+                      },
+                      "status": {
+                        "enum": [
+                          "running",
+                          "completed",
+                          "failed",
+                          "cancelled",
+                          "timed-out"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "operationType",
+                      "label",
+                      "status",
+                      "input"
+                    ],
+                    "type": "object"
+                  },
+                  "index": {
+                    "description": "The durable step index both sides share.",
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "shared": {
+                    "description": "True before the fork point: the fork kept the source’s result, on both sides.",
+                    "type": "boolean"
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "description": "The source run’s entry for the step.",
+                    "properties": {
+                      "input": {
+                        "description": "The step’s input as the engine summarizes it, redacted: JSON text.",
+                        "type": "string"
+                      },
+                      "label": {
+                        "description": "What the step is: an activity’s name, `sleep`, `await-signal`.",
+                        "type": "string"
+                      },
+                      "operationType": {
+                        "description": "The kind of operation the step is, such as `activity`.",
+                        "type": "string"
+                      },
+                      "output": {
+                        "description": "The step’s output or error in the same form; absent while the step runs.",
+                        "type": "string"
+                      },
+                      "status": {
+                        "enum": [
+                          "running",
+                          "completed",
+                          "failed",
+                          "cancelled",
+                          "timed-out"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "operationType",
+                      "label",
+                      "status",
+                      "input"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "index",
+                  "shared"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "runId",
+            "sourceRunId",
+            "forkPoint",
+            "steps"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Compare a forked workflow run with its source, step by step",
+      "tags": [
+        {
+          "name": "Runs"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "description": "The nextCursor of the previous page; omit it for the first page.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "description": "Steps in a page. Defaults to 100; at most 1000.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "runId": {
+            "description": "The identifier of the fork: a workflow instance’s id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns why one failed run failed, from what Bureau stored about it and nothing else: no model is called, so the same settled run answers the same every time. `runId` is an agent run’s task id or a workflow instance’s id. `summary` is one sentence naming the step and the cause, built from the failure category (`application`, `timeout`, `cancellation`, `resource`, `system`, or `null` when nothing classifies the failure: a workflow instance’s is the engine’s, an agent run’s is read from its finish reason and its error’s kind) and the error’s kind. `cause` is the category, the error’s `code` and its `kind` (an agent run’s; `null` for a workflow instance). `step` is the step the run failed at (its index and label), `tries` how many times the engine tried that step (`null` when its history records no failed attempt, as for an agent run that ended on a failed result), `verdicts` each guardrail that fired in the run (its `name`, whether it halted the run as a `tripwire` or let it go on as a `guardrail`, and its `outcome`; a workflow instance’s own steps included), `remediation` what to do next, and `nextCommands` `interborough` command lines for the run (`runs get`, and `runs retry` for a failed workflow instance `bureau.workflows.runs.retry` would run again for the caller). It carries no error message, stack, tool argument or flagged text. A run that did not fail, one that is still going included, is `Unprocessable` with `data.reason` `run-not-failed` and a `remediation`; a workflow instance whose run state or timeline the Bureau cannot read, because it has no durable engine, is `UnsupportedCapability` (`durable-engine`), never `run-not-failed`. An agent run is read with the access `bureau.tasks.get` asks and a workflow instance with the access `bureau.workflows.runs.get` asks; any other run, a run the caller may not read, and a run that does not exist are all `NotFound`.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/Unprocessable"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.tasks.explain",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "runId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the failed run: an agent run’s task id, or a workflow instance’s id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "cause": {
+              "additionalProperties": false,
+              "properties": {
+                "category": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "application",
+                        "timeout",
+                        "cancellation",
+                        "resource",
+                        "system"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The failure’s category; `null` for a failure nothing classifies."
+                },
+                "code": {
+                  "description": "The error’s code, or `null`.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "kind": {
+                  "description": "The error’s kind, or `null`.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "category",
+                "code",
+                "kind"
+              ],
+              "type": "object"
+            },
+            "nextCommands": {
+              "description": "`interborough` command lines for the run, each one a command the CLI has: `runs get` always, and `runs retry` for a failed workflow instance that `bureau.workflows.runs.retry` would run again for the caller.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "remediation": {
+              "description": "What to do next, in one or two sentences.",
+              "type": "string"
+            },
+            "step": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": {
+                      "description": "The step’s index in the run, from zero.",
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "label": {
+                      "description": "The step’s label: a tool’s name, `model` for a model step, or the engine’s label.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "label"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The step the run failed at, or `null` when none was recorded."
+            },
+            "summary": {
+              "description": "One sentence naming the step the run failed at and the cause.",
+              "type": "string"
+            },
+            "tries": {
+              "anyOf": [
+                {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "How many times the engine tried that step, or `null` when it kept no history."
+            },
+            "verdicts": {
+              "description": "Each guardrail that fired in the run.",
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "description": "`tripwire` for a guardrail that halted the run, `guardrail` for one that let it go on.",
+                    "enum": [
+                      "guardrail",
+                      "tripwire"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "The guardrail’s name.",
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "description": "What it did: `tripwire`, or for a validate-mode guardrail `block`, `warn`, `sanitize` or `redact`.",
+                    "enum": [
+                      "tripwire",
+                      "block",
+                      "warn",
+                      "sanitize",
+                      "redact"
+                    ],
+                    "type": "string"
+                  },
+                  "step": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The step it fired at, or `null`."
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind",
+                  "outcome",
+                  "step"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "summary",
+            "cause",
+            "step",
+            "tries",
+            "verdicts",
+            "remediation",
+            "nextCommands"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Explain why a run failed",
+      "tags": [
+        {
+          "name": "Tasks"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "runId": {
+            "description": "The identifier of the failed run: an agent run’s task id, or a workflow instance’s id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns `explanation`: the longer explanation of why one failed agent run failed that a model wrote when it was asked (`bureau.tasks.explanation.generate`), with its `text`, the `model` that wrote it (`<provider>/<model>`), when it was written (`generatedAt`) and what it cost (`costUsd`, in US dollars, `null` when unpriced), or `null` when none has been written. It calls no model, so reading it again costs nothing. It is a read of the task, with the access `bureau.tasks.get` asks; an instance of a workflow file has no task to keep one on and answers `null`, and any run the caller may not read, or that does not exist, is `NotFound`. It is not on MCP.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        }
+      ],
+      "name": "bureau.tasks.explanation.get",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "runId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the failed agent run: its task id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "explanation": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "costUsd": {
+                      "description": "What writing it cost in US dollars, priced from the model catalog; `null` when the model has no price or reported no usage, never `0`. The run’s own `usage.costUsd` does not include it.",
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "generatedAt": {
+                      "description": "When it was written.",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                      "type": "string"
+                    },
+                    "model": {
+                      "description": "The model that wrote it, as `<provider>/<model>`.",
+                      "type": "string"
+                    },
+                    "text": {
+                      "description": "What the model wrote, as plain text.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "model",
+                    "generatedAt",
+                    "costUsd"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The stored explanation, or `null` when no model has been asked about this run."
+            }
+          },
+          "required": [
+            "explanation"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Read the explanation a model wrote of a failed run",
+      "tags": [
+        {
+          "name": "Tasks"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "runId": {
+            "description": "The identifier of the failed agent run: its task id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Asks the Bureau’s configured decision model to explain why one failed agent run failed, at more length than `bureau.tasks.explain`, stores the text on the task, and returns it as `explanation` with the `model` that wrote it (`<provider>/<model>`), `generatedAt` and `costUsd` (US dollars priced from the model catalog, `null` when unpriced). It replaces any explanation the task held, and each call asks the model again; `bureau.tasks.explanation.get` reads what is stored without a call. The model is sent the stored-facts explanation and, for each step, its name, status, error message and guardrail verdicts, and never a tool argument, a tool result or a message. The cost is the explanation’s own and is not added to the run’s `usage`. It spends a model’s tokens, so it asks what `bureau.tasks.cancel` asks of the caller (the owner of the run, or `bureau.tasks:write` with `bureau.tasks:read`). A run that did not fail is `Unprocessable` with `data.reason` `run-not-failed`; an instance of a workflow file is `Unprocessable` with `run-has-no-task`; a run whose record changed while the model wrote (its chat’s content purged, or its failure replaced by the run’s real end) is `Unprocessable` with `run-changed` and nothing is stored; with no provider connected the call is `UnsupportedCapability` (`generate`) with a `remediation` that says to connect one; a run the caller may not use is `NotFound`. It is not on MCP.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/Unprocessable"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.tasks.explanation.generate",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "runId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the failed agent run: its task id.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "explanation": {
+              "additionalProperties": false,
+              "properties": {
+                "costUsd": {
+                  "description": "What writing it cost in US dollars, priced from the model catalog; `null` when the model has no price or reported no usage, never `0`. The run’s own `usage.costUsd` does not include it.",
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "generatedAt": {
+                  "description": "When it was written.",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                  "type": "string"
+                },
+                "model": {
+                  "description": "The model that wrote it, as `<provider>/<model>`.",
+                  "type": "string"
+                },
+                "text": {
+                  "description": "What the model wrote, as plain text.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text",
+                "model",
+                "generatedAt",
+                "costUsd"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "explanation"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Ask a model to explain a failed run at more length",
+      "tags": [
+        {
+          "name": "Tasks"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "runId": {
+            "description": "The identifier of the failed agent run: its task id.",
             "maxLength": 256,
             "minLength": 1,
             "type": "string"
@@ -5186,7 +6058,8 @@
                       "items": {
                         "enum": [
                           "stalled",
-                          "looping"
+                          "looping",
+                          "overspending"
                         ],
                         "type": "string"
                       },
@@ -5960,7 +6833,7 @@
       }
     },
     {
-      "description": "Answers one open wait of a task as the authenticated caller. `answer` (text, or a list of parts joined with a newline) answers a human-input wait; `decision` (`approve`, `deny`, or `reject`, which requires a `reason`) decides an approval or a human wait. `signalName` or `callId` says which wait when several are open; with neither, exactly one must be. `messageId` is the idempotency key: an exact retry returns the original receipt, and the same `messageId` with a different command is a `Conflict`. The task’s owner answers anything; a caller holding `bureau.tasks:write` answers human-input waits only, and another owner’s approval answers as a missing task. The `receipt` is `applied` or `superseded` (the approval was gated again and the tool did not run). An answer that names, by `signalName`, a question the task asked and that was already decided is a `Conflict` whose `reason` starts `REVIEW_ALREADY_RESOLVED:`, as `bureau.reviews.resolve` answers a review already resolved; a `signalName` the task never asked is a plain `Conflict`.",
+      "description": "Answers one open wait of a task as the authenticated caller. `answer` (text, or a list of parts joined with a newline) answers a human-input wait; `decision` (`approve`, `deny`, or `reject`, which requires a `reason`) decides an approval or a human wait. `signalName` or `callId` says which wait when several are open; with neither, exactly one must be. `messageId` is the idempotency key: an exact retry returns the original receipt, and the same `messageId` with a different command is a `Conflict`. The task’s owner answers anything; a caller holding `bureau.tasks:write` answers human-input waits only, and another owner’s approval answers as a missing task. The `receipt` is `applied` or `superseded` (the approval was gated again and the tool did not run). An answer that names, by `signalName`, a question the task asked and that was already decided is a `Conflict` whose `data.reason` is `REVIEW_ALREADY_RESOLVED`, as `bureau.reviews.resolve` answers a review already resolved; a `signalName` the task never asked is a plain `Conflict`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -9805,6 +10678,256 @@
       }
     },
     {
+      "description": "Removes the last unfinished turn of one of the caller’s own contexts: the rows `runId` wrote after the person’s message that started it (its replies, tool calls, tool results and the answers given to its questions). The person’s message is kept. `runId` must be the context’s last run, and it must have ended without finishing: the person stopped it, or it failed. A run still going, or waiting on an approval or a question, is a `Conflict` with reason `turn-running` (cancel it first); one that finished normally is `turn-finished`; one whose process stopped before it recorded its end is `turn-outcome-unknown`; a later run or a row the run did not write after its turn is `not-latest-turn`; a follow-up the person sent that was delivered into the turn is `follow-up-delivered`, and one still queued is `follow-ups-queued`; a run that wrote nothing is `nothing-to-discard`. A run the context does not have is `NotFound`. The removal is one compare-and-swap on the context, fenced on the revision the call read: a change since then is a `Conflict` with reason `history-changed`, and nothing is written. The same commit records an audit entry, `context.turn-discarded`, with the run, the command and how many rows went. `commandId` is the caller’s own identifier: an exact retry, even after a restart, returns the original result and removes nothing more; a retry while the first call is still going is answered from that call’s committed receipt, or as a `Conflict` with reason `command-in-doubt`; the same `commandId` for another run is a `Conflict` with reason `command-conflict`. The run’s task is kept as it is: it still says how the run ended. An archived context is a `Conflict` with reason `context-archived`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Another owner’s context and a missing one answer `NotFound`; operator scopes never grant discard access to another owner’s chat.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/Conflict"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        },
+        {
+          "$ref": "#/components/errors/Unavailable"
+        }
+      ],
+      "name": "bureau.contexts.discardturn",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "commandId",
+          "required": true,
+          "schema": {
+            "description": "The caller’s own identifier for the command; an exact retry of it returns the original result and removes nothing more.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "contextId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the context whose turn to discard.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "runId",
+          "required": true,
+          "schema": {
+            "description": "The run whose turn to discard: the context’s last run, which the person stopped or which failed.",
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "contextId": {
+              "type": "string"
+            },
+            "removed": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "runId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "contextId",
+            "runId",
+            "removed",
+            "revision"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Discard a context’s last unfinished turn",
+      "tags": [
+        {
+          "name": "Contexts"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "description": "The caller’s own identifier for the command; an exact retry of it returns the original result and removes nothing more.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "contextId": {
+            "description": "The identifier of the context whose turn to discard.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "runId": {
+            "description": "The run whose turn to discard: the context’s last run, which the person stopped or which failed.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId",
+          "commandId",
+          "runId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Lets the last stopped turn of one of the caller’s own contexts go on. A continuation run starts on the stored conversation, the partial reply included, with no message from the person, and writes a new assistant turn after the partial reply; the answer names it as `runId`, and the stopped run as `resumedRunId`. `runId` must be the context’s last run, stopped by the person or failed on a cause worth trying again (finish reason `error`). The start is one atomic write to the context that adds a hidden continuation row naming the stopped run and the command and judges the history again, so a message, a discard or another resume that lands first wins and this one is refused. `commandId` is the caller’s own identifier: a retry answers the run the first call started, after a restart too, and never starts a second; the same `commandId` for another run is a `Conflict` with reason `command-conflict`. Each refusal is a `Conflict` and starts nothing: `not-latest-turn` (a later run, or the turn already went on), `turn-running`, `turn-awaiting-person` (it goes on once the approval or question is answered), `turn-recovering` (the run’s process stopped, and the Bureau that next boots goes on with it from its checkpoint or ends it when it cannot), `turn-finished` (a reply cut at the token limit included), `run-not-resumable` (a failure going on would meet again), `turn-interrupted-call` (the turn stopped inside a tool call, which going on would run again unasked), `follow-up-delivered`, `follow-ups-queued` and `nothing-to-resume`. A run the context does not have is `NotFound`. An archived context is a `Conflict` with reason `context-archived`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. It is owner only: the continuation runs as the owner’s chat, so no operator scope lets anyone else resume it, and another owner’s context and a missing one answer `NotFound`, whatever run they name. No scope is needed for the caller’s own.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/Conflict"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        },
+        {
+          "$ref": "#/components/errors/Unavailable"
+        }
+      ],
+      "name": "bureau.contexts.resumeturn",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "commandId",
+          "required": true,
+          "schema": {
+            "description": "The caller’s own identifier for the command; a retry of it answers the run the first call started.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "contextId",
+          "required": true,
+          "schema": {
+            "description": "The identifier of the context whose turn to resume.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "runId",
+          "required": true,
+          "schema": {
+            "description": "The run whose turn to resume: the context’s last run, which the person stopped or which failed.",
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "contextId": {
+              "type": "string"
+            },
+            "resumedRunId": {
+              "type": "string"
+            },
+            "runId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "contextId",
+            "runId",
+            "resumedRunId"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Resume a context’s last stopped turn",
+      "tags": [
+        {
+          "name": "Contexts"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "description": "The caller’s own identifier for the command; a retry of it answers the run the first call started.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "contextId": {
+            "description": "The identifier of the context whose turn to resume.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "runId": {
+            "description": "The run whose turn to resume: the context’s last run, which the person stopped or which failed.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId",
+          "commandId",
+          "runId"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Gives one of the caller’s own contexts a `title`, which `bureau.contexts.list` and `get` show in place of the one derived from its first message, and which `titleContains` matches; a caller holding `bureau.contexts:write` renames any owner’s. `title: null` removes it, and the derived title returns. A rename is not activity: the context’s `updatedAt`, and so its place in a listing, does not move. Setting the title a context already has is not an error, so a retry is safe. A blank title and one over 200 characters are `InvalidParams`. Another owner’s context and a missing one answer `NotFound`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Answers a receipt, `{ contextId, title }`, with the title now stored (`null` once removed) and nothing else of the context: read it with `bureau.contexts.get`, which needs `bureau.contexts:read` for another owner’s. The call writes no audit entry.",
       "errors": [
         {
@@ -9921,7 +11044,7 @@
       }
     },
     {
-      "description": "Archives one of the caller’s own contexts; a caller holding `bureau.contexts:write` archives any owner’s. An archived context accepts no new work: starting a task in it, `bureau.contexts.input`, `bureau.contexts.steer` and `bureau.contexts.regenerate` are each a `Conflict` with reason `context-archived` until it is unarchived (`bureau.contexts.unarchive`), and a schedule’s fire into it fails; reading, renaming, deleting, forking, forgetting grants and the window keep working. `bureau.contexts.list` and `get` show when in `archivedAt`, and `list` filters by it with `archived`. A context with a task running, or waiting on an approval or an answer, is a `Conflict` with reason `context-busy`, and nothing is stored: stop or answer the task first. A goal’s session (origin `goal`) cannot be archived, because the goal writes its attempts to it whatever it records: it is a `Conflict` with reason `context-not-archivable`, and the goal is stopped with `bureau.goals.cancel` instead. Archiving is not activity: the context’s `updatedAt`, and so its place in a listing, does not move. Archiving an archived context is not an error: it answers `changed: false` with the time it was first archived, so a retry is safe. Another owner’s context and a missing one answer `NotFound`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Answers a receipt, `{ id, changed, archivedAt }`, and nothing else of the context. The call writes no audit entry.",
+      "description": "Archives one of the caller’s own contexts; a caller holding `bureau.contexts:write` archives any owner’s. An archived context accepts no new work: starting a task in it, `bureau.contexts.input`, `bureau.contexts.steer`, `bureau.contexts.regenerate`, `bureau.contexts.discardturn` and `bureau.contexts.resumeturn` are each a `Conflict` with reason `context-archived` until it is unarchived (`bureau.contexts.unarchive`), and a schedule’s fire into it fails; reading, renaming, deleting, forking, forgetting grants and the window keep working. `bureau.contexts.list` and `get` show when in `archivedAt`, and `list` filters by it with `archived`. A context with a task running, or waiting on an approval or an answer, is a `Conflict` with reason `context-busy`, and nothing is stored: stop or answer the task first. A goal’s session (origin `goal`) cannot be archived, because the goal writes its attempts to it whatever it records: it is a `Conflict` with reason `context-not-archivable`, and the goal is stopped with `bureau.goals.cancel` instead. Archiving is not activity: the context’s `updatedAt`, and so its place in a listing, does not move. Archiving an archived context is not an error: it answers `changed: false` with the time it was first archived, so a retry is safe. Another owner’s context and a missing one answer `NotFound`. A Bureau that is shutting down is `Unavailable` with reason `shutting-down`. Answers a receipt, `{ id, changed, archivedAt }`, and nothing else of the context. The call writes no audit entry.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -10227,6 +11350,642 @@
         "properties": {
           "contextId": {
             "description": "The identifier of the context to measure.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Lets a workspace chat owner grant read-only access to one current member of the same workspace. The grant is durable, records its grantor, and is idempotent. Missing contexts, another owner’s context, local callers, and people outside the workspace all answer NotFound.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.contexts.share",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "contextId",
+          "required": true,
+          "schema": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "granteeOwnerId",
+          "required": true,
+          "schema": {
+            "description": "The current workspace member owner identifier.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "changed": {
+              "type": "boolean"
+            },
+            "contextId": {
+              "type": "string"
+            },
+            "granteeOwnerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "contextId",
+            "granteeOwnerId",
+            "changed"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Share a context read-only",
+      "tags": [
+        {
+          "name": "Contexts"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "contextId": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "granteeOwnerId": {
+            "description": "The current workspace member owner identifier.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId",
+          "granteeOwnerId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Lets a workspace chat owner revoke one reader’s current access. The former reader record remains durable so a direct-link access request can be admitted without making unrelated chats discoverable. Repeating a revocation is idempotent.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.contexts.share.revoke",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "contextId",
+          "required": true,
+          "schema": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "granteeOwnerId",
+          "required": true,
+          "schema": {
+            "description": "The current workspace member owner identifier.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "changed": {
+              "type": "boolean"
+            },
+            "contextId": {
+              "type": "string"
+            },
+            "granteeOwnerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "contextId",
+            "granteeOwnerId",
+            "changed"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Revoke a context reader",
+      "tags": [
+        {
+          "name": "Contexts"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "contextId": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "granteeOwnerId": {
+            "description": "The current workspace member owner identifier.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId",
+          "granteeOwnerId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Lets only a formerly granted workspace member create one pending owner-visible request. It never restores access.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.contexts.share.request",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "contextId",
+          "required": true,
+          "schema": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "changed": {
+              "type": "boolean"
+            },
+            "contextId": {
+              "type": "string"
+            },
+            "granteeOwnerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "contextId",
+            "granteeOwnerId",
+            "changed"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Request restored context access",
+      "tags": [
+        {
+          "name": "Contexts"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "contextId": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Lets only the chat owner grant or deny a pending former-reader request.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.contexts.share.request.resolve",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "contextId",
+          "required": true,
+          "schema": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "decision",
+          "required": true,
+          "schema": {
+            "description": "Whether to restore or deny requested access.",
+            "enum": [
+              "grant",
+              "deny"
+            ],
+            "type": "string"
+          }
+        },
+        {
+          "name": "granteeOwnerId",
+          "required": true,
+          "schema": {
+            "description": "The current workspace member owner identifier.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "requestId",
+          "required": true,
+          "schema": {
+            "description": "The durable access request being decided.",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "changed": {
+              "type": "boolean"
+            },
+            "contextId": {
+              "type": "string"
+            },
+            "granteeOwnerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "contextId",
+            "granteeOwnerId",
+            "changed"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Resolve a context access request",
+      "tags": [
+        {
+          "name": "Contexts"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "contextId": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "decision": {
+            "description": "Whether to restore or deny requested access.",
+            "enum": [
+              "grant",
+              "deny"
+            ],
+            "type": "string"
+          },
+          "granteeOwnerId": {
+            "description": "The current workspace member owner identifier.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "requestId": {
+            "description": "The durable access request being decided.",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId",
+          "granteeOwnerId",
+          "requestId",
+          "decision"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Lists only pending requests for contexts the caller owns. It never exposes another owner’s chat or request receipt.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.contexts.share.requests.list",
+      "paramStructure": "by-name",
+      "params": [],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "requests": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "contextId": {
+                    "type": "string"
+                  },
+                  "contextTitle": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "granteeLabel": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "granteeOwnerId": {
+                    "type": "string"
+                  },
+                  "requestId": {
+                    "type": "string"
+                  },
+                  "requestedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "contextId",
+                  "requestId",
+                  "granteeOwnerId",
+                  "requestedAt",
+                  "granteeLabel",
+                  "contextTitle"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "requests"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "List pending chat access requests",
+      "tags": [
+        {
+          "name": "Contexts"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns active, requestable, or pending only to a current same-workspace reader or former reader of this exact context. All other callers receive NotFound without context metadata.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/NotFound"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.contexts.share.status",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "contextId",
+          "required": true,
+          "schema": {
+            "description": "The chat context identifier.",
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "agentName": {
+                  "type": "string"
+                },
+                "grantor": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "const": "active",
+                  "type": "string"
+                },
+                "title": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "status",
+                "title",
+                "agentName",
+                "grantor"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "status": {
+                  "const": "requestable",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "status"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "status": {
+                  "const": "pending",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "status"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "summary": "Read this caller’s shared-chat access state",
+      "tags": [
+        {
+          "name": "Contexts"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "contextId": {
+            "description": "The chat context identifier.",
             "minLength": 1,
             "type": "string"
           }
@@ -19134,6 +20893,34 @@
                     },
                     "message": {
                       "type": "string"
+                    },
+                    "syntax": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "comma",
+                            "other"
+                          ],
+                          "type": "string"
+                        },
+                        "line": {
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991,
+                          "type": "integer"
+                        },
+                        "stoppedAt": {
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "line",
+                        "stoppedAt",
+                        "kind"
+                      ],
+                      "type": "object"
                     }
                   },
                   "required": [
@@ -19562,6 +21349,34 @@
                               },
                               "message": {
                                 "type": "string"
+                              },
+                              "syntax": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "comma",
+                                      "other"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "stoppedAt": {
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 9007199254740991,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "line",
+                                  "stoppedAt",
+                                  "kind"
+                                ],
+                                "type": "object"
                               }
                             },
                             "required": [
@@ -19586,6 +21401,108 @@
                                 "minimum": -9007199254740991,
                                 "type": "integer"
                               },
+                              "current": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "startedAt": {
+                                        "type": "string"
+                                      },
+                                      "status": {
+                                        "enum": [
+                                          "pending",
+                                          "running",
+                                          "suspended"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "step": {
+                                        "anyOf": [
+                                          {
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 9007199254740991,
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "totalSteps": {
+                                        "anyOf": [
+                                          {
+                                            "maximum": 9007199254740991,
+                                            "minimum": 0,
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "waitingForSignal": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "startedAt",
+                                      "status",
+                                      "step",
+                                      "totalSteps",
+                                      "waitingForSignal"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "last": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "failedStep": {
+                                        "anyOf": [
+                                          {
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 9007199254740991,
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "status": {
+                                        "enum": [
+                                          "pending",
+                                          "running",
+                                          "completed",
+                                          "failed",
+                                          "cancelled",
+                                          "timed-out",
+                                          "suspended"
+                                        ],
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "status",
+                                      "failedStep"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
                               "last24Hours": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
@@ -19596,12 +21513,20 @@
                                   "string",
                                   "null"
                                 ]
+                              },
+                              "total": {
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
                               }
                             },
                             "required": [
+                              "total",
                               "active",
                               "last24Hours",
-                              "lastRunAt"
+                              "lastRunAt",
+                              "last",
+                              "current"
                             ],
                             "type": "object"
                           },
@@ -20092,6 +22017,42 @@
                   "lastRunAt": {
                     "type": "string"
                   },
+                  "runs": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "count": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "firstRunAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "lastRunAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "count",
+                          "firstRunAt",
+                          "lastRunAt"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Retained runs on this engine revision, or `null` when the totals are unavailable or private."
+                  },
                   "workflowVersion": {
                     "type": "string"
                   }
@@ -20100,15 +22061,23 @@
                   "workflowVersion",
                   "firstRunAt",
                   "lastRunAt",
+                  "runs",
                   "document",
                   "compatibility"
                 ],
                 "type": "object"
               },
               "type": "array"
+            },
+            "savedVersionCount": {
+              "description": "Every saved version of the workflow, including versions that have never run.",
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             }
           },
           "required": [
+            "savedVersionCount",
             "revisions"
           ],
           "type": "object"
@@ -21648,8 +23617,22 @@
               "items": {
                 "additionalProperties": false,
                 "properties": {
+                  "awaitingSignal": {
+                    "description": "The signal an unfinished instance waits for.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "createdAt": {
                     "type": "string"
+                  },
+                  "failure": {
+                    "description": "Why a failed or timed-out instance ended, at most 1,000 characters.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "id": {
                     "type": "string"
@@ -21874,6 +23857,30 @@
                       }
                     ]
                   },
+                  "schedule": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "manual": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "manual"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The schedule the runtime recorded as having fired the instance."
+                  },
                   "status": {
                     "enum": [
                       "pending",
@@ -21885,6 +23892,41 @@
                       "suspended"
                     ],
                     "type": "string"
+                  },
+                  "steps": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "at": {
+                            "anyOf": [
+                              {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "total": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "total",
+                          "at"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "How many steps the version the instance ran has, and the one it reached, from one."
                   },
                   "updatedAt": {
                     "type": "string"
@@ -21903,7 +23945,11 @@
                   "status",
                   "createdAt",
                   "updatedAt",
-                  "origin"
+                  "origin",
+                  "schedule",
+                  "steps",
+                  "awaitingSignal",
+                  "failure"
                 ],
                 "type": "object"
               },
@@ -22074,10 +24120,24 @@
           },
           "additionalProperties": false,
           "properties": {
+            "awaitingSignal": {
+              "description": "The signal an unfinished instance waits for.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "createdAt": {
               "type": "string"
             },
             "error": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "failure": {
+              "description": "Why a failed or timed-out instance ended, at most 1,000 characters.",
               "type": [
                 "string",
                 "null"
@@ -22336,6 +24396,30 @@
                 }
               ]
             },
+            "schedule": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "manual": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "manual"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The schedule the runtime recorded as having fired the instance."
+            },
             "status": {
               "enum": [
                 "pending",
@@ -22347,6 +24431,41 @@
                 "suspended"
               ],
               "type": "string"
+            },
+            "steps": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "at": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "total",
+                    "at"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "How many steps the version the instance ran has, and the one it reached, from one."
             },
             "trigger": {
               "anyOf": [
@@ -22376,6 +24495,10 @@
             "createdAt",
             "updatedAt",
             "origin",
+            "schedule",
+            "steps",
+            "awaitingSignal",
+            "failure",
             "trigger",
             "result",
             "error",
@@ -22406,6 +24529,67 @@
         "required": [
           "runId"
         ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Returns the durable engine’s current workflow-run concurrency cap and how many runs it is executing now. Waiting and suspended runs are not counted. Requires bureau.workflows:read unless the caller owns the deployment’s workflows.",
+      "errors": [
+        {
+          "$ref": "#/components/errors/Unauthorized"
+        },
+        {
+          "$ref": "#/components/errors/Forbidden"
+        },
+        {
+          "$ref": "#/components/errors/InvalidParams"
+        },
+        {
+          "$ref": "#/components/errors/EngineFailure"
+        },
+        {
+          "$ref": "#/components/errors/UnsupportedCapability"
+        }
+      ],
+      "name": "bureau.workflows.concurrency",
+      "paramStructure": "by-name",
+      "params": [],
+      "result": {
+        "name": "result",
+        "required": true,
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "max": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "running": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "max",
+            "running"
+          ],
+          "type": "object"
+        }
+      },
+      "summary": "Read workflow run concurrency",
+      "tags": [
+        {
+          "name": "Workflows"
+        }
+      ],
+      "x-weft-access": {
+        "kind": "authenticated"
+      },
+      "x-weft-paramsSchema": {
+        "additionalProperties": false,
+        "properties": {},
         "type": "object"
       }
     },
@@ -22596,7 +24780,7 @@
       }
     },
     {
-      "description": "Runs a failed instance of a workflow file again from the step it failed at, in place: the instance keeps its id and the version it ran, the step runs again, and every step before it keeps its result and is never run again. `step` must be the step the instance failed at. Returns once the instance is running again; read `bureau.workflows.runs.get` for how it ends. A refusal changes nothing and is `Unprocessable` with `data.reason`: `run-not-failed` (the instance is not failed, a retry already running it again included), `step-not-found` (the version it ran has no such step), `earlier-steps-incomplete` (the step comes after the one it failed at), `step-completed` (the step comes before it), `step-not-retryable` (it failed outside a step, at a review a person rejected, at a `workflow` step, or inside a `parallel` step), `no-checkpoint` (nothing was kept to resume from) or `version-unavailable` (the version it ran is no longer stored, or pins an activity or code workflow that is not loaded). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else, and any run that is no instance of a workflow file, is answered `NotFound`.",
+      "description": "Runs a failed instance of a workflow file again from the step it failed at, in place: the instance keeps its id and the version it ran, the step runs again, and every step before it keeps its result and is never run again. `step` must be the step the instance failed at, and is that step when left out. Returns once the instance is running again; read `bureau.workflows.runs.get` for how it ends. A refusal changes nothing and is `Unprocessable` with `data.reason`: `run-not-failed` (the instance is not failed, a retry already running it again included), `step-not-found` (the version it ran has no such step), `earlier-steps-incomplete` (the step comes after the one it failed at), `step-completed` (the step comes before it), `step-not-retryable` (it failed outside a step, at a review a person rejected, at a `workflow` step, or inside a `parallel` step), `no-checkpoint` (nothing was kept to resume from) or `version-unavailable` (the version it ran is no longer stored, or pins an activity or code workflow that is not loaded). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else, and any run that is no instance of a workflow file, is answered `NotFound`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -22644,9 +24828,9 @@
         },
         {
           "name": "step",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at.",
+            "description": "The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at. Left out, it is that step.",
             "maximum": 9007199254740991,
             "minimum": 1,
             "type": "integer"
@@ -22712,15 +24896,14 @@
             "type": "string"
           },
           "step": {
-            "description": "The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at.",
+            "description": "The step to run again, counted from 1 in the order `bureau.workflows.runs.history` numbers steps: it must be the step the instance failed at. Left out, it is that step.",
             "maximum": 9007199254740991,
             "minimum": 1,
             "type": "integer"
           }
         },
         "required": [
-          "runId",
-          "step"
+          "runId"
         ],
         "type": "object"
       }
@@ -22848,7 +25031,7 @@
       }
     },
     {
-      "description": "Starts one instance of the ready, unpaused workflow `id` with `input` and returns its `runId`. The instance’s `trigger` is `{ kind: \"manual\", input, origin }`, where `origin` is `{ kind: \"person\", principal, surface }` (the caller’s owner string and `surface`), and the run is tagged `origin:person`. An `input` that does not satisfy the workflow’s `inputSchema` is `InvalidParams` whose `data.issues` locates every failure, and nothing is created; a raw `weft.workflows.start` is not checked first. A workflow that is missing, invalid, or paused is `NotFound`. An earlier file change the engine has not followed is `Unavailable` (`workflow-apply-failed`). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.",
+      "description": "Starts one instance of the ready, unpaused workflow `id` with `input` and returns its `runId`. The instance’s `trigger` is `{ kind: \"manual\", input, origin }`, where `origin` is `{ kind: \"person\", principal, surface }` (the caller’s owner string and `surface`), and the run is tagged `origin:person`. An `idempotencyKey` makes the start at-most-once for that authorized caller and workflow: an exact retry answers the first run while its run record exists. An input that does not satisfy the workflow’s `inputSchema` is `InvalidParams` whose `data.issues` locates every failure, and nothing is created; a raw `weft.workflows.start` is not checked first. A workflow that is missing, invalid, or paused is `NotFound`. An earlier file change the engine has not followed is `Unavailable` (`workflow-apply-failed`). Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -22914,6 +25097,49 @@
             },
             "description": "The identifier of the workflow.",
             "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        {
+          "name": "idempotencyKey",
+          "required": false,
+          "schema": {
+            "$defs": {
+              "__schema0": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "items": {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "additionalProperties": {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  }
+                ]
+              }
+            },
+            "description": "The caller’s key for one manual start. Retrying the same key for the same authorized caller and workflow returns the run the first request started while its record exists, and never starts another.",
+            "maxLength": 200,
             "minLength": 1,
             "type": "string"
           }
@@ -23080,6 +25306,12 @@
           "id": {
             "description": "The identifier of the workflow.",
             "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "description": "The caller’s key for one manual start. Retrying the same key for the same authorized caller and workflow returns the run the first request started while its record exists, and never starts another.",
+            "maxLength": 200,
             "minLength": 1,
             "type": "string"
           },
@@ -23556,6 +25788,7 @@
                       "budget.threshold",
                       "run.stalled",
                       "run.looping",
+                      "run.overspending",
                       "tool.policy-denied",
                       "tool.error",
                       "multiagent.child-workflow.started",
@@ -23660,6 +25893,7 @@
                         "budget.threshold",
                         "run.stalled",
                         "run.looping",
+                        "run.overspending",
                         "tool.policy-denied",
                         "tool.error",
                         "multiagent.child-workflow.started",
@@ -23822,6 +26056,7 @@
                       "budget.threshold",
                       "run.stalled",
                       "run.looping",
+                      "run.overspending",
                       "tool.policy-denied",
                       "tool.error",
                       "multiagent.child-workflow.started",
@@ -23926,6 +26161,7 @@
                         "budget.threshold",
                         "run.stalled",
                         "run.looping",
+                        "run.overspending",
                         "tool.policy-denied",
                         "tool.error",
                         "multiagent.child-workflow.started",
@@ -25060,9 +27296,14 @@
           "additionalProperties": false,
           "properties": {
             "nextPageToken": {
-              "type": [
-                "string",
-                "null"
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "reviews": {
@@ -25101,8 +27342,14 @@
                               {
                                 "additionalProperties": false,
                                 "properties": {
+                                  "consequence": {
+                                    "type": "string"
+                                  },
                                   "expiresAt": {
                                     "type": "string"
+                                  },
+                                  "irreversible": {
+                                    "type": "boolean"
                                   },
                                   "message": {
                                     "type": "string"
@@ -25207,6 +27454,9 @@
                                   "type": {
                                     "const": "approval",
                                     "type": "string"
+                                  },
+                                  "why": {
+                                    "type": "string"
                                   }
                                 },
                                 "required": [
@@ -25221,6 +27471,9 @@
                           "arguments": {},
                           "callId": {
                             "type": "string"
+                          },
+                          "mayRemember": {
+                            "type": "boolean"
                           },
                           "policyPauseTier": {
                             "enum": [
@@ -25245,7 +27498,52 @@
                         ],
                         "type": "object"
                       },
+                      "effect": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "cents": {
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "type": "integer"
+                          },
+                          "currency": {
+                            "const": "USD",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "refund",
+                            "type": "string"
+                          },
+                          "orderId": {
+                            "type": "string"
+                          },
+                          "refundId": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "enum": [
+                              "admitted",
+                              "submitting",
+                              "provider-pending",
+                              "succeeded",
+                              "failed",
+                              "needs-reconciliation"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "refundId",
+                          "orderId",
+                          "cents",
+                          "currency",
+                          "status"
+                        ],
+                        "type": "object"
+                      },
                       "id": {
+                        "minLength": 1,
                         "type": "string"
                       },
                       "kind": {
@@ -25297,6 +27595,12 @@
                           "decidedAt"
                         ],
                         "type": "object"
+                      },
+                      "resolvedAt": {
+                        "type": "number"
+                      },
+                      "resolvedBy": {
+                        "type": "string"
                       },
                       "round": {
                         "maximum": 9007199254740991,
@@ -25351,6 +27655,7 @@
                         "type": "string"
                       },
                       "id": {
+                        "minLength": 1,
                         "type": "string"
                       },
                       "inputSchema": {
@@ -25412,6 +27717,12 @@
                           "decidedAt"
                         ],
                         "type": "object"
+                      },
+                      "resolvedAt": {
+                        "type": "number"
+                      },
+                      "resolvedBy": {
+                        "type": "string"
                       },
                       "runId": {
                         "type": "string"
@@ -25703,8 +28014,14 @@
                         {
                           "additionalProperties": false,
                           "properties": {
+                            "consequence": {
+                              "type": "string"
+                            },
                             "expiresAt": {
                               "type": "string"
+                            },
+                            "irreversible": {
+                              "type": "boolean"
                             },
                             "message": {
                               "type": "string"
@@ -25809,6 +28126,9 @@
                             "type": {
                               "const": "approval",
                               "type": "string"
+                            },
+                            "why": {
+                              "type": "string"
                             }
                           },
                           "required": [
@@ -25823,6 +28143,9 @@
                     "arguments": {},
                     "callId": {
                       "type": "string"
+                    },
+                    "mayRemember": {
+                      "type": "boolean"
                     },
                     "policyPauseTier": {
                       "enum": [
@@ -25847,7 +28170,52 @@
                   ],
                   "type": "object"
                 },
+                "effect": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "cents": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991,
+                      "type": "integer"
+                    },
+                    "currency": {
+                      "const": "USD",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "refund",
+                      "type": "string"
+                    },
+                    "orderId": {
+                      "type": "string"
+                    },
+                    "refundId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "admitted",
+                        "submitting",
+                        "provider-pending",
+                        "succeeded",
+                        "failed",
+                        "needs-reconciliation"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "refundId",
+                    "orderId",
+                    "cents",
+                    "currency",
+                    "status"
+                  ],
+                  "type": "object"
+                },
                 "id": {
+                  "minLength": 1,
                   "type": "string"
                 },
                 "kind": {
@@ -25899,6 +28267,12 @@
                     "decidedAt"
                   ],
                   "type": "object"
+                },
+                "resolvedAt": {
+                  "type": "number"
+                },
+                "resolvedBy": {
+                  "type": "string"
                 },
                 "round": {
                   "maximum": 9007199254740991,
@@ -25953,6 +28327,7 @@
                   "type": "string"
                 },
                 "id": {
+                  "minLength": 1,
                   "type": "string"
                 },
                 "inputSchema": {
@@ -26014,6 +28389,12 @@
                     "decidedAt"
                   ],
                   "type": "object"
+                },
+                "resolvedAt": {
+                  "type": "number"
+                },
+                "resolvedBy": {
+                  "type": "string"
                 },
                 "runId": {
                   "type": "string"
@@ -26109,7 +28490,7 @@
       }
     },
     {
-      "description": "Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved answers `Conflict` when the call asks for a different decision than the one recorded (a resolver that lost), and 404 when it repeats that decision, until command receipts exist; one the caller may not resolve answers 404. `remember: true` on approving a tool approval also allows its tool for the rest of the chat: the next ask for it in that chat that the agent file would make by `on-changes` runs without asking, and no other chat, fork, tool, `always` or `blocked` value, agent-wide always mode or read-only restriction is affected; the response says `remembered`. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. The outcome row’s metadata records who decided and when, with the note, the sentence the tool asked with, and the `decisionSurface` the call gave, under `approvalDecision`. A `superseded` receipt writes nothing. A tool approval does not park its run, so once this call decides the last pending review of a chat’s run (approve, deny or reject), it starts the run that answers the decisions, as the chat’s own resume does: one run, owned by the chat’s owner whoever decided, under a command id of the decided run alone, so the chat’s resume of the same reviews, a decision racing it, and a retry all continue with that one run. `continuation` says which run (`started`), or why none could start (`not-started`, the decision having taken effect); it is absent while another review of the run is pending, for a run that is not a chat’s, and for a human wait, whose answer continues its parked run. Approving a human wait takes an `answer`; when the review has an `inputSchema` the answer is checked against it before anything is decided, and one that does not fit answers `InvalidParams` with `data.issues` (`path` rooted at `answer`, `message`, and `code`, the schema keyword that failed) and leaves the review pending. `round` is the round of the review the caller read (`bureau.reviews.get` and `list` return it): a re-gated approval keeps its id and advances its round, so a decision made on round N is refused with a `Conflict` once the review is at another round, before anything is decided, written, or audited. A `Conflict` whose `reason` begins `REVIEW_ROUND_CHANGED: ` is that refusal (nothing took effect; read the review again); one that begins `APPROVAL_OUTCOME_NOT_WRITTEN: ` means the decision took effect (the tool ran or was refused) and only that write failed; one that begins `REVIEW_ALREADY_RESOLVED: ` (COR-2426) means the review was already resolved with another decision, so nothing took effect and it is no longer waiting; any other `Conflict` is a resolver that lost. Omit `round` and the call is not fenced.",
+      "description": "Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved answers `Conflict` when the call asks for a different decision than the one recorded (a resolver that lost), and 404 when it repeats that decision, until command receipts exist; one the caller may not resolve answers 404. `remember: true` on approving a tool approval also allows its tool for the rest of the chat: the next ask for it in that chat that the agent file would make by `on-changes` runs without asking, and no other chat, fork, tool, `always` or `blocked` value, agent-wide always mode or read-only restriction is affected; the response says `remembered`. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. The outcome row’s metadata records who decided and when, with the note, the sentence the tool asked with, and the `decisionSurface` the call gave, under `approvalDecision`. A `superseded` receipt writes nothing. A tool approval does not park its run, so once this call decides the last pending review of a chat’s run (approve, deny or reject), it starts the run that answers the decisions, as the chat’s own resume does: one run, owned by the chat’s owner whoever decided, under a command id of the decided run alone, so the chat’s resume of the same reviews, a decision racing it, and a retry all continue with that one run. `continuation` says which run (`started`), or why none could start (`not-started`, the decision having taken effect); it is absent while another review of the run is pending, for a run that is not a chat’s, and for a human wait, whose answer continues its parked run. Approving a human wait takes an `answer`; when the review has an `inputSchema` the answer is checked against it before anything is decided, and one that does not fit answers `InvalidParams` with `data.issues` (`path` rooted at `answer`, `message`, and `code`, the schema keyword that failed) and leaves the review pending. `round` is the round of the review the caller read (`bureau.reviews.get` and `list` return it): a re-gated approval keeps its id and advances its round, so a decision made on round N is refused with a `Conflict` once the review is at another round, before anything is decided, written, or audited. A `Conflict` whose `reason` is `REVIEW_ROUND_CHANGED` means nothing took effect and the review must be read again; `REVIEW_ALREADY_RESOLVED` means the review was already resolved and also requires a fresh read. An applied decision whose outcome row could not be written returns `warning: APPROVAL_OUTCOME_NOT_WRITTEN`. A protected review requires its displayed round and reviewer authority; other reviews retain the existing optional round.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -26279,6 +28660,10 @@
             },
             "remembered": {
               "type": "boolean"
+            },
+            "warning": {
+              "const": "APPROVAL_OUTCOME_NOT_WRITTEN",
+              "type": "string"
             }
           },
           "required": [
@@ -36513,7 +38898,7 @@
       }
     },
     {
-      "description": "Returns `rows`: every row of the deployment’s model catalog that can answer a decision, natively (the row declares decision kinds) or through structured output, in catalog order, each with its `provider`, `model`, `availability` (`available`, or `needs-setup` when its provider has no key saved or the model is off), `decisionOnly` (a row that only decides and is no chat model), `answering` (the row a decision goes to now: the row `decisions.model` names when it is in the catalog, can decide and is available, else the fallback’s; none when the named row is forbidden by the model policy, which refuses every decision) and `fallback` (the row the language-model fallback uses: `decisions.fallbackModel` when that row is available and returns structured output, otherwise the cheapest priced such row) and `canBeFallback` (whether the row can be the fallback at all: it returns structured output, so a decision-only row cannot be, and a `needs-setup` row that returns structured output can). A row the model policy forbids is left out. The rows are read again on every call. Settings lists them for the choice of `decisions.model` and `decisions.fallbackModel`, so the call is a read of the settings and requires `bureau.settings:read`.",
+      "description": "Returns `hostModel`, the configured host-registered model’s name and the decision kinds it answers first, or `null`. The `rows` list has every row of the deployment’s model catalog that can answer a decision, natively (the row declares decision kinds) or through structured output, in catalog order, each with its `provider`, `model`, `availability` (`available`, or `needs-setup` when its provider has no key saved or the model is off), `decisionOnly` (a row that only decides and is no chat model), `answering` (for kinds the host model does not answer, the available catalog row named by `decisions.model` when it can decide, or the fallback row otherwise. No catalog row is marked when the host model answers every kind or policy denies the configured catalog row), `fallback` (the row the language-model fallback uses), `canBeFallback` (whether this row can be the fallback at all), and canonical configured-row marks for `decisions.model` and `decisions.fallbackModel`. A row the model policy forbids is left out. The rows are read again on every call. Settings lists them for the choice of `decisions.model` and `decisions.fallbackModel`, so the call is a read of the settings and requires `bureau.settings:read`.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -36537,13 +38922,47 @@
         "schema": {
           "additionalProperties": false,
           "properties": {
+            "hostModel": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kinds": {
+                      "items": {
+                        "description": "The kind of answer wanted: a boolean, one of the options, a level, or an object.",
+                        "enum": [
+                          "boolean",
+                          "choice",
+                          "scale",
+                          "structured"
+                        ],
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "kinds"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The configured host-registered model and the kinds it answers before any catalog row."
+            },
             "rows": {
               "description": "Every catalog row that can decide, in catalog order.",
               "items": {
                 "additionalProperties": false,
                 "properties": {
                   "answering": {
-                    "description": "Whether a decision goes to this row now, as `bureau.decisions.decide` chooses it: the row `decisions.model` names when it is in the catalog, can decide and is available, else the `fallback` row. A named row the model policy forbids refuses every decision, so no row is marked. At most one row is marked.",
+                    "description": "The catalog row that can answer under the current settings after the host model serves its declared kinds. At most one catalog row is marked.",
                     "type": "boolean"
                   },
                   "availability": {
@@ -36557,6 +38976,20 @@
                   "canBeFallback": {
                     "description": "Whether this row can be the language-model fallback at all: it returns structured output, the rule `chooseFallbackRow` applies before availability. A decision-only row cannot, however `decisions.fallbackModel` is saved. A `needs-setup` row that returns structured output can: it is the fallback once its provider has a key.",
                     "type": "boolean"
+                  },
+                  "configured": {
+                    "description": "The exact `decisions.model` value when it resolves to this row, including a saved alias. Otherwise null.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "configuredFallback": {
+                    "description": "The exact effective `decisions.fallbackModel` setting when it resolves to this row, including a saved alias. Otherwise null.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "decisionOnly": {
                     "description": "Whether the row only decides and is no chat model (TypeSafe’s rows).",
@@ -36582,7 +39015,9 @@
                   "decisionOnly",
                   "answering",
                   "fallback",
-                  "canBeFallback"
+                  "canBeFallback",
+                  "configured",
+                  "configuredFallback"
                 ],
                 "type": "object"
               },
@@ -36590,6 +39025,7 @@
             }
           },
           "required": [
+            "hostModel",
             "rows"
           ],
           "type": "object"
@@ -40267,9 +42703,22 @@
                     "type": "string"
                   },
                   "problems": {
-                    "description": "Why a hook cannot do what it says, as codes. `reaction-unavailable`: its reaction is not registered (its plugin is disabled, removed or dropped the kind), or it is a default hook its plugin withdrew, so it writes no delivery. `configuration-invalid`: the reaction’s schema now refuses the configuration the hook stored. These two are a plugin hook’s only. `event-missing`, for a hook of any action: a plugin kind it lists is missing, because its plugin is not loaded (`loadedVersion: null`) or is loaded at another version, so that kind fires nothing while the others still fire. Empty when nothing is wrong.",
+                    "description": "Why a hook cannot do what it says, as codes. `workflow-unavailable`: a start-workflow hook’s target is not currently startable for its owner, without saying whether it was deleted, paused, invalid or otherwise unavailable. `reaction-unavailable`: its reaction is not registered (its plugin is disabled, removed or dropped the kind), or it is a default hook its plugin withdrew, so it writes no delivery. `configuration-invalid`: the reaction’s schema now refuses the configuration the hook stored. These two are a plugin hook’s only. `event-missing`, for a hook of any action: a plugin kind it lists is missing, because its plugin is not loaded (`loadedVersion: null`) or is loaded at another version, so that kind fires nothing while the others still fire. Empty when nothing is wrong.",
                     "items": {
                       "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "const": "workflow-unavailable",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        },
                         {
                           "additionalProperties": false,
                           "properties": {

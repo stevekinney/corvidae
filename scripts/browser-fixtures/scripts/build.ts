@@ -4,6 +4,7 @@ import {
   buildFixtures as buildSuiteFixtures,
   type FixtureBuild,
 } from '@lostgradient/testing/browser/build';
+import { ensureCinderGenerated } from '../../ensure-cinder-generated.ts';
 import { defaultManifestLayout } from './prepare-manifest.ts';
 
 const root = resolve(import.meta.dirname, '..');
@@ -17,6 +18,7 @@ const rootFixtureBuild: FixtureBuild = {
 };
 
 export async function buildFixtures(development = false): Promise<void> {
+  await ensureCinderGenerated();
   await buildSuiteFixtures(rootFixtureBuild, development);
 }
 

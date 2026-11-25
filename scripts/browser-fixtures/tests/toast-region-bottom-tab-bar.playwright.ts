@@ -11,38 +11,49 @@
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
 
-test('at 375px a toast sits above the bottom navigation bar and never covers it', async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 375, height: 812 });
-  await page.goto(`${fixtureRoute('toast-region')}&bottom-tab-bar=1`, { waitUntil: 'load' });
-  const bar = page.locator('[data-testid="bottom-tab-bar"] nav.cinder-navigation-bar');
-  await bar.waitFor({ state: 'visible' });
+for (const width of [320, 375]) {
+  test(`at ${width}px a toast sits above the bottom navigation bar without blocking Home or More`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 812 });
+    await page.goto(`${fixtureRoute('toast-region')}&bottom-tab-bar=1`, { waitUntil: 'load' });
+    const bar = page.locator('[data-testid="bottom-tab-bar"] nav.cinder-navigation-bar');
+    const home = page.locator('[data-testid="bottom-tab-bar"] a[href="#home"]');
+    const more = page.locator('[data-testid="bottom-tab-bar"] a[href="#more"]');
+    await bar.waitFor({ state: 'visible' });
+    await expect(home).toBeVisible();
+    await expect(more).toBeVisible();
 
-  await page.getByRole('button', { name: 'Dismiss-after-action' }).click();
-  const toast = page.locator('.cinder-toast', { hasText: 'Item moved to trash.' });
-  await expect(toast).toBeVisible();
-  await toast.evaluate((element) =>
-    Promise.all(element.getAnimations({ subtree: true }).map((animation) => animation.finished)),
-  );
+    await page.getByRole('button', { name: 'Dismiss-after-action' }).click();
+    const toast = page.locator('.cinder-toast', { hasText: 'Item moved to trash.' });
+    await expect(toast).toBeVisible();
+    await toast.evaluate((element) =>
+      Promise.all(element.getAnimations({ subtree: true }).map((animation) => animation.finished)),
+    );
 
-  const read = await page.evaluate(() => {
-    const box = (selector: string) => {
-      const element = document.querySelector(selector);
-      if (!element) return null;
-      const { top, bottom, left, right } = element.getBoundingClientRect();
-      return { top, bottom, left, right };
-    };
-    return {
-      bar: box('[data-testid="bottom-tab-bar"] nav.cinder-navigation-bar'),
-      toast: box('.cinder-toast'),
-    };
+    const read = await page.evaluate(() => {
+      const box = (selector: string) => {
+        const element = document.querySelector(selector);
+        if (!element) return null;
+        const { top, bottom, left, right } = element.getBoundingClientRect();
+        return { top, bottom, left, right };
+      };
+      return {
+        bar: box('[data-testid="bottom-tab-bar"] nav.cinder-navigation-bar'),
+        toast: box('.cinder-toast'),
+        home: box('[data-testid="bottom-tab-bar"] a[href="#home"]'),
+        more: box('[data-testid="bottom-tab-bar"] a[href="#more"]'),
+      };
+    });
+    const { bar: barBox, toast: toastBox, home: homeBox, more: moreBox } = read;
+    // The bar is at the bottom of the viewport, and the toast ends above its top edge. Its one
+    // geometry read includes the Home and More controls, which remain outside the toast's bounds.
+    expect(barBox!.bottom).toBeGreaterThan(800);
+    expect(toastBox!.bottom).toBeLessThanOrEqual(barBox!.top);
+    expect(homeBox!.top).toBeGreaterThanOrEqual(barBox!.top);
+    expect(moreBox!.top).toBeGreaterThanOrEqual(barBox!.top);
   });
-  const { bar: barBox, toast: toastBox } = read;
-  // The bar is at the bottom of the viewport, and the toast ends above its top edge.
-  expect(barBox!.bottom).toBeGreaterThan(800);
-  expect(toastBox!.bottom).toBeLessThanOrEqual(barBox!.top);
-});
+}
 
 test('at 375px a toast sits above a docked action bar stacked on the bottom navigation bar, and covers neither', async ({
   page,

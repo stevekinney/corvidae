@@ -98,7 +98,7 @@
         <p>{scopeReason('system:read')} to read worker session diagnostics.</p>
       </Callout>
     {:else if error}
-      <PanelFault {error} />
+      <PanelFault {error} subject="the worker session" />
     {:else if diagnostics === null}
       <EmptyState
         kind="done"

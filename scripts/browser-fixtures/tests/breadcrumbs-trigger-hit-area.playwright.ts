@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /**
  * COR-2327 B2: Breadcrumbs' current page drawn as a popover trigger (a chat's title switcher)
- * paints 30px on every pointer and, under a coarse pointer, answers a press 44px tall through a
+ * paints 32px on every pointer and, under a coarse pointer, answers a press 44px tall through a
  * positioned pseudo-element that takes no layout space; the trail's list makes room for it inside
  * its own clip. A fine pointer answers only within the painted button.
  *
@@ -15,7 +15,8 @@
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 
-const PAINTED = 30;
+/** A medium Button's painted height (COR-2438: the switcher matches the search field beside it). */
+const PAINTED = 32;
 const TRIGGER = '[data-testid="popover-trail"] .cinder-breadcrumbs__trigger';
 
 async function openTrail(page: Page): Promise<void> {

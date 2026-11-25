@@ -133,7 +133,9 @@ describe('AlertsTab — active alerts (weft.alerts.list)', () => {
     scripted.routeSseStream('/v1/events/sse', []);
 
     const { findByText, findByRole } = await renderAlertsTab();
-    expect(await findByText('Not authorized')).not.toBeNull();
+    expect(await findByText('Couldn’t load active alerts')).not.toBeNull();
+    // Still recognisable as a refusal, though the title now names what failed to load.
+    expect(document.querySelector('[data-fault-kind="unauthorized"]')).not.toBeNull();
     expect(await findByRole('button', { name: RETRY_LABEL })).not.toBeNull();
   });
 });

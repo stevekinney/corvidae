@@ -107,7 +107,11 @@ describe('terminal.variables', () => {
   // stylesheet and the theme bridge only read Cinder's tokens.
   test('lists exactly the custom properties the stylesheet declares', async () => {
     const source = await read('terminal.css');
-    const css = source.replace(/\/\*[\s\S]*?\*\//g, '');
+    // Match the metadata generator: an immediately preceding @runtime-state marker keeps a
+    // component-local override out of the public variables manifest.
+    const css = source
+      .replace(/\/\*\s*@runtime-state\s*\*\/\s*--cinder-[a-z0-9-]+\s*:\s*[^;]+;/g, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
     const declared = new Set(
       [...css.matchAll(/(?:^|[;{\s])(--cinder-[a-z0-9-]+)\s*:/g)].map((match) => match[1]!),
     );

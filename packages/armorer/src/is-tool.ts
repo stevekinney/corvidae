@@ -203,6 +203,12 @@ export type ToolPolicyDecision = {
     snapshotId?: string;
     expiresAt?: string;
     editableArgs?: boolean;
+    /** Whether the operation cannot be undone, carried onto the approval action. */
+    irreversible?: boolean;
+    /** What approving does, in one sentence of at most 500 characters. */
+    consequence?: string;
+    /** Why the agent wants to do it, in at most 2000 characters. */
+    why?: string;
     policyVersion?: string;
     idempotencyKey?: string;
   };

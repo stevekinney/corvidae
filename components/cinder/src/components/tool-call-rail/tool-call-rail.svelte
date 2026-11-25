@@ -22,6 +22,8 @@
 
   import { classNames } from '../../utilities/class-names.ts';
   import { planFold, summarizeFoldedNames } from '../../utilities/fold-middle.ts';
+  import Badge from '../badge/badge.svelte';
+  import CopyButton from '../copy-button/copy-button.svelte';
   import Spinner from '../spinner/spinner.svelte';
   import Timeline from '../timeline/timeline.svelte';
   import type { TimelineEntry } from '../timeline/timeline.types.ts';
@@ -70,6 +72,9 @@
     details: labels?.details ?? 'Details',
     retry: labels?.retry ?? 'Ask the agent to retry',
     copyInput: labels?.copyInput ?? 'Copy input',
+    step: labels?.step ?? ((position: number, total: number) => `Step ${position} of ${total}`),
+    copyError: labels?.copyError ?? 'Copy error',
+    errorCopied: labels?.errorCopied ?? 'Copied',
   });
 
   /** One or two calls are plain rows: no summary, no rail and no fold. */
@@ -124,6 +129,8 @@
     rows.flatMap((row) => (row.kind === 'call' && row.id === id ? [row.call] : []));
   const groupsFor = (id: string): (readonly ToolCallRailCall[])[] =>
     rows.flatMap((row) => (row.kind === 'group' && row.id === id ? [row.items] : []));
+  const positionOf = (call: ToolCallRailCall): number =>
+    calls.findIndex((candidate) => candidate.id === call.id) + 1;
   // A rail has nothing dated to say, so the entries carry only their identity and a name.
   const entries = $derived(
     rows.map((row): TimelineEntry => ({
@@ -136,14 +143,28 @@
 
   // The row elements, so each row's tooltip can anchor to its row and show on hover and on focus.
   const rowElements = new SvelteMap<string, HTMLElement>();
-  const trackRow =
-    (id: string): Attachment<HTMLElement> =>
-    (node) => {
+  /**
+   * One attachment per call id, kept while its row is drawn (COR-2646). Svelte re-runs an attachment
+   * whenever its expression yields a new function, and a host that rebuilds its calls on a clock
+   * hands the rail a new `call` on every tick. A fresh closure per evaluation tore the row out of
+   * `rowElements` and put it back each time, so the row's tooltip saw its `triggerRef` cleared and
+   * rebound: an open tooltip closed, and a pending show restarted its delay, so a focused row whose
+   * calls changed faster than that delay never showed its tooltip.
+   */
+  const rowTrackers = new Map<string, Attachment<HTMLElement>>();
+  const trackRow = (id: string): Attachment<HTMLElement> => {
+    const known = rowTrackers.get(id);
+    if (known !== undefined) return known;
+    const tracker: Attachment<HTMLElement> = (node) => {
       rowElements.set(id, node);
       return () => {
         if (rowElements.get(id) === node) rowElements.delete(id);
+        if (rowTrackers.get(id) === tracker) rowTrackers.delete(id);
       };
     };
+    rowTrackers.set(id, tracker);
+    return tracker;
+  };
 
   const resultText = (call: ToolCallRailCall): string => {
     if (call.status === 'running') return call.result ?? words.running;
@@ -230,15 +251,26 @@
 {/snippet}
 
 {#snippet cells(call: ToolCallRailCall)}
-  <span class="cinder-tool-call-rail__name">
-    {#if statusWord(call) !== ''}<span class="cinder-sr-only">{statusWord(call)}:</span
-      >{' '}{/if}{call.name}
+  <!-- Where an approval stands is a Badge right after the call's name, at every width, never in
+       the result column where it floats away from the name (COR-2438): a warning Badge while it
+       waits on a person, and a neutral one once it no longer does ("Approval expired", or the
+       host's words for an approval nothing waits on any more). The Badge says it, so no hidden
+       status word goes before the name. -->
+  {@const badged = call.status === 'waiting' || call.status === 'expired'}
+  <span class="cinder-tool-call-rail__name" data-cinder-badged={badged || undefined}>
+    <span class="cinder-tool-call-rail__name-text"
+      >{#if !badged && statusWord(call) !== ''}<span class="cinder-sr-only"
+          >{statusWord(call)}:</span
+        >{' '}{/if}{call.name}</span
+    >{#if badged}{' '}<Badge variant={call.status === 'waiting' ? 'warning' : 'neutral'} size="sm"
+        >{resultText(call)}</Badge
+      >{/if}
   </span>
   <span class="cinder-tool-call-rail__detail">
     {#if call.input !== undefined && call.input !== ''}
       <span class="cinder-tool-call-rail__input" title={call.input}>{call.input}</span>
     {/if}
-    {#if resultText(call) !== ''}
+    {#if resultText(call) !== '' && !badged}
       <span class="cinder-tool-call-rail__result" title={resultText(call)}
         >{@render resultCell(call)}</span
       >
@@ -302,6 +334,13 @@
           <CircleX class="cinder-tool-call-rail__failure-glyph" aria-hidden="true" />
           <span>{call.failure}</span>
         </span>
+        <span class="cinder-tool-call-rail__failure-step"
+          >{words.step(positionOf(call), calls.length)}</span
+        >
+        {#if call.diagnostic !== undefined && call.diagnostic !== ''}
+          <code class="cinder-tool-call-rail__failure-diagnostic" dir="auto">{call.diagnostic}</code
+          >
+        {/if}
         <span class="cinder-tool-call-rail__links">
           {#if onSelect}
             <button
@@ -313,9 +352,13 @@
             </button>
           {/if}
           {#if onRetry}
+            <span id={`${listId}-retry-${call.id}`} class="cinder-sr-only"
+              >Starts a new request for this step.</span
+            >
             <button
               type="button"
               class="cinder-tool-call-rail__link"
+              aria-describedby={`${listId}-retry-${call.id}`}
               onclick={() => onRetry(call.id)}
             >
               {words.retry}
@@ -329,6 +372,14 @@
             >
               {words.copyInput}
             </button>
+          {/if}
+          {#if call.diagnostic !== undefined && call.diagnostic !== ''}
+            <CopyButton
+              value={call.diagnostic}
+              label={words.copyError}
+              copiedLabel={words.errorCopied}
+              class="cinder-tool-call-rail__link cinder-tool-call-rail__copy-error"
+            />
           {/if}
         </span>
       </div>

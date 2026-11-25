@@ -1521,6 +1521,8 @@ describe('MCP apps a plugin contributes', () => {
       ['a chat tool with an empty agent tool', { kind: 'chat-tool', agentTool: '' }],
       ['a kind this host does not know', { kind: 'dock' }],
       ['no kind', {}],
+      ['a run condition that is not failed', { kind: 'run', when: 'running' }],
+      ['a run condition that is not text', { kind: 'run', when: true }],
     ] as const)('fails setup for a placement with %s', async (_name, placement) => {
       const { records } = await composePlugins<ComposableOptions>({
         plugins: [
@@ -1569,6 +1571,23 @@ describe('MCP apps a plugin contributes', () => {
           message: 'setup returned the panel "three" opened from unknown agent tool "nobody:home".',
         }),
       ]);
+    });
+
+    it('accepts the failure explanation tool as a chat-tool target on every Bureau (COR-2543)', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        agentSource: { tools: {} } as never,
+        plugins: [
+          pluginEntry('a', () => ({
+            panels: [
+              placed('one', 'ui://a/one/v1', [
+                { kind: 'chat-tool', agentTool: 'bureau:tasks-explain' },
+                { kind: 'run', when: 'failed' },
+              ]),
+            ],
+          })),
+        ],
+      });
+      expect(records[0]?.status).toBe('running');
     });
 
     it('checks no agent tool when the Bureau is given none', async () => {

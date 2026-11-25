@@ -85,14 +85,16 @@ describe('a chat opened again', () => {
     return mount({ sessionId: 'session-1', title: 'Plan the week', agentName: 'assistant' });
   }
 
-  test('says why its last run stopped', async () => {
-    const { findByText } = open();
+  test('says why its last run failed and offers its recovery', async () => {
+    const { findByRole, findByText } = open();
 
-    // A run that failed is a status line in danger text, worded as the product's own.
+    // The current turn owns a failed outcome and its recovery; historical stop notes remain
+    // separate transcript records.
     const reason = await findByText(/budget exceeded: max calls 1/i);
-    const line = reason.closest('[data-kind="stopped"]');
-    expect(line?.hasAttribute('data-failed')).toBe(true);
+    const line = reason.closest('.chat-turn-outcome[data-kind="failed"]');
+    expect(line).not.toBeNull();
     expect(line?.textContent).toContain('The reply stopped partway');
+    expect(await findByRole('button', { name: 'Retry' })).not.toBeNull();
   });
 
   test('says what the agent remembered, and the link opens its memory without leaving the app', async () => {

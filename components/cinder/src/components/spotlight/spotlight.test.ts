@@ -9,6 +9,7 @@ setupHappyDom();
 const { render } = await import('@testing-library/svelte');
 const { createRawSnippet } = await import('svelte');
 const { default: Spotlight } = await import('./spotlight.svelte');
+const { default: SnippetValue } = await import('./spotlight-value.fixture.svelte');
 
 const caveat = createRawSnippet(() => ({ render: () => '<span>Updated 12 min ago</span>' }));
 
@@ -16,6 +17,13 @@ describe('Spotlight', () => {
   test('renders the value', () => {
     const { container } = render(Spotlight, { value: 'Ends in 45 min' });
     expect(container.querySelector('.cinder-spotlight__value')?.textContent).toBe('Ends in 45 min');
+  });
+
+  test('renders phrasing content together inside the value paragraph', () => {
+    const { container } = render(SnippetValue);
+    const value = container.querySelector('p.cinder-spotlight__value');
+    expect(value?.textContent).toBe('Its last 2 runs Failed');
+    expect(value?.querySelector('.cinder-badge')?.textContent).toBe('Failed');
   });
 
   test('renders the caveat directly after the value', () => {

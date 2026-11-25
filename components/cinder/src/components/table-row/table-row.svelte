@@ -17,6 +17,7 @@
   let {
     class: className,
     children,
+    current = false,
     selected,
     onSelectedChange,
     selectionLabel,
@@ -77,7 +78,12 @@
   }
 </script>
 
-<tr {...rest} class={classNames('cinder-table__row', className)}>
+<tr
+  {...rest}
+  class={classNames('cinder-table__row', className)}
+  aria-current={current ? 'true' : rest['aria-current']}
+  data-cinder-current={current ? '' : undefined}
+>
   {#if shouldRenderHeaderSelectionCell && headerSelection}
     <th scope="col" class="cinder-table__header-cell cinder-table__header-cell--selection">
       <input

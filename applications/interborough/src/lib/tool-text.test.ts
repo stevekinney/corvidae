@@ -4,6 +4,7 @@ import {
   approvalQuestion,
   argumentLine,
   declaredSummary,
+  policyReasonOf,
   reasonSaysAlways,
   resultSummary,
   shorten,
@@ -18,7 +19,59 @@ describe('declaredSummary', () => {
     expect(declaredSummary('  ', 'x')).toBeUndefined();
     expect(declaredSummary(undefined, 'x')).toBeUndefined();
   });
+
+  // COR-2438: the owner saw `Tool "bureau:discover-agents" (read-only tier) requires approval
+  // (mode: always)?` as the card's title, because the row carrying the reason did not say the same
+  // sentence (or had not been read) and the comparison was exact.
+  const REASON = 'Tool "bureau:discover-agents" (read-only tier) requires approval (mode: always).';
+  test('the policy reason is never a summary, whatever the reason it is compared with', () => {
+    expect(declaredSummary(REASON, undefined)).toBeUndefined();
+    expect(declaredSummary(REASON, 'This tool call needs your approval.')).toBeUndefined();
+    expect(declaredSummary(REASON)).toBeUndefined();
+    expect(
+      declaredSummary(
+        'Tool "issue-refund" (dangerous tier) is denied by approval policy (mode: x).',
+      ),
+    ).toBeUndefined();
+  });
+
+  test('a policy reason naming the tool in its provider form is not a summary either', () => {
+    expect(
+      declaredSummary(
+        'Tool "bureau__discover-agents" (read-only tier) requires approval (mode: always)',
+      ),
+    ).toBeUndefined();
+    expect(
+      declaredSummary('Look up order 1001', undefined, ' Look up order 1001 '),
+    ).toBeUndefined();
+    expect(declaredSummary('Look up order 1001', 'requires approval')).toBe('Look up order 1001');
+  });
 });
+
+describe('policyReasonOf', () => {
+  test('is the first candidate that is a policy sentence, else the first one given', () => {
+    expect(policyReasonOf(undefined, 'Approval needed', REASON_ALWAYS)).toBe(REASON_ALWAYS);
+    expect(policyReasonOf(undefined, '  ', 'Approval needed')).toBe('Approval needed');
+    expect(policyReasonOf(undefined, undefined)).toBeUndefined();
+  });
+
+  test('says Always for an approval whose only copy of the reason is its message', () => {
+    expect(reasonSaysAlways(policyReasonOf(undefined, undefined, REASON_ALWAYS))).toBe(true);
+    expect(reasonSaysAlways(policyReasonOf('Approval required', REASON_ALWAYS))).toBe(true);
+    expect(
+      reasonSaysAlways(
+        policyReasonOf('Approval required', `${REASON_ALWAYS} [host policy: round-1]`),
+      ),
+    ).toBe(true);
+    expect(declaredSummary(`${REASON_ALWAYS} [host policy: round-1]`)).toBeUndefined();
+    expect(declaredSummary(`${REASON_ALWAYS} User-authored detail.`)).toBe(
+      `${REASON_ALWAYS} User-authored detail.`,
+    );
+  });
+});
+
+const REASON_ALWAYS =
+  'Tool "bureau:discover-agents" (read-only tier) requires approval (mode: always).';
 
 describe('reasonSaysAlways', () => {
   test('is true for the policy sentence of a tool set to Always, and for nothing else', () => {
@@ -65,10 +118,37 @@ describe('the lines about a call', () => {
   test('resultSummary shows text, fields, or nothing, cut to one short line', () => {
     expect(resultSummary('found it')).toBe('found it');
     expect(resultSummary({ status: 'delivered', totalCents: 4200 })).toBe(
-      'status delivered, totalCents 4200',
+      'Status delivered, Total cents 4200',
+    );
+    expect(resultSummary({ nested: { rawKey: 1 }, signalName: 'environment' })).toBe(
+      'Signal name environment',
     );
     expect(resultSummary(null)).toBe('');
     expect(resultSummary('x'.repeat(200)).length).toBe(80);
     expect(shorten('a\n  b')).toBe('a b');
+  });
+
+  test('summarizes a question and a refund without repeating their payload fields', () => {
+    expect(
+      resultSummary(
+        { parked: true, signalName: 'environment', prompt: 'Where should it go?' },
+        'requestHumanInput',
+      ),
+    ).toBe('Question asked');
+    expect(resultSummary({ orderId: '4472', refundedCents: 1850 }, 'issue-refund')).toBe(
+      '$18.50 refunded',
+    );
+    expect(
+      resultSummary(
+        {
+          refundId: 'private-id',
+          orderId: '4472',
+          cents: 4200,
+          currency: 'USD',
+          status: 'provider-pending',
+        },
+        'issue-refund',
+      ),
+    ).toBe('$42.00 refund pending');
   });
 });

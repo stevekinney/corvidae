@@ -111,7 +111,13 @@ test.describe('Health › Audit log on the sample world', () => {
     await expect(main.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
     await expect(main.getByTestId('storage-backend')).toContainText('Running on SQLite');
     await expect(main.getByText('Live', { exact: true })).toBeVisible();
-    await expect(main.getByRole('tab')).toHaveText(['Overview', 'Workers', 'Storage', 'Audit log']);
+    await expect(main.getByRole('tab')).toHaveText([
+      'Overview',
+      'Runs',
+      'Workers',
+      'Storage',
+      'Audit log',
+    ]);
     await expect(main.getByRole('tab', { name: 'Audit log' })).toHaveAttribute(
       'aria-selected',
       'true',

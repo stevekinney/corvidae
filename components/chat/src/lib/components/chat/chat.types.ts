@@ -96,6 +96,16 @@ export type ChatRowContext = {
  */
 export type ChatRowOverride = Snippet<[context: ChatRowContext, renderDefault: Snippet]>;
 
+/** One self-contained Markdown block with the sources for its claim. */
+export type ChatCitationClaim = {
+  /** Stable among this message’s blocks, even if two claims have the same words. */
+  readonly id: string;
+  /** The exact Markdown for this block, including its original boundary whitespace. */
+  readonly markdown: string;
+  /** Sources to show beside this block. Empty for text between cited claims. */
+  readonly sources: readonly CitationSource[];
+};
+
 /**
  * Feature-capability flags for the Chat component. Grouped here so consumers
  * pass a single object instead of six scattered boolean props.
@@ -256,8 +266,22 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   empty?: Snippet;
   /** Content drawn as the last item of the transcript, after the final message and the typing indicator, such as the question a run is waiting on. It scrolls with the messages and is not part of the conversation. */
   trailing?: Snippet;
+  /**
+   * A host-owned question drawn in the composer's place after Chat's own docked questions. Bind
+   * {@link ChatProps.hostQuestionDocked} to keep its transcript row visible until this dock is
+   * actually available.
+   */
+  questionDock?: Snippet | undefined;
+  /**
+   * Whether Chat currently draws {@link ChatProps.questionDock}. Chat sets this bindable value
+   * false whenever the composer is replaced, so the host can retain the inline question and show
+   * it exactly once.
+   */
+  hostQuestionDocked?: boolean;
   /** Set while the `trailing` content is a pending ask of the host's own, such as the question a run parked on. The assistant text directly before it is the agent talking to the person, so it keeps its full message line instead of drawing as bare narration. Chat sees an approval or question in its own messages without this. Default `false`. */
   trailingAskPending?: boolean | undefined;
+  /** The tool call ids whose approval the host knows no run waits on any more, though their result still asks (the run stopped, or the approval was decided or expired elsewhere and the history has not caught up). Chat treats each as no longer waiting: the composer draws no approval reminder for it and Send does not read Queue. Default none. */
+  lapsedApprovals?: ReadonlySet<string> | undefined;
   /** The title of the default empty state, drawn with the first-use `EmptyState` of Cinder. Has no effect when a custom `empty` snippet is provided. Default `No messages yet`. */
   emptyTitle?: string | undefined;
   /** One sentence under the empty state title, such as what the agent does. Has no effect when a custom `empty` snippet is provided. Default none. */
@@ -313,6 +337,12 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   readReceipts?: Map<string, ReadReceipt> | undefined;
   /** The sources behind assistant messages, keyed by message id, as Cinder `CitationSource` entries in the order to show them. An assistant message with at least one source shows a Sources control; an unknown id, an empty array or a non-assistant message shows none. Sources are presentation only: Chat never writes them to the transcript or an export, never removes duplicates and never fetches them, and only a safe web address becomes a link. */
   sourcesByMessageId?: ReadonlyMap<string, readonly CitationSource[]> | undefined;
+  /**
+   * Citations for ordered Markdown blocks, keyed by assistant message ID. The blocks must
+   * reproduce the message's displayed text exactly. Chat falls back to `sourcesByMessageId`
+   * when the mapping is absent or stale. Claim citations are presentation-only.
+   */
+  claimSourcesByMessageId?: ReadonlyMap<string, readonly ChatCitationClaim[]> | undefined;
   /**
    * Optional command/transport boundary around `conversation`. Its methods take
    * precedence over the matching callback props (e.g. `sendMessage` over
@@ -380,7 +410,7 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * answered. `'inline'` (default) draws its controls in its transcript row. On a coarse pointer,
    * choice questions dock so phone users always get the explicit Reply and Answer controls.
    * `'docked'` draws the question in place of the composer: a Needs you warning, a fieldset named Question (its legend is visually hidden),
-   * radio cards at least 52 px tall with the keys 1, 2 and 3 for the choices, Something else, a
+   * flat radio rows at least 52 px tall with the keys 1, 2 and 3 for the choices, Something else, a
    * quiet Reply in chat and a primary Answer, with `Question 2 of 3` and previous and next buttons
    * when several were asked together. A choice only selects; Answer sends it. Reply in chat gives the
    * composer back and returns the question to its row. Every other kind of question stays in its
@@ -391,6 +421,18 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   questionLabels?: Partial<ChatQuestionDockLabels> | undefined;
   /** The composer's attachment and approval-drawer words, any of which the host can replace. */
   labels?: Partial<ChatLabels> | undefined;
+  /**
+   * The reader's own principal. An approval whose result row records (under its `approvalDecision`
+   * metadata) that this principal decided it reads "Approved by you"; any other principal is
+   * named as recorded: "Approved by Priya Raman".
+   */
+  currentPrincipal?: string | undefined;
+  /**
+   * Where an approval decided in Reviews can be read, by its tool call id. Its receipt then writes
+   * "in Reviews" as a link there. Without it, or when it returns `undefined`, the place is plain
+   * text.
+   */
+  approvalReceiptHref?: ((toolCallId: string) => string | undefined) | undefined;
   /**
    * Pauses the composer: typing, Send and Enter do nothing, but the editor keeps focus and its text (it is read-only, not disabled), so a draft survives and the composer takes keys again once this clears. A host sets it while the server is unreachable or the chat is disconnected. The composer is also disabled while a reply streams and the adapter has no `sendRunInput`. Default `false`.
    */

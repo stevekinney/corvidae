@@ -16,7 +16,7 @@ import {
   SAMPLE_TIME_ZONE,
 } from '../../fixtures/sample-now.ts';
 import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
-import { revealSettings } from './chat-support.ts';
+import { hideModelPicker, revealSettings } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
@@ -51,11 +51,11 @@ async function connectProvider(page: Page): Promise<void> {
   });
 }
 
-/** Opens the refund chat at 1280 pixels and waits until its transcript is drawn. */
-async function openRefundChat(page: Page): Promise<void> {
+/** Opens the refund chat and waits until its transcript is drawn. */
+async function openRefundChat(page: Page, viewport = { width: 1280, height: 900 }): Promise<void> {
   await connectProvider(page);
   await page.clock.setFixedTime(SAMPLE_NOW);
-  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.setViewportSize(viewport);
   await page.goto(`/chats/${SAMPLE_WORLD_THREADS.refund}`);
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
   await expect(page.locator('[data-approval-decision]')).toBeVisible();
@@ -93,32 +93,98 @@ test.describe('an open chat on the sample world', () => {
     });
   });
 
-  test('opens the details popover from the breadcrumb: session, agent, started and As run (16u, 16v)', async ({
+  test('opens the compact details popover from the breadcrumb: agent, started, settings and Copy session ID inside it (16u, 16v, COR-2438 16a to 16f)', async ({
     page,
   }) => {
-    await openRefundChat(page);
+    await openRefundChat(page, { width: 1280, height: 800 });
+    await revealSettings(page, [{ name: 'Model', text: 'Claude Sonnet 5.5' }]);
+    await hideModelPicker(page);
     await trail(page).getByRole('button', { name: TITLE }).click();
     const details = page.getByTestId('chat-details');
     await expect(details).toBeVisible();
 
-    await expect(details.getByTestId('chat-details-session')).toHaveText(
-      SAMPLE_WORLD_THREADS.refund,
-    );
-    await expect(details.getByRole('button', { name: 'Copy session ID' })).toBeVisible();
+    const copy = details.getByRole('button', { name: 'Copy session ID' });
+    await expect(copy).toBeVisible();
     const agent = details.getByRole('link', { name: 'Tool runner' });
     await expect(agent).toHaveAttribute('href', '/agents/tool-runner');
-    await expect(details.locator('code', { hasText: /^tool-runner$/ })).toBeVisible();
+    // No machine identifier beside a name, and no middle dot.
+    await expect(details.locator('code')).toHaveCount(0);
+    await expect(details).not.toContainText(SAMPLE_WORLD_THREADS.refund);
+    expect(await details.textContent()).not.toContain(String.fromCodePoint(0xb7));
     // The 4471 refund is a chat of its own, started when it was asked at 10:42 AM.
-    await expect(details).toContainText(/Started\s*Today, 10:42 AM, last active 10:4\d AM/);
+    await expect(details).toContainText(/Started\s*Today, 10:42 AM/);
+    // Last activity rounds to the same displayed minute as the start.
+    await expect(details).not.toContainText('Last active');
 
-    const asRun = details.getByRole('region', { name: 'As run' });
-    await expect(asRun).toContainText('Claude Sonnet 5.5');
-    await expect(asRun.locator('code', { hasText: /^claude-sonnet-5-5$/ })).toBeVisible();
-    await expect(asRun).toContainText(/Effort\s*Medium/);
-    await expect(asRun).toContainText(/Permissions\s*On changes asks/);
+    const settings = details.getByTestId('chat-details-settings');
+    await expect(settings).not.toContainText('As run');
+    await expect(settings).toContainText(/Model\s*Claude Sonnet 5\.5/);
+    await expect(settings).toContainText(/Effort\s*Medium/);
+    await expect(settings).toContainText(/Permissions\s*On changes asks/);
+
+    // 16a: every control sits inside the popover's padding; 16b: the popover is as wide as its
+    // content, at most about 360px; 16c: labels muted, values in the body colour.
+    const measured = await page.evaluate(() => {
+      const list = document.querySelector('[data-testid="chat-details"]');
+      const panel = list?.closest('.cinder-popover');
+      if (!list || !panel) return undefined;
+      const box = panel.getBoundingClientRect();
+      const style = getComputedStyle(panel);
+      const inner = {
+        left: box.left + parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth) - 0.5,
+        right:
+          box.right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth) + 0.5,
+      };
+      const controls = [...list.querySelectorAll('a, button')].map((control) => {
+        const rect = control.getBoundingClientRect();
+        return { left: rect.left, right: rect.right };
+      });
+      const term = list.querySelector('dt');
+      const value = list.querySelector('dd');
+      return {
+        inner,
+        controls,
+        width: box.width,
+        term: term ? getComputedStyle(term).color : '',
+        value: value ? getComputedStyle(value).color : '',
+      };
+    });
+    expect(measured).toBeDefined();
+    for (const control of measured!.controls) {
+      expect(control.left).toBeGreaterThanOrEqual(measured!.inner.left);
+      expect(control.right).toBeLessThanOrEqual(measured!.inner.right);
+    }
+    expect(measured!.width).toBeLessThanOrEqual(400);
+    expect(measured!.term).not.toBe(measured!.value);
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'details popover open',
+      source: SOURCE,
+    });
+  });
+
+  test('opens the details as a bottom sheet with Copy session ID inside it at 375 pixels (COR-2438 16g)', async ({
+    page,
+  }) => {
+    await openRefundChat(page, { width: 375, height: 812 });
+    await trail(page).getByRole('button', { name: TITLE }).click();
+    const details = page.getByTestId('chat-details');
+    await expect(details).toBeVisible();
+    const sheet = page.getByRole('dialog', { name: TITLE });
+    await expect(sheet).toHaveAttribute('data-cinder-sheet', 'docked');
+    const boxes = await readBoxes(page, {
+      sheet,
+      copy: sheet.getByRole('button', { name: 'Copy session ID' }),
+      composer: page.locator('.chat-input-area'),
+    });
+    expect(boxes.composer.y).toBeLessThan(812);
+    expect(boxes.sheet.y + boxes.sheet.height).toBeCloseTo(boxes.composer.y, 0);
+    expect(boxes.copy.x).toBeGreaterThanOrEqual(boxes.sheet.x);
+    expect(boxes.copy.x + boxes.copy.width).toBeLessThanOrEqual(boxes.sheet.x + boxes.sheet.width);
+    expect(boxes.copy.x + boxes.copy.width).toBeLessThanOrEqual(375);
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'details sheet at 375',
       source: SOURCE,
     });
   });
@@ -713,6 +779,11 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
                 approvalDecision: {
                   ...(outcome['metadata'] as { approvalDecision?: object }).approvalDecision,
                   asked: 'Refund order 4471 for $42.00',
+                  // Where it was decided, as the Bureau records a decision made in Reviews
+                  // (COR-2292). The sample row it is copied from was decided in the chat. A page
+                  // that mounts again (the phone width below stacks the list and the chat) reads
+                  // the receipt from this, having lost what it watched.
+                  decisionSurface: 'reviews',
                 },
               },
             }
@@ -728,22 +799,28 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     );
     await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
 
-    const decided = page.locator('.cinder-approval-card--row').filter({ hasText: question });
+    // A settled approval uses the explicit decision layout. Its public layout/state attributes are
+    // stable across the receipt's initial arrival and the subsequent transcript refresh.
+    const decided = page
+      .locator('[data-cinder-layout="decision"][data-cinder-state="approved"]')
+      .filter({ hasText: question });
     await expect(decided).toBeVisible();
-    await expect(decided.locator('.cinder-approval-card__outcome')).toContainText(
-      /Approved by you in Reviews\s*10:46 AM/,
+    await expect(decided.locator('.cinder-approval-card__settled-note')).toContainText(
+      'Approved by you in Reviews',
+    );
+    await expect(decided.locator('.cinder-approval-card__settled-note')).toContainText('10:46 AM');
+    await expect(decided.getByRole('link', { name: 'Reviews' })).toHaveAttribute(
+      'href',
+      /\/reviews\?tab=done&review=/,
     );
     await expect(decided.getByRole('button', { name: 'Deny' })).toHaveCount(0);
     await expect(decided.getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
-    // The row collapses to a check, the question and the decision: no tool line and no Input.
-    // The card holds the question twice in its text: once in an aria-hidden screen-reader-only
-    // span that only matchers read, and once as the heading a person sees.
-    await expect(decided).toHaveText(
-      /^\s*(?:Refund order 4471 for \$42\.00\?\s*){2}Approved by you in Reviews\s*10:46 AM\s*$/,
-    );
-    await expect(decided.getByRole('heading')).toHaveText('Refund order 4471 for $42.00?');
-    await expect(decided.locator('.cinder-approval-card__decided-glyph')).toHaveAttribute(
+    // The receipt is one settled title and status line: no pending tool input or controls remain.
+    await expect(
+      decided.getByRole('heading', { name: 'Approved: Refund order 4471 for $42.00?' }),
+    ).toBeVisible();
+    await expect(decided.locator('.cinder-approval-card__settled-row')).toHaveAttribute(
       'data-cinder-tone',
       'success',
     );
@@ -784,13 +861,22 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     await expect(composer.getByRole('button', { name: 'Stop generating' })).toBeVisible();
     await expect(composer.getByRole('button', { name: 'Send message' })).toHaveCount(0);
     await expect(conversationArea(page).locator('.chat-input-status')).toHaveText(
-      'A message now steers the run.',
+      'A message sent now waits until this run finishes.',
     );
-    await expect(conversationArea(page).getByRole('img', { name: 'Running' })).toBeVisible();
+    // The header's status is a Badge now (COR-2438, criterion 18b), not a dot named for its word.
+    await expect(
+      conversationArea(page).locator(
+        '[data-testid="chat-header"] .cinder-page-header__status .cinder-badge',
+      ),
+    ).toHaveText('Running');
     // The decision stays as it was, and is not told again.
-    await expect(decided.locator('.cinder-approval-card__outcome')).toContainText(
-      /Approved by you in Reviews\s*10:46 AM/,
+    await expect(decided.locator('.cinder-approval-card__settled-note')).toContainText(
+      'Approved by you in Reviews',
     );
+    await expect(decided.locator('.cinder-approval-card__settled-note')).toContainText('10:46 AM');
+    await expect(
+      page.locator('[data-cinder-layout="decision"][data-cinder-state="approved"]'),
+    ).toHaveCount(1);
     await expect(live).toHaveText('Approved in Reviews. Refund order 4471 for $42.00.');
     // While the continuing run is going the rail row says so in place of the result (18i), and
     // the chat's status and its row in the list say Running too.
@@ -817,6 +903,25 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     for (const state of ['approved in Reviews', 'running after Reviews']) {
       await captureForDesignReview(page, { route: '/chats/:chat', state, source: SOURCE });
     }
+
+    // The same receipt on a phone (COR-2282 A5). A phone width stacks the list and the chat, so the
+    // chat page mounts again, last, after everything this page watched has been checked: the
+    // receipt is read from the decision the Bureau recorded, once, with Reviews a link to it.
+    await page.setViewportSize({ width: 375, height: 812 });
+    await expect(decided).toHaveCount(1);
+    await expect(decided).toBeVisible();
+    await expect(decided.locator('.cinder-approval-card__settled-note')).toHaveText(
+      'Approved by you in Reviews, 10:46 AM',
+    );
+    await expect(decided.getByRole('link', { name: 'Reviews' })).toHaveAttribute(
+      'href',
+      /\/reviews\?tab=done&review=bureau%3Aapproval%3A/,
+    );
+    await captureForDesignReview(page, {
+      route: '/chats/:chat',
+      state: 'approved in Reviews at 375',
+      source: SOURCE,
+    });
   });
 });
 
@@ -959,12 +1064,16 @@ test.describe('an open chat whose approval was denied with a note (18h)', () => 
     await page.goto(`/chats/${THREAD}`);
 
     const denied = page
-      .locator('.cinder-approval-card--row')
+      .locator('[data-cinder-layout="decision"][data-cinder-state="denied"]')
       .filter({ hasText: 'Refund order 4398' });
     await expect(denied).toBeVisible();
-    await expect(denied.locator('.cinder-approval-card__outcome')).toContainText(
-      /Denied by you\s*10:40 AM/,
+    await expect(denied.locator('.cinder-approval-card__settled-note')).toContainText(
+      'Denied by you, 10:40 AM',
     );
+    await expect(
+      denied.locator('xpath=following-sibling::*[1][contains(@class, "chat-approval-time")]'),
+    ).toHaveCount(0);
+    await denied.getByRole('button', { name: 'Details' }).click();
     await expect(denied.locator('.cinder-approval-card__decision-note')).toContainText(NOTE);
     await expect(
       conversationArea(page).locator('.cinder-tool-call-rail__item[data-cinder-status="denied"]'),
