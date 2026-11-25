@@ -1102,6 +1102,14 @@ export class ChatSessionState {
     });
   }
 
+  /** Stops the native run while it is parked on an approval or question. */
+  async stopParkedRun(): Promise<void> {
+    if (this.streaming || this.stopping) return;
+    // Chat commands wait for their adapter's acknowledgement. Cancelling a parked run also reads
+    // its terminal history, which must not hold the composer event or let a second click race it.
+    void this.#stopWhileReconnecting();
+  }
+
   /** Reopens an interrupted attach, preserving the last SSE cursor in the wiring. */
   async reconnect(): Promise<boolean> {
     if (this.#abort.signal.aborted) return false;

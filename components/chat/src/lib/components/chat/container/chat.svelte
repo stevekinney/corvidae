@@ -1677,7 +1677,6 @@
   });
   // A dropped stream is a run that is still going on the server: while the host says it is
   // reconnecting, the composer keeps Stop, though nothing is streaming into the transcript now.
-  const composerSending = $derived(streaming || composerStatus?.kind === 'reconnecting');
   const handleRetry = commandActions.handleRetry;
   const handleEdit = commandActions.handleEdit;
   const handleApprovalResolve = commandActions.resolveToolApproval;
@@ -1697,6 +1696,9 @@
     approvalWait.waiting &&
       composerStatus?.kind !== 'blocked' &&
       !isComposerNoticeStatus(composerStatus),
+  );
+  const composerSending = $derived(
+    streaming || composerStatus?.kind === 'reconnecting' || approvalWaiting,
   );
   let approvalFullyVisible = $state(false);
   // Whether the waiting approval's arrival placement has settled; the reminder is drawn only from

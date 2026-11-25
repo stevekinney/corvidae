@@ -101,7 +101,12 @@ function thread(withCall: boolean): unknown {
 /** The events of the tried run, parked on `interrupt`; an approval comes with the call it is for. */
 function parkedRun(interrupt: unknown, withCall: boolean): readonly unknown[] {
   return [
-    { type: 'RUN_STARTED', threadId: TRIED.contextId, runId: 'run-1' },
+    {
+      type: 'RUN_STARTED',
+      threadId: TRIED.contextId,
+      runId: 'run-1',
+      metadata: { '@lostgradient/bureau': { runId: 'native-1' } },
+    },
     thread(withCall),
     ...(withCall
       ? [
@@ -121,6 +126,7 @@ function parkedRun(interrupt: unknown, withCall: boolean): readonly unknown[] {
       type: 'RUN_FINISHED',
       threadId: TRIED.contextId,
       runId: 'run-1',
+      metadata: { '@lostgradient/bureau': { runId: 'native-1' } },
       outcome: { type: 'interrupt', interrupts: [interrupt] },
     },
   ];
@@ -128,6 +134,7 @@ function parkedRun(interrupt: unknown, withCall: boolean): readonly unknown[] {
 
 /** The bodies of the runs the page started after the first, which carry an answer. */
 let resumes: { resume?: unknown }[] = [];
+let cancels: string[] = [];
 let stub: BureauStub | undefined;
 let restoreRun: (() => void) | undefined;
 
@@ -147,8 +154,23 @@ afterEach(() => {
 /** A Bureau whose tried run is parked on `interrupt`; the editor shows `agent`. */
 function park(interrupt: unknown, withCall: boolean, agent = readyAgent()): BureauStub {
   resumes = [];
+  cancels = [];
   restoreRun = installFetchImplementation(async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (url.includes('/runs/native-1/cancel')) {
+      cancels.push(`${init?.method ?? 'GET'} ${url}`);
+      return Response.json({});
+    }
+    if (url.includes('/runs/native-1')) {
+      return sse([
+        {
+          type: 'RUN_FINISHED',
+          threadId: TRIED.contextId,
+          runId: 'native-1',
+          outcome: { type: 'canceled' },
+        },
+      ]);
+    }
     if (url.includes('/agents/')) {
       resumes.push(JSON.parse(typeof init?.body === 'string' ? init.body : '{}'));
       return sse([
@@ -259,6 +281,21 @@ describe('Try it, parked on an approval', () => {
     const resume = JSON.stringify(resumes[0]?.resume);
     expect(resume).toContain(APPROVAL.id);
     expect(resume).toContain('approve');
+  });
+
+  test('Stop cancels the parked native run and a late approval cannot resume it', async () => {
+    park(APPROVAL, true);
+    const view = mount();
+    await startChat(view);
+
+    await view.findByRole('button', { name: /^Approve\b/ });
+    await fireEvent.click(view.getByRole('button', { name: 'Stop generating' }));
+
+    await waitFor(() => expect(cancels).toHaveLength(1));
+    expect(cancels[0]).toContain('/runs/native-1/cancel');
+    // The approval's delayed click reaches the stale card but cannot create a resume after Stop.
+    await fireEvent.click(view.getByRole('button', { name: /^Approve\b/ }));
+    await waitFor(() => expect(resumes).toEqual([]));
   });
 });
 

@@ -40,6 +40,22 @@ async function chat(request: APIRequestContext, message: string): Promise<string
   return threadId;
 }
 
+test('at 375px the Access tab is one collapsed Tab: Access select, not a visible tab bar', async ({
+  page,
+  request,
+}) => {
+  const id = 'e2e-page-access-collapse';
+  agents.add(id);
+  await createAgentFile(request, id);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`/agents/${id}/access`);
+
+  const tabs = page.locator('.cinder-tabs');
+  await expect(tabs).toHaveAttribute('data-cinder-collapsed', '');
+  await expect(tabs.locator('.cinder-select')).toContainText(/Tab:\s*Access/);
+  await expect(tabs.getByRole('tablist')).toBeHidden();
+});
+
 test.describe('the Chats tab', () => {
   test('finds a chat beyond the first page by its title, and filters by state', async ({
     page,
@@ -124,8 +140,9 @@ test.describe('the Instructions tab', () => {
     await expect(
       page.getByRole('main').getByRole('link', { name: 'Edit', exact: true }),
     ).toHaveCount(1);
-    await page.getByTestId('agent-header').getByRole('link', { name: 'Edit', exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/agents/${id}/edit$`));
+    await page.getByTestId('agent-no-references').getByRole('link', { name: 'the editor' }).click();
+    await expect(page).toHaveURL(new RegExp(`/agents/${id}/edit\\?section=references$`));
+    await expect(page.locator('#agent-reference-documents')).toBeFocused();
   });
 
   test('gives each tab its own path, which a reload keeps, and replaces an old ?tab= address', async ({

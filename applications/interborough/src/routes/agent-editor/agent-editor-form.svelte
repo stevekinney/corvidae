@@ -113,6 +113,7 @@
     void tick().then(() => {
       referencesSection?.scrollIntoView({ block: 'start' });
       referencesSection?.focus();
+      return undefined;
     });
   });
 

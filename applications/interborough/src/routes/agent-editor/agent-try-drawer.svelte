@@ -125,9 +125,10 @@
   }
 
   /** The chat's adapter with the words of a tool call that is running, or that finished. */
-  function describedBy(adapter: ChatAdapter): ChatAdapter {
+  function describedBy(adapter: ChatAdapter, stopParkedRun: () => Promise<void>): ChatAdapter {
     return {
       ...adapter,
+      stopGenerating: stopParkedRun,
       describeToolCall: (call, result) => {
         const name = toolName(call.name);
         return result === undefined
@@ -243,8 +244,8 @@
         <Chat
           id={`try-${chat.sessionId}`}
           conversation={answered(chat.conversation)}
-          adapter={describedBy(chat.chatAdapter)}
-          streaming={chat.streaming}
+          adapter={describedBy(chat.chatAdapter, () => trial.stopParkedRun(chat))}
+          streaming={chat.streaming || chat.approvals.length > 0}
           surfaceMode="transparent"
           variant="transcript"
           composerCompact

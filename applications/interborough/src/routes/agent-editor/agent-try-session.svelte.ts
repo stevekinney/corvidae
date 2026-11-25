@@ -156,7 +156,7 @@ export class AgentTrySession {
    */
   async resolveApproval(toolCallId: string, resolution: ApprovalResolution): Promise<void> {
     const chat = this.chat;
-    if (chat === undefined || this.deciding !== undefined) return;
+    if (chat === undefined || this.deciding !== undefined || chat.stopping) return;
     this.deciding = resolution.decision === 'deny' ? 'deny' : 'approve';
     try {
       await chat.controller.adapter.resolveToolApproval?.(toolCallId, resolution);
@@ -165,6 +165,13 @@ export class AgentTrySession {
     } finally {
       if (this.chat === chat) this.deciding = undefined;
     }
+  }
+
+  /** Stops this trial's parked native run; a later approval cannot resume it. */
+  async stopParkedRun(chat: ChatSessionState): Promise<void> {
+    if (this.chat !== chat) return;
+    ++this.#generation;
+    await chat.stopParkedRun();
   }
 
   async #remove(contextId: string): Promise<void> {

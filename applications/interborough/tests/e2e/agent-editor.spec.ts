@@ -261,6 +261,27 @@ async function startTrial(page: Page, message: string): Promise<string> {
 }
 
 test.describe('Try it', () => {
+  test('at 800px opens Try it as a small right sheet', async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 900 });
+    await page.goto('/agents/new');
+    await page.getByRole('button', { name: words.try.action }).click();
+
+    const sheet = page.getByRole('dialog', { name: words.try.title });
+    const panel = sheet.locator('.cinder-drawer__panel');
+    await expect(panel).toHaveAttribute('data-cinder-placement', 'right');
+    await expect(panel).toHaveAttribute('data-cinder-size', 'sm');
+  });
+
+  test('at 375px opens Try it as a bottom sheet', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/agents/new');
+    await page.getByRole('button', { name: words.try.action }).click();
+
+    await expect(
+      page.getByRole('dialog', { name: words.try.title }).locator('.cinder-drawer__panel'),
+    ).toHaveAttribute('data-cinder-placement', 'bottom');
+  });
+
   test('chats with the unsaved draft, writes no file or memory, and ends the chat on Reset', async ({
     page,
     request,

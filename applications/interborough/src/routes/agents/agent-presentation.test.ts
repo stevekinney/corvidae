@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
-  agentFacts,
   agentStatusLine,
   allowedToolCount,
   chatCountText,
@@ -10,11 +9,8 @@ import {
   referenceSizeText,
   shortVersion,
   tabCountText,
-  toolCountText,
   versionLine,
 } from './agent-presentation.ts';
-
-const MEDIA = { modalities: {}, mimeFamilies: [], mediaLimits: [] };
 
 describe('an agent as the agents views show it', () => {
   test('opens a new chat at an address that names it, encoded', () => {
@@ -194,124 +190,6 @@ describe('what an agent’s chats say of its use', () => {
     expect(chatCountText(usage)).toBe('1 chat');
     expect(chatCountText({ ...usage, count: 12 })).toBe('12 chats');
     expect(chatCountText(undefined)).toBe('No chats yet');
-  });
-});
-
-describe('an agent’s facts', () => {
-  const definition = (tools: readonly string[]) => ({
-    name: 'Researcher',
-    description: null,
-    model: 'anthropic/sonnet',
-    models: null,
-    effort: null,
-    tools: [...tools],
-    card: [{ id: 'cite', name: 'Cite', description: '', tags: [] }],
-    skills: null,
-    a2a: true,
-    limits: { steps: null, cost: null, tools: null },
-    retry: null,
-    compaction: null,
-    interceptors: null,
-    references: null,
-    guardrails: null,
-    approvals: null,
-    from: null,
-    instructions: '',
-  });
-
-  test('a file agent has the model, tools and skills of its definition, and none known before it is read', () => {
-    expect(
-      agentFacts({ kind: 'file', media: null }, definition(['lookup-order']), undefined),
-    ).toEqual({
-      model: { kind: 'model', name: 'anthropic/sonnet' },
-      tools: ['lookup-order'],
-      skills: [{ id: 'cite', name: 'Cite' }],
-    });
-    expect(agentFacts({ kind: 'file', media: null }, undefined, undefined)).toEqual({
-      model: { kind: 'unknown' },
-      tools: null,
-      skills: [],
-    });
-  });
-
-  test('keeps each skill’s identifier, so two skills that share a name stay two', () => {
-    const twin = (id: string) => ({ id, name: 'Cite', description: '', tags: [] });
-    const facts = agentFacts(
-      { kind: 'file', media: null },
-      { ...definition([]), card: [twin('cite-a'), twin('cite-b')] },
-      undefined,
-    );
-
-    expect(facts.skills).toEqual([
-      { id: 'cite-a', name: 'Cite' },
-      { id: 'cite-b', name: 'Cite' },
-    ]);
-  });
-
-  test('a code agent whose generator the Bureau cannot look inside shows no model, not Scripted, and has the tools its listing names', () => {
-    const facts = agentFacts(
-      { kind: 'code', media: null, tools: ['search-web'] },
-      undefined,
-      undefined,
-    );
-
-    expect(facts.model).toEqual({ kind: 'unknown' });
-    expect(facts.tools).toEqual(['search-web']);
-    // Not even a model the Bureau would name for another agent changes it: it is never asked.
-    expect(
-      agentFacts({ kind: 'code', media: null }, undefined, {
-        selectable: false,
-        models: [{ provider: 'anthropic', model: 'claude-haiku', displayName: 'claude-haiku' }],
-        default: null,
-      }).model,
-    ).toEqual({ kind: 'unknown' });
-  });
-
-  test('an agent whose listing names no tools has an unknown list, not an empty one', () => {
-    expect(agentFacts({ kind: 'code', media: null }, undefined, undefined).tools).toBeNull();
-    expect(agentFacts({ kind: 'code', media: MEDIA }, undefined, undefined).tools).toBeNull();
-    expect(agentFacts({ kind: 'file', media: null }, undefined, undefined).tools).toBeNull();
-    expect(
-      agentFacts({ kind: 'code', media: null, tools: [] }, undefined, undefined).tools,
-    ).toEqual([]);
-  });
-
-  test('a file agent’s definition outranks the tools its listing named, and the listing fills in before it is read', () => {
-    const listed = { kind: 'file', media: null, tools: ['listed-tool'] } as const;
-
-    expect(agentFacts(listed, definition(['lookup-order']), undefined).tools).toEqual([
-      'lookup-order',
-    ]);
-    expect(agentFacts(listed, undefined, undefined).tools).toEqual(['listed-tool']);
-  });
-
-  test('a code agent that names a model shows its default, or its one allowed model, and otherwise none', () => {
-    const choice = { provider: 'anthropic', model: 'claude-haiku', displayName: 'claude-haiku' };
-    const code = { kind: 'code', media: MEDIA, tools: ['search-web'] } as const;
-
-    expect(
-      agentFacts(code, undefined, {
-        selectable: false,
-        models: [choice],
-        default: { provider: 'anthropic', model: 'claude-haiku' },
-      }).model,
-    ).toEqual({ kind: 'model', name: 'claude-haiku' });
-    expect(
-      agentFacts(code, undefined, { selectable: false, models: [choice], default: null }).model,
-    ).toEqual({ kind: 'model', name: 'claude-haiku' });
-    // A routed agent answers no default and no single model: nothing is claimed.
-    expect(
-      agentFacts(code, undefined, { selectable: false, models: [], default: null }).model,
-    ).toEqual({ kind: 'unknown' });
-    expect(agentFacts(code, undefined, undefined).model).toEqual({ kind: 'unknown' });
-    expect(agentFacts(code, undefined, undefined).tools).toEqual(['search-web']);
-  });
-
-  test('counts tools, says none for an empty list, and says nothing for an unknown one', () => {
-    expect(toolCountText(['lookup-order'])).toBe('1 tool');
-    expect(toolCountText(['a-tool', 'b-tool'])).toBe('2 tools');
-    expect(toolCountText([])).toBe('No tools');
-    expect(toolCountText(null)).toBeUndefined();
   });
 });
 

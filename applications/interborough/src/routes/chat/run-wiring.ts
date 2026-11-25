@@ -1296,7 +1296,11 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
           (event['type'] === 'RUN_FINISHED' || event['type'] === 'RUN_ERROR')
         ) {
           options.onTerminal?.();
-          if (unendedRunId === nativeRunId) unendedRunId = undefined;
+          // An interrupted run is parked, not over: its next input resumes the same native run and
+          // Stop must still address that run while the transcript waits on an approval.
+          if (unendedRunId === nativeRunId && (interruptsOf(event)?.length ?? 0) === 0) {
+            unendedRunId = undefined;
+          }
           // A refusal before any run began ends no run.
           const at = event['timestamp'];
           if (nativeRunId !== undefined && typeof at === 'number' && Number.isFinite(at)) {
