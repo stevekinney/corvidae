@@ -600,9 +600,7 @@ scenarios.describe('prepare', () => {
       );
       expect(await land(1)).toBeUndefined();
       expect(await land(2)).toContain('does not match the pinned pull-request attempt');
-      expect(await land(1, '2'.repeat(40))).toContain(
-        'did not check the proposed pull-request merge',
-      );
+      expect(await land(1, '2'.repeat(40))).toContain(`expected ${TREE}`);
       for (const member of request.members)
         expect(member.providerRuns).toEqual(
           member.plan.obligations.map((obligation) =>
