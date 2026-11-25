@@ -85,6 +85,129 @@ const textOf = async (promise: Promise<Response>) => {
 };
 
 describe("server application", () => {
+  test("admits only declared cookie-free originless machine forms to their own mount", async () => {
+    const app = await createApplication({
+      generation: generation(),
+      registry: registry([]) as never,
+      mounts: {
+        "/api": {
+          rootPaths: () => ["/oauth/token"],
+          machineFormPaths: () => ["/oauth/token", "/api/embedded"],
+          start: () => () => new Response("issuer"),
+        },
+        "/other": () => () => new Response("other"),
+      },
+    });
+    const form = (
+      path: string,
+      headers: Record<string, string> = {},
+      method = "POST",
+    ) =>
+      app.fetch(
+        new Request(`https://example.test${path}`, {
+          method,
+          headers: {
+            "content-type": "application/x-www-form-urlencoded",
+            ...headers,
+          },
+          body: "a=b",
+        }),
+      );
+    try {
+      expect(
+        await form("/oauth/token").then((response) => response.text()),
+      ).toBe("issuer");
+      expect(
+        await form("/api/embedded").then((response) => response.text()),
+      ).toBe("issuer");
+      for (const headers of [
+        { origin: "null" },
+        { origin: "https://foreign.test" },
+        { cookie: "session=x" },
+        { "content-type": "text/plain" },
+        { "content-type": "multipart/form-data" },
+      ])
+        expect((await form("/oauth/token", headers)).status).toBe(403);
+      expect((await form("/oauth/token", {}, "PUT")).status).toBe(403);
+      expect((await form("/oauth/token/extra")).status).toBe(403);
+      expect((await form("/other")).status).toBe(403);
+      expect(
+        await form("/oauth/token", { origin: "https://example.test" }).then(
+          (response) => response.text(),
+        ),
+      ).toBe("issuer");
+    } finally {
+      await app.dispose();
+    }
+    const failure = await throwingRejectionOf(
+      createApplication({
+        generation: generation(),
+        registry: registry([]) as never,
+        mounts: {
+          "/api": {
+            rootPaths: () => [],
+            machineFormPaths: () => ["/other/token"],
+            start: () => () => new Response(),
+          },
+          "/other": () => () => new Response(),
+        },
+      }),
+    );
+    expect(failure).toThrow("not owned by mount");
+  });
+  test("machine declarations belong to their application and cannot be redirected by hooks", async () => {
+    const options = {
+      generation: generation(),
+      registry: registry([]) as never,
+      mounts: {
+        "/api": {
+          rootPaths: () => ["/oauth/token"],
+          machineFormPaths: () => ["/oauth/token"],
+          start: () => () => new Response("issuer"),
+        },
+      },
+      hooks: {
+        handle: ({
+          event,
+          resolve,
+        }: {
+          event: import("./types.ts").RequestEvent;
+          resolve: (
+            event: import("./types.ts").RequestEvent,
+          ) => Promise<Response>;
+        }) =>
+          resolve({
+            ...event,
+            request: new Request("https://example.test/other", event.request),
+          }),
+      },
+    };
+    const form = () =>
+      new Request("https://example.test/oauth/token", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: "a=b",
+      });
+    const original = await createApplication(options);
+    expect((await original.fetch(form())).status).toBe(403);
+    await original.dispose();
+    const replacement = await createApplication({
+      generation: generation(),
+      registry: registry([]) as never,
+      mounts: {
+        "/api": {
+          rootPaths: () => ["/oauth/token"],
+          start: () => () => new Response("replacement"),
+        },
+      },
+    });
+    try {
+      expect((await replacement.fetch(form())).status).toBe(403);
+      expect((await original.fetch(form())).status).toBe(503);
+    } finally {
+      await replacement.dispose();
+    }
+  });
   test("captures grouped service factories before startup awaits", async () => {
     const release = Promise.withResolvers<void>();
     const second = {

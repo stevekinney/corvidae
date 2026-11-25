@@ -152,6 +152,11 @@ export function mountCatalog<Host>(options: CatalogOptions<Host>) {
   ).pathname.replace(/\/$/, '');
   return {
     [options.basePath]: {
+      machineFormPaths() {
+        return 'configure' in profile || profile.handle
+          ? [`${issuerPath}/oauth/token`, `${issuerPath}/oauth/revoke`]
+          : [];
+      },
       rootPaths(base: string) {
         const resourcePath = `${canonicalPath(base)}${options.basePath}/mcp`;
         return [
