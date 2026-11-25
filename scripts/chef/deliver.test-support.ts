@@ -190,9 +190,8 @@ export async function createDeliveryFixture(
   if (identity.none !== true)
     request.ciEvidence = [
       landingIdentity(request, {
-        ...(identity.stale === true
-          ? {}
-          : { verificationPlanDigest: batchVerificationPlanDigest(request.members) }),
+        verificationPlanDigest:
+          identity.stale === true ? undefined : batchVerificationPlanDigest(request.members),
       }),
     ];
   const text = JSON.stringify(request);

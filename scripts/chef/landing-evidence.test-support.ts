@@ -18,7 +18,7 @@ export const LANDING_DIGEST = 'f'.repeat(64);
 /** The identity a request pins for its one `main.yml` run (a pull-request event keeps its own digest). */
 export function landingIdentity(
   request: Pick<DeliveryRequest, 'repository' | 'base' | 'revision' | 'integrationTree'>,
-  pinned: { event?: CiEvidenceRequest['event']; verificationPlanDigest?: string } = {},
+  pinned: { event?: CiEvidenceRequest['event']; verificationPlanDigest?: string | undefined } = {},
 ): CiEvidenceRequest {
   const input = {
     repository: request.repository,
