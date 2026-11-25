@@ -461,6 +461,7 @@ describe('captureManifest', () => {
       { title: 'two\nlines' },
       { targets: ['[data-anything]'] },
       { theme: 'sepia' },
+      { world: 'showcase' },
     ])
       expect(
         parseCaptureManifest(

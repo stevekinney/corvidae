@@ -177,6 +177,18 @@ function stateProblems(id: string, states: unknown): string[] {
   return problems;
 }
 
+/**
+ * The fixture worlds a capture records, from the host the page was served by (`designReviewWorld`
+ * in `applications/interborough/tests/e2e/design-review-capture.ts`).
+ */
+export const WITNESS_WORLDS = [
+  'sample-world',
+  'first-run',
+  'plugin-pages',
+  'stress',
+  'e2e-host',
+] as const;
+
 /** The directory Playwright runs from; a witness's specification is passed relative to it. */
 export const WITNESS_APPLICATION_DIRECTORY = 'applications/interborough/';
 
@@ -201,7 +213,8 @@ function witnessProblems(label: string, value: unknown): string[] {
     problems.push(`${label} witness needs a repository-relative Playwright specification`);
   if (!nonEmpty(witness['title']) || witness['title'].includes('\n'))
     problems.push(`${label} witness needs one literal full title`);
-  if (!nonEmpty(witness['world'])) problems.push(`${label} witness needs a fixture world`);
+  if (!(WITNESS_WORLDS as readonly unknown[]).includes(witness['world']))
+    problems.push(`${label} witness world must be one of ${WITNESS_WORLDS.join(', ')}`);
   const profiles = witness['profiles'];
   if (!Array.isArray(profiles) || profiles.length === 0) {
     problems.push(`${label} witness needs at least one viewport profile`);

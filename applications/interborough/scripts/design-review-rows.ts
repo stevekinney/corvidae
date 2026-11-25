@@ -37,6 +37,7 @@ import {
   isWitnessTarget,
   validateResolved,
   WITNESS_SPECIFICATION,
+  WITNESS_WORLDS,
   type ResolvedRows,
   type StateKind,
   type ViewportWitnessProfile,
@@ -430,7 +431,8 @@ function wellFormedWitness(value: unknown): boolean {
     Array.isArray(witness.targets) &&
     witness.targets.length > 0 &&
     witness.targets.every(isWitnessTarget) &&
-    [witness.row, witness.name, witness.route, witness.state, witness.world, witness.visible].every(
+    (WITNESS_WORLDS as readonly unknown[]).includes(witness.world) &&
+    [witness.row, witness.name, witness.route, witness.state, witness.visible].every(
       (field) => typeof field === 'string' && field !== '',
     )
   );

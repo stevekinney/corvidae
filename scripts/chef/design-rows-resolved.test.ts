@@ -132,6 +132,25 @@ describe('validateResolved', () => {
     expect(problems).toContain('named data-testid or role targets');
   });
 
+  test('names a world a capture can record', () => {
+    const base = resolved();
+    const state = base.rows[0]!.states[0]!;
+    const problems = validateResolved(
+      {
+        ...base,
+        rows: [
+          {
+            ...base.rows[0]!,
+            states: [{ ...state, witness: { ...state.witness, world: 'showcase' } }],
+          },
+          base.rows[1]!,
+        ],
+      },
+      expected,
+    ).join('\n');
+    expect(problems).toContain('witness world must be one of sample-world, first-run');
+  });
+
   test('names the specification from the repository root, under the end-to-end or panel tests', () => {
     const withSpecification = (specification: string) => {
       const base = resolved();
