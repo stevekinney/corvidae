@@ -35,7 +35,7 @@ export type FenceOutput = {
   };
 };
 
-export function deny(reason: string): FenceOutput {
+function deny(reason: string): FenceOutput {
   return {
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
@@ -45,7 +45,7 @@ export function deny(reason: string): FenceOutput {
   };
 }
 
-export function failOpen(reason: string): FenceOutput {
+function failOpen(reason: string): FenceOutput {
   return { systemMessage: `session-fences: ${reason}; not enforced.` };
 }
 
