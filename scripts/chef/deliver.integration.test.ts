@@ -10,7 +10,7 @@ import {
   MERGE_TREE,
 } from './deliver.test-support.ts';
 import { deliver, renderDeliver, run, type DeliverOptions, type LeaseReading } from './deliver.ts';
-import { readDeliveryRequest } from './delivery-completion.ts';
+import { batchVerificationPlanDigest, readDeliveryRequest } from './delivery-completion.ts';
 import { ledgerLine, type LedgerEntry } from './delivery-ledger.ts';
 import {
   loadDeliveryVerification,
@@ -26,6 +26,7 @@ import {
   changedAnswer,
   greenLandingAnswers,
   jobsAnswer,
+  landingIdentity,
   landingProvider,
   runsAnswer,
 } from './landing-evidence.test-support.ts';
@@ -90,6 +91,11 @@ async function approvedMembers<T extends Partial<DeliverOptions>>(
           member.requestedClose = closes.includes(identifier);
           return member;
         });
+  request.ciEvidence = [
+    landingIdentity(request, {
+      verificationPlanDigest: batchVerificationPlanDigest(request.members),
+    }),
+  ];
   const text = JSON.stringify(request);
   const binding = {
     ...options.verification,
@@ -142,6 +148,11 @@ async function approvedIssueOnlyMembers(): Promise<DeliverOptions> {
     member.authority = claims[index]!;
     return member;
   });
+  request.ciEvidence = [
+    landingIdentity(request, {
+      verificationPlanDigest: batchVerificationPlanDigest(request.members),
+    }),
+  ];
   const text = JSON.stringify(request);
   const binding = {
     ...options.verification,
@@ -1717,7 +1728,7 @@ interface Landing {
   /** Verdict file text, written beside the execution state for the head. */
   verdicts?: string;
   /** How the request pins its CI evidence (a manual dispatch, whose pin may be stale). */
-  identity?: { dispatch?: boolean; stale?: boolean; none?: boolean };
+  identity?: { stale?: boolean; none?: boolean };
 }
 
 /** `deliver --branch` over a fake git, gh and Linear, with the green landing varied by `landing`. */
@@ -1961,6 +1972,7 @@ scenarios.describe('deliver --branch refuses to land without evidence', () => {
     'a plan that needs the full run is not covered by a pull request run alone',
     async () => {
       const { report } = await landBranch({
+        identity: { none: true },
         answers: {
           ...runsAnswer('acme/widgets', HEAD, [
             { head_sha: HEAD, path: '.github/workflows/pull-request.yml' },
@@ -2017,8 +2029,13 @@ scenarios.describe('deliver --branch refuses to land without evidence', () => {
       const beside = await landBranch({
         answers: {
           ...runsAnswer('acme/widgets', HEAD, [
-            { head_sha: HEAD, conclusion: 'failure' },
-            { head_sha: HEAD, id: 5, path: '.github/workflows/pull-request.yml' },
+            {
+              head_sha: HEAD,
+              id: 5,
+              path: '.github/workflows/pull-request.yml',
+              conclusion: 'failure',
+            },
+            { head_sha: HEAD },
           ]),
           ...jobsAnswer('acme/widgets', 5),
         },
@@ -2084,10 +2101,10 @@ scenarios.describe('deliver --branch refuses to land without evidence', () => {
   scenarios.scenario(
     'a manual dispatch is pinned to the batch digest: a stale pin is refused, the batch digest lands',
     async () => {
-      const stale = await landBranch({ identity: { dispatch: true, stale: true } });
+      const stale = await landBranch({ identity: { stale: true } });
       expect(stale.report).toMatchObject({ merged: false, failedStep: 'verification' });
       expect(stale.report.detail).toContain('carries evidence digest');
-      const current = await landBranch({ identity: { dispatch: true } });
+      const current = await landBranch();
       expect(current.report).toMatchObject({ failedStep: null, merged: true });
     },
   );
