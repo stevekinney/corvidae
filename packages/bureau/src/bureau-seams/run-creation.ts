@@ -82,7 +82,12 @@ import {
   validateCreateRunRequest,
 } from '../run-request-validation';
 import { type SteeringLogEvent, steeringSessionRunTag } from '../steering-log';
-import { type TaskOrigin, taskOriginOfStart, taskOriginTag } from '../task-origin';
+import {
+  isTrustedReviewedOrigin,
+  type TaskOrigin,
+  taskOriginOfStart,
+  taskOriginTag,
+} from '../task-origin';
 import type { TaskToolGrant } from '../task-registry';
 import { attachRunEventFeed } from '../run-event-feed-attachment.ts';
 import { bindRunWorkspaceAuthority } from '../run-authority.ts';
@@ -211,6 +216,16 @@ export interface RunCreationPeers {
  * has nothing to drift from; the case only keeps the resolution union narrowed, and a run that did
  * reach it would be refused as recovery refuses it.
  */
+function ordinaryRunProvenance(
+  origin: TaskOrigin,
+  agentName: string,
+  runId: string,
+): string | null {
+  return !Object.hasOwn(origin, 'reviewedTool') && !agentName.startsWith('reviewed:')
+    ? runId
+    : null;
+}
+
 function unresolvedStart(
   agentName: string,
   resolution: Extract<
@@ -326,6 +341,12 @@ export function createRunCreation<D extends AgentDefinitions>(
       throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
     }
     const agentName = resolveRunAgentName(sessionId, session, request.agentName);
+    if (
+      agentName.startsWith('reviewed:') &&
+      (!isTrustedReviewedOrigin(request.origin) || request.origin.reviewedTool.agent !== agentName)
+    ) {
+      throw new BureauError('Reviewed tool agent not found', 'NOT_FOUND');
+    }
     const triedRun = isTryAgentName(agentName);
     if (triedRun) peers.assertTriedAgentBelongsTo(agentName, sessionId);
     const resolution = await runtime.resolveSessionAgentRun(
@@ -568,6 +589,9 @@ export function createRunCreation<D extends AgentDefinitions>(
         conversation,
         {
           lastRunId: runId,
+          // Bind ordinary provenance to the same session update as the latest run. A reviewed
+          // run clears it, and a later run can never inherit another run's classification.
+          ordinaryRunId: ordinaryRunProvenance(taskOrigin, agentName, runId),
           lastRunStatus: 'running',
           // This run's own starting entry: durable steering counts it as
           // starting, until its `promoted` entry is logged and for a bounded

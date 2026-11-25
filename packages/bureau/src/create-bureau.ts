@@ -2,6 +2,8 @@ import {
   resolveWorkspaceOwner,
   runtimeWorkspaceOwnerAuthority,
 } from './http/workspace-principal.ts';
+import { reviewedProvenanceOf } from './reviewed-provenance.ts';
+import { isTaskOrigin } from './task-origin.ts';
 import {
   CompletableEventTarget,
   createDefaultRuntimeServices,
@@ -5019,6 +5021,84 @@ async function constructBureau<const D extends AgentDefinitions>(
     notifications: notificationsComposition.notifications,
     internals: {
       reviewPolicy: options.reviewPolicy,
+      reviewedProvenance: (review) =>
+        reviewedProvenanceOf(review, {
+          task: (runId) => tasks.record(runId),
+          session: async (sessionId) => runtime.sessionStore?.load(sessionId),
+          steps: async (runId) => {
+            if (!runtime.durable) throw new Error('No durable checkpoint');
+            return runtime.durable.checkpointStore.loadSteps(runId, { strict: true });
+          },
+          policy: options.reviewPolicy,
+        }),
+      reviewedRunState: async (runId, expectedSessionId, incarnation) => {
+        try {
+          const task = await tasks.record(runId);
+          if (!task) {
+            if (!expectedSessionId || !incarnation) return 'unresolved';
+            const session = await runtime.sessionStore?.load(expectedSessionId);
+            const markers = session?.metadata['reviewedApprovalProvenance'];
+            if (
+              markers !== undefined &&
+              (!markers || typeof markers !== 'object' || Array.isArray(markers))
+            )
+              return 'unresolved';
+            if (markers && Object.keys(markers).some((id) => id.startsWith(`approval:${runId}:`)))
+              return 'unresolved';
+            return session?.incarnation === incarnation &&
+              session?.metadata['lastRunId'] === runId &&
+              session.metadata['ordinaryRunId'] === runId
+              ? 'ordinary'
+              : 'unresolved';
+          }
+          const session = await runtime.sessionStore?.load(task.contextId);
+          if (
+            expectedSessionId !== undefined &&
+            (task.contextId !== expectedSessionId ||
+              !session ||
+              session.incarnation !== task.incarnation ||
+              session.incarnation !== incarnation)
+          )
+            return 'unresolved';
+          const markers = session?.metadata['reviewedApprovalProvenance'];
+          if (
+            markers !== undefined &&
+            (!markers || typeof markers !== 'object' || Array.isArray(markers))
+          )
+            return 'unresolved';
+          const markedRun =
+            markers && Object.keys(markers).some((id) => id.startsWith(`approval:${runId}:`));
+          if (markedRun && (!task.origin || !Object.hasOwn(task.origin, 'reviewedTool')))
+            return 'unresolved';
+          if (typeof task.agentName !== 'string') {
+            if (
+              task.origin &&
+              (!isTaskOrigin(task.origin) || Object.hasOwn(task.origin, 'reviewedTool'))
+            )
+              return 'unresolved';
+            if (!session) return 'unresolved';
+            return markedRun ? 'unresolved' : 'ordinary';
+          }
+          if (!task.origin)
+            return task.agentName.startsWith('reviewed:') ? 'unresolved' : 'ordinary';
+          if (!isTaskOrigin(task.origin)) return 'unresolved';
+          if (!Object.hasOwn(task.origin, 'reviewedTool'))
+            return task.agentName.startsWith('reviewed:') ? 'unresolved' : 'ordinary';
+          const review = await reviews.get(`approval:${runId}:reviewed-call`);
+          if (!review || review.kind !== 'tool-approval') return 'unresolved';
+          return reviewedProvenanceOf(review, {
+            task: (id) => tasks.record(id),
+            session: async (sessionId) => runtime.sessionStore?.load(sessionId),
+            steps: async (id) => {
+              if (!runtime.durable) throw new Error('No durable checkpoint');
+              return runtime.durable.checkpointStore.loadSteps(id, { strict: true });
+            },
+            policy: options.reviewPolicy,
+          });
+        } catch {
+          return 'unresolved';
+        }
+      },
       hasExplicitId: options.id !== undefined,
       get taskRetention() {
         return taskRetentionOf(currentSettings());

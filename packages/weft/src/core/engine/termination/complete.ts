@@ -145,6 +145,7 @@ export async function terminateWorkflow(
   reason?: TerminationReason,
   historyRetry = 0,
   historyRunIdentity?: FileWorkflowRunIdentity,
+  preparedClaimEpoch?: Uint8Array,
 ): Promise<CancelWorkflowResult> {
   const terminatedRun = captureTerminatedRun(internals, workflowId);
   const inFlightActivityTurn = captureInFlightActivityTurn(internals, workflowId);
@@ -187,7 +188,7 @@ export async function terminateWorkflow(
           ...(terminalCleanupToken !== undefined ? { terminalCleanupToken } : {}),
           ...terminalCommitterStamp(internals),
         },
-        'external-terminal',
+        preparedClaimEpoch === undefined ? 'external-terminal' : 'self',
         {
           allowedStatuses: FORCIBLY_TERMINABLE_STATUSES,
           ...(capturedHistoryRunIdentity === undefined
@@ -196,17 +197,20 @@ export async function terminateWorkflow(
                 expectedWorkflowExecutionToken:
                   capturedHistoryRunIdentity.workflowExecutionToken ?? null,
               }),
-          ...(fileWorkflowHistory === undefined
-            ? {}
-            : {
-                extraConditions: [
+          extraConditions: [
+            ...(preparedClaimEpoch === undefined
+              ? []
+              : [{ key: KEYS.workflowOwnerEpoch(workflowId), expectedValue: preparedClaimEpoch }]),
+            ...(fileWorkflowHistory === undefined
+              ? []
+              : [
                   fileWorkflowHistory.condition(),
                   sameRunCondition(workflowId, {
                     generation: fileWorkflowHistory.identity.generation,
                     holderMarker: null,
                   }),
-                ],
-              }),
+                ]),
+          ],
           buildAdditionalOperations: (_previousState, updatedAt) => {
             finalizePendingTimelineEntry(
               internals,
@@ -258,6 +262,7 @@ export async function terminateWorkflow(
           reason,
           historyRetry + 1,
           capturedHistoryRunIdentity,
+          preparedClaimEpoch,
         );
       }
       throw error;

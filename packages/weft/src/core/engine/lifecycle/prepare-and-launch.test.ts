@@ -102,7 +102,141 @@ class TransientEpochGlitchStorage extends MemoryStorage {
   }
 }
 
+class HeldAbandonStorage extends MemoryStorage {
+  armed = false;
+  reached = Promise.withResolvers<void>();
+  release = Promise.withResolvers<void>();
+  override async conditionalBatch(
+    conditions: ConditionalBatchCondition[],
+    operations: BatchOperation[],
+  ): Promise<boolean> {
+    if (
+      this.armed &&
+      operations.some(
+        (operation) =>
+          operation.type === 'put' &&
+          operation.key === KEYS.workflow('prepared-race') &&
+          decodeWorkflowState(operation.value).status === 'cancelled',
+      )
+    ) {
+      this.armed = false;
+      this.reached.resolve();
+      await this.release.promise;
+    }
+    return super.conditionalBatch(conditions, operations);
+  }
+}
+
 describe('engine.prepare() / handle.launch() / handle.abandon() (COR-75)', () => {
+  it('does not let a stale prepared handle cancel a successor claim', async () => {
+    const storage = new MemoryStorage();
+    let now = 1_000_000;
+    const definition = workflow({ name: 'prepared-claim' }).execute(async function* () {
+      return 'ok';
+    });
+    const options = {
+      storage,
+      workflows: { 'prepared-claim': definition },
+      ownership: 'workflow-lease' as const,
+      workflowClaimTtl: '1m' as const,
+      workflowClaimRenewInterval: '5s' as const,
+      backgroundTasks: 'manual' as const,
+      recover: false,
+      getNow: () => now,
+    };
+    await using first = await Engine.create(options);
+    await using second = await Engine.create(options);
+    const prepared = await first.prepare('prepared-claim', null, { id: 'prepared-claim-1' });
+    now += 120_000;
+    expect(await getInternals(second).workflowClaimRegistry!.takeover(prepared.id)).toMatchObject({
+      status: 'acquired',
+    });
+    await prepared.abandon().catch(() => {});
+    const storedWorkflow = await second.get(prepared.id);
+    expect(storedWorkflow?.status).toBe('pending');
+    expect(
+      await getInternals(second).workflowClaimRegistry!.holderStatus(prepared.id),
+    ).toMatchObject({ heldByThisProcess: true });
+  });
+  it('fences takeover that lands during abandonment and preserves the successor claim', async () => {
+    const storage = new HeldAbandonStorage();
+    let now = 1_000_000;
+    const definition = workflow({ name: 'prepared-race' }).execute(async function* () {
+      return 'ok';
+    });
+    const options = {
+      storage,
+      workflows: { 'prepared-race': definition },
+      ownership: 'workflow-lease' as const,
+      workflowClaimTtl: '1m' as const,
+      workflowClaimRenewInterval: '5s' as const,
+      backgroundTasks: 'manual' as const,
+      recover: false,
+      getNow: () => now,
+    };
+    await using first = await Engine.create(options);
+    await using second = await Engine.create(options);
+    const prepared = await first.prepare('prepared-race', null, { id: 'prepared-race' });
+    storage.armed = true;
+    const abandoning = prepared.abandon();
+    const atCommit = await Promise.race([
+      storage.reached.promise.then(() => true),
+      abandoning.then(() => false),
+    ]);
+    expect(atCommit).toBe(true);
+    now += 120_000;
+    try {
+      expect(await getInternals(second).workflowClaimRegistry!.takeover(prepared.id)).toMatchObject(
+        { status: 'acquired' },
+      );
+    } finally {
+      storage.release.resolve();
+    }
+    await abandoning.catch(() => {});
+    const storedWorkflow = await second.get(prepared.id);
+    expect(storedWorkflow?.status).toBe('pending');
+    expect(
+      await getInternals(second).workflowClaimRegistry!.holderStatus(prepared.id),
+    ).toMatchObject({ heldByThisProcess: true });
+  });
+  it('lets the current workflow-lease owner abandon its prepared run', async () => {
+    const storage = new MemoryStorage();
+    const definition = workflow({ name: 'prepared-owner' }).execute(async function* () {
+      return 'ok';
+    });
+    await using engine = await Engine.create({
+      storage,
+      workflows: { 'prepared-owner': definition },
+      ownership: 'workflow-lease',
+      backgroundTasks: 'manual',
+      recover: false,
+    });
+    const prepared = await engine.prepare('prepared-owner', null, { id: 'prepared-owner' });
+    await prepared.abandon();
+    expect(await engine.get(prepared.id)).toMatchObject({
+      status: 'cancelled',
+      terminationReason: PREPARED_WORKFLOW_ABANDONED_REASON,
+    });
+  });
+  it('keeps explicit cancellation available to another engine', async () => {
+    const storage = new MemoryStorage();
+    const definition = workflow({ name: 'prepared-cancel' }).execute(async function* () {
+      return 'ok';
+    });
+    const options = {
+      storage,
+      workflows: { 'prepared-cancel': definition },
+      ownership: 'workflow-lease' as const,
+      backgroundTasks: 'manual' as const,
+      recover: false,
+    };
+    await using first = await Engine.create(options);
+    await using second = await Engine.create(options);
+    const prepared = await first.prepare('prepared-cancel', null, { id: 'prepared-cancel' });
+    await second.cancel(prepared.id);
+    const storedWorkflow = await second.get(prepared.id);
+    expect(storedWorkflow?.status).toBe('cancelled');
+  });
   it('commits a durable pending record readable via engine.get() before launch(), then launches it', async () => {
     await using engine = new Engine({ storage: new MemoryStorage() });
     engine.register(

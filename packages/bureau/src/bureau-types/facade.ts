@@ -234,6 +234,14 @@ export interface BureauDiagnostics {
  */
 export interface BureauInternals {
   readonly reviewPolicy?: ReviewPolicy | undefined;
+  readonly reviewedProvenance: (
+    review: import('./reviews').PendingToolApprovalReview,
+  ) => Promise<import('../reviewed-provenance').ReviewedProvenanceState>;
+  readonly reviewedRunState: (
+    runId: string,
+    sessionId?: string,
+    incarnation?: string,
+  ) => Promise<import('../reviewed-provenance').ReviewedProvenanceState>;
   /**
    * Whether {@link BureauOptions.id} was supplied. `false` means {@link Bureau.id}
    * is a generated identifier that changes on every restart, which

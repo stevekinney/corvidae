@@ -54,6 +54,8 @@ import {
   type Principal,
   unauthenticatedLocalAuthContext,
 } from '@lostgradient/backchannel';
+import type { RegistrableOperation } from '@lostgradient/backchannel/internals';
+import type { z } from 'zod';
 import {
   type ConditionalTextValueStore,
   MemoryStorage,
@@ -110,6 +112,7 @@ import type { BureauNotifications } from '../notifications/notification-types.ts
 import { describeCodeWorkflow } from '../workflow-runtime.ts';
 import {
   bureauReviewsOperations,
+  reviewsOperationsWithEffects,
   type BureauReviewsOperationHost,
 } from './bureau-reviews-operations.ts';
 import { bureauRunEventsSubscriptionOperation } from './bureau-run-events-operation.ts';
@@ -422,6 +425,8 @@ export type BureauHandlerSource = Pick<
     BureauInternals,
     | 'hasExplicitId'
     | 'reviewPolicy'
+    | 'reviewedProvenance'
+    | 'reviewedRunState'
     | 'taskRetention'
     | 'kv'
     | 'eventFeed'
@@ -461,7 +466,10 @@ export type BureauHandlerSource = Pick<
 type AgentDescription = { readonly name: string; readonly description?: string | undefined };
 
 /** What every operation `createBureauHandler` serves reads from `host`. */
-export type BureauHandlerHost = BureauEventsOperationHost &
+export type BureauHandlerHost = {
+  readonly reviewedTasks: Pick<BureauTasks, 'start'>;
+  readonly reviewedRunState: BureauInternals['reviewedRunState'];
+} & BureauEventsOperationHost &
   RunEventsOperationHost &
   BureauReviewsOperationHost &
   BureauOwnershipHost &
@@ -602,6 +610,12 @@ export type BureauHandlerOptions = {
    * credential is authenticated by it, and A2A requires one (COR-1904).
    */
   readonly authentication?: AuthConfig;
+  /** Host-owned request authentication, including the host's cookie write policy. */
+  readonly authenticateRequest?: OperationHandlerAuthenticate;
+  /** Explicit catalog contributions served by this deployment. */
+  readonly operations?: readonly RegistrableOperation<BureauHandlerHost>[];
+  /** Public effect schemas contributed to this deployment's Reviews responses. */
+  readonly reviewEffects?: readonly z.ZodObject[];
   /** Server-supplied current membership for this runtime's workspace, resolved after authentication. */
   readonly workspace?: WorkspaceMembershipOptions;
   /**
@@ -684,6 +698,9 @@ const OPTION_NAMES: ReadonlySet<string> = new Set([
   'signing',
   'pushNotifications',
   'authentication',
+  'authenticateRequest',
+  'operations',
+  'reviewEffects',
   'workspace',
   'unauthenticatedAccess',
   'mounts',
@@ -957,6 +974,20 @@ export const BUREAU_HANDLER_OPERATIONS = [
   ...bureauWorkerDeploymentsOperations,
   ...bureauHooksOperations,
 ] as const;
+
+/** Compose the same operation set for the handler and its offline catalog. */
+export function composeBureauOperations(
+  contributions: readonly RegistrableOperation<BureauHandlerHost>[] = [],
+  effects: readonly z.ZodObject[] = [],
+): readonly RegistrableOperation<BureauHandlerHost>[] {
+  const replacements = new Map(
+    reviewsOperationsWithEffects(effects).map((operation) => [operation.name, operation]),
+  );
+  return [
+    ...BUREAU_HANDLER_OPERATIONS.map((operation) => replacements.get(operation.name) ?? operation),
+    ...contributions,
+  ];
+}
 
 /**
  * The principal every request is served as under `unauthenticatedAccess:
@@ -1384,9 +1415,12 @@ export function buildBureauHandlerHost(
   a2aAgents: readonly string[],
   skills?: BureauHandlerOptions['skills'],
   workspace?: WorkspaceMembershipOptions,
+  contributions: readonly RegistrableOperation<BureauHandlerHost>[] = [],
+  effects: readonly z.ZodObject[] = [],
 ): BureauHandlerHost {
-  const operations = describeOperations(BUREAU_HANDLER_OPERATIONS);
+  const operations = describeOperations(composeBureauOperations(contributions, effects));
   return {
+    reviewedTasks: bureau.tasks,
     workspaceAuthority: (principal) => workspaceOwnerAuthority(workspace, principal),
     resolveWorkspaceOwner: async (owner) =>
       workspace === undefined ? undefined : resolveWorkspaceOwner(workspace, owner),
@@ -1400,6 +1434,8 @@ export function buildBureauHandlerHost(
     ...(bureau.internals.reviewPolicy === undefined
       ? {}
       : { reviewPolicy: bureau.internals.reviewPolicy }),
+    reviewedProvenance: bureau.internals.reviewedProvenance,
+    reviewedRunState: bureau.internals.reviewedRunState,
     reviews: {
       mayRemember: (review) => bureau.reviews.mayRemember(review),
       list: () => bureau.reviews.list(),
@@ -1644,7 +1680,10 @@ export function createBureauHandler(
     fail('workspace must match the Bureau construction binding');
   }
   const unauthenticatedAccess = resolveUnauthenticatedAccess(options);
-  assertAuthentication(options.authentication, unauthenticatedAccess);
+  if (options.authenticateRequest !== undefined && options.authentication !== undefined)
+    fail('authenticateRequest and authentication cannot both be configured');
+  if (options.authenticateRequest === undefined)
+    assertAuthentication(options.authentication, unauthenticatedAccess);
   assertA2AAgents(bureau, options.a2aAgents);
   assertAgUi(bureau, options);
   assertA2A(bureau, options);
@@ -1658,8 +1697,13 @@ export function createBureauHandler(
     options.a2aAgents ?? [],
     options.skills,
     options.workspace,
+    options.operations,
+    options.reviewEffects,
   );
-  const authenticate = handlerAuthenticate(options.authentication, unauthenticatedAccess);
+  const authenticate =
+    options.authenticateRequest ??
+    handlerAuthenticate(options.authentication, unauthenticatedAccess);
+  const operations = composeBureauOperations(options.operations, options.reviewEffects);
 
   const mounts: WorkspaceClassifiedMount[] = [
     classifyWorkspaceMount(createAssetsMount(bureau.assets!, options.workspace), 'explicit-share'),
@@ -1696,7 +1740,7 @@ export function createBureauHandler(
       : (options.mounts ?? []).map(registerWorkspaceMount)),
   ];
   const handler = createOperationHandler({
-    operations: BUREAU_HANDLER_OPERATIONS,
+    operations,
     scopeVocabulary: WEFT_SCOPE_VOCABULARY,
     host,
     authenticate:
@@ -1719,7 +1763,7 @@ export function createBureauHandler(
     encodeBinary: encode,
   });
   const resourceInventory: BureauResourceInventoryEntry[] = [
-    ...BUREAU_HANDLER_OPERATIONS.map((operation): BureauResourceInventoryEntry => ({
+    ...operations.map((operation): BureauResourceInventoryEntry => ({
       kind: 'operation',
       key: operation.name,
       workspaceClass: Object.hasOwn(OPERATION_MAP, operation.name)

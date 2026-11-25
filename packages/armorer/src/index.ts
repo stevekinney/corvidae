@@ -62,8 +62,11 @@ export type {
 } from './execution-lifecycle';
 export { readToolShortDescription, readToolTitle, renderToolSummary } from './tool-summary';
 export {
+  approvalOnlyPolicy,
   getToolboxApprovalOptions,
+  hasSignedApprovalState,
   toolboxProjectionInterruption,
+  verifyToolboxPendingApproval,
 } from './toolbox-approval-options';
 export type { ToolboxApprovalOptions } from './toolbox-approval-options';
 // RuntimeServices is part of this package's public execution contract.

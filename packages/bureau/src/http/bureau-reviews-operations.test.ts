@@ -41,6 +41,7 @@ import { mayAccessOwnedResource, ownerOfPrincipal } from './owner-predicate.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
 import type { AgentDefinitions } from '../agent-catalog';
 import { MemoryStorage } from '@lostgradient/storage';
+import { TASK_RECORD_KEY_PREFIX } from '../task-registry';
 import { withWorkspaceMembership } from './workspace-principal.ts';
 import {
   WORKSPACE_PRIVACY_ACTORS,
@@ -501,6 +502,25 @@ describe('the tool-approval action projection', () => {
 });
 
 describe('bureau.reviews.get', () => {
+  it('projects only public arguments without changing the stored signed call', async () => {
+    const review = toolApprovalReview();
+    if (review.kind !== 'tool-approval') throw new Error('expected tool approval');
+    review.approval.arguments = { itemId: 'one', internalId: 'private' };
+    const handler = serve({
+      ...stubHost({ get: async () => review }),
+      reviewPolicy: {
+        matches: () => true,
+        mayRead: () => true,
+        mayDecide: () => true,
+        publicArguments: () => ({ itemId: 'one' }),
+        effect: async () => undefined,
+      },
+    });
+    const response = await call(handler, 'bureau.reviews.get', { id: review.id });
+    expect(response.result).toMatchObject({ approval: { arguments: { itemId: 'one' } } });
+    expect(JSON.stringify(response.result)).not.toContain('private');
+    expect(review.approval.arguments).toEqual({ itemId: 'one', internalId: 'private' });
+  });
   it('projects the current remember permission and fails closed when unavailable', async () => {
     const review = toolApprovalReview();
     const permitted = serve(stubHost({ get: async () => review, mayRemember: async () => true }));
@@ -1420,6 +1440,21 @@ describe('the reviews operations against a real Bureau', () => {
               id: review!.id,
               decision: 'approve',
               principal: 'api-key:tester',
+              reviewer: principalFromApiKey({ subject: 'tester', scopes: [] }),
+              round: 0,
+              arguments: { cents: 1 },
+            }),
+          ),
+        ).toBeInstanceOf(Error);
+        const pendingDetail = await call(handler, 'bureau.reviews.get', { id: review?.id });
+        expect(pendingDetail.result).toMatchObject({ status: 'pending', round: 0 });
+        expect(charges).toEqual([]);
+        expect(
+          await rejectionOf(
+            bureau.reviews.resolve({
+              id: review!.id,
+              decision: 'approve',
+              principal: 'api-key:tester',
               round: 0,
             }),
           ),
@@ -1564,6 +1599,50 @@ describe('the reviews operations against a real Bureau', () => {
 });
 
 describe('workspace privacy for reviews', () => {
+  it('reads, streams, and resolves an ordinary persisted approval from before task origins', async () => {
+    const { opened, task, review } = await openWorkspaceApproval();
+    try {
+      const kv = opened.bureau.internals.kv;
+      if (!kv) throw new Error('Missing task storage');
+      const keys = await kv.list(TASK_RECORD_KEY_PREFIX);
+      const key = keys.find((entry) => entry.endsWith(task.id));
+      if (!key) throw new Error('Missing task record');
+      const record = JSON.parse((await kv.get(key))!) as Record<string, unknown>;
+      delete record['origin'];
+      record['agentName'] = null;
+      await kv.set(key, JSON.stringify(record));
+      const legacyDetail = await workspacePrivacyCall(opened, 'owner', 'bureau.reviews.get', {
+        id: review.id,
+      });
+      expect(legacyDetail.body?.result).toBeDefined();
+      const stream = await opened.handler(
+        new Request(
+          `http://localhost/v1/subscriptions/operative.runs.events?runId=${encodeURIComponent(task.id)}`,
+          {
+            headers: {
+              accept: 'text/event-stream',
+              'X-API-Key': WORKSPACE_PRIVACY_ACTORS.owner.key,
+            },
+          },
+        ),
+      );
+      expect(stream.status).toBe(200);
+      await stream.body?.cancel();
+      const legacyResolution = await workspacePrivacyCall(
+        opened,
+        'owner',
+        'bureau.reviews.resolve',
+        {
+          id: review.id,
+          decision: 'reject',
+          reason: 'Not approved',
+        },
+      );
+      expect(legacyResolution.body?.result).toBeDefined();
+    } finally {
+      await opened.dispose();
+    }
+  });
   it('returns approval feedback only to the owner', async () => {
     const { opened, review } = await openWorkspaceApproval();
     try {
