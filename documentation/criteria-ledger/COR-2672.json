@@ -1,9 +1,9 @@
 {
   "issue": "COR-2672",
   "branch": "steve/composable-velveteen-types",
-  "checkedAt": "2758374d8d",
+  "checkedAt": "9833156c5df1271f837e6d060f35cae727b367da",
   "briefVersion": "25a594efff26",
-  "status": "BLOCKED",
+  "status": "READY",
   "criteria": [
     {
       "id": "AC1",
@@ -12,8 +12,8 @@
     },
     {
       "id": "AC2",
-      "status": "not-met",
-      "evidence": "Integrated listener scoped check passed at 3f68d586; root reference proof passed, but final combined root check awaits COR-2673 repair of main TS2459."
+      "status": "met-on-branch",
+      "evidence": "Integrated listener candidate 28cc1abd1c passed typecheck:root (40/40 tasks) and scoped Interborough Turbo typecheck (34/34 tasks; both Svelte checks clean), exit 0. Logs: COR-2620 scratch root-typecheck-28cc.log and scoped-typecheck-28cc.log."
     },
     {
       "id": "AC3",
