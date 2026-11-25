@@ -76,6 +76,7 @@ describe('the editor’s routes', () => {
       await findByRole('heading', { level: 1, name: AGENT_EDITOR_COPY.createHeading }),
     ).not.toBeNull();
     await waitFor(() => expect(frameOf(container).dataset['state']).toBe('ready'));
+    await findByRole('form', { name: AGENT_EDITOR_COPY.formLabel });
   });
 
   test('/agents/:agent/edit is the editor for that agent, ready once the agent loads', async () => {
@@ -85,6 +86,7 @@ describe('the editor’s routes', () => {
 
     expect(await findByRole('heading', { level: 1, name: 'Edit Researcher' })).not.toBeNull();
     expect(frameOf(container).dataset['state']).toBe('ready');
+    await findByRole('form', { name: AGENT_EDITOR_COPY.formLabel });
     expect(
       calls
         .callsTo('bureau.agents.definitions.get')
@@ -93,25 +95,41 @@ describe('the editor’s routes', () => {
     expect(calls.callsTo('bureau.agents.definitions.get')).toHaveLength(2);
   });
 
-  test('/agents/:agent/edit keeps its saved display name while the catalog loads', async () => {
-    const calls = bureau(() => readyAgent());
-    let releaseCatalog: () => void = () => undefined;
-    const catalogHeld = new Promise<void>((resolve) => (releaseCatalog = resolve));
-    calls.on('bureau.agents.catalog', async () => {
-      await catalogHeld;
-      return catalogFixture();
+  test('/agents/:agent/edit keeps the frame-probed display name while its own definition read loads', async () => {
+    const base = readyAgent();
+    if (base.definition === null) throw new Error('expected fixture definition');
+    const toolRunner = {
+      ...base,
+      id: 'tool-runner',
+      name: 'Tool runner',
+      definition: { ...base.definition, name: 'Tool runner' },
+    };
+    let releasePageRead: () => void = () => undefined;
+    let pageReadStarted: () => void = () => undefined;
+    const pageReadHeld = new Promise<void>((resolve) => (releasePageRead = resolve));
+    const secondRead = new Promise<void>((resolve) => (pageReadStarted = resolve));
+    let reads = 0;
+    const calls = bureau(async () => {
+      reads += 1;
+      if (reads === 2) {
+        pageReadStarted();
+        await pageReadHeld;
+      }
+      return toolRunner;
     });
-    landAt('/agents/researcher/edit');
-    const { container, findByRole, findByTestId } = mountOutlet();
+    landAt('/agents/tool-runner/edit');
+    const { container, findByRole, findByTestId, getByRole } = mountOutlet();
 
     try {
-      expect(await findByRole('heading', { level: 1, name: 'Edit Researcher' })).not.toBeNull();
+      await secondRead;
+      expect(getByRole('heading', { level: 1 }).textContent?.trim()).toBe('Edit Tool runner');
       expect(await findByTestId('agent-loading')).not.toBeNull();
       expect(frameOf(container).dataset['state']).toBe('ready');
     } finally {
-      releaseCatalog();
+      releasePageRead();
     }
 
+    expect(reads).toBe(2);
     expect(await findByRole('form', { name: AGENT_EDITOR_COPY.formLabel })).not.toBeNull();
   });
 });

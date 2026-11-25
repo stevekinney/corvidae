@@ -156,7 +156,8 @@ test.describe('a new agent', () => {
       });
 
       const loading = 'e2e-editor-loading';
-      await makeAgent(request, loading);
+      const loadingName = 'Tool runner';
+      await makeAgent(request, loading, { name: loadingName });
       const release = Promise.withResolvers<void>();
       const waiting = Promise.withResolvers<void>();
       await page.route('**/jsonrpc', async (route: Route) => {
@@ -176,7 +177,7 @@ test.describe('a new agent', () => {
         const navigation = page.goto(`/agents/${loading}/edit`);
         await waiting.promise;
         await expect(
-          page.getByRole('heading', { level: 1, name: copy.editHeading(BASE_DEFINITION.name) }),
+          page.getByRole('heading', { level: 1, name: copy.editHeading(loadingName) }),
         ).toBeVisible();
         await expect(page.getByTestId('agent-loading')).toBeVisible();
         await captureForDesignReview(page, {

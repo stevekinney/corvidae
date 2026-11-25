@@ -40,8 +40,6 @@ import type { ViewName } from './views.ts';
  */
 export type ViewProbeResult = {
   readonly empty: boolean;
-  /** A route's display name, carried only by the frame probe that admitted it. */
-  readonly displayName?: string;
   readonly recheckMs?: number;
   readonly liveSource?: 'bureau' | 'fleet';
 };
@@ -166,12 +164,15 @@ async function probeAgentCatalog(): Promise<ViewProbeResult> {
  * The editor for one agent needs an agent file it may edit. A code-defined agent can be read but
  * not written, so it answers as one that is not there, as the Bureau does for a write.
  */
-async function probeEditableAgent(id: string): Promise<ViewProbeResult> {
+async function probeEditableAgent(queryClient: QueryClient, id: string): Promise<ViewProbeResult> {
   const agent = await getAgentDefinition(id);
   if (agent.source === 'code') {
     throw new ViewProbeFault(`The agent "${id}" is defined in code, so it cannot be edited.`, 404);
   }
-  return { empty: false, displayName: agent.name };
+  // This is deliberately narrower than the mutable definition query: the editor may name the
+  // admitted file while its own read loads, but it must not inherit ready form data or invalidation.
+  queryClient.setQueryData(queryKeys.agents.displayName(id), agent.name);
+  return { empty: false };
 }
 
 /**
@@ -386,7 +387,9 @@ export function probeFor(
       return probeAgentCatalog;
     case 'agent-editor': {
       const agent = parameters['agent'];
-      return agent === undefined ? probeAgentCatalog : () => probeEditableAgent(agent);
+      return agent === undefined
+        ? probeAgentCatalog
+        : (_client, queryClient) => probeEditableAgent(queryClient, agent);
     }
     case 'workflows': {
       // The page that makes a workflow asks for nothing: it is where the first one is written.
