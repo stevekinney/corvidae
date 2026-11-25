@@ -109,7 +109,7 @@ describe('the editor’s routes', () => {
     const pageReadHeld = new Promise<void>((resolve) => (releasePageRead = resolve));
     const secondRead = new Promise<void>((resolve) => (pageReadStarted = resolve));
     let reads = 0;
-    const calls = bureau(async () => {
+    bureau(async () => {
       reads += 1;
       if (reads === 2) {
         pageReadStarted();
