@@ -850,6 +850,7 @@ export function insertStep(text: string, list: ListPath, index: number, step: Js
     withList(document, list, (steps) => {
       if (!Number.isInteger(index) || index < 0 || index > steps.length) return false;
       steps.splice(index, 0, step);
+      return true;
     }),
   );
 }
