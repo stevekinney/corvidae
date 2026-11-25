@@ -31,10 +31,13 @@ type JsonRecord = Record<string, unknown>;
 async function rewriteOperation(
   page: Page,
   method: string,
-  rewrite: (result: JsonRecord) => JsonRecord,
+  rewrite: (result: JsonRecord, params: JsonRecord) => JsonRecord,
 ): Promise<void> {
   await page.route(isBureauCall, async (route: Route) => {
-    const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
+    const body = JSON.parse(route.request().postData() ?? '{}') as {
+      method?: string;
+      params?: JsonRecord;
+    };
     if (body.method !== method) {
       await route.fallback();
       return;
@@ -43,7 +46,7 @@ async function rewriteOperation(
     const answer = (await response.json()) as { result?: JsonRecord };
     await route.fulfill({
       response,
-      json: { ...answer, result: rewrite(answer.result ?? {}) },
+      json: { ...answer, result: rewrite(answer.result ?? {}, body.params ?? {}) },
     });
   });
 }
@@ -69,9 +72,8 @@ async function answerAsRunningInstance(
   const startedAt = SAMPLE_NOW_MILLISECONDS - startedMilliseconds;
   // One handler for each answer: a second handler's `route.fetch()` would go to the network and
   // undo the first's rewrite, so a further rewrite (`also`) is applied inside these.
-  await page.route(new RegExp(`/workflows/${runId}(\\?.*)?$`), async (route: Route) => {
-    const response = await route.fetch();
-    const state = (await response.json()) as JsonRecord;
+  await rewriteOperation(page, 'weft.workflows.get', (state, params) => {
+    if (params['workflowId'] !== runId) return state;
     delete state['error'];
     delete state['errorStack'];
     delete state['failureCategory'];
@@ -83,7 +85,7 @@ async function answerAsRunningInstance(
       updatedAt: SAMPLE_NOW_MILLISECONDS - 1000,
       ...(waitingForSignals.length === 0 ? {} : { waitingForSignals }),
     };
-    await route.fulfill({ response, json: also.engine?.(running) ?? running });
+    return also.engine?.(running) ?? running;
   });
   await rewriteOperation(page, 'bureau.workflows.runs.get', (record) => {
     const running = {

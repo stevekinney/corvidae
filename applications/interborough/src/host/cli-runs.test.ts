@@ -61,7 +61,8 @@ describe('CLI run control', () => {
   test('valid finite filters use catalog operations and keep the requested payload', async () => {
     const calls: Array<{ method: string; params: unknown }> = [];
     const fetcher = async (_input: RequestInfo | URL, init?: RequestInit) => {
-      const body: unknown = JSON.parse(String(init?.body));
+      if (typeof init?.body !== 'string') throw new Error('expected JSON request body');
+      const body: unknown = JSON.parse(init.body);
       if (
         typeof body !== 'object' ||
         body === null ||
@@ -73,21 +74,18 @@ describe('CLI run control', () => {
       calls.push({ method: body.method, params: body.params });
       return jsonRpc(body.method, { runs: [], tasks: [] });
     };
-    expect(
-      (
-        await executeCli(['runs', 'list', '--status', 'working', '--origin', 'chat'], {
-          fetch: fetcher,
-        })
-      ).exitCode,
-    ).toBe(0);
-    expect(
-      (
-        await executeCli(
-          ['runs', 'list', '--kind', 'workflow', '--status', 'running', '--cursor', '3'],
-          { fetch: fetcher },
-        )
-      ).exitCode,
-    ).toBe(0);
+    const taskResult = await executeCli(
+      ['runs', 'list', '--status', 'working', '--origin', 'chat'],
+      {
+        fetch: fetcher,
+      },
+    );
+    expect(taskResult.exitCode).toBe(0);
+    const workflowResult = await executeCli(
+      ['runs', 'list', '--kind', 'workflow', '--status', 'running', '--cursor', '3'],
+      { fetch: fetcher },
+    );
+    expect(workflowResult.exitCode).toBe(0);
     expect(calls.map(({ method, params }) => ({ method, params }))).toEqual([
       { method: 'bureau.tasks.list', params: { status: 'working', origin: 'chat' } },
       { method: 'bureau.workflows.runs.list', params: { status: 'running', offset: 3 } },
@@ -116,11 +114,13 @@ describe('CLI run control', () => {
           parsed,
           {
             fetch: async (input, init) => {
-              const body: unknown = JSON.parse(String(init?.body));
+              if (typeof init?.body !== 'string') throw new Error('expected JSON request body');
+              const body: unknown = JSON.parse(init.body);
               if (typeof body !== 'object' || body === null || !('params' in body))
                 throw new Error('missing request');
               seen = {
-                url: String(input),
+                url:
+                  typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
                 authorization: new Headers(init?.headers).get('authorization'),
                 params: body.params,
               };

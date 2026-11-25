@@ -392,6 +392,21 @@
     white-space: nowrap;
   }
 
+  /* Compact toolbars keep the button's painted face while its hit area reaches 44px. */
+  @media (any-pointer: coarse) {
+    .cinder-select[data-cinder-presentation='listbox'][data-cinder-compact-touch] {
+      position: relative;
+      min-height: var(--_cinder-painted-height-md);
+    }
+
+    .cinder-select[data-cinder-presentation='listbox'][data-cinder-compact-touch]::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: 0;
+    }
+  }
+
   .cinder-select__text {
     display: flex;
     flex: 1 1 auto;

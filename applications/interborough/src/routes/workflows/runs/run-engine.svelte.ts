@@ -70,6 +70,8 @@ export class RunEngine {
       ],
       queryFn: () => fetchWorkflowState(this.client, this.#id()),
       enabled: allowed(),
+      // The engine may fail before the task lookup exposes its fault; data alone stays undefined.
+      notifyOnChangeProps: 'all',
     }));
     this.#finalizer = createQuery(() => ({
       queryKey: finalizerQueryKey(this.#id()),

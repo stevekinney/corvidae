@@ -434,29 +434,33 @@
               label={copy.actorLabel}
               labelVisible={false}
               class="ib-audit__select"
+              presentation="listbox"
+              data-cinder-compact-touch=""
               options={actorOptions}
               value={applied.actor}
-              onchange={(event) => go({ actor: event.currentTarget.value as AuditDraft['actor'] })}
+              onValueChange={(value) => go({ actor: value as AuditDraft['actor'] })}
             />
             <Select
               id="ib-audit-period"
               label={copy.periodLabel}
               labelVisible={false}
               class="ib-audit__select"
+              presentation="listbox"
+              data-cinder-compact-touch=""
               options={periodOptions}
               value={applied.period}
-              onchange={(event) =>
-                go({ period: event.currentTarget.value as AuditDraft['period'] })}
+              onValueChange={(value) => go({ period: value as AuditDraft['period'] })}
             />
             <Select
               id="ib-audit-action"
               label={copy.actionLabel}
               labelVisible={false}
               class="ib-audit__select"
+              presentation="listbox"
+              data-cinder-compact-touch=""
               options={actionOptions}
               value={applied.action}
-              onchange={(event) =>
-                go({ action: event.currentTarget.value as AuditDraft['action'] })}
+              onValueChange={(value) => go({ action: value as AuditDraft['action'] })}
             />
             <SearchField
               aria-label={copy.textLabel}
@@ -649,6 +653,7 @@
     flex-direction: column;
     gap: var(--cinder-space-4);
     min-width: 0;
+    max-inline-size: 60rem;
     container-type: inline-size;
   }
 

@@ -111,12 +111,20 @@ export class ScriptedFetch {
   }
 
   /** Standing route: any JSON-RPC request for `method` gets `result` as a success envelope. */
-  routeJsonRpcMethod(method: string, result: unknown): void {
+  routeJsonRpcMethod(
+    method: string,
+    result: unknown,
+    matchesParams?: (params: unknown) => boolean,
+  ): void {
     this.#routes.push({
       matches: (call) => {
         if (typeof call.init?.body !== 'string') return false;
         try {
-          return parsedJsonRpcMethod(call.init.body) === method;
+          if (parsedJsonRpcMethod(call.init.body) !== method) return false;
+          return (
+            matchesParams === undefined ||
+            matchesParams(parseJsonObject(call.init.body)?.['params'])
+          );
         } catch {
           return false;
         }
@@ -141,6 +149,20 @@ export class ScriptedFetch {
           jsonrpc: '2.0',
           id: 1,
           error: { code: -32000, message, data: { httpStatus: 422 } },
+        }),
+    });
+  }
+
+  /** Standing route for a server fault in the JSON-RPC envelope. */
+  routeJsonRpcMethodServerError(method: string, message: string): void {
+    this.#routes.push({
+      matches: (call) =>
+        typeof call.init?.body === 'string' && parsedJsonRpcMethod(call.init.body) === method,
+      respond: () =>
+        Response.json({
+          jsonrpc: '2.0',
+          id: 1,
+          error: { code: -32603, message, data: { httpStatus: 500 } },
         }),
     });
   }

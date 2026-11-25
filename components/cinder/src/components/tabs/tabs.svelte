@@ -446,6 +446,7 @@
       id={`${baseId}-collapse`}
       class="cinder-tabs__collapse"
       presentation="listbox"
+      data-cinder-compact-touch=""
       label={collapseLabel}
       labelVisible={false}
       valuePrefix={`${collapseLabel}:`}

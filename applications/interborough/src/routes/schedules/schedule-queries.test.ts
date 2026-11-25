@@ -141,7 +141,9 @@ describe('fetchScheduleDetail', () => {
   test('maps the generated transport’s missing schedule fault to null', async () => {
     const requests: { url: string; body: unknown }[] = [];
     const restore = installFetchImplementation((input, init) => {
-      requests.push({ url: String(input), body: JSON.parse(String(init?.body)) });
+      if (typeof init?.body !== 'string') throw new Error('expected JSON request body');
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      requests.push({ url, body: JSON.parse(init.body) });
       return Promise.resolve(
         Response.json({
           jsonrpc: '2.0',

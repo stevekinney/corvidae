@@ -286,6 +286,8 @@
       queryFn: ({ signal }) => getWorkflowFileRun(initialRunId, { signal }),
       enabled: engineAllowed && notFound && attempt === undefined,
       retry: false,
+      // The record may settle before the engine-backed page starts reading its origin.
+      notifyOnChangeProps: 'all',
     }),
     undefined,
   );
