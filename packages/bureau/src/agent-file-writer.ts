@@ -31,6 +31,7 @@ import {
   decodeAgentFile,
   hashAgentFileBytes,
   parseAgentFile,
+  resolveAgentFileDefinition,
   serializeNewAgentFile,
   serializeUpdatedAgentFile,
 } from './agent-file';
@@ -302,7 +303,10 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
       );
     }
     const definition = options.skipReferences
-      ? { ...parsed.file.definition, references: undefined }
+      ? resolveAgentFileDefinition(id, {
+          ...agentFileInputOf(parsed.file.definition),
+          references: null,
+        })
       : parsed.file.definition;
     const problem = await dependencies.validate(id, definition, before);
     if (problem !== undefined) refuse(problem);
