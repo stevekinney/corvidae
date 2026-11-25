@@ -13,6 +13,7 @@ import { MCP_COPY } from '../../src/app/copy/mcp.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_PORT, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 const SOURCE = 'settings-mcp.spec.ts';
 const ROUTE = '/settings/mcp';
@@ -46,14 +47,9 @@ test.describe('Settings › MCP', () => {
 
     for (const width of [1280, 1920]) {
       await page.setViewportSize({ width, height: 1080 });
-      const [bannerBounds, contentBounds] = await Promise.all([
-        banner.boundingBox(),
-        content.boundingBox(),
-      ]);
-      expect(bannerBounds).not.toBeNull();
-      expect(contentBounds).not.toBeNull();
-      expect(bannerBounds!.x).toBeCloseTo(contentBounds!.x, 0);
-      expect(bannerBounds!.width).toBeCloseTo(contentBounds!.width, 0);
+      const boxes = await readBoxes(page, { banner, content });
+      expect(boxes.banner.x).toBeCloseTo(boxes.content.x, 0);
+      expect(boxes.banner.width).toBeCloseTo(boxes.content.width, 0);
       await captureForDesignReview(page, { route: ROUTE, state: 'restart-banner', source: SOURCE });
     }
   });
