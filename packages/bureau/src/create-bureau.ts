@@ -5031,11 +5031,35 @@ async function constructBureau<const D extends AgentDefinitions>(
           },
           policy: options.reviewPolicy,
         }),
-      reviewedRunState: async (runId) => {
+      reviewedRunState: async (runId, sessionId, incarnation) => {
         try {
           const task = await tasks.record(runId);
-          if (!task) return 'unresolved';
+          if (!task) {
+            if (!sessionId || !incarnation) return 'unresolved';
+            const session = await runtime.sessionStore?.load(sessionId);
+            const markers = session?.metadata['reviewedApprovalProvenance'];
+            if (
+              markers !== undefined &&
+              (!markers || typeof markers !== 'object' || Array.isArray(markers))
+            )
+              return 'unresolved';
+            if (markers && Object.keys(markers).some((id) => id.startsWith(`approval:${runId}:`)))
+              return 'unresolved';
+            return session?.incarnation === incarnation &&
+              session?.metadata['lastRunId'] === runId &&
+              session.metadata['deletedOrdinaryChatRunId'] === runId
+              ? 'ordinary'
+              : 'unresolved';
+          }
           const session = await runtime.sessionStore?.load(task.contextId);
+          if (
+            sessionId !== undefined &&
+            (task.contextId !== sessionId ||
+              !session ||
+              session.incarnation !== task.incarnation ||
+              session.incarnation !== incarnation)
+          )
+            return 'unresolved';
           const markers = session?.metadata['reviewedApprovalProvenance'];
           if (
             markers !== undefined &&

@@ -239,6 +239,8 @@ export interface BureauInternals {
   ) => Promise<import('../reviewed-provenance').ReviewedProvenanceState>;
   readonly reviewedRunState: (
     runId: string,
+    sessionId?: string,
+    incarnation?: string,
   ) => Promise<import('../reviewed-provenance').ReviewedProvenanceState>;
   /**
    * Whether {@link BureauOptions.id} was supplied. `false` means {@link Bureau.id}

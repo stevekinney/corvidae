@@ -461,6 +461,10 @@ describe('reviewedToolOperations', () => {
       if (!savedRecord) throw new Error('Missing reviewed task record content');
       await kv.delete(recordKey);
       expect(await bureau.internals.reviewedProvenance(review)).toBe('unresolved');
+      expect(
+        (await handler(new Request(`http://localhost/ag-ui/threads/${review.sessionId}/messages`)))
+          .status,
+      ).toBe(404);
       const missingTaskReview = await rpc('bureau.reviews.get', { id: review.id });
       expect(missingTaskReview.error).toBeDefined();
       await bureau.dispose();

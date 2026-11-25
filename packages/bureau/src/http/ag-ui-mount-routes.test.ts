@@ -31,6 +31,7 @@ import {
   typesOf,
 } from './ag-ui-stream.test-support.ts';
 import { listHeldTasks } from '../test';
+import { retireSettledTasks, SHORT_TASK_RETENTION } from '../testing/run-retirement.test-support';
 
 /** Whether two events are the same once each one's own requested id is replaced and the clock reading dropped. */
 function sameOnceSubstituted(
@@ -71,6 +72,69 @@ async function withHarness<T>(
 }
 
 describe('start', () => {
+  it('retains the conversation after its completed run is deleted', async () => {
+    const runtime = createManualRuntimeServices();
+    await withHarness(
+      {
+        script: [say('Hello there.')],
+        storage: 'sqlite',
+        bureauRuntime: runtime,
+        authentication,
+        ...SHORT_TASK_RETENTION,
+      },
+      async ({ bureau, handler }) => {
+        const frames = await readAgUiStream(
+          await handler(startRequest(runAgentInput(), as('alice-key'))),
+        );
+        const runId = String(bureauMetadata(frames[0]!.event)['runId']);
+        await retireSettledTasks(bureau, runtime);
+        expect(await bureau.internals.taskRegistry.record(runId)).toBeUndefined();
+        const request = (key: string) =>
+          new Request('http://localhost/ag-ui/threads/thread-1/messages', { headers: as(key) });
+        const response = await handler(request('alice-key'));
+        expect(response.status).toBe(200);
+        expect(JSON.stringify(await response.json())).toContain('Hello there.');
+        expect((await handler(request('bob-key'))).status).toBe(404);
+        const store = bureau.internals.sessionStore!;
+        const session = await store.load('thread-1');
+        expect(session).toBeDefined();
+        expect(
+          await bureau.internals.reviewedRunState(runId, 'other-thread', session!.incarnation),
+        ).toBe('unresolved');
+        expect(
+          await bureau.internals.reviewedRunState(runId, 'thread-1', 'other-incarnation'),
+        ).toBe('unresolved');
+        await store.update(
+          'thread-1',
+          (current) =>
+            current && {
+              ...current,
+              metadata: { ...current.metadata, deletedOrdinaryChatRunId: 'other-run' },
+            },
+        );
+        expect((await handler(request('alice-key'))).status).toBe(404);
+        await store.update(
+          'thread-1',
+          (current) =>
+            current && {
+              ...current,
+              metadata: { ...current.metadata, deletedOrdinaryChatRunId: runId },
+            },
+        );
+        for (const markers of [null, { [`approval:${runId}:reviewed-call`]: {} }]) {
+          await store.update(
+            'thread-1',
+            (current) =>
+              current && {
+                ...current,
+                metadata: { ...current.metadata, reviewedApprovalProvenance: markers },
+              },
+          );
+          expect((await handler(request('alice-key'))).status).toBe(404);
+        }
+      },
+    );
+  });
   it('streams a run from RUN_STARTED to RUN_FINISHED under the ids the client and the session chose', async () => {
     await withHarness({ script: [say('Hello there.')] }, async ({ handler }) => {
       const response = await handler(startRequest(runAgentInput()));

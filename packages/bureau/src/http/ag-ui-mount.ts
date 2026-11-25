@@ -395,7 +395,11 @@ export function createAgUiMount(
     const lastRunId = authorized.session.metadata['lastRunId'];
     if (
       typeof lastRunId === 'string' &&
-      (await bureau.internals.reviewedRunState(lastRunId)) === 'unresolved'
+      (await bureau.internals.reviewedRunState(
+        lastRunId,
+        threadId,
+        authorized.session.incarnation,
+      )) === 'unresolved'
     )
       return notFound('thread', threadId);
     return json(
