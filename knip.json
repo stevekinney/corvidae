@@ -304,6 +304,7 @@
         "src/**/*.{ts,svelte}!",
         "scripts/**/*.ts",
         "!src/**/*.test.ts!",
+        "!src/**/*.test-harness.svelte!",
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!",
