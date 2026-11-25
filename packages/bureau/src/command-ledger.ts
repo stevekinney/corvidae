@@ -1037,7 +1037,9 @@ export type RunCreationAttempt =
   | {
       readonly kind: 'claimed';
       /** The exact durable claim used to fence a reserved run's steering cleanup. */
-      readonly condition: { readonly key: string; readonly expectedValue: string };
+      currentCondition(): Promise<
+        { readonly key: string; readonly expectedValue: string } | undefined
+      >;
       /** Refuses a claimant superseded by a later reserved admission. */
       assertCurrent(): Promise<void>;
       /**
@@ -1502,10 +1504,33 @@ export function createRunCreationLedger(
 
       return {
         kind: 'claimed',
-        condition: { key, expectedValue: JSON.stringify(entry) },
+        async currentCondition() {
+          const current = await ledger.read(entry.identity);
+          if (
+            !current ||
+            current.claimedAt !== entry.claimedAt ||
+            current.payloadDigest !== entry.payloadDigest ||
+            JSON.stringify(current.identity) !== JSON.stringify(entry.identity) ||
+            JSON.stringify(current.claim) !== JSON.stringify(entry.claim)
+          )
+            return undefined;
+          return { key, expectedValue: JSON.stringify(current) };
+        },
         async assertCurrent() {
           const current = await ledger.read(entry.identity);
-          if (JSON.stringify(current) !== JSON.stringify(entry))
+          const observedSameReservedClaim =
+            entry.claim.reservationFence !== undefined &&
+            current?.state === 'completed' &&
+            current.settledAt === undefined &&
+            current.result.receipt.status === 'running' &&
+            current.result.receipt.runId === entry.claim.runId &&
+            current.result.summary.id === entry.claim.runId &&
+            current.result.summary.sessionId === entry.claim.sessionId &&
+            current.claimedAt === entry.claimedAt &&
+            current.payloadDigest === entry.payloadDigest &&
+            JSON.stringify(current.identity) === JSON.stringify(entry.identity) &&
+            JSON.stringify(current.claim) === JSON.stringify(entry.claim);
+          if (JSON.stringify(current) !== JSON.stringify(entry) && !observedSameReservedClaim)
             throw new Error('Run creation claim was superseded');
         },
         async complete(summary) {

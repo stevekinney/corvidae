@@ -1135,16 +1135,30 @@ export function createRunCreation<D extends AgentDefinitions>(
             steeringSession
           ) {
             try {
-              await peers.enqueueSteering(sessionId, () =>
-                peers.appendThenApplySteering(
-                  steeringKv,
-                  sessionId,
-                  steeringSession.incarnation,
-                  endEvent,
-                  false,
-                  ledgerClaim.condition,
-                ),
-              );
+              const ended = await peers.enqueueSteering(sessionId, async () => {
+                let condition = await ledgerClaim.currentCondition();
+                while (condition) {
+                  try {
+                    await peers.appendThenApplySteering(
+                      steeringKv,
+                      sessionId,
+                      steeringSession.incarnation,
+                      endEvent,
+                      false,
+                      condition,
+                    );
+                    return true;
+                  } catch (appendError) {
+                    if (!(appendError instanceof ReservedRunSteeringFenceLostError))
+                      throw appendError;
+                    const next = await ledgerClaim.currentCondition();
+                    if (!next || next.expectedValue === condition.expectedValue) return false;
+                    condition = next;
+                  }
+                }
+                return false;
+              });
+              if (!ended) return;
               peers.logRunBoundarySteering(sessionId, steeringGate, endEvent);
               peers.trackSessionInputSettlement(
                 peers.settleSessionInputsAfterRunEnd(sessionId, runId),

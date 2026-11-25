@@ -55,9 +55,18 @@ import { ownerOrLocal } from '../owner-of-record';
 import { runtimeWorkspaceOwnerAuthority } from '../http/workspace-principal.ts';
 import { serializeUnknownError } from '../serialization';
 import { writeContextTombstone } from '../context-tombstone';
+import type { AnyToolbox, SignedPendingToolApproval } from 'armorer';
+import { transferDeletionRelease } from './run-operations';
 
 /** The callables sessions reads from elsewhere in `constructBureau`. */
 export interface SessionsPeers {
+  readonly restorePendingApprovalOverrides: (metadata: unknown, runId: string) => void;
+  readonly restoreTerminalReviewSession: (
+    session: AgentSession,
+    runId: string,
+    committed?: ReadonlySet<string>,
+    beforeApprovalRestore?: (toolbox: AnyToolbox) => Promise<void>,
+  ) => Promise<void>;
   /** The ids of the runs a session has persisted approvals for. */
   readonly persistedApprovalRunIds: (metadata: unknown) => Set<string>;
   /** The session id of a run this process holds. */
@@ -1022,6 +1031,71 @@ export function createSessions<D extends AgentDefinitions>(
       await core.chatContentPurge.record(deletedChat);
       await prepareSessionsForRemoval([session], actor);
       for (const runId of peers.persistedApprovalRunIds(session.metadata)) {
+        const overrides = session.metadata['pendingApprovalOverrides'];
+        const needsRelease =
+          overrides &&
+          typeof overrides === 'object' &&
+          !Array.isArray(overrides) &&
+          Object.entries(overrides).some(([reviewId, value]) => {
+            if (
+              !reviewId.startsWith(`approval:${runId}:`) ||
+              !value ||
+              typeof value !== 'object' ||
+              Array.isArray(value)
+            )
+              return false;
+            const approval = value as Record<string, unknown>;
+            const binding = approval['approvalBinding'];
+            if (!binding || typeof binding !== 'object' || Array.isArray(binding)) return false;
+            return [...(core.terminalReviewReleases?.values() ?? [])].some(
+              ({ plugin, release }) =>
+                session.agentName === `${plugin}:${release.agent}` &&
+                approval['toolName'] === release.tool &&
+                Reflect.get(binding, 'toolDefinitionRevision') === release.toolRevision,
+            );
+          });
+        const transfer = async (toolbox: AnyToolbox) => {
+          if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) return;
+          const rounds = session.metadata['pendingApprovalRounds'];
+          for (const [reviewId, approval] of Object.entries(overrides)) {
+            if (
+              !reviewId.startsWith(`approval:${runId}:`) ||
+              !approval ||
+              typeof approval !== 'object' ||
+              Array.isArray(approval)
+            )
+              continue;
+            const round =
+              rounds && typeof rounds === 'object' && !Array.isArray(rounds)
+                ? Reflect.get(rounds, reviewId)
+                : undefined;
+            await transferDeletionRelease(core, toolbox, {
+              id: reviewId,
+              runId,
+              sessionId: session.id,
+              agentName: session.agentName,
+              round: typeof round === 'number' ? round : 0,
+              approval: approval as unknown as SignedPendingToolApproval,
+            });
+          }
+        };
+        const heldToolbox = runToolboxesByRunId.get(runId);
+        if (needsRelease && heldToolbox) await transfer(heldToolbox);
+        if (needsRelease && !heldToolbox) {
+          peers.restorePendingApprovalOverrides(session.metadata, runId);
+          terminalReviewSessions.set(runId, {
+            sessionId: session.id,
+            agentName: session.agentName,
+            requestedAt: Date.parse(session.updatedAt) || runtimeServices.clock.now(),
+          });
+          let transferred = false;
+          await peers.restoreTerminalReviewSession(session, runId, undefined, async (toolbox) => {
+            await transfer(toolbox);
+            transferred = true;
+          });
+          if (!transferred)
+            throw new Error('Reviewed approval toolbox is unavailable for context deletion');
+        }
         await peers.revokePendingApprovalsForRun(runId, {
           status: 'revoked',
           principal: 'system:session-deletion',
