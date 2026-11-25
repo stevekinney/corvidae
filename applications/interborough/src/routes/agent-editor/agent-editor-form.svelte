@@ -139,7 +139,13 @@
         documentError = copy.edit.references.documentTooLarge;
         continue;
       }
-      const bytes = new Uint8Array(await file.arrayBuffer());
+      let bytes: Uint8Array;
+      try {
+        bytes = new Uint8Array(await file.arrayBuffer());
+      } catch {
+        documentError = copy.edit.references.invalidDocument;
+        continue;
+      }
       let text: string;
       try {
         text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);

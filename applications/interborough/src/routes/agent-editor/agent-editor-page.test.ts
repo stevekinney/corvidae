@@ -415,7 +415,7 @@ describe('a new agent', () => {
     expect(getByText(prompt)).not.toBeNull();
   });
 
-  test('stages dropped text documents until Create, and refuses PDFs, invalid UTF-8, and oversized files', async () => {
+  test('stages dropped text documents until Create, and refuses PDFs, unreadable or invalid UTF-8, and oversized files', async () => {
     const calls = bureau();
     const { container, findByRole, findByTestId, findByText, getByRole } = mountEditor();
     await type(await findByRole('textbox', { name: /^Name/ }), 'Researcher');
@@ -448,6 +448,12 @@ describe('a new agent', () => {
         files: [new File([new Uint8Array([0xc3, 0x28])], 'invalid.md', { type: 'text/markdown' })],
       },
     });
+    expect(await findByText(AGENT_EDITOR_COPY.edit.references.invalidDocument)).not.toBeNull();
+    const unreadable = new File(['not read'], 'unreadable.md', { type: 'text/markdown' });
+    Object.defineProperty(unreadable, 'arrayBuffer', {
+      value: async () => Promise.reject(new Error('The browser could not read this file.')),
+    });
+    await fireEvent.change(upload, { target: { files: [unreadable] } });
     expect(await findByText(AGENT_EDITOR_COPY.edit.references.invalidDocument)).not.toBeNull();
     await fireEvent.change(upload, {
       target: {
