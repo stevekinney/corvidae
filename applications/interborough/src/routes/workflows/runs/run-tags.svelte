@@ -13,7 +13,8 @@
    * send their own write, and a tag added and removed in between is not lost.
    */
   import { TagInput } from '@lostgradient/cinder';
-  import type { HttpClient, WorkflowState } from '@lostgradient/weft';
+  import type { HttpClient } from '@lostgradient/weft';
+  import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 

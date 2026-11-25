@@ -12,6 +12,7 @@ import { z } from 'zod';
 
 import { bureauClient, type BureauInput, type BureauOutput } from './bureau-api.ts';
 import type { Fetcher } from './bureau-client.ts';
+import type { CatalogOperations } from './generated/bureau-operation-client.generated.ts';
 
 /**
  * What an agent's identifier must look like, and the longest it may be. The Bureau owns both rules
@@ -684,8 +685,11 @@ export function hasAvailableModel(catalog: {
 }
 
 /** The models and tools an agent may name. */
-export async function getAgentCatalog(options?: Options): Promise<AgentCatalog> {
-  return catalogSchema.parse(await bureauClient['bureau.agents.catalog']({}, options));
+export async function getAgentCatalog(
+  options?: Options,
+  client: Pick<CatalogOperations, 'bureau.agents.catalog'> = bureauClient,
+): Promise<AgentCatalog> {
+  return catalogSchema.parse(await client['bureau.agents.catalog']({}, options));
 }
 
 /**
@@ -785,8 +789,9 @@ export async function enableAgent(
 export async function listAgentVersions(
   id: string,
   options?: Options,
+  client: Pick<CatalogOperations, 'bureau.agents.versions.list'> = bureauClient,
 ): Promise<readonly AgentVersion[]> {
-  return versionsSchema.parse(await bureauClient['bureau.agents.versions.list']({ id }, options))
+  return versionsSchema.parse(await client['bureau.agents.versions.list']({ id }, options))
     .versions;
 }
 

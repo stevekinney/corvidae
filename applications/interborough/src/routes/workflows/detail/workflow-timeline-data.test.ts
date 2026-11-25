@@ -1,8 +1,52 @@
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, test } from 'bun:test';
 
-import type { WorkflowTimelineEntry } from '@lostgradient/weft';
+import { HttpClientError, type WorkflowTimelineEntry } from '@lostgradient/weft';
 
-import { signalHistoryFromTimeline } from './workflow-timeline-data.ts';
+import { fetchWorkflowTimeline, signalHistoryFromTimeline } from './workflow-timeline-data.ts';
+
+test('reads nested generated timeline branches and preserves missing and forbidden faults', async () => {
+  const branch = {
+    index: 1,
+    operationId: 'one',
+    operationType: 'activity',
+    operationLabel: 'One',
+    outcome: 'won' as const,
+  };
+  const result = [
+    entry({
+      branches: [{ ...branch, branches: [branch] }],
+      versionTuple: { workflowVersion: '1', toolVersions: ['tool@1'] },
+    }),
+  ];
+  let asked: unknown;
+  const client = {
+    operations: {
+      'weft.workflows.timeline.get': async (input: unknown) => {
+        asked = input;
+        return result;
+      },
+    },
+  };
+  expect(await fetchWorkflowTimeline(client, 'run')).toEqual(result);
+  expect(asked).toEqual({ workflowId: 'run' });
+  const missing = {
+    operations: {
+      'weft.workflows.timeline.get': async () => {
+        throw new HttpClientError(404, 'missing');
+      },
+    },
+  };
+  expect(await fetchWorkflowTimeline(missing, 'run')).toEqual([]);
+  const forbidden = {
+    operations: {
+      'weft.workflows.timeline.get': async () => {
+        throw new HttpClientError(403, 'forbidden');
+      },
+    },
+  };
+  expect(await rejectionOf(fetchWorkflowTimeline(forbidden, 'run'))).toMatchObject({ status: 403 });
+});
 
 function entry(overrides: Partial<WorkflowTimelineEntry>): WorkflowTimelineEntry {
   return {

@@ -8,7 +8,20 @@ import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { router } from '../../../lib/router.svelte.ts';
 import type { Principal } from '../../../lib/scopes.svelte.ts';
 import WorkflowListHarness from './workflow-list.test-harness.svelte';
-import { realClient, ScriptedFetch } from './workflow-test-support.test-support.ts';
+import {
+  parseJsonObject,
+  realClient,
+  ScriptedFetch,
+} from './workflow-test-support.test-support.ts';
+
+function latestListInput(script: ScriptedFetch): unknown {
+  const call = script.calls.findLast(
+    (entry) =>
+      typeof entry.init?.body === 'string' && entry.init.body.includes('weft.workflows.list'),
+  );
+  const body = typeof call?.init?.body === 'string' ? parseJsonObject(call.init.body) : undefined;
+  return body?.['params'];
+}
 
 /**
  * happy-dom's default `window.location` is `about:blank` (no origin), and
@@ -78,7 +91,12 @@ describe('WorkflowList', () => {
   // touching the frozen `router.svelte.ts` singleton.
   test('shows the "no workflows match" empty state when a filter is active and nothing matches', async () => {
     resetLocation('/health/runs?status=failed');
-    fetchScript.routeUrl('/workflows', { items: [], total: 0, offset: 0, limit: 50 });
+    fetchScript.routeJsonRpcMethod('weft.workflows.list', {
+      items: [],
+      total: 0,
+      offset: 0,
+      limit: 50,
+    });
 
     const { findByText } = render(WorkflowListHarness, {
       props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
@@ -90,7 +108,7 @@ describe('WorkflowList', () => {
   test('correlates provenance by the visible filtered-page id, not a newest-runs page', async () => {
     resetLocation('/health/runs?offset=50');
     const visibleId = 'wf_older_agent_run';
-    fetchScript.routeUrl('/workflows', {
+    fetchScript.routeJsonRpcMethod('weft.workflows.list', {
       items: [summary({ id: visibleId, status: 'running', tags: ['origin:agent-run'] })],
       total: 51,
       offset: 50,
@@ -129,7 +147,7 @@ describe('WorkflowList', () => {
   });
 
   test('renders the table once the list query resolves', async () => {
-    fetchScript.routeUrl('/workflows', {
+    fetchScript.routeJsonRpcMethod('weft.workflows.list', {
       items: [summary()],
       total: 1,
       offset: 0,
@@ -145,7 +163,7 @@ describe('WorkflowList', () => {
   });
 
   test('rows across several types issue one active-pointer fetch per distinct type and render the comparison badges (COR-15)', async () => {
-    fetchScript.routeUrl('/workflows', {
+    fetchScript.routeJsonRpcMethod('weft.workflows.list', {
       items: [
         summary({ id: 'wf_a1', type: 'order-processing', revision: 'rev-current' }),
         summary({ id: 'wf_a2', type: 'order-processing', revision: 'rev-old' }),
@@ -181,18 +199,26 @@ describe('WorkflowList', () => {
   test('filtering from a later page requests and renders the first filtered page', async () => {
     resetLocation('/health/runs?offset=50');
     fetchScript.enqueueJson({
-      items: [summary({ id: 'wf_later_page', type: 'later-page-workflow' })],
-      total: 51,
-      offset: 50,
-      limit: 50,
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        items: [summary({ id: 'wf_later_page', type: 'later-page-workflow' })],
+        total: 51,
+        offset: 50,
+        limit: 50,
+      },
     });
     fetchScript.enqueueJson({
-      items: [
-        summary({ id: 'wf_first_filtered', type: 'first-filtered-workflow', status: 'failed' }),
-      ],
-      total: 1,
-      offset: 0,
-      limit: 50,
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        items: [
+          summary({ id: 'wf_first_filtered', type: 'first-filtered-workflow', status: 'failed' }),
+        ],
+        total: 1,
+        offset: 0,
+        limit: 50,
+      },
     });
 
     const { findAllByText, getByRole } = render(WorkflowListHarness, {
@@ -204,15 +230,13 @@ describe('WorkflowList', () => {
 
     expect(await findAllByText('first-filtered-workflow')).not.toHaveLength(0);
     await waitFor(() => {
-      const requestUrl = new URL(fetchScript.calls.at(-1)!.url);
-      expect(requestUrl.searchParams.get('offset')).toBe('0');
-      expect(requestUrl.searchParams.get('status')).toBe('failed');
+      expect(latestListInput(fetchScript)).toMatchObject({ offset: 0, status: 'failed' });
     });
   });
 
   test('lists every type the engine holds in the status the address names, and stays at the engine list', async () => {
     resetLocation('/health/runs?status=failed');
-    fetchScript.routeUrl('/workflows', {
+    fetchScript.routeJsonRpcMethod('weft.workflows.list', {
       items: [
         summary({ id: 'wf_failed_a', type: 'payment-failing', status: 'failed' }),
         summary({ id: 'wf_failed_b', type: 'order-processing', status: 'failed' }),
@@ -229,9 +253,8 @@ describe('WorkflowList', () => {
     expect(await findAllByText('payment-failing')).not.toHaveLength(0);
     expect(await findAllByText('order-processing')).not.toHaveLength(0);
     expect(getByRole('heading', { level: 1 }).textContent).toBe('Workflow runs');
-    const requestUrl = new URL(fetchScript.calls.at(-1)!.url);
-    expect(requestUrl.searchParams.get('status')).toBe('failed');
-    expect(requestUrl.searchParams.get('type')).toBeNull();
+    expect(latestListInput(fetchScript)).toMatchObject({ status: 'failed' });
+    expect(latestListInput(fetchScript)).not.toHaveProperty('type');
 
     await fireEvent.click(getByRole('button', { name: 'Done' }));
     await waitFor(() =>
@@ -242,7 +265,7 @@ describe('WorkflowList', () => {
 
   test('an address carrying Failed at step and Retrying sends both to Weft’s list, opens the builder on them, and counts them (COR-2535)', async () => {
     resetLocation('/health/runs?status=failed&failed_step=charge-card&retrying=false');
-    fetchScript.routeUrl('/workflows', {
+    fetchScript.routeJsonRpcMethod('weft.workflows.list', {
       items: [summary({ id: 'wf_charge_failed', type: 'order-processing', status: 'failed' })],
       total: 1,
       offset: 0,
@@ -254,17 +277,23 @@ describe('WorkflowList', () => {
     });
 
     expect(await findAllByText('order-processing')).not.toHaveLength(0);
-    const requestUrl = new URL(fetchScript.calls.at(-1)!.url);
-    expect(requestUrl.searchParams.get('failed_step')).toBe('charge-card');
-    expect(requestUrl.searchParams.get('retrying')).toBe('false');
-    expect(requestUrl.searchParams.get('status')).toBe('failed');
+    expect(latestListInput(fetchScript)).toMatchObject({
+      failedStep: 'charge-card',
+      retrying: false,
+      status: 'failed',
+    });
     // The builder opens on the two conditions, and its toggle counts them.
     expect(getByDisplayValue('charge-card')).not.toBeNull();
     expect(getByRole('button', { name: /Search attributes\s*2/ })).not.toBeNull();
   });
 
   test('shows the "no workflows yet" empty state when the list is empty and no filter is active', async () => {
-    fetchScript.routeUrl('/workflows', { items: [], total: 0, offset: 0, limit: 50 });
+    fetchScript.routeJsonRpcMethod('weft.workflows.list', {
+      items: [],
+      total: 0,
+      offset: 0,
+      limit: 50,
+    });
 
     const { findByText } = render(WorkflowListHarness, {
       props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
@@ -286,7 +315,7 @@ describe('WorkflowList', () => {
   });
 
   test('shows a fault banner when the list request fails', async () => {
-    fetchScript.routeUrlStatus('/workflows', 500);
+    fetchScript.routeUrlStatus('/jsonrpc', 500);
 
     const { findByText } = render(WorkflowListHarness, {
       props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },

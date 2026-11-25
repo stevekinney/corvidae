@@ -11,7 +11,7 @@
  * `created_at_{gte,gt,lte,lt}` / `updated_at_*` / `execution_deadline_*`;
  * `include=failureCategory` (repeated), `limit` / `offset`.
  */
-import type { FailureCategory, ListFilter, WorkflowStatus } from '@lostgradient/weft';
+import type { FailureCategory, HttpClient, ListFilter, WorkflowStatus } from '@lostgradient/weft';
 
 import {
   appendAttributeFilter,
@@ -32,6 +32,55 @@ export type TimeRange = NonNullable<ListFilter['createdAt']>;
 export interface WorkflowListQuery extends Omit<ListFilter, 'attributes'> {
   attributes?: readonly AttributeFilter[];
   includeFailureCategory?: boolean;
+}
+
+/** Projects the UI filter through the previous HttpClient attribute encoding. */
+export function workflowListOperationInput(
+  filter: WorkflowListQuery,
+): Parameters<HttpClient['operations']['weft.workflows.list']>[0] {
+  const params = new URLSearchParams();
+  for (const attribute of filter.attributes ?? []) {
+    for (const field of ['value', 'gt', 'lt', 'gte', 'lte'] as const) {
+      const value = attribute[field];
+      if (value !== undefined)
+        params.set(`attr.${attribute.key}${field === 'value' ? '' : `.${field}`}`, String(value));
+    }
+  }
+  const projected = parseAttributeFilters(params);
+  const range = (value: TimeRange | undefined) =>
+    value === undefined
+      ? undefined
+      : {
+          ...(value.gt === undefined ? {} : { gt: value.gt }),
+          ...(value.gte === undefined ? {} : { gte: value.gte }),
+          ...(value.lt === undefined ? {} : { lt: value.lt }),
+          ...(value.lte === undefined ? {} : { lte: value.lte }),
+        };
+  const createdAt = range(filter.createdAt);
+  const updatedAt = range(filter.updatedAt);
+  const executionDeadline = range(filter.executionDeadline);
+  return {
+    ...(filter.status === undefined ? {} : { status: filter.status }),
+    ...(filter.type === undefined ? {} : { type: filter.type }),
+    ...(filter.scheduleId === undefined ? {} : { scheduleId: filter.scheduleId }),
+    ...(filter.parentWorkflowId === undefined ? {} : { parentWorkflowId: filter.parentWorkflowId }),
+    ...(filter.parentWorkflowExecutionToken === undefined
+      ? {}
+      : { parentWorkflowExecutionToken: filter.parentWorkflowExecutionToken }),
+    ...(filter.tags === undefined ? {} : { tags: filter.tags }),
+    ...(filter.idPrefix === undefined ? {} : { idPrefix: filter.idPrefix }),
+    ...(filter.failureCategory === undefined ? {} : { failureCategory: filter.failureCategory }),
+    ...(filter.failedStep === undefined ? {} : { failedStep: filter.failedStep }),
+    ...(filter.retrying === undefined ? {} : { retrying: filter.retrying }),
+    ...(createdAt === undefined || Object.keys(createdAt).length === 0 ? {} : { createdAt }),
+    ...(updatedAt === undefined || Object.keys(updatedAt).length === 0 ? {} : { updatedAt }),
+    ...(executionDeadline === undefined || Object.keys(executionDeadline).length === 0
+      ? {}
+      : { executionDeadline }),
+    ...(filter.limit === undefined ? {} : { limit: filter.limit }),
+    ...(filter.offset === undefined ? {} : { offset: filter.offset }),
+    ...(projected.length === 0 ? {} : { attributes: projected }),
+  };
 }
 
 const TIME_RANGE_PREFIXES = {

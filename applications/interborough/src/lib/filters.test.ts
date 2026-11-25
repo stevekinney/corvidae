@@ -28,9 +28,34 @@ import type { AttributeFilter, AttributeScalar } from './attribute-filters.ts';
 import {
   parseWorkflowListFilter,
   serializeWorkflowListFilter,
+  workflowListOperationInput,
   type TimeRange,
   type WorkflowListQuery,
 } from './filters.ts';
+
+test('generated list input retains the former HTTP attribute projection', () => {
+  const date = new Date('2026-11-01T00:00:00.000Z');
+  expect(
+    workflowListOperationInput({
+      status: 'running',
+      includeFailureCategory: true,
+      attributes: [
+        { key: 'names', value: ['a', 'b'] },
+        { key: 'flag', value: true },
+        { key: 'number', gte: 5 },
+        { key: 'date', value: date },
+      ],
+    }),
+  ).toEqual({
+    status: 'running',
+    attributes: [
+      { key: 'names', value: 'a,b' },
+      { key: 'flag', value: true },
+      { key: 'number', gte: 5 },
+      { key: 'date', value: String(date) },
+    ],
+  });
+});
 
 const WORKFLOW_STATUSES: readonly WorkflowStatus[] = [
   'pending',

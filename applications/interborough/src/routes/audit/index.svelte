@@ -60,8 +60,10 @@
   import { queryAudit } from '../../lib/bureau-audit.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import { faultErrorStateAdvice } from '../../lib/faults.ts';
+  import { createBureauClient } from '../../lib/generated/bureau-operation-client.generated.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { getPrincipalStore, principalQueryScope } from '../../lib/scopes.svelte.ts';
   import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
   import HealthFrame from '../health/health-frame.svelte';
   import AuditDetail from './audit-detail.svelte';
@@ -95,6 +97,9 @@
 
   const copy = AUDIT_COPY;
   const queryClient = useQueryClient();
+  const bureau = createBureauClient({ baseUrl: '' });
+  const principal = getPrincipalStore();
+  const queryScope = () => principalQueryScope(principal.principal);
   const connection = getConnection();
 
   /** How long a read runs before the skeleton is drawn, so a quick read never flashes one. */
@@ -147,9 +152,9 @@
 
   const trail = createInfiniteQuery(
     () => ({
-      queryKey: queryKeys.audit.list(filter),
+      queryKey: [...queryKeys.audit.list(filter), queryScope()],
       queryFn: ({ pageParam, signal }) =>
-        queryAudit(filter, pageParam === '' ? undefined : pageParam, {
+        queryAudit(bureau, filter, pageParam === '' ? undefined : pageParam, {
           order: 'newest',
           signal,
         }),
@@ -163,9 +168,9 @@
   // How many events the period and the action match: read once, beside the first page.
   const totalQuery = createQuery(
     () => ({
-      queryKey: queryKeys.audit.total(filter),
+      queryKey: [...queryKeys.audit.total(filter), queryScope()],
       queryFn: async ({ signal }) => {
-        const counted = await queryAudit(filter, undefined, {
+        const counted = await queryAudit(bureau, filter, undefined, {
           limit: 1,
           includeTotal: true,
           signal,
@@ -185,7 +190,7 @@
       (record) => recordKey(record),
     ),
   );
-  const lookups = useAuditLookups(() => loaded);
+  const lookups = useAuditLookups(bureau, queryScope, () => loaded);
   const allEvents = $derived(describeRecords(loaded, lookups.current));
   const events = $derived(narrowEvents(allEvents, applied.actor, applied.text));
   const searchedPages = $derived(trail.data?.pages.length ?? 0);
@@ -275,9 +280,9 @@
   );
   const anyEvent = createQuery(
     () => ({
-      queryKey: queryKeys.audit.anyEvent(),
+      queryKey: [...queryKeys.audit.anyEvent(), queryScope()],
       queryFn: async ({ signal }) => {
-        const first = await queryAudit({ types: AUDIT_EVENT_TYPES }, undefined, {
+        const first = await queryAudit(bureau, { types: AUDIT_EVENT_TYPES }, undefined, {
           limit: 1,
           signal,
         });
@@ -345,10 +350,14 @@
     () => ({
       mutationFn: async () => {
         const controller = new AbortController();
+        const scope = JSON.stringify(queryScope());
         exportController = controller;
         try {
-          const read = narrowing ? undefined : await readAuditExport(filter, controller.signal);
+          const read = narrowing
+            ? undefined
+            : await readAuditExport(bureau, filter, controller.signal);
           controller.signal.throwIfAborted();
+          if (JSON.stringify(queryScope()) !== scope) return null;
           const matched =
             read === undefined
               ? events.map((event) => event.record)
@@ -607,7 +616,7 @@
             {/snippet}
             {#snippet detail(event)}
               {#key event.key}
-                <AuditDetail {event} lookups={lookups.current} {now} />
+                <AuditDetail {event} lookups={lookups.current} {now} client={bureau} {queryScope} />
               {/key}
             {/snippet}
             {#snippet notFound()}

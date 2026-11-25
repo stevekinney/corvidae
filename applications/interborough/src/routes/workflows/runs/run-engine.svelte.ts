@@ -16,14 +16,19 @@
  * is fetched only while the status may carry one (`statusMayHaveFinalizer`), and the active revision
  * only once the run has answered, since the engine needs a type to look one up.
  */
-import type { HttpClient, WorkflowFinalizerStatus, WorkflowState } from '@lostgradient/weft';
+import type { HttpClient, WorkflowFinalizerStatus } from '@lostgradient/weft';
 import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 import { onDestroy } from 'svelte';
 
-import { getClient } from '../../../lib/client.ts';
+import { fetchWorkflowState, getClient, type WorkflowReadState } from '../../../lib/client.ts';
 import { faultTreatment, type FaultTreatment } from '../../../lib/faults.ts';
 import { queryKeys } from '../../../lib/query.ts';
-import { getPrincipalStore, scopeGate, type ScopeGate } from '../../../lib/scopes.svelte.ts';
+import {
+  getPrincipalStore,
+  principalQueryScope,
+  scopeGate,
+  type ScopeGate,
+} from '../../../lib/scopes.svelte.ts';
 import {
   fetchActiveWorkflowRevision,
   type WorkflowCatalogActivePointerLike,
@@ -59,8 +64,11 @@ export class RunEngine {
     onDestroy(() => this.clock.dispose());
 
     this.#detail = createQuery(() => ({
-      queryKey: queryKeys.workflows.detail(this.#id()),
-      queryFn: () => this.client.get(this.#id()),
+      queryKey: [
+        ...queryKeys.workflows.detail(this.#id()),
+        principalQueryScope(this.#principal.principal),
+      ],
+      queryFn: () => fetchWorkflowState(this.client, this.#id()),
       enabled: allowed(),
     }));
     this.#finalizer = createQuery(() => ({
@@ -89,7 +97,7 @@ export class RunEngine {
   }
 
   /** The run, `null` when the engine does not hold it, `undefined` until it answers. */
-  get workflow(): WorkflowState | null | undefined {
+  get workflow(): WorkflowReadState | null | undefined {
     return this.#detail.data;
   }
 

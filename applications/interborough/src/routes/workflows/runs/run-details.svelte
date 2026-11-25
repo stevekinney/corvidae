@@ -14,7 +14,7 @@
     StatusDot,
     type DescriptionListItem,
   } from '@lostgradient/cinder';
-  import type { WorkflowState } from '@lostgradient/weft';
+  import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
 
   import { COST_COPY } from '../../../app/copy/cost.ts';
   import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';

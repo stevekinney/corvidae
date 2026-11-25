@@ -108,6 +108,16 @@ export interface Principal {
   unauthenticatedAccess: UnauthenticatedAccessPolicy | null;
 }
 
+/** The caller identity and grants that determine which private query result may be reused. */
+export function principalQueryScope(principal: Principal | null): readonly unknown[] {
+  return [
+    principal?.workspace?.workspaceId ?? null,
+    principal?.workspace?.actorId ?? null,
+    principal?.subject ?? null,
+    [...(principal?.scopes ?? [])].toSorted(),
+  ];
+}
+
 /**
  * The auth-mode banner state a principal implies (plan §6, §10). `'none'`
  * means "authenticated normally, nothing to announce."

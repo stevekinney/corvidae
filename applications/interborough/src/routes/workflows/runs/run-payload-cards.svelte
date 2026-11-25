@@ -11,7 +11,7 @@
    * 55c). A file without one reads "Output".
    */
   import { Spinner } from '@lostgradient/cinder';
-  import type { WorkflowState } from '@lostgradient/weft';
+  import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
 
   import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
   import type { WorkflowFileRunDetail } from '../../../lib/workflow-files.ts';

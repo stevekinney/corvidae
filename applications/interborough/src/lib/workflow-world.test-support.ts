@@ -1022,6 +1022,16 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
   };
 
   const weftHandlers: Record<string, (params: Record<string, unknown>) => unknown> = {
+    'weft.schedules.list': (params) => {
+      if (world.failSchedules) throw workflowFaults.unavailable();
+      const items = world.schedules.filter(
+        (schedule) =>
+          params['workflowType'] === undefined || schedule.workflowType === params['workflowType'],
+      );
+      const offset = typeof params['offset'] === 'number' ? params['offset'] : 0;
+      const limit = typeof params['limit'] === 'number' ? params['limit'] : 50;
+      return { items: items.slice(offset, offset + limit), total: items.length, offset, limit };
+    },
     'weft.workflows.definitions.list': () => ({
       definitions: world.definitions.map(
         ({ contractHash: _hash, contract: _contract, ...summary }) => summary,

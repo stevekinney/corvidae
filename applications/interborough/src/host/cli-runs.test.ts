@@ -1,7 +1,10 @@
+import { createBureauCatalogSnapshot } from '@lostgradient/bureau';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, test } from 'bun:test';
 import { executeCliWithDispatchAssertions as executeCli } from './cli-dispatch.test-support.ts';
 
 import { parseCliArguments } from './cli-client.ts';
+import { executeRuns } from './cli-runs.ts';
 
 function jsonRpc(method: string, result: unknown): Response {
   return Response.json({ jsonrpc: '2.0', id: method, result });
@@ -12,6 +15,132 @@ function sseFrame(data: unknown, id?: string): string {
 }
 
 describe('CLI run control', () => {
+  test('finite read filter guards match the served Bureau catalog', () => {
+    const operations = createBureauCatalogSnapshot().operations;
+    const schema = (name: string) =>
+      operations.find((operation) => operation.name === name)?.inputSchema;
+    expect(schema('bureau.tasks.list')).toMatchObject({
+      properties: {
+        status: {
+          enum: ['submitted', 'working', 'input-required', 'completed', 'failed', 'canceled'],
+        },
+        origin: {
+          enum: [
+            'chat',
+            'person',
+            'schedule',
+            'api',
+            'agent',
+            'agent-run',
+            'goal',
+            'parent',
+            'system',
+            'trigger',
+          ],
+        },
+      },
+    });
+    expect(schema('bureau.workflows.runs.list')).toMatchObject({
+      properties: {
+        status: {
+          enum: [
+            'pending',
+            'running',
+            'completed',
+            'failed',
+            'cancelled',
+            'timed-out',
+            'suspended',
+          ],
+        },
+      },
+    });
+  });
+
+  // spawn-free: injected fetch replaces the management process for list projection.
+  test('valid finite filters use catalog operations and keep the requested payload', async () => {
+    const calls: Array<{ method: string; params: unknown }> = [];
+    const fetcher = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body: unknown = JSON.parse(String(init?.body));
+      if (
+        typeof body !== 'object' ||
+        body === null ||
+        !('method' in body) ||
+        typeof body.method !== 'string' ||
+        !('params' in body)
+      )
+        throw new Error('missing request');
+      calls.push({ method: body.method, params: body.params });
+      return jsonRpc(body.method, { runs: [], tasks: [] });
+    };
+    expect(
+      (
+        await executeCli(['runs', 'list', '--status', 'working', '--origin', 'chat'], {
+          fetch: fetcher,
+        })
+      ).exitCode,
+    ).toBe(0);
+    expect(
+      (
+        await executeCli(
+          ['runs', 'list', '--kind', 'workflow', '--status', 'running', '--cursor', '3'],
+          { fetch: fetcher },
+        )
+      ).exitCode,
+    ).toBe(0);
+    expect(calls.map(({ method, params }) => ({ method, params }))).toEqual([
+      { method: 'bureau.tasks.list', params: { status: 'working', origin: 'chat' } },
+      { method: 'bureau.workflows.runs.list', params: { status: 'running', offset: 3 } },
+    ]);
+  });
+
+  // spawn-free: injected fetch replaces the management process for fault forwarding.
+  test('invalid finite filters retain endpoint, authorization, server fault and exit', async () => {
+    const fault = () =>
+      Response.json({
+        jsonrpc: '2.0',
+        id: 'x',
+        error: {
+          code: -32602,
+          message: 'invalid status',
+          data: { weftCode: 'InvalidParams', httpStatus: 400 },
+        },
+      });
+    const parsed = parseCliArguments(['runs', 'list', '--status', 'bad']);
+    if (!('options' in parsed)) throw new Error('expected parsed command');
+    let seen: { url: string; authorization: string | null; params: unknown } | undefined;
+    expect(
+      await rejectionOf(
+        executeRuns(
+          { url: 'http://127.0.0.1:4321', headers: { authorization: 'Bearer test-key' } },
+          parsed,
+          {
+            fetch: async (input, init) => {
+              const body: unknown = JSON.parse(String(init?.body));
+              if (typeof body !== 'object' || body === null || !('params' in body))
+                throw new Error('missing request');
+              seen = {
+                url: String(input),
+                authorization: new Headers(init?.headers).get('authorization'),
+                params: body.params,
+              };
+              return fault();
+            },
+          },
+        ),
+      ),
+    ).toMatchObject({ message: 'invalid status', status: 400 });
+    expect(seen).toEqual({
+      url: 'http://127.0.0.1:4321/bureau/jsonrpc',
+      authorization: 'Bearer test-key',
+      params: { status: 'bad' },
+    });
+    const result = await executeCli(['runs', 'list', '--status', 'bad'], {
+      fetch: async () => fault(),
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('invalid status');
+  });
   // spawn-free: injected command execution replaces the process boundary for parser validation.
   test('documents task as the default list kind and requires explicit kinds for reads', () => {
     expect(parseCliArguments(['runs', '--help'])).toMatchObject({ exitCode: 0 });

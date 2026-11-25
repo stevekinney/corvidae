@@ -55,7 +55,7 @@
   import { chatSessionPath } from '../../../lib/identifier-paths.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
-  import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';
+  import { getPrincipalStore, principalQueryScope } from '../../../lib/scopes.svelte.ts';
   import {
     attemptStatusWord,
     taskStatusWord,
@@ -90,7 +90,10 @@
   import LineagePanel from '../detail/lineage-panel.svelte';
   import RunInspector from './run-inspector.svelte';
   import { instanceEntries, progressPhrase, triesOfStep } from './run-instance.ts';
-  import { workflowTimelineQueryKey } from '../detail/workflow-timeline-data.ts';
+  import {
+    fetchWorkflowTimeline,
+    workflowTimelineQueryKey,
+  } from '../detail/workflow-timeline-data.ts';
   import RunInstanceHappened from './run-instance-happened.svelte';
   import { RunInstance } from './run-instance.svelte.ts';
   import { RunRetry } from './run-retry.svelte.ts';
@@ -717,8 +720,11 @@
   // same key, so this is one request.
   const failedTimeline = createQuery(
     () => ({
-      queryKey: workflowTimelineQueryKey(initialRunId),
-      queryFn: () => engine.client.getTimeline(initialRunId),
+      queryKey: [
+        ...workflowTimelineQueryKey(initialRunId),
+        principalQueryScope(principal.principal),
+      ],
+      queryFn: () => fetchWorkflowTimeline(engine.client, initialRunId),
       enabled: instanceFailed && workflow !== undefined && task.data === undefined,
       retry: false,
     }),
