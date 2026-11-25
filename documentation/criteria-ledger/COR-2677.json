@@ -1,0 +1,19 @@
+{
+  "issue": "COR-2677",
+  "branch": "steve/composable-refund-prerequisites",
+  "checkedAt": "cc2102ce8a366e961e6b2e71323cf9b4f0403064",
+  "briefVersion": "b97b1f0b1975",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "The two-engine regressions in packages/weft/src/core/engine/lifecycle/prepare-and-launch.test.ts check takeover before abandonment and during the terminal write. The workflow remains pending and the successor keeps ownership. The suite passed all 24 cases on the integrated source."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "The same suite passed current-owner abandonment with the original cancellation reason, ordinary launch and cross-engine explicit cancellation. The ownership condition applies to prepared handles using workflow leases."
+    }
+  ]
+}
