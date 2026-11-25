@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2671",
+  "branch": "steve/composable-home-reviews",
+  "checkedAt": "525a54270c8fc4adfe770687a7bd9bc680c44d2f",
+  "briefVersion": "a7e136dbac71",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Coordinator ran gated browser pair on 525a542, exit 0; desktop uses expectReviewsSettled and checks origin."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Coordinator ran gated browser pair on 525a542, exit 0; phone checks visible row and same-origin bare Reviews URL."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Gated browser pair passed with held arrivals, real activation, page-error fixture and Back checks retained."
+    }
+  ]
+}

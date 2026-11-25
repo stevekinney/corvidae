@@ -62,6 +62,8 @@
     "components/cinder": {
       "entry": [
         "src/index.ts",
+        "src/web-components/browser-renderer.svelte.ts!",
+        "src/web-components/element-lifecycle.ts!",
         "**/*.test.ts",
         "**/*.integration.test.ts",
         "**/*.slow.test.ts",
@@ -245,7 +247,8 @@
       "entry": [
         "tests/**/*.playwright.ts",
         "src/fixtures/tool-call-rail.svelte",
-        "src/fixtures/backchannel-svelte.svelte"
+        "src/fixtures/backchannel-svelte.svelte",
+        "fixtures/workspace-web-components.ts"
       ],
       "project": ["src/**/*.{ts,svelte}", "scripts/**/*.ts", "tests/**/*.playwright.ts"]
     },

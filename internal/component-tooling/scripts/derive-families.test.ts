@@ -214,6 +214,12 @@ describe('family-rules.json', () => {
     expect(derived.packages['tokens']?.dependencies).toEqual([]);
     // Once its modules have left Cinder, the tooling owns nothing in Cinder's tree.
     expect(derived.packages['tooling']?.dependencies ?? []).toEqual([]);
+    expect(derived.packages['core']?.modules).toEqual(
+      expect.arrayContaining([
+        'src/web-components/browser-renderer.svelte.ts',
+        'src/web-components/element-lifecycle.ts',
+      ]),
+    );
   });
 
   test('holds the reviewed appendix in family-rules.fixture.json', () => {

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Workspace Web Components</title>
+    <link rel="stylesheet" href="./web-components.css" />
+    <script type="module" src="./web-components.js"></script>
+    <script type="module" src="./workspace-web-components.js"></script>
+    <style>
+      main {
+        display: grid;
+        gap: var(--cinder-space-6);
+        grid-template-columns: minmax(0, 1fr);
+        margin-inline: auto;
+        max-inline-size: 48rem;
+        padding: var(--cinder-space-6);
+      }
+
+      cinder-chat,
+      cinder-terminal {
+        block-size: 24rem;
+        min-inline-size: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <template id="chat">
+        <cinder-chat chat-id="workspace-chat" composer-placeholder="Write a message"></cinder-chat>
+      </template>
+      <output id="sent-message" hidden></output>
+      <section aria-label="Notes">
+        <template id="editor">
+          <cinder-markdown-editor
+            editor-id="workspace-notes"
+            label="Notes editor"
+            value="## Draft"
+          ></cinder-markdown-editor>
+        </template>
+        <output id="saved-notes" hidden></output>
+      </section>
+      <section aria-label="Session">
+        <template id="terminal">
+          <cinder-terminal title="Build output" state="read-only"></cinder-terminal>
+        </template>
+        <output id="parsed-output" hidden></output>
+      </section>
+    </main>
+  </body>
+</html>
