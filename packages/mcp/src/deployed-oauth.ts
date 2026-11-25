@@ -1,9 +1,26 @@
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { createHash, randomBytes } from 'node:crypto';
 import {
   parseProbeConfiguration,
   type ProbeConfiguration,
   type ProbeFetch,
 } from './deployed-smoke';
+
+export async function initializeMcp(resource: string, token: string, request: ProbeFetch = fetch) {
+  const client = new Client({ name: 'deployed-oauth-probe', version: '1' });
+  const transport = new StreamableHTTPClientTransport(new URL(resource), {
+    fetch: (input, init) => {
+      const headers = new Headers(init?.headers);
+      headers.set('authorization', `Bearer ${token}`);
+      return request(input instanceof Request ? input.url : input, { ...init, headers });
+    },
+  });
+  try {
+    await client.connect(transport);
+  } finally {
+    await client.close();
+  }
+}
 
 export async function prepareOAuth(
   configuration: ProbeConfiguration,
@@ -169,26 +186,7 @@ if (import.meta.main) {
         throw new Error('Token exchange did not return an access token');
       let accessFailure: unknown;
       try {
-        const access = await fetch(prepared.resource, {
-          method: 'POST',
-          headers: {
-            authorization: `Bearer ${token.access_token}`,
-            'content-type': 'application/json',
-            accept: 'application/json, text/event-stream',
-          },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'initialize',
-            params: {
-              protocolVersion: '2025-03-26',
-              capabilities: {},
-              clientInfo: { name: 'deployed-oauth-probe', version: '1' },
-            },
-          }),
-        });
-        if (!access.ok)
-          throw new Error(`Authenticated MCP initialization returned HTTP ${access.status}`);
+        await initializeMcp(prepared.resource, token.access_token);
       } catch (error) {
         accessFailure = error;
       }

@@ -1,5 +1,6 @@
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { expect, test } from 'bun:test';
-import { prepareOAuth } from './deployed-oauth';
+import { initializeMcp, prepareOAuth } from './deployed-oauth';
 import type { ProbeFetch } from './deployed-smoke';
 
 test('registers a loopback client and sends the configured resource and scopes', async () => {
@@ -43,12 +44,63 @@ test('registers a loopback client and sends the configured resource and scopes',
 
 test('rejects an unexpected issuer', async () => {
   const request: ProbeFetch = async () => Response.json({ issuer: 'https://other.example' });
-  await expect(
-    prepareOAuth(
-      { origin: 'https://example.com', path: '/mcp', scopes: ['read'] },
-      'http://127.0.0.1:4321/callback',
-      'https://identity.example',
-      request,
+  expect(
+    await throwingRejectionOf(
+      prepareOAuth(
+        { origin: 'https://example.com', path: '/mcp', scopes: ['read'] },
+        'http://127.0.0.1:4321/callback',
+        'https://identity.example',
+        request,
+      ),
     ),
-  ).rejects.toThrow('Issuer mismatch');
+  ).toThrow('Issuer mismatch');
+});
+
+test('requires a valid MCP initialize response over JSON or event streams', async () => {
+  const fixture =
+    (kind: 'json' | 'event-stream' | 'html' | 'rpc-error'): ProbeFetch =>
+    async (_input, init) => {
+      if (init?.method !== 'POST') return new Response(null, { status: 405 });
+      const message = JSON.parse(typeof init.body === 'string' ? init.body : '{}') as {
+        id?: number;
+        method?: string;
+      };
+      if (message.method !== 'initialize') return new Response(null, { status: 202 });
+      if (kind === 'html')
+        return new Response('<html>not MCP</html>', { headers: { 'content-type': 'text/html' } });
+      const payload =
+        kind === 'rpc-error'
+          ? { jsonrpc: '2.0', id: message.id, error: { code: -32603, message: 'failed' } }
+          : {
+              jsonrpc: '2.0',
+              id: message.id,
+              result: {
+                protocolVersion: '2025-03-26',
+                capabilities: {},
+                serverInfo: { name: 'fixture', version: '1' },
+              },
+            };
+      return new Response(
+        kind === 'event-stream'
+          ? `event: message\ndata: ${JSON.stringify(payload)}\n\n`
+          : JSON.stringify(payload),
+        {
+          headers: {
+            'content-type': kind === 'event-stream' ? 'text/event-stream' : 'application/json',
+          },
+        },
+      );
+    };
+  await initializeMcp('https://example.com/mcp', 'test-token', fixture('json'));
+  await initializeMcp('https://example.com/mcp', 'test-token', fixture('event-stream'));
+  expect(
+    await throwingRejectionOf(
+      initializeMcp('https://example.com/mcp', 'test-token', fixture('html')),
+    ),
+  ).toThrow();
+  expect(
+    await throwingRejectionOf(
+      initializeMcp('https://example.com/mcp', 'test-token', fixture('rpc-error')),
+    ),
+  ).toThrow();
 });

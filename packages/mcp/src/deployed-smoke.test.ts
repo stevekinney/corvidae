@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { checkDeployment, parseProbeConfiguration, type ProbeFetch } from './deployed-smoke';
 
@@ -32,11 +33,15 @@ describe('deployed smoke', () => {
     });
   };
   test('checks the configured nested resource and scopes', async () => {
-    await expect(checkDeployment(configuration, request)).resolves.toBeUndefined();
-    await expect(
-      checkDeployment({ ...configuration, scopes: ['missing'] }, request),
-    ).rejects.toThrow('scope mismatch');
-    await expect(checkDeployment({ ...configuration, path: '/mcp' }, request)).rejects.toThrow();
+    expect(await checkDeployment(configuration, request)).toBeUndefined();
+    expect(
+      await throwingRejectionOf(
+        checkDeployment({ ...configuration, scopes: ['missing'] }, request),
+      ),
+    ).toThrow('scope mismatch');
+    expect(
+      await throwingRejectionOf(checkDeployment({ ...configuration, path: '/mcp' }, request)),
+    ).toThrow();
   });
   test('rejects noncanonical input', () => {
     expect(() => parseProbeConfiguration(['http://example.com', '/mcp', 'read'])).toThrow();

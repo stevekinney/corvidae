@@ -30,6 +30,7 @@
   "devDependencies": {
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
+    "@modelcontextprotocol/client": "catalog:",
     "@types/bun": "catalog:",
     "@types/pg": "catalog:",
     "oxlint": "catalog:",
