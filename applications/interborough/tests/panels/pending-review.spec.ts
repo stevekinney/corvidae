@@ -10,6 +10,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { buildPanelPage } from '../../src/host/panel-build.ts';
 import { MCP_APP_UI_META } from '../../src/host/panel-mounts.ts';
+import { startSignedInRefundFixture } from '../../src/host/server-integration/signed-in-refund.test-support.ts';
 import { deleteChats, newThreadId, runToEnd } from '../e2e/chat-support.ts';
 import { E2E_BASE_URL } from '../e2e/e2e-constants.ts';
 import { REMEMBER_APPROVAL_AGENT } from '../e2e/regeneration-proof-agent.ts';
@@ -162,6 +163,69 @@ const calls = (page: Page, name: string) =>
   page.evaluate((tool) => window.referenceHost.calls.filter((call) => call.name === tool), name);
 
 test.describe('the pending-review MCP App', () => {
+  test('a signed-in reviewer decides a real refund through the sandboxed panel', async ({
+    page,
+    context,
+  }) => {
+    const fixture = await startSignedInRefundFixture();
+    try {
+      const cookie = await fixture.signIn();
+      const id = await fixture.requestRefund();
+      const [name, ...value] = cookie.split('=');
+      await context.addCookies([
+        {
+          name: name!,
+          value: value.join('='),
+          domain: 'settings.example',
+          path: '/',
+          secure: true,
+          httpOnly: true,
+          sameSite: 'Lax',
+        },
+      ]);
+      await page.route('https://settings.example/**', async (route) => {
+        const url = new URL(route.request().url());
+        if (url.pathname === '/') {
+          await route.fulfill({
+            contentType: 'text/html',
+            body: `<!doctype html><title>Reference host</title><script type="module">${hostScript}</script>`,
+          });
+          return;
+        }
+        const target = new URL(url.pathname + url.search, fixture.host.url);
+        const response = await route.fetch({
+          url: target.href,
+          headers: { ...(await route.request().allHeaders()), host: 'settings.example' },
+        });
+        await route.fulfill({ response });
+      });
+      const resource = await fixture.send('/host/plugins/inspectors/apps/pending-review', {
+        headers: { cookie },
+      });
+      expect(resource.ok()).toBe(true);
+      const mounted = (await resource.json()) as { html: string; ui: { csp: McpUiResourceCsp } };
+      await page.goto('https://settings.example/');
+      await page.evaluate(
+        async ({ html, csp, title }) => {
+          window.referenceHost.usePendingReviewHost();
+          await window.referenceHost.mount(html, csp, {}, title);
+        },
+        { html: mounted.html, csp: mounted.ui.csp, title: TITLE },
+      );
+      const app = page.frameLocator(`iframe[title="${TITLE}"]`);
+      await expect(app.getByText(/\$42\.00 for order order/)).toBeVisible();
+      await app.getByRole('button', { name: 'Approve' }).click();
+      await expect(app.getByRole('status')).toHaveText('Approved.');
+      const read = await fixture.send('/host/plugins/inspectors/apps/pending-review/tool-calls', {
+        method: 'POST',
+        headers: { cookie, origin: 'https://settings.example', 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'bureau.reviews.get', arguments: { id } }),
+      });
+      expect(await read.json()).toMatchObject({ structuredContent: { id, status: 'approved' } });
+    } finally {
+      await fixture.close();
+    }
+  });
   test('approves a real ordinary review through the mounted panel and host bridge', async ({
     page,
     request,

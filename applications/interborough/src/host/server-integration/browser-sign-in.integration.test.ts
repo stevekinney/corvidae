@@ -17,86 +17,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as client from 'openid-client';
 import { startHost } from '../host.ts';
-
-const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+import { createSyntheticIssuer } from './synthetic-issuer.test-support.ts';
 
 test('listener binds verified browser identities, revokes private access and resumes consent', async () => {
-  const key = await crypto.subtle.generateKey(
-    {
-      name: 'RSASSA-PKCS1-v1_5',
-      modulusLength: 2048,
-      publicExponent: new Uint8Array([1, 0, 1]),
-      hash: 'SHA-256',
-    },
-    true,
-    ['sign', 'verify'],
-  );
-  const jwk = await crypto.subtle.exportKey('jwk', key.publicKey);
-  const pending = new Map<
-    string,
-    { nonce: string; challenge: string; redirect: string; subject: string }
-  >();
-  let subject = 'admin';
-  let issuer = '';
-  let acceptedIssuer = '';
-  const provider = Bun.serve({
-    hostname: '127.0.0.1',
-    port: 0,
-    async fetch(request) {
-      const url = new URL(request.url);
-      if (url.pathname === '/.well-known/openid-configuration')
-        return Response.json({
-          issuer,
-          authorization_endpoint: `${issuer}/authorize`,
-          token_endpoint: `${issuer}/token`,
-          jwks_uri: `${issuer}/jwks`,
-          response_types_supported: ['code'],
-          subject_types_supported: ['public'],
-          id_token_signing_alg_values_supported: ['RS256'],
-          code_challenge_methods_supported: ['S256'],
-        });
-      if (url.pathname === '/jwks')
-        return Response.json({ keys: [{ ...jwk, kid: 'key', alg: 'RS256', use: 'sig' }] });
-      if (url.pathname === '/authorize') {
-        const code = crypto.randomUUID();
-        const redirect = url.searchParams.get('redirect_uri')!;
-        pending.set(code, {
-          nonce: url.searchParams.get('nonce')!,
-          challenge: url.searchParams.get('code_challenge')!,
-          redirect,
-          subject,
-        });
-        const callback = new URL(redirect);
-        callback.searchParams.set('code', code);
-        callback.searchParams.set('state', url.searchParams.get('state')!);
-        return Response.redirect(callback, 302);
-      }
-      const form = new URLSearchParams(await request.text());
-      const grant = pending.get(form.get('code') ?? '');
-      if (
-        !grant ||
-        grant.redirect !== form.get('redirect_uri') ||
-        (await client.calculatePKCECodeChallenge(form.get('code_verifier') ?? '')) !==
-          grant.challenge
-      )
-        return Response.json({ error: 'invalid_grant' }, { status: 400 });
-      pending.delete(form.get('code')!);
-      const now = Math.floor(Date.now() / 1000);
-      const payload = `${encode({ alg: 'RS256', kid: 'key' })}.${encode({ iss: issuer, sub: grant.subject, aud: 'interborough', iat: now, exp: now + 600, nonce: grant.nonce })}`;
-      const signature = await crypto.subtle.sign(
-        'RSASSA-PKCS1-v1_5',
-        key.privateKey,
-        new TextEncoder().encode(payload),
-      );
-      return Response.json({
-        access_token: 'token',
-        token_type: 'Bearer',
-        id_token: `${payload}.${Buffer.from(signature).toString('base64url')}`,
-      });
-    },
-  });
-  issuer = `http://127.0.0.1:${provider.port}`;
-  acceptedIssuer = issuer;
+  const syntheticIssuer = await createSyntheticIssuer();
+  const { issuer, provider } = syntheticIssuer;
+  let acceptedIssuer = issuer;
   const home = await mkdtemp(join(tmpdir(), 'interborough-sign-in-'));
   const bungalow = await openBungalow({
     name: 'interborough',
@@ -371,7 +297,7 @@ test('listener binds verified browser identities, revokes private access and res
       headers: { ...Object.fromEntries(new Headers(init.headers)), host: 'settings.example' },
     });
   const signIn = async (identity: string, path = '/auth/sign-in') => {
-    subject = identity;
+    syntheticIssuer.setSubject(identity);
     const started = await send(path);
     const cookie = started.headers.getSetCookie()[0]!.split(';')[0]!;
     const authorized = await fetch(started.headers.get('location')!, { redirect: 'manual' });
@@ -571,22 +497,20 @@ test('listener binds verified browser identities, revokes private access and res
       id: storedRefund!.reviewId,
       round: 0,
     });
-    expect(
-      (await panelCall('bureau.reviews.resolve', decision, { cookie: administrator.cookie! }))
-        .status,
-    ).toBe(403);
-    expect(
-      (
-        await panelCall('bureau.reviews.resolve', decision, {
-          ...reviewer,
-          'x-csrf-token': 'wrong',
-        })
-      ).status,
-    ).toBe(403);
-    expect(
-      (await panelCall('bureau.reviews.resolve', decision, { ...reviewer, 'x-api-key': 'machine' }))
-        .status,
-    ).toBe(403);
+    const noProof = await panelCall('bureau.reviews.resolve', decision, {
+      cookie: administrator.cookie!,
+    });
+    const wrongProof = await panelCall('bureau.reviews.resolve', decision, {
+      ...reviewer,
+      'x-csrf-token': 'wrong',
+    });
+    const mixedCredentials = await panelCall('bureau.reviews.resolve', decision, {
+      ...reviewer,
+      'x-api-key': 'machine',
+    });
+    expect(noProof.status).toBe(403);
+    expect(wrongProof.status).toBe(403);
+    expect(mixedCredentials.status).toBe(403);
     const reviewerDecision = await panelCall('bureau.reviews.resolve', decision, reviewer);
     expect((await reviewerDecision.json()) as object).toMatchObject({
       structuredContent: { decision: 'deny', receipt: 'applied' },

@@ -10,6 +10,7 @@ import {
   type McpUiHostContext,
   type McpUiResourceCsp,
 } from '@modelcontextprotocol/ext-apps/app-bridge';
+import { pluginToolCaller } from '../../src/lib/host-panels.ts';
 
 type ToolHandler = (args: Record<string, unknown>) => unknown;
 
@@ -44,6 +45,7 @@ type ReferenceHost = {
   ): Promise<void>;
   teardown(): Promise<void>;
   initialized: boolean;
+  usePendingReviewHost(): void;
   /** Set before `mount` to give the panel no `serverTools` capability, as a host that blocks its calls does. */
   withoutServerTools?: boolean;
   /** Sent to the panel as the tool result that opened it, once it has initialized. */
@@ -81,6 +83,16 @@ const host: ReferenceHost = {
   rawHandlers: {},
   unreachable: [],
   initialized: false,
+  usePendingReviewHost() {
+    const call = pluginToolCaller('inspectors', 'pending-review');
+    for (const name of ['bureau.reviews.list', 'bureau.reviews.get', 'bureau.reviews.resolve']) {
+      this.rawHandlers[name] = async (argumentsValue) =>
+        (await call(
+          { name, arguments: argumentsValue },
+          { signal: new AbortController().signal },
+        )) as RawToolResult;
+    }
+  },
   async mount(html, csp, toolInput, title = 'Run inspector', hostContext) {
     frame = document.createElement('iframe');
     frame.title = title;
