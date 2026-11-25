@@ -18,10 +18,13 @@ import { after, describe, test } from 'node:test';
 
 import { openBungalow, openLocalBungalow, type Bungalow } from './bungalow.ts';
 import { describeBungalow, describeDeploymentSecrets, describeRootLock } from './conformance.ts';
+import { processEnvironment } from './environment-configuration.ts';
 import { BungalowLockedError, BungalowUnsupportedError } from './errors.ts';
 import { acquirePortableLock } from './lock.ts';
 
 const NAME = 'bungalow-node';
+/** What the parent passes this child, read through the package's one environment reader. */
+const parentEnvironment = processEnvironment();
 const runner = { describe, test };
 const roots: string[] = [];
 after(() => {
@@ -99,8 +102,8 @@ describe('a local home on the portable lock', () => {
   test('refuses while another Node process holds it, naming that process', async () => {
     // The parent started the holder (test processes start through its hang guard) and names it
     // here; after this suite it kills the holder and checks that the root is free again.
-    const root = process.env['BUNGALOW_NODE_HELD_ROOT'];
-    const holder = Number(process.env['BUNGALOW_NODE_HOLDER_PID']);
+    const root = parentEnvironment['BUNGALOW_NODE_HELD_ROOT'];
+    const holder = Number(parentEnvironment['BUNGALOW_NODE_HOLDER_PID']);
     assert.ok(root !== undefined && Number.isSafeInteger(holder) && holder > 0);
     const refused = await rejection(openLocal(root));
     assert.ok(refused instanceof BungalowLockedError);
@@ -132,8 +135,8 @@ describeDeploymentSecrets(runner, async () => {
   return home.deploymentSecrets;
 });
 
-const endpoint = process.env['BUNGALOW_NODE_S3_ENDPOINT'];
-const bucket = process.env['BUNGALOW_NODE_S3_BUCKET'];
+const endpoint = parentEnvironment['BUNGALOW_NODE_S3_ENDPOINT'];
+const bucket = parentEnvironment['BUNGALOW_NODE_S3_BUCKET'];
 
 describe('a remote home', () => {
   test('is configured by the parent', () => {
