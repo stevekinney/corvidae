@@ -73,7 +73,9 @@ describe('JUnit artifact paths', () => {
   });
 
   test('the Interborough CI lanes cover its complete test command and retain both reports', async () => {
-    const manifest = (await Bun.file(join(root, 'applications/interborough/package.json')).json()) as {
+    const manifest = (await Bun.file(
+      join(root, 'applications/interborough/package.json'),
+    ).json()) as {
       scripts: Record<string, string>;
     };
     expect(manifest.scripts['test']).toBe(
