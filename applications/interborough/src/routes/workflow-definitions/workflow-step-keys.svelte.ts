@@ -20,6 +20,14 @@ type Path = readonly (string | number)[];
 interface KeyedList {
   readonly path: Path;
   readonly keys: string[];
+  readonly order: string[];
+}
+
+interface RestorePosition {
+  readonly list: ListPath;
+  readonly index: number;
+  readonly key: string;
+  readonly descendants: readonly KeyedList[];
 }
 
 /** Whether `path` is `prefix` or lies below it. */
@@ -39,11 +47,17 @@ export class StepKeys {
     const id = JSON.stringify(list);
     let held = this.#lists.get(id);
     if (held === undefined) {
-      held = { path: list, keys: [] };
+      held = { path: list, keys: [], order: [] };
       this.#lists.set(id, held);
     }
-    while (held.keys.length < length) held.keys.push(`step-${String(++this.#issued)}`);
-    if (held.keys.length > length) held.keys.length = length;
+    while (held.keys.length < length) {
+      const key = `step-${String(++this.#issued)}`;
+      held.keys.push(key);
+      held.order.push(key);
+    }
+    for (const key of held.keys.splice(length)) {
+      held.order.splice(held.order.indexOf(key), 1);
+    }
     return [...held.keys];
   }
 
@@ -62,7 +76,7 @@ export class StepKeys {
       let path = held.path;
       if (startsWith(held.path, from)) path = [...to, ...held.path.slice(from.length)];
       else if (startsWith(held.path, to)) path = [...from, ...held.path.slice(to.length)];
-      next.set(JSON.stringify(path), { path, keys: held.keys });
+      next.set(JSON.stringify(path), { ...held, path });
     }
     const own = next.get(JSON.stringify(list));
     const first = own?.keys[index];
@@ -70,6 +84,10 @@ export class StepKeys {
     if (own !== undefined && first !== undefined && second !== undefined) {
       own.keys[index] = second;
       own.keys[index + offset] = first;
+      const firstPosition = own.order.indexOf(first);
+      const secondPosition = own.order.indexOf(second);
+      own.order[firstPosition] = second;
+      own.order[secondPosition] = first;
     }
     this.#lists = next;
     this.version += 1;
@@ -86,42 +104,36 @@ export class StepKeys {
       if (startsWith(held.path, list) && typeof place === 'number' && place > index) {
         path = [...list, place - 1, ...held.path.slice(list.length + 1)];
       }
-      next.set(JSON.stringify(path), { path, keys: held.keys });
+      next.set(JSON.stringify(path), { ...held, path });
     }
     next.get(JSON.stringify(list))?.keys.splice(index, 1);
     this.#lists = next;
     this.version += 1;
   }
 
-  /** Finds the deleted step's position in its current list, including after a parent move or rename. */
-  undoPosition(
-    list: ListPath,
-    index: number,
-  ): (() => { list: ListPath; index: number; key: string } | undefined) | undefined {
-    const keys = this.#lists.get(JSON.stringify(list))?.keys;
-    const key = keys?.[index];
-    if (keys === undefined || key === undefined) return undefined;
-    const before = keys[index - 1];
-    const after = keys[index + 1];
+  /** Finds the deleted step's place in the same list after subsequent edits and parent moves. */
+  undoPosition(list: ListPath, index: number): (() => RestorePosition | undefined) | undefined {
+    const original = this.#lists.get(JSON.stringify(list));
+    const key = original?.keys[index];
+    if (original === undefined || key === undefined) return undefined;
+    const removedPath = [...list, index];
+    const descendants = [...this.#lists.values()]
+      .filter((held) => startsWith(held.path, removedPath))
+      .map((held) => ({ ...held, path: held.path.slice(removedPath.length) }));
+
     return () => {
-      if (keys.includes(key)) return undefined;
-      for (const held of this.#lists.values()) {
-        if (held.keys !== keys) continue;
-        const afterIndex = after === undefined ? -1 : keys.indexOf(after);
-        if (afterIndex >= 0) return { list: held.path, index: afterIndex, key };
-        const beforeIndex = before === undefined ? -1 : keys.indexOf(before);
-        return {
-          list: held.path,
-          index: beforeIndex >= 0 ? beforeIndex + 1 : Math.min(index, keys.length),
-          key,
-        };
-      }
-      return undefined;
+      const held = [...this.#lists.values()].find((entry) => entry.keys === original.keys);
+      if (held === undefined || held.keys.includes(key)) return undefined;
+      const orderIndex = held.order.indexOf(key);
+      // Deleted keys retain their place in order so adjacent steps can be restored in either order.
+      const active = new Set(held.keys);
+      const index = held.order.slice(0, orderIndex).filter((entry) => active.has(entry)).length;
+      return { list: held.path, index, key, descendants };
     };
   }
 
-  /** The steps at and after the restored position move down with their nested lists. */
-  inserted(list: ListPath, index: number, key: string): void {
+  /** Restores the key and its nested list identities while shifting surviving steps down. */
+  inserted({ list, index, key, descendants }: RestorePosition): void {
     const next = new Map<string, KeyedList>();
     for (const held of this.#lists.values()) {
       let path = held.path;
@@ -129,9 +141,13 @@ export class StepKeys {
       if (startsWith(path, list) && typeof place === 'number' && place >= index) {
         path = [...list, place + 1, ...path.slice(list.length + 1)];
       }
-      next.set(JSON.stringify(path), { path, keys: held.keys });
+      next.set(JSON.stringify(path), { ...held, path });
     }
     next.get(JSON.stringify(list))?.keys.splice(index, 0, key);
+    for (const held of descendants) {
+      const path = [...list, index, ...held.path];
+      next.set(JSON.stringify(path), { ...held, path });
+    }
     this.#lists = next;
     this.version += 1;
   }
@@ -144,7 +160,7 @@ export class StepKeys {
       if (startsWith(held.path, slot)) {
         path = [...slot.slice(0, -1), name, ...held.path.slice(slot.length)];
       }
-      next.set(JSON.stringify(path), { path, keys: held.keys });
+      next.set(JSON.stringify(path), { ...held, path });
     }
     this.#lists = next;
     this.version += 1;

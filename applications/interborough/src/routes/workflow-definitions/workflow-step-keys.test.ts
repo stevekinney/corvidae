@@ -74,11 +74,47 @@ describe('the keys of a list of steps', () => {
 
     const current = ['steps', 1, 'cases', 'new'] as const;
     const target = undo?.();
-    expect(target).toEqual({ list: current, index: 1, key: deleted });
+    expect(target).toMatchObject({ list: current, index: 1, key: deleted });
     if (target === undefined) throw new Error('Expected a restore position.');
-    keys.inserted(target.list, target.index, target.key);
+    keys.inserted(target);
     expect(keys.keysOf(current, 3)).toEqual([before, deleted, after]);
     expect(keys.keysOf([...current, 2, 'steps'], 1)).toEqual(nested);
+  });
+
+  test.each([
+    ['C', 'B'],
+    ['B', 'C'],
+  ])('restores adjacent deletions in order when Undo uses %s then %s', (first, second) => {
+    const keys = new StepKeys();
+    const original = keys.keysOf(ROOT, 4);
+    const undoC = keys.undoPosition(ROOT, 2);
+    keys.removed(ROOT, 2);
+    const undoB = keys.undoPosition(ROOT, 1);
+    keys.removed(ROOT, 1);
+    for (const name of [first, second]) {
+      const target = (name === 'C' ? undoC : undoB)?.();
+      if (target === undefined) throw new Error('Expected a restore position.');
+      keys.inserted(target);
+    }
+    expect(keys.keysOf(ROOT, 4)).toEqual(original);
+  });
+
+  test('restores a child after Undo restores its deleted parent', () => {
+    const keys = new StepKeys();
+    keys.keysOf(ROOT, 1);
+    const list = ['steps', 0, 'steps'] as const;
+    const children = keys.keysOf(list, 2);
+    const undoChild = keys.undoPosition(list, 0);
+    keys.removed(list, 0);
+    const undoParent = keys.undoPosition(ROOT, 0);
+    keys.removed(ROOT, 0);
+    const parent = undoParent?.();
+    if (parent === undefined) throw new Error('Expected the parent’s restore position.');
+    keys.inserted(parent);
+    const child = undoChild?.();
+    if (child === undefined) throw new Error('Expected the child’s restore position.');
+    keys.inserted(child);
+    expect(keys.keysOf(list, 2)).toEqual(children);
   });
 
   test('never restores into a replacement list at the same path', () => {

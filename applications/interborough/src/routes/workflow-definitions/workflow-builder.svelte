@@ -323,7 +323,7 @@
           showToast(copy.stepRestoreUnavailable, { variant: 'warning' });
           return;
         }
-        write(next, () => keys.inserted(target.list, target.index, target.key));
+        write(next, () => keys.inserted(target));
       },
       onClose: () => {
         if (toast !== undefined) deletionToasts.delete(toast);
