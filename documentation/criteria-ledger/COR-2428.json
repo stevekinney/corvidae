@@ -1,7 +1,7 @@
 {
   "issue": "COR-2428",
   "branch": "codex/cor-2428-agent-editor",
-  "checkedAt": "d5596c8ead4fcca9b8e1b8e8b898ce9240f04e12",
+  "checkedAt": "4427af53af32f76ecaf3f6e677efff27f1509299",
   "briefVersion": "a6487fcb1bb2",
   "status": "BLOCKED",
   "criteria": [
@@ -113,7 +113,7 @@
     {
       "id": "AC22",
       "status": "met-on-branch",
-      "evidence": "Focused selected Interborough tests passed."
+      "evidence": "agent-editor-views.test.ts holds the page's second definition read and proves the frame-seeded Tool runner heading; focused checks exit 0."
     },
     {
       "id": "AC23",
