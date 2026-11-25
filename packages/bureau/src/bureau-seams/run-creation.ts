@@ -82,7 +82,12 @@ import {
   validateCreateRunRequest,
 } from '../run-request-validation';
 import { type SteeringLogEvent, steeringSessionRunTag } from '../steering-log';
-import { type TaskOrigin, taskOriginOfStart, taskOriginTag } from '../task-origin';
+import {
+  isTrustedReviewedOrigin,
+  type TaskOrigin,
+  taskOriginOfStart,
+  taskOriginTag,
+} from '../task-origin';
 import type { TaskToolGrant } from '../task-registry';
 import { attachRunEventFeed } from '../run-event-feed-attachment.ts';
 import { bindRunWorkspaceAuthority } from '../run-authority.ts';
@@ -326,6 +331,12 @@ export function createRunCreation<D extends AgentDefinitions>(
       throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
     }
     const agentName = resolveRunAgentName(sessionId, session, request.agentName);
+    if (
+      agentName.startsWith('reviewed:') &&
+      (!isTrustedReviewedOrigin(request.origin) || request.origin.reviewedTool.agent !== agentName)
+    ) {
+      throw new BureauError('Reviewed tool agent not found', 'NOT_FOUND');
+    }
     const triedRun = isTryAgentName(agentName);
     if (triedRun) peers.assertTriedAgentBelongsTo(agentName, sessionId);
     const resolution = await runtime.resolveSessionAgentRun(

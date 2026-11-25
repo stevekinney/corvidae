@@ -32,6 +32,7 @@ import {
   humanInputSchemaOf,
 } from '@lostgradient/operative';
 import type { AgentDefinitions } from '../agent-catalog';
+import { reviewedProvenanceOf } from '../reviewed-provenance';
 import type {
   ApprovalDecisionSurface,
   ApprovalPeerRecovery,
@@ -1044,11 +1045,16 @@ export function createReviewResolution<D extends AgentDefinitions>(
   ) {
     const policy = core.options.reviewPolicy;
     if (!policy?.matches(review)) return undefined;
-    if (input.round === undefined || input.remember === true || input.reviewer === undefined) {
+    if (
+      input.round === undefined ||
+      input.remember === true ||
+      input.reviewer === undefined ||
+      Object.hasOwn(input, 'arguments')
+    ) {
       if (hideInvalid)
         throw new BureauError(`No pending review with id "${input.id}"`, 'NOT_FOUND');
       throw new BureauError(
-        'Review decision requires reviewer authority and the displayed round',
+        'Review decision requires reviewer authority, the displayed round, and unchanged arguments',
         'BAD_REQUEST',
       );
     }
@@ -1063,6 +1069,21 @@ export function createReviewResolution<D extends AgentDefinitions>(
     if (policy !== undefined && !(await policy.mayDecide(review, input.reviewer!))) {
       throw new BureauError(`No pending review with id "${review.id}"`, 'NOT_FOUND');
     }
+  }
+
+  async function assertReviewProvenance(review: PendingReview): Promise<void> {
+    if (review.kind !== 'tool-approval') return;
+    const provenance = await reviewedProvenanceOf(review, {
+      task: (runId) => core.tasks.record(runId),
+      session: async (sessionId) => runtime.sessionStore?.load(sessionId),
+      steps: async (runId) => {
+        if (!runtime.durable) throw new Error('No durable checkpoint');
+        return runtime.durable.checkpointStore.loadSteps(runId, { strict: true });
+      },
+      policy: core.options.reviewPolicy,
+    });
+    if (provenance === 'unresolved')
+      throw new BureauError('Review provenance is unavailable', 'NOT_FOUND');
   }
 
   async function resolveReview(
@@ -1083,6 +1104,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
     if (!review) {
       const cleanup = reviewResolutionCleanupPending.get(input.id);
       if (cleanup) {
+        await assertReviewProvenance(cleanup.review);
         await assertPolicyAllows(
           policyForDecision(cleanup.review, input, true),
           cleanup.review,
@@ -1208,6 +1230,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
       throw new BureauError(`No pending review with id "${input.id}"`, 'NOT_FOUND');
     }
 
+    await assertReviewProvenance(review);
     const policy = policyForDecision(review, input);
     // COR-1920: nothing unsealed is digested or claimed.
     peers.refuseUnsealedSecrets(review, humanWaitDecisionPayload(input), input.decision);

@@ -15,6 +15,8 @@ import {
 import type { z } from 'zod';
 import { projectedInputSchema } from './input-schema.ts';
 
+export { projectedInputSchema } from './input-schema.ts';
+
 export type ToolboxSelection = {
   readonly tool: string;
   readonly name: string;
