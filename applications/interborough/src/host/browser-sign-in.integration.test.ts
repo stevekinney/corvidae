@@ -117,7 +117,10 @@ test('listener binds verified browser identities, revokes private access and res
   const releaseStream = Promise.withResolvers<void>();
   const loadStarted = Promise.withResolvers<void>();
   const releaseLoad = Promise.withResolvers<void>();
+  const keyTargetsStarted = Promise.withResolvers<void>();
+  const releaseKeyTargets = Promise.withResolvers<void>();
   let holdLoad = false;
+  let holdKeyTargets = false;
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
     workspaceId,
@@ -226,7 +229,13 @@ test('listener binds verified browser identities, revokes private access and res
         });
       },
       keyManagement: {
-        targets: async () => [{ subject: 'service', scopes: ['reviews:read'] }],
+        targets: async () => {
+          if (holdKeyTargets) {
+            keyTargetsStarted.resolve();
+            await releaseKeyTargets.promise;
+          }
+          return [{ subject: 'service', scopes: ['reviews:read'] }];
+        },
         allowedActions: async () => ['rotate', 'revoke'],
         overlapCutoff: () => Date.now() + 60_000,
       },
@@ -355,6 +364,37 @@ test('listener binds verified browser identities, revokes private access and res
     const memberKeys = await listKeys(member.cookie!);
     expect(memberKeys.status).toBe(403);
     expect(await memberKeys.text()).not.toContain('service');
+    const managementSession = await send('/auth/session', {
+      headers: { cookie: administrator.cookie! },
+    });
+    const managementCsrf = await managementSession.json();
+    holdKeyTargets = true;
+    const pendingIssue = send('/key-admin/jsonrpc', {
+      method: 'POST',
+      headers: {
+        cookie: administrator.cookie!,
+        origin: 'https://settings.example',
+        'x-csrf-token': managementCsrf.csrfToken,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'api.keys.issue',
+        params: { label: 'revoked while issuing', subject: 'service', scopes: ['reviews:read'] },
+      }),
+    });
+    await keyTargetsStarted.promise;
+    const administratorMembership = members.get('admin')!;
+    members.delete('admin');
+    releaseKeyTargets.resolve();
+    const refusedIssue = await pendingIssue;
+    expect(refusedIssue.status).toBe(403);
+    expect(await refusedIssue.text()).not.toContain('secret');
+    holdKeyTargets = false;
+    members.set('admin', administratorMembership);
+    const keysAfterRefusal = await listKeys(administrator.cookie!);
+    expect((await keysAfterRefusal.json()).result.keys).toEqual([]);
     for (const headers of [
       { 'x-api-key': 'machine-api-key' },
       { authorization: 'Bearer connector-token' },
@@ -605,6 +645,7 @@ test('listener binds verified browser identities, revokes private access and res
   } finally {
     releaseStream.resolve();
     releaseLoad.resolve();
+    releaseKeyTargets.resolve();
     await host.close();
     provider.stop(true);
     await rm(home, { recursive: true, force: true });
