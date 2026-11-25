@@ -1666,7 +1666,8 @@ export function createBureauHandler(
     options.workspace,
   );
   const authenticate =
-    options.authenticateRequest ?? handlerAuthenticate(options.authentication, unauthenticatedAccess);
+    options.authenticateRequest ??
+    handlerAuthenticate(options.authentication, unauthenticatedAccess);
 
   const mounts: WorkspaceClassifiedMount[] = [
     classifyWorkspaceMount(createAssetsMount(bureau.assets!, options.workspace), 'explicit-share'),

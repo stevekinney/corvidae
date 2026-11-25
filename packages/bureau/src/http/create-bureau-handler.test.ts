@@ -77,7 +77,10 @@ describe('createBureauHandler options', () => {
         authenticateRequest: async (request) => {
           seen.push(request);
           return request.headers.has('x-write-token')
-            ? { method: 'api-key', principal: principalFromApiKey({ subject: 'alice', scopes: [] }) }
+            ? {
+                method: 'api-key',
+                principal: principalFromApiKey({ subject: 'alice', scopes: [] }),
+              }
             : new Response('Forbidden', { status: 403 });
         },
       });
@@ -86,7 +89,12 @@ describe('createBureauHandler options', () => {
       expect((await handler(denied)).status).toBe(403);
       expect((await handler(allowed)).status).toBe(200);
       expect(seen).toEqual([denied, allowed]);
-      expect(() => createBureauHandler(bureau, { authentication: allScopes, authenticateRequest: async () => new Response(null, { status: 401 }) })).toThrow();
+      expect(() =>
+        createBureauHandler(bureau, {
+          authentication: allScopes,
+          authenticateRequest: async () => new Response(null, { status: 401 }),
+        }),
+      ).toThrow();
     });
   });
   const workspaceBinding = (): WorkspaceMembershipOptions => ({
