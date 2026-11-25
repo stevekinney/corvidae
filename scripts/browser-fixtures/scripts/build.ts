@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   buildFixtures as buildSuiteFixtures,
@@ -50,7 +51,7 @@ async function buildWorkspaceWebComponents(outdir: string): Promise<void> {
     terminal: {
       directory: terminal,
       stylesheets: [
-        Bun.resolveSync('@xterm/xterm/css/xterm.css', terminal),
+        fileURLToPath(import.meta.resolve('@xterm/xterm/css/xterm.css')),
         resolve(terminal, 'terminal.css'),
       ],
       propsType: 'TerminalProps',
