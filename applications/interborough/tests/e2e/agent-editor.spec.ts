@@ -4,7 +4,7 @@
  * and the abilities of the chosen model. The host's home connects one provider (`anthropic`), so
  * the others are not connected. The editor's other fields are in `24-define-agents.spec.ts`; Try it and Duplicate are at the end of this file.
  */
-import type { APIRequestContext, Page } from '@playwright/test';
+import type { APIRequestContext, Page, Route } from '@playwright/test';
 import { existsSync } from 'node:fs';
 
 import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../src/app/copy/agents.ts';
@@ -41,6 +41,34 @@ async function selectRunnableModel(page: Page, request: APIRequestContext): Prom
   await page.getByRole('option', { name: new RegExp(`^${display}`) }).click();
   await expect(model).toHaveValue(display);
   return display;
+}
+
+/** Gives one real catalog row the exact capabilities the design's Balanced witness declares. */
+async function withBalancedCatalogFixture(page: Page): Promise<void> {
+  await page.route('**/jsonrpc', async (route: Route) => {
+    const call = route.request().postDataJSON() as { method?: string } | null;
+    if (call?.method !== 'bureau.agents.catalog') return route.fallback();
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      result?: { models?: Array<Record<string, unknown>> };
+    };
+    let changed = false;
+    const models = body.result?.models?.map((row) => {
+      if (changed || row['availability'] === 'unavailable') return row;
+      changed = true;
+      return {
+        ...row,
+        modelClass: 'Balanced',
+        contextWindowTokens: 1_000_000,
+        tools: true,
+        modalities: { text: { input: true }, image: { input: true } },
+      };
+    });
+    await route.fulfill({
+      response,
+      json: { ...body, result: { ...body.result, ...(models === undefined ? {} : { models }) } },
+    });
+  });
 }
 
 for (const width of WIDTHS) {
@@ -176,6 +204,30 @@ for (const width of WIDTHS) {
       await captureForDesignReview(page, {
         route: '/agents/new',
         state: 'model display name selected',
+        source: 'agent-editor.spec.ts',
+      });
+    });
+
+    test('/agents/new captures the declared Balanced model capabilities', async ({
+      page,
+      request,
+    }) => {
+      await withBalancedCatalogFixture(page);
+      await page.goto('/agents/new');
+      const selected = await selectRunnableModel(page, request);
+      const abilities = page.getByTestId('agent-model-abilities');
+      await expect(abilities).toContainText('Balanced');
+      await expect(abilities).toContainText(copy.abilities.tools);
+      await expect(abilities).toContainText(copy.abilities.images);
+      await expect(abilities).toContainText('1M context');
+      await page.getByRole('combobox', { name: 'Model' }).click();
+      await expect(page.getByRole('option', { name: new RegExp(`^${selected}`) })).toContainText(
+        'Balanced, tools, images, 1M context',
+      );
+      await page.keyboard.press('Escape');
+      await captureForDesignReview(page, {
+        route: '/agents/new',
+        state: 'Balanced, tools, images, 1M context',
         source: 'agent-editor.spec.ts',
       });
     });

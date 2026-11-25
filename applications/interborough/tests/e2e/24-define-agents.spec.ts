@@ -104,7 +104,7 @@ async function selectRunnableModel(page: Page, request: APIRequestContext): Prom
 }
 
 test.describe('a new agent', () => {
-  test('preserves child-agent grants through an editor read and save', async ({
+  test('/agents/:agent/edit preserves child-agent grants through an editor read and save', async ({
     page,
     request,
   }) => {
@@ -128,7 +128,7 @@ test.describe('a new agent', () => {
     expect(text).toContain('demo:echo');
   });
 
-  test('captures the editor reference documents and its named loading state', async ({
+  test('/agents/new and /agents/:agent/edit capture reference documents and named loading', async ({
     page,
     request,
   }) => {
@@ -196,7 +196,7 @@ test.describe('a new agent', () => {
   });
 
   for (const width of WIDTHS) {
-    test(`is made from what the catalog offers, and written as a file, at ${width} pixels`, async ({
+    test(`/agents/new is made from what the catalog offers, and written as a file, at ${width} pixels`, async ({
       page,
       request,
       checkA11y,
@@ -219,6 +219,11 @@ test.describe('a new agent', () => {
       await expect(model).toHaveValue('');
       await page.getByRole('button', { name: copy.createAction }).click();
       await expect(page.getByText(copy.newAgent.modelRequired)).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/agents/new',
+        state: 'blank model validation',
+        source: '24-define-agents.spec.ts',
+      });
       // Opening an empty field lists every option, then this fixture selects its declared runnable row.
       await model.click();
       const options = page.locator('.cinder-combobox__option-label');

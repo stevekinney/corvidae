@@ -175,6 +175,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/workflow-detail-states.spec.ts',
   'tests/e2e/agent-duplicate.spec.ts',
   'tests/e2e/agent-editor.spec.ts',
+  'tests/e2e/24-define-agents.spec.ts',
   'tests/e2e/agent-plugin-editing.spec.ts',
   // These populated pages live on the fixture plugin host, outside the sample world.
   'tests/e2e/plugin-page.spec.ts',
