@@ -101,6 +101,28 @@
         "!src/**/*.bench.ts!"
       ]
     },
+    "packages/mcp": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts",
+        "src/connector-smoke-inspector.ts!",
+        "src/deployed-oauth.ts!",
+        "src/deployed-smoke.ts!"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
+      ]
+    },
     "packages/backchannel-svelte": {
       "entry": [
         "**/*.test.ts",
