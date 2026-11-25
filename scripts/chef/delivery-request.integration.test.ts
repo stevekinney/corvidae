@@ -41,6 +41,7 @@ import {
   landingRun,
   runsAnswer,
 } from './landing-evidence.test-support.ts';
+import { validateLandingEvidence } from './landing-evidence.ts';
 import type { Runner, RunnerResult } from './process-runner.ts';
 import { createScenarios } from './scenario.test-support.ts';
 import { dispatchVerificationRun } from './targeted-run.ts';
@@ -553,6 +554,12 @@ scenarios.describe('prepare', () => {
         expect(prepared.dispatched).toBe(true);
         expect(fallback.dispatched).toHaveLength(1);
       }
+      const binding = setup.options.sourceCriteria!;
+      const invalid = { ...binding, members: [] };
+      const invalidError = await rejectionOf(
+        prepare({ ...setup.options, sourceCriteria: invalid }, setup.dependencies),
+      );
+      expect(String(invalidError)).toContain('--source-criteria must bind every accepted member');
       const result = await setup.prepared();
       const request = readDeliveryRequest(result.file, result.digest);
       expect(result.dispatched).toBe(false);
@@ -566,16 +573,36 @@ scenarios.describe('prepare', () => {
         { file: result.file, digest: result.digest, stateDirectory: setup.state.stateDirectory },
         { state: setup.state },
       );
-      const revalidate = (attempt: number) =>
-        validateDeliveryCiEvidence(loaded, {
-          ciProvider: {
-            findRuns: async (identity) => [
-              { ...automatic, requestKey: identity.requestKey, attempt },
-            ],
+      const provider = (attempt: number, checkedTree = TREE) => ({
+        findRuns: async (identity: CiEvidenceRequest) => [
+          { ...automatic, requestKey: identity.requestKey, attempt, checkedTree },
+        ],
+      });
+      const land = (attempt: number, checkedTree = TREE) =>
+        validateLandingEvidence(
+          loaded,
+          { route: 'pull-request', defaultBranch: 'main' },
+          {
+            runner: runnerOf(
+              answers({
+                ...runsAnswer(REPOSITORY, HEAD, [
+                  { id: automatic.id, head_sha: HEAD, path: automatic.workflowPath },
+                ]),
+                ...jobsAnswer(REPOSITORY, automatic.id),
+              }),
+            ).runner,
+            ciProvider: provider(attempt, checkedTree),
           },
-        });
-      expect(await revalidate(1)).toBeUndefined();
-      expect(await revalidate(2)).toContain('CI evidence for run 77');
+        );
+      expect(await validateDeliveryCiEvidence(loaded, { ciProvider: provider(1) })).toBeUndefined();
+      expect(await validateDeliveryCiEvidence(loaded, { ciProvider: provider(2) })).toContain(
+        'CI evidence for run 77',
+      );
+      expect(await land(1)).toBeUndefined();
+      expect(await land(2)).toContain('does not match the pinned pull-request attempt');
+      expect(await land(1, '2'.repeat(40))).toContain(
+        'did not check the proposed pull-request merge',
+      );
       for (const member of request.members)
         expect(member.providerRuns).toEqual(
           member.plan.obligations.map((obligation) =>

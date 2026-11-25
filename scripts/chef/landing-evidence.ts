@@ -160,7 +160,26 @@ async function checkDigests(
       return `CI evidence for ${identity.workflowPath} is not one finished authenticated run`;
     if (!listed.some((entry) => entry.id === run.id))
       return `run ${run.id} is not among the workflow runs on the head`;
-    if (run.checkedRevision !== request.revision || run.head !== request.revision)
+    if (run.head !== request.revision)
+      return `run ${run.id} is on ${run.head}, not the head ${request.revision}`;
+    if (identity.event === 'pull_request') {
+      // The provider authenticates both parents of GitHub's synthetic merge checkout.
+      if (
+        run.event !== 'pull_request' ||
+        run.base !== request.base ||
+        run.checkedTree !== request.integrationTree ||
+        run.integrationTree !== request.integrationTree
+      )
+        return `run ${run.id} did not check the proposed pull-request merge`;
+      const pinned = request.members.flatMap((member) =>
+        member.providerRuns.filter((binding) => binding.event === 'pull_request'),
+      );
+      if (
+        pinned.length === 0 ||
+        pinned.some((binding) => binding.id !== run.id || binding.attempt !== run.attempt)
+      )
+        return `run ${run.id} does not match the pinned pull-request attempt`;
+    } else if (run.checkedRevision !== request.revision)
       return `run ${run.id} checked ${run.checkedRevision}, not the head ${request.revision}`;
     if (run.verificationPlanDigest !== expected || run.requestKey !== identity.requestKey)
       return `run ${run.id} carries evidence digest ${run.verificationPlanDigest}, not the pinned ${expected}`;

@@ -578,6 +578,7 @@ export async function prepare(
     ]),
   );
   let members: DeliveryMember[] | undefined;
+  let sourceCriteria: PullRequestSourceCriteriaBinding | undefined;
   let authority: Authority | undefined;
   // The operation lock freezes current Linear assignments and their held authorities before the
   // request-key provider transition. A retry must prove the same batch still exists; it cannot
@@ -658,6 +659,7 @@ export async function prepare(
         throw new UsageError(
           'the accepted batch changed after its operation freeze; push a new head and prepare a fresh identity.',
         );
+      sourceCriteria = freezeSourceCriteriaBinding(options.sourceCriteria, frozen);
       members = frozen;
       authority = authorities?.[0] ?? authority;
       if (pending.members === undefined) {
@@ -672,7 +674,6 @@ export async function prepare(
   if (members === undefined || authority === undefined)
     throw new UsageError('delivery operation did not retain an authority and frozen members.');
   const frozenMembers = members;
-  const sourceCriteria = freezeSourceCriteriaBinding(options.sourceCriteria, frozenMembers);
   const deliveryAuthority = authority;
   for (const member of frozenMembers)
     validateFrozenDeliveryMember(member, {
