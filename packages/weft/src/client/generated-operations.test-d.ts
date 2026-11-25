@@ -32,16 +32,22 @@ async function readScheduleAndWorkflowProjections(): Promise<void> {
     limit: 10,
     offset: '2',
   });
-  const schedule = await operations['weft.schedules.get']({ scheduleId: schedules.items[0]!.id });
+  const firstSchedule = schedules.items[0];
+  if (!firstSchedule) throw new Error('expected a schedule');
+  const schedule = await operations['weft.schedules.get']({ scheduleId: firstSchedule.id });
   const scheduleStatus: 'active' | 'paused' | 'cancelled' = schedule.status;
   const nextFire: number | null = schedule.nextFireAt;
   const total: number = schedules.total;
   const workflows = await operations['weft.workflows.list']({ scheduleId: schedule.id, limit: 10 });
-  const workflow = await operations['weft.workflows.get']({ workflowId: workflows.items[0]!.id });
+  const firstWorkflow = workflows.items[0];
+  if (!firstWorkflow) throw new Error('expected a workflow');
+  const workflow = await operations['weft.workflows.get']({ workflowId: firstWorkflow.id });
   const workflowId: string = workflow.id;
   const version: string = workflow.versionTuple.workflowVersion;
   const events = await operations['weft.workflows.events.list']({ workflowId });
-  const eventType: string = events.events[0]!.type;
+  const firstEvent = events.events[0];
+  if (!firstEvent) throw new Error('expected an event');
+  const eventType: string = firstEvent.type;
   const input: unknown = workflow.input;
   void [scheduleStatus, nextFire, total, version, eventType, input];
 }

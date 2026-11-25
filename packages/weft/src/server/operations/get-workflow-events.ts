@@ -54,7 +54,8 @@ export const getWorkflowEventsOperation = defineOperation({
       throw fault;
     }
 
-    return { events: (await e.getEvents(input.workflowId)).map((event) => ({ ...event })) };
+    const events = await e.getEvents(input.workflowId);
+    return { events: events.map((event) => ({ ...event })) };
   },
 });
 
