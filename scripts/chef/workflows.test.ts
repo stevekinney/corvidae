@@ -372,16 +372,16 @@ describe('workflow scripts', () => {
     }
   });
 
-  test('deliver-issue.js drives check, dispatch, wait, compare and review to a recorded evidence request', async () => {
+  test('deliver-issue.js drives checks and review before dispatch, wait and compare to a recorded evidence request', async () => {
     const delivery = await runDelivery();
     expect(delivery.labels).toEqual([
       'fetch',
       'implement',
       'checks',
+      'review',
       'dispatch',
       'wait',
       'compare',
-      'review',
     ]);
     const [landing] = delivery.result;
     expect(landing?.status).toBe('READY_TO_LAND');
@@ -399,12 +399,20 @@ describe('workflow scripts', () => {
     });
     const prompts = Object.fromEntries(delivery.calls.map((call) => [call.label, call.prompt]));
     expect(prompts['checks COR-7']).toContain('bun scripts/chef/focused-checks.ts');
-    expect(prompts['dispatch COR-7']).toContain('bun scripts/chef/targeted-run.ts --json');
+    expect(prompts['dispatch COR-7']).toContain('bun scripts/chef/targeted-run.ts --approve');
+    expect(prompts['dispatch COR-7']).toContain('bun scripts/chef/targeted-run.ts --decision');
+    expect(prompts['dispatch COR-7']).toContain('tmp/chef/review.md');
     expect(prompts['wait COR-7']).toContain('bun scripts/chef/wait-run.ts 99');
     expect(prompts['compare COR-7']).toContain('bun scripts/chef/ci-compare.ts 99');
     expect(delivery.calls.find((call) => call.label.startsWith('review'))?.options.agentType).toBe(
       'chef-reviewer',
     );
+  });
+
+  test('a local approval without an evidence reference cannot start discretionary CI', async () => {
+    const delivery = await runDelivery({}, { review: { verdict: 'approve', findings: [] } });
+    expect(delivery.labels).toEqual(['fetch', 'implement', 'checks', 'review']);
+    expect(delivery.result[0]?.reason).toContain('did not return an evidence reference');
   });
 
   // A worker's report gates landing, not only its stop: the checks step runs `report.ts check`, and
@@ -461,7 +469,7 @@ describe('workflow scripts', () => {
         },
       },
     );
-    expect(delivery.labels).toEqual(['fetch', 'implement', 'checks', 'dispatch']);
+    expect(delivery.labels).toEqual(['fetch', 'implement', 'checks', 'review', 'dispatch']);
     expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
     expect(delivery.result[0]?.evidenceRequest).toBeNull();
   });
@@ -492,7 +500,7 @@ describe('workflow scripts', () => {
         review: (count: number) =>
           count === 1
             ? { verdict: 'blocked', findings: ['a defect'] }
-            : { verdict: 'approve', findings: [] },
+            : { verdict: 'approve', findings: [], evidencePath: 'tmp/chef/review.md' },
         checks: (count: number) => ({ exitCode: 0, line: 'ok', head: head(count) }),
         dispatch: (count: number) => ({
           ...(cleanResponses['dispatch'] as object),
@@ -524,7 +532,7 @@ describe('workflow scripts', () => {
     test(`deliver-issue.js stops for judgment when the ${step} step is for another commit`, async () => {
       const delivery = await runDelivery({}, stubs);
       expect(delivery.labels.at(-1)).toBe(stoppedAfter);
-      expect(delivery.labels).not.toContain('review');
+      expect(delivery.labels.includes('review')).toBe(step !== 'checks');
       expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
       expect(delivery.result[0]?.evidenceRequest).toBeNull();
     });
@@ -559,6 +567,7 @@ describe('workflow scripts', () => {
       );
       expect(delivery.labels.filter((label) => label === 'correct')).toHaveLength(1);
       expect(delivery.labels.filter((label) => label === 'checks')).toHaveLength(2);
+      if (name === 'a blocked review') expect(delivery.labels).not.toContain('dispatch');
       expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
       expect(delivery.result[0]?.reason).toContain('after 1 correction');
       expect(delivery.result[0]?.evidenceRequest).toBeNull();
@@ -574,11 +583,11 @@ describe('workflow scripts', () => {
       review: (count: number) =>
         count === 1
           ? { verdict: 'blocked', findings: ['a defect'] }
-          : { verdict: 'approve', findings: [] },
+          : { verdict: 'approve', findings: [], evidencePath: 'tmp/chef/review.md' },
       checks: (count: number) => ({ exitCode: 0, line: 'ok', head: head(count) }),
-      dispatch: perRound(cleanResponses['dispatch'] as Record<string, unknown>),
-      wait: perRound(cleanResponses['wait'] as Record<string, unknown>),
-      compare: perRound(cleanResponses['compare'] as Record<string, unknown>),
+      dispatch: { ...(cleanResponses['dispatch'] as object), headSha: head(2) },
+      wait: { ...(cleanResponses['wait'] as object), headSha: head(2) },
+      compare: { ...(cleanResponses['compare'] as object), headSha: head(2) },
       ...stubs,
     });
   }
@@ -649,7 +658,7 @@ describe('workflow scripts', () => {
       {},
       { dispatch: { ...(cleanResponses['dispatch'] as object), dispatched: false } },
     );
-    expect(delivery.labels).toEqual(['fetch', 'implement', 'checks', 'dispatch']);
+    expect(delivery.labels).toEqual(['fetch', 'implement', 'checks', 'review', 'dispatch']);
     expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
   });
 
@@ -845,10 +854,10 @@ describe('workflow scripts', () => {
       'correct',
       'pin',
       'checks',
+      'review',
       'dispatch',
       'wait',
       'compare',
-      'review',
     ]);
     const fix = delivery.calls.find((call) => call.label.startsWith('correct'));
     expect(fix?.options.agentType).toBe('chef-worker');

@@ -4,7 +4,8 @@ import { join } from 'node:path';
 
 import { REPOSITORY_ROOT, repositoryContext } from './evidence-plan.ts';
 import type { Runner } from './process-runner.ts';
-import { run, type TargetedDependencies } from './targeted-run.ts';
+import type { TargetedDependencies } from './targeted-inputs.ts';
+import { run } from './targeted-run.ts';
 
 // The real repository's file tree and import graph, as the evidence plan reads them (it runs git).
 function dispatchFor(changed: string[]) {

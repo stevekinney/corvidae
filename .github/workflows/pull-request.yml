@@ -164,6 +164,8 @@ jobs:
 
   tests:
     name: Affected fast-lane tests
+    outputs:
+      junit_artifact: ${{ steps.junit.outputs.artifact-id }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
@@ -220,6 +222,21 @@ jobs:
           name: replay-tests-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ci-replay-artifact
           if-no-files-found: error
+      - id: junit
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ success() }}
+        with:
+          name: ci-evidence-tests-${{ github.run_attempt }}
+          path: |
+            test-output/junit/*.xml
+            applications/*/test-output/junit/*.xml
+            components/*/test-output/junit/*.xml
+            packages/*/test-output/junit/*.xml
+            testing/*/test-output/junit/*.xml
+            internal/*/test-output/junit/*.xml
+            plugins/*/test-output/junit/*.xml
+            scripts/browser-fixtures/test-output/junit/*.xml
+          if-no-files-found: warn
       - uses: ./.github/actions/turbo-cache/save
         if: ${{ !cancelled() }}
         with:
@@ -304,6 +321,12 @@ jobs:
       - run: bun scripts/chef/ci-replay.ts run -- bun install --frozen-lockfile
         env:
           CI_REPLAY_TOKEN: ${{ github.token }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v8.0.1
+        if: ${{ needs.tests.outputs.junit_artifact != '' }}
+        with:
+          artifact-ids: ${{ needs.tests.outputs.junit_artifact }}
+          merge-multiple: true
+          path: ci-evidence-tests
       # A pull-request receipt names the PR head and base from the authenticated event payload;
       # the checked revision remains the merge checkout and is never presented as the PR head.
       - name: Record pull-request checkout identity and planned job states
@@ -313,6 +336,7 @@ jobs:
           CI_EVIDENCE_NEEDS: ${{ toJSON(needs) }}
           CI_EVIDENCE_NOT_APPLICABLE: ${{ needs.browser-selection.outputs.fixtures != 'true' && needs.browser-selection.outputs.interborough != 'true' && '["browser"]' || '[]' }}
           CI_EVIDENCE_EXPECTED_JOBS: '["static","workspaces","tests","browser-selection","browser"]'
+          CI_EVIDENCE_TEST_REPORT_DIRECTORY: ci-evidence-tests
         run: bun scripts/chef/ci-replay.ts run -- bun scripts/chef/ci-evidence-workflow.ts ci-evidence-receipt.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ always() }}

@@ -1,8 +1,8 @@
 export const meta = {
   name: 'deliver-issue',
   description:
-    'Chef branch-path delivery loop: brief, worker, checks, evidence run, wait, compare, review, evidence request. Never merges.',
-  phases: ['brief', 'critique', 'implement', 'check', 'evidence', 'review', 'correct'],
+    'Chef branch-path delivery loop: brief, worker, checks, review, evidence run, wait, compare, evidence request. Never merges.',
+  phases: ['brief', 'critique', 'implement', 'check', 'review', 'evidence', 'correct'],
 };
 
 // The coordinator runs brief.ts with --json and the pinned repository and base. In
@@ -150,6 +150,7 @@ const DISPATCH_SCHEMA = {
     inputs: { type: 'object' },
     command: { type: 'array', items: { type: 'string' } },
     requiresFullRun: { type: 'boolean' },
+    decisionFile: { type: 'string' },
     error: { type: 'string' },
   },
   required: ['dispatched', 'ref'],
@@ -407,15 +408,18 @@ function fetchDispatchBase(issue) {
   );
 }
 
-function dispatchEvidence(issue, worktree, branch, head) {
+function dispatchEvidence(issue, worktree, branch, head, reviewReference) {
   phase('evidence');
-  log(`${issue}: dispatching the evidence run for ${head}`);
+  const decisionName = `${issue}-${head}.json`;
+  log(`${issue}: approved discretionary CI for ${head} after local review`);
   return agent(
     [
       `Dispatch the evidence run of ${issue}. Invoke no skills. Change nothing in the repository.`,
       `cd ${worktree}. Run \`git fetch origin main ${branch}\` and confirm \`git rev-parse HEAD\` equals ${head}; if it differs, return dispatched false and an error.`,
       'First run `bun scripts/chef/targeted-run.ts --dry-run --json` and read ref, inputs, command and requiresFullRun (treat an absent requiresFullRun as false). If requiresFullRun is true, dispatch nothing: return dispatched false with those fields.',
-      'Otherwise run `bun scripts/chef/targeted-run.ts --json` once, which dispatches the workflow. Then find that run by its head SHA, never as the latest run: list `gh run list --workflow targeted-checks.yml --branch <ref> --event workflow_dispatch --json databaseId,headSha,url` and take the newest entry whose headSha equals the head above (if there is none, return dispatched false and an error). Read that run again with `gh run view <id> --json headSha`. Return dispatched true, runId (the databaseId as a string), headSha (from that last command), url, ref, inputs, command and requiresFullRun.',
+      `The coordinator accepted the local review. Use git rev-parse --path-format=absolute --git-common-dir to find the main checkout (the parent of the common .git directory). Create tmp/chef/discretionary-ci there and use ${decisionName} in that directory as the absolute decisionFile.`,
+      `Record approval with bun scripts/chef/targeted-run.ts --approve <decisionFile> --head ${head} --review-ref <reference>, passing ${JSON.stringify(reviewReference)} as the literal review reference. Then run bun scripts/chef/targeted-run.ts --decision <decisionFile> --json once. Use the same ref and lane options for the plan, approval and dispatch.`,
+      'Read the run ID from the dispatch receipt. If GitHub returned no ID or URL, list the targeted workflow runs for the exact ref and head, and accept only a single run created since the recorded decisionFile.attempt time. Read the chosen run again with gh run view <id> --json headSha. If its identity is uncertain, return dispatched false with the problem and decisionFile. Return dispatched true, runId, headSha, url, decisionFile, ref, inputs, command and requiresFullRun.',
     ].join('\n'),
     {
       label: `dispatch ${issue}`,
@@ -843,7 +847,7 @@ function correctionState(issue, pullRequest, seen, named) {
 }
 
 /**
- * One verification round of a head: checks, evidence run, wait, compare, review. Returns a
+ * One verification round of a head: checks, review, evidence run, wait, compare. Returns a
  * READY_TO_LAND or NEEDS_JUDGMENT result (it has a status), or { findings } to correct.
  */
 async function verifyRound(context, head, round, key) {
@@ -874,7 +878,19 @@ async function verifyRound(context, head, round, key) {
     let findings = verifyBlockers(evidence);
 
     if (findings.length === 0) {
-      const dispatch = await dispatchEvidence(issue, built.worktree, built.branch, head);
+      const verdict = await review(issue, built.branch, head);
+      if (verdict === null) return judgment(issue, 'local review failed', steps, where);
+      evidence.review = verdict;
+      if (verdict.verdict !== 'approve') return { findings: verdict.findings };
+      if (!verdict.evidencePath?.trim())
+        return judgment(issue, 'local review did not return an evidence reference', steps, where);
+      const dispatch = await dispatchEvidence(
+        issue,
+        built.worktree,
+        built.branch,
+        head,
+        verdict.evidencePath,
+      );
       if (dispatch === null) return judgment(issue, 'evidence dispatch failed', steps, where);
       evidence.dispatch = dispatch;
       if (dispatch.requiresFullRun === true)
@@ -904,30 +920,24 @@ async function verifyRound(context, head, round, key) {
         findings.push(`run ${dispatch.runId} has failures that are new against main`);
 
       if (findings.length === 0) {
-        const verdict = await review(issue, built.branch, head);
-        if (verdict === null) return judgment(issue, 'review failed', steps, where);
-        evidence.review = verdict;
-        if (verdict.verdict === 'approve') {
-          log(`${issue}: ready to land at ${head}`);
-          return {
+        log(`${issue}: ready to land at ${head}`);
+        return {
+          issue,
+          status: 'READY_TO_LAND',
+          reason: `approved at ${head} after ${round} round(s)`,
+          ...where,
+          steps,
+          evidenceRequest: evidenceRequest(
             issue,
-            status: 'READY_TO_LAND',
-            reason: `approved at ${head} after ${round} round(s)`,
-            ...where,
-            steps,
-            evidenceRequest: evidenceRequest(
-              issue,
-              run,
-              built,
-              head,
-              evidence,
-              verdict,
-              overridden,
-              chosen,
-            ),
-          };
-        }
-        findings = verdict.findings;
+            run,
+            built,
+            head,
+            evidence,
+            verdict,
+            overridden,
+            chosen,
+          ),
+        };
       }
     }
 
@@ -938,7 +948,7 @@ async function verifyRound(context, head, round, key) {
 /**
  * args.correction = { issue, head, branch, worktree, finding, class?, pr?, seenClasses? }: a
  * correction the coordinator asks for. It skips the brief and the build and runs the one
- * correction path, then the checks, evidence, compare and review of the new head.
+ * correction path, then the checks, review, evidence and compare steps for the new head.
  */
 async function correctOne(request) {
   const issue = request && request.issue;
