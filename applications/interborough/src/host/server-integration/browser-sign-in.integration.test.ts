@@ -5,7 +5,6 @@ import {
   createAdmittedRefundTool,
   createFakeProcessor,
   createRefundLedger,
-  reviewedRefundContribution,
 } from '@lostgradient/plugin-demo/refunds';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createApplication } from '@lostgradient/velveteen/server';
@@ -16,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as client from 'openid-client';
 import { startHost } from '../host.ts';
+import { reviewedRefundContribution } from '../refund-operations.ts';
 
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
 

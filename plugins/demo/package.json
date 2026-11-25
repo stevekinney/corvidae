@@ -20,8 +20,6 @@
     "test:slow": "bun ../../scripts/bun-test-selected.ts .slow.test.ts .integration.test.ts"
   },
   "dependencies": {
-    "@lostgradient/backchannel": "workspace:*",
-    "@lostgradient/bureau": "workspace:*",
     "@lostgradient/interborough-plugin": "workspace:*",
     "@lostgradient/operative": "workspace:*",
     "@lostgradient/operative-anthropic": "workspace:*",
@@ -31,8 +29,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@lostgradient/lifecycle": "workspace:*",
-    "@modelcontextprotocol/client": "catalog:",
+    "@lostgradient/bureau": "workspace:*",
     "@lostgradient/storage-bun-sqlite": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",

@@ -75,7 +75,9 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "catalog:",
+    "@lostgradient/lifecycle": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
+    "@modelcontextprotocol/client": "catalog:",
     "@playwright/test": "catalog:",
     "@testing-library/dom": "catalog:",
     "@testing-library/jest-dom": "catalog:",
