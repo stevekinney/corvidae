@@ -16,6 +16,7 @@ import {
   designReviewSlug,
   designReviewWorld,
   nextFrame,
+  proveWitnessFrame,
   withPointerCleanup,
 } from '../tests/e2e/design-review-capture.ts';
 import { E2E_FIRST_RUN_PORT, E2E_PORT, E2E_SHOWCASE_PORT } from '../tests/e2e/e2e-constants.ts';
@@ -767,6 +768,66 @@ describe('capture file names', () => {
         expect(widths).toEqual([1280, 1920]);
       });
     });
+  });
+});
+
+describe('proveWitnessFrame', () => {
+  /** A page whose targets sit at a document offset; scrolling to one puts it at the top. */
+  function scrollingPage(offsets: Record<string, number>) {
+    let scrollY = 0;
+    return {
+      scroll: async (locator: string) => {
+        scrollY = offsets[locator] ?? 0;
+      },
+      measure: async (locator: string) => ({
+        x: 0,
+        y: (offsets[locator] ?? 0) - scrollY,
+        width: 100,
+        height: 40,
+      }),
+    };
+  }
+  const viewport = { width: 375, height: 900 };
+  const entry = (name: string, scrolling: 'none' | 'outlet', targets: string[]) => ({
+    witness: { name, scrolling },
+    targets: targets.map((target) => ({ target, locator: target })),
+  });
+
+  test('holds every target of an outlet witness to the one frame after its scroll', async () => {
+    const page = scrollingPage({ heading: 2000, more: 4000 });
+    expect(
+      await rejectionOf(
+        proveWitnessFrame([entry('phone', 'outlet', ['heading', 'more'])], viewport, page),
+      ),
+    ).toMatchObject({ message: 'Viewport witness phone target more is outside the viewport.' });
+  });
+
+  test('a later witness scrolling the shared frame fails an earlier one it pushed out', async () => {
+    const page = scrollingPage({ heading: 100, more: 2000 });
+    const error = await rejectionOf(
+      proveWitnessFrame(
+        [entry('top', 'none', ['heading']), entry('bottom', 'outlet', ['more'])],
+        viewport,
+        page,
+      ),
+    );
+    expect(error).toMatchObject({
+      message: 'Viewport witness top target heading is outside the viewport.',
+    });
+  });
+
+  test('passes witnesses whose targets all fit the frame', async () => {
+    const page = scrollingPage({ heading: 100, filter: 300 });
+    expect(
+      await proveWitnessFrame(
+        [entry('top', 'none', ['heading']), entry('filter', 'none', ['filter'])],
+        viewport,
+        scrollingPage({ heading: 100, filter: 300 }),
+      ),
+    ).toBeUndefined();
+    expect(
+      await proveWitnessFrame([entry('top', 'none', ['heading', 'filter'])], viewport, page),
+    ).toBeUndefined();
   });
 });
 

@@ -189,6 +189,45 @@ function viewportWitnesses(): readonly ViewportWitness[] {
   }
 }
 
+/**
+ * Holds every witness that shares one frame to that frame, as the screenshot will take it. Every
+ * scroll happens first, one per outlet witness, to its first target; only then is every target of
+ * every witness measured. Checking each witness as it scrolled would let a later scroll push an
+ * earlier, already-checked target out of the one screenshot that records them all (COR-2574).
+ */
+export async function proveWitnessFrame<Target>(
+  witnesses: readonly {
+    readonly witness: { readonly name: string; readonly scrolling: 'none' | 'outlet' };
+    readonly targets: readonly { readonly target: string; readonly locator: Target }[];
+  }[],
+  viewportSize: { readonly width: number; readonly height: number },
+  page: {
+    readonly scroll: (locator: Target) => Promise<void>;
+    readonly measure: (
+      locator: Target,
+    ) => Promise<{ x: number; y: number; width: number; height: number } | null>;
+  },
+): Promise<void> {
+  for (const { witness, targets } of witnesses)
+    if (witness.scrolling === 'outlet' && targets[0] !== undefined)
+      await page.scroll(targets[0].locator);
+  for (const { witness, targets } of witnesses) {
+    for (const { target, locator } of targets) {
+      const box = await page.measure(locator);
+      if (
+        box === null ||
+        box.x < 0 ||
+        box.y < 0 ||
+        box.x + box.width > viewportSize.width ||
+        box.y + box.height > viewportSize.height
+      )
+        throw new Error(
+          `Viewport witness ${witness.name} target ${target} is outside the viewport.`,
+        );
+    }
+  }
+}
+
 /** Playwright prefixes its grep title with the project, which TestInfo stores separately. */
 export function physicalWitnessTitle(): string {
   const { project, titlePath } = test.info();
@@ -424,8 +463,9 @@ async function captureViewport(
       witness.width === viewportSize.width &&
       witness.theme === colorScheme,
   );
-  for (const witness of matchingWitnesses) {
-    const targets = witness.targets.map((target) => {
+  const witnessTargets = matchingWitnesses.map((witness) => ({
+    witness,
+    targets: witness.targets.map((target) => {
       // The row names a role and its exact accessible name as text; neither is ever evaluated.
       const role = /^role:(?<kind>[a-z-]+):(?<name>.+)$/.exec(target)?.groups;
       const locator =
@@ -436,26 +476,15 @@ async function captureViewport(
               exact: true,
             });
       return { target, locator };
-    });
-    // One scroll, to the first target, then every target is held to the frame the screenshot
-    // takes: scrolling to each in turn could push an earlier one out of the frame unnoticed.
-    if (witness.scrolling === 'outlet' && targets[0] !== undefined)
-      await targets[0].locator.scrollIntoViewIfNeeded();
-    for (const { target, locator } of targets) {
+    }),
+  }));
+  await proveWitnessFrame(witnessTargets, viewportSize, {
+    scroll: (locator) => locator.scrollIntoViewIfNeeded(),
+    measure: async (locator) => {
       await expect(locator).toHaveCount(1);
-      const box = await locator.boundingBox();
-      if (
-        box === null ||
-        box.x < 0 ||
-        box.y < 0 ||
-        box.x + box.width > viewportSize.width ||
-        box.y + box.height > viewportSize.height
-      )
-        throw new Error(
-          `Viewport witness ${witness.name} target ${target} is outside the viewport.`,
-        );
-    }
-  }
+      return locator.boundingBox();
+    },
+  });
 
   const viewport = `screens/${slug}.png`;
   await page.screenshot({
