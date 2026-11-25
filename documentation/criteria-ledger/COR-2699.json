@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2699",
+  "branch": "steve/equipment-reader-scope",
+  "checkedAt": "7b27edcfc0",
+  "briefVersion": "2f4792652a0e",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "not-met",
+      "evidence": "Reader consent and token scopes verified on both fixture paths; hosted lookup and rename proof remains with coordinator."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Issuer tests reject strict, unknown and empty requests without persisted state; fixture tests exercise both paths."
+    },
+    {
+      "id": "AC3",
+      "status": "not-met",
+      "evidence": "Editor consent and token scopes and reader refresh rejection verified locally; live rename remains with coordinator."
+    },
+    {
+      "id": "AC4",
+      "status": "not-met",
+      "evidence": "Coordinator owns merged deployment and public probes."
+    }
+  ]
+}
