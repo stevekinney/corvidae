@@ -6,7 +6,7 @@
 import { default as Axe } from '@axe-core/playwright';
 import { pendingReview } from '@lostgradient/plugin-inspectors';
 import type { McpUiHostContext, McpUiResourceCsp } from '@modelcontextprotocol/ext-apps/app-bridge';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import {
   designReviewCaptureDirectory,
@@ -18,6 +18,7 @@ import { startSignedInRefundFixture } from '../../src/host/server-integration/si
 import { deleteChats, newThreadId, runToEnd } from '../e2e/chat-support.ts';
 import { captureForDesignReview, nextFrame } from '../e2e/design-review-capture.ts';
 import { E2E_BASE_URL } from '../e2e/e2e-constants.ts';
+import { readBoxes } from '../e2e/read-boxes.ts';
 import { REMEMBER_APPROVAL_AGENT } from '../e2e/regeneration-proof-agent.ts';
 import { bureauCall, waitingReviewOf } from '../e2e/task-support.ts';
 import {
@@ -174,6 +175,7 @@ async function captureRefundState(page: Page, state: string, ready: () => Promis
   try {
     for (const size of [
       { width: 1280, height: 900 },
+      { width: 768, height: 900 },
       { width: 375, height: 812 },
     ]) {
       await page.setViewportSize(size);
@@ -245,18 +247,21 @@ test.describe('the pending-review MCP App', () => {
         },
       );
       const app = page.frameLocator(`iframe[title="${TITLE}"]`);
-      await expect(app.getByText(/\$42\.00 for order order/)).toBeVisible();
-      await captureRefundState(page, 'signed-in pending refund panel', async () => {
-        await expect(app.getByText(/\$42\.00 for order order/)).toBeVisible();
-        const height = await app.locator('body').evaluate((body) => body.scrollHeight);
-        await page.locator(`iframe[title="${TITLE}"]`).evaluate(
-          (frame, size) => {
-            (frame as HTMLIFrameElement).style.height = `${String(size)}px`;
-          },
-          Math.max(height, 240),
-        );
-        await nextFrame(page);
-      });
+      const pending = app.getByText(/\$42\.00 for order order/);
+      const capturePanel = (state: string, content: Locator) =>
+        captureRefundState(page, state, async () => {
+          await expect(content).toBeVisible();
+          const height = await app.locator('body').evaluate((body) => body.scrollHeight);
+          await page.locator(`iframe[title="${TITLE}"]`).evaluate(
+            (frame, size) => {
+              (frame as HTMLIFrameElement).style.height = `${String(size)}px`;
+            },
+            Math.max(height, 240),
+          );
+          await nextFrame(page);
+        });
+      await expect(pending).toBeVisible();
+      await capturePanel('signed-in pending refund panel', pending);
       await testInfo.attach('signed-in-refund-panel', {
         body: await page.locator(`iframe[title="${TITLE}"]`).screenshot(),
         contentType: 'image/png',
@@ -266,6 +271,12 @@ test.describe('the pending-review MCP App', () => {
       await expect(app.getByRole('button', { name: 'Approve' })).toBeEnabled();
       await app.getByRole('button', { name: 'Approve' }).click();
       await expect(app.getByRole('status')).toHaveText('Approved.');
+      const empty = app.getByRole('heading', {
+        level: 2,
+        name: 'Nothing is waiting for a decision.',
+      });
+      await expect(empty).toBeVisible();
+      await capturePanel('signed-in empty refund panel', empty);
       const read = await fixture.send('/host/plugins/inspectors/apps/pending-review/tool-calls', {
         method: 'POST',
         headers: { cookie, origin: 'https://settings.example', 'content-type': 'application/json' },
@@ -308,6 +319,26 @@ test.describe('the pending-review MCP App', () => {
       const detail = page.locator('.ib-reviews__detail');
       await expect(detail).toContainText('Refund pending');
       await expect(detail).not.toContainText('Refunded');
+      const viewport = page.viewportSize();
+      if (!viewport) throw new Error('A fixed viewport is required');
+      try {
+        await page.setViewportSize({ width: 1920, height: 1080 });
+        const layout = page.locator('.ib-reviews__frame .cinder-list-detail');
+        await expect(layout).toHaveAttribute('data-cinder-layout', 'split');
+        const { frame } = await readBoxes(page, { frame: layout });
+        expect(frame.width).toBeCloseTo(1152, 0);
+        for (const size of [
+          { width: 320, height: 640 },
+          { width: 375, height: 812 },
+        ]) {
+          await page.setViewportSize(size);
+          await expect(layout).toHaveAttribute('data-cinder-layout', 'stacked');
+          await expect(detail).toBeVisible();
+          await expect(detail).toContainText('Refund pending');
+        }
+      } finally {
+        await page.setViewportSize(viewport);
+      }
       await captureRefundState(page, 'approved refund pending', async () => {
         await expect(detail).toContainText('Refund pending');
       });

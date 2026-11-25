@@ -5,7 +5,7 @@
    * per review, a polite live region for outcomes, and buttons whose group names which review they
    * decide. The page redraws in place, so focus and a half-typed reason survive every poll.
    */
-  import { Button, Section, Text, Textarea } from '@lostgradient/cinder';
+  import { Button, EmptyState, Section, Text, Textarea } from '@lostgradient/cinder';
   import {
     ReviewApprovalButtons,
     type ToolApprovalActions,
@@ -42,7 +42,7 @@
     <p>{view.notice}</p>
   {/if}
   {#if view.views.length === 0}
-    <p>Nothing is waiting for a decision.</p>
+    <EmptyState kind="done" headingLevel={2} title="Nothing is waiting for a decision." />
   {/if}
 
   {#each view.views as item (item.id)}

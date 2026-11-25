@@ -69,9 +69,14 @@ describe('the pending-review page, drawn with Cinder (COR-2218)', () => {
     expect(container.querySelectorAll('button.cinder-button')).toHaveLength(3);
   });
 
-  it('says so when nothing is waiting', () => {
-    const { container } = open([]);
-    expect(container.textContent).toContain('Nothing is waiting for a decision.');
+  it('uses the shared empty state when nothing is waiting', () => {
+    const { getByRole, queryByRole } = open([]);
+    const heading = getByRole('heading', {
+      level: 2,
+      name: 'Nothing is waiting for a decision.',
+    });
+    expect(heading.closest('.cinder-empty-state')).not.toBeNull();
+    expect(queryByRole('button', { name: 'Approve' })).toBeNull();
   });
 
   it('calls the shared approval action', async () => {
