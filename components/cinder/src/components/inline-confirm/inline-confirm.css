@@ -101,20 +101,25 @@
     text-align: center;
   }
   /* Armed (COR-2683): the button keeps its face (a destructive action is solid danger at rest) and
-     gains a danger ring in the focus-ring geometry, so arming is a visible step without a lighter
-     rest. The ring outranks `.cinder-button:focus-visible` and stands in for the focus ring while
-     armed, so focus stays visible. */
-  .cinder-inline-confirm__two-press[data-cinder-armed] .cinder-button {
+     gains a danger ring, drawn like a filled button's focus ring: a 2px page-coloured gap, then the
+     solid danger colour, which clears 3:1 against the page in both themes. The second selector is
+     the focused case: it outranks the Button's own danger focus ring (button.css, 0,6,0), so a
+     keyboard user who arms the action sees the danger ring too, and it stands in for focus. */
+  .cinder-inline-confirm__two-press[data-cinder-armed] .cinder-button,
+  .cinder-inline-confirm__two-press[data-cinder-armed]
+    .cinder-button.button-variant-danger:focus-visible:not(:disabled):not(
+      [aria-disabled='true']:not([data-cinder-loading])
+    ) {
     box-shadow:
-      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
-      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
-        var(--cinder-status-danger-border);
+      0 0 0 var(--_cinder-focus-ring-filled-gap) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--_cinder-focus-ring-filled-gap) + var(--cinder-ring-width))
+        var(--cinder-status-danger-solid);
   }
 
   @media (forced-colors: active) {
     .cinder-inline-confirm__two-press[data-cinder-armed] .cinder-button {
       outline: var(--cinder-ring-width) solid Highlight;
-      outline-offset: var(--cinder-ring-offset);
+      outline-offset: var(--_cinder-focus-ring-filled-gap);
     }
   }
 

@@ -92,24 +92,22 @@ describe('InlineConfirm', () => {
     expect(wrapper.hasAttribute('data-cinder-armed')).toBe(true);
   });
 
-  test('an armed two-press action draws a danger ring, and an outline in forced colours', () => {
+  test('an armed two-press action draws a gapped danger ring, and an outline in forced colours', () => {
+    // The cascade against the Button's focus ring is measured in Chromium
+    // (inline-confirm-two-press.playwright.ts); this pins the declared recipe.
     const css = readFileSync(new URL('./inline-confirm.css', import.meta.url), 'utf8').replaceAll(
       /\s+/g,
       ' ',
     );
     expect(css).toContain(
-      '.cinder-inline-confirm__two-press[data-cinder-armed] .cinder-button { box-shadow: 0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color), 0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-status-danger-border); }',
+      'box-shadow: 0 0 0 var(--_cinder-focus-ring-filled-gap) var(--cinder-ring-offset-color), 0 0 0 calc(var(--_cinder-focus-ring-filled-gap) + var(--cinder-ring-width)) var(--cinder-status-danger-solid);',
+    );
+    expect(css).toContain(
+      '.cinder-inline-confirm__two-press[data-cinder-armed] .cinder-button.button-variant-danger:focus-visible',
     );
     expect(css).toMatch(
       /@media \(forced-colors: active\) \{ \.cinder-inline-confirm__two-press\[data-cinder-armed\] \.cinder-button \{ outline: var\(--cinder-ring-width\) solid Highlight;/,
     );
-  });
-
-  test('the armed ring outranks the button focus ring, so an armed focused button keeps one ring', () => {
-    // `.cinder-inline-confirm__two-press[data-cinder-armed] .cinder-button` (0,3,0) beats
-    // `.cinder-button:focus-visible` (0,2,0), so no later focus rule replaces the danger ring.
-    const css = readFileSync(new URL('./inline-confirm.css', import.meta.url), 'utf8');
-    expect(css).not.toMatch(/\.cinder-inline-confirm__two-press[^{]*:focus-visible/);
   });
 
   test('a non-destructive two-press action is primary at rest and danger once armed', async () => {

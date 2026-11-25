@@ -33,7 +33,7 @@ The visible prompt names the group and both actions have specific visible labels
 
 ### Two-press arming
 
-A destructive two-press action is the solid danger face at rest and armed (COR-2683). Arming changes the label to the armed label, shows the optional `armedHint`, and draws a danger ring in the focus-ring geometry around the button. The ring stands in for the focus ring while the button is armed and focused, so focus stays visible; under forced colours it is a `Highlight` outline. Colour is never the only signal: the label change carries the armed state.
+A destructive two-press action is the solid danger face at rest and armed (COR-2683). Arming changes the label to the armed label, shows the optional `armedHint`, and draws a danger ring around the button, built like a filled button's focus ring (a 2px page-coloured gap, then `--cinder-status-danger-solid`, which clears 3:1 against the page in both themes). It outranks the Button's own danger focus ring, so a keyboard user who arms the action sees it and it stands in for the focus ring; under forced colours it is a `Highlight` outline. `inline-confirm-two-press.playwright.ts` measures it in both themes. Colour is never the only signal: the label change carries the armed state.
 
 ## Verification
 
