@@ -16,14 +16,11 @@ import type {
 } from '@lostgradient/weft';
 
 import {
-  createInfiniteQuery,
   createMutation,
   createQuery,
   useQueryClient,
-  type CreateInfiniteQueryResult,
   type CreateMutationResult,
   type CreateQueryResult,
-  type InfiniteData,
 } from '@tanstack/svelte-query';
 
 import { useBureauEventsLive, useFleetEventsLive } from '../../app/live-polling.svelte.ts';
@@ -32,7 +29,6 @@ import {
   isReviewNoLongerWaiting,
   listBureauReviews,
   listPendingReviews,
-  pageReviews,
   type BureauReview,
   type ListedReview,
 } from '../../lib/bureau-reviews.ts';
@@ -99,9 +95,6 @@ export function bureauReviewsQuery(): CreateQueryResult<readonly BureauReview[]>
   }));
 }
 
-/** How many decided reviews the Done tab reads at a time. */
-export const DONE_PAGE_SIZE = 25;
-
 /**
  * Everything waiting on the person, the Bureau's questions and approvals and the engine's workflow
  * reviews, in one list from `bureau.reviews.list`, the longest waiting first. It is asked again when
@@ -124,31 +117,6 @@ export function waitingReviewsQuery(
     retry: false,
     retryOnMount: false,
     refetchOnMount: false,
-  }));
-}
-
-/**
- * The reviews a person decided, latest decision first, a page at a time. `enabled` keeps the Done
- * tab from asking until it is opened. Call it while a component initializes.
- */
-export function doneReviewsQuery(
-  enabled: () => boolean,
-): CreateInfiniteQueryResult<InfiniteData<Awaited<ReturnType<typeof pageReviews>>, string | null>> {
-  return createInfiniteQuery(() => ({
-    queryKey: queryKeys.reviews.inbox('resolved'),
-    queryFn: ({ pageParam, signal }) =>
-      pageReviews(
-        {
-          status: 'resolved',
-          limit: DONE_PAGE_SIZE,
-          ...(pageParam === null ? {} : { pageToken: pageParam }),
-        },
-        { signal },
-      ),
-    initialPageParam: null as string | null,
-    getNextPageParam: (last) => last.nextPageToken ?? undefined,
-    enabled: enabled(),
-    retry: false,
   }));
 }
 
