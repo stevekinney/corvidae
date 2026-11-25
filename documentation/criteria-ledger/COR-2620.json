@@ -1,7 +1,7 @@
 {
   "issue": "COR-2620",
   "branch": "steve/composable-settings-signin",
-  "checkedAt": "51115c991b72c0cc3137f9e5c61638bcafea521d",
+  "checkedAt": "82a2f79457bbda97ccab62279e72d4bd67e66253",
   "briefVersion": "04e092370b47",
   "status": "READY",
   "criteria": [
@@ -13,7 +13,7 @@
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "listener-combined.log and host authority, scope parser and introspection tests: mapped identities, workspace and membership revocation; no local fallback"
+      "evidence": "listener-combined.log and host authority, scope parser and introspection tests: mapped identities, workspace and membership revocation; no local fallback. mcp-correction-tests.log: browser-session authentication method preserved for shared MCP guidance; desktop and shared component cases pass."
     },
     {
       "id": "AC3",
