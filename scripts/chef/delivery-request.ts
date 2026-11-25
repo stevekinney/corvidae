@@ -509,6 +509,7 @@ export async function prepare(
   dependencies: PrepareDependencies,
 ): Promise<PrepareResult> {
   validatePrepare(options);
+  const sourceCriteriaInput = structuredClone(options.sourceCriteria);
   const { runner, repository } = dependencies;
   const cwd = options.worktree;
   const worktreeHead = git(runner, cwd, ['rev-parse', 'HEAD']);
@@ -574,7 +575,7 @@ export async function prepare(
       options.close,
       options.leaveOpen,
       options.classification ?? null,
-      options.sourceCriteria ?? null,
+      sourceCriteriaInput ?? null,
     ]),
   );
   let members: DeliveryMember[] | undefined;
@@ -659,7 +660,7 @@ export async function prepare(
         throw new UsageError(
           'the accepted batch changed after its operation freeze; push a new head and prepare a fresh identity.',
         );
-      sourceCriteria = freezeSourceCriteriaBinding(options.sourceCriteria, frozen);
+      sourceCriteria = freezeSourceCriteriaBinding(sourceCriteriaInput, frozen);
       members = frozen;
       authority = authorities?.[0] ?? authority;
       if (pending.members === undefined) {
