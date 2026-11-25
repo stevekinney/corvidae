@@ -61,7 +61,7 @@ export interface ViewportWitnessProfile {
 }
 
 /** The exact Playwright state that produces a row's narrow physical witness. */
-export interface ViewportWitness {
+interface ViewportWitness {
   /**
    * Repository-relative Playwright specification under Interborough's end-to-end or panel tests,
    * for example `applications/interborough/tests/e2e/runs-states.spec.ts`.

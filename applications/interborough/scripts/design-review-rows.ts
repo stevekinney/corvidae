@@ -262,9 +262,7 @@ export interface ViewportWitnessExpectation extends ViewportWitnessProfile {
 }
 
 /** The durable identifier a capture records for a row's physical proof. */
-export function viewportWitnessKey(
-  entry: Pick<ViewportWitnessExpectation, 'row' | 'name'>,
-): string {
+function viewportWitnessKey(entry: Pick<ViewportWitnessExpectation, 'row' | 'name'>): string {
   return `${entry.row}:${entry.name}`;
 }
 

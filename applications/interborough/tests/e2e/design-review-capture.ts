@@ -426,11 +426,15 @@ async function captureViewport(
   );
   for (const witness of matchingWitnesses) {
     const targets = witness.targets.map((target) => {
-      const role = /^role:([a-z-]+):(.+)$/.exec(target);
+      // The row names a role and its exact accessible name as text; neither is ever evaluated.
+      const role = /^role:(?<kind>[a-z-]+):(?<name>.+)$/.exec(target)?.groups;
       const locator =
-        role === null
+        role?.['kind'] === undefined || role['name'] === undefined
           ? page.getByTestId(target)
-          : page.getByRole(role[1] as never, { name: role[2], exact: true });
+          : page.getByRole(role['kind'] as Parameters<Page['getByRole']>[0], {
+              name: role['name'],
+              exact: true,
+            });
       return { target, locator };
     });
     // One scroll, to the first target, then every target is held to the frame the screenshot
