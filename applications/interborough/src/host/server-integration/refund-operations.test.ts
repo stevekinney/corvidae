@@ -17,6 +17,7 @@ import {
   createRefundLedger,
 } from '@lostgradient/plugin-demo/refunds';
 import { MemoryStorage } from '@lostgradient/storage';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import {
   advanceTimersByTime,
   restoreRealTimers,
@@ -32,10 +33,233 @@ import {
   verifyToolboxPendingApproval,
 } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { refundOperations, reviewedRefundContribution } from '../refund-operations.ts';
 import { durableApprovalStore } from './refund.test-support.ts';
 
 describe('refund operations', () => {
+  for (const fault of ['none', 'claim', 'attachment'] as const)
+    it(`releases a reservation after deletion before review linkage (boundary: ${fault})`, async () => {
+      const directory = await mkdtemp(join(tmpdir(), 'refund-delete-'));
+      const databasePath = join(directory, 'refund.sqlite');
+      let underlying = new BunSQLiteStorage(databasePath);
+      let injected = false;
+      let armed = false;
+      const storage = new Proxy(underlying, {
+        get(_target, property) {
+          const target = underlying;
+          if (property === 'conditionalBatch')
+            return async (
+              ...args: Parameters<
+                NonNullable<import('@lostgradient/storage').Storage['conditionalBatch']>
+              >
+            ) => {
+              if (
+                armed &&
+                !injected &&
+                fault === 'claim' &&
+                args[1].some(
+                  (operation) =>
+                    operation.type === 'put' &&
+                    operation.key.startsWith('agent-session-outbox:v1:entry:') &&
+                    new TextDecoder().decode(operation.value).includes('terminalRelease'),
+                )
+              ) {
+                injected = true;
+                throw new Error('process died after deletion claim');
+              }
+              if (
+                armed &&
+                fault === 'attachment' &&
+                args[1].some(
+                  (operation) =>
+                    operation.type === 'put' &&
+                    operation.key.startsWith('refund:') &&
+                    new TextDecoder().decode(operation.value).includes('"status":"failed"'),
+                )
+              ) {
+                injected = true;
+                throw new Error('process died before release');
+              }
+              return target.conditionalBatch(...args);
+            };
+          const value: unknown = Reflect.get(target, property, target);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+      const ledger = createRefundLedger(storage);
+      await ledger.addCharge({
+        merchant: 'merchant',
+        order: 'order',
+        amount: 10000,
+        currency: 'USD',
+        paymentReference: 'charge',
+        providerAccount: 'account',
+      });
+      const refund = await ledger.admit({
+        merchant: 'merchant',
+        commandId: 'delete-before-link',
+        order: 'order',
+        amount: 4200,
+        toolRevision: '1.1.0',
+        owner: 'api-key:alice',
+      });
+      const requestContext = () => ({
+        authority: {
+          principalId: 'alice',
+          tenantId: 'merchant',
+          ownerId: 'alice',
+          capabilities: [],
+          authorizationRevision: '1',
+        },
+      });
+      const approvalStateStore = durableApprovalStore(storage);
+      const tool = createAdmittedRefundTool(ledger, createFakeProcessor(storage), () => 100);
+      let approvalNow = Date.now();
+      const toolbox = createToolbox([tool], {
+        approvalSecret: 'fixture-secret',
+        approvalStateStore,
+        approvalNow: () => approvalNow,
+      });
+      const contribution = reviewedRefundContribution({
+        ledger,
+        toolbox,
+        toolId: tool.id,
+        approvalStateStore,
+        requestContext,
+        access: {
+          request: async () => ({ merchant: 'merchant', owner: 'api-key:alice' }),
+          read: async () => true,
+          isRequester: async () => false,
+          decide: async () => true,
+        },
+      });
+      const diagnostics: string[] = [];
+      const open = () =>
+        createBureau({
+          id: 'refund-delete',
+          storage,
+          durable: true,
+          durableOwnership: { ownership: 'workflow-lease' },
+          agents: contribution.agents,
+          reviewPolicy: contribution.reviewPolicy,
+          requestAuthorityValidator: () => true,
+          onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+          plugins: [
+            {
+              descriptor: contribution.releasePlugin,
+              source: 'package',
+              location: '@lostgradient/plugin-demo',
+            },
+          ],
+          pluginConfiguration: { reviewed: { enabled: true } },
+          assets: { storage: createMemoryAssetStorage() },
+        });
+      const first = await open();
+      const deletingHost = await open();
+      const reached = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const tasks = new Proxy(first.tasks, {
+        get(target, property, receiver) {
+          if (property === 'wait')
+            return async (runId: string) => {
+              await target.wait(runId);
+              reached.resolve();
+              await release.promise;
+              return null;
+            };
+          return Reflect.get(target, property, receiver);
+        },
+      });
+      try {
+        const draining = contribution.drain(refund.id, {
+          tasks,
+          internals: first.internals,
+          reviews: first.reviews,
+          requestContext: async () => requestContext(),
+        });
+        void draining.catch(() => {});
+        await reached.promise;
+        const start = await ledger.getStart(refund.id);
+        if (!start) throw new Error('Missing start');
+        await first.internals.whenTaskRecorded(start.runId);
+        const unlinked = await ledger.get(refund.id);
+        expect(unlinked?.reviewId).toBeUndefined();
+        armed = true;
+        if (fault === 'claim') {
+          expect(await throwingRejectionOf(deletingHost.contexts.delete(start.sessionId))).toThrow(
+            'process died after deletion claim',
+          );
+          const competing = first.reviews.resolve({
+            id: `approval:${start.runId}:reviewed-call`,
+            decision: 'approve',
+            round: 0,
+            principal: 'api-key:reviewer',
+            reviewer: principalFromApiKey({ subject: 'reviewer', scopes: [] }),
+          });
+          expect(await throwingRejectionOf(competing)).toThrow('already resolved');
+        } else await deletingHost.contexts.delete(start.sessionId);
+        release.resolve();
+        await draining;
+        await first.dispose();
+        await deletingHost.dispose();
+        if (fault !== 'none') expect(injected).toBe(true);
+        armed = false;
+        if (fault === 'claim') approvalNow += 60 * 60 * 1000;
+        underlying[Symbol.dispose]();
+        underlying = new BunSQLiteStorage(databasePath);
+        const restarted = await open();
+        try {
+          const worker = await contribution.attachWorker(
+            {
+              tasks: restarted.tasks,
+              internals: restarted.internals,
+              reviews: restarted.reviews,
+              events: restarted,
+              requestContext: async () => requestContext(),
+            },
+            () => {},
+          );
+          await worker.idle();
+          await waitForCondition(
+            async () => {
+              const balance = await ledger.balance('merchant', 'order');
+              return balance?.reserved === 0;
+            },
+            { label: 'recovered deletion release' },
+          );
+          expect(await ledger.balance('merchant', 'order')).toMatchObject({ reserved: 0 });
+          expect(await ledger.get(refund.id)).toMatchObject({ status: 'failed' });
+          await worker.dispose();
+        } finally {
+          await restarted.dispose();
+        }
+        if (fault === 'none') expect(diagnostics).toEqual([]);
+        if (fault === 'claim')
+          expect(
+            diagnostics.some((message) => message.includes('Failed to restore approval binding')),
+          ).toBe(true);
+        if (fault === 'attachment')
+          expect(diagnostics.some((message) => message.includes('outbox drain'))).toBe(true);
+        expect(
+          diagnostics.every(
+            (message) =>
+              message.includes('Failed to restore approval binding') ||
+              message.includes('outbox') ||
+              message.includes('purged') ||
+              message.includes('purge'),
+          ),
+        ).toBe(true);
+      } finally {
+        release.resolve();
+        await deletingHost.dispose();
+        await first.dispose();
+        underlying[Symbol.dispose]();
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
   it('retries a live workflow claim without another request or host restart', async () => {
     const storage = new MemoryStorage();
     const ledger = createRefundLedger(storage);

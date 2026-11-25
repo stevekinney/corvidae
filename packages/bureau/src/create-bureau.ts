@@ -409,7 +409,11 @@ import { createOutbox, type OutboxPeers } from './bureau-seams/outbox';
 import { createSessionRestore, type SessionRestorePeers } from './bureau-seams/session-restore';
 import { createMaintenance, type MaintenancePeers } from './bureau-seams/maintenance';
 import { createRunOwnership, type RunOwnershipPeers } from './bureau-seams/run-ownership';
-import { createRunOperations, type RunOperationsPeers } from './bureau-seams/run-operations';
+import {
+  createRunOperations,
+  recoverDeletionReleases,
+  type RunOperationsPeers,
+} from './bureau-seams/run-operations';
 import {
   createTerminalSessions,
   type TerminalSessionsPeers,
@@ -2188,6 +2192,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     },
     get restorePendingApprovalOverrides() {
       return restorePendingApprovalOverrides;
+    },
+    get restoreTerminalReviewSession() {
+      return restoreTerminalReviewSession;
     },
     get seedRunSeqGeneration() {
       return seedRunSeqGeneration;
@@ -5728,6 +5735,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         if (page.length < 100) break;
       }
       for (const listedSession of sessions) {
+        const durableSession = await runtime.sessionStore.load(listedSession.id);
+        await recoverDeletionReleases(core, durableSession);
         const session = await recoveredReservedSessionOrListed(
           listedSession,
           runtime.sessionStore,

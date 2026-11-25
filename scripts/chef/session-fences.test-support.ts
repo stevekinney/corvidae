@@ -59,31 +59,3 @@ export async function lease(setting: World, sessionId: string, expiresAt = '2999
     }),
   );
 }
-
-/** A Claude Code transcript whose model calls each held the given number of context tokens. */
-export async function transcript(
-  setting: World,
-  name: string,
-  contexts: number[],
-): Promise<string> {
-  const path = join(setting.root, `${name}.jsonl`);
-  const lines = contexts.map((tokens, index) =>
-    JSON.stringify({
-      type: 'assistant',
-      timestamp: `2026-11-19T00:00:${String(index).padStart(2, '0')}Z`,
-      message: {
-        id: `m${index}`,
-        model: 'claude-opus-4-8',
-        usage: {
-          input_tokens: 10,
-          cache_creation_input_tokens: 0,
-          cache_read_input_tokens: tokens - 10,
-          output_tokens: 5,
-        },
-        content: [{ type: 'text', text: 'ok' }],
-      },
-    }),
-  );
-  await writeFile(path, `${lines.join('\n')}\n`);
-  return path;
-}

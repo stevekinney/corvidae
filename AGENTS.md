@@ -2,9 +2,9 @@
 
 Corvidae is a public, pre-release Bun and Turborepo workspace. Libraries are private workspace source packages; applications own their executable toolchains. Corvidae's GitHub Actions run its checks and may release applications from its own GitHub Releases. Keep Git-hook installation out of the workspace; the checked-in Claude Code hooks run inside agent sessions.
 
-The private `stevekinney/corvidae-mirror` repository owns the tooling that transforms Corvidae source for the public package mirrors. The playground's Vercel settings live in `applications/playground/vercel.json`; its ignore command builds only when a change can affect the deployed site.
+The private `stevekinney/corvidae-mirror` repository owns source transforms for public package mirrors. The ignore command in `applications/playground/vercel.json` builds only when a change can affect the site.
 
-This file holds the rules every session needs. Mechanics and history live in `documentation/repository/`, and coordinator rules in the chef references (`.agents/skills/chef/references/`).
+See `documentation/repository/` for mechanics and history and `.agents/skills/chef/references/` for coordination.
 
 ## Workflow
 
@@ -44,7 +44,7 @@ This software is pre-1.0 and still being prototyped: spend review effort where a
 
 ## Release intent
 
-Per-change publishing is paused; there is no `.changeset/` directory: release intent is written in `stevekinney/corvidae-mirror` at backport time, and `scripts/published-exports.json` is updated by hand after it. Interborough releases build from a pinned revision and verify the installed artifact on each target before publishing.
+The [npm library release](.github/workflows/cinder-npm-release.yml) workflow builds and tests tarballs at the dispatched commit and publishes those tarballs from protected `main` using npm trusted publishing. There is no `.changeset/` directory. Update `scripts/published-exports.json` by hand after release. Interborough builds from a pinned revision and verifies the installed artifact on each target before publishing.
 
 ## Turborepo
 
@@ -70,7 +70,6 @@ The coordinator's rules are in [coordination](.agents/skills/chef/references/coo
 - No host cap (owner decision, 2026-11-21): `scripts/host-sessions.ts` records each dispatch for `status`, the leases and the session fences, but never makes a dispatch wait or refuses one.
 - Batch work, one CI run per batch (owner decision, 2026-11-16): one worker takes consecutive issues on one branch, commits once per issue, pushes once, and the batch gets one CI run, review and merge.
 - Every implementation dispatch names the `chef-worker` agent type. A worker has no context ceiling: it works until its change is ready for review (owner decision, 2026-11-13).
-- A leased coordinator above about 200K tokens compacts at a batch boundary; a hook denies its dispatches until it does.
 - End a turn only on a state change: merged, blocked, needs a decision, or ready for review. Wait on a completion (a background command or a notification); never poll.
 - An explicit owner instruction in the current scope outranks these process rules and their guards; a guard stops the worker and hands the case to the coordinator ([decisions](.agents/skills/chef/references/decisions.md#owner-instructions-outrank-process-rules)).
 
@@ -99,7 +98,7 @@ Run quality commands explicitly; there are no Git hooks. Details: [guards](docum
 - `bun run lint:guards` runs the `scripts/check-*.ts` text guards alone, without oxlint; `lint:root` calls it.
 - A wall-clock or memory target is a `*.bench.ts` measurement; `scripts/check-wall-clock-assertions.ts` fails a `*.test.ts` that bounds a duration.
 - Owner decision: tests that can flake under load stay out of the critical path. Everything `bun run check` and `bun run validate` run has one deadline, the awake-time hang guard (`HANG_GUARD_MILLISECONDS`, 120 seconds), never a performance bound; `scripts/bun-test.ts` passes it, so a `package.json` script never starts `bun test` itself. Wait with `waitUntil`, `awakeTurns`, or `quietFor`, never a sleep, a turn count, a wall-clock deadline, or a timer race ([load-sensitive deadlines](documentation/repository/guards.md#load-sensitive-deadlines)).
-- Guard an inherited-key read with `Object.hasOwn`, a `Map`, or `Object.create(null)`; allowlists only shrink. `bun run release:check`, run before a backport, checks documentation coverage, Markdown examples, and test durations.
+- Guard an inherited-key read with `Object.hasOwn`, a `Map`, or `Object.create(null)`; allowlists only shrink. `bun run release:check`, run before a release, checks documentation coverage, Markdown examples, and test durations.
 - A test that does seconds of real work becomes fast or moves to a `*.slow.test.ts` file; a test file that starts a process is a `*.integration.test.ts` file. Together they form the isolated lane, which `test` ignores and `test:slow` runs.
 
 Test tiers. The quick tier, `bun run check`, runs in-process tests only; the full tier is `bun run validate`; `bun run harden` runs the isolated lanes under load. A test that fails in the full tier or in `harden` is never rerun until green, retried, or allowlisted: compare it against the base with `bun scripts/chef/gate-run.ts control`, and file a flake's fix (the mechanism, never a longer deadline) as a COR issue ([test tiers](documentation/repository/test-lanes-and-checks.md#test-tiers-and-the-hardening-pass)).

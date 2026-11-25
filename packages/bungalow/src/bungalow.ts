@@ -34,6 +34,8 @@ import {
   BungalowStateError,
 } from './errors.ts';
 import { defaultAcquireLock, type RootLock } from './lock.ts';
+import type { BungalowObjectStore } from './object-store.ts';
+import type { ObjectPresigner } from './presign.ts';
 import { resolveRemoteDescriptor, type RemoteBungalowDescriptor } from './remote-configuration.ts';
 import { openRemoteBungalow, requireDatabaseWorkspaceClaim } from './remote.ts';
 import {
@@ -114,8 +116,12 @@ export type Bungalow = {
    * `BungalowStateError` for a missing one.
    */
   content(name: string): ContentLocation;
-  /** The `Bun.S3Client` remote mode configured from the environment, or `undefined` locally. */
-  s3Client(): Bun.S3Client | undefined;
+  /**
+   * The object-store client remote mode signs its requests with, or `undefined` locally: presigned
+   * URLs and `ListObjectsV2` for the home's bucket, over `fetch`. It has the `presign` and `list`
+   * members of `Bun.S3Client`, so code written against those accepts it.
+   */
+  objectStore(): BungalowObjectStore | undefined;
   /** The backend's write capability, independent of mode and caller permissions. */
   readonly configurationWriteCapability: ConfigurationWriteCapability;
   /** Configuration bytes and their backend revision from one read. */
@@ -162,7 +168,26 @@ export type OpenBungalowOptions = {
   readonly writableConfiguration?: boolean;
   /** Inject a provider bound to this home; location does not determine its capabilities. */
   readonly secretProvider?: SecretProviderFactory;
+  /** Local mode only: the single-instance lock; see `OpenLocalBungalowOptions.acquireLock`. */
+  readonly acquireLock?: AcquireLock;
+  /** Remote mode only: the request signer; see `OpenRemoteBungalowOptions.presigner`. */
+  readonly presigner?: PresignerFactory;
 };
+
+/**
+ * Take a root's single-instance lock, or throw (by convention `BungalowLockedError`) when it is
+ * held elsewhere. It may return a promise, which the open awaits.
+ */
+export type AcquireLock = (root: string) => RootLock | Promise<RootLock>;
+
+/**
+ * Build the signer of a remote home's requests from its validated descriptor. It is called once
+ * per open, before any request. The default is `createSigV4Presigner` over the descriptor's
+ * credentials; a host injects another to sign some other way. The presigner must also sign a
+ * bucket-level request, an empty key with `options.query`, which is how a listing is made:
+ * `Bun.S3Client.presign` cannot, so a presigner over it hands those to another signer.
+ */
+export type PresignerFactory = (descriptor: RemoteBungalowDescriptor) => ObjectPresigner;
 
 /** What `openLocalBungalow` takes: an explicit root, and nothing read from the environment. */
 export type OpenLocalBungalowOptions = {
@@ -182,10 +207,11 @@ export type OpenLocalBungalowOptions = {
   /**
    * Take the root's single-instance lock, after the root directory exists and before anything in
    * it is read; the open releases it if it fails, and `close()` releases it. Omitted means an
-   * exclusive `flock(2)` on `<root>/lock`. A host with its own single-instance mechanism, such as
-   * a desktop application's, injects it here.
+   * exclusive `flock(2)` on `<root>/lock` through `bun:ffi`, which only Bun has: a Node host
+   * injects `acquirePortableLock`. A host with its own single-instance mechanism, such as a
+   * desktop application's, injects it here.
    */
-  readonly acquireLock?: (root: string) => RootLock;
+  readonly acquireLock?: AcquireLock;
   /**
    * `'write'` (the default) opens and prepares the home as described above. `'read'` returns a
    * handle that takes no lock and creates, changes, and deletes nothing, so a second process can
@@ -220,10 +246,18 @@ export type OpenRemoteBungalowOptions = {
    * read-only.
    */
   readonly deploymentSecrets?: DeploymentSecretsFactory;
+  /**
+   * Sign the home's object-store requests. Omitted means `createSigV4Presigner` over the
+   * descriptor's credentials, which runs on Bun and Node and reads no environment. Whatever signs,
+   * every request is still sent with `fetch`, so conditional headers reach the store.
+   */
+  readonly presigner?: PresignerFactory;
 };
 
 export type OpenTemporaryBungalowOptions = {
   readonly name: string;
+  /** The single-instance lock; see `OpenLocalBungalowOptions.acquireLock`. */
+  readonly acquireLock?: AcquireLock;
 };
 
 /** Run a filesystem step, rethrowing any failure as a typed error that never carries a path. */
@@ -366,7 +400,7 @@ export async function openLocalAtRoot(
     ensureDirectory(root, 'root directory', { privateMode: true }),
   );
   const acquireLock = injectedLock ?? (await defaultAcquireLock());
-  const lock = acquireLock(root);
+  const lock = await acquireLock(root);
   const secrets = join(root, 'secrets');
   const logs = join(root, 'logs');
   const configurationLocation = join(root, 'configuration.json');
@@ -451,7 +485,7 @@ export async function openLocalAtRoot(
     logs,
     deploymentId,
     workspaceId,
-    s3Client() {
+    objectStore() {
       assertOpen();
       return undefined;
     },
@@ -556,7 +590,7 @@ function openLocalReadOnly(
     logs: join(root, 'logs'),
     deploymentId,
     workspaceId,
-    s3Client() {
+    objectStore() {
       assertOpen();
       return undefined;
     },
@@ -650,9 +684,8 @@ export function resolveOpenRoot(options: OpenBungalowOptions): string {
  * optionally `S3_SESSION_TOKEN` and `<NAME>_BUCKET_PREFIX`, and secrets in `<NAME>_SECRET_<KEY>`.
  * `<NAME>_HOME` is then not read and no lock is taken. With exactly one of the two set, or a
  * required S3 variable missing, this throws `BungalowInputError` naming it, before any request.
- * It also throws that error when the process started with `AWS_SESSION_TOKEN` or
- * `S3_SESSION_TOKEN` and the given environment sets no `S3_SESSION_TOKEN`, since Bun would sign with
- * the ambient token.
+ * The default presigner reads no process environment; an injected `presigner` that would sign
+ * with a session token the given environment does not set is refused with that error too.
  *
  * Otherwise the home is local and this takes its single-instance lock. The root is `<NAME>_HOME`
  * or `~/.<name>`; see `resolveBungalowRoot`. Under `NODE_ENV=test` with no `<NAME>_HOME` in effect
@@ -661,22 +694,10 @@ export function resolveOpenRoot(options: OpenBungalowOptions): string {
  * test points `<NAME>_HOME` at a disposable directory or calls `openTemporaryBungalow`.
  */
 export async function openBungalow(options: OpenBungalowOptions): Promise<Bungalow> {
-  return openBungalowWithDependencies(options);
-}
-
-/**
- * `openBungalow` with the local lock injectable, so a test can show that remote mode never asks
- * for it: an `acquireLock` that throws fails a local open and leaves a remote one untouched. Not
- * part of the package's public surface.
- *
- * The descriptor is resolved as `resolveBungalowDescriptor` resolves it, in two halves so that the
- * `NODE_ENV=test` refusal still comes before the local root is resolved: the remote half first,
- * then the refusal, then the root.
- */
-export async function openBungalowWithDependencies(
-  options: OpenBungalowOptions,
-  dependencies: Pick<OpenLocalBungalowOptions, 'acquireLock'> = {},
-): Promise<Bungalow> {
+  // The descriptor is resolved as `resolveBungalowDescriptor` resolves it, in two halves so that
+  // the `NODE_ENV=test` refusal still comes before the local root is resolved: the remote half
+  // first, then the refusal, then the root. `acquireLock` is never asked for in remote mode, and
+  // `presigner` never in local mode.
   assertBungalowName(options.name);
   const environment = options.environment ?? processEnvironment();
   const remote = resolveRemoteDescriptor(options.name, environment);
@@ -688,6 +709,7 @@ export async function openBungalowWithDependencies(
       writableConfiguration: options.writableConfiguration === true,
       ...(options.workspaceId === undefined ? {} : { workspaceId: options.workspaceId }),
       ...(options.secretProvider === undefined ? {} : { secretProvider: options.secretProvider }),
+      ...(options.presigner === undefined ? {} : { presigner: options.presigner }),
     });
   }
   const variable = bungalowHomeVariable(options.name);
@@ -705,7 +727,7 @@ export async function openBungalowWithDependencies(
     root,
     ...(options.workspaceId === undefined ? {} : { workspaceId: options.workspaceId }),
     ...(options.secretProvider === undefined ? {} : { secretProvider: options.secretProvider }),
-    ...(dependencies.acquireLock === undefined ? {} : { acquireLock: dependencies.acquireLock }),
+    ...(options.acquireLock === undefined ? {} : { acquireLock: options.acquireLock }),
   });
 }
 
@@ -732,7 +754,14 @@ export async function openTemporaryBungalow(
   };
   try {
     // Awaited here, so a failed open still removes the directory it was given.
-    return await openLocalAtRoot({ name: options.name, root }, { onClose: remove });
+    return await openLocalAtRoot(
+      {
+        name: options.name,
+        root,
+        ...(options.acquireLock === undefined ? {} : { acquireLock: options.acquireLock }),
+      },
+      { onClose: remove },
+    );
   } catch (error) {
     try {
       remove();

@@ -51,6 +51,49 @@ try {
     );
     const testRunner = join(import.meta.dir, 'bun-test.ts');
     await $`bun ${testRunner} ${verificationFile}`;
+    // The installed package on Node: every entry imports, a local home opens on the portable lock
+    // and refuses a second holder, the default lock names the fix, and the conformance suite runs.
+    const nodeVerificationFile = join(consumer, 'verify-node.mjs');
+    await Bun.write(
+      nodeVerificationFile,
+      `
+      import { ok, strictEqual } from 'node:assert';
+      import { mkdtempSync, rmSync } from 'node:fs';
+      import { tmpdir } from 'node:os';
+      import { join } from 'node:path';
+      import {
+        BungalowLockedError,
+        BungalowUnsupportedError,
+        acquirePortableLock,
+        openLocalBungalow,
+      } from '@lostgradient/bungalow';
+      import { checkRootLock } from '@lostgradient/bungalow/conformance';
+
+      strictEqual(typeof globalThis.Bun, 'undefined');
+      const root = mkdtempSync(join(tmpdir(), 'bungalow-release-smoke-'));
+      try {
+        const home = await openLocalBungalow({ name: 'release-smoke', root, acquireLock: acquirePortableLock });
+        try {
+          await openLocalBungalow({ name: 'release-smoke', root, acquireLock: acquirePortableLock });
+          throw new Error('A second holder was admitted');
+        } catch (error) {
+          ok(error instanceof BungalowLockedError);
+        } finally {
+          home.close();
+        }
+        try {
+          await openLocalBungalow({ name: 'release-smoke', root });
+          throw new Error('The default lock opened on Node');
+        } catch (error) {
+          ok(error instanceof BungalowUnsupportedError);
+        }
+        await checkRootLock(acquirePortableLock);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    `,
+    );
+    await $`node ${nodeVerificationFile}`.cwd(consumer);
   } else if (library === 'operative') {
     const bunTestingEntries = new Set([
       '@lostgradient/operative/decision-testing',

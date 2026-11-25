@@ -6,6 +6,96 @@ import { createBureau } from './create-bureau.ts';
 import { readSteeringLogEntries, readSteeringLogHead } from './steering-log.ts';
 
 describe('reserved task admission', () => {
+  for (const failAfterPrepare of [false, true])
+    it(`keeps the owner when another host observes its prepared receipt (failure: ${failAfterPrepare})`, async () => {
+      const storage = new MemoryStorage();
+      const reached = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      let armed = true;
+      const wrapped = new Proxy(storage, {
+        get(target, property, receiver) {
+          if (property === 'conditionalBatch')
+            return async (...args: Parameters<NonNullable<Storage['conditionalBatch']>>) => {
+              const committed = await target.conditionalBatch(...args);
+              if (
+                committed &&
+                armed &&
+                args[1].some(
+                  (operation) => operation.type === 'put' && operation.key === 'wf:receipt-race',
+                )
+              ) {
+                armed = false;
+                reached.resolve();
+                await release.promise;
+                if (failAfterPrepare) throw new Error('injected prepare acknowledgement failure');
+              }
+              return committed;
+            };
+          const value: unknown = Reflect.get(target, property, receiver);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+      const options = {
+        durable: true as const,
+        requestAuthorityValidator: () => true,
+        agents: {
+          assistant: createAgent({ generate: async () => ({ content: 'done', toolCalls: [] }) }),
+        },
+      };
+      const first = await createBureau({ ...options, storage: wrapped });
+      const second = await createBureau({ ...options, storage });
+      try {
+        const started = first.tasks.start('assistant', 'hello', {
+          principal: 'alice',
+          commandId: 'receipt-command',
+          requestContext: {
+            authority: {
+              principalId: 'alice',
+              tenantId: 'tenant',
+              ownerId: 'alice',
+              capabilities: [],
+              authorizationRevision: 'v1',
+            },
+          },
+          reservation: { runId: 'receipt-race', sessionId: 'receipt-session', fence: 1 },
+        });
+        void started.catch(() => {});
+        await reached.promise;
+        const receipt = await second.tasks.receipt({
+          principal: 'alice',
+          commandId: 'receipt-command',
+          agentName: 'assistant',
+        });
+        expect(receipt.status).toBe('recorded');
+        release.resolve();
+        if (failAfterPrepare) {
+          expect(await throwingRejectionOf(started)).toThrow(
+            'injected prepare acknowledgement failure',
+          );
+          const kv = textValueStore(storage);
+          const session = await createSessionStore(kv).load('receipt-session');
+          if (!session) throw new Error('Missing failed session');
+          const head = await readSteeringLogHead(kv, session.id, session.incarnation);
+          const events = await readSteeringLogEntries(
+            kv,
+            session.id,
+            session.incarnation,
+            0,
+            head.sequence,
+          );
+          expect(events.filter((event) => event.type === 'run-ended')).toHaveLength(1);
+        } else {
+          const task = await started;
+          expect(task.id).toBe('receipt-race');
+          await task.result();
+          expect(await first.tasks.get('receipt-race')).toMatchObject({ status: 'completed' });
+        }
+      } finally {
+        release.resolve();
+        await first.dispose();
+        await second.dispose();
+      }
+    });
   it('refuses reserved starts without workflow-lease ownership before admission', async () => {
     const bureau = await createBureau({
       storage: new MemoryStorage(),
