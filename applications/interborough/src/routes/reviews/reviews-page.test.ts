@@ -202,6 +202,14 @@ describe('the reviews page', () => {
 });
 
 describe('deciding a Bureau tool approval', () => {
+  test('renders approval details through Chat’s public shared approval row (COR-2426)', async () => {
+    const source = await Bun.file(new URL('./approval-pane.svelte', import.meta.url)).text();
+
+    expect(source).toContain("from '@lostgradient/chat'");
+    expect(source).toContain('<ToolApprovalPart');
+    expect(source).not.toContain('<ApprovalCard');
+  });
+
   test('shared approval detail maps all fields and raw JSON', async () => {
     const approval = toolApprovalFixture({
       approval: {
@@ -213,6 +221,7 @@ describe('deciding a Bureau tool approval', () => {
           risk: 'high',
           operation: { kind: 'other' },
           message: 'Refund order 4471 for $42.00?',
+          consequence: 'Sends $42.00 back to the original card.',
         },
       },
     });
@@ -226,11 +235,19 @@ describe('deciding a Bureau tool approval', () => {
     expect(await findByText('Amount')).not.toBeNull();
     expect(await findByText('Reason')).not.toBeNull();
     expect(container.querySelector('.cinder-approval-card__detail-risk')?.textContent?.trim()).toBe(
-      "Can't be undone.",
+      "Can't be undone. Sends $42.00 back to the original card.",
+    );
+    const input = await findByRole('group', { name: 'Input' });
+    const consequence = container.querySelector('.cinder-approval-card__consequence');
+    if (!(consequence instanceof HTMLElement)) throw new Error('Missing declared tool consequence');
+    expect(consequence?.textContent).toBe('Sends $42.00 back to the original card.');
+    expect(input.compareDocumentPosition(consequence) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+      0,
     );
     await fireEvent.click(await findByRole('radio', { name: 'JSON' }));
     const json = container.querySelector('.cinder-json-viewer')?.textContent?.replace(/\s+/g, '');
     expect(json).toContain('{orderId:"4471"amount:"$42.00"reason:"Arriveddamaged"}');
+    expect(consequence?.textContent).toBe('Sends $42.00 back to the original card.');
   });
 
   test('checking remember alone sends no decision', async () => {
@@ -1012,6 +1029,7 @@ describe('an engine review', () => {
       message: 'Here is the draft. Approve it to publish, or send it back with a note.',
       artifact: {
         title: 'Release notes for 2.4',
+        release: 'Release 2.4',
         summary: 'Refunds now ask for approval before money moves. Order lookups are faster.',
       },
     });
@@ -1031,6 +1049,8 @@ describe('an engine review', () => {
     expect(rows(container)[0]?.textContent?.includes(pending.reviewType)).toBe(false);
     // The draft is said once, as flat rows in one Draft block with one copy button (row 25p).
     const fields = await findByTestId('review-draft-fields');
+    expect(fields.textContent).toContain('Release');
+    expect(fields.textContent).toContain('Release 2.4');
     expect(fields.textContent).toContain('Refunds now ask for approval before money moves.');
     expect(container.querySelectorAll('.cinder-payload-inspector')).toHaveLength(0);
     expect(container.querySelectorAll('.ib-review-draft button[aria-label]').length).toBe(1);
@@ -1041,6 +1061,9 @@ describe('an engine review', () => {
     const intro = await findByTestId('review-intro');
     expect(intro.textContent).toBe(
       'Here is the draft. Approve it to publish, or send it back with a note.',
+    );
+    expect(container.querySelector('.ib-review-detail__eyebrow')?.textContent).toBe(
+      'Review requested by a workflow',
     );
   });
 

@@ -30,6 +30,7 @@ const REFUND_APPROVAL = {
   question: 'Refund order 4471 for $42.00?',
   arguments: { orderId: '4471', amount: '$42.00', reason: 'Arrived damaged' },
   risk: 'high',
+  consequence: 'Sends $42.00 back to the original card.',
 } as const;
 const TRIAGE_APPROVAL = {
   toolName: 'triage-refunds',
@@ -37,7 +38,13 @@ const TRIAGE_APPROVAL = {
   arguments: { orderId: '4398', amount: '$27.25', reason: 'Arrived damaged' },
   risk: 'medium',
 } as const;
-type ApprovalCaptureFixture = typeof REFUND_APPROVAL | typeof TRIAGE_APPROVAL;
+type ApprovalCaptureFixture = {
+  readonly toolName: string;
+  readonly question: string;
+  readonly arguments: Readonly<Record<string, string>>;
+  readonly risk: 'high' | 'medium';
+  readonly consequence?: string;
+};
 
 // Wide enough that the list and the open review show side by side (ListDetail shows one pane at a
 // time below 900 pixels of its own width), so a row is on the page while its review is open.
@@ -138,6 +145,9 @@ async function useApprovalCaptureFixture(
                   ...candidate.approval.action,
                   message: fixture.question,
                   risk: fixture.risk,
+                  ...(fixture.consequence === undefined
+                    ? {}
+                    : { consequence: fixture.consequence }),
                 },
               },
             };
@@ -816,13 +826,24 @@ test.describe('a phone tool approval', () => {
         }
       }
 
+      async function expectConsequenceAfterInput(): Promise<void> {
+        const consequence = pane.locator('.cinder-approval-card__consequence');
+        await expect(consequence).toHaveText(REFUND_APPROVAL.consequence);
+        const boxes = await readBoxes(page, { consequence, input });
+        expect(boxes.consequence.y).toBeGreaterThanOrEqual(boxes.input.y + boxes.input.height);
+        await readAboveActions(consequence);
+      }
+
       for (const argument of Object.values(REFUND_APPROVAL.arguments)) {
         await readAboveActions(input.getByText(argument, { exact: true }));
       }
+      await expectConsequenceAfterInput();
       await checkActions();
       await captureForDesignReview(page, {
         route: '/reviews',
-        state: 'approval Fields and actions',
+        // The exact 375 capture below repeats at 320. Keep this real 320 interaction witness
+        // distinct so the capture manifest never overwrites either phone width.
+        state: 'approval Fields and actions at 320',
         source: '31-reviews.spec.ts',
       });
 
@@ -832,6 +853,38 @@ test.describe('a phone tool approval', () => {
       for (const argument of Object.values(REFUND_APPROVAL.arguments)) {
         await readAboveActions(tree.getByText(argument, { exact: false }).last());
       }
+      await expectConsequenceAfterInput();
+      await checkActions();
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state: 'approval JSON and actions at 320',
+        source: '31-reviews.spec.ts',
+      });
+
+      await page.setViewportSize({ width: 375, height: 640 });
+      await input.getByText('Fields', { exact: true }).tap();
+      for (const argument of Object.values(REFUND_APPROVAL.arguments)) {
+        await readAboveActions(input.getByText(argument, { exact: true }));
+      }
+      await expectConsequenceAfterInput();
+      await expect(pane).toContainText("Can't be undone.");
+      await checkActions();
+      await captureForDesignReview(page, {
+        route: '/reviews',
+        state: 'approval Fields and actions',
+        source: '31-reviews.spec.ts',
+      });
+
+      await input.getByText('JSON', { exact: true }).tap();
+      const fieldsAt375 = input.getByRole('tree', { name: 'JSON tree' });
+      for (const key of Object.keys(REFUND_APPROVAL.arguments)) {
+        await expect(fieldsAt375).toContainText(key);
+      }
+      for (const argument of Object.values(REFUND_APPROVAL.arguments)) {
+        await readAboveActions(fieldsAt375.getByText(argument, { exact: false }).last());
+      }
+      await expectConsequenceAfterInput();
+      await expect(pane).toContainText("Can't be undone.");
       await checkActions();
       await captureForDesignReview(page, {
         route: '/reviews',
@@ -908,16 +961,50 @@ test.describe('/reviews: a question a run asks', () => {
     checkA11y,
   }) => {
     const threadId = newThreadId('reviews-question');
-    await runToEnd(request, 'demo:request-human-input', threadId, 'Release it');
+    await runToEnd(request, 'demo:request-human-input', threadId, 'Ship the release notes fix');
     const review = await waitingReviewOf(request, threadId);
+    await page.route('**/jsonrpc', async (route) => {
+      const call = route.request().postDataJSON() as { method?: string };
+      if (call.method !== 'bureau.reviews.list') return route.fallback();
+      const response = await route.fetch();
+      const body = (await response.json()) as {
+        result?: { reviews?: Array<{ id: string; prompt?: string; said?: string }> };
+      };
+      if (body.result?.reviews === undefined) return route.fulfill({ response });
+      await route.fulfill({
+        response,
+        json: {
+          ...body,
+          result: {
+            ...body.result,
+            reviews: body.result.reviews.map((candidate) =>
+              candidate.id === review.id
+                ? {
+                    ...candidate,
+                    prompt: 'Which environment should the release go to?',
+                    said: 'Before I ship, which environment should the release go to?',
+                  }
+                : candidate,
+            ),
+          },
+        },
+      });
+    });
 
     await page.goto(inboxAt(review));
-    await expect(rowOf(page, review)).toContainText(HUMAN_INPUT_PROMPT);
-    await expect(paneOf(page)).toContainText(HUMAN_INPUT_PROMPT);
+    const prompt = 'Which environment should the release go to?';
+    const said = 'Before I ship, which environment should the release go to?';
+    await expect(rowOf(page, review)).toContainText(prompt);
+    await expect(paneOf(page)).toContainText(prompt);
     await expect(paneOf(page).getByTestId('review-source')).toContainText(
       /Asked by .*request human input/i,
     );
     await expect(paneOf(page)).toContainText('The agent continues as soon as you answer.');
+    const disclosure = paneOf(page).getByTestId('review-said');
+    await expect(disclosure).toBeVisible();
+    await expect(disclosure.getByRole('button')).toContainText(`Request human input said ${said}`);
+    await expect(disclosure.getByRole('button')).toHaveAttribute('aria-expanded', 'false');
+    await expect(disclosure.locator('.ib-review-detail__said-text')).not.toBeVisible();
     await checkA11y('a question in the inbox');
     const originalViewport = page.viewportSize();
     if (originalViewport === null) throw new Error('The Reviews test requires a viewport.');
@@ -957,7 +1044,7 @@ test.describe('/reviews: a question a run asks', () => {
       }
       await captureForDesignReview(page, {
         route: '/reviews',
-        state: 'pending human question',
+        state: 'pending human question with request disclosure',
         source: '31-reviews.spec.ts',
       });
     }

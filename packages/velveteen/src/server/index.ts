@@ -147,6 +147,14 @@ async function createGeneration(
       ?.split(";")[0]
       .trim()
       .toLowerCase();
+    const machineForm =
+      request.method === "POST" &&
+      contentType === "application/x-www-form-urlencoded" &&
+      !request.headers.has("origin") &&
+      !request.headers.has("cookie") &&
+      owner.mounts.some((mount) =>
+        mount.machineFormPaths.includes(new URL(request.url).pathname),
+      );
     if (
       ["POST", "PUT", "PATCH", "DELETE"].includes(request.method) &&
       [
@@ -154,6 +162,7 @@ async function createGeneration(
         "multipart/form-data",
         "text/plain",
       ].includes(contentType ?? "") &&
+      !machineForm &&
       request.headers.get("origin") !== new URL(request.url).origin
     ) {
       return new Response("Cross-origin form requests are forbidden", {
@@ -351,6 +360,10 @@ async function createGeneration(
       event: RequestEvent = context.event,
     ): Promise<Response> => {
       try {
+        if (machineForm && event.request !== request)
+          return new Response("Cross-origin form requests are forbidden", {
+            status: 403,
+          });
         const mounted = dispatchMount(
           owner.mounts,
           base,

@@ -169,6 +169,7 @@ test('mounts a hosted issuer and catalog in a Velveteen app', async () => {
     mounts: {
       '/api': {
         rootPaths: catalog.rootPaths,
+        machineFormPaths: catalog.machineFormPaths,
         start(base) {
           starts++;
           const service = catalog.start(base);
@@ -280,9 +281,35 @@ test('mounts a hosted issuer and catalog in a Velveteen app', async () => {
     });
     expect(approved.status).toBe(302);
     const code = new URL(approved.headers.get('location')!).searchParams.get('code')!;
+    const badCredentials = await request('/oauth/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: 'unknown',
+        code,
+        redirect_uri: 'https://client.example/callback',
+        code_verifier: verifier,
+        resource: metadata.resource,
+      }),
+    });
+    expect(badCredentials.status).toBe(401);
+    const badVerifier = await request('/oauth/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: client.client_id,
+        code,
+        redirect_uri: 'https://client.example/callback',
+        code_verifier: 'b'.repeat(43),
+        resource: metadata.resource,
+      }),
+    });
+    expect(badVerifier.status).toBe(400);
     const tokenResponse = await request('/oauth/token', {
       method: 'POST',
-      headers: formHeaders,
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
         client_id: client.client_id,
@@ -452,7 +479,7 @@ test('mounts a hosted issuer and catalog in a Velveteen app', async () => {
     expect(
       await request('/oauth/revoke', {
         method: 'POST',
-        headers: formHeaders,
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ client_id: client.client_id, token }),
       }).then((result) => result.status),
     ).toBe(200);

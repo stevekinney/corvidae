@@ -7,13 +7,16 @@
    */
   import {
     Alert,
-    ApprovalCard,
     humanizeIdentifier,
     type ApprovalOperation,
-    type ApprovalCardProps,
     type ApprovalResolution,
     type ApprovalState,
   } from '@lostgradient/cinder';
+  import {
+    ToolApprovalPart,
+    type ToolApprovalAction,
+    type ToolApprovalMessagePart,
+  } from '@lostgradient/chat';
 
   import { getConnection } from '../../app/connection.svelte.ts';
   import { CHAT_COPY } from '../../app/copy/chat.ts';
@@ -72,6 +75,8 @@
   const action = $derived(
     review.approval.action.type === 'approval' ? review.approval.action : undefined,
   );
+  // A pre-approval record can predate the action detail. It is still an approval row; retain the
+  // review's arguments and render the safe, neutral operation instead of dropping the record.
   const hasInput = $derived(argumentEntries(review.approval.arguments).length > 0);
   const operation = $derived.by((): ApprovalOperation => {
     const declared = action?.operation;
@@ -87,6 +92,24 @@
       argsPreview,
     };
   });
+  const approvalAction = $derived<ToolApprovalAction>(
+    // Reviews resolves the stored arguments exactly as Bureau gave them; it has no edits or
+    // snapshot field on its wire operation, so build its Chat action from the supported fields.
+    {
+      type: 'approval',
+      risk: action?.risk ?? 'low',
+      // `appearance.operation` below is the Bureau operation with its read-only arguments.
+      // This action never reaches the Reviews resolve wire.
+      operation: { kind: 'other' },
+      policyVersion: 'bureau-review',
+      idempotencyKey: `${review.id}:${review.round}`,
+      ...(action?.message === undefined ? {} : { message: action.message }),
+      ...(action?.consequence === undefined ? {} : { consequence: action.consequence }),
+      ...(action?.expiresAt === undefined ? {} : { expiresAt: action.expiresAt }),
+      ...(action?.irreversible === undefined ? {} : { irreversible: action.irreversible }),
+      ...(action?.why === undefined ? {} : { why: action.why }),
+    },
+  );
   const state = $derived(states[review.status]);
   const closedNotice = $derived(
     review.status === 'revoked' || review.status === 'superseded'
@@ -94,7 +117,19 @@
       : undefined,
   );
   const resolution = $derived(review.resolution);
-  const optionalCardProps = $derived({
+  const appearance = $derived({
+    headingLevel: 2 as const,
+    idempotencyKey: `${review.id}:${review.round}`,
+    operation,
+    policyVersion: 'bureau-review',
+    question,
+    tool: {
+      name: review.approval.toolName,
+      label: toolLabel,
+      risk: action?.risk ?? 'low',
+      irreversible: action?.risk === 'high',
+    },
+    ...(action?.consequence === undefined ? {} : { consequence: action.consequence }),
     ...(action?.expiresAt === undefined ? {} : { expiresAt: action.expiresAt }),
     ...(alwaysAsks ? {} : { rememberScope: CHAT_COPY.approval.rememberScope }),
     ...(connection.unreachable ? { disabledReason: CHAT_COPY.approval.unreachable } : {}),
@@ -114,7 +149,16 @@
         }),
     ...(review.status === 'rejected' ? { outcomeLabel: REVIEWS_COPY.decided.rejected } : {}),
     ...(closedNotice === undefined ? {} : { notice: closedNotice }),
-  } satisfies Partial<ApprovalCardProps>);
+  });
+  const part = $derived({
+    type: 'tool-approval',
+    key: review.id,
+    toolCallId: review.approval.callId,
+    toolName: review.approval.toolName,
+    action: approvalAction,
+    state,
+    resolutionInFlight: deciding !== undefined,
+  } satisfies ToolApprovalMessagePart);
 </script>
 
 <div data-kind="tool-approval" data-review={review.id}>
@@ -124,25 +168,13 @@
       <p>{REVIEWS_COPY.noInput}</p>
     {/if}
   {/snippet}
-  <ApprovalCard
+  <ToolApprovalPart
+    {part}
     layout="detail"
-    tool={{
-      name: review.approval.toolName,
-      label: toolLabel,
-      risk: action?.risk ?? 'low',
-      irreversible: action?.risk === 'high',
-    }}
-    {operation}
-    policyVersion="bureau-review"
-    idempotencyKey={`${review.id}:${review.round}`}
-    {state}
-    headingLevel={2}
-    {question}
     context={source}
     bind:reason={note}
-    noteInitiallyOpen
-    {...optionalCardProps}
-    onResolve={onDecide}
+    appearance={{ ...appearance, noteInitiallyOpen: true }}
+    onApprovalResolve={(_, resolution) => onDecide(resolution)}
   />
   {#if outcome !== undefined && outcome.tone !== 'danger'}
     <Alert variant={outcome.tone}>
