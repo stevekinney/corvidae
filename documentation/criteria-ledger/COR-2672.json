@@ -1,9 +1,9 @@
 {
   "issue": "COR-2672",
   "branch": "steve/composable-velveteen-types",
-  "checkedAt": "76d1960c80be6b25cff99fecd3422ff7bb1b7518",
+  "checkedAt": "2758374d8d",
   "briefVersion": "25a594efff26",
-  "status": "READY",
+  "status": "BLOCKED",
   "criteria": [
     {
       "id": "AC1",
@@ -12,8 +12,8 @@
     },
     {
       "id": "AC2",
-      "status": "met-on-branch",
-      "evidence": "Turbo dry plan confirms dependency edge; clean integrated listener head 3f68d58612343e31b884a36ca6b54ac7c6c2ca20 passed scoped Turbo typecheck, 34/34 tasks and both Svelte configurations, exit 0 (COR-2620 scratch turbo-final.log)."
+      "status": "not-met",
+      "evidence": "Integrated listener scoped check passed at 3f68d586; root reference proof passed, but final combined root check awaits COR-2673 repair of main TS2459."
     },
     {
       "id": "AC3",
