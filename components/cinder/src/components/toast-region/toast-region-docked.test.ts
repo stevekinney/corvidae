@@ -251,6 +251,22 @@ describe('Region placement (rows 04w, 06x, 15g)', () => {
     expect(cssText).toMatch(
       /@media \(any-pointer: coarse\)\s*\{[\s\S]*?\.cinder-toast__action::before\s*\{[^}]*block-size: var\(--cinder-touch-target-min\)/,
     );
+    expect(cssText).not.toMatch(/\.cinder-toast__action\s*\{[^}]*min-block-size:/);
+  });
+
+  test('keeps retained recovery actions reachable in a viewport-bounded channel', () => {
+    expect(cssText).toMatch(
+      /\.cinder-toast-region\s*\{[^}]*max-block-size: calc\([\s\S]*?100dvb - max\(var\(--cinder-space-4\), env\(safe-area-inset-top\)\) - var\(--cinder-space-4\)[\s\S]*?\);/,
+    );
+    expect(cssText).toMatch(
+      /\[data-cinder-position\^='bottom'\]\s*\{[^}]*max-block-size: calc\([\s\S]*?--_cinder-keyboard-inset[\s\S]*?--_cinder-docked-action-bar-height[\s\S]*?\);/,
+    );
+    expect(cssText).toMatch(
+      /\.cinder-toast-region__channel\s*\{[^}]*flex: 0 1 auto;[^}]*min-block-size: 0;[^}]*overflow-y: auto;[^}]*pointer-events: auto;/,
+    );
+    expect(cssText).toMatch(
+      /\.cinder-toast-region__channel\s*\{[^}]*padding-block: var\(--cinder-space-1\);/,
+    );
   });
 
   test('reads the same phone width as every other responsive Cinder surface', () => {

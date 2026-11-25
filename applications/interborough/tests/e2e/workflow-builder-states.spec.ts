@@ -312,6 +312,71 @@ test.describe('workflow builder design states for /workflows/new and /workflows/
     await expect(toast).toBeHidden();
   });
 
+  test('six deleted steps retain reachable Undo actions at short heights (66g)', async ({
+    page,
+  }) => {
+    const root = await openBuilder(page, '/workflows/new');
+    await openJsonTab(tabs(root));
+    await replaceJsonEditorText(
+      await jsonEditor(root, WORKFLOW_COPY.creator.textLabel),
+      JSON.stringify({
+        ...morningBriefing,
+        steps: Array.from({ length: 7 }, (_, index) => ({
+          kind: 'activity',
+          handler: 'agent',
+          title: `Named step ${index + 1}`,
+          input: { agent: 'assistant', message: `Step ${index + 1}.` },
+        })),
+      }),
+    );
+    await openTab(tabs(root), BUILDER.builderTab);
+
+    const rows = root.locator('[data-step-address]');
+    for (let index = 1; index <= 6; index += 1) {
+      await root.getByRole('button', { name: 'Remove step 1', exact: true }).click();
+      await expect(
+        page.locator('[data-cinder-undo]').filter({ hasText: `Deleted "Named step ${index}"` }),
+      ).toBeVisible();
+    }
+    await expect(rows).toHaveCount(1);
+
+    const channel = page.locator('.cinder-toast-region [role="status"]');
+    const undos = page.locator('[data-cinder-undo]');
+    await page.setViewportSize({ width: 375, height: 320 });
+    await expect
+      .poll(() => channel.evaluate((element) => element.scrollHeight > element.clientHeight))
+      .toBe(true);
+    await expect(undos).toHaveCount(6);
+    const firstUndo = undos.filter({ hasText: 'Deleted "Named step 1"' });
+    await expect(firstUndo).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/workflows/new',
+      state: 'six outstanding Undo actions at short phone height',
+      source: SOURCE,
+      tab: 'builder',
+    });
+    const lastUndo = undos.filter({ hasText: 'Deleted "Named step 6"' });
+    await lastUndo.scrollIntoViewIfNeeded();
+    await expect(lastUndo).toBeVisible();
+
+    // The builder is read-only below 640px, so the phone witness does not invoke a mutation.
+    // Return to desktop to prove the oldest recovery action remains executable.
+    await page.setViewportSize({ width: 1280, height: 320 });
+    await firstUndo.scrollIntoViewIfNeeded();
+    await captureForDesignReview(page, {
+      route: '/workflows/new',
+      state: 'six outstanding Undo actions at short desktop height',
+      source: SOURCE,
+      tab: 'builder',
+    });
+    await firstUndo.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(rows).toHaveCount(2);
+    await root.getByRole('button', { name: WORKFLOW_COPY.creator.cancelAction }).click();
+    await page.getByRole('button', { name: BUILDER.discard.confirm }).click();
+    await expect(page).toHaveURL(/\/workflows$/);
+    await expect(undos).toHaveCount(0);
+  });
+
   test('create that the host cannot write stays at the action (65n)', async ({ page }) => {
     await answerUnwritable(
       page,

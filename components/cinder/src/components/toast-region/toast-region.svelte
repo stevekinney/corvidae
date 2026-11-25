@@ -262,7 +262,9 @@
     const activeToasts = stack.filter((toast) => !toast.leaving);
     if (activeToasts.length <= maxStack) return;
 
-    const oldest = activeToasts[0];
+    // An Undo represents a still-recoverable destructive action. It remains available until it is
+    // acted on or its owner leaves the page, even when ordinary notifications fill the stack.
+    const oldest = activeToasts.find((toast) => !toast.undo);
     if (oldest) beginDismiss(oldest.id, 'overflow');
   }
 

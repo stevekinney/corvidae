@@ -12,7 +12,7 @@ export type { ToastApi, ToastItem, ToastOptions, ToastPosition, ToastVariant };
 
 /** Props for the ToastRegion component. */
 export type ToastRegionProps = {
-  /** Maximum simultaneous toasts in each region. Default 5. */
+  /** Maximum simultaneous ordinary toasts in each region. Active Undo toasts remain actionable. Default 5. */
   maxStack?: number;
   /** Default auto-dismiss duration in ms. Default 5000. Set to 0 for sticky. */
   defaultDuration?: number;

@@ -55,6 +55,45 @@ for (const width of [320, 375]) {
   });
 }
 
+test('at 375px Undo has a 44px clickable extension without enlarging its painted label', async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 375, height: 812 },
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto(`${fixtureRoute('toast-region')}&bottom-tab-bar=1`, { waitUntil: 'load' });
+    await page.getByRole('button', { name: 'Dismiss-after-action' }).click();
+    const undo = page.getByRole('button', { name: 'Undo', exact: true });
+    await expect(undo).toBeVisible();
+    const hitArea = await undo.evaluate((button) => {
+      const box = button.getBoundingClientRect();
+      const x = box.left + box.width / 2;
+      const y = box.top + box.height / 2;
+      const topTarget = document.elementFromPoint(x, y - 21);
+      const bottomTarget = document.elementFromPoint(x, y + 21);
+      return {
+        height: box.height,
+        topHitsUndo: topTarget?.closest('.cinder-toast__action') === button,
+        bottomHitsUndo: bottomTarget?.closest('.cinder-toast__action') === button,
+        x,
+        y: y - 21,
+      };
+    });
+    expect(hitArea.height).toBeLessThan(44);
+    expect(hitArea.topHitsUndo).toBe(true);
+    expect(hitArea.bottomHitsUndo).toBe(true);
+    await page.touchscreen.tap(hitArea.x, hitArea.y);
+    await expect(page.getByText('Undo fired:')).toContainText('1');
+    await expect(undo).toBeHidden();
+  } finally {
+    await context.close();
+  }
+});
+
 test('at 375px a toast sits above a docked action bar stacked on the bottom navigation bar, and covers neither', async ({
   page,
 }) => {

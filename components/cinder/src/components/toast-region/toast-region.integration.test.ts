@@ -339,6 +339,48 @@ describe('useToast api', () => {
     });
   });
 
+  test('maxStack keeps every Undo while dropping an ordinary toast', async () => {
+    let api: ToastApi | null = null;
+    const { container } = render(Wrapper, {
+      maxStack: 2,
+      onReady: (a: ToastApi) => {
+        api = a;
+      },
+    });
+    await waitFor(() => expect(api).not.toBeNull());
+    api!.show('Undo A', { undo: () => {} });
+    api!.show('Undo B', { undo: () => {} });
+    api!.show('Ordinary C', { duration: 0 });
+    await waitFor(() => {
+      const politeText = container.querySelector('[role="status"]')?.textContent ?? '';
+      expect(politeText).toContain('Undo A');
+      expect(politeText).toContain('Undo B');
+      expect(politeText).not.toContain('Ordinary C');
+      expect(container.querySelectorAll('[data-cinder-undo]').length).toBe(2);
+    });
+  });
+
+  test('maxStack retains Undo actions after the stack limit is exceeded', async () => {
+    let api: ToastApi | null = null;
+    const { container } = render(Wrapper, {
+      maxStack: 2,
+      onReady: (a: ToastApi) => {
+        api = a;
+      },
+    });
+    await waitFor(() => expect(api).not.toBeNull());
+    for (const label of ['Undo A', 'Undo B', 'Undo C']) {
+      api!.show(label, { undo: () => {} });
+    }
+    await waitFor(() => {
+      const politeText = container.querySelector('[role="status"]')?.textContent ?? '';
+      expect(politeText).toContain('Undo A');
+      expect(politeText).toContain('Undo B');
+      expect(politeText).toContain('Undo C');
+      expect(container.querySelectorAll('[data-cinder-undo]').length).toBe(3);
+    });
+  });
+
   test('maxStack overflow is scoped to the overflowing live-region channel', async () => {
     let api: ToastApi | null = null;
     const { container } = render(Wrapper, {

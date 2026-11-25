@@ -19,6 +19,9 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-2);
+    max-block-size: calc(
+      100dvb - max(var(--cinder-space-4), env(safe-area-inset-top)) - var(--cinder-space-4)
+    );
     z-index: var(--cinder-z-toast);
     pointer-events: none;
     /* Stack the two aria-live channels in the same visual column. Each channel
@@ -36,6 +39,11 @@
         var(--_cinder-docked-action-bar-height, env(safe-area-inset-bottom, 0px)) +
         var(--cinder-space-4)
     );
+    max-block-size: calc(
+      100dvb - var(--_cinder-keyboard-inset, 0px) -
+        var(--_cinder-docked-action-bar-height, env(safe-area-inset-bottom, 0px)) -
+        (var(--cinder-space-4) * 2)
+    );
   }
 
   /* On a phone the region spans the screen between two 12px gutters and its toasts fill it. */
@@ -50,6 +58,11 @@
       var(--_cinder-keyboard-inset, 0px) +
         var(--_cinder-docked-action-bar-height, env(safe-area-inset-bottom, 0px)) +
         var(--cinder-space-3)
+    );
+    max-block-size: calc(
+      100dvb - var(--_cinder-keyboard-inset, 0px) -
+        var(--_cinder-docked-action-bar-height, env(safe-area-inset-bottom, 0px)) -
+        (var(--cinder-space-3) * 2)
     );
   }
 
@@ -77,7 +90,14 @@
   .cinder-toast-region__channel {
     display: flex;
     flex-direction: column;
+    flex: 0 1 auto;
+    min-block-size: 0;
     gap: var(--cinder-space-2);
+    overflow-y: auto;
+    pointer-events: auto;
+    box-sizing: border-box;
+    padding-block: var(--cinder-space-1);
+    scrollbar-width: thin;
   }
 
   .cinder-toast-region[data-cinder-position^='top'] .cinder-toast-region__channel {
@@ -211,7 +231,6 @@
     background: none;
     border: none;
     padding: 0 var(--cinder-space-1);
-    min-block-size: var(--cinder-control-height-md);
     font: inherit;
     font-weight: var(--cinder-font-semibold);
     color: color-mix(in oklab, var(--cinder-accent-solid) 35%, var(--cinder-text-inverse));

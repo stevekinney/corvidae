@@ -25,7 +25,7 @@ Wrapped children render normally on the server, and the toast context is availab
 
 ## Stack policy
 
-Each region holds at most `maxStack` non-leaving toasts (default 5). Overflow dismisses the oldest through the same exit path as a user dismissal. Auto-dismiss timers expire after `defaultDuration` ms (default 5000); pass `duration: 0` to make a toast sticky.
+Each region holds at most `maxStack` ordinary non-leaving toasts (default 5). Overflow dismisses the oldest ordinary toast through the same exit path as a user dismissal. Active Undo toasts remain until their action runs or `dismissUndo()` is called, and a long channel scrolls within the viewport so every recovery action remains reachable. Auto-dismiss timers expire after `defaultDuration` ms (default 5000); pass `duration: 0` to make a toast sticky.
 
 Hovering or focusing the region pauses active auto-dismiss timers for the whole stack. This matters for keyboard users: once focus enters a toast action or dismiss button, the notification will not disappear while the user is reading or acting on it.
 
