@@ -9,3 +9,17 @@ The dispatcher receives the verified grant. Immediately before invoking an opera
 `@lostgradient/mcp/oauth/postgres` supplies `createPostgresOAuthStores`, backed by the existing PostgreSQL storage adapter. Point each instance at the same primary and table and dispose the returned store when the host stops. Run `bun run --cwd packages/mcp test:oauth:postgres` with a loopback PostgreSQL URL in `WEFT_TEST_POSTGRES_URL`, or with `initdb` and `pg_ctl` on `PATH`, to exercise the live cross-instance contract.
 
 The same entry provides `createPostgresGrantRevocationChannel`. Pass its `publish` callback to the hosted issuer as `notifyGrantRevoked` and its `subscribe` callback to the protected HTTP handler as `subscribeGrantRevocation`. Dispose the channel on shutdown. A lost notification cannot release private output because the handler rechecks the durable grant before each chunk.
+
+## Hosted connector probes
+
+These independent probes exercise a public deployment before a real Claude or ChatGPT connector is tested. Pass a canonical HTTPS origin, its absolute MCP mount path, and the scope names to each command. The OAuth probe additionally requires the expected browser identity provider origin. For example, from `packages/mcp`:
+
+```bash
+bun run test:deployed-smoke -- https://equipment-catalog-production.up.railway.app /api/mcp equipment:read equipment:write
+bun run test:connector:inspector -- https://equipment-catalog-production.up.railway.app /api/mcp equipment:read equipment:write
+bun run test:deployed-oauth -- https://equipment-catalog-production.up.railway.app /api/mcp equipment:read equipment:write --identity-origin https://equipment-issuer-production.up.railway.app
+```
+
+For the standalone deployment use `https://equipment-armorer-production.up.railway.app` and `/mcp`. The smoke probe checks public DNS, TLS, discovery, audience, scopes, and the unauthenticated challenge. Inspector runs the pinned Inspector CLI without stored authorization and prints its interactive continuation. The OAuth probe dynamically registers a public client, checks an invalid grant and the redirect to the expected identity provider, then listens on loopback while the operator signs in and approves consent. It exchanges the code, initializes MCP, and revokes the token without printing it. Each invocation creates a persistent registered client. Pass `--prepare-only` to stop before interactive sign-in; rerun without that flag to complete it. Use the synthetic staging identities and confirm the selected consent subject before approving.
+
+These commands do not establish acceptance for hosted Claude or ChatGPT: the operator must separately complete sign-in, tool calls, permission changes, and revocation in each real client against both resources.

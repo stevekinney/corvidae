@@ -1,7 +1,7 @@
 import { principalFromApiKey } from '@lostgradient/backchannel';
 import { operationsFromToolbox } from '@lostgradient/backchannel-armorer';
 import { mountCatalog } from '@lostgradient/backchannel-mcp/velveteen';
-import { createFixture } from '@lostgradient/equipment-fixture';
+import { createFixture, publicRequest } from '@lostgradient/equipment-fixture';
 import { readEquipmentEnvironment } from '@lostgradient/equipment-fixture/environment-configuration';
 import { buildProduction } from '@lostgradient/velveteen/build';
 import { readProductionGeneration } from '@lostgradient/velveteen/build/publication';
@@ -82,10 +82,13 @@ if (process.argv.includes('--build')) {
   const server = Bun.serve({
     hostname: '0.0.0.0',
     port: configuration.port,
-    fetch: (request) =>
-      new URL(request.url).pathname.startsWith('/auth/')
+    fetch: (incoming) => {
+      const request = publicRequest(incoming, fixture.origin);
+      if (request instanceof Response) return request;
+      return new URL(request.url).pathname.startsWith('/auth/')
         ? fixture.browser.fetch(request)
-        : application.fetch(request),
+        : application.fetch(request);
+    },
   });
   const shutdown = async () => {
     await server.stop();

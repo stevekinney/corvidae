@@ -5,7 +5,11 @@
  * is armed), so the event is always one the send was listening for, never one it read on arrival.
  */
 import { type Message as A2AMessage, Message, type Task, TaskState } from '@a2a-js/sdk';
-import type { RuntimeTimers } from '@lostgradient/lifecycle';
+import {
+  createManualRuntimeServices,
+  type RuntimeServices,
+  type RuntimeTimers,
+} from '@lostgradient/lifecycle';
 import {
   createAgent,
   type GenerateContext,
@@ -78,9 +82,15 @@ function afterArmed(generate: GenerateFunction): (gates: Gates) => GenerateFunct
 
 async function openFixture(
   row: Pick<Row, 'generate' | 'tools'>,
-  wrap?: { bureau?: (bureau: Bureau) => Bureau },
+  wrap?: {
+    readonly bureau?: (bureau: Bureau) => Bureau;
+    readonly runtime?: RuntimeServices;
+    /** Holds the command deadline timer until the row advances its logical clock and fires it. */
+    readonly holdDeadlineMilliseconds?: number;
+  },
 ) {
   const armed = Promise.withResolvers<void>();
+  const deadline = Promise.withResolvers<() => void>();
   const held: ReturnType<RuntimeTimers['setTimeout']>[] = [];
   let realTimers: RuntimeTimers | undefined;
   const charges: number[] = [];
@@ -107,9 +117,9 @@ async function openFixture(
       return {
         ...timers,
         setTimeout: (callback, milliseconds) => {
-          if (milliseconds !== SETTLE_POLL_MILLISECONDS)
-            return timers.setTimeout(callback, milliseconds);
-          armed.resolve();
+          if (milliseconds === SETTLE_POLL_MILLISECONDS) armed.resolve();
+          else if (milliseconds === wrap?.holdDeadlineMilliseconds) deadline.resolve(callback);
+          else return timers.setTimeout(callback, milliseconds);
           const handle = timers.setTimeout(() => undefined, NEVER_MILLISECONDS);
           held.push(handle);
           return handle;
@@ -117,11 +127,13 @@ async function openFixture(
       };
     },
     ...(wrap?.bureau === undefined ? {} : { bureau: wrap.bureau }),
+    ...(wrap?.runtime === undefined ? {} : { runtime: wrap.runtime }),
   });
   return {
     ...fixture,
     opened,
     armed: armed.promise,
+    deadline: deadline.promise,
     dispose: async () => {
       for (const handle of held) realTimers?.clearTimeout(handle);
       await opened.dispose();
@@ -232,9 +244,14 @@ describe('a blocking SendMessage whose safety-net poll never fires', () => {
   });
 
   it('answers TIMEOUT when the command’s deadline overtakes the park, and the task goes on', async () => {
-    const fixture = await openFixture({ generate: () => holdsUntilAborted });
+    const runtime = createManualRuntimeServices({ origin: '2026-01-01T00:00:00.000Z' });
+    const deadlineMilliseconds = 1;
+    const fixture = await openFixture(
+      { generate: () => holdsUntilAborted },
+      { runtime, holdDeadlineMilliseconds: deadlineMilliseconds },
+    );
     try {
-      const deadline = new Date(Date.now() + 50).toISOString();
+      const deadline = new Date(runtime.clock.now() + deadlineMilliseconds).toISOString();
       const message = startMessage({
         metadata: { [COMMAND_RECEIPTS_EXTENSION_URI]: { deadline } },
       });
@@ -245,8 +262,17 @@ describe('a blocking SendMessage whose safety-net poll never fires', () => {
         fixture.context([A2UI_EXTENSION_URI, COMMAND_RECEIPTS_EXTENSION_URI]),
       );
 
+      await fixture.armed;
+      const taskId = await onlyTaskId(fixture);
+      const initialView = await fixture.bureau.internals.taskRegistry.get(taskId);
+      expect(initialView?.status).toBe('working');
+
+      await runtime.advance(deadlineMilliseconds);
+      const fireDeadline = await fixture.deadline;
+      fireDeadline();
+
       expect(await rejectionOf(sent)).toMatchObject({ name: 'CommandTimeoutError' });
-      const view = await fixture.bureau.internals.taskRegistry.get(await onlyTaskId(fixture));
+      const view = await fixture.bureau.internals.taskRegistry.get(taskId);
       expect(view?.status).toBe('working');
     } finally {
       await fixture.dispose();

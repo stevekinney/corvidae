@@ -7,6 +7,7 @@ import type {
 type Mounted = {
   path: string;
   root: boolean;
+  machineFormPaths: readonly string[];
   fetch: (request: Request) => Response | Promise<Response>;
   close?: () => void | Promise<void>;
 };
@@ -100,17 +101,55 @@ export function validateMounts(
         throw new Error(`Mount conflicts with route: ${route.id}`);
     }
   }
-  return entries;
+  const machinePaths = new Map<string, readonly string[]>();
+  for (const [key, declaration] of Object.entries(options.mounts ?? {})) {
+    const requested =
+      typeof declaration === "function"
+        ? []
+        : (declaration.machineFormPaths?.(base) ?? []);
+    machinePaths.set(
+      key,
+      requested.map((path) => {
+        if (!/^\/(?:[^/?#\\]+)(?:\/[^/?#\\]+)*$/.test(path))
+          throw new TypeError(`Invalid machine form path: ${path}`);
+        return canonicalPath(path);
+      }),
+    );
+  }
+  return entries.map((entry) => {
+    const machineFormPaths = machinePaths.get(entry.key)!.map((canonical) => {
+      const owner = entries.find((candidate) => {
+        const full = `${candidate.root ? "" : base}${candidate.path}`;
+        return candidate.root ? canonical === full : contains(full, canonical);
+      });
+      if (!owner || owner.key !== entry.key)
+        throw new TypeError(
+          `Machine form path is not owned by mount: ${canonical}`,
+        );
+      return { canonical, owner };
+    });
+    return {
+      ...entry,
+      machineFormPaths: machineFormPaths
+        .filter(({ owner }) => owner === entry)
+        .map(({ canonical }) => canonical),
+    };
+  });
 }
 
 export async function startMounts(
   options: ApplicationOptions,
-  paths: Array<{ key: string; path: string; root: boolean }>,
+  paths: Array<{
+    key: string;
+    path: string;
+    root: boolean;
+    machineFormPaths: readonly string[];
+  }>,
 ) {
   const mounts: Mounted[] = [];
   const services = new Map<string, FetchService>();
   try {
-    for (const { key, path, root } of paths) {
+    for (const { key, path, root, machineFormPaths } of paths) {
       let service = services.get(key);
       if (!service) {
         const declaration = options.mounts![key];
@@ -121,10 +160,11 @@ export async function startMounts(
       }
       mounts.push(
         typeof service === "function"
-          ? { path, root, fetch: service }
+          ? { path, root, machineFormPaths, fetch: service }
           : {
               path,
               root,
+              machineFormPaths,
               fetch: service.fetch.bind(service),
               close: root ? undefined : service.close?.bind(service),
             },

@@ -1,0 +1,114 @@
+{
+  "issue": "COR-2426",
+  "branch": "codex/cor-2426-reviews-polish",
+  "checkedAt": "f6cdd92a57c03ab05a70c1b2812b6066492cfbab",
+  "briefVersion": "d2566da02cbe",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Reviews row 07c remains represented by the shared detail and its capture fixture; design verdict is coordinator-owned."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Reviews row 07f remains represented by the shared detail and its capture fixture; design verdict is coordinator-owned."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Human-wait review rendering is present in the Reviews route and capture fixture; design verdict is coordinator-owned."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Reviews renders the exported Chat ToolApprovalPart; the direct component test passes."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "Workflow source and draft fixture assert Release 2.4 and source text; narrowed witness passes."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "Workflow source and draft fixture assert Release 2.4 and source text; narrowed witness passes."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "Workflow source and draft fixture assert Release 2.4 and source text; narrowed witness passes."
+    },
+    {
+      "id": "AC8",
+      "status": "met-on-branch",
+      "evidence": "Review row secondary metadata is retained by the existing Reviews implementation and fixture."
+    },
+    {
+      "id": "AC9",
+      "status": "met-on-branch",
+      "evidence": "Existing Cinder ListDetail loading implementation and Reviews fixture cover the requested state."
+    },
+    {
+      "id": "AC10",
+      "status": "met-on-branch",
+      "evidence": "Existing Reviews conflict state remains covered by its route test and fixture."
+    },
+    {
+      "id": "AC11",
+      "status": "met-on-branch",
+      "evidence": "Existing delayed removal behavior remains covered by its route test and fixture."
+    },
+    {
+      "id": "AC12",
+      "status": "met-on-branch",
+      "evidence": "Shared approval detail renders Cinder Fields and JSON; narrowed Fields/JSON witness passes."
+    },
+    {
+      "id": "AC13",
+      "status": "met-on-branch",
+      "evidence": "@lostgradient/chat publicly exports ToolApprovalPart; approval-pane renders it. tool-approval-part.test.ts passes directly."
+    },
+    {
+      "id": "AC14",
+      "status": "met-on-main",
+      "evidence": "Human-wait tool-message projection was already present in the base revision."
+    },
+    {
+      "id": "AC15",
+      "status": "met-on-branch",
+      "evidence": "Reviews workflow fixture carries the literal Release 2.4 structured artifact and source copy; narrowed workflow witness passes."
+    },
+    {
+      "id": "AC16",
+      "status": "met-on-main",
+      "evidence": "Distinct already-resolved conflict rendering was already present in the base revision."
+    },
+    {
+      "id": "AC17",
+      "status": "met-on-main",
+      "evidence": "Delayed no-longer-waiting removal was already present in the base revision."
+    },
+    {
+      "id": "AC18",
+      "status": "met-on-main",
+      "evidence": "Done total wire and segment were already present in the base revision."
+    },
+    {
+      "id": "AC19",
+      "status": "met-on-main",
+      "evidence": "Agent display names and irreversible-action line were already present in the base revision."
+    },
+    {
+      "id": "AC20",
+      "status": "met-on-main",
+      "evidence": "Three-row Cinder loading skeleton was already present in the base revision."
+    },
+    {
+      "id": "AC21",
+      "status": "met-on-branch",
+      "evidence": "Narrowed Reviews Fields/JSON witness passes: labels, raw arguments, and declared tool sentence are all asserted."
+    }
+  ]
+}

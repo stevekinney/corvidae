@@ -3,7 +3,11 @@
  */
 import { Message, type Task, TaskState } from '@a2a-js/sdk';
 import { ServerCallContext } from '@a2a-js/sdk/server';
-import { createDefaultRuntimeServices, type RuntimeTimers } from '@lostgradient/lifecycle';
+import {
+  createDefaultRuntimeServices,
+  type RuntimeServices,
+  type RuntimeTimers,
+} from '@lostgradient/lifecycle';
 import {
   createAgent,
   type GenerateContext,
@@ -93,12 +97,14 @@ export function attachHandler(
   opened: Awaited<ReturnType<typeof openBureau>>,
   wrap: {
     readonly timers?: (timers: RuntimeTimers) => RuntimeTimers;
+    /** The handler's runtime, when a test needs to drive its clock and timers deterministically. */
+    readonly runtime?: RuntimeServices;
     /** The Bureau the request handler is given, when a test stands between it and the real one. */
     readonly bureau?: (bureau: Bureau) => Bureau;
   } = {},
 ) {
   const bureau = opened.bureau;
-  const runtime = createDefaultRuntimeServices();
+  const runtime = wrap.runtime ?? createDefaultRuntimeServices();
   const host = buildBureauHandlerHost(bureau, ['asker']);
   const card = createBureauAgentCard({
     catalogName: 'asker',
@@ -113,6 +119,7 @@ export function attachHandler(
   const handler = createBureauA2ARequestHandler({
     publicUrl: 'http://localhost',
     timers: wrap.timers?.(runtime.timers) ?? runtime.timers,
+    runtime,
     agentName: 'asker',
     card: () => ({ ...card, supportedInterfaces: [], signatures: [] }),
     bureau: wrap.bureau?.(bureau) ?? bureau,
