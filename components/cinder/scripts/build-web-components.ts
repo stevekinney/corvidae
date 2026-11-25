@@ -353,6 +353,6 @@ for (const [name, element] of [${registrations.join(', ')}]) {
 }
 
 if (import.meta.main) {
-  ensureCinderGenerated();
+  await ensureCinderGenerated();
   await buildWebComponents();
 }
