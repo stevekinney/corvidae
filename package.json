@@ -100,6 +100,7 @@
     "lmdb": "^3.5.9",
     "micromark-util-decode-numeric-character-reference": "^2.0.0",
     "openai": "^7.8.0",
+    "openid-client": "6.9.1",
     "oxlint": "^1.83.0",
     "oxlint-tsgolint": "^7.0.2001",
     "pg": "^8.11.0",

@@ -84,7 +84,7 @@
     "@types/js-yaml": "catalog:",
     "fake-indexeddb": "catalog:",
     "happy-dom": "catalog:",
-    "openid-client": "6.9.1",
+    "openid-client": "catalog:",
     "oxlint": "catalog:",
     "oxlint-tsgolint": "catalog:",
     "prettier": "catalog:",

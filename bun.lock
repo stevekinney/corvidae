@@ -136,7 +136,7 @@
         "@types/js-yaml": "catalog:",
         "fake-indexeddb": "catalog:",
         "happy-dom": "catalog:",
-        "openid-client": "6.9.1",
+        "openid-client": "catalog:",
         "oxlint": "catalog:",
         "oxlint-tsgolint": "catalog:",
         "prettier": "catalog:",
@@ -657,7 +657,7 @@
       "name": "@lostgradient/credentials",
       "dependencies": {
         "@lostgradient/storage": "workspace:*",
-        "openid-client": "6.9.1",
+        "openid-client": "catalog:",
       },
       "devDependencies": {
         "@lostgradient/mcp": "workspace:*",
@@ -1497,6 +1497,7 @@
     "lmdb": "^3.5.9",
     "micromark-util-decode-numeric-character-reference": "^2.0.0",
     "openai": "^7.8.0",
+    "openid-client": "6.9.1",
     "oxlint": "^1.83.0",
     "oxlint-tsgolint": "^7.0.2001",
     "pg": "^8.11.0",
