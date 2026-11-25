@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { NavigationItem, SideNavigation } from '@lostgradient/cinder';
+  import { GitBranch, NavigationItem, Pencil, SideNavigation } from '@lostgradient/cinder';
 
   type FixtureProps = {
     active?: string;
@@ -7,7 +7,35 @@
   };
 
   let { active = 'phoenix', projectsExpanded = true }: FixtureProps = $props();
+
+  // COR-2665: disabled rows that say why on a second line, drawn only behind a query parameter so
+  // the default fixture, its baselines and its axe sweep stay as they are.
+  const disabledRows = new URLSearchParams(globalThis.location.search).get('disabled') === '1';
 </script>
+
+{#if disabledRows}
+  <div id="example-mount-disabled" class="side-navigation-fixture">
+    <SideNavigation ariaLabel="Temporal pages">
+      <SideNavigation.Item href="/workflows" label="Workflows">Workflows</SideNavigation.Item>
+      <SideNavigation.Item disabled label="Task queue" disabledReason="Open a task queue first">
+        Task queue
+      </SideNavigation.Item>
+      <SideNavigation.Item disabled label="Schedules">Schedules</SideNavigation.Item>
+      <SideNavigation.Item href="/deployments" label="Deployments">
+        {#snippet icon()}<GitBranch aria-hidden="true" size={16} />{/snippet}
+        Deployments
+      </SideNavigation.Item>
+      <SideNavigation.Item
+        disabled
+        label="Workers"
+        disabledReason="Open a task queue to see the workers polling it"
+      >
+        {#snippet icon()}<Pencil aria-hidden="true" size={16} />{/snippet}
+        Workers
+      </SideNavigation.Item>
+    </SideNavigation>
+  </div>
+{/if}
 
 <div id="example-mount-basic" class="side-navigation-fixture">
   <SideNavigation ariaLabel="Workspace">

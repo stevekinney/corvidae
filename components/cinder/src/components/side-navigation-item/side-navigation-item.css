@@ -70,6 +70,52 @@
     margin-inline-start: calc(var(--cinder-space-0-5, 0.125rem) * -1);
   }
 
+  /* A disabled row with a `disabledReason` (COR-2665): the reason is a second line under the label,
+   * in the muted text colour at the extra-small size, drawn at every width so touch reads it with
+   * no hover. The row grows past 30px for it, with the same block padding above and below. With an
+   * icon the label and reason stack beside it; without one the row wraps and the reason takes its
+   * own line, so the children stay direct children of the link. */
+  .cinder-side-navigation-item[data-cinder-reason]:not([data-cinder-collapsed]) {
+    flex-wrap: wrap;
+    align-content: center;
+    row-gap: var(--cinder-space-0-5);
+    padding-block: var(--cinder-space-1-5);
+  }
+
+  .cinder-side-navigation-item__text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--cinder-space-0-5);
+    min-inline-size: 0;
+  }
+
+  .cinder-side-navigation-item[data-cinder-reason][data-cinder-has-icon]:not(
+      [data-cinder-collapsed]
+    ) {
+    flex-wrap: nowrap;
+    align-items: flex-start;
+  }
+
+  /* Beside a two-line label the icon sits on the label's line, never between the lines. */
+  .cinder-side-navigation-item[data-cinder-reason][data-cinder-has-icon]:not(
+      [data-cinder-collapsed]
+    )
+    .cinder-side-navigation-item__icon {
+    block-size: 1.25rem;
+  }
+
+  .cinder-side-navigation-item__reason {
+    flex: 1 0 100%;
+    min-inline-size: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-normal);
+    line-height: var(--cinder-leading-snug);
+    text-align: start;
+    white-space: normal;
+  }
+
   /* ----------------------------------------
  * Collapsed: an icon rail
  *
@@ -86,7 +132,9 @@
   }
 
   .cinder-side-navigation-item[data-cinder-collapsed][data-cinder-has-icon]
-    .cinder-side-navigation-item__label {
+    .cinder-side-navigation-item__label,
+  .cinder-side-navigation-item[data-cinder-collapsed][data-cinder-has-icon]
+    .cinder-side-navigation-item__text {
     position: absolute;
     inline-size: 1px;
     block-size: 1px;

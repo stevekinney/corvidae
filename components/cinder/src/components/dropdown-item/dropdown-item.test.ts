@@ -12,6 +12,8 @@ const { default: PolyFixture } =
   await import('../../test/fixtures/dropdown-item-polymorphic-fixture.svelte');
 const { default: RadioFixture } =
   await import('../../test/fixtures/dropdown-item-radio-fixture.svelte');
+const { default: CheckFixture } =
+  await import('../../test/fixtures/dropdown-item-check-fixture.svelte');
 const { default: DropdownItem } = await import('./dropdown-item.svelte');
 
 // Unmount renders between tests; shared document.body otherwise leaks activeElement/nodes.
@@ -194,5 +196,70 @@ describe('DropdownItem — polymorphism', () => {
     expect(container.querySelector('output')?.textContent).toBe('');
     // menu remains open
     expect(container.querySelector('[role="menu"]')).not.toBeNull();
+  });
+});
+
+/**
+ * COR-2664: a checkable item draws a check mark while checked and keeps the mark's slot while
+ * unchecked, so every label in a radio or checkbox group starts at the same edge. The mark is
+ * decoration; `aria-checked` carries the state.
+ */
+describe('DropdownItem check mark', () => {
+  async function openCheckMenu(props: { density?: string } = {}) {
+    const result = render(CheckFixture, { props });
+    await fireEvent.click(
+      requiredInstance(result.container.querySelector('.trigger'), HTMLElement),
+    );
+    await waitFor(() => expect(document.body.querySelector('[role="menu"]')).not.toBeNull());
+    const byRole = (role: string) =>
+      Array.from(document.body.querySelectorAll<HTMLElement>(`[role="${role}"]`));
+    return {
+      ...result,
+      radios: byRole('menuitemradio'),
+      checkboxes: byRole('menuitemcheckbox'),
+      plain: byRole('menuitem'),
+    };
+  }
+
+  test('a checkable item without a reason leads with one hidden check slot', async () => {
+    const { radios, checkboxes } = await openCheckMenu();
+    for (const item of [radios[0]!, radios[1]!, ...checkboxes]) {
+      const slots = item.querySelectorAll('.cinder-dropdown-item__check');
+      expect(slots).toHaveLength(1);
+      expect(item.firstElementChild).toBe(slots[0]!);
+      expect(slots[0]!.getAttribute('aria-hidden')).toBe('true');
+    }
+  });
+
+  test('the slot holds a mark only while the item is checked', async () => {
+    const { radios, checkboxes } = await openCheckMenu();
+    const mark = (item: HTMLElement) =>
+      item.querySelector('.cinder-dropdown-item__check svg') !== null;
+    expect(radios.map(mark)).toEqual([true, false, false]);
+    expect(checkboxes.map(mark)).toEqual([true, false]);
+    expect(radios.map((item) => item.getAttribute('aria-checked'))).toEqual([
+      'true',
+      'false',
+      'false',
+    ]);
+  });
+
+  test('the mark follows checked', async () => {
+    const { radios, rerender } = await openCheckMenu();
+    await rerender({ density: 'comfortable' });
+    const mark = (item: HTMLElement) =>
+      item.querySelector('.cinder-dropdown-item__check svg') !== null;
+    expect(radios.map(mark)).toEqual([false, true, false]);
+  });
+
+  test('a plain menu item draws no check slot', async () => {
+    const { plain } = await openCheckMenu();
+    expect(plain).toHaveLength(1);
+    expect(plain[0]!.querySelector('.cinder-dropdown-item__check')).toBeNull();
+  });
+
+  test('the check mark is not part of the item name', async () => {
+    const { radios } = await openCheckMenu();
+    expect(radios[0]!.textContent?.trim()).toBe('Compact');
   });
 });

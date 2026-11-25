@@ -167,6 +167,15 @@
     border-radius: var(--cinder-radius-sm);
   }
 
+  /* A disabled sidebar row differs from an enabled one by more than colour (COR-2665): the enabled
+   * rows are muted text at the medium weight, so the disabled colour alone was a few points of
+   * lightness away. The regular weight sets it apart in either theme, with no stripe or border;
+   * a `disabledReason` (SideNavigation.Item) adds a second line that says why. */
+  .cinder-navigation-item[data-variant='vertical'][aria-disabled='true'] {
+    color: var(--cinder-text-disabled);
+    font-weight: var(--cinder-font-normal);
+  }
+
   /* The current page is a flat fill (owner, 2026-11-16): `--cinder-selected-background`, the soft
    * accent tint every selected row in the app shares (StackedListItem paints its selected row from
    * it too). In light the sidebar's `--cinder-surface` and `--cinder-surface-raised` are both white

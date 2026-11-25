@@ -14,7 +14,7 @@ A disabled item that cannot say why on its own takes `disabledReason`: the item 
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `checked` | `boolean` | no | — | Checked state for checkbox and radio menu items. Omitted for normal menu items. |
+| `checked` | `boolean` | no | — | Checked state for checkbox and radio menu items. A checked `menuitemradio` or `menuitemcheckbox` item draws a leading check mark, and every such item reserves its space, so the labels of a group start at one edge. The mark is hidden from assistive technology; `aria-checked` carries the state. Omitted for normal menu items. |
 | `class` | `string` | no | — | Additional class names merged with the component's root class. |
 | `closeOnSelect` | `boolean` | no | — | When true, the parent dropdown closes after this item is activated. Default `true`. |
 | `disabled` | `boolean` | no | — | When true the item is inert: click is blocked and aria-disabled is set. |

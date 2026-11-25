@@ -244,6 +244,24 @@
     color: var(--cinder-text-disabled);
   }
 
+  /* A radio or checkbox item's check mark (COR-2664). Every checkable item keeps the slot, checked
+     or not, so the labels of a group start at one edge; the mark is drawn in the item's own colour,
+     so it dims with a disabled item and follows forced colours. */
+  .cinder-dropdown-item__check {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    inline-size: 1rem;
+    block-size: 1rem;
+  }
+
+  .cinder-dropdown-item__check > svg {
+    inline-size: 1rem;
+    block-size: 1rem;
+    color: currentColor;
+  }
+
   /* A disabled item with a `disabledReason` (COR-2327): the label row, and the reason under it as a
      second line in the muted text colour, starting where the label's text starts (the indent past
      a leading icon is measured). It is drawn at every width, so touch reads it without a hover. */

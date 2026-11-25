@@ -37,6 +37,10 @@ This is a navigation landmark containing links and disclosure buttons — it is 
 
 We deliberately do **not** implement roving tabindex or arrow-key navigation. WCAG SC 2.1.1 and the APG explicitly differentiate list-of-links navigation (where Tab is correct) from composite widgets (where arrow keys are expected). Sidebar navigation falls in the former category.
 
+## Disabled rows and their reason
+
+A disabled `SideNavigation.Item` is removed from the tab order by `NavigationItem` and drawn in the disabled text colour at the regular weight, against the medium weight of an enabled row, so it differs by more than colour (COR-2665). A `disabledReason` is drawn under the label as a second line in the muted text colour, at every width, so a touch screen, which never shows a hover tooltip, reads it too; `emptyLabel` is never drawn and is no place for a reason. The reason is the row's description (`aria-describedby`) and `label` stays its name, so a screen reader hears "Workers, Open a task queue first" on a disabled button. The reason is not hidden from assistive technology, so a disabled link, which loses its `href` and is read as text in browse mode, still reads it. A collapsed icon-rail row clips the reason with its label, keeps it as its description, and says it in the tooltip. `side-navigation-item-reason.test.ts` asserts the markup, name and description, and `scripts/browser-fixtures/tests/side-navigation-disabled-reason.playwright.ts` the line's geometry, colour and size and the weight difference, in both themes at 375 and 1280px.
+
 ## Generated IDs and SSR
 
 `useId` is a process-wide counter. If server-side rendering produces a different render order than the client, IDs may diverge (hydration mismatch). This matches every existing consumer in this library (`AccordionItem`, etc.) and is acceptable for current usage. Consumers who need stable IDs should pass the `id` prop explicitly.
