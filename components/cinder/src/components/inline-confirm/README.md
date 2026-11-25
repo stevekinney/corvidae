@@ -2,7 +2,7 @@
 
 `InlineConfirm` keeps a confirmation in document flow for reversible actions. It uses a labelled `role="group"`, focuses Cancel on open, and restores focus to the trigger when dismissed.
 
-Use `presentation="two-press"` for an irreversible action. It renders one named action, arms on the first press, resets after three seconds or Escape, and never renders a competing Cancel action. The action is primary at rest and danger once armed; with `destructive` it is soft danger at rest, so a delete or terminate looks dangerous before it is pressed and still escalates to solid danger when armed.
+Use `presentation="two-press"` for an irreversible action. It renders one named action, arms on the first press, resets after three seconds or Escape, and never renders a competing Cancel action. The action is primary at rest and danger once armed; with `destructive` it is solid danger at rest, the region's one primary and plainly dangerous. Once armed it also draws a danger ring, so arming is a visible step.
 
 ## Usage
 
@@ -44,7 +44,7 @@ Use `presentation="two-press"` for an irreversible action. It renders one named 
 | `cancelLabel` | `string` | no | `"Cancel"` | Label for the cancelling action. Defaults to `'Cancel'`. |
 | `class` | `string` | no | — | Additional class merged with the component's root class. |
 | `confirmLabel` | `string` | yes | — | Label for the confirming action. |
-| `destructive` | `boolean` | no | `false` | Marks the confirming action as destructive: the strip's confirm button takes the danger face, and a two-press action takes the soft danger face at rest and the solid danger face once armed, so it looks dangerous before it is pressed and still escalates when armed. A non-destructive two-press action is primary at rest and danger once armed. Defaults to `false`. |
+| `destructive` | `boolean` | no | `false` | Marks the confirming action as destructive: the strip's confirm button and a two-press action take the solid danger face, at rest and armed. An armed two-press action, destructive or not, also draws a danger ring, so arming is a visible step. A non-destructive two-press action is primary at rest and danger once armed. Defaults to `false`. |
 | `disabled` | `boolean` | no | — | Disables and disarms two-press presentation. |
 | `flush` | `boolean` | no | `false` | The strip sits flush inside a bordered container. At the container's start or end it drops its own rule there instead of doubling the container's edge. Defaults to `false`. |
 | `hintClass` | `string` | no | — | Additional class merged with the two-press status hint. |
