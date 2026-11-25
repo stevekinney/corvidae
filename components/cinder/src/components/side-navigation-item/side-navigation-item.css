@@ -108,7 +108,8 @@
   .cinder-side-navigation-item__reason {
     flex: 1 0 100%;
     min-inline-size: 0;
-    color: var(--cinder-text-muted);
+    /* Never brighter than the disabled name it explains (COR-2680): the same colour, smaller. */
+    color: var(--cinder-text-disabled);
     font-size: var(--cinder-text-xs);
     font-weight: var(--cinder-font-normal);
     line-height: var(--cinder-leading-snug);

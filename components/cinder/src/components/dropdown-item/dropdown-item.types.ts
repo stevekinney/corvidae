@@ -152,7 +152,7 @@ export type DropdownItemProps = SharedHtmlAttributes &
     disabled?: boolean | undefined;
     /**
      * Why the item is off. While `disabled` is set it is drawn under the label as a second line in
-     * the muted text colour, and it is the item's description (`aria-describedby`), so it reads on
+     * the disabled colour at the extra-small size, never louder than the label, and it is the item's description (`aria-describedby`), so it reads on
      * a phone and by keyboard with no hover. Ignored while the item is enabled. Use it in place of
      * a `title`, which touch never shows.
      */

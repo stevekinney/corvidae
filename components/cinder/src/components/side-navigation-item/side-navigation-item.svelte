@@ -82,10 +82,18 @@
   // A disabled row says why on a second line under its label (COR-2665), and is described by it.
   // The label alone stays its name, so the row names itself from `label` when nothing else does:
   // its content now holds the reason too. An enabled row, or one with no reason, is unchanged.
+  // In a group that states one reason for its disabled rows (COR-2680), a row that says nothing
+  // else draws no line and is described by the group's reason; it draws its own only when it differs.
+  const group = tryGetSideNavigationGroupContext();
   const generatedId = $props.id();
   const reasonId = `${generatedId}-reason`;
-  const reasonText = $derived(
+  const ownReason = $derived(
     props.disabled ? props.disabledReason?.trim() || undefined : undefined,
+  );
+  const groupReason = $derived(props.disabled ? group?.disabledReason : undefined);
+  const reasonText = $derived(ownReason !== groupReason ? ownReason : undefined);
+  const describedReasonId = $derived(
+    reasonText !== undefined ? reasonId : groupReason !== undefined ? group?.reasonId : undefined,
   );
   const accessibleName = $derived(
     props['aria-label'] ?? composedName ?? (reasonText === undefined ? undefined : props.label),
@@ -95,7 +103,8 @@
     // The reason is the description whenever something other than the content names the row: a
     // `label`, an `aria-label`, or the consumer's own `aria-labelledby`.
     const named = accessibleName !== undefined || props['aria-labelledby'] !== undefined;
-    const reason = reasonText !== undefined && named ? reasonId : undefined;
+    // The group's reason is never part of the row's content, so it describes the row either way.
+    const reason = reasonText !== undefined ? (named ? reasonId : undefined) : describedReasonId;
     return (
       [own, reason].filter((value) => value !== undefined && value !== '').join(' ') || undefined
     );
@@ -106,8 +115,8 @@
     props.label === undefined
       ? undefined
       : collapsed
-        ? reasonText !== undefined
-          ? `${props.label}, ${reasonText}`
+        ? (reasonText ?? groupReason) !== undefined
+          ? `${props.label}, ${reasonText ?? groupReason}`
           : badgeWord !== undefined
             ? `${props.label}, ${badgeWord.toLowerCase()}`
             : (countPhrase ?? emptyWords) === undefined
@@ -129,7 +138,6 @@
   // When this item sits inside a SideNavigationGroup, report its active state
   // so the group can light up its trigger. Outside a group the context is
   // undefined and these effects are no-ops.
-  const group = tryGetSideNavigationGroupContext();
   let handle: SideNavigationGroupRegistration | undefined;
   // One-time registration: no reactive reads, so it runs exactly once at mount
   // and cleans up once at unmount. Keeping it free of `active` avoids coupling

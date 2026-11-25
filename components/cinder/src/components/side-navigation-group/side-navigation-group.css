@@ -157,6 +157,34 @@
  * Disclosed panel
  * ---------------------------------------- */
 
+  /* The group's shared reason for its disabled rows (COR-2680): said once, quieter than the rows it
+   * covers, never brighter than a disabled name. It starts where the rows' text starts. */
+  .cinder-side-navigation-group__reason {
+    margin: 0;
+    padding-block: 0 var(--cinder-space-1);
+    padding-inline: calc(var(--cinder-space-3) + var(--cinder-space-2)) var(--cinder-space-2);
+    color: var(--cinder-text-disabled);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-side-navigation-group[data-cinder-static] > .cinder-side-navigation-group__reason {
+    padding-inline-start: var(--cinder-space-2);
+  }
+
+  /* An icon rail has no room for words: the reason is clipped and stays the rows' description. */
+  .cinder-side-navigation-group__reason[data-cinder-collapsed] {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
   .cinder-side-navigation-group__panel {
     list-style: none;
     margin: 0;

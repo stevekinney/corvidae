@@ -230,10 +230,31 @@ describe('vertical navigation item: disabled (COR-2665)', () => {
     expect(declaration(disabled, 'color')).toBe('var(--cinder-text-disabled)');
   });
 
-  test("a disabled row's reason is a muted, extra-small second line that wraps", () => {
+  test("a disabled row's reason is a quieter, extra-small second line that wraps (COR-2680)", () => {
+    // Never brighter than the disabled name it explains: the same disabled colour, smaller.
     const [reason] = rulesFor(sideNavigationItemCss, '.cinder-side-navigation-item__reason');
-    expect(declaration(reason, 'color')).toBe('var(--cinder-text-muted)');
+    expect(declaration(reason, 'color')).toBe('var(--cinder-text-disabled)');
     expect(declaration(reason, 'font-size')).toBe('var(--cinder-text-xs)');
     expect(declaration(reason, 'white-space')).toBe('normal');
+  });
+});
+
+describe('side navigation group: shared reason (COR-2680)', () => {
+  const groupCss = loadCss('../side-navigation-group/side-navigation-group.css');
+
+  test('the group reason is in the disabled colour at the extra-small size', () => {
+    const [reason] = rulesFor(groupCss, '.cinder-side-navigation-group__reason');
+    expect(declaration(reason, 'color')).toBe('var(--cinder-text-disabled)');
+    expect(declaration(reason, 'font-size')).toBe('var(--cinder-text-xs)');
+  });
+
+  test('a collapsed rail clips the group reason and keeps it for its rows', () => {
+    const [clipped] = rulesFor(
+      groupCss,
+      '.cinder-side-navigation-group__reason[data-cinder-collapsed]',
+    );
+    expect(declaration(clipped, 'position')).toBe('absolute');
+    expect(declaration(clipped, 'clip')).toBe('rect(0, 0, 0, 0)');
+    expect(declaration(clipped, 'display')).toBeUndefined();
   });
 });
