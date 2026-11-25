@@ -20,9 +20,12 @@ afterAll(async () => {
   const happyWindow = window as unknown as {
     happyDOM: { setURL(url: string): void; waitUntilComplete(): Promise<void> };
   };
-  happyWindow.happyDOM.setURL(originalURL);
-  await happyWindow.happyDOM.waitUntilComplete();
-  harnessServer.stop(true);
+  try {
+    await happyWindow.happyDOM.waitUntilComplete();
+  } finally {
+    happyWindow.happyDOM.setURL(originalURL);
+    harnessServer.stop(true);
+  }
 });
 
 test('installs a standards-mode HTML document', () => {
@@ -110,10 +113,13 @@ test('resolves and loads relative image URLs through a local server', async () =
     expect(image.naturalHeight).toBeGreaterThan(0);
   } finally {
     image.removeAttribute('src');
-    happyWindow.happyDOM.setURL(previousURL);
-    await happyWindow.happyDOM.waitUntilComplete();
-    happyWindow.happyDOM.settings.enableImageFileLoading = previousImageFileLoading;
-    server.stop(true);
+    try {
+      await happyWindow.happyDOM.waitUntilComplete();
+    } finally {
+      happyWindow.happyDOM.settings.enableImageFileLoading = previousImageFileLoading;
+      happyWindow.happyDOM.setURL(previousURL);
+      server.stop(true);
+    }
   }
 });
 
@@ -134,8 +140,11 @@ test('creates fetchable object URLs for files from the installed DOM realm', asy
     expect(await response.text()).toBe('pasted content');
   } finally {
     if (objectUrl !== undefined) URL.revokeObjectURL(objectUrl);
-    happyWindow.happyDOM.setURL(previousURL);
-    await happyWindow.happyDOM.waitUntilComplete();
-    server.stop(true);
+    try {
+      await happyWindow.happyDOM.waitUntilComplete();
+    } finally {
+      happyWindow.happyDOM.setURL(previousURL);
+      server.stop(true);
+    }
   }
 });

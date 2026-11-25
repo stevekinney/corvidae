@@ -5,7 +5,11 @@ import { join } from 'node:path';
 
 import { findGateInvocations } from '../internal/component-tooling/scripts/gate-wiring.ts';
 
-export const REQUIRED_GUARDS = ['scripts/run-knip.ts', 'scripts/guard-wiring.ts'] as const;
+export const REQUIRED_GUARDS = [
+  'scripts/check-installed-dependencies.ts',
+  'scripts/run-knip.ts',
+  'scripts/guard-wiring.ts',
+] as const;
 
 export function missingRequiredGuards(scripts: Readonly<Record<string, string>>): string[] {
   const invocations = new Set(findGateInvocations(scripts, ['lint:root']));

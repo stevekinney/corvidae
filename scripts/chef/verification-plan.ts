@@ -643,3 +643,13 @@ export function computeEvidencePlan(
     full_run_rules: matches,
   };
 }
+
+/** An automatic receipt can prove a scoped plan with no browser lanes. */
+export function supportsAutomaticPullRequestEvidence(plan: EvidencePlan): boolean {
+  return (
+    !plan.requires_full_run &&
+    plan.fixture_slugs.length === 0 &&
+    plan.fixture_specs.length === 0 &&
+    plan.e2e_specs.length === 0
+  );
+}

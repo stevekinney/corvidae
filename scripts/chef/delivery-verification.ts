@@ -1,13 +1,18 @@
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { createGitHubCiEvidenceProvider } from './ci-evidence-github.ts';
-import { ciEvidenceRequestKey, type CiEvidenceProvider } from './ci-evidence.ts';
+import {
+  ciEvidenceRequestKey,
+  type CiEvidenceProvider,
+  type CiEvidenceRequest,
+} from './ci-evidence.ts';
 import {
   batchVerificationPlanDigest,
   collectCompletionRecords,
   readDeliveryRequest,
   type DeliveryRequest,
 } from './delivery-completion.ts';
+import { repositoryContext } from './evidence-plan.ts';
 import type { ProviderEvidenceTransport } from './evidence-transport.ts';
 import {
   createExecutionStateStore,
@@ -18,8 +23,17 @@ import {
   withProviderTransitionLock,
   type ExecutionStateStore,
 } from './execution-state.ts';
+import { changedPaths } from './landing-plan.ts';
+import { defaultRunner } from './process-runner.ts';
 import { resolveMainCheckout } from './repository-locations.ts';
-import { digest, gateAssignment, type Assignment } from './verification-plan.ts';
+import {
+  computeEvidencePlan,
+  digest,
+  gateAssignment,
+  supportsAutomaticPullRequestEvidence,
+  type Assignment,
+  type EvidencePlan,
+} from './verification-plan.ts';
 
 /** Coordinator-pinned input required before either delivery route can mutate a provider. */
 export interface DeliveryVerification {
@@ -35,11 +49,12 @@ export interface LoadedDeliveryVerification {
   state: ExecutionStateStore;
 }
 
-/** Production defaults authenticate provider facts; callers may inject only those raw dependencies. */
+/** Production defaults authenticate provider facts and read the pull-request plan from the checkout. */
 export interface DeliveryVerificationDependencies {
   state: ExecutionStateStore;
   transport?: ProviderEvidenceTransport;
   ciProvider?: Pick<CiEvidenceProvider, 'findRuns'>;
+  pullRequestPlan?: (request: DeliveryRequest) => EvidencePlan | string;
 }
 
 export interface DeliveryRoute {
@@ -297,6 +312,49 @@ const aggregatedWorkflows = new Set([
   '.github/workflows/main.yml',
   '.github/workflows/pull-request.yml',
 ]);
+const pullRequestReceiptJobs = ['static', 'workspaces', 'tests', 'browser-selection', 'browser'];
+
+function hasCompletePullRequestCoverage(
+  member: DeliveryRequest['members'][number],
+  run: Awaited<ReturnType<CiEvidenceProvider['findRuns']>>[number],
+  sourceCriteria: CiEvidenceRequest['sourceCriteria'],
+): boolean {
+  if (run === undefined || 'state' in run || !run.jobs.includes('Evidence aggregate')) return false;
+  if (
+    Object.keys(run.receiptJobs).length !== pullRequestReceiptJobs.length ||
+    pullRequestReceiptJobs.some((job) =>
+      job === 'browser'
+        ? !['success', 'not-applicable'].includes(run.receiptJobs[job] ?? '')
+        : run.receiptJobs[job] !== 'success',
+    )
+  )
+    return false;
+  if (sourceCriteria === undefined || run.receiptTestFiles === undefined) return false;
+  const binding = sourceCriteria.members.find(
+    (candidate) => candidate.identifier === member.assignment.identity.identifier,
+  );
+  if (binding === undefined) return false;
+  const criteria =
+    member.assignment.criteria.length === 0 && member.assignment.classification === 'no-behavior'
+      ? ['STATIC']
+      : member.assignment.criteria.map((criterion) => criterion.id);
+  if (
+    binding.criteria.length !== criteria.length ||
+    binding.criteria.some(
+      (criterion) =>
+        !criteria.includes(criterion.criterionId) ||
+        criterion.testFiles.some((path) => !run.receiptTestFiles?.includes(path)),
+    )
+  )
+    return false;
+  return true;
+}
+
+function pullRequestEvidencePlan(request: DeliveryRequest): EvidencePlan | string {
+  const changed = changedPaths(defaultRunner, request.worktree, request.base, request.revision);
+  if (typeof changed === 'string') return changed;
+  return computeEvidencePlan(changed, repositoryContext(request.worktree, new Set<string>()));
+}
 
 /** Require a current authenticated aggregate for the CI runs that carry pre-merge obligations. */
 export async function validateDeliveryCiEvidence(
@@ -310,13 +368,19 @@ export async function validateDeliveryCiEvidence(
         .filter((item) => item.phase === 'pre-integration')
         .map((item) => `${item.criterionId}:${item.commandOrProviderJob}`),
     );
-    return member.providerRuns.filter(
-      (run) => obligations.has(run.obligation) && aggregatedWorkflows.has(run.workflowPath),
-    );
+    return member.providerRuns
+      .filter((run) => obligations.has(run.obligation) && aggregatedWorkflows.has(run.workflowPath))
+      .map((run) => ({ member, run }));
   });
   if (mappings.length === 0) return undefined;
   if (!Array.isArray(request.ciEvidence))
     return 'verification request is missing the CI evidence contract';
+  if (mappings.some(({ run }) => run.event === 'pull_request')) {
+    const plan = (partial.pullRequestPlan ?? pullRequestEvidencePlan)(request);
+    if (typeof plan === 'string') return plan;
+    if (!supportsAutomaticPullRequestEvidence(plan))
+      return 'automatic pull-request evidence cannot cover the full or browser lanes in the plan';
+  }
   const manualPlanDigest = batchVerificationPlanDigest(request.members);
   const source =
     partial.ciProvider ??
@@ -332,11 +396,11 @@ export async function validateDeliveryCiEvidence(
         identity.candidate === request.revision &&
         identity.base === request.base &&
         identity.integrationTree === request.integrationTree &&
-        identity.event === mapping.event &&
-        (mapping.event !== 'workflow_dispatch' ||
+        identity.event === mapping.run.event &&
+        (mapping.run.event !== 'workflow_dispatch' ||
           identity.verificationPlanDigest === manualPlanDigest) &&
-        identity.workflow === mapping.workflow &&
-        identity.workflowPath === mapping.workflowPath &&
+        identity.workflow === mapping.run.workflow &&
+        identity.workflowPath === mapping.run.workflowPath &&
         identity.requestKey === ciEvidenceRequestKey(identity),
     );
     const identity = matches[0];
@@ -347,7 +411,7 @@ export async function validateDeliveryCiEvidence(
       try {
         runs = await source.findRuns(identity);
       } catch {
-        return `CI evidence for run ${mapping.id} is unavailable`;
+        return `CI evidence for run ${mapping.run.id} is unavailable`;
       }
       observed.set(identity.requestKey, runs);
     }
@@ -356,11 +420,14 @@ export async function validateDeliveryCiEvidence(
       runs.length !== 1 ||
       run === undefined ||
       'state' in run ||
-      run.id !== mapping.id ||
+      run.id !== mapping.run.id ||
       run.requestKey !== identity.requestKey ||
-      !run.jobs.includes(mapping.job)
+      !run.jobs.includes(mapping.run.job) ||
+      (mapping.run.event === 'pull_request' &&
+        (mapping.run.attempt !== run.attempt ||
+          !hasCompletePullRequestCoverage(mapping.member, run, identity.sourceCriteria)))
     )
-      return `CI evidence for run ${mapping.id} is missing its successful aggregate or required job`;
+      return `CI evidence for run ${mapping.run.id} is missing its successful aggregate or required job`;
   }
   return undefined;
 }
