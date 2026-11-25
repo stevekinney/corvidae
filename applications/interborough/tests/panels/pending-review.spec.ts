@@ -166,7 +166,7 @@ test.describe('the pending-review MCP App', () => {
   test('a signed-in reviewer decides a real refund through the sandboxed panel', async ({
     page,
     context,
-  }) => {
+  }, testInfo) => {
     const fixture = await startSignedInRefundFixture();
     try {
       const cookie = await fixture.signIn();
@@ -214,6 +214,10 @@ test.describe('the pending-review MCP App', () => {
       );
       const app = page.frameLocator(`iframe[title="${TITLE}"]`);
       await expect(app.getByText(/\$42\.00 for order order/)).toBeVisible();
+      await testInfo.attach('signed-in-refund-panel', {
+        body: await page.locator(`iframe[title="${TITLE}"]`).screenshot(),
+        contentType: 'image/png',
+      });
       await app.getByRole('button', { name: 'Approve' }).click();
       await expect(app.getByRole('status')).toHaveText('Approved.');
       const read = await fixture.send('/host/plugins/inspectors/apps/pending-review/tool-calls', {

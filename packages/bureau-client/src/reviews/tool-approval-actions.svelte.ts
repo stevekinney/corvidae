@@ -29,7 +29,12 @@ export type ApprovalHost = {
   readonly authorized: (review: Review) => boolean;
   readonly decisionSurface?: 'reviews' | undefined;
   readonly onOutcome?:
-    | ((seen: { id: string; round: number }, outcome: ApprovalOutcome, receipt?: Receipt) => void)
+    | ((
+        seen: { id: string; round: number },
+        outcome: ApprovalOutcome,
+        receipt?: Receipt,
+        error?: unknown,
+      ) => void)
     | undefined;
 };
 type Target = { busy: boolean; uncertain: boolean; invalid: boolean };
@@ -77,8 +82,14 @@ export function useApprovalDecision(host: ApprovalHost) {
         Date.parse(review.approval.action.expiresAt) > Date.now());
     const mayRemember = () =>
       actionable() && review.effect?.kind !== 'refund' && review.approval.mayRemember === true;
-    const report = (outcome: ApprovalOutcome, captured: Review, receipt?: Receipt) => {
-      if (!catalog.disposed && authorized(captured)) onOutcome?.({ ...seen }, outcome, receipt);
+    const report = (
+      outcome: ApprovalOutcome,
+      captured: Review,
+      receipt?: Receipt,
+      error?: unknown,
+    ) => {
+      if (!catalog.disposed && authorized(captured))
+        onOutcome?.({ ...seen }, outcome, receipt, error);
     };
     const capture = () => JSON.parse(JSON.stringify(review)) as Review;
     const invalidate = () => catalog.invalidate(['bureau.reviews.list', 'bureau.reviews.get']);
@@ -174,7 +185,7 @@ export function useApprovalDecision(host: ApprovalHost) {
         );
       } catch (error) {
         if (!dispatched) {
-          report('failed', captured);
+          report('failed', captured, undefined, error);
           return;
         }
         state.uncertain = true;
@@ -187,7 +198,7 @@ export function useApprovalDecision(host: ApprovalHost) {
           (error && typeof error === 'object' && 'code' in error && error.code === 'Forbidden')
         ) {
           state.uncertain = false;
-          report('failed', captured);
+          report('failed', captured, undefined, error);
           return;
         }
         const reason =
@@ -201,6 +212,8 @@ export function useApprovalDecision(host: ApprovalHost) {
                 ? 'outcome-not-written'
                 : 'unknown-after-dispatch',
           captured,
+          undefined,
+          error,
         );
       } finally {
         state.busy = false;

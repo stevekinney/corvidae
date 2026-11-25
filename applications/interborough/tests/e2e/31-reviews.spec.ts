@@ -11,6 +11,8 @@ import type { APIRequestContext, Locator, Page } from '@playwright/test';
 
 import { HUMAN_INPUT_PROMPT } from '@lostgradient/plugin-demo';
 import { REVIEWS_COPY } from '../../src/app/copy/reviews.ts';
+import { REVIEW_REMEMBER_MARKER, REVIEW_REMEMBER_TOOL } from './access-provider.ts';
+import { createAgentFile, removeAgent } from './agent-support.ts';
 import { conversation, newThreadId, runToEnd, untilChatLoaded } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, holdBureauFeed, loggedFailedResponse, test } from './fixtures.ts';
@@ -206,6 +208,27 @@ async function waitingRefund(
     fixture?.question ?? 'Refund order order-1001 for 4200 minor units (USD)?',
   );
   return { threadId, review };
+}
+
+async function waitingRememberApproval(page: Page, request: APIRequestContext, name: string) {
+  const threadId = newThreadId(name);
+  const agentId = `e2e-${name}`;
+  await createAgentFile(request, agentId, { tools: [REVIEW_REMEMBER_TOOL] });
+  try {
+    await runToEnd(request, agentId, threadId, REVIEW_REMEMBER_MARKER);
+    const review = await waitingReviewOf(request, threadId);
+    const current = (await bureauCall(request, 'bureau.reviews.get', { id: review.id })) as {
+      approval: { mayRemember?: boolean };
+    };
+    expect(current.approval.mayRemember).toBe(true);
+    await useApprovalCaptureFixture(page, review, TRIAGE_APPROVAL);
+    await page.goto(inboxAt(review));
+    await expect(paneOf(page)).toContainText(TRIAGE_APPROVAL.question);
+    return { threadId, review, agentId };
+  } catch (error) {
+    await removeAgent(request, agentId);
+    throw error;
+  }
 }
 
 /** Captures an approval in the two board widths, restoring the suite's desktop viewport afterwards. */
@@ -594,23 +617,28 @@ test.describe('a tool approval', () => {
     page,
     request,
   }) => {
-    const { threadId, review } = await waitingRefund(
+    const { threadId, review, agentId } = await waitingRememberApproval(
       page,
       request,
       'reviews-remember',
-      TRIAGE_APPROVAL,
     );
-    const resolves = recordResolves(page);
-    const remember = paneOf(page).getByRole('checkbox', {
-      name: /allow .* for the rest of this chat/i,
-    });
-    await remember.check();
-    await expect.poll(() => resolves).toHaveLength(0);
-    await approveReview(paneOf(page));
+    try {
+      const resolves = recordResolves(page);
+      const remember = paneOf(page).getByRole('checkbox', {
+        name: /allow .* for the rest of this chat/i,
+      });
+      await remember.check();
+      await expect.poll(() => resolves).toHaveLength(0);
+      await approveReview(paneOf(page));
 
-    await expect(rowOf(page, review)).toHaveCount(0);
-    expect(resolves[0]).toMatchObject({ id: review.id, decision: 'approve', remember: true });
-    await expect.poll(async () => refundRan(await threadMessages(request, threadId))).toBe(true);
+      await expect(rowOf(page, review)).toHaveCount(0);
+      expect(resolves[0]).toMatchObject({ id: review.id, decision: 'approve', remember: true });
+      await expect
+        .poll(async () => JSON.stringify(await threadMessages(request, threadId)))
+        .toContain('recorded');
+    } finally {
+      await removeAgent(request, agentId);
+    }
   });
 
   test('the real refund does not offer a remembered bypass', async ({ page, request }) => {
@@ -624,8 +652,12 @@ test.describe('a tool approval', () => {
     page,
     request,
   }) => {
-    await waitingRefund(page, request, 'reviews-capture-on-changes', TRIAGE_APPROVAL);
-    await captureApprovalAtWidths(page, 'pending On changes approval');
+    const { agentId } = await waitingRememberApproval(page, request, 'reviews-capture-on-changes');
+    try {
+      await captureApprovalAtWidths(page, 'pending On changes approval');
+    } finally {
+      await removeAgent(request, agentId);
+    }
   });
 
   test('shared Reviews approval detail captures a pending Always approval', async ({
@@ -643,6 +675,40 @@ test.describe('a tool approval', () => {
       await expect(pane).toContainText("Can't be undone.");
       await expect(pane.getByRole('checkbox')).toHaveCount(0);
       await captureApprovalAtWidths(page, 'pending Always approval');
+      const viewport = page.viewportSize();
+      if (viewport === null) throw new Error('A fixed viewport is required');
+      try {
+        await page.setViewportSize({ width: 375, height: 812 });
+        await captureForDesignReview(page, {
+          route: '/reviews',
+          state: 'pending approval consequence scrolled',
+          source: '31-reviews.spec.ts',
+          ready: async () => {
+            await pane.getByText("Can't be undone.").scrollIntoViewIfNeeded();
+          },
+        });
+        await captureForDesignReview(page, {
+          route: '/reviews',
+          state: 'pending approval actions scrolled',
+          source: '31-reviews.spec.ts',
+          ready: async () => {
+            await pane
+              .getByRole('button', { name: 'Approve', exact: true })
+              .scrollIntoViewIfNeeded();
+          },
+        });
+        await pane.getByRole('textbox', { name: 'Note (optional)' }).focus();
+        await page.keyboard.press('Tab');
+        await expect(pane.getByRole('button', { name: 'Deny', exact: true })).toBeFocused();
+        await expect(pane.locator('button:focus-visible')).toHaveCount(1);
+        await captureForDesignReview(page, {
+          route: '/reviews',
+          state: 'pending approval keyboard focus',
+          source: '31-reviews.spec.ts',
+        });
+      } finally {
+        await page.setViewportSize(viewport);
+      }
     });
   });
 

@@ -19,6 +19,7 @@
   import type { ReviewsOperationTypes } from '@lostgradient/bureau-client/reviews';
   import { getReviewsHost, useBureauReviewsList } from '@lostgradient/bureau-client/reviews/svelte';
   import { activateResource } from '@lostgradient/backchannel-svelte';
+  import { HttpClientError } from '@lostgradient/weft';
   import { onMount } from 'svelte';
   import { useBureauEventsLive, useFleetEventsLive } from '../../app/live-polling.svelte.ts';
   import { invalidateReviewQueries } from '../../lib/review-queries.ts';
@@ -294,6 +295,7 @@
     result: ApprovalOutcome,
     receipt: ReviewsOperationTypes['bureau.reviews.resolve']['output'] | undefined,
     decision: 'approve' | 'deny',
+    error: unknown,
   ): void {
     void invalidateReviewQueries(queryClient);
     outcome = undefined;
@@ -310,7 +312,10 @@
         reviewId: seen.id,
         tone: 'danger',
         title: REVIEWS_COPY.approvalFailed[decision],
-        message: 'The decision could not be confirmed. Refresh the review before trying again.',
+        message:
+          error instanceof HttpClientError
+            ? error.message
+            : 'The decision could not be confirmed. Refresh the review before trying again.',
       };
   }
 

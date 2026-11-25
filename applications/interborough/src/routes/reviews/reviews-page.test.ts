@@ -137,6 +137,22 @@ describe('the reviews page', () => {
     await findByText(/\$42\.00.*order order-1001.*Refund pending/);
     expect(container.textContent).not.toContain('Refunded');
   });
+  test('says Refunded only when the provider reports a successful refund', async () => {
+    const review = toolApprovalFixture({
+      effect: {
+        kind: 'refund',
+        refundId: 'refund-1',
+        orderId: 'order-1001',
+        cents: 4200,
+        currency: 'USD',
+        status: 'succeeded',
+      },
+    });
+    const { container, findByText } = open({ reviews: [review] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+    await findByText(/\$42\.00.*order order-1001.*Refunded/);
+  });
   test('does not send or display a late decision after the actor changes', async () => {
     stub = installBureauWorld(emptyBureauWorld({ reviews: [APPROVAL] }));
     let principal!: PrincipalStore;
@@ -547,6 +563,22 @@ describe('deciding a Bureau tool approval', () => {
     expect(rows(container).length).toBe(1);
     expect(container.textContent).not.toMatch(/Nothing (?:was refunded|changed)/);
   });
+
+  test.each(['Approve', 'Deny'] as const)(
+    'shows the returned %s failure while retaining the review',
+    async (decision) => {
+      const { container, findByRole, findByText } = open({ reviews: [APPROVAL] });
+      await waitFor(() => expect(rows(container).length).toBe(1));
+      await openRow(container, 0);
+      stub?.on('bureau.reviews.resolve', () => {
+        throw new StubFault('Internal', 500, 'The reviewer could not reach the agent.');
+      });
+      if (decision === 'Approve') await approveRefund(findByRole);
+      else await fireEvent.click(await findByRole('button', { name: 'Deny' }));
+      await findByText('The reviewer could not reach the agent.');
+      expect(rows(container).length).toBe(1);
+    },
+  );
 });
 
 describe('the keys that act on the open review', () => {

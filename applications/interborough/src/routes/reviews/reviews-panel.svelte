@@ -99,6 +99,7 @@
       outcome: ApprovalOutcome,
       receipt: ReviewsOperationTypes['bureau.reviews.resolve']['output'] | undefined,
       decision: 'approve' | 'deny',
+      error: unknown,
     ) => void;
     readonly onAnswer: (review: BureauHumanWait, answer: unknown, onDone: () => void) => void;
     /** Sends a decision on a workflow review; `onDone` is called when it was taken, so the list can move on. */
@@ -156,7 +157,7 @@
     { id: string; round: number; decision: 'approve' | 'deny'; run: () => void } | undefined;
   const actionsFor = useToolApprovalActions({
     ...host,
-    onOutcome: (seen, outcome, receipt) => {
+    onOutcome: (seen, outcome, receipt, error) => {
       inFlightApproval = undefined;
       const current = items.find((item) => item.key === `bureau:${seen.id}`)?.review;
       if (current?.kind === 'tool-approval' && current.round !== seen.round) return;
@@ -171,7 +172,7 @@
         )
           advance.run();
       }
-      onApprovalOutcome(seen, outcome, receipt, decision);
+      onApprovalOutcome(seen, outcome, receipt, decision, error);
     },
   });
 
