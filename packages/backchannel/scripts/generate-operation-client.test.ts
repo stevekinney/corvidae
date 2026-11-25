@@ -2,6 +2,7 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import ts from 'typescript';
 
 import { createProbeClientWithFetch } from '../src/__fixtures__/probe-client/fetch-operation-client.generated.ts';
 import { createProbeClientWithTransport } from '../src/__fixtures__/probe-client/portable-operation-client.generated.ts';
@@ -23,6 +24,132 @@ async function generatedText(
 }
 
 describe('createOperationClientSources for a catalog that is not Weft', () => {
+  it('typechecks scoped recursive definitions in split and portable clients', async () => {
+    const base = fixtureSnapshot();
+    const operation = base.operations.find((item) => item.name === 'probe.jobs.list');
+    if (!operation) throw new Error('missing fixture operation');
+    const recursive = (label: string) => ({
+      $defs: {
+        __schema0: {
+          type: 'object',
+          required: ['label'],
+          properties: {
+            label: { const: label },
+            branches: { type: 'array', items: { $ref: '#/$defs/__schema0' } },
+          },
+        },
+      },
+      type: 'object',
+      required: ['root'],
+      properties: { root: { $ref: '#/$defs/__schema0' } },
+    });
+    const snapshot = {
+      ...base,
+      operations: [
+        {
+          ...operation,
+          name: 'probe.alpha.read',
+          tags: ['Alpha'],
+          outputSchema: recursive('alpha'),
+        },
+        { ...operation, name: 'probe.beta.read', tags: ['Beta'], outputSchema: recursive('beta') },
+        {
+          ...operation,
+          name: 'probe.timeline.read',
+          tags: ['Timeline'],
+          outputSchema: {
+            $defs: {
+              __schema0: {
+                type: 'object',
+                required: ['operationId'],
+                properties: {
+                  operationId: { type: 'string' },
+                  branches: { type: 'array', items: { $ref: '#/$defs/__schema0' } },
+                },
+              },
+            },
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['step'],
+              properties: {
+                step: { type: 'number' },
+                branches: { type: 'array', items: { $ref: '#/$defs/__schema0' } },
+                children: { type: 'array', items: { $ref: '#/$defs/__schema0' } },
+              },
+            },
+          },
+        },
+      ],
+    };
+    const directory = join(import.meta.dir, 'virtual-reference-output');
+    const options = fixtureOptions({
+      portableEntries: true,
+      outputDirectory: directory,
+      runtimeSpecifier: join(import.meta.dir, '../src/client/index.ts'),
+    });
+    const sources = await createOperationClientSources(snapshot, options);
+    expect([...sources]).toEqual([...(await createOperationClientSources(snapshot, options))]);
+    const files = new Map(
+      [...sources].map(([name, contents]) => [join(directory, name), contents]),
+    );
+    const consumer = join(directory, 'consumer.ts');
+    files.set(
+      consumer,
+      `
+      import { createProbeClient } from './operation-client.generated.ts';
+      import { createProbeClientWithTransport } from './portable-operation-client.generated.ts';
+      declare const split: ReturnType<typeof createProbeClient>;
+      declare const portable: ReturnType<typeof createProbeClientWithTransport>;
+      async function check() {
+        const alpha = await split['probe.alpha.read']({});
+        const beta = await portable['probe.beta.read']({});
+        const timeline = await split['probe.timeline.read']({});
+        const a: 'alpha' | undefined = alpha.root.branches?.[0]?.branches?.[0]?.label;
+        const b: 'beta' | undefined = beta.root.branches?.[0]?.label;
+        const child: string | undefined = timeline[0]?.children?.[0]?.branches?.[0]?.operationId;
+        // @ts-expect-error the two roots have different definition shapes
+        const wrong: 'beta' = alpha.root.label;
+        // @ts-expect-error recursion retains its typed label
+        const invalid: typeof alpha.root = { label: 42 };
+        void [a, b, child, wrong, invalid];
+      }
+      void check;
+    `,
+    );
+    const compilerOptions: ts.CompilerOptions = {
+      noEmit: true,
+      strict: true,
+      skipLibCheck: true,
+      target: ts.ScriptTarget.ESNext,
+      module: ts.ModuleKind.Preserve,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      allowImportingTsExtensions: true,
+    };
+    const host = ts.createCompilerHost(compilerOptions);
+    const readFile = host.readFile.bind(host);
+    const fileExists = host.fileExists.bind(host);
+    const directoryExists = host.directoryExists?.bind(host);
+    host.fileExists = (path) => files.has(path) || fileExists(path);
+    host.readFile = (path) => files.get(path) ?? readFile(path);
+    host.directoryExists = (path) => path === directory || (directoryExists?.(path) ?? false);
+    const sourceFile = host.getSourceFile.bind(host);
+    host.getSourceFile = (path, languageVersion, onError, shouldCreateNewSourceFile) => {
+      const text = files.get(path);
+      return text === undefined
+        ? sourceFile(path, languageVersion, onError, shouldCreateNewSourceFile)
+        : ts.createSourceFile(path, text, languageVersion);
+    };
+    const program = ts.createProgram([consumer], compilerOptions, host);
+    const diagnostics = ts.getPreEmitDiagnostics(program);
+    expect(
+      ts.formatDiagnostics(diagnostics, {
+        getCanonicalFileName: (name) => name,
+        getCurrentDirectory: () => directory,
+        getNewLine: () => '\n',
+      }),
+    ).toBe('');
+  });
   it('matches the committed paged Svelte catalog fixture', async () => {
     const sources = await svelteFixtureSources();
     const directory = join(import.meta.dir, '../../backchannel-svelte/tests/fixture/generated');

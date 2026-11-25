@@ -1,10 +1,12 @@
+import { createHash } from 'node:crypto';
+
 import { PACKAGE_AUTHORIZATION_SCOPE_PATTERN } from '../src/index.ts';
 import { compareStrings } from '../src/internals.ts';
-
 const UNSUPPORTED_COMBINATOR = Symbol('unsupported-combinator');
 
 export type TypeNode =
   | { readonly kind: 'primitive'; readonly text: string }
+  | { readonly kind: 'reference'; readonly name: string }
   | { readonly kind: 'array'; readonly element: TypeNode }
   | { readonly kind: 'union'; readonly members: ReadonlyArray<TypeNode> }
   | { readonly kind: 'record'; readonly value?: TypeNode }
@@ -69,7 +71,84 @@ function unionBranches(
  * feature (non-string `enum`, `allOf`, co-occurring combinators,
  * mixed properties and additionalProperties, nullable patterns).
  */
+type ReferenceContext = {
+  readonly definitions: Record<string, unknown>;
+  readonly prefix: string;
+  readonly used: Set<string>;
+};
+
+function referenceName(context: ReferenceContext, name: string): string {
+  const digest = createHash('sha256').update(name).digest('hex');
+  return `CatalogDefinition_${context.prefix}_${digest}`;
+}
+
+function referencedName(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.startsWith('#/$defs/')) return undefined;
+  const segment = value.slice('#/$defs/'.length);
+  if (!segment || segment.includes('/') || /~(?![01])/u.test(segment)) return undefined;
+  return segment.replace(/~1/gu, '/').replace(/~0/gu, '~');
+}
+
+/** Reject cycles made only of aliases or unions, which TypeScript cannot declare. */
+function guardedDefinition(context: ReferenceContext, name: string, path: Set<string>): boolean {
+  if (path.has(name) || !Object.hasOwn(context.definitions, name)) return false;
+  const definition = context.definitions[name];
+  if (!isRecord(definition)) return false;
+  const nextPath = new Set(path).add(name);
+  return guardedNode(context, definition, nextPath);
+}
+
+function guardedNode(
+  context: ReferenceContext,
+  schema: Record<string, unknown>,
+  path: Set<string>,
+): boolean {
+  const ref = Object.hasOwn(schema, '$ref') ? referencedName(schema['$ref']) : undefined;
+  if (ref !== undefined) return guardedDefinition(context, ref, path);
+  const branches = unionBranches(schema);
+  if (branches === UNSUPPORTED_COMBINATOR) return false;
+  if (branches !== undefined)
+    return branches.every((branch) => !isRecord(branch) || guardedNode(context, branch, path));
+  return true;
+}
+
+/** Parse one schema root and its reachable, root-scoped local definitions. */
+export function parseSchema(schema: Record<string, unknown>): {
+  readonly root: TypeNode;
+  readonly definitions: ReadonlyMap<string, TypeNode>;
+} {
+  const definitions =
+    Object.hasOwn(schema, '$defs') && isRecord(schema['$defs']) ? schema['$defs'] : {};
+  const context: ReferenceContext = {
+    definitions,
+    prefix: createHash('sha256').update(JSON.stringify(schema)).digest('hex'),
+    used: new Set(),
+  };
+  const root = parseNode(schema, context);
+  const emitted = new Map<string, TypeNode>();
+  for (const name of context.used) {
+    const definition = definitions[name];
+    if (isRecord(definition))
+      emitted.set(referenceName(context, name), parseNode(definition, context));
+  }
+  return { root, definitions: emitted };
+}
+
 export function schemaToNode(schema: Record<string, unknown>): TypeNode {
+  return parseSchema(schema).root;
+}
+
+function parseNode(schema: Record<string, unknown>, context: ReferenceContext): TypeNode {
+  if (Object.hasOwn(schema, '$ref')) {
+    const name = referencedName(schema['$ref']);
+    const siblings = Object.keys(schema).filter(
+      (key) => !['$ref', '$defs', 'title', 'description', '$comment'].includes(key),
+    );
+    if (name === undefined || siblings.length || !guardedDefinition(context, name, new Set()))
+      return { kind: 'primitive', text: 'unknown' };
+    context.used.add(name);
+    return { kind: 'reference', name: referenceName(context, name) };
+  }
   const constant = schema['const'];
   if (
     typeof constant === 'string' ||
@@ -85,7 +164,7 @@ export function schemaToNode(schema: Record<string, unknown>): TypeNode {
   if (branches !== undefined) {
     const members = branches.map((member) =>
       isRecord(member)
-        ? schemaToNode(member)
+        ? parseNode(member, context)
         : ({ kind: 'primitive', text: 'unknown' } satisfies TypeNode),
     );
     if (members.some((member) => member.kind === 'primitive' && member.text === 'unknown')) {
@@ -111,7 +190,7 @@ export function schemaToNode(schema: Record<string, unknown>): TypeNode {
       members: stringEnum.map((value) => ({ kind: 'primitive', text: JSON.stringify(value) })),
     };
   }
-  return typedSchemaNode(schema);
+  return typedSchemaNode(schema, context);
 }
 
 /**
@@ -128,7 +207,7 @@ function stringSchemaNode(schema: Record<string, unknown>): TypeNode {
     : { kind: 'primitive', text: 'string' };
 }
 
-function typedSchemaNode(schema: Record<string, unknown>): TypeNode {
+function typedSchemaNode(schema: Record<string, unknown>, context: ReferenceContext): TypeNode {
   const type = schema['type'];
   switch (type) {
     case 'string':
@@ -141,12 +220,12 @@ function typedSchemaNode(schema: Record<string, unknown>): TypeNode {
     case 'null':
       return { kind: 'primitive', text: 'null' };
     case 'array':
-      return arraySchemaNode(schema['items']);
+      return arraySchemaNode(schema['items'], context);
   }
   if (Array.isArray(type)) {
     return { kind: 'union', members: type.map(typeUnionMember) };
   }
-  if (type === 'object' || isRecord(schema['properties'])) return objectSchemaNode(schema);
+  if (type === 'object' || isRecord(schema['properties'])) return objectSchemaNode(schema, context);
   return { kind: 'primitive', text: 'unknown' };
 }
 
@@ -156,21 +235,21 @@ function typeUnionMember(value: unknown): TypeNode {
     : { kind: 'primitive', text: 'unknown' };
 }
 
-function arraySchemaNode(items: unknown): TypeNode {
+function arraySchemaNode(items: unknown, context: ReferenceContext): TypeNode {
   return {
     kind: 'array',
-    element: isRecord(items) ? schemaToNode(items) : { kind: 'primitive', text: 'unknown' },
+    element: isRecord(items) ? parseNode(items, context) : { kind: 'primitive', text: 'unknown' },
   };
 }
 
-function objectSchemaNode(schema: Record<string, unknown>): TypeNode {
+function objectSchemaNode(schema: Record<string, unknown>, context: ReferenceContext): TypeNode {
   const properties = schema['properties'];
   const additionalProperties = schema['additionalProperties'];
   if (
     isRecord(additionalProperties) &&
     (!isRecord(properties) || Object.keys(properties).length === 0)
   ) {
-    return { kind: 'record', value: schemaToNode(additionalProperties) };
+    return { kind: 'record', value: parseNode(additionalProperties, context) };
   }
   if (!isRecord(properties)) return { kind: 'record' };
   const required = new Set(
@@ -184,7 +263,7 @@ function objectSchemaNode(schema: Record<string, unknown>): TypeNode {
       name,
       optional: !required.has(name),
       value: isRecord(propertySchema)
-        ? schemaToNode(propertySchema)
+        ? parseNode(propertySchema, context)
         : ({ kind: 'primitive', text: 'unknown' } satisfies TypeNode),
     }))
     .toSorted((left, right) => compareStrings(left.name, right.name));
@@ -215,7 +294,11 @@ export function renderNode(
   switch (node.kind) {
     case 'primitive':
       return node.text;
+    case 'reference':
+      return node.name;
     case 'record':
+      if (node.value !== undefined && containsReference(node.value))
+        return `{ readonly [key: string]: ${renderChild(node.value)} }`;
       return `Record<string, ${node.value === undefined ? 'unknown' : renderChild(node.value)}>`;
     case 'array':
       return `ReadonlyArray<${renderChild(node.element)}>`;
@@ -230,6 +313,23 @@ export function renderNode(
     }
     default:
       throw new Error(`Unsupported schema node: ${JSON.stringify(node satisfies never)}`);
+  }
+}
+
+function containsReference(node: TypeNode): boolean {
+  switch (node.kind) {
+    case 'reference':
+      return true;
+    case 'array':
+      return containsReference(node.element);
+    case 'record':
+      return node.value !== undefined && containsReference(node.value);
+    case 'union':
+      return node.members.some(containsReference);
+    case 'object':
+      return node.fields.some((field) => containsReference(field.value));
+    case 'primitive':
+      return false;
   }
 }
 
