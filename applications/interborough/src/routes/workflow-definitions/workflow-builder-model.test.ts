@@ -20,6 +20,7 @@ import {
   addStep,
   forEachStep,
   identifierFromTitle,
+  insertStep,
   moveStep,
   readBuilder,
   removeBranch,
@@ -43,6 +44,7 @@ import {
   setTitleDerivingName,
   setTrigger,
   setWaitDuration,
+  takeStep,
   waitPartsOf,
   type BuilderStep,
   type ListPath,
@@ -477,6 +479,23 @@ describe('the edits', () => {
     expect(steps(moveStep(text(), 2, -1))).toEqual(['activity', 'await-signal', 'sleep']);
     expect(moveStep(text(), 0, -1)).toBe(text());
     expect(moveStep(text(), 2, 1)).toBe(text());
+  });
+
+  test('restores a raw deleted step without overwriting a subsequent edit', () => {
+    const step = {
+      kind: 'sleep',
+      duration: '15m',
+      title: 'Post the summary',
+      extra: { keep: true },
+    };
+    const removed = takeStep(JSON.stringify({ description: 'Before', steps: [step] }), 0);
+    expect(removed?.step).toEqual(step);
+    if (removed === undefined) throw new Error('Expected the removed step.');
+    const edited = JSON.stringify({ ...parsed(removed.text), description: 'After' });
+    expect(parsed(insertStep(edited, ['steps'], 0, removed.step))).toEqual({
+      description: 'After',
+      steps: [step],
+    });
   });
 
   test('removeStep removes one step, and ignores an index that is not there', () => {

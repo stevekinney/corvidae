@@ -61,6 +61,37 @@ describe('the keys of a list of steps', () => {
     expect(keys.keysOf(['steps', 0, 'cases', 'new'], 2)).not.toEqual(inside);
   });
 
+  test('restores a deleted step in its moved and renamed list without changing the surviving keys', () => {
+    const keys = new StepKeys();
+    keys.keysOf(ROOT, 2);
+    const original = ['steps', 0, 'cases', 'old'] as const;
+    const [before, deleted, after] = keys.keysOf(original, 3);
+    const nested = keys.keysOf([...original, 2, 'steps'], 1);
+    const undo = keys.undoPosition(original, 1);
+    keys.removed(original, 1);
+    keys.slotRenamed(original, 'new');
+    keys.moved(ROOT, 0, 1);
+
+    const current = ['steps', 1, 'cases', 'new'] as const;
+    const target = undo?.();
+    expect(target).toEqual({ list: current, index: 1, key: deleted });
+    if (target === undefined) throw new Error('Expected a restore position.');
+    keys.inserted(target.list, target.index, target.key);
+    expect(keys.keysOf(current, 3)).toEqual([before, deleted, after]);
+    expect(keys.keysOf([...current, 2, 'steps'], 1)).toEqual(nested);
+  });
+
+  test('never restores into a replacement list at the same path', () => {
+    const keys = new StepKeys();
+    const slot = ['steps', 0, 'cases', 'x'] as const;
+    keys.keysOf(slot, 1);
+    const undo = keys.undoPosition(slot, 0);
+    keys.removed(slot, 0);
+    keys.slotRemoved(slot);
+    keys.keysOf(slot, 1);
+    expect(undo?.()).toBeUndefined();
+  });
+
   test('counts every change, so a list that read the keys reads them again, and forgets all of them on a reset', () => {
     const keys = new StepKeys();
     const before = keys.keysOf(ROOT, 2);

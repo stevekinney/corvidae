@@ -270,6 +270,48 @@ test.describe('workflow builder design states for /workflows/new and /workflows/
     await capture(page, '/workflows/new', 'a step the builder does not model');
   });
 
+  test('deleting a named step offers persistent Undo in the builder (66g)', async ({ page }) => {
+    const root = await openBuilder(page, '/workflows/new');
+    await openJsonTab(tabs(root));
+    await replaceJsonEditorText(
+      await jsonEditor(root, WORKFLOW_COPY.creator.textLabel),
+      JSON.stringify({
+        ...morningBriefing,
+        steps: morningBriefing.steps.map((step, index) =>
+          index === 2 ? { ...step, title: 'Post the summary' } : step,
+        ),
+      }),
+    );
+    await openTab(tabs(root), BUILDER.builderTab);
+
+    const remove = root.getByRole('button', { name: 'Remove step 3', exact: true });
+    const rows = root.locator('[data-step-address]');
+    const toast = page
+      .locator('[data-cinder-undo]')
+      .filter({ hasText: 'Deleted "Post the summary"' });
+    const description = root.locator('#workflow-builder-description');
+    await remove.click();
+    await expect(rows).toHaveCount(3);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(root.locator('[data-step-kind="wait"]')).toHaveAttribute('data-step-address', '3');
+    await expect(toast).toBeVisible();
+    await capture(page, '/workflows/new', 'deleted step with undo', 'builder');
+
+    await description.fill('Kept after Undo.');
+    await toast.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(rows).toHaveCount(4);
+    await expect(root.locator('#workflow-builder-step-3-title')).toHaveValue('Post the summary');
+    await expect(description).toHaveValue('Kept after Undo.');
+    await expect(toast).toBeHidden();
+
+    await remove.click();
+    await expect(toast).toBeVisible();
+    await root.getByRole('button', { name: WORKFLOW_COPY.creator.cancelAction }).click();
+    await page.getByRole('button', { name: BUILDER.discard.confirm }).click();
+    await expect(page).toHaveURL(/\/workflows$/);
+    await expect(toast).toBeHidden();
+  });
+
   test('create that the host cannot write stays at the action (65n)', async ({ page }) => {
     await answerUnwritable(
       page,

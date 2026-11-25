@@ -93,6 +93,49 @@ export class StepKeys {
     this.version += 1;
   }
 
+  /** Finds the deleted step's position in its current list, including after a parent move or rename. */
+  undoPosition(
+    list: ListPath,
+    index: number,
+  ): (() => { list: ListPath; index: number; key: string } | undefined) | undefined {
+    const keys = this.#lists.get(JSON.stringify(list))?.keys;
+    const key = keys?.[index];
+    if (keys === undefined || key === undefined) return undefined;
+    const before = keys[index - 1];
+    const after = keys[index + 1];
+    return () => {
+      if (keys.includes(key)) return undefined;
+      for (const held of this.#lists.values()) {
+        if (held.keys !== keys) continue;
+        const afterIndex = after === undefined ? -1 : keys.indexOf(after);
+        if (afterIndex >= 0) return { list: held.path, index: afterIndex, key };
+        const beforeIndex = before === undefined ? -1 : keys.indexOf(before);
+        return {
+          list: held.path,
+          index: beforeIndex >= 0 ? beforeIndex + 1 : Math.min(index, keys.length),
+          key,
+        };
+      }
+      return undefined;
+    };
+  }
+
+  /** The steps at and after the restored position move down with their nested lists. */
+  inserted(list: ListPath, index: number, key: string): void {
+    const next = new Map<string, KeyedList>();
+    for (const held of this.#lists.values()) {
+      let path = held.path;
+      const place = path[list.length];
+      if (startsWith(path, list) && typeof place === 'number' && place >= index) {
+        path = [...list, place + 1, ...path.slice(list.length + 1)];
+      }
+      next.set(JSON.stringify(path), { path, keys: held.keys });
+    }
+    next.get(JSON.stringify(list))?.keys.splice(index, 0, key);
+    this.#lists = next;
+    this.version += 1;
+  }
+
   /** The case or list at `slot` (`[...step, 'cases', name]`) named `name` instead, with what is in it. */
   slotRenamed(slot: Path, name: string): void {
     const next = new Map<string, KeyedList>();

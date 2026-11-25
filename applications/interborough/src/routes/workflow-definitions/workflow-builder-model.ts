@@ -827,11 +827,29 @@ export function addStep(text: string, kind: BuilderStepKind, options: AddStepOpt
   );
 }
 
+/** Removes the step and returns its original document fields for Undo. */
+export function takeStep(text: string, path: StepPath): { text: string; step: Json } | undefined {
+  let removed: Json | undefined;
+  const next = edit(text, (document) =>
+    withStep(document, path, (step, list, index) => {
+      removed = step;
+      list.splice(index, 1);
+    }),
+  );
+  return removed === undefined ? undefined : { text: next, step: removed };
+}
+
 /** `text` without the step at `path`. */
 export function removeStep(text: string, path: StepPath): string {
+  return takeStep(text, path)?.text ?? text;
+}
+
+/** Inserts the saved step into the current list, retaining edits made elsewhere. */
+export function insertStep(text: string, list: ListPath, index: number, step: Json): string {
   return edit(text, (document) =>
-    withStep(document, path, (_step, list, index) => {
-      list.splice(index, 1);
+    withList(document, list, (steps) => {
+      if (!Number.isInteger(index) || index < 0 || index > steps.length) return false;
+      steps.splice(index, 0, step);
     }),
   );
 }

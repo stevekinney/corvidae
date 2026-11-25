@@ -42,7 +42,6 @@
     removeBranch,
     removeCase,
     removeOtherwise,
-    removeStep,
     setBranchName,
     setCaseValue,
     setStepConcurrency,
@@ -129,7 +128,11 @@
   }
 
   function remove(row: Row): void {
-    host.commit(removeStep(host.text, pathOf(row)), () => host.keys.removed(row.list, row.index));
+    const kind =
+      row.step.kind === 'activity'
+        ? host.activityTitle(row.step.handler)
+        : copy.stepKinds[row.step.kind];
+    host.deleteStep(row.list, row.index, row.step.title.trim() || kind);
   }
 
   /** The names the cases or lists of a step hold, but the one at `except`. */

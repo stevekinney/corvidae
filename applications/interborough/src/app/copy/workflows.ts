@@ -759,6 +759,9 @@ export const WORKFLOW_COPY = {
     moveEarlier: (where: string): string => `Move ${where} earlier`,
     moveLater: (where: string): string => `Move ${where} later`,
     remove: (where: string): string => `Remove ${where}`,
+    stepDeleted: (label: string): string => `Deleted "${label}"`,
+    stepRestoreUnavailable: 'Couldn’t restore the step because its list changed.',
+    stepRestoreLocked: 'Couldn’t restore the step while the editor is read-only.',
     /** The one control that adds a step to a list, and its menu. */
     addLabel: 'Add a step',
     addTo: (where: string): string => `Add a step to ${where}`,

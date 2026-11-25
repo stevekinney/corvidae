@@ -7,6 +7,7 @@
 import { getContext, setContext } from 'svelte';
 
 import type { CatalogActivity, CatalogWorkflow } from '../../lib/bureau-workflow-catalog.ts';
+import type { ListPath } from './workflow-builder-model.ts';
 import type { StepKeys } from './workflow-step-keys.svelte.ts';
 
 /** A catalog the Bureau answers: loading, failed (with a way to ask again), or its entries. */
@@ -34,6 +35,8 @@ export interface BuilderHost {
    * move the steps' keys as the edit moved the steps. Text that is what it was writes nothing.
    */
   commit: (next: string, follow?: () => void) => void;
+  /** Removes one step and offers to restore it in the current draft. */
+  deleteStep: (list: ListPath, index: number, label: string) => void;
   /** The `error` prop a field takes for its problem, or nothing for a field that has none. */
   errorOf: (fieldId: string) => { error?: string };
   /** Whether the step at `address` has something to fix. */

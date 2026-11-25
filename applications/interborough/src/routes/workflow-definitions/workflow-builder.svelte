@@ -41,9 +41,10 @@
   } from '@lostgradient/cinder';
   import { Plus } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
-  import { tick, untrack, type Snippet } from 'svelte';
+  import { onDestroy, tick, untrack, type Snippet } from 'svelte';
 
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
+  import { dismissToast, hasToastHost, showToast } from '../../app/toast-host.svelte';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { readScheduleAttention } from '../../lib/bureau-attention.ts';
   import { listAgents } from '../../lib/bureau-client.ts';
@@ -67,6 +68,7 @@
   import {
     forEachStep,
     identifierFromTitle,
+    insertStep,
     readBuilder,
     ROOT_LIST,
     setContributedTrigger,
@@ -77,7 +79,9 @@
     setTitle,
     setTitleDerivingName,
     setTrigger,
+    takeStep,
     type BuilderSchema,
+    type ListPath,
     type SchemaKey,
   } from './workflow-builder-model.ts';
   import type { DocumentProblem } from './workflow-issue-line.ts';
@@ -287,6 +291,45 @@
     lastWritten = next;
     follow?.();
     onTextChange(next);
+  }
+
+  const hasToasts = hasToastHost();
+  const deletionToasts = new Set<string>();
+
+  onDestroy(() => {
+    for (const id of deletionToasts) dismissToast(id);
+  });
+
+  function deleteStep(list: ListPath, index: number, label: string): void {
+    if (locked) return;
+    const removed = takeStep(text, [...list, index]);
+    if (removed === undefined) return;
+    const position = keys.undoPosition(list, index);
+    write(removed.text, () => keys.removed(list, index));
+    if (!hasToasts || position === undefined) return;
+
+    let toast: string | undefined;
+    toast = showToast(copy.stepDeleted(label), {
+      variant: 'success',
+      undo: () => {
+        if (locked) {
+          showToast(copy.stepRestoreLocked, { variant: 'warning' });
+          return;
+        }
+        const target = text === lastWritten ? position() : undefined;
+        const next =
+          target === undefined ? text : insertStep(text, target.list, target.index, removed.step);
+        if (target === undefined || next === text) {
+          showToast(copy.stepRestoreUnavailable, { variant: 'warning' });
+          return;
+        }
+        write(next, () => keys.inserted(target.list, target.index, target.key));
+      },
+      onClose: () => {
+        if (toast !== undefined) deletionToasts.delete(toast);
+      },
+    });
+    if (toast !== undefined) deletionToasts.add(toast);
   }
 
   /**
@@ -551,6 +594,7 @@
     },
     keys,
     commit: write,
+    deleteStep,
     errorOf,
     hasProblem: stepHasProblem,
     get agentsFailed() {
