@@ -71,4 +71,21 @@ describe('JUnit artifact paths', () => {
     const expected = reportPathPatterns.join('\n');
     expect(configuredReportPathBlocks(await workflow.text())).toEqual([expected, expected]);
   });
+
+  test('the Interborough CI lanes cover its complete test command and retain both reports', async () => {
+    const manifest = (await Bun.file(join(root, 'applications/interborough/package.json')).json()) as {
+      scripts: Record<string, string>;
+    };
+    expect(manifest.scripts['test']).toBe(
+      `${manifest.scripts['test:host']} && ${manifest.scripts['test:ui']}`,
+    );
+    const source = await workflow.text();
+    expect(source).toContain('--filter=!@lostgradient/interborough');
+    expect(source).toContain('name: interborough host\n            lane: host');
+    expect(source).toContain('name: interborough ui\n            lane: ui');
+    expect(source).toContain('bun run --cwd applications/interborough test:${{ matrix.lane }}');
+    expect(source).toContain('merge-multiple: true');
+    expect(manifest.scripts['test:host']).toContain('bun-test-junit.ts');
+    expect(manifest.scripts['test:ui']).toContain('run-ui-shards.ts');
+  });
 });
