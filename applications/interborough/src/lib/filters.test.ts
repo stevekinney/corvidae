@@ -33,6 +33,21 @@ import {
   type WorkflowListQuery,
 } from './filters.ts';
 
+test('URL pagination retains REST bounds, flooring, omission, and page defaults', () => {
+  const cases = [
+    ['limit=1001&offset=1.5', { limit: 1000, offset: 1 }],
+    ['limit=1.9&offset=0.9', { limit: 1, offset: 0 }],
+    ['limit=0&offset=-1', {}],
+    ['limit=&offset=', { offset: 0 }],
+    ['limit=Infinity&offset=NaN', { limit: 50, offset: 0 }],
+    ['', { limit: 50, offset: 0 }],
+  ] as const;
+  for (const [query, expected] of cases) {
+    const filter = { limit: 50, offset: 0, ...parseWorkflowListFilter(new URLSearchParams(query)) };
+    expect(workflowListOperationInput(filter)).toEqual(expected);
+  }
+});
+
 test('generated list input retains the former HTTP attribute projection', () => {
   const date = new Date('2026-11-01T00:00:00.000Z');
   expect(

@@ -59,6 +59,9 @@ export function workflowListOperationInput(
   const createdAt = range(filter.createdAt);
   const updatedAt = range(filter.updatedAt);
   const executionDeadline = range(filter.executionDeadline);
+  // Match the former REST list extractor before issuing the generated JSON-RPC call.
+  const limit = filter.limit;
+  const offset = filter.offset;
   return {
     ...(filter.status === undefined ? {} : { status: filter.status }),
     ...(filter.type === undefined ? {} : { type: filter.type }),
@@ -77,8 +80,12 @@ export function workflowListOperationInput(
     ...(executionDeadline === undefined || Object.keys(executionDeadline).length === 0
       ? {}
       : { executionDeadline }),
-    ...(filter.limit === undefined ? {} : { limit: filter.limit }),
-    ...(filter.offset === undefined ? {} : { offset: filter.offset }),
+    ...(limit === undefined || !Number.isFinite(limit) || limit < 1
+      ? {}
+      : { limit: Math.min(Math.floor(limit), 1000) }),
+    ...(offset === undefined || !Number.isFinite(offset) || offset < 0
+      ? {}
+      : { offset: Math.floor(offset) }),
     ...(projected.length === 0 ? {} : { attributes: projected }),
   };
 }

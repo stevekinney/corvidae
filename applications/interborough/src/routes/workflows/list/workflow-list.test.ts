@@ -105,6 +105,20 @@ describe('WorkflowList', () => {
     expect(await findByText('No workflows match')).not.toBeNull();
   });
 
+  test('normalizes pagination from the address like the former REST read', async () => {
+    resetLocation('/health/runs?limit=1001&offset=1.5');
+    fetchScript.routeJsonRpcMethod('weft.workflows.list', {
+      items: [],
+      total: 0,
+      offset: 1,
+      limit: 1000,
+    });
+    render(WorkflowListHarness, {
+      props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
+    });
+    await waitFor(() => expect(latestListInput(fetchScript)).toEqual({ limit: 1000, offset: 1 }));
+  });
+
   test('correlates provenance by the visible filtered-page id, not a newest-runs page', async () => {
     resetLocation('/health/runs?offset=50');
     const visibleId = 'wf_older_agent_run';
