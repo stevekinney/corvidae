@@ -312,9 +312,14 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
   ): Promise<void> {
     if (documents === undefined || documents.length === 0) return;
     const references = new Set(definition.references ?? []);
-    for (const document of documents) {
+    const prepared = documents.map((document) => ({
+      document,
+      bytes: textEncoder.encode(document.text),
+    }));
+    // Validate the entire batch before publishing its first document, so a bad later document
+    // cannot strand an earlier one beside a definition that never names it.
+    for (const { document, bytes } of prepared) {
       const ownedPrefix = `references/${id}/`;
-      const bytes = textEncoder.encode(document.text);
       const digest = createHash('sha256').update(bytes).digest('hex');
       if (
         !document.path.startsWith(ownedPrefix) ||
@@ -339,6 +344,15 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
       try {
         assertReferencePath(document.path);
         assertReferenceDocument(bytes);
+      } catch (error) {
+        if (error instanceof TypeError || error instanceof RangeError) {
+          refuse({ code: 'invalid-frontmatter', message: error.message });
+        }
+        throw error;
+      }
+    }
+    for (const { document, bytes } of prepared) {
+      try {
         await source.writeSibling(document.path, bytes, { definitionId: id });
       } catch (error) {
         if (error instanceof SiblingExistsError && reusablePaths.has(document.path)) {
@@ -357,9 +371,6 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
         }
         if (error instanceof SiblingExistsError)
           refuse({ code: 'invalid-frontmatter', message: error.message });
-        if (error instanceof TypeError || error instanceof RangeError) {
-          refuse({ code: 'invalid-frontmatter', message: error.message });
-        }
         throw error;
       }
     }
@@ -394,6 +405,7 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
             id,
             parsed.file.definition,
             saveOptions?.referenceDocuments,
+            new Set(saveOptions?.referenceDocuments?.map((document) => document.path) ?? []),
           );
         }
         await checkWritable(id, bytes);
