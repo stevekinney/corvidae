@@ -11,6 +11,7 @@
 import type { Locator, Page } from '@playwright/test';
 
 import { MODELS_COPY } from '../../src/app/copy/models.ts';
+import { PLUGINS_COPY } from '../../src/app/copy/plugins.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
@@ -277,6 +278,54 @@ test.describe('Settings › Models, provider connected', () => {
       MODELS_COPY.decisions.needsSetup,
     );
     await expect(page.getByRole('option', { name: /Jev/ })).toHaveCount(0);
+  });
+
+  test('Decisions, a registered host and fallback name the decision types each answers', async ({
+    page,
+    checkA11y,
+  }) => {
+    await withSampleCatalog(page);
+    await page.route('**/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as { id?: unknown; method?: string } | null;
+      if (body?.method !== 'bureau.decisions.models') return route.fallback();
+      return route.fulfill({
+        json: {
+          jsonrpc: '2.0',
+          id: body.id ?? null,
+          result: {
+            hostModel: { name: 'local', kinds: ['boolean'] },
+            rows: [
+              {
+                provider: 'anthropic',
+                model: 'claude-haiku-5-5',
+                availability: 'available',
+                decisionOnly: false,
+                answering: true,
+                fallback: true,
+                canBeFallback: true,
+                configured: null,
+                configuredFallback: null,
+              },
+            ],
+          },
+        },
+      });
+    });
+    await page.route('**/jsonrpc', async (route) => {
+      const body = route.request().postDataJSON() as { method?: string } | null;
+      if (body?.method !== 'bureau.settings.get') return route.fallback();
+      const response = await route.fetch();
+      const answer = (await response.json()) as { result: { values: Record<string, unknown> } };
+      answer.result.values['decisions.model'] = 'local';
+      return route.fulfill({ response, json: answer });
+    });
+    await open(page, E2E_BASE_URL);
+    const model = page.locator('[data-setting="decisions.model"]');
+    await expect(model).toContainText(
+      MODELS_COPY.decisions.model.hostAndFallback('Local', 'Claude Haiku 5.5'),
+    );
+    await checkA11y('settings models, host and fallback decision labels, at 1280px');
+    await captureAtEveryWidth(page, 'decision-host-and-fallback');
   });
 
   test('Decisions, the rows that can answer did not load: the row warns with its own Try again, and both selects wait', async ({
@@ -590,7 +639,7 @@ test.describe('Settings › Models, connect dialogs', () => {
   }) => {
     const dialog = await openConnect(page);
 
-    await expect(dialog).toContainText(copy.subtitle.idle);
+    await expect(dialog).toContainText(copy.subtitle);
     const field = dialog.getByLabel(copy.keyLabel);
     await expect(field).toHaveAttribute('placeholder', copy.keyPlaceholder);
     await expect(dialog).toContainText(copy.keyHelp);
@@ -662,7 +711,8 @@ test.describe('Settings › Models, connect dialogs', () => {
     await dialog.getByLabel(copy.keyLabel).fill(PASTED_KEY);
     await dialog.getByRole('button', { name: copy.connect }).click();
 
-    await expect(dialog).toContainText('baseURL must be a URL.');
+    await expect(dialog.getByText('must be a URL.', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('baseURL must be a URL.', { exact: true })).toHaveCount(0);
     await expect(dialog.getByLabel(/base ?url/i)).toHaveAttribute('aria-invalid', 'true');
     await expect(dialog.getByTestId('provider-connect-success')).toHaveCount(0);
     await checkA11y('settings models, connect with a refused setting, at 1280px');
@@ -685,7 +735,7 @@ test.describe('Settings › Models, connect dialogs', () => {
     await dialog.getByLabel(copy.keyLabel).fill(PASTED_KEY);
     await dialog.getByRole('button', { name: copy.connect }).click();
 
-    await expect(dialog).toContainText(copy.subtitle.testing);
+    await expect(dialog).toContainText(copy.subtitle);
     await expect(dialog).toContainText(copy.testing);
     await expect(dialog.getByRole('button', { name: copy.connecting })).toBeDisabled();
     await expect(dialog.getByRole('button', { name: copy.cancel })).toBeEnabled();
@@ -704,7 +754,7 @@ test.describe('Settings › Models, connect dialogs', () => {
     await dialog.getByLabel(copy.keyLabel).fill(PASTED_KEY);
     await dialog.getByRole('button', { name: copy.connect }).click();
 
-    await expect(dialog).toContainText(copy.subtitle.failed);
+    await expect(dialog).toContainText(copy.subtitle);
     await expect(dialog).toContainText(MODELS_COPY.keyTest.rejected('Anthropic', 401));
     await expect(dialog.getByLabel(copy.keyLabel)).toHaveAttribute('aria-invalid', 'true');
     for (const name of [copy.cancel, copy.test, copy.connect]) {
@@ -724,7 +774,7 @@ test.describe('Settings › Models, connect dialogs', () => {
     await dialog.getByLabel(copy.keyLabel).fill(PASTED_KEY);
     await dialog.getByRole('button', { name: copy.connect }).click();
 
-    await expect(dialog).toContainText(copy.subtitle.connected);
+    await expect(dialog).toContainText(copy.subtitle);
     const banner = dialog.getByTestId('provider-connect-success');
     await expect(banner).toContainText(copy.connectedTitle);
     await expect(banner).toContainText(copy.models(3));
@@ -732,6 +782,39 @@ test.describe('Settings › Models, connect dialogs', () => {
     await expect(dialog.getByRole('button', { name: copy.connect })).toHaveCount(0);
     await checkA11y('settings models, connect connected, at 1280px');
     await captureAtEveryWidth(page, 'connect-connected');
+  });
+
+  test('Test saves edited settings before it tests and says the result once in the dialog', async ({
+    page,
+    checkA11y,
+  }) => {
+    const requests: string[] = [];
+    page.on('request', (request) => {
+      if (request.method() === 'PUT' || request.url().endsWith('/test'))
+        requests.push(request.url());
+    });
+    await withBaseUrlSetting(page, 'openai', true);
+    await mockKeyRoutes(page, { ok: true, models: 1 });
+    await open(page, E2E_SHOWCASE_URL);
+    await providerRow(page, 'openai')
+      .getByRole('button', { name: /Connect/ })
+      .click();
+    const dialog = page.getByRole('dialog', { name: copy.title('OpenAI') });
+    await dialog.getByLabel(/base ?url/i).fill('https://proxy.example/v1');
+    await dialog.getByLabel(copy.keyLabel).fill(PASTED_KEY);
+    await dialog.getByRole('button', { name: copy.test }).click();
+
+    const result = dialog.getByTestId('provider-connect-result');
+    await expect(page.getByText(PLUGINS_COPY.configuration.savedNow)).toBeVisible();
+    await expect(result).toHaveCount(1);
+    await expect(result.getByTestId('provider-connect-success')).toHaveText(
+      new RegExp(`${copy.testedTitle}.*${copy.models(1)}`),
+    );
+    expect(requests.findIndex((url) => url.endsWith('/host/plugins/openai'))).toBeLessThan(
+      requests.findIndex((url) => url.endsWith('/host/providers/openai/test')),
+    );
+    await checkA11y('settings models, tested after saving settings, at 1280px');
+    await captureAtEveryWidth(page, 'connect-tested-after-settings');
   });
 });
 
@@ -827,6 +910,30 @@ test.describe('Settings › Models, manage, replace and remove', () => {
     );
     expect(rows.size).toBeGreaterThan(1);
     await captureAtEveryWidth(page, 'manage-save-and-key-buttons');
+  });
+
+  test('Manage, edited settings: Escape and the backdrop ask before discarding the live draft', async ({
+    page,
+    checkA11y,
+  }) => {
+    await withBaseUrlSetting(page, 'anthropic');
+    const dialog = await openManage(page);
+    const baseUrl = dialog.getByLabel(/base ?url/i);
+    await baseUrl.fill('https://proxy.example/v1');
+    await page.keyboard.press('Escape');
+
+    const confirm = page.getByRole('dialog', { name: MODELS_COPY.manageDialog.discardTitle });
+    await expect(confirm).toContainText(MODELS_COPY.manageDialog.discardDescription);
+    await confirm.getByRole('button', { name: MODELS_COPY.manageDialog.keepEditing }).click();
+    await expect(confirm).toHaveCount(0);
+    await expect(baseUrl).toHaveValue('https://proxy.example/v1');
+
+    await page.mouse.click(4, 4);
+    await expect(confirm).toBeVisible();
+    await captureAtEveryWidth(page, 'manage-discard-changes-confirm', async () => {
+      await expect(confirm).toBeVisible();
+    });
+    await checkA11y('settings models, manage discard changes confirmation, at 1280px');
   });
 
   test('Replace key, in progress: the new key tests while the old one stays in use', async ({

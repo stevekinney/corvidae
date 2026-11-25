@@ -3,7 +3,7 @@
  * sample world (`tmp/design-review/decisions.md`), so a design review or a person can look at every
  * page with the boards' data in it.
  *
- * With `--showcase` the host runs on a home of its own (`tmp/interborough-showcase` in the
+ * With `--showcase` the host runs on a home of its own (`tmp/interborough-fixtures/showcase` in the
  * repository, or the directory `INTERBOROUGH_SHOWCASE_HOME` names). It ignores `INTERBOROUGH_HOME`,
  * because the sample world's seed (`fixtures/sample-world-seed.ts`) empties the showcase home and
  * plays its story into it on every start, and a home set for everyday use must never be rewritten by
@@ -68,7 +68,7 @@ export const SHOWCASE_MODEL_REPLY =
   'This reply comes from the showcase provider stub. No model was called.';
 
 /** Where the showcase host keeps its state, relative to the repository, unless a home is set. */
-const SHOWCASE_HOME_SEGMENTS = ['tmp', 'interborough-showcase'] as const;
+const SHOWCASE_HOME_SEGMENTS = ['tmp', 'interborough-fixtures', 'showcase'] as const;
 
 /** `argv` without {@link SHOWCASE_FLAG}, and whether it was there. */
 export function splitShowcaseFlag(argv: readonly string[]): {
@@ -83,7 +83,7 @@ export function splitShowcaseFlag(argv: readonly string[]): {
 
 /**
  * `environment` with `INTERBOROUGH_HOME` replaced by the showcase home: the directory
- * `INTERBOROUGH_SHOWCASE_HOME` names, or `tmp/interborough-showcase` under `repositoryDirectory`
+ * `INTERBOROUGH_SHOWCASE_HOME` names, or `tmp/interborough-fixtures/showcase` under `repositoryDirectory`
  * (an empty value counts as unset). An `INTERBOROUGH_HOME` already in the environment is ignored on
  * purpose, so the showcase never rewrites a person's real home.
  */
@@ -92,10 +92,13 @@ export function showcaseEnvironment(
   repositoryDirectory: string,
 ): BungalowEnvironment {
   const named = environment['INTERBOROUGH_SHOWCASE_HOME'];
+  const root = environment['INTERBOROUGH_SHOWCASE_ROOT'];
   const home =
     named !== undefined && named !== ''
       ? named
-      : join(repositoryDirectory, ...SHOWCASE_HOME_SEGMENTS);
+      : root !== undefined && root !== ''
+        ? join(root, 'showcase')
+        : join(repositoryDirectory, ...SHOWCASE_HOME_SEGMENTS);
   return { ...environment, INTERBOROUGH_HOME: home };
 }
 

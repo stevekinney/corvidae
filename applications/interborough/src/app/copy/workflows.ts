@@ -40,6 +40,8 @@ export const WORKFLOW_COPY = {
     /** The segments above the rows, and the name of the group they form. */
     segmentsLabel: 'Show workflows',
     segments: { all: 'All', paused: 'Paused', problems: 'Problems' },
+    searchLabel: 'Search workflows',
+    searchPlaceholder: 'Search workflows',
     /** The accessible name of the rows. */
     rowsLabel: 'Workflows',
     clearAction: 'Clear filters',
@@ -54,11 +56,29 @@ export const WORKFLOW_COPY = {
     neverRun: 'Never run',
     /** The right edge of a row with a run in progress: when that run began. */
     started: (time: string): string => `Started ${time}`,
-    /** The line under a title: the steps of the file, then how many runs began lately. */
+    /** The line under a title: the steps of the file, the total runs, and the latest outcome. */
     steps: (count: number): string => `${String(count)} ${count === 1 ? 'step' : 'steps'}`,
-    runs: (count: number): string => `${String(count)} ${count === 1 ? 'run' : 'runs'} in 24 hours`,
-    /** The run in progress, in the line under a title. */
-    runningNow: 'Running',
+    runs: (count: number): string => `${String(count)} ${count === 1 ? 'run' : 'runs'}`,
+    runsToday: (count: number): string => `${String(count)} ${count === 1 ? 'run' : 'runs'} today`,
+    runningRuns: (count: number): string => `${String(count)} running`,
+    /** The complete activity caption for an engine-defined workflow row. */
+    codeActivity: (today: number, running: number, last: string): string =>
+      [
+        `${String(today)} ${today === 1 ? 'run' : 'runs'} today`,
+        ...(running === 0 ? [] : [`${String(running)} running`]),
+        `last ${last}`,
+      ].join(', '),
+    runningStep: (step: number | null, totalSteps: number | null): string =>
+      step === null || totalSteps === null
+        ? 'Running'
+        : `Running, step ${String(step)} of ${String(totalSteps)}`,
+    waitingOnYou: 'Waiting on you',
+    waiting: 'Waiting',
+    lastRunDone: 'last run done',
+    lastRunFailed: 'last run failed',
+    lastRunFailedAtStep: (step: number): string => `last run failed at step ${String(step)}`,
+    lastRunCanceled: 'last run canceled',
+    lastRunTimedOut: 'last run timed out',
     /** A file the Bureau cannot use, named by its file. */
     fileName: (id: string): string => `${id}.json`,
     schedules: (count: number): string => `${String(count)} schedules`,
@@ -70,21 +90,12 @@ export const WORKFLOW_COPY = {
       title: 'No workflows yet',
       description:
         'A workflow is a set of steps that agents and tools run in order. Build one yourself, or, once a provider is connected, describe it and an agent drafts it.',
-      askAction: 'Ask an agent',
-      /** The sentence that says Interborough's own workflows exist, when the engine holds some. */
-      internal: (count: number): string =>
-        `Interborough also runs ${String(count)} internal ${count === 1 ? 'workflow' : 'workflows'} of its own for chats, goals and schedules.`,
-      /** The state's way to the internal workflows. */
-      internalAction: 'See internal workflows',
-      /** The closed row under the state that opens to the folder workflow files are read from. */
-      files: {
-        label: 'Where workflow files live',
-        lead: 'Interborough reads workflows from',
-        copyLabel: 'Copy the folder',
-        copiedLabel: 'Folder copied',
-      },
-      /** Where the files are when the host does not say. */
-      hintDirectory: '~/.interborough/workflows',
+      askAction: 'Ask an agent to write one',
+      checkingProvider: 'Checking for a model provider.',
+      needsProvider: 'Ask an agent to write one needs a model provider.',
+      connectProvider: 'Connect a provider',
+      /** The small, human-only hint under the two first-use actions. */
+      fileHint: 'Or add a file to the workflows folder.',
     },
   },
   /** The page of the workflows Interborough runs itself (`/internal-workflows`). */
@@ -234,9 +245,12 @@ export const WORKFLOW_COPY = {
       runsAs: (agent: string): string => `runs as ${agent}`,
       /** "Last run" and the date, which is a link to the run, follow each other. */
       lastRunLabel: 'Last run',
+      waitingForSignal: 'Waiting for the signal ',
+      failedAtStep: (step: number): string => ` at step ${String(step)}`,
       lastRun: (when: string): string => `Last run ${when}`,
       /** The last run of a type Interborough runs itself, said as the day it began. */
       lastRunToday: (clock: string): string => `Last run today, ${clock}`,
+      todayAt: (clock: string): string => `today, ${clock}`,
       neverRun: 'Never run',
       /** "file" and the file's name, which is set in monospace, follow each other. */
       fileLabel: 'file',
@@ -337,6 +351,7 @@ export const WORKFLOW_COPY = {
       /** The accessible names of the filter bar and of the rows. */
       filtersLabel: 'Filter this workflow’s runs',
       rowsLabel: 'Runs of this workflow, newest first',
+      waitingSignalLabel: 'Waiting',
       emptyTitle: 'No runs of this workflow yet',
       emptyDescription: 'Start one and it shows up here with its steps and result.',
       /** The plain hint under the sentence, which names the header's action. */
@@ -428,7 +443,9 @@ export const WORKFLOW_COPY = {
     whenLabel: 'When to run',
     now: 'Now',
     /** The line under Now. */
+    optionsRegion: 'Run options',
     nowDescription: 'Starts as soon as you press Start run.',
+    nowOnlyDescription: 'Starts as soon as you confirm.',
     schedule: 'On a schedule',
     scheduleDescription: 'Starts a run each time the schedule fires, with this input.',
     scheduleLabel: 'Schedule',
@@ -516,6 +533,8 @@ export const WORKFLOW_COPY = {
       description:
         'Interborough didn’t answer when it asked for the schema. Nothing you typed is lost.',
     },
+    /** Shown only when catalog metadata proves a raw JSON input can be offered safely after that read failed. */
+    inputFallback: 'Enter input as JSON',
     /** The skeleton's status line after ten seconds (board PageRunSetup, "Loading"). */
     loadingInput: 'Loading the input form…',
     /** The neutral alert above Input for a paused file, and its button (board PageRunSetup, "Paused workflow"). */
@@ -629,7 +648,8 @@ export const WORKFLOW_COPY = {
     idFixedOnCreate: 'Can’t be changed after you create it.',
     /** Beside an existing workflow's ID. */
     idFixed: 'Can’t be changed',
-    useDerivedId: 'Use the ID made from the title',
+    resetId: 'Reset ID',
+    readOnlyOnScreen: 'Read-only on this screen.',
     descriptionLabel: 'Description',
     descriptionPlaceholder: 'What does this workflow do?',
     startsHeading: 'Starts',
@@ -654,6 +674,9 @@ export const WORKFLOW_COPY = {
     retryTriggers: 'Try again',
     scheduleLabel: 'Schedule',
     scheduleDescription: 'A duration such as 1h, or a cron expression.',
+    /** Under the When block of a file that names its schedule, on Edit (row 65q). */
+    scheduleDefinedNote: (name: string): string =>
+      `This file defines the ${name} schedule, so saving changes that schedule. You can also start the workflow yourself.`,
     signalNameLabel: 'Signal name',
     /** Under the signal a "When a signal arrives" start waits for (board PageWorkflowBuilder, "Signal start"). */
     signalNameDescription:
@@ -664,7 +687,10 @@ export const WORKFLOW_COPY = {
     stepsUnreadable:
       'This file’s steps are not a list the builder can read. Fix them in the JSON tab.',
     notAnObject: 'This is not an object',
-    otherStepNote: 'The builder cannot edit this step. Change it in the JSON tab.',
+    /** A step of a kind the builder can't draw: read-only, kept as written (row 66a). */
+    otherStepLine: 'The builder can’t show this kind of step',
+    otherStepNote: 'It is kept exactly as written and saved unchanged.',
+    editInJson: 'Edit in JSON',
     /**
      * What each card is, at its top beside its number. A card for an activity reads the activity's
      * own title; `activity` is what it reads before the catalog says.
@@ -782,6 +808,13 @@ export const WORKFLOW_COPY = {
       noSchema: 'Its input is edited in the JSON tab.',
       noInput: 'It takes no input.',
       inputNotObject: 'Its input is not an object. It is edited in the JSON tab.',
+      replaceInput: {
+        title: 'Replace workflow input?',
+        description:
+          'Switching workflows replaces this step’s input with the new workflow’s input.',
+        cancel: 'Keep editing',
+        confirm: 'Replace input',
+      },
     },
     /** The control-flow cards, in the person's words. */
     controlFlow: {
@@ -834,6 +867,8 @@ export const WORKFLOW_COPY = {
       fillIn: (position: number): string =>
         `Fill in step ${String(position)} to see what this workflow does.`,
       manual: 'Run it when you press Start run',
+      /** After a schedule's or a plugin trigger's sentence, while the file is not paused (row 65j). */
+      startItYourself: 'You can also start it yourself.',
       signal: (name: string): string => `Each time ${name} is sent`,
       anySignal: 'Each time a signal is sent',
       contributed: (id: string): string => `When ${id} fires`,
@@ -874,12 +909,6 @@ export const WORKFLOW_COPY = {
       other: 'run a step the builder can’t describe',
       next: 'then',
     },
-    /** Below 640 pixels the builder is read-only (board ResponsiveAndDark, row 05n). */
-    phone: {
-      message: 'Open on a larger screen',
-      backToWorkflow: 'Back to the workflow',
-      backToWorkflows: 'Back to Workflows',
-    },
     /**
      * What the builder says when the JSON tab holds text it cannot draw: the Builder tab is off, and
      * the footer, in place of the read-back, says where to fix it (board PageWorkflowBuilder, "JSON
@@ -888,6 +917,8 @@ export const WORKFLOW_COPY = {
     json: {
       /** The footer's sentence, once. The Builder tab's reason is the same sentence. */
       fixLine: (line: number): string => `Fix line ${String(line)} to return to the builder.`,
+      /** The toolbar's status for JSON with a syntax error. */
+      invalid: 'Invalid JSON',
       /** The toolbar's status for JSON that parses but is not a JSON object. */
       notWorkflow: 'Valid JSON, not a valid workflow',
       /** Under the line a value that is not an object starts on. */
@@ -938,10 +969,9 @@ export const WORKFLOW_COPY = {
     },
   },
   revisions: {
-    heading: 'Revisions that have run',
-    description:
-      'The versions of this workflow that have run, most recently run first, each with whether it is compatible with the current one.',
-    caption: 'Versions of this workflow that have run',
+    heading: 'Saved versions',
+    description: 'Saved versions of this workflow, newest first.',
+    caption: 'Saved versions of this workflow',
     /** One row's title: the day the version first ran and its short hash, "Oct 19, 8:00 AM, version 1.3.0, current version". */
     versionTitle: (when: string, shortVersion: string, current: boolean): string =>
       `${when}, version ${shortVersion}, ${current ? 'current version' : 'older version'}`,
@@ -949,20 +979,35 @@ export const WORKFLOW_COPY = {
     copyVersion: (shortVersion: string): string => `Copy version ${shortVersion}`,
     /** When the version last ran, after its verdict: "last run Thu, Oct 29, 9:15 AM". */
     lastRun: (when: string): string => `last run ${when}`,
+    saved: (when: string): string => `Saved ${when}`,
+    editedInBuilder: (what: string): string => `Edited in the builder: ${what}`,
+    rewordedStep: (step: number): string => `reworded step ${String(step)}`,
+    addedStep: (step: number): string => `added step ${String(step)}`,
+    addedApproval: 'added the approval step',
+    renamedStep: (step: number): string => `renamed step ${String(step)}`,
+    changedStep: (step: number): string => `changed step ${String(step)}`,
+    changedFile: 'changed workflow settings',
+    runsKeepGoing: 'Runs in flight keep going.',
+    current: 'current version',
+    older: 'older version',
+    runsOnVersion: (count: number, date?: string): string =>
+      `Run${count === 1 ? '' : 's'} on this version: ${String(count)}${date === undefined ? '' : ` (${date})`}`,
+    noRunsOnVersion: 'No runs on this version yet',
     /** The footnote under the list. */
     footnote:
       'Compatibility says whether a run started on one version can continue after the next is saved. Scheduled and chat runs always start on the current version.',
     versionColumn: 'Version',
     firstRunColumn: 'First run',
     lastRunColumn: 'Last run',
-    emptyTitle: 'No version of this workflow has run yet',
-    emptyDescription: 'A version appears here after its first run.',
+    emptyTitle: 'No saved versions yet',
+    emptyDescription: 'Save this workflow and its versions appear here.',
     failed: 'The revision history could not be loaded.',
     /** The verdict against the current revision. */
     verdictColumn: 'Compatibility',
     compatible: 'Compatible',
     incompatible: 'Breaking',
     noCurrent: 'No current revision',
+    noComparison: 'No compatibility comparison',
     noCurrentDescription: 'There is no current revision to compare with.',
     /** Why a revision is not compatible with the current one. */
     reason: (reason: string): string => {
@@ -1008,7 +1053,11 @@ export const WORKFLOW_COPY = {
     schedulesRun: (count: number): string => `${String(count)} schedules run this workflow. `,
     pastRuns: 'Its past runs stay on Runs. ',
     /** "The file", its name and its directory, both set in monospace, follow each other. */
-    file: { before: 'The file ', middle: ' is removed from ', after: '.' },
+    file: {
+      before: 'The file ',
+      middle: ' is removed from the ',
+      after: ' directory relative to the configured Interborough home.',
+    },
     alsoDeleteSchedule: (schedule: string): string => `Also delete the ${schedule} schedule`,
     alsoDeleteSchedules: (count: number): string =>
       `Also delete the ${String(count)} schedules that run it`,
@@ -1072,8 +1121,9 @@ export const WORKFLOW_COPY = {
     /** The heading: the workflow's title, or its identifier for a file with none. */
     heading: (name: string): string => `Edit ${name}`,
     textLabel: 'Workflow file',
+    /** The note under Edit's JSON tab (row 65j). */
     textDescription:
-      'The file’s JSON. Its name is the file’s identifier, so it is not sent when you save.',
+      'Every field the builder writes is here, including the schedule trigger, each title and the Input and Output schemas. Keys the builder doesn’t show are saved exactly as written.',
     saveAction: 'Save',
     /** The primary button while the file is written; the whole form is read-only meanwhile. */
     savingAction: 'Saving…',

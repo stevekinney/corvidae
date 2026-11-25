@@ -157,6 +157,9 @@ function normalizeApprovalAction(
     'snapshotId',
     'expiresAt',
     'editableArgs',
+    'irreversible',
+    'consequence',
+    'why',
     'policyVersion',
     'idempotencyKey',
   ]);
@@ -181,6 +184,21 @@ function normalizeApprovalAction(
       : {}),
     ...(action.editableArgs !== undefined
       ? { editableArgs: requiredBoolean(action.editableArgs, 'approval action editableArgs') }
+      : {}),
+    ...(action.irreversible !== undefined
+      ? { irreversible: requiredBoolean(action.irreversible, 'approval action irreversible') }
+      : {}),
+    ...(action.consequence !== undefined
+      ? {
+          consequence: boundedString(
+            action.consequence,
+            'approval action consequence',
+            APPROVAL_CONSEQUENCE_MAX_LENGTH,
+          ),
+        }
+      : {}),
+    ...(action.why !== undefined
+      ? { why: boundedString(action.why, 'approval action why', APPROVAL_WHY_MAX_LENGTH) }
       : {}),
     policyVersion,
     idempotencyKey,
@@ -370,6 +388,17 @@ function requiredString(value: unknown, label: string): string {
     throw new Error(`${label} must be a non-empty string.`);
   }
   return value;
+}
+
+/** The longest `consequence` an approval action carries; conversationalist's schema holds the same bound. */
+const APPROVAL_CONSEQUENCE_MAX_LENGTH = 500;
+/** The longest `why` an approval action carries; conversationalist's schema holds the same bound. */
+const APPROVAL_WHY_MAX_LENGTH = 2000;
+
+function boundedString(value: unknown, label: string, maximum: number): string {
+  const text = requiredString(value, label);
+  if (text.length > maximum) throw new Error(`${label} must be at most ${maximum} characters.`);
+  return text;
 }
 
 function requiredBoolean(value: unknown, label: string): boolean {

@@ -1,7 +1,8 @@
 /**
  * The browser's view of what needs attention: `bureau.health.attention`, which lists the system
  * problems that need a person now (an alert rule firing, a schedule that missed runs, a hook whose
- * delivery failed, a plugin that did not load, a worker that stopped answering, no model provider connected). Reviews waiting on a
+ * delivery failed, a plugin that did not load, a worker that stopped answering, a run that stalled,
+ * loops or cost more than the spend threshold, no model provider connected). Reviews waiting on a
  * person are never on it: they are Needs you, which the reviews count reads.
  *
  * The sidebar's Health dot reads only how many there are. The notification bell reads the rules
@@ -12,7 +13,7 @@ import type { Fetcher } from './bureau-client.ts';
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
-/** One problem that needs attention, as `bureau.health.attention` lists it. */
+/** One problem that needs attention and that this build words, as `bureau.health.attention` lists it. */
 export type AttentionItem =
   | Exclude<WireAttentionItem, { readonly kind: 'alert' }>
   // The metric is a string: a rule a newer Bureau watches still reaches the bell.
@@ -30,6 +31,9 @@ const KNOWN_ATTENTION_KINDS: ReadonlySet<string> = new Set([
   'plugin-not-loaded',
   'no-provider',
   'worker-disconnected',
+  'run-stalled',
+  'run-looping',
+  'run-overspending',
 ]);
 
 /** The items of a kind this build knows: a row has to say what to look at, so any other is left out. */

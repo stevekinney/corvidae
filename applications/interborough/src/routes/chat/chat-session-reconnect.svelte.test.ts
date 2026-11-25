@@ -12,11 +12,12 @@ afterEach(() => {
   jest.restoreAllMocks();
   jest.useRealTimers();
 });
-const open = (fetch: Fetcher) => {
+const open = (fetch: Fetcher, options: { readonly readOnly?: boolean } = {}) => {
   const session = new ChatSessionState({
     sessionId: 'thread',
     agentName: () => 'assistant',
     fetch,
+    ...options,
   });
   sessions.push(session);
   return session;
@@ -62,6 +63,125 @@ test.each([403, 404, 410])('does not retry HTTP %s', async (status) => {
   jest.advanceTimersByTime(60000);
   await settle();
   expect(calls).toBe(1);
+});
+
+test('marks a missing shared projection failed and asks its route to refresh access state', async () => {
+  let unavailable = 0;
+  const session = new ChatSessionState({
+    sessionId: 'thread',
+    agentName: () => 'assistant',
+    readOnly: true,
+    onSharedHistoryUnavailable: () => {
+      unavailable += 1;
+    },
+    fetch: async () => new Response('', { status: 404 }),
+  });
+  sessions.push(session);
+
+  expect(await session.attach()).toBe(false);
+  expect(session.historySettled).toBe(true);
+  expect(session.readFailed).toBe(true);
+  expect(session.failure).toBe(CHAT_COPY.load.errorDescription);
+  expect(unavailable).toBe(1);
+});
+
+test('retries a failed shared-history read without opening a writable stream', async () => {
+  jest.useFakeTimers();
+  const calls: Array<{ url: string; method: string }> = [];
+  let historyReads = 0;
+  const session = open(
+    async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      calls.push({ url, method: init?.method ?? 'GET' });
+      if (url.endsWith('/shared-messages')) {
+        historyReads += 1;
+        if (historyReads === 1) throw new TypeError('shared history unavailable');
+        return Response.json({
+          threadId: 'thread',
+          messages: [{ id: 'visible', role: 'assistant', content: 'Restored shared text.' }],
+        });
+      }
+      if (url.endsWith('/jsonrpc')) {
+        return Response.json({ jsonrpc: '2.0', id: 1, result: { tasks: [], nextPageToken: null } });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    },
+    { readOnly: true },
+  );
+
+  expect(await session.attach()).toBe(false);
+  expect(session.historySettled).toBe(true);
+  expect(session.readFailed).toBe(true);
+  expect(session.failure).toBe('shared history unavailable');
+
+  jest.runOnlyPendingTimers();
+  await settle();
+  await waitUntil(() => !session.readFailed, { message: 'shared history retry settles' });
+
+  expect(session.historySettled).toBe(true);
+  expect(session.failure).toBeUndefined();
+  expect(session.conversation.messages['visible']?.content).toBe('Restored shared text.');
+  expect(historyReads).toBe(2);
+  expect(calls.filter((call) => call.url.includes('/ag-ui/'))).toEqual(
+    calls.filter((call) => call.url.endsWith('/shared-messages') && call.method === 'GET'),
+  );
+});
+
+test('a shared reader rejects recovery commands without an owner RPC', async () => {
+  const calls: string[] = [];
+  const session = open(
+    async (input) => {
+      calls.push(input instanceof Request ? input.url : input.toString());
+      throw new Error('A shared reader must not write.');
+    },
+    { readOnly: true },
+  );
+
+  expect(await session.discardTurn('run')).toBe(false);
+  expect(await session.resumeTurn('run')).toBe(false);
+  await session.regenerateAnswer('reply');
+  await session.retryTurn();
+  await session.retryExpiredApproval('call');
+  await session.send('must not send');
+
+  expect(calls).toEqual([]);
+});
+
+test('a stale shared-history retry cannot restore after a newer read succeeds', async () => {
+  const first = Promise.withResolvers<Response>();
+  let historyReads = 0;
+  const session = open(
+    async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/shared-messages')) {
+        historyReads += 1;
+        if (historyReads === 1) return first.promise;
+        return Response.json({
+          threadId: 'thread',
+          messages: [{ id: 'fresh', role: 'assistant', content: 'Fresh shared text.' }],
+        });
+      }
+      if (url.endsWith('/jsonrpc')) {
+        return Response.json({ jsonrpc: '2.0', id: 1, result: { tasks: [], nextPageToken: null } });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    },
+    { readOnly: true },
+  );
+
+  const stale = session.attach();
+  await waitUntil(() => historyReads === 1, { message: 'first shared history read opens' });
+  await session.reconnect();
+  first.resolve(
+    Response.json({
+      threadId: 'thread',
+      messages: [{ id: 'stale', role: 'assistant', content: 'Stale shared text.' }],
+    }),
+  );
+  await stale;
+
+  expect(session.conversation.messages['fresh']?.content).toBe('Fresh shared text.');
+  expect(session.conversation.messages['stale']).toBeUndefined();
 });
 
 test('manual reconnect and disposal invalidate pending retry timers', async () => {

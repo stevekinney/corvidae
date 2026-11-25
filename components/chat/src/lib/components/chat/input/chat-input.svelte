@@ -301,9 +301,10 @@
    */
   function naturalWidth(element: HTMLElement): number {
     const { flex, inlineSize } = element.style;
+    const overflowWidth = element.scrollWidth;
     element.style.flex = 'none';
     element.style.inlineSize = 'max-content';
-    let width = element.getBoundingClientRect().width;
+    let width = Math.max(element.getBoundingClientRect().width, overflowWidth);
     for (const descendant of element.querySelectorAll<HTMLElement>('*')) {
       // A visually hidden element is clipped to a pixel on purpose and draws nothing.
       if (descendant.clientWidth <= 1) continue;
@@ -1441,6 +1442,9 @@
         abortUploads();
         attachments.forEach((a) => URL.revokeObjectURL(a.previewUrl));
         attachments = [];
+        // A host that persists drafts must observe the settled empty composer. Without this, a
+        // route return can restore the text that was just accepted while the component unmounts.
+        onComposerInput?.(value);
       }
 
       // Restore focus to editor
@@ -2947,6 +2951,16 @@
     min-block-size: 0;
     padding: 0;
     border-radius: var(--cinder-radius-sm);
+  }
+
+  /* The footer's left group may give width to the controls after Attach, but on a fine pointer its
+   * compact face remains the 28px square Cinder gave it. Letting this item shrink made the desktop
+   * target narrower than Cinder's 24px minimum. A coarse pointer keeps Cinder's existing 44px
+   * pseudo-target without reserving more narrow-footer width. */
+  @media (any-pointer: fine) {
+    .chat-input-footer-left :global(.chat-input-attach) {
+      flex: 0 0 1.75rem;
+    }
   }
 
   .chat-input-footer-left :global(.chat-input-attach:focus-visible) {

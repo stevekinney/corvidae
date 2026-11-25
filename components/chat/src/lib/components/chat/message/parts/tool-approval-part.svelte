@@ -12,6 +12,8 @@
       ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;
     /** Uses the compact actionable row when several approvals share one tool group. */
     layout?: 'decision' | 'row';
+    /** The reader's own word, for a decision the reader made. Default `you`. */
+    youLabel?: string;
   };
 </script>
 
@@ -24,20 +26,22 @@
     onApprovalResolve,
     onApprovalRequestAgain,
     layout = 'decision',
+    youLabel = 'you',
   }: ToolApprovalPartProps = $props();
 
   const canResolve = $derived(
     part.state === 'pending' && !part.resolutionInFlight && onApprovalResolve !== undefined,
   );
+  // The host's word first, then the tool's own on the approval action: a host that knows better
+  // can say so, while an action stored before these fields existed carries neither detail.
+  const irreversible = $derived(part.details?.irreversible ?? part.action.irreversible);
+  const why = $derived(part.details?.why ?? part.action.why);
   const cardProps = $derived.by(() => {
     const props: ApprovalCardProps = {
       tool: {
         name: part.toolName,
         risk: part.action.risk,
-        // The host's word on whether it can be undone; the wire action does not carry it.
-        ...(part.details?.irreversible === undefined
-          ? {}
-          : { irreversible: part.details.irreversible }),
+        ...(irreversible === undefined ? {} : { irreversible }),
       },
       operation: part.action.operation,
       policyVersion: part.action.policyVersion,
@@ -53,11 +57,17 @@
     // The approval card owns its standard pause sentence. Chat adapter details must not duplicate
     // that sentence in the decision surface when the Cinder default is available.
     if (part.details?.facts !== undefined) props.facts = part.details.facts;
-    if (part.details?.why !== undefined) props.why = part.details.why;
-    // A decision made here: who, when, and the note that went with it.
+    if (why !== undefined) props.why = why;
+    if (part.action.consequence !== undefined) props.consequence = part.action.consequence;
+    // A decision: who, when, where when it was not here (a link to it when the host gave one), and
+    // the note that went with it. One made here, or recorded by the reader, reads as "you".
     if (part.receipt !== undefined) {
-      props.decidedBy = 'you';
+      props.decidedBy = part.receipt.decidedBy ?? youLabel;
       props.decidedAt = part.receipt.decidedAt;
+      if (part.receipt.decidedIn !== undefined) props.decidedIn = part.receipt.decidedIn;
+      if (part.receipt.decidedInHref !== undefined) {
+        props.decidedInHref = part.receipt.decidedInHref;
+      }
       if (part.receipt.reason !== undefined) props.decisionNote = part.receipt.reason;
       if (part.receipt.result !== undefined) props.result = part.receipt.result;
     }
@@ -92,6 +102,9 @@
    */
   // The card reads Expired the moment a pending approval's deadline passes, whether or not the
   // host has said so; the clock turns once at the deadline so this line follows it.
+  // Browsers clamp a timeout to a signed 32-bit delay. Re-arm a long-lived approval at that bound
+  // instead of overflowing it to an immediate timer, which would repeatedly wake the component.
+  const MAX_TIMEOUT_DELAY = 2_147_483_647;
   let now = $state(Date.now());
   $effect(() => {
     const expiresAt = part.action.expiresAt;
@@ -102,7 +115,7 @@
       now = Date.now();
       return;
     }
-    const timer = setTimeout(() => (now = Date.now()), remaining);
+    const timer = setTimeout(() => (now = Date.now()), Math.min(remaining, MAX_TIMEOUT_DELAY));
     return () => clearTimeout(timer);
   });
   /** Writes a moment as a message's time is: the time of day for today, the date with it otherwise. */
@@ -121,8 +134,8 @@
       part.state === 'approved_with_edits' ||
       part.state === 'denied'
     ) {
-      // The row layout keeps the time in its own line; the decision surface leaves it to this one.
-      if (layout !== 'decision' || part.receipt === undefined) return undefined;
+      // A decision-layout receipt owns its durable decision time. Row layout keeps the host time.
+      if (layout === 'decision' || part.receipt === undefined) return undefined;
       const decided = new Date(part.receipt.decidedAt);
       return Number.isNaN(decided.getTime())
         ? undefined

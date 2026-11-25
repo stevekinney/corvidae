@@ -166,10 +166,10 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
     canBeEmpty: true,
     // The list keeps its header and its "+" over its first-use state; a type's runs say theirs in the frame.
     pageOwnsEmptyOn: ['/workflows'],
-    // A workflow's page has its header and tabs from the route, so only its body waits (row 63a).
-    pageOwnsLoadingOn: ['/workflows', '/workflows/:workflow'],
+    // Workflow detail and Run setup draw their headings before their bodies load (rows 63a, 58w).
+    pageOwnsLoadingOn: ['/workflows', '/workflows/:workflow', '/workflows/:workflow/run'],
     // The list keeps its header over its own loading skeleton and its own error panel.
-    pageOwnsFailureOn: ['/workflows'],
+    pageOwnsFailureOn: ['/workflows', '/workflows/:workflow/run'],
   },
   // The list and one run's page read the Bureau's tasks and goals, which hold no console scope. Only
   // the workflow sections of a run, the start picker, and the aggregate view read the engine, and they say

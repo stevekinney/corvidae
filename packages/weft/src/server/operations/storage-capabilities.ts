@@ -12,6 +12,7 @@ const storageCapabilitiesOutput = z
     scanConsistency: z.enum(['snapshot', 'best-effort']),
     atomicBatch: z.boolean(),
     conditionalBatch: z.boolean(),
+    conditionalBatchDeadline: z.boolean().optional(),
     boundedRangeDelete: z.boolean(),
   })
   .strict();
@@ -26,7 +27,7 @@ export const storageCapabilitiesOperation = defineOperation({
   description:
     'Report what the connected storage backend guarantees: persistence level, read- ' +
     'after-write and scan consistency, and whether it supports atomic batches, ' +
-    'conditional batches, and bounded range deletes. Read-only; available to callers ' +
+    'conditional batches and their deadline support, and bounded range deletes. Read-only; available to callers ' +
     'holding storage:read or storage:admin.',
   destructive: false,
   tags: ['Storage'],

@@ -147,6 +147,7 @@
   let reverting = $state(false);
 
   const snapshot = $derived(plugins.data);
+  const loading = $derived(snapshot === undefined && !plugins.isError && !canceled);
   const locked = $derived(snapshot?.lockReason !== undefined);
   /** The plugins that wait for a restart: the switches the page holds and the choices the host stores. */
   const waiting = $derived(snapshot === undefined ? [] : drafts.changed(snapshot));
@@ -379,59 +380,72 @@
     </Alert>
   {/if}
 
-  {#if snapshot !== undefined}
-    {#if attention.length > 0}
-      <section
-        class="ib-plugins__attention"
-        aria-label={copy.problems.listLabel}
-        data-testid="plugins-attention"
+  {#if snapshot !== undefined && attention.length > 0}
+    <section
+      class="ib-plugins__attention"
+      aria-label={copy.problems.listLabel}
+      data-testid="plugins-attention"
+    >
+      {#each attention as entry (entry.key)}
+        <PluginProblemCard
+          problem={entry.problem}
+          plugin={entry.plugin}
+          owner={entry.plugin.descriptor.title}
+          locked={locked || isShadowed(snapshot, entry.plugin)}
+          onSecret={(key) => addSecret(entry.plugin, key)}
+          onFixSetting={() => void fixSetting(entry.plugin)}
+          onShowBoth={showBoth(entry.plugin, entry.problem)}
+        />
+      {/each}
+    </section>
+  {/if}
+  {#if snapshot !== undefined && snapshot.plugins.length === 0 && snapshot.unloaded.length === 0}
+    <EmptyState
+      kind="first-use"
+      headingLevel={2}
+      title={copy.empty.title}
+      description={copy.empty.description}
+    />
+  {:else if loading || (snapshot?.plugins.length ?? 0) > 0}
+    <!-- Keep the measured panes mounted while the loading rows give way to the plugin list. -->
+    <div
+      class="ib-plugins__frame"
+      data-shortcut-region="list-detail"
+      data-testid={loading ? 'plugins-loading' : undefined}
+    >
+      <ListDetail
+        items={[...(snapshot?.plugins ?? [])]}
+        key={(plugin) =>
+          snapshot === undefined ? plugin.descriptor.name : listKey(snapshot, plugin)}
+        label={copy.listLabel}
+        detailLabel={copy.detailLabel}
+        emptyTitle={copy.emptyDetail.title}
+        emptyDescription={copy.emptyDetail.description}
+        {loading}
+        loadingLabel={copy.loading.label}
+        onLoadingCancel={cancelLoading}
+        bind:selectedKey={openKey}
+        openFirst
+        selectionParameter={loading ? null : 'plugin'}
+        {selectionLocation}
+        flushDetail={!loading && phone.current}
+        storageKey="interborough-settings-plugins"
       >
-        {#each attention as entry (entry.key)}
-          <PluginProblemCard
-            problem={entry.problem}
-            plugin={entry.plugin}
-            owner={entry.plugin.descriptor.title}
-            locked={locked || isShadowed(snapshot, entry.plugin)}
-            onSecret={(key) => addSecret(entry.plugin, key)}
-            onFixSetting={() => void fixSetting(entry.plugin)}
-            onShowBoth={showBoth(entry.plugin, entry.problem)}
-          />
-        {/each}
-      </section>
-    {/if}
-    {#if snapshot.plugins.length === 0 && snapshot.unloaded.length === 0}
-      <EmptyState
-        kind="first-use"
-        headingLevel={2}
-        title={copy.empty.title}
-        description={copy.empty.description}
-      />
-    {:else if snapshot.plugins.length > 0}
-      <div class="ib-plugins__frame" data-shortcut-region="list-detail">
-        <ListDetail
-          items={[...snapshot.plugins]}
-          key={(plugin) => listKey(snapshot, plugin)}
-          label={copy.listLabel}
-          detailLabel={copy.detailLabel}
-          emptyTitle={copy.emptyDetail.title}
-          emptyDescription={copy.emptyDetail.description}
-          bind:selectedKey={openKey}
-          openFirst
-          selectionParameter="plugin"
-          {selectionLocation}
-          flushDetail={phone.current}
-          storageKey="interborough-settings-plugins"
-        >
-          {#snippet header()}
-            <div class="ib-plugins__list-top">
-              <h2 class="ib-plugins__heading" data-testid="plugins-count">
-                {copy.listHeader.heading}
+        {#snippet header()}
+          <div class="ib-plugins__list-top">
+            <h2 class="ib-plugins__heading" data-testid={loading ? undefined : 'plugins-count'}>
+              {copy.listHeader.heading}
+              {#if snapshot !== undefined}
                 <span class="ib-plugins__total">{snapshot.plugins.length}</span>
-              </h2>
+              {/if}
+            </h2>
+            {#if !loading}
               <Link href={copy.listHeader.howToAddHref} external>{copy.listHeader.howToAdd}</Link>
-            </div>
-          {/snippet}
-          {#snippet list(plugin, row)}
+            {/if}
+          </div>
+        {/snippet}
+        {#snippet list(plugin, row)}
+          {#if snapshot !== undefined}
             {@const status = statusOf(
               plugin,
               isShadowed(snapshot, plugin) ? plugin.enabled : drafts.enabledOf(plugin),
@@ -455,8 +469,10 @@
                 </span>
               {/snippet}
             </SelectableRow>
-          {/snippet}
-          {#snippet detail(plugin)}
+          {/if}
+        {/snippet}
+        {#snippet detail(plugin)}
+          {#if snapshot !== undefined}
             <PluginDetail
               {plugin}
               {drafts}
@@ -469,14 +485,11 @@
               onConnect={(provider) => (connecting = provider)}
               {showBoth}
             />
-          {/snippet}
-        </ListDetail>
-      </div>
-    {/if}
-    {#if snapshot.unloaded.length > 0}
-      <UnloadedFolders folders={snapshot.unloaded} />
-    {/if}
-  {:else if plugins.isError}
+          {/if}
+        {/snippet}
+      </ListDetail>
+    </div>
+  {:else if snapshot === undefined && plugins.isError}
     <Banner
       variant="danger"
       dismissible={false}
@@ -495,36 +508,14 @@
         />
       {/snippet}
     </Banner>
-  {:else if canceled}
+  {:else if snapshot === undefined && canceled}
     <div data-testid="plugins-canceled">
       <p class="ib-plugins__alert">{copy.loading.canceled}</p>
       <Button variant="secondary" size="sm" onclick={tryAgain} label={copy.loading.tryAgain} />
     </div>
-  {:else}
-    <!-- The navigation and heading are real. The placeholder is the loaded page's own frame and
-         panes with nothing in them: after 300 ms a list of row placeholders beside a block of
-         lines (a list alone on a phone), announced once as loading, and after ten seconds it says
-         it is slow and offers Cancel. The list's width is the loaded page's, so nothing moves. -->
-    <div class="ib-plugins__frame" data-shortcut-region="list-detail" data-testid="plugins-loading">
-      <ListDetail
-        items={[] as PluginStanding[]}
-        key={(plugin: PluginStanding) => plugin.descriptor.name}
-        label={copy.listLabel}
-        detailLabel={copy.detailLabel}
-        loading
-        loadingLabel={copy.loading.label}
-        onLoadingCancel={cancelLoading}
-        storageKey="interborough-settings-plugins"
-      >
-        {#snippet header()}
-          <div class="ib-plugins__list-top">
-            <h2 class="ib-plugins__heading">{copy.listHeader.heading}</h2>
-          </div>
-        {/snippet}
-        {#snippet list()}{/snippet}
-        {#snippet detail()}{/snippet}
-      </ListDetail>
-    </div>
+  {/if}
+  {#if snapshot !== undefined && snapshot.unloaded.length > 0}
+    <UnloadedFolders folders={snapshot.unloaded} />
   {/if}
 </div>
 

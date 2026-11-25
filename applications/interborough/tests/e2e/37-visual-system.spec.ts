@@ -207,7 +207,11 @@ test.describe('a chat', () => {
     await approveThroughMount(request, threadId, stream);
     await page.setViewportSize(DESKTOP);
     await page.goto(`/chats/${threadId}`);
-    await expect(conversation(page).getByText('Order order-1001 was refunded.')).toBeVisible();
+    await expect(
+      conversation(page).getByText(
+        'The refund for order order-1001 is pending with the processor.',
+      ),
+    ).toBeVisible();
     // The tool calls are rows on the rail, the tallest the transcript gets.
     await expect(page.locator('[data-cinder-tool-call-row]').first()).toBeVisible();
 

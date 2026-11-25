@@ -106,6 +106,42 @@ describe('engine runConcurrency', () => {
     expect(engine.runConcurrency()).toEqual({ max: 1, running: ['parent'], waiting: ['held'] });
   });
 
+  it('reports only this engine’s counted runs when engines share storage', async () => {
+    const storage = new MemoryStorage();
+    const firstStarted = new Set<string>();
+    const secondStarted = new Set<string>();
+    await using first = new Engine({
+      storage,
+      inlineLaunchScheduling: 'manual',
+      runConcurrency: { max: 2 },
+    });
+    await using second = new Engine({
+      storage,
+      inlineLaunchScheduling: 'manual',
+      runConcurrency: { max: 2 },
+    });
+    first.register(gatedWorkflow('gated', firstStarted));
+    second.register(gatedWorkflow('gated', secondStarted));
+
+    await first.start('gated', null, { id: 'first-engine-run' });
+    await second.start('gated', null, { id: 'second-engine-run' });
+    await first.flushInlineLaunches();
+    await second.flushInlineLaunches();
+
+    expect([...firstStarted]).toEqual(['first-engine-run']);
+    expect([...secondStarted]).toEqual(['second-engine-run']);
+    expect(first.runConcurrency()).toEqual({
+      max: 2,
+      running: ['first-engine-run'],
+      waiting: [],
+    });
+    expect(second.runConcurrency()).toEqual({
+      max: 2,
+      running: ['second-engine-run'],
+      waiting: [],
+    });
+  });
+
   it('drops a held start that is cancelled before it launches', async () => {
     const started = new Set<string>();
     await using engine = new Engine({

@@ -237,7 +237,7 @@ describe('Chat — run outcomes on the turn', () => {
     expect(timeline?.querySelector('.chat-tool-call-summary-count')?.textContent).toBe(
       'Checked 1 of 2 sources',
     );
-    await fireEvent.click(getByRole(timeline!, 'button', { name: 'Retry' }));
+    await fireEvent.click(getByRole(timeline!, 'button', { name: 'Retry this step' }));
     expect(retryStep).toHaveBeenCalledWith('source-2');
   });
 
@@ -398,7 +398,7 @@ describe('tool-call grouping under host customization (COR-2289)', () => {
       '1',
       '1',
     ]);
-    await fireEvent.click(getByRole(timelines[2]!, 'button', { name: 'Retry' }));
+    await fireEvent.click(getByRole(timelines[2]!, 'button', { name: 'Retry this step' }));
     expect(retryStep).toHaveBeenCalledWith('lookup-4473');
   });
 });

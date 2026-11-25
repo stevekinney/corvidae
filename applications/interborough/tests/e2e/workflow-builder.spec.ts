@@ -207,7 +207,7 @@ test.describe('a workflow built from cards', () => {
     expect(saved.state).toBe('ready');
   });
 
-  test('is read-only below 640 pixels, and links back to Workflows', async ({
+  test('is read-only below 640 pixels with the explanation below the page heading', async ({
     page,
     checkA11y,
   }) => {
@@ -215,13 +215,13 @@ test.describe('a workflow built from cards', () => {
     await page.goto('/workflows/new');
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
     const root = creator(page);
-    const notice = root.getByTestId('workflow-builder-phone');
-    await expect(notice).toContainText(BUILDER.phone.message);
-    await expect(notice.getByRole('link', { name: BUILDER.phone.backToWorkflows })).toHaveAttribute(
-      'href',
-      '/workflows',
-    );
+    const description = root.locator('.cinder-page-header__description');
+    await expect(description).toHaveText(BUILDER.readOnlyOnScreen);
+    await expect(root.getByRole('tablist')).not.toContainText(BUILDER.readOnlyOnScreen);
     await expect(root.locator('.weft-workflow-builder__body')).toHaveAttribute('inert', '');
+    await expect(root.locator('#workflow-builder-add')).toHaveCount(0);
+    await expect(root.locator('button[data-changes]')).toBeVisible();
+    await expect(root.locator('button[data-changes]')).toBeDisabled();
     await checkA11y('the builder at 375px');
   });
 });

@@ -8,6 +8,7 @@ import type {
   WorkflowSummary,
 } from '@lostgradient/weft';
 
+import { forkOperations } from './checkpoints/fork-comparison.test-support.ts';
 import LineagePanelHarness from './lineage-panel.test-harness.svelte';
 
 function workflow(overrides: Partial<WorkflowState> = {}): WorkflowState {
@@ -44,6 +45,7 @@ function baseClient(
     operations: {
       'weft.workflows.active.get': async (_input: { name: string }) => null,
       'weft.workflows.scheduleprovenance.get': overrides.scheduleProvenance ?? noProvenance,
+      'weft.workflows.compare': forkOperations()['weft.workflows.compare'],
     },
   };
 }

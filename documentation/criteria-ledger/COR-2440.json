@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2440",
+  "branch": "codex/cinder-chat-terminal-editor",
+  "checkedAt": "937597a9dbcea5d5b8d9a4d02c97ee0de7f4f8c9",
+  "briefVersion": "445479028be7",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "Terminal 375 toolbar CSS and Chromium regression test added; Chromium run delegated to coordinator."
+    },
+    {
+      "id": "AC8",
+      "status": "met-on-branch",
+      "evidence": "Snapshot Copy uses a secondary Button and Chromium sibling-geometry regression test added."
+    },
+    {
+      "id": "AC9",
+      "status": "met-on-branch",
+      "evidence": "Compact Dismiss label retains its accessible name; Chromium 375/768/1280 row regression test added."
+    },
+    {
+      "id": "AC17",
+      "status": "met-on-branch",
+      "evidence": "375-light coarse profile and count/name assertions pass in chat-stress-plan.test.ts."
+    }
+  ]
+}

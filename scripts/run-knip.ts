@@ -7,7 +7,7 @@ import { ensureCinderGenerated } from './ensure-cinder-generated.ts';
 const flags = Bun.argv.slice(2);
 const productionOnly = flags.length === 1 && flags[0] === '--production';
 if (flags.length > 0 && !productionOnly) throw new Error('Usage: bun run knip [--production]');
-ensureCinderGenerated();
+await ensureCinderGenerated();
 mkdirSync('test-output/knip', { recursive: true });
 const directory = mkdtempSync(join('test-output/knip', 'inventory-'));
 const modes = productionOnly ? ['production'] : ['test-inclusive', 'production'];

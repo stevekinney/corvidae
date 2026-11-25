@@ -4,6 +4,15 @@
   min-width: 0;
 }
 
+/* At ultrawide outlets these two schedule pages keep their own information together. Ordinary
+   narrow and 1280px outlets retain their natural shell width. */
+@media (min-width: 90rem) {
+  .ib-records[data-page='schedules'],
+  .ib-records[data-page='schedule'] {
+    max-inline-size: var(--cinder-content-width);
+  }
+}
+
 /* A part of a row's second line in a tone: "can't load" is red, a schedule that won't start amber. */
 .ib-schedule-line__part[data-tone='danger'] {
   color: var(--cinder-status-danger-text);
@@ -452,14 +461,4 @@
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-/* The info icon beside a label: a button so the keyboard reaches the tooltip it carries. */
-.ib-schedule-card__info {
-  display: inline-flex;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--cinder-text-muted);
-  cursor: help;
 }

@@ -8,7 +8,7 @@
    * and `back` (the chat page, board ChatStates frame g): an accent disc with an inbox, a primary
    * button that starts the thing again and a secondary way back, and no search button.
    */
-  import { Button, EmptyState } from '@lostgradient/cinder';
+  import { Button, EmptyState, ErrorState } from '@lostgradient/cinder';
   import { Inbox, SquarePen } from '@lucide/svelte';
 
   import { router } from '../lib/router.svelte.ts';
@@ -34,6 +34,8 @@
     back?: ViewLink | undefined;
     /** Whether the "Search everything" button is drawn. Defaults to true. */
     search?: boolean;
+    /** Render the neutral error presentation for a route whose design uses it. */
+    neutralError?: boolean;
   }
 
   let {
@@ -43,6 +45,7 @@
     create,
     back,
     search = true,
+    neutralError = false,
   }: NotFoundStateProps = $props();
 
   const parent = $derived(
@@ -62,44 +65,41 @@
   }
 </script>
 
-<EmptyState
-  kind={create === undefined ? 'not-found' : 'first-use'}
-  {title}
-  {description}
-  headingLevel={1}
-  {...create === undefined ? {} : { icon: disc }}
->
-  {#snippet action()}
-    {#if create !== undefined}
-      <Button
-        variant="primary"
-        href={router.href(create.href)}
-        onclick={(event) => follow(event, create.href)}
-      >
-        {#snippet leadingIcon()}<SquarePen class="cinder-icon-sm" aria-hidden="true" />{/snippet}
-        {create.label}
-      </Button>
-      <Button
-        variant="secondary"
-        href={router.href(parent.path)}
-        onclick={(event) => follow(event, parent.path)}
-      >
-        {back?.label ?? NOT_FOUND_COPY.back(parent.label)}
-      </Button>
-    {:else}
-      <Button
-        variant="secondary"
-        href={router.href(parent.path)}
-        onclick={(event) => follow(event, parent.path)}
-      >
-        {back?.label ?? NOT_FOUND_COPY.back(parent.label)}
-      </Button>
-      {#if search}
-        <Button variant="secondary" onclick={() => openSearch?.()}>{NOT_FOUND_COPY.search}</Button>
-      {/if}
-    {/if}
-  {/snippet}
-</EmptyState>
+{#snippet actions()}
+  {#if create !== undefined}
+    <Button
+      variant="primary"
+      href={router.href(create.href)}
+      onclick={(event) => follow(event, create.href)}
+    >
+      {#snippet leadingIcon()}<SquarePen class="cinder-icon-sm" aria-hidden="true" />{/snippet}
+      {create.label}
+    </Button>
+  {/if}
+  <Button
+    variant="secondary"
+    href={router.href(parent.path)}
+    onclick={(event) => follow(event, parent.path)}
+  >
+    {back?.label ?? NOT_FOUND_COPY.back(parent.label)}
+  </Button>
+  {#if create === undefined && search}
+    <Button variant="secondary" onclick={() => openSearch?.()}>{NOT_FOUND_COPY.search}</Button>
+  {/if}
+{/snippet}
+
+{#if neutralError}
+  <ErrorState {title} {description} headingLevel={1} tone="neutral" secondaryAction={actions} />
+{:else}
+  <EmptyState
+    kind={create === undefined ? 'not-found' : 'first-use'}
+    {title}
+    {description}
+    headingLevel={1}
+    action={actions}
+    {...create === undefined ? {} : { icon: disc }}
+  />
+{/if}
 
 {#snippet disc()}
   <Inbox aria-hidden="true" />

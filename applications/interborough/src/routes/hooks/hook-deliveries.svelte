@@ -26,7 +26,13 @@
     StatusDot,
   } from '@lostgradient/cinder';
   import { Webhook } from '@lucide/svelte';
-  import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import {
+    createMutation,
+    createQueries,
+    createQuery,
+    useQueryClient,
+  } from '@tanstack/svelte-query';
+  import { SvelteMap } from 'svelte/reactivity';
 
   import { RETRY_LABEL } from '../../app/copy/views.ts';
   import { showFault, showToast } from '../../app/toast-host.svelte';
@@ -35,28 +41,35 @@
     retryHookDelivery,
     type HookDelivery,
   } from '../../lib/bureau-hooks.ts';
-  import { faultTreatment } from '../../lib/faults.ts';
+  import { getBureauReview } from '../../lib/bureau-reviews.ts';
+  import { getTask } from '../../lib/bureau-tasks.ts';
+  import { faultErrorStateAdvice, faultTreatment } from '../../lib/faults.ts';
   import { nextTryWords } from '../../lib/format/next-try.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import { workflowTypeName } from '../../lib/workflow-type-name.ts';
   import { HOOKS_COPY } from './hook-copy.ts';
   import HookDeliveryDetail from './hook-delivery-detail.svelte';
   import {
     deliveryLogFailure,
+    deliveryReferences,
     deliveryStamp,
     deliveryStatusWord,
     deliverySubject,
     retryKind,
   } from './hook-delivery-presentation.ts';
   import { deliveryFailed, kindsReadingAlike } from './hook-presentation.ts';
+  import { reviewTitle } from '../reviews/review-items.ts';
 
   interface Props {
     /** The hook whose log this is, or `undefined` for a hook not yet saved, which has none. */
     hookId: string | undefined;
     /** The events the hook listens to, which decide when a delivery's raw kind is shown. */
     events?: readonly string[];
+    /** The hook's saved name, used only to identify a review delivery beside its review title. */
+    hookName?: string | null;
   }
 
-  let { hookId, events = [] }: Props = $props();
+  let { hookId, events = [], hookName = null }: Props = $props();
 
   /**
    * The kinds whose words another of the hook's events shares: only these show their raw kind beside
@@ -120,6 +133,82 @@
       ? (deliveries.data ?? []).filter((delivery) => deliveryFailed(delivery))
       : (deliveries.data ?? []),
   );
+
+  // Hook event bodies carry durable identifiers, not display text. Read each referenced record through
+  // its existing owner-checked endpoint, then leave a line on its event wording if that read is absent.
+  const runIds = $derived([
+    ...new Set(
+      (deliveries.data ?? []).flatMap((delivery) => {
+        const id = deliveryReferences(delivery).runId;
+        return id === undefined ? [] : [id];
+      }),
+    ),
+  ]);
+  const reviewIds = $derived([
+    ...new Set(
+      (deliveries.data ?? []).flatMap((delivery) => {
+        const id = deliveryReferences(delivery).reviewId;
+        return id === undefined ? [] : [id];
+      }),
+    ),
+  ]);
+  const runs = createQueries(() => ({
+    queries: runIds.map((runId) => ({
+      queryKey: queryKeys.bureauTasks.detail(runId),
+      queryFn: ({ signal }: { signal: AbortSignal }) => getTask(runId, { signal }),
+      retry: false,
+    })),
+  }));
+  const reviews = createQueries(() => ({
+    queries: reviewIds.map((reviewId) => ({
+      queryKey: queryKeys.bureauReviews.detail(reviewId),
+      queryFn: ({ signal }: { signal: AbortSignal }) => getBureauReview(reviewId, { signal }),
+      retry: false,
+    })),
+  }));
+  const referenceNames = $derived.by(() => {
+    const runNames = new SvelteMap<string, string>();
+    runIds.forEach((runId, index) => {
+      const type = runs[index]?.data?.workflow?.type;
+      if (type !== undefined) runNames.set(runId, workflowTypeName(type));
+    });
+    const reviewNames = new SvelteMap<string, string>();
+    reviewIds.forEach((reviewId, index) => {
+      const review = reviews[index]?.data;
+      if (review !== undefined) reviewNames.set(reviewId, reviewTitle(review));
+    });
+    return { runNames, reviewNames };
+  });
+  function namesFor(delivery: HookDelivery) {
+    const references = deliveryReferences(delivery);
+    const run =
+      references.runId === undefined ? undefined : referenceNames.runNames.get(references.runId);
+    const review =
+      references.reviewId === undefined
+        ? undefined
+        : referenceNames.reviewNames.get(references.reviewId);
+    return {
+      ...(run === undefined ? {} : { run }),
+      ...(review === undefined ? {} : { review }),
+      ...(hookName === null ? {} : { hook: hookName }),
+    };
+  }
+  function relatedRunFor(delivery: HookDelivery) {
+    const runId = deliveryReferences(delivery).runId;
+    if (runId === undefined) return undefined;
+    const index = runIds.indexOf(runId);
+    const run = index === -1 ? undefined : runs[index]?.data;
+    if (run === undefined) return undefined;
+    const step = run.failure?.step?.label;
+    return {
+      id: runId,
+      name: workflowTypeName(run.workflow?.type ?? 'agentRun'),
+      ...(step === undefined ? {} : { step }),
+      ...(run.statusMessage === undefined || run.statusMessage === null
+        ? {}
+        : { error: run.statusMessage }),
+    };
+  }
 
   const retrying = createMutation(() => ({
     mutationFn: (delivery: HookDelivery): Promise<HookDelivery> => {
@@ -208,7 +297,7 @@
       description={deliveryLogFailure(deliveries.error)}
       headingLevel={3}
       retryLabel={RETRY_LABEL}
-      onRetry={readAgain}
+      {...faultErrorStateAdvice(deliveries.error, readAgain)}
     />
   {:else if deliveries.data === undefined || deliveries.data.length === 0}
     <EmptyState
@@ -237,7 +326,9 @@
           <Collapsible variant="flat" chevron="end">
             {#snippet trigger()}
               <span class="ib-hook-deliveries__line">
-                <span class="ib-hook-deliveries__subject">{deliverySubject(delivery)}</span>
+                <span class="ib-hook-deliveries__subject"
+                  >{deliverySubject(delivery, namesFor(delivery))}</span
+                >
                 {#if !delivery.test && alike.has(delivery.kind)}
                   <code class="ib-hook-deliveries__kind" data-testid="event-kind"
                     >{delivery.kind}</code
@@ -255,6 +346,8 @@
             <HookDeliveryDetail
               {delivery}
               {alike}
+              names={namesFor(delivery)}
+              relatedRun={relatedRunFor(delivery)}
               retrying={retrying.isPending}
               onRetry={() => retrying.mutate(delivery)}
             />

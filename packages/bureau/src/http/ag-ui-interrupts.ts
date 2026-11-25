@@ -260,7 +260,18 @@ export function toInterrupt(review: PendingReview): Interrupt {
         round: review.round,
         toolName: review.approval.toolName,
         ...(wire?.action.type === 'approval'
-          ? { risk: wire.action.risk, operation: wire.action.operation }
+          ? {
+              risk: wire.action.risk,
+              operation: wire.action.operation,
+              // COR-2438: what a person deciding needs, each only when the tool declared it.
+              ...(wire.action.irreversible === undefined
+                ? {}
+                : { irreversible: wire.action.irreversible }),
+              ...(wire.action.consequence === undefined
+                ? {}
+                : { consequence: wire.action.consequence }),
+              ...(wire.action.why === undefined ? {} : { why: wire.action.why }),
+            }
           : {}),
       },
     },

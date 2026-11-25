@@ -1,3 +1,4 @@
+import { evaluateCapabilityApproval } from './approval-policy';
 import type { ToolboxOptions } from './toolbox-contracts';
 import { internalToolboxOptionsRegistry } from './toolbox-internal-registry';
 
@@ -35,4 +36,34 @@ export function getToolboxApprovalOptions(toolbox: {
     ...(options.approvalNow === undefined ? {} : { approvalNow: options.approvalNow }),
     ...(options.approvalPolicy === undefined ? {} : { approvalPolicy: options.approvalPolicy }),
   };
+}
+
+/** Classifies whether a selected tool can pause without executing its policies. */
+export function toolboxProjectionInterruption(
+  toolbox: { toJSON: () => import('./toolbox-contracts').SerializedToolbox },
+  toolId: string,
+): 'unknown' | 'policy' | 'approval' | undefined {
+  const options = internalToolboxOptionsRegistry.get(toolbox.toJSON);
+  if (!options || options.opaqueToolFactory) return 'unknown';
+  const configuration = toolbox.toJSON().find((entry) => entry.id === toolId);
+  if (!configuration) return 'unknown';
+  if (
+    options.policy?.beforeAdmission ||
+    options.policy?.beforeExecute ||
+    configuration.policy?.beforeAdmission ||
+    configuration.policy?.beforeExecute
+  )
+    return 'policy';
+  if (
+    options.approvalPolicy &&
+    evaluateCapabilityApproval(
+      {
+        metadata: configuration.metadata,
+        ...(configuration.tags ? { tags: configuration.tags } : {}),
+      },
+      options.approvalPolicy,
+    ).status === 'ask'
+  )
+    return 'approval';
+  return undefined;
 }

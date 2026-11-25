@@ -7,12 +7,18 @@
 import {
   describeScheduleFields,
   humanizeIdentifier,
+  schemaHoldsConcealedField,
   type ScheduleValue,
 } from '@lostgradient/cinder';
 import { HttpClientError } from '@lostgradient/weft';
 
 import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
-import { isEngineType, type WorkflowResolution } from '../../lib/workflow-catalog.ts';
+import {
+  isEngineType,
+  type CatalogRow,
+  type DefinitionDetail,
+  type WorkflowResolution,
+} from '../../lib/workflow-catalog.ts';
 import { cadenceText } from '../schedules/schedule-cadence-text.ts';
 import {
   schemaOf,
@@ -47,6 +53,36 @@ export type RunSetupTarget =
       readonly schema: unknown;
     }
   | { readonly status: 'engine' | 'invalid' };
+
+/** A known-safe JSON input after the detail read failed. */
+export type JsonFallbackTarget = {
+  readonly kind: 'file' | 'code';
+  readonly schema: unknown;
+  readonly paused: boolean;
+};
+
+/**
+ * Whether independently read metadata permits raw JSON after the detail read failed. A file with
+ * no schema keeps its known no-input state, while code with a confirmed absent schema accepts JSON.
+ */
+export function jsonFallbackTarget(
+  row: CatalogRow | undefined,
+  definition: DefinitionDetail | undefined,
+): JsonFallbackTarget | undefined {
+  if (row?.engine === true) return undefined;
+  if (row?.kind === 'agent-authored') {
+    const file = row.file;
+    if (file?.state !== 'ready' || file.inputSchema === null || file.inputSchema === undefined) {
+      return undefined;
+    }
+    if (schemaHoldsConcealedField(file.inputSchema)) return undefined;
+    return { kind: 'file', schema: file.inputSchema, paused: file.paused };
+  }
+  if (row?.kind !== 'code' || definition?.origin !== 'code') return undefined;
+  const schema = schemaOf(undefined, definition, 'inputSchema');
+  if (schemaHoldsConcealedField(schema)) return undefined;
+  return { kind: 'code', schema, paused: false };
+}
 
 /**
  * Whether the workflow can be run from the page. The types the Bureau registers to run itself are
@@ -136,28 +172,6 @@ export function firstMissingField(schema: unknown, value: unknown): MissingField
   return undefined;
 }
 
-/** The engine's count of the runs that are going, by type, as `weft.workflows.aggregate` answers it. */
-export type RunningByType = {
-  readonly groups: readonly { readonly key: string | null; readonly count: number }[];
-  readonly truncated: boolean;
-};
-
-/**
- * The engine's cap on runs at once (`engine.maxConcurrentRuns`) when the runs going already reach
- * it, so a run started now waits for a slot; `undefined` otherwise, and whenever either number is
- * unknown. The types the Bureau runs itself never take a slot, so they are not counted, and a count
- * the engine cut short says nothing.
- */
-export function runsAtLimit(most: unknown, running: RunningByType | undefined): number | undefined {
-  if (typeof most !== 'number' || !Number.isSafeInteger(most) || most <= 0) return undefined;
-  if (running === undefined || running.truncated) return undefined;
-  let going = 0;
-  for (const group of running.groups) {
-    if (group.key !== null && !isEngineType(group.key)) going += group.count;
-  }
-  return going >= most ? most : undefined;
-}
-
 /**
  * The agents a file's steps run (an `agent` activity names one in `input.agent`), each once and
  * sorted, for the provider check. `[]` for a file whose steps were not read.
@@ -243,16 +257,25 @@ function nonEmpty(text: string | null | undefined): string | null {
 export function runSetupIdentity(
   type: string,
   resolution: WorkflowResolution | undefined,
+  catalogRow?: CatalogRow,
 ): RunSetupIdentity {
-  if (resolution === undefined) return { name: type, titled: false, description: null };
-  if (resolution.kind === 'code') {
-    return { name: type, titled: false, description: nonEmpty(resolution.definition.description) };
-  }
-  const title = nonEmpty(resolution.file.title);
+  const title = nonEmpty(
+    resolution === undefined
+      ? catalogRow?.file?.title
+      : resolution.kind === 'agent-authored'
+        ? resolution.file.title
+        : undefined,
+  );
+  const description =
+    resolution === undefined
+      ? catalogRow?.description
+      : resolution.kind === 'agent-authored'
+        ? (resolution.file.description ?? resolution.definition?.description)
+        : resolution.definition.description;
   return {
     name: title ?? type,
     titled: title !== null,
-    description: nonEmpty(resolution.file.description ?? resolution.definition?.description),
+    description: nonEmpty(description),
   };
 }
 
@@ -261,10 +284,17 @@ export function runSetupIdentity(
  * that says nothing. A schedule trigger carries its cadence the way a header says it ("every
  * Friday at 11:00 AM"), ready for the sentence it ends.
  */
-export function runSetupTrigger(resolution: WorkflowResolution | undefined): TriggerSummary | null {
-  if (resolution === undefined || resolution.kind !== 'agent-authored') return null;
-  const { trigger } = resolution.file;
-  const summary = triggerSummary(trigger);
+export function runSetupTrigger(
+  resolution: WorkflowResolution | undefined,
+  catalogRow?: CatalogRow,
+): TriggerSummary | null {
+  const trigger =
+    resolution === undefined
+      ? catalogRow?.file?.trigger
+      : resolution.kind === 'agent-authored'
+        ? resolution.file.trigger
+        : null;
+  const summary = triggerSummary(trigger ?? null);
   if (summary === null || summary.kind !== 'schedule') return summary;
   const spec = trigger?.['spec'];
   return typeof spec === 'string'
@@ -351,7 +381,8 @@ export function cadenceSentence(value: ScheduleValue, options: { zone?: boolean 
         ? `on cron ${field('Cron expression')}`
         : `on cron ${field('Cron expression')} in ${zone}`;
     default:
-      words = repeats.toLowerCase();
+      // Only the first letter is lowered, so a weekday keeps its capital: "every Friday".
+      words = `${repeats.charAt(0).toLowerCase()}${repeats.slice(1)}`;
   }
   const clock = at === '' ? words : `${words} at ${at}`;
   return zone === '' ? clock : `${clock} ${zone}`;

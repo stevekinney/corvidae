@@ -29,6 +29,11 @@ export interface ReadBackOptions {
   readonly workflowName?: (identifier: string) => string;
   /** The instant whose zone abbreviation a schedule names (CST in winter, CDT in summer). Defaults to now. */
   readonly now?: number;
+  /**
+   * Whether the person can start the workflow themselves: it is a saved workflow, not a new one,
+   * and not paused. A sentence whose trigger starts it on its own then says they can too (row 65j).
+   */
+  readonly canStart?: boolean;
 }
 
 const copy = WORKFLOW_COPY.builder.readBack;
@@ -175,10 +180,22 @@ function signalPhrase(signal: string, timeout: DurationView | null): string {
   return signal === '' ? copy.anySignalWithin(limit) : copy.signalWithin(signal, limit);
 }
 
+/**
+ * A step's name as a clause of the sentence: its first word in lower case when it is an ordinary
+ * capitalized word ("Find" reads "find"), and as written when it is a name ("GitHub", "API").
+ */
+function asClause(title: string): string {
+  const [first = '', ...rest] = title.split(' ');
+  const ordinary = /^\p{Lu}\p{Ll}*$/u.test(first);
+  return ordinary ? [first.toLocaleLowerCase(), ...rest].join(' ') : title;
+}
+
 /** What a step reads as in its own words. A control-flow step is one clause that never says what it holds. */
 function stepPhrase(step: BuilderStep, names: ReadBackNames): string {
   switch (step.kind) {
     case 'agent':
+      // A step the file names reads as its name: "find the last release" (row 65j).
+      if (step.title.trim() !== '') return asClause(step.title.trim());
       return copy.ask(
         step.agent === '' ? copy.anAgent : names.agentName(step.agent),
         taskOf(step.message),
@@ -245,5 +262,10 @@ export function readBackOf(
   const sentence = [leadOf(rawTrigger, trigger, now), ...phrases]
     .filter((part) => part !== '')
     .join(', ');
-  return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.`;
+  const said = `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.`;
+  // A trigger that starts it on its own leaves a person able to start a saved workflow too, which
+  // the sentence then says (row 65j); a new one has nothing to start yet (rows 64r, 65m), and a
+  // manual start already says how.
+  const startsItself = trigger !== null && trigger.kind !== 'manual';
+  return startsItself && options.canStart === true ? `${said} ${copy.startItYourself}` : said;
 }

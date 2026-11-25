@@ -81,7 +81,20 @@ function sampleWorld(overrides: Partial<World> = {}): World {
         description: 'Writes the daily digest.',
         trigger: { kind: 'schedule', spec: '1h' },
         steps: TWO_STEPS,
-        runs: { active: 1, last24Hours: 12, lastRunAt: new Date(NOW - 3 * MINUTE).toISOString() },
+        runs: {
+          active: 1,
+          current: {
+            startedAt: new Date(NOW - 6 * MINUTE).toISOString(),
+            status: 'running',
+            step: 2,
+            totalSteps: 2,
+            waitingForSignal: null,
+          },
+          last: { status: 'completed', failedStep: null },
+          last24Hours: 12,
+          lastRunAt: new Date(NOW - 3 * MINUTE).toISOString(),
+          total: 12,
+        },
       }),
       readyFile('flaky', {
         agent: null,
@@ -143,12 +156,12 @@ function segment(view: ReturnType<typeof within>, word: string, count: number): 
 }
 
 describe('the list of workflows', () => {
-  test('has a row for each definition and file, by name, problems first, and leaves out a source with no file and the engine’s own types', async () => {
+  test('has a row for each definition and file in ready-problem-paused order, and leaves out a source with no file and the engine’s own types', async () => {
     const { container, findByRole } = open();
     await findByRole('heading', { level: 1, name: 'Workflows' });
     await waitFor(() => expect(rowCount(container)).toBe(4));
 
-    expect(names(container)).toEqual(['broken', 'flaky', 'digest', 'order-processing']);
+    expect(names(container)).toEqual(['digest', 'order-processing', 'broken', 'flaky']);
     expect(container.querySelector('[data-workflow="deleted-yesterday"]')).toBeNull();
     expect(container.querySelector('[data-workflow="agentRun"]')).toBeNull();
     expect(container.querySelector('[data-view="workflows"]')?.getAttribute('data-state')).toBe(
@@ -202,7 +215,7 @@ describe('the list of workflows', () => {
     const digest = row(container, 'digest');
     // A run is going, so the edge says when it began.
     expect(testId(digest, 'workflow-last-run')?.textContent).toMatch(/^Started /);
-    expect(partsOf(digest)).toEqual(['Running', '2 steps', '12 runs in 24 hours']);
+    expect(partsOf(digest)).toEqual(['Running, step 2 of 2', '2 steps', '12 runs']);
     // A run does not give the workflow a status word of its own.
     expect(digest.dataset['status']).toBeUndefined();
     expect(digest.textContent).not.toContain('last ran');
@@ -225,12 +238,24 @@ describe('the list of workflows', () => {
   });
 
   test('counts a code type from the engine’s own totals, and asks the engine nothing of the types it runs itself', async () => {
-    const { container } = open();
+    const time = new Date();
+    const sameDay = time.getTime();
+    const previousDay = time.setDate(time.getDate() - 1);
+    const { container } = open({
+      runs: [
+        runFixture('order-today', 'order-processing', { createdAt: sameDay, status: 'running' }),
+        runFixture('order-yesterday', 'order-processing', {
+          createdAt: previousDay,
+          status: 'suspended',
+        }),
+      ],
+    });
     await waitFor(() => expect(rowCount(container)).toBe(4));
 
     const code = row(container, 'order-processing');
-    await waitFor(() => expect(partsOf(code)).toEqual(['Running', '3 runs in 24 hours']));
-    expect(testId(code, 'workflow-last-run')?.textContent).toMatch(/^Started /);
+    await waitFor(() => expect(partsOf(code)).toHaveLength(1));
+    expect(partsOf(code)[0]).toMatch(/^1 run today, 1 running, last (?:just now|\d+s ago|0m ago)$/);
+    expect(testId(code, 'workflow-last-run')).toBeNull();
     const asked = stub?.callsTo('weft.workflows.list').map((call) => call.params['type']);
     // The engine is asked for the code type, and for the file the Bureau cannot count, and for no
     // other: the types it runs itself and the files the Bureau counts are not asked about.
@@ -248,7 +273,7 @@ describe('the list of workflows', () => {
     await waitFor(() => expect(rowCount(container)).toBe(4));
     // Wait for the query to settle with nothing to show, not merely for the request: until then the
     // page has no counts either way, and a check made before proves nothing.
-    const activityKey = queryKeys.workflowCatalog.activity(['broken', 'order-processing']);
+    const activityKey = queryKeys.workflowCatalog.activity(['order-processing', 'broken']);
     await waitFor(() =>
       expect(
         queryClient
@@ -395,6 +420,41 @@ describe('the segments of the list', () => {
     await waitFor(() => expect(names(container)).toEqual(['digest']));
   });
 
+  test('searches workflow titles and identifiers case-insensitively within a segment, keeps segment counts global, and clears the filtered empty state', async () => {
+    const { container, findByRole } = open({
+      files: [
+        readyFile('digest', { title: 'Daily digest', paused: true, steps: TWO_STEPS }),
+        readyFile('flaky', { paused: true }),
+        invalidFile('broken'),
+      ],
+    });
+    await waitFor(() => expect(rowCount(container)).toBe(4));
+    const view = within(container);
+    const search = await findByRole('searchbox', { name: 'Search workflows' });
+
+    await fireEvent.input(search, { target: { value: 'DAILY' } });
+    await waitFor(() => expect(names(container)).toEqual(['digest']));
+
+    await fireEvent.input(search, { target: { value: 'ORDER-PROCESSING' } });
+    await waitFor(() => expect(names(container)).toEqual(['order-processing']));
+
+    await fireEvent.click(segment(view, 'Paused', 1));
+    await fireEvent.input(search, { target: { value: 'DAILY' } });
+    await waitFor(() => expect(names(container)).toEqual(['digest']));
+    expect(segment(view, 'All', 4)).not.toBeNull();
+    expect(segment(view, 'Paused', 1)).not.toBeNull();
+    expect(segment(view, 'Problems', 2)).not.toBeNull();
+
+    await fireEvent.input(search, { target: { value: 'missing' } });
+    await findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.noMatch.title });
+    await fireEvent.click(await findByRole('button', { name: WORKFLOW_COPY.list.clearAction }));
+    await waitFor(() =>
+      expect(names(container)).toEqual(['order-processing', 'broken', 'flaky', 'digest']),
+    );
+    expect(search).toHaveValue('');
+    expect(search).toHaveFocus();
+  });
+
   test('keep the heading, the action and Internal workflows over a segment that shows nothing, and Clear filters brings the rows back', async () => {
     const { container, findByRole, findByText } = open();
     await waitFor(() => expect(rowCount(container)).toBe(4));
@@ -479,7 +539,21 @@ describe('the header’s Internal workflows', () => {
 });
 
 describe('a host with no workflow of its own', () => {
-  test('is the page’s own first-use state under its header, with New workflow and Ask an agent, and no filter row', async () => {
+  test('explains how to connect a provider and leaves Ask an agent focusable while it is unavailable', async () => {
+    const { findByRole } = open({ definitions: [], files: [], providerConnected: false });
+    const ask = await findByRole('link', { name: WORKFLOW_COPY.list.empty.askAction });
+    const connect = await findByRole('link', { name: 'Connect a provider' });
+
+    expect(ask.getAttribute('aria-disabled')).toBe('true');
+    expect(ask.getAttribute('tabindex')).toBe('0');
+    expect(ask.hasAttribute('href')).toBe(false);
+    expect(
+      document.getElementById(ask.getAttribute('aria-describedby') ?? '')?.textContent,
+    ).toContain('needs a model provider');
+    expect(connect.getAttribute('href')).toBe('/settings/models');
+  });
+
+  test('is the page’s own first-use state under its header, with New workflow and Ask an agent to write one, and no filter row', async () => {
     const { container, findByRole, findAllByRole, findByText } = open({
       definitions: [],
       files: [],
@@ -498,26 +572,27 @@ describe('a host with no workflow of its own', () => {
     expect(makers).toHaveLength(2);
     for (const maker of makers) expect(maker.getAttribute('href')).toBe('/workflows/new');
     const ask = await findByRole('link', { name: WORKFLOW_COPY.list.empty.askAction });
-    expect(ask.getAttribute('href')).toBe('/chats/new?from=workflows');
+    await waitFor(() => expect(ask.getAttribute('href')).toBe('/chats/new?from=workflows'));
     expect(ask.classList.contains('button-variant-secondary')).toBe(true);
-    // With no type of its own, it says nothing of internal workflows.
+    // With no type of its own, the header has no Internal workflows affordance.
     expect(testId(container, 'internal-workflows-action')).toBeNull();
-    expect(state?.textContent).not.toContain(WORKFLOW_COPY.list.empty.internalAction);
+    expect(state?.querySelectorAll('.cinder-empty-state-action > a')).toHaveLength(2);
+    expect(testId(container, 'workflows-file-hint')?.textContent).toBe(
+      WORKFLOW_COPY.list.empty.fileHint,
+    );
   });
 
-  test('names the internal workflows the engine holds, with a way to them, and no filter row or toolbar', async () => {
+  test('keeps the internal workflows affordance in the header, with no filter row or toolbar', async () => {
     const { container, findByRole } = open({
       definitions: [codeDefinition('agentRun'), codeDefinition('goalRun')],
       files: [],
     });
     await findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
     const state = testId(container, 'workflows-empty');
-    expect(state?.textContent).toContain(WORKFLOW_COPY.list.empty.internal(2));
-    const see = within(state as HTMLElement).getByRole('link', {
-      name: WORKFLOW_COPY.list.empty.internalAction,
+    const ask = within(state as HTMLElement).getByRole('link', {
+      name: WORKFLOW_COPY.list.empty.askAction,
     });
-    expect(see.getAttribute('href')).toBe('/internal-workflows');
-    expect(see.classList.contains('button-variant-secondary')).toBe(true);
+    await waitFor(() => expect(ask.getAttribute('href')).toBe('/chats/new?from=workflows'));
     // The header's Internal workflows stays beside New workflow.
     expect(testId(container, 'internal-workflows-action')?.textContent?.trim()).toBe(
       'Internal workflows (2)',
@@ -527,55 +602,17 @@ describe('a host with no workflow of its own', () => {
     expect(container.querySelector('[data-workflow="agentRun"]')).toBeNull();
   });
 
-  test('keeps the folder out of its words, behind a closed Where workflow files live with Copy, naming the host’s own directory', async () => {
+  test('uses the human-only first-use file hint without exposing the host directory', async () => {
     const { container, findByRole } = open({ definitions: [], files: [] });
     await findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
     expect(container.querySelector('[data-view="workflows"]')?.getAttribute('data-state')).toBe(
       'empty',
     );
     const state = testId(container, 'workflows-empty');
-    expect(state?.textContent).not.toContain(STUB_WORKFLOW_DIRECTORY);
-    expect(testId(container, 'file-location-directory')).toBeNull();
-
-    await fireEvent.click(
-      await findByRole('button', { name: WORKFLOW_COPY.list.empty.files.label }),
-    );
-    await waitFor(() =>
-      expect(testId(container, 'file-location-directory')?.textContent).toContain(
-        STUB_WORKFLOW_DIRECTORY,
-      ),
-    );
-    expect(
-      within(state as HTMLElement).getByRole('button', {
-        name: WORKFLOW_COPY.list.empty.files.copyLabel,
-      }),
-    ).not.toBeNull();
-  });
-
-  test('names the usual directory when the host does not say, and the host’s location when it keeps its files in a bucket', async () => {
-    const usual = open({ definitions: [], files: [], workflowDirectory: null });
-    await usual.findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
-    await fireEvent.click(
-      await usual.findByRole('button', { name: WORKFLOW_COPY.list.empty.files.label }),
-    );
-    await waitFor(() =>
-      expect(testId(usual.container, 'file-location-directory')?.textContent).toContain(
-        WORKFLOW_COPY.list.empty.hintDirectory,
-      ),
-    );
-    cleanup();
-    stub?.restore();
-
-    const remote = open({ definitions: [], files: [], hostMode: 'remote' });
-    await remote.findByRole('heading', { level: 2, name: WORKFLOW_COPY.list.empty.title });
-    await fireEvent.click(
-      await remote.findByRole('button', { name: WORKFLOW_COPY.list.empty.files.label }),
-    );
-    await waitFor(() =>
-      expect(testId(remote.container, 'file-location-directory')?.textContent).toContain(
-        STUB_REMOTE_WORKFLOW_DIRECTORY,
-      ),
-    );
+    const hint = testId(state as HTMLElement, 'workflows-file-hint')?.textContent;
+    expect(hint).toBe(WORKFLOW_COPY.list.empty.fileHint);
+    expect(hint).not.toContain(STUB_WORKFLOW_DIRECTORY);
+    expect(hint).not.toContain(STUB_REMOTE_WORKFLOW_DIRECTORY);
   });
 });
 

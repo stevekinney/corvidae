@@ -18,10 +18,10 @@
  * `test:self:slow`), which hold the `*.slow.test.ts` and `*.integration.test.ts` files: tests that
  * start a process or an out-of-process service, and so depend on how loaded the host is. The
  * isolated lanes run, narrowed to the selection, only with `--isolated` or when a changed file is
- * itself one of those tests, so editing one still runs it.
+ * itself one of those tests. Explicit `--fast-only` keeps both kinds out even when edited.
  *
  * Usage:
- *   bun scripts/affected-tests.ts run [--isolated] [--exclude <test file>]... [--base <rev>] [--changed <path>...]
+ *   bun scripts/affected-tests.ts run [--isolated | --fast-only] [--exclude <test file>]... [--base <rev>] [--changed <path>...]
  *   bun scripts/affected-tests.ts --explain [--base <rev>] [--changed <path>...]
  *   bun scripts/affected-tests.ts --json [--base <rev>] [--changed <path>...]
  *
@@ -29,10 +29,23 @@
  * change to this file select?". Exit codes: 0 success, 1 a lane failed, 2 invalid usage.
  */
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
-import { type SourceTree, type WorkspaceDescription } from './affected-tests-graph.ts';
+import {
+  analyzeSource,
+  type SourceAnalysis,
+  type SourceTree,
+  type WorkspaceDescription,
+} from './affected-tests-graph.ts';
 import {
   buildManifest,
   repositoryRoot,
@@ -226,6 +239,65 @@ export function listTree(root: string): SourceTree {
   };
 }
 
+/** Cache syntax analysis only. Resolution always uses the current path set and workspace graph. */
+export function sourceAnalysisCache(root: string, directory: string) {
+  type Entry = { digest: string; analysis: SourceAnalysis };
+  const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+  const version = hash(
+    `${Bun.version} ${Bun.revision}\n${readFileSync(join(root, 'scripts/affected-tests-graph.ts'), 'utf8')}`,
+  );
+  const file = join(directory, 'source-analysis.json');
+  let previous: Record<string, Entry> = Object.create(null);
+  try {
+    const saved = JSON.parse(readFileSync(file, 'utf8')) as {
+      version: string;
+      entries: Record<string, Entry>;
+      checksum: string;
+    };
+    const validEntry = (entry: Entry) =>
+      typeof entry?.digest === 'string' &&
+      entry.analysis !== null &&
+      typeof entry.analysis === 'object' &&
+      ['specifiers', 'typeSpecifiers', 'computedPathExtensions', 'pathLiterals'].every((key) => {
+        const value = entry.analysis[key as keyof SourceAnalysis];
+        return Array.isArray(value) && value.every((item) => typeof item === 'string');
+      }) &&
+      ['scansFileSystem', 'scansRepository', 'bundlesCode', 'importsDynamically'].every(
+        (key) => typeof entry.analysis[key as keyof SourceAnalysis] === 'boolean',
+      );
+    if (
+      saved.version === version &&
+      saved.entries !== null &&
+      typeof saved.entries === 'object' &&
+      !Array.isArray(saved.entries) &&
+      Object.values(saved.entries).every(validEntry) &&
+      saved.checksum === hash(JSON.stringify(saved.entries))
+    )
+      previous = saved.entries;
+  } catch {
+    // A missing or interrupted cache is an ordinary cold run.
+  }
+  const entries: Record<string, Entry> = Object.create(null);
+  return {
+    analyze: (path: string, source: string): SourceAnalysis => {
+      const digest = hash(source);
+      const prior = Object.hasOwn(previous, path) ? previous[path] : undefined;
+      const analysis = prior?.digest === digest ? prior.analysis : analyzeSource(path, source);
+      entries[path] = { digest, analysis };
+      return analysis;
+    },
+    save: () => {
+      mkdirSync(directory, { recursive: true });
+      const temporary = join(directory, `source-analysis.${process.pid}.json`);
+      writeFileSync(
+        temporary,
+        JSON.stringify({ version, entries, checksum: hash(JSON.stringify(entries)) }),
+      );
+      renameSync(temporary, file);
+    },
+  };
+}
+
 // --- Reporting ---------------------------------------------------------------------------------
 
 function describeReason(reason: Reason): string {
@@ -351,9 +423,11 @@ export function excludeTests(selection: Selection, excluded: readonly string[]):
   };
 }
 
-/** Whether a changed path is itself an isolated test, which the quick tier still runs. */
-export function touchesIsolatedTest(changed: readonly string[]): boolean {
-  return changed.some((path) => ISOLATED_SUFFIXES.some((suffix) => path.endsWith(suffix)));
+/** Explicit lane selection takes precedence over detecting a changed isolated test. */
+export function shouldRunIsolatedTests(changed: readonly string[], isolated?: boolean): boolean {
+  return (
+    isolated ?? changed.some((path) => ISOLATED_SUFFIXES.some((suffix) => path.endsWith(suffix)))
+  );
 }
 
 /**
@@ -475,7 +549,7 @@ function parseArguments(argumentsList: readonly string[]) {
     command: 'run',
     base: null as string | null,
     changed: null as string[] | null,
-    isolated: false,
+    isolated: undefined as boolean | undefined,
     exclude: [] as string[],
   };
   let mode: string | null = null;
@@ -485,6 +559,7 @@ function parseArguments(argumentsList: readonly string[]) {
     else if (token === '--explain') mode = 'explain';
     else if (token === '--json') mode = 'json';
     else if (token === '--isolated') options.isolated = true;
+    else if (token === '--fast-only') options.isolated = false;
     else if (token === '--exclude') options.exclude.push(argumentsList[++index] ?? '');
     else if (token === '--base') options.base = argumentsList[++index] ?? null;
     else if (token === '--changed') {
@@ -510,10 +585,16 @@ async function main(): Promise<number> {
   const workspaces = discoverWorkspaces(root);
   const changed =
     options.changed ?? changedFiles(root, mergeBase(root, options.base ?? 'origin/main'));
+  const cache = sourceAnalysisCache(
+    root,
+    rootScriptEnvironment()['CORVIDAE_SOURCE_ANALYSIS_CACHE'] ??
+      join(root, '.cache', 'affected-tests'),
+  );
   const selection = excludeTests(
-    selectTests({ changed, tree: listTree(root), workspaces }),
+    selectTests({ changed, tree: listTree(root), workspaces, analyze: cache.analyze }),
     options.exclude,
   );
+  cache.save();
 
   if (options.command === 'json') {
     console.log(JSON.stringify(explainJson(selection, changed), null, 2));
@@ -523,7 +604,7 @@ async function main(): Promise<number> {
     console.log(explain(selection, changed));
     return 0;
   }
-  const isolated = options.isolated || touchesIsolatedTest(changed);
+  const isolated = shouldRunIsolatedTests(changed, options.isolated);
   console.log(explain(selection, changed));
   console.log(
     isolated

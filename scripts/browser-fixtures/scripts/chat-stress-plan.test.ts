@@ -49,21 +49,30 @@ const CLEAN: PageMeasurement = {
 };
 
 describe('profiles', () => {
-  it('are the four of the board, with touch below 500 px', () => {
+  it('are the four of the board and the 375 phone, with touch below 500 px', () => {
     expect(STRESS_PROFILES.map((profile) => profile.name)).toEqual([
       '1440-light',
       '768-dark',
       '390-light',
       '320-dark',
+      '375-light',
     ]);
     expect(
       STRESS_PROFILES.filter((profile) => profile.coarse).map((profile) => profile.width),
-    ).toEqual([390, 320]);
+    ).toEqual([390, 320, 375]);
     for (const profile of STRESS_PROFILES) expect(profile.coarse).toBe(profile.width < 500);
   });
 
+  it('draw every case at 375 pixels on a touch screen (COR-2440)', () => {
+    const phone375 = STRESS_PROFILES.find((profile) => profile.width === 375);
+    if (phone375 === undefined) throw new Error('The 375 phone profile is missing.');
+    expect(phone375).toMatchObject({ name: '375-light', height: 667, coarse: true });
+    expect(profilesFor(false)).toContain(phone375);
+    expect(primaryImageName(phone375, 33)).toBe('375-light-33.png');
+  });
+
   it('add the 390 dark phone profile only for a supplemental run', () => {
-    expect(profilesFor(false)).toHaveLength(4);
+    expect(profilesFor(false)).toHaveLength(5);
     expect(profilesFor(true).at(-1)).toBe(SUPPLEMENTAL_PROFILE);
     expect(SUPPLEMENTAL_PROFILE.coarse).toBe(true);
   });
@@ -119,6 +128,45 @@ describe('question witnesses', () => {
   });
 });
 
+describe('message recovery witnesses', () => {
+  it('checks the compact image recovery row without an image view in case 34', () => {
+    expect(caseNumbered(34).steps).toEqual([
+      {
+        action: 'expect-text',
+        text: 'receipt.png',
+        scope: 'figure[data-unavailable]:has(svg.message-attachment-unavailable-icon)',
+        exact: true,
+      },
+      {
+        action: 'expect',
+        role: 'button',
+        name: 'Retry loading receipt.png',
+        scope: 'figure[data-unavailable]',
+      },
+      {
+        action: 'expect-absent',
+        selector: '.message-attachments .message-attachment-button',
+      },
+    ]);
+  });
+
+  it("scopes case 44's notice to the missing-source message", () => {
+    expect(caseNumbered(44).steps).toEqual([
+      {
+        action: 'expect-text',
+        text: 'Sources unavailable',
+        scope: ".chat-message-wrapper[data-role='assistant'] .chat-message-line-actions",
+        exact: true,
+      },
+      {
+        action: 'expect-absent',
+        selector:
+          ".chat-input-area [data-testid='chat-missing-source-notice'], .chat-message-wrapper[data-role='user'] [data-testid='chat-missing-source-notice']",
+      },
+    ]);
+  });
+});
+
 describe('approval action focus witness', () => {
   it('captures both case 39 actions on the narrow dark profile without submitting', () => {
     const approval = caseNumbered(39);
@@ -163,12 +211,12 @@ describe('image names', () => {
 });
 
 describe('expectedCounts', () => {
-  it('hold 340 primaries and 159 fixed variants before any focus image', () => {
+  it('hold 425 primaries and 197 fixed variants before any focus image', () => {
     const counts = expectedCounts(cases, STRESS_PROFILES, {});
-    expect(counts.primary).toBe(340);
-    expect(counts.fixedVariants).toBe(159);
+    expect(counts.primary).toBe(425);
+    expect(counts.fixedVariants).toBe(197);
     expect(counts.focus).toBe(0);
-    expect(counts.total).toBe(499);
+    expect(counts.total).toBe(622);
   });
 
   it('add the focus stops each profile found', () => {
@@ -177,9 +225,10 @@ describe('expectedCounts', () => {
       '768-dark': 14,
       '390-light': 13,
       '320-dark': 13,
+      '375-light': 13,
     });
-    expect(counts.focus).toBe(54);
-    expect(counts.total).toBe(553);
+    expect(counts.focus).toBe(67);
+    expect(counts.total).toBe(689);
   });
 });
 
@@ -524,14 +573,14 @@ describe('countProblems', () => {
   it('names a missing primary image', () => {
     const records = completeRun().filter((entry) => entry.file !== '320-dark-24.png');
     expect(countProblems(records, cases, STRESS_PROFILES)).toEqual([
-      'expected 340 primary images, found 339',
+      'expected 425 primary images, found 424',
     ]);
   });
 
   it('names a missing fixed variant', () => {
     const records = completeRun().filter((entry) => entry.file !== '390-light-33-expanded.png');
     expect(countProblems(records, cases, STRESS_PROFILES)).toEqual([
-      'expected 159 fixed variant images, found 158',
+      'expected 197 fixed variant images, found 196',
     ]);
   });
 

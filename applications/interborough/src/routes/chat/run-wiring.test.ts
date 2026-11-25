@@ -263,6 +263,50 @@ describe('a run that stops on a tool approval', () => {
     });
   });
 
+  test('reconstructs approval disclosures from only the Bureau metadata on the interrupted run', async () => {
+    const conversation = appendUserMessage(empty(), 'Refund it');
+    const disclosure = {
+      irreversible: true,
+      consequence: 'The refund cannot be reversed after settlement.',
+      why: 'The order arrived damaged.',
+    };
+    const { wiring } = wiringOver(
+      [
+        stream([
+          started(),
+          ...toolEvents,
+          finished({
+            type: 'interrupt',
+            interrupts: [
+              {
+                ...INTERRUPT,
+                irreversible: false,
+                consequence: 'Untrusted top-level consequence.',
+                why: 'Untrusted top-level reason.',
+                metadata: { '@lostgradient/bureau': disclosure },
+              },
+            ],
+          }),
+        ]),
+      ],
+      () => conversation,
+    );
+
+    const result = await frames(wiring, conversation);
+
+    const terminal = result.at(-1);
+    if (terminal?.type !== 'run.completed') throw new Error('Expected a completed run.');
+    const approval = Object.values(terminal.conversation.messages).find(
+      (message) => message.toolResult?.callId === 'call-refund',
+    )?.toolResult?.action;
+    expect(approval).toMatchObject(disclosure);
+    expect(approval).not.toMatchObject({
+      irreversible: false,
+      consequence: 'Untrusted top-level consequence.',
+      why: 'Untrusted top-level reason.',
+    });
+  });
+
   test('sends the user’s decision as a resume that carries the opening turn, never a follow-up', async () => {
     const opener = appendUserMessage(empty(), 'Refund it');
     const withFollowUp = appendMessages(opener, {

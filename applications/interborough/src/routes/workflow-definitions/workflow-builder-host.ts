@@ -58,6 +58,8 @@ export interface BuilderHost {
   activityTitle: (handler: string) => string;
   /** What a person reads for a workflow: its title, or its id in words. */
   workflowTitle: (id: string) => string;
+  /** Opens the JSON tab, where a step the builder can't show is changed (row 66a). */
+  showJson: () => void;
 }
 
 const HOST = Symbol('workflow-builder-host');

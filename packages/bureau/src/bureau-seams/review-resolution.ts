@@ -39,6 +39,7 @@ import type {
   PendingReview,
   ResolveReviewInput,
   ResolveReviewResult,
+  ReviewPolicy,
   ReviewStatus,
   SessionPendingReview,
 } from '../bureau-types/reviews';
@@ -992,6 +993,78 @@ export function createReviewResolution<D extends AgentDefinitions>(
     };
   }
 
+  function attachTerminalRelease(
+    attachment: ReviewAuditAttachment,
+    review: SessionPendingReview,
+    verified: boolean,
+    decision: ResolveReviewInput['decision'],
+  ): void {
+    if (!verified || review.kind !== 'tool-approval' || decision === 'approve') return;
+    for (const [handler, contribution] of core.terminalReviewReleases ?? []) {
+      const release = contribution.release;
+      const revision = review.approval.approvalBinding?.toolDefinitionRevision;
+      if (
+        review.agentName !== `${contribution.plugin}:${release.agent}` ||
+        review.approval.toolName !== release.tool ||
+        revision !== release.toolRevision
+      )
+        continue;
+      const identifier = release.identifier(review.approval.arguments);
+      if (typeof identifier !== 'string' || identifier.length === 0)
+        throw new Error('Invalid terminal review release identifier');
+      attachment.terminalRelease = {
+        handler,
+        identifier,
+        runId: review.runId,
+        reviewId: review.id,
+        round: review.round,
+        toolRevision: revision,
+      };
+    }
+  }
+
+  function assertTerminalReleaseRecorded(
+    attachment: ReviewAuditAttachment,
+    recorded: boolean,
+  ): void {
+    if (attachment.terminalRelease && !recorded)
+      throw new Error('Terminal review release could not be durably recorded');
+  }
+
+  function terminalReleaseField(release: ReviewAuditAttachment['terminalRelease']): {
+    terminalRelease?: NonNullable<ReviewAuditAttachment['terminalRelease']>;
+  } {
+    return release === undefined ? {} : { terminalRelease: release };
+  }
+
+  function policyForDecision(
+    review: PendingReview,
+    input: ResolveReviewInput,
+    hideInvalid = false,
+  ) {
+    const policy = core.options.reviewPolicy;
+    if (!policy?.matches(review)) return undefined;
+    if (input.round === undefined || input.remember === true || input.reviewer === undefined) {
+      if (hideInvalid)
+        throw new BureauError(`No pending review with id "${input.id}"`, 'NOT_FOUND');
+      throw new BureauError(
+        'Review decision requires reviewer authority and the displayed round',
+        'BAD_REQUEST',
+      );
+    }
+    return policy;
+  }
+
+  async function assertPolicyAllows(
+    policy: ReviewPolicy | undefined,
+    review: PendingReview,
+    input: ResolveReviewInput,
+  ) {
+    if (policy !== undefined && !(await policy.mayDecide(review, input.reviewer!))) {
+      throw new BureauError(`No pending review with id "${review.id}"`, 'NOT_FOUND');
+    }
+  }
+
   async function resolveReview(
     input: ResolveReviewInput,
     // COR-1579: the human wait of a session run another process holds, derived from durable
@@ -1010,6 +1083,11 @@ export function createReviewResolution<D extends AgentDefinitions>(
     if (!review) {
       const cleanup = reviewResolutionCleanupPending.get(input.id);
       if (cleanup) {
+        await assertPolicyAllows(
+          policyForDecision(cleanup.review, input, true),
+          cleanup.review,
+          input,
+        );
         assertExpectedReviewRound(input, cleanup.review);
         if (cleanup.decision !== input.decision) {
           throw new ReviewAlreadyResolvedError(`Review with id "${input.id}" is already resolved`);
@@ -1032,6 +1110,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
             cleanup.owner,
             cleanup.decisionSurface,
           );
+          Object.assign(cleanupAuditAttachment, terminalReleaseField(cleanup.terminalRelease));
           const cleanupAuditAppended = await peers.persistReviewResolutionWithRetry(
             cleanup.sessionId,
             input.id,
@@ -1043,6 +1122,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
             cleanupAuditAttachment,
             cleanup.rememberTool,
           );
+          assertTerminalReleaseRecorded(cleanupAuditAttachment, cleanupAuditAppended);
           reviewResolutionCleanupPending.delete(input.id);
           await releaseDecidedReview(cleanup.runId, cleanup.review.id);
           if (cleanupAuditAppended) {
@@ -1101,8 +1181,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
               decisionSurface: cleanup.decisionSurface,
             },
           );
-          if (cleanupOutcomeNotWritten !== undefined) throw cleanupOutcomeNotWritten;
-          return {
+          const cleanupResolution: ResolveReviewResult = {
             id: input.id,
             kind: cleanup.kind,
             decision: cleanup.decision,
@@ -1115,6 +1194,12 @@ export function createReviewResolution<D extends AgentDefinitions>(
               cleanup.review,
             )),
           };
+          if (cleanupOutcomeNotWritten !== undefined)
+            throw new ApprovalOutcomeNotWrittenError(
+              cleanupOutcomeNotWritten.message,
+              cleanupResolution,
+            );
+          return cleanupResolution;
         } finally {
           resolvingReviewIds.delete(input.id);
         }
@@ -1123,6 +1208,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
       throw new BureauError(`No pending review with id "${input.id}"`, 'NOT_FOUND');
     }
 
+    const policy = policyForDecision(review, input);
     // COR-1920: nothing unsealed is digested or claimed.
     peers.refuseUnsealedSecrets(review, humanWaitDecisionPayload(input), input.decision);
     if (resolvingReviewIds.has(review.id)) {
@@ -1218,6 +1304,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
     }
     if (claim.outcome === 'same' && review.kind === 'tool-approval') {
       try {
+        await assertPolicyAllows(policy, review, input);
         return await answerSameApprovalDecision(review, input);
       } finally {
         resolvingReviewIds.delete(review.id);
@@ -1229,6 +1316,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
     // Set once a step that cannot be shown not to have acted has begun: a throw before it is a
     // proven pre-execution failure, which releases an approval's claim.
     let actionStarted = false;
+    let verifiedTerminalApproval = false;
     // COR-1920: what the audit entry says of each secret answer this delivery stored.
     let secretAnswerAudit: readonly SecretAnswerAuditEntry[] = [];
     // COR-2009: the audit record of the approved call, once it has run.
@@ -1238,6 +1326,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
     let keepPending = false;
     try {
       await refuseStaleRoundOfHeldClaim(review, heldApprovalClaim !== undefined, input.round);
+      await assertPolicyAllows(policy, review, input);
       if (review.kind === 'tool-approval') {
         // COR-1596: a fire canceled elsewhere (a peer process, a route that never reached this
         // one) still has its approval here until this is read; the engine's status says it was
@@ -1449,6 +1538,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
               message: `[bureau] Denied approval "${review.id}" was already terminal or absent: ${serializeUnknownError(error)}`,
             });
           }
+          verifiedTerminalApproval = true;
         }
       } else {
         // AB-46: a `human-wait` park is a genuine durable park
@@ -1495,6 +1585,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
         decisionOwner,
         decisionSurfaceOf(review, input),
       );
+      attachTerminalRelease(auditAttachment, review, verifiedTerminalApproval, input.decision);
       try {
         auditAlreadyAppended = await peers.persistReviewResolutionWithRetry(
           review.sessionId,
@@ -1507,6 +1598,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
           auditAttachment,
           rememberTool,
         );
+        assertTerminalReleaseRecorded(auditAttachment, auditAlreadyAppended);
       } catch (error) {
         // AB-391 (Codex P1 review finding, PR #601, "Distinguish concurrent
         // resolvers from commit retries"): a genuine CONFLICT here means a
@@ -1536,6 +1628,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
             rememberTool,
             owner: decisionOwner,
             decisionSurface: decisionSurfaceOf(review, input),
+            ...terminalReleaseField(auditAttachment.terminalRelease),
           });
         }
         resolvingReviewIds.delete(review.id);
@@ -1584,9 +1677,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
     });
     await peers.recordApprovedCall(approvedCallAudit);
 
-    if (outcomeNotWritten !== undefined) throw outcomeNotWritten;
-
-    return {
+    const resolution: ResolveReviewResult = {
       id: review.id,
       kind: review.kind,
       decision: input.decision,
@@ -1598,6 +1689,9 @@ export function createReviewResolution<D extends AgentDefinitions>(
       // COR-1828: stored with the decision's commit; a superseded call ran nothing, so none was.
       ...(await peers.grantFieldsOf(rememberTool, !keepPending && auditAlreadyAppended, review)),
     };
+    if (outcomeNotWritten !== undefined)
+      throw new ApprovalOutcomeNotWrittenError(outcomeNotWritten.message, resolution);
+    return resolution;
   }
 
   return {

@@ -307,6 +307,11 @@ const explicitTimezoneIsoDateTimeSchema = z.string().refine(isExplicitTimezoneIs
   message: 'expected an ISO8601 date-time with explicit timezone',
 });
 
+/** The longest `consequence` an approval action carries, the bound armorer's materializer holds. */
+const APPROVAL_CONSEQUENCE_MAX_LENGTH = 500;
+/** The longest `why` an approval action carries, the bound armorer's materializer holds. */
+const APPROVAL_WHY_MAX_LENGTH = 2000;
+
 const toolApprovalOperationBaseSchema = z.object({
   filesTouched: z.array(z.string()).exactOptional(),
   argsPreview: jsonValueSchema.optional(),
@@ -365,6 +370,11 @@ export const toolActionSchema = z.discriminatedUnion('type', [
       snapshotId: z.string().min(1).optional(),
       expiresAt: explicitTimezoneIsoDateTimeSchema.optional(),
       editableArgs: z.boolean().optional(),
+      // Optional and additive: an approval stored before these existed parses unchanged. The
+      // bounds match armorer's `materializeToolResult`, so neither side admits what the other refuses.
+      irreversible: z.boolean().optional(),
+      consequence: z.string().min(1).max(APPROVAL_CONSEQUENCE_MAX_LENGTH).optional(),
+      why: z.string().min(1).max(APPROVAL_WHY_MAX_LENGTH).optional(),
       policyVersion: z.string().min(1),
       idempotencyKey: z.string().min(1),
     })

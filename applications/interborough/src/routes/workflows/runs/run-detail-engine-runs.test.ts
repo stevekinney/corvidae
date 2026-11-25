@@ -4,12 +4,14 @@
  * answers `bureau.tasks.get` NotFound for them, so the page reads them from the engine; none of
  * them may lead to the page that says the run was not found (COR-2424). The tick is read-only.
  */
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 
+import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
 import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import { router } from '../../../lib/router.svelte.ts';
 import type { Principal } from '../../../lib/scopes.svelte.ts';
@@ -116,13 +118,123 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     expect(await view.findByRole('heading', { level: 1, name: 'Release notes' })).not.toBeNull();
     expect(view.queryByText(TASK_COPY.notFound.title)).toBeNull();
     expect(view.queryByText(TASK_COPY.loadFailed.title)).toBeNull();
+    const rail = view.getByRole('complementary');
+    expect(rail.textContent).toContain('Run ID');
+    expect(rail.querySelector('[aria-label="Copy Run ID"]')).not.toBeNull();
+  });
+
+  /** Lists the inspectors' run panels, as the host does, and answers a panel's page. */
+  function routeRunPanels(): void {
+    fetchScript.routeJsonRpcMethod('bureau.goals.list', { goals: [], nextOffset: null });
+    fetchScript.routeUrl('/host/panels', {
+      apps: [
+        {
+          plugin: 'inspectors',
+          app: 'run-inspector',
+          title: 'Run inspector',
+          uri: 'ui://inspectors/run-inspector/v1',
+          placements: [{ kind: 'run' }],
+        },
+        {
+          plugin: 'inspectors',
+          app: 'run-comparison',
+          title: 'Run comparison',
+          uri: 'ui://inspectors/run-comparison/v1',
+          opensFromTool: 'bureau.runs.compare',
+          placements: [{ kind: 'run' }],
+        },
+        {
+          plugin: 'inspectors',
+          app: 'schedule-editor',
+          title: 'Schedule editor',
+          uri: 'ui://inspectors/schedule-editor/v1',
+          placements: [{ kind: 'page', path: 'schedules' }, { kind: 'run' }],
+        },
+        {
+          plugin: 'inspectors',
+          app: 'pending-review',
+          title: 'Pending reviews',
+          uri: 'ui://inspectors/pending-review/v1',
+          placements: [],
+        },
+      ],
+    });
+    fetchScript.routeUrl('/host/plugins/', { html: '<div id="root"></div>', ui: {} });
+  }
+
+  async function openInspectorTab(view: ReturnType<typeof mount>): Promise<void> {
+    const trigger = await view.findByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading });
+    if (trigger.getAttribute('aria-expanded') !== 'true') await fireEvent.click(trigger);
+    const tab = await view.findByRole('tab', { name: RUN_DETAIL_COPY.howItRan.tabs.inspector });
+    if (tab.getAttribute('aria-selected') !== 'true') await fireEvent.click(tab);
+  }
+
+  const mountedPanels = (view: ReturnType<typeof mount>) =>
+    [...view.container.querySelectorAll<HTMLElement>('[data-section="plugin-panel"]')].map(
+      (section) => section.dataset['app'],
+    );
+
+  test('mounts the run comparison on its Inspector tab when it is a fork, and neither the run inspector nor the schedule editor (owner, 2026-11-22, refined)', async () => {
+    routeRunPanels();
+    fetchScript.routeUrl('/workflows/instance-source', engineRun({ id: 'instance-source' }));
+    fetchScript.routeJsonRpcMethod('weft.workflows.scheduleprovenance.get', null);
+    routeEngine(
+      'instance-panels',
+      engineRun({ forkedFrom: { workflowId: 'instance-source', step: 2 } }),
+    );
+
+    const view = mount('instance-panels');
+    await openInspectorTab(view);
+
+    await waitFor(() => expect(mountedPanels(view)).toEqual(['run-comparison']));
+  });
+
+  test('mounts no panel on an instance that is not a fork: it has no task, no source and no schedule to show', async () => {
+    routeRunPanels();
+    routeEngine('instance-plain', engineRun({}));
+
+    const view = mount('instance-plain');
+    await openInspectorTab(view);
+    await waitUntil(() => fetchScript.calls.some((call) => call.url.includes('/host/panels')));
+    await waitFor(() =>
+      expect(view.container.querySelector('[data-section="change"]')).not.toBeNull(),
+    );
+    // Nothing is going to appear, so the check is that the page stays as it was.
+    await quietFor(50);
+    expect(mountedPanels(view)).toEqual([]);
+  });
+
+  test('puts a fork’s lineage, with the comparison’s button, ahead of the operator tabs, not behind Versioning', async () => {
+    routeRunPanels();
+    fetchScript.routeUrl('/workflows/instance-source', engineRun({ id: 'instance-source' }));
+    fetchScript.routeJsonRpcMethod('weft.workflows.scheduleprovenance.get', null);
+    routeEngine(
+      'instance-fork-lineage',
+      engineRun({ forkedFrom: { workflowId: 'instance-source', step: 2 } }),
+    );
+
+    const view = mount('instance-fork-lineage');
+
+    const compare = await view.findByRole('button', { name: 'Compare with source' });
+    const lineage = view.container.querySelector('[data-section="lineage"]');
+    expect(lineage).not.toBeNull();
+    expect(lineage?.contains(compare)).toBe(true);
+    // It leads the "How it ran" disclosure, which is closed: no tab has been opened to reach it.
+    const howItRan = view.getByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading });
+    expect(lineage?.compareDocumentPosition(howItRan) === Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      true,
+    );
+    expect(howItRan.getAttribute('aria-expanded')).not.toBe('true');
   });
 
   /**
    * Serves Release notes' run `release-run` failed at step 2 on 1.2.0 (1.3.0 is current), with the
    * history's two starts of step 2's activity and, when given, the engine's timeline.
    */
-  function serveFailedReleaseNotes(timeline?: readonly unknown[]): void {
+  function serveFailedReleaseNotes(
+    timeline?: readonly unknown[],
+    options: { readonly explained?: boolean } = {},
+  ): void {
     if (timeline !== undefined) fetchScript.routeUrl('/workflows/release-run/timeline', timeline);
     fetchScript.routeJsonRpcMethod('bureau.goals.list', { goals: [], nextOffset: null });
     const step = (kind: string, title?: string) => ({
@@ -169,6 +281,24 @@ describe('an instance of a workflow file opened from the Runs list', () => {
         },
       ],
     });
+    // What the Bureau stored of the failure (COR-2533): the failure section is its words.
+    if (options.explained === false) {
+      fetchScript.routeJsonRpcMethodNotFound('bureau.tasks.explain', 'No such run');
+    } else {
+      fetchScript.routeJsonRpcMethod('bureau.tasks.explain', {
+        summary:
+          'The step "Collect merged changes" failed because the code it ran raised an error.',
+        cause: { category: 'application', code: null, kind: null },
+        step: { index: 1, label: 'Collect merged changes' },
+        tries: 2,
+        verdicts: [],
+        remediation: 'Read the run’s failure message, then start the run again.',
+        nextCommands: [
+          'interborough runs get --kind workflow release-run',
+          'interborough runs retry release-run',
+        ],
+      });
+    }
     fetchScript.routeJsonRpcMethod('bureau.workflows.get', {
       id: 'release-notes',
       state: 'ready',
@@ -190,7 +320,7 @@ describe('an instance of a workflow file opened from the Runs list', () => {
       engineRun({
         status: 'failed',
         error:
-          'Agent "assistant" failed (finish reason "error"): {"name":"AgentRunError","message":"GitHub did not answer (HTTP 503)"}',
+          'Agent "assistant" failed (finish reason "error"): {"name":"AgentRunError","message":"GitHub did not answer (HTTP 503) while Collect merged changes was reading the pull requests"}',
       }),
     );
   }
@@ -208,7 +338,10 @@ describe('an instance of a workflow file opened from the Runs list', () => {
       duration,
       status: 'failed',
     });
-    serveFailedReleaseNotes([tried(0, 600), tried(1_200, 600), tried(2_800, 600)]);
+    // The Bureau holds no answer for it, so the page's own words about the failure stand.
+    serveFailedReleaseNotes([tried(0, 600), tried(1_200, 600), tried(2_800, 600)], {
+      explained: false,
+    });
 
     const view = mount('release-run');
 
@@ -217,8 +350,31 @@ describe('an instance of a workflow file opened from the Runs list', () => {
       expect(block.textContent).toContain('Step 2, Collect merged changes, failed after 3 tries'),
     );
     expect(block.textContent).toContain('Interborough tried 3 times in 3.4 s.');
-    // The engine records no activity text for the step, so no "while …" clause is made up (55b).
-    expect(block.textContent).not.toContain(' while ');
+    expect(block.textContent).toContain(
+      'GitHub did not answer (HTTP 503) while Collect merged changes was reading the pull requests.',
+    );
+  });
+
+  test('that failed after three tries and is explained keeps how long they took in the Tries row (row 55b)', async () => {
+    const tried = (offset: number, duration: number) => ({
+      step: 1,
+      documentStep: 1,
+      operationType: 'activity',
+      operationLabel: 'agent',
+      inputSummary: '',
+      timestamp: 2_000 + offset,
+      duration,
+      status: 'failed',
+    });
+    serveFailedReleaseNotes([tried(0, 600), tried(1_200, 600), tried(2_800, 600)]);
+
+    const view = mount('release-run');
+
+    const block = await view.findByTestId('run-step-failure');
+    await waitFor(() => expect(block.querySelector('[data-explanation="summary"]')).not.toBeNull());
+    expect(block.querySelector('dl')?.textContent).toMatch(/Tries\s*\d+, 3\.4 s in all/);
+    // The page's own sentence stands only while the Bureau has no answer: the duration is said once.
+    expect(block.textContent).not.toContain('Interborough tried');
   });
 
   test('that failed says where: at step 2 of 4 beside Failed, the failing step’s block, and the version it ran (rows 54y, 14t, 55b, 55d)', async () => {
@@ -240,12 +396,18 @@ describe('an instance of a workflow file opened from the Runs list', () => {
       block.compareDocumentPosition(inputOutput as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(block.textContent).toContain('Step 2, Collect merged changes, failed after 2 tries');
-    expect(block.textContent).toContain('Why it failed');
-    expect(block.textContent).toContain('GitHub did not answer (HTTP 503)');
+    // The Bureau's answer is the one reason in the block: the page's own "Why it failed" words show
+    // only while the Bureau has none (the test above), so the failure is stated once.
+    await waitFor(() => expect(block.querySelector('[data-explanation="summary"]')).not.toBeNull());
+    expect(block.textContent).not.toContain('Why it failed');
+    expect(block.textContent).not.toContain('GitHub did not answer');
+    expect(block.textContent).not.toContain('It wasn’t anything you did.');
+    // The step is named once, in the heading: the answer's own Step row is left out.
+    expect(block.querySelector('dl')?.textContent).not.toContain('Step');
+    // One next step: the Bureau's, before the actions, with no second sentence about Health.
+    expect(block.textContent).not.toContain('check Health');
     // What the step said, never the error's JSON (row 55b).
     expect(block.textContent).not.toContain('{');
-    // Row 14t: the block says it was not the person's doing, and carries its own actions.
-    expect(block.textContent).toContain('It wasn’t anything you did.');
     const actions = block.querySelector('[data-run-failure-actions]');
     expect(actions?.textContent).toContain('Retry from step 2');
     expect(actions?.textContent).toContain('runs on 1.2.0');
@@ -257,7 +419,17 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     );
     expect(actions?.textContent).toContain('Run again');
     expect(actions?.textContent).toContain('Open step 2');
-    expect(block.textContent).not.toContain('Show full stack trace');
+    // COR-2533: the block carries what the Bureau stored about the failure, in the server’s words.
+    await waitFor(() =>
+      expect(block.querySelector('[data-explanation="summary"]')?.textContent).toBe(
+        'The step "Collect merged changes" failed because the code it ran raised an error.',
+      ),
+    );
+    expect(block.querySelector('[data-explanation="remediation"]')?.textContent).toContain(
+      'Read the run’s failure message, then start the run again.',
+    );
+    expect(block.querySelector('[data-explanation="cause"]')?.textContent).toContain('application');
+    expect(block.querySelector('#failure-explanation')).not.toBeNull();
     // The failure is told once, on the step, and no banner repeats it.
     expect(view.container.querySelectorAll('.weft-overview-tab__failure')).toHaveLength(1);
     await waitFor(() => {
@@ -267,6 +439,51 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     expect(view.container.querySelector('aside')?.textContent).toContain(
       'Ran on an older version of this workflow. The current one is 1.3.0.',
     );
+  });
+
+  test('COR-2543: a failed instance mounts a panel placed on a failed run in its Inspector tab, and a completed one does not', async () => {
+    const panels = {
+      apps: [
+        {
+          plugin: 'inspectors',
+          app: 'failure-explanation',
+          title: 'Failure explanation',
+          uri: 'ui://inspectors/failure-explanation/v1',
+          opensFromTool: 'bureau.tasks.explain',
+          placements: [{ kind: 'run', when: 'failed' }],
+        },
+      ],
+    };
+    const inspectorPanels = async (view: ReturnType<typeof mount>) => {
+      const trigger = await view.findByRole('button', { name: 'How it ran' });
+      if (trigger.getAttribute('aria-expanded') !== 'true') await fireEvent.click(trigger);
+      const tab = await view.findByRole('tab', { name: 'Inspector' });
+      if (tab.getAttribute('aria-selected') !== 'true') await fireEvent.click(tab);
+      return [...view.container.querySelectorAll('[data-section="plugin-panel"]')];
+    };
+
+    serveFailedReleaseNotes();
+    fetchScript.routeUrl('/host/panels', panels);
+    const failed = mount('release-run');
+    await waitFor(async () => {
+      const found = await inspectorPanels(failed);
+      expect(found.map((section) => section.getAttribute('data-app'))).toEqual([
+        'failure-explanation',
+      ]);
+    });
+    failed.unmount();
+
+    // A run that is not failed shows no panel that placed itself for failed runs only.
+    fetchScript.restore();
+    fetchScript = new ScriptedFetch();
+    fetchScript.routeSseStream('/v1/events/sse');
+    fetchScript.routeJsonRpcMethodNotFound('bureau.tasks.get', 'No such task');
+    fetchScript.routeUrl('/host/panels', panels);
+    fetchScript.routeJsonRpcMethod('bureau.goals.list', { goals: [], nextOffset: null });
+    routeEngine('done-run', engineRun({ status: 'completed', result: {} }));
+    const done = mount('done-run');
+    await done.findByRole('heading', { level: 1 });
+    expect(await inspectorPanels(done)).toEqual([]);
   });
 
   test('is not found only when the engine and the Bureau’s record both lack it', async () => {

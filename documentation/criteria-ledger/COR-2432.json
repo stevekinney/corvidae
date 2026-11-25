@@ -1,0 +1,74 @@
+{
+  "issue": "COR-2432",
+  "branch": "codex/cor-2432-workflow-builder",
+  "checkedAt": "14e6a88cd6005903655aa35fb13a0b474f13312a",
+  "briefVersion": "de07a52cf936",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Schedule model and When editor preserve spec, timezone, overlap and catchUp. The design reviewer matched the row on the responsive captures."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "JsonEditor adds Invalid JSON status and parser-stop marking. The design reviewer matched the row on the responsive captures."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Builder JSON note and read-back preserve unknown keys. The design reviewer matched the row on the responsive captures."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Create failure retains text and reuses Create workflow. The design reviewer matched the row on the responsive captures."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "ScheduleWhen exposes cadence, policies, timezone and next runs. The design reviewer matched the row on the responsive captures."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "Fields-only JsonSchemaEditor provides schema table controls. The design reviewer matched the row on the responsive captures."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "Edit failure retains draft and save action. The design reviewer matched the row on the responsive captures."
+    },
+    {
+      "id": "AC8",
+      "status": "met-on-branch",
+      "evidence": "Bureau validation marks the semantic issue and focuses its JSON line. The design reviewer matched the row on the responsive captures."
+    },
+    {
+      "id": "AC9",
+      "status": "met-on-branch",
+      "evidence": "Unknown steps remain read-only cards and retain their source. The design reviewer matched the row on the responsive captures."
+    },
+    {
+      "id": "AC10",
+      "status": "met-on-branch",
+      "evidence": "Read-back describes the unsupported step. The design reviewer matched the row on the responsive captures."
+    },
+    {
+      "id": "AC11",
+      "status": "met-on-branch",
+      "evidence": "Edit LeaveGuard renders focused discard confirmation. The design reviewer matched the row on the responsive captures."
+    },
+    {
+      "id": "AC12",
+      "status": "met-on-branch",
+      "evidence": "Builder sections use FormSection and page titles remain PageHeader. The design reviewer matched the row on the responsive captures."
+    },
+    {
+      "id": "AC13",
+      "status": "met-on-branch",
+      "evidence": "Focused checks exited 0. Both browser themes passed 8 cases and covered 140 obligations. Direct regressions cover schedule fields, validation, permission refusals, unsupported steps, the phone submit guard and discard."
+    }
+  ]
+}

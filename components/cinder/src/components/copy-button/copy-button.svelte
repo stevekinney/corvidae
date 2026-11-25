@@ -22,6 +22,7 @@
     label,
     copiedLabel,
     textVisible = false,
+    appearance = 'default',
     class: className,
     children,
     confirmation,
@@ -83,6 +84,7 @@
     {...rest}
     type="button"
     data-cinder-copied={copied || undefined}
+    data-cinder-appearance={appearance === 'inline' ? appearance : undefined}
     aria-label={accessibleName}
     data-cinder-icon-only={textFace ? undefined : ''}
     onclick={handleClick}
@@ -92,9 +94,9 @@
          at rest, Check once copied. Visible words are presentational only; the announcement is
          owned by the live region. -->
     {#if copied}
-      <Check class="cinder-icon-sm" aria-hidden="true" />
+      <Check class="cinder-copy-button__icon" aria-hidden="true" />
     {:else}
-      <Copy class="cinder-icon-sm" aria-hidden="true" />
+      <Copy class="cinder-copy-button__icon" aria-hidden="true" />
     {/if}
     {#if textFace}
       <!-- Both words are laid out in one cell and only the current one shows, so the button is

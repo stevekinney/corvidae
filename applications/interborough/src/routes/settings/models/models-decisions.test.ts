@@ -11,7 +11,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { MODELS_COPY } from '../../../app/copy/models.ts';
 import { SETTINGS_COPY } from '../../../app/copy/settings.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
-import type { DecisionModelRow } from '../../../lib/bureau-decisions.ts';
+import type { DecisionModelRow, DecisionModels } from '../../../lib/bureau-decisions.ts';
 import { StubFault, type BureauStub } from '../../../lib/bureau-stub.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
@@ -59,6 +59,8 @@ function decisionRow(
     answering: false,
     fallback: false,
     canBeFallback: true,
+    configured: null,
+    configuredFallback: null,
     ...extra,
   };
 }
@@ -74,6 +76,7 @@ function open(
     rows?: readonly DecisionModelRow[];
     /** The rows as the Bureau reports them now, read from the settings it holds at each request. */
     rowsFor?: (served: SettingsServed) => readonly DecisionModelRow[];
+    hostModel?: DecisionModels['hostModel'];
     served?: SettingsServed;
     plugins?: PluginFixture[];
     stream?: SettingsStream;
@@ -88,7 +91,10 @@ function open(
       'bureau.agents.catalog': () => ({ models: [], tools: [] }),
       'bureau.decisions.models': async () => {
         await options.hold;
-        return { rows: options.rowsFor?.(served) ?? options.rows ?? [HAIKU, GPT, JEV] };
+        return {
+          rows: options.rowsFor?.(served) ?? options.rows ?? [HAIKU, GPT, JEV],
+          hostModel: options.hostModel ?? null,
+        };
       },
       // The plugins' titles name the groups of rows: TypeSafe is no chat provider and is not in the
       // host's providers list, but its plugin is.
@@ -261,6 +267,33 @@ describe('the decision model row', () => {
     expect(section(container).dataset['waiting']).toBe('true');
   });
 
+  test.each([
+    {
+      title: 'with no fallback answering',
+      rows: [{ ...HAIKU, answering: false }],
+      description: copy.model.hostAnswers('Local'),
+    },
+    {
+      title: 'with a fallback answering other kinds',
+      rows: [HAIKU],
+      description: copy.model.hostAndFallback('Local', 'Claude Haiku 5.5'),
+    },
+  ])('identifies the selected host model $title', async ({ rows, description }) => {
+    const served = servedSettings({ values: { 'decisions.model': 'local' } });
+    const { container, findByRole } = open({
+      served,
+      rows,
+      hostModel: { name: 'local', kinds: ['boolean'] },
+    });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await ready(container);
+
+    expect(row(container, 'decisions.model').textContent).toContain(description);
+    expect(row(container, 'decisions.model').textContent).not.toContain('can’t answer decisions');
+    expect(trigger(container, 'decisions.model').textContent).toContain('Local');
+    expect(section(container).dataset['waiting']).toBeUndefined();
+  });
+
   test('takes the name from the Bureau’s field, not from a rule of its own', async () => {
     // Another row is marked: the page names that one, whatever its price or structure.
     const { container, findByRole } = open({
@@ -309,6 +342,24 @@ describe('the decision model row', () => {
     expect(trigger(container, 'decisions.model').textContent).toContain(
       SETTINGS_COPY.defaultOption('Jev'),
     );
+  });
+
+  test('keeps an alias of the configured decision model as the canonical row the Bureau reports', async () => {
+    const served = servedSettings({ values: { 'decisions.model': 'typesafe/jev-alias' } });
+    const { container, findByRole } = open({
+      served,
+      rows: [
+        { ...HAIKU, answering: false, fallback: true },
+        { ...JEV, answering: true, configured: 'typesafe/jev-alias' },
+      ],
+    });
+
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await ready(container);
+
+    expect(row(container, 'decisions.model').textContent).toContain(copy.model.description);
+    expect(row(container, 'decisions.model').textContent).not.toContain('can’t answer decisions');
+    expect(trigger(container, 'decisions.model').textContent).toContain('Jev');
   });
 
   test('names the fallback while the host’s default decision model needs setup', async () => {
@@ -636,7 +687,7 @@ describe('a fallback model the Bureau’s fallback never uses', () => {
     );
   });
 
-  test('keeps the raw id for a stored fallback the Bureau does not list', async () => {
+  test('keeps the stored id and explains which fallback is used when the model is no longer listed', async () => {
     const served = servedSettings();
     served.values['decisions.fallbackModel'] = 'acme/vanished';
     const { container, findByRole } = open({ served });
@@ -644,6 +695,22 @@ describe('a fallback model the Bureau’s fallback never uses', () => {
     await ready(container);
 
     expect(trigger(container, 'decisions.fallbackModel').textContent).toContain('acme/vanished');
+    expect(row(container, 'decisions.fallbackModel').textContent).toContain(
+      '“acme/vanished” is no longer listed. Claude Haiku 5.5 is the fallback.',
+    );
+  });
+
+  test('names the fallback in use when the selected model still needs setup', async () => {
+    const served = servedSettings();
+    served.values['decisions.fallbackModel'] = 'openai/gpt-5';
+    const { container, findByRole } = open({ served });
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    await ready(container);
+
+    expect(trigger(container, 'decisions.fallbackModel').textContent).toContain('GPT 5');
+    expect(row(container, 'decisions.fallbackModel').textContent).toContain(
+      '“GPT 5, OpenAI” needs setup. Claude Haiku 5.5 is the fallback.',
+    );
   });
 
   test('reads the key’s own default in the empty option of the fallback while the rows are missing, as it does once they load', async () => {

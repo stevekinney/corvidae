@@ -31,19 +31,29 @@
    * dismissal (Dropdown) leaves its anchor and docks to the bottom edge with
    * the bottom Drawer's geometry: full width, a 90dvh cap, a top border and
    * rounded top corners. The component drops its anchored inline position
-   * while docked, so these insets are the only ones that apply. Physical
-   * properties, as in drawer.css, because the sheet is physically bottom
-   * anchored in every writing mode. */
+   * while docked. When Cinder is tracking a bottom bar, the sheet stops
+   * above it and scrolls in the remaining viewport. Use physical insets
+   * because the sheet docks to the physical bottom in every writing mode. */
   .cinder-_floating-surface[data-cinder-sheet='docked'] {
+    /* A bottom bar can itself fill a very short viewport. Keep the measured stack whenever it
+     * leaves the picker its 16rem list, and only overlap it once it would otherwise collapse the
+     * sheet below its 90dvh cap. `10dvh` is the space that cap leaves at the physical bottom. */
+    --_cinder-sheet-min-height: 16rem;
+    --_cinder-sheet-bottom: min(
+      var(--_cinder-docked-action-bar-height, 0px),
+      max(10dvh, calc(100dvh - var(--_cinder-sheet-min-height)))
+    );
+    --_cinder-sheet-max-height: min(90dvh, max(0px, 100dvh - var(--_cinder-sheet-bottom)));
+
     top: auto;
     right: 0;
-    bottom: 0;
+    bottom: var(--_cinder-sheet-bottom);
     left: 0;
     width: 100%;
     min-width: 0;
     max-width: none;
-    max-height: 90dvh;
-    max-block-size: 90dvh;
+    max-height: var(--_cinder-sheet-max-height);
+    max-block-size: var(--_cinder-sheet-max-height);
     overflow: auto;
     padding-bottom: max(var(--cinder-space-1), env(safe-area-inset-bottom));
     border-width: 1px 0 0;

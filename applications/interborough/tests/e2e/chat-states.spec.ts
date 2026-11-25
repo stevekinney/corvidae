@@ -24,7 +24,10 @@ import {
 import { SAMPLE_NOW_MILLISECONDS, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
 import { connectProvider, open, openStatesChat } from './chat-states-support.ts';
-import { captureForDesignReview } from './design-review-capture.ts';
+import {
+  captureForDesignReview,
+  captureForDesignReviewWithPhone,
+} from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { readBoxes } from './read-boxes.ts';
@@ -410,11 +413,14 @@ test.describe('Restarting after Enable and restart (frame i: 20f)', () => {
     const row = railRow(page, 'List changes');
     await expect(row).toContainText('0.8s');
     const card = conversation.locator('.cinder-approval-card');
+    await expect(card).toHaveAttribute('data-cinder-layout', 'decision');
+    await expect(card).toHaveAttribute('data-cinder-risk', 'medium');
     await expect(card).toContainText('Publish notes for 2.4?');
     await expect(card.locator('.cinder-approval-card__state-word')).toHaveText('Unavailable');
-    await expect(card).toContainText('Changes things');
-    await expect(card).toContainText('Approval from Release helper');
-    await expect(card).toContainText('12 min ago');
+    await expect(card.locator('.cinder-approval-card__asker-source')).toHaveText(
+      'Approval from Release helper',
+    );
+    await expect(card.locator('.cinder-approval-card__asker-time')).toHaveText('12 min ago');
     await expect(card).toContainText('Version 2.4');
     await expect(card).toContainText('Changes 12');
     await expect(card).toContainText(HELD_BY_PLUGIN_REASON);
@@ -446,7 +452,7 @@ test.describe('Reply failed partway (frame f: 19p)', () => {
     request,
   }) => {
     await connectProvider(page);
-    await openStatesChat(page, request, 'failed-partway');
+    const { failedRunId } = await openStatesChat(page, request, 'failed-partway');
     await expect(transcript(page).getByText(FAILED_PARTWAY_REPLY)).toBeVisible();
 
     await expectTopBar(page);
@@ -464,21 +470,81 @@ test.describe('Reply failed partway (frame f: 19p)', () => {
 
     // The part that arrived stays until the person acts; the failure is a status line below it,
     // not agent speech, with Retry.
-    const line = transcript(page).locator('.chat-note[data-failed]');
+    const line = transcript(page).locator('.chat-turn-outcome[data-kind="failed"]');
+    await expect(line).toContainText('This answer is incomplete.');
     await expect(line).toContainText(
       'The reply stopped partway: the model provider dropped the connection.',
     );
+    await expect(line).toContainText('Retry keeps what was written so far.');
     await expect(line.getByRole('button', { name: 'Retry' })).toBeVisible();
+    // This is a fine-pointer desktop Chat at the 1280px capture width. Attach keeps Cinder's
+    // compact 28px face instead of flex-shrinking below the mouse target Cinder promises.
+    expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(false);
+    const attach = page.getByRole('button', { name: 'Attach file' });
+    await expect(attach).toBeVisible();
+    const { attach: attachBox } = await readBoxes(page, { attach });
+    expect(attachBox.width).toBeGreaterThanOrEqual(24);
+    expect(attachBox.height).toBeGreaterThanOrEqual(24);
+    // COR-2533: the line leads to the run's explanation on the Run page.
+    const explanation = line.getByRole('link', { name: 'Why it failed' });
+    await expect(explanation).toHaveAttribute('href', /^\/runs\/.+#failure-explanation$/);
     await expect(page.locator('.weft-chat-strip')).toHaveCount(0);
     await expect(page.getByText('The agent did not answer', { exact: true })).toHaveCount(0);
     // The conversation stays live: a provider is connected, so the composer takes a message.
     await expect(page.getByRole('textbox', { name: /^Message/ })).toBeVisible();
     await expect(blockedRow(page)).toHaveCount(0);
-    await captureForDesignReview(page, {
+    // At a phone too (375, and so 320): the line and its two actions wrap there (COR-2533).
+    await captureForDesignReviewWithPhone(page, {
       route: '/chats/:chat',
       state: 'reply failed partway',
       source: SOURCE,
     });
+    await explanation.click();
+    await expect(page).toHaveURL(
+      new RegExp(`/runs/${encodeURIComponent(failedRunId ?? '')}#failure-explanation$`),
+    );
+    await expect(page.locator('#failure-explanation')).toBeVisible();
+  });
+
+  test('at 320 by 640, Retry scrolls above the composer and receives its pointer (19p)', async ({
+    page,
+    request,
+  }) => {
+    await connectProvider(page);
+    await openStatesChat(page, request, 'failed-partway');
+    await page.setViewportSize({ width: 320, height: 640 });
+
+    const timeline = transcript(page);
+    const line = timeline.locator('.chat-turn-outcome[data-kind="failed"]');
+    const retry = line.getByRole('button', { name: 'Retry' });
+    const composer = page.locator('.chat-input-area');
+    await expect(retry).toBeVisible();
+    await timeline.evaluate(async (element) => {
+      element.scrollTop = element.scrollHeight;
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+    });
+
+    const boxes = await readBoxes(page, { timeline, line, retry, composer });
+    expect(boxes.line.y).toBeGreaterThanOrEqual(boxes.timeline.y);
+    expect(boxes.line.y + boxes.line.height).toBeLessThanOrEqual(
+      boxes.timeline.y + boxes.timeline.height,
+    );
+    expect(boxes.retry.y).toBeGreaterThanOrEqual(boxes.timeline.y);
+    expect(boxes.retry.y + boxes.retry.height).toBeLessThanOrEqual(
+      boxes.timeline.y + boxes.timeline.height,
+    );
+    expect(boxes.retry.y + boxes.retry.height).toBeLessThanOrEqual(boxes.composer.y + 1);
+    expect(
+      await retry.evaluate((button) => {
+        const box = button.getBoundingClientRect();
+        return button.contains(
+          document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2),
+        );
+      }),
+    ).toBe(true);
+    await retry.click({ trial: true });
   });
 });
 

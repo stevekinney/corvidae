@@ -37,8 +37,10 @@ test("W: native reload drains admitted HTTP streams and releases retired graphs"
   const finishStreamCancellation = Promise.withResolvers<void>();
   let streamPulls = 0;
   let heldFetch: RequestEvent["fetch"] | undefined;
+  let mountStarts = 0;
+  let mountCloses = 0;
   const generations: Published[] = [];
-  const prepare = async (): Promise<Published> => {
+  const prepare = async (previous?: Published): Promise<Published> => {
     const generation = await buildProduction({
       projectDirectory: root,
       routesDirectory: routes,
@@ -50,73 +52,86 @@ test("W: native reload drains admitted HTTP streams and releases retired graphs"
       const imported = await graph.import<ServerRegistry>(
         join(generation.directory, generation.manifest.server.file),
       );
-      const application = await createApplication({
-        generation,
-        registry: imported,
-        hooks: {
-          handle: async ({ event, resolve }) => {
-            event.locals.generationRequest =
-              event.url.searchParams.get("hold") ?? "current";
-            if (event.url.searchParams.has("stream")) {
-              return new Response(
-                new ReadableStream<Uint8Array>(
-                  {
-                    start(controller) {
-                      event.signal.addEventListener(
-                        "abort",
-                        () => {
-                          streamAborted.resolve();
-                          controller.error(event.signal.reason);
+      const application = previous
+        ? await previous.application.replaceGeneration(generation, imported)
+        : await createApplication({
+            generation,
+            registry: imported,
+            mounts: {
+              "/service": () => {
+                mountStarts++;
+                return {
+                  fetch: () => new Response(String(mountStarts)),
+                  close: () => {
+                    mountCloses++;
+                  },
+                };
+              },
+            },
+            hooks: {
+              handle: async ({ event, resolve }) => {
+                event.locals.generationRequest =
+                  event.url.searchParams.get("hold") ?? "current";
+                if (event.url.searchParams.has("stream")) {
+                  return new Response(
+                    new ReadableStream<Uint8Array>(
+                      {
+                        start(controller) {
+                          event.signal.addEventListener(
+                            "abort",
+                            () => {
+                              streamAborted.resolve();
+                              controller.error(event.signal.reason);
+                            },
+                            { once: true },
+                          );
                         },
-                        { once: true },
-                      );
-                    },
-                    pull(controller) {
-                      streamPulls++;
-                      controller.enqueue(
-                        new TextEncoder().encode(`stream-${streamPulls}`),
-                      );
-                      streamFirstPull.resolve();
-                    },
-                    async cancel() {
-                      streamCancelStarted.resolve();
-                      await streamAborted.promise;
-                      await finishStreamCancellation.promise;
-                      streamCanceled.resolve();
-                    },
-                  },
-                  { highWaterMark: 0 },
-                ),
-              );
-            }
-            const id = event.url.searchParams.get("hold");
-            if (id) {
-              heldFetch = event.fetch;
-              held.set(id, Promise.withResolvers<void>());
-              admitted.get(id)?.resolve();
-              const encoder = new TextEncoder();
-              return new Response(
-                new ReadableStream<Uint8Array>({
-                  start(controller) {
-                    controller.enqueue(encoder.encode(`held-${id}-start`));
-                  },
-                  async pull(controller) {
-                    await held.get(id)!.promise;
-                    const originalValue = await (
-                      await event.fetch("/value")
-                    ).text();
-                    controller.enqueue(
-                      encoder.encode(`held-${originalValue}-end`),
-                    );
-                    controller.close();
-                  },
-                }),
-              );
-            }
-            return resolve();
-          },
-        },
-      });
+                        pull(controller) {
+                          streamPulls++;
+                          controller.enqueue(
+                            new TextEncoder().encode(`stream-${streamPulls}`),
+                          );
+                          streamFirstPull.resolve();
+                        },
+                        async cancel() {
+                          streamCancelStarted.resolve();
+                          await streamAborted.promise;
+                          await finishStreamCancellation.promise;
+                          streamCanceled.resolve();
+                        },
+                      },
+                      { highWaterMark: 0 },
+                    ),
+                  );
+                }
+                const id = event.url.searchParams.get("hold");
+                if (id) {
+                  heldFetch = event.fetch;
+                  held.set(id, Promise.withResolvers<void>());
+                  admitted.get(id)?.resolve();
+                  const encoder = new TextEncoder();
+                  return new Response(
+                    new ReadableStream<Uint8Array>({
+                      start(controller) {
+                        controller.enqueue(encoder.encode(`held-${id}-start`));
+                      },
+                      async pull(controller) {
+                        await held.get(id)!.promise;
+                        const originalValue = await (
+                          await event.fetch("/value")
+                        ).text();
+                        controller.enqueue(
+                          encoder.encode(`held-${originalValue}-end`),
+                        );
+                        controller.close();
+                      },
+                    }),
+                  );
+                }
+                return resolve();
+              },
+            },
+          });
       const published = { graph, application, generation, disposed: false };
       generations.push(published);
       return published;
@@ -188,10 +203,11 @@ test("W: native reload drains admitted HTTP streams and releases retired graphs"
       "held-A-start",
     );
     await Bun.write(join(root, "value.ts"), `export const value='B';`);
-    const next = await prepare();
+    const next = await prepare(current);
     const previous = publish(next);
     expect(server.url.href).toBe(address);
     expect(await (await fetch(address)).text()).toContain("B");
+    expect(await (await fetch(address + "service")).text()).toBe("1");
     const data = await fetch(address, {
       headers: { accept: "application/x-velveteen-data" },
     });
@@ -237,7 +253,7 @@ test("W: native reload drains admitted HTTP streams and releases retired graphs"
       "stream-1",
     );
     await Bun.write(join(root, "value.ts"), `export const value='C';`);
-    const canceledGeneration = publish(await prepare());
+    const canceledGeneration = publish(await prepare(current));
     const streamRetiring = canceledGeneration.application.retire();
     let streamDrained = false;
     void streamRetiring.then(() => {
@@ -257,7 +273,7 @@ test("W: native reload drains admitted HTTP streams and releases retired graphs"
 
     for (const value of ["D", "E", "F", "G", "H"]) {
       await Bun.write(join(root, "value.ts"), `export const value='${value}';`);
-      const candidate = await prepare();
+      const candidate = await prepare(current);
       const retired = publish(candidate);
       expect(generations.filter(({ disposed }) => !disposed)).toHaveLength(2);
       await closeRetired(retired);
@@ -277,6 +293,7 @@ test("W: native reload drains admitted HTTP streams and releases retired graphs"
       ),
     ).toThrow();
     expect(await (await fetch(address + "value")).text()).toBe("H");
+    expect(mountStarts).toBe(1);
   } finally {
     finishStreamCancellation.resolve();
     for (const gate of held.values()) gate.resolve();
@@ -288,6 +305,7 @@ test("W: native reload drains admitted HTTP streams and releases retired graphs"
         generation.graph.dispose();
         generation.disposed = true;
       }
+    expect(mountCloses).toBe(1);
     await rm(root, { recursive: true, force: true });
   }
 });

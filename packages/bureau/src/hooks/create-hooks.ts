@@ -1187,11 +1187,28 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
   function problemsOf(
     hook: HookRecord,
     declared: ReadonlyMap<string, string>,
+    ownerMayStartWorkflows: boolean,
   ): readonly HookProblem[] {
-    return [...actionProblemsOf(hook), ...eventProblemsOf(hook, declared)];
+    return [...actionProblemsOf(hook, ownerMayStartWorkflows), ...eventProblemsOf(hook, declared)];
   }
 
-  function actionProblemsOf(hook: HookRecord): readonly HookProblem[] {
+  function actionProblemsOf(
+    hook: HookRecord,
+    ownerMayStartWorkflows: boolean,
+  ): readonly HookProblem[] {
+    if (hook.action.type === 'start-workflow') {
+      if (!ownerMayStartWorkflows) return [{ code: 'workflow-unavailable' }];
+      const workflows = dependencies.workflows?.();
+      if (workflows === undefined) return [{ code: 'workflow-unavailable' }];
+      try {
+        workflows.assertStartable(hook.action.workflowId);
+      } catch {
+        // The list names only a bounded state. It does not disclose whether the workflow was deleted,
+        // paused, invalid, or unavailable to this owner.
+        return [{ code: 'workflow-unavailable' }];
+      }
+      return [];
+    }
     if (hook.action.type !== 'plugin') return [];
     if (reactionUnavailable(hook) || hook.declaredBy?.withdrawn === true) {
       return [{ code: 'reaction-unavailable' }];
@@ -1911,13 +1928,24 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
           }
         }
       }
+      const workflowOwners = new Set(
+        listed.filter((hook) => hook.action.type === 'start-workflow').map((hook) => hook.owner),
+      );
+      // A list may include several workflow hooks per owner. Check their current authority once.
+      const workflowAuthority = new Map(
+        await Promise.all(
+          [...workflowOwners].map(
+            async (hookOwner) => [hookOwner, await mayStartWorkflows(hookOwner)] as const,
+          ),
+        ),
+      );
       const declared = declaredNow();
       return listed.map((hook) => {
         const last = newest.get(hook.id);
         return {
           ...viewOf(hook),
           lastDelivery: last === undefined ? null : deliverySummaryOf(last),
-          problems: problemsOf(hook, declared),
+          problems: problemsOf(hook, declared, workflowAuthority.get(hook.owner) === true),
         };
       });
     },

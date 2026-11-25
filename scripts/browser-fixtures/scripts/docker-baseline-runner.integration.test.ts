@@ -1,3 +1,4 @@
+import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import {
@@ -14,6 +15,7 @@ import { join } from 'node:path';
 
 import { outcomeOf, rethrow } from '../../module-scope-scenario.test-support.ts';
 import {
+  REPOSITORY_ROOT,
   createBaselineProvenance,
   playwrightBaseImage,
   readRepositoryPins,
@@ -158,6 +160,81 @@ describe('lockfile pins', () => {
     expect(dockerfile).not.toMatch(/\d+\.\d+\.\d+/);
   });
 });
+
+// List through the same scoped arguments both Docker modes pass to Playwright. No browser starts.
+const screenshotSelection = await outcomeOf(async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'renderer-selection-'));
+  try {
+    const prepared = await runWithHangGuard(
+      ['bun', 'scripts/browser-fixtures/scripts/prepare-manifest.ts'],
+      { cwd: REPOSITORY_ROOT },
+    );
+    expect(prepared.exitCode, prepared.stderr.toString()).toBe(0);
+    for (const scope of ['collapsible', 'popover,mega-menu,tooltip']) {
+      const listName = 'component-screenshots.txt';
+      for (const mode of ['update', 'visual'] as const) {
+        expect(
+          containerCommand(mode, [], { componentScope: scope, outputDirectory: directory }),
+        ).toContain(
+          `bun run test:browser:${mode} -- '--reporter=line,json' '--test-list' '/out/${listName}'`,
+        );
+      }
+      const discovery = await runWithHangGuard(
+        [
+          'bun',
+          '--bun',
+          'playwright',
+          'test',
+          '--config',
+          'scripts/browser-fixtures/playwright.config.ts',
+          '--list',
+          '--reporter=list',
+          '--test-list',
+          join(directory, listName),
+        ],
+        { cwd: REPOSITORY_ROOT, env: { ...process.env, CINDER_TEST_COMPONENTS: scope } },
+      );
+      expect(discovery.exitCode, discovery.stderr.toString()).toBe(0);
+      const titles = discovery.stdout
+        .toString()
+        .split('\n')
+        .filter((line) => line.includes('[chromium]'));
+      if (scope === 'collapsible') {
+        const cases = ['light', 'dark'].flatMap((theme) =>
+          ['mobile', 'tablet', 'desktop'].map(
+            (viewport) => `collapsible › ${theme}-${viewport}-assertion`,
+          ),
+        );
+        expect(titles.map((title) => title.split(' › ').slice(2).join(' › ')).toSorted()).toEqual(
+          cases.toSorted(),
+        );
+      } else {
+        expect(
+          titles
+            .filter((title) => !title.includes('components-sweep.playwright.ts'))
+            .map((title) => title.slice(title.lastIndexOf(' › ') + 3))
+            .toSorted(),
+        ).toEqual([
+          'Accessibility shortcut alternatives wrap without overflowing',
+          'nested submenu keyboard navigation enters, traverses, and exits',
+          'popover anchors inside transformed and scrolled preview shells',
+          'tooltip anchors inside transformed and scrolled preview shells',
+        ]);
+        expect(titles.some((title) => title.includes(' › popover › '))).toBe(true);
+        expect(titles.some((title) => title.includes(' › collapsible › '))).toBe(false);
+      }
+      expect(discovery.stdout.toString()).toContain(`Total: ${titles.length} tests`);
+    }
+    expect(
+      containerCommand('visual', [], { componentScope: ' , ', outputDirectory: directory }),
+    ).toBe(containerCommand('visual', []));
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+it('selects only the requested screenshot cases in the Docker renderer', () =>
+  rethrow(screenshotSelection));
 
 describe('container command and run arguments', () => {
   it('prepares generated fixture inputs from the archive and returns the suite status', () => {

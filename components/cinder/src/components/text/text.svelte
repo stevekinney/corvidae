@@ -23,6 +23,7 @@
     children,
     clamp,
     expanded = $bindable(false),
+    measure = false,
     actions,
     truncate,
     text,
@@ -69,12 +70,12 @@
 
   const measureClamp: Attachment<HTMLElement> = (node) => {
     if (clampLines === undefined || expanded) return;
-    const measure = (): void => {
+    const measureCut = (): void => {
       cutOff = node.scrollHeight > node.clientHeight;
     };
-    measure();
+    measureCut();
     if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(measure);
+    const observer = new ResizeObserver(measureCut);
     observer.observe(node);
     return () => observer.disconnect();
   };
@@ -171,6 +172,7 @@
     class={classNames('cinder-text', className)}
     data-cinder-variant={variant}
     data-cinder-clamp={expanded ? undefined : ''}
+    data-cinder-measure={measure ? '' : undefined}
     style:--_cinder-text-lines={clampLines}
     {@attach measureClamp}
   >
@@ -200,6 +202,7 @@
     {...rest}
     class={classNames('cinder-text', className)}
     data-cinder-variant={variant}
+    data-cinder-measure={measure ? '' : undefined}
   >
     {@render children?.()}
   </svelte:element>

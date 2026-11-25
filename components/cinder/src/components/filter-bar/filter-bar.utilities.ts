@@ -83,8 +83,18 @@ export type FilterBarContents = {
 export function isCollapsible(contents: FilterBarContents): boolean {
   return (
     contents.segments.length > 0 ||
-    contents.facets.some((facet) => facet.type === 'choice' || facet.type === 'toggle')
+    contents.facets.some(
+      (facet) => (facet.type === 'choice' || facet.type === 'toggle') && !isMenuOnly(facet),
+    )
   );
+}
+
+/**
+ * Whether a facet lives only in the Filter menu (`menuOnly`): a toggle or a custom facet that has
+ * no control in the row in any layout, so it never takes room a segment or a chip needs.
+ */
+export function isMenuOnly(facet: FacetDefinition): boolean {
+  return (facet.type === 'toggle' || facet.type === 'custom') && facet.menuOnly === true;
 }
 
 /**
@@ -180,7 +190,9 @@ export function foldableFacetKeys(
   const foldable = facets
     .filter(
       (facet) =>
-        (facet.type === 'choice' || facet.type === 'toggle') && !appliedKeys.has(facet.key),
+        (facet.type === 'choice' || facet.type === 'toggle') &&
+        !isMenuOnly(facet) &&
+        !appliedKeys.has(facet.key),
     )
     .map((facet) => facet.key);
   const named = foldOrder.filter(

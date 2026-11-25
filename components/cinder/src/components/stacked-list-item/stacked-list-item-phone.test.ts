@@ -143,7 +143,7 @@ describe('StackedListItem on a phone', () => {
     );
     // Under a coarse pointer it reaches 44px through a positioned pseudo-element, taking no space.
     expect(stylesheet).toMatch(
-      /@media \(any-pointer: coarse\)\s*\{\s*\.cinder-stacked-list-item \.cinder-stacked-list-item__actions-trigger::before\s*\{[^}]*position:\s*absolute;[^}]*var\(--cinder-touch-target-min\)/,
+      /@media \(any-pointer: coarse\)\s*\{[\s\S]*?\.cinder-stacked-list-item \.cinder-stacked-list-item__actions-trigger::before\s*\{[^}]*position:\s*absolute;[^}]*var\(--cinder-touch-target-min\)/,
     );
 
     await fireEvent.click(trigger);
@@ -172,6 +172,172 @@ describe('StackedListItem on a phone', () => {
     expect(action.getAttribute('href')).toBe('/verdict');
     expect(action.classList.contains('button-size-small')).toBe(true);
     expect(action.classList.contains('button-variant-secondary')).toBe(true);
+    cleanup();
+    setPhone(false);
+  });
+
+  test('below 448 an ordinary one-action line row puts the action under its body (COR-2403)', () => {
+    setPhone(true);
+    const { container, getByRole } = render(StackedListItem, {
+      props: {
+        lines: true,
+        wrapMeta: true,
+        leadingTone: 'warning',
+        leading: textSnippet('warning'),
+        title: textSnippet('Connect a provider before the next run'),
+        meta: textSnippet('Scheduled runs cannot start until a provider is connected.'),
+        actions: [{ label: 'Connect provider', href: '/settings/providers' }],
+      },
+    });
+    const row = container.querySelector('.cinder-stacked-list-item');
+    expect(row?.classList.contains('cinder-stacked-list-item--lines')).toBe(true);
+    expect(row?.classList.contains('cinder-stacked-list-item--has-leading')).toBe(true);
+    expect(row?.classList.contains('cinder-stacked-list-item--has-trailing')).toBe(true);
+    expect(row?.classList.contains('cinder-stacked-list-item--collapsed-actions')).toBe(false);
+    expect(row?.classList.contains('cinder-stacked-list-item--phone-buttons')).toBe(false);
+    expect(getByRole('link', { name: 'Connect provider' }).classList).toContain(
+      'button-size-small',
+    );
+
+    const ordinaryLineActionMatch =
+      /@container cinder-stacked-list-item \(max-width: 448px\) \{[\s\S]*?\.cinder-stacked-list-item--lines\.cinder-stacked-list-item--has-leading\.cinder-stacked-list-item--single-action:not\([\s\S]*?\)\.cinder-stacked-list-item--status-leading\s*> \.cinder-stacked-list-item__layout\s*\{([^}]*)\}/.exec(
+        stylesheet,
+      ) ?? [];
+    const [ordinaryLineActionSelector = '', ordinaryLineAction = ''] = ordinaryLineActionMatch;
+    // Lines flattens `__body`, so these must name its actual grid items rather than creating an
+    // implicit `body` track. The same rule follows both row-width and viewport-width phone grids.
+    expect(ordinaryLineAction).toContain("'leading title title time'");
+    expect(ordinaryLineAction).toContain("'leading status line line'");
+    expect(ordinaryLineAction).toContain("'trailing trailing trailing trailing'");
+    expect(ordinaryLineAction).not.toContain('body');
+    for (const exception of [
+      'cinder-stacked-list-item--collapsed-actions',
+      'cinder-stacked-list-item--trailing-glyph',
+      'cinder-stacked-list-item--phone-buttons',
+    ]) {
+      expect(ordinaryLineActionSelector).toContain(exception);
+    }
+
+    const narrowActionBlock = stylesheet.slice(
+      stylesheet.indexOf('@container cinder-stacked-list-item (max-width: 448px)', 7000),
+    );
+    const trailingRule = (selector: string) =>
+      new RegExp(`${selector}\\s+\\.cinder-stacked-list-item__trailing\\s*\\{([^}]*)\\}`).exec(
+        narrowActionBlock,
+      )?.[1] ?? '';
+    const noLeadingAction = trailingRule(
+      String.raw`\.cinder-stacked-list-item--lines\.cinder-stacked-list-item--single-action:not\([^)]*?\.cinder-stacked-list-item--has-leading[^)]*?\)\.cinder-stacked-list-item--status-leading`,
+    );
+    const leadingAction = trailingRule(
+      String.raw`\.cinder-stacked-list-item--lines\.cinder-stacked-list-item--has-leading\.cinder-stacked-list-item--single-action:not\([^)]*?\)\.cinder-stacked-list-item--status-leading`,
+    );
+    for (const [action, textStart] of [
+      [noLeadingAction, 'title / -1'],
+      [leadingAction, 'status / -1'],
+    ]) {
+      expect(action).toContain(`grid-column: ${textStart}`);
+      expect(action).not.toContain('grid-row');
+      expect(action).toContain('align-self: start');
+      expect(action).toContain('margin-inline-start: 0');
+      expect(action).toContain('margin-block-start: var(--cinder-space-2)');
+    }
+    cleanup();
+    setPhone(false);
+  });
+
+  test('below 448 only a single data action takes the trailing row, not an arbitrary trailing control', () => {
+    setPhone(true);
+    const action = render(StackedListItem, {
+      props: {
+        lines: true,
+        leading: textSnippet('warning'),
+        title: textSnippet('Connect a provider'),
+        meta: textSnippet('A provider is required.'),
+        actions: [{ label: 'Connect provider', href: '/settings/providers' }],
+      },
+    });
+    const actionRow = action.container.querySelector('.cinder-stacked-list-item');
+    expect(actionRow?.classList.contains('cinder-stacked-list-item--single-action')).toBe(true);
+    cleanup();
+
+    const control = render(StackedListItem, {
+      props: {
+        lines: true,
+        title: textSnippet('Post settled runs'),
+        meta: textSnippet('Slack'),
+        trailing: textSnippet('On'),
+      },
+    });
+    const controlRow = control.container.querySelector('.cinder-stacked-list-item');
+    expect(controlRow?.classList.contains('cinder-stacked-list-item--has-trailing')).toBe(true);
+    expect(controlRow?.classList.contains('cinder-stacked-list-item--single-action')).toBe(false);
+    cleanup();
+
+    const mixed = render(StackedListItem, {
+      props: {
+        lines: true,
+        title: textSnippet('Post settled runs'),
+        trailing: textSnippet('On'),
+        actions: [{ label: 'Connect provider', href: '/settings/providers' }],
+      },
+    });
+    expect(
+      mixed.container
+        .querySelector('.cinder-stacked-list-item')
+        ?.classList.contains('cinder-stacked-list-item--single-action'),
+    ).toBe(false);
+    cleanup();
+    setPhone(false);
+  });
+
+  test('a narrow two-line row gives its action buttons a line of their own under the text, from a container query', () => {
+    // A button beside the text of a 270px row left the title and the meta a few words wide.
+    const block = stylesheet.slice(
+      stylesheet.indexOf(
+        '@container cinder-stacked-list-item (max-width: 448px) {\n    .cinder-stacked-list-item--lines.cinder-stacked-list-item--action-buttons',
+      ),
+    );
+    const actionButtonRule =
+      /\.cinder-stacked-list-item--lines\.cinder-stacked-list-item--action-buttons:not\(\s*\.cinder-stacked-list-item--single-action\.cinder-stacked-list-item--status-leading\s*\)\s*\.cinder-stacked-list-item__trailing\s*\{([^}]*)\}/.exec(
+        block,
+      ) ?? [];
+    const [actionButtonSelector = '', rule = ''] = actionButtonRule;
+    // A status-leading single action has a dedicated third row below its line cell. It must not
+    // also receive this generic row-four placement, which would create an implicit row after it.
+    expect(actionButtonSelector).toContain('cinder-stacked-list-item--single-action');
+    expect(actionButtonSelector).toContain('cinder-stacked-list-item--status-leading');
+    expect(rule).toMatch(/grid-row:\s*4;/);
+    expect(rule).toMatch(/grid-column:\s*title \/ -1;/);
+    expect(rule).toMatch(/align-self:\s*start;/);
+    expect(rule).toMatch(/margin-inline-start:\s*0;/);
+    expect(rule).toMatch(/margin-block-start:\s*var\(--cinder-space-2\);/);
+
+    // Only a row that draws its actions as buttons beside the text carries the class.
+    setPhone(true);
+    const one = render(ExtrasFixture, {
+      props: { mode: 'actions', actions: [{ label: 'Verdict', href: '/verdict' }] },
+    });
+    expect(
+      one.container
+        .querySelector('.cinder-stacked-list-item')
+        ?.classList.contains('cinder-stacked-list-item--action-buttons'),
+    ).toBe(true);
+    cleanup();
+    const two = render(ExtrasFixture, {
+      props: {
+        mode: 'actions',
+        actions: [
+          { label: 'Verdict', href: '/verdict' },
+          { label: 'Run', href: '/run' },
+        ],
+      },
+    });
+    // The phone's one menu button is compact and stays beside the text.
+    expect(
+      two.container
+        .querySelector('.cinder-stacked-list-item')
+        ?.classList.contains('cinder-stacked-list-item--action-buttons'),
+    ).toBe(false);
     cleanup();
     setPhone(false);
   });
@@ -290,17 +456,44 @@ describe('StackedListItem on a phone', () => {
     // The cap and the wrapping name a group row among the rows they leave alone.
     expect(cappedRule('> .cinder-stacked-list-item__layout')).not.toBe('');
     expect(cappedRule('.cinder-stacked-list-item__time-text')).not.toBe('');
-    // No other rule lets a time wrap.
+    // The shared viewport-phone form also lets a timestamp reflow, but keeps group rows' time and
+    // disclosure semantics intact.
     const wrappingTimeRules = [
       ...stylesheet.matchAll(
         /([^{}]*\.cinder-stacked-list-item__time(?:-text)?)\s*\{[^}]*white-space:\s*normal/g,
       ),
     ].map((match) => match[1] ?? '');
-    expect(wrappingTimeRules).toHaveLength(1);
+    expect(wrappingTimeRules).toHaveLength(2);
     expect(wrappingTimeRules[0]).toContain('--has-trailing');
     expect(wrappingTimeRules[0]).toContain('.cinder-stacked-list-item--group');
+    expect(wrappingTimeRules[1]).toContain("[data-cinder-phone-width='viewport']");
+    expect(wrappingTimeRules[1]).toContain('.cinder-stacked-list-item--status-leading');
     cleanup();
     setPhone(false);
+  });
+
+  test('on a coarse pointer a group disclosure reaches 44px without reserving that height in its row (COR-2403)', () => {
+    const { container } = render(StackedListItem, {
+      props: {
+        title: textSnippet('Daily summary'),
+        status: textSnippet('Missed runs'),
+        time: textSnippet('Oct 30'),
+        meta: textSnippet('Schedule, Assistant'),
+        details: textSnippet('Mon, Nov 2, 3:00 AM'),
+      },
+    });
+    expect(container.querySelector('.cinder-stacked-list-item__disclosure')?.textContent).toContain(
+      'Show',
+    );
+
+    const coarse = stylesheet.slice(stylesheet.indexOf('@media (any-pointer: coarse)'));
+    const compactDisclosure =
+      /\.cinder-stacked-list-item__disclosure\s*\{([^}]*)\}/.exec(coarse)?.[1] ?? '';
+    expect(compactDisclosure).toMatch(/min-block-size:\s*0;/);
+    const hitArea =
+      /\.cinder-stacked-list-item__disclosure::before\s*\{([^}]*)\}/.exec(coarse)?.[1] ?? '';
+    expect(hitArea).toMatch(/position:\s*absolute;/);
+    expect(hitArea).toContain('var(--cinder-touch-target-min)');
   });
 
   test('at 200% text in a 375px container a group row lets Show drop whole under its time, never past the row', () => {
@@ -376,6 +569,36 @@ describe('StackedListItem on a phone', () => {
     expect(base).toMatch(/white-space:\s*nowrap;/);
     expect(stylesheet).toMatch(/\[time\] var\(--_cinder-time-track, auto\)/);
     expect([...stylesheet.matchAll(/--_cinder-time-track:/g)]).toHaveLength(1);
+    cleanup();
+    setPhone(false);
+  });
+
+  test('at 200% text a viewport-width phone row reflows its timestamp instead of widening its list (COR-2403)', () => {
+    setPhone(true);
+    const { container } = render(StackedListItem, {
+      props: {
+        phoneWidth: 'viewport',
+        title: textSnippet('Daily summary'),
+        status: textSnippet('Waiting on you'),
+        time: textSnippet('Yesterday, 6:00 PM'),
+        meta: textSnippet('Workflow run, Assistant'),
+      },
+    });
+    const row = container.querySelector('.cinder-stacked-list-item');
+    expect(row?.getAttribute('data-cinder-phone-width')).toBe('viewport');
+    expect(row?.hasAttribute('data-cinder-phone')).toBe(true);
+    expect(row?.querySelector('.cinder-stacked-list-item__time')?.textContent?.trim()).toBe(
+      'Yesterday, 6:00 PM',
+    );
+    expect(row?.querySelector('.cinder-stacked-list-item__meta')?.textContent).toBe(
+      'Workflow run, Assistant',
+    );
+
+    const viewportPhoneTime =
+      /\[data-cinder-phone-width='viewport'\]\[data-cinder-phone\]\.cinder-stacked-list-item--status-leading:not\(\s*\.cinder-stacked-list-item--group\s*\)\s+\.cinder-stacked-list-item__time\s*\{([^}]*)\}/.exec(
+        stylesheet,
+      )?.[1] ?? '';
+    expect(viewportPhoneTime).toMatch(/white-space:\s*normal;/);
     cleanup();
     setPhone(false);
   });

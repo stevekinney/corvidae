@@ -17,6 +17,7 @@
   import { RETRY_LABEL } from '../../app/copy/views.ts';
 
   import {
+    canRetryFault,
     FAULT_TREATMENT_TITLE,
     type FaultTreatment,
     type FaultTreatmentKind,
@@ -49,7 +50,11 @@
       fault.
     </span>
   {/if}
-  {#if onRetry}
+  {#if treatment.remediation !== undefined && treatment.remediation !== ''}
+    <span class="weft-schedules-fault-banner__note">{treatment.remediation}</span>
+  {/if}
+  <!-- Retry only where asking again can help: not for a fault that says `retryable: false`. -->
+  {#if onRetry && canRetryFault(treatment)}
     <Button size="sm" variant="secondary" label={RETRY_LABEL} onclick={onRetry} />
   {/if}
 </Alert>

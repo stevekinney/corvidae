@@ -34,7 +34,7 @@ test('operator decides a sectioned review with a mixed partial outcome', async (
   // The engine's pending reviews are in the one list, each with its own form once it is open. The
   // sectioned ones are `content` reviews; the first of them is decided here.
   const rows = page.locator('[data-review-row^="engine:"]');
-  const review = page.locator('.ib-review-pane[data-kind="engine-review"]');
+  const review = page.locator('.ib-review-detail[data-kind="engine-review"]');
   for (let index = 0; index < (await rows.count()); index += 1) {
     await rows.nth(index).click();
     await expect(review).toBeVisible();
@@ -76,7 +76,7 @@ test('operator decides a sectioned review with a mixed partial outcome', async (
 
   // The page lists only what waits on someone, so the decided review leaves it. The engine has it
   // as decided, with the reviewer and the outcome the form sent.
-  await expect(page.locator(`.ib-review-pane a[href="${reviewId ?? ''}"]`)).toHaveCount(0);
+  await expect(page.locator(`.ib-review-detail a[href="${reviewId ?? ''}"]`)).toHaveCount(0);
   const decided = await request.get(`${E2E_BASE_URL}/v1/reviews`, {
     params: { status: 'completed' },
   });

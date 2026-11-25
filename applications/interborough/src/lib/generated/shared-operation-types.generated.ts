@@ -154,10 +154,10 @@ export type SharedActionTypeAttemptsCreate_605da491 = {
     readonly workflowId: string | null;
   } | null;
 };
-export type SharedActorAgentNameAttention_ffceb9e6 = {
+export type SharedActorAgentNameAttention_30e4f494 = {
   readonly actor: string | null;
   readonly agentName: string | null;
-  readonly attention: ReadonlyArray<'stalled' | 'looping'>;
+  readonly attention: ReadonlyArray<'stalled' | 'looping' | 'overspending'>;
   readonly cleanup:
     | 'cancel-requested'
     | 'canceled'
@@ -172,7 +172,7 @@ export type SharedActorAgentNameAttention_ffceb9e6 = {
   readonly failure: {
     readonly errorCode: string | null;
     readonly errorKind: string | null;
-    readonly step: { readonly index: number; readonly label: string } | null;
+    readonly step: SharedIndexLabel_b9e5acc3 | null;
     readonly toolCall: { readonly callId: string; readonly name: string } | null;
   } | null;
   readonly finishReason: string | null;
@@ -211,7 +211,7 @@ export type SharedActorAgentNameAttention_ffceb9e6 = {
     readonly awaitingSignal: string | null;
     readonly scheduleId: string | null;
     readonly scheduleName: string | null;
-    readonly steps: { readonly at: number | null; readonly total: number } | null;
+    readonly steps: SharedAtTotal_4df37293 | null;
     readonly tick: {
       readonly event: 'came-due' | 'missed-runs';
       readonly missedRuns: number | null;
@@ -237,14 +237,16 @@ export type SharedAdmissionSequenceAdmitte_e74023ec = {
     | 'canceled'
     | 'failed';
 };
-export type SharedAgeMillisecondsAgentName_987c1d9b = {
+export type SharedAgeMillisecondsAgentName_3e6ceabe = {
   readonly ageMilliseconds: number;
   readonly agentName?: string;
   readonly approval: {
     readonly action:
       | { readonly message?: string; readonly type: 'input' }
       | {
+          readonly consequence?: string;
           readonly expiresAt?: string;
+          readonly irreversible?: boolean;
           readonly message?: string;
           readonly operation:
             | {
@@ -261,17 +263,35 @@ export type SharedAgeMillisecondsAgentName_987c1d9b = {
             | { readonly filesTouched?: ReadonlyArray<string>; readonly kind: 'other' };
           readonly risk: 'low' | 'medium' | 'high';
           readonly type: 'approval';
+          readonly why?: string;
         };
     readonly arguments: unknown;
     readonly callId: string;
+    readonly mayRemember?: boolean;
     readonly policyPauseTier?: 'capability' | 'registry' | 'tool';
     readonly reason?: string;
     readonly toolName: string;
+  };
+  readonly effect?: {
+    readonly cents: number;
+    readonly currency: 'USD';
+    readonly kind: 'refund';
+    readonly orderId: string;
+    readonly refundId: string;
+    readonly status:
+      | 'admitted'
+      | 'submitting'
+      | 'provider-pending'
+      | 'succeeded'
+      | 'failed'
+      | 'needs-reconciliation';
   };
   readonly id: string;
   readonly kind: 'tool-approval';
   readonly requestedAt: number;
   readonly resolution?: SharedAnswerDigestDecidedAtDec_655ece59;
+  readonly resolvedAt?: number;
+  readonly resolvedBy?: string;
   readonly round: number;
   readonly runId: string;
   readonly sessionId: string;
@@ -286,7 +306,7 @@ export type SharedAgeMillisecondsAgentName_987c1d9b = {
     | 'canceled'
     | 'superseded';
 };
-export type SharedAgeMillisecondsAgentName_f1ceaa2d = {
+export type SharedAgeMillisecondsAgentName_7cfdfed5 = {
   readonly ageMilliseconds: number;
   readonly agentName?: string;
   readonly id: string;
@@ -295,6 +315,8 @@ export type SharedAgeMillisecondsAgentName_f1ceaa2d = {
   readonly prompt?: string;
   readonly requestedAt: number;
   readonly resolution?: SharedAnswerDigestDecidedAtDec_655ece59;
+  readonly resolvedAt?: number;
+  readonly resolvedBy?: string;
   readonly runId: string;
   readonly said?: string;
   readonly sessionId?: string;
@@ -454,6 +476,7 @@ export type SharedArtifactIdTextTruncated_6e74d482 = {
   readonly text: string;
   readonly truncated: boolean;
 };
+export type SharedAtTotal_4df37293 = { readonly at: number | null; readonly total: number };
 export type SharedAttemptIdGoalRunIdKind_492a23d4 = {
   readonly attemptId: string;
   readonly goalRunId: string;
@@ -548,6 +571,11 @@ export type SharedBreakingKindStep_f7c54476 = {
   readonly step: number;
 };
 export type SharedCallsSeconds_35295711 = { readonly calls?: number; readonly seconds?: number };
+export type SharedChangedContextIdGranteeO_3863cba0 = {
+  readonly changed: boolean;
+  readonly contextId: string;
+  readonly granteeOwnerId: string;
+};
 export type SharedChangedGrantedByGranteeO_6dd6d7c1 = {
   readonly changed: boolean;
   readonly grantedBy: string;
@@ -569,12 +597,27 @@ export type SharedCodeIssuesMessage_037571b6 = {
   readonly issues: ReadonlyArray<SharedMessagePath_da49cd77> | null;
   readonly message: string;
 };
+export type SharedCodeIssuesMessage_4f0ab443 = {
+  readonly code: string;
+  readonly issues: ReadonlyArray<SharedMessagePath_da49cd77> | null;
+  readonly message: string;
+  readonly syntax?: {
+    readonly kind: 'comma' | 'other';
+    readonly line: number;
+    readonly stoppedAt: number;
+  };
+};
 export type SharedCodeLastFiredAtRetryAt_58907586 = {
   readonly code: 'start-failed' | 'configuration-refused' | null;
   readonly lastFiredAt: string | null;
   readonly retryAt: string | null;
   readonly since: string;
   readonly state: 'listening' | 'waiting-for-secret' | 'failed' | 'stopped' | 'ready' | 'standby';
+};
+export type SharedCommandIdContextIdRunId_f3b33fe9 = {
+  readonly commandId: string;
+  readonly contextId: string;
+  readonly runId: string;
 };
 export type SharedCommandOutcome_2d8e5749 = {
   readonly command: SharedConfigVersionFailureId_72126ec5;
@@ -661,10 +704,21 @@ export type SharedCostStepsTools_95f40410 = {
   readonly steps?: number | null;
   readonly tools?: SharedCallsSeconds_35295711 | null;
 };
+export type SharedCostUsdGeneratedAtModel_ce6ddde1 = {
+  readonly costUsd: number | null;
+  readonly generatedAt: string;
+  readonly model: string;
+  readonly text: string;
+};
 export type SharedCostUsdStepsTokens_b79f227c = {
   readonly costUsd: number | null;
   readonly steps: number;
   readonly tokens: number;
+};
+export type SharedCountFirstRunAtLastRunAt_812c9aac = {
+  readonly count: number;
+  readonly firstRunAt: string | null;
+  readonly lastRunAt: string | null;
 };
 export type SharedCreatedAtDeclaredByteLen_078d11c8 = {
   readonly createdAt: string;
@@ -771,6 +825,14 @@ export type SharedIdRevisionStatus_e86a595b = {
   readonly id: string;
   readonly revision: number;
   readonly status: 'active' | 'paused' | 'cancelled';
+};
+export type SharedIndexLabel_b9e5acc3 = { readonly index: number; readonly label: string };
+export type SharedInputLabelOperationType_dfed1127 = {
+  readonly input: string;
+  readonly label: string;
+  readonly operationType: string;
+  readonly output?: string;
+  readonly status: 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out';
 };
 export type SharedInputTypeWorkflowId_2b929ea1 = {
   readonly input: 'payload' | 'event';

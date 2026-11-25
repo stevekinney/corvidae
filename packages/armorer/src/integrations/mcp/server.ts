@@ -9,9 +9,11 @@ import {
 } from '@modelcontextprotocol/server';
 import type { ServeStdioOptions, StdioServerHandle } from '@modelcontextprotocol/server/stdio';
 
+import type { ToolRequestContext } from '../../execution-context';
 import { createExecutionLifecycle, type ExecutionCleanupReport } from '../../execution-lifecycle';
 import type { Tool } from '../../is-tool';
 import { createInputRoundRegistry, type InputRoundRegistryOptions } from './input-required';
+import { authorityBinding } from './request-context';
 import {
   createMcpTaskRuntime,
   MCP_TASKS_EXTENSION,
@@ -41,6 +43,8 @@ export type MCPResourceRegistrar = (server: McpServer, context: McpRequestContex
 export type MCPPromptRegistrar = (server: McpServer, context: McpRequestContext) => void;
 
 export type CreateMCPOptions = Omit<ServerOptions, 'requestState'> & {
+  /** Restricts the endpoint to registered versions under explicit public names. */
+  selection?: readonly { id: string; name: string; scopes: readonly string[] }[];
   serverInfo?: Implementation;
   toolConfiguration?: ToMCPToolsOptions['toolConfiguration'];
   formatResult?: ToMCPToolsOptions['formatResult'];
@@ -115,19 +119,39 @@ export async function createMCP(
     taskStore,
     tasks: taskOptions,
     http,
+    selection: suppliedSelection,
     ...serverOptions
   } = options;
+  const selection = suppliedSelection?.map((entry) => ({ ...entry, scopes: [...entry.scopes] }));
 
   const availableTools =
     typeof toolbox.getAvailable === 'function' ? await toolbox.getAvailable() : toolbox.tools();
+  if (selection && (!toolbox.getTool || !toolbox.execute)) {
+    throw new TypeError('A pinned MCP selection requires a registered executable toolbox');
+  }
   const toolEntries = new Map<
     string,
     { tool: Tool; configuration: ReturnType<typeof resolveToolConfiguration> }
   >();
-  for (const tool of availableTools) {
-    toolEntries.set(tool.name, {
+  const selected =
+    selection?.map((entry) => {
+      const tool = toolbox.getTool?.(entry.id);
+      if (!tool || tool.id !== entry.id || !tool.identity.version) {
+        throw new TypeError(`No registered version for ${entry.id}`);
+      }
+      return { tool, name: entry.name, scopes: [...entry.scopes] };
+    }) ?? availableTools.map((tool) => ({ tool, name: tool.name, scopes: [] as string[] }));
+  for (const { tool, name, scopes } of selected) {
+    if (selection && toolEntries.has(name)) throw new TypeError(`Duplicate MCP tool name: ${name}`);
+    const configuration = resolveToolConfiguration(tool, toolConfiguration);
+    toolEntries.set(name, {
       tool,
-      configuration: resolveToolConfiguration(tool, toolConfiguration),
+      configuration: selection
+        ? {
+            ...configuration,
+            meta: { ...configuration.meta, securitySchemes: [{ type: 'oauth2', scopes }] },
+          }
+        : configuration,
     });
   }
   const taskBackedTools = [...toolEntries.values()].filter(
@@ -161,6 +185,9 @@ export async function createMCP(
   const executeTool = createToolboxExecutor(toolbox);
 
   const buildServer = (context: McpRequestContext): McpServer => {
+    const authorize = context.authInfo?.extra?.['armorerAuthorize'] as
+      ((name: string) => Promise<ToolRequestContext>) | undefined;
+    let requestContext: ToolRequestContext | undefined;
     const advertiseTasks = mcpTasks !== undefined && context.era === 'modern';
     const server = new McpServer(serverInfo ?? DEFAULT_SERVER_INFO, {
       ...serverOptions,
@@ -182,7 +209,18 @@ export async function createMCP(
     const toolOptions: ToMCPToolsOptions = {
       ...(toolConfiguration !== undefined ? { toolConfiguration } : {}),
       ...(formatResult !== undefined ? { formatResult } : {}),
-      ...(executeTool !== undefined ? { executeTool } : {}),
+      ...(executeTool !== undefined
+        ? {
+            executeTool: (tool, request) => {
+              if (selection && toolbox.getTool?.(tool.id) !== tool)
+                throw new Error('Pinned tool is no longer registered');
+              return executeTool(tool, {
+                ...request,
+                ...(requestContext ? { requestContext } : {}),
+              });
+            },
+          }
+        : {}),
       clientSession: {
         clientCapabilities: () => server.server.getClientCapabilities(),
         clientInfo: () => server.server.getClientVersion(),
@@ -192,17 +230,31 @@ export async function createMCP(
       ...(mcpTasks ? { mcpTasks } : {}),
       executionLifecycle,
     };
-    for (const { tool, configuration } of toolEntries.values()) {
-      const definition = buildMcpToolDefinition(tool, configuration, toolOptions);
+    for (const [name, { tool, configuration }] of toolEntries) {
+      const definition = buildMcpToolDefinition(tool, configuration, {
+        ...toolOptions,
+        publicName: name,
+      });
       server.registerTool(
-        tool.name,
+        name,
         toRegisteredToolConfiguration(definition),
         // A task handle is the Tasks extension's alternative `tools/call` result; the
         // SDK types callbacks as `CallToolResult` only.
-        definition.handler as never,
+        (async (args: unknown, callContext: Parameters<typeof definition.handler>[1]) => {
+          if (authorize) {
+            requestContext = await authorize(name);
+            if (
+              authorityBinding(requestContext.authority) !==
+              context.authInfo?.extra?.['armorerAuthority']
+            ) {
+              throw new Error('MCP authority changed before execution');
+            }
+          }
+          return definition.handler(args, callContext);
+        }) as never,
       );
     }
-    if (advertiseTasks) mcpTasks.registerHandlers(server);
+    if (advertiseTasks) mcpTasks.registerHandlers(server, authorize);
     applyRegistrars(server, context, resources);
     applyRegistrars(server, context, prompts);
     return server;
@@ -271,6 +323,7 @@ function createToolboxExecutor(toolbox: ToolboxLike): ToMCPToolsOptions['execute
       signal: request.signal,
       executionId: request.executionId,
       executionContext: request.executionContext,
+      ...(request.requestContext ? { requestContext: request.requestContext } : {}),
       ...(request.elicit ? { elicit: request.elicit } : {}),
       ...(request.traceContext !== undefined ? { traceContext: request.traceContext } : {}),
     };

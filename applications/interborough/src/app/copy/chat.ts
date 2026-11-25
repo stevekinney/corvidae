@@ -151,6 +151,13 @@ export const CHAT_COPY = {
   approvalTitle: 'Needs your approval',
   /** The approval row under a tool call in the transcript. */
   approval: {
+    reviewDeck: 'Review in deck',
+    deckTitle: 'Review tool approval',
+    confirmApproval: 'Confirm approval',
+    confirmDenial: 'Confirm denial',
+    selectedDecision: 'Confirm your decision',
+    returnToApproval: 'Back to approval controls',
+    irreversible: 'Approval can’t be undone.',
     /** What "Allow <tool> for …" ends with. */
     rememberScope: 'the rest of this chat',
     /** Written above Deny and Approve while Interborough cannot be reached; both name it as their description. */
@@ -248,6 +255,8 @@ export const CHAT_COPY = {
     mayHaveRun: (tool: string, subject: string = 'result'): string =>
       `${tool} may have run. Check the ${subject} before retrying. Retry goes back through the approval.`,
     retry: 'Retry',
+    /** The link beside a failed run's line to the Run page's explanation of the failure (COR-2533). */
+    explain: 'Why it failed',
     /**
      * The notice under the last reply of a chat the server stopped when it restarted: what arrived
      * is kept, and the chat is over. The product speaking, with an info glyph, not a failure.
@@ -265,6 +274,13 @@ export const CHAT_COPY = {
      * it: the run may still be going, and Reconnect shows what it is doing.
      */
     stopFailed: 'The run could not be stopped, and it may still be going. Reconnect to check.',
+  },
+  /** Actions on a terminal stopped turn (COR-2437). */
+  discardTurn: {
+    failed: 'The stopped reply wasn’t discarded. Try again.',
+  },
+  resumeTurn: {
+    failed: 'The stopped reply couldn’t continue. Try again.',
   },
   /** The host-owned answer replacement action. */
   regeneration: {
@@ -288,6 +304,7 @@ export const CHAT_COPY = {
   humanRequestFallback: 'The agent is waiting for your answer.',
   /** The label of a question that declares no schema, which takes free text. */
   questionAnswerLabel: 'Answer',
+  replyInChat: 'Reply in chat',
   /** Said under a question that is picked from choices: the number keys. */
   pickHint: (count: number): string =>
     count === 1 ? 'Press 1 to pick the choice.' : `Press 1 to ${count} to pick a choice.`,
@@ -448,7 +465,7 @@ export const CHAT_COPY = {
       reason === undefined || reason === ''
         ? `${sourceId}: ${disposition}`
         : `${sourceId}: ${disposition} (${reason})`,
-    usage: 'Tokens this run used',
+    usage: 'What this run used',
     usageNote: 'Counted across every step of the run, not this reply alone.',
     usageKinds: { input: 'Input', output: 'Output', total: 'Total' },
   },
@@ -509,7 +526,11 @@ export const CHAT_COPY = {
   composer: {
     /** The placeholder of a chat with an agent, which `{name}` fills with the agent's name. */
     placeholder: (agent: string): string => `Message ${agent}…`,
-    unreachable: 'Sending is off until Interborough is reachable',
+    /**
+     * The line under the composer while the chat works: a message sent now waits in Up next and
+     * goes when the run finishes (COR-2284), so it does not steer the run.
+     */
+    working: 'A message sent now waits until this run finishes.',
     restarting: 'Sending resumes when Interborough is back.',
     pluginDisabled: (agent: string, plugin: string): string =>
       `${agent} isn’t available. Enable the ${plugin} plugin to continue.`,

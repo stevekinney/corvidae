@@ -51,26 +51,20 @@ function writeJson(path: string, value: unknown): void {
 /** The `metadata` task: regenerate the package's `.metadata/` from scratch. */
 async function runMetadataMode(pkg: ComponentPackage): Promise<void> {
   const { discoverComponentDirectories } = await import('./discover-component-directories.ts');
-  const { generateSchemaForComponent } = await import('./generate-component-schema.ts');
-  const { generateVariablesForComponent } = await import('./generate-component-variables.ts');
+  const { generateComponentMetadataInWorkers } =
+    await import('./generate-component-metadata-parallel.ts');
   const { componentMetadataPath, metadataRoot, relocatedJsonDocument } =
     await import('./lib/metadata-files.ts');
-  rmSync(metadataRoot(pkg.root), { recursive: true, force: true });
   const components = await discoverComponentDirectories(pkg.root);
   if (components.length === 0) throw new Error(`${pkg.name} has no component directories`);
-  // Sequential on purpose: the schema generator shares one module-cached ts-morph Project, whose
-  // accumulated state makes concurrent calls order intersection members differently.
-  for (const { directory, name } of components) {
-    const schema = generateSchemaForComponent({
-      typesFilePath: join(directory, `${name}.types.ts`),
-      componentName: name,
-    });
-    writeJson(componentMetadataPath(pkg.root, name, 'schema'), schema.schema);
-    const variables = await generateVariablesForComponent({
-      componentDirectory: directory,
-      componentName: name,
-    });
-    writeJson(componentMetadataPath(pkg.root, name, 'variables'), variables.variables);
+  // Each worker owns its ts-morph globals; it handles its partition sequentially. Do not remove
+  // the old output until both workers have succeeded and their complete result set is verified.
+  const results = await generateComponentMetadataInWorkers(components);
+  rmSync(metadataRoot(pkg.root), { recursive: true, force: true });
+  for (const [index, { directory, name }] of components.entries()) {
+    const result = results[index]!;
+    writeJson(componentMetadataPath(pkg.root, name, 'schema'), result.schema);
+    writeJson(componentMetadataPath(pkg.root, name, 'variables'), result.variables);
     const examples = join(directory, `${name}.examples.json`);
     if (existsSync(examples)) {
       const target = componentMetadataPath(pkg.root, name, 'examples');

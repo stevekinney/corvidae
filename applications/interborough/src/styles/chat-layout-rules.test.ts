@@ -13,6 +13,11 @@ function ruleOf(source: string, selector: string): string {
 // their own, and the transcript and its composer share one reading column centred in the pane. The
 // browser specifications measure the result; these keep the rules from being dropped.
 describe('the chat page’s layout', () => {
+  test('lets the outlet shrink above the phone tabs instead of letting its composer overflow them', async () => {
+    const rule = ruleOf(await read('./foundation.css'), '.weft-shell-main');
+    expect(rule).toMatch(/min-height:\s*0;/);
+  });
+
   test('the list and the open chat draw no frame around them', async () => {
     const rule = ruleOf(await read('./chat.css'), '.ib-chats');
     expect(rule).not.toMatch(/(^|[\s;{])border(-radius)?\s*:/);

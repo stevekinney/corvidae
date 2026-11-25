@@ -166,7 +166,8 @@ describe('Workers route — Diagnostics provenance filters', () => {
 
     const { findByText, getByLabelText, getByRole } = renderRoute();
 
-    expect(await findByText('Not authorized')).not.toBeNull();
+    expect(await findByText('Couldn’t load diagnostics')).not.toBeNull();
+    expect(document.querySelector('[data-fault-kind="unauthorized"]')).not.toBeNull();
     expect((getByLabelText('Build ID') as HTMLInputElement).value).toBe('build-2');
     expect(getByRole('button', { name: 'Apply filters' })).not.toBeNull();
   });

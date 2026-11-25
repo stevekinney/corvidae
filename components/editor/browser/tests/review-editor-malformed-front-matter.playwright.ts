@@ -83,4 +83,22 @@ test.describe('ReviewEditor malformed front matter recovery', () => {
     expect(await boundValue.textContent()).toBe(malformed);
     await expect(editor).toHaveValue(malformed);
   });
+
+  for (const width of [375, 768, 1280]) {
+    test(`keeps Dismiss on the row of Edit as plain text at ${width} px (COR-2440)`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 800 });
+      const mount = page.locator('#example-mount-malformed-front-matter');
+      const edit = mount.getByRole('button', { name: 'Edit as plain text' });
+      const dismiss = mount.getByRole('button', { name: 'Dismiss front matter warning' });
+      await expect(dismiss).toBeVisible();
+      const [editBox, dismissBox] = await Promise.all([edit.boundingBox(), dismiss.boundingBox()]);
+      expect(editBox).not.toBeNull();
+      expect(dismissBox).not.toBeNull();
+      // One row: the two share a top edge, and Dismiss follows Edit as plain text.
+      expect(Math.abs(dismissBox!.y - editBox!.y)).toBeLessThanOrEqual(1);
+      expect(dismissBox!.x).toBeGreaterThan(editBox!.x + editBox!.width - 1);
+    });
+  }
 });

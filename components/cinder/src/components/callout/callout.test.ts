@@ -193,6 +193,13 @@ describe('Callout neutral variant and action', () => {
     );
   });
 
+  test('the title is heavier than the message under it, and sits 4px above it', async () => {
+    const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
+    const title = declarationsFor(css, '.cinder-callout__title');
+    expect(title.get('font-weight')).toBe('var(--cinder-font-semibold)');
+    expect(title.get('margin')).toBe('0 0 var(--cinder-space-1)');
+  });
+
   test('on phones the icon sits beside the first line only and later lines start at the padding', async () => {
     const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
     expect(css).toContain('@container (inline-size < 30rem)');
@@ -262,6 +269,31 @@ describe('Callout neutral variant and action', () => {
       props: { actionLayout: 'stacked', action, children: textSnippet('Connection paused.') },
     });
     expect(stacked.container.querySelector('.cinder-callout--inline-action')).toBeNull();
+  });
+
+  test('a stacked-start action sits under the message like a stacked one, and starts at the leading edge', async () => {
+    const action = createRawSnippet(() => ({ render: () => '<button>Retry</button>' }));
+    const { container } = render(Callout, {
+      props: { actionLayout: 'stacked-start', action, children: textSnippet('Upload failed.') },
+    });
+    const callout = container.querySelector('.cinder-callout');
+    expect(callout?.classList.contains('cinder-callout--inline-action')).toBe(false);
+    expect(callout?.classList.contains('cinder-callout--stacked-start-action')).toBe(true);
+    // Under the message, not in the inline body row.
+    expect(container.querySelector('.cinder-callout__body')).toBeNull();
+    expect(
+      container.querySelector('.cinder-callout > .cinder-callout__action button'),
+    ).not.toBeNull();
+
+    const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
+    const start = declarationsFor(
+      css,
+      '.cinder-callout--stacked-start-action > .cinder-callout__action',
+    );
+    expect(start.get('justify-self')).toBe('start');
+    expect(start.get('justify-content')).toBe('flex-start');
+    // `stacked` keeps ending at the trailing edge for its other consumers.
+    expect(declarationsFor(css, '.cinder-callout__action').get('justify-self')).toBe('end');
   });
 
   test('a beside action is an inline action that stays beside the message on a phone', async () => {

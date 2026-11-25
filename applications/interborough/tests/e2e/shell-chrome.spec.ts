@@ -1,9 +1,9 @@
 /**
  * The shell's chrome on the sample world (`fixtures/sample-world-seed.ts`, the showcase host), in
  * every form it takes and at every width the design draws (COR-2015, design rows 03a to 03m, 04a to
- * 04f, 05h, 05i, 05r, 07h, 07k, COR-2315): the 190px sidebar, the 56px folded column, the 76px rail
- * with its labels and its overlay on a tablet, the bottom tab bar and the 280px drawer on a phone,
- * the 320px floor and 200% text size. Each captioned state is captured for the design review under its own name.
+ * 04f, 05h, 05i, 05r, 07h, 07k): the 190px sidebar, the 56px folded column, the 280px drawer
+ * on smaller windows, the phone tabs, the 320px floor and 200% text size. Each captioned state
+ * is captured for design review.
  *
  * Reviews shows the two reviews waiting on the person, and Health an amber dot named "Health, 3
  * need attention", which the sample world's attention feed (`bureau.health.attention`) holds.
@@ -14,9 +14,10 @@
 import type { Locator, Page } from '@playwright/test';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { createAgentFile, removeAgent } from './agent-support.ts';
 import { rewriteBureauAnswer } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
-import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
+import { E2E_BASE_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL });
@@ -32,14 +33,14 @@ const navigation = (page: Page) => page.getByRole('navigation', { name: 'Views' 
 /**
  * Opens `path`, and waits until the sidebar has the counts the sample world gives it. Where the
  * navigation is a drawer there is no sidebar until the menu button opens one, so there are no counts
- * to wait for: pass `counts: false`.
+ * to wait for until the drawer is open.
  */
 async function open(
   page: Page,
   path: string,
   width: number,
   height = 900,
-  counts = width >= 700,
+  counts = width >= 1200,
 ): Promise<void> {
   await page.setViewportSize({ width, height });
   await page.goto(path);
@@ -225,54 +226,91 @@ test.describe('on a desktop', () => {
 });
 
 test.describe('on a tablet', () => {
-  test('the sidebar is the 76px rail with a label under every icon, and expanding opens the column over the page, closing on navigation (04a)', async ({
-    page,
-  }) => {
-    await open(page, '/health', 768);
-    await expectWidth(sidebar(page), 76);
-    // The rail runs the page's full height, so Settings is pinned to the bottom (04a).
-    const rail = await boxOf(sidebar(page));
-    expect(rail.y + rail.height).toBeGreaterThanOrEqual(page.viewportSize()!.height - 1);
-    await expect(page.getByRole('button', { name: 'Open navigation' })).toHaveCount(0);
-    // Every row draws its label, under its icon, so the rail needs no tooltip.
-    const runs = navigation(page).getByRole('link', { name: 'Runs' });
-    await expect(runs.locator('.cinder-side-navigation-item__label')).toBeVisible();
-    expect(await yOf(runs.locator('.cinder-side-navigation-item__label'))).toBeGreaterThan(
-      await yOf(runs.locator('.cinder-side-navigation-item__icon')),
-    );
-    const outletBefore = await boxOf(page.locator('main.weft-shell-outlet'));
-    await expect(
-      page.getByRole('banner').getByRole('button', { name: /^Search everything/ }),
-    ).toContainText('⌘K');
+  test.describe('the saved agent editor', () => {
+    test.use({ baseURL: E2E_BASE_URL });
 
-    await page.getByRole('button', { name: 'Expand sidebar' }).click();
-    await expectWidth(sidebar(page), 190);
-    // The page does not move: the column is over it.
-    expect(await boxOf(page.locator('main.weft-shell-outlet'))).toEqual(outletBefore);
-    await captureForDesignReview(page, {
-      route: '/health',
-      state: 'rail expanded overlay',
-      source: SOURCE,
+    test('tablet navigation opens from the top bar and closes on navigation (04a)', async ({
+      page,
+      request,
+    }) => {
+      const id = 'e2e-tablet-navigation';
+      const path = `/agents/${id}/edit`;
+      await createAgentFile(request, id, {
+        name: 'Shared actions agent',
+        instructions: 'Answer the question.',
+      });
+      try {
+        await open(page, path, 768);
+        await expect(page.locator('[data-view="agent-editor"]')).toHaveAttribute(
+          'data-state',
+          'ready',
+        );
+        await expect(
+          page.getByRole('heading', { name: 'Edit Shared actions agent' }),
+        ).toBeVisible();
+        const menu = page.getByRole('button', { name: 'Open navigation' });
+        await expect(menu).toBeVisible();
+        await expect(menu).toHaveAttribute('aria-expanded', 'false');
+        await expect(sidebar(page)).toHaveCount(0);
+        await expect(page.getByRole('navigation', { name: 'Main tabs' })).toHaveCount(0);
+        await expect(
+          page.getByRole('banner').getByRole('button', { name: /^Search everything/ }),
+        ).toContainText('⌘K');
+        const outlet = page.locator('main.weft-shell-outlet');
+        const outletBefore = await boxOf(outlet);
+        expect(outletBefore.x).toBe(0);
+        await captureForDesignReview(page, {
+          route: '/agents/:agent/edit',
+          state: 'tablet navigation closed',
+          source: SOURCE,
+        });
+
+        await menu.click();
+        await expect(drawer(page)).toBeVisible();
+        await expectWidth(drawer(page).locator('.cinder-drawer__panel'), 280);
+        expect(await boxOf(outlet)).toEqual(outletBefore);
+        const views = drawer(page).getByRole('navigation', { name: 'Views' });
+        await expect(views.getByRole('link', { name: 'Agents' })).toHaveAttribute(
+          'aria-current',
+          'page',
+        );
+        await captureForDesignReview(page, {
+          route: '/agents/:agent/edit',
+          state: 'tablet navigation open',
+          source: SOURCE,
+        });
+
+        await views.getByRole('link', { name: 'Runs' }).click();
+        await expect(page).toHaveURL(/\/runs$/);
+        await expect(drawer(page)).toHaveCount(0);
+      } finally {
+        await removeAgent(request, id);
+      }
     });
-
-    await navigation(page).getByRole('link', { name: 'Runs' }).click();
-    await expect(page).toHaveURL(/\/runs$/);
-    await expectWidth(sidebar(page), 76);
   });
 
-  test('Escape closes the overlay, and the quick settings preference does not apply here (04b)', async ({
+  test('Escape closes the tablet drawer without changing the desktop preference (04b)', async ({
     page,
   }) => {
     await page.addInitScript(() => {
       window.localStorage.setItem('interborough-sidebar-collapsed', 'false');
     });
-    await open(page, '/', 768);
-    // Whatever the preference says, below 1200px the rail rule wins.
-    await expectWidth(sidebar(page), 76);
-    await page.getByRole('button', { name: 'Expand sidebar' }).click();
-    await expectWidth(sidebar(page), 190);
+    await open(page, '/', 1199);
+    await expect(sidebar(page)).toHaveCount(0);
+    const menu = page.getByRole('button', { name: 'Open navigation' });
+    await menu.click();
+    await expect(drawer(page)).toBeVisible();
     await page.keyboard.press('Escape');
-    await expectWidth(sidebar(page), 76);
+    await expect(drawer(page)).toHaveCount(0);
+    await expect(menu).toBeFocused();
+    await expect(menu).toHaveAttribute('aria-expanded', 'false');
+    await menu.click();
+    await expect(drawer(page)).toBeVisible();
+    await page.setViewportSize({ width: 1200, height: 900 });
+    await expectWidth(sidebar(page), 190);
+    await page.setViewportSize({ width: 1199, height: 900 });
+    await expect(menu).toHaveAttribute('aria-expanded', 'false');
+    await expect(drawer(page)).toHaveCount(0);
     expect(
       await page.evaluate(() => window.localStorage.getItem('interborough-sidebar-collapsed')),
     ).toBe('false');
@@ -286,6 +324,11 @@ test.describe('on a tablet', () => {
     });
     await open(page, '/', 1200);
     await expectWidth(sidebar(page), 56);
+    await captureForDesignReview(page, {
+      route: '/',
+      state: 'desktop sidebar preference',
+      source: SOURCE,
+    });
     await page.setViewportSize({ width: 1280, height: 900 });
     await expectWidth(sidebar(page), 56);
   });
@@ -474,18 +517,25 @@ test.describe('on a phone', () => {
 test.describe('on a touch tablet', () => {
   test.use({ hasTouch: true, isMobile: true });
 
-  test('gets the same 76px rail, whose labels are drawn and so need no drawer (04c, COR-2315)', async ({
-    page,
-  }) => {
+  test('opens the same readable drawer on a touch tablet (04c)', async ({ page }) => {
     await open(page, '/', 768, 1024);
-    await expectWidth(sidebar(page), 76);
-    await expect(page.getByRole('button', { name: 'Open navigation' })).toHaveCount(0);
-    await expect(
-      navigation(page)
-        .getByRole('link', { name: 'Runs' })
-        .locator('.cinder-side-navigation-item__label'),
-    ).toBeVisible();
-    await captureForDesignReview(page, { route: '/', state: 'tablet touch', source: SOURCE });
+    await expect(sidebar(page)).toHaveCount(0);
+    await expect(page.getByRole('navigation', { name: 'Main tabs' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Open navigation' }).tap();
+    await expectWidth(drawer(page).locator('.cinder-drawer__panel'), 280);
+    const views = drawer(page).getByRole('navigation', { name: 'Views' });
+    await expect(views.getByRole('link', { name: REVIEWS })).toBeVisible();
+    await expect(views.getByRole('link', { name: HEALTH })).toBeVisible();
+    const runs = views.getByRole('link', { name: 'Runs' });
+    await expect(runs.locator('.cinder-side-navigation-item__label')).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/',
+      state: 'tablet touch drawer',
+      source: SOURCE,
+    });
+    await runs.tap();
+    await expect(page).toHaveURL(/\/runs$/);
+    await expect(drawer(page)).toHaveCount(0);
   });
 });
 

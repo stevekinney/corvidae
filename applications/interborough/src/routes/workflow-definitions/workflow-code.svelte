@@ -33,8 +33,8 @@
   } from '../../lib/workflow-files.ts';
   import WorkflowFileProblem from './workflow-file-problem.svelte';
   import { stepRows } from './workflow-page-presentation.ts';
+  import { locateJsonProblem } from '@lostgradient/bureau/workflow-json';
   import {
-    locateJsonProblem,
     problemNote,
     sourceLineId,
     sourceOutline,

@@ -122,6 +122,17 @@ describe('bureau.hooks.*', () => {
     ).toEqual(['bureau.hooks.delete']);
   });
 
+  it('has no hooks operation that reads a stored signing secret back', () => {
+    const names = bureauHooksOperations.map((operation) => operation.name);
+
+    expect(names.filter((name) => name.includes('.secret.'))).toEqual([
+      'bureau.hooks.secret.replace',
+    ]);
+    expect(names).not.toContain('bureau.hooks.secret.get');
+    expect(names).not.toContain('bureau.hooks.secret.read');
+    expect(names).not.toContain('bureau.hooks.secret.reveal');
+  });
+
   it('creates a hook owned by the caller, and never returns the signing secret', async () => {
     const { opened } = await open();
     const created = await call(opened, 'bureau.hooks.create', NEW_HOOK, 'alice-observer-key');

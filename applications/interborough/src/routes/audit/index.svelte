@@ -59,6 +59,7 @@
   import { AUDIT_ACTION_KINDS, AUDIT_EVENT_TYPES } from '../../lib/audit-event-types.ts';
   import { queryAudit } from '../../lib/bureau-audit.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
@@ -508,7 +509,7 @@
           title={loadFailure.title}
           description={loadFailure.description}
           retryLabel={RETRY_LABEL}
-          onRetry={retry}
+          {...faultErrorStateAdvice(trail.error, retry)}
         />
       {:else if stopped}
         <ErrorState

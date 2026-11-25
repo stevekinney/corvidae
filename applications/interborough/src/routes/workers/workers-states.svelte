@@ -10,6 +10,7 @@
   import { EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
   import { Cpu } from '@lucide/svelte';
 
+  import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { WORKER_COPY } from './worker-copy.ts';
   import WorkersHeading from './workers-heading.svelte';
   import { workersLoadFailure, type WorkersStateKind } from './workers-states.ts';
@@ -70,7 +71,7 @@
       title={failure.title}
       description={failure.description}
       retryLabel={copy.failed.tryAgain}
-      {onRetry}
+      {...kind === 'cancelled' ? { onRetry } : faultErrorStateAdvice(error, onRetry)}
     />
   {/if}
 </section>

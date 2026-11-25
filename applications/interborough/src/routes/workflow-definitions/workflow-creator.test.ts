@@ -62,19 +62,27 @@ function open(agents: ReadonlyArray<Record<string, unknown>> = [], overrides: Pa
   return render(Harness, { props: { client: stub.client, scopes: AUTHORIZATION_SCOPES } } as never);
 }
 
-/** Makes the viewport a phone, which is what `phoneViewport` reads. */
-function phone(): void {
+/** Sets the initial viewport and returns a resize that notifies the existing media query. */
+function phone(initial = true): (matches: boolean) => void {
   const original = window.matchMedia;
+  const events = new window.EventTarget();
+  let matches = initial;
   window.matchMedia = ((query: string) => ({
-    matches: query === '(width < 640px)',
+    get matches() {
+      return query === '(width < 640px)' && matches;
+    },
     media: query,
-    addEventListener: () => {},
-    removeEventListener: () => {},
+    addEventListener: events.addEventListener.bind(events),
+    removeEventListener: events.removeEventListener.bind(events),
     addListener: () => {},
     removeListener: () => {},
   })) as unknown as typeof window.matchMedia;
   restoreViewport = () => {
     window.matchMedia = original;
+  };
+  return (next) => {
+    matches = next;
+    events.dispatchEvent(new window.Event('change'));
   };
 }
 
@@ -170,6 +178,19 @@ describe('the new-workflow editor', () => {
     );
   });
 
+  test('design correction 2, N2: the JSON tab’s read-back wraps as the Builder tab’s does, never cut to one line', async () => {
+    const { container } = open();
+    await openJson(container);
+    const footer = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>(
+        '[data-testid="workflow-builder-summary"]',
+      );
+      expect(found).toBeTruthy();
+      return found as HTMLElement;
+    });
+    expect(footer.hasAttribute('data-truncated')).toBe(false);
+  });
+
   test('refuses text that is not JSON, and a JSON value that is not an object, says the line to fix once, and sends nothing', async () => {
     const { container, getByRole } = open();
     await openJson(container);
@@ -223,18 +244,20 @@ describe('the new-workflow editor', () => {
   });
 
   test('says only that the save failed for a fault that names nothing the person can act on', async () => {
-    const { container, getByRole, findByRole } = open();
+    const { container, findByRole } = open();
     await openJson(container);
     await typeInto(container, withName('fresh-flow'));
-    for (const fault of [
+    const faults = [
       workflowFaults.conflict('agent-file-exists'),
       workflowFaults.stale('hash', 'old'),
       workflowFaults.notFound('workflow'),
-    ]) {
+    ];
+    for (const [index, fault] of faults.entries()) {
       stub?.on('bureau.workflows.create', () => {
         throw fault;
       });
-      await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
+      await fireEvent.click(await findByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
+      await waitFor(() => expect(stub?.callsTo('bureau.workflows.create')).toHaveLength(index + 1));
       const alert = await findByRole('alert');
       expect(alert.textContent).toContain(WORKFLOW_COPY.creator.saveFailed);
       expect(alert.textContent).not.toContain(fault.message);
@@ -443,10 +466,11 @@ describe('the builder', () => {
     await fireEvent.input(field(container, 'workflow-builder-name'), {
       target: { value: 'briefing' },
     });
-    await fireEvent.click(button(container, BUILDER.useDerivedId));
+    await fireEvent.click(button(container, BUILDER.resetId));
     await waitFor(() =>
       expect(container.querySelector('[data-testid="workflow-builder-id-line"]')).toBeTruthy(),
     );
+    expect(document.activeElement?.id).toBe('workflow-builder-id-change');
 
     await openJson(container);
     expect(JSON.parse(textarea(container).value)).toMatchObject({
@@ -761,8 +785,24 @@ describe('the builder', () => {
     );
     await fireEvent.click(builderTab(container));
     await ready(container);
+    // COR-2432, row 66a: read-only, kept as written, with a way to the JSON tab.
+    expect(container.textContent).toContain(BUILDER.otherStepLine);
     expect(container.textContent).toContain(BUILDER.otherStepNote);
     expect(container.textContent).toContain(BUILDER.otherTrigger);
+    const editInJson = [...container.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === BUILDER.editInJson,
+    );
+    if (editInJson === undefined) throw new Error('Expected Edit in JSON');
+    await fireEvent.click(editInJson);
+    await waitFor(() =>
+      expect(
+        [...container.querySelectorAll('[role="tab"]')]
+          .find((tab) => tab.textContent?.trim() === BUILDER.jsonTab)
+          ?.getAttribute('aria-selected'),
+      ).toBe('true'),
+    );
+    await fireEvent.click(builderTab(container));
+    await ready(container);
     expect(container.querySelector('#workflow-builder-step-1-message')).toBeNull();
     expect(
       container.querySelector('#workflow-builder-trigger-kind')?.getAttribute('aria-disabled'),
@@ -799,10 +839,57 @@ describe('the builder', () => {
     await ready(container);
     expect(field(container, 'workflow-builder-name').value).toBe('from-json');
     expect(start(container, 'schedule').getAttribute('aria-checked')).toBe('true');
-    expect(field(container, 'workflow-builder-trigger-field').value).toBe('5m');
+    // Every 5 minutes is the When block's own interval (row 65q).
+    expect(container.querySelector('[data-testid="schedule-when"]')).not.toBeNull();
     expect(field(container, 'workflow-builder-step-1-duration').value).toBe('30');
     expect(field(container, 'workflow-builder-step-1-duration-unit').value).toBe('seconds');
     expect(container.querySelector('#workflow-builder-step-1-agent')).toBeNull();
+  });
+
+  test('COR-2432: On a schedule opens the When block and writes every field it holds: weekdays at 9:00 AM, the zone, skip and no catch-up (rows 65d, 65q)', async () => {
+    const { container } = open();
+    await ready(container);
+    await fireEvent.click(start(container, 'schedule'));
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="schedule-when"]')).not.toBeNull(),
+    );
+    await openJson(container);
+    const trigger = (JSON.parse(textarea(container).value) as { trigger: Record<string, unknown> })
+      .trigger;
+    expect(trigger).toEqual({
+      kind: 'schedule',
+      spec: '0 9 * * 1-5',
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      overlap: 'skip',
+      catchUp: false,
+    });
+  });
+
+  test('does not create the prior valid cadence while Custom cron is invalid, from Create or ⌘Enter, and retries once fixed', async () => {
+    const { container, getByLabelText, getByRole } = open();
+    await ready(container);
+    await openJson(container);
+    await typeInto(container, withName('custom-cron'));
+    await fireEvent.click(builderTab(container));
+    await ready(container);
+    await fireEvent.change(getByLabelText('Repeats'), { target: { value: 'cron' } });
+    const minute = getByLabelText('Minute') as HTMLInputElement;
+    await fireEvent.input(minute, { target: { value: '99' } });
+
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
+    expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
+    expect(document.activeElement).toBe(minute);
+    shortcuts.handleKey(
+      { key: 'Enter', metaKey: true, ctrlKey: false, altKey: false, editable: true },
+      { routePattern: '/workflows/new', regions: [] },
+      Date.now(),
+    );
+    await Promise.resolve();
+    expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
+
+    await fireEvent.input(minute, { target: { value: '5' } });
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
+    await waitFor(() => expect(stub?.callsTo('bureau.workflows.create')).toHaveLength(1));
   });
 
   test('keeps the keys the builder has no control for through its edits', async () => {
@@ -826,17 +913,18 @@ describe('the builder', () => {
     );
     await fireEvent.click(builderTab(container));
     await ready(container);
-    await fireEvent.input(field(container, 'workflow-builder-trigger-field'), {
-      target: { value: '0 7 * * *' },
+    await fireEvent.input(field(container, 'workflow-builder-description'), {
+      target: { value: 'Keeps its keys.' },
     });
     await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
     await waitFor(() => expect(router.pathname).toBe('/workflows/keeps-keys'));
     expect(created()?.definition).toEqual({
+      description: 'Keeps its keys.',
       paused: true,
       agent: 'writer',
       trigger: {
         kind: 'schedule',
-        spec: '0 7 * * *',
+        spec: '0 6 * * *',
         timezone: 'America/Chicago',
         overlap: 'skip',
       },
@@ -882,19 +970,30 @@ describe('the builder', () => {
     await waitFor(() => expect(router.pathname).toBe('/workflows/refund'));
   });
 
-  test('is read-only below 640 pixels, and links back to Workflows', async () => {
+  test('says the builder is read-only in the phone heading while tabs stay full width', async () => {
     phone();
     const { container } = open();
     await ready(container);
-    const notice = container.querySelector('[data-testid="workflow-builder-phone"]');
-    expect(notice?.textContent).toContain(BUILDER.phone.message);
-    expect(notice?.querySelector('a')?.getAttribute('href')).toBe('/workflows');
+    const readOnly = container.querySelector('.cinder-page-header__description');
+    expect(readOnly?.textContent).toBe(BUILDER.readOnlyOnScreen);
+    expect(readOnly?.closest('[role="tablist"]')).toBeNull();
+    expect(container.querySelector('.weft-workflow-builder__read-only')).toBeNull();
+    expect(container.querySelector('[data-testid="workflow-builder-phone"]')).toBeNull();
     expect(container.querySelector('.weft-workflow-builder__body')?.hasAttribute('inert')).toBe(
       true,
     );
     expect(container.querySelector('.weft-workflow-builder__actions')?.hasAttribute('inert')).toBe(
       true,
     );
+    const buttonLabels = [...container.querySelectorAll('button')].map((button) =>
+      button.textContent?.trim(),
+    );
+    expect(buttonLabels).not.toContain(BUILDER.addField);
+    // Design correction 2, N3: the fields are visibly inert (no prompts), and so is the primary.
+    expect(
+      container.querySelector('.weft-workflow-builder__body')?.hasAttribute('data-read-only'),
+    ).toBe(true);
+    expect(button(container, WORKFLOW_COPY.creator.saveAction).disabled).toBe(true);
     // What cannot be used is not drawn: no add, move or remove, only the steps themselves.
     expect(container.querySelector('#workflow-builder-add')).toBeNull();
     // Nor the empty band its wrapper would leave.
@@ -906,7 +1005,85 @@ describe('the builder', () => {
     expect(container.querySelector('.weft-workflow-builder__json')?.hasAttribute('inert')).toBe(
       true,
     );
-    expect(container.textContent).toContain(BUILDER.phone.message);
+    expect(container.querySelector('.cinder-page-header__description')?.textContent).toBe(
+      BUILDER.readOnlyOnScreen,
+    );
+  });
+
+  test('keeps a seeded custom ID read-only on a phone without an inert Change or Reset ID action', async () => {
+    const resize = phone(false);
+    const { container } = open();
+    await ready(container);
+    await fireEvent.input(field(container, 'workflow-builder-title'), {
+      target: { value: 'Morning Briefing' },
+    });
+    await fireEvent.click(button(container, BUILDER.idChange));
+    await fireEvent.input(field(container, 'workflow-builder-name'), {
+      target: { value: 'custom-briefing' },
+    });
+
+    resize(true);
+    await waitFor(() =>
+      expect(container.querySelector('.cinder-page-header__description')?.textContent).toBe(
+        BUILDER.readOnlyOnScreen,
+      ),
+    );
+
+    const line = container.querySelector('[data-testid="workflow-builder-id-line"]');
+    expect(line?.textContent).toContain('custom-briefing');
+    expect(line?.querySelector('button')).toBeNull();
+    expect(container.querySelector('#workflow-builder-name')).toBeNull();
+    expect(container.querySelector('[aria-label="Reset ID"]')).toBeNull();
+  });
+
+  test('COR-2432: ⌘Enter creates nothing below 640 pixels, where the builder is read-only', async () => {
+    phone();
+    const { container } = open(listed('demo:assistant'));
+    await ready(container);
+    shortcuts.handleKey(
+      { key: 'Enter', metaKey: true, ctrlKey: false, altKey: false, editable: true },
+      { routePattern: '/workflows/new', regions: [] },
+      Date.now(),
+    );
+    await Promise.resolve();
+    expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
+    expect(router.pathname).toBe('/workflows/new');
+  });
+
+  test('COR-2432: a document the Bureau refuses is marked at its line, the Builder tab is off, and Create goes there (row 65z)', async () => {
+    const { container } = open();
+    await ready(container);
+    stub?.on('bureau.workflows.validate', () => ({
+      status: 'invalid',
+      code: 'invalid-document',
+      issues: [{ path: 'steps[0].duration', message: '"duration" must be a duration such as 15m' }],
+    }));
+    await openJson(container);
+    const text = JSON.stringify(
+      {
+        name: 'nap',
+        trigger: { kind: 'manual' },
+        steps: [{ kind: 'sleep', duration: '15m' }],
+      },
+      null,
+      2,
+    );
+    await typeInto(container, text);
+    await fireEvent.click(button(container, WORKFLOW_COPY.creator.saveAction));
+
+    // `"duration"` is on line 9 of the text as written.
+    await waitFor(() => expect(summary(container)).toBe(BUILDER.json.fixLine(9)));
+    expect(builderTab(container).hasAttribute('disabled')).toBe(true);
+    await waitFor(() =>
+      expect(container.querySelector('.cinder-json-editor__problem')?.textContent).toBe(
+        '"duration" must be a duration such as 15m.',
+      ),
+    );
+    expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
+
+    // Any change to the text lets the person back into the builder.
+    await typeInto(container, text.replace('15m', '20m'));
+    await waitFor(() => expect(builderTab(container).hasAttribute('disabled')).toBe(false));
   });
 
   test('turns the Builder tab off with the reason while the JSON is not valid, and says nothing is dropped', async () => {
@@ -1137,7 +1314,7 @@ describe('the builder', () => {
     const reason =
       '~/.interborough/workflows/morning-briefing.json couldn’t be written: permission denied.';
     stub?.on('bureau.workflows.create', () => {
-      throw workflowFaults.unprocessable(reason);
+      throw new StubFault('Unprocessable', 422, reason, { reason: 'workflow-file-write-denied' });
     });
     await fillValid(container, 'morning-briefing');
     await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
