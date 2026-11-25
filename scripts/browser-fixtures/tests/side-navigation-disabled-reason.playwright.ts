@@ -2,7 +2,7 @@
 /**
  * COR-2665: a disabled side navigation row reads as disabled by more than colour (a regular
  * weight against the enabled rows' medium), and with a `disabledReason` it says why on a second
- * line under its label, in the muted text colour at the extra-small size, starting where the
+ * line under its label, never louder than the name it explains (COR-2680), at the extra-small size, starting where the
  * label's text starts (past an icon, or at the row's own start without one), with no hover, at a
  * phone's width and a desktop's, in both themes. The row is named by its label and described by
  * its reason. Measured on the `side-navigation` assertion fixture with `?disabled=1`, which leaves
@@ -12,6 +12,8 @@
 import { THEME_STORAGE_KEY, themeContextOptions } from '@lostgradient/testing';
 import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test } from '@playwright/test';
+
+import { toneOf } from './reason-tone-support.ts';
 
 type RowGeometry = {
   name: string;
@@ -25,7 +27,6 @@ type RowGeometry = {
     height: number;
     color: string;
     fontSize: string;
-    muted: string;
     extraSmall: string;
   };
 };
@@ -52,7 +53,9 @@ for (const theme of ['light', 'dark'] as const) {
         await expect(taskQueue).toBeDisabled();
 
         const rows: RowGeometry[] = await page.evaluate(() => {
-          const root = document.querySelector('#example-mount-disabled')!;
+          const root = document.querySelector(
+            '#example-mount-disabled nav[aria-label="Temporal pages"]',
+          )!;
           const items = Array.from(
             root.querySelectorAll<HTMLElement>('[data-cinder-navigation-item]'),
           );
@@ -73,11 +76,9 @@ for (const theme of ['light', 'dark'] as const) {
             let reasonGeometry: RowGeometry['reason'] = null;
             if (reason !== null) {
               const probe = document.createElement('span');
-              probe.style.color = 'var(--cinder-text-muted)';
               probe.style.fontSize = 'var(--cinder-text-xs)';
               item.append(probe);
               const probeStyle = getComputedStyle(probe);
-              const muted = probeStyle.color;
               const extraSmall = probeStyle.fontSize;
               probe.remove();
               const box = reason.getBoundingClientRect();
@@ -87,7 +88,6 @@ for (const theme of ['light', 'dark'] as const) {
                 height: box.height,
                 color: getComputedStyle(reason).color,
                 fontSize: getComputedStyle(reason).fontSize,
-                muted,
                 extraSmall,
               };
             }
@@ -129,7 +129,6 @@ for (const theme of ['light', 'dark'] as const) {
           expect(reason.height).toBeGreaterThan(0);
           expect(reason.top).toBeGreaterThanOrEqual(row.labelBottom - 0.5);
           expect(Math.abs(reason.textLeft - row.textLeft)).toBeLessThan(1);
-          expect(reason.color).toBe(reason.muted);
           expect(reason.fontSize).toBe(reason.extraSmall);
         }
         // With an icon the reason starts past it, where the label's text starts.
@@ -143,6 +142,49 @@ for (const theme of ['light', 'dark'] as const) {
         await expect(workersRow).toHaveAccessibleDescription(
           'Open a task queue to see the workers polling it',
         );
+
+        // COR-2680: a reason never reads louder than the name it explains: no more contrast, and
+        // smaller.
+        for (const name of ['Task queue', 'Workers']) {
+          const row = navigation.locator(`[data-cinder-navigation-item][aria-label="${name}"]`);
+          const nameTone = await row.evaluate(toneOf);
+          const reasonTone = await row
+            .locator('.cinder-side-navigation-item__reason')
+            .evaluate(toneOf);
+          expect(reasonTone.contrast).toBeLessThanOrEqual(nameTone.contrast + 0.01);
+          expect(reasonTone.fontSize).toBeLessThan(nameTone.fontSize);
+        }
+
+        // A group that states one reason draws it once and is the description of its disabled
+        // rows, which draw none of their own; it is quieter than the rows it covers.
+        const shared = page.getByRole('navigation', { name: 'Shared reason' });
+        const groupReasons = shared.locator('.cinder-side-navigation-group__reason');
+        await expect(groupReasons).toHaveCount(1);
+        await expect(groupReasons).toBeVisible();
+        for (const name of ['Namespaces', 'Workflows']) {
+          const row = shared.getByRole('button', { name, exact: true });
+          await expect(row).toHaveAccessibleDescription('Choose a connection first');
+          await expect(row.locator('.cinder-side-navigation-item__reason')).toHaveCount(0);
+          const rowTone = await row.evaluate(toneOf);
+          const groupTone = await groupReasons.evaluate(toneOf);
+          expect(groupTone.contrast).toBeLessThanOrEqual(rowTone.contrast + 0.01);
+          expect(groupTone.fontSize).toBeLessThan(rowTone.fontSize);
+        }
+        // The group reason starts where its rows' text starts.
+        const firstTextLeft = (element: Element) => {
+          const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+            acceptNode: (node) =>
+              node.textContent?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP,
+          });
+          const range = document.createRange();
+          range.selectNodeContents(walker.nextNode()!);
+          return range.getClientRects()[0]!.left;
+        };
+        const reasonLeft = await groupReasons.evaluate(firstTextLeft);
+        const rowLeft = await shared
+          .getByRole('button', { name: 'Namespaces', exact: true })
+          .evaluate(firstTextLeft);
+        expect(Math.abs(reasonLeft - rowLeft)).toBeLessThan(1);
       });
     }
   });

@@ -33,6 +33,13 @@ export type SideNavigationGroupRegistration = {
 export type SideNavigationGroupContext = {
   /** Register a descendant item; returns its handle. */
   register: () => SideNavigationGroupRegistration;
+  /**
+   * The group's shared reason for its disabled rows (COR-2680), trimmed, or `undefined`. A getter,
+   * so an item reads it reactively.
+   */
+  readonly disabledReason: string | undefined;
+  /** The id of the element that draws the group's reason, for a row's `aria-describedby`. */
+  readonly reasonId: string;
 };
 
 const [getSideNavigationGroupContextStrict, setSideNavigationGroupContext] =

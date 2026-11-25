@@ -4102,6 +4102,8 @@
 ["files","components/cinder/src/components/setting-row/setting-row-states-fixture.test.svelte","components/cinder/src/components/setting-row/setting-row-states-fixture.test.svelte"]
 ["files","components/cinder/src/components/share-card/share-card-test-support.ts","components/cinder/src/components/share-card/share-card-test-support.ts"]
 ["files","components/cinder/src/components/side-navigation-group/_contains-active-harness.svelte","components/cinder/src/components/side-navigation-group/_contains-active-harness.svelte"]
+["files","components/cinder/src/components/side-navigation-group/_reason-harness.svelte","components/cinder/src/components/side-navigation-group/_reason-harness.svelte"]
+["files","components/cinder/src/components/side-navigation-group/_reason-rail-harness.svelte","components/cinder/src/components/side-navigation-group/_reason-rail-harness.svelte"]
 ["files","components/cinder/src/components/side-navigation-item/side-navigation-item-legacy-rail.test.svelte","components/cinder/src/components/side-navigation-item/side-navigation-item-legacy-rail.test.svelte"]
 ["files","components/cinder/src/components/side-navigation-item/side-navigation-item-rail.test.svelte","components/cinder/src/components/side-navigation-item/side-navigation-item-rail.test.svelte"]
 ["files","components/cinder/src/components/side-navigation-item/side-navigation-item.type-test.ts","components/cinder/src/components/side-navigation-item/side-navigation-item.type-test.ts"]

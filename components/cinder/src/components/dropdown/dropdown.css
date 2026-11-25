@@ -282,7 +282,8 @@
   .cinder-dropdown-item__reason {
     max-inline-size: 16rem;
     padding-inline-start: var(--_cinder-dropdown-item-reason-indent, 0px);
-    color: var(--cinder-text-muted);
+    /* Never brighter than the disabled label it explains (COR-2680): the same colour, smaller. */
+    color: var(--cinder-text-disabled);
     font-size: var(--cinder-text-xs);
     line-height: var(--cinder-leading-snug);
     text-align: start;

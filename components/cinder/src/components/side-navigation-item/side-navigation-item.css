@@ -108,12 +108,22 @@
   .cinder-side-navigation-item__reason {
     flex: 1 0 100%;
     min-inline-size: 0;
-    color: var(--cinder-text-muted);
+    /* Never brighter than the disabled name it explains (COR-2680): the same colour, smaller. */
+    color: var(--cinder-text-disabled);
     font-size: var(--cinder-text-xs);
     font-weight: var(--cinder-font-normal);
     line-height: var(--cinder-leading-snug);
     text-align: start;
     white-space: normal;
+  }
+
+  /* A row that answers hover with a tooltip shows that it heard the pointer (COR-2680). An enabled
+   * row already tints on hover; a disabled one, which shows no other hover state, takes the same
+   * neutral ink tint while its tooltip is the only thing hover does. */
+  @media (hover: hover) {
+    .cinder-side-navigation-item[aria-disabled='true'][data-cinder-tooltip]:hover {
+      background-color: color-mix(in oklch, var(--cinder-border-ink), transparent 96%);
+    }
   }
 
   /* ----------------------------------------
