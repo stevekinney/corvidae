@@ -59,6 +59,7 @@ export type BungalowObjectStore = {
  * carried none, and the status. Never the URL, which carries the access key ID and a signature.
  */
 export class ObjectStoreRequestError extends Error {
+  /** Always `'ObjectStoreRequestError'`. */
   override readonly name = 'ObjectStoreRequestError';
   /** The store's error code, or `HTTP<status>`, or the code of a failure that produced no answer. */
   readonly code: string;

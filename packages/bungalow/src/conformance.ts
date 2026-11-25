@@ -60,7 +60,9 @@ async function runRules(subject: string, rules: readonly Rule[]): Promise<void> 
  * and `node:test` both provide them: pass `{ describe, test }` from either.
  */
 export type ConformanceRunner = {
+  /** Group the cases of one subject under `name`. */
   readonly describe: (name: string, body: () => void) => unknown;
+  /** Register one rule as a case. */
   readonly test: (name: string, body: () => Promise<void>) => unknown;
 };
 

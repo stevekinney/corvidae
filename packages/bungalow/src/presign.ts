@@ -35,7 +35,9 @@ export type SigV4PresignerOptions = {
   readonly endpoint: string;
   /** The signing region, such as `us-east-1` or `auto`. */
   readonly region: string;
+  /** The access key ID, which every URL carries in `X-Amz-Credential`. */
   readonly accessKeyId: string;
+  /** The secret access key, which signs and never appears in a URL. */
   readonly secretAccessKey: string;
   /** Signed into every URL as `X-Amz-Security-Token` when set; never read from the environment. */
   readonly sessionToken?: string | undefined;
