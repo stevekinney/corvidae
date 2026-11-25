@@ -260,25 +260,24 @@ export function findDestructiveActions(
 
 if (import.meta.main) {
   const modules = await loadCopyModules();
-  runCountGuard({
-    name: 'check-destructive-danger-variant',
-    advice:
-      'a destructive action does not look dangerous.\n' +
-      'A Button labelled Delete, Remove, Terminate, Destroy, Purge, Revoke, Drop or Wipe takes variant="danger" (or "ghost-danger" in a row or menu); an InlineConfirm or ConfirmDialog with such a confirmLabel takes `destructive`.',
-    passed: 'every resolvable destructive action is danger beyond the allowlist',
-    directories: SCANNED_DIRECTORIES,
-    extensions: new Set(['.svelte']),
-    exclude: /\.test-harness\.svelte$|\.test\.svelte$/,
-    allowlistPath: ALLOWLIST_PATH,
-    find: (source, relativePath) => findDestructiveActions(source, relativePath, modules),
-  })
-    .then(() => {
-      process.stdout.write(
-        `check-destructive-danger-variant - skipped ${skipped.count} label or variant the guard could not resolve.\n`,
-      );
-    })
-    .catch((error: unknown) => {
-      console.error('check-destructive-danger-variant failed:', error);
-      process.exitCode = 1;
+  try {
+    await runCountGuard({
+      name: 'check-destructive-danger-variant',
+      advice:
+        'a destructive action does not look dangerous.\n' +
+        'A Button labelled Delete, Remove, Terminate, Destroy, Purge, Revoke, Drop or Wipe takes variant="danger" (or "ghost-danger" in a row or menu); an InlineConfirm or ConfirmDialog with such a confirmLabel takes `destructive`.',
+      passed: 'every resolvable destructive action is danger beyond the allowlist',
+      directories: SCANNED_DIRECTORIES,
+      extensions: new Set(['.svelte']),
+      exclude: /\.test-harness\.svelte$|\.test\.svelte$/,
+      allowlistPath: ALLOWLIST_PATH,
+      find: (source, relativePath) => findDestructiveActions(source, relativePath, modules),
     });
+    process.stdout.write(
+      `check-destructive-danger-variant - skipped ${skipped.count} label or variant the guard could not resolve.\n`,
+    );
+  } catch (error: unknown) {
+    console.error('check-destructive-danger-variant failed:', error);
+    process.exitCode = 1;
+  }
 }
