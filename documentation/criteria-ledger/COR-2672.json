@@ -1,7 +1,7 @@
 {
   "issue": "COR-2672",
-  "branch": "steve/composable-velveteen-types",
-  "checkedAt": "9833156c5df1271f837e6d060f35cae727b367da",
+  "branch": "steve/composable-review-adoption",
+  "checkedAt": "ccc358caf25e6d9efb2c471299bd70b125078712",
   "briefVersion": "25a594efff26",
   "status": "READY",
   "criteria": [
@@ -13,7 +13,7 @@
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "Integrated listener candidate 28cc1abd1c passed typecheck:root (40/40 tasks) and scoped Interborough Turbo typecheck (34/34 tasks; both Svelte checks clean), exit 0. Logs: COR-2620 scratch root-typecheck-28cc.log and scoped-typecheck-28cc.log."
+      "evidence": "Combined candidate d49e206a10 passed clean declaration build, root typecheck and scoped Interborough Turbo typecheck (34/34 tasks, both Svelte checks clean). Corrected workspace contract passed 53 tests including negative source-check cases; final root typecheck passed at ccc358caf2. Logs in COR-2672 scratch."
     },
     {
       "id": "AC3",
