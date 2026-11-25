@@ -86,8 +86,10 @@ describe('createBureauHandler options', () => {
       });
       const denied = get('/v1/health', { cookie: 'session=valid' });
       const allowed = get('/v1/health', { cookie: 'session=valid', 'x-write-token': 'ok' });
-      expect((await handler(denied)).status).toBe(403);
-      expect((await handler(allowed)).status).toBe(200);
+      const deniedResponse = await handler(denied);
+      const allowedResponse = await handler(allowed);
+      expect(deniedResponse.status).toBe(403);
+      expect(allowedResponse.status).toBe(200);
       expect(seen).toEqual([denied, allowed]);
       expect(() =>
         createBureauHandler(bureau, {
