@@ -111,14 +111,18 @@ describe('the list placeholder is as tall as a two-line StackedListItem', () => 
     expect(stackedListItem).toMatch(
       /'leading title title time trailing'\s*'leading status line line trailing'/,
     );
-    // The status column is the real one.
+    // The shared row class keeps its default 8rem track when a consumer has not opted in to an
+    // override, so the placeholder and a default StackedListItem stay the same shape.
+    const defaultStatusTrack = 'var(--_cinder-status-width, 8rem)';
     expect(
       declared(
         stackedListItem,
         '.cinder-stacked-list-item--lines.cinder-stacked-list-item--status-column > .cinder-stacked-list-item__layout',
         '--_cinder-status-track',
       ),
-    ).toBe('calc(var(--_cinder-status-width, 8rem) + var(--cinder-space-3))');
+    ).toBe(
+      `calc(var(--cinder-stacked-list-item-status-track, ${defaultStatusTrack}) + var(--cinder-space-3))`,
+    );
   });
 
   test('the margin the page gives a loaded row is given to the placeholder row too', () => {
