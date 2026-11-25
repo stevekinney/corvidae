@@ -3198,10 +3198,10 @@
       "reason": "The guard wraps and forwards the original fetch for catalog and host traffic.",
       "expressions": [
         "armWriteGuard previousFetch(input, requestInit)",
-        "armWriteGuard sha256:57c739a5ea783af0ee4fb7202ec963210b4320d67117308c3ba889fd43a78731",
-        "armWriteGuard sha256:57c739a5ea783af0ee4fb7202ec963210b4320d67117308c3ba889fd43a78731",
-        "armWriteGuard sha256:57c739a5ea783af0ee4fb7202ec963210b4320d67117308c3ba889fd43a78731",
-        "armWriteGuard sha256:57c739a5ea783af0ee4fb7202ec963210b4320d67117308c3ba889fd43a78731"
+        "armWriteGuard sha256:bcc05274480290acbec995501b02b3ceecdadf7b417c01639aec0dda7f00c12c",
+        "armWriteGuard sha256:bcc05274480290acbec995501b02b3ceecdadf7b417c01639aec0dda7f00c12c",
+        "armWriteGuard sha256:bcc05274480290acbec995501b02b3ceecdadf7b417c01639aec0dda7f00c12c",
+        "armWriteGuard sha256:bcc05274480290acbec995501b02b3ceecdadf7b417c01639aec0dda7f00c12c"
       ]
     },
     {
@@ -3263,11 +3263,11 @@
     {
       "path": "app/shell/shell.svelte",
       "classification": "exceptional",
-      "transport": "GET /v1/health",
-      "owner": "Weft health",
-      "reason": "The shell probes the anonymous health endpoint.",
+      "transport": "GET /v1/health or /api/v1/principal",
+      "owner": "Interborough host and Weft health",
+      "reason": "The shell probes local engine health or the authenticated shared browser principal.",
       "expressions": [
-        "<module> fetch(`${initialClient.baseUrl}/v1/health`, { headers: initialClient.headers, cache: 'no-store', })"
+        "<module> fetch( sharedBrowser ? '/api/v1/principal' : `${initialClient.baseUrl}/v1/health`, { headers: initialClient.headers, cache: 'no-store', }, )"
       ]
     },
     {
@@ -3497,8 +3497,22 @@
       "reason": "The host resolves its authenticated workspace principal independently of the engine relay.",
       "expressions": [
         "resolveHostPrincipal fetcher('/api/v1/principal', { headers, cache: 'no-store' })",
-        "resolveHostPrincipal sha256:d57ca1a5412b9cb566e1055096c7e3e85c4604416b1118bf7d1ae9546f31a0b2",
-        "resolveHostPrincipal sha256:d57ca1a5412b9cb566e1055096c7e3e85c4604416b1118bf7d1ae9546f31a0b2"
+        "resolveHostPrincipal sha256:56a797ce4ddf5ff36f0edd1acbca8079f7122c8d6e0f49685895ccc78e9dba27",
+        "resolveHostPrincipal sha256:56a797ce4ddf5ff36f0edd1acbca8079f7122c8d6e0f49685895ccc78e9dba27"
+      ]
+    },
+    {
+      "path": "host/shared-browser-sign-in.ts",
+      "classification": "boundary",
+      "transport": "Shared-origin sign-in and private server fetch",
+      "owner": "Interborough host",
+      "reason": "The host forwards authenticated requests to the browser sign-in service and private server, and request-local internal fetches to the configured listener.",
+      "expressions": [
+        "handleFetch sha256:d0898ab4e3b58c6b6546660d62455155882719d18c98d061b58c8308bc17e76c",
+        "handleFetch next(request)",
+        "handleFetch fetch(target, { method: request.method, headers, redirect: 'manual', signal: event.signal, })",
+        "sharedBrowserRoutes shared.browser.fetch(shared.publicRequest(request))",
+        "sharedBrowserRoutes privateServer.fetch(shared.publicRequest(request))"
       ]
     },
     {
@@ -3826,6 +3840,7 @@
     "host/host.ts ./engine-proxy.ts { createLocalAuthentication, isEngineRequestPath, relayRequest, webSocketRelayData, }",
     "host/host.ts ./host-storage.ts { hostStorageReport, hostStorageSummary }",
     "host/host.ts ./instance-record.ts { instanceRecordPath, removeInstanceRecord, writeInstanceRecord, }",
+    "host/host.ts ./shared-browser-sign-in.ts { createSharedBrowserSignIn, sharedBrowserRoutes, sharedBrowserServerHooks, type SharedBrowserSignInOptions, }",
     "host/host.ts ./tool-source-manager.ts { createToolSourceManager, type ToolSourceManager }",
     "host/host.ts ./tool-source-routes.ts { toolSourceRoutes }",
     "host/host.ts @lostgradient/weft { serve, type AlertingOptions, type RegistryAgnosticEngine, type ServeOptions, type WeftServer, }",
@@ -4398,6 +4413,7 @@
     "routes/settings/general-settings.svelte ../../lib/host-paths.ts { getHostPaths }",
     "routes/settings/mcp/mcp-body.svelte ../../../lib/bureau-settings.ts type { SettingsSchema, SettingsSnapshot }",
     "routes/settings/mcp/mcp-body.svelte ../../../lib/client.ts { getClient }",
+    "routes/settings/mcp/mcp-body.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore }",
     "routes/settings/mcp/mcp-body.svelte ../../system/discovery-client.ts { discoveryOrigin }",
     "routes/settings/models/decisions-section.svelte ../../../lib/bureau-decisions.ts { decisionRowName, listDecisionModels, type DecisionModelRow, }",
     "routes/settings/models/decisions-section.svelte ../../../lib/bureau-settings.ts type { SchemaNode, SettingKeyState }",
@@ -4871,6 +4887,90 @@
     "views/workers-view.svelte ../routes/workers/index.svelte WorkersRoute"
   ],
   "hostRoutes": [
+    {
+      "route": "GET /auth/sign-in",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "GET /auth/callback",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "GET /auth/session",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "POST /auth/sign-out",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "POST /key-admin/jsonrpc",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "GET /settings/api-keys",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "GET /settings/connected-apps",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "GET /.well-known/oauth-authorization-server",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "GET /.well-known/oauth-protected-resource/bureau/mcp",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "POST /oauth/register",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "GET /oauth/authorize",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "POST /oauth/authorize",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "POST /oauth/token",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "POST /oauth/revoke",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
     {
       "route": "GET /api/v1/principal",
       "protocol": "HTTP",

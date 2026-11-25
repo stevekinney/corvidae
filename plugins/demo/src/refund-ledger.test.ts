@@ -5,6 +5,99 @@ import { createRefundLedger } from './refund-ledger.ts';
 import { createFakeProcessor, recoverRefund } from './refund-processor.ts';
 
 describe('refund admission', () => {
+  it('finds the committed refund and instruction after the admission acknowledgement is lost', async () => {
+    class LostAcknowledgementStorage extends MemoryStorage {
+      loseNext = false;
+      override async conditionalBatch(...args: Parameters<MemoryStorage['conditionalBatch']>) {
+        const committed = await super.conditionalBatch(...args);
+        if (committed && this.loseNext) {
+          this.loseNext = false;
+          throw new Error('Acknowledgement lost');
+        }
+        return committed;
+      }
+    }
+    const storage = new LostAcknowledgementStorage();
+    const ledger = createRefundLedger(storage);
+    await ledger.addCharge({
+      merchant: 'merchant',
+      order: 'order',
+      amount: 10000,
+      currency: 'USD',
+      paymentReference: 'charge',
+      providerAccount: 'account',
+    });
+    const request = {
+      merchant: 'merchant',
+      commandId: 'command',
+      order: 'order',
+      amount: 4000,
+      toolRevision: '1.1.0',
+      owner: 'alice',
+    };
+    storage.loseNext = true;
+    expect(await throwingRejectionOf(ledger.admit(request))).toThrow('Acknowledgement lost');
+    const successor = createRefundLedger(storage);
+    const refund = await successor.admit(request);
+    expect(await successor.pendingStarts()).toMatchObject([
+      { refundId: refund.id, status: 'pending' },
+    ]);
+    expect(await successor.balance('merchant', 'order')).toMatchObject({ reserved: 4000 });
+    storage.loseNext = true;
+    expect(await throwingRejectionOf(successor.claimStart(refund.id))).toThrow(
+      'Acknowledgement lost',
+    );
+    const abandoned = await successor.getStart(refund.id);
+    if (!abandoned) throw new Error('Missing claimed start');
+    const recovered = await createRefundLedger(storage).claimStart(refund.id);
+    expect(recovered).toMatchObject({
+      runId: abandoned.runId,
+      sessionId: abandoned.sessionId,
+      fence: abandoned.fence + 1,
+    });
+    expect(await successor.completeStart(refund.id, abandoned.fence)).toBe(false);
+    storage.loseNext = true;
+    expect(await throwingRejectionOf(successor.completeStart(refund.id, recovered.fence))).toThrow(
+      'Acknowledgement lost',
+    );
+    expect(await createRefundLedger(storage).completeStart(refund.id, recovered.fence)).toBe(true);
+  });
+  it('retains one start identity and fences a superseded worker', async () => {
+    const ledger = createRefundLedger(new MemoryStorage());
+    await ledger.addCharge({
+      merchant: 'merchant',
+      order: 'order',
+      amount: 10000,
+      currency: 'USD',
+      paymentReference: 'charge',
+      providerAccount: 'account',
+    });
+    const refund = await ledger.admit({
+      merchant: 'merchant',
+      commandId: 'command',
+      order: 'order',
+      amount: 4000,
+      toolRevision: '1.1.0',
+      owner: 'alice',
+    });
+    const first = await ledger.claimStart(refund.id);
+    expect(await ledger.get(refund.id)).toMatchObject({ existingRunId: first.runId });
+    const successor = await ledger.claimStart(refund.id);
+    expect(successor).toMatchObject({
+      runId: first.runId,
+      sessionId: first.sessionId,
+      fence: first.fence + 1,
+    });
+    expect(await ledger.completeStart(refund.id, first.fence)).toBe(false);
+    expect(await ledger.completeStart(refund.id, successor.fence)).toBe(true);
+    expect(await ledger.claimStart(refund.id)).toMatchObject({ ...successor, status: 'started' });
+    expect(await ledger.pendingStarts()).toEqual([]);
+    const reviewId = `approval:${successor.runId}:reviewed-call`;
+    expect(await ledger.linkReview(refund.id, successor.runId, reviewId)).toBe(true);
+    expect(await ledger.linkReview(refund.id, successor.runId, reviewId)).toBe(true);
+    expect(await ledger.get(refund.id)).toMatchObject({ reviewId });
+    expect(await ledger.linkReview(refund.id, 'other', 'approval:other:reviewed-call')).toBe(false);
+  });
   it('deduplicates commands and reserves balance atomically', async () => {
     const storage = new MemoryStorage();
     const ledger = createRefundLedger(storage);

@@ -93,7 +93,14 @@ export type AuthenticatedPrincipal = {
   /** Supplied by the host after credential verification, never by request metadata. */
   readonly workspace?: WorkspaceIdentity;
   /** How the principal authenticated. */
-  readonly method: 'jwt' | 'api-key' | 'mtls' | 'stdio-local' | 'unauthenticated-local';
+  readonly method:
+    | 'jwt'
+    | 'api-key'
+    | 'mtls'
+    | 'stdio-local'
+    | 'unauthenticated-local'
+    | 'browser-session'
+    | 'connector-token';
   /** The scopes the principal holds. */
   readonly scopes: ReadonlySet<AuthorizationScope>;
   /** The verified JWT claims, when the method is `jwt`. */

@@ -4,6 +4,12 @@
   "exclude": ["node_modules", "coverage"],
   "references": [
     {
+      "path": "../../packages/backchannel/tsconfig.source.json"
+    },
+    {
+      "path": "../../packages/storage-bun-sqlite/tsconfig.source.json"
+    },
+    {
       "path": "../../packages/interborough-plugin/tsconfig.source.json"
     },
     {

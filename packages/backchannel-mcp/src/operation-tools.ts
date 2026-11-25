@@ -33,6 +33,11 @@ import {
  * ```
  */
 export type OperationMcpMountOptions = {
+  /** Select tools visible to the current request's principal. */
+  readonly operationFilter?: (
+    operation: OperationHandlerMountOperation,
+    context: OperationHandlerMountContext,
+  ) => boolean;
   /** Return a Bearer challenge when the caller can grant a missing tool scope. */
   readonly scopeChallenge?: (
     operation: OperationHandlerMountOperation,
@@ -180,6 +185,7 @@ export function createOperationMcpMount(options: OperationMcpMountOptions): Oper
   const { name, title, version } = options.serverInfo;
   const serverInfo = { name, ...(title === undefined ? {} : { title }), version };
   const resources = validatedResources(options.resources ?? []);
+  const { operationFilter, scopeChallenge } = options;
   const toolMeta = options.toolMeta ?? {};
   const metaOf = (operationName: string) =>
     toolMetaOf(toolMeta, options.defaultToolMeta, operationName);
@@ -192,7 +198,8 @@ export function createOperationMcpMount(options: OperationMcpMountOptions): Oper
         resources,
         metaOf,
         options.oauth === true,
-        options.scopeChallenge,
+        scopeChallenge,
+        operationFilter,
       ),
     {
       legacy: 'stateless',
@@ -295,13 +302,18 @@ function buildServer(
   metaOf: (name: string) => { _meta?: Record<string, unknown> },
   oauth: boolean,
   scopeChallenge: OperationMcpMountOptions['scopeChallenge'],
+  operationFilter: OperationMcpMountOptions['operationFilter'],
 ): McpServer {
   const server = new McpServer(serverInfo, {
     capabilities: resources.length === 0 ? { tools: {} } : { tools: {}, resources: {} },
   });
   registerResources(server, context, resources);
   for (const operation of context.operations) {
-    if (!isMcpTool(operation)) continue;
+    if (
+      !isMcpTool(operation) ||
+      (operationFilter !== undefined && !operationFilter(operation, context))
+    )
+      continue;
     const outputSchema =
       operation.kind === 'subscription'
         ? undefined

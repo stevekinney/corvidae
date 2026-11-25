@@ -565,4 +565,6 @@ export interface PreparedWorkflowHandle<TResult = unknown> {
   readonly id: string;
   launch(): Promise<WorkflowHandle<TResult>>;
   abandon(): Promise<void>;
+  /** Relinquish a reserved pending start without changing its durable state. */
+  release(): Promise<void>;
 }

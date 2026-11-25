@@ -79,3 +79,8 @@ export {
   type PrepareWorkflowResult,
   type PreparedWorkflowContext,
 } from './lifecycle/prepare-and-launch.ts';
+export {
+  acquireReservedWorkflowClaim,
+  adoptPreparedWorkflow,
+  releasePreparedWorkflow,
+} from './lifecycle/prepared-adoption.ts';

@@ -714,6 +714,7 @@ export function createSteeringLog<D extends AgentDefinitions>(
     sessionId: string,
     incarnation: string,
     event: Exclude<SteeringLogEvent, { type: 'admit' | 'refused' }>,
+    allowExistingPromotion = false,
   ): Promise<void> {
     for (let attempt = 0; attempt < STEERING_APPEND_ATTEMPTS; attempt += 1) {
       const cursor = await catchUpSteering(kv, sessionId, incarnation);
@@ -721,6 +722,7 @@ export function createSteeringLog<D extends AgentDefinitions>(
       // log (a run's boundary outside its promotion, a version this gate
       // never issued) would leave the log unfoldable everywhere.
       if (event.type === 'promoted' && cursor.history.runs.has(event.runId)) {
+        if (allowExistingPromotion && cursor.history.runs.get(event.runId) === 'promoted') return;
         throw new BureauError(
           `Run "${event.runId}" is already in the steering log of session "${sessionId}"; a run is promoted once.`,
           'CONFLICT',

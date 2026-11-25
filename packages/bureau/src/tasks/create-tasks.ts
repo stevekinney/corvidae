@@ -32,6 +32,8 @@ import {
  * from, and the child topology `inspect` reports.
  */
 export type TasksDependencies = {
+  readonly reservedStartsSupported?: boolean;
+  readonly reserveStartClaim?: BureauTasks['reserveStartClaim'];
   /** {@link BureauTasks.start}. */
   readonly start: BureauTasks['start'];
   /** {@link BureauTasks.detail}. */
@@ -115,6 +117,12 @@ export function createTasks(dependencies: TasksDependencies): BureauTasks {
   const { registry } = dependencies;
   const responder = createTaskResponder({ ...dependencies.responder, registry });
   return {
+    reservedStartsSupported: dependencies.reservedStartsSupported === true,
+    reserveStartClaim:
+      dependencies.reserveStartClaim ??
+      (async () => {
+        throw new Error('Reserved starts are unavailable');
+      }),
     start: dependencies.start,
     detail: dependencies.detail,
     get: (id) => registry.get(id),

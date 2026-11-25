@@ -6,12 +6,14 @@ import type { HostAuthority } from './host-authority.ts';
 import type { HostSocketData } from './host-websocket.ts';
 
 /** The admissions that skip the workspace's authorize and release. */
-export type HostRouteAdmission = 'durable-oauth-callback' | 'trigger-receive';
+export type HostRouteAdmission =
+  'durable-oauth-callback' | 'trigger-receive' | 'interactive-key-management';
 
 /** The admission a route key declares, when it declares one. */
 const routeAdmissions: Readonly<Record<string, HostRouteAdmission>> = {
   'GET /host/oauth/callback/:id': 'durable-oauth-callback',
   'POST /triggers/:workflow': 'trigger-receive',
+  'POST /key-admin/jsonrpc': 'interactive-key-management',
 };
 
 /** A live registered route and its policy; delegated routes enumerate their own child catalog. */
@@ -39,6 +41,20 @@ export interface HostRouteInventoryEntry {
 }
 
 const routeClasses: Readonly<Record<string, WorkspaceOperationClass>> = {
+  'GET /auth/sign-in': 'public-discovery',
+  'GET /auth/callback': 'public-discovery',
+  'GET /auth/session': 'public-discovery',
+  'POST /auth/sign-out': 'public-discovery',
+  'POST /key-admin/jsonrpc': 'administrator-shared',
+  'GET /settings/api-keys': 'private-owned',
+  'GET /settings/connected-apps': 'private-owned',
+  'GET /.well-known/oauth-authorization-server': 'public-discovery',
+  'GET /.well-known/oauth-protected-resource/bureau/mcp': 'public-discovery',
+  'POST /oauth/register': 'public-discovery',
+  'GET /oauth/authorize': 'public-discovery',
+  'POST /oauth/authorize': 'public-discovery',
+  'POST /oauth/token': 'public-discovery',
+  'POST /oauth/revoke': 'public-discovery',
   'GET /api/v1/principal': 'private-owned',
   // Interborough's own API (COR-2019) answers as the local person, so it is a deployment operation:
   // a workspace member is refused before the handler, whose scopes are checked there too.
@@ -182,12 +198,11 @@ export function inventoryHostRoutes(
       throw new TypeError(`Unclassified host route ${path}`);
     for (const method of Object.keys(handlers)) {
       const key = `${method} ${path}`;
-      const resourceClass =
-        method === 'GET' && (path === '/assets/*' || shells.has(path))
+      const resourceClass = Object.hasOwn(routeClasses, key)
+        ? routeClasses[key]
+        : method === 'GET' && (path === '/assets/*' || shells.has(path))
           ? 'public-discovery'
-          : Object.hasOwn(routeClasses, key)
-            ? routeClasses[key]
-            : undefined;
+          : undefined;
       if (resourceClass === undefined) throw new TypeError(`Unclassified host route ${key}`);
       entries.push(
         Object.freeze({

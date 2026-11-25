@@ -1,5 +1,5 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import { isWeftErrorLike } from '@lostgradient/weft';
+import { isWeftErrorLike, WorkflowAlreadyExistsError } from '@lostgradient/weft';
 import type { AnyToolbox } from 'armorer';
 import { Conversation } from 'conversationalist';
 import type { GeneratedMediaAdmission } from '../generated-media';
@@ -40,6 +40,7 @@ export async function driveDurableRun(
   prompt: SessionInputPayload | undefined,
   onServices: ((services: DurableRunDeps) => void) | undefined,
   beforeLaunch: (() => Promise<void>) | undefined,
+  adoptReserved: boolean,
   reachability: { unreachable: boolean },
   // AB-339: true when `abort()` was called before this run's deferred
   // microtask even fired — captured, once, as a synchronous snapshot in
@@ -210,23 +211,26 @@ export async function driveDurableRun(
     // reference (e.g. `requestHumanInput`) can read it the moment `runStep`
     // executes, which is never before `launch()`.
     onServices?.(services);
-    prepared = await context.engine.prepare(
-      'agentRun',
-      {
-        runId,
-        sessionId,
-        // F2: thread agentName into the durable input so boot recovery can
-        // identify which agent ran this workflow without reading the session store.
-        agentName,
-        prompt,
-        maximumSteps: options.maximumSteps,
-      },
-      {
-        id: runId,
-        ...(tags !== undefined && tags.length > 0 ? { tags: [...tags] } : {}),
-        services,
-      },
-    );
+    const workflowInput = {
+      runId,
+      sessionId,
+      // F2: thread agentName into the durable input so boot recovery can
+      // identify which agent ran this workflow without reading the session store.
+      agentName,
+      prompt,
+      maximumSteps: options.maximumSteps,
+    };
+    const workflowOptions = {
+      id: runId,
+      ...(tags !== undefined && tags.length > 0 ? { tags: [...tags] } : {}),
+      services,
+    };
+    try {
+      prepared = await context.engine.prepare('agentRun', workflowInput, workflowOptions);
+    } catch (error) {
+      if (!adoptReserved || !(error instanceof WorkflowAlreadyExistsError)) throw error;
+      prepared = await context.engine.adoptPrepared('agentRun', workflowInput, workflowOptions);
+    }
   } catch (error) {
     rejectDurablyStarted(error);
     return errorResult(error);
@@ -235,7 +239,8 @@ export async function driveDurableRun(
     await beforeLaunch?.();
   } catch (error) {
     try {
-      await prepared.abandon();
+      if (adoptReserved) await prepared.release();
+      else await prepared.abandon();
     } catch {
       // The fence failure remains the outcome; recovery will classify a record the engine kept.
     }
@@ -263,7 +268,16 @@ export async function driveDurableRun(
     // rejecting abandon never replaces the lifecycle's error.
     try {
       await prepared.abandon();
-    } catch {
+    } catch (error) {
+      if (
+        adoptReserved &&
+        error instanceof Error &&
+        'code' in error &&
+        error.code === 'EngineDeposedError'
+      ) {
+        reachability.unreachable = true;
+        return makeInterruptedRunResult(conversation);
+      }
       // The record is left as Weft left it; the run's outcome is the lifecycle's error.
     }
     return errorResult(failed.error);
@@ -273,6 +287,15 @@ export async function driveDurableRun(
   try {
     handle = await prepared.launch();
   } catch (error) {
+    if (
+      adoptReserved &&
+      error instanceof Error &&
+      'code' in error &&
+      error.code === 'EngineDeposedError'
+    ) {
+      reachability.unreachable = true;
+      return makeInterruptedRunResult(conversation);
+    }
     // Read now: after the cancel below the record is `cancelled` either way, so
     // only the signal tells an abort that cancelled the prepared record (Weft
     // then refuses to launch it) from a launch that failed on its own. Weft marks

@@ -117,6 +117,7 @@ export class SessionEngineFixture extends Engine {
     if (start === undefined || id === undefined) return super.prepare(type, input, options);
     return Promise.resolve({
       id,
+      release: async () => {},
       launch: () =>
         start(type, input, { id, services: options?.services }).then((value) =>
           toWorkflowHandle(id, this, value),

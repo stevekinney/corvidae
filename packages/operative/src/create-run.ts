@@ -260,6 +260,7 @@ export function createActiveRun(
           : {}),
         ...(durable.onServices ? { onServices: durable.onServices } : {}),
         ...(durable.beforeLaunch ? { beforeLaunch: durable.beforeLaunch } : {}),
+        ...(durable.adoptReserved ? { adoptReserved: true } : {}),
       },
     );
   }
@@ -814,4 +815,6 @@ export interface DurableRunRouting extends DurableActiveRunContext {
    * hook or workflow execution begins. See `DurableActiveRunOptions.beforeLaunch`.
    */
   beforeLaunch?: (() => Promise<void>) | undefined;
+  /** The durable start may adopt its exact previously prepared reservation. */
+  adoptReserved?: boolean | undefined;
 }

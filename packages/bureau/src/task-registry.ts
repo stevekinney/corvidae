@@ -272,6 +272,7 @@ export interface TaskRecord {
   readonly incarnation: string;
   readonly agentName: string | null;
   readonly owner: string;
+  readonly reservationFence?: number | undefined;
   /**
    * The principal that started the work on the owner's behalf, when that is not the owner: a
    * schedule's fire is owned by the schedule's owner and started by the scheduler's service
@@ -419,6 +420,7 @@ export interface TaskAdmission {
   readonly incarnation: string;
   readonly agentName: string | null;
   readonly owner: string;
+  readonly reservationFence?: number | undefined;
   /** See {@link TaskRecord.actor}. */
   readonly actor?: string | undefined;
   /** See {@link TaskRecord.kind}. */
@@ -834,7 +836,7 @@ export interface TaskRegistry {
    */
   recordRetrying(taskId: string, retrying: TaskRetrying | null): Promise<boolean>;
   /** Removes a record whose task never started. */
-  discard(taskId: string): Promise<void>;
+  discard(taskId: string, reservationFence?: number): Promise<void>;
   /**
    * Binds a task to the session incarnation its run turned out to run in (COR-1482). A schedule's
    * fire is written before the session it runs in exists, and a fresh session gets its
@@ -1265,6 +1267,10 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     typeof value['incarnation'] === 'string' &&
     isStringOrNull(value['agentName']) &&
     typeof value['owner'] === 'string' &&
+    (value['reservationFence'] === undefined ||
+      (typeof value['reservationFence'] === 'number' &&
+        Number.isSafeInteger(value['reservationFence']) &&
+        value['reservationFence'] > 0)) &&
     (value['actor'] === undefined || typeof value['actor'] === 'string') &&
     (value['kind'] === undefined || value['kind'] === 'schedule-fire') &&
     (value['ownerProcess'] === undefined || typeof value['ownerProcess'] === 'string') &&
@@ -2193,6 +2199,9 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         incarnation: admission.incarnation,
         agentName: admission.agentName,
         owner: admission.owner,
+        ...(admission.reservationFence === undefined
+          ? {}
+          : { reservationFence: admission.reservationFence }),
         ...(admission.actor === undefined ? {} : { actor: admission.actor }),
         ...(admission.kind === undefined ? {} : { kind: admission.kind }),
         ...(admission.origin === undefined ? {} : { origin: admission.origin }),
@@ -2203,6 +2212,59 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       };
       const key = recordKey(admission.taskId);
       const indexKey = contextIndexKey(admission.contextId, admission.taskId);
+      if (admission.reservationFence !== undefined) {
+        for (let attempt = 0; attempt < MAX_UPDATE_ATTEMPTS; attempt += 1) {
+          const raw = await kv.get(key);
+          if (raw === null) {
+            if (
+              await kv.conditionalBatch(
+                [
+                  { key, expectedValue: null },
+                  { key: indexKey, expectedValue: null },
+                ],
+                [
+                  { type: 'set', key, value: JSON.stringify(record) },
+                  { type: 'set', key: indexKey, value: admission.taskId },
+                ],
+              )
+            )
+              return;
+            if ((await kv.get(key)) === null && (await kv.get(indexKey)) !== null)
+              throw new Error(`Reserved task index for "${admission.taskId}" has no record.`);
+            continue;
+          }
+          const existing = parseRecord(key, raw);
+          if (
+            existing.contextId !== admission.contextId ||
+            existing.incarnation !== admission.incarnation ||
+            existing.agentName !== admission.agentName ||
+            existing.owner !== admission.owner ||
+            JSON.stringify(existing.origin) !== JSON.stringify(admission.origin) ||
+            existing.history[0]?.text !== admission.message ||
+            existing.reservationFence === undefined ||
+            existing.reservationFence > admission.reservationFence
+          )
+            throw new Error(`Reserved task admission for "${admission.taskId}" was fenced off.`);
+          if (existing.reservationFence === admission.reservationFence) return;
+          if (
+            await kv.conditionalBatch(
+              [{ key, expectedValue: raw }],
+              [
+                {
+                  type: 'set',
+                  key,
+                  value: JSON.stringify({
+                    ...existing,
+                    reservationFence: admission.reservationFence,
+                  }),
+                },
+              ],
+            )
+          )
+            return;
+        }
+        throw new Error(`Could not atomically admit reserved task "${admission.taskId}".`);
+      }
       // Written once: a second admission of the same run id leaves the first.
       const admitted = await kv.conditionalBatch(
         [
@@ -2426,8 +2488,25 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       });
     },
 
-    async discard(taskId) {
-      await this.remove(taskId);
+    async discard(taskId, reservationFence) {
+      if (reservationFence === undefined) return this.remove(taskId);
+      const key = recordKey(taskId);
+      const raw = await kv.get(key);
+      if (raw === null) return;
+      const record = parseRecord(key, raw);
+      if (record.reservationFence !== reservationFence) return;
+      if (
+        await kv.conditionalBatch(
+          [{ key, expectedValue: raw }],
+          [
+            { type: 'delete', key },
+            { type: 'delete', key: contextIndexKey(record.contextId, taskId) },
+          ],
+        )
+      ) {
+        watchers.delete(taskId);
+        observed.delete(taskId);
+      }
     },
 
     async bindIncarnation(taskId, incarnation) {

@@ -13815,7 +13815,7 @@
       }
     },
     {
-      "description": "Report the caller's own resolved principal: the authentication method ('jwt', 'api-key', 'mtls', 'stdio-local', 'unauthenticated-local', or 'unauthenticated'), the normalized subject when one exists, and the granted authorization scopes, sorted. Public access: an unauthenticated caller receives method 'unauthenticated' with an empty scope list rather than an error, so clients can distinguish \"no credential\" from \"credential with few scopes\" without probing other operations. A server with no authentication reports 'unauthenticated-local' holding every scope. A workspace-aware host also reports its resolved workspace identity, stable actor, opaque owner, membership revision and capabilities. Never exposes server auth configuration.",
+      "description": "Report the caller's own resolved principal: the authentication method ('jwt', 'api-key', 'browser-session', 'connector-token', 'mtls', 'stdio-local', 'unauthenticated-local', or 'unauthenticated'), the normalized subject when one exists, and the granted authorization scopes, sorted. Public access: an unauthenticated caller receives method 'unauthenticated' with an empty scope list rather than an error, so clients can distinguish \"no credential\" from \"credential with few scopes\" without probing other operations. A server with no authentication reports 'unauthenticated-local' holding every scope. A workspace-aware host also reports its resolved workspace identity, stable actor, opaque owner, membership revision and capabilities. Never exposes server auth configuration.",
       "errors": [
         {
           "$ref": "#/components/errors/Unauthorized"
@@ -13843,6 +13843,8 @@
               "enum": [
                 "jwt",
                 "api-key",
+                "browser-session",
+                "connector-token",
                 "mtls",
                 "stdio-local",
                 "unauthenticated-local",

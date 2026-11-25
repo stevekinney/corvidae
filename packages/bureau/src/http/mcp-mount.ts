@@ -10,6 +10,10 @@ import { type OperationHandlerMount } from '@lostgradient/backchannel';
  * option mounts (COR-839).
  */
 export type BureauMcpOptions = {
+  /** Host policy applied to each MCP tool invocation. */
+  readonly scopeChallenge?: OperationMcpMountOptions['scopeChallenge'];
+  /** Limit tool discovery and invocation for the current request. */
+  readonly operationFilter?: OperationMcpMountOptions['operationFilter'];
   /** The path the adapter owns. Defaults to `/mcp`. */
   readonly pathPrefix?: string;
   /**
@@ -43,6 +47,8 @@ export function createBureauMcpMount(
   maxBodyBytes: number | undefined,
 ): OperationHandlerMount {
   return createOperationMcpMount({
+    ...(options.scopeChallenge === undefined ? {} : { scopeChallenge: options.scopeChallenge }),
+    ...(options.operationFilter === undefined ? {} : { operationFilter: options.operationFilter }),
     ...(options.pathPrefix === undefined ? {} : { pathPrefix: options.pathPrefix }),
     ...(maxBodyBytes === undefined ? {} : { maxBodyBytes }),
     ...(options.resources === undefined ? {} : { resources: options.resources }),

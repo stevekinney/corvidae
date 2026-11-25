@@ -15,6 +15,17 @@ function retainsWorkspaceAuthority(
   );
 }
 
+function retainsCredentialRevision(
+  method: Principal['method'],
+  original: WorkspaceIdentity,
+  current: WorkspaceIdentity,
+): boolean {
+  return (
+    (method !== 'browser-session' && method !== 'connector-token') ||
+    current.membershipRevision === original.membershipRevision
+  );
+}
+
 /** Recheck a workspace connection without allowing a credential to change its identity. */
 export function createWorkspaceRevalidation(
   authenticate: OperationHandlerAuthenticate | undefined,
@@ -42,6 +53,7 @@ export function createWorkspaceRevalidation(
         workspace !== undefined &&
         current.method === method &&
         current.subject === subject &&
+        retainsCredentialRevision(method, original, workspace) &&
         retainsWorkspaceAuthority(original, workspace) &&
         scopes.every((scope) => current.hasScope(scope))
       );
