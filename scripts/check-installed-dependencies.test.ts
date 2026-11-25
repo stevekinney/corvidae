@@ -125,7 +125,7 @@ describe('installed dependencies against bun.lock', () => {
     ]);
   });
 
-  test('ignores workspace links, tool folders, and packages bun.lock does not resolve', () => {
+  test('ignores workspace links and tool folders and reports packages removed from bun.lock', () => {
     const root = repository(['left-pad@1.0.0']);
     mkdirSync(join(root, 'packages', 'shared'), { recursive: true });
     mkdirSync(join(root, 'node_modules', '@lostgradient'), { recursive: true });
@@ -135,13 +135,21 @@ describe('installed dependencies against bun.lock', () => {
     );
     mkdirSync(join(root, 'node_modules', '.bin'), { recursive: true });
     link(root, '', 'left-pad', 'left-pad@1.0.0');
+    link(root, '', 'removed', 'removed@1.0.0');
     const lock = readLockfile(
       lockfile(
         { '': { '@lostgradient/shared': 'workspace:*' } },
         { '@lostgradient/shared': '@lostgradient/shared@workspace:packages/shared' },
       ),
     );
-    expect(staleInstalls(root, lock)).toEqual([]);
+    expect(staleInstalls(root, lock)).toEqual([
+      { workspace: '.', name: 'left-pad', problem: 'installed but absent from bun.lock' },
+      {
+        workspace: '.',
+        name: 'removed',
+        problem: 'linked to a store folder that no longer exists',
+      },
+    ]);
   });
 
   test("reads the repository's own lockfile", async () => {

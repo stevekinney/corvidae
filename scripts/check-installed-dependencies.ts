@@ -24,6 +24,7 @@ export type Lockfile = {
   /** Every version `bun.lock` resolves for each installed package name, across all workspaces. */
   readonly versions: ReadonlyMap<string, ReadonlySet<string>>;
   /** The registry dependencies each workspace declares, by workspace path. */
+  readonly unversioned: ReadonlySet<string>;
   readonly declared: ReadonlyMap<string, readonly string[]>;
 };
 
@@ -49,19 +50,13 @@ function installedName(key: string): string {
   return scope?.startsWith('@') ? `${scope}/${last}` : last;
 }
 
-/** Split `name@version` at the version's `@`, which follows any scope's leading `@`. */
-function splitResolution(resolution: string): { name: string; version: string } {
-  const at = resolution.lastIndexOf('@');
-  return { name: resolution.slice(0, at), version: resolution.slice(at + 1) };
-}
-
 /** Parse the parts of `bun.lock` this guard compares the install against. */
 export function readLockfile(text: string): Lockfile {
   const lock = Bun.JSONC.parse(text) as RawLockfile;
   const versions = new Map<string, Set<string>>();
   const local = new Set<string>();
   for (const [key, [resolution]] of Object.entries(lock.packages ?? {})) {
-    const { version } = splitResolution(resolution);
+    const version = resolution.slice(resolution.lastIndexOf('@') + 1);
     const name = installedName(key);
     // Workspace, link, file and git resolutions have no registry version to compare.
     if (version.includes(':')) {
@@ -80,7 +75,7 @@ export function readLockfile(text: string): Lockfile {
       names.filter((name) => versions.has(name) && !local.has(name)),
     );
   }
-  return { workspaces: Object.keys(lock.workspaces ?? {}), versions, declared };
+  return { workspaces: Object.keys(lock.workspaces ?? {}), versions, unversioned: local, declared };
 }
 
 /** The package names linked directly in one `node_modules`, with scoped packages as `@scope/name`. */
@@ -120,13 +115,17 @@ export function staleInstalls(root: string, lock: Lockfile): StaleInstall[] {
       const path = join(modules, name);
       if (!lstatSync(path).isSymbolicLink() || !readlinkSync(path).includes('.bun')) continue;
       const locked = lock.versions.get(name);
-      if (!locked) continue;
       if (!existsSync(path)) {
         found.push({
           workspace: label,
           name,
           problem: 'linked to a store folder that no longer exists',
         });
+        continue;
+      }
+      if (locked === undefined) {
+        if (!lock.unversioned.has(name))
+          found.push({ workspace: label, name, problem: 'installed but absent from bun.lock' });
         continue;
       }
       const version = installedVersion(path);
