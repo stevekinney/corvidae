@@ -1,14 +1,14 @@
 {
   "issue": "COR-2427",
   "branch": "codex/cor-2427-agent-pages",
-  "checkedAt": "22f1c07265f990beb0dc94857154a5074e92cc42",
+  "checkedAt": "bf8bc4a0dd51cabadebd02064ba9536eea254112",
   "briefVersion": "1a8364945e88",
-  "status": "READY",
+  "status": "BLOCKED",
   "criteria": [
     {
       "id": "AC1",
-      "status": "met-on-branch",
-      "evidence": "The prior exact 320px and 375px Access browser witness passed; the shared Cinder mixed-control regression now covers the full-width field and the browser fixture additionally names 417px and 639px for coordinator-hosted proof."
+      "status": "needs-decision",
+      "evidence": "Hosted targeted run 45569801264 was green for Access, Capabilities and Table fixtures, but the latest shared-Cinder correction needs the coordinator's allowed formal recheck at 320px, 375px, 417px and 639px."
     },
     {
       "id": "AC2",
@@ -16,12 +16,13 @@
     },
     {
       "id": "AC3",
-      "status": "met-on-branch",
-      "evidence": "The showcase Hooks witness asserts the human-facing Tool runner heading and breadcrumb; the unrelated Duplicate affordance remains covered by its dedicated specs."
+      "status": "needs-decision",
+      "evidence": "The title and breadcrumb assertions remain after the unrelated Duplicate assertion was removed; the narrow hosted title capture 45571163817 is running and must be formally reviewed after the latest correction."
     },
     {
       "id": "AC4",
-      "status": "met-on-branch"
+      "status": "needs-decision",
+      "evidence": "The real agent-scope hook wording remains pending the tool-scope decision; the truthful generic wording is retained."
     },
     {
       "id": "AC5",
@@ -29,8 +30,8 @@
     },
     {
       "id": "AC6",
-      "status": "met-on-branch",
-      "evidence": "The retained Hooks fixture reads successfully at 10:44 AM and fails at the fixed 10:46 AM state."
+      "status": "needs-decision",
+      "evidence": "The retained Hooks fixture reads at 10:44 AM and fails at 10:46 AM, but the latest correction awaits the coordinator's allowed formal recheck."
     },
     {
       "id": "AC7",
@@ -42,7 +43,8 @@
     },
     {
       "id": "AC9",
-      "status": "met-on-main"
+      "status": "not-met",
+      "evidence": "The latest independent reviewer records a version-note and full-fixture difference."
     },
     {
       "id": "AC10",
@@ -55,8 +57,8 @@
     },
     {
       "id": "AC12",
-      "status": "met-on-branch",
-      "evidence": "The 800px closed-state fixture waits for the ready header and Try it trigger before capture; the right-sheet browser witness passed."
+      "status": "needs-decision",
+      "evidence": "The 800px closed-state fixture waits for the ready header and Try it trigger, and prior right-sheet browser evidence passed; the latest correction awaits the coordinator's allowed formal recheck."
     },
     {
       "id": "AC13",
