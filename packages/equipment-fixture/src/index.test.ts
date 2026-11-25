@@ -43,13 +43,11 @@ test.each([
       }),
     ),
   );
-  const request = (url: string, init?: RequestInit) =>
-    fixture.oauth.handle(
-      new Request(`https://equipment.test${url}`, {
-        ...init,
-        headers: { cookie: `equipment_session=${credential}`, ...init?.headers },
-      }),
-    );
+  const request = (url: string, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    headers.set('cookie', `equipment_session=${credential}`);
+    return fixture.oauth.handle(new Request(`https://equipment.test${url}`, { ...init, headers }));
+  };
   const registration = await request('/oauth/register', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
