@@ -33,6 +33,7 @@ import {
   rpc,
 } from './http/management/management-fixtures.test-support.ts';
 import type { PluginListing } from './plugins/plugin-types.ts';
+import type { TaskAttentionRun } from './task-registry.ts';
 
 /** Mon Nov 2 2026 in Central time (CST, UTC−6), at hour:minute. */
 function today(hour: number, minute: number): number {
@@ -389,6 +390,148 @@ describe('what needs attention', () => {
       area: 'providers',
       at: null,
       provider: null,
+    });
+  });
+
+  describe('runs (COR-2526, COR-2527)', () => {
+    const STALLED_AT = today(10, 30);
+    const LOOPING_AT = today(10, 20);
+    const OVERSPENT_AT = today(10, 40);
+
+    function runFixture(
+      overrides: Partial<TaskAttentionRun> & Pick<TaskAttentionRun, 'taskId'>,
+    ): TaskAttentionRun {
+      return {
+        agentName: 'helper',
+        status: 'working',
+        attention: [],
+        stalledSince: null,
+        loopingSince: null,
+        overspending: null,
+        costUsd: null,
+        settledAt: null,
+        ...overrides,
+      };
+    }
+
+    const stalledRun = runFixture({
+      taskId: 'run-stalled',
+      attention: ['stalled'],
+      stalledSince: new Date(STALLED_AT).toISOString(),
+    });
+    const loopingRun = runFixture({
+      taskId: 'run-looping',
+      agentName: null,
+      attention: ['looping'],
+      loopingSince: new Date(LOOPING_AT).toISOString(),
+    });
+    const overspendingRun = runFixture({
+      taskId: 'run-overspending',
+      attention: ['overspending'],
+      overspending: { since: new Date(OVERSPENT_AT).toISOString(), thresholdUsd: 2 },
+      costUsd: 3.5,
+    });
+
+    const runsOf = (...runs: TaskAttentionRun[]) =>
+      sampleWorld({ runs: () => Promise.resolve(runs) });
+
+    it('AC5: lists a stalled, a looping and an overspending run, each naming its run, under the runs check', async () => {
+      const attention = await readAttention(runsOf(stalledRun, loopingRun, overspendingRun));
+      const runItems = attention.items.filter(
+        (item) => item.area === 'runs' && item.kind !== 'alert',
+      );
+
+      expect(runItems).toEqual([
+        {
+          kind: 'run-overspending',
+          area: 'runs',
+          at: OVERSPENT_AT,
+          runId: 'run-overspending',
+          agentName: 'helper',
+          costUsd: 3.5,
+          thresholdUsd: 2,
+          settledAt: null,
+        },
+        {
+          kind: 'run-stalled',
+          area: 'runs',
+          at: STALLED_AT,
+          runId: 'run-stalled',
+          agentName: 'helper',
+        },
+        {
+          kind: 'run-looping',
+          area: 'runs',
+          at: LOOPING_AT,
+          runId: 'run-looping',
+          agentName: null,
+        },
+      ]);
+      // The checks count the same list: the three runs and the storage alert's `storage` are apart.
+      expect(attention.checks).toContainEqual({ area: 'runs', count: 3 });
+      expect(attention.count).toBe(attention.items.length);
+    });
+
+    it('AC6: lists an overspending run for seven days after it settles, and not after', async () => {
+      const settledAt = new Date(NOW - 6 * DAY).toISOString();
+      const settled = runFixture({
+        ...overspendingRun,
+        status: 'completed',
+        settledAt,
+      });
+      const within = await readAttention(runsOf(settled));
+      expect(within.items.filter((item) => item.kind === 'run-overspending')).toHaveLength(1);
+
+      const past = await readAttention({ ...runsOf(settled), now: () => NOW + 2 * DAY });
+      expect(past.items.filter((item) => item.kind === 'run-overspending')).toEqual([]);
+
+      // A run that is still running is listed however long ago it crossed.
+      const lateRunning = await readAttention({
+        ...runsOf(overspendingRun),
+        now: () => NOW + 20 * DAY,
+      });
+      expect(lateRunning.items.filter((item) => item.kind === 'run-overspending')).toHaveLength(1);
+    });
+
+    it('lists a run that is both stalled and over the threshold once for each reason', async () => {
+      const both = runFixture({
+        ...overspendingRun,
+        taskId: 'run-both',
+        attention: ['stalled', 'overspending'],
+        stalledSince: new Date(STALLED_AT).toISOString(),
+      });
+      const attention = await readAttention(runsOf(both));
+
+      expect(
+        attention.items
+          .filter((item) => 'runId' in item && item.runId === 'run-both')
+          .map((item) => item.kind),
+      ).toEqual(['run-overspending', 'run-stalled']);
+    });
+
+    it('is served over the wire, each kind with its run', async () => {
+      const report = await readAttention(runsOf(stalledRun, loopingRun, overspendingRun));
+      const opened = await openBureau({
+        bureauOptions: { attention: async () => report.items },
+      });
+      try {
+        const body = await rpc(
+          opened.handler,
+          'bureau.health.attention',
+          {},
+          'diagnostics-reader-key',
+        );
+        const items = (body.result?.['items'] ?? []) as Array<{ kind: string; runId?: string }>;
+        expect(
+          items.filter((item) => item.runId !== undefined).map((item) => [item.kind, item.runId]),
+        ).toEqual([
+          ['run-overspending', 'run-overspending'],
+          ['run-stalled', 'run-stalled'],
+          ['run-looping', 'run-looping'],
+        ]);
+      } finally {
+        await opened.dispose();
+      }
     });
   });
 });

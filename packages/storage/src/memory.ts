@@ -48,6 +48,7 @@ export class MemoryStorage implements Storage {
       scanConsistency: 'snapshot',
       atomicBatch: true,
       conditionalBatch: true,
+      conditionalBatchDeadline: true,
       boundedRangeDelete: true,
     };
   }
@@ -118,6 +119,7 @@ export class MemoryStorage implements Storage {
   async conditionalBatch(
     conditions: ConditionalBatchCondition[],
     operations: BatchOperation[],
+    deadline?: number,
   ): Promise<boolean> {
     assertStorageBatchOperationCount('conditionalBatch conditions', conditions.length);
     assertStorageBatchOperationCount('conditionalBatch operations', operations.length);
@@ -129,6 +131,7 @@ export class MemoryStorage implements Storage {
       }
     }
 
+    if (deadline !== undefined && Date.now() >= deadline) return false;
     this.#applyBatchOperations(operations);
     return true;
   }

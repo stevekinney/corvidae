@@ -23,7 +23,7 @@ import {
 } from '../../fixtures/engine-console-ids.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { jsonEditor } from './json-editor-support.ts';
-import { openHowItRan } from './workflow-support.ts';
+import { openHowItRan, openSendUpdate } from './workflow-support.ts';
 
 function attributes(page: Page): Locator {
   return page.getByRole('region', { name: 'Search attributes' });
@@ -137,11 +137,32 @@ test('operator reads a run’s update history, then sends an update that outlast
   page,
   checkA11y,
 }) => {
+  let releaseTimeline!: () => void;
+  const timelineHeld = new Promise<void>((resolve) => {
+    releaseTimeline = resolve;
+  });
+  await page.route('**/host/plugins/inspectors/apps/run-timeline/tool-calls', async (route) => {
+    await timelineHeld;
+    await route.continue();
+  });
   await page.goto(`/runs/${UPDATE_DESK_RUN_ID}`);
   // Change or ask this run is in How it ran's Inspector tab (COR-2424, row 54i).
   await openHowItRan(page);
   await page.getByRole('tab', { name: 'Inspector' }).click();
-  await page.getByRole('button', { name: 'Send an update' }).click();
+  const timeline = page.frameLocator('iframe[title="Run timeline"]');
+  try {
+    await expect(timeline.getByText('Loading the timeline')).toBeVisible();
+    const trigger = await openSendUpdate(page.locator('[data-section="change"]'));
+    await trigger.press('Enter');
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  } finally {
+    releaseTimeline();
+  }
+  await expect(timeline.getByText('Loading the timeline')).toBeHidden();
+  await expect(
+    timeline.locator('[data-state="unreadable"], [data-state="offline"], main'),
+  ).toBeVisible();
+  await openSendUpdate(page.locator('[data-section="change"]'));
 
   // Both were sent when the fixture was seeded, before this page loaded. A stored answer is swept five
   // minutes after it is made, and a long browser run can reach this spec after that, so what the row

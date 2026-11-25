@@ -1,0 +1,44 @@
+{
+  "issue": "COR-2608",
+  "branch": "steve/composable-consent-api-settings",
+  "checkedAt": "4a1c2e9effc3504b3ea094f8e466d1c36953efcb",
+  "briefVersion": "6818a4af680c",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Bureau catalog snapshot and Backchannel behavior-validation tests passed; generator parity 4/4."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Mounted Reviews JSON-RPC/MCP and AG-UI policy tests passed; real demo remembered-grant test passed with no second processor submission."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Reviews operation tests 43/43, real-demo plugin tests 27/27; public effect allowlist, deny/reject/supersession, round and reviewer provenance exercised."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Mounted JSON-RPC/MCP post-commit warning tests 2/2; mounted lost-reply and stale-refusal tests 2/2 with fresh reread."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "The mounted paired transport tests and durable two-instance authorized race passed. Producer, client and MCP wire parity passed eleven tests with four snapshots."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "At 1920px the approval and native human question share a bounded 48rem column and at least 16px trailing space, including with a constrained 600px pane. Both Chromium themes passed. The Reviews design adjudication preserves the prior reviewer findings and the corrected row."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "At 320px Chromium verifies zero overlap at rest, scrolling to the full summary and reachability of every decision action. Both themes passed. Forty exact-source captures cover the inbox, approval, applied warning and stale-round cases."
+    }
+  ]
+}

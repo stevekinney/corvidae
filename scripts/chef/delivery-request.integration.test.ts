@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import type { CiEvidenceProvider, CiEvidenceRequest, CiEvidenceRun } from './ci-evidence.ts';
-import { branchRunner } from './deliver.test-support.ts';
+import { branchRunner, MERGE_TREE } from './deliver.test-support.ts';
 import {
   batchVerificationPlanDigest,
   readDeliveryRequest,
@@ -1131,7 +1131,9 @@ scenarios.describe('check', () => {
           }),
         ),
       );
-      expect(moved).toContain('verification request has a stale base');
+      // The request's base is not an ancestor of this main, so the moved base is refused.
+      expect(moved.join('\n')).toContain('verification request has a stale base');
+      expect(moved.join('\n')).toContain('is not an ancestor of main');
 
       const elsewhere = await check(
         { ...base, digest: result.digest, head: 'b'.repeat(40) },
@@ -1150,6 +1152,51 @@ scenarios.describe('check', () => {
       expect(wrong[0]).toContain('does not load');
     },
   );
+
+  // Owner decision, 2026-11-21: a moved base never needs a new evidence run. When the head merges
+  // into the new base without a conflict, `check` proceeds, as `deliver.ts` does; a conflict is the
+  // refusal, with its paths.
+  scenarios.scenario(
+    'accepts a moved base the head merges into cleanly, and names a conflict',
+    async () => {
+      const setup = await harness();
+      const result = await setup.prepared();
+      const base = { file: result.file, stateDirectory: setup.state.stateDirectory };
+      const newBase = 'd'.repeat(40);
+      const movedMain = {
+        'rev-parse refs/remotes/origin/main^{commit}': reply(`${newBase}\n`),
+        [`merge-tree --write-tree ${newBase} ${HEAD}`]: reply(`${TREE}\n`),
+        [`merge-base --is-ancestor ${BASE} ${newBase}`]: reply(),
+        [`${MERGE_TREE} ${BASE} ${HEAD}`]: reply(`${TREE}\0`),
+      };
+      const accepted = await check(
+        { ...base, digest: result.digest },
+        checkDependencies(
+          setup,
+          setup.dispatched[0] ?? [],
+          answers({
+            ...movedMain,
+            [`${MERGE_TREE} ${newBase} ${HEAD}`]: reply(`${TREE}\0`),
+            [`rev-list --reverse ${BASE}..${newBase}`]: reply(`${newBase}\n`),
+          }),
+        ),
+      );
+      expect(accepted).toEqual([]);
+
+      const conflicted = await check(
+        { ...base, digest: result.digest },
+        checkDependencies(
+          setup,
+          setup.dispatched[0] ?? [],
+          answers({
+            ...movedMain,
+            [`${MERGE_TREE} ${newBase} ${HEAD}`]: reply(`${TREE}\0a.ts\0`, 1),
+          }),
+        ),
+      );
+      expect(conflicted.join('\n')).toContain('conflicts with main at a.ts');
+    },
+  );
 });
 
 scenarios.describe('the real branch merge', () => {
@@ -1157,11 +1204,6 @@ scenarios.describe('the real branch merge', () => {
   async function landPrepared(bound: boolean) {
     const setup = await harness({}, {}, answers(), bound ? 'state-bound' : 'state-unbound');
     const result = await setup.prepared();
-    // The landing queue reads the worktree's workspaces from its manifest.
-    writeFileSync(
-      join(setup.options.worktree, 'package.json'),
-      JSON.stringify({ name: 'widgets', workspaces: [] }),
-    );
     const configPath = join(sandbox, 'repository.json');
     writeFileSync(
       configPath,
@@ -1180,13 +1222,8 @@ scenarios.describe('the real branch merge', () => {
       ? providerFor(setup.dispatched[0] ?? [])
       : { findRuns: async () => [] };
     {
-      const world = branchRunner(sandbox, {
-        [`diff -z --name-only --diff-filter=d ${BASE}...${HEAD}`]: reply('a.ts\0'),
-        // main has not moved since the head's merge base: the landing queue has nothing to classify.
-        [`rev-parse --verify ${HEAD}^{commit}`]: reply(`${HEAD}\n`),
-        [`rev-parse --verify ${BASE}^{commit}`]: reply(`${BASE}\n`),
-        [`rev-list --reverse ${BASE}..${BASE}`]: reply(''),
-      });
+      // `main` has not moved since the request's base, so the moved-base check is not asked.
+      const world = branchRunner(sandbox);
       writeFileSync(world.messageFile, 'COR-1: Add widgets\n');
       return directMerge(
         {
@@ -1205,7 +1242,6 @@ scenarios.describe('the real branch merge', () => {
         {
           runner: world.runner,
           guards: () => ({ ok: true, failures: [] }),
-          evidencePlan: setup.dependencies.plan,
           verification: { state: setup.state, transport: transportFor(), ciProvider: provider },
         },
       );

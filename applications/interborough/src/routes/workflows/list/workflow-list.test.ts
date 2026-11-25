@@ -240,6 +240,29 @@ describe('WorkflowList', () => {
     expect(router.pathname).toBe('/health/runs');
   });
 
+  test('an address carrying Failed at step and Retrying sends both to Weft’s list, opens the builder on them, and counts them (COR-2535)', async () => {
+    resetLocation('/health/runs?status=failed&failed_step=charge-card&retrying=false');
+    fetchScript.routeUrl('/workflows', {
+      items: [summary({ id: 'wf_charge_failed', type: 'order-processing', status: 'failed' })],
+      total: 1,
+      offset: 0,
+      limit: 50,
+    });
+
+    const { findAllByText, getByDisplayValue, getByRole } = render(WorkflowListHarness, {
+      props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
+    });
+
+    expect(await findAllByText('order-processing')).not.toHaveLength(0);
+    const requestUrl = new URL(fetchScript.calls.at(-1)!.url);
+    expect(requestUrl.searchParams.get('failed_step')).toBe('charge-card');
+    expect(requestUrl.searchParams.get('retrying')).toBe('false');
+    expect(requestUrl.searchParams.get('status')).toBe('failed');
+    // The builder opens on the two conditions, and its toggle counts them.
+    expect(getByDisplayValue('charge-card')).not.toBeNull();
+    expect(getByRole('button', { name: /Search attributes\s*2/ })).not.toBeNull();
+  });
+
   test('shows the "no workflows yet" empty state when the list is empty and no filter is active', async () => {
     fetchScript.routeUrl('/workflows', { items: [], total: 0, offset: 0, limit: 50 });
 
@@ -269,6 +292,6 @@ describe('WorkflowList', () => {
       props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
     });
 
-    expect(await findByText('Something went wrong')).not.toBeNull();
+    expect(await findByText('Couldn’t load workflows')).not.toBeNull();
   });
 });

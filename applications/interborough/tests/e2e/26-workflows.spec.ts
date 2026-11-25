@@ -17,9 +17,11 @@ import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
 import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { describeCadence } from '../../src/routes/schedules/cadence.ts';
 import { bureau } from './agent-support.ts';
+import { connectProvider } from './chat-states-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
-import { expect, test } from './fixtures.ts';
+import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { refuseMethod } from './goal-check-support.ts';
 import { jsonEditor, jsonEditorSource, replaceJsonEditorText } from './json-editor-support.ts';
 import {
   APPROVAL_SIGNAL,
@@ -148,7 +150,56 @@ test.describe('the list', () => {
     await expect(row(page, 'e2e-listed')).toHaveCount(0);
   });
 
-  test('counts a file’s instances: running, and begun in the last day', async ({
+  test('searches workflow titles and identifiers from the narrow Filter menu, then clears a no-match filter', async ({
+    page,
+    request,
+    checkA11y,
+  }) => {
+    await makeWorkflow(request, 'e2e-searchable-workflow', {
+      title: 'Daily search report',
+      steps: STEPS,
+    });
+    await page.setViewportSize({ width: 375, height: 900 });
+    await page.goto('/workflows');
+
+    const filter = page.getByRole('button', { name: 'Filter', exact: true });
+    await filter.click();
+    const menu = page.locator('.cinder-filter-bar__menu');
+    await menu.getByRole('button', { name: 'Search' }).click();
+    const search = menu.getByRole('searchbox', { name: WORKFLOW_COPY.list.searchLabel });
+
+    await search.fill('DAILY');
+    await expect(row(page, 'e2e-searchable-workflow')).toBeVisible();
+    await expect(row(page, 'inventory-sync-sweep')).toHaveCount(0);
+
+    await search.fill('INVENTORY-SYNC-SWEEP');
+    await expect(row(page, 'inventory-sync-sweep')).toBeVisible();
+    await expect(row(page, 'e2e-searchable-workflow')).toHaveCount(0);
+
+    await search.fill('no matching workflow');
+    await expect(
+      page.getByRole('heading', { level: 2, name: WORKFLOW_COPY.list.noMatch.title }),
+    ).toBeVisible();
+    const filterDialog = page.getByRole('dialog', { name: 'Filter' });
+    await filterDialog.getByRole('button', { name: 'Close drawer' }).click();
+    await expect(filterDialog).toBeHidden();
+    await expect(filter).toBeFocused();
+
+    await page.getByRole('button', { name: WORKFLOW_COPY.list.clearAction }).click();
+    await expect(row(page, 'e2e-searchable-workflow')).toBeVisible();
+    await expect(filter).toBeFocused();
+    await filter.click();
+    const reopenedMenu = page.locator('.cinder-filter-bar__menu');
+    const reopenedSearch = reopenedMenu.getByRole('button', { name: 'Search' });
+    if ((await reopenedSearch.getAttribute('aria-expanded')) !== 'true')
+      await reopenedSearch.click();
+    await expect(
+      reopenedMenu.getByRole('searchbox', { name: WORKFLOW_COPY.list.searchLabel }),
+    ).toHaveValue('');
+    await checkA11y('workflow search at 375px');
+  });
+
+  test('counts a file’s instances and names the run waiting for a signal', async ({
     page,
     request,
   }) => {
@@ -158,12 +209,30 @@ test.describe('the list', () => {
     });
     await bureau(request, 'bureau.workflows.signal', { name: 'e2e-counted-go' });
     try {
+      // Starting records the run before its await-signal step has registered. Read the list's own
+      // durable projection until that registration is visible, so this test asserts Waiting only
+      // after the run is actually parked on the signal it names.
+      await expect
+        .poll(async () => {
+          const listed = await bureau(request, 'bureau.workflows.list', { includeRuns: true });
+          expect(listed.fault, 'listing e2e-counted after its start signal').toBeUndefined();
+          const workflow = (
+            listed.result as {
+              workflows: Array<{
+                id: string;
+                runs?: { current: { waitingForSignal: string | null } | null } | null;
+              }>;
+            }
+          ).workflows.find((entry) => entry.id === 'e2e-counted');
+          return workflow?.runs?.current?.waitingForSignal;
+        })
+        .toBe('e2e-counted-wait');
       await page.goto('/workflows');
       const counted = row(page, 'e2e-counted');
-      await expect(counted.getByTestId('workflow-run-counts')).toHaveText('1 run in 24 hours');
-      // A run is going, so the right edge says when it began and line two leads with Running.
+      await expect(counted.getByTestId('workflow-run-counts')).toHaveText('1 run');
+      // A run is underway, so the right edge says when it began and line two names the wait.
       await expect(counted.getByTestId('workflow-last-run')).toContainText('Started');
-      await expect(counted).toContainText(WORKFLOW_COPY.list.runningNow);
+      await expect(counted).toContainText(WORKFLOW_COPY.list.waiting);
       // The captioned frame of a run in progress (rows 61j and 61k): the status column stays empty.
       await expect(counted).not.toHaveAttribute('data-status', /.+/);
       await captureForDesignReview(page, {
@@ -256,25 +325,29 @@ test.describe('the list', () => {
           }
           await route.fulfill({ response, json });
         });
+        // This is the connected-provider first-use state: Ask an agent is an enabled secondary
+        // action, not an absent action or the disabled no-provider state.
+        await connectProvider(page);
         await page.goto('/workflows');
         await expect(area(page)).toHaveAttribute('data-state', 'ready');
         const empty = area(page).getByTestId('workflows-empty');
         await expect(empty).toContainText(WORKFLOW_COPY.list.empty.title);
-        // The header and state each offer a way to internal workflows alongside New workflow.
+        // The header carries the internal-workflows affordance; first use has the two semantic
+        // ListPageEmpty link actions, New workflow and the connected Ask action.
         await expect(
           page.getByRole('link', { name: WORKFLOW_COPY.newAction }).first(),
         ).toBeVisible();
+        await expect(empty.getByRole('link', { name: WORKFLOW_COPY.newAction })).toBeVisible();
         await expect(
           empty.getByRole('link', { name: WORKFLOW_COPY.list.empty.askAction }),
-        ).toHaveCount(0);
-        await expect(
-          empty.getByRole('link', { name: WORKFLOW_COPY.list.empty.internalAction }),
-        ).toHaveAttribute('href', '/internal-workflows');
+        ).toHaveAttribute('href', '/chats/new?from=workflows');
         await expect(area(page).getByTestId('internal-workflows-action')).toBeVisible();
         const directory = await workflowDirectory(request);
         await expect(empty).not.toContainText(directory);
-        await empty.getByRole('button', { name: WORKFLOW_COPY.list.empty.files.label }).click();
-        await expect(area(page).getByTestId('file-location-directory')).toContainText(directory);
+        await expect(empty.getByRole('link')).toHaveCount(2);
+        await expect(empty.getByTestId('workflows-file-hint')).toHaveText(
+          WORKFLOW_COPY.list.empty.fileHint,
+        );
         // First use is the page: no filter row.
         await expect(page.getByRole('radio')).toHaveCount(0);
         for (const name of ENGINE_TYPES) await expect(row(page, name)).toHaveCount(0);
@@ -502,18 +575,23 @@ test.describe('an agent-authored type', () => {
         WORKFLOW_COPY.page.runs.emptyTitle,
       );
 
-      // History holds the versions that ran: none has, and the page does not offer to activate one.
+      // The initial saved version is recorded even before the workflow's first run.
       await expect(root.getByTestId('workflow-revisions')).toHaveCount(0);
       await openTab(root, WORKFLOW_COPY.page.tabs.history);
-      await expect(root.getByTestId('workflow-revisions')).toContainText(
-        WORKFLOW_COPY.revisions.emptyTitle,
-      );
+      const revisions = root.getByTestId('workflow-revisions').locator('[data-version]');
+      await expect(revisions).toHaveCount(1);
+      await expect(revisions.first()).toContainText('Version 1.0.0, current version');
+      await expect(revisions.first()).toContainText(WORKFLOW_COPY.revisions.noComparison);
+      await expect(revisions.first()).toContainText(WORKFLOW_COPY.revisions.noRunsOnVersion);
       await expect(root.getByRole('button', { name: /Activate/ })).toHaveCount(0);
       await checkA11y(`an agent-authored type at ${width}px`);
     });
   }
 
-  test('lists the versions that ran, and only those', async ({ page, request }) => {
+  test('lists both recorded versions and distinguishes the one with a run', async ({
+    page,
+    request,
+  }) => {
     await makeWorkflow(request, 'e2e-ran', {
       trigger: { kind: 'signal', name: 'e2e-ran-go' },
       steps: [{ kind: 'await-signal', signal: 'e2e-ran-wait' }],
@@ -534,14 +612,14 @@ test.describe('an agent-authored type', () => {
     await page.goto('/workflows/e2e-ran');
     await openTab(detail(page), WORKFLOW_COPY.page.tabs.history);
     const versions = detail(page).getByTestId('workflow-revisions').locator('[data-version]');
-    await expect(versions).toHaveCount(1);
-    // The file was edited after that version ran, so Weft's verdict against the current one is no.
-    await expect(versions.first().getByTestId('workflow-revision-verdict')).toContainText(
+    await expect(versions).toHaveCount(2);
+    // The second revision breaks with the initial revision's signal, which already has a run.
+    await expect(versions.nth(0).getByTestId('workflow-revision-verdict')).toContainText(
       WORKFLOW_COPY.revisions.incompatible,
     );
-    await expect(versions.first().getByTestId('workflow-revision-reasons')).toContainText(
-      WORKFLOW_COPY.revisions.reason('workflow-version-incompatible'),
-    );
+    await expect(versions.nth(0)).toContainText(WORKFLOW_COPY.revisions.noRunsOnVersion);
+    await expect(versions.nth(1)).toContainText(WORKFLOW_COPY.revisions.noComparison);
+    await expect(versions.nth(1)).toContainText(WORKFLOW_COPY.revisions.runsOnVersion(1));
     // Let the instance finish, so it does not stay in the host.
     await expect
       .poll(async () => {
@@ -782,11 +860,10 @@ test.describe('send signal', () => {
   test('says how many were started and reached, and refuses a payload that is not JSON', async ({
     page,
   }) => {
-    await page.goto(`/workflows/${SEEDED_WORKFLOWS.digest}`);
+    await page.goto(`/workflows/${SEEDED_WORKFLOWS.approval}`);
     const form = await openSignalDialog(page);
-    // No step of the digest waits for a signal, so the form starts empty.
     const name = form.getByRole('textbox', { name: WORKFLOW_COPY.signal.nameLabel });
-    await expect(name).toHaveValue('');
+    await expect(name).toHaveValue(APPROVAL_START_SIGNAL);
     await name.fill('e2e-nobody-waits');
     await form.getByRole('textbox', { name: WORKFLOW_COPY.signal.payloadLabel }).fill('{ nope');
     await form.getByRole('button', { name: WORKFLOW_COPY.signal.sendAction }).click();
@@ -808,9 +885,8 @@ test.describe('the runs of a type', () => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/workflows/inventory-sync-sweep?tab=runs');
       await detail(page).getByRole('link', { name: WORKFLOW_COPY.runsAction }).click();
-      await expect(page).toHaveURL(/\/workflows\/inventory-sync-sweep\/runs$/);
-      await expect(area(page)).toHaveAttribute('data-state', 'ready');
-      const rows = page.locator('tbody tr');
+      await expect(page).toHaveURL(/\/health\/runs\?type=inventory-sync-sweep$/);
+      const rows = page.locator('main table.weft-workflows-table tbody tr');
       await expect(rows.first()).toBeVisible();
       // Every row is a run of this type.
       const texts = await rows.allTextContents();
@@ -881,16 +957,22 @@ test.describe('the editor', () => {
     });
   }
 
-  test('shows the error for JSON that is not valid, and for a document the Bureau refuses, and saves neither', async ({
+  test('rejects a decoded document that is invalid locally and leaves the file unchanged', async ({
     page,
     request,
   }) => {
-    await makeWorkflow(request, 'e2e-refused');
-    const before = await readWorkflow(request, 'e2e-refused');
-    await page.goto('/workflows/e2e-refused/edit');
+    await makeWorkflow(request, 'e2e-locally-invalid');
+    const before = await readWorkflow(request, 'e2e-locally-invalid');
+    await page.goto('/workflows/e2e-locally-invalid/edit');
     const root = page.locator('[data-page="workflow-editor"]');
     await openJsonTab(root);
     const editor = await jsonEditor(root, WORKFLOW_COPY.editor.textLabel);
+    let updates = 0;
+    await page.route('**/jsonrpc', async (route) => {
+      const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
+      if (body.method === 'bureau.workflows.update') updates += 1;
+      await route.fallback();
+    });
 
     await replaceJsonEditorText(editor, '{ "trigger": ');
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
@@ -900,13 +982,50 @@ test.describe('the editor', () => {
 
     await replaceJsonEditorText(
       editor,
-      JSON.stringify({ trigger: { kind: 'schedule', spec: 'never ever' }, steps: [] }),
+      JSON.stringify({ trigger: { kind: 'schedule', spec: 'never ever' }, steps: [] }, null, 2),
     );
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
-    await expect(root).toContainText(/Couldn’t save /);
-    await expect(page).toHaveURL(/\/workflows\/e2e-refused\/edit$/);
-    const unchanged = await readWorkflow(request, 'e2e-refused');
+    await expect(root.locator('.cinder-json-editor__status')).toHaveText(
+      'Valid JSON, not a valid workflow',
+    );
+    await expect(editor.locator('.cinder-json-editor__line--problem')).toHaveCount(1);
+    expect(updates).toBe(0);
+    await expect(page).toHaveURL(/\/workflows\/e2e-locally-invalid\/edit$/);
+    const unchanged = await readWorkflow(request, 'e2e-locally-invalid');
     expect(unchanged.hash).toBe(before.hash);
+    expect(unchanged.text).toBe(before.text);
+  });
+
+  test('shows Couldn’t save for a locally valid document the server rejects', async ({
+    page,
+    request,
+    pageErrors,
+  }) => {
+    await makeWorkflow(request, 'e2e-server-refused');
+    const before = await readWorkflow(request, 'e2e-server-refused');
+    pageErrors.expectEvery({
+      pattern: loggedFailedResponse(500, /\/jsonrpc/),
+      reason: 'the test makes the server reject an otherwise valid workflow update',
+    });
+    await refuseMethod(page, 'bureau.workflows.update', 500, {
+      weftCode: 'Internal',
+      message: 'The workflow file could not be written.',
+    });
+    await page.goto('/workflows/e2e-server-refused/edit');
+    const root = page.locator('[data-page="workflow-editor"]');
+    await openJsonTab(root);
+    const editor = await jsonEditor(root, WORKFLOW_COPY.editor.textLabel);
+    const definition = JSON.parse(await jsonEditorSource(editor)) as Record<string, unknown>;
+    definition['trigger'] = { kind: 'schedule', spec: '6h' };
+    await replaceJsonEditorText(editor, JSON.stringify(definition));
+    await expect(root.locator('.cinder-json-editor__status')).toHaveText('Valid JSON');
+
+    await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
+    await expect(root).toContainText(/Couldn’t save /);
+    await expect(page).toHaveURL(/\/workflows\/e2e-server-refused\/edit$/);
+    const unchanged = await readWorkflow(request, 'e2e-server-refused');
+    expect(unchanged.hash).toBe(before.hash);
+    expect(unchanged.text).toBe(before.text);
   });
 
   test('says the file changed on disk, and Reload discards the edits', async ({

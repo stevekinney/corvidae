@@ -11,9 +11,19 @@ import type { DialogCancelProps } from '../../utilities/dialog-props.ts';
  * Default focus lands on the **cancel** button (`autofocus`) — the industry-standard
  * guard against accidental destructive confirms.
  *
- * For richer body content (markup, lists, multi-paragraph text), compose `<Modal>` +
- * `<Button>` directly. `aria-describedby` works best with short, plain-text descriptions.
+ * A list, a short note, or one or two labelled controls that change what the confirmation does go
+ * in `options`. For richer body content (a long form, several sections, multi-paragraph text),
+ * compose `<Modal>` + `<Button>` directly. `aria-describedby` works best with short, plain-text
+ * descriptions.
  */
+/** The action {@link ConfirmDialogProps.errorAction} offers in the failure callout. */
+type ConfirmDialogErrorAction = {
+  /** The action's label, such as "Refresh preview" or "Retry". */
+  label: string;
+  /** Called when the action is pressed. The dialog stays open; the page decides what follows. */
+  onAction: () => void;
+};
+
 /**
  * Cancel semantics (shared vocabulary from {@link DialogCancelProps}): the
  * cancel button ALWAYS renders, defaulting its label to "Cancel". `onCancel`
@@ -43,7 +53,9 @@ export type ConfirmDialogProps = Omit<DialogCancelProps, 'cancelLabel'> & {
    * Content rendered below the description and above the typed confirmation: a checkbox that
    * changes what the confirmation does, or the exact command about to run in a code block. The
    * description says what the dialog does; the options say what each choice does. Keep the
-   * description short, and keep controls here labelled.
+   * description short, and keep controls here labelled. Cancel keeps the first focus unless a
+   * control here carries `autofocus`: it comes before Cancel in the dialog, so it takes the first
+   * focus instead. Use that for a form the person fills in before anything can be confirmed.
    */
   options?: Snippet;
   /**
@@ -65,7 +77,9 @@ export type ConfirmDialogProps = Omit<DialogCancelProps, 'cancelLabel'> & {
   destructive?: boolean;
   /**
    * When set, renders a labelled text input and disables the confirm button until the
-   * trimmed input matches this value case-insensitively.
+   * trimmed input matches this value case-insensitively. The input sits in the footer, above the
+   * buttons it gates and outside the scrolling body, so a long description or list never pushes it
+   * out of view and it is always in view with the confirm button.
    */
   typeToConfirm?: string;
   /** Visible label for the typed-confirmation input. Defaults to `Type "<value>" to confirm`. */
@@ -85,8 +99,8 @@ export type ConfirmDialogProps = Omit<DialogCancelProps, 'cancelLabel'> & {
    */
   busyLabel?: string | undefined;
   /**
-   * Bold lead sentence of the failure, such as "Couldn’t delete the agent.", set before `error`.
-   * Shown only with `error`.
+   * Title of the failure callout, such as "Couldn’t delete the agent.", drawn on its own line above
+   * `error` as every Callout title is. Shown only with `error`.
    */
   errorTitle?: string | undefined;
   /**
@@ -96,6 +110,48 @@ export type ConfirmDialogProps = Omit<DialogCancelProps, 'cancelLabel'> & {
    * Clear it to hide the callout.
    */
   error?: string | undefined;
+  /**
+   * Tone of the failure callout: `danger` (the default) for work that failed, `warning` for a
+   * refusal that nothing was done about, such as a preview that went stale before it was confirmed.
+   * @default 'danger'
+   */
+  errorTone?: 'danger' | 'warning';
+  /**
+   * An action in the failure callout, in place of the confirm button. Without it, the failure keeps
+   * the confirm button armed and pressing it again is the retry. With it, the confirm button is
+   * gone while the failure shows, because pressing it again is the wrong next step (a preview that
+   * must be counted again, work that cannot be repeated as it was), and the callout offers the
+   * right one: `label` names it and `onAction` runs it. Shown only with `error`.
+   */
+  errorAction?: ConfirmDialogErrorAction | undefined;
+  /**
+   * True while what the dialog confirms is still being worked out, such as a count the server has
+   * not answered: the description and options show a skeleton, the typed field waits, and the
+   * confirm button cannot be pressed. Cancel stays enabled and focusable. Entering `pending`
+   * clears the typed text, so a new answer is confirmed afresh.
+   * @default false
+   */
+  pending?: boolean;
+  /**
+   * What the skeleton is waiting for, announced once as a status when `pending` starts, such as
+   * "Counting the workflows a purge would delete".
+   * @default 'Loading'
+   */
+  pendingLabel?: string | undefined;
+  /**
+   * Whether the confirm button can be pressed. Set `false` while the answer it confirms is
+   * incomplete, such as a form in `options` that is not valid yet. The typed confirmation and
+   * `pending` disable it as well.
+   * @default true
+   */
+  confirmEnabled?: boolean;
+  /**
+   * Whether the confirm button is drawn. Set `false` when there is nothing to confirm, such as the
+   * answer to a finished action: Cancel is then the one action, so name it with `cancelLabel`
+   * ("Close").
+   * @default true
+   */
+  confirmVisible?: boolean;
   /**
    * Whether the dialog closes itself when the confirm button is pressed. Set `false` when the
    * confirmed work can fail and the page needs the dialog to stay open to show it: the page then
@@ -109,11 +165,10 @@ export type ConfirmDialogProps = Omit<DialogCancelProps, 'cancelLabel'> & {
    */
   onConfirm: () => void;
   /**
-   * Viewport width below which the dialog is a bottom sheet: a grabber, a compact Cancel beside
-   * the confirmation, which fills the rest of the row (above Cancel when the two do not fit), both
-   * drawn at the button's painted height and reaching 44px through its hit area, with Cancel
-   * keeping initial focus. A CSS length such as `"760px"`, or `false` for the centred dialog at
-   * every width.
+   * Viewport width below which the dialog is a bottom sheet. Cancel stays compact when both
+   * actions fit on one row. When the actions stack, both fill the row width, with confirmation
+   * above Cancel. Both have 44px hit areas and Cancel keeps initial focus. A CSS length such as
+   * `"760px"`, or `false` for the centred dialog at every width.
    * @default "760px"
    */
   sheetBelow?: string | false;

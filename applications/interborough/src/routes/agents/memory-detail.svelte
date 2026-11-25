@@ -53,6 +53,8 @@
     forgetPending: boolean;
     /** True while a sharing, hold, quarantine or export change is being saved. */
     governancePending: boolean;
+    /** Whether this host has another workspace owner with whom a memory can be shared. */
+    sharingAvailable: boolean;
     /** Opens another memory of the agent, such as the one this corrects. */
     onOpen: (id: string) => void;
     onForget: (memory: Memory) => void;
@@ -78,6 +80,7 @@
     hold,
     forgetPending,
     governancePending,
+    sharingAvailable,
     onOpen,
     onForget,
     onCorrected,
@@ -303,14 +306,16 @@
       <section class="ib-memory-detail__govern" aria-label={MEMORY_COPY.govern.heading}>
         <h3 class="ib-memory-detail__subheading">{MEMORY_COPY.govern.heading}</h3>
         <div class="ib-memory-detail__actions">
-          <Button
-            data-changes
-            variant="secondary"
-            size="sm"
-            disabled={governancePending}
-            onclick={() => onShare(memory)}
-            label={MEMORY_COPY.govern.share.action}
-          />
+          {#if sharingAvailable}
+            <Button
+              data-changes
+              variant="secondary"
+              size="sm"
+              disabled={governancePending}
+              onclick={() => onShare(memory)}
+              label={MEMORY_COPY.govern.share.action}
+            />
+          {/if}
           <Button
             data-changes
             variant="secondary"

@@ -16,7 +16,7 @@
 
   import { AGENT_EDITOR_COPY } from '../../app/copy/agents.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { providerDisplayName } from '../settings/models/format-model.ts';
+  import { modelDisplayName, providerDisplayName } from '../settings/models/format-model.ts';
   import { abilitiesOf, abilitiesSentence, type ModelChoice } from './agent-editor-models.ts';
   import type { AgentEditorState } from './agent-editor-state.svelte.ts';
 
@@ -55,7 +55,7 @@
       choice.unavailable === undefined ? abilityLine(choice) : copy.reasons[choice.unavailable];
     return {
       value: choice.value,
-      label: choice.value,
+      label: modelDisplayName(choice.model),
       group,
       ...(description === '' ? {} : { description }),
       ...(choice.unavailable === undefined ? {} : { disabled: true }),
@@ -69,7 +69,7 @@
    */
   function filterOption(option: ComboboxOption, query: string): boolean {
     const text = query.trim().toLowerCase();
-    if (text === '' || query === editor.model) return true;
+    if (text === '' || query === selectedLabel) return true;
     return (
       option.label.toLowerCase().includes(text) ||
       (option.description?.toLowerCase().includes(text) ?? false)
@@ -95,6 +95,7 @@
           ];
     }),
   );
+  const selectedLabel = $derived(options.find((option) => option.value === editor.model)?.label);
 
   const unconnected = $derived(
     editor.modelGroups

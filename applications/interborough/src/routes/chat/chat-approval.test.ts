@@ -88,6 +88,52 @@ describe('a waiting approval', () => {
     expect(onResolve.mock.calls[0]?.[0]).toMatchObject({ decision: 'approve' });
   });
 
+  test('offers its supplied review delegate from the decision surface and commits its guarded choice', async () => {
+    const onResolve = mock((_resolution: unknown) => undefined);
+    const { container, getByRole } = mount('dangerous', onResolve);
+    expect(
+      container.querySelector('[data-cinder-layout]')?.getAttribute('data-cinder-layout'),
+    ).toBe('decision');
+
+    await fireEvent.click(getByRole('button', { name: 'Review in deck' }));
+    await fireEvent.click(
+      container.querySelector<HTMLButtonElement>('[data-decision-action="accept"]')!,
+    );
+    await fireEvent.click(getByRole('button', { name: 'Confirm approval' }));
+
+    expect(onResolve).toHaveBeenCalledWith({ decision: 'approve', remember: false });
+  });
+
+  test('links a receipt decided in Reviews to that review', () => {
+    const view = render(ChatApproval, {
+      props: {
+        id: 'approval-elsewhere',
+        entry: {
+          ...entry('dangerous'),
+          state: 'done',
+          decision: {
+            outcome: 'approved',
+            decidedBy: 'priya',
+            decidedAt: Date.parse('2026-11-05T10:46:00Z'),
+            decisionSurface: 'reviews',
+          },
+        },
+        question: '',
+        source: 'Tool runner',
+        context: { owner: 'steve' },
+        unreachable: false,
+        decidedInHref: '#/reviews?tab=done&review=bureau%3Aapproval%3Arun-1%3Acall-1',
+        onResolve: () => {},
+      },
+    } as never);
+
+    const link = view.container.querySelector<HTMLAnchorElement>('.cinder-approval-card a[href]');
+    expect(link?.getAttribute('href')).toBe(
+      '#/reviews?tab=done&review=bureau%3Aapproval%3Arun-1%3Acall-1',
+    );
+    expect(link?.textContent?.trim()).toBe('Reviews');
+  });
+
   test('becomes the decided row when it is decided while the page is open', async () => {
     const view = mount('dangerous');
     expect(view.container.querySelector('[data-approval-decision]')).not.toBeNull();

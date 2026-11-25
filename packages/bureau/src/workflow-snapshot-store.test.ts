@@ -189,7 +189,7 @@ describe('pruning while an instance is in flight (COR-1583)', () => {
     const old = {
       schemaVersion: 1,
       workflowVersion: 'sha256:abc',
-      reason: 'Cancelled at startup because it cannot resume: nothing is stored.',
+      reason: 'Canceled at startup because it cannot resume: nothing is stored.',
       cancelledAt: '2026-10-18T00:00:00.000Z',
     } as const;
     await snapshots.recordCancellation({ ...old, runId: 'busy-run', id: 'busy' });
@@ -214,7 +214,7 @@ describe('the cancellation records', () => {
     runId: 'run-1',
     id: 'gone',
     workflowVersion: 'sha256:abc',
-    reason: 'Cancelled at startup because it cannot resume: nothing is stored.',
+    reason: 'Canceled at startup because it cannot resume: nothing is stored.',
     cancelledAt: '2026-10-18T00:00:00.000Z',
   } as const;
 

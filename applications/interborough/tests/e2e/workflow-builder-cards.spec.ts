@@ -19,6 +19,7 @@ import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { jsonEditor, replaceJsonEditorText } from './json-editor-support.ts';
+import { readBoxes } from './read-boxes.ts';
 import { openJsonTab, openTab } from './workflow-support.ts';
 
 const BUILDER = WORKFLOW_COPY.builder;
@@ -138,7 +139,9 @@ async function openWith(page: Page, document: unknown): Promise<void> {
   await replaceJsonEditorText(json, JSON.stringify(document, null, 2));
   if (size.width < PHONE_BELOW) {
     await page.setViewportSize(size);
-    await expect(root.getByTestId('workflow-builder-phone')).toBeVisible();
+    await expect(root.locator('.cinder-page-header__description')).toHaveText(
+      BUILDER.readOnlyOnScreen,
+    );
   }
   await openTab(root, BUILDER.builderTab);
 }
@@ -354,6 +357,29 @@ test.describe('the workflow builder’s nested and missing states', () => {
     });
   });
 
+  test('workflow builder cards: replacing edited workflow input asks first, at 1280 pixels', async ({
+    page,
+  }) => {
+    await answerCatalog(page);
+    await openWith(page, {
+      name: 'e2e-replace-input',
+      trigger: { kind: 'manual' },
+      steps: [{ kind: 'workflow', workflow: 'demo:profile', input: { owner: { name: 'Ada' } } }],
+    });
+    const root = page.locator('[data-page="workflow-creator"]');
+    await root
+      .getByRole('combobox', { name: BUILDER.workflowCard.label(BUILDER.where.step(1)) })
+      .selectOption('demo:bare');
+    await expect(
+      page.getByRole('dialog', { name: BUILDER.workflowCard.replaceInput.title }),
+    ).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/workflows/new (step cards)',
+      state: 'replace edited workflow input',
+      source: 'workflow-builder-cards.spec.ts',
+    });
+  });
+
   test('workflow builder cards: the add menu while the catalog loads, at 1280 pixels', async ({
     page,
   }) => {
@@ -416,11 +442,59 @@ test.describe('the workflow builder’s nested and missing states', () => {
 });
 
 test.describe('the workflow builder’s read-only step cards', () => {
+  test('workflow builder cards: reset stays reachable on desktop and phone context stays in the heading', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/workflows/new');
+    await expect(page.locator('[data-view="workflows"]')).toHaveAttribute('data-state', 'ready');
+    const root = page.locator('[data-page="workflow-creator"]');
+    await root
+      .getByRole('textbox', { name: `${BUILDER.titleLabel} Optional`, exact: true })
+      .fill('Morning briefing');
+    await root.getByRole('button', { name: BUILDER.idChange }).click();
+    await root.getByLabel(BUILDER.idLabel, { exact: true }).fill('custom-briefing');
+    const reset = root.getByRole('button', { name: BUILDER.resetId });
+    await expect(reset).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/workflows/new (step cards)',
+      state: 'workflow-id-reset',
+      source: 'workflow-builder-cards.spec.ts',
+    });
+    await reset.click();
+    const change = root.getByRole('button', { name: BUILDER.idChange });
+    await expect(change).toBeFocused();
+
+    const builder = root.getByTestId('workflow-builder');
+    const tabList = root.getByRole('tablist');
+    const desktop = await readBoxes(page, { builder, tabList });
+    expect(Math.round(desktop.tabList.x + desktop.tabList.width)).toBe(
+      Math.round(desktop.builder.x + desktop.builder.width),
+    );
+
+    await page.setViewportSize({ width: 375, height: 900 });
+    await expect(root.locator('.cinder-page-header__description')).toHaveText(
+      BUILDER.readOnlyOnScreen,
+    );
+    await expect(root.locator('.weft-workflow-builder__read-only')).toHaveCount(0);
+    const phone = await readBoxes(page, { builder, tabList });
+    expect(Math.round(phone.tabList.x + phone.tabList.width)).toBe(
+      Math.round(phone.builder.x + phone.builder.width),
+    );
+    await expect(root.getByRole('link', { name: /Back to (the workflow|Workflows)/ })).toHaveCount(
+      0,
+    );
+  });
+
   test('workflow builder cards: read-only below 640 pixels, at 375 pixels', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 900 });
     await openWith(page, EVERY_KIND);
     const root = page.locator('[data-page="workflow-creator"]');
     await expect(root.locator('.weft-workflow-builder__body')).toHaveAttribute('inert', '');
+    await expect(root.getByText(BUILDER.addField, { exact: true })).toHaveCount(0);
+    const primary = root.locator('button').filter({ hasText: WORKFLOW_COPY.creator.saveAction });
+    await expect(primary).toBeVisible();
+    await expect(primary).toBeDisabled();
     await captureForDesignReview(page, {
       route: '/workflows/new (step cards)',
       state: 'read-only',

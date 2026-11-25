@@ -2,7 +2,7 @@
 
 <!-- generated:a11y-record:required -->
 
-`CopyableValue` shows a value such as an address or an identifier in monospace, with a copy control after it. The value breaks after a slash, colon, question mark, ampersand or equals sign when its place is narrow, so a host, a port and a path segment stay whole; it breaks after a dot only when one of those parts is longer than the place, and anywhere (`overflow-wrap: anywhere`) only when a piece between two dots is. Each part and piece is an `inline-block` with `max-inline-size: 100%`, the technique CodeBlock draws its flags with, so the browser's own break after a hyphen never splits one. The copied text is the value as given. The control is drawn quiet and bare, as CodeBlock draws its copy button, and stays on the value's last line, because the last character and the control are one stretch that never breaks. A `CopyButton` placed beside a `code` element wraps as two parts, so the button can land alone on a row while the value breaks above it.
+`CopyableValue` shows a value such as an address or an identifier in monospace, with a copy control after it. The value breaks after a slash, colon, question mark, ampersand or equals sign when its place is narrow, so a host, a port and a path segment stay whole; it breaks after a dot only when one of those parts is longer than the place, and anywhere (`overflow-wrap: anywhere`) only when a piece between two dots is. Each part and piece is an `inline-block` with `max-inline-size: 100%`, the technique CodeBlock draws its flags with, so the browser's own break after a hyphen never splits one. The copied text is the value as given. The inline copy control follows the size of the text and stays on the value's last line, because the last character and the control are one stretch that never breaks. A `CopyButton` placed beside a `code` element wraps as two parts, so the button can land alone on a row while the value breaks above it.
 
 The component is inline: put it in a sentence, after the words that name the value ("Deliveries go to"), and it flows with them. `value` is both what is shown and what is copied. Name the control with `label` and say what was copied with `copiedLabel`; other attributes, such as `data-testid`, land on the outer element.
 
@@ -23,12 +23,15 @@ The component is inline: put it in a sentence, after the words that name the val
 </p>
 ```
 
+Use `breakHints` for addresses that should prefer breaks after dots, hyphens, at signs, colons and slashes. This mode also selects the value as a unit.
+
 ## Props
 
 <!-- generated:props:start -->
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `breakHints` | `boolean` | no | — | Prefer separator breaks and select the text as one value. Defaults to false. |
 | `class` | `string` | no | — | Custom class merged with `.cinder-copyable-value`. |
 | `copiedLabel` | `string` | no | — | What is announced once the copy succeeds. Defaults to "Copied"; say what was copied when `label` does ("Address copied"). |
 | `label` | `string` | no | — | Accessible name of the copy control, also its tooltip. Defaults to "Copy to clipboard". |

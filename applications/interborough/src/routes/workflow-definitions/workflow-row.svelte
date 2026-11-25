@@ -4,7 +4,7 @@
    * word (only Paused and Can't load have one), the title with its identifier small and monospaced
    * beside it once, and at the right edge when the workflow last ran ("Never run" when it has not).
    * Line two carries the outcome and the counts: the file and its problem for a workflow that
-   * cannot load, else the run in progress, the steps, and how many runs began lately. A file with no
+   * cannot load, else the current run, the steps, total runs, and latest outcome. A file with no
    * title shows its identifier alone, bold and monospaced. The whole row is the link to the
    * workflow's page, so it carries no actions. A fact the Bureau or the engine did not give is left
    * out, so a count that could not be read is never shown as zero.
@@ -55,14 +55,15 @@
     {#if model.date !== null}<span data-testid="workflow-last-run">{model.date}</span>{/if}
   {/snippet}
   {#snippet meta()}
-    {#each model.line as part, index (index)}
-      {#if index > 0}{', '}{/if}
-      <span class="ib-workflow-line__part" data-testid={part.testId}>
-        {#if part.status !== undefined}<StatusDot
-            word={part.status}
-            size="sm"
-          />{:else}{part.text}{/if}
-      </span>
-    {/each}
+    <span class="ib-workflow-line" aria-label={model.line.map((part) => part.text).join(' ')}>
+      {#each model.line as part, index (index)}
+        <span class="ib-workflow-line__part" data-testid={part.testId}>
+          {#if part.status !== undefined}<StatusDot
+              word={part.status}
+              size="sm"
+            />{:else}{part.text}{/if}
+        </span>
+      {/each}
+    </span>
   {/snippet}
 </StackedListItem>

@@ -256,6 +256,9 @@ export type {
   MissedRunsAttentionItem,
   PluginAttentionItem,
   ProviderAttentionItem,
+  RunLoopingAttentionItem,
+  RunOverspendingAttentionItem,
+  RunStalledAttentionItem,
   WorkerAttentionItem,
 } from './attention-feed';
 export { WorkerDeploymentRolloutError } from './worker-deployments';
@@ -533,6 +536,7 @@ export {
   RunFailedOutcomeEvent,
   RunGuardrailRecordedEvent,
   RunLoopingEvent,
+  RunOverspendingEvent,
   RunRegisteredEvent,
   RunStalledEvent,
   RunTripwireRecordedEvent,
@@ -697,6 +701,18 @@ export type {
   ForkSessionResult,
   SessionForkRefusalReason,
 } from './session-fork';
+export { SessionResumeRefusedError } from './session-resume';
+export type {
+  ResumeTurnRequest,
+  ResumeTurnResult,
+  SessionResumeRefusalReason,
+} from './session-resume';
+export { SessionDiscardRefusedError } from './session-discard';
+export type {
+  DiscardTurnRequest,
+  DiscardTurnResult,
+  SessionDiscardRefusalReason,
+} from './session-discard';
 export { SessionRegenerateRefusedError } from './session-regenerate';
 export type {
   RegenerateSessionRequest,
@@ -823,6 +839,8 @@ export type {
   PendingToolApprovalReview,
   ApprovalDecisionSurface,
   ResolveReviewInput,
+  ReviewPolicy,
+  ReviewEffect,
   ResolvedReview,
   ReviewResolutionFields,
   ResolveReviewResult,
@@ -853,6 +871,7 @@ export type {
   BureauSchedules,
   CreateScheduleOptions,
   DurableScheduleDefinition,
+  ScheduleActor,
 } from './bureau-types/schedules';
 export type {
   CreateRunRequest,
@@ -1001,7 +1020,11 @@ export {
 } from './http/create-bureau-handler';
 export { createBureauCatalogSnapshot } from './http/bureau-catalog-snapshot';
 export { BUREAU_SCOPES, type BureauScope } from './http/bureau-scopes';
-export { HOST_PANEL_OPERATIONS } from './http/host-panel-operations';
+export {
+  HOST_PANEL_OPERATIONS,
+  hostPanelUriOfCall,
+  runAsHostPanel,
+} from './http/host-panel-operations';
 export { startIdleTurn } from './http/ag-ui-thread-admission';
 export type { SkillSourceStanding, SkillsStanding } from './http/management/skills-operations';
 export {

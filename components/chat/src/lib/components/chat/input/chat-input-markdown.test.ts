@@ -176,11 +176,13 @@ describe('ChatInput — status line', () => {
   test('shows waiting, reconnecting with its attempt, and queued', async () => {
     const { container, rerender } = render(ChatInput, {
       id: 'status-line',
-      status: { kind: 'waiting', steers: true },
+      status: { kind: 'waiting', queues: true },
     });
     const line = () => container.querySelector('.chat-input-status');
 
-    expect(line()?.textContent).toBe('Waiting for your approval. A message now steers the run.');
+    expect(line()?.textContent).toBe(
+      'Waiting for your approval. Anything you send now queues until you decide.',
+    );
     expect(line()?.getAttribute('data-chat-composer-status')).toBe('waiting');
 
     await rerender({ id: 'status-line', status: { kind: 'reconnecting', attempt: 3 } });

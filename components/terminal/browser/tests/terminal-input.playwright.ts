@@ -382,6 +382,30 @@ test.describe('paste review', () => {
     expect(await sentOperations(page)).toHaveLength(1);
   });
 
+  test('the paste-review footer uses the same compact controls as the output footer (COR-2440)', async ({
+    terminalPage,
+  }) => {
+    const page = await terminalPage.open();
+    await focusTerminal(page);
+    await paste(page, 'one\ntwo');
+    const footer = page
+      .getByRole('dialog', { name: 'Review paste' })
+      .locator('.cinder-modal__footer');
+    const faces = await Promise.all(
+      ['Cancel', 'Paste'].map((name) =>
+        footer.getByRole('button', { name, exact: true }).evaluate((button) => {
+          const style = getComputedStyle(button);
+          return {
+            height: button.getBoundingClientRect().height,
+            fontSize: style.fontSize,
+            paddingInline: style.paddingInlineStart,
+          };
+        }),
+      ),
+    );
+    expect(faces[0]).toEqual(faces[1]);
+  });
+
   test('every bracketed paste is reviewed, and its payload goes out exactly between the markers', async ({
     terminalPage,
   }) => {

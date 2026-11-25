@@ -89,7 +89,8 @@ describe('Workers route — a read that failed', () => {
     const view = renderRoute();
     await fireEvent.click(await view.findByRole('tab', { name: 'Task queues' }));
 
-    expect(await view.findByText('Not authorized')).not.toBeNull();
+    expect(await view.findByText('Couldn’t load queues')).not.toBeNull();
+    expect(document.querySelector('[data-fault-kind="unauthorized"]')).not.toBeNull();
     scripted.routeJsonRpcMethod('weft.task.queues.list', { items: [] });
     await fireEvent.click(await view.findByRole('button', { name: RETRY_LABEL }));
     expect(await view.findByRole('tab', { name: 'Task queues', selected: true })).not.toBeNull();
@@ -110,7 +111,8 @@ describe('Workers route — a task ledger that failed to read', () => {
 
     const view = renderRoute();
 
-    expect(await view.findByText('Not authorized')).not.toBeNull();
+    expect(await view.findByText('Couldn’t load the task ledger')).not.toBeNull();
+    expect(document.querySelector('[data-fault-kind="unauthorized"]')).not.toBeNull();
     scripted.routeJsonRpcMethod('weft.tasks.get', {
       ...taskLedgerDetailFixture(),
       operationId: 'op_1',

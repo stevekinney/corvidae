@@ -58,9 +58,9 @@ export interface DeliveryMergeObservation {
   base: string;
   integrationTree: string;
   /**
-   * When `main` moved after the evidence and the landing queue verified that its new commits touch
-   * nothing the evidence covers (`direct-merge.ts`), `base` and `integrationTree` stay the
-   * attested ones, and these name the base and tree actually pushed.
+   * When `main` moved after the evidence and the head merges into it without a conflict
+   * (`moved-base.ts`), `base` and `integrationTree` stay the attested ones, and these name the
+   * base and tree actually pushed.
    */
   landedBase?: string;
   landedTree?: string;

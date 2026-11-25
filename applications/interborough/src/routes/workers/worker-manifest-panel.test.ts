@@ -131,7 +131,7 @@ describe('WorkerManifestPanel', () => {
         capabilities: {},
       },
     });
-    expect(serverFault.getByText('Something went wrong')).not.toBeNull();
+    expect(serverFault.getByText('Couldn’t load the worker manifest')).not.toBeNull();
   });
 
   test('labels cached evidence while a refresh is pending', () => {

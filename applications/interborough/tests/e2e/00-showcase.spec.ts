@@ -20,11 +20,14 @@ import type { Page } from '@playwright/test';
 import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
 import { designReviewCaptureDirectory } from '../../scripts/environment-configuration.ts';
 import { routes } from '../../src/app/routes.ts';
+import { connectProviderWithModels } from './chat-states-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, goOffline, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 import { listEngineReviews } from './review-support.ts';
 import {
+  SHOWCASE_ROUTES_COVERED_ELSEWHERE,
   SHOWCASE_ROUTES_WITHOUT_CONTENT,
   showcaseAddresses,
   showcaseVariantNames,
@@ -74,25 +77,101 @@ async function untilQuiet(page: Page): Promise<void> {
     .toBeGreaterThanOrEqual(3);
 }
 
+async function isCompactPhoneViewport(page: Page): Promise<boolean> {
+  return page.evaluate(() => window.innerWidth === 320);
+}
+
+function blockedRefundApprovalIsReady(): boolean {
+  const transcript = document.querySelector<HTMLElement>('.chat-timeline');
+  const approval = document.querySelector<HTMLElement>('[data-approval-decision]');
+  const tool =
+    approval
+      ?.closest<HTMLElement>('.cinder-tool-call-rail__item')
+      ?.querySelector<HTMLElement>('[data-cinder-tool-call-row]') ?? null;
+  const question =
+    approval?.querySelector<HTMLElement>(
+      '.cinder-approval-card__row-question, .cinder-approval-card__decision-title',
+    ) ?? null;
+  const actions = [...(approval?.querySelectorAll<HTMLButtonElement>('button') ?? [])].filter(
+    (button) => ['Deny', 'Approve'].includes(button.textContent?.trim() ?? ''),
+  );
+  if (transcript === null || approval === null || tool === null || question === null) return false;
+  if (actions.length !== 2 || document.querySelector('[data-chat-approval-drawer]') !== null) {
+    return false;
+  }
+  const reaches = (element: HTMLElement, x: number, y: number) => {
+    const hit = document.elementFromPoint(x, y);
+    return hit !== null && element.contains(hit);
+  };
+  const withinTranscript = (box: DOMRect) => {
+    const bounds = transcript.getBoundingClientRect();
+    return box.top >= bounds.top && box.bottom <= bounds.bottom;
+  };
+  const toolBox = tool.getBoundingClientRect();
+  const inset = 1;
+  const toolCorners: readonly (readonly [number, number])[] = [
+    [toolBox.left + inset, toolBox.top + inset],
+    [toolBox.right - inset, toolBox.top + inset],
+    [toolBox.left + inset, toolBox.bottom - inset],
+    [toolBox.right - inset, toolBox.bottom - inset],
+  ];
+  const questionBox = question.getBoundingClientRect();
+  const actionsReachable = actions.every((action) => {
+    const actionBox = action.getBoundingClientRect();
+    return (
+      withinTranscript(actionBox) &&
+      reaches(action, actionBox.x + actionBox.width / 2, actionBox.y + actionBox.height / 2)
+    );
+  });
+  return (
+    withinTranscript(questionBox) &&
+    actionsReachable &&
+    toolCorners.every(([x, y]) => reaches(tool, x, y))
+  );
+}
+
+/**
+ * The refund showcase opens on a waiting approval. A design-review capture repeats its 375px view
+ * at 320px with coarse-pointer emulation, which changes the header after the first layout frame.
+ * Wait for Chat's arrival rule itself here, rather than taking a frame-delay screenshot while the
+ * approval's tool target is still under that header.
+ */
+async function readyBlockedRefundApprovalCapture(page: Page): Promise<void> {
+  if (!(await isCompactPhoneViewport(page))) return;
+  await expect.poll(() => page.evaluate(blockedRefundApprovalIsReady)).toBe(true);
+}
+
 test.beforeAll(async () => {
   const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
   addresses = { ...showcaseAddresses(world), ...showcaseVariants(world) };
 });
 
-test('gives every route in the table an address', () => {
-  const patterns = routes.filter((route) => route.redirect === undefined).map((r) => r.pattern);
+test('gives every shared-showcase route an address', () => {
+  const patterns = routes
+    .filter(
+      (route) =>
+        route.redirect === undefined && !SHOWCASE_ROUTES_COVERED_ELSEWHERE.includes(route.pattern),
+    )
+    .map((r) => r.pattern);
   for (const pattern of patterns) expect(addresses, pattern).toHaveProperty([pattern]);
 });
 
 const NAMES = [
   ...routes.filter((route) => route.redirect === undefined).map((route) => route.pattern),
   ...showcaseVariantNames(),
-].filter((name) => !SHOWCASE_ROUTES_WITHOUT_CONTENT.includes(name));
+].filter(
+  (name) =>
+    !SHOWCASE_ROUTES_WITHOUT_CONTENT.includes(name) &&
+    !SHOWCASE_ROUTES_COVERED_ELSEWHERE.includes(name),
+);
 
 for (const name of NAMES) {
   test(`${name} holds believable content at ${WIDTHS.join(', ')} pixels`, async ({ page }) => {
     for (const width of WIDTHS) {
       await page.setViewportSize({ width, height: HEIGHT });
+      // A pending question docks only when the conversation can continue. The sample showcase
+      // otherwise intentionally has no provider configured, which is a different blocked state.
+      if (name === '/chats/:chat (question waiting)') await connectProviderWithModels(page);
       await page.goto(`${E2E_SHOWCASE_URL}${addresses[name]}`);
       const outlet = page.locator('main.weft-shell-outlet');
       await expect(outlet).toBeVisible();
@@ -109,11 +188,15 @@ for (const name of NAMES) {
         // also captures has its own state name here and the two captures never overwrite each other.
         state: SAMPLE_WORLD_STATE_ROUTES.has(name) ? 'sample world' : 'ready',
         source: '00-showcase.spec.ts',
+        ...(name === '/chats/:chat' ? { ready: readyBlockedRefundApprovalCapture } : {}),
       });
 
       // COR-2014 row 17s is a transient state: hold a choice, capture its inline Undo affordance,
       // then undo before the answer reaches the fixture host so the shared sample world is unchanged.
-      if (name === '/chats/:chat (question waiting)' && (width === 375 || width === 1280)) {
+      if (
+        name === '/chats/:chat (question waiting)' &&
+        (width === 320 || width === 375 || width === 1280)
+      ) {
         const toolRow = page.locator('[data-cinder-tool-call-row]').filter({
           hasText: 'Request human input',
         });
@@ -121,6 +204,9 @@ for (const name of NAMES) {
         await expect(toolRow).not.toContainText('Signal name');
         const staging = page.getByRole('radio', { name: /^Staging\b/, exact: false });
         await expect(staging).toBeVisible();
+        // The configured-provider fixture makes a pending host question replace the composer
+        // instead of falling back to the blocked-provider inline presentation.
+        await expect(page.locator('[data-chat-question-dock="host"]')).toBeVisible();
         // The text before the question is the agent talking to the person (owner decision of
         // 14 November): it keeps its time, and is drawn in message ink, not as bare narration.
         const preface = page
@@ -144,6 +230,11 @@ for (const name of NAMES) {
         await expect(page.locator('.chat-question-status[data-state="sent"]')).toHaveCount(0);
         await expect(staging).toBeVisible();
         await expect(staging).toHaveAttribute('aria-checked', 'false');
+        if (width === 375) {
+          await page.setViewportSize({ width: 320, height: 640 });
+          await expect(page.locator('[data-chat-question-dock="host"]')).toBeVisible();
+          await expect(staging).toBeVisible();
+        }
       }
     }
   });
@@ -245,8 +336,8 @@ async function expectOfflineBanner(page: Page, label: string) {
   return banner;
 }
 
-for (const width of [375, 1280] as const) {
-  test(`Shell, offline (/chats/new): the new chat keeps its typed text with Send off and the reason beside it, at ${width} pixels`, async ({
+for (const width of [320, 375, 1280] as const) {
+  test(`Shell, offline (/chats/new): the new chat keeps its typed text with Send off under the offline drawer, at ${width} pixels`, async ({
     page,
     context,
     pageErrors,
@@ -260,18 +351,32 @@ for (const width of [375, 1280] as const) {
     await goOffline(context, pageErrors);
     await page.evaluate(() => window.dispatchEvent(new Event('offline')));
     const banner = await expectOfflineBanner(page, `new chat at ${width}px offline`);
-    // COR-2014 row 17b replaces the composer with the blocked row while the host is unreachable.
-    const blockedComposer = page.getByRole('group', { name: 'Composer unavailable' });
-    await expect(blockedComposer).toContainText('Sending is off until Interborough is reachable');
-    await expect(blockedComposer).toBeVisible();
-    const blockedBox = await blockedComposer.boundingBox();
-    expect(blockedBox).not.toBeNull();
-    expect(blockedBox!.y).toBeGreaterThanOrEqual(0);
-    expect(blockedBox!.y + blockedBox!.height).toBeLessThanOrEqual(
+    // COR-2284 C5: the offline warning drawer sits above the composer while the host is
+    // unreachable; the box keeps the typed text and Send is off.
+    const offlineDrawer = page.locator('[data-chat-composer-drawer="offline"]');
+    await expect(offlineDrawer).toContainText('Your draft is saved here');
+    await expect(offlineDrawer).toBeVisible();
+    const drawerBox = await offlineDrawer.boundingBox();
+    expect(drawerBox).not.toBeNull();
+    expect(drawerBox!.y).toBeGreaterThanOrEqual(0);
+    expect(drawerBox!.y + drawerBox!.height).toBeLessThanOrEqual(
       await page.evaluate(() => window.innerHeight),
     );
-    await expect(composer).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Send message' })).toHaveCount(0);
+    await expect(composer).toHaveValue('What did I approve yesterday?');
+    const send = page.getByRole('button', { name: 'Send message' });
+    await expect(send).toBeDisabled();
+    if (width === 320) {
+      // A phone's fixed tabs are a sibling of the shrinking outlet. Both the composer and Send
+      // must finish above them while the offline drawer remains intact, not merely scroll into
+      // view after the frame has already painted beneath the tabs.
+      const tabBar = page.getByRole('navigation', { name: 'Main tabs', exact: true });
+      const boxes = await readBoxes(page, { composer, send, offlineDrawer, tabBar });
+      expect(boxes.composer.y + boxes.composer.height).toBeLessThanOrEqual(boxes.tabBar.y);
+      expect(boxes.send.y + boxes.send.height).toBeLessThanOrEqual(boxes.tabBar.y);
+      expect(boxes.offlineDrawer.y + boxes.offlineDrawer.height).toBeLessThanOrEqual(
+        boxes.composer.y,
+      );
+    }
     // The top bar and the navigation stay live, because navigation still works for loaded pages.
     await expect(page.getByRole('button', { name: 'Search everything' })).toBeEnabled();
     if (width < 700) {
@@ -293,6 +398,7 @@ for (const width of [375, 1280] as const) {
     await context.setOffline(false);
     await expect(banner, `new chat at ${width}px back online`).toHaveCount(0);
     await expect(composer).toHaveValue('What did I approve yesterday?');
+    await expect(offlineDrawer).toHaveCount(0);
     await expect(page.getByText('Off until it’s back')).toHaveCount(0);
   });
 
@@ -352,7 +458,7 @@ for (const width of [375, 1280] as const) {
     await page.goto(
       `/reviews?review=${encodeURIComponent(`engine:${markdownReview?.reviewId ?? ''}`)}`,
     );
-    const pane = page.locator('.ib-review-pane');
+    const pane = page.locator('.ib-review-detail[data-kind="engine-review"]');
     await expect(pane.getByRole('heading', { name: 'Refund policy update' })).toBeVisible();
     await expect(pane.locator('[data-cinder-markdown-node="table"] td').first()).toHaveText(
       'Up to $25',

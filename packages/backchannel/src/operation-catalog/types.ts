@@ -1,10 +1,12 @@
 import { z } from 'zod';
+import type { OperationBehavior } from './behavior-types.ts';
 import type { OperationHostFactory, OperationInterceptor } from './operation-interceptors.ts';
 
 import type { AccessPolicy } from '../authorization.ts';
 import type { FaultCode } from '../fault-code.ts';
 import type { OperationFault, TransportKind } from '../operation-fault.ts';
 import type { Principal } from '../principal.ts';
+export type { OperationBehavior } from './behavior-types.ts';
 
 /**
  * Regex for the canonical `<namespace>.<segment>(.<segment>)*` operation-name
@@ -218,6 +220,8 @@ export type OperationDefinitionBase<
 > = {
   readonly name: string;
   readonly mcpExposable: boolean;
+  readonly behavior?: OperationBehavior;
+  readonly conflictReasonTokens?: readonly string[];
   readonly mcpTool?: McpToolMetadata;
   readonly summary: string;
   /**
@@ -394,6 +398,8 @@ export type OperationRegistry = {
 type RegistrableOperationBase<Host> = {
   readonly name: string;
   readonly mcpExposable: boolean;
+  readonly behavior?: OperationBehavior;
+  readonly conflictReasonTokens?: readonly string[];
   readonly mcpTool?: McpToolMetadata;
   readonly summary: string;
   /** See {@link OperationDefinitionBase.description}. Optional longer-form prose. */
@@ -417,6 +423,11 @@ type RegistrableOperationBase<Host> = {
     rawInput: unknown,
     context: DispatchContext<Host>,
   ) => Promise<DispatchResult<unknown>>;
+  /** Check policy without invoking the operation, when the operation supports it. */
+  readonly checkPolicy?: (
+    rawInput: unknown,
+    context: DispatchContext<Host>,
+  ) => Promise<DispatchResult<void>>;
 };
 
 type UnaryRegistrableOperation<Host> = RegistrableOperationBase<Host> & {

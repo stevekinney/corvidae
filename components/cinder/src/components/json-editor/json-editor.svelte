@@ -26,6 +26,8 @@
     rows = 8,
     validFeedbackVisible = true,
     statusLabel,
+    invalidStatusLabel,
+    parserStopVisible = false,
     diagnostics,
     example = '{ "key": "value" }',
     schema,
@@ -167,10 +169,23 @@
       normalizedConsumerInvalid !== false &&
       normalizedConsumerInvalid !== 'false',
   );
+  const parserStopLine = $derived(
+    parseProblem ? draftValue.slice(0, parseProblem.parserPosition).split('\n').length : undefined,
+  );
   // The lines the editor marks: the line where the source stops parsing, else the caller's lines.
   const problems = $derived(
     parseProblem
-      ? [{ line: parseProblem.line, message: parseProblem.detail }]
+      ? [
+          {
+            line: parseProblem.line,
+            message:
+              parserStopVisible &&
+              parserStopLine !== undefined &&
+              parserStopLine > parseProblem.line
+                ? `${parseProblem.detail} The parser stopped at line ${parserStopLine}.`
+                : parseProblem.detail,
+          },
+        ]
       : (diagnostics ?? []),
   );
   const status = $derived.by(
@@ -182,7 +197,7 @@
       if (parseProblem) {
         return {
           tone: 'danger',
-          text: `Line ${parseProblem.line}: ${parseProblem.summary}`,
+          text: invalidStatusLabel ?? `Line ${parseProblem.line}: ${parseProblem.summary}`,
           line: parseProblem.line,
         };
       }

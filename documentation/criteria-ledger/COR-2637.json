@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2637",
+  "branch": "chef/e2e-shared-failures",
+  "checkedAt": "7755f966244bc6313b871197c7df165cf156c23a",
+  "briefVersion": "87ed998f097e",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "8e6fb830e5 names the cause: the Enter check leaving the form busy. SchemaForm drops a submit made while it checks an earlier one, and WorkflowInput ignored the Enter's answer; the CI trace (run 44975740403 shard 4) shows Topic still disabled at the click 12 ms after Enter and no request after it."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Product fix in workflow-input.svelte: the ask rides on the submit still being checked, so the start is made instead of silently dropped; a start that fails still shows its alert (existing 'a start that fails' tests). New run-setup.test.ts case failed before the fix and passes after (76 pass)."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "run-setup.spec.ts waits for the Topic field to be editable again (the Enter's check answered) before reading that no run started; no sleep or deadline. --repeat-each=20: 20 passed; browser reproduction clicking during the check under 40x CPU throttle failed on the old code and passed 10 of 10 with the fix."
+    }
+  ]
+}

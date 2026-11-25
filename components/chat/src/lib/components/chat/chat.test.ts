@@ -1515,6 +1515,7 @@ describe('Chat — public wrapper forwards bind:atBottom/unreadCount/newMessageI
     expect(source).toMatch(/atBottom\s*=\s*\$bindable\(\s*true\s*\)/);
     expect(source).toMatch(/unreadCount\s*=\s*\$bindable\(\s*0\s*\)/);
     expect(source).toMatch(/newMessageIndicatorVisible\s*=\s*\$bindable\(\s*false\s*\)/);
+    expect(source).toMatch(/hostQuestionDocked\s*=\s*\$bindable\(\s*false\s*\)/);
 
     const serverCode = compile(source, {
       filename: resolve(import.meta.dir, 'chat.svelte'),

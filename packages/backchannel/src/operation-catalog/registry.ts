@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { OperationInterceptor } from './operation-interceptors.ts';
 
+import { validateOperationBehaviors } from './behavior-validation.ts';
 import { snapshotOperationMetadata } from './operation-metadata.ts';
 import { UNSAFE_PROTOTYPE_KEYS } from './pipeline-helpers.ts';
 import {
@@ -163,6 +164,7 @@ export function createOperationRegistry<Host = unknown>(
     byName.set(operation.name, freezeOperation(operation, policies));
   }
   const ordered = Object.freeze([...byName.values()]);
+  validateOperationBehaviors(ordered);
   return {
     get(name) {
       return byName.get(name);

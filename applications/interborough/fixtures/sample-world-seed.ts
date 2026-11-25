@@ -30,11 +30,11 @@
  * @module sample-world-seed
  */
 
+import { openLocalBungalow, type RootLock } from '@lostgradient/bungalow';
 import { ANONYMOUS_LOCAL_OWNER } from '@lostgradient/bureau';
 import { createMemoryAuthority, type MemoryAuthority } from '@lostgradient/memory';
 import { createAgentSession, SESSION_OWNER_METADATA_KEY } from '@lostgradient/operative';
 import { Conversation } from 'conversationalist';
-import { mkdir, rm } from 'node:fs/promises';
 
 import { setPluginsEnabled } from '../src/host/demo-plugin-home.ts';
 import { startHost, type Host, type HostOptions } from '../src/host/host.ts';
@@ -42,6 +42,7 @@ import { createOffsetRuntime, type OffsetRuntime } from '../src/host/offset-runt
 import type { ShowcasePacing } from '../src/host/showcase-agents.ts';
 import { SHOWCASE_MODELS, showcaseHostOptions } from '../src/host/showcase.ts';
 import { writeProviderHome } from '../src/host/stub-provider.ts';
+import { resetOwnedFixture, type FixtureOwnership } from './fixture-ownership.ts';
 import { checksRecorded } from './sample-world-checks.ts';
 import {
   missedRunsLogged,
@@ -221,6 +222,7 @@ export type SampleWorldHostOptions = Omit<
 
 /** How {@link seedSampleWorld} leaves its host. */
 export interface SampleWorldOptions {
+  readonly ownership: FixtureOwnership;
   /** Options for the Nov 2 host the seed leaves running; the earlier hosts listen on a free port. */
   readonly host?: SampleWorldHostOptions;
   /**
@@ -229,6 +231,12 @@ export interface SampleWorldOptions {
    * `bureau.agents.definitions.create` writes) is made here.
    */
   readonly beforeProviderKeyRemoved?: (host: Host) => Promise<void>;
+  /**
+   * Told the name of each step of the story as it begins: a session's host starting, its work, its
+   * host stopping, and the Nov 2 host's. A seed that never settles has then said which step it is
+   * stuck on, and the e2e server prints each one as a startup phase (COR-2632).
+   */
+  readonly onStep?: (step: string) => void;
 }
 
 /** What the seed made, by name, with the host it left running at Nov 2. */
@@ -364,6 +372,10 @@ interface Story {
   readonly home: string;
   readonly runtime: OffsetRuntime;
   readonly director: Director;
+  /** Told each step as it begins ({@link SampleWorldOptions.onStep}). */
+  readonly onStep: (step: string) => void;
+  readonly acquireLock: (root: string) => RootLock;
+  readonly validateHome: () => Promise<void>;
 }
 
 /**
@@ -373,27 +385,89 @@ interface Story {
 async function startAt(story: Story, at: number, options?: SampleWorldHostOptions): Promise<Host> {
   const { home, runtime, director } = story;
   runtime.setTime(at);
+  await story.validateHome();
   return startHost({
     ...(options ?? { port: 0 }),
     environment: { ...options?.environment, INTERBOROUGH_HOME: home },
     runtime,
+    openHome: async (openOptions) => {
+      await story.validateHome();
+      const bungalow = await openLocalBungalow({
+        name: openOptions.name,
+        root: home,
+        acquireLock: story.acquireLock,
+        ...(openOptions.secretProvider === undefined
+          ? {}
+          : { secretProvider: openOptions.secretProvider }),
+        ...(openOptions.workspaceId === undefined ? {} : { workspaceId: openOptions.workspaceId }),
+      });
+      try {
+        await story.validateHome();
+      } catch (error) {
+        bungalow.close();
+        throw error;
+      }
+      return bungalow;
+    },
     ...showcaseHostOptions(samplePacing(runtime, director)),
   });
 }
 
-/** Runs `act` on a host started at `at`, then stops the host. */
+/**
+ * Runs one step of the story: the story is told `name` as it begins, so a seed that never settles
+ * has said which step it was on, and a step that fails rejects with an error that names it.
+ */
+async function step<T>(story: Story, name: string, work: () => Promise<T>): Promise<T> {
+  try {
+    story.onStep(name);
+    return await work();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`The sample world's step "${name}" failed: ${reason}`, { cause: error });
+  }
+}
+
+/** Runs `act` on a host started at `at`, then stops the host, each as a step of its own. */
 async function session(
   story: Story,
+  name: string,
   at: number,
   act: (context: SessionContext) => Promise<void>,
 ): Promise<void> {
-  const host = await startAt(story, at);
+  const host = await step(story, `${name}: starting its host`, () => startAt(story, at));
+  const stop = async () => {
+    try {
+      await step(story, `${name}: stopping its host`, () => host.close());
+    } catch (error) {
+      try {
+        await host.close();
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [error, cleanupError],
+          `The sample world's session "${name}" could not stop.`,
+          { cause: cleanupError },
+        );
+      }
+      throw error;
+    }
+  };
   try {
-    await act({ host, runtime: story.runtime, director: story.director });
-  } finally {
+    await step(story, name, () => act({ host, runtime: story.runtime, director: story.director }));
+  } catch (error) {
     story.director.scene = {};
-    await host.close();
+    try {
+      await stop();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        `The sample world's session "${name}" failed and could not stop.`,
+        { cause: cleanupError },
+      );
+    }
+    throw error;
   }
+  story.director.scene = {};
+  await stop();
 }
 
 /**
@@ -605,26 +679,105 @@ export const SAMPLE_WORLD_DISABLED_PLUGINS = ['demo', 'ollama', 'voyage'] as con
  */
 export async function seedSampleWorld(
   home: string,
-  options: SampleWorldOptions = {},
+  options: SampleWorldOptions,
 ): Promise<SampleWorld> {
-  await rm(home, { recursive: true, force: true });
-  await mkdir(home, { recursive: true });
-  await writeProviderHome(home, SHOWCASE_MODELS);
+  const callerHost = options.host;
+  const snapshot: SampleWorldOptions = {
+    ...options,
+    ownership: { ...options.ownership },
+    ...(callerHost === undefined
+      ? {}
+      : {
+          host: {
+            ...callerHost,
+            ...(callerHost.environment === undefined
+              ? {}
+              : { environment: { ...callerHost.environment } }),
+            ...(callerHost.databaseKinds === undefined
+              ? {}
+              : { databaseKinds: { ...callerHost.databaseKinds } }),
+            ...(callerHost.contentKinds === undefined
+              ? {}
+              : { contentKinds: { ...callerHost.contentKinds } }),
+            ...(callerHost.developmentPlugins === undefined
+              ? {}
+              : { developmentPlugins: [...callerHost.developmentPlugins] }),
+            ...(callerHost.settings === undefined
+              ? {}
+              : {
+                  settings: { ...callerHost.settings, locked: { ...callerHost.settings.locked } },
+                }),
+          },
+        }),
+  };
+  const lock = await resetOwnedFixture(home, snapshot.ownership);
+  try {
+    const world = await seedOwnedSampleWorld(home, snapshot, () => lock.validate());
+    return {
+      ...world,
+      host: {
+        ...world.host,
+        close: async () => {
+          try {
+            await world.host.close();
+            lock.release();
+          } catch (error) {
+            if (isHostTeardownError(error) && error.resourcesClosed) lock.release();
+            throw error;
+          }
+        },
+      },
+    };
+  } catch (error) {
+    if (!unsafeHostTeardown(error)) lock.release();
+    throw error;
+  }
+}
+
+function unsafeHostTeardown(error: unknown): boolean {
+  if (isHostTeardownError(error)) return !error.resourcesClosed;
+  if (error instanceof AggregateError && error.errors.some(unsafeHostTeardown)) return true;
+  return error instanceof Error && error.cause !== undefined && unsafeHostTeardown(error.cause);
+}
+
+function isHostTeardownError(
+  error: unknown,
+): error is AggregateError & { readonly resourcesClosed: boolean } {
+  return (
+    error instanceof AggregateError &&
+    'resourcesClosed' in error &&
+    typeof error.resourcesClosed === 'boolean'
+  );
+}
+
+async function seedOwnedSampleWorld(
+  home: string,
+  options: SampleWorldOptions,
+  validateHome: () => Promise<void>,
+): Promise<SampleWorld> {
+  const acquireLock = () => ({ release() {} });
+  await validateHome();
+  await writeProviderHome(home, SHOWCASE_MODELS, acquireLock);
+  await validateHome();
   await setPluginsEnabled(
     home,
     Object.fromEntries(SAMPLE_WORLD_DISABLED_PLUGINS.map((name) => [name, false])),
+    acquireLock,
   );
   const story: Story = {
     home,
     runtime: createOffsetRuntime(SAMPLE_WORLD_TIMES.toolRunnerVersion1),
     director: { scene: {} },
+    onStep: options.onStep ?? (() => {}),
+    acquireLock,
+    validateHome,
   };
   const { runtime } = story;
   const times = SAMPLE_WORLD_TIMES;
   const history = SAMPLE_WORLD_HISTORY_TIMES;
   const [version1, version2, version3, version4] = TOOL_RUNNER_VERSIONS;
 
-  await session(story, times.toolRunnerVersion1, async ({ host }) => {
+  await session(story, 'Tool runner version 1', times.toolRunnerVersion1, async ({ host }) => {
     await saveToolRunnerVersion(host, version1);
     // The claim timing the host runs: renewed every 30 seconds within a 90-second claim. A restart
     // later in the story puts it in force, so on Monday only the 15-second interval it saves waits
@@ -632,28 +785,33 @@ export async function seedSampleWorld(
     await saveSetting(host, 'engine.workflowClaimTtl', 90_000);
     await saveSetting(host, 'engine.workflowClaimRenewInterval', 30_000);
   });
-  await session(story, times.toolRunnerVersion2, async ({ host }) => {
+  await session(story, 'Tool runner version 2', times.toolRunnerVersion2, async ({ host }) => {
     await saveToolRunnerVersion(host, version2);
     runtime.setTime(times.neverShareEmails);
     await rememberHowTo(host, TOOL_RUNNER_HOW_TOS.neverShareEmails);
   });
-  await session(story, times.lookUpBeforeAnswering, async (context) => {
+  await session(story, 'Oct 21', times.lookUpBeforeAnswering, async (context) => {
     await rememberHowTo(context.host, TOOL_RUNNER_HOW_TOS.lookUpBeforeAnswering);
     await october21(context);
   });
-  await session(story, history.triageCreated - 60_000, october23);
-  await session(story, history.triageSecondRun - 60_000, october24);
-  await session(story, times.toolRunnerVersion3, async ({ host }) =>
+  await session(story, 'Oct 23', history.triageCreated - 60_000, october23);
+  await session(story, 'Oct 24', history.triageSecondRun - 60_000, october24);
+  await session(story, 'Tool runner version 3', times.toolRunnerVersion3, async ({ host }) =>
     saveToolRunnerVersion(host, version3),
   );
-  await session(story, history.releaseNotesVersion3 - 60_000, october29Morning);
+  await session(story, 'Oct 29 morning', history.releaseNotesVersion3 - 60_000, october29Morning);
   // The server was started a minute before the chat, so its start comes first in the audit log.
-  await session(story, times.billingAsked - 60_000, billingChatEndedByARestart);
-  await session(story, times.toolRunnerVersion4, async ({ host }) =>
+  await session(
+    story,
+    'Oct 29 billing chat',
+    times.billingAsked - 60_000,
+    billingChatEndedByARestart,
+  );
+  await session(story, 'Tool runner version 4', times.toolRunnerVersion4, async ({ host }) =>
     saveToolRunnerVersion(host, version4),
   );
-  await session(story, history.sayHelloGoal - 60_000, october30);
-  await session(story, times.sayHello, async (context) => {
+  await session(story, 'Oct 30', history.sayHelloGoal - 60_000, october30);
+  await session(story, 'Nov 1', times.sayHello, async (context) => {
     // The clean-up of that night ran at 3:00 AM, with this host's own clock, so its record is real.
     // The host that starts on Monday finds it older than the 3:00 AM it was off for, which Data and
     // retention words as "Skipped today while Interborough was off."
@@ -667,16 +825,35 @@ export async function seedSampleWorld(
     await checksRecorded(context);
   });
   // Daily summary, on a clock set back to Oct 28 (`sample-world-history.ts` says why).
-  await session(story, history.dailySummaryCreated - 60_000, october28);
-  await session(story, history.dailySummaryRan - 30_000, october29DailySummary);
+  await session(story, 'Oct 28 daily summary', history.dailySummaryCreated - 60_000, october28);
+  await session(
+    story,
+    'Oct 29 daily summary',
+    history.dailySummaryRan - 30_000,
+    october29DailySummary,
+  );
+  await validateHome();
   await writeFinalWorkflowFiles(home);
 
-  const host = await startAt(story, times.serverStarted, options.host);
+  const host = await step(story, 'Nov 2: starting its host', () =>
+    startAt(story, times.serverStarted, options.host),
+  );
   try {
     const context = { host, runtime, director: story.director };
-    return { host, runtime, ...(await monday(context, options.beforeProviderKeyRemoved)) };
+    const made = await step(story, 'Nov 2', () =>
+      monday(context, options.beforeProviderKeyRemoved),
+    );
+    return { host, runtime, ...made };
   } catch (error) {
-    await host.close();
+    try {
+      await host.close();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        'The sample world failed and its host could not stop.',
+        { cause: cleanupError },
+      );
+    }
     throw error;
   }
 }

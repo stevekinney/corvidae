@@ -99,6 +99,40 @@ for (const width of WIDTHS) {
   });
 }
 
+test('the schedule list uses the content width at 1920 pixels and keeps its 1280-pixel layout', async ({
+  page,
+}) => {
+  for (const width of [1920, 1280] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/schedules');
+    await listed(page, 4);
+    const geometry = await page.locator('[data-page="schedules"]').evaluate((section) => {
+      const root = document.documentElement;
+      const rootStyle = getComputedStyle(root);
+      const contentWidth = parseFloat(rootStyle.getPropertyValue('--cinder-content-width'));
+      const outlet = section.closest('main');
+      if (outlet === null) throw new Error('the schedule outlet is drawn');
+      const outletStyle = getComputedStyle(outlet);
+      const outletBox = outlet.getBoundingClientRect();
+      return {
+        width: section.getBoundingClientRect().width,
+        maxInlineSize: getComputedStyle(section).maxInlineSize,
+        contentWidth: contentWidth * parseFloat(rootStyle.fontSize),
+        available:
+          outletBox.width -
+          parseFloat(outletStyle.paddingInlineStart) -
+          parseFloat(outletStyle.paddingInlineEnd),
+      };
+    });
+    if (width === 1920) {
+      expect(geometry.width).toBeLessThanOrEqual(geometry.contentWidth + 1);
+    } else {
+      expect(geometry.maxInlineSize).toBe('none');
+      expect(Math.abs(geometry.width - geometry.available)).toBeLessThanOrEqual(1);
+    }
+  }
+});
+
 /** Answers a read with the response the host gave, changed by `change`. */
 async function changed(route: Route, change: (body: Record<string, unknown>) => void) {
   const response = await route.fetch();

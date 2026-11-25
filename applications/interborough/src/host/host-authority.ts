@@ -10,6 +10,7 @@ import {
   authorizeWorkspaceClass,
   BUREAU_SCOPES,
   withWorkspaceMembership,
+  type WorkspaceMembership,
   type WorkspaceMembershipOptions,
   type WorkspaceOperationClass,
 } from '@lostgradient/bureau';
@@ -27,6 +28,11 @@ export type HostWorkspaceAuthentication = {
   readonly authentication: AuthConfig;
   /** Resolve current members in the one workspace bound to this host's storage. */
   readonly workspace: WorkspaceMembershipOptions;
+  /**
+   * Whether this member can share memory with another eligible owner. The directory keeps owner
+   * identities private; a missing or failed answer hides the action.
+   */
+  readonly memorySharingAvailable?: ((member: WorkspaceMembership) => Promise<boolean>) | undefined;
 };
 
 /** Request-local authentication and current class authorization. */

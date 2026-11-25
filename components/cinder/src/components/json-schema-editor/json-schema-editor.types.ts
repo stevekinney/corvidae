@@ -32,6 +32,14 @@ type JsonSchemaEditorCommonProps = {
   view?: JsonSchemaEditorView;
   /** Read-only mode disables all mutations. */
   readonly?: boolean;
+  /**
+   * `document` (the default) is the whole editor: its validity toolbar, the Form, JSON and Diff
+   * views, and the schema's title, description and type. `fields` is the fields table alone, for
+   * an object schema whose page already says what it is: Field, Type, Description and Required,
+   * each row's actions, and "Add a field", with no document chrome around it.
+   * @default 'document'
+   */
+  variant?: 'document' | 'fields';
   /** Maximum history entries (default 100). */
   maxHistory?: number;
   /** Force a draft override regardless of $schema. */

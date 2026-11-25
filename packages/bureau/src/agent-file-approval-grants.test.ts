@@ -17,7 +17,7 @@ import { z } from 'zod';
 import { BureauError } from './bureau-errors';
 import { runAgentInput, startRequest } from './http/ag-ui-fixtures.test-support';
 import { readAgUiStream } from './http/ag-ui-stream.test-support';
-import { createBureauHandler } from './http/create-bureau-handler';
+import { buildBureauHandlerHost, createBureauHandler } from './http/create-bureau-handler';
 import { RESOLVED_REVIEW_KEY_PREFIX } from './resolved-review-record';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
@@ -176,6 +176,12 @@ describe('approving with remember (COR-1828)', () => {
   it('skips the next on-changes ask for the tool in the same chat, and not in another chat', async () => {
     const { bureau } = await start();
     const first = await ask(bureau, 'issue-refund', 'A1');
+    expect(await bureau.reviews.mayRemember(pendingOf(bureau, first.id)[0]!)).toBe(true);
+    expect(
+      await buildBureauHandlerHost(bureau, []).reviews.mayRemember?.(
+        pendingOf(bureau, first.id)[0]!,
+      ),
+    ).toBe(true);
     const resolved = await approveRemembering(bureau, first.id);
     expect(resolved).toMatchObject({ decision: 'approve', remembered: true, loosened: true });
     expect(executed).toEqual(['issue-refund:A1']);
@@ -217,6 +223,7 @@ describe('approving with remember (COR-1828)', () => {
   it('keeps a tool set to always asking after it was remembered', async () => {
     const { bureau } = await start('{ issue-refund: always }');
     const first = await ask(bureau, 'issue-refund', 'A1');
+    expect(await bureau.reviews.mayRemember(pendingOf(bureau, first.id)[0]!)).toBe(false);
     const resolved = await approveRemembering(bureau, first.id);
     expect(resolved).toMatchObject({ remembered: true, loosened: false });
 

@@ -32,19 +32,20 @@ describe('the tables that hold long values', () => {
     }
   });
 
-  test('the engine workflow table keeps its table layout at every width', async () => {
+  test('the engine workflow table keeps its table layout for scoped workflow runs', async () => {
     const table = await read('../routes/workflows/list/workflow-table.svelte');
-    expect(table).toMatch(/<Table\s[^>]*\bfit\b[^>]*\bstackBelow=\{false\}/);
+    expect(table).toContain('{...stackTable ? {} : { stackBelow: false }}');
   });
 
   test('the workflow table fits its box above a floor no wider than 768px gives it, and its tags are Type’s second line', async () => {
     const floor = /(?:^|\n)\s*min-inline-size:\s*(\d+(?:\.\d+)?)rem/.exec(
-      ruleOf(await read('./workflows.css'), '.weft-workflows-table'),
+      ruleOf(await read('./workflows.css'), '.weft-workflows-table--with-floor'),
     );
     // The 768px container is about 642px, 40.1rem: a wider floor makes the table scroll sideways.
     expect(Number(floor?.[1])).toBeLessThanOrEqual(40);
     const table = await read('../routes/workflows/list/workflow-table.svelte');
-    expect(table).toMatch(/<Table\s[^>]*\bfit\b[^>]*class="weft-workflows-table"/);
+    expect(table).toMatch(/<Table\s[\s\S]*?\bfit\b[\s\S]*?weft-workflows-table/);
+    expect(table).toContain("stackTable ? '' : ' weft-workflows-table--with-floor'");
     // No Tags column of its own, so Type takes what the fixed columns leave.
     expect(table).not.toMatch(/<Table\.HeaderCell>Tags<\/Table\.HeaderCell>/);
     expect(table).toMatch(/\{#snippet detail\(\)\}[\s\S]*weft-workflows-table__tags/);

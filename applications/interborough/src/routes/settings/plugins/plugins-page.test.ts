@@ -309,8 +309,10 @@ describe('while the plugins load (COR-2513)', () => {
     });
     // The same frame the loaded page draws, holding a list pane and a detail pane.
     expect(placeholder.classList.contains('ib-plugins__frame')).toBe(true);
-    expect(placeholder.querySelector('.cinder-list-detail__list')).not.toBeNull();
-    expect(placeholder.querySelector('.cinder-list-detail__detail')).not.toBeNull();
+    const list = placeholder.querySelector('.cinder-list-detail__list');
+    const detail = placeholder.querySelector('.cinder-list-detail__detail');
+    expect(list).not.toBeNull();
+    expect(detail).not.toBeNull();
     // One card of lines across the page's width is the old placeholder.
     expect(placeholder.querySelector('.cinder-skeleton-card')).toBeNull();
     // Announced once, with the page's loading label, however many rows the placeholder draws. The
@@ -327,6 +329,9 @@ describe('while the plugins load (COR-2513)', () => {
     await loaded(container, 'linear');
     expect(container.querySelector('[data-testid="plugins-loading"]')).toBeNull();
     expect(container.querySelectorAll('.ib-plugins__frame')).toHaveLength(1);
+    expect(container.querySelector('.ib-plugins__frame') === placeholder).toBe(true);
+    expect(container.querySelector('.cinder-list-detail__list') === list).toBe(true);
+    expect(container.querySelector('.cinder-list-detail__detail') === detail).toBe(true);
   });
 });
 
@@ -504,7 +509,7 @@ describe('a plugin', () => {
 });
 
 describe('a plugin’s configuration', () => {
-  test('is a form built from the schema, never raw JSON: a row per field with its key and hint, and one explicit Save', async () => {
+  test('is a form built from the schema, never raw JSON: a row per field with its label and hint, and one explicit Save', async () => {
     const { container, getByRole } = open('linear');
     await loaded(container, 'linear');
 
@@ -519,7 +524,7 @@ describe('a plugin’s configuration', () => {
     ).toEqual(['teamKey', 'region', 'labels', 'snippets', 'cacheMs']);
     const team = fieldOf(container, 'teamKey');
     expect(team.textContent).toContain('Team key');
-    expect(team.textContent).toContain('teamKey');
+    expect(team.textContent).not.toContain('teamKey');
     expect(team.textContent).toContain('The team the issues go to.');
     expect((team.querySelector('input') as HTMLInputElement).value).toBe('COR');
     expect(fieldOf(container, 'region').querySelector('select')).not.toBeNull();
@@ -905,10 +910,13 @@ describe('disabling a plugin whose agents have runs in flight (COR-2235)', () =>
         .getByRole('button', { name: PLUGINS_COPY.disable.confirm })
         .classList.contains('button-variant-danger'),
     ).toBe(true);
-    // Cinder draws the list: it sits directly in the dialog's options, with no wrapper of the page's.
-    expect(
-      dialog.querySelector('[data-testid="plugin-disable-impacts"]')?.parentElement?.className,
-    ).toContain('cinder-confirm-dialog__options');
+    // The impacts use Cinder's grouped list and rows; only Cinder adds their wrapper and surface.
+    const impacts = dialog.querySelector('[data-testid="plugin-disable-impacts"]');
+    expect(impacts?.className).toContain('cinder-grouped-list__group');
+    expect(impacts?.parentElement?.className).toContain('cinder-grouped-list');
+    expect(impacts?.parentElement?.parentElement?.className).toContain(
+      'cinder-confirm-dialog__options',
+    );
     expect(writes()).toEqual([]);
   });
 

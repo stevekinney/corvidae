@@ -108,6 +108,7 @@ export type HooksOperationTypes = {
         readonly name: string | null;
         readonly owner: string;
         readonly problems: ReadonlyArray<
+          | { readonly code: 'workflow-unavailable' }
           | { readonly code: 'reaction-unavailable' }
           | {
               readonly code: 'configuration-invalid';

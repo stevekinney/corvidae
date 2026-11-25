@@ -116,6 +116,7 @@ import { join, resolve as resolvePath, sep } from 'node:path';
 import {
   combineHostAuthentication,
   createHostAuthority,
+  type HostAuthority,
   type HostWorkspaceAuthentication,
 } from './host-authority.ts';
 import { localWorkspaceMembership } from './workspace-principal.ts';
@@ -152,7 +153,6 @@ import {
 import { DEMO_AGENT_NAMES } from '@lostgradient/plugin-demo';
 import { type Storage } from '@lostgradient/storage';
 import {
-  handleRequest,
   serve,
   type AlertingOptions,
   type RegistryAgnosticEngine,
@@ -449,6 +449,8 @@ export type HostOptions = {
   readonly port?: number;
   /** The built application to serve. Defaults to `build/` at the package root. */
   readonly buildDirectory?: string;
+  /** Development preparation that must succeed before application routes or the listener exist. */
+  readonly browserReady?: PromiseLike<void>;
   /**
    * Replaces the engine behind the Engine console, for a host whose console must start and inspect
    * workflows of its own (the end-to-end fixtures). The default is the Bureau's durable engine:
@@ -844,6 +846,16 @@ function shellResponder(buildDirectory: string, development: boolean): () => Pro
   };
 }
 
+function reportBoundListener(
+  environment: BungalowEnvironment,
+  log: (message: string) => void,
+  port: number,
+): void {
+  if (environment['INTERBOROUGH_STARTUP_PROFILE'] === '1') {
+    log(`STARTUP ${JSON.stringify({ stage: 'bound-listener', port })}`);
+  }
+}
+
 type PublicRoutes = Bun.Serve.Routes<HostSocketData, string>;
 
 /**
@@ -911,6 +923,39 @@ type Guard = (request: Request) => Response | undefined;
 
 /** Where the engine's private listener is, once it is up. */
 type EngineUpstream = { readonly url: string; readonly key: string };
+
+/** Project the host-only sharing availability beside the verified principal. */
+async function hostPrincipalResponse(
+  request: Request,
+  authority: HostAuthority,
+  memorySharingAvailable: HostWorkspaceAuthentication['memorySharingAvailable'],
+): Promise<Response> {
+  const context = await authority.authenticate(request);
+  if (context instanceof Response) return context;
+  const principal = context.principal;
+  const membership = principal?.workspace;
+  if (principal === undefined || membership === undefined)
+    return new Response('Workspace membership required', { status: 403 });
+  let memorySharing = false;
+  try {
+    memorySharing = (await memorySharingAvailable?.(membership)) === true;
+  } catch {
+    // A directory that cannot prove an eligible recipient must not invite a refused share.
+  }
+  return Response.json({
+    method: principal.method,
+    subject: principal.subject ?? null,
+    scopes: [...principal.scopes],
+    workspace: { ...membership, memorySharing },
+  });
+}
+
+/** The directory's private availability projection, if this host configured one. */
+function memorySharingAvailableOf(
+  options: HostOptions,
+): HostWorkspaceAuthentication['memorySharingAvailable'] {
+  return options.workspaceAuthentication?.memorySharingAvailable;
+}
 
 /** Start the host. The caller owns it and must `close()` it. */
 export async function startHost(options: HostOptions = {}): Promise<Host> {
@@ -1248,6 +1293,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       bungalow.workspaceId,
       a2aExposure.authentication !== undefined,
     );
+    const memorySharingAvailable = memorySharingAvailableOf(options);
     const configuredWorkspace = options.workspaceAuthentication?.workspace ?? localWorkspace;
     if (configuredWorkspace.workspaceId !== bungalow.workspaceId)
       throw new Error('The authentication directory belongs to another workspace.');
@@ -1560,6 +1606,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const apiPrincipal = options.apiPrincipal ?? (() => localApiPrincipal(ANONYMOUS_LOCAL_OWNER));
     // Changing a provider or a plugin is changing settings, which needs `settings:write`.
     const refuseSettingsWrites = refuseWritesWithoutScope(refuse, 'settings:write', apiPrincipal);
+    await options.browserReady;
     const buildDirectory = options.buildDirectory ?? DEFAULT_BUILD_DIRECTORY;
     const devReload = options.development === true ? createDevReload() : undefined;
     if (devReload !== undefined) held.devReload = devReload;
@@ -1574,15 +1621,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const publicRoutes = {
       ...applicationRoutes(buildDirectory, refuse, shell),
       '/api/v1/principal': {
-        GET: async (request: Request) => {
-          const context = await authority.authenticate(request);
-          if (context instanceof Response) return context;
-          const principalUrl = new URL(request.url);
-          principalUrl.pathname = '/v1/principal';
-          return handleRequest(new Request(principalUrl, request), engine, {
-            authContext: context,
-          });
-        },
+        GET: (request: Request) =>
+          hostPrincipalResponse(request, authority, memorySharingAvailable),
       },
       // The development reload stream. A production host registers no route, so the path is a 404.
       ...(devReload === undefined
@@ -1824,6 +1864,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     listening = publicServer;
     const publicPort = publicServer.port;
     if (publicPort === undefined) throw new Error('The public listener has no port.');
+    reportBoundListener(environment, log, publicPort);
     const publicOrigin = `http://${LOOPBACK}:${publicPort}`;
     hostOrigin = publicOrigin;
     // A2A push delivery is a restart-applied setting: the values read here are the ones this
@@ -1994,9 +2035,21 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       close: () => (held.closing ??= teardown(held)),
     };
   } catch (error) {
-    await teardown(held).catch(() => undefined);
-    throw error;
+    return failHostStartup(held, error);
   }
+}
+
+async function failHostStartup(held: Held, error: unknown): Promise<never> {
+  try {
+    await teardown(held);
+  } catch (cleanupError) {
+    throw new AggregateError(
+      [error, cleanupError],
+      'The host failed to start and did not shut down cleanly.',
+      { cause: cleanupError },
+    );
+  }
+  throw error;
 }
 
 /** The signing secret for worker start-override previews, derived from the per-process key. */
@@ -2048,6 +2101,16 @@ type Held = {
   closing?: Promise<void>;
 };
 
+/** A teardown failure reports whether every resource that can use the home closed. */
+class HostTeardownError extends AggregateError {
+  constructor(
+    errors: unknown[],
+    readonly resourcesClosed: boolean,
+  ) {
+    super(errors, 'The Interborough host did not shut down cleanly.');
+  }
+}
+
 /** Release everything the host holds, in the reverse of the order it took it, whatever failed. */
 async function teardown(held: Held): Promise<void> {
   const failures: unknown[] = [];
@@ -2063,10 +2126,11 @@ async function teardown(held: Held): Promise<void> {
   await step(
     instanceRecord && (() => removeInstanceRecord(instanceRecord.home, instanceRecord.pid)),
   );
+  const recordFailures = failures.length;
   // No change to the providers may start once the host is going away.
-  held.providers?.close();
-  held.plugins?.close();
-  held.skills?.close();
+  await step(held.providers && (() => held.providers?.close()));
+  await step(held.plugins && (() => held.plugins?.close()));
+  await step(held.skills && (() => held.skills?.close()));
   // End the reload streams first, so no page is left reading a host that is going away.
   await step(held.devReload && (() => held.devReload?.close()));
   await step(held.publicServer && (() => held.publicServer?.stop(true)));
@@ -2081,6 +2145,6 @@ async function teardown(held: Held): Promise<void> {
   await step(storage && (() => disposeHostStorage(storage)));
   await step(() => held.bungalow.close());
   if (failures.length > 0) {
-    throw new AggregateError(failures, 'The Interborough host did not shut down cleanly.');
+    throw new HostTeardownError(failures, failures.length === recordFailures);
   }
 }

@@ -28,6 +28,7 @@
 @import '../components/alert/alert.css';
 @import '../components/app-bar/app-bar.css';
 @import '../components/approval-card/approval-card.css';
+@import '../components/approval-group/approval-group.css';
 @import '../components/area-chart/area-chart.css';
 @import '../components/aspect-ratio/aspect-ratio.css';
 @import '../components/attempts-indicator/attempts-indicator.css';
@@ -75,6 +76,7 @@
 @import '../components/decision-deck/decision-deck.css';
 @import '../components/description-list/description-list.css';
 @import '../components/diff-statistics/diff-statistics.css';
+@import '../components/disclosure-trigger/disclosure-trigger.css';
 @import '../components/divider/divider.css';
 @import '../components/donut-chart/donut-chart.css';
 @import '../components/docked-action-bar/docked-action-bar.css';

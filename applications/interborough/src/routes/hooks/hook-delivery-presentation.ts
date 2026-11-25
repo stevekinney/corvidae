@@ -33,9 +33,27 @@ export function deliveryStamp(at: number): string {
   return `${weekday} ${dayLabel(at)}, ${clockTime(at)}`;
 }
 
-/** What a delivery is about on its line: the event in words, or that it was a test. */
-export function deliverySubject(delivery: Pick<HookDelivery, 'test' | 'kind'>): string {
-  return delivery.test ? COPY.testEvent : eventOptionLabel(delivery.kind);
+/** Names the durable record an event payload refers to, after its own authorized read succeeds. */
+export type DeliveryReferenceNames = {
+  /** The workflow run a run event names. */
+  readonly run?: string;
+  /** The review a review event names. */
+  readonly review?: string;
+  /** The hook name gives a review delivery enough context in its compact line. */
+  readonly hook?: string;
+};
+
+/** What a delivery is about on its line: its durable subject when it can be read, else the event. */
+export function deliverySubject(
+  delivery: Pick<HookDelivery, 'test' | 'kind'>,
+  names: DeliveryReferenceNames = {},
+): string {
+  if (delivery.test) return COPY.testEvent;
+  if (names.run !== undefined && delivery.kind.startsWith('run.')) return names.run;
+  if (names.review !== undefined && delivery.kind.startsWith('review.')) {
+    return names.hook === undefined ? names.review : `${names.hook}, ${names.review}`;
+  }
+  return eventOptionLabel(delivery.kind);
 }
 
 /** What a try came to, short enough for the right-hand column: `410 Gone`, `No answer`. */
@@ -153,6 +171,26 @@ export type DeliveryFact = {
   readonly href?: string;
 };
 
+/** The durable identifiers in the body that a hook delivered, never a new event-payload field. */
+export type DeliveryReferences = {
+  readonly runId?: string;
+  readonly reviewId?: string;
+};
+
+/**
+ * Finds references in the already-recorded delivery body. The event catalog keeps these identifiers
+ * deliberately small; the UI reads their names through their normal authorized endpoints.
+ */
+export function deliveryReferences(delivery: Pick<HookDelivery, 'request'>): DeliveryReferences {
+  const body = deliveryBody(delivery);
+  if (!isRecord(body) || !isRecord(body['payload'])) return {};
+  const payload = body['payload'];
+  return {
+    ...(typeof payload['runId'] === 'string' ? { runId: payload['runId'] } : {}),
+    ...(typeof payload['reviewId'] === 'string' ? { reviewId: payload['reviewId'] } : {}),
+  };
+}
+
 /** The host of a receipt's address, which is how the link reads; the whole address when it has no host. */
 function receiptHost(address: string): string {
   try {
@@ -171,11 +209,21 @@ function receiptHost(address: string): string {
 export function deliveryFacts(
   delivery: HookDelivery,
   alike: ReadonlySet<string> = new Set(),
+  names: DeliveryReferenceNames = {},
 ): DeliveryFact[] {
   const copy = COPY.facts;
   const facts: DeliveryFact[] =
-    !delivery.test && alike.has(delivery.kind)
-      ? [{ label: copy.event, value: eventOptionLabel(delivery.kind), code: delivery.kind }]
+    !delivery.test &&
+    (alike.has(delivery.kind) || names.run !== undefined || names.review !== undefined)
+      ? [
+          {
+            label: copy.event,
+            value: [eventOptionLabel(delivery.kind), names.run ?? names.review]
+              .filter((value): value is string => value !== undefined)
+              .join(', '),
+            code: delivery.kind,
+          },
+        ]
       : [];
   if (delivery.request !== null) {
     facts.push({ label: copy.sentTo, value: webhookHost(delivery.request.url) });
@@ -228,7 +276,7 @@ export function attemptList(delivery: Pick<HookDelivery, 'attempts'>, all: boole
 /** What the payload inspector is given for a delivery. */
 export type DeliveryPayload =
   | { readonly kind: 'none' }
-  | { readonly kind: 'fields'; readonly value: unknown }
+  | { readonly kind: 'fields'; readonly value: string; readonly eventEnvelope: boolean }
   | { readonly kind: 'text'; readonly value: string };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -236,33 +284,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * The payload a delivery sent, for the inspector. A webhook's body is an envelope (`id`, `hookId`,
- * `kind`, `payload` and the rest); the inspector is given the event kind and the fields of its
- * `payload`, which are what the receiver acts on, so Fields reads `Event` first. A body that is not
- * an envelope is shown as it is, and one that is not JSON as text. A delivery that sent no request
- * has no payload.
+ * The recorded request body, including its outer webhook envelope. Use the original string so the
+ * inspector parses the same value for Fields and JSON and can copy the original body.
  */
-export function deliveryPayload(delivery: Pick<HookDelivery, 'request' | 'kind'>): DeliveryPayload {
-  if (delivery.request === null) return { kind: 'none' };
+export function deliveryPayload(delivery: Pick<HookDelivery, 'request'>): DeliveryPayload {
+  const request = delivery.request;
+  if (request === null || request.body === '') return { kind: 'none' };
   const body = deliveryBody(delivery);
-  if (body === undefined) {
-    return delivery.request.body === ''
-      ? { kind: 'none' }
-      : { kind: 'text', value: delivery.request.body };
-  }
-  if (!isRecord(body) || !Object.hasOwn(body, 'payload')) return { kind: 'fields', value: body };
-  const kind = typeof body['kind'] === 'string' ? body['kind'] : delivery.kind;
-  const payload = body['payload'];
-  if (payload === undefined || payload === null) return { kind: 'fields', value: { event: kind } };
+  if (body === undefined) return { kind: 'text', value: request.body };
   return {
     kind: 'fields',
-    value: isRecord(payload) ? { event: kind, ...payload } : { event: kind, payload },
+    value: request.body,
+    eventEnvelope: isRecord(body) && Object.hasOwn(body, 'payload'),
   };
 }
 
-/** Writes the `event` field of {@link deliveryPayload} as the event in words and its kind: `A run fails (run.error)`. */
+/** Adds the event's readable name beside its recorded kind in the webhook envelope's Fields view. */
 export function payloadFieldText(path: readonly string[], value: unknown): string | undefined {
-  if (path.length !== 1 || path[0] !== 'event' || typeof value !== 'string') return undefined;
+  if (path.length !== 1 || path[0] !== 'kind' || typeof value !== 'string') return undefined;
   return COPY.eventField(eventOptionLabel(value), value);
 }
 

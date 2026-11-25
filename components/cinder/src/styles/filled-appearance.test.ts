@@ -156,12 +156,13 @@ describe('Input appearance', () => {
     expect(inputCss).toContain('border-color: var(--cinder-control-border-hover);');
   });
 
-  test('a filled read-only value drops the fill and keeps the dashed edge', () => {
+  test('a filled read-only value drops the duplicate fill and keeps the quiet inset treatment', () => {
     const body = ruleBody(inputCss, `${densityDefault('cinder-input')}[readonly]:not(:disabled)`);
     expect(body).toContain('background: transparent;');
-    expect(ruleBody(inputCss, '.cinder-input[readonly]:not(:disabled)')).toContain(
-      'border-style: dashed;',
-    );
+    const readonly = ruleBody(inputCss, '.cinder-input[readonly]:not(:disabled)');
+    expect(readonly).toContain('background: var(--cinder-surface-inset);');
+    expect(readonly).toContain('border-color: transparent;');
+    expect(readonly).not.toContain('border-style: dashed;');
   });
 
   test('a grouped filled field moves the fill and radius to the group, and the density default stays below the disabled rule', () => {

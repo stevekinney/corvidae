@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2603",
+  "branch": "steve/cor-2603-toolbox-projection",
+  "checkedAt": "f1134b60657d010440f705aae2a4591a983666e2",
+  "briefVersion": "0dbeb546dcb1",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "bun run --cwd packages/backchannel-armorer test: pinned selection and catalog snapshot name, output schema, scopes, behavior and MCP eligibility; exit 0"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "bun test packages/backchannel-armorer/src/index.test.ts: absent version, duplicate name, Standard Schema, incompatible schema and transforms, built-in approval, opaque beforeAdmission and beforeExecute at tool and toolbox levels, zero calls and plain equipment; exit 0"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "bun run --cwd packages/backchannel-armorer test: toolbox validator/callback, verified subject, cancellation, invalid output and declared tool fault; exit 0"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "bun run --cwd packages/backchannel-armorer test: denied write invokes zero callbacks; permitted write invokes once and snapshot declares invalidation; exit 0"
+    }
+  ]
+}

@@ -1,4 +1,8 @@
 import {
+  findConstantTimeApiKeyMatch,
+  type ConstantTimeApiKeyEntry,
+} from '@lostgradient/credentials/api-key-verification';
+import {
   filterRecognizedScopes,
   type AdditionalScopeSet,
   type AuthorizationScope,
@@ -9,10 +13,6 @@ import {
   SHARED_API_KEY_SUBJECT,
   type AuthenticatedPrincipal,
 } from '../principal.ts';
-import {
-  findConstantTimeApiKeyMatch,
-  type ConstantTimeApiKeyEntry,
-} from './constant-time-api-key.ts';
 import type { AuthConfig, AuthResult, JWTPayload } from './types.ts';
 
 /**

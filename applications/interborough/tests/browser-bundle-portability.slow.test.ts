@@ -5,6 +5,25 @@ import { join, resolve, sep } from 'node:path';
 
 import { assertCleanBuild, browserBuildOptions } from '../scripts/browser-build.ts';
 
+it('bundles the plain Reviews client without Svelte, Cinder or server modules', async () => {
+  const result = await Bun.build({
+    entrypoints: [
+      resolve(
+        import.meta.dir,
+        '../../../packages/bureau-client/src/generated/portable-operation-client.generated.ts',
+      ),
+    ],
+    target: 'browser',
+    metafile: true,
+  });
+  expect(result.success).toBe(true);
+  const inputs = Object.keys(result.metafile?.inputs ?? {});
+  expect(inputs.length).toBeGreaterThan(0);
+  expect(inputs.filter((path) => /(?:^|\/)(?:svelte|cinder|server)(?:\/|$)/u.test(path))).toEqual(
+    [],
+  );
+});
+
 /** Compile the application for the browser, failing on any error or warning. */
 async function buildBrowserBundle(options: {
   entrypoints: string[];

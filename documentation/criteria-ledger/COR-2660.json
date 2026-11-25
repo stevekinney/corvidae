@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2660",
+  "branch": "steve/cor-2660-installed-upgrade-restore",
+  "checkedAt": "7e1d2c6b75c249a26e19d986cdb5ed3949f57b6d",
+  "briefVersion": "7bd10ed72323",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Hosted rehearsal 45307342340 and safe artifact 14880614827 identify the two installed macOS arm64 packages and executable digests."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Hosted rehearsal 45307342340 passed population, quiesced backup, candidate readback and persisted settings action; before and after manifests retained in artifact 14880614827."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Hosted rehearsal 45307342340 passed restored manifest, asset download, pending review continuation, durable single-result and duplicate approval checks; recovery receipt retained in artifact 14880614827."
+    }
+  ]
+}

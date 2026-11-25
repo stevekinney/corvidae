@@ -12,6 +12,7 @@ import {
   inSection,
   MODEL_POLICY_KEY,
   optionLabel,
+  SETTING_UNITS,
   settingLabel,
 } from './settings-controls.ts';
 
@@ -58,6 +59,7 @@ describe('the controls', () => {
       'decisions.maximumPerTask': 'number',
       'scorers.sampleRate': 'number',
       'scorers.dailyBudget': 'number',
+      'runs.spendThresholdUsd': 'number',
       'context.summarizerModel': 'choice',
       'retention.audit': 'form',
       'retention.runs': 'form',
@@ -278,14 +280,27 @@ describe('the groups', () => {
       'logs',
       'sessionInput',
       'children',
+      'runs',
       'engine',
       'durability',
       'a2a',
-      // No section draws it, so the group is only the key's own name.
+      // No section draws them, so the group is only the key's own name.
       'scorers',
     ]);
     // A group the page does not know comes after the ones it does, so a new key is not dropped.
     expect(groupsOf(['zeta.key', 'tools.wakeup'])).toEqual(['tools', 'zeta']);
+  });
+
+  test('draw the spend threshold as a number field in General, above 0, in US dollars (COR-2527)', () => {
+    const key = 'runs.spendThresholdUsd';
+    expect(controlFor(key, published.properties[key] as SchemaNode)).toMatchObject({
+      kind: 'number',
+      integer: false,
+      exclusiveMinimum: 0,
+    });
+    expect(inSection(key, 'general')).toBe(true);
+    expect(settingLabel(key)).toBe('Spend threshold per run');
+    expect(SETTING_UNITS[key]).toBe('US dollars');
   });
 
   test('know how every key applies', () => {

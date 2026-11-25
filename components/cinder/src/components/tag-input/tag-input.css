@@ -18,8 +18,10 @@
     align-items: center;
     gap: var(--cinder-space-2);
     inline-size: 100%;
-    min-block-size: 2.5rem;
-    padding: var(--cinder-space-2);
+    /* Match Input's medium step. The even one-step block inset keeps an empty
+     * field centred while tags still make the control grow naturally. */
+    min-block-size: var(--cinder-control-height-md);
+    padding: var(--cinder-space-1) var(--cinder-space-2);
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-control-border);
     border-radius: var(--cinder-radius-md);

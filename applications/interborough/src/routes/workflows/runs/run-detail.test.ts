@@ -750,6 +750,7 @@ describe('a run a schedule started (COR-2424, rows 55i, 55j, 55m)', () => {
 
     const rail = await view.findByRole('complementary');
     await waitFor(() => expect(rail.textContent).toContain(RUN_DETAIL_COPY.schedule));
+    expect(rail.textContent).not.toContain(RUN_PAGE_COPY.facts.tags);
     await waitFor(() =>
       expect(rail.textContent).toContain(
         'This was the schedule’s last run. It has missed 4 occurrences since.',
@@ -796,14 +797,15 @@ describe('the run page’s sections are Cinder Sections', () => {
     expect(source).not.toMatch(/<h[1-6][^>]*class="ib-run__/);
   });
 
-  test.each(files.filter((file) => file !== './run-engine-panels.svelte'))(
-    '%s titles its block with Cinder’s Section',
-    (file) => {
-      const source = readFileSync(new URL(file, import.meta.url), 'utf8');
-      expect(source).toMatch(/import \{[^}]*\bSection\b[^}]*\} from '@lostgradient\/cinder'/);
-      expect(source).toMatch(/<Section\s/);
-    },
-  );
+  // The plugin panels draw their own heading inside their frame, so their region carries no Section
+  // title of its own (design review of #1219: no duplicate card title).
+  test.each(
+    files.filter((file) => file !== './run-engine-panels.svelte' && file !== './run-panels.svelte'),
+  )('%s titles its block with Cinder’s Section', (file) => {
+    const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+    expect(source).toMatch(/import \{[^}]*\bSection\b[^}]*\} from '@lostgradient\/cinder'/);
+    expect(source).toMatch(/<Section\s/);
+  });
 
   test('the rail spaces its Sections with one margin, never a gap added to Cinder’s own', () => {
     const css = readFileSync(new URL('../../../styles/tasks.css', import.meta.url), 'utf8');

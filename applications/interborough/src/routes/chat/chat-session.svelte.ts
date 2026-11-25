@@ -36,9 +36,11 @@ import {
 import { parseStepRowIdentifier } from '@lostgradient/operative';
 import { CHAT_COPY } from '../../app/copy/chat.ts';
 import {
+  discardContextTurn,
   forgetContextGrants,
   forkRefusalReason,
   regenerateContext,
+  resumeContextTurn,
   retractContextInput,
   sendContextInput,
   wireCodeOf,
@@ -111,6 +113,10 @@ export type ChatSessionOptions = {
    * existing thread leaves this out.
    */
   readonly unopened?: boolean;
+  /** This session is a reader projection and must never attach or mutate a live run. */
+  readonly readOnly?: boolean;
+  /** The dedicated shared projection disappeared, so its route state must be read again. */
+  readonly onSharedHistoryUnavailable?: () => void;
 };
 
 /** Whether `error` is the Bureau, or the AG-UI door, saying it has no such thread. */
@@ -165,12 +171,36 @@ function approvalRound(
 /** How many failed attempts in a row end the retries and leave the session disconnected. */
 export const MAX_RECONNECT_ATTEMPTS = 8;
 
+/** How many retry attempts follow the read that failed first. */
+const RECONNECT_TRIES = MAX_RECONNECT_ATTEMPTS - 1;
+
+/** The retry currently scheduled for a dropped Chat stream. */
+export interface ChatReconnect {
+  readonly attempt: number;
+  readonly attempts: number;
+  readonly wait: number;
+  readonly nextTryAt: number;
+  /** A run stream, rather than the initial history read, was interrupted. */
+  readonly runDropped: boolean;
+}
+
 export type ChatRegenerationState = {
   readonly messageId: string;
   readonly commandId: string;
   readonly status: 'running' | 'failed';
   readonly error?: string;
 };
+
+/**
+ * Whether a Discard or a Continue that failed with `error` is tried again under the same command
+ * (COR-2437): only after the Bureau refused that command outright, which released it. After an
+ * answer of `command-in-doubt`, which the same command would get for as long as it is sent, and
+ * after a failure that brought no answer, the next try is a new command.
+ */
+function keepsCommandAfter(error: unknown): boolean {
+  const code = wireCodeOf(error);
+  return code !== undefined && forkRefusalReason(error) !== 'command-in-doubt';
+}
 
 export class ChatSessionState {
   conversation = $state.raw<ConversationHistory>(createConversationHistory({ id: '' }));
@@ -212,6 +242,12 @@ export class ChatSessionState {
   failureWasTransport = $state(false);
   /** The host-owned answer replacement currently in flight, or its retryable failure receipt. */
   regeneration = $state<ChatRegenerationState | undefined>(undefined);
+  /** The discard of the last stopped turn in flight, by the run whose turn it removes. */
+  discarding = $state<{ readonly runId: string; readonly commandId: string } | undefined>(
+    undefined,
+  );
+  /** The continuation of the last stopped turn in flight, by the run it goes on from. */
+  resuming = $state<{ readonly runId: string; readonly commandId: string } | undefined>(undefined);
   /** The questions the run is waiting on the person to answer; the next message answers one. */
   humanRequests = $state.raw<readonly HumanRequest[]>([]);
   /** Whether the session opened on a run that was going, and is still reading it. */
@@ -243,6 +279,8 @@ export class ChatSessionState {
    * composer says "Reconnecting… attempt N" while it is above zero.
    */
   reconnectAttempt = $state(0);
+  /** The current retry details for Chat's reconnecting turn state. */
+  reconnectSchedule = $state.raw<ChatReconnect | undefined>(undefined);
   /**
    * How many follow-ups the run has not taken yet: the transcript's queued rows. The Bureau holds
    * each until the run's next step takes it, when it becomes a sent message, and Remove takes one
@@ -312,6 +350,10 @@ export class ChatSessionState {
    */
   #approvalDeadlines: readonly ApprovalDeadline[] = [];
   #regenerationPromise: Promise<void> | undefined;
+  /** The discard command retried after a Bureau refusal, keyed to the stopped run. */
+  #discardCommand: { readonly runId: string; readonly commandId: string } | undefined;
+  /** The continuation command retried after a Bureau refusal, keyed to the stopped run. */
+  #resumeCommand: { readonly runId: string; readonly commandId: string } | undefined;
   #readerAbort: AbortController | undefined;
   #activeTurn: Promise<unknown> = Promise.resolve();
   /**
@@ -321,10 +363,14 @@ export class ChatSessionState {
   #controllerTransport: number | undefined;
   /** Whether the Bureau holds this session's thread, so its history may be read. */
   #opened: boolean;
+  readonly #readOnly: boolean;
+  readonly #onSharedHistoryUnavailable: (() => void) | undefined;
 
   constructor(options: ChatSessionOptions) {
     this.sessionId = options.sessionId;
     this.#opened = options.unopened !== true;
+    this.#readOnly = options.readOnly === true;
+    this.#onSharedHistoryUnavailable = options.onSharedHistoryUnavailable;
     this.historySettled = !this.#opened;
     this.#closed = options.closed;
     this.#onNotFound = options.onNotFound;
@@ -381,6 +427,7 @@ export class ChatSessionState {
       },
       agentName: options.agentName,
       ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+      ...(this.#readOnly ? { sharedRead: true } : {}),
       onHumanRequests: (requests) => {
         this.humanRequests = requests;
         for (const request of requests) {
@@ -717,9 +764,94 @@ export class ChatSessionState {
     return !this.#attachFailed;
   }
 
+  /**
+   * Removes the last turn the person stopped, by its run, through the Bureau
+   * (`bureau.contexts.discardturn`, COR-2437), then reads the thread again so the rows go. The
+   * person's message stays. Resolves `false` when nothing was removed: the Bureau refused it, or it
+   * could not be reached. A second call while one is in flight does nothing.
+   */
+  async discardTurn(runId: string): Promise<boolean> {
+    if (
+      this.#readOnly ||
+      this.#closed?.() === true ||
+      this.streaming ||
+      this.attaching ||
+      this.transportActive
+    ) {
+      return false;
+    }
+    if (this.discarding !== undefined) return false;
+    // The command is kept for the next Discard only after the Bureau refused it outright
+    // (`keepsCommandAfter`); after any other answer the next Discard is a new command.
+    const earlier = this.#discardCommand;
+    const commandId =
+      earlier?.runId === runId ? earlier.commandId : `discard:${crypto.randomUUID()}`;
+    this.#discardCommand = { runId, commandId };
+    this.discarding = { runId, commandId };
+    try {
+      await discardContextTurn(
+        { contextId: this.sessionId, commandId, runId },
+        { signal: this.#abort.signal },
+      );
+      this.#discardCommand = undefined;
+      await this.refresh();
+      return true;
+    } catch (error) {
+      if (!keepsCommandAfter(error)) this.#discardCommand = undefined;
+      return false;
+    } finally {
+      this.discarding = undefined;
+    }
+  }
+
+  /**
+   * Lets the last stopped turn go on, by its run, through the Bureau
+   * (`bureau.contexts.resumeturn`, COR-2437): a continuation run starts on the thread with no
+   * message from the person, and the page reads the thread again, which joins that run as it goes.
+   * Resolves `false` when nothing was started: the Bureau refused it, or it could not be reached.
+   * The command is kept for the next Continue only after the Bureau refused it outright
+   * (`keepsCommandAfter`); after any other answer the next Continue is a new command.
+   */
+  async resumeTurn(runId: string): Promise<boolean> {
+    if (
+      this.#readOnly ||
+      this.#closed?.() === true ||
+      this.streaming ||
+      this.attaching ||
+      this.transportActive
+    ) {
+      return false;
+    }
+    if (this.resuming !== undefined || this.discarding !== undefined) return false;
+    const earlier = this.#resumeCommand;
+    const commandId =
+      earlier?.runId === runId ? earlier.commandId : `resume:${crypto.randomUUID()}`;
+    this.#resumeCommand = { runId, commandId };
+    this.resuming = { runId, commandId };
+    try {
+      await resumeContextTurn(
+        { contextId: this.sessionId, commandId, runId },
+        { signal: this.#abort.signal },
+      );
+      this.#resumeCommand = undefined;
+      await this.refresh();
+      return true;
+    } catch (error) {
+      if (!keepsCommandAfter(error)) this.#resumeCommand = undefined;
+      return false;
+    } finally {
+      this.resuming = undefined;
+    }
+  }
   /** Replaces the latest ended answer through Bureau without starting an AG-UI/tool turn. */
   async regenerateAnswer(messageId: string): Promise<void> {
-    if (this.#closed?.() === true || this.streaming || this.attaching || this.transportActive)
+    if (
+      this.#readOnly ||
+      this.#closed?.() === true ||
+      this.streaming ||
+      this.attaching ||
+      this.transportActive
+    )
       return;
     if (this.#regenerationPromise !== undefined) return this.#regenerationPromise;
     const previous = this.regeneration;
@@ -757,6 +889,7 @@ export class ChatSessionState {
    * none. A failure is shown on the row, which offers Retry, and in `failure`.
    */
   send(content: string): Promise<void> {
+    if (this.#readOnly) return Promise.resolve();
     return this.adapter.sendMessage({ role: 'user', content }, []);
   }
 
@@ -778,6 +911,7 @@ export class ChatSessionState {
    * not plain text, is not offered again here (`canRetryTurn`).
    */
   async retryTurn(options: { readonly tools?: ReadonlyMap<string, ToolInfo> } = {}): Promise<void> {
+    if (this.#readOnly) return;
     const id = this.#lastUserRowId();
     const row = id === undefined ? undefined : this.conversation.messages[id];
     const text = row === undefined ? undefined : retryText(row);
@@ -811,7 +945,13 @@ export class ChatSessionState {
       readonly approvalKey?: string;
     } = {},
   ): Promise<void> {
-    if (this.streaming || this.attaching || this.transportActive || this.#abort.signal.aborted) {
+    if (
+      this.#readOnly ||
+      this.streaming ||
+      this.attaching ||
+      this.transportActive ||
+      this.#abort.signal.aborted
+    ) {
       return;
     }
     const rows = this.conversation.ids
@@ -987,9 +1127,36 @@ export class ChatSessionState {
    * follow-ups, approvals) works on a run the page did not start.
    */
   attach(options: { readonly rereading?: boolean } = {}): Promise<boolean> {
+    if (this.#readOnly) return this.#readSharedHistory();
     const attached = this.#attach(options.rereading === true);
     this.#attachment = attached.then(() => undefined);
     return attached;
+  }
+
+  async #readSharedHistory(): Promise<boolean> {
+    const generation = ++this.#retryGeneration;
+    try {
+      const history = await this.#wiring.history(this.sessionId, this.#abort.signal);
+      if (this.#abort.signal.aborted || generation !== this.#retryGeneration) return false;
+      if (history === undefined) {
+        this.historySettled = true;
+        this.readFailed = true;
+        this.failure = CHAT_COPY.load.errorDescription;
+        this.#onSharedHistoryUnavailable?.();
+        return false;
+      }
+      this.#restoreKeepingLocalInput(history, true);
+      this.historySettled = true;
+      this.readFailed = false;
+      this.failure = undefined;
+    } catch (error) {
+      if (this.#abort.signal.aborted || generation !== this.#retryGeneration) return false;
+      this.historySettled = true;
+      this.readFailed = true;
+      this.failure = error instanceof Error ? error.message : String(error);
+      this.#scheduleReconnect(error);
+    }
+    return false;
   }
 
   /**
@@ -1214,6 +1381,13 @@ export class ChatSessionState {
   #setRetryFailures(failures: number): void {
     this.#retryFailures = failures;
     this.reconnectAttempt = failures;
+    if (failures === 0) this.reconnectSchedule = undefined;
+  }
+
+  #giveUpReconnecting(): void {
+    this.disconnected = true;
+    this.reconnectAttempt = 0;
+    this.reconnectSchedule = undefined;
   }
 
   #scheduleReconnect(error: unknown): void {
@@ -1222,19 +1396,24 @@ export class ChatSessionState {
     // fails must not start the ladder again behind a page that still says it is disconnected.
     if (this.disconnected) return;
     if (error instanceof AgUiHttpError && [403, 404, 410].includes(error.status)) {
-      this.disconnected = true;
-      this.reconnectAttempt = 0;
+      this.#giveUpReconnecting();
       return;
     }
     this.#setRetryFailures(this.#retryFailures + 1);
     if (this.#retryFailures >= MAX_RECONNECT_ATTEMPTS) {
-      this.disconnected = true;
-      this.reconnectAttempt = 0;
+      this.#giveUpReconnecting();
       return;
     }
     if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
     const generation = ++this.#retryGeneration;
     const delay = Math.min(500 * 2 ** (this.#retryFailures - 1), 10_000);
+    this.reconnectSchedule = {
+      attempt: this.#retryFailures,
+      attempts: RECONNECT_TRIES,
+      wait: delay,
+      nextTryAt: Date.now() + delay,
+      runDropped: this.#attachedRun || this.reconnectSchedule?.runDropped === true,
+    };
     // poll-reason: timer
     this.#retryTimer = setTimeout(() => {
       this.#retryTimer = undefined;

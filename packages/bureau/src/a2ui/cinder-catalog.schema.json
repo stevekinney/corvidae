@@ -75,6 +75,11 @@
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
               "description": "Accessible label for the idle state. Defaults to \"Copy to clipboard\". Accessible name (Cinder `label`)."
             },
+            "appearance": {
+              "type": "string",
+              "description": "Use the borderless, text-sized face for a copy control that follows a value.",
+              "enum": ["default", "inline"]
+            },
             "confirmDuration": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber",
               "description": "Duration in ms to show the confirmation state. Default 1500."

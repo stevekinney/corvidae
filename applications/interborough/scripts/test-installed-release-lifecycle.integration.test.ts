@@ -396,7 +396,7 @@ async function exerciseJourney(fault: string, port = 43123, relocated = false) {
             if (fault === 'authority-command-exit')
               return { exitCode: 9, stdout: '', stderr: 'injected command failure' };
             if (fault === 'authority-command-envelope')
-              return { exitCode: 0, stdout: '{"schemaVersion":2}', stderr: '' };
+              return { exitCode: 0, stdout: '{"schemaVersion":3}', stderr: '' };
             if (arguments_.includes('installed-cli-dropped-response-agent'))
               return {
                 exitCode: fault === 'authority-dropped-success' ? 0 : 1,
@@ -417,7 +417,7 @@ async function exerciseJourney(fault: string, port = 43123, relocated = false) {
                   stderr: '',
                 };
             }
-            return { exitCode: 0, stdout: '{"schemaVersion":1,"data":{}}', stderr: '' };
+            return { exitCode: 0, stdout: '{"schemaVersion":2,"data":{}}', stderr: '' };
           }
           const actualConnection = arguments_.find((argument) => argument.startsWith('actual-'));
           if (actualConnection !== undefined) {

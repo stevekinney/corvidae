@@ -20,6 +20,7 @@ describe('storage adapter test-support capability rows', () => {
       scanConsistency: 'snapshot',
       atomicBatch: true,
       conditionalBatch: true,
+      conditionalBatchDeadline: true,
       boundedRangeDelete: true,
     });
   });

@@ -295,6 +295,38 @@ describe('Add a step', () => {
   });
 });
 
+describe('Starts', () => {
+  test('does not clear a schedule when the selected option is activated again', async () => {
+    const scheduled = JSON.stringify({
+      name: 'built',
+      trigger: {
+        kind: 'schedule',
+        spec: '0 9 * * 1-5',
+        timezone: 'America/Chicago',
+        overlap: 'skip',
+        catchUp: false,
+      },
+      steps: [{ kind: 'sleep', duration: '1m' }],
+    });
+    const { container } = await openBuilder(scheduled);
+    const selected = container.querySelector<HTMLElement>('[data-cinder-segment-value="schedule"]');
+    expect(selected).not.toBeNull();
+    expect(selected?.getAttribute('aria-checked')).toBe('true');
+
+    await fireEvent.click(selected as HTMLElement);
+
+    expect(await textOf(container)).toMatchObject({
+      trigger: {
+        kind: 'schedule',
+        spec: '0 9 * * 1-5',
+        timezone: 'America/Chicago',
+        overlap: 'skip',
+        catchUp: false,
+      },
+    });
+  });
+});
+
 describe('an activity card', () => {
   test('is added with the starting input its form shows, draws that form from the catalog’s schema, and writes the step it describes', async () => {
     const { container, getByLabelText } = await openBuilder(
@@ -477,7 +509,7 @@ describe('a workflow card', () => {
     );
   });
 
-  test('chooses a workflow with a schema by replacing the input with its starting input', async () => {
+  test('asks before replacing edited workflow input, keeps it on Cancel, and replaces it on Confirm', async () => {
     const { container } = await openBuilder(
       file([{ kind: 'workflow', workflow: 'demo:other-workflow', input: { raw: [1] } }]),
     );
@@ -485,7 +517,40 @@ describe('a workflow card', () => {
     await waitFor(() =>
       expect(select.querySelector('option[value="demo:echo-workflow"]')).toBeTruthy(),
     );
-    await fireEvent.change(select, { target: { value: 'demo:echo-workflow' } });
+    await fireEvent.change(field(container, 'workflow-builder-step-1-workflow'), {
+      target: { value: 'demo:echo-workflow' },
+    });
+    const confirmation = await waitFor(() => {
+      const found = document.body.querySelector<HTMLElement>('[role="dialog"]');
+      expect(found).toBeTruthy();
+      expect(found?.textContent).toContain('Replace workflow input?');
+      return found as HTMLElement;
+    });
+    expect(stepsOf(await textOf(container))[0]).toEqual({
+      kind: 'workflow',
+      workflow: 'demo:other-workflow',
+      input: { raw: [1] },
+    });
+    expect(field(container, 'workflow-builder-step-1-workflow').value).toBe('demo:other-workflow');
+
+    await fireEvent.click(button(confirmation, 'Keep editing'));
+    expect(stepsOf(await textOf(container))[0]).toEqual({
+      kind: 'workflow',
+      workflow: 'demo:other-workflow',
+      input: { raw: [1] },
+    });
+    expect(field(container, 'workflow-builder-step-1-workflow').value).toBe('demo:other-workflow');
+
+    await fireEvent.change(field(container, 'workflow-builder-step-1-workflow'), {
+      target: { value: 'demo:echo-workflow' },
+    });
+    const secondConfirmation = await waitFor(() => {
+      const found = document.body.querySelector<HTMLElement>('[role="dialog"]');
+      expect(found).toBeTruthy();
+      expect(found?.textContent).toContain('Replace workflow input?');
+      return found as HTMLElement;
+    });
+    await fireEvent.click(button(secondConfirmation, 'Replace input'));
     await waitFor(async () =>
       expect(stepsOf(await textOf(container))[0]).toEqual({
         kind: 'workflow',
@@ -784,6 +849,19 @@ describe('a path chosen by a value', () => {
         },
       },
     ]);
+
+  test('lays out root steps as cards and nested steps as rows with matching Move and Remove controls', async () => {
+    const { container } = await openBuilder(branching());
+    const root = container.querySelector('[data-step-address="2"]');
+    const nested = container.querySelector('[data-step-address="2-c1-1"]');
+    expect(root?.getAttribute('data-cinder-layout')).toBe('card');
+    expect(nested?.getAttribute('data-cinder-layout')).toBe('row');
+    const move = nested?.querySelector('button[data-cinder-move="down"]');
+    const remove = nested?.querySelector('button[aria-label^="Remove"]');
+    expect(move?.classList.contains('button-variant-secondary')).toBe(true);
+    expect(remove?.classList.contains('button-variant-secondary')).toBe(true);
+    expect(nested?.querySelector('button[data-cinder-move="up"]')).toBeNull();
+  });
 
   test('is added with one empty case, in the person’s words, and its fields write the step', async () => {
     const { container } = await openBuilder(file([{ kind: 'sleep', duration: '1m' }]));

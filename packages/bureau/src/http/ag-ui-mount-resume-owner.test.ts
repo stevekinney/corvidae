@@ -99,6 +99,60 @@ const resumeRequest = (entry: ResumeEntry) =>
   startRequest(runAgentInput({ runId: 'resume-1', messages: [], resume: [entry] }));
 
 describe('a resume that reads a session another owner created under the thread’s id', () => {
+  it('refuses a protected approval without verified reviewer context', async () => {
+    const charged: number[] = [];
+    const tool = createTool({
+      name: 'charge-card',
+      version: '1.0.0',
+      description: 'Charge',
+      input: z.object({ cents: z.number() }),
+      execute: async ({ cents }) => {
+        charged.push(cents);
+        return { charged: cents };
+      },
+    });
+    const toolbox = createToolbox([tool], {
+      approvalSecret: SECRET,
+      policy: {
+        beforeExecute: () => ({
+          allow: false,
+          status: 'needs_approval',
+          reason: 'Review required',
+        }),
+      },
+    }) as unknown as Toolbox;
+    const harness = await openHarness({
+      script: [charge, say('Charged.')],
+      toolbox,
+      authentication,
+      reviewPolicy: {
+        matches: () => true,
+        mayRead: () => true,
+        mayDecide: () => true,
+        effect: async () => undefined,
+      },
+    });
+    try {
+      const frames = await readAgUiStream(
+        await harness.handler(startRequest(runAgentInput(), as('alice-key'))),
+      );
+      const finished = frames.at(-1)!.event as { outcome: { interrupts: Array<{ id: string }> } };
+      const reviewId = finished.outcome.interrupts[0]!.id;
+      await readAgUiStream(
+        await harness.handler(
+          startRequest(
+            runAgentInput({ runId: 'resume-1', messages: [], resume: [approveEntry(reviewId)] }),
+            as('alice-key'),
+          ),
+        ),
+      );
+      expect(charged).toEqual([]);
+      const pending = await harness.bureau.reviews.get(reviewId);
+      expect(pending?.status).toBe('pending');
+    } finally {
+      await harness.dispose();
+    }
+  });
   it('does not replay that session’s calls to the reader in the prelude', async () => {
     await withApproval(async ({ harness, reviewId }) => {
       const { bureau } = harness;

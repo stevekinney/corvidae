@@ -287,8 +287,9 @@
           class="chat-question-dock-options-scroll"
           {@attach scrollEdgeFade('block')}
         >
+          <!-- The dock is the one panel; choices are its flat, full-height rows. -->
           <ChoiceGrid
-            variant="card"
+            variant="row"
             size="sm"
             columns={1}
             ariaLabelledby={hasMessage ? questionId : legendId}
@@ -391,10 +392,9 @@
     gap: var(--cinder-space-3);
     inline-size: 100%;
     min-inline-size: 0;
-    padding: var(--cinder-space-3);
-    border: 1px solid var(--cinder-border-muted);
+    /* One frame groups the dock without turning its coarse 52px choices into nested cards. */
+    border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
-    background: var(--cinder-surface-raised, var(--cinder-surface));
     max-block-size: min(100%, 80dvh);
   }
 
@@ -518,14 +518,20 @@
     padding: var(--cinder-space-2) 0 var(--cinder-space-1);
   }
 
-  .chat-question-dock-body :global(.cinder-choice-grid-item[data-cinder-variant='card']) {
+  .chat-question-dock-body :global(.cinder-choice-grid-item[data-cinder-variant='row']) {
+    --_cinder-choice-card-min-block-size: 3.25rem;
     padding-block: var(--cinder-space-2);
     gap: var(--cinder-space-2);
   }
 
   .chat-question-dock-body
+    :global(.cinder-choice-grid-item[data-cinder-variant='row']:not([data-cinder-selected])) {
+    background: transparent;
+  }
+
+  .chat-question-dock-body
     :global(
-      .cinder-choice-grid-item[data-cinder-variant='card'] .cinder-choice-grid-item__description
+      .cinder-choice-grid-item[data-cinder-variant='row'] .cinder-choice-grid-item__description
     ) {
     flex: 1 1 auto;
     line-height: var(--cinder-leading-tight, 1.25);
@@ -533,7 +539,7 @@
 
   /* A description follows its title on the title's line when the whole of it fits, else it wraps below. */
   .chat-question-dock-body
-    :global(.cinder-choice-grid-item[data-cinder-variant='card'] .cinder-choice-grid-item__card) {
+    :global(.cinder-choice-grid-item[data-cinder-variant='row'] .cinder-choice-grid-item__card) {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
@@ -573,12 +579,6 @@
     font-size: var(--cinder-text-xs);
     font-weight: var(--cinder-font-medium);
     text-align: center;
-  }
-
-  @media (any-pointer: coarse) {
-    .chat-question-dock-key {
-      display: none;
-    }
   }
 
   /* One muted line, at the notice size: the answer was sent and is no longer open to change. */
@@ -643,9 +643,7 @@
     flex-wrap: wrap;
     justify-content: space-between;
     gap: var(--cinder-space-2);
-    padding-block-start: var(--cinder-space-2);
-    border-block-start: 1px solid var(--cinder-border-muted);
-    background: var(--cinder-surface-raised, var(--cinder-surface));
+    padding-block-start: var(--cinder-space-1);
   }
 
   @media (max-width: 479.98px), (any-pointer: coarse) {

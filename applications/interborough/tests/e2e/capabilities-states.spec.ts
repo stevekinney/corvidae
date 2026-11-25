@@ -126,6 +126,48 @@ async function sourcesAre(page: Page, change: (sources: Json[]) => Json[]): Prom
 }
 
 for (const width of WIDTHS) {
+  test(`/capabilities/connect: selected tools count in shared FormActions at ${width} pixels`, async ({
+    page,
+  }) => {
+    const connect = copy.source.connect;
+    await open(page, width, '/capabilities/connect');
+    const form = page.getByTestId('connect-form');
+    await form.getByRole('radio', { name: connect.kind.openapi }).check();
+    await form.getByRole('radio', { name: connect.specification.file }).check();
+    await form.locator('#connect-file').setInputFiles({
+      name: 'read-only-catalog.yaml',
+      mimeType: 'application/yaml',
+      buffer: Buffer.from(
+        [
+          'openapi: 3.1.0',
+          'info: { title: Read-only Catalog, version: "1" }',
+          'servers: [{ url: https://example.com }]',
+          'paths:',
+          '  /books:',
+          '    get: { operationId: listBooks, summary: List books }',
+          '  /authors:',
+          '    get: { operationId: listAuthors, summary: List authors }',
+          '',
+        ].join('\n'),
+      ),
+    });
+    const actions = form.getByRole('group', { name: 'Form actions' });
+    const summary = actions.getByTestId('connect-summary');
+    await expect(summary).toHaveText(connect.joins(2, 'Read-only Catalog'));
+    await expect(actions).toHaveCSS('position', 'sticky');
+    await form.getByRole('checkbox', { name: connect.chooseTools.onLabel('List books') }).uncheck();
+    await expect(summary).toHaveText(connect.joins(1, 'Read-only Catalog'));
+    await expect(actions.getByRole('button')).toHaveText([
+      connect.actions.cancel,
+      connect.actions.connectCount(1),
+    ]);
+    await captureForDesignReview(page, {
+      route: '/capabilities/connect',
+      state: 'shared FormActions',
+      source: SOURCE,
+    });
+  });
+
   // The sample world's own pages, under state names `responsive.spec.ts` (which captures the same
   // routes with stress data under the same file names) never writes.
   test(`the sample world's tools, sources and connect form, at ${width} pixels`, async ({
@@ -694,6 +736,8 @@ for (const width of [1920, 1280, 768, 375] as const) {
       // 2: the schema is open, with nothing to expand.
       const source = inputs.locator('.cinder-schema-view__source');
       await expect(source).toContainText('"assetId"');
+      await detail.getByTestId('tool-risk').hover();
+      await expect(page.getByRole('tooltip')).toBeVisible();
       // Captured once settled, before the geometry is judged, so a miss still leaves the screens.
       await captureForDesignReview(page, {
         route: '/capabilities',
@@ -769,4 +813,39 @@ test.describe('/capabilities tool page, on a dark system', () => {
     expect(mismatches.total).toBeGreaterThan(0);
     expect(mismatches.wrong).toEqual([]);
   });
+});
+
+test.describe('/capabilities skill instruction touch target', () => {
+  test.use({ hasTouch: true });
+
+  test('Show all receives a tap below its painted edge (31n)', async ({ page }) => {
+    await answerOperation(page, 'bureau.skills.list', RELEASE_NOTES_SKILLS);
+    await answerOperation(page, 'bureau.skills.get', RELEASE_NOTES_INSTRUCTIONS);
+    await open(page, 375, '/capabilities?tab=skills&skill=built-in%2Frelease-notes');
+    const toggle = page.getByTestId('skill-instructions-toggle');
+    await toggle.scrollIntoViewIfNeeded();
+    const target = await toggle.evaluate((button) => {
+      const box = button.getBoundingClientRect();
+      const extension = Number.parseFloat(getComputedStyle(button, '::before').bottom);
+      return {
+        x: box.left + box.width / 2,
+        y: box.bottom - extension - 1,
+        extension,
+      };
+    });
+    expect(target.extension).toBeLessThan(-1);
+    await page.touchscreen.tap(target.x, target.y);
+    expect(await toggle.getAttribute('aria-expanded')).toBe('true');
+  });
+});
+
+test('/capabilities tool and source details use a reading column on a wide display', async ({
+  page,
+}) => {
+  await githubIs(page, 'failed', 'The source could not be reached.');
+  await open(page, 1920, '/capabilities?tool=github__create_issue');
+  const readingWidth = (node: Element) => getComputedStyle(node).maxInlineSize;
+  expect(await page.getByTestId('tool-detail').evaluate(readingWidth)).toBe('760px');
+  await page.goto('/capabilities?tab=sources&source=github');
+  expect(await page.getByTestId('source-detail').evaluate(readingWidth)).toBe('760px');
 });

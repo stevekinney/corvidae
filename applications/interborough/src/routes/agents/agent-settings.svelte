@@ -45,7 +45,7 @@
     Callout,
     Chip,
     ConfirmDialog,
-    Input,
+    NumberInput,
     SectionHeading,
     Select,
     Skeleton,
@@ -53,6 +53,7 @@
     type SelectOption,
   } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import type { Attachment } from 'svelte/attachments';
 
   import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY, EFFORT_LABELS } from '../../app/copy/agents.ts';
   import { hasToastHost, showToast } from '../../app/toast-host.svelte';
@@ -86,6 +87,7 @@
   } from '../agent-editor/agent-editor-models.ts';
   import { providerDisplayName } from '../settings/models/format-model.ts';
   import type { OverridesWriter } from './agent-overrides.ts';
+  import AgentDeleteDialog from './agent-delete-dialog.svelte';
   import AgentPluginNote from './agent-plugin-note.svelte';
   import AgentVersions from './agent-versions.svelte';
   import {
@@ -201,6 +203,7 @@
   let models = $state<string[]>([]);
   let effort = $state<Effort | ''>('');
   let stepLimit = $state('');
+  let stepLimitInputText: string | undefined;
   let instructions = $state('');
   /** Set by a submit: from then on the step limit says at its field why it cannot be saved. */
   let attempted = $state(false);
@@ -212,12 +215,35 @@
   const dirty = $derived(changed.length > 0);
   const stepError = $derived(attempted ? stepLimitError(stepLimit, baseline?.stepLimit) : '');
 
+  const stepLimitInput: Attachment<HTMLInputElement> = (input) => {
+    const update = () => {
+      stepLimitInputText = input.value;
+    };
+    input.addEventListener('input', update);
+    return () => input.removeEventListener('input', update);
+  };
+
+  function numericValue(text: string): number | null {
+    const trimmed = text.trim();
+    if (trimmed === '') return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function acceptStepLimit(value: number | null): void {
+    const rawText = stepLimitInputText ?? stepLimit;
+    stepLimitInputText = undefined;
+    stepLimit =
+      value === null && rawText.trim() !== '' ? rawText : value === null ? '' : String(value);
+  }
+
   function fill(next: SettingsForm, at: string | null): void {
     baseline = next;
     model = next.model;
     models = [...next.models];
     effort = next.effort;
     stepLimit = next.stepLimit;
+    stepLimitInputText = undefined;
     instructions = next.instructions;
     attempted = false;
     seededHash = at;
@@ -451,30 +477,30 @@
   // ── Delete ───────────────────────────────────────────────────────────────────────────────────
 
   let confirmingDelete = $state(false);
-
-  // What finds the agent, read once the delete question opens. A failure leaves it unsaid.
-  const references = createQuery(
-    () => ({
-      queryKey: queryKeys.agents.references(id),
-      queryFn: ({ signal }) => listAgentReferences(id, { signal }),
-      enabled: confirmingDelete,
-      retry: false,
-    }),
-    undefined,
-  );
+  let deleteError = $state<string | undefined>();
 
   const removal = createMutation(() => ({
     mutationFn: (expectedHash: string) => deleteAgent(id, expectedHash),
     onMutate: () => {
       problem = null;
+      deleteError = undefined;
     },
     onSuccess: () => {
+      confirmingDelete = false;
       guard.release();
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definitions() });
       router.navigate('/agents');
     },
-    onError: (error) => refuse(agentFaultOf(error), copy.deleteFailed),
+    onError: (error) => {
+      const fault = agentFaultOf(error);
+      if (fault.kind === 'rejected' || fault.kind === 'other') {
+        deleteError = fault.message;
+        return;
+      }
+      confirmingDelete = false;
+      refuse(fault, copy.deleteFailed);
+    },
   }));
 
   function confirmDelete(): void {
@@ -695,15 +721,16 @@
               onchange={(event) => chooseEffort(event.currentTarget.value)}
             />
 
-            <Input
+            <NumberInput
               id={STEP_LIMIT_ID}
               label={copy.stepLimitLabel}
               description={copy.stepLimitNote}
               placeholder={copy.stepLimitPlaceholder(DEFAULT_STEP_LIMIT)}
-              inputmode="numeric"
+              value={numericValue(stepLimit)}
               error={stepError}
               disabled={save.isPending}
-              bind:value={stepLimit}
+              inputAttachment={stepLimitInput}
+              onValueChange={acceptStepLimit}
             />
           </section>
 
@@ -752,7 +779,10 @@
                 variant="ghost-danger"
                 size="sm"
                 disabled={hash === null || removal.isPending}
-                onclick={() => (confirmingDelete = true)}
+                onclick={() => {
+                  deleteError = undefined;
+                  confirmingDelete = true;
+                }}
                 label={copy.deleteAction}
               />
             {/snippet}
@@ -823,14 +853,12 @@
   onConfirm={() => toggle.mutate('disable')}
 />
 
-<ConfirmDialog
+<AgentDeleteDialog
   bind:open={confirmingDelete}
-  title={copy.deleteDialog.title(name)}
-  description={copy.deleteDialog.description(chats, dependentsLine(references.data))}
-  typeToConfirm={id}
-  typeToConfirmLabel={copy.deleteDialog.typeLabel(id)}
-  confirmLabel={copy.deleteDialog.confirm}
-  destructive
+  {id}
+  {name}
+  busy={removal.isPending}
+  error={deleteError}
   onConfirm={confirmDelete}
 />
 

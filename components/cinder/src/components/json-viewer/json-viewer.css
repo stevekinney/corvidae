@@ -51,6 +51,16 @@
     border-radius: var(--cinder-radius-sm);
   }
 
+  /* Tree disclosures can sit directly beside siblings or nested disclosures. Their real coarse
+     pointer boxes therefore take the touch minimum: unlike a pseudo-element extension, each button
+     owns a disjoint target and a press cannot activate an adjacent branch. */
+  @media (any-pointer: coarse) {
+    .cinder-json-viewer__toggle {
+      min-inline-size: var(--cinder-touch-target-min);
+      min-block-size: var(--cinder-touch-target-min);
+    }
+  }
+
   @media (hover: hover) {
     .cinder-json-viewer__toggle:hover {
       background: var(--cinder-surface-hover);

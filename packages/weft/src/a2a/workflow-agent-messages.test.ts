@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 
 import { type Message, Role, TaskState } from '@a2a-js/sdk';
 import {
@@ -378,6 +378,67 @@ describe('continuing a task with SendMessage', () => {
       Role.ROLE_AGENT,
       Role.ROLE_USER,
     ]);
+  });
+
+  test('retrying the same continuation after it reaches the next question does not answer it', async () => {
+    const { agent, engine } = await createWorkflowAgentFixture({
+      workflowType: followUpWorkflow.name,
+    });
+    const task = await startTask(agent, alice());
+    const answer = userMessage({ messageId: 'same-answer', taskId: task.id, text: 'answer' });
+
+    await startTask(agent, alice(), answer);
+    await waitForState(agent, task.id, alice(), TaskState.TASK_STATE_INPUT_REQUIRED);
+    const retry = await startTask(agent, alice(), answer);
+    expect(retry.status?.state).toBe(TaskState.TASK_STATE_INPUT_REQUIRED);
+    expect(retry.status?.message?.metadata?.[SIGNAL_NAMES_METADATA_KEY]).toEqual(['confirm']);
+    expect(retry.history.filter((message) => message.messageId === answer.messageId)).toHaveLength(
+      1,
+    );
+    const state = await engine.get(task.id);
+    expect(state?.status).toBe('running');
+  });
+
+  test('retries a continuation whose signal committed before its history was saved', async () => {
+    const { agent, engine } = await createWorkflowAgentFixture({
+      workflowType: followUpWorkflow.name,
+    });
+    const task = await startTask(agent, alice());
+    const answer = userMessage({ messageId: 'replay-answer', taskId: task.id, text: 'answer' });
+    const originalSignal = engine.signal.bind(engine);
+    const signal = spyOn(engine, 'signal').mockImplementationOnce(
+      async (
+        id: string,
+        name: string | { readonly name: string },
+        payload?: unknown,
+        options?: Parameters<typeof engine.signal>[3],
+      ) => {
+        await originalSignal(id, typeof name === 'string' ? name : name.name, payload, options);
+        throw new Error('response lost before history commit');
+      },
+    );
+    expect(await throwingRejectionOf(startTask(agent, alice(), answer))).toThrow(
+      'response lost before history commit',
+    );
+    signal.mockRestore();
+    for await (const event of agent.requestHandler.resubscribe(
+      { tenant: '', id: task.id },
+      alice(),
+    )) {
+      const payload = event.payload;
+      if (payload?.$case !== 'task' && payload?.$case !== 'statusUpdate') continue;
+      const names = payload.value.status?.message?.metadata?.[SIGNAL_NAMES_METADATA_KEY];
+      if (Array.isArray(names) && names.includes('confirm')) break;
+    }
+
+    const replay = await startTask(agent, alice(), answer);
+    expect(replay.status?.state).toBe(TaskState.TASK_STATE_INPUT_REQUIRED);
+    expect(replay.status?.message?.metadata?.[SIGNAL_NAMES_METADATA_KEY]).toEqual(['confirm']);
+    expect(replay.history.filter((message) => message.messageId === answer.messageId)).toHaveLength(
+      1,
+    );
+    const state = await engine.get(task.id);
+    expect(state?.status).toBe('running');
   });
 
   test('completes a workflow that waits for two answers once both have arrived', async () => {

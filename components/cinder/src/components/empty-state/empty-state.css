@@ -114,6 +114,13 @@
     margin-block-start: var(--cinder-space-3);
   }
 
+  @media (pointer: coarse) {
+    /* Each wrapped row needs space for both buttons' extended touch targets. */
+    .cinder-empty-state-action {
+      row-gap: var(--cinder-space-4);
+    }
+  }
+
   /* Supporting content under the action, such as the steps of a manual set-up, at the words'
    * measure. The text inherits the centring, and the block draws no border or background. */
   .cinder-empty-state-details {

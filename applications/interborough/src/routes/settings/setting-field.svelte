@@ -17,6 +17,7 @@
     Select,
     SettingRow,
     Toggle,
+    fromMilliseconds,
     type SelectOption,
   } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
@@ -369,6 +370,9 @@
             value={typeof draft === 'number' ? draft : null}
             unit={duration.unit}
             unitSelectable={duration.selectable}
+            {...!duration.selectable && typeof inForce === 'number'
+              ? { placeholder: String(fromMilliseconds(inForce, duration.unit)) }
+              : {}}
             disabled={inert}
             onValueChange={(next) => change(next ?? undefined)}
           />

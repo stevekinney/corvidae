@@ -1,0 +1,19 @@
+{
+  "issue": "COR-2668",
+  "branch": "steve/cor-2653-browser-port-isolation",
+  "checkedAt": "29ebf53f1c3da3e7d7215eb6cd261de0ca2f9178",
+  "briefVersion": "4479cac72816",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Hosted real Chat browser proof on source 84e267404a passed seven cases, including the desktop exact 1 to 0 to 1 count and unmodified phone flow. The Chat source, tests and lock are identical at the reviewed product. Run 45383678856 and artifact 14916468095."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Focused Bun UI regression proves unfiltered 0 to 2 and title filtered 0 to 1 with the same older pending lookup barrier. The pinned Linux profile executed all seven original cases at exit 0. Completion remains conditioned on the required full browser shard and bound delivery receipt."
+    }
+  ]
+}

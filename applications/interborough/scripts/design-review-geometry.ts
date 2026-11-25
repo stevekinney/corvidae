@@ -1,7 +1,7 @@
 /**
  * The design review's geometry audit (`.agents/skills/design-review`). A reviewer reading a
  * screenshot cannot tell a two-pixel misalignment from none, or a button whose label has as much
- * room above it as beside it, so a capture also measures each page (`tests/e2e/design-review-geometry-probe.ts`
+ * room above it as beside it, so a capture also measures each page (`testing/testing/src/design-review-geometry-probe.ts`
  * writes the facts beside the screenshots) and this script holds them to the thresholds the rubric
  * states (`references/rubric.md` "Craft"). It writes `geometry-findings.json` and
  * `geometry-report.md` into the capture directory; one defect seen on forty captures is one line

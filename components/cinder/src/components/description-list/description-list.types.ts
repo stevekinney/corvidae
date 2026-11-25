@@ -46,6 +46,8 @@ export type DescriptionListTags = {
   type: 'tags';
   /** The tags to list, in order. */
   tags: string[];
+  /** The quiet words for an empty tag list. @default "No tags" */
+  emptyLabel?: string;
   /** How many system tags the entity also carries. They are counted, never listed. @default 0 */
   systemTagCount?: number;
   /** Called when the reader activates "Add a tag". The action is hidden when this is omitted. */

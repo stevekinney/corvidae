@@ -49,7 +49,7 @@ describe('Alert rendering', () => {
     expect(container.querySelector('.cinder-alert__body')?.textContent).toBe('429');
   });
 
-  test.each(['info', 'success', 'warning', 'danger'] as const)(
+  test.each(['info', 'success', 'neutral', 'warning', 'danger'] as const)(
     'a %s alert with a heading draws a glyph of its own',
     (variant) => {
       const { container } = render(Alert, {

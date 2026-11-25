@@ -7,7 +7,7 @@
  *
  * @module stub-provider
  */
-import { openBungalow } from '@lostgradient/bungalow';
+import { openBungalow, openLocalBungalow, type RootLock } from '@lostgradient/bungalow';
 import { resolveProviderGenerate, type ProviderConfiguration } from '@lostgradient/bureau';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -51,11 +51,12 @@ function asRecord(value: unknown): Record<string, unknown> {
 export async function writeProviderHome(
   home: string,
   models: readonly string[] = ['sonnet'],
+  acquireLock?: (root: string) => RootLock,
 ): Promise<void> {
-  const bungalow = await openBungalow({
-    name: 'interborough',
-    environment: { INTERBOROUGH_HOME: home },
-  });
+  const bungalow =
+    acquireLock === undefined
+      ? await openBungalow({ name: 'interborough', environment: { INTERBOROUGH_HOME: home } })
+      : await openLocalBungalow({ name: 'interborough', root: home, acquireLock });
   try {
     const path = join(home, 'configuration.json');
     const document = await readConfigurationDocument(path);

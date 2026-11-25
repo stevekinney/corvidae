@@ -89,6 +89,8 @@ export type ToolCallEntry = {
    * before the Bureau recorded decisions.
    */
   readonly decision?: ApprovalDecision | undefined;
+  /** Durable Review identity for a decided approval receipt. */
+  readonly reviewId?: string | undefined;
   /**
    * Whether the call is parked on an approval that nothing waits on any more and that nobody
    * decided: what the run waits on was read and this call was not among it (its run stopped). It
@@ -451,6 +453,16 @@ export function createdWorkflow(
   };
 }
 
+/** The Review receipt is identified by the result row that recorded its decision. */
+function decidedReviewId(pair: ToolCallPair, rows: CallRows | undefined): string | undefined {
+  const result = rows?.result;
+  if (result === undefined) return undefined;
+  const parsed = parseStepRowIdentifier(result.id);
+  if (parsed?.kind !== 'result') return undefined;
+  const rawCallId = parsed.callId ?? result.toolResult?.providerCallId ?? pair.call.id;
+  return `approval:${parsed.runId}:${rawCallId}`;
+}
+
 function entryOf(
   pair: ToolCallPair,
   runActive: boolean,
@@ -494,6 +506,7 @@ function entryOf(
   const info = tools.get(pair.call.name);
   const durationMilliseconds = rows === undefined ? undefined : durationOf(state, rows, timing);
   const decision = recordedDecision(rows?.result?.metadata);
+  const reviewId = decision === undefined ? undefined : decidedReviewId(pair, rows);
   const created =
     state === 'done'
       ? createdWorkflow(pair.call.name, pair.call.arguments, pair.result?.content)
@@ -501,6 +514,7 @@ function entryOf(
   return {
     ...(durationMilliseconds === undefined ? {} : { durationMilliseconds }),
     ...(decision === undefined ? {} : { decision }),
+    ...(reviewId === undefined ? {} : { reviewId }),
     callId: pair.call.id,
     ...(approvalIdentity === undefined
       ? carriedRailId === undefined
@@ -602,6 +616,15 @@ export function railCall(
         ...named,
         status: 'failed',
         ...(entry.summary === '' ? {} : { result: entry.summary }),
+        ...(entry.failure === undefined
+          ? {}
+          : {
+              failure: entry.failure.message,
+              diagnostic:
+                entry.failure.code === undefined
+                  ? entry.failure.message
+                  : `${entry.failure.code}: ${entry.failure.message}`,
+            }),
       };
     case 'done':
       // A call whose answer is a page keeps its answer on the row, as a link, so a person's

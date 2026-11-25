@@ -16,5 +16,6 @@
     "**/*.test-d.ts",
     "**/*.bench.ts",
     "src/__fixtures__/**"
-  ]
+  ],
+  "references": [{ "path": "../credentials/tsconfig.source.json" }]
 }

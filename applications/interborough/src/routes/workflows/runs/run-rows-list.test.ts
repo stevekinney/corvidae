@@ -448,6 +448,82 @@ describe('the page of ten, and the missed runs', () => {
   });
 });
 
+describe('a retrying run’s line two (COR-2535)', () => {
+  const going = {
+    id: 'charging-4473',
+    contextId: 'chat-4471',
+    agentName: 'tool-runner',
+    status: 'working',
+    createdAt: '2026-11-02T10:45:00-06:00',
+    updatedAt: '2026-11-02T10:49:00-06:00',
+  } as const;
+
+  test('says which step is retrying and its try number, before how long it has run', () => {
+    const row = onlyRow({
+      tasks: [taskFixture({ ...going, retrying: { label: 'charge-card', attempt: 3 } })],
+      goals: [],
+      chats: [refundChat],
+    });
+    expect(runLineTwo(row, context)).toBe(
+      'Chat, Tool runner, retrying charge-card, try 3, running 5 min',
+    );
+  });
+
+  test('names a model step as it is, and says nothing of a run that retries nothing', () => {
+    const modelRow = onlyRow({
+      tasks: [taskFixture({ ...going, retrying: { label: 'model', attempt: 2 } })],
+      goals: [],
+      chats: [refundChat],
+    });
+    expect(runLineTwo(modelRow, context)).toContain('retrying model, try 2');
+    const plain = onlyRow({
+      tasks: [taskFixture({ ...going, retrying: null })],
+      goals: [],
+      chats: [refundChat],
+    });
+    expect(runLineTwo(plain, context)).not.toContain('retrying');
+  });
+
+  test('a workflow instance retries what one of its steps retries, and fails where its step failed', () => {
+    const parent = 'instance-1';
+    const step = (id: string, fields: Parameters<typeof taskFixture>[0]) =>
+      taskFixture({
+        id,
+        contextId: id,
+        agentName: 'assistant',
+        origin: { kind: 'parent', parentRunId: parent },
+        createdAt: '2026-11-02T10:45:00-06:00',
+        updatedAt: '2026-11-02T10:49:00-06:00',
+        ...fields,
+      });
+    const retrying = onlyRow({
+      tasks: [step('step-1', { status: 'working', retrying: { label: 'send-email', attempt: 2 } })],
+      goals: [],
+      chats: [],
+    });
+    expect(retrying.id).toBe(parent);
+    expect(retrying.retrying).toEqual({ label: 'send-email', attempt: 2 });
+    const failed = onlyRow({
+      tasks: [
+        step('step-1', { status: 'completed' }),
+        step('step-2', {
+          status: 'failed',
+          failure: {
+            step: { index: 1, label: 'send-email' },
+            errorCode: null,
+            errorKind: null,
+            toolCall: null,
+          },
+        }),
+      ],
+      goals: [],
+      chats: [],
+    });
+    expect(failed.failedStep).toBe('send-email');
+    expect(filterRunRows([failed], { failedStep: 'send-email' })).toHaveLength(1);
+  });
+});
+
 describe('a failed instance’s line two', () => {
   test('says what the run said in a few words, never the error’s own JSON (rows 09r, 52i, 05x, 52t)', () => {
     const row = onlyRow({
@@ -846,6 +922,31 @@ describe('the Bureau’s own runs (COR-2423)', () => {
     expect(isRunRowRunning(row, NOW)).toBe(false);
     expect(isRunning({ status: 'working', workflow: row.workflow ?? undefined })).toBe(false);
     expect(isRunning({ status: 'working', workflow: workflowOf('agentRun') })).toBe(true);
+  });
+
+  test('a submitted workflow instance is Scheduled until it takes a run slot (row 59a)', () => {
+    const row = onlyRow({
+      tasks: [
+        taskFixture({
+          id: 'release-notes-queued',
+          contextId: 'release-notes-queued',
+          kind: 'catalog',
+          agentName: null,
+          status: 'submitted',
+          origin: { kind: 'api' },
+          workflow: workflowOf('release-notes'),
+        }),
+      ],
+      goals: [],
+      chats: [],
+    });
+    expect(runStatusWord(row, NOW)).toBe('Scheduled');
+    expect(runLineTwo(row, context)).toBe('API, waiting for a run slot');
+    expect(runSegmentCounts([row])).toMatchObject({ all: 1, running: 0 });
+    expect(filterRunRows([row], { status: 'running' })).toEqual([]);
+    expect(isRunRowRunning(row, NOW)).toBe(false);
+    expect(runStatusWord({ ...row, status: 'working' }, NOW)).toBe('Running');
+    expect(runStatusWord({ ...row, engineRun: false }, NOW)).toBe('Running');
   });
 
   test('a run that asked to be woken is Scheduled, and says when it is due (row 10h)', () => {

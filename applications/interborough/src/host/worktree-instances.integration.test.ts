@@ -21,9 +21,12 @@ import {
 } from '@lostgradient/testing/hang-guard';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterAll, describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { verifiedGate } from '../../../../scripts/owned-process-lease.ts';
+import { processStartTime, readOwner } from '../../../../scripts/run-exclusively.ts';
 
 import { executeCli } from './cli-client.ts';
 import { processEnvironment } from './environment-configuration.ts';
@@ -73,8 +76,6 @@ async function git(directory: string, fakeHome: string, ...args: string[]): Prom
       'user.name=Interborough Test',
       '-c',
       'user.email=interborough-test@example.test',
-      '-c',
-      'commit.gpgsign=false',
       ...args,
     ],
     { cwd: directory, env: scrubbedEnvironment(fakeHome) },
@@ -86,6 +87,7 @@ async function git(directory: string, fakeHome: string, ...args: string[]): Prom
 
 type Supervised = {
   readonly directory: string;
+  readonly pid: number;
   readonly stdout: () => string;
   readonly pids: () => number[];
   readonly exited: Promise<number>;
@@ -126,6 +128,7 @@ function supervise(directory: string, fakeHome: string, build: string): Supervis
   for (const pid of pids()) livePids.add(pid);
   return {
     directory,
+    pid: child.pid,
     stdout,
     pids,
     exited: child.exited,
@@ -200,6 +203,57 @@ const firstHome = worktreeHome(first);
 const secondHome = worktreeHome(second);
 const firstRecord = await readInstanceRecord(firstHome);
 const secondRecord = await readInstanceRecord(secondHome);
+
+/** Ask the operating system whether this exact process owns the TCP listener. */
+async function ownsListener(pid: number, url: string): Promise<boolean> {
+  const port = new URL(url).port;
+  const result = await runWithHangGuard(
+    ['lsof', '-nP', '-a', '-p', String(pid), `-iTCP:${port}`, '-sTCP:LISTEN', '-Fp'],
+    { env: scrubbedEnvironment(fakeHome) },
+  );
+  if (result.exitCode !== 0 && result.exitCode !== 1)
+    throw new Error(`Could not inspect listener ownership (exit ${result.exitCode}).`);
+  return result.stdout.toString().split('\n').includes(`p${pid}`);
+}
+
+// The supervisor logs the protected gate leader; the instance record names the host inside its
+// group. Capture the kernel group and durable owner identity while both hosts are still live.
+const ownershipProofs = await Promise.all(
+  supervisors.map(async (supervisor, index) => {
+    const home = [firstHome, secondHome][index]!;
+    const record = [firstRecord, secondRecord][index];
+    if (record === undefined) throw new Error('The host did not record its instance.');
+    const identity = createHash('sha256').update(home).digest('hex');
+    const lease = await readOwner(
+      join(supervisor.directory, 'tmp', `interborough-supervisor-${identity}.lock`),
+    );
+    if (lease === undefined || lease.processGroup === undefined)
+      throw new Error('The supervisor did not publish its process-group lease.');
+    const group = await runWithHangGuard(['ps', '-o', 'pgid=', '-p', String(record.pid)], {
+      env: scrubbedEnvironment(fakeHome),
+    });
+    return {
+      record,
+      ownerPid: lease.pid,
+      ownerStart: lease.pidStartedAt,
+      actualOwnerStart: processStartTime(supervisor.pid),
+      leader: lease.processGroup,
+      leaderStart: lease.processGroupStartedAt,
+      actualLeaderStart: processStartTime(lease.processGroup),
+      hostStart: processStartTime(record.pid),
+      hostGroup: group.exitCode === 0 ? Number(group.stdout.toString().trim()) : undefined,
+      hostOwnsListener: await ownsListener(record.pid, record.url),
+      gateOwnsListener: await ownsListener(lease.processGroup, record.url),
+      siblingOwnsListener: await ownsListener(
+        [firstRecord, secondRecord][1 - index]!.pid,
+        record.url,
+      ),
+      gateVerified:
+        typeof lease.token === 'string' && verifiedGate(lease.processGroup, lease.token),
+      ownerDirectory: lease.cwd,
+    };
+  }),
+);
 
 // The CLI, run as the command a person types, from each worktree and from a subdirectory of one.
 const firstStatus = await runCli(first, fakeHome, 'status');
@@ -298,8 +352,23 @@ describe('two linked worktrees', () => {
   });
 
   test('each host recorded the address it bound and its own process in its home', () => {
-    expect(firstRecord).toEqual({ url: firstUrl, pid: supervisors[0].pids()[0]! });
-    expect(secondRecord).toEqual({ url: secondUrl, pid: supervisors[1].pids()[0]! });
+    for (const [index, proof] of ownershipProofs.entries()) {
+      const supervisor = supervisors[index]!;
+      expect(proof.record.url).toBe(urls[index]!);
+      expect(proof.hostStart).toBeDefined();
+      expect(proof.hostOwnsListener).toBe(true);
+      expect(proof.gateOwnsListener).toBe(false);
+      expect(proof.siblingOwnsListener).toBe(false);
+      expect(proof.hostGroup).toBe(proof.leader);
+      expect(proof.leader).toBe(supervisor.pids()[0]!);
+      expect(proof.ownerPid).toBe(supervisor.pid);
+      expect(proof.actualOwnerStart).toBeDefined();
+      expect(proof.ownerStart).toBe(proof.actualOwnerStart);
+      expect(proof.actualLeaderStart).toBeDefined();
+      expect(proof.leaderStart).toBe(proof.actualLeaderStart);
+      expect(proof.gateVerified).toBe(true);
+      expect(proof.ownerDirectory).toBe(supervisor.directory);
+    }
   });
 
   test('the CLI run from each worktree, with no --url, reaches that worktree’s host', () => {

@@ -160,7 +160,7 @@ describe('ToolApprovalPart decision surface', () => {
 describe('ToolApprovalPart receipt', () => {
   const decidedAt = Date.UTC(2026, 10, 2, 10, 46);
 
-  test('a decision made here reads by you as a receipt, with its time under the card', () => {
+  test('a decision made here keeps its actor and time together in the receipt', () => {
     const { container } = render(ToolApprovalPart, {
       props: {
         part: refundPart({ details, state: 'approved', receipt: { decidedAt } }),
@@ -171,14 +171,9 @@ describe('ToolApprovalPart receipt', () => {
     expect(card?.getAttribute('data-cinder-state')).toBe('approved');
     expect(card?.querySelector('.cinder-badge')).toBeNull();
     expect(card?.querySelector('.cinder-approval-card__settled-note')?.textContent?.trim()).toBe(
-      'Approved by you',
+      'Approved by you, 10:46 AM',
     );
-    // The time is not in the card: it is the line under it, as an expired card's is.
-    expect(card?.textContent).not.toMatch(/\d{1,2}:\d{2} [AP]M/);
-    const time = container.querySelector('.chat-approval-time time');
-    expect(time?.getAttribute('datetime')).toBe(new Date(decidedAt).toISOString());
-    expect(time?.textContent?.trim()).toMatch(/\d{1,2}:\d{2} [AP]M$/);
-    expect(card?.nextElementSibling?.classList.contains('chat-approval-time')).toBe(true);
+    expect(container.querySelector('.chat-approval-time')).toBeNull();
   });
 
   test('a denial keeps the note that went with it in the one disclosure', () => {
@@ -194,7 +189,7 @@ describe('ToolApprovalPart receipt', () => {
 
     expect(
       container.querySelector('.cinder-approval-card__settled-note')?.textContent?.trim(),
-    ).toBe('Denied by you');
+    ).toBe('Denied by you, 10:46 AM');
     expect(
       container.querySelector('.cinder-approval-card__receipt-details')?.textContent?.trim(),
     ).toContain('Refund it through the original card instead');
@@ -211,14 +206,14 @@ describe('ToolApprovalPart receipt', () => {
 
     expect(card?.getAttribute('data-cinder-layout')).toBe('decision');
     expect(card?.querySelector('.cinder-approval-card__settled-note')?.textContent?.trim()).toBe(
-      'Denied by you',
+      'Denied by you, 10:46 AM',
     );
     expect(card?.querySelector('.cinder-approval-card__receipt-details')?.textContent).toContain(
       'Not today',
     );
   });
 
-  test('the row layout keeps its own time and adds none under the card', () => {
+  test('the row layout keeps the host time under the card', () => {
     const { container } = render(ToolApprovalPart, {
       props: {
         layout: 'row',
@@ -226,6 +221,8 @@ describe('ToolApprovalPart receipt', () => {
       },
     });
 
-    expect(container.querySelector('.chat-approval-time')).toBeNull();
+    const time = container.querySelector('.chat-approval-time time');
+    expect(time?.getAttribute('datetime')).toBe(new Date(decidedAt).toISOString());
+    expect(time?.textContent?.trim()).toMatch(/\d{1,2}:\d{2} [AP]M$/);
   });
 });

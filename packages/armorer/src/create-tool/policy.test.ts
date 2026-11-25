@@ -227,3 +227,41 @@ describe('resume matching is unaffected by coercion', () => {
     }
   });
 });
+
+describe('createToolAction carries irreversible, consequence and why (COR-2438)', () => {
+  const plain: ToolPolicyDecision = { status: 'needs_approval', reason };
+  const explained: ToolPolicyDecision = {
+    status: 'needs_approval',
+    reason,
+    action: {
+      irreversible: true,
+      consequence: 'Deletes the record for good.',
+      why: 'The record is a duplicate.',
+    },
+  };
+
+  it('puts the policy’s three fields on the approval action', () => {
+    expect(createToolAction('approval', explained, reason, context)).toMatchObject({
+      irreversible: true,
+      consequence: 'Deletes the record for good.',
+      why: 'The record is a duplicate.',
+    });
+  });
+
+  it('adds none of them when the policy declares none, so the key is the one it always was', () => {
+    const action = createToolAction('approval', plain, reason, context);
+    expect(Object.keys(action)).not.toContain('irreversible');
+    expect(Object.keys(action)).not.toContain('consequence');
+    expect(Object.keys(action)).not.toContain('why');
+    // An explanation is part of what was asked, so it names a different approval.
+    const explainedAction = createToolAction('approval', explained, reason, context);
+    expect(explainedAction.type === 'approval' && explainedAction.idempotencyKey).not.toBe(
+      action.type === 'approval' && action.idempotencyKey,
+    );
+    // The key of an unexplained approval is stable across calls.
+    const again = createToolAction('approval', plain, reason, context);
+    expect(again.type === 'approval' && again.idempotencyKey).toBe(
+      action.type === 'approval' && action.idempotencyKey,
+    );
+  });
+});

@@ -39,6 +39,41 @@ const privateHistoryPrependStressFixture = chatEntry.fixtures?.find(
   (fixture) => fixture.name === 'private-history-prepend-stress',
 );
 
+test.describe('docked questions on a phone', () => {
+  test.use({ viewport: { width: 375, height: 640 }, hasTouch: true, isMobile: true });
+
+  for (const colorScheme of ['light', 'dark'] as const) {
+    test(`frames the dock once with unframed radio rows in ${colorScheme} (COR-2452)`, async ({
+      page,
+    }, testInfo) => {
+      await page.addInitScript(setFixtureThemeOnOrigin, themeInitScriptPayload(colorScheme));
+      const url = new URL(
+        fixtureRoute('chat'),
+        environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
+      );
+      url.searchParams.set('questionDock', '1');
+      await page.goto(url.href);
+      const dock = page.locator('[data-chat-question-dock]');
+      await expect(dock).toBeVisible();
+      const radios = dock.getByRole('radio');
+      await expect(radios).toHaveCount(2);
+      const outlines = await dock.evaluate((element) => ({
+        outer: getComputedStyle(element).borderBlockStartWidth,
+        inner: [...element.querySelectorAll('fieldset, [role="radio"]')].map(
+          (row) => getComputedStyle(row).borderBlockStartWidth,
+        ),
+      }));
+      expect(outlines).toEqual({ outer: '1px', inner: ['0px', '0px', '0px'] });
+      const juniper = dock.getByRole('radio', { name: 'Juniper' });
+      await juniper.click();
+      await expect(juniper).toHaveAttribute('aria-checked', 'true');
+      const screenshot = testInfo.outputPath('question-dock.png');
+      await dock.screenshot({ path: screenshot });
+      await testInfo.attach('question dock', { path: screenshot, contentType: 'image/png' });
+    });
+  }
+});
+
 function themeInitScriptPayload(colorScheme: 'dark' | 'light'): [string, string, string] {
   const baseUrl = environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN;
   return [THEME_STORAGE_KEY, colorScheme, new URL(baseUrl).origin];
@@ -2228,7 +2263,9 @@ test.describe('chat harness — tool calls', () => {
 
         // The chevron sits beside the first line of the header, not centered on a wrapped one.
         const alignment = await toggle.evaluate((button) => {
-          const chevron = button.querySelector('.chat-tool-call-chevron')!.getBoundingClientRect();
+          const chevron = button
+            .querySelector('.cinder-disclosure-trigger__chevron')!
+            .getBoundingClientRect();
           const count = button
             .querySelector('.chat-tool-call-summary-count')!
             .getBoundingClientRect();
@@ -2284,6 +2321,93 @@ test.describe('chat harness — tool calls', () => {
       await rows.click();
       await expect(activity.locator('.chat-tool-call-repeated-call')).toHaveCount(0);
       await expectNoPageOverflow(page);
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('keeps an expanded aggregate summary reachable beyond its painted line on a coarse pointer', async ({
+    browser,
+  }, testInfo) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      hasTouch: true,
+      isMobile: true,
+      viewport: { width: 390, height: 640 },
+    });
+    try {
+      await setHarnessCustomMessageSnippets(page, false);
+      await harness.locator('[data-testid="clear"]').click();
+      await appendToolScenario(page, 'repeated');
+      const aggregate = harness.locator('.chat-tool-call-toggle');
+      await aggregate.click();
+      await expect(aggregate).toHaveAttribute('aria-expanded', 'true');
+      const box = await renderedBox(aggregate, 'expanded aggregate summary');
+      expect(box.height).toBeLessThan(44);
+      const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      const probes = await page.evaluate(
+        ({ centre, target }) => {
+          const describe = (element: Element | null) =>
+            element === null
+              ? null
+              : {
+                  tag: element.tagName,
+                  className: element.getAttribute('class'),
+                  ancestorClasses: Array.from(
+                    element.closest('button, li, ol, section')?.classList ?? [],
+                  ),
+                };
+          const rect = (element: Element | null) => {
+            if (element === null) return null;
+            const { x, y, width, height } = element.getBoundingClientRect();
+            return { x, y, width, height };
+          };
+          const aggregate = document.querySelector(target);
+          const firstRow = document.querySelector(
+            '.chat-tool-call-item:first-child .chat-tool-call-row',
+          );
+          const hitTarget = aggregate?.querySelector('.chat-tool-call-hit-target') ?? null;
+          return {
+            aggregate: rect(aggregate),
+            firstRow: rect(firstRow),
+            hitTarget: rect(hitTarget),
+            points: [-21, 21].map((dy) => ({
+              dy,
+              point: { x: centre.x, y: centre.y + dy },
+              hit: describe(document.elementFromPoint(centre.x, centre.y + dy)),
+            })),
+          };
+        },
+        { centre, target: '.chat-tool-call-toggle' },
+      );
+      await testInfo.attach('expanded aggregate touch probes', {
+        body: JSON.stringify(probes, null, 2),
+        contentType: 'application/json',
+      });
+      for (const dy of [-21, 21] as const) {
+        const owner = await page.evaluate(
+          ([x, y]) =>
+            document
+              .elementFromPoint(x, y)
+              ?.closest('.chat-tool-call-toggle')
+              ?.getAttribute('aria-expanded') ?? null,
+          [centre.x, centre.y + dy] as const,
+        );
+        expect(owner, `point ${dy}px from the expanded aggregate centre`).toBe('true');
+      }
+      const firstRow = harness
+        .locator('.chat-tool-call-item')
+        .first()
+        .locator('.chat-tool-call-row');
+      const firstRowBox = await renderedBox(firstRow, 'first expanded aggregate row');
+      const firstRowOwner = await page.evaluate(
+        ([x, y]) =>
+          document
+            .elementFromPoint(x, y)
+            ?.closest('.chat-tool-call-row')
+            ?.getAttribute('aria-expanded') ?? null,
+        [firstRowBox.x + firstRowBox.width / 2, firstRowBox.y + firstRowBox.height / 2] as const,
+      );
+      expect(firstRowOwner).toBe('false');
     } finally {
       await dispose();
     }
@@ -4485,6 +4609,36 @@ test.describe('chat harness — history prepend stress (#1237)', () => {
     }
   });
 });
+
+for (const colorScheme of ['light', 'dark'] as const) {
+  test(`composer field is at least 44px at 320px (${colorScheme})`, async ({
+    browser,
+  }, testInfo) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      colorScheme,
+      viewport: { width: 320, height: 800 },
+      hasTouch: true,
+      isMobile: true,
+    });
+    try {
+      const coarsePointer = await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches);
+      expect(coarsePointer).toBe(true);
+      const field = harness.locator('textarea.chat-input-editor');
+      await expect(field).toBeVisible();
+      await expect(field).toBeEditable();
+      await expect(field).toHaveValue('');
+      await expect(field).toHaveAttribute('rows', '1');
+      const { height } = await renderedBox(field, 'Chat composer textarea');
+      await testInfo.attach('composer field size', {
+        body: JSON.stringify({ colorScheme, viewport: page.viewportSize(), coarsePointer, height }),
+        contentType: 'application/json',
+      });
+      expect(height).toBeGreaterThanOrEqual(44);
+    } finally {
+      await dispose();
+    }
+  });
+}
 
 test.describe('chat harness — composer send button hit area (COR-1552)', () => {
   // Send and Stop are labelled secondary buttons. On a coarse pointer their 44px minimum target is

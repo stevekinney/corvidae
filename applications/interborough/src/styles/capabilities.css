@@ -140,6 +140,7 @@
   flex-direction: column;
   gap: var(--cinder-space-4);
   min-width: 0;
+  max-inline-size: var(--cinder-content-width-reading);
 }
 
 .ib-capability__name {
@@ -202,6 +203,7 @@
 
 .ib-capability__prose {
   margin: 0;
+  max-inline-size: var(--cinder-content-width-prose);
   white-space: pre-wrap;
 }
 

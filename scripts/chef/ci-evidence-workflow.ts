@@ -51,7 +51,7 @@ interface GitResult {
 
 export interface CiEvidenceWorkflowReceipt {
   repository: string;
-  event: 'pull_request' | 'workflow_dispatch' | 'push';
+  event: 'pull_request' | 'workflow_dispatch' | 'push' | 'schedule';
   workflowPath: string;
   workflowRevision: string;
   requestKey: string;
@@ -359,7 +359,12 @@ export function createCiEvidenceWorkflowReceipt(input: {
   if (!repository(environment.GITHUB_REPOSITORY))
     throw new CiEvidenceWorkflowError('GITHUB_REPOSITORY is invalid');
   const event = environment.GITHUB_EVENT_NAME;
-  if (event !== 'pull_request' && event !== 'workflow_dispatch' && event !== 'push')
+  if (
+    event !== 'pull_request' &&
+    event !== 'workflow_dispatch' &&
+    event !== 'push' &&
+    event !== 'schedule'
+  )
     throw new CiEvidenceWorkflowError('unsupported GitHub event');
   const { workflowPath, workflowRevision } = readWorkflowReference(environment);
   const checkedRevision = checkedCommit(input.git, 'HEAD');

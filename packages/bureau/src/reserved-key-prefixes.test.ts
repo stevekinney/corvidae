@@ -37,6 +37,8 @@ const NOT_STORAGE_KEYS = new Set([
   // COR-2296: the session outbox namespace a regeneration's receipt rides in the session store's
   // own outbox entry, not a key of Bureau's.
   'REGENERATE_RECEIPT_OUTBOX_NAMESPACE',
+  // COR-2437: the session outbox namespace a discard's receipt rides, as a regeneration's does.
+  'DISCARD_RECEIPT_OUTBOX_NAMESPACE',
   // COR-2009: the text a generated hook signing secret starts with (`whsec_`), not a storage key.
   'HOOK_SIGNING_SECRET_PREFIX',
   // COR-2009: the start of a schedule tick's run id, a workflow id, not a storage key.

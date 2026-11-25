@@ -13,6 +13,7 @@ import {
   type ScriptedGenerateStep,
 } from '@lostgradient/operative';
 import { anthropicRows } from '@lostgradient/operative-anthropic';
+import { REFUND_TOOL_REVISION } from './refund-ledger.ts';
 
 /** How many times a script repeats before it runs out. */
 const SCRIPT_REPETITIONS = 200;
@@ -127,8 +128,10 @@ export function echoGenerate(): GenerateFunction {
  * (the operator approved it, or denied it) it reports what became of it. A later turn of the same
  * session starts from the lookup again.
  */
-export function toolRunnerGenerate(): GenerateFunction {
-  return async ({ conversation }) => {
+export function toolRunnerGenerate(
+  ledger: ReturnType<typeof import('./refund-ledger.ts').createRefundLedger>,
+): GenerateFunction {
+  return async ({ conversation, runId }) => {
     const messages = conversation.getMessages();
     const lastUser = messages.findLastIndex((message) => message.role === 'user');
     const turn = messages.slice(lastUser + 1);
@@ -143,12 +146,46 @@ export function toolRunnerGenerate(): GenerateFunction {
     if (refund !== undefined && refund.outcome !== 'action_required') {
       return replyResponse(
         refund.outcome === 'success'
-          ? 'Order order-1001 was refunded.'
+          ? 'The refund for order order-1001 is pending with the processor.'
           : 'The refund of order order-1001 was not issued.',
       );
     }
+    const userTurn = messages[lastUser];
+    if (!userTurn || !runId) throw new Error('Refund admission requires a persisted turn and run');
+    const merchant = `demo:${userTurn.id}`;
+    const existing = await ledger.find(merchant, userTurn.id);
+    if (existing && existing.existingRunId !== runId)
+      return replyResponse(`Refund ${existing.id} is ${existing.status} in its original run.`);
     if (resultOf(lookupId) !== undefined) {
-      return callResponse('issue-refund', { orderId: 'order-1001', cents: 4200 }, refundId);
+      await ledger.addCharge({
+        merchant,
+        order: 'order-1001',
+        amount: 10000,
+        currency: 'USD',
+        paymentReference: `synthetic:${userTurn.id}`,
+        providerAccount: 'demo',
+      });
+      const intent = await ledger.admit({
+        merchant,
+        commandId: userTurn.id,
+        order: 'order-1001',
+        amount: 4200,
+        toolRevision: REFUND_TOOL_REVISION,
+        owner: 'demo',
+        existingRunId: runId,
+      });
+      if (intent.existingRunId !== runId)
+        return replyResponse(`Refund ${intent.id} is ${intent.status} in its original run.`);
+      return callResponse(
+        'issue-refund',
+        {
+          refundId: intent.id,
+          orderId: intent.order,
+          cents: intent.amount,
+          currency: intent.currency,
+        },
+        refundId,
+      );
     }
     return callResponse('lookup-order', { orderId: 'order-1001' }, lookupId);
   };

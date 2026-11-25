@@ -133,10 +133,12 @@ test("P03 recorded commands require completed execution evidence", async () => {
       ...files,
     }));
     await auditCommands(commands, root);
+    const shell = Bun.which("sh");
+    if (!shell) throw new Error("A shell is required for the non-Bun control");
     expect(
       await throwingRejectionOf(
         auditCommands(
-          [{ ...commands[0], command: ["node", entry] }, commands[1]],
+          [{ ...commands[0], command: [shell, entry] }, commands[1]],
           root,
         ),
       ),
