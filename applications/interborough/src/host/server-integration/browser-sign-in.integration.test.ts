@@ -1,13 +1,21 @@
 import { openBungalow } from '@lostgradient/bungalow';
-import type { WorkspaceMembership } from '@lostgradient/bureau';
+import { createBureauCatalogSnapshot, type WorkspaceMembership } from '@lostgradient/bureau';
 import { createAgent } from '@lostgradient/operative';
+import {
+  createAdmittedRefundTool,
+  createFakeProcessor,
+  createRefundLedger,
+  reviewedRefundContribution,
+} from '@lostgradient/plugin-demo/refunds';
+import { MemoryStorage } from '@lostgradient/storage';
 import { createApplication } from '@lostgradient/velveteen/server';
+import { createProcessLocalApprovalStateStore, createToolbox } from 'armorer';
 import { expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as client from 'openid-client';
-import { startHost } from './host.ts';
+import { startHost } from '../host.ts';
 
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
 
@@ -96,6 +104,15 @@ test('listener binds verified browser identities, revokes private access and res
   const workspaceId = bungalow.workspaceId;
   await bungalow.close();
   const members = new Map<string, WorkspaceMembership>();
+  members.set('api-key-caller', {
+    version: 1,
+    workspaceId,
+    actorId: 'api-key-caller',
+    actorKind: 'service',
+    owner: 'owner:admin',
+    membershipRevision: 'revision-1',
+    capabilities: ['workspace:use'],
+  });
   for (const actorId of ['admin', 'member'])
     members.set(actorId, {
       version: 1,
@@ -119,6 +136,71 @@ test('listener binds verified browser identities, revokes private access and res
   const releaseLoad = Promise.withResolvers<void>();
   const keyTargetsStarted = Promise.withResolvers<void>();
   const releaseKeyTargets = Promise.withResolvers<void>();
+  const refundStorage = new MemoryStorage();
+  const ledger = createRefundLedger(refundStorage);
+  await ledger.addCharge({
+    merchant: 'merchant',
+    order: 'order',
+    amount: 10000,
+    currency: 'USD',
+    paymentReference: 'charge',
+    providerAccount: 'account',
+  });
+  const approvalStateStore = createProcessLocalApprovalStateStore();
+  const processor = createFakeProcessor(refundStorage);
+  const refundTool = createAdmittedRefundTool(ledger, processor, () => 100);
+  const toolbox = createToolbox([refundTool], {
+    approvalSecret: 'fixture-secret',
+    approvalStateStore,
+    approvalPolicy: { mode: 'always' },
+  });
+  const refundContext = () => ({
+    authority: {
+      principalId: 'api-key-caller',
+      tenantId: workspaceId,
+      ownerId: 'owner:admin',
+      capabilities: [],
+      authorizationRevision: 'bureau:1',
+    },
+  });
+  const refund = reviewedRefundContribution({
+    ledger,
+    toolbox,
+    toolId: refundTool.id,
+    approvalStateStore,
+    requestContext: refundContext,
+    access: {
+      async request(principal) {
+        return principal.method !== 'unauthenticated' &&
+          principal.workspace?.actorId === 'api-key-caller'
+          ? { merchant: 'merchant', owner: principal.workspace.owner }
+          : undefined;
+      },
+      async read(principal, entry) {
+        return principal.method !== 'unauthenticated' && principal.workspace?.owner === entry.owner;
+      },
+      async isRequester(principal) {
+        return (
+          principal.method !== 'unauthenticated' &&
+          principal.workspace?.actorId === 'api-key-caller'
+        );
+      },
+      async decide(principal) {
+        return (
+          principal.method !== 'unauthenticated' &&
+          principal.workspace?.actorId === 'admin' &&
+          principal.workspace.capabilities.includes('workspace:manage')
+        );
+      },
+    },
+  });
+  const catalog = createBureauCatalogSnapshot(refund.operations);
+  for (const name of ['demo.refunds.request', 'demo.refunds.get'])
+    expect(catalog.operations.find((operation) => operation.name === name)).toMatchObject({
+      transports: { http: false, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: false },
+      mcpExposable: true,
+    });
+  let refundWorker: Awaited<ReturnType<typeof refund.attachWorker>> | undefined;
   let holdLoad = false;
   let holdKeyTargets = false;
   const host = await startHost({
@@ -126,6 +208,32 @@ test('listener binds verified browser identities, revokes private access and res
     workspaceId,
     port: 0,
     plugins: [],
+    reviewedOperations: {
+      agents: refund.agents,
+      reviewPolicy: refund.reviewPolicy,
+      operations: refund.operations,
+      reviewEffects: refund.reviewEffects,
+      releasePlugin: {
+        descriptor: refund.releasePlugin,
+        source: 'package',
+        location: '@lostgradient/plugin-demo',
+      },
+      async attach(bureau) {
+        refundWorker = await refund.attachWorker(
+          {
+            tasks: bureau.tasks,
+            internals: bureau.internals,
+            reviews: bureau.reviews,
+            events: bureau,
+            requestContext: async () => refundContext(),
+          },
+          (error) => {
+            throw error;
+          },
+        );
+        return refundWorker;
+      },
+    },
     extraAgents: {
       agents: {
         fixture: createAgent({
@@ -147,8 +255,12 @@ test('listener binds verified browser identities, revokes private access and res
       workspace: {
         workspaceId,
         resolveMembership: async ({ subject: identity }) => members.get(identity ?? '') ?? null,
-        resolveOwnerMembership: async (owner) =>
-          [...members.values()].find((member) => member.owner === owner) ?? null,
+        resolveOwnerMembership: async (owner) => {
+          const requester = members.get('api-key-caller');
+          return requester?.owner === owner
+            ? requester
+            : ([...members.values()].find((member) => member.owner === owner) ?? null);
+        },
       },
     },
     sharedBrowserSignIn: {
@@ -264,12 +376,16 @@ test('listener binds verified browser identities, revokes private access and res
     const result = await send(callback.pathname + callback.search, { headers: { cookie } });
     return { result, cookie: result.headers.getSetCookie()[0]?.split(';')[0] };
   };
-  const openSocket = async (cookie: string) => {
+  const openSocket = async (cookie: string, machine = false) => {
     const url = new URL('/bureau/jsonrpc', host.url);
     url.protocol = 'ws:';
     const socket: WebSocket = Reflect.construct(WebSocket, [
       url.toString(),
-      { headers: { host: 'settings.example', origin: 'https://settings.example', cookie } },
+      {
+        headers: machine
+          ? { 'x-api-key': cookie }
+          : { host: 'settings.example', origin: 'https://settings.example', cookie },
+      },
     ]);
     await new Promise<void>((resolve, reject) => {
       socket.addEventListener('open', () => resolve(), { once: true });
@@ -323,6 +439,197 @@ test('listener binds verified browser identities, revokes private access and res
     expect(administrator.result.status).toBe(303);
     const member = await signIn('member');
     expect(member.result.status).toBe(303);
+    const memberSession = await send('/auth/session', { headers: { cookie: member.cookie! } });
+    const memberSessionData = (await memberSession.json()) as { csrfToken: string };
+    const memberHeaders = { cookie: member.cookie!, 'x-csrf-token': memberSessionData.csrfToken };
+    const refundRpc = async (method: string, params: unknown, headers: Record<string, string>) => {
+      const response = await (headers['x-api-key']
+        ? fetch(new URL('/bureau/jsonrpc', host.url), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', ...headers },
+            body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+          })
+        : send('/bureau/jsonrpc', {
+            method: 'POST',
+            headers: {
+              origin: 'https://settings.example',
+              'content-type': 'application/json',
+              ...headers,
+            },
+            body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+          }));
+      return (await response.json()) as { result?: Record<string, unknown>; error?: unknown };
+    };
+    const machine = { 'x-api-key': 'machine' };
+    const refundRequest = { commandId: 'signed-in-refund', orderId: 'order', cents: 4200 };
+    const accepted = await refundRpc('demo.refunds.request', refundRequest, machine);
+    const refundId = accepted.result?.['refundId'];
+    expect(typeof refundId).toBe('string');
+    expect(await refundRpc('demo.refunds.request', refundRequest, machine)).toEqual(accepted);
+    const machineRefund = await refundRpc('demo.refunds.get', { refundId }, machine);
+    expect(machineRefund.result).toMatchObject({ refundId });
+    const forbiddenRequest = await refundRpc('demo.refunds.request', refundRequest, memberHeaders);
+    expect(forbiddenRequest.error).toBeDefined();
+    await refundWorker?.idle();
+    const storedRefund = await ledger.get(refundId as string);
+    expect(storedRefund?.reviewId).toBeDefined();
+    const session = await send('/auth/session', { headers: { cookie: administrator.cookie! } });
+    const sessionData = (await session.json()) as { csrfToken: string };
+    const reviewer = { cookie: administrator.cookie!, 'x-csrf-token': sessionData.csrfToken };
+    const detail = await refundRpc('bureau.reviews.get', { id: storedRefund!.reviewId }, reviewer);
+    expect(detail.result).toMatchObject({
+      effect: { kind: 'refund', refundId, cents: 4200, currency: 'USD' },
+    });
+    expect(JSON.stringify(detail)).not.toContain('approvalToken');
+    const forbiddenRefund = await refundRpc(
+      'demo.refunds.get',
+      { refundId },
+      { cookie: member.cookie! },
+    );
+    expect(forbiddenRefund.error).toBeDefined();
+    const requesterDecision = await refundRpc(
+      'bureau.reviews.resolve',
+      { id: storedRefund!.reviewId, decision: 'deny', round: 0 },
+      machine,
+    );
+    expect(requesterDecision.error).toBeDefined();
+    const mcp = async (name: string, argumentsValue: object, headers: Record<string, string>) => {
+      const request = {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+          'mcp-protocol-version': '2024-11-05',
+          ...headers,
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: { name, arguments: argumentsValue },
+        }),
+      };
+      const response = headers['x-api-key']
+        ? await fetch(new URL('/bureau/mcp', host.url), request)
+        : await send('/bureau/mcp', {
+            ...request,
+            headers: { ...request.headers, origin: 'https://settings.example' },
+          });
+      return await response.text();
+    };
+    expect(await mcp('demo.refunds.get', { refundId }, machine)).toContain(refundId as string);
+    expect(await mcp('demo.refunds.request', refundRequest, machine)).toContain(refundId as string);
+    expect(await mcp('demo.refunds.request', refundRequest, memberHeaders)).toContain('isError');
+    expect(
+      await mcp(
+        'bureau.reviews.resolve',
+        { id: storedRefund!.reviewId, decision: 'deny', round: 0 },
+        machine,
+      ),
+    ).toContain('isError');
+    expect(await mcp('demo.refunds.get', { refundId }, { cookie: member.cookie! })).toContain(
+      'isError',
+    );
+    const refundSocket = await openSocket(member.cookie!);
+    const socketCall = (socket: WebSocket, method: string, params: object) => {
+      const response = new Promise<string>((resolve) =>
+        socket.addEventListener('message', (event) => resolve(String(event.data)), { once: true }),
+      );
+      socket.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }));
+      return response;
+    };
+    expect(await socketCall(refundSocket, 'demo.refunds.get', { refundId })).toContain('error');
+    expect(await socketCall(refundSocket, 'demo.refunds.request', refundRequest)).toContain(
+      'error',
+    );
+    refundSocket.close();
+    const machineSocket = await openSocket('machine', true);
+    expect(await socketCall(machineSocket, 'demo.refunds.get', { refundId })).toContain(
+      refundId as string,
+    );
+    expect(await socketCall(machineSocket, 'demo.refunds.request', refundRequest)).toContain(
+      refundId as string,
+    );
+    machineSocket.close();
+    const reviewerDecision = await refundRpc(
+      'bureau.reviews.resolve',
+      { id: storedRefund!.reviewId, decision: 'deny', round: 0 },
+      reviewer,
+    );
+    expect(reviewerDecision.result).toBeDefined();
+    const remainingBalance = await ledger.balance('merchant', 'order');
+    expect(remainingBalance?.reserved).toBe(0);
+    const next = await refundRpc(
+      'demo.refunds.request',
+      { ...refundRequest, commandId: 'mcp-approval' },
+      machine,
+    );
+    const nextId = next.result?.['refundId'];
+    await refundWorker?.idle();
+    const nextRefund = await ledger.get(nextId as string);
+    expect(nextRefund?.reviewId).toBeDefined();
+    const nextReview = nextRefund!.reviewId!;
+    expect(
+      await mcp(
+        'bureau.reviews.resolve',
+        { id: nextReview, decision: 'reject', round: 0 },
+        reviewer,
+      ),
+    ).toContain('isError');
+    expect(
+      await mcp('bureau.reviews.resolve', { id: nextReview, decision: 'deny', round: 1 }, reviewer),
+    ).toContain('isError');
+    const requesterMembership = members.get('api-key-caller')!;
+    members.delete('api-key-caller');
+    expect(
+      await mcp(
+        'bureau.reviews.resolve',
+        { id: nextReview, decision: 'approve', round: 0 },
+        reviewer,
+      ),
+    ).toContain('isError');
+    expect(await processor.submissions()).toBe(0);
+    members.set('api-key-caller', requesterMembership);
+    expect(
+      await mcp(
+        'bureau.reviews.resolve',
+        { id: nextReview, decision: 'approve', round: 0 },
+        reviewer,
+      ),
+    ).toContain('superseded');
+    expect(
+      await mcp(
+        'bureau.reviews.resolve',
+        { id: nextReview, decision: 'approve', round: 0 },
+        reviewer,
+      ),
+    ).toContain('isError');
+    expect(
+      await mcp(
+        'bureau.reviews.resolve',
+        { id: nextReview, decision: 'approve', round: 1 },
+        reviewer,
+      ),
+    ).toContain('applied');
+    expect(await processor.submissions()).toBe(1);
+    const rejected = await refundRpc(
+      'demo.refunds.request',
+      { ...refundRequest, commandId: 'mcp-rejection', cents: 1000 },
+      machine,
+    );
+    await refundWorker?.idle();
+    const rejectedRefund = await ledger.get(rejected.result?.['refundId'] as string);
+    expect(rejectedRefund?.reviewId).toBeDefined();
+    expect(
+      await mcp(
+        'bureau.reviews.resolve',
+        { id: rejectedRefund!.reviewId, decision: 'reject', reason: 'Wrong order', round: 0 },
+        reviewer,
+      ),
+    ).toContain('Wrong order');
+    await refundWorker?.idle();
+    const rejectedFinal = await ledger.get(rejectedRefund!.id);
+    expect(rejectedFinal?.status).toBe('failed');
     for (const [cookie, expected] of [
       [administrator.cookie!, 'admin'],
       [member.cookie!, 'member'],

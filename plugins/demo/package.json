@@ -4,7 +4,11 @@
   "description": "The demo plugin for Interborough: scripted agents, tools, validators, a goal, and a schedule that run without a model provider. Off by default.",
   "type": "module",
   "exports": {
-    ".": "./src/plugin.ts"
+    ".": "./src/plugin.ts",
+    "./refunds": {
+      "browser": null,
+      "default": "./src/refunds.ts"
+    }
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-inherited-key-reads.ts",
@@ -15,6 +19,8 @@
     "test": "bun ../../scripts/bun-test-junit.ts"
   },
   "dependencies": {
+    "@lostgradient/backchannel": "workspace:*",
+    "@lostgradient/bureau": "workspace:*",
     "@lostgradient/interborough-plugin": "workspace:*",
     "@lostgradient/operative": "workspace:*",
     "@lostgradient/operative-anthropic": "workspace:*",
@@ -24,7 +30,9 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@lostgradient/bureau": "workspace:*",
+    "@lostgradient/lifecycle": "workspace:*",
+    "@modelcontextprotocol/client": "catalog:",
+    "@lostgradient/storage-bun-sqlite": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@types/bun": "catalog:",

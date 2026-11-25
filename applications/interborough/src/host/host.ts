@@ -139,6 +139,7 @@ import {
   type AgentDefinitions,
   type AgentWithBureauTools,
   type Bureau,
+  type BureauHandlerOptions,
   type BureauOptions,
   type BureauPluginEntry,
   type SettingsOptions,
@@ -489,6 +490,15 @@ export type HostOptions = {
   >;
   /** Agents to define beside the ones the plugins contribute, for tests that need an agent of their own. */
   readonly extraAgents?: ExtraAgents;
+  /** Reviewed operation contributions and their background worker, owned by the host. */
+  readonly reviewedOperations?: {
+    readonly agents: AgentDefinitions;
+    readonly reviewPolicy: NonNullable<BureauOptions['reviewPolicy']>;
+    readonly operations: NonNullable<BureauHandlerOptions['operations']>;
+    readonly reviewEffects: NonNullable<BureauHandlerOptions['reviewEffects']>;
+    readonly releasePlugin: BureauPluginEntry;
+    readonly attach: (bureau: Bureau<AgentDefinitions>) => Promise<{ dispose(): Promise<void> }>;
+  };
   /**
    * Tools to offer beside the ones tool sources bring: an agent file may name them and the catalog
    * lists them with their tier. The sample world's built-in tools (Lookup order, Issue refund and
@@ -887,6 +897,14 @@ function bureauAuthenticationOptions(
   };
 }
 
+async function attachReviewedWorker(
+  held: Held,
+  reviewed: HostOptions['reviewedOperations'],
+  bureau: Bureau<AgentDefinitions>,
+): Promise<void> {
+  if (reviewed !== undefined) held.reviewedWorker = await reviewed.attach(bureau);
+}
+
 /**
  * Where the `/bureau` prefix comes off a request before the Bureau handler sees it, or `undefined`
  * for a path that does not literally start with the prefix, which it never cuts a fixed number of
@@ -1099,7 +1117,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   // The A2A allowlist is read the same way: after the first await it would be the caller's live array.
   const a2aAgents = options.a2aAgents === undefined ? undefined : [...options.a2aAgents];
   // The plugin lists are read the same way, so the Bureau and the routes see the plugins this host was started with.
-  const packagePlugins = [...(options.plugins ?? workspacePlugins())];
+  const packagePlugins = [
+    ...(options.plugins ?? workspacePlugins()),
+    ...(options.reviewedOperations === undefined ? [] : [options.reviewedOperations.releasePlugin]),
+  ];
   const developmentPlugins = [...(options.developmentPlugins ?? [])];
   const log = options.log ?? ((message: string) => console.info(message));
   // The public origin (COR-1904, COR-2169) is read from the caller's environment before it can
@@ -1453,7 +1474,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       workspace,
       id: bungalow.workspaceId,
       ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
-      agents: { ...options.extraAgents?.agents },
+      agents: { ...options.extraAgents?.agents, ...options.reviewedOperations?.agents },
+      ...(options.reviewedOperations === undefined
+        ? {}
+        : { reviewPolicy: options.reviewedOperations.reviewPolicy }),
       ...(options.extraAgents?.withBureauTools === undefined
         ? {}
         : { agentsWithBureauTools: { ...options.extraAgents.withBureauTools } }),
@@ -1591,6 +1615,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       ],
     });
     held.bureau = bureau;
+    await attachReviewedWorker(held, options.reviewedOperations, bureau);
     // The records past their retention window go once a night (COR-2009): the Bureau leaves them
     // to this clean-up (`expiredRecords: 'on-request'`), and Data and retention reports it.
     const nightlyCleanUp = startNightlyCleanUp({
@@ -2034,6 +2059,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     bureauHandler = createBureauHandler(bureau, {
       workspace,
+      ...(options.reviewedOperations === undefined
+        ? {}
+        : {
+            operations: options.reviewedOperations.operations,
+            reviewEffects: options.reviewedOperations.reviewEffects,
+          }),
       // The local caller, unless the request carries a credential. With an A2A key configured
       // (COR-1904), a credential is checked against it, and A2A's JSON-RPC routes require one.
       ...bureauAuthenticationOptions(
@@ -2239,6 +2270,7 @@ type Held = {
   storage?: Storage;
   privateServer?: { dispose(): Promise<void> };
   bureau?: Bureau<AgentDefinitions>;
+  reviewedWorker?: { dispose(): Promise<void> };
   providers?: ProviderManager;
   plugins?: PluginManager;
   skills?: SkillManager;
@@ -2289,6 +2321,7 @@ async function teardown(held: Held): Promise<void> {
   await step(held.server && (() => held.server?.stop()));
   await step(held.pushDelivery && (() => held.pushDelivery?.stop()));
   await step(held.nightlyCleanUp && (() => held.nightlyCleanUp?.close()));
+  await step(held.reviewedWorker && (() => held.reviewedWorker?.dispose()));
   await step(held.bureau && (() => held.bureau?.shutdown({ policy: 'detach' })));
   // After the Bureau: a run still in flight may be calling a source's tool.
   await step(held.toolSources && (() => held.toolSources?.close()));

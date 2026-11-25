@@ -897,6 +897,29 @@ export function serializeTaskRequestContext(
   });
 }
 
+/** A reserved command pins the caller's identity while its authority is revalidated on each attempt. */
+export function serializeReservedTaskRequestContext(
+  requestContext:
+    | {
+        readonly authority: {
+          readonly principalId: string;
+          readonly tenantId: string;
+          readonly ownerId: string;
+        };
+        readonly audience?: string | undefined;
+        readonly locale?: string | undefined;
+      }
+    | undefined,
+): string | undefined {
+  if (requestContext === undefined) return undefined;
+  const { principalId, tenantId, ownerId } = requestContext.authority;
+  return canonicalJson({
+    authority: { principalId, tenantId, ownerId },
+    audience: requestContext.audience,
+    locale: requestContext.locale,
+  });
+}
+
 /** JSON with every object's keys sorted, so equal values serialize alike. */
 export function canonicalJson(value: unknown): string {
   return JSON.stringify(value, (_key, nested: unknown) =>
@@ -965,6 +988,8 @@ export interface RunCreationReceipt {
 export interface RunCreationClaim {
   readonly runId: string;
   readonly sessionId: string;
+  /** Monotonic domain-owned fence for an explicitly reserved run. */
+  readonly reservationFence?: number;
 }
 
 /** What a completed run-creation entry records for later retries. */
@@ -1011,6 +1036,8 @@ export type RunCreationAttempt =
   | { readonly kind: 'replay'; readonly result: CreatedRunSummary }
   | {
       readonly kind: 'claimed';
+      /** Refuses a claimant superseded by a later reserved admission. */
+      assertCurrent(): Promise<void>;
       /**
        * Record the created run's receipt. Rejects with
        * {@link RunCreationReceiptUnrecordedError} when the record cannot be
@@ -1375,7 +1402,46 @@ export function createRunCreationLedger(
       });
     }
     if (outcome.outcome === 'existing') {
-      return { kind: 'existing', entry: outcome.entry, inFlight: inFlight.get(key) ?? settling };
+      let existing = outcome.entry;
+      const fence = input.claim.reservationFence;
+      if (fence !== undefined) {
+        if (
+          existing.claim.runId !== input.claim.runId ||
+          existing.claim.sessionId !== input.claim.sessionId ||
+          existing.claim.reservationFence === undefined
+        )
+          throw new Error('Reserved run identity does not match the existing claim');
+        if (fence > existing.claim.reservationFence) {
+          const observation = await observe(existing.claim);
+          if (
+            observation.live === undefined &&
+            (observation.durableStatus === 'pending' ||
+              (existing.state === 'pending' && observation.durableStatus === null))
+          ) {
+            const adopted: CommandLedgerPendingEntry<RunCreationClaim> = {
+              state: 'pending',
+              identity: existing.identity,
+              payloadDigest: existing.payloadDigest,
+              claimedAt: existing.claimedAt,
+              claim: { ...existing.claim, reservationFence: fence },
+            };
+            if (
+              await options.kv.conditionalBatch(
+                [{ key, expectedValue: JSON.stringify(existing) }],
+                [{ type: 'set', key, value: JSON.stringify(adopted) }],
+              )
+            ) {
+              const settlement = Promise.withResolvers<CreatedRunSummary>();
+              settlement.promise.catch(() => {});
+              inFlight.set(key, settlement.promise);
+              return { kind: 'claimed', entry: adopted, settlement };
+            }
+            existing = (await ledger.read(identity)) ?? existing;
+          }
+        }
+        return { kind: 'existing', entry: existing, inFlight: undefined };
+      }
+      return { kind: 'existing', entry: existing, inFlight: inFlight.get(key) ?? settling };
     }
     const settlement = Promise.withResolvers<CreatedRunSummary>();
     // An attempt nobody is waiting on may still fail; its caller sees that
@@ -1404,6 +1470,11 @@ export function createRunCreationLedger(
       return runIds;
     },
     async begin(input) {
+      if (
+        input.claim.reservationFence !== undefined &&
+        (!Number.isSafeInteger(input.claim.reservationFence) || input.claim.reservationFence < 1)
+      )
+        throw new Error('Reserved run fence must be a positive safe integer');
       const identity = runCreationIdentity(input);
       const key = entryKey(identity);
       const decision = await withClaimLock(key, () => claimOrObserve(identity, key, input));
@@ -1429,6 +1500,11 @@ export function createRunCreationLedger(
 
       return {
         kind: 'claimed',
+        async assertCurrent() {
+          const current = await ledger.read(entry.identity);
+          if (JSON.stringify(current) !== JSON.stringify(entry))
+            throw new Error('Run creation claim was superseded');
+        },
         async complete(summary) {
           let recorded: CommandLedgerCompletedEntry<RunCreationClaim, RunCreationLedgerResult>;
           try {

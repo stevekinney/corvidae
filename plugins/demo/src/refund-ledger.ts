@@ -32,12 +32,23 @@ export type Refund = RefundRequest & {
   fence: number;
   receipt?: string;
   retryUntil?: number;
+  reviewId?: string;
+};
+export type RefundStart = {
+  refundId: string;
+  owner: string;
+  runId: string;
+  sessionId: string;
+  fence: number;
+  status: 'pending' | 'started';
+  arguments: { refundId: string; orderId: string; cents: number; currency: string };
 };
 
 const key = (...parts: string[]) => parts.map(encodeURIComponent).join(':');
 const chargeKey = (merchant: string, order: string) => key('charge', merchant, order);
 const refundKey = (id: string) => key('refund', id);
 const commandKey = (merchant: string, id: string) => key('command', merchant, id);
+const digestKey = (merchant: string, id: string) => key('command-digest', merchant, id);
 const parse = <T>(value: string | null): T | undefined =>
   value === null ? undefined : (JSON.parse(value) as T);
 
@@ -101,6 +112,15 @@ export function createRefundLedger(storage: Storage) {
           refund.status === 'needs-reconciliation'),
     );
   }
+  async function awaitingReview(): Promise<Refund[]> {
+    const keys = await records.list('refund:');
+    const refunds = await Promise.all(
+      keys.map(async (entry) => parse<Refund>(await records.get(entry))),
+    );
+    return refunds.filter(
+      (refund): refund is Refund => refund !== undefined && refund.status === 'admitted',
+    );
+  }
   async function balance(merchant: string, order: string) {
     return parse<Charge>(await records.get(chargeKey(merchant, order)));
   }
@@ -119,10 +139,21 @@ export function createRefundLedger(storage: Storage) {
     if (!Number.isSafeInteger(request.amount) || request.amount <= 0)
       throw new Error('Invalid amount');
     const command = commandKey(request.merchant, request.commandId);
+    const digestRecord = digestKey(request.merchant, request.commandId);
+    const digest = Array.from(
+      new Uint8Array(
+        await crypto.subtle.digest(
+          'SHA-256',
+          new TextEncoder().encode(JSON.stringify([request.order, request.amount])),
+        ),
+      ),
+      (byte) => byte.toString(16).padStart(2, '0'),
+    ).join('');
     const charge = chargeKey(request.merchant, request.order);
     for (;;) {
       const existing = await records.get(command);
       if (existing !== null) {
+        if ((await records.get(digestRecord)) !== digest) throw new Error('Conflict');
         const refund = await get(existing);
         if (!refund) throw new Error('Missing refund');
         if (
@@ -156,6 +187,7 @@ export function createRefundLedger(storage: Storage) {
         ],
         [
           { type: 'set', key: command, value: refund.id },
+          { type: 'set', key: digestRecord, value: digest },
           { type: 'set', key: refundKey(refund.id), value: JSON.stringify(refund) },
           {
             type: 'set',
@@ -182,6 +214,10 @@ export function createRefundLedger(storage: Storage) {
                   value: JSON.stringify({
                     refundId: refund.id,
                     owner: request.owner,
+                    runId: crypto.randomUUID(),
+                    sessionId: crypto.randomUUID(),
+                    fence: 0,
+                    status: 'pending',
                     arguments: {
                       refundId: refund.id,
                       orderId: refund.order,
@@ -195,6 +231,93 @@ export function createRefundLedger(storage: Storage) {
         ],
       );
       if (committed) return refund;
+    }
+  }
+  async function getStart(id: string): Promise<RefundStart | undefined> {
+    return parse<RefundStart>(await records.get(key('start', id)));
+  }
+  async function pendingStarts(): Promise<RefundStart[]> {
+    const keys = await records.list('start:');
+    const starts = await Promise.all(
+      keys.map(async (entry) => parse<RefundStart>(await records.get(entry))),
+    );
+    return starts.filter(
+      (start): start is RefundStart => start !== undefined && start.status === 'pending',
+    );
+  }
+  async function startForRun(runId: string): Promise<RefundStart | undefined> {
+    const keys = await records.list('start:');
+    const starts = await Promise.all(
+      keys.map(async (entry) => parse<RefundStart>(await records.get(entry))),
+    );
+    return starts.find((start) => start?.runId === runId);
+  }
+  async function claimStart(id: string): Promise<RefundStart> {
+    const startKey = key('start', id);
+    for (;;) {
+      const raw = await records.get(startKey);
+      const start = parse<RefundStart>(raw);
+      if (!start) throw new Error('Refund start not found');
+      if (start.status === 'started') return start;
+      const refundRaw = await records.get(refundKey(id));
+      const refund = parse<Refund>(refundRaw);
+      if (
+        !refund ||
+        refund.status !== 'admitted' ||
+        (refund.existingRunId && refund.existingRunId !== start.runId)
+      )
+        throw new Error('Refund start does not match the intent');
+      const claimed = { ...start, fence: start.fence + 1 };
+      if (
+        await records.conditionalBatch(
+          [
+            { key: startKey, expectedValue: raw },
+            { key: refundKey(id), expectedValue: refundRaw },
+          ],
+          [
+            { type: 'set', key: startKey, value: JSON.stringify(claimed) },
+            {
+              type: 'set',
+              key: refundKey(id),
+              value: JSON.stringify({ ...refund, existingRunId: start.runId }),
+            },
+          ],
+        )
+      )
+        return claimed;
+    }
+  }
+  async function completeStart(id: string, fence: number): Promise<boolean> {
+    const startKey = key('start', id);
+    for (;;) {
+      const raw = await records.get(startKey);
+      const start = parse<RefundStart>(raw);
+      if (!start || start.fence !== fence) return false;
+      if (start.status === 'started') return true;
+      if (
+        await records.conditionalBatch(
+          [{ key: startKey, expectedValue: raw }],
+          [{ type: 'set', key: startKey, value: JSON.stringify({ ...start, status: 'started' }) }],
+        )
+      )
+        return true;
+    }
+  }
+  async function linkReview(id: string, runId: string, reviewId: string): Promise<boolean> {
+    if (reviewId !== `approval:${runId}:reviewed-call`)
+      throw new Error('Review does not match the reserved call');
+    for (;;) {
+      const raw = await records.get(refundKey(id));
+      const refund = parse<Refund>(raw);
+      if (!refund || refund.existingRunId !== runId) return false;
+      if (refund.reviewId !== undefined) return refund.reviewId === reviewId;
+      if (
+        await records.conditionalBatch(
+          [{ key: refundKey(id), expectedValue: raw }],
+          [{ type: 'set', key: refundKey(id), value: JSON.stringify({ ...refund, reviewId }) }],
+        )
+      )
+        return true;
     }
   }
   async function claim(id: string, retryUntil?: number): Promise<Refund> {
@@ -322,5 +445,22 @@ export function createRefundLedger(storage: Storage) {
         return true;
     }
   }
-  return { addCharge, get, find, recoverable, balance, admit, cancel, claim, apply };
+  return {
+    addCharge,
+    get,
+    find,
+    recoverable,
+    awaitingReview,
+    balance,
+    admit,
+    getStart,
+    pendingStarts,
+    startForRun,
+    claimStart,
+    completeStart,
+    linkReview,
+    cancel,
+    claim,
+    apply,
+  };
 }

@@ -246,16 +246,20 @@ import {
   type EngineInternals,
 } from './internals.ts';
 import { ENGINE_LEASE_LOST_WARNING_NAME, handleDeposition } from './lease-deposition.ts';
+import { WorkflowClaimUnavailableError } from './lease-errors.ts';
 import { dispatchLeaseHealthIfChanged, readEngineLeaseHealth } from './lease-health-events.ts';
 import type { EngineLeaseHealth, LeaseLostReason } from './lease-health.ts';
 import { createLeaseManager } from './lease-manager.ts';
 import {
   abandonPreparedWorkflow as abandonPreparedWorkflowFromLifecycle,
+  acquireReservedWorkflowClaim,
+  adoptPreparedWorkflow as adoptPreparedWorkflowFromLifecycle,
   fork as forkFromLifecycle,
   getRunByIdempotencyKey as getRunByIdempotencyKeyFromLifecycle,
   launchPreparedWorkflow as launchPreparedWorkflowFromLifecycle,
   prepareWorkflow as prepareWorkflowFromLifecycle,
   recoverAll as recoverAllFromLifecycle,
+  releasePreparedWorkflow as releasePreparedWorkflowFromLifecycle,
   resume as resumeFromLifecycle,
   startOrSignal as startOrSignalFromLifecycle,
   startWithIdempotency as startWithIdempotencyFromLifecycle,
@@ -266,6 +270,7 @@ import {
   type StartOrSignalResult,
 } from './lifecycle.ts';
 import { previewFork as previewForkFromLifecycle } from './lifecycle/fork-preview.ts';
+import { releaseFreshlyAcquiredResumeClaim } from './lifecycle/standalone-claim-acquire.ts';
 import {
   addTags as addWorkflowTags,
   getAttributes as getWorkflowAttributes,
@@ -649,6 +654,7 @@ export class Engine<
   #asyncDisposeResult: Promise<boolean> | null = null;
   #shutdownResult: Promise<boolean> | null = null;
   #synchronousDisposeResult: Promise<boolean> | null = null;
+  #reservedStartClaims = new Set<string>();
 
   /**
    * Construct and register an engine in one step. Activities are registered
@@ -2079,6 +2085,89 @@ export class Engine<
    * equivalent to converge on, and the latter is a second, conflicting
    * "when does this launch" mechanism. Use `start()` for either.
    */
+  /** Hold the workflow lease before a host advances its reserved-start generation. */
+  async reserveStartClaim(
+    workflowId: string,
+  ): Promise<{ handoff(): void; release(): Promise<void> }> {
+    const internals = getInternals(this);
+    if (internals.options.ownershipMode !== 'workflow-lease')
+      throw new Error('Reserved starts require workflow-lease ownership.');
+    if (this.#reservedStartClaims.has(workflowId))
+      throw new WorkflowClaimUnavailableError(workflowId, null);
+    this.#reservedStartClaims.add(workflowId);
+    try {
+      const acquired = await acquireReservedWorkflowClaim(internals, workflowId);
+      if (!acquired.freshlyAcquired) throw new WorkflowClaimUnavailableError(workflowId, null);
+      let settled = false;
+      return {
+        handoff: () => {
+          if (!settled) {
+            settled = true;
+            this.#reservedStartClaims.delete(workflowId);
+          }
+        },
+        release: async () => {
+          if (settled) return;
+          settled = true;
+          try {
+            await releaseFreshlyAcquiredResumeClaim(internals, workflowId, acquired.epoch);
+          } finally {
+            this.#reservedStartClaims.delete(workflowId);
+          }
+        },
+      };
+    } catch (error) {
+      this.#reservedStartClaims.delete(workflowId);
+      throw error;
+    }
+  }
+
+  /** Reacquire a matching pending record for an explicitly reserved start. */
+  async adoptPrepared(
+    type: string,
+    input: unknown,
+    options: StartWorkflowOptions & { id: string },
+  ): Promise<PreparedWorkflowHandle> {
+    assertLeaseHeldForEngineWork(getInternals(this));
+    if (!isWorkflowCatalogReady(this as unknown as Engine))
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    const { handle, context } = await adoptPreparedWorkflowFromLifecycle(
+      getInternals(this),
+      type,
+      input,
+      options,
+      this.#createLifecycleCallbacks(),
+    );
+    return {
+      id: handle.id,
+      release: () => releasePreparedWorkflowFromLifecycle(getInternals(this), context),
+      launch: () =>
+        launchPreparedWorkflowFromLifecycle(
+          getInternals(this),
+          context,
+          this.#createLifecycleCallbacks(),
+        ),
+      abandon: () =>
+        abandonPreparedWorkflowFromLifecycle(getInternals(this), context, async (workflowId) => {
+          if (
+            getInternals(this).options.ownershipMode === 'workflow-lease' &&
+            context.claimEpoch === undefined
+          )
+            throw new Error(`Prepared workflow "${workflowId}" has no claim epoch.`);
+          await terminateWorkflowFromTermination(
+            getInternals(this),
+            workflowId,
+            'cancelled',
+            this.#createTerminationCallbacks(),
+            PREPARED_WORKFLOW_ABANDONED_REASON,
+            0,
+            undefined,
+            context.claimEpoch,
+          );
+        }),
+    };
+  }
+
   async prepare<TName extends KnownWorkflowNames<TWorkflows>>(
     type: TName,
     input: WorkflowInput<TWorkflows, TName>,
@@ -2115,6 +2204,7 @@ export class Engine<
     );
     return {
       id: handle.id,
+      release: () => releasePreparedWorkflowFromLifecycle(getInternals(this), context),
       launch: () =>
         launchPreparedWorkflowFromLifecycle(
           getInternals(this),

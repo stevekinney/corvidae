@@ -12,6 +12,9 @@
   "exclude": ["node_modules", "coverage", "**/*.test.ts", "**/*.test-d.ts", "**/*.bench.ts"],
   "references": [
     {
+      "path": "../../packages/backchannel/tsconfig.source.json"
+    },
+    {
       "path": "../../packages/interborough-plugin/tsconfig.source.json"
     },
     {

@@ -17,7 +17,7 @@
     "smoke:claude-code-mcp": "bun scripts/smoke-claude-code-mcp.ts",
     "smoke:claude-desktop-panels": "bun scripts/smoke-claude-desktop-panels.ts",
     "generate:bureau-client": "bun scripts/generate-bureau-client.ts",
-    "typecheck": "tsc -b tsconfig.references.json && svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
+    "typecheck": "tsc -b tsconfig.references.json && svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.browser-tests.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./src/host/server-integration/tsconfig.json --fail-on-warnings",
     "release:check": "bun ../../scripts/check-documentation-coverage.ts --entries 'src/host/**/*.ts' 'src/lib/**/*.ts' '!**/*.test.ts' '!**/*.test-d.ts' '!**/*.test-support.ts' '!**/*.generated.ts'"
   },
   "dependencies": {

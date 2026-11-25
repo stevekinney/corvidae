@@ -801,10 +801,16 @@ export function createDurableRecovery<D extends AgentDefinitions>(
         ) {
           const prepared = await preparedState(handle.id);
           if (prepared === 'never-launched') {
-            classification = classifyRecoveredRunDetailed({
-              ...classificationArgs,
-              engineRecordStatus: 'pending',
-            });
+            classification =
+              sessionLoad.ok &&
+              sessionLoad.session &&
+              sessionLoad.session['reservedStartRunId'] === handle.id &&
+              typeof sessionLoad.session['reservedStartFence'] === 'number'
+                ? { verdict: 'skip' }
+                : classifyRecoveredRunDetailed({
+                    ...classificationArgs,
+                    engineRecordStatus: 'pending',
+                  });
           } else if (prepared === 'preparing-elsewhere') {
             classification = { verdict: 'skip' };
           }

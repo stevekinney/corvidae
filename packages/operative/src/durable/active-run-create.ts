@@ -231,6 +231,7 @@ export function createDurableActiveRun(
       durableRun.prompt,
       durableRun.onServices,
       durableRun.beforeLaunch,
+      durableRun.adoptReserved === true,
       reachability,
       abortedBeforeDrive,
       (toolbox) => toolboxForwarder.onStepToolbox(toolbox),

@@ -9,6 +9,7 @@
  */
 import { createManualRuntimeServices, HookRegistry } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
@@ -94,6 +95,80 @@ async function statusOf(context: Context, runId: string): Promise<string | undef
 }
 
 describe('a fresh durable run started in two phases (COR-297)', () => {
+  it('can retry the same reserved preparation after its admission fence rejects', async () => {
+    const context = await buildContext();
+    const runId = 'reserved-retry';
+    const first = startRun(context, runId, new HookRegistry<OperativeHookMap>(), {
+      adoptReserved: true,
+      tags: ['weft:reserved-start'],
+      beforeLaunch: async () => {
+        throw new Error('reservation superseded');
+      },
+    });
+    expect(await throwingRejectionOf(first.activeRun.durablyStarted)).toThrow(
+      'reservation superseded',
+    );
+    await first.activeRun.result;
+    expect(await statusOf(context, runId)).toBe('pending');
+    const hook = deferredStartHook();
+    const retry = startRun(context, runId, hook.hooks, {
+      adoptReserved: true,
+      tags: ['weft:reserved-start'],
+    });
+    await retry.activeRun.durablyStarted;
+    hook.release();
+    const result = await retry.activeRun.result;
+    expect(result.finishReason).toBe('stop-condition');
+    context.engine[Symbol.dispose]();
+  });
+  it('does not cancel or settle a successor after a reserved launch loses its claim', async () => {
+    const context = await buildContext();
+    const realPrepare = context.spy.engine.prepare.bind(context.spy.engine);
+    context.spy.engine.prepare = async (...args: Parameters<RegistryAgnosticEngine['prepare']>) => {
+      const prepared = await realPrepare(...args);
+      return {
+        ...prepared,
+        launch: async () => {
+          throw Object.assign(new Error('Claim lost'), { code: 'EngineDeposedError' });
+        },
+      };
+    };
+    const hook = deferredStartHook();
+    const { activeRun, events } = startRun(context, 'reserved-deposed', hook.hooks, {
+      adoptReserved: true,
+    });
+    await activeRun.durablyStarted;
+    hook.release();
+    await activeRun.result;
+    expect(events).toEqual([]);
+    expect(context.spy.cancels).toEqual([]);
+    expect(await statusOf(context, 'reserved-deposed')).toBe('pending');
+    context.engine[Symbol.dispose]();
+  });
+  it('does not settle a successor when a failed start hook loses its abandonment fence', async () => {
+    const context = await buildContext();
+    const realPrepare = context.spy.engine.prepare.bind(context.spy.engine);
+    context.spy.engine.prepare = async (...args: Parameters<RegistryAgnosticEngine['prepare']>) => {
+      const prepared = await realPrepare(...args);
+      return {
+        ...prepared,
+        abandon: async () => {
+          throw Object.assign(new Error('Claim lost'), { code: 'EngineDeposedError' });
+        },
+      };
+    };
+    const hook = deferredStartHook(new Error('hook failure'));
+    const { activeRun, events } = startRun(context, 'reserved-hook-deposed', hook.hooks, {
+      adoptReserved: true,
+    });
+    await activeRun.durablyStarted;
+    hook.release();
+    await activeRun.result;
+    expect(events).toEqual([]);
+    expect(context.spy.cancels).toEqual([]);
+    expect(await statusOf(context, 'reserved-hook-deposed')).toBe('pending');
+    context.engine[Symbol.dispose]();
+  });
   it('settles durablyStarted while onRunStart is still pending, with the record committed as pending', async () => {
     const context = await buildContext();
     const hook = deferredStartHook();
@@ -241,6 +316,7 @@ describe('a fresh durable run started in two phases (COR-297)', () => {
         const prepared = await realPrepare(...args);
         return {
           id: prepared.id,
+          release: () => prepared.release(),
           launch: async () => {
             throw new Error('launch failed');
           },
