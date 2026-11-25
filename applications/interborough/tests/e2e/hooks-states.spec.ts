@@ -30,6 +30,7 @@ test.describe('/hooks: the hooks list states', () => {
   const WIDTHS = [1280, 375] as const;
   const BUREAU_CALLS = '**/jsonrpc';
   const BUREAU_LOGGED = /\/jsonrpc/;
+  const HOOK_AGENT = 'demo:tool-runner';
 
   /** The header's New hook: a labelled primary button (owner report, 2026-11-19). */
   const headerCreate = (page: Page) => page.locator('main .cinder-page-header__create');
@@ -416,37 +417,39 @@ test.describe('/hooks: the hooks list states', () => {
       await checkA11y(`hooks with a hook that gave up at ${width}px`);
     });
 
-    test(`a delivered active hook names its event, action and delivery time, at ${width} pixels`, async ({
+    test(`/agents/:agent/hooks: an agent's delivered active webhook hook names its event, action and delivery time, at ${width} pixels`, async ({
       page,
     }) => {
       await page.setViewportSize({ width, height: 900 });
       await answerList(page, [
         listedHook({
           id: 'hook-delivered',
-          name: 'Delivered refund audit',
-          events: ['review.requested'],
-          action: { type: 'notify', title: 'Review the refund' },
+          name: 'Refund audit',
+          events: ['review.approved'],
+          action: { type: 'webhook', url: 'https://audit.example.com/refunds' },
           lastDelivery: {
             id: 'delivery-delivered',
-            kind: 'review.requested',
+            kind: 'review.approved',
             test: false,
             status: 'delivered',
             lastAttempt: null,
-            createdAt: Date.UTC(2026, 10, 2, 15),
-            updatedAt: Date.UTC(2026, 10, 2, 15),
+            createdAt: Date.UTC(2026, 10, 2, 16, 33),
+            updatedAt: Date.UTC(2026, 10, 2, 16, 33),
           },
         }),
       ]);
-      await page.goto('/hooks');
+      await page.goto(`/agents/${encodeURIComponent(HOOK_AGENT)}/hooks`);
       const row = page.locator('li[data-hook="hook-delivered"]');
 
       await expect(row.locator('[data-status-word="Delivered"]')).toBeVisible();
       await expect(row.getByRole('switch')).toHaveAttribute('aria-checked', 'true');
-      await expect(row).toContainText('review.requested');
-      await expect(row).toContainText('Review the refund');
-      await expect(row.locator('.cinder-stacked-list-item__time')).toBeVisible();
+      await expect(row).toContainText('review.approved');
+      await expect(row).toContainText(
+        'When a review is approved, send a webhook to audit.example.com',
+      );
+      await expect(row.locator('.cinder-stacked-list-item__time')).toContainText('10:33 AM');
       await captureForDesignReview(page, {
-        route: '/hooks',
+        route: '/agents/:agent/hooks',
         state: '38t delivered active hook',
         source: SOURCE,
       });

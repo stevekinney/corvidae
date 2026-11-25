@@ -186,7 +186,7 @@ test.describe('the Hooks tab', () => {
 });
 
 test.describe('the Instructions tab', () => {
-  test('/agents/:agent/edit?section=references: renders the body as a document, leaves Edit to the header, and says there are no reference documents', async ({
+  test('/agents/:agent/instructions and /agents/:agent/edit?section=references: renders the body as a document, leaves Edit to the header, and says there are no reference documents', async ({
     page,
     request,
   }) => {
@@ -205,7 +205,7 @@ test.describe('the Instructions tab', () => {
       page.getByRole('main').getByRole('link', { name: 'Edit', exact: true }),
     ).toHaveCount(1);
     await captureForDesignReview(page, {
-      route: '/agents/:agent/edit?section=references',
+      route: '/agents/:agent/instructions',
       tab: 'Instructions',
       state: '39r reference documents source link',
       source: 'agent-page.spec.ts',
@@ -270,7 +270,11 @@ test.describe('the Settings tab', () => {
   }) => {
     const id = 'e2e-page-versions';
     agents.add(id);
-    const created = await createAgentFile(request, id, { instructions: 'First instructions.' });
+    const created = await createAgentFile(request, id, {
+      instructions: 'First instructions.',
+      model: 'anthropic/claude-haiku-5-5',
+      approvals: { 'demo:lookup-order': 'never' },
+    });
     const before = await readAgent(request, id);
     const saved = await bureau(request, 'bureau.agents.definitions.update', {
       id,
@@ -282,12 +286,18 @@ test.describe('the Settings tab', () => {
     });
     expect(saved.fault).toBeUndefined();
 
-    for (const instructions of ['Third instructions.', 'Fourth instructions.']) {
+    for (const change of [
+      { instructions: 'Third instructions.', model: 'anthropic/claude-sonnet-5-5' },
+      {
+        instructions: 'Fourth instructions.',
+        tools: ['demo:lookup-order', 'demo:issue-refund'],
+      },
+    ]) {
       const current = await readAgent(request, id);
       const next = await bureau(request, 'bureau.agents.definitions.update', {
         id,
         expectedHash: current.hash,
-        definition: { ...current.definition, instructions },
+        definition: { ...current.definition, ...change },
       });
       expect(next.fault).toBeUndefined();
     }
@@ -302,12 +312,27 @@ test.describe('the Settings tab', () => {
       source: 'agent-page.spec.ts',
     });
     await versions.getByRole('button', { name: 'View Version 3' }).click();
+    const versionView = versions.getByTestId('agent-version-view');
+    await expect(versionView.getByRole('heading', { name: 'Version 3' })).toBeVisible();
+    await expect(versionView.getByTestId('agent-version-changed-from')).toContainText(
+      'Changed from Version 2: Model: Claude Haiku 5.5 to Claude Sonnet 5.5',
+    );
+    await expect(versionView).toContainText('Version 4 is the current version.');
+    await expect(versionView.getByTestId('agent-version-instructions')).toContainText(
+      'Third instructions.',
+    );
+    await expect(versionView.getByTestId('agent-version-tools')).toContainText(
+      'Lookup order (Never)',
+    );
+    await expect(versionView.getByTestId('agent-version-tools')).toContainText(
+      'Issue refund is not allowed in this version',
+    );
     await captureForDesignReview(page, {
       route: '/agents/:agent/settings',
       state: '39u read-only Version 3 detail against current Version 4',
       source: 'agent-page.spec.ts',
     });
-    await versions.getByRole('button', { name: /Back/ }).click();
+    await versions.getByRole('button', { name: 'Versions' }).click();
     // Restore asks first, then saves the old version again as the next one (row 38z).
     await versions.getByRole('button', { name: 'Restore Version 1' }).click();
     await page

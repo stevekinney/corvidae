@@ -175,6 +175,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/workflow-detail-states.spec.ts',
   'tests/e2e/agent-duplicate.spec.ts',
   // The agent-page tab frame supplies the narrow Access and reference-editor witnesses (COR-2427).
+  'tests/e2e/agent-access.spec.ts',
   'tests/e2e/agent-page.spec.ts',
   'tests/e2e/agent-editor.spec.ts',
   'tests/e2e/agent-plugin-editing.spec.ts',

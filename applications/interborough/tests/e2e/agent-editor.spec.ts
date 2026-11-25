@@ -377,33 +377,6 @@ test.describe('Try it', () => {
     });
   });
 
-  test('/agents/new: at 375px presents Asks as a full-width card control', async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto('/agents/new');
-    await addTools(page, ['demo:lookup-order']);
-
-    const table = page.getByTestId('agent-tools-table');
-    const row = table.locator('[data-tool="demo:lookup-order"]');
-    const controls = row.locator('[data-cinder-controls]');
-    const asks = page.getByLabel(AGENT_EDITOR_COPY.newAgent.asksLabel('demo:lookup-order'));
-    await expect(table).toHaveAttribute('data-cinder-stacked', '');
-    await expect(asks).toBeVisible();
-
-    const { askBox, controlBox, riskBox } = await readBoxes(page, {
-      askBox: asks,
-      controlBox: controls,
-      riskBox: row.getByTestId('agent-tool-risk'),
-    });
-    expect(askBox.width).toBeCloseTo(controlBox.width, 1);
-    expect(askBox.height).toBeGreaterThanOrEqual(44);
-    expect(askBox.y).toBeGreaterThan(riskBox.y + riskBox.height);
-    await captureForDesignReview(page, {
-      route: '/agents/new',
-      state: '07a compact Asks control',
-      source: 'agent-editor.spec.ts',
-    });
-  });
-
   test('/agents/new: captures 43g with Stop beside a parked approval', async ({ page }) => {
     await page.route('**/jsonrpc', async (route) => {
       const call = route.request().postDataJSON() as { method?: string; id?: unknown };

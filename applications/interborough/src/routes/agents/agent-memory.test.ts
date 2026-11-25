@@ -3162,8 +3162,9 @@ describe('a fault the list or search met', () => {
 
     await fireEvent.click(view.getByRole('button', { name: MEMORY_COPY.loadMore }));
 
-    await view.findByText(MEMORY_COPY.listFailed);
+    await view.findByTestId('agent-tab-stale');
     expect(view.queryByText(AISLE.content)).not.toBeNull();
+    expect(view.getByTestId('agent-tab-stale').textContent).toContain('Showing this tab as of');
     expect(view.queryByRole('button', { name: RETRY_LABEL })).not.toBeNull();
   });
 
@@ -3194,7 +3195,7 @@ describe('a fault the list or search met', () => {
       within(detail).getByRole('button', { name: MEMORY_COPY.govern.hold.release }),
     );
 
-    await view.findByText(MEMORY_COPY.listFailed);
+    await view.findByTestId('agent-tab-stale');
     expect(view.queryByText(WINDOW.content)).not.toBeNull();
   });
 

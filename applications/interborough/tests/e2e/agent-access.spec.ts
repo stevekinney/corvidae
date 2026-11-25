@@ -12,7 +12,9 @@ import type { Page } from '@playwright/test';
 import { ACCESS_LOOKUP_MARKER, ACCESS_LOOP_MARKER } from './access-provider.ts';
 import { bureau, createAgentFile, readAgent, removeAgent } from './agent-support.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 import { E2E_SKILLS } from './skills-support.ts';
 
 const agents = new Set<string>();
@@ -66,6 +68,41 @@ async function pendingApprovals(request: Parameters<typeof bureau>[0], threadId:
 }
 
 test.describe('the Access tab', () => {
+  test('/agents/:agent/access: at 375px presents Asks as a full-width card control on the editable Access tab', async ({
+    page,
+    request,
+  }) => {
+    const id = 'e2e-access-asks-compact';
+    await agentWithLookup(request, id, { approvals: { 'demo:lookup-order': 'always' } });
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(`/agents/${id}/access`);
+
+    const table = page.getByTestId('agent-access-table');
+    const row = table.locator('[data-tool="demo:lookup-order"]');
+    const controls = row.locator('[data-cinder-stack-label="Asks"]');
+    const asks = lookupAsks(page);
+    await expect(table).toHaveAttribute('data-cinder-stacked', 'true');
+    await expect(asks).toBeVisible();
+    const { askBox, controlBox, riskBox } = await readBoxes(page, {
+      askBox: asks,
+      controlBox: controls,
+      riskBox: row.getByTestId('agent-access-risk'),
+    });
+    expect(askBox.width).toBeCloseTo(controlBox.width, 1);
+    expect(askBox.height).toBeGreaterThanOrEqual(44);
+    expect(askBox.y).toBeGreaterThan(riskBox.y + riskBox.height);
+    expect(
+      await page
+        .locator('main.weft-shell-outlet')
+        .evaluate((outlet) => outlet.scrollWidth <= outlet.clientWidth),
+    ).toBe(true);
+    await captureForDesignReview(page, {
+      route: '/agents/:agent/access',
+      state: '07a compact Asks control',
+      source: 'agent-access.spec.ts',
+    });
+  });
+
   test('a per-tool Always set in the tab holds a chat on an approval before the tool runs', async ({
     page,
     request,

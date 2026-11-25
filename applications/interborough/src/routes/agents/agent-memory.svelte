@@ -219,12 +219,13 @@
         ? quarantinedListing.isFetchNextPageError
         : applied === '' && listing.isFetchNextPageError),
   );
+  const activeFault = $derived(memoryFaultOf(active.error));
   const activeError = $derived(
-    // The ordinary initial read owns the tab, including its scope-specific 403. A first scoped
-    // read after that list exists does not: keep the controls and selected detail mounted, and let
-    // the local error retry that active branch rather than presenting ordinary rows as its results.
+    // The initial ordinary or quarantined scope owns the tab. Later scoped failures keep their
+    // initialized controls locally, while retained pages use the shared stale frame and timestamp.
     activeFailed &&
-      (!quarantinedView && applied === '' ? listing.data === undefined : active.data !== undefined)
+      (active.data !== undefined || listing.data === undefined) &&
+      !(quarantinedView && activeFault.kind === 'forbidden')
       ? (active.error ?? new Error(MEMORY_COPY.listFailed))
       : null,
   );
@@ -547,7 +548,7 @@
         <p class="ib-memory__alert-title">{MEMORY_COPY.quarantinedView.forbiddenTitle}</p>
         <p class="ib-memory__alert-body">{MEMORY_COPY.govern.refusal.forbidden.description}</p>
       </Alert>
-    {:else if activeFailed && (applied !== '' || listing.data !== undefined)}
+    {:else if activeFailed && activeError === null && (applied !== '' || listing.data !== undefined)}
       <Alert variant="danger">
         <p class="ib-memory__alert-title">{MEMORY_COPY.listFailed}</p>
         <Button
