@@ -256,7 +256,10 @@ import {
   reportPanelChanges,
   type PanelMountOptions,
 } from './panel-mounts.ts';
-import { createPanelReviewEligibility } from './panel-review-eligibility.ts';
+import {
+  createPanelBrowserCredentials,
+  createPanelReviewEligibility,
+} from './panel-review-eligibility.ts';
 import { panelRoutes } from './panel-routes.ts';
 import { pluginAttention } from './plugin-attention.ts';
 import { createPluginManager, pluginStartupLines, type PluginManager } from './plugin-manager.ts';
@@ -1883,8 +1886,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
             const context = await authority.authenticate(request);
             return context instanceof Response ? undefined : context.principal;
           },
-          // The browser-session method is supplied by COR-2620; until it lands, fail closed.
-          isTrustedHuman: () => false,
+          isTrustedHuman: (principal, request) =>
+            principal.method === 'browser-session' &&
+            !request.headers.has('authorization') &&
+            !request.headers.has('x-api-key'),
           isProtected: (review) => bureau.internals.reviewPolicy?.matches(review) ?? false,
           verified: async (review) =>
             review.kind === 'tool-approval' &&
@@ -1892,6 +1897,20 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           mayDecide: (review, principal) =>
             bureau.internals.reviewPolicy?.mayDecide(review, principal) ?? false,
         }),
+        sharedBrowser
+          ? createPanelBrowserCredentials({
+              principal: async (request) => {
+                const context = await authority.authenticate(request);
+                return context instanceof Response ? undefined : context.principal;
+              },
+              validWrite: (request) =>
+                sharedBrowser.browser.validWrite(
+                  sharedBrowser.publicRequest(
+                    new Request(request.url, { method: request.method, headers: request.headers }),
+                  ),
+                ),
+            })
+          : undefined,
       ),
       ...skillRoutes(skills, refuse, authority, log),
       ...toolSourceRoutes(

@@ -1,6 +1,25 @@
 import type { Principal } from '@lostgradient/backchannel';
 import type { PanelReviewEligibility } from './panel-routes.ts';
 
+/** Reverify browser credentials and their write proof before an in-process panel call. */
+export function createPanelBrowserCredentials(options: {
+  principal(request: Request): Promise<Principal | undefined>;
+  validWrite(request: Request): Promise<boolean>;
+}) {
+  return async (request: Request, name: string): Promise<Headers | Response | undefined> => {
+    if (request.headers.has('authorization') || request.headers.has('x-api-key')) return undefined;
+    if ((await options.principal(request))?.method !== 'browser-session') return undefined;
+    if (name === 'bureau.reviews.resolve' && !(await options.validWrite(request)))
+      return new Response('Forbidden', { status: 403 });
+    const headers = new Headers();
+    for (const name of ['host', 'origin', 'cookie', 'x-csrf-token']) {
+      const value = request.headers.get(name);
+      if (value !== null) headers.set(name, value);
+    }
+    return headers;
+  };
+}
+
 /** Build eligibility from a verified principal and the current authoritative review. */
 export function createPanelReviewEligibility<
   Review extends {

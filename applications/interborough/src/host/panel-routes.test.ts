@@ -42,12 +42,14 @@ function routes(
   callBureau: (request: Request) => Promise<Response>,
   served: readonly ServedPanel[] = [app()],
   reviewEligibility?: PanelReviewEligibility,
+  browserCredentials?: (request: Request, name: string) => Promise<Headers | Response | undefined>,
 ) {
   return panelRoutes(
     served,
     createRequestGuard(() => PORT),
     callBureau,
     reviewEligibility,
+    browserCredentials,
   );
 }
 
@@ -489,6 +491,41 @@ describe('POST a panel’s tool call', () => {
     });
     expect(response.status).toBe(403);
     expect(bureau).not.toHaveBeenCalled();
+  });
+
+  test('forwards verified browser headers and stops a refused write before Bureau', async () => {
+    const bureau = bureauDouble();
+    const panel = app({
+      name: 'pending-review',
+      uri: 'ui://inspectors/pending-review/v1',
+      allowedTools: ['bureau.reviews.resolve'],
+    });
+    let valid = true;
+    const table = routes(
+      bureau,
+      [panel],
+      async () => 'authorized',
+      async () =>
+        valid
+          ? new Headers({
+              cookie: 'session=one',
+              origin: 'https://app.example',
+              host: 'app.example',
+            })
+          : new Response('Forbidden', { status: 403 }),
+    );
+    const request = {
+      path: CALL_ROUTE.replace('run-inspector', 'pending-review'),
+      body: {
+        name: 'bureau.reviews.resolve',
+        arguments: { id: 'review', round: 1, decision: 'approve' },
+      },
+    };
+    expect((await call(table, 'call', request)).status).toBe(200);
+    expect((bureau.mock.calls[0]?.[0] as Request).headers.get('cookie')).toBe('session=one');
+    valid = false;
+    expect((await call(table, 'call', request)).status).toBe(403);
+    expect(bureau).toHaveBeenCalledTimes(1);
   });
 
   test('removes claimed eligibility when the host callback is absent', async () => {

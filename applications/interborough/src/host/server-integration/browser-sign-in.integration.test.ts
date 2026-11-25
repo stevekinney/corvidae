@@ -7,6 +7,7 @@ import {
   createRefundLedger,
   reviewedRefundContribution,
 } from '@lostgradient/plugin-demo/refunds';
+import inspectors from '@lostgradient/plugin-inspectors';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createApplication } from '@lostgradient/velveteen/server';
 import { createProcessLocalApprovalStateStore, createToolbox } from 'armorer';
@@ -207,7 +208,9 @@ test('listener binds verified browser identities, revokes private access and res
     environment: { INTERBOROUGH_HOME: home },
     workspaceId,
     port: 0,
-    plugins: [],
+    plugins: [
+      { descriptor: inspectors, source: 'package', location: '@lostgradient/plugin-inspectors' },
+    ],
     reviewedOperations: {
       agents: refund.agents,
       reviewPolicy: refund.reviewPolicy,
@@ -551,12 +554,43 @@ test('listener binds verified browser identities, revokes private access and res
       refundId as string,
     );
     machineSocket.close();
-    const reviewerDecision = await refundRpc(
-      'bureau.reviews.resolve',
-      { id: storedRefund!.reviewId, decision: 'deny', round: 0 },
-      reviewer,
-    );
-    expect(reviewerDecision.result).toBeDefined();
+    const panelCall = (name: string, argumentsValue: object, headers: Record<string, string>) =>
+      send('/host/plugins/inspectors/apps/pending-review/tool-calls', {
+        method: 'POST',
+        headers: {
+          origin: 'https://settings.example',
+          'content-type': 'application/json',
+          ...headers,
+        },
+        body: JSON.stringify({ name, arguments: argumentsValue }),
+      });
+    const decision = { id: storedRefund!.reviewId, decision: 'deny', round: 0 };
+    const listed = await panelCall('bureau.reviews.list', {}, reviewer);
+    const listing = (await listed.json()) as { _meta: Record<string, unknown> };
+    expect(listing._meta['interborough.reviewEligibility']).toContainEqual({
+      id: storedRefund!.reviewId,
+      round: 0,
+    });
+    expect(
+      (await panelCall('bureau.reviews.resolve', decision, { cookie: administrator.cookie! }))
+        .status,
+    ).toBe(403);
+    expect(
+      (
+        await panelCall('bureau.reviews.resolve', decision, {
+          ...reviewer,
+          'x-csrf-token': 'wrong',
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (await panelCall('bureau.reviews.resolve', decision, { ...reviewer, 'x-api-key': 'machine' }))
+        .status,
+    ).toBe(403);
+    const reviewerDecision = await panelCall('bureau.reviews.resolve', decision, reviewer);
+    expect((await reviewerDecision.json()) as object).toMatchObject({
+      structuredContent: { decision: 'deny', receipt: 'applied' },
+    });
     const remainingBalance = await ledger.balance('merchant', 'order');
     expect(remainingBalance?.reserved).toBe(0);
     const next = await refundRpc(

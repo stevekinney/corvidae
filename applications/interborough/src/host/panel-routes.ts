@@ -112,6 +112,7 @@ export function panelRoutes(
   refuse: Refuse,
   callBureau: CallBureau,
   reviewEligibility?: PanelReviewEligibility,
+  browserCredentials?: (request: Request, name: string) => Promise<Headers | Response | undefined>,
 ) {
   // Snapshotted once, so nothing a caller does to the list afterwards changes what a panel may call.
   const served = apps.map((each) => ({ ...each, allowedTools: [...each.allowedTools] }));
@@ -165,8 +166,9 @@ export function panelRoutes(
     if (hostOnly && !HOST_PANEL_OPERATIONS.has(name)) {
       return refusal(403, 'forbidden-tool', 'This panel may not call that tool.');
     }
-    // Preserve only authentication credentials for the in-process Bureau verifier. Never forward
-    // caller-selected identity, workspace, cookies, origin or arbitrary headers.
+    const browserHeaders = reviewsPanel ? await browserCredentials?.(request, name) : undefined;
+    if (browserHeaders instanceof Response) return browserHeaders;
+    // Forward only verified browser credentials or explicit API credentials, never caller identity.
     const mcpUrl = new URL(hostOnly ? '/jsonrpc' : '/mcp', request.url);
     const toBureau = new Request(mcpUrl, {
       method: 'POST',
@@ -180,6 +182,7 @@ export function panelRoutes(
             return value === null ? [] : [[header, value]];
           }),
         ),
+        ...(browserHeaders === undefined ? {} : Object.fromEntries(browserHeaders)),
       },
       body: JSON.stringify({
         jsonrpc: '2.0',

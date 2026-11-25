@@ -119,11 +119,26 @@ export function pluginToolCaller(
   options: Pick<Options, 'fetch'> = {},
 ): McpAppToolCallHandler {
   return async (params, call) => {
+    let csrfToken: string | undefined;
+    if (
+      plugin === 'inspectors' &&
+      app === 'pending-review' &&
+      params.name === 'bureau.reviews.resolve'
+    ) {
+      const session = await send('/auth/session', {}, { ...options, signal: call.signal });
+      if (session.ok) {
+        const parsed = z.object({ csrfToken: z.string().min(1) }).safeParse(await session.json());
+        if (parsed.success) csrfToken = parsed.data.csrfToken;
+      }
+    }
     const response = await send(
       `${panelPath(plugin, app)}/tool-calls`,
       {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          ...(csrfToken ? { 'x-csrf-token': csrfToken } : {}),
+        },
         body: JSON.stringify({ name: params.name, arguments: params.arguments ?? {} }),
       },
       { ...options, signal: call.signal },
