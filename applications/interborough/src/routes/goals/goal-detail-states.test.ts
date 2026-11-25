@@ -153,8 +153,8 @@ describe('a goal’s page while Interborough does not answer (row 68w)', () => {
     const { container, findByRole } = openWith(working);
     await findByRole('heading', { level: 1, name: 'Summarize open refunds' });
 
-    const list = container.querySelector('.ib-goal-attempts .cinder-data-list');
-    expect(list?.style.getPropertyValue('--cinder-stacked-list-item-status-track')).toBe('10rem');
+    const list = container.querySelector<HTMLUListElement>('.ib-goal-attempts .cinder-data-list');
+    expect(list?.style.getPropertyValue('--cinder-stacked-list-item-status-track')).toBe('12rem');
   });
 
   test('leaves Start again live, since it only opens New goal', async () => {

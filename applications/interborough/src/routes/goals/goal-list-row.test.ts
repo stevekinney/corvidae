@@ -119,7 +119,7 @@ describe('a goal’s cost on its row (COR-2525)', () => {
     expect(costOf([])).toBeNull();
   });
 
-  test('puts the cost in the phone’s detail lines, above the check, and not on line two', () => {
+  test('keeps the check on the phone’s third line, with cost below it and not on line two', () => {
     const row = goalRow(
       goalFixture('goal-1', {
         agentName: 'tool-runner',
@@ -135,8 +135,8 @@ describe('a goal’s cost on its row (COR-2525)', () => {
       COST_COPY.atLeast('$4.50'),
     );
     expect(lineTwo?.querySelector('[data-testid="goal-cost"]')).toBeNull();
-    expect(detail?.textContent?.indexOf('$4.50')).toBeLessThan(
-      detail?.textContent?.indexOf('Check') ?? -1,
+    expect(detail?.textContent?.indexOf('Check')).toBeLessThan(
+      detail?.textContent?.indexOf('$4.50') ?? -1,
     );
   });
 });

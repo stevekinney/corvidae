@@ -117,10 +117,10 @@ describe('DataList', () => {
       items: ['one'],
       key: stringKey,
       children: itemSnippet((item) => String(item)),
-      statusTrack: '10rem',
+      statusTrack: '12rem',
     });
-    const list = container.querySelector('.cinder-data-list');
-    expect(list?.style.getPropertyValue('--cinder-stacked-list-item-status-track')).toBe('10rem');
+    const list = container.querySelector<HTMLUListElement>('.cinder-data-list');
+    expect(list?.style.getPropertyValue('--cinder-stacked-list-item-status-track')).toBe('12rem');
   });
 
   test('forwards rest attributes (aria-label) onto the <ul> without overriding role', () => {

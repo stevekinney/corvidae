@@ -37,8 +37,12 @@ const WORKING_GOAL_CREATED = Date.parse('2026-11-02T10:41:00-06:00');
 /** How long the run of the attempt being checked took: the sample world's second attempt's run. */
 const WORKING_ATTEMPT_RUN_MILLISECONDS =
   SAMPLE_WORLD_DURATIONS.summarizeRefundsSecondAttempt * 1000;
+const WORKING_ATTEMPT_FIRST = Date.parse('2026-11-02T10:41:00-06:00');
+const WORKING_ATTEMPT_NEWEST = Date.parse('2026-11-02T10:44:00-06:00');
 const REFUNDS_PROMPT =
   'Summarize open refunds. List every refund that is waiting for approval and say why.';
+const REFUNDS_CHECK_NAME = 'summary-lists-every-refund-waiting-for-approval';
+const REFUNDS_CHECK_LABEL = 'Summary lists every refund waiting for approval';
 const RELEASE_NOTES_PROMPT =
   'Draft release notes from the pull requests merged since the last release. Group them as fixes, features and chores. Keep the notes under 200 words, write in plain language, and be sure to mention the staging fix, which changed how releases are checked before they go out.';
 
@@ -56,6 +60,52 @@ async function connectProvider(page: Page): Promise<void> {
           hasKey: true,
           connected: true,
         })),
+      },
+    });
+  });
+}
+
+/**
+ * The captioned Edit state names its real configured check in prose. It keeps the same catalog
+ * source, version and configuration schema, while the matching goal view retains its phrase.
+ */
+async function captionRefundCheck(page: Page): Promise<void> {
+  await page.route(isBureauCall, async (route: Route) => {
+    const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
+    if (body.method !== 'bureau.goals.get' && body.method !== 'bureau.validators.list') {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const answer = (await response.json()) as { result?: JsonRecord };
+    if (body.method === 'bureau.goals.get') {
+      const goal = answer.result ?? {};
+      await route.fulfill({
+        response,
+        json: {
+          ...answer,
+          result: {
+            ...goal,
+            validator: { ...(goal['validator'] as JsonRecord), name: REFUNDS_CHECK_NAME },
+          },
+        },
+      });
+      return;
+    }
+    const result = answer.result ?? {};
+    const validators = (result['validators'] as JsonRecord[] | undefined) ?? [];
+    await route.fulfill({
+      response,
+      json: {
+        ...answer,
+        result: {
+          ...result,
+          validators: validators.map((validator) =>
+            validator['name'] === 'contains-phrase' && validator['version'] === '1'
+              ? { ...validator, name: REFUNDS_CHECK_NAME }
+              : validator,
+          ),
+        },
       },
     });
   });
@@ -83,12 +133,14 @@ async function openGoalEdit(page: Page, path: string, width: number): Promise<vo
 /** The edit witness holds after the capture helper repeats a phone shot at 320px. */
 async function editGoalReady(page: Page): Promise<void> {
   await expect(page.getByLabel('What should the agent do?')).toHaveValue(REFUNDS_PROMPT);
-  await expect(
-    page.getByRole('button', { name: /Summary lists every refund waiting for approval/ }),
-  ).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Check' })).toHaveText(
+    `${REFUNDS_CHECK_LABEL}, version 1`,
+  );
+  await expect(page.getByLabel('Phrase')).toHaveValue('waiting for approval');
+  await expect(page.getByRole('combobox', { name: 'Agent' })).toHaveText('Tool runner');
   await expect(page.getByLabel('Attempt limit')).toHaveValue('5');
   await expect(page.getByText('Saving doesn’t start an attempt.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save' })).toBeEnabled();
 }
 
 /** The long prompt remains clamped after a capture helper resizes a phone to 320px. */
@@ -115,19 +167,6 @@ async function answerAsWorkingGoal(page: Page): Promise<void> {
     const goal = answer.result ?? {};
     const attempts = (goal['attempts'] as JsonRecord[] | undefined) ?? [];
     const newest = Math.max(...attempts.map((attempt) => Number(attempt['attemptIndex'])));
-    // The captioned goal is today's (67x: created Mon, Nov 2, 10:41 AM, its first attempt then):
-    // every time the goal records moves by the same amount, so each attempt keeps its own span, and
-    // what each attempt's run took is still read from the run.
-    const first = attempts.find((attempt) => Number(attempt['attemptIndex']) === 0);
-    const shift =
-      WORKING_GOAL_CREATED - Date.parse(String(first?.['startedAt'] ?? goal['createdAt']));
-    const moved = (value: unknown): unknown =>
-      typeof value === 'string' && Number.isFinite(Date.parse(value))
-        ? new Date(Date.parse(value) + shift).toISOString()
-        : value;
-    const newestStarted = attempts.find((attempt) => Number(attempt['attemptIndex']) === newest)?.[
-      'startedAt'
-    ];
     await route.fulfill({
       response,
       json: {
@@ -138,30 +177,53 @@ async function answerAsWorkingGoal(page: Page): Promise<void> {
           terminalReason: null,
           closedAt: null,
           cancellation: null,
-          createdAt: moved(goal['createdAt']),
+          createdAt: new Date(WORKING_GOAL_CREATED).toISOString(),
           // The move to checking is the goal's last write, made as the newest attempt's run ended.
           updatedAt: new Date(
-            Date.parse(String(moved(newestStarted))) + WORKING_ATTEMPT_RUN_MILLISECONDS,
+            WORKING_ATTEMPT_NEWEST + WORKING_ATTEMPT_RUN_MILLISECONDS,
           ).toISOString(),
           attempts: attempts.map((attempt) =>
             Number(attempt['attemptIndex']) === newest
               ? {
                   ...attempt,
-                  startedAt: moved(attempt['startedAt']),
+                  startedAt: new Date(WORKING_ATTEMPT_NEWEST).toISOString(),
                   status: 'evaluating',
                   completedAt: null,
                   finishReason: null,
                 }
               : {
                   ...attempt,
-                  startedAt: moved(attempt['startedAt']),
-                  completedAt: moved(attempt['completedAt']),
+                  startedAt: new Date(WORKING_ATTEMPT_FIRST).toISOString(),
+                  feedback: 'Summary listed 3 of 4 refunds waiting for approval',
                 },
           ),
         },
       },
     });
   });
+}
+
+/** Re-proves the captioned working attempt after the capture helper changes the viewport. */
+async function workingGoalReady(page: Page): Promise<void> {
+  const attempt = page.locator('[data-attempt]').first();
+  await expect(attempt).toHaveAttribute('data-status-word', /Running/);
+  // What its run took, never the time since it started (67x).
+  await expect(attempt).toContainText('Agent took 1 min 12 s');
+  await expect(attempt).toContainText('10:44 AM');
+  await expect(page.locator('[data-attempt]').nth(1)).toContainText(
+    'Summary listed 3 of 4 refunds waiting for approval',
+  );
+  const status = attempt.locator('.cinder-stacked-list-item__status');
+  const statusLabel = status.locator('.cinder-status-dot__label');
+  const title = attempt.locator('.cinder-stacked-list-item__title');
+  await expect(statusLabel).toHaveText('Running, checking the result');
+  const boxes = await readBoxes(page, { statusLabel, title });
+  expect(boxes.statusLabel.x + boxes.statusLabel.width).toBeLessThanOrEqual(boxes.title.x);
+  expect(
+    await statusLabel.evaluate(
+      (element: HTMLElement) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
 }
 
 for (const width of WIDTHS) {
@@ -173,16 +235,12 @@ for (const width of WIDTHS) {
       const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
       await answerAsWorkingGoal(page);
       await openGoal(page, `/goals/${encodeURIComponent(world.goals.summarizeRefunds)}`, width);
-      await expect(page.locator('[data-attempt]').first()).toHaveAttribute(
-        'data-status-word',
-        /Running/,
-      );
-      // What its run took, never the time since it started (67x).
-      await expect(page.locator('[data-attempt]').first()).toContainText('Agent took 1 min 12 s');
+      await workingGoalReady(page);
       await captureForDesignReview(page, {
         route: '/goals/:goal',
         state: 'working',
         source: SOURCE,
+        ready: workingGoalReady,
       });
     });
 
@@ -231,6 +289,7 @@ for (const width of WIDTHS) {
     }) => {
       const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
       await connectProvider(page);
+      await captionRefundCheck(page);
       await openGoalEdit(
         page,
         `/goals/${encodeURIComponent(world.goals.summarizeRefunds)}/edit`,
