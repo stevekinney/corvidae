@@ -64,6 +64,7 @@
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
+  import type { ViewProbeResult } from '../../app/view-probes.ts';
   import {
     AGENT_EDITOR_COPY,
     AGENT_PAGE_COPY,
@@ -149,6 +150,13 @@
     queryFn: ({ signal }) => getAgentDefinition(agentId ?? '', { signal }),
     enabled: agentId !== undefined,
   }));
+  // The frame admitted this route before constructing the editor. Read its display name once
+  // without observing or configuring that query: the frame remains its only owner and rechecker.
+  const frameDisplayName = untrack(
+    () =>
+      queryClient.getQueryData<ViewProbeResult>(queryKeys.view('agent-editor', agentId ?? null))
+        ?.displayName,
+  );
 
   const source = createQuery(() => ({
     ...stable,
@@ -288,7 +296,7 @@
   const relativePath = $derived(agentRelativePath(invalidAgent?.id ?? editor?.identifier ?? ''));
 
   /** The agent's name as its file says it now, not as it is being typed. */
-  const savedName = $derived(detail.data?.name ?? agentId ?? '');
+  const savedName = $derived(detail.data?.name ?? frameDisplayName ?? agentId ?? '');
 
   // The top bar's trail reads "Agents, Tool runner, Edit" once the agent is read (row 41q).
   usePageLabel(() => ({

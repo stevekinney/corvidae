@@ -90,6 +90,29 @@ describe('the editor’s routes', () => {
         .callsTo('bureau.agents.definitions.get')
         .every((call) => call.params['id'] === 'researcher'),
     ).toBe(true);
+    expect(calls.callsTo('bureau.agents.definitions.get')).toHaveLength(2);
+  });
+
+  test('/agents/:agent/edit keeps its saved display name while the catalog loads', async () => {
+    const calls = bureau(() => readyAgent());
+    let releaseCatalog: () => void = () => undefined;
+    const catalogHeld = new Promise<void>((resolve) => (releaseCatalog = resolve));
+    calls.on('bureau.agents.catalog', async () => {
+      await catalogHeld;
+      return catalogFixture();
+    });
+    landAt('/agents/researcher/edit');
+    const { container, findByRole, findByTestId } = mountOutlet();
+
+    try {
+      expect(await findByRole('heading', { level: 1, name: 'Edit Researcher' })).not.toBeNull();
+      expect(await findByTestId('agent-loading')).not.toBeNull();
+      expect(frameOf(container).dataset['state']).toBe('ready');
+    } finally {
+      releaseCatalog();
+    }
+
+    expect(await findByRole('form', { name: AGENT_EDITOR_COPY.formLabel })).not.toBeNull();
   });
 });
 
@@ -130,6 +153,7 @@ describe('an agent that cannot be edited', () => {
     const { container } = mountOutlet();
 
     await waitFor(() => expect(frameOf(container).dataset['state']).toBe('not-found'));
+    expect(reads).toBe(3);
     // Not the load-failed alert: the page never said the server did not answer.
     expect(container.textContent).not.toContain(AGENT_EDITOR_COPY.loadFailed.title);
     expect(container.querySelector('form')).toBeNull();
@@ -190,8 +214,10 @@ describe('a file deleted on disk while the editor is open', () => {
   test('turns a save into the not-found state, and writes nothing', async () => {
     const calls = bureau(() => readyAgent());
     landAt('/agents/researcher/edit');
-    const { container, findByRole, getByRole } = mountOutlet();
+    const { container, findByRole } = mountOutlet();
     await findByRole('heading', { level: 1, name: 'Edit Researcher' });
+    const form = await findByRole('form', { name: AGENT_EDITOR_COPY.formLabel });
+    const save = within(form).getByRole('button', { name: AGENT_EDITOR_COPY.saveAction });
 
     // The file is gone: the write says so, and so does every read after it.
     calls.on('bureau.agents.definitions.update', () => {
@@ -200,7 +226,7 @@ describe('a file deleted on disk while the editor is open', () => {
     calls.on('bureau.agents.definitions.get', () => {
       throw faults.notFound('researcher');
     });
-    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
+    await fireEvent.click(save);
 
     expect(await findByRole('heading', { level: 1, name: NOT_FOUND?.title ?? '' })).not.toBeNull();
     await waitFor(() => expect(frameOf(container).dataset['state']).toBe('not-found'));
@@ -211,8 +237,12 @@ describe('a file deleted on disk while the editor is open', () => {
   test('turns a delete into the not-found state as well', async () => {
     const calls = bureau(() => readyAgent());
     landAt('/agents/researcher/edit');
-    const { container, findByRole, getByRole } = mountOutlet();
+    const { container, findByRole } = mountOutlet();
     await findByRole('heading', { level: 1, name: 'Edit Researcher' });
+    const form = await findByRole('form', { name: AGENT_EDITOR_COPY.formLabel });
+    const deleteAction = within(form).getByRole('button', {
+      name: AGENT_EDITOR_COPY.deleteAction,
+    });
 
     calls.on('bureau.agents.definitions.delete', () => {
       throw faults.notFound('researcher');
@@ -220,7 +250,7 @@ describe('a file deleted on disk while the editor is open', () => {
     calls.on('bureau.agents.definitions.get', () => {
       throw faults.notFound('researcher');
     });
-    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.deleteAction }));
+    await fireEvent.click(deleteAction);
     const dialog = await findByRole('dialog', {
       name: AGENT_PAGE_COPY.settings.deleteDialog.title('Researcher'),
     });
