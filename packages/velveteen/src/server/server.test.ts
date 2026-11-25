@@ -102,17 +102,19 @@ describe("server application", () => {
       path: string,
       headers: Record<string, string> = {},
       method = "POST",
-    ) =>
-      app.fetch(
-        new Request(`https://example.test${path}`, {
-          method,
-          headers: {
-            "content-type": "application/x-www-form-urlencoded",
-            ...headers,
-          },
-          body: "a=b",
-        }),
+    ) => {
+      const request = new Request(`https://example.test${path}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          ...headers,
+        },
+        body: "a=b",
+      });
+      return app.fetch(
+        method === "PUT" ? new Request(request, { method: "PUT" }) : request,
       );
+    };
     try {
       expect(
         await form("/oauth/token").then((response) => response.text()),
@@ -127,10 +129,22 @@ describe("server application", () => {
         { "content-type": "text/plain" },
         { "content-type": "multipart/form-data" },
       ])
-        expect((await form("/oauth/token", headers)).status).toBe(403);
-      expect((await form("/oauth/token", {}, "PUT")).status).toBe(403);
-      expect((await form("/oauth/token/extra")).status).toBe(403);
-      expect((await form("/other")).status).toBe(403);
+        expect(
+          await form("/oauth/token", headers).then(
+            (response) => response.status,
+          ),
+        ).toBe(403);
+      expect(
+        await form("/oauth/token", {}, "PUT").then(
+          (response) => response.status,
+        ),
+      ).toBe(403);
+      expect(
+        await form("/oauth/token/extra").then((response) => response.status),
+      ).toBe(403);
+      expect(await form("/other").then((response) => response.status)).toBe(
+        403,
+      );
       expect(
         await form("/oauth/token", { origin: "https://example.test" }).then(
           (response) => response.text(),
@@ -189,7 +203,9 @@ describe("server application", () => {
         body: "a=b",
       });
     const original = await createApplication(options);
-    expect((await original.fetch(form())).status).toBe(403);
+    expect(
+      await original.fetch(form()).then((response) => response.status),
+    ).toBe(403);
     await original.dispose();
     const replacement = await createApplication({
       generation: generation(),
@@ -202,8 +218,12 @@ describe("server application", () => {
       },
     });
     try {
-      expect((await replacement.fetch(form())).status).toBe(403);
-      expect((await original.fetch(form())).status).toBe(503);
+      expect(
+        await replacement.fetch(form()).then((response) => response.status),
+      ).toBe(403);
+      expect(
+        await original.fetch(form()).then((response) => response.status),
+      ).toBe(503);
     } finally {
       await replacement.dispose();
     }
