@@ -5,6 +5,114 @@ import { OAuthStore } from '../oauth-store.ts';
 import { hostedOAuth } from './issuer.ts';
 
 describe('hosted OAuth issuer', () => {
+  test.each([false, true])(
+    'explicit scope policy preserves authority (opt-in: %s)',
+    async (partial) => {
+      using storage = new MemoryStorage();
+      let authority = ['read'];
+      const issuer = hostedOAuth({
+        issuer: 'https://issuer.test',
+        resource: 'https://issuer.test/mcp',
+        scopes: ['read', 'write'],
+        startingScopes: ['read'],
+        scopeDescriptions: { read: 'Read', write: 'Write' },
+        ...(partial ? { scopeGrantPolicy: 'delegable' as const } : {}),
+        store: new OAuthStore(storage),
+        identity: {
+          session: async () => ({ subject: 'subject', tenant: 'tenant', binding: 'session' }),
+          signIn: async () => new Response(null, { status: 401 }),
+          principalForGrant: async () => ({ delegableScopes: authority }),
+        },
+      });
+      const request = (path: string, init?: RequestInit) =>
+        issuer.handle(new Request(`https://issuer.test${path}`, init));
+      const post = (path: string, body: URLSearchParams) =>
+        request(path, {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded' },
+          body,
+        });
+      const registration = await request('/oauth/register', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          redirect_uris: ['https://client.test/callback'],
+          token_endpoint_auth_method: 'none',
+        }),
+      });
+      const client = await registration.json();
+      const verifier = 'a'.repeat(43);
+      const query = new URLSearchParams({
+        client_id: client.client_id,
+        redirect_uri: 'https://client.test/callback',
+        response_type: 'code',
+        code_challenge: createHash('sha256').update(verifier).digest('base64url'),
+        code_challenge_method: 'S256',
+        resource: 'https://issuer.test/mcp',
+      });
+      for (const scope of ['', 'write', 'read unknown']) {
+        query.set('scope', scope);
+        const rejected = await request(`/oauth/authorize?${query}`);
+        expect(rejected.status).toBe(400);
+      }
+      for (const prefix of ['oauth:consent:', 'oauth:grant:', 'oauth:code:']) {
+        const entries = [];
+        for await (const entry of storage.scan(prefix)) entries.push(entry);
+        expect(entries).toHaveLength(0);
+      }
+      query.set('scope', 'read write');
+      const page = await request(`/oauth/authorize?${query}`);
+      if (!partial) {
+        expect(page.status).toBe(400);
+        return;
+      }
+      expect(page.status).toBe(200);
+      const html = await page.text();
+      expect(html).toContain('<li>Read</li>');
+      expect(html).not.toContain('<li>Write</li>');
+      const transaction = /name="transaction" value="([^"]+)"/.exec(html)![1]!;
+      const csrf = /name="csrf" value="([^"]+)"/.exec(html)![1]!;
+      const approval = await post(
+        '/oauth/authorize',
+        new URLSearchParams({
+          transaction,
+          csrf,
+          client_id: client.client_id,
+          decision: 'approve',
+        }),
+      );
+      expect(approval.status).toBe(302);
+      const code = new URL(approval.headers.get('location')!).searchParams.get('code')!;
+      const token = await post(
+        '/oauth/token',
+        new URLSearchParams({
+          grant_type: 'authorization_code',
+          client_id: client.client_id,
+          code,
+          redirect_uri: 'https://client.test/callback',
+          code_verifier: verifier,
+          resource: 'https://issuer.test/mcp',
+        }),
+      );
+      expect(token.status).toBe(200);
+      const credentials = await token.json();
+      expect(credentials.scope).toBe('read');
+      const verified = await issuer.verifyAccessToken(credentials.access_token);
+      expect(verified?.scopes).toEqual(['read']);
+      authority = ['read', 'write'];
+      const refresh = await post(
+        '/oauth/token',
+        new URLSearchParams({
+          grant_type: 'refresh_token',
+          client_id: client.client_id,
+          refresh_token: credentials.refresh_token,
+          resource: 'https://issuer.test/mcp',
+          scope: 'read write',
+        }),
+      );
+      expect(refresh.status).toBe(400);
+    },
+  );
   test('configures a hosted profile with the catalog resource and scopes', async () => {
     using storage = new MemoryStorage();
     const store = new OAuthStore(storage);

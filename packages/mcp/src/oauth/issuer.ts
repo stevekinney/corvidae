@@ -17,6 +17,7 @@ type Options = {
   resource: string;
   scopes: string[];
   startingScopes: string[];
+  scopeGrantPolicy?: 'strict' | 'delegable';
   scopeDescriptions: Record<string, string>;
   store: OAuthStore;
   identity: {
@@ -86,6 +87,7 @@ type HostedProfileOptions<T extends { delegableScopes: string[] }> = {
   };
   stores: OAuthStore;
   defaultScopes: string[];
+  scopeGrantPolicy?: Options['scopeGrantPolicy'];
   scopeDescriptions: Record<string, string>;
   notifyGrantRevoked?: (grantId: string) => Promise<void>;
   subscribeGrantRevocation?: (grantId: string, listener: () => void) => () => void;
@@ -113,6 +115,7 @@ export function hostedOAuth<T extends { delegableScopes: string[] }>(
   const profile = {
     stores: configuration.stores,
     defaultScopes: [...configuration.defaultScopes],
+    scopeGrantPolicy: configuration.scopeGrantPolicy ?? 'strict',
     scopeDescriptions: { ...configuration.scopeDescriptions },
     ...(configuration.notifyGrantRevoked === undefined
       ? {}
@@ -149,6 +152,7 @@ export function hostedOAuth<T extends { delegableScopes: string[] }>(
         resource: new URL(resourcePath, origin).href,
         scopes,
         startingScopes: profile.defaultScopes,
+        scopeGrantPolicy: profile.scopeGrantPolicy,
         scopeDescriptions: profile.scopeDescriptions,
         store: profile.stores,
         identity: profile.identity,
@@ -307,20 +311,21 @@ function createHostedOAuth(configuration: Options) {
     const principal = await authority(identity);
     if (!principal) return error('access_denied', 403);
     const requested = form.get('scope');
-    const scopes = [
+    const requestedScopes = [
       ...new Set(
-        requested === null
-          ? options.startingScopes.filter((scope) => principal.delegableScopes.includes(scope))
-          : requested.split(' ').filter(Boolean),
+        requested === null ? options.startingScopes : requested.split(' ').filter(Boolean),
       ),
     ].toSorted();
     if (
-      !scopes.length ||
-      scopes.some(
-        (scope) => !options.scopes.includes(scope) || !principal.delegableScopes.includes(scope),
-      )
+      !requestedScopes.length ||
+      requestedScopes.some((scope) => !options.scopes.includes(scope)) ||
+      (requested !== null &&
+        options.scopeGrantPolicy !== 'delegable' &&
+        requestedScopes.some((scope) => !principal.delegableScopes.includes(scope)))
     )
       return error('invalid_scope');
+    const scopes = requestedScopes.filter((scope) => principal.delegableScopes.includes(scope));
+    if (!scopes.length) return error('invalid_scope');
     const transaction = random();
     const csrf = random();
     const created = await options.store.createConsent(transaction, {

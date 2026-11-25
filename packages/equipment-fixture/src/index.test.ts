@@ -1,5 +1,106 @@
-import { expect, test } from 'bun:test';
-import { fixtureScopes, publicRequest } from './index.ts';
+import { expect, spyOn, test } from 'bun:test';
+import { createHash } from 'node:crypto';
+import { createFixture, fixtureScopes, publicRequest } from './index.ts';
+
+test.each([
+  ['/api/mcp', 'reader'],
+  ['/mcp', 'reader'],
+  ['/api/mcp', 'editor'],
+  ['/mcp', 'editor'],
+])('the fixture grants explicit scopes at %s to %s', async (path, subject) => {
+  using fetchMock = spyOn(globalThis, 'fetch').mockImplementation(async () =>
+    Response.json({
+      issuer: 'https://identity.test',
+      authorization_endpoint: 'https://identity.test/authorize',
+      token_endpoint: 'https://identity.test/token',
+      jwks_uri: 'https://identity.test/keys',
+    }),
+  );
+  const fixture = createFixture(path, {
+    origin: 'https://equipment.test',
+    issuer: 'https://identity.test',
+    reader: 'reader',
+    editor: 'editor',
+    clientId: 'client',
+    clientSecret: 'secret',
+    sqlitePath: ':memory:',
+    port: 3000,
+  });
+  using storage = fixture.storage;
+  const credential = 'test-session';
+  await storage.put(
+    `browser-sign-in:equipment_session:session:${createHash('sha256').update(credential).digest('hex')}`,
+    new TextEncoder().encode(
+      JSON.stringify({
+        subjectId: subject,
+        workspaceId: 'equipment',
+        expires: Date.now() + 86400000,
+        consentBinding: 'binding',
+      }),
+    ),
+  );
+  const request = (url: string, init?: RequestInit) =>
+    fixture.oauth.handle(
+      new Request(`https://equipment.test${url}`, {
+        ...init,
+        headers: { cookie: `equipment_session=${credential}`, ...init?.headers },
+      }),
+    );
+  const registration = await request('/oauth/register', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      redirect_uris: ['https://client.test/callback'],
+      token_endpoint_auth_method: 'none',
+    }),
+  });
+  const client = await registration.json();
+  const query = new URLSearchParams({
+    client_id: client.client_id,
+    redirect_uri: 'https://client.test/callback',
+    response_type: 'code',
+    code_challenge: createHash('sha256').update('a'.repeat(43)).digest('base64url'),
+    code_challenge_method: 'S256',
+    resource: `https://equipment.test${path}`,
+    scope: 'equipment:read equipment:write',
+  });
+  const response = await request(`/oauth/authorize?${query}`);
+  expect(response.status).toBe(200);
+  const html = await response.text();
+  expect(html).toContain('<li>Read equipment</li>');
+  expect(html.includes('<li>Rename equipment</li>')).toBe(subject === 'editor');
+  const transaction = /name="transaction" value="([^"]+)"/.exec(html)![1]!;
+  const csrf = /name="csrf" value="([^"]+)"/.exec(html)![1]!;
+  const post = (url: string, body: URLSearchParams) =>
+    request(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+  const approval = await post(
+    '/oauth/authorize',
+    new URLSearchParams({ transaction, csrf, client_id: client.client_id, decision: 'approve' }),
+  );
+  expect(approval.status).toBe(302);
+  const code = new URL(approval.headers.get('location')!).searchParams.get('code')!;
+  const token = await post(
+    '/oauth/token',
+    new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: client.client_id,
+      code,
+      redirect_uri: 'https://client.test/callback',
+      code_verifier: 'a'.repeat(43),
+      resource: `https://equipment.test${path}`,
+    }),
+  );
+  expect(token.status).toBe(200);
+  const credentials = await token.json();
+  const scopes = subject === 'editor' ? ['equipment:read', 'equipment:write'] : ['equipment:read'];
+  expect(credentials.scope).toBe(scopes.join(' '));
+  const verified = await fixture.oauth.verifyAccessToken(credentials.access_token);
+  expect(verified?.scopes).toEqual(scopes);
+});
 
 test('the synthetic role allowlist grants only each subject’s scopes', () => {
   expect(fixtureScopes('reader', 'reader', 'editor')).toEqual(['equipment:read']);

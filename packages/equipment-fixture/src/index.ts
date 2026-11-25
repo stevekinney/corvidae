@@ -60,6 +60,7 @@ export function createFixture(resourcePath: string, configuration: EquipmentEnvi
     resource: `${origin}${resourcePath}`,
     scopes: ['equipment:read', 'equipment:write'],
     startingScopes: ['equipment:read'],
+    scopeGrantPolicy: 'delegable',
     scopeDescriptions: {
       'equipment:read': 'Read equipment',
       'equipment:write': 'Rename equipment',
