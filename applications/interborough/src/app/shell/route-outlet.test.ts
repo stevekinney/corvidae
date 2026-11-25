@@ -174,14 +174,15 @@ describe('the route outlet', () => {
     expect(frame?.getAttribute('data-state')).toBe('empty');
   });
 
-  test('carries its kind of page’s width and no density, so a page chooses neither', async () => {
+  test('sets the list width on the outlet before the route loads and keeps it through empty', async () => {
     restore = installFetchImplementation(emptyGoals());
     landAt('/goals');
     const { findByRole, container } = mount();
-    await findByRole('heading', { level: 2, name: VIEW_COPY.goals.empty?.title ?? '' });
     const outlet = container.querySelector('main.weft-shell-outlet');
     expect(outlet?.hasAttribute('data-density')).toBe(false);
-    expect(outlet?.getAttribute('data-width')).toBe('full');
+    expect(outlet?.getAttribute('data-width')).toBe('list');
+    await findByRole('heading', { level: 2, name: VIEW_COPY.goals.empty?.title ?? '' });
+    expect(outlet?.getAttribute('data-width')).toBe('list');
   });
 
   test('carries the panes width on the chat page at the first render, before its code has loaded', () => {
