@@ -1,0 +1,134 @@
+{
+  "issue": "COR-2428",
+  "branch": "codex/cor-2428-agent-editor",
+  "checkedAt": "3d24a2cd6dce2d25045e1223cece85184863d68e",
+  "briefVersion": "a6487fcb1bb2",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "not-met",
+      "evidence": "Coordinator-owned design-reviewer verdict not run by this worker."
+    },
+    {
+      "id": "AC2",
+      "status": "not-met",
+      "evidence": "Coordinator-owned design-reviewer verdict not run by this worker."
+    },
+    {
+      "id": "AC3",
+      "status": "not-met",
+      "evidence": "Coordinator-owned design-reviewer verdict not run by this worker."
+    },
+    {
+      "id": "AC4",
+      "status": "not-met",
+      "evidence": "Coordinator-owned design-reviewer verdict not run by this worker."
+    },
+    {
+      "id": "AC5",
+      "status": "needs-decision",
+      "evidence": "Saved-agent rename durability boundary remains pending owner decision."
+    },
+    {
+      "id": "AC6",
+      "status": "not-met",
+      "evidence": "Coordinator-owned design-reviewer verdict not run by this worker."
+    },
+    {
+      "id": "AC7",
+      "status": "not-met",
+      "evidence": "Coordinator-owned design-reviewer verdict not run by this worker."
+    },
+    {
+      "id": "AC8",
+      "status": "not-met",
+      "evidence": "Coordinator-owned design-reviewer verdict not run by this worker."
+    },
+    {
+      "id": "AC9",
+      "status": "needs-decision",
+      "evidence": "Saved-agent rename durability boundary remains pending owner decision."
+    },
+    {
+      "id": "AC10",
+      "status": "needs-decision",
+      "evidence": "Saved-agent rename durability boundary remains pending owner decision."
+    },
+    {
+      "id": "AC11",
+      "status": "not-met",
+      "evidence": "Coordinator-owned design-reviewer verdict not run by this worker."
+    },
+    {
+      "id": "AC12",
+      "status": "met-on-main",
+      "evidence": "Access-tab scope was already satisfied outside this correction."
+    },
+    {
+      "id": "AC13",
+      "status": "met-on-branch",
+      "evidence": "definition-source-contract.test.ts passes across memory, directory and object sources."
+    },
+    {
+      "id": "AC14",
+      "status": "met-on-branch",
+      "evidence": "agent-editor-page.test.ts passes staged upload and actual drop witnesses."
+    },
+    {
+      "id": "AC15",
+      "status": "met-on-branch",
+      "evidence": "agent-editor-page.test.ts passes PDF, fatal UTF-8 and 64 KiB refusal witnesses."
+    },
+    {
+      "id": "AC16",
+      "status": "met-on-branch",
+      "evidence": "Focused selected Interborough tests passed."
+    },
+    {
+      "id": "AC17",
+      "status": "met-on-branch",
+      "evidence": "bun install --frozen-lockfile exited 0."
+    },
+    {
+      "id": "AC18",
+      "status": "met-on-branch",
+      "evidence": "Focused selected Interborough tests passed."
+    },
+    {
+      "id": "AC19",
+      "status": "met-on-branch",
+      "evidence": "Focused Bureau and Interborough tests passed."
+    },
+    {
+      "id": "AC20",
+      "status": "met-on-branch",
+      "evidence": "agent-editor-state.test.ts passed."
+    },
+    {
+      "id": "AC21",
+      "status": "needs-decision",
+      "evidence": "The cross-store rename outcome is awaiting the owner-approved durable contract."
+    },
+    {
+      "id": "AC22",
+      "status": "met-on-branch",
+      "evidence": "Focused selected Interborough tests passed."
+    },
+    {
+      "id": "AC23",
+      "status": "met-on-main",
+      "evidence": "Access-tab scope was already satisfied outside this correction."
+    },
+    {
+      "id": "AC24",
+      "status": "met-on-main",
+      "evidence": "Access-tab scope was already satisfied outside this correction."
+    },
+    {
+      "id": "AC25",
+      "status": "met-on-branch",
+      "evidence": "Focused new-schedule selected tests passed."
+    }
+  ]
+}
