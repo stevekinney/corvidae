@@ -22,12 +22,18 @@ for (const boundary of ['task', 'workflow', 'prepared', 'receipt'] as const) {
       import { createDefaultRuntimeServices, HookRegistry } from '@lostgradient/lifecycle';
       import { createBureau } from './src/create-bureau.ts';
       const storage = new BunSQLiteStorage(process.argv[1]);
+      const hookStarted = Promise.withResolvers();
+      let receiptPaused = false;
       const wrapped = new Proxy(storage, { get(target, property) {
         if (property === 'conditionalBatch') return async (conditions, operations) => {
-          const matched = operations.some((op) => op.type === 'put' && (process.argv[2] === 'task' ? op.key.startsWith('bureau-task:v1:') : process.argv[2] === 'receipt' ? op.key.startsWith('command-ledger:v1:entry:') && JSON.parse(new TextDecoder().decode(op.value)).state === 'completed' : op.key === 'wf:reserved-run'));
+          const matched = operations.some((op) => op.type === 'put' && (process.argv[2] === 'task' ? op.key.startsWith('bureau-task:v1:') : process.argv[2] === 'receipt' ? !receiptPaused && op.key.startsWith('command-ledger:v1:entry:') && JSON.parse(new TextDecoder().decode(op.value)).state === 'completed' : op.key === 'wf:reserved-run'));
           if (matched && (process.argv[2] === 'prepared' || process.argv[2] === 'receipt')) {
             const result = await target.conditionalBatch(conditions, operations);
-            if (result) { console.log('boundary-reached'); await Bun.stdin.text(); }
+            if (result) {
+              if (process.argv[2] === 'receipt') { receiptPaused = true; await hookStarted.promise; }
+              console.log(process.argv[2] === 'receipt' ? 'boundary-reached hook-started' : 'boundary-reached');
+              await Bun.stdin.text();
+            }
             return result;
           }
           if (matched) {
@@ -42,7 +48,7 @@ for (const boundary of ['task', 'workflow', 'prepared', 'receipt'] as const) {
       const initialNow = 1000000;
       const runtime = { ...createDefaultRuntimeServices(), clock: { now: () => initialNow, nowISO: () => new Date(initialNow).toISOString() } };
       const hooks = new HookRegistry();
-      if (process.argv[2] === 'receipt') hooks.on('onRunStart', async () => { await Bun.stdin.text(); });
+      if (process.argv[2] === 'receipt') hooks.on('onRunStart', async () => { hookStarted.resolve(); await new Promise(() => {}); });
       const bureau = await createBureau({ storage: wrapped, durable: true, maintenance: 'manual', runtime, durableOwnership: { ownership: 'workflow-lease', workflowClaimTtlMs: 60000, workflowClaimRenewIntervalMs: 5000 }, requestAuthorityValidator: () => true, agents: { assistant: createAgent({ hooks, generate: async () => ({ content: 'done', toolCalls: [] }) }) } });
       await bureau.tasks.start('assistant', 'hello', { principal: 'alice', commandId: 'command', reservation: { runId: 'reserved-run', sessionId: 'reserved-session', fence: 1 }, requestContext: { authority: { principalId: 'alice', tenantId: 'tenant', ownerId: 'alice', capabilities: [], authorizationRevision: 'v1' } } });
     `,
@@ -58,6 +64,8 @@ for (const boundary of ['task', 'workflow', 'prepared', 'receipt'] as const) {
           `Child exited before the session commit: ${await new Response(child.stderr).text()}`,
         );
       expect(new TextDecoder().decode(output.value)).toContain('boundary-reached');
+      if (boundary === 'receipt')
+        expect(new TextDecoder().decode(output.value)).toContain('hook-started');
       child.kill('SIGKILL');
       await child.exited;
       const storage = new BunSQLiteStorage(path);

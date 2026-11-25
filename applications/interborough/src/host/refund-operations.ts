@@ -283,6 +283,8 @@ export function reviewedRefundContribution(options: {
         }
         const settled = Promise.withResolvers<void>();
         pending.set(refundId, settled.promise);
+        // Defer admission work beyond the refund request that scheduled it.
+        // poll-reason: timer
         setTimeout(() => {
           void drain(refundId, host)
             .then((completed) => {
@@ -292,6 +294,8 @@ export function reviewedRefundContribution(options: {
             .catch((error: unknown) => {
               if (error instanceof WorkflowClaimUnavailableError) {
                 if (disposed) return undefined;
+                // Back off while another worker holds the durable workflow lease.
+                // poll-reason: timer
                 const timer = setTimeout(() => {
                   retries.delete(refundId);
                   schedule(refundId);

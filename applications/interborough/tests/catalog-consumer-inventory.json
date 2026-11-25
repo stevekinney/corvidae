@@ -3846,6 +3846,7 @@
     "host/host.ts @lostgradient/weft { serve, type AlertingOptions, type RegistryAgnosticEngine, type ServeOptions, type WeftServer, }",
     "host/host.ts @lostgradient/weft/a2a { createEgressPolicy, type A2APeerUpdate, type EgressPolicy }",
     "host/panel-routes.ts @lostgradient/weft { MCP_LEGACY_PROTOCOL_VERSION }",
+    "host/refund-operations.ts @lostgradient/weft { WorkflowClaimUnavailableError }",
     "host/shell-request.ts ./engine-proxy.ts { isEngineRequestPath }",
     "host/showcase.ts @lostgradient/weft type { AlertingOptions }",
     "host/tool-source-routes.ts ./openapi-inspection.ts { inspectOpenApiAddress, inspectOpenApiSpec, type OpenApiFetchFailure, type OpenApiInspection, }",
