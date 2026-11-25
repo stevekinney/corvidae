@@ -1327,6 +1327,7 @@
         "@lostgradient/terminal": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
+        "@xterm/xterm": "catalog:",
         "conversationalist": "workspace:*",
       },
     },

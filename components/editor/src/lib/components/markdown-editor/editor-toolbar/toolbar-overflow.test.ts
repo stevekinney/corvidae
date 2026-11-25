@@ -15,11 +15,10 @@ const groups: ToolbarOverflowGroup[] = [
 
 describe('computeToolbarOverflow', () => {
   it('keeps every group inline when everything fits (gap included), without reserving trigger width', () => {
-    // Raw group widths sum to 230, plus 4 * 10 = 40 of gap (one gap per
-    // group) = 270. Reserving the trigger's 50px on top would make an
-    // exact-fit budget miss even though the trigger is never shown.
+    // The four groups total 230px and share three 10px gaps.
+    // An exact fit uses the full width without reserving space for the trigger.
     const result = computeToolbarOverflow({
-      availableWidth: 270,
+      availableWidth: 260,
       gap: 10,
       triggerWidth: 50,
       groups,
@@ -62,11 +61,9 @@ describe('computeToolbarOverflow', () => {
     });
   });
 
-  it('charges one flex gap per inline group so raw widths alone cannot pass as "fits"', () => {
-    // Raw widths sum to 90 (30+30+30), which would fit in 95 with no gap
-    // accounting at all -- exactly the bug under test. With a 10px gap
-    // charged per group (3 inline gaps: 3 * 10 = 30), the real inline
-    // footprint is 120, which does not fit in 95.
+  it('charges flex gaps between adjacent items', () => {
+    // Three 30px groups and two 10px gaps need 110px. In 95px only one group
+    // fits beside the 20px trigger.
     const threeGroups: ToolbarOverflowGroup[] = [
       { id: 'a', width: 30 },
       { id: 'b', width: 30 },
@@ -80,9 +77,6 @@ describe('computeToolbarOverflow', () => {
       groups: threeGroups,
     });
 
-    // budget = 95 - (10 + 20) = 65. First group costs 10 + 30 = 40 (fits,
-    // used = 40). Second group costs another 40 (40 + 40 = 80 > 65) -- it
-    // and everything after it overflow.
     expect(result).toEqual({
       visibleGroupIds: ['a'],
       overflowGroupIds: ['b', 'c'],
@@ -90,12 +84,10 @@ describe('computeToolbarOverflow', () => {
   });
 
   it('reserves trigger width (plus its own gap) and greedily fits groups in priority order', () => {
-    // availableWidth 200, gap 10, trigger 20 -> reserved = 30, budget 170.
-    // text-formatting costs 10+100=110 (fits, used 110). links costs
-    // 10+40=50 (110+50=160 <= 170, fits, used 160). lists costs 10+60=70
-    // (160+70=230 > 170) -- lists and block-operations overflow.
+    // Formatting (100px), Links (40px), and the trigger (20px) need exactly
+    // 180px including two gaps. Charging a gap at the toolbar edge hides Links.
     const result = computeToolbarOverflow({
-      availableWidth: 200,
+      availableWidth: 180,
       gap: 10,
       triggerWidth: 20,
       groups,
@@ -108,10 +100,8 @@ describe('computeToolbarOverflow', () => {
   });
 
   it('never lets a smaller lower-priority group jump ahead of a larger one that overflowed', () => {
-    // links (10+40=50) and block-operations (10+30=40) would each
-    // individually fit in the leftover budget after text-formatting
-    // overflows, but priority order is preserved -- everything after the
-    // first miss overflows too, rather than backfilling gaps.
+    // Links and Block operations would each fit beside the trigger on their
+    // own. Both follow the wider Formatting group into overflow.
     const result = computeToolbarOverflow({
       availableWidth: 100,
       gap: 10,
@@ -136,9 +126,9 @@ describe('computeToolbarOverflow', () => {
     expect(result).toEqual({ visibleGroupIds: [], overflowGroupIds: [] });
   });
 
-  it('fits exactly at the boundary (gap included) without overflowing', () => {
+  it('fits a single group without charging a gap at the toolbar edge', () => {
     const result = computeToolbarOverflow({
-      availableWidth: 140,
+      availableWidth: 130,
       gap: 10,
       triggerWidth: 20,
       groups: [{ id: 'only', width: 130 }],

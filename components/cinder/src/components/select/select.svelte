@@ -29,7 +29,7 @@
   let {
     id,
     value = $bindable(),
-    options,
+    options = [],
     label,
     labelVisible = true,
     description,
@@ -62,6 +62,7 @@
     ...rest
   }: SelectProps<T> = $props();
 
+  const generatedId = $props.id();
   const context = getFormFieldContext();
   // A select that changes something (`mutating`) under a stale `<StaleRegion>` is inert but still
   // focusable: it cannot be opened or changed, carries `aria-disabled`, and is described by the
@@ -80,7 +81,7 @@
   const field = $derived(
     resolveFieldControl({
       id,
-      generatedId: id,
+      generatedId,
       context,
       hasDescription: !!description,
       hasError: !!error,
@@ -157,7 +158,7 @@
 {#snippet selectControl()}
   {#if presentation === 'listbox'}
     <SelectListbox
-      {id}
+      id={field.id}
       bind:value
       {options}
       {groups}
@@ -185,7 +186,7 @@
     <span class="cinder-select-field__control">
       {#if options.length === 0}
         <select
-          {id}
+          id={field.id}
           class="cinder-_input-frame cinder-select select-size-{CONTROL_SIZE_NAMES[
             size
           ]} select-variant-{variant}"
@@ -204,7 +205,7 @@
         ></select>
       {:else}
         <select
-          {id}
+          id={field.id}
           class="cinder-_input-frame cinder-select select-size-{CONTROL_SIZE_NAMES[
             size
           ]} select-variant-{variant}"
