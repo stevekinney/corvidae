@@ -10,6 +10,10 @@ name: Main
 on:
   workflow_dispatch:
     inputs:
+      chef_candidate:
+        description: Exact revision authorized by Chef.
+        required: false
+        type: string
       verification_request:
         description: Immutable P07 verification request key.
         required: false
@@ -41,7 +45,7 @@ run-name: ${{ github.event_name == 'workflow_dispatch' && inputs.verification_re
 # it never replaces a pending run from a push to `main`, and a newer dispatch on the same branch
 # cancels the older one: a branch gets one full run, on its final head.
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && format('main-dispatch-{0}', github.ref) || 'main' }}
+  group: ${{ github.event_name == 'workflow_dispatch' && format('main-dispatch-{0}', github.ref) || 'main' }}${{ inputs.chef_candidate != '' && inputs.chef_candidate != github.sha && '-stale-candidate' || '' }}
   cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
 
 env:
@@ -52,7 +56,17 @@ env:
   TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
 jobs:
+  stale-candidate:
+    name: Refuse a moved Chef candidate
+    if: ${{ inputs.chef_candidate != '' && inputs.chef_candidate != github.sha }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::error::The branch moved after Chef approved this candidate."
+          exit 1
+
   root:
+    if: ${{ (inputs.chef_candidate == '' || inputs.chef_candidate == github.sha) }}
     name: Root checks, scripts tests, audit
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -108,6 +122,7 @@ jobs:
         if: ${{ !cancelled() }}
 
   workspaces:
+    if: ${{ (inputs.chef_candidate == '' || inputs.chef_candidate == github.sha) }}
     name: Workspace lint and type-check
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -132,6 +147,7 @@ jobs:
         if: ${{ !cancelled() }}
 
   tests:
+    if: ${{ (inputs.chef_candidate == '' || inputs.chef_candidate == github.sha) }}
     name: Tests (${{ matrix.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -199,7 +215,7 @@ jobs:
 
   tests-slow:
     name: Slow and integration tests
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}
+    if: ${{ (inputs.chef_candidate == '' || inputs.chef_candidate == github.sha) && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -229,7 +245,7 @@ jobs:
 
   browser:
     name: Browser suites
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true' }}
+    if: ${{ (inputs.chef_candidate == '' || inputs.chef_candidate == github.sha) && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || vars.PAUSE_AUTOMATIC_SLOW_TESTS != 'true') }}
     uses: ./.github/workflows/browser-suites.yml
     # The called workflow reads TURBO_TOKEN for the remote cache.
     secrets: inherit
@@ -243,7 +259,7 @@ jobs:
   test-durations:
     name: Test durations
     needs: [root, tests]
-    if: ${{ !cancelled() }}
+    if: ${{ (inputs.chef_candidate == '' || inputs.chef_candidate == github.sha) && (!cancelled()) }}
     # A duration on a shared runner is a report and never turns the run or this job red: every
     # session read the red job as a failure to triage. A shard with no report is named in its output.
     runs-on: ubuntu-latest
@@ -269,7 +285,7 @@ jobs:
   evidence:
     name: Evidence aggregate
     needs: [root, workspaces, tests, tests-slow, browser, test-durations]
-    if: ${{ always() }}
+    if: ${{ (inputs.chef_candidate == '' || inputs.chef_candidate == github.sha) && (always()) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

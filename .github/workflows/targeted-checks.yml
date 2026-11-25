@@ -22,6 +22,10 @@ name: Targeted checks
 on:
   workflow_dispatch:
     inputs:
+      chef_candidate:
+        description: Exact revision authorized by Chef.
+        required: false
+        type: string
       fixture_components:
         description: Fixture component slugs for the screenshot suite, comma-separated (CINDER_TEST_COMPONENTS).
         type: string
@@ -62,7 +66,7 @@ defaults:
 
 # A newer dispatch on a branch cancels the older one: a correction round supersedes the last.
 concurrency:
-  group: targeted-checks-${{ github.ref }}-${{ startsWith(inputs.e2e_specs, 'COR-2653-qualification:') && 'qualification' || 'normal' }}
+  group: targeted-checks-${{ github.ref }}-${{ startsWith(inputs.e2e_specs, 'COR-2653-qualification:') && 'qualification' || 'normal' }}${{ inputs.chef_candidate != '' && inputs.chef_candidate != github.sha && '-stale-candidate' || '' }}
   cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
 
 env:
@@ -104,12 +108,21 @@ env:
     fi
 
 jobs:
+  stale-candidate:
+    name: Refuse a moved Chef candidate
+    if: ${{ inputs.chef_candidate != '' && inputs.chef_candidate != github.sha }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::error::The branch moved after Chef approved this candidate."
+          exit 1
+
   # Lint and type-check the workspaces the branch changed against `origin/main`, as
   # `pull-request.yml` does, so a type error (a svelte-check error, a stale test expectation) never
   # waits for the full run. It runs on every dispatch, whatever the inputs.
   checks:
     name: Changed workspaces lint and type-check
-    if: ${{ !startsWith(inputs.e2e_specs, 'COR-2653-qualification:') }}
+    if: ${{ (inputs.chef_candidate == '' || inputs.chef_candidate == github.sha) && (!startsWith(inputs.e2e_specs, 'COR-2653-qualification:')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -158,7 +171,7 @@ jobs:
 
   fixtures:
     name: Chromium fixtures (targeted)
-    if: ${{ inputs.fixture_components != '' || inputs.fixture_specs != '' }}
+    if: ${{ (inputs.chef_candidate == '' || inputs.chef_candidate == github.sha) && (inputs.fixture_components != '' || inputs.fixture_specs != '') }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     container:
@@ -247,7 +260,7 @@ jobs:
 
   interborough:
     name: Interborough end-to-end (targeted)
-    if: ${{ inputs.e2e_specs != '' && !startsWith(inputs.e2e_specs, 'COR-2653-qualification:') }}
+    if: ${{ (inputs.chef_candidate == '' || inputs.chef_candidate == github.sha) && (inputs.e2e_specs != '' && !startsWith(inputs.e2e_specs, 'COR-2653-qualification:')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     container:
@@ -317,7 +330,7 @@ jobs:
           CI_REPLAY_SELECTION: ${{ inputs.e2e_specs }}
 
   cor-2653-qualification:
-    if: ${{ startsWith(inputs.e2e_specs, 'COR-2653-qualification:') }}
+    if: ${{ (inputs.chef_candidate == '' || inputs.chef_candidate == github.sha) && (startsWith(inputs.e2e_specs, 'COR-2653-qualification:')) }}
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.63.0-jammy
@@ -346,7 +359,7 @@ jobs:
 
   unit:
     name: Unit test files (${{ matrix.lane.workspace }})
-    if: ${{ inputs.unit_lanes != '' && inputs.unit_lanes != '[]' }}
+    if: ${{ (inputs.chef_candidate == '' || inputs.chef_candidate == github.sha) && (inputs.unit_lanes != '' && inputs.unit_lanes != '[]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # One job per lane of the plan, so no lane is dropped: a failed lane never hides another.
