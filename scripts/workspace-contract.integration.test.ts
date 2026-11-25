@@ -19,6 +19,15 @@ import { isMetadataExport, sourceExportViolations } from './workspace-exports';
 const root = join(import.meta.dir, '..');
 const componentLibraries = ['cinder', 'chat', 'editor', 'terminal'];
 const verificationLibraries = ['testing', 'evaluation'];
+function checksSourcesAfterReferenceBuild(command: string): boolean {
+  const [build, ...checks] = command.split(' && ');
+  return (
+    /^tsc -b (?:\.\/)?tsconfig\.references\.json$/.test(build ?? '') &&
+    checks.some((check) =>
+      /^svelte-check\b.*\s--tsconfig (?:\.\/)?tsconfig\.json(?:\s|$)/.test(check),
+    )
+  );
+}
 const libraries = [
   'backchannel',
   'backchannel-mcp',
@@ -229,6 +238,19 @@ const versionedFixtureSource = await listVersionedFixtureSource();
 const libraryConfigurations = await libraryApplicationConfigurations();
 
 describe('internal workspace architecture', () => {
+  test('reference-only builds must be followed by the full Svelte source check', () => {
+    expect(checksSourcesAfterReferenceBuild('tsc -b tsconfig.references.json')).toBe(false);
+    expect(
+      checksSourcesAfterReferenceBuild(
+        'tsc -b tsconfig.references.json && svelte-check --tsconfig ./tsconfig.browser.json',
+      ),
+    ).toBe(false);
+    expect(
+      checksSourcesAfterReferenceBuild(
+        'tsc -b tsconfig.references.json && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings',
+      ),
+    ).toBe(true);
+  });
   test('validation runs root self-tests once and retains sequential quality and audit gates', async () => {
     const { scripts = {} } = await readManifest('.');
     // The whole chain runs under one host lock, so a validate keeps its place from lint to audit
@@ -406,7 +428,25 @@ describe('internal workspace architecture', () => {
           ? await typescriptConfigurationFile.json()
           : {};
       if ((typescriptConfiguration.references ?? []).length > 0) {
-        expect(scripts['typecheck'], directory).toMatch(/^tsc -b (?:\.\/)?tsconfig\.json\b/);
+        const referencesConfigurationFile = Bun.file(
+          join(root, directory, 'tsconfig.references.json'),
+        );
+        if (await referencesConfigurationFile.exists()) {
+          const referencesConfiguration = await referencesConfigurationFile.json();
+          expect(Object.keys(referencesConfiguration).sort(), directory).toEqual([
+            'files',
+            'references',
+          ]);
+          expect(referencesConfiguration.files, directory).toEqual([]);
+          expect(referencesConfiguration.references, directory).toEqual(
+            typescriptConfiguration.references,
+          );
+          expect(checksSourcesAfterReferenceBuild(scripts['typecheck'] ?? ''), directory).toBe(
+            true,
+          );
+        } else {
+          expect(scripts['typecheck'], directory).toMatch(/^tsc -b (?:\.\/)?tsconfig\.json\b/);
+        }
       }
       // A library that emits declarations for its consumers does so through the `types` task,
       // which `typecheck` depends on, so Turborepo orders and caches the emit.
