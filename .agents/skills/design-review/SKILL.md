@@ -62,7 +62,7 @@ The review checklist. Each is something the owner has corrected more than once, 
 - Actions sit at the inline end on a wide layout, never left or stranded under the content.
 - No box inside a box: no well, bordered field or card inside a card; flat rows and editable titles.
 - One empty state per list, never two, and no controls (filters, sorts, a search) over an empty list.
-- No paths, ids or slugs where a name will do.
+- No paths, ids or slugs where a name will do. An identifier that has no name, or is itself the subject (a namespace, an address, an operation id, a path on its file's own page), is set in monospace, never in proportional prose, and breaks only at its separators.
 - A readable measure: a line of text never runs past about ninety characters, at 1920 above all.
 - Shared edges and centre lines: things that sit together share a left edge and a centre line.
 - No clipping: no text, focus ring or shadow cut off, and nothing scrolls sideways.
@@ -70,6 +70,10 @@ The review checklist. Each is something the owner has corrected more than once, 
 - No bright shadows in dark: a shadow in dark is deeper than the surface, never a light halo.
 - Light mode is not faded: contrast and colour hold in light as in dark.
 - Bright, not drab: palettes are saturated and friendly, never grey on grey.
+
+## Reviewing another application
+
+The standing rules above, the rubric's "Interborough and Cinder context", and the owner-rule rows are Interborough's. To review another application's screens (one built on Cinder, such as the Temporal UI), the dispatch names the application and gives its own rules file, and the reviewer judges against that file, the rubric's general sections (the owner's complaints, the task and the information, Tufte, Apple, Craft) and the identifier rule above, and skips the Interborough-only rules: hidden sidebar headings, Bureau vocabulary, and routing to Interborough's routes. A finding on the other application routes to Cinder first, then to that application's own files.
 
 ## Sweep
 
