@@ -18,6 +18,7 @@ import {
 } from '../../lib/bureau-stub.test-support.ts';
 import { until } from '../../lib/fake-timers.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
+import { chooseModel } from './agent-editor-model-support.test-support.ts';
 import { SAVE_TIMEOUT_MS } from './agent-editor-save.ts';
 import Harness from './agent-editor-test-harness.test-harness.svelte';
 
@@ -166,6 +167,7 @@ describe('the New agent form', () => {
     await fireEvent.change(select('issue-refund'), { target: { value: 'blocked' } });
     await fireEvent.change(select('lookup-order'), { target: { value: 'always' } });
     await fireEvent.change(select('lookup-order'), { target: { value: 'never' } });
+    await chooseModel(await findByRole('combobox', { name: 'Model' }), 'Claude Sonnet 5');
     await fireEvent.click(getByRole('button', { name: copy.createAction }));
 
     await waitFor(() => expect(router.pathname).toBe('/agents/order-helper'));
@@ -182,6 +184,7 @@ describe('the New agent form', () => {
     const { findByRole, getByRole } = mountEditor();
     const name = await findByRole('textbox', { name: /^Name/ });
     await type(name, 'Release helper');
+    await chooseModel(await findByRole('combobox', { name: 'Model' }), 'Claude Sonnet 5');
     await fireEvent.click(getByRole('button', { name: copy.createAction }));
 
     const alert = await findByRole('alert');
@@ -205,6 +208,7 @@ describe('a save in flight (rows 43j, 14w)', () => {
     );
     const { findByRole, getByRole, getByTestId } = mountEditor();
     await type(await findByRole('textbox', { name: /^Name/ }), 'Release helper');
+    await chooseModel(await findByRole('combobox', { name: 'Model' }), 'Claude Sonnet 5');
     const save = getByRole('button', { name: copy.createAction });
     await fireEvent.click(save);
 
@@ -234,6 +238,7 @@ describe('a save with no answer (row 14x)', () => {
     await until(() => expect(view.getByRole('textbox', { name: /^Name/ })).not.toBeNull());
     const name = view.getByRole('textbox', { name: /^Name/ });
     await type(name, 'Release helper');
+    await chooseModel(await view.findByRole('combobox', { name: 'Model' }), 'Claude Sonnet 5');
     await fireEvent.click(view.getByRole('button', { name: copy.createAction }));
     await until(() =>
       expect(view.getByTestId('agent-save-status').textContent?.trim()).toBe(newCopy.saving),
@@ -279,7 +284,7 @@ describe('a catalog that does not load (row 42v)', () => {
 
     await waitFor(() => expect(queryByTestId('agent-models-failed')?.outerHTML ?? null).toBeNull());
     expect(getByRole('textbox', { name: /^Name/ })).toHaveValue('Order helper');
-    expect(getByRole('combobox', { name: 'Model' })).toHaveValue('Claude Sonnet 5');
+    expect(getByRole('combobox', { name: 'Model' })).toHaveValue('');
   });
 });
 

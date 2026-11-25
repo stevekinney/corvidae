@@ -21,6 +21,7 @@ import {
   type BureauStub,
 } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
+import { chooseModel } from './agent-editor-model-support.test-support.ts';
 import Harness from './agent-editor-test-harness.test-harness.svelte';
 import { TRY_BOTTOM_SHEET_QUERY, TRY_SHEET_QUERY } from './agent-try-session.svelte.ts';
 
@@ -140,6 +141,7 @@ describe('Try it', () => {
     const calls = bureau();
     const view = mount(null);
     await view.findByRole('textbox', { name: /^Name/ });
+    await chooseModel(await view.findByRole('combobox', { name: 'Model' }), 'Claude Sonnet 5');
     await startChat(view);
     await view.findByRole('region', { name: copy.try.chatLabel });
     expect(calls.callsTo('bureau.agents.try')).toHaveLength(1);
