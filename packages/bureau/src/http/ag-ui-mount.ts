@@ -392,6 +392,12 @@ export function createAgUiMount(
   async function readThreadMessages(threadId: string, principal: Principal): Promise<Response> {
     const authorized = await authorizeThread(threadId, principal, 'bureau.tasks:read');
     if (authorized === undefined) return notFound('thread', threadId);
+    const lastRunId = authorized.session.metadata['lastRunId'];
+    if (
+      typeof lastRunId === 'string' &&
+      (await bureau.internals.reviewedRunState(lastRunId)) === 'unresolved'
+    )
+      return notFound('thread', threadId);
     return json(
       { threadId, messages: snapshotMessages(authorized.session.conversationHistory) },
       200,

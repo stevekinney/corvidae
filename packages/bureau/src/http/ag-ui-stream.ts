@@ -37,7 +37,7 @@ import type { RunDetail } from '../bureau-types/runs.ts';
 import type { ServerFrame } from '../bureau-types/frames.ts';
 import type { BureauContexts } from '../bureau-types/contexts.ts';
 import type { BureauTasks } from '../bureau-types/tasks.ts';
-import { toInterrupt } from './ag-ui-interrupts.ts';
+import { redactReviewedInterrupt, toInterrupt } from './ag-ui-interrupts.ts';
 import { type AnswerRow, snapshotMessages, snapshotMessagesWithAnswers } from './ag-ui-messages.ts';
 import { openPeerStream } from './ag-ui-peer-stream.ts';
 import {
@@ -81,7 +81,7 @@ export type AgUiStreamBureau = Pick<Bureau, 'frames' | 'children' | 'surfaces'> 
 } & {
   readonly contexts: Pick<BureauContexts, 'get' | 'inputsDeliveredBy' | 'subscribeEvents'>;
 } & {
-  readonly internals: Pick<BureauInternals, 'whenTaskRecorded'>;
+  readonly internals: Pick<BureauInternals, 'whenTaskRecorded' | 'reviewedRunState'>;
 } & {
   /** The plugins whose tools a call names `plugin__tool` (COR-1879); none when absent. */
   readonly plugins?: Pick<Bureau['plugins'], 'registered'> | undefined;
@@ -416,6 +416,7 @@ export function openRunStream(
   let highestSequence = -1;
   let resumedEventKeys: Set<string> | undefined;
   let opened = false;
+  let reviewedStream = false;
   let lastState = '';
   let lastRevision = 0;
   let tail: Promise<void> = Promise.resolve();
@@ -642,7 +643,10 @@ export function openRunStream(
         label,
       );
     } else {
-      const interrupts = pendingFor(bureau, request.nativeRunId).map(toInterrupt);
+      const interrupts = pendingFor(bureau, request.nativeRunId).map((review) => {
+        const interrupt = toInterrupt(review);
+        return reviewedStream ? redactReviewedInterrupt(interrupt) : interrupt;
+      });
       const outcome: RunFinishedOutcome =
         interrupts.length > 0 ? { type: 'interrupt', interrupts } : { type: 'success' };
       const recorded = await recordedCostUsd(bureau.tasks, request.nativeRunId);
@@ -671,7 +675,10 @@ export function openRunStream(
         type: EventType.RUN_FINISHED,
         threadId: request.threadId,
         runId: request.runId,
-        outcome: { type: 'interrupt', interrupts },
+        outcome: {
+          type: 'interrupt',
+          interrupts: reviewedStream ? interrupts.map(redactReviewedInterrupt) : interrupts,
+        },
       },
       stampContext,
       { durable: false },
@@ -886,7 +893,22 @@ export function openRunStream(
     fail,
     finish: (last, cursor) => {
       dispose();
-      sink.finish(last, cursor);
+      if (
+        reviewedStream &&
+        last.type === EventType.RUN_FINISHED &&
+        last.outcome?.type === 'interrupt'
+      ) {
+        sink.finish(
+          {
+            ...last,
+            outcome: {
+              ...last.outcome,
+              interrupts: last.outcome.interrupts.map(redactReviewedInterrupt),
+            },
+          },
+          cursor,
+        );
+      } else sink.finish(last, cursor);
     },
   });
 
@@ -902,6 +924,12 @@ export function openRunStream(
       await openChild(request.child);
       return;
     }
+    const reviewedState = await bureau.internals.reviewedRunState(request.nativeRunId);
+    if (reviewedState === 'unresolved') {
+      fail('RUN_NOT_FOUND', `Run "${request.nativeRunId}" was not found`);
+      return;
+    }
+    reviewedStream = reviewedState === 'verified';
     const history = await readRunHistory(
       bureau,
       request.nativeRunId,

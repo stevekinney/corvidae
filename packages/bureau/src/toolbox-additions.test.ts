@@ -21,7 +21,13 @@ import {
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { ToolClashError, withAddedTools, withToolboxLayer } from './toolbox-additions';
+import {
+  cloneToolbox,
+  ToolClashError,
+  withAddedTools,
+  withToolboxLayer,
+} from './toolbox-additions';
+import { withChatPermission } from './tool-approval';
 
 const REQUEST_CONTEXT: ToolRequestContext = {
   authority: {
@@ -94,6 +100,41 @@ const bindRequestContext = (inner: AnyToolbox): AnyToolbox =>
 const charge = (id: string) => ({ id, name: 'charge', arguments: { orderId: 'order-1' } });
 
 describe('withAddedTools keeps the base toolbox in force', () => {
+  it('shows whether chat permission retains an earlier toolbox layer', async () => {
+    const toolbox = bindRequestContext(
+      createToolbox([
+        createTool({
+          name: 'probe',
+          description: 'Read the authority',
+          input: z.object({}),
+          metadata: { readOnly: true },
+          execute: async (_input, context) =>
+            context.requestContext?.authority.principalId ?? 'missing',
+        }),
+      ]),
+    );
+    const direct = await toolbox.execute({ name: 'probe', arguments: {} });
+    expect(direct.result).toBe('alice');
+    const withPermission = await withChatPermission(toolbox, async () => undefined).execute({
+      name: 'probe',
+      arguments: {},
+    });
+    expect(withPermission.result).toBe('alice');
+  });
+  it('retains request-context layers when cloning for a run', async () => {
+    const toolbox = bindRequestContext(
+      createToolbox([
+        createTool({
+          name: 'who',
+          description: 'Read the authority',
+          input: z.object({}),
+          execute: async (_input, context) => context.requestContext?.authority.principalId,
+        }),
+      ]),
+    );
+    const result = await cloneToolbox(toolbox).execute({ name: 'who', arguments: {} });
+    expect(result.result).toBe('alice');
+  });
   it('runs an idempotent tool once when its call is retried with a tool added', async () => {
     const effects: string[] = [];
     const toolbox = withAddedTools(idempotent(effects), additionsToolbox());

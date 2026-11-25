@@ -2,29 +2,25 @@ import type { HumanInputSchema, PeerCallJournalEntry } from '@lostgradient/opera
 import type { PendingToolApproval, SignedPendingToolApproval, ToolExecutionResult } from 'armorer';
 import type { ReviewDecisionRequest } from '../review-decision-record';
 import type { Principal } from '@lostgradient/backchannel';
+import type { ReviewedToolProvenance } from '../task-origin';
 
 /** Trusted host policy for approvals whose authority and public effect are domain-specific. */
 export interface ReviewPolicy {
   matches(review: PendingReview): boolean;
   mayRead(review: PendingReview, principal: Principal): boolean | Promise<boolean>;
   mayDecide(review: PendingReview, principal: Principal): boolean | Promise<boolean>;
+  /** Public arguments for a protected review; the original signed call remains private. */
+  publicArguments?(review: PendingToolApprovalReview): unknown;
+  /** Authenticate both the committed call and its current approval before any projection. */
+  verifyReviewed?(
+    review: PendingToolApprovalReview,
+    original: PendingToolApproval,
+    provenance: ReviewedToolProvenance,
+  ): boolean;
   effect(review: PendingReview): Promise<ReviewEffect | undefined>;
 }
 
-export interface ReviewEffect {
-  kind: 'refund';
-  refundId: string;
-  orderId: string;
-  cents: number;
-  currency: 'USD';
-  status:
-    | 'admitted'
-    | 'submitting'
-    | 'provider-pending'
-    | 'succeeded'
-    | 'failed'
-    | 'needs-reconciliation';
-}
+export type ReviewEffect = Readonly<Record<string, unknown>> & { readonly kind: string };
 
 // ── Review queue (AB-20) ─────────────────────────────────────────────
 

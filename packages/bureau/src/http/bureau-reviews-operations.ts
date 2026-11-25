@@ -77,6 +77,9 @@ import { authorizeWorkspaceOperation } from './workspace-authorization.ts';
 /** What the reviews operations read from the handler's `host`. */
 export type BureauReviewsOperationHost = {
   readonly reviewPolicy?: ReviewPolicy;
+  readonly reviewedProvenance?: (
+    review: PendingToolApprovalReview,
+  ) => Promise<import('../reviewed-provenance').ReviewedProvenanceState>;
   /**
    * COR-2016: continues a chat once a resolve applies the last pending tool approval of one of its
    * runs, as the chat's own resume does (`review-continuation.ts`).
@@ -671,6 +674,11 @@ async function mayReadPolicy(
   review: PendingReview,
 ): Promise<boolean> {
   const policy = host.reviewPolicy;
+  if (review.kind === 'tool-approval' && host.reviewedProvenance !== undefined) {
+    const provenance = await host.reviewedProvenance(review);
+    if (provenance === 'unresolved') return false;
+    if (provenance === 'verified' && (!policy || !policy.matches(review))) return false;
+  }
   return (
     policy === undefined || !policy.matches(review) || (await policy.mayRead(review, principal))
   );
@@ -697,8 +705,24 @@ async function projectAuthorizedReview(
     !policy.matches(review)
   )
     return projected;
+  if (policy.publicArguments !== undefined) {
+    projected.approval.arguments = policy.publicArguments(review);
+    delete projected.approval.reason;
+    const action = projected.approval.action;
+    projected.approval.action =
+      action.type === 'approval'
+        ? {
+            type: 'approval',
+            risk: action.risk,
+            operation: { kind: 'other' },
+            ...(action.expiresAt === undefined ? {} : { expiresAt: action.expiresAt }),
+          }
+        : { type: 'input' };
+  }
   const effect = await policy.effect(review);
-  return effect === undefined ? projected : { ...projected, effect };
+  return effect === undefined
+    ? projected
+    : { ...projected, effect: effect as z.input<typeof toolApprovalReviewSchema>['effect'] };
 }
 
 const DEFAULT_PAGE_LIMIT = 50;
@@ -1267,3 +1291,38 @@ export const bureauReviewsOperations = [
   reviewsGetOperation,
   reviewsResolveOperation,
 ] as const;
+
+/** Extend the deployment's Reviews contracts with explicitly declared public effects. */
+export function reviewsOperationsWithEffects(effects: readonly z.ZodObject[]) {
+  if (effects.length === 0) return bureauReviewsOperations;
+  const kinds = new Set(['refund']);
+  for (const effect of effects) {
+    const kind = effect.shape['kind'];
+    if (!(kind instanceof z.ZodLiteral) || kind.values.size !== 1)
+      throw new Error('A review effect requires a single literal kind');
+    const [value] = kind.values;
+    if (typeof value !== 'string' || !value || kinds.has(value))
+      throw new Error(`Duplicate or invalid review effect kind: ${String(value)}`);
+    kinds.add(value);
+  }
+  const effect = z.union([
+    toolApprovalReviewSchema.shape.effect.unwrap(),
+    effects[0]!,
+    ...effects.slice(1),
+  ]);
+  const approval = toolApprovalReviewSchema.extend({ effect: effect.optional() });
+  const detail = z.discriminatedUnion('kind', [approval, humanWaitReviewSchema]);
+  const listed = z.discriminatedUnion('kind', [
+    approval,
+    humanWaitReviewSchema,
+    engineReviewSchema,
+  ]);
+  return [
+    defineOperation({
+      ...reviewsListOperation,
+      outputSchema: reviewsListOutput.extend({ reviews: z.array(listed) }),
+    }),
+    defineOperation({ ...reviewsGetOperation, outputSchema: detail }),
+    reviewsResolveOperation,
+  ] as const;
+}

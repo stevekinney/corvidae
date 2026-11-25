@@ -10,6 +10,7 @@ import {
   isTaskOrigin,
   isTopLevelTaskOrigin,
   parseStartTaskOrigin,
+  reviewedToolOrigin,
   TASK_ORIGIN_KINDS,
   taskOriginOfStart,
   taskOriginParentOf,
@@ -93,6 +94,21 @@ describe('isTaskOrigin', () => {
 });
 
 describe('parseStartTaskOrigin', () => {
+  it('keeps reviewed provenance only when created by the server', () => {
+    const provenance = {
+      agent: 'reviewed-inventory',
+      tool: 'inventory:adjust@1.0.0',
+      step: 0,
+      result: 0,
+      callId: 'reviewed-call',
+    };
+    const trusted = reviewedToolOrigin(provenance);
+    expect(taskOriginOfStart(parseStartTaskOrigin(trusted), START)).toEqual({
+      kind: 'api',
+      reviewedTool: provenance,
+    });
+    expect(parseStartTaskOrigin(JSON.parse(JSON.stringify(trusted)))).toEqual({ kind: 'api' });
+  });
   it('returns what a caller may declare and nothing else of it', () => {
     expect(parseStartTaskOrigin(undefined)).toBeUndefined();
     expect(parseStartTaskOrigin({ kind: 'chat', principal: 'mallory' })).toEqual({ kind: 'chat' });
