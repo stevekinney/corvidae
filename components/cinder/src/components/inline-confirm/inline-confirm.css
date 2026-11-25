@@ -100,6 +100,24 @@
     overflow-wrap: anywhere;
     text-align: center;
   }
+  /* Armed (COR-2683): the button keeps its face (a destructive action is solid danger at rest) and
+     gains a danger ring in the focus-ring geometry, so arming is a visible step without a lighter
+     rest. The ring outranks `.cinder-button:focus-visible` and stands in for the focus ring while
+     armed, so focus stays visible. */
+  .cinder-inline-confirm__two-press[data-cinder-armed] .cinder-button {
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--cinder-status-danger-border);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-inline-confirm__two-press[data-cinder-armed] .cinder-button {
+      outline: var(--cinder-ring-width) solid Highlight;
+      outline-offset: var(--cinder-ring-offset);
+    }
+  }
+
   .cinder-inline-confirm__two-press-hint {
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-xs);

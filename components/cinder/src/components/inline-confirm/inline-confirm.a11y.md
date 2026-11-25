@@ -31,6 +31,10 @@ The visible prompt labels `role="group"`. On open, focus moves to Cancel, the sa
 
 The visible prompt names the group and both actions have specific visible labels. The component does not use `role="alertdialog"`, `aria-modal`, or a live region because this is an in-flow decision rather than an urgent announcement.
 
+### Two-press arming
+
+A destructive two-press action is the solid danger face at rest and armed (COR-2683). Arming changes the label to the armed label, shows the optional `armedHint`, and draws a danger ring in the focus-ring geometry around the button. The ring stands in for the focus ring while the button is armed and focused, so focus stays visible; under forced colours it is a `Highlight` outline. Colour is never the only signal: the label change carries the armed state.
+
 ## Verification
 
 - Verify Cancel receives focus first.
