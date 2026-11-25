@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { createHash } from 'node:crypto';
 import {
+  existsSync,
   lstatSync,
   mkdirSync,
   readdirSync,
@@ -40,6 +41,7 @@ export interface CiEvidenceWorkflowEnvironment {
   CI_EVIDENCE_NOT_APPLICABLE?: string | undefined;
   CI_EVIDENCE_EXPECTED_JOBS?: string | undefined;
   CI_EVIDENCE_ARTIFACT_DIRECTORY?: string | undefined;
+  CI_EVIDENCE_TEST_REPORT_DIRECTORY?: string | undefined;
 }
 
 interface GitResult {
@@ -62,6 +64,8 @@ export interface CiEvidenceWorkflowReceipt {
   attempt: number;
   jobs: Record<string, 'success' | 'not-applicable'>;
   reports?: Record<string, { reports: number; testCases: number }>;
+  /** Test source files observed in the JUnit reports produced by the tests job. */
+  testFiles?: string[];
 }
 
 const commit = (value: unknown): value is string =>
@@ -214,6 +218,42 @@ function derivedPlanDigest(input: {
     .digest('hex');
 }
 
+function reportedTestFiles(
+  reports: readonly { path: string; content: Uint8Array }[],
+): string[] | undefined {
+  const files = new Set<string>();
+  for (const report of reports) {
+    let parsed: ReturnType<typeof parseJUnit>;
+    try {
+      parsed = parseJUnit(report.content);
+    } catch {
+      throw new CiEvidenceWorkflowError('pull-request JUnit artifact has malformed XML');
+    }
+    if (!parsed.assertionPassed)
+      throw new CiEvidenceWorkflowError('pull-request JUnit artifact contains a failed assertion');
+    const marker = 'test-output/junit/';
+    const position = report.path.indexOf(marker);
+    const workspace =
+      position < 0 ? undefined : report.path.slice(0, position).replace(/\/$/, '') || '.';
+    if (
+      workspace === undefined ||
+      report.path.split('/').some((part) => part === '..') ||
+      (workspace !== '.' &&
+        workspace.split('/').some((part) => part === '' || part === '.' || part === '..'))
+    )
+      throw new CiEvidenceWorkflowError('pull-request JUnit artifact has an unsafe report path');
+    for (const file of parsed.files) {
+      if (
+        !/^[A-Za-z0-9_./-]+\.test\.ts$/.test(file) ||
+        file.split('/').some((part) => part === '' || part === '.' || part === '..')
+      )
+        throw new CiEvidenceWorkflowError('pull-request JUnit artifact has an invalid test file');
+      files.add(workspace === '.' ? file : `${workspace}/${file}`);
+    }
+  }
+  return files.size === 0 ? undefined : [...files].toSorted();
+}
+
 function payloadCommit(payload: unknown, side: 'base' | 'head'): string {
   const pullRequest = record(record(payload)?.['pull_request']);
   const sha = record(pullRequest?.[side])?.['sha'];
@@ -262,8 +302,11 @@ export function validateJUnitArtifacts(
   return summaries;
 }
 
-export function readJUnitArtifactReports(directory: string): Uint8Array[] {
-  const files: Uint8Array[] = [];
+export function readJUnitArtifactReportEntries(directory: string): {
+  path: string;
+  content: Uint8Array;
+}[] {
+  const files: { path: string; content: Uint8Array }[] = [];
   let totalBytes = 0;
   const visit = (path: string, depth: number): void => {
     if (depth > MAX_JUNIT_DIRECTORY_DEPTH)
@@ -283,7 +326,7 @@ export function readJUnitArtifactReports(directory: string): Uint8Array[] {
         totalBytes += status.size;
         if (totalBytes > MAX_JUNIT_TOTAL_BYTES)
           throw new CiEvidenceWorkflowError('JUnit artifact reports exceed total size limit');
-        files.push(readFileSync(child));
+        files.push({ path: child.slice(directory.length + 1), content: readFileSync(child) });
       }
     }
   };
@@ -296,6 +339,10 @@ export function readJUnitArtifactReports(directory: string): Uint8Array[] {
     );
   }
   return files;
+}
+
+export function readJUnitArtifactReports(directory: string): Uint8Array[] {
+  return readJUnitArtifactReportEntries(directory).map((report) => report.content);
 }
 
 const expectedArtifacts = [
@@ -364,6 +411,11 @@ export function createCiEvidenceWorkflowReceipt(input: {
     : '';
   const attempt = requiredPositiveInteger(environment.GITHUB_RUN_ATTEMPT, 'GITHUB_RUN_ATTEMPT');
   const reportDirectory = environment.CI_EVIDENCE_ARTIFACT_DIRECTORY;
+  const testReportDirectory = environment.CI_EVIDENCE_TEST_REPORT_DIRECTORY;
+  const testFiles =
+    event === 'pull_request' && testReportDirectory !== undefined && existsSync(testReportDirectory)
+      ? reportedTestFiles(readJUnitArtifactReportEntries(testReportDirectory))
+      : undefined;
   return {
     repository: environment.GITHUB_REPOSITORY,
     event,
@@ -391,6 +443,7 @@ export function createCiEvidenceWorkflowReceipt(input: {
             expectedArtifacts,
           ),
         }),
+    ...(testFiles === undefined ? {} : { testFiles }),
   };
 }
 
@@ -446,6 +499,7 @@ if (import.meta.main) {
           CI_EVIDENCE_NOT_APPLICABLE: environment['CI_EVIDENCE_NOT_APPLICABLE'],
           CI_EVIDENCE_EXPECTED_JOBS: environment['CI_EVIDENCE_EXPECTED_JOBS'],
           CI_EVIDENCE_ARTIFACT_DIRECTORY: environment['CI_EVIDENCE_ARTIFACT_DIRECTORY'],
+          CI_EVIDENCE_TEST_REPORT_DIRECTORY: environment['CI_EVIDENCE_TEST_REPORT_DIRECTORY'],
         },
         eventPayload: readEventPayload(environment['GITHUB_EVENT_PATH']),
         git,
