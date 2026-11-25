@@ -44,7 +44,7 @@ This software is pre-1.0 and still being prototyped: spend review effort where a
 
 ## Release intent
 
-Per-change publishing is paused; there is no `.changeset/` directory: release intent is written in `stevekinney/corvidae-mirror` at backport time, and `scripts/published-exports.json` is updated by hand after it. Interborough releases build from a pinned revision and verify the installed artifact on each target before publishing.
+Libraries and components publish to npm from Corvidae through the `npm library release` workflow (`.github/workflows/cinder-npm-release.yml`). It builds and tests each tarball from a dispatched commit, then publishes the tested artifact from protected `main` with npm trusted publishing. There is no `.changeset/` directory. `scripts/published-exports.json` is updated by hand after a release. Interborough releases build from a pinned revision and verify the installed artifact on each target before publishing.
 
 ## Turborepo
 
@@ -99,7 +99,7 @@ Run quality commands explicitly; there are no Git hooks. Details: [guards](docum
 - `bun run lint:guards` runs the `scripts/check-*.ts` text guards alone, without oxlint; `lint:root` calls it.
 - A wall-clock or memory target is a `*.bench.ts` measurement; `scripts/check-wall-clock-assertions.ts` fails a `*.test.ts` that bounds a duration.
 - Owner decision: tests that can flake under load stay out of the critical path. Everything `bun run check` and `bun run validate` run has one deadline, the awake-time hang guard (`HANG_GUARD_MILLISECONDS`, 120 seconds), never a performance bound; `scripts/bun-test.ts` passes it, so a `package.json` script never starts `bun test` itself. Wait with `waitUntil`, `awakeTurns`, or `quietFor`, never a sleep, a turn count, a wall-clock deadline, or a timer race ([load-sensitive deadlines](documentation/repository/guards.md#load-sensitive-deadlines)).
-- Guard an inherited-key read with `Object.hasOwn`, a `Map`, or `Object.create(null)`; allowlists only shrink. `bun run release:check`, run before a backport, checks documentation coverage, Markdown examples, and test durations.
+- Guard an inherited-key read with `Object.hasOwn`, a `Map`, or `Object.create(null)`; allowlists only shrink. `bun run release:check`, run before a release, checks documentation coverage, Markdown examples, and test durations.
 - A test that does seconds of real work becomes fast or moves to a `*.slow.test.ts` file; a test file that starts a process is a `*.integration.test.ts` file. Together they form the isolated lane, which `test` ignores and `test:slow` runs.
 
 Test tiers. The quick tier, `bun run check`, runs in-process tests only; the full tier is `bun run validate`; `bun run harden` runs the isolated lanes under load. A test that fails in the full tier or in `harden` is never rerun until green, retried, or allowlisted: compare it against the base with `bun scripts/chef/gate-run.ts control`, and file a flake's fix (the mechanism, never a longer deadline) as a COR issue ([test tiers](documentation/repository/test-lanes-and-checks.md#test-tiers-and-the-hardening-pass)).
