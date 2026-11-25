@@ -126,7 +126,7 @@ export function pluginToolCaller(
       params.name === 'bureau.reviews.resolve'
     ) {
       const session = await send('/auth/session', {}, { ...options, signal: call.signal });
-      if (session.ok) {
+      if (session.ok && session.headers.get('content-type')?.includes('application/json')) {
         const parsed = z.object({ csrfToken: z.string().min(1) }).safeParse(await session.json());
         if (parsed.success) csrfToken = parsed.data.csrfToken;
       }

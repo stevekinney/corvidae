@@ -160,6 +160,19 @@ describe('a panel’s tool calls', () => {
       arguments: { id: 'review', round: 1 },
     });
   });
+
+  test('allows local decisions when the session route falls back to the application shell', async () => {
+    const { fetch, seen } = scripted((path) =>
+      path === '/auth/session'
+        ? new Response('<!doctype html>', { headers: { 'content-type': 'text/html' } })
+        : Response.json({ content: [] }),
+    );
+    await pluginToolCaller('inspectors', 'pending-review', { fetch })(
+      { name: 'bureau.reviews.resolve', arguments: { id: 'review', round: 1 } },
+      ABORT,
+    );
+    expect(new Headers(seen[1]?.init?.headers).has('x-csrf-token')).toBe(false);
+  });
   test('posts the name and the arguments to the panel’s own route and returns the result as it came', async () => {
     const result = {
       content: [{ type: 'text' as const, text: 'ok' }],
