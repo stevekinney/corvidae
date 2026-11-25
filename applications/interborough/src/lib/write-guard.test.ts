@@ -193,6 +193,27 @@ describe('armWriteGuard', () => {
     expect(mismatches).toBe(1);
   });
 
+  test('binds browser requests to the membership revision', async () => {
+    const observed: { expected: string | null } = { expected: null };
+    const target = {
+      fetch: Object.assign(
+        async (_input: RequestInfo | URL, init?: RequestInit) => {
+          observed.expected = new Headers(init?.headers).get('x-interborough-expected-identity');
+          return new Response();
+        },
+        { preconnect: fetch.preconnect },
+      ),
+    };
+    release = armWriteGuard(() => false, ['http://localhost'], target, undefined, {
+      identity: { workspaceId: 'workspace', actorId: 'member', membershipRevision: 'revision-1' },
+      onMismatch: () => {},
+    });
+    await target.fetch('http://localhost/bureau/jsonrpc');
+    expect(observed.expected).toBe(
+      encodeURIComponent(JSON.stringify(['workspace', 'member', 'revision-1'])),
+    );
+  });
+
   test('requests identity revalidation after a forbidden host response, without recursion on the principal probe', async () => {
     let revalidations = 0;
     const target = {

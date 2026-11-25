@@ -55,7 +55,15 @@ function resolveSnapshot(
     if (identity.actorKind !== 'local' || identity.owner !== ANONYMOUS_LOCAL_OWNER)
       return undefined;
   } else {
-    if (credential.method !== 'api-key' || identity.actorKind === 'local') return undefined;
+    if (
+      (credential.method !== 'api-key' &&
+        credential.method !== 'browser-session' &&
+        credential.method !== 'connector-token') ||
+      identity.actorKind === 'local' ||
+      ((credential.method === 'browser-session' || credential.method === 'connector-token') &&
+        identity.actorKind !== 'user')
+    )
+      return undefined;
     if (
       isReservedOwnerSubject(identity.owner) ||
       identity.capabilities.includes('deployment:operate')
@@ -106,9 +114,25 @@ export function withWorkspaceMembership(
     const workspace = resolveSnapshot(resolved, workspaceId, credential);
     if (workspace === undefined)
       return new Response('Workspace membership required', { status: 403 });
+    const pinned = principalSnapshot.workspace;
+    if (
+      (credential.method === 'browser-session' || credential.method === 'connector-token') &&
+      pinned !== undefined &&
+      (pinned.workspaceId !== workspace.workspaceId ||
+        pinned.actorId !== workspace.actorId ||
+        pinned.owner !== workspace.owner ||
+        pinned.membershipRevision !== workspace.membershipRevision)
+    )
+      return new Response('Workspace identity changed', { status: 403 });
     // This is a precondition, not authority: only the verified directory supplies the identity.
     const expected = request.headers.get('x-interborough-expected-identity');
-    const actual = encodeURIComponent(JSON.stringify([workspace.workspaceId, workspace.actorId]));
+    const actual = encodeURIComponent(
+      JSON.stringify([
+        workspace.workspaceId,
+        workspace.actorId,
+        ...(credential.method === 'browser-session' ? [workspace.membershipRevision] : []),
+      ]),
+    );
     if (expected !== null && expected !== actual)
       return new Response('Workspace identity changed', {
         status: 409,

@@ -118,6 +118,53 @@ const member = (): WorkspaceMembership => ({
 });
 
 describe('workspace membership after credential verification', () => {
+  test('browser sessions admit only current users in the bound workspace', async () => {
+    let current: WorkspaceMembership | null = member();
+    const resolve = withWorkspaceMembership(
+      async () => ({
+        method: 'browser-session',
+        principal: {
+          ...principalFromApiKey({ subject: 'user-a', scopes: [] }),
+          method: 'browser-session',
+        },
+      }),
+      { workspaceId: 'workspace-a', resolveMembership: async () => current },
+    );
+    const admitted = await resolve(request());
+    expect(admitted).not.toBeInstanceOf(Response);
+    if (!(admitted instanceof Response)) expect(admitted.principal?.workspace).toEqual(member());
+    const staleLifetime = new Request('http://localhost/v1/principal', {
+      headers: {
+        'x-interborough-expected-identity': encodeURIComponent(
+          JSON.stringify(['workspace-a', 'user-a', 'older-revision']),
+        ),
+      },
+    });
+    expect(((await resolve(staleLifetime)) as Response).status).toBe(409);
+    current = { ...member(), actorKind: 'service' };
+    expect(((await resolve(request())) as Response).status).toBe(403);
+    current = { ...member(), workspaceId: 'foreign' };
+    expect(((await resolve(request())) as Response).status).toBe(403);
+    current = null;
+    expect(((await resolve(request())) as Response).status).toBe(403);
+  });
+  test('rejects browser scopes computed for an older membership snapshot', async () => {
+    const resolve = withWorkspaceMembership(
+      async () => ({
+        method: 'browser-session',
+        principal: {
+          ...principalFromApiKey({ subject: 'user-a', scopes: [] }),
+          method: 'browser-session',
+          workspace: member(),
+        },
+      }),
+      {
+        workspaceId: 'workspace-a',
+        resolveMembership: async () => ({ ...member(), membershipRevision: 'revision-two' }),
+      },
+    );
+    expect(((await resolve(request())) as Response).status).toBe(403);
+  });
   test('refuses a browser lifetime whose expected identity no longer matches the verified member', async () => {
     let current = member();
     const resolve = withWorkspaceMembership(authenticate, {

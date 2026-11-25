@@ -218,3 +218,24 @@ export function createRequestGuard(
     return undefined;
   };
 }
+
+/** Admit the explicitly configured shared web origin without expanding the A2A allowlist. */
+export function createSharedWebGuard(
+  origin: URL,
+  fallback: (request: Request) => Response | undefined,
+): (request: Request) => Response | undefined {
+  const hosts = publicHosts(origin);
+  return (request) => {
+    const host = request.headers.get('host');
+    if (host === null || !hosts.includes(host.toLowerCase())) return fallback(request);
+    if (isAmbiguousPath(rawPathOf(request))) return new Response('Forbidden', { status: 403 });
+    const supplied = request.headers.get('origin');
+    const needsOrigin = request.headers.get('upgrade')?.toLowerCase() === 'websocket';
+    if (
+      (supplied !== null && supplied !== origin.origin) ||
+      (needsOrigin && supplied !== origin.origin)
+    )
+      return new Response('Forbidden', { status: 403 });
+    return undefined;
+  };
+}

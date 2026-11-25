@@ -234,7 +234,14 @@ export type AuthConfig = {
  * }
  * ```
  */
-export type AuthMethod = 'api-key' | 'jwt' | 'mtls' | 'public' | 'unauthenticated-local';
+export type AuthMethod =
+  | 'api-key'
+  | 'jwt'
+  | 'mtls'
+  | 'public'
+  | 'unauthenticated-local'
+  | 'browser-session'
+  | 'connector-token';
 
 /**
  * Shared context carried from the authenticator through the request

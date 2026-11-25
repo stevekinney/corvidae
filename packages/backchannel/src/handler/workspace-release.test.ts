@@ -32,6 +32,19 @@ test('workspace revalidation pins identity but accepts a new current membership 
   expect(await check?.()).toBe(false);
 });
 
+test('browser session revalidation refuses a changed membership revision', async () => {
+  const original: AuthenticatedPrincipal = { ...principal(), method: 'browser-session' };
+  let current = original;
+  const check = createWorkspaceRevalidation(
+    async () => ({ method: 'browser-session', principal: current }),
+    new Request('https://example.test/stream'),
+    original,
+  );
+  expect(await check?.()).toBe(true);
+  current = { ...current, workspace: { ...original.workspace!, membershipRevision: 'revision-2' } };
+  expect(await check?.()).toBe(false);
+});
+
 test('workspace revalidation fails closed when authentication throws', async () => {
   const check = createWorkspaceRevalidation(
     async () => {
