@@ -10,8 +10,9 @@
  * its contrast against the surface outside it, the left edges content starts on, the gaps between
  * stacked siblings and the edges they start and end on, wide rows whose content starts far from
  * their leading edge, the area of each control that takes a tap, what covers a control or a line of
- * text, boxes with more room above their content than below it, and how much of the viewport the
- * chrome around the scrolling region takes.
+ * text, boxes with more room above their content than below it, how much of the viewport the
+ * chrome around the scrolling region takes, how strongly each control's face reads against its
+ * parent, and how far each visible tooltip sits from the element it describes.
  */
 import type { Page } from '@playwright/test';
 
@@ -473,6 +474,51 @@ export function collectGeometryFacts(): GeometryFacts {
     return 'other';
   }
 
+  /**
+   * How strongly a control's face reads against the surface of its parent: the contrast of its
+   * fill, or of its border where the fill is transparent. `null` when it paints neither.
+   */
+  function weightOf(
+    element: Element,
+    style: CSSStyleDeclaration,
+  ): GeometryFacts['controls'][number]['weight'] {
+    const ground = surfaceOf(element.parentElement);
+    const fill = colorOf(style.backgroundColor);
+    if (fill[3] > 0) return { contrast: contrast(over(fill, ground), ground), outlined: false };
+    const border = colorOf(style.borderTopColor);
+    if (
+      Number.parseFloat(style.borderTopWidth) > 0 &&
+      style.borderTopStyle !== 'none' &&
+      border[3] > 0
+    ) {
+      return { contrast: contrast(over(border, ground), ground), outlined: true };
+    }
+    return null;
+  }
+
+  /** Each tooltip on show and the element that `aria-describedby` or `aria-labelledby` ties it to. */
+  function tooltips(): GeometryFacts['tooltips'][number][] {
+    const found: GeometryFacts['tooltips'][number][] = [];
+    for (const tooltip of document.querySelectorAll('[role="tooltip"]')) {
+      if (!isShown(tooltip) || tooltip.id === '') continue;
+      const id = CSS.escape(tooltip.id);
+      const anchor = document.querySelector(
+        `[aria-describedby~="${id}"], [aria-labelledby~="${id}"]`,
+      );
+      if (anchor === null) continue;
+      const tip = tooltip.getBoundingClientRect();
+      const owner = anchor.getBoundingClientRect();
+      found.push({
+        name: nameOf(tooltip),
+        anchor: nameOf(anchor),
+        horizontalGap: half(Math.max(owner.left - tip.right, tip.left - owner.right, 0)),
+        verticalGap: half(Math.max(owner.top - tip.bottom, tip.top - owner.bottom, 0)),
+        sample: sampleOf(tooltip.textContent ?? ''),
+      });
+    }
+    return found;
+  }
+
   function controls(): GeometryFacts['controls'][number][] {
     const found: GeometryFacts['controls'][number][] = [];
     for (const element of document.querySelectorAll(CONTROL_SELECTOR)) {
@@ -552,6 +598,7 @@ export function collectGeometryFacts(): GeometryFacts {
           hit.bottom > layout.bottom,
         unreached: unreachedSides(element),
         parent: parentOf(element),
+        weight: weightOf(element, style),
         // Filling a container that hugs it is not stretching, so it must also span half the viewport.
         fullWidth: rect.width >= available - 1 && rect.width >= viewportWidth / 2,
       });
@@ -1138,6 +1185,7 @@ export function collectGeometryFacts(): GeometryFacts {
     overlaps: overlaps(),
     insets: insets(),
     chrome: chrome(),
+    tooltips: tooltips(),
   };
 }
 
