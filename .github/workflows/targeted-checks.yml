@@ -392,6 +392,11 @@ jobs:
       - run: bun scripts/chef/ci-replay.ts run -- bunx turbo run metadata
         env:
           CI_REPLAY_TOKEN: ${{ github.token }}
+      # Fixture verification launches Chromium even when it runs in the unit lane.
+      - run: bun scripts/chef/ci-replay.ts run -- bunx playwright install --with-deps chromium
+        if: ${{ matrix.lane.workspace == 'scripts/browser-fixtures' }}
+        env:
+          CI_REPLAY_TOKEN: ${{ github.token }}
       - run: bun scripts/chef/ci-replay.ts run -- bash scripts/chef/targeted-unit.sh
         env:
           CI_REPLAY_TOKEN: ${{ github.token }}
