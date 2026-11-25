@@ -42,6 +42,8 @@ export function createWorkspaceRevalidation(
         workspace !== undefined &&
         current.method === method &&
         current.subject === subject &&
+        ((method !== 'browser-session' && method !== 'connector-token') ||
+          workspace.membershipRevision === original.membershipRevision) &&
         retainsWorkspaceAuthority(original, workspace) &&
         scopes.every((scope) => current.hasScope(scope))
       );

@@ -128,7 +128,11 @@ export function armWriteGuard(
   target: { fetch: typeof fetch } = globalThis,
   onUnauthorized?: () => void,
   lifetime?: {
-    readonly identity: { readonly workspaceId: string; readonly actorId: string };
+    readonly identity: {
+      readonly workspaceId: string;
+      readonly actorId: string;
+      readonly membershipRevision?: string;
+    };
     readonly onMismatch: () => void;
     readonly onForbidden?: () => void;
   },
@@ -156,7 +160,13 @@ export function armWriteGuard(
         headers.set(
           'x-interborough-expected-identity',
           encodeURIComponent(
-            JSON.stringify([lifetime.identity.workspaceId, lifetime.identity.actorId]),
+            JSON.stringify([
+              lifetime.identity.workspaceId,
+              lifetime.identity.actorId,
+              ...(lifetime.identity.membershipRevision === undefined
+                ? []
+                : [lifetime.identity.membershipRevision]),
+            ]),
           ),
         );
         requestInit = { ...init, headers };

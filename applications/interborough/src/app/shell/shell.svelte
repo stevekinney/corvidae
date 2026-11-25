@@ -137,7 +137,8 @@
           if (current?.workspace === undefined) authExpiredHandler(initialClient);
           else if (
             current.workspace.workspaceId !== resolvedPrincipal.workspace?.workspaceId ||
-            current.workspace.actorId !== resolvedPrincipal.workspace?.actorId
+            current.workspace.actorId !== resolvedPrincipal.workspace?.actorId ||
+            current.workspace.membershipRevision !== resolvedPrincipal.workspace?.membershipRevision
           )
             identityMismatchHandler(initialClient);
           return undefined;

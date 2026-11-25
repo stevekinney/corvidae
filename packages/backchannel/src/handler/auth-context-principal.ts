@@ -54,6 +54,10 @@ export function authContextToPrincipal(
       return principalFromUnauthenticatedLocal(scopeVocabulary);
     case 'public':
       return anonymousPrincipal();
+    case 'browser-session':
+      throw new Error('Browser session authentication requires a verified principal');
+    case 'connector-token':
+      throw new Error('Connector token authentication requires a verified principal');
     default: {
       const exhaustiveCheck: never = authContext.method;
       throw new Error(`Unknown auth context method: ${JSON.stringify(exhaustiveCheck)}`);

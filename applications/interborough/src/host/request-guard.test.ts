@@ -6,10 +6,48 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   createRequestGuard,
+  createSharedWebGuard,
   isAmbiguousPath,
   PUBLIC_TRIGGERS_PATH_PREFIX,
   rawPathOf,
 } from './request-guard.ts';
+
+test('shared web sockets require the configured origin and reject ambiguous paths', () => {
+  const guard = createSharedWebGuard(
+    new URL('https://settings.example'),
+    () => new Response('fallback', { status: 403 }),
+  );
+  expect(
+    guard(
+      new Request('http://localhost/bureau/jsonrpc', {
+        headers: { host: 'settings.example', upgrade: 'websocket' },
+      }),
+    )?.status,
+  ).toBe(403);
+  expect(
+    guard(
+      new Request('http://localhost/bureau/jsonrpc', {
+        headers: {
+          host: 'settings.example',
+          upgrade: 'websocket',
+          origin: 'https://settings.example',
+        },
+      }),
+    ),
+  ).toBeUndefined();
+  expect(
+    guard(
+      new Request('http://localhost/bureau//jsonrpc', { headers: { host: 'settings.example' } }),
+    )?.status,
+  ).toBe(403);
+  expect(
+    guard(
+      new Request('http://localhost/', {
+        headers: { host: 'settings.example', origin: 'https://evil.example' },
+      }),
+    )?.status,
+  ).toBe(403);
+});
 
 function request(headers: Record<string, string>): Request {
   return new Request('http://127.0.0.1/', { headers });

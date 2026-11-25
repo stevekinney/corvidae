@@ -5,7 +5,14 @@ export type SystemOperationTypes = {
     readonly input: {};
     readonly output: {
       readonly method:
-        'jwt' | 'api-key' | 'mtls' | 'stdio-local' | 'unauthenticated-local' | 'unauthenticated';
+        | 'jwt'
+        | 'api-key'
+        | 'browser-session'
+        | 'connector-token'
+        | 'mtls'
+        | 'stdio-local'
+        | 'unauthenticated-local'
+        | 'unauthenticated';
       readonly scopes: ReadonlyArray<
         | 'workflows:read'
         | 'workflows:write'
