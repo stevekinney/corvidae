@@ -14,10 +14,26 @@ describe('Interborough Homebrew release workflow', () => {
     expect(workflow).toContain('source_sha:');
     expect(workflow).toContain('version:');
     expect(workflow).toContain('publish:');
-    expect(workflow).not.toContain('\n  push:');
     expect(workflow).toContain('test "${#SOURCE_SHA}" = 40');
     expect(workflow).toContain("grep -Eq '^[0-9a-fA-F]{40}$'");
     expect(workflow).toContain("grep -Eq '^([0-9]+)\\.([0-9]+)\\.([0-9]+)");
+  });
+
+  test('rehearses only a main push that changes this workflow', () => {
+    expect(workflow).toContain(
+      '  push:\n    branches: [main]\n    paths: [.github/workflows/interborough-homebrew-release.yml]',
+    );
+    expect(workflow).toContain(
+      "SOURCE_SHA: ${{ github.event_name == 'push' && github.sha || inputs.source_sha }}",
+    );
+    expect(workflow).toContain(
+      "VERSION: ${{ github.event_name == 'push' && '0.0.0-candidate.0' || inputs.version }}",
+    );
+    expect(workflow).toContain(
+      "PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}",
+    );
+    expect(workflow).toContain(String.raw`*$'\n'*|*$'\r'*)`);
+    expect(workflow).toContain('version: ${{ steps.release-inputs.outputs.version }}');
   });
 
   test('builds and tests a clean pinned macOS arm64 checkout before it packages bytes', () => {
@@ -44,7 +60,7 @@ describe('Interborough Homebrew release workflow', () => {
     expect(workflow).toContain('test "$GITHUB_REF_PROTECTED" = true');
     expect(workflow).toContain('test "$source_sha" = "$GITHUB_SHA"');
     expect(workflow).toContain(
-      "if: ${{ inputs.publish && github.ref == 'refs/heads/main' && github.ref_protected }}",
+      "if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main' && github.ref_protected }}",
     );
     expect(workflow).toContain('needs: package');
     expect(workflow).toContain(
@@ -54,6 +70,10 @@ describe('Interborough Homebrew release workflow', () => {
       'shasum -a 256 -c "interborough-$VERSION-darwin-arm64.tar.gz.sha256"',
     );
     expect(workflow).toContain('gh release create "$TAG"');
+    expect(workflow.indexOf('Verify tested source matches the dispatch')).toBeLessThan(
+      workflow.indexOf('Verify downloaded archive digest'),
+    );
+    expect(workflow).toContain('test "$SOURCE_SHA" = "$GITHUB_SHA"');
     expect(workflow).toContain('SOURCE_SHA: ${{ needs.package.outputs.source_sha }}');
     expect(workflow).toContain('--repo "$GITHUB_REPOSITORY"');
     expect(workflow).toContain('--verify-tag');

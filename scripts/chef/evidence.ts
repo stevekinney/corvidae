@@ -189,6 +189,7 @@ export interface VerificationRequest {
   operationId: string;
   providerRuns: {
     id: number;
+    attempt?: number;
     obligation: string;
     job: string;
     workflow: string;

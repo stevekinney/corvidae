@@ -23,7 +23,17 @@ export interface CiEvidenceRequest {
   workflowPath: string;
   workflowRevision: string;
   event: 'pull_request' | 'workflow_dispatch' | 'push';
+  /** Frozen coordinator mapping from member criteria to source tests for PR receipt reuse. */
+  sourceCriteria?: PullRequestSourceCriteriaBinding | undefined;
   requestKey: string;
+}
+
+export interface PullRequestSourceCriteriaBinding {
+  version: 1;
+  members: {
+    identifier: string;
+    criteria: { criterionId: string; testFiles: string[] }[];
+  }[];
 }
 
 export interface CiEvidenceRun {
@@ -45,8 +55,21 @@ export interface CiEvidenceRun {
   checkedTree: string;
   receiptJobs: Record<string, 'success' | 'not-applicable'>;
   receiptReports?: Record<string, { reports: number; testCases: number }>;
+  /** Test files actually observed in the authenticated pull-request JUnit reports. */
+  receiptTestFiles?: string[];
   attempt: number;
   jobs: string[];
+}
+
+/** The stable identity known before inspecting an automatic pull-request receipt. */
+export interface AutomaticPullRequestEvidenceRequest {
+  repository: string;
+  resource: string;
+  base: string;
+  candidate: string;
+  integrationTree: string;
+  workflow: string;
+  workflowPath: string;
 }
 
 export type CiEvidenceObservation =
@@ -54,6 +77,10 @@ export type CiEvidenceObservation =
 
 export interface CiEvidenceProvider {
   findRuns(request: CiEvidenceRequest): Promise<CiEvidenceObservation[]>;
+  /** Finds only authenticated, completed automatic pull-request receipts for this exact merge. */
+  findAutomaticPullRequestRuns?(
+    request: AutomaticPullRequestEvidenceRequest,
+  ): Promise<CiEvidenceRun[]>;
   dispatch(request: CiEvidenceRequest): Promise<void>;
 }
 
@@ -67,6 +94,38 @@ interface StoredRequest {
 const commit = (value: string) => /^[0-9a-f]{40}$/.test(value);
 const digest = (value: string) => /^[0-9a-f]{64}$/.test(value);
 const text = (value: string) => value.trim() !== '' && !value.includes('\0');
+const testFile = (value: unknown): value is string =>
+  typeof value === 'string' && /^[A-Za-z0-9_./-]+\.test\.ts$/.test(value);
+
+function validSourceCriteria(value: PullRequestSourceCriteriaBinding | undefined): boolean {
+  if (value === undefined) return true;
+  if (value.version !== 1 || !Array.isArray(value.members) || value.members.length === 0)
+    return false;
+  const identifiers = new Set<string>();
+  return value.members.every((member) => {
+    if (
+      typeof member.identifier !== 'string' ||
+      member.identifier === '' ||
+      identifiers.has(member.identifier) ||
+      !Array.isArray(member.criteria) ||
+      member.criteria.length === 0
+    )
+      return false;
+    identifiers.add(member.identifier);
+    const criteria = new Set<string>();
+    return member.criteria.every(
+      (criterion) =>
+        typeof criterion.criterionId === 'string' &&
+        criterion.criterionId !== '' &&
+        !criteria.has(criterion.criterionId) &&
+        (criteria.add(criterion.criterionId), true) &&
+        Array.isArray(criterion.testFiles) &&
+        criterion.testFiles.length > 0 &&
+        criterion.testFiles.every(testFile) &&
+        new Set(criterion.testFiles).size === criterion.testFiles.length,
+    );
+  });
+}
 
 function canonicalRequest(input: Omit<CiEvidenceRequest, 'requestKey'>): string {
   return JSON.stringify({
@@ -79,6 +138,7 @@ function canonicalRequest(input: Omit<CiEvidenceRequest, 'requestKey'>): string 
     workflowPath: input.workflowPath,
     workflowRevision: input.workflowRevision,
     event: input.event,
+    ...(input.sourceCriteria === undefined ? {} : { sourceCriteria: input.sourceCriteria }),
   });
 }
 
@@ -103,6 +163,7 @@ function validateRequest(request: CiEvidenceRequest): void {
     !/^\.github\/workflows\/[A-Za-z0-9_.-]+\.ya?ml$/.test(request.workflowPath) ||
     !commit(request.workflowRevision) ||
     !['pull_request', 'workflow_dispatch', 'push'].includes(request.event) ||
+    !validSourceCriteria(request.sourceCriteria) ||
     request.requestKey !== ciEvidenceRequestKey(request)
   )
     throw new CiEvidenceError('CI evidence request has invalid identity');

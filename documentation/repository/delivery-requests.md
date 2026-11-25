@@ -13,6 +13,7 @@
 - Criteria come from Linear through `brief.ts` (`readBatchBrief`); there is no offline criteria file, because an assignment's revision, dependencies and source digests exist only on that read. An issue that links a design needs `--context`, the file `brief.ts --context` takes.
 - The coordinator's acceptance is the approval `prepare` records: it adds `merge` to each assignment's consequential actions and re-digests the assignment.
 - The evidence is one green `main.yml` run on the head, bound by an evidence identity. Every criterion of every member maps to the same provider obligation, the job `Root checks, scripts tests, audit` (the job with no `needs`, so its runner is assigned first). No criterion has a test of its own; a criterion's own proof stays in the worker's report.
+- A completed, authenticated `workflow_dispatch` `main.yml` receipt can satisfy the full-run evidence while an _unpinned_ pull-request workflow for that same head is still in flight. Its receipt must name every full-workflow prerequisite as successful and its checked tree must be the request's integration tree; a pinned pull-request run, a known failed duplicate job, or a changed workflow, affected-test selection, root package, or Turbo contract still gates delivery.
 - Members are tracked and closed on delivery by default; `--no-track`, `--no-close` and `--leave-open <ID>` change that.
 
 ## Why `prepare` dispatches before it writes
