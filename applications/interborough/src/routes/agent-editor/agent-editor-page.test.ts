@@ -427,7 +427,8 @@ describe('a new agent', () => {
         files: [new File(['Use short sentences.\n'], 'style.md', { type: 'text/markdown' })],
       },
     });
-    expect((await findByTestId('agent-references')).textContent).toContain('style.md');
+    const stagedReferences = await findByTestId('agent-references');
+    expect(stagedReferences.textContent).toContain('style.md');
     const dropZone = container.querySelector('label.weft-agent-form__drop-zone');
     if (dropZone === null) throw new Error('Expected the document drop zone.');
     const drop = new window.Event('drop', { bubbles: true });
@@ -437,8 +438,7 @@ describe('a new agent', () => {
       },
     });
     await fireEvent(dropZone, drop);
-    const references = await findByTestId('agent-references');
-    await waitFor(() => expect(references.textContent).toContain('style guide.md'));
+    await waitFor(() => expect(stagedReferences.textContent).toContain('style guide.md'));
     await fireEvent.change(upload, {
       target: { files: [new File(['%PDF'], 'document.pdf', { type: 'application/pdf' })] },
     });
