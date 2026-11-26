@@ -56,6 +56,10 @@ A moved head or changed plan needs a fresh decision. An approval permits one dis
 
 For a named required hosted check, use `--required-check COR-<number>:<criterion> --head <sha>` with explicit lanes. For required full delivery verification, use `bun scripts/chef/delivery-request.ts prepare`.
 
+## Native Node lane
+
+Packages that prove behavior under Node use `@lostgradient/testing/node-runtime`. Set `CORVIDAE_NODE_BINARY` to pin the native Node 22+ binary; otherwise the runner chooses the first native `node` on `PATH` and rejects Bun shims. `runNodeTests(files, { shim: true })` resolves `bun:test` to the shared Node shim, while `bundle: true` bundles workspace source so Node can run extensionless relative imports. Add a `*.integration.test.ts` that calls this runner, rather than starting `node --test` directly.
+
 ## Affected test selection
 
 `bun run check` runs only the test files a change can reach, where it once ran every test in each affected workspace and its dependents (`--affected` works per package, so a one-file change in Weft reran Weft, Bureau, Interborough, and the rest). The selector is `scripts/affected-tests.ts`, with `affected-tests-graph.ts` (the import graph), `affected-tests-selection.ts` (the rules), and `affected-tests-manifest.ts` (the hand-off to the runners). `validate` is unchanged and runs everything. `check` is the quick tier (AGENTS.md "Test tiers"): it never runs a coverage task or the isolated lanes (`test:slow`, `test:self:slow`) unless a changed file is itself a slow or integration test or `--isolated` is passed.

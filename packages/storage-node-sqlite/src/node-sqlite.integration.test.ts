@@ -1,12 +1,7 @@
-import { describe, expect, it } from 'bun:test';
-import { existsSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
-
 import { SQLITE_BUSY_TIMEOUT_MS } from '@lostgradient/storage/sql';
-import { runWithHangGuard, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { runNodeTests } from '@lostgradient/testing/node-runtime';
+import { describe, expect, it } from 'bun:test';
 import { NodeSQLiteStorage } from './node-sqlite.ts';
 import { nativeNodeEnvironment } from './test/environment-configuration.ts';
 
@@ -349,53 +344,8 @@ it('takes the write lock up front: batch and conditionalBatch run as immediate t
   storage[Symbol.dispose]();
 });
 
-async function resolveNativeNode(searchPath: string): Promise<string> {
-  for (const directory of searchPath.split(delimiter).filter(existsSync)) {
-    const candidate = Bun.which('node', { PATH: directory });
-    if (candidate === null) continue;
-    const identity = await runWithHangGuard([
-      candidate,
-      '--eval',
-      'process.stdout.write(process.versions.bun ? "bun" : process.release.name)',
-    ]);
-    if (identity.exitCode === 0 && identity.stdout.toString() === 'node') return candidate;
-  }
-  throw new Error('Native SQLite integration requires Node.js.');
-}
-
 // These scenarios run real Node processes, which takes seconds on a loaded host, so they run
 // here at module scope, off Bun's five-second per-test clock; each test rethrows its outcome.
-
-const scenario1 = await outcomeOf(async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'weft-node-runtime-'));
-  try {
-    symlinkSync(process.execPath, join(directory, 'node'));
-    const runtime = await resolveNativeNode(
-      [directory, nativeNodeEnvironment().searchPath].join(delimiter),
-    );
-    const identity = await runWithHangGuard([runtime, '-p', 'typeof process.versions.bun']);
-    expect(identity.exitCode).toBe(0);
-    expect(identity.stdout.toString().trim()).toBe('undefined');
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
-
-it('resolves native Node when a filesystem Bun shim shadows PATH', () => rethrow(scenario1));
-
-const scenario2 = await outcomeOf(async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'weft-node-runtime-'));
-  try {
-    symlinkSync(process.execPath, join(directory, 'node'));
-    expect(await throwingRejectionOf(resolveNativeNode(directory))).toThrow(
-      'Native SQLite integration requires Node.js.',
-    );
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
-
-it('rejects a PATH containing only a filesystem Bun shim', () => rethrow(scenario2));
 
 /**
  * Summarize a failed integration child for the assertion message.
@@ -427,38 +377,21 @@ const scenario3 = await outcomeOf(async () => {
   // Bun's run.bun setting can inject both virtual and filesystem Node shims.
   // Verify runtime identity while preserving the inherited runtime managers.
   const environment = nativeNodeEnvironment().env;
-  const runtime = await resolveNativeNode(environment['PATH'] ?? '');
   const path = (relative: string) => new URL(relative, import.meta.url).pathname;
-  // The shim resolves `bun:test`, which the shared suites import, to `node:test` in every file's
-  // process; `node --test` passes `--import` on to them.
-  const child = spawnWithHangGuard(
+  const child = await runNodeTests(
     [
-      runtime,
-      '--import',
-      path('./test/register-bun-test-shim.ts'),
-      '--test',
-      '--test-reporter=tap',
       path('./node-sqlite-native.integration.ts'),
       path('./node-sqlite-contract.integration.ts'),
       path('./node-sqlite-durability.integration.ts'),
       path('./test/bun-test-shim.integration.ts'),
     ],
-    {
-      stdout: 'pipe',
-      stderr: 'pipe',
-      env: environment,
-    },
+    { env: environment, shim: true },
   );
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]);
-  expect(exitCode, describeChildFailure(stdout, stderr)).toBe(0);
+  expect(child.exitCode, describeChildFailure(child.stdout, child.stderr)).toBe(0);
   // 23 integration cases, 25 contract cases, 7 durability cases, and the shim's own 5.
-  expect(stdout).toContain('# tests 60');
-  expect(stdout).toContain('# pass 60');
-  expect(stdout).toContain('# skipped 0');
+  expect(child.stdout).toContain('# tests 60');
+  expect(child.passCount).toBe(60);
+  expect(child.stdout).toContain('# skipped 0');
   // Each shared suite registered against the adapter, so a count that matches by coincidence
   // cannot hide one that registered nothing.
   for (const suite of [
@@ -471,7 +404,7 @@ const scenario3 = await outcomeOf(async () => {
     'mid-transaction kill (3a, adapter batch) — NodeSQLiteStorage',
     'mid-transaction kill (3b, deterministic) — NodeSQLiteStorage',
   ]) {
-    expect(stdout).toContain(`# Subtest: ${suite}\n`);
+    expect(child.stdout).toContain(`# Subtest: ${suite}\n`);
   }
 });
 
