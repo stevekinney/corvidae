@@ -1,0 +1,17 @@
+{
+  "applications/interborough/src/lib/decision/approval-decision.svelte": 1,
+  "applications/interborough/src/routes/agents/agent-settings.svelte": 1,
+  "applications/interborough/src/routes/audit/audit-detail.svelte": 1,
+  "applications/interborough/src/routes/capabilities/skill-detail.svelte": 1,
+  "applications/interborough/src/routes/capabilities/source-detail.svelte": 1,
+  "applications/interborough/src/routes/chat/chat-details.svelte": 2,
+  "applications/interborough/src/routes/chat/reply-details.svelte": 1,
+  "applications/interborough/src/routes/chat/tool-calls.svelte": 1,
+  "applications/interborough/src/routes/hooks/hook-delivery-detail.svelte": 1,
+  "applications/interborough/src/routes/schedules/schedule-details-card.svelte": 3,
+  "applications/interborough/src/routes/schedules/schedule-input-group.svelte": 1,
+  "applications/interborough/src/routes/settings/plugins/plugin-detail.svelte": 1,
+  "applications/interborough/src/routes/system/workflow-revisions-panel.svelte": 1,
+  "applications/interborough/src/routes/workers/worker-manifest-panel.svelte": 1,
+  "applications/interborough/src/routes/workflow-definitions/workflow-details.svelte": 1
+}

@@ -78,6 +78,18 @@
       "scans": ["components/cinder/src", "components/chat/src", "applications/interborough/src"]
     },
     {
+      "id": "cinder-term-value-lists",
+      "rule": "A term and value list is Cinder's DescriptionList, Inspector or KeyFacts, which put each pair on one line: no raw dl element.",
+      "date": "2026-11-25",
+      "source": "Owner review of the live app, 2026-11-25, label and value pairs drawn as two lines each (COR-2693)",
+      "guard": {
+        "script": "scripts/check-cinder-term-value-lists.ts",
+        "test": "scripts/check-cinder-term-value-lists.test.ts",
+        "allowlist": "scripts/cinder-term-value-lists-allowlist.json"
+      },
+      "scans": ["applications/interborough/src"]
+    },
+    {
       "id": "destructive-actions-look-dangerous",
       "rule": "A button or confirm whose label starts with a destructive verb (Delete, Remove, Terminate, Destroy, Purge, Revoke, Drop, Wipe) renders the danger treatment: a Button is danger or ghost-danger, never soft-danger, and an InlineConfirm or ConfirmDialog is destructive.",
       "date": "2026-11-25",

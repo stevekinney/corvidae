@@ -2,10 +2,8 @@ import { SvelteMap } from 'svelte/reactivity';
 
 import type { ReviewView } from './model.ts';
 
-/** What one review's row remembers between redraws: a decision in flight, what it said, a half-typed reason. */
+/** What one review's row remembers between redraws: its outcome and a half-typed reason. */
 export type RowState = {
-  /** A decision is in flight: no button is offered. */
-  readonly busy: boolean;
   /** What the last attempt on this review said. */
   readonly outcome: string | null;
   /** The reject form is open. */
@@ -15,7 +13,7 @@ export type RowState = {
 };
 
 /** The state of a review nothing has happened to. */
-export const IDLE_ROW: RowState = { busy: false, outcome: null, rejecting: false, draft: '' };
+export const IDLE_ROW: RowState = { outcome: null, rejecting: false, draft: '' };
 
 /** What the pending-review page shows. A change to any field redraws just what it feeds. */
 export type ReviewsView = {

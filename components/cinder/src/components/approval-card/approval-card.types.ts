@@ -189,6 +189,8 @@ export type ApprovalCardCallbacks = {
   onAskAgain?: () => void;
   /** An additional row-layout review control. It shares the row’s note, scope and guarded submit. */
   decisionReview?: Snippet<[(decision: 'approve' | 'deny') => void, disabled: boolean]>;
+  /** Wrap the existing action controls without replacing their guarded behavior. */
+  actionRenderer?: Snippet<[Snippet]>;
 };
 
 /** Props for the ApprovalCard component. */

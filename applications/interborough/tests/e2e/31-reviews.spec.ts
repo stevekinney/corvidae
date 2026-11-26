@@ -10,7 +10,10 @@
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
 
 import { HUMAN_INPUT_PROMPT } from '@lostgradient/plugin-demo';
+import { designReviewColorScheme } from '../../scripts/environment-configuration.ts';
 import { REVIEWS_COPY } from '../../src/app/copy/reviews.ts';
+import { REVIEW_REMEMBER_MARKER, REVIEW_REMEMBER_TOOL } from './access-provider.ts';
+import { createAgentFile, removeAgent } from './agent-support.ts';
 import { conversation, newThreadId, runToEnd, untilChatLoaded } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, holdBureauFeed, loggedFailedResponse, test } from './fixtures.ts';
@@ -208,6 +211,70 @@ async function waitingRefund(
   return { threadId, review };
 }
 
+async function waitingRememberApproval(page: Page, request: APIRequestContext, name: string) {
+  const threadId = newThreadId(name);
+  const agentId = `e2e-${name}`;
+  await createAgentFile(request, agentId, { tools: [REVIEW_REMEMBER_TOOL] });
+  try {
+    await runToEnd(request, agentId, threadId, REVIEW_REMEMBER_MARKER);
+    const review = await waitingReviewOf(request, threadId);
+    const current = (await bureauCall(request, 'bureau.reviews.get', { id: review.id })) as {
+      approval: { mayRemember?: boolean };
+    };
+    expect(current.approval.mayRemember).toBe(true);
+    await useApprovalCaptureFixture(page, review, TRIAGE_APPROVAL);
+    await page.goto(inboxAt(review));
+    await expect(paneOf(page)).toContainText(TRIAGE_APPROVAL.question);
+    return { threadId, review, agentId };
+  } catch (error) {
+    await removeAgent(request, agentId);
+    throw error;
+  }
+}
+
+/** Exercise the checkbox's expanded hit area with real coarse-pointer events. */
+async function checkRememberTouchTarget(page: Page, checkbox: Locator): Promise<void> {
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error('A fixed viewport is required');
+  const session = await page.context().newCDPSession(page);
+  try {
+    await page.setViewportSize({ width: 320, height: 640 });
+    await session.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    await expect
+      .poll(() => page.evaluate(() => matchMedia('(any-pointer: coarse)').matches))
+      .toBe(true);
+    const row = checkbox.locator('xpath=ancestor::div[contains(@class,"cinder-checkbox-row")]');
+    await row.scrollIntoViewIfNeeded();
+    const box = await row.boundingBox();
+    if (!box) throw new Error('The remember target is not visible');
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    for (const [index, y] of [box.y + 3, box.y + box.height - 3].entries()) {
+      const x = box.x + 3;
+      expect(
+        await row.evaluate(
+          (element, point) => {
+            const target = document.elementFromPoint(point.x, point.y);
+            return target !== null && (element === target || element.contains(target));
+          },
+          { x, y },
+        ),
+      ).toBe(true);
+      await session.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x, y }],
+      });
+      await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      if (index === 0) await expect(checkbox).toBeChecked();
+      else await expect(checkbox).not.toBeChecked();
+    }
+  } finally {
+    await session.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+    await session.detach();
+    await page.setViewportSize(viewport);
+  }
+}
+
 /** Captures an approval in the two board widths, restoring the suite's desktop viewport afterwards. */
 async function captureApprovalAtWidths(
   page: Page,
@@ -374,6 +441,133 @@ test.describe('a tool approval', () => {
     expect(resolves).toHaveLength(1);
   });
 
+  test('reconciles a lost decision response without sending the decision twice', async ({
+    page,
+    pageErrors,
+    request,
+  }) => {
+    const { review, threadId } = await waitingRefund(page, request, 'reviews-lost-response');
+    const resolves = recordResolves(page);
+    const reason = 'the fixture drops the refund approval response after the Bureau answers';
+    pageErrors.expect({
+      pattern: /^request failed: POST \S+\/jsonrpc \(net::ERR_FAILED\)$/,
+      reason,
+    });
+    pageErrors.expect({
+      pattern: /^console error: Failed to load resource: net::ERR_FAILED \(\S+\/jsonrpc:0\)$/,
+      reason,
+    });
+    await page.route('**/jsonrpc', async (route) => {
+      const call = route.request().postDataJSON() as { method?: string; params?: { id?: string } };
+      if (call.method !== 'bureau.reviews.resolve' || call.params?.id !== review.id)
+        return route.fallback();
+      await route.fetch();
+      await route.abort('failed');
+    });
+    await approveReview(paneOf(page));
+    await expect.poll(async () => refundRan(await threadMessages(request, threadId))).toBe(true);
+    await expect
+      .poll(
+        async () =>
+          (
+            (await bureauCall(request, 'bureau.reviews.get', { id: review.id })) as {
+              status: string;
+            }
+          ).status,
+      )
+      .not.toBe('pending');
+    expect(resolves).toHaveLength(1);
+  });
+
+  test('keeps a denied reviewer from deciding the displayed approval', async ({
+    page,
+    request,
+  }) => {
+    const { review, threadId } = await waitingRefund(page, request, 'reviews-denied-reviewer');
+    const resolves = recordResolves(page);
+    await page.route('**/jsonrpc', async (route) => {
+      const call = route.request().postDataJSON() as {
+        method?: string;
+        id?: string;
+        params?: { id?: string };
+      };
+      if (call.method !== 'bureau.reviews.resolve' || call.params?.id !== review.id)
+        return route.fallback();
+      await route.fulfill({
+        json: {
+          jsonrpc: '2.0',
+          id: call.id,
+          error: {
+            code: -32000,
+            message: 'Forbidden',
+            data: { httpStatus: 403, weftCode: 'Forbidden' },
+          },
+        },
+      });
+    });
+    await approveReview(paneOf(page));
+    await expect(page.getByText(REVIEWS_COPY.approvalFailed.approve)).toBeVisible();
+    expect(refundRan(await threadMessages(request, threadId))).toBe(false);
+    expect(await bureauCall(request, 'bureau.reviews.get', { id: review.id })).toMatchObject({
+      status: 'pending',
+    });
+    expect(resolves).toHaveLength(1);
+  });
+
+  test('fences repeated clicks and shortcuts while the decision is in flight', async ({
+    page,
+    request,
+  }) => {
+    const { review, threadId } = await waitingRefund(page, request, 'reviews-duplicate-decision');
+    const resolves = recordResolves(page);
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/jsonrpc', async (route) => {
+      const call = route.request().postDataJSON() as { method?: string; params?: { id?: string } };
+      if (call.method !== 'bureau.reviews.resolve' || call.params?.id !== review.id)
+        return route.fallback();
+      await held;
+      await route.continue();
+    });
+    try {
+      await approveReview(paneOf(page));
+      await expect.poll(() => resolves.length).toBe(1);
+      const pendingButton = paneOf(page).getByRole('button', { name: /Approving/ });
+      await pendingButton.dispatchEvent('click');
+      await pendingButton.dispatchEvent('click');
+      await page.keyboard.press('a');
+      await page.keyboard.press('d');
+      expect(resolves).toHaveLength(1);
+    } finally {
+      release();
+    }
+    await expect.poll(async () => refundRan(await threadMessages(request, threadId))).toBe(true);
+    expect(resolves).toHaveLength(1);
+  });
+
+  test('keeps a same-round draft and focus during a queue refresh', async ({ page, request }) => {
+    await waitingRefund(page, request, 'reviews-draft-refresh');
+    let reads = 0;
+    await page.route('**/jsonrpc', async (route) => {
+      const call = route.request().postDataJSON() as { method?: string };
+      if (call.method === 'bureau.reviews.list') reads++;
+      await route.fallback();
+    });
+    const note = paneOf(page).getByRole('textbox', { name: 'Note (optional)' });
+    await note.fill('Keep this draft');
+    await runToEnd(
+      request,
+      'demo:tool-runner',
+      newThreadId('reviews-refresh-event'),
+      'Refund order-1001',
+    );
+    await expect.poll(() => reads).toBeGreaterThan(0);
+    await expect(note).toHaveValue('Keep this draft');
+    await expect(note).toBeFocused();
+  });
+
   test('approved from the inbox runs the tool, and its row goes', async ({
     page,
     request,
@@ -473,27 +667,44 @@ test.describe('a tool approval', () => {
     expect(refundRan(await threadMessages(request, denied.threadId))).toBe(false);
   });
 
-  test('shared Reviews approval detail remembers an On changes approval only when approved', async ({
+  test('/reviews shared approval detail remembers an On changes approval only when approved', async ({
     page,
     request,
   }) => {
-    const { threadId, review } = await waitingRefund(
+    const { threadId, review, agentId } = await waitingRememberApproval(
       page,
       request,
       'reviews-remember',
-      TRIAGE_APPROVAL,
     );
-    const resolves = recordResolves(page);
-    const remember = paneOf(page).getByRole('checkbox', {
-      name: /allow .* for the rest of this chat/i,
-    });
-    await remember.check();
-    await expect.poll(() => resolves).toHaveLength(0);
-    await approveReview(paneOf(page));
+    try {
+      const resolves = recordResolves(page);
+      const remember = paneOf(page).getByRole('checkbox', {
+        name: /allow .* for the rest of this chat/i,
+      });
+      await checkRememberTouchTarget(page, remember);
+      await remember.check();
+      await expect.poll(() => resolves).toHaveLength(0);
+      const receiptResponse = page.waitForResponse((response) => {
+        if (!response.url().includes('/jsonrpc')) return false;
+        const body = response.request().postDataJSON() as {
+          method?: string;
+          params?: { id?: string };
+        };
+        return body.method === 'bureau.reviews.resolve' && body.params?.id === review.id;
+      });
+      await approveReview(paneOf(page));
+      const response = await receiptResponse;
+      const receipt = (await response.json()) as { result?: { remembered?: boolean } };
+      expect(receipt.result?.remembered).toBe(true);
 
-    await expect(rowOf(page, review)).toHaveCount(0);
-    expect(resolves[0]).toMatchObject({ id: review.id, decision: 'approve', remember: true });
-    await expect.poll(async () => refundRan(await threadMessages(request, threadId))).toBe(true);
+      await expect(rowOf(page, review)).toHaveCount(0);
+      expect(resolves[0]).toMatchObject({ id: review.id, decision: 'approve', remember: true });
+      await expect
+        .poll(async () => JSON.stringify(await threadMessages(request, threadId)))
+        .toContain('recorded');
+    } finally {
+      await removeAgent(request, agentId);
+    }
   });
 
   test('the real refund does not offer a remembered bypass', async ({ page, request }) => {
@@ -503,15 +714,19 @@ test.describe('a tool approval', () => {
     ).toHaveCount(0);
   });
 
-  test('shared Reviews approval detail captures a pending On changes approval', async ({
+  test('/reviews shared approval detail captures a pending On changes approval', async ({
     page,
     request,
   }) => {
-    await waitingRefund(page, request, 'reviews-capture-on-changes', TRIAGE_APPROVAL);
-    await captureApprovalAtWidths(page, 'pending On changes approval');
+    const { agentId } = await waitingRememberApproval(page, request, 'reviews-capture-on-changes');
+    try {
+      await captureApprovalAtWidths(page, 'pending On changes approval');
+    } finally {
+      await removeAgent(request, agentId);
+    }
   });
 
-  test('shared Reviews approval detail captures a pending Always approval', async ({
+  test('/reviews shared Reviews approval detail captures a pending Always approval', async ({
     page,
     request,
   }) => {
@@ -526,6 +741,52 @@ test.describe('a tool approval', () => {
       await expect(pane).toContainText("Can't be undone.");
       await expect(pane.getByRole('checkbox')).toHaveCount(0);
       await captureApprovalAtWidths(page, 'pending Always approval');
+      const viewport = page.viewportSize();
+      if (viewport === null) throw new Error('A fixed viewport is required');
+      try {
+        await page.setViewportSize({ width: 375, height: 812 });
+        await captureForDesignReview(page, {
+          route: '/reviews',
+          state: 'pending approval consequence scrolled',
+          source: '31-reviews.spec.ts',
+          ready: async () => {
+            await pane.getByText("Can't be undone.").scrollIntoViewIfNeeded();
+          },
+        });
+        await captureForDesignReview(page, {
+          route: '/reviews',
+          state: 'pending approval actions scrolled',
+          source: '31-reviews.spec.ts',
+          ready: async () => {
+            await pane
+              .getByRole('button', { name: 'Approve', exact: true })
+              .scrollIntoViewIfNeeded();
+          },
+        });
+        await captureForDesignReview(page, {
+          route: '/reviews',
+          state: 'pending approval keyboard focus',
+          source: '31-reviews.spec.ts',
+          ready: async () => {
+            await pane.getByRole('textbox', { name: 'Note (optional)' }).focus();
+            await page.keyboard.press('Tab');
+            const focused = pane.getByRole('button', { name: 'Deny', exact: true });
+            await expect(focused).toBeFocused();
+            await focused.scrollIntoViewIfNeeded();
+            await expect(pane.locator('button:focus-visible')).toHaveCount(1);
+            const box = await focused.boundingBox();
+            const size = page.viewportSize();
+            expect(box).not.toBeNull();
+            expect(size).not.toBeNull();
+            expect(box!.x).toBeGreaterThanOrEqual(0);
+            expect(box!.y).toBeGreaterThanOrEqual(0);
+            expect(box!.x + box!.width).toBeLessThanOrEqual(size!.width);
+            expect(box!.y + box!.height).toBeLessThanOrEqual(size!.height);
+          },
+        });
+      } finally {
+        await page.setViewportSize(viewport);
+      }
     });
   });
 
@@ -574,6 +835,7 @@ test.describe('a tool approval', () => {
       try {
         if (decision === 'Approve') await approveReview(pane);
         else await pane.getByRole('button', { name: decision, exact: true }).click();
+        await expect.poll(() => requests.length).toBe(1);
         await expect(pane.getByRole('button', { name: active, exact: true })).toHaveAttribute(
           'aria-busy',
           'true',
@@ -726,6 +988,60 @@ test.describe('a tool approval', () => {
 
 test.describe('a phone tool approval', () => {
   test.use({ viewport: { width: 375, height: 640 }, hasTouch: true, isMobile: true });
+
+  test('/reviews compact Status remains touchable and opens the pending detail', async ({
+    page,
+    request,
+  }) => {
+    await withAlwaysRefundMode(request, async () => {
+      const { review } = await waitingRefund(
+        page,
+        request,
+        'reviews-mobile-status',
+        REFUND_APPROVAL,
+      );
+      for (const theme of ['light', 'dark'] as const) {
+        await page.emulateMedia({ colorScheme: theme });
+        for (const width of [320, 375]) {
+          await page.setViewportSize({ width, height: 640 });
+          await page.goto('/reviews');
+          const status = page.getByRole('combobox', { name: 'Status' });
+          await expect(status).toBeVisible();
+          const box = await status.boundingBox();
+          if (box === null) throw new Error('Status must have a painted box');
+          expect(box.height).toBeGreaterThanOrEqual(31);
+          expect(box.height).toBeLessThanOrEqual(33);
+          expect(box.width).toBeGreaterThanOrEqual(44);
+          const hit = await status.evaluate((element) => {
+            const style = getComputedStyle(element, '::before');
+            return { top: parseFloat(style.top), bottom: parseFloat(style.bottom) };
+          });
+          expect(box.height - hit.top - hit.bottom).toBeGreaterThanOrEqual(44);
+          if (theme === (designReviewColorScheme() ?? 'light')) {
+            await captureForDesignReview(page, {
+              route: '/reviews',
+              state: `pending refund compact Status ${width}`,
+              source: '31-reviews.spec.ts',
+            });
+          }
+          await page.touchscreen.tap(box.x + box.width / 2, box.y - 3);
+          await page.getByRole('option', { name: /^Done/ }).tap();
+          await expect(page).toHaveURL(/tab=done/);
+          await status.focus();
+          await status.press('Enter');
+          await status.press('Home');
+          await status.press('Enter');
+          await expect(page).not.toHaveURL(/tab=done/);
+          await rowOf(page, review).tap();
+          await expect(paneOf(page)).toContainText(REFUND_APPROVAL.question);
+          const input = paneOf(page).getByRole('group', { name: 'Input', exact: true });
+          const actions = paneOf(page).getByRole('group', { name: 'Approval actions' });
+          const boxes = await readBoxes(page, { input, actions });
+          expect(boxes.actions.y).toBeGreaterThanOrEqual(boxes.input.y + boxes.input.height);
+        }
+      }
+    });
+  });
 
   test('shared Reviews approval detail shows full Fields values and reachable actions on a phone', async ({
     page,

@@ -218,6 +218,7 @@ it('fences duplicate actions before the first read completes', async () => {
   let writes = 0;
   let decision: unknown;
   let complete!: () => void;
+  let receivedReceipt: unknown;
   const outcome = new Promise<void>((resolve) => {
     complete = resolve;
   });
@@ -246,13 +247,22 @@ it('fences duplicate actions before the first read completes', async () => {
         ? read
         : ((decision = input),
           ++writes,
-          { id: 'review', kind: 'tool-approval', decision: 'approve', receipt: 'applied' }),
+          {
+            id: 'review',
+            kind: 'tool-approval',
+            decision: 'approve',
+            receipt: 'applied',
+            remembered: false,
+          }),
     invalidate() {},
   };
   const actions = module.useToolApprovalActions({
     catalog: host,
     authorized: () => true,
-    onOutcome: complete,
+    onOutcome: (_seen: unknown, _outcome: unknown, receipt: unknown) => {
+      receivedReceipt = receipt;
+      complete();
+    },
   })(review);
   actions.approve('  note  ');
   actions.deny();
@@ -260,6 +270,7 @@ it('fences duplicate actions before the first read completes', async () => {
   completeRead(review);
   await outcome;
   expect(writes).toBe(1);
+  expect(receivedReceipt).toMatchObject({ remembered: false });
   expect(decision).toMatchObject({ id: 'review', round: 1, decision: 'approve', reason: 'note' });
 });
 

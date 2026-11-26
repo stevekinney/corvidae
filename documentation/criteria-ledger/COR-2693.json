@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2693",
+  "branch": "cor-2693-conflict",
+  "checkedAt": "7cf50399ba9e323df2f45b70525e1cda9b544983",
+  "briefVersion": "1eb2ad002b16",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "check-cinder-term-value-lists.test.ts passes after merge with main"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "allowlist file present; test passes"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "both guards chained in lint:guards; both owner-rules rows present; owner-rules.test.ts exit 0"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "bun run lint:guards exit 0"
+    }
+  ]
+}

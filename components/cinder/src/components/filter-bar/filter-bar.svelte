@@ -450,6 +450,7 @@
       id={`${generatedId}-segments`}
       class="cinder-filter-bar__segments-select"
       presentation="listbox"
+      data-cinder-compact-touch=""
       label={segmentsLabel}
       labelVisible={false}
       valuePrefix={`${segmentsLabel}:`}
