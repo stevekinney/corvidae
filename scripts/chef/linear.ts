@@ -21,9 +21,9 @@
 //   bun scripts/chef/linear.ts project-state <project> <State Name> [--json]
 //   bun scripts/chef/linear.ts project-update <project> --health <onTrack|atRisk|offTrack> --file <md> [--json]
 //   bun scripts/chef/linear.ts claim <ID> --run <id> --branch <branch> [--head <sha>] [--json]
-//   bun scripts/chef/linear.ts claim <ID> --release --run <id> [--json]
+//   bun scripts/chef/linear.ts claim <ID> --release --run <id> --generation <n> [--json]
 //   bun scripts/chef/linear.ts lease <project> --run <id> [--json]
-//   bun scripts/chef/linear.ts lease <project> --release --run <id> [--json]
+//   bun scripts/chef/linear.ts lease <project> --release --run <id> --generation <n> [--json]
 //
 // A claim makes "who holds this issue" a checkable fact. `claim` reads the issue's newest claim
 // comment (a comment whose first line is `Claim: run <run>, branch <branch>, since <ISO>,
@@ -45,8 +45,13 @@
 // again is the renewal; `since` is kept). `--release` posts a released one. The update carries the
 // project's current health, so the lease never changes the status the project shows.
 //
-// `read` prints the summary line, the last three comments' first lines, then the full description
-// (`--json` adds it as `description`).
+// A release names the local authority generation it ends (`--generation`): each claim and the lease
+// count generations apart, a successful claim or lease prints its own ("Authority generation N"),
+// `read` prints the claim's, and a release at another generation is refused naming the one held.
+//
+// `read` prints the summary line, the claim (`claim: <status> by run <run>, generation <n>`), the
+// last three comments' first lines, then the full description (`--json` adds them as `claim` and
+// `description`).
 // `create` refuses (exit 1) when an issue with the same title already exists in the project, or in
 // the team when no project is named. `block <ID> --by <OTHER>` makes OTHER block ID.
 // `comment --update <comment-id>` replaces that comment's body instead of posting a new one, and
@@ -281,10 +286,21 @@ export async function readIssue(client: LinearClient, identifier: string): Promi
     createdAt: comment.createdAt,
     firstLine: firstLine(comment.body),
   }));
+  // The claim's generation is what `claim --release --generation` needs; print it here.
+  const claim = latestClaim(comments)?.marker;
+  const claimData =
+    claim === undefined
+      ? null
+      : { run: claim.run, status: claim.status, generation: claim.identity?.generation ?? null };
   return {
     ok: true,
     summary: [
       `${issue.identifier}: state=${issue.state.name} updatedAt=${issue.updatedAt} comments=${comments.length}`,
+      ...(claimData === null
+        ? []
+        : [
+            `  claim: ${claimData.status} by run ${claimData.run}, generation ${claimData.generation ?? 'unknown'}`,
+          ]),
       ...last.map((comment) => `  ${comment.createdAt} ${comment.firstLine}`),
       // The whole body follows the summary, so a worker reads appended revisions here too.
       ...(description === '' ? [] : ['', description]),
@@ -296,6 +312,7 @@ export async function readIssue(client: LinearClient, identifier: string): Promi
       updatedAt: issue.updatedAt,
       comments: comments.length,
       lastComments: last,
+      claim: claimData,
       description,
     },
   };
@@ -1849,10 +1866,21 @@ async function withReleaseAuthority(
     try {
       stateModule.requireAuthority(store, request);
     } catch (error) {
+      // Name the generation this run does hold, so a release at the wrong one says which is right.
+      let held: number | undefined;
+      try {
+        held = stateModule.currentAuthority(store, request).generation;
+      } catch {
+        held = undefined;
+      }
+      const hint =
+        held === undefined || held === request.generation
+          ? ''
+          : `; this run holds generation ${held} of ${request.resource}`;
       return {
         ok: false,
-        summary: `Refused: ${request.resource} release lacks current authority (${describeError(error)}).`,
-        data: { released: false },
+        summary: `Refused: ${request.resource} release lacks current authority (${describeError(error)})${hint}.`,
+        data: { released: false, ...(held === undefined ? {} : { heldGeneration: held }) },
       };
     }
     const operationId = `${request.resource}:${request.generation}:release`;
@@ -2051,7 +2079,9 @@ export async function run(
         const project = await resolveProject(client, target as string);
         if (release) {
           if (releaseGeneration === undefined)
-            throw new UsageError('--generation is required to release local authority.');
+            throw new UsageError(
+              '--generation is required to release local authority: pass the lease\'s own generation, the "Authority generation N" its last `lease` call printed (a lease and each claim count generations apart).',
+            );
           return withReleaseAuthority(
             dependencies,
             { resource: `project:${project.id}`, runId, ownerId, generation: releaseGeneration },
@@ -2106,7 +2136,9 @@ export async function run(
         throw new UsageError('--release takes no --branch or --head.');
       plan = (client) => {
         if (releaseGeneration === undefined)
-          throw new UsageError('--generation is required to release local authority.');
+          throw new UsageError(
+            "--generation is required to release local authority: pass the claim's own generation; `linear.ts read <ID>` prints it (a lease and each claim count generations apart).",
+          );
         return withReleaseAuthority(
           dependencies,
           { resource: `issue:${target}`, runId, ownerId, generation: releaseGeneration },

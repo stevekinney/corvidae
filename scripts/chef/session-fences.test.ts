@@ -281,7 +281,7 @@ describe('a chef-worker stop', () => {
     const setting = await world();
     const path = await worker(setting);
     expect(
-      await handleHookEvent(stop(path, { agent_type: 'chef-reviewer' }), context(setting)),
+      await handleHookEvent(stop(path, { agent_type: 'stickler' }), context(setting)),
     ).toBeUndefined();
     const logged: string[] = [];
     const log = (lines: readonly string[]) => logged.push(...lines);

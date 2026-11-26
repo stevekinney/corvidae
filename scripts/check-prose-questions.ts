@@ -8,13 +8,15 @@
 //
 // It does not run for subagents: `SubagentStop` is a separate event and is not wired.
 // It allows the stop when `stop_hook_active` is true (the agent is already continuing because of a
-// hook, so blocking again would loop), and it fails open on every error: a missing or unreadable
+// hook, so blocking again would loop), and for a session holding a live chef coordinator lease
+// (the marker `scripts/host-sessions.ts` reads), which is denied `AskUserQuestion` and returns
+// needs-decision by ending its turn. It fails open on every error: a missing or unreadable
 // transcript or malformed JSON prints a message on standard error and exits 0 without blocking.
 //
 // Output: `{"decision":"block","reason":...}` on standard output with exit 0 when it blocks.
 
 export const reason =
-  'You asked the owner to decide something in prose. Ask it with AskUserQuestion (one question, recommended option first), then keep working on everything that does not depend on the answer.';
+  'You asked the owner to decide something in prose. Ask it with AskUserQuestion (one question, recommended option first), then keep working on everything that does not depend on the answer. (A session holding a chef coordinator lease is denied AskUserQuestion; it returns needs-decision with the options, and this hook lets that stop through.)';
 
 /** A sentence that ends in `?` and opens by addressing the reader. */
 const questionOpeners =
@@ -132,12 +134,18 @@ export function asksForDecision(text: string): boolean {
   return false;
 }
 
-/** The block decision for a Stop payload and its transcript text, or undefined to allow. */
+/**
+ * The block decision for a Stop payload and its transcript text, or undefined to allow. A session
+ * that holds a live chef coordinator lease is never blocked: `scripts/chef/session-fences.ts` denies
+ * it AskUserQuestion, because a dialog nobody answers stops the run, so ending the turn with the
+ * question in prose is how it returns needs-decision.
+ */
 export function decide(
   payload: StopPayload,
   transcript: string,
+  session: { leased: boolean } = { leased: false },
 ): { decision: 'block'; reason: string } | undefined {
-  if (payload.stop_hook_active === true) return undefined;
+  if (payload.stop_hook_active === true || session.leased) return undefined;
   const entries: Entry[] = [];
   for (const line of transcript.split('\n')) {
     if (line.trim() === '') continue;
@@ -148,12 +156,23 @@ export function decide(
   return { decision: 'block', reason };
 }
 
+/** Whether the session holds a live coordinator lease marker, as the AskUserQuestion fence reads it. */
+async function holdsLease(sessionId: unknown): Promise<boolean> {
+  if (typeof sessionId !== 'string' || sessionId === '') return false;
+  const { hostPlacesDirectory, leaseMarkerLive, readLeaseMarker } =
+    await import('./host-sessions.ts');
+  const marker = await readLeaseMarker(await hostPlacesDirectory(), sessionId);
+  return marker !== undefined && leaseMarkerLive(marker, Date.now());
+}
+
 if (import.meta.main) {
   try {
     const payload = JSON.parse(await Bun.stdin.text()) as StopPayload;
     if (payload.stop_hook_active !== true) {
       if (typeof payload.transcript_path !== 'string') throw new Error('no transcript_path');
-      const decision = decide(payload, await Bun.file(payload.transcript_path).text());
+      const decision = decide(payload, await Bun.file(payload.transcript_path).text(), {
+        leased: await holdsLease(payload.session_id),
+      });
       if (decision !== undefined) process.stdout.write(`${JSON.stringify(decision)}\n`);
     }
   } catch (error) {
