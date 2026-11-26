@@ -1203,11 +1203,11 @@
         };
   });
 
-  // The status line Retry is offered beside: the last turn's, when its run failed. A failed attempt
-  // of an earlier turn keeps its line (row 20b) with nothing beside it, since Retry runs the last
-  // turn again.
+  // The status line Retry is offered beside: the last turn's, when its run failed before it made a
+  // single step, so the turn is the person's message alone and Chat has no turn to draw the outcome
+  // on. Every other last turn's stop is Chat's (`outcome`). A failed attempt of an earlier turn
+  // keeps its line (row 20b) with nothing beside it, since Retry runs the last turn again.
   const retryNoteId = $derived(readOnly ? undefined : failedStopNoteId(shown));
-  const lastAssistant = $derived(outcome.assistantId);
   function turnState(message: Message): ChatTurnState | undefined {
     const state = turnStateFromOutcome(outcome, message);
     return state?.kind === 'failed' && failedTurnExplanation !== undefined
@@ -1216,8 +1216,8 @@
   }
 
   const discardableRun = $derived(
-    !readOnly && lastStop?.state.kind === 'stopped' && lastAssistant !== undefined
-      ? replyStepOf(lastAssistant)?.runId
+    !readOnly && lastStop?.state.kind === 'stopped' && outcome.rowId !== undefined
+      ? parseStepRowIdentifier(outcome.rowId)?.runId
       : undefined,
   );
   // Discard and Continue answer Chat whether the Bureau took them: Chat holds the turn's controls
@@ -1736,14 +1736,6 @@
           (row) => row.metadata['_deliveryStatus'] === 'failed',
         )),
   );
-  // The last row the transcript draws: a row that only carries a call's answer is drawn under the
-  // call's own row, so it does not count, and a turn that ends on a call ends on the call's row.
-  const lastRowId = $derived(
-    shown.ids.findLast((rowId) => {
-      const row = shown.messages[rowId];
-      return row?.hidden === false && row.toolResult === undefined;
-    }),
-  );
   // Something other than the stream holds the last turn, so it has not finished: a run the Bureau
   // still reports going, an approval or a question waiting, or a failure shown above the chat.
   // A function, read inside the derived values that decide the outcome, which come before the
@@ -1751,22 +1743,6 @@
   function turnHeld(): boolean {
     return (
       runGoing || approvals.length > 0 || shownRequests.length > 0 || session.failure !== undefined
-    );
-  }
-  /**
-   * Whether a group of calls is the end of a turn that finished with no reply and no assistant
-   * message to say so on: its rail closes with the run's end state. A turn with an assistant message
-   * says it as Chat's empty answer instead (R6), so the rail adds no second footnote.
-   */
-  function endsTheTurn(group: {
-    readonly entries: readonly { readonly state: string }[];
-    readonly messageIds: readonly string[];
-  }): boolean {
-    return (
-      !turnHeld() &&
-      outcome.state?.kind !== 'empty' &&
-      group.messageIds.at(-1) === lastRowId &&
-      group.entries.every((entry) => entry.state === 'done' || entry.state === 'denied')
     );
   }
   // The Bureau's time, which a running call's duration counts to. It moves only while a call runs,
@@ -2825,7 +2801,6 @@
                 opensPanel={(entry) =>
                   chatToolPanelFor(entry) !== undefined &&
                   structuredResultText(entry) !== undefined}
-                endLabel={endsTheTurn(group) ? CHAT_COPY.tools.runFinishedNoReply : undefined}
                 duration={group.durationMilliseconds === undefined
                   ? undefined
                   : formatCallDuration(group.durationMilliseconds)}

@@ -125,6 +125,12 @@
      * Without it, each control calls its callback directly.
      */
     turnCommands?: TurnCommands | undefined;
+    /**
+     * The message is the anchor of a turn the run only called tools in, which has no assistant
+     * message of its own: it draws the turn's outcome and nothing else, with no line of time or
+     * actions, and reads as a turn that wrote no answer.
+     */
+    turnAnchor?: boolean;
     /** Disables the Quote action, for example when no more quotes fit. */
     quoteDisabled?: boolean;
     /** The id of an element that explains why Quote is disabled. */
@@ -308,6 +314,7 @@
     onQuote,
     onRegenerate,
     turnCommands,
+    turnAnchor = false,
     quoteDisabled = false,
     quoteDisabledDescriptionId,
     oneditingchange,
@@ -632,7 +639,7 @@
   // through deriveMessageParts + the parts renderer below.
   const textContent = $derived(getMessageText(message));
   // A turn that said only what it was doing wrote no answer, so its notice does not claim one.
-  const withoutAnswer = $derived(narration && message.role === 'assistant');
+  const withoutAnswer = $derived((narration || turnAnchor) && message.role === 'assistant');
   // Text that already ends where a sentence ends (a closing quote, bracket or Markdown mark may
   // follow) shows no ellipsis after it: "first. …" says the stop twice.
   const endsInTerminalPunctuation = $derived(/[.!?…。！？][\s"'”’)\]*_`~]*$/u.test(textContent));
@@ -1167,7 +1174,8 @@
   data-ends-in-punctuation={endsInTerminalPunctuation ? '' : undefined}
   data-section={section === 'whole' ? undefined : section}
   data-turn-state={turn.kind === 'complete' ? undefined : turn.kind}
-  data-role={message.role}
+  data-role={turnAnchor ? undefined : message.role}
+  data-turn-anchor={turnAnchor ? '' : undefined}
   data-message-direction={messageDirection}
   data-hidden={message.hidden || undefined}
   data-failed={isFailed || undefined}
@@ -1360,7 +1368,7 @@
          line under it yet: no time, Copy or Quote until it ends. A stopped or failed turn has its
          line again, and so does an empty one, which carries its time there. Narration that does not
          ask the person anything is not an answer, so it has no line unless it has sources. -->
-    {#if !isEditing && !systemRow && turnPresentation.line && (!bareNarration || shownSources)}
+    {#if !isEditing && !systemRow && !turnAnchor && turnPresentation.line && (!bareNarration || shownSources)}
       {@render transcriptLine()}
     {/if}
     {#if noteParts.length > 0}

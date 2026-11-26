@@ -947,7 +947,7 @@ describe('the last turn’s outcome and its recovery commands (COR-2725)', () =>
     expect(
       outcome?.closest('.chat-message-wrapper')?.querySelector('.chat-message-line'),
     ).toBeNull();
-    expect(container.textContent).not.toContain(CHAT_COPY.tools.runFinishedNoReply);
+    expect(container.textContent).not.toContain('Run finished, no reply');
     expect(container.querySelectorAll('.chat-turn-outcome')).toHaveLength(1);
   });
 });

@@ -67,11 +67,47 @@ export type TurnOutcome = {
 };
 
 /** Marks the message that stands for a turn with no assistant message. */
-export const TURN_OUTCOME_ANCHOR_KEY = 'cinder:turn-outcome-anchor';
+const TURN_OUTCOME_ANCHOR_KEY = 'cinder:turn-outcome-anchor';
 
-/** The message a tool-only turn's outcome is drawn on, after its steps. Main: no turn had one. */
-export function toolOnlyTurnAnchor(_rows: readonly Message[]): Message | undefined {
-  return undefined;
+/** Whether `message` is the anchor of a tool-only turn's outcome, which is no row of the conversation. */
+export function isTurnOutcomeAnchor(message: Message): boolean {
+  return typeof message.metadata[TURN_OUTCOME_ANCHOR_KEY] === 'string';
+}
+
+/** The last turn's rows, hidden ones left out. */
+function lastTurnRows(rows: readonly Message[]): Message[] {
+  const shown = rows.filter((row) => !row.hidden);
+  return shown.slice(Math.max(0, shown.findLastIndex(opensTurn)));
+}
+
+/**
+ * The message a turn's outcome is drawn on when the turn has no assistant message, because its run
+ * only called tools (RunStates R3 to R6 supersede the rail footnote and the stop note that stood
+ * there). It is no row of the conversation: it stands after the turn's last row, with that row's
+ * time, so the outcome reads after the steps. `undefined` for a turn that has an assistant message
+ * or no tool call.
+ */
+export function toolOnlyTurnAnchor(rows: readonly Message[]): Message | undefined {
+  const turn = lastTurnRows(rows);
+  const last = turn.at(-1);
+  if (last === undefined) return undefined;
+  if (turn.some((row) => row.role === 'assistant')) return undefined;
+  if (!turn.some((row) => row.role === 'tool-call')) return undefined;
+  return {
+    id: `${last.id}:outcome`,
+    role: 'assistant',
+    content: '',
+    position: last.position,
+    createdAt: last.createdAt,
+    hidden: false,
+    metadata: { [TURN_OUTCOME_ANCHOR_KEY]: last.id },
+  };
+}
+
+/** The row of the conversation a tool-only turn's anchor stands after. */
+function anchoredRowId(anchor: Message): string | undefined {
+  const row = anchor.metadata[TURN_OUTCOME_ANCHOR_KEY];
+  return typeof row === 'string' ? row : undefined;
 }
 
 function rowOf(conversation: ConversationHistory, id: string): Message | undefined {
@@ -106,7 +142,14 @@ function lastTurnStop(conversation: ConversationHistory): TurnStop | undefined {
   // A stop note may belong to the new person's message when a run ends before producing a reply.
   // Keep it there. Replacing the previous turn's assistant would falsely mark a completed reply
   // failed and would bind recovery controls to its run.
-  if (!currentTurn.some((id) => rowOf(conversation, id)?.role === 'assistant')) return undefined;
+  // A turn of only tool calls has no assistant message, and the anchor after its steps carries it.
+  if (
+    !currentTurn.some((id) => {
+      const role = rowOf(conversation, id)?.role;
+      return role === 'assistant' || role === 'tool-call';
+    })
+  )
+    return undefined;
   for (const id of currentTurn) {
     const row = rowOf(conversation, id);
     if (row === undefined) continue;
@@ -158,26 +201,24 @@ function reconnectingState(
 /**
  * Whether the last turn ended on tool activity, or on a blank reply, with every call answered and
  * nothing said about its stop: the run finished and wrote no answer. A call with no answer was
- * interrupted, one that waits on an approval is not finished, and one that errored (failed, or was
- * refused) is not a finished call, so none of them is an empty answer.
+ * interrupted, and one that waits on an approval is not finished, so neither is an empty answer.
  */
 function endsWithoutAnswer(conversation: ConversationHistory): boolean {
   const rows = conversation.ids
     .slice(lastTurnStart(conversation))
     .flatMap((id) => rowOf(conversation, id) ?? [])
     .filter((row) => !row.hidden);
-  if (!rows.some((row) => row.role === 'assistant')) return false;
+  if (!rows.some((row) => row.role === 'assistant' || row.role === 'tool-call')) return false;
   if (rows.some((row) => (resolveMessageNotes(row) ?? []).some((note) => note.kind === 'stopped')))
     return false;
   const last = rows.at(-1);
   const endsOnBlankReply =
     last?.role === 'assistant' && last.toolCall === undefined && getMessageText(last).trim() === '';
   if (last?.role !== 'tool-call' && last?.role !== 'tool-result' && !endsOnBlankReply) return false;
-  // A step that failed offers its own Retry this step, and a refusal ends a turn the host words
-  // itself: only calls that finished leave a turn with no answer to write.
+  // Every call has its answer and none waits on a person. A last call that errored, or that the
+  // person refused, still ended a run that wrote nothing (COR-2725 decision).
   return pairToolCallsWithResults(rows).every(
-    (pair) =>
-      pair.result !== undefined && !['action_required', 'error'].includes(pair.result.outcome),
+    (pair) => pair.result !== undefined && pair.result.outcome !== 'action_required',
   );
 }
 
@@ -192,8 +233,9 @@ export function resolveTurnOutcome(
 ): TurnOutcome {
   const stop = facts.running ? undefined : lastTurnStop(conversation);
   const shown = withoutStopLine(conversation, stop);
-  const assistantId = lastAssistantId(shown);
-  const rowId = assistantId;
+  const anchor = toolOnlyTurnAnchor(shown.ids.flatMap((id) => rowOf(shown, id) ?? []));
+  const assistantId = anchor?.id ?? lastAssistantId(shown);
+  const rowId = anchor === undefined ? assistantId : anchoredRowId(anchor);
   if (facts.reconnect?.runDropped === true)
     return {
       conversation: shown,

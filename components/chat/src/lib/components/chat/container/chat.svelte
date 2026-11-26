@@ -101,6 +101,7 @@
   import type { BodyMessagePart } from '../message/chat-message-parts.ts';
   import { resolveMessageTurnState } from '../message/turn-state.ts';
   import { TurnCommands } from '../message/turn-commands.ts';
+  import { isTurnOutcomeAnchor, toolOnlyTurnAnchor } from '../message/turn-outcome.ts';
   import { resolveChatLabels } from '../chat-labels.ts';
   import {
     ApprovalGroup,
@@ -710,6 +711,15 @@
         ? (message) =>
             ['stopped', 'failed'].includes(
               resolveMessageTurnState(message, messageTurnState)?.kind ?? '',
+            )
+        : undefined,
+    // A turn the run only called tools in has no assistant message: its stop, failure or empty
+    // answer is drawn after its steps, on the anchor Chat makes for the turn (COR-2725).
+    getTurnEndOutcome: () =>
+      variant === 'transcript'
+        ? (anchor) =>
+            ['stopped', 'failed', 'empty'].includes(
+              resolveMessageTurnState(anchor, messageTurnState)?.kind ?? '',
             )
         : undefined,
   });
@@ -1634,6 +1644,12 @@
   });
   $effect(() => () => turnCommands.dispose());
   const reconnectingTurn = $derived.by(() => {
+    const anchor = toolOnlyTurnAnchor(messages);
+    const anchorState =
+      anchor === undefined ? undefined : resolveMessageTurnState(anchor, messageTurnState);
+    if (anchor !== undefined && anchorState?.kind === 'reconnecting') {
+      return { messageId: anchor.id, state: anchorState };
+    }
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index];
       if (message === undefined || message.role !== 'assistant') continue;
@@ -2015,7 +2031,9 @@
     isRunActive: () => composerSending || approvalWaiting,
     isSendNowAvailable: () => composerStatus?.kind !== 'offline',
     getRunOutcome: () => {
-      const latestAssistant = messages.findLast((message) => message.role === 'assistant');
+      const latestAssistant =
+        toolOnlyTurnAnchor(messages) ??
+        messages.findLast((message) => message.role === 'assistant');
       const outcome =
         latestAssistant === undefined
           ? undefined
@@ -2696,6 +2714,7 @@
           onQuote={allowQuote ? handleQuote : undefined}
           onRegenerate={message.id === lastAssistantMessageId ? onRegenerate : undefined}
           {turnCommands}
+          turnAnchor={isTurnOutcomeAnchor(message)}
           quoteDisabled={quotes.isFull}
           quoteDisabledDescriptionId={quotes.isFull ? quoteLimitNoteId : undefined}
           oneditingchange={(editing) => handleEditingChange(message.id, editing)}

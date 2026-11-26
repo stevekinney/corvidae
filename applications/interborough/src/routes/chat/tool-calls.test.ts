@@ -254,15 +254,6 @@ describe('a turn’s tool calls', () => {
     expect(getAllByText(/^Result:/)).toHaveLength(1);
   });
 
-  test('a turn that ends on a tool call closes with the run’s end state', () => {
-    const { container } = render(Harness, {
-      props: { entries: [entry({ callId: 'c1' })], endLabel: 'Run finished, no reply' },
-    } as never);
-    expect(container.querySelector('.cinder-tool-call-rail__end')?.textContent).toContain(
-      'Run finished, no reply',
-    );
-  });
-
   test('three calls fold into a summary line, and an interrupted call is never folded away', () => {
     const entries = [
       ...Array.from({ length: 12 }, (_, index) =>

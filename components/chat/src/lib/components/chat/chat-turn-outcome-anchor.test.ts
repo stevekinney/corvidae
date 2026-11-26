@@ -128,10 +128,11 @@ describe('Chat — the outcome of a turn with no assistant message', () => {
         const base = turnOf(lastCall);
         const conversation = cell.stop === undefined ? base : noted(base, cell.stop);
         const outcome: TurnOutcome = resolveTurnOutcome(conversation, IDLE);
+        // A command the host has not answered yet.
         const calls: Record<string, ReturnType<typeof mock>> = {
-          continue: mock((_id: string) => undefined),
-          discard: mock((_id: string) => undefined),
-          retry: mock((_id: string) => undefined),
+          continue: mock((_id: string) => new Promise<void>(() => undefined)),
+          discard: mock((_id: string) => new Promise<void>(() => undefined)),
+          retry: mock((_id: string) => new Promise<void>(() => undefined)),
         };
         const { container } = render(Chat, {
           id: 'only-tools',
@@ -166,12 +167,13 @@ describe('Chat — the outcome of a turn with no assistant message', () => {
           await fireEvent.click(button);
         }
         await tick();
-        const pressed = { stopped: ['continue', 'discard'], failed: ['retry'], empty: ['retry'] }[
-          cell.kind
-        ];
-        // The first press of a stopped turn holds the other control, so only it reaches the host.
-        expect(calls[pressed[0]!]).toHaveBeenCalledTimes(1);
-        expect(calls[pressed[0]!]).toHaveBeenCalledWith(`${conversation.ids.at(-1)!}:outcome`);
+        const anchorId = `${conversation.ids.at(-1)!}:outcome`;
+        // The first press of a stopped turn holds the other control: only it reaches the host.
+        const reached = { stopped: 'continue', failed: 'retry', empty: 'retry' }[cell.kind];
+        expect(calls[reached]).toHaveBeenCalledTimes(1);
+        expect(calls[reached]).toHaveBeenCalledWith(anchorId);
+        const held = { stopped: ['discard'], failed: [], empty: [] }[cell.kind];
+        for (const name of held) expect(calls[name]).toHaveBeenCalledTimes(0);
       });
     }
   }

@@ -25,8 +25,6 @@
     decision?: Snippet<[ToolCallEntry]>;
     /** Who the person is to this chat and which decisions were made on another page, for the words of a decided call. */
     decided?: DecisionContext;
-    /** The run's end state, on its own line after the last row, for a turn that ends on a tool call. */
-    endLabel?: string | undefined;
     /** How long the turn spent on its tools, formatted ("18s"), at the end of the summary line; left out when no call recorded its times. */
     duration?: string | undefined;
     /** An inline plugin panel for a completed tool call. */
@@ -49,7 +47,6 @@
     entries,
     decision,
     decided = {},
-    endLabel,
     duration,
     mcpApp,
     opensPanel,
@@ -118,7 +115,6 @@
     {calls}
     {running}
     {duration}
-    {endLabel}
     label={CHAT_COPY.tools.railLabel}
     labels={{ retry: 'Retry this step' }}
     {selectedId}

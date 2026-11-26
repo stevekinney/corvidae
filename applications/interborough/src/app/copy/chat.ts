@@ -204,8 +204,6 @@ export const CHAT_COPY = {
     expiredBeforeDecision: 'Expired before a decision was made.',
     /** The row of a call whose approval no run waits on any more, though nobody decided it. */
     noLongerWaiting: 'No longer waiting',
-    /** The rail's end state for a turn that ended on a tool call, so it does not look hung. */
-    runFinishedNoReply: 'Run finished, no reply',
     /**
      * How a decided approval is worded on the rail and under the call: "Approved by you 10:33 AM",
      * and, for one decided on a page that is not this one, "Approved by you in Reviews 10:46 AM".

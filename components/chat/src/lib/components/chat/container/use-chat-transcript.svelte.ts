@@ -1,5 +1,6 @@
 import { isStreamingMessage } from '../builders.ts';
 import type { ConversationHistory, Message, ToolResult } from '../conversation-model.ts';
+import { toolOnlyTurnAnchor } from '../message/turn-outcome.ts';
 import type { ChatTurnState } from '../message/turn-state.ts';
 import { resolveMessageTurnState } from '../message/turn-state.ts';
 import {
@@ -43,6 +44,11 @@ export interface UseChatTranscriptOptions {
    * turn reads as its text, its steps, then how it ended. Absent, no notice moves.
    */
   getDeferOutcome?: (() => ((message: Message) => boolean) | undefined) | undefined;
+  /**
+   * Whether the outcome of a last turn that has no assistant message (its run only called tools)
+   * is drawn after its steps, asked of the anchor Chat makes for that turn.
+   */
+  getTurnEndOutcome?: (() => ((anchor: Message) => boolean) | undefined) | undefined;
 }
 
 export interface UseChatTranscriptReturn {
@@ -76,10 +82,13 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
   const turnReconnects = $derived.by(() => {
     const activeMessageId = options.getStreamingMessageId() ?? messages.at(-1)?.id;
     const activeMessage = messages.find((message) => message.id === activeMessageId);
+    const anchor = toolOnlyTurnAnchor(messages);
     return (
-      activeMessage !== undefined &&
-      resolveMessageTurnState(activeMessage, options.getMessageTurnState?.())?.kind ===
-        'reconnecting'
+      (activeMessage !== undefined &&
+        resolveMessageTurnState(activeMessage, options.getMessageTurnState?.())?.kind ===
+          'reconnecting') ||
+      (anchor !== undefined &&
+        resolveMessageTurnState(anchor, options.getMessageTurnState?.())?.kind === 'reconnecting')
     );
   });
 
@@ -99,6 +108,8 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
       if (canFoldNarration !== undefined) renderOptions.canFoldNarration = canFoldNarration;
       const deferOutcome = options.getDeferOutcome?.();
       if (deferOutcome !== undefined) renderOptions.deferOutcome = deferOutcome;
+      const turnEndOutcome = options.getTurnEndOutcome?.();
+      if (turnEndOutcome !== undefined) renderOptions.turnEndOutcome = turnEndOutcome;
       if (options.getUngroupAllToolCalls()) {
         renderOptions.ungroupedToolCallIds = new Set(
           messages.flatMap((message) => (message.toolCall?.id ? [message.toolCall.id] : [])),

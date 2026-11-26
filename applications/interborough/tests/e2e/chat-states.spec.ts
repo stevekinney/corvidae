@@ -599,7 +599,7 @@ test.describe('Chat not found (frame g: 19u)', () => {
 });
 
 test.describe('A turn that ends on a tool call (frame j: 20h)', () => {
-  test('is Done with a green dot, shows the message and the Lookup order row, no agent reply, and closes the rail with the run finished (20h)', async ({
+  test('is Done with a green dot, shows the message and the Lookup order row, no agent reply, and says it wrote no answer once after its steps (20h, now R6)', async ({
     page,
     request,
   }) => {
@@ -618,9 +618,13 @@ test.describe('A turn that ends on a tool call (frame j: 20h)', () => {
     await expect(lookup).toContainText('4471');
     await expect(lookup).toContainText('→ $42.00, delivered Monday, flagged damaged');
     await expect(lookup).toContainText('0.4s');
-    // No agent reply, and the rail says the run is over rather than looking hung.
+    // No agent reply. R6 supersedes row 20h's rail footnote (COR-2725): the turn says it wrote no
+    // answer once, in a row after its steps, with its time and Try again.
     await expect(transcript(page).locator('[data-role="assistant"]')).toHaveCount(0);
-    await expect(rail(page)).toContainText('Run finished, no reply');
+    const empty = transcript(page).locator('.chat-turn-outcome[data-kind="empty"]');
+    await expect(empty).toContainText('The agent finished without writing an answer.');
+    await expect(empty.getByRole('button', { name: 'Try again' })).toBeVisible();
+    await expect(rail(page)).not.toContainText('Run finished, no reply');
     await expect(transcript(page).locator('.chat-note')).toHaveCount(0);
     await captureForDesignReview(page, {
       route: '/chats/:chat',
