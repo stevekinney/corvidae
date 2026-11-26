@@ -1,14 +1,14 @@
 {
   "issue": "COR-2705",
   "branch": "codex/cor-2705-workers-npm",
-  "checkedAt": "8688df9a8",
+  "checkedAt": "83a4d5f18aca593205673079e08b31e359e112e8",
   "briefVersion": "c0e6e9914f38",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "All production files under packages/velveteen/src/server are free of Bun member access; the existing Bun-specific server test remains a test-only runtime fixture."
+      "evidence": "git grep -n \"Bun\\.\" -- packages/velveteen/src/server returned no matches; server tests now import their runtime primitives directly."
     },
     {
       "id": "AC2",
@@ -18,7 +18,7 @@
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "44ea3d475 added cookies.test.ts and passed it against Bun Cookie and CookieMap. The unchanged test passed after the portable implementation at 8688df9a8."
+      "evidence": "44ea3d475 added cookies.test.ts and passed it against Bun Cookie and CookieMap. The unchanged baseline cases passed after the portable implementation, and 72ca387a6 added duplicate-name parity: first-match lookup, ordered iteration, and replacement mutation."
     },
     {
       "id": "AC4",
