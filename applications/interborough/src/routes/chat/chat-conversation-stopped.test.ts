@@ -220,13 +220,13 @@ function open(
     served,
     view:
       options.steer === 'held'
-        ? (render(SessionSwitch, {
+        ? render(SessionSwitch, {
             props: {
               page: ChatConversation,
               sessionId: 'session-1',
               pageProps: { title: 'Refund', agentName: 'assistant' },
             },
-          } as never) as ReturnType<typeof mount>)
+          } as never)
         : mount({ sessionId: 'session-1', title: 'Refund', agentName: 'assistant' }),
   };
 }
