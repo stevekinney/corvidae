@@ -127,19 +127,18 @@ async function createGeneration(
   const { generation, hooks } = options;
   const suppliedRegistry = options.registry;
   const suppliedAssets = options.assets;
-  const registry: ServerRegistry =
-    suppliedRegistry ??
-    (await import(
-      (await import("node:path")).join(
-        generation.directory,
-        generation.manifest.server.file,
-      )
-    ));
-  const filesystemAssets = suppliedAssets
-    ? undefined
-    : (await import("../build/serving.ts")).createProductionAssetRoutes(
-        generation,
-      );
+  let registry: ServerRegistry = suppliedRegistry as ServerRegistry;
+  if (!suppliedRegistry) {
+    const path = await import("node:path");
+    registry = await import(
+      path.join(generation.directory, generation.manifest.server.file)
+    );
+  }
+  let filesystemAssets: AssetRoutes | undefined;
+  if (!suppliedAssets) {
+    const serving = await import("../build/serving.ts");
+    filesystemAssets = serving.createProductionAssetRoutes(generation);
+  }
   const assets: AssetSource = suppliedAssets ?? {
     get: (url, request) => filesystemAssets![url.pathname]?.(request),
   };
