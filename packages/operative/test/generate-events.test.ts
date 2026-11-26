@@ -1,5 +1,6 @@
 import { HookRegistry } from '@lostgradient/lifecycle';
-import { createTestToolbox, createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 import { z } from 'zod';

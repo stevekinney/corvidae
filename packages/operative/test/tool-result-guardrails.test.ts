@@ -4,8 +4,9 @@
  * shown next, what the conversation keeps, whether the session is tainted, and which events fire.
  */
 import { HookRegistry } from '@lostgradient/lifecycle';
-import { createTestToolbox, createTool } from 'armorer';
+import { createTool } from 'armorer';
 import { toolContent } from 'armorer/protocol';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, type Message } from 'conversationalist';
 import { z } from 'zod';

@@ -11,11 +11,8 @@ import {
   agentDefaultEffortSchema,
   AGENT_FILE_STEM_PATTERN as BUREAU_IDENTIFIER_PATTERN,
 } from '@lostgradient/bureau';
-import {
-  createAgent as createCodeAgent,
-  createScriptedGenerate,
-  DEFAULT_MAXIMUM_STEPS,
-} from '@lostgradient/operative';
+import { createAgent as createCodeAgent, DEFAULT_MAXIMUM_STEPS } from '@lostgradient/operative';
+import { createScriptedGenerate } from '@lostgradient/operative/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

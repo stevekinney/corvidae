@@ -4,12 +4,8 @@
  * storage.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import {
-  createAgent,
-  type GenerateFunction,
-  type ScriptedGenerateStep,
-  stopWhen,
-} from '@lostgradient/operative';
+import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type ScriptedGenerateStep } from '@lostgradient/operative/testing';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { createToolbox, type Tool } from 'armorer';
 

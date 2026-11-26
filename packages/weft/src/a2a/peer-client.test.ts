@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { AgentCard } from '@a2a-js/sdk';
 
-import { yieldToPortableEventLoop } from '../testing/event-loop.ts';
+import { yieldToPortableEventLoop } from '../portable-event-loop.ts';
 import { A2APeerError, ExtensionSupportRequiredError } from './peer-client-types.ts';
 import { createScriptedPeer, type ScriptedPeerOptions } from './peer-client.test-support.ts';
 import { createA2APeerClient } from './peer-client.ts';

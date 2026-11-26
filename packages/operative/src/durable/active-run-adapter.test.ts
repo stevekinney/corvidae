@@ -7,7 +7,6 @@ import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import type { AnyToolbox } from 'armorer';
 import {
-  createTestToolbox,
   createTool,
   createToolbox,
   ToolboxBudgetExceededEvent,
@@ -17,6 +16,7 @@ import {
   ToolboxProgressEvent,
   ToolboxSettledEvent,
 } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
 import { z } from 'zod';

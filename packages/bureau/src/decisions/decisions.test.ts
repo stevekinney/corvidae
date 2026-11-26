@@ -5,12 +5,12 @@
 import { sha256HexSync } from '@lostgradient/cryptography';
 import {
   type BackendDescriptor,
-  createMockGenerate,
   type DecisionKind,
   type DecisionModel,
   DecisionSchemaError,
   type GenerateFunction,
 } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

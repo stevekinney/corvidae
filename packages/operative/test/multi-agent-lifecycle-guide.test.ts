@@ -19,7 +19,6 @@ import {
   attenuateDelegationCapabilities,
   createAgent,
   createChildRunRegistry,
-  createMockGenerate,
   createSessionHandle,
   createSessionStore,
   defineChildSignals,
@@ -33,6 +32,7 @@ import {
   stopWhen,
   verifyDelegationGrant,
 } from '../src/index';
+import { createMockGenerate } from '../src/testing/index';
 
 describe('documentation/multi-agent-lifecycle.md — supervisor-mediated relay', () => {
   it('relays a finding from one child to its sibling through the parent, then stops only the first child', async () => {

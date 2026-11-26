@@ -4,7 +4,8 @@
  * names a single catalog model in `allowedCandidates`, so `bureau.agents.models` lists one and
  * Chat shows no choice.
  */
-import { createAgent, createScriptedGenerate, stopWhen } from '@lostgradient/operative';
+import { createAgent, stopWhen } from '@lostgradient/operative';
+import { createScriptedGenerate } from '@lostgradient/operative/testing';
 
 /** The name the e2e host serves the one-model agent under. */
 export const SINGLE_MODEL_AGENT_NAME = 'single-model';

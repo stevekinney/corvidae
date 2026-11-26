@@ -6,18 +6,21 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createGovernedMemory,
-  createInMemoryMemoryRecordStorage,
   createMemoryAuthority,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
-  createMockEmbedder,
   type GovernedMemory,
   type MemoryDeletionPropagator,
   type MemoryDeletionReceipt,
   createMemoryVectorStore,
-  createTestEmbedders,
 } from '@lostgradient/memory';
-import { stopWhen, waitForCondition, createAgent } from '@lostgradient/operative';
+import {
+  createInMemoryMemoryRecordStorage,
+  createMockEmbedder,
+  createTestEmbedders,
+} from '@lostgradient/memory/testing';
+import { stopWhen, createAgent } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 

@@ -21,8 +21,6 @@ import {
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
   createMemoryVectorStore,
-  createMockEmbedder,
-  createTestEmbedders,
   createWeftMemoryRecordStorage,
   MemoryAuthorityError,
   type MemoryDeletionReceipt,
@@ -31,6 +29,7 @@ import {
   MemoryRecordVersionConflictError,
   withEmbeddingCache,
 } from '../../src/index';
+import { createMockEmbedder, createTestEmbedders } from '../../src/testing/index';
 import {
   authority,
   createGovernedFixture,

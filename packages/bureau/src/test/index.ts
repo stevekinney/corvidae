@@ -61,7 +61,7 @@ export {
   createMemoryStorageFixture,
   createSqliteStorageFixture,
 } from './storage-fixtures';
-export { waitForCondition, waitForRunState } from '@lostgradient/operative';
+export { waitForCondition, waitForRunState } from '@lostgradient/operative/testing';
 export { closedTask } from './closed-task';
 export { listHeldTasks } from './list-held-tasks';
 export { runTask, taskContent } from './run-task';

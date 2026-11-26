@@ -10,9 +10,9 @@ import {
   withBackendDescriptors,
   type GenerateFunction,
   type GenerateResponse,
-  type ScriptedGenerateStep,
 } from '@lostgradient/operative';
 import { anthropicRows } from '@lostgradient/operative-anthropic';
+import type { ScriptedGenerateStep } from '@lostgradient/operative/testing';
 import { REFUND_TOOL_REVISION } from './refund-ledger.ts';
 
 /** How many times a script repeats before it runs out. */

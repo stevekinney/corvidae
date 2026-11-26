@@ -7,7 +7,8 @@
  * not text at all (an untyped caller's number, `null`, or object) names no goal
  * either, and no outcome may carry it as though it were an id.
  */
-import { createMockGenerate, stopWhen, createAgent } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';

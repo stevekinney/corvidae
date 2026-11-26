@@ -3,12 +3,14 @@ import { describe, expect, spyOn, test } from 'bun:test';
 import {
   type AgentRun,
   createAgent,
-  createManualRuntimeServices,
-  createScriptedGenerate,
   type RunnableAgent,
   type RunResultBase,
-  type ScriptedGenerateStep,
 } from '@lostgradient/operative';
+import {
+  createManualRuntimeServices,
+  createScriptedGenerate,
+  type ScriptedGenerateStep,
+} from '@lostgradient/operative/testing';
 import { throwingRejectionOf } from '@lostgradient/testing';
 
 import type { CriterionScorers } from './criteria';

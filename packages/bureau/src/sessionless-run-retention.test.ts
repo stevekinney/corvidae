@@ -13,9 +13,9 @@ import {
   createAgent,
   type GenerateContext,
   stopWhen,
-  waitForCondition,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';

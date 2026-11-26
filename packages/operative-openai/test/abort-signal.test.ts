@@ -6,7 +6,8 @@
  * stream open until the model finished on its own, and an aborted run parked
  * on a stalled stream never resolved.
  */
-import { createTestToolbox, createToolbox } from 'armorer';
+import { createToolbox } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
@@ -15,9 +16,9 @@ import {
   createActiveRun,
   createAgentRun,
   noToolCalls,
-  waitForCondition,
 } from '@lostgradient/operative';
 import type { GenerateContext, StreamingHandle } from '@lostgradient/operative/provider-kit';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import type {
   OpenAIChatCompletionChunk,
   OpenAIChatCompletionCreateRequest,
