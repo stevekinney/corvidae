@@ -19,6 +19,12 @@
   min-width: 0;
 }
 
+@media (min-width: 90rem) {
+  .ib-run__layout {
+    max-inline-size: var(--cinder-content-width);
+  }
+}
+
 @media (min-width: 1024px) {
   .ib-run__layout {
     grid-template-columns: minmax(0, 1fr) 320px;

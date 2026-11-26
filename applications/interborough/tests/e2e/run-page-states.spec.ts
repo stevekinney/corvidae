@@ -36,6 +36,32 @@ async function openRun(page: Page, path: string, width: number): Promise<void> {
   await expect(page.locator('[data-run-header] [data-status-word]')).toBeVisible();
 }
 
+test('/runs/:run desktop content width keeps the failed alert and Details together', async ({
+  page,
+}) => {
+  const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+  await openRun(page, `/runs/${encodeURIComponent(world.runs.failed)}`, 1920);
+  const layout = page.locator('.ib-run__layout');
+  const alert = page.getByTestId('run-step-failure');
+  const rail = page.getByRole('complementary', { name: 'Details' });
+  await expect(alert.locator('[data-explanation="summary"]')).toBeVisible();
+  const { layoutBox, alertBox, railBox } = await readBoxes(page, {
+    layoutBox: layout,
+    alertBox: alert,
+    railBox: rail,
+  });
+  const contentWidth = await layout.evaluate((element) =>
+    parseFloat(getComputedStyle(element).maxInlineSize),
+  );
+  expect(layoutBox.width).toBeLessThanOrEqual(contentWidth + 1);
+  expect(alertBox.x + alertBox.width).toBeLessThanOrEqual(railBox.x);
+  expect(railBox.width).toBeCloseTo(320, 0);
+  expect(railBox.x + railBox.width).toBeLessThanOrEqual(layoutBox.x + layoutBox.width + 1);
+  const disclosure = alert.getByRole('button', { name: 'Show the error details' });
+  await disclosure.click();
+  await expect(alert.locator('[data-explanation="stack"]')).toBeVisible();
+});
+
 for (const width of WIDTHS) {
   // The route leads the title, so a design review's route filter (`--grep '/runs/:run'`) runs these.
   test.describe(`/runs/:run at ${String(width)} pixels`, () => {
