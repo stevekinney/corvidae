@@ -32,15 +32,19 @@ export function oidc(options: {
   clientSecret: string;
   fetch?: client.CustomFetch;
 }): () => Promise<client.Configuration> {
+  const issuer = new URL(options.issuer);
+  const clientId = options.clientId;
+  const clientSecret = options.clientSecret;
+  const fetch = options.fetch;
   return () =>
     client.discovery(
-      new URL(options.issuer),
-      options.clientId,
-      { client_secret: options.clientSecret, [client.clockTolerance]: 0 },
+      new URL(issuer),
+      clientId,
+      { client_secret: clientSecret, [client.clockTolerance]: 0 },
       undefined,
       {
         execute: [client.enableNonRepudiationChecks],
-        ...(options.fetch === undefined ? {} : { [client.customFetch]: options.fetch }),
+        ...(fetch === undefined ? {} : { [client.customFetch]: fetch }),
       },
     );
 }
