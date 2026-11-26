@@ -160,7 +160,7 @@ export function createReviewRecords<D extends AgentDefinitions>(
   async function peerApprovalsOfRun(
     runId: string,
   ): Promise<Extract<PendingReview, { kind: 'tool-approval' }>[]> {
-    if (!runtime.durable || !runtime.sessionStore || store.getRun(runId) !== undefined) return [];
+    if (!runtime.durable || !runtime.sessionStore) return [];
     const run = await runtime.durable.engine.get(runId);
     if (
       !run ||
@@ -261,16 +261,33 @@ export function createReviewRecords<D extends AgentDefinitions>(
   async function filterSettledApprovals(
     reviews: readonly PendingReview[],
   ): Promise<PendingReview[]> {
-    const current = await Promise.all(
+    const refreshed = await Promise.all(
       reviews.map(async (review) => {
         if (review.kind !== 'tool-approval' || !review.sessionId || !runtime.sessionStore)
           return review;
+        if (peerAdoptedRunIds.has(review.runId)) {
+          const current = await peerApprovalsOfRun(review.runId);
+          return current.find((candidate) => candidate.id === review.id);
+        }
         const session = await runtime.sessionStore.load(review.sessionId);
         const decided = session?.metadata['resolvedReviewIds'];
-        return Array.isArray(decided) && decided.includes(review.id) ? undefined : review;
+        if (Array.isArray(decided) && decided.includes(review.id)) return undefined;
+        const rounds = session?.metadata['pendingApprovalRounds'];
+        const round =
+          rounds &&
+          typeof rounds === 'object' &&
+          !Array.isArray(rounds) &&
+          Object.hasOwn(rounds, review.id)
+            ? (rounds as Record<string, JSONValue>)[review.id]
+            : undefined;
+        if (typeof round === 'number' && round > review.round) {
+          const current = await peerApprovalsOfRun(review.runId);
+          return current.find((candidate) => candidate.id === review.id);
+        }
+        return review;
       }),
     );
-    return current.filter((review): review is PendingReview => review !== undefined);
+    return refreshed.filter((review): review is PendingReview => review !== undefined);
   }
 
   /**
@@ -838,11 +855,11 @@ export function createReviewRecords<D extends AgentDefinitions>(
 
   async function pendingReviewsOfRun(runId: string): Promise<PendingReview[]> {
     const waits = await pendingHumanWaitsOfRun(runId);
-    const peer = await peerApprovalsOfRun(runId);
-    if (peerAdoptedRunIds.has(runId)) return [...waits, ...peer];
-    const local = peers
+    const peer = store.getRun(runId) === undefined ? await peerApprovalsOfRun(runId) : [];
+    const listed = peers
       .listPendingReviews()
       .filter((review) => review.kind === 'tool-approval' && review.runId === runId);
+    const local = await filterSettledApprovals(listed);
     const known = new Set(local.map((review) => review.id));
     return [...waits, ...local, ...peer.filter((review) => !known.has(review.id))];
   }
@@ -1091,14 +1108,8 @@ export function createReviewRecords<D extends AgentDefinitions>(
   ): Promise<(PendingReview & ReviewResolutionFields) | undefined> {
     const pending = peers.listPendingReviews().find((candidate) => candidate.id === id);
     if (pending) {
-      if (pending.kind === 'tool-approval' && peerAdoptedRunIds.has(pending.runId)) {
-        const current = await peerApprovalsOfRun(pending.runId);
-        const peer = current.find((review) => review.id === id);
-        if (peer) return peer;
-      } else {
-        const current = await filterSettledApprovals([pending]);
-        if (current.length > 0) return pending;
-      }
+      const current = await filterSettledApprovals([pending]);
+      if (current[0]) return current[0];
     }
     // COR-1577: the park of a `bureau.run()` run, which no session holds.
     const runWait = core.runHumanWaits.find(id);

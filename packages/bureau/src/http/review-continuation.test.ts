@@ -155,6 +155,46 @@ async function reviewRead(handler: Handler, method: string, params: Record<strin
 }
 
 describe('peer adoption stays current across review operations (COR-2763)', () => {
+  it('continues on the origin after a peer settles its first approval', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      {
+        script: [chargeTwice, say('Both charged.')],
+        toolbox: approvalToolbox(charges),
+        storage: 'sqlite',
+      },
+      async (a) => {
+        const b = await a.peer([chargeTwice, say('Both charged.')]);
+        try {
+          const [first, second] = await chatWaitingOnApprovals(a);
+          const initial = a.bureau.reviews.list().find((review) => review.id === first);
+          if (!initial) throw new Error('Expected the first review');
+          const peerDecision = await resolveThroughOperation(b.handler, {
+            id: first,
+            decision: 'approve',
+            round: 0,
+          });
+          expect(peerDecision.result?.receipt).toBe('applied');
+          const task = await reviewRead(a.handler, 'bureau.tasks.get', { taskId: initial.runId });
+          const last = await resolveThroughOperation(a.handler, {
+            id: second,
+            decision: 'approve',
+            round: 0,
+          });
+          expect(last.result?.receipt).toBe('applied');
+          expect(last.result?.continuation?.status).toBe('started');
+          expect(task.result).toMatchObject({
+            status: 'input-required',
+            openWaits: [{ reviewId: second }],
+          });
+          expect(charges.toSorted((left, right) => left - right)).toEqual([500, 700]);
+        } finally {
+          await b.dispose();
+        }
+      },
+    );
+  });
+
   it('reads a newer round after a valid peer adoption', async () => {
     let revision = 0;
     const charges: number[] = [];
@@ -182,6 +222,10 @@ describe('peer adoption stays current across review operations (COR-2763)', () =
             round: 0,
           });
           expect(first.result?.receipt).toBe('superseded');
+          const originList = await reviewRead(a.handler, 'bureau.reviews.list', {});
+          const originDetail = await reviewRead(a.handler, 'bureau.reviews.get', { id });
+          expect(originList.result?.reviews).toMatchObject([{ id, round: 1 }]);
+          expect(originDetail.result).toMatchObject({ id, round: 1 });
           revision = 2;
           const second = await resolveThroughOperation(a.handler, {
             id,
