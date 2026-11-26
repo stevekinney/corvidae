@@ -181,6 +181,7 @@ The card title defaults to an `h3` with section headings one level deeper. Pass 
 | `unavailableReason` | `string` | no | — | Why an `unavailable` approval cannot be answered now, written beneath it. |
 | `view` | `"fields"` \| `"json"` | no | `"fields"` | Which view of the arguments the card and the detail page show, Fields or JSON; the row and decision layouts write the input as rows in the open. Bindable, so one switch can govern every payload on a page. Default `fields`. |
 | `why` | `string` | no | — | Why the agent wants to do this, written by the host and offered in the `decision` layout as a disclosure named "Why the agent wants to do this". |
+| `actionRenderer` | `(opaque)` | no | — | Wrap the existing action controls without replacing their guarded behavior. Not expressible in JSON Schema; see the component types for the signature. |
 | `context` | `(opaque)` | no | — | A line of context written above the question, such as "Test chat, this runs for real". Not expressible in JSON Schema; see the component types for the signature. |
 | `decisionReview` | `(opaque)` | no | — | An additional row-layout review control. It shares the row’s note, scope and guarded submit. Not expressible in JSON Schema; see the component types for the signature. |
 | `onAskAgain` | `(opaque)` | no | — | Requests a fresh approval after this one has expired in the decision layout. Not expressible in JSON Schema; see the component types for the signature. |
