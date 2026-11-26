@@ -134,6 +134,9 @@ const FETCH_BASE_SCHEMA = {
     exitCode: { type: 'integer' },
     base: { type: 'string' },
     error: { type: 'string' },
+    ancestor: { type: 'boolean' },
+    briefDigest: { type: 'string' },
+    currentDigest: { type: 'string' },
   },
   required: ['exitCode'],
 };
@@ -506,13 +509,20 @@ async function noVerdict(issue, checks, where, steps, evidence) {
   };
 }
 
-function fetchDispatchBase(issue) {
+/**
+ * Fetches the default branch. When it has moved past the brief's base, the same step says whether
+ * the base is its ancestor and reads the issue body digest of the brief on disk and of a fresh
+ * `--stdout` brief, so a moved base is accepted unless the issue itself changed.
+ */
+function fetchDispatchBase(issue, briefBase, briefPath, run) {
   phase('brief');
+  const runFlag = typeof run === 'string' && run !== '' ? ` --run ${run}` : '';
   return agent(
     [
       'Read the configured defaultBranch from scripts/chef/repository.json in this checkout.',
       'Fetch it with `git fetch --no-tags origin "refs/heads/<default>:refs/remotes/origin/<default>"`, substituting that branch name in both places.',
       'If the fetch succeeds, return exitCode 0 and base from `git rev-parse --verify refs/remotes/origin/<default>`. If either command fails, return its nonzero exitCode and error. Change no files and leave the checkout where it is.',
+      `If that base is not ${briefBase}, also run \`git merge-base --is-ancestor ${briefBase} <that base>\` and return ancestor true when it exits 0, false otherwise; return briefDigest, the value of the \`Issue body digest:\` line of the file ${briefPath}; and run \`bun scripts/chef/brief.ts ${issue} --stdout${runFlag}\` once and return currentDigest, the value of the \`Issue body digest:\` line it prints. Leave out a value you could not read.`,
     ].join('\n'),
     {
       label: `fetch base ${issue}`,
@@ -875,7 +885,7 @@ async function deliverOne(issue) {
 
   if (briefBase === undefined)
     return judgment(issue, 'validated brief has no pinned base SHA', steps);
-  const fetched = await fetchDispatchBase(issue);
+  const fetched = await fetchDispatchBase(issue, briefBase, briefPath, run);
   steps.fetchBase = fetched;
   if (fetched === null || fetched.exitCode !== 0)
     return judgment(
@@ -886,12 +896,30 @@ async function deliverOne(issue) {
   const fetchedBase = normalizeCommitSha(fetched.base);
   if (fetchedBase === undefined)
     return judgment(issue, 'fetch of the default branch did not return a commit SHA', steps);
-  if (fetchedBase !== briefBase)
-    return judgment(
-      issue,
-      `validated brief pins ${briefBase}; fetched default branch is ${fetched.base}. Prepare a fresh brief.`,
-      steps,
-    );
+  // A moved base needs no new evidence run (owner decision, 2026-11-21): the brief stands while its
+  // base is an ancestor of the fetched branch and the issue body is unchanged.
+  if (fetchedBase !== briefBase) {
+    if (fetched.ancestor !== true)
+      return judgment(
+        issue,
+        `validated brief pins ${briefBase}, which is not an ancestor of the fetched default branch ${fetched.base}. Prepare a fresh brief.`,
+        steps,
+      );
+    const digests = [fetched.briefDigest, fetched.currentDigest];
+    if (digests.some((value) => typeof value !== 'string' || value.trim() === ''))
+      return judgment(
+        issue,
+        'the default branch moved and the issue body digest could not be compared. Prepare a fresh brief.',
+        steps,
+      );
+    if (fetched.briefDigest.trim() !== fetched.currentDigest.trim())
+      return judgment(
+        issue,
+        `the issue body changed since the brief (digest ${fetched.briefDigest} became ${fetched.currentDigest}). Prepare a fresh brief.`,
+        steps,
+      );
+    log(`${issue}: default branch moved to ${fetched.base}; the brief's base is its ancestor`);
+  }
 
   const ownedPaths = [
     ...(args && args.paths && Array.isArray(args.paths[issue]) ? args.paths[issue] : []),

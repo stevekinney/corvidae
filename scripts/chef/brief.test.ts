@@ -18,6 +18,7 @@ import {
   deliveryRule,
   designLinks,
   designRowIds,
+  issueBodyDigestOf,
   issueVerificationLead,
   pathsIn,
   pushRule,
@@ -667,6 +668,21 @@ describe('a brief is lossless for the issue sections', () => {
     const brief = renderBrief(issue(body), { paths: [], verify: [], model: 'Sonnet' });
     expect(sectionOf(brief, /^verification\b/i)).toContain("The issue's verification: run these");
     expect(sectionOf(brief, /^checks\b/i)).toContain('`bun scripts/chef/focused-checks.ts`');
+  });
+});
+
+describe('the issue body digest', () => {
+  // A moved base is accepted when the issue body is unchanged; a claim's state move changes
+  // `updatedAt`, so the digest must not include it.
+  test('ends every brief, ignores updatedAt and follows the description', () => {
+    const brief = renderBrief(issue(description), { paths: [], verify: [], model: 'Sonnet' });
+    expect(brief).toContain(`\nIssue body digest: ${issueBodyDigestOf([issue(description)])}\n`);
+    expect(issueBodyDigestOf([{ ...issue(description), updatedAt: '2026-11-25T00:00:00Z' }])).toBe(
+      issueBodyDigestOf([issue(description)]),
+    );
+    expect(issueBodyDigestOf([issue(`${description}\n- amended`)])).not.toBe(
+      issueBodyDigestOf([issue(description)]),
+    );
   });
 });
 

@@ -331,6 +331,48 @@ describe('workflow scripts', () => {
     }
   });
 
+  // P-COR-128: COR-2693 never started because main moved past the brief's base while the run went
+  // on, though the owner decision of 2026-11-21 says a moved base needs no new evidence run. A base
+  // the fetched branch descends from is accepted; only a changed issue body refuses.
+  const moved = 'b'.repeat(40);
+  for (const [name, fetch, accepted] of [
+    [
+      'an ancestor base and an unchanged issue body',
+      { exitCode: 0, base: moved, ancestor: true, briefDigest: 'd1', currentDigest: 'd1' },
+      true,
+    ],
+    [
+      'a base the fetched branch does not descend from',
+      { exitCode: 0, base: moved, ancestor: false, briefDigest: 'd1', currentDigest: 'd1' },
+      false,
+    ],
+    [
+      'an issue body changed since the brief',
+      { exitCode: 0, base: moved, ancestor: true, briefDigest: 'd1', currentDigest: 'd2' },
+      false,
+    ],
+    [
+      'an issue digest that could not be read',
+      { exitCode: 0, base: moved, ancestor: true, briefDigest: 'd1' },
+      false,
+    ],
+  ] as [string, Record<string, unknown>, boolean][]) {
+    test(`a moved default branch with ${name} ${accepted ? 'dispatches' : 'refuses'}`, async () => {
+      const delivery = await runDelivery({}, { 'fetch base': fetch });
+      const prompt = delivery.calls[0]?.prompt ?? '';
+      expect(prompt).toContain(`git merge-base --is-ancestor ${dispatchBase}`);
+      expect(prompt).toContain('/main/tmp/chef/briefs/COR-7.md');
+      expect(prompt).toContain('bun scripts/chef/brief.ts COR-7 --stdout --run run-1');
+      if (accepted) {
+        expect(delivery.labels[1]).toBe('implement');
+        expect(delivery.result[0]?.status).toBe('READY_TO_LAND');
+      } else {
+        expect(delivery.labels).toEqual(['fetch']);
+        expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
+      }
+    });
+  }
+
   test('refuses dispatch when the fetch succeeds without a full commit SHA', async () => {
     for (const fetch of [{ exitCode: 0 }, { exitCode: 0, base: 'main' }]) {
       const delivery = await runDelivery({}, { 'fetch base': fetch });

@@ -634,8 +634,24 @@ export function briefVersionOf(issues: readonly IssueSummary[]): string {
   ).slice(0, 12);
 }
 
+/**
+ * A digest of the issues' bodies alone, without `updatedAt`, which a claim or a state move changes.
+ * `deliver-issue.js` compares it with a fresh `--stdout` brief when the default branch has moved
+ * past the brief's base: an unchanged body means the brief still stands (owner decision,
+ * 2026-11-21: a moved base needs no new evidence run).
+ */
+export function issueBodyDigestOf(issues: readonly IssueSummary[]): string {
+  return digest(
+    JSON.stringify(issues.map((issue) => [issue.identifier, issue.description ?? ''])),
+  ).slice(0, 12);
+}
+
 function versionLines(issues: readonly IssueSummary[]): string[] {
-  return ['', `Brief version: ${briefVersionOf(issues)}`];
+  return [
+    '',
+    `Brief version: ${briefVersionOf(issues)}`,
+    `Issue body digest: ${issueBodyDigestOf(issues)}`,
+  ];
 }
 
 /**
