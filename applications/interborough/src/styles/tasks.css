@@ -20,7 +20,7 @@
 }
 
 @media (min-width: 90rem) {
-  .ib-run__layout,
+  .ib-run[data-failed-run] > .ib-run__layout,
   .ib-run[data-failed-run] > [data-run-header] {
     max-inline-size: var(--cinder-content-width);
   }

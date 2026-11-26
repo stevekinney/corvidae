@@ -49,6 +49,7 @@ test('/runs/:run desktop content width keeps the failed alert and Details togeth
   const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
   await openRun(page, `/runs/${encodeURIComponent(world.runs.failed)}`, 1920);
   const layout = page.locator('.ib-run__layout');
+  await expect(page.locator('.ib-run[data-failed-run] > .ib-run__layout')).toHaveCount(1);
   const alert = page.getByTestId('run-step-failure');
   const rail = page.getByRole('complementary', { name: 'Details' });
   await expect(alert.locator('[data-explanation="summary"]')).toBeVisible();
@@ -71,6 +72,19 @@ test('/runs/:run desktop content width keeps the failed alert and Details togeth
   const disclosure = alert.getByRole('button', { name: 'Show the error details' });
   await disclosure.click();
   await expect(alert.locator('[data-explanation="stack"]')).toBeVisible();
+});
+
+test('/runs/:run desktop content width preserves completed runs', async ({ page }) => {
+  const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+  await openRun(page, `/runs/${encodeURIComponent(world.runs.done)}`, 1920);
+  const layout = page.locator('.ib-run:not([data-failed-run]) > .ib-run__layout');
+  const main = layout.locator('.ib-run__main');
+  const rail = page.getByRole('complementary', { name: 'Details' });
+  await expect(layout).toHaveCount(1);
+  expect(await layout.evaluate((element) => getComputedStyle(element).maxInlineSize)).toBe('none');
+  const { mainBox, railBox } = await readBoxes(page, { mainBox: main, railBox: rail });
+  expect(mainBox.x + mainBox.width).toBeLessThanOrEqual(railBox.x);
+  expect(railBox.width).toBeCloseTo(320, 0);
 });
 
 for (const width of WIDTHS) {
@@ -284,6 +298,10 @@ for (const width of WIDTHS) {
         route: '/runs/:run',
         state: 'failed instance',
         source: SOURCE,
+        ready: async () => {
+          await expect(page.locator('.ib-run__layout')).toHaveCount(1);
+          await expect(page.locator('.ib-run[data-failed-run] > .ib-run__layout')).toHaveCount(1);
+        },
       });
     });
 
