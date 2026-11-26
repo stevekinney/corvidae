@@ -1,7 +1,7 @@
 {
   "issue": "COR-2622",
   "branch": "steve/composable-refund-acceptance",
-  "checkedAt": "c436f273702f3cbccba15b5fae7db9ee09439eef",
+  "checkedAt": "b34470a275278ffe69ba12d4b3f40ebd6aeac66c",
   "briefVersion": "b4302e235229",
   "status": "READY",
   "criteria": [
@@ -13,7 +13,7 @@
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "b3d56709 scoped Chromium log covers independent process claims, provider barriers, deny and re-gate with zero provider effects; tmp/chef/scratch/COR-2622-19ac2844/final-focused-46f6898f.log contains direct controls."
+      "evidence": "b3d56709 scoped Chromium log covers independent process claims, provider barriers, deny and re-gate with zero provider effects; tmp/chef/scratch/COR-2622-19ac2844/final-focused-46f6898f.log contains direct controls. Bound run 45898366924 could not start any refund case without PostgreSQL; b34470a adds the service and Turbo propagation, exercised with Bun.SQL inside the actual Playwright image."
     },
     {
       "id": "AC3",
