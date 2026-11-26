@@ -7,7 +7,7 @@
  *
  * There is no sign-in. The host serves every request as the one local caller.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 import { z } from 'zod';
 
 import { bureauClient, type BureauInput, type BureauOutput } from './bureau-api.ts';

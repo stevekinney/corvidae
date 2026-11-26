@@ -5,6 +5,10 @@ import { readRestTextBody, type UnknownRestBinding } from '@lostgradient/backcha
 import { type Storage } from '@lostgradient/storage';
 import { decode } from '../../core/codec.ts';
 import type { WorkflowState } from '../../core/types.ts';
+import {
+  UPGRADE_REFUSAL_REASON_PREFIX,
+  WORKER_CONFLICT_REASONS,
+} from '../../core/worker-conflict-reasons.ts';
 import { KEYS } from '../../storage/keys.ts';
 import { NoRoutedWorkerDeploymentError } from '../../worker/no-routed-deployment-error.ts';
 import {
@@ -17,10 +21,6 @@ import {
   type WorkflowWorkerBinding,
 } from '../../worker/versioning-policy.ts';
 import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
-import {
-  UPGRADE_REFUSAL_REASON_PREFIX,
-  WORKER_CONFLICT_REASONS,
-} from './worker-conflict-reasons.ts';
 
 const inputSchema = z.object({
   workflowId: z.string().min(1),

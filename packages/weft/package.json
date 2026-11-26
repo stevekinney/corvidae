@@ -15,6 +15,7 @@
   ],
   "exports": {
     ".": "./src/index.ts",
+    "./client": "./src/client/index.ts",
     "./worker": "./src/worker/index.ts",
     "./worker/authoring": "./src/worker/authoring.ts",
     "./worker/generated-authoring": "./src/worker/generated-authoring.ts",

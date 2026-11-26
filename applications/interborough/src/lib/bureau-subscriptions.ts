@@ -9,7 +9,7 @@ import {
   type CatalogFetch,
   type SubscriptionMessage,
 } from '@lostgradient/backchannel/client';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 import type { Fetcher } from './bureau-client.ts';
 import { faultAdviceOf } from './faults.ts';

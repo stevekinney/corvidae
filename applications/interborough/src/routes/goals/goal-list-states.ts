@@ -5,7 +5,7 @@
  * something to fix and not something that "nothing you did caused", and a read that got no answer
  * says so. The error's own words are kept for the "Show the error details" disclosure.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 import { GOALS_COPY } from '../../app/copy/goals.ts';
 import { classifyFault, isNetworkFailure } from '../../lib/faults.ts';

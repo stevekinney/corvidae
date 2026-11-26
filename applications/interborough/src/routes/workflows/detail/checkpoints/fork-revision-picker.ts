@@ -15,7 +15,7 @@
  * the default."
  */
 import type { ForkOptions } from '@lostgradient/weft';
-import { HttpClientError, isWeftFault } from '@lostgradient/weft';
+import { HttpClientError, isWeftFault } from '@lostgradient/weft/client';
 
 export type ForkRevisionSelection =
   { readonly mode: 'source' } | { readonly mode: 'explicit'; readonly revision: string };

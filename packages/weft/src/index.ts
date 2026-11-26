@@ -102,7 +102,7 @@ export {
   UPGRADE_REFUSAL_REASON_PREFIX,
   WORKER_CONFLICT_REASONS,
   type WorkerConflictReason,
-} from './server/operations/worker-conflict-reasons.ts';
+} from './core/worker-conflict-reasons.ts';
 export {
   ChaosNonRetryableError,
   ChaosTimeoutError,

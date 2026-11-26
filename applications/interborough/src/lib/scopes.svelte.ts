@@ -44,7 +44,8 @@
  */
 import { getContext, hasContext, setContext } from 'svelte';
 
-import { HttpClientError, type HttpClient } from '@lostgradient/weft';
+import type { HttpClient } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 import { z } from 'zod';
 
 /** Every authorization scope a credential can be granted, in the order Weft names them. */

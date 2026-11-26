@@ -7,7 +7,7 @@
  * the `hash` of the file the caller read, so a file that changed since is refused instead of
  * overwritten. `a2a` (whether the agent opts into A2A) is part of the definition a save sends.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 import { z } from 'zod';
 
 import { bureauClient, type BureauInput, type BureauOutput } from './bureau-api.ts';

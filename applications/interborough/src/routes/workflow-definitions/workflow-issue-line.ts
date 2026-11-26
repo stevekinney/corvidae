@@ -6,7 +6,7 @@
  * takes the person there. Plain functions over text that parses, read here rather than through
  * `JSON.parse`, which keeps no positions.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 import type { WorkflowValidation } from '../../lib/workflow-files.ts';
 

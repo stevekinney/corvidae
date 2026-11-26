@@ -9,7 +9,7 @@
  * `bureau.memory:write`; a legal hold, releasing a quarantined memory, and listing the quarantined (`list` with `state: 'quarantined'`) need `bureau.memory:govern`. A caller without the scope is
  * answered `Forbidden` whatever it owns.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 import { bureauClient, type BureauOutput } from './bureau-api.ts';
 import type { Fetcher } from './bureau-client.ts';

@@ -6,7 +6,7 @@
  * `latestDelivery` in `hook-editor-presentation.ts`.
  */
 import { formatDate, type StatusDotWordLabel } from '@lostgradient/cinder';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 import { deliveryBody, type HookDelivery } from '../../lib/bureau-hooks.ts';
 import { isNetworkFailure } from '../../lib/faults.ts';

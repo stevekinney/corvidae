@@ -38,7 +38,7 @@ import {
   WorkflowStartedEvent,
   WorkflowSuspendedEvent,
   WorkflowTimedOutEvent,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/client';
 
 const WORKFLOW_STATUS_BY_EVENT_TYPE: ReadonlyMap<string, WorkflowStatus> = new Map([
   [WorkflowStartedEvent.type, 'running'],

@@ -23,7 +23,7 @@
  * mount again after a write, so a copy of the binding's own could disagree with what the person
  * saw, and a field they never touched would count as changed.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 import {
   updateAgentOverrides,

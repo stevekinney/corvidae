@@ -31,7 +31,7 @@
  * "unknown" state immediately instead of stalling on pointless retries of a
  * response that will never change shape on refetch.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 /** Mirrors `WorkflowCatalogActivePointer` (`@lostgradient/weft`) structurally. */
 export interface WorkflowCatalogActivePointerLike {

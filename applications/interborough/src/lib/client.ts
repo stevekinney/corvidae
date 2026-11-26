@@ -7,7 +7,7 @@
  */
 import { getContext, setContext } from 'svelte';
 
-import { HttpClient, HttpClientError } from '@lostgradient/weft';
+import { HttpClient, HttpClientError } from '@lostgradient/weft/client';
 
 import type { WeftUiRuntimeConfig } from './config.ts';
 

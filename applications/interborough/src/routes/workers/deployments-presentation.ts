@@ -6,13 +6,13 @@
  *
  * @module
  */
-import {
-  selectWorkerDeployment,
-  type DeploymentRoutingCandidate,
-  type WorkerDeploymentRouting,
-  type WorkerDeploymentVersion,
-  type WorkerDeploymentVersionReport,
+import type {
+  DeploymentRoutingCandidate,
+  WorkerDeploymentRouting,
+  WorkerDeploymentVersion,
+  WorkerDeploymentVersionReport,
 } from '@lostgradient/weft';
+import { selectWorkerDeployment } from '@lostgradient/weft/client';
 
 import type { WorkerSummary } from './worker-catalog-types.ts';
 

@@ -5,7 +5,7 @@
  * `/host/storage`) belongs to the engine or the Bureau: the explorer shows it and refuses to edit or
  * delete it. Only a key under neither can be changed from here.
  */
-import { WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
+import { WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft/client';
 
 export { WEFT_RESERVED_KEY_PREFIXES };
 

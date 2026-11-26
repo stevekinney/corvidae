@@ -8,7 +8,7 @@
  * file that changed since is refused instead of overwritten; the fault is the one agent files use
  * (`agentFaultOf`), because the wire codes are the same.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 import { z } from 'zod';
 
 import { bureauClient, type BureauInput, type BureauOutput } from './bureau-api.ts';

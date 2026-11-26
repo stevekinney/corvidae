@@ -4,7 +4,7 @@
  * worded from the facts, so the sentence names the status the server answered with, and the empty
  * state says "Nothing by agents was recorded today." for the filters it was asked with.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 import { AUDIT_COPY } from '../../app/copy/audit.ts';
 import { classifyFault, isNetworkFailure } from '../../lib/faults.ts';
