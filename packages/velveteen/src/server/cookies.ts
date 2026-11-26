@@ -34,16 +34,54 @@ function sameSite(value: string): ServerCookie["sameSite"] {
 
 type RequestCookie = { name: string; value: string };
 
-const invalidCookieName = /[\u0000-\u001f\u007f()<>@,;:\\"/\[\]?={}\s]/;
-const invalidCookiePath = /[\u0000-\u001f\u007f;]/;
-const invalidCookieDomain = /[\u0000-\u001f\u007f\s;\\/]/;
+const invalidCookieNameCharacters = new Set([
+  "(",
+  ")",
+  "<",
+  ">",
+  "@",
+  ",",
+  ";",
+  ":",
+  "\\",
+  '"',
+  "/",
+  "[",
+  "]",
+  "?",
+  "=",
+  "{",
+  "}",
+  " ",
+]);
+
+function containsCookieControlCharacter(value: string) {
+  return [...value].some((character) => {
+    const codePoint = character.codePointAt(0);
+    return codePoint !== undefined && (codePoint < 0x20 || codePoint === 0x7f);
+  });
+}
 
 function validateCookieOptions(name: string, options: CookieOptions) {
-  if (!name || invalidCookieName.test(name))
+  if (
+    !name ||
+    containsCookieControlCharacter(name) ||
+    [...name].some((character) => invalidCookieNameCharacters.has(character))
+  )
     throw new TypeError("Cookie names cannot contain invalid characters");
-  if (options.path && invalidCookiePath.test(options.path))
+  if (
+    options.path &&
+    (containsCookieControlCharacter(options.path) || options.path.includes(";"))
+  )
     throw new TypeError("Cookie paths cannot contain invalid characters");
-  if (options.domain && invalidCookieDomain.test(options.domain))
+  if (
+    options.domain &&
+    (containsCookieControlCharacter(options.domain) ||
+      options.domain.includes(" ") ||
+      options.domain.includes(";") ||
+      options.domain.includes("\\") ||
+      options.domain.includes("/"))
+  )
     throw new TypeError("Cookie domains cannot contain invalid characters");
 }
 
