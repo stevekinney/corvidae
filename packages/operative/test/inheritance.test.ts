@@ -9,7 +9,7 @@ import { assertDefined } from './assert-defined';
  *   - combineIdentity (identity = layered, bureau-first)
  */
 
-import { createMockTool, createTestToolbox } from 'armorer';
+import { createMockTool, createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 

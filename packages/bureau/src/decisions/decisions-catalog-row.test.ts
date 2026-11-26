@@ -6,11 +6,11 @@
  */
 import {
   type BackendDescriptor,
-  createMockGenerate,
   type DecisionKind,
   type DecisionModel,
   type GenerateFunction,
 } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterEach, describe, expect, it } from 'bun:test';

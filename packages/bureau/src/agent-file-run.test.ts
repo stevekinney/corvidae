@@ -10,13 +10,15 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createGovernedMemory,
-  createInMemoryMemoryRecordStorage,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
   createMemoryVectorStore,
+} from '@lostgradient/memory';
+import {
+  createInMemoryMemoryRecordStorage,
   createMockEmbedder,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 
 import { BureauError, UnknownScheduleAgentError } from './bureau-errors';

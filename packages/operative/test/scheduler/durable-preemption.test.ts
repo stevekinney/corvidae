@@ -1,7 +1,8 @@
 import { HookRegistry } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createTestToolbox, createTool } from 'armorer';
+import { createTool } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 import { z } from 'zod';

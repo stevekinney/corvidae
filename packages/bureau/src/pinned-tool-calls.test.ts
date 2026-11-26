@@ -3,12 +3,8 @@
  * restart runs only that version: when the toolbox no longer holds it, recovery reports
  * `version-mismatch` for the call's approval and the tool never runs.
  */
-import {
-  createAgent,
-  createCheckpointStore,
-  createMockGenerate,
-  stopWhen,
-} from '@lostgradient/operative';
+import { createAgent, createCheckpointStore, stopWhen } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createTool, createToolbox, type Toolbox } from 'armorer';

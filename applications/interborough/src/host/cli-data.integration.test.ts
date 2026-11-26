@@ -1,13 +1,15 @@
 import { principalFromApiKey } from '@lostgradient/backchannel';
 import {
   createGovernedMemory,
-  createInMemoryMemoryRecordStorage,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
   createMemoryVectorStore,
+} from '@lostgradient/memory';
+import {
+  createInMemoryMemoryRecordStorage,
   createMockEmbedder,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { createAgent } from '@lostgradient/operative';
 import { runWithHangGuard, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { afterAll, expect, test } from 'bun:test';

@@ -15,13 +15,13 @@ import {
   createMemoryAuthority,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
-  createMockEmbedder,
   createWeftMemoryRecordStorage,
   type MemoryGovernanceNotification,
   createMemoryVectorStore,
-  createTestEmbedders,
 } from '@lostgradient/memory';
-import { createAgent, createMockGenerate, stopWhen } from '@lostgradient/operative';
+import { createMockEmbedder, createTestEmbedders } from '@lostgradient/memory/testing';
+import { createAgent, stopWhen } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { waitForTaskState } from './test';
 import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';

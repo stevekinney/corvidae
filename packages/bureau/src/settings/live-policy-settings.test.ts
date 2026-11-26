@@ -7,13 +7,13 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   type BackendDescriptor,
   createAgent,
-  createMockGenerate,
   type DecisionModel,
   type GenerateContext,
   type GenerateFunction,
   stopWhen,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 

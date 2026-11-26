@@ -187,8 +187,13 @@ export function createReviewContinuation(bureau: ReviewContinuationBureau): Revi
     if (task === undefined || task.origin?.kind !== 'chat') return { status: 'not-chat' };
     // The reviews of the run a person can still be asked, as the chat's own resume reads them: this
     // process's, and the waits a run another process holds is parked on.
-    const derived = await bureau.reviews.pendingOf(decided.runId).catch(() => []);
-    const pending = [...bureau.reviews.list(), ...derived].some(
+    let current: Awaited<ReturnType<BureauReviews['pendingOf']>>;
+    try {
+      current = await bureau.reviews.pendingOf(decided.runId);
+    } catch {
+      return { status: 'waiting' };
+    }
+    const pending = current.some(
       (review) => review.runId === decided.runId && review.id !== decided.id,
     );
     if (pending) return { status: 'waiting' };

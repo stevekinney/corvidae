@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { flushPortableMicrotasks, yieldToPortableEventLoop } from './event-loop.ts';
+import { flushPortableMicrotasks, yieldToPortableEventLoop } from '../portable-event-loop.ts';
 import * as testingBarrel from './index.ts';
 
 describe('flushPortableMicrotasks', () => {

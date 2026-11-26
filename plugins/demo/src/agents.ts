@@ -30,7 +30,8 @@
  */
 
 import type { PluginAgent, PluginSetupContext } from '@lostgradient/interborough-plugin';
-import { createAgent, createScriptedGenerate, stopWhen } from '@lostgradient/operative';
+import { createAgent, stopWhen } from '@lostgradient/operative';
+import { createScriptedGenerate } from '@lostgradient/operative/testing';
 
 import type { createRefundLedger } from './refund-ledger.ts';
 import {

@@ -15,11 +15,8 @@
  * Each trial yields a run artifact, and each baseline an `evaluation-run`
  * record that the release gate and the history can compare.
  */
-import {
-  createDefaultRuntimeServices,
-  createManualRuntimeServices,
-  type RunResultBase,
-} from '@lostgradient/operative';
+import { createDefaultRuntimeServices, type RunResultBase } from '@lostgradient/operative';
+import { createManualRuntimeServices } from '@lostgradient/operative/testing';
 
 import type { EvaluatorConfiguration } from '../configuration';
 import type { EvaluationRunRecord } from '../evaluation-run';

@@ -6,7 +6,8 @@
  * asked to run Issue refund (the review it waits in is named), you approved it, and the call ran.
  * A schedule's missed occurrences are recorded when the Bureau notices them.
  */
-import { createAgent, createMockGenerate, stopWhen, type Toolbox } from '@lostgradient/operative';
+import { createAgent, stopWhen, type Toolbox } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';

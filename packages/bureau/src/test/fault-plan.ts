@@ -29,7 +29,7 @@ import type {
   FaultPlan,
   FaultPlanEntry,
   FiredFault,
-} from '@lostgradient/operative';
+} from '@lostgradient/operative/testing';
 
 import type { AssetWorkKind, AssetWorkSnapshot } from '../assets/types';
 import type { AuditRecord } from '../audit-trail';

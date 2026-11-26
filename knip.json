@@ -101,6 +101,15 @@
         "!src/**/*.bench.ts!"
       ]
     },
+    "packages/node-host": {
+      "entry": ["**/*.test.ts", "**/*.integration.test.ts"],
+      "project": [
+        "src/**/*.ts!",
+        "!src/**/*.test.ts!",
+        "!src/**/*.test-support.ts!",
+        "!src/host-contract.ts!"
+      ]
+    },
     "packages/credentials": {
       "ignoreDependencies": ["@lostgradient/workerd-testing"],
       "entry": [
@@ -165,6 +174,24 @@
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!"
+      ]
+    },
+    "packages/storage-d1": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "src/fixture-worker.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!",
+        "!src/fixture-worker.ts!"
       ]
     },
     "packages/backchannel-mcp": {
@@ -235,6 +262,7 @@
         "**/*.playwright.ts",
         "**/*.spec.ts",
         "src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts",
+        "src/test/review-peer-child.ts",
         "src/hooks/recipient-recovery-child.ts"
       ],
       "project": [
@@ -245,6 +273,7 @@
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!",
         "!src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts!",
+        "!src/test/review-peer-child.ts!",
         "!src/hooks/recipient-recovery-child.ts!"
       ]
     },

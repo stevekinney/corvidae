@@ -3,14 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
+import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import {
-  createAgent,
   createFaultEngine,
   type FaultPlan,
-  type GenerateFunction,
-  stopWhen,
   waitForCondition,
-} from '@lostgradient/operative';
+} from '@lostgradient/operative/testing';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { file } from 'bun';
@@ -247,7 +245,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
   it("imports nothing outside bureau's own internals plus the documented public packages", async () => {
     const source = await file(new URL('./quiescence.ts', import.meta.url)).text();
     const specifiers = [...source.matchAll(/from '([^']+)'/g)].map((match) => match[1] ?? '');
-    const allowedPackages = new Set(['@lostgradient/operative']);
+    const allowedPackages = new Set(['@lostgradient/operative', '@lostgradient/operative/testing']);
 
     expect(specifiers.length).toBeGreaterThan(0);
     for (const specifier of specifiers) {

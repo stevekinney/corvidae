@@ -27,3 +27,19 @@ export {
   WORKSPACE_EXPECTED_OUTCOMES,
   WORKSPACE_MOUNT_CONFORMANCE,
 } from '../http/workspace-conformance.test-support.ts';
+export {
+  createDurableEventHistoryFixture,
+  DURABLE_EVENT_HISTORY_FIXTURE_SEQUENCE,
+  seedSchemaVersionMismatchRecord,
+  type DurableEventHistoryFixture,
+  type DurableEventHistoryFixtureOptions,
+  type DurableEventHistoryFixtureRecord,
+} from '../test/durable-event-history-fixture.ts';
+export {
+  BureauFaultSelectorResolutionError,
+  selectAuditWriteFaultTarget,
+  selectWebhookDeliveryFaultTarget,
+  type BureauFaultOperation,
+  type BureauFaultPlan,
+  type BureauFaultPlanEntry,
+} from '../test/fault-plan.ts';

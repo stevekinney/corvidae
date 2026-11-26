@@ -14,7 +14,8 @@
  *   - concurrent children, signal-before-listener, cancellation races, and
  *     terminal cleanup
  */
-import { createTestToolbox, createTool } from 'armorer';
+import { createTool } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { getEventListeners } from 'node:events';
 import { z } from 'zod';

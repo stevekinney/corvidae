@@ -8,7 +8,8 @@
  * tool that already ran is never run again, and a stream that failed
  * leaves no partial output behind.
  */
-import { createTestToolbox, createTool } from 'armorer';
+import { createTool } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, type Message } from 'conversationalist';
 import { z } from 'zod';

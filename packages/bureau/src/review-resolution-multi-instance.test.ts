@@ -202,7 +202,10 @@ async function derived(
 ): Promise<PendingHumanWaitReview> {
   let found: PendingHumanWaitReview | undefined;
   await pollUntil(async () => {
-    [found] = await bureau.reviews.pendingOf(runId);
+    const reviews = await bureau.reviews.pendingOf(runId);
+    found = reviews.find(
+      (review): review is PendingHumanWaitReview => review.kind === 'human-wait',
+    );
     return found !== undefined;
   });
   return found!;

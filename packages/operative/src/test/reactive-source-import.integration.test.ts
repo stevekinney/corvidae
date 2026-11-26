@@ -9,7 +9,7 @@ const child = spawnWithHangGuard(
   [
     process.execPath,
     '--eval',
-    "const api = await import('@lostgradient/operative'); if (typeof api.runReactiveSourceConformanceSuite !== 'function') throw new Error('Missing conformance API');",
+    "const api = await import('@lostgradient/operative'); if ('runReactiveSourceConformanceSuite' in api) throw new Error('Test conformance API leaked from root');",
   ],
   { cwd: resolve(import.meta.dir, '../..'), stdout: 'pipe', stderr: 'pipe' },
 );
@@ -18,6 +18,11 @@ const [status, errors] = await Promise.all([child.exited, new Response(child.std
 test('the public operative entry imports in a plain Bun process without the test runner', () => {
   expect(status, errors).toBe(0);
   expect(errors).toBe('');
+});
+
+test('the testing entry exports the reactive-source conformance suite', async () => {
+  const testing = await import('@lostgradient/operative/testing');
+  expect(typeof testing.runReactiveSourceConformanceSuite).toBe('function');
 });
 
 test('the conformance suite bundles for a browser without any runtime test framework', async () => {
