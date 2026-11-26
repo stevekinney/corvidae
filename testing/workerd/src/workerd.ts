@@ -20,16 +20,13 @@ export type WorkerBindings = {
   outboundService: OutboundService | undefined;
 };
 
-/**
- * Bundle an entry point and run it under workerd through Miniflare.
- *
- * Each invocation owns its Miniflare instance, so durable and D1 state is shared only by the
- * requests made inside its callback. The instance is always disposed before this function settles.
- */
-export async function withWorker<T>(
-  options: WorkerOptions,
-  callback: (bindings: WorkerBindings) => Promise<T>,
-): Promise<T> {
+/** A running local workerd instance and the bindings its Worker receives. */
+export type RunningWorker = WorkerBindings & {
+  dispose(): Promise<void>;
+};
+
+/** Bundle an entry point and start it under workerd through Miniflare. The caller owns disposal. */
+export async function startWorker(options: WorkerOptions): Promise<RunningWorker> {
   const build = await Bun.build({
     entrypoints: [options.entry],
     target: 'browser',
@@ -60,14 +57,26 @@ export async function withWorker<T>(
     ...(options.d1Databases === undefined ? {} : { d1Databases: [...options.d1Databases] }),
     ...(options.outboundService === undefined ? {} : { outboundService: options.outboundService }),
   });
+  return {
+    dispatchFetch: miniflare.dispatchFetch.bind(miniflare),
+    getD1Database: miniflare.getD1Database.bind(miniflare),
+    getDurableObjectNamespace: miniflare.getDurableObjectNamespace.bind(miniflare),
+    outboundService: options.outboundService,
+    dispose: () => miniflare.dispose(),
+  };
+}
+
+/**
+ * Bundle an entry point, run it under workerd, then dispose it after the callback settles.
+ */
+export async function withWorker<T>(
+  options: WorkerOptions,
+  callback: (bindings: WorkerBindings) => Promise<T>,
+): Promise<T> {
+  const worker = await startWorker(options);
   try {
-    return await callback({
-      dispatchFetch: miniflare.dispatchFetch.bind(miniflare),
-      getD1Database: miniflare.getD1Database.bind(miniflare),
-      getDurableObjectNamespace: miniflare.getDurableObjectNamespace.bind(miniflare),
-      outboundService: options.outboundService,
-    });
+    return await callback(worker);
   } finally {
-    await miniflare.dispose();
+    await worker.dispose();
   }
 }
