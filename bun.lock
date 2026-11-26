@@ -45,8 +45,10 @@
         "@lostgradient/api-key-settings": "workspace:*",
         "@lostgradient/backchannel": "workspace:*",
         "@lostgradient/backchannel-mcp": "workspace:*",
+        "@lostgradient/backchannel-svelte": "workspace:*",
         "@lostgradient/bungalow": "workspace:*",
         "@lostgradient/bureau": "workspace:*",
+        "@lostgradient/bureau-client": "workspace:*",
         "@lostgradient/chat": "workspace:*",
         "@lostgradient/cinder": "workspace:*",
         "@lostgradient/credentials": "workspace:*",
@@ -725,6 +727,7 @@
       "devDependencies": {
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
+        "@lostgradient/workerd-testing": "workspace:*",
         "@modelcontextprotocol/client": "catalog:",
         "@types/bun": "catalog:",
         "@types/pg": "catalog:",
@@ -1182,10 +1185,13 @@
     "plugins/inspectors": {
       "name": "@lostgradient/plugin-inspectors",
       "dependencies": {
+        "@lostgradient/bureau-client": "workspace:*",
         "@lostgradient/interborough-plugin": "workspace:*",
         "@modelcontextprotocol/ext-apps": "catalog:",
+        "@tanstack/svelte-query": "catalog:",
       },
       "devDependencies": {
+        "@lostgradient/backchannel": "workspace:*",
         "@lostgradient/bureau": "workspace:*",
         "@lostgradient/cinder": "workspace:*",
         "@lostgradient/testing": "workspace:*",
