@@ -776,6 +776,37 @@ for (const width of WIDTHS) {
   });
 }
 
+// The desktop hook row keeps its line-one facts on one optical centreline even when its sentence
+// grows beneath them. This deliberately failed before `trailingAlign="baseline"`: the Toggle was
+// centred across both row lines while the title, status and time stayed on line one.
+for (const width of [1280, 1920] as const) {
+  test(`[hook-row-first-line-alignment] /hooks: status, title, timestamp and switch share line one at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 720 });
+    await openHooks(page, '/hooks', [DEFAULT_ON]);
+    const row = page.locator('li[data-hook="default-on"]');
+    const [status, title, time, toggle] = await Promise.all([
+      row.locator('.cinder-stacked-list-item__status').boundingBox(),
+      row.locator('.cinder-stacked-list-item__title').boundingBox(),
+      row.locator('.cinder-stacked-list-item__time').boundingBox(),
+      row.getByRole('switch').boundingBox(),
+    ]);
+    const centre = (box: { y: number; height: number } | null) =>
+      (box?.y ?? Number.NaN) + (box?.height ?? Number.NaN) / 2;
+    const titleCentre = centre(title);
+    for (const [name, box] of [
+      ['status', status],
+      ['timestamp', time],
+      ['switch', toggle],
+    ] as const) {
+      expect(Math.abs(centre(box) - titleCentre), `${name} centre at ${width}`).toBeLessThanOrEqual(
+        2,
+      );
+    }
+  });
+}
+
 // R10-01 and R10-02 on the narrowest phones, measured: the status word whole, the Plugin badge just
 // after the name it marks, and the time broken only between its day and its clock.
 for (const width of [320, 375] as const) {
