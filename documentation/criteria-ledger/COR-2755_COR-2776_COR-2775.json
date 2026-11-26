@@ -1,0 +1,64 @@
+{
+  "issue": "COR-2755_COR-2776_COR-2775",
+  "branch": "chef/interborough-small",
+  "checkedAt": "098540b29bda5d817644922e451a7f6339c684d2",
+  "briefVersion": "eba169a7e2de",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "COR-2755/AC1",
+      "status": "met-on-branch",
+      "evidence": "run-header.svelte and plugin-problem-card.svelte call copyToClipboard from @lostgradient/cinder with the original text; both navigator.clipboard.writeText paths are gone. Tests green in focused-checks (focused3.log)."
+    },
+    {
+      "id": "COR-2755/AC2",
+      "status": "met-on-branch",
+      "evidence": "run-header.test.ts and plugin-problem-card.test.ts cover native success, native rejection then fallback success, clipboard unavailable then fallback success, and both failing (legacy false and legacy throws); Cinder clipboard.test.ts covers plain-text native, unavailable and both-fail paths at the owner. Red with the fix reverted: plugin-problem-card.test.ts 4 failures (red.log), run-header.test.ts fallback-case failures (red2.log)."
+    },
+    {
+      "id": "COR-2755/AC3",
+      "status": "met-on-branch",
+      "evidence": "Labels, menu item, toasts and Button wiring unchanged; no new helper. The Run ID failure toast loses the appended browser error text (the boolean carries none)."
+    },
+    {
+      "id": "COR-2776/AC1",
+      "status": "met-on-branch",
+      "evidence": "packages/markdown/src/utilities/inline-runs.ts exports inlineRuns, TITLE_INLINE_RUNS_PROFILE and DESCRIPTION_INLINE_RUNS_PROFILE from the root and the ./inline-runs subpath; it imports nothing."
+    },
+    {
+      "id": "COR-2776/AC2",
+      "status": "met-on-branch",
+      "evidence": "A 300,000-input differential run of old against new tokenizers agreed for both profiles before deletion (diff-inline.ts); package tests pin empty span, unclosed delimiter, word boundary, literal markup."
+    },
+    {
+      "id": "COR-2776/AC3",
+      "status": "met-on-branch",
+      "evidence": "packages/markdown inline-runs.test.ts tests both profiles directly; inline-markdown-text.test.ts, chat-conversation-approvals.test.ts (chat header title) and general-settings.test.ts (Settings description) test the real consumers. All green in focused3.log."
+    },
+    {
+      "id": "COR-2776/AC4",
+      "status": "met-on-branch",
+      "evidence": "src/lib/inline-markdown.ts and src/routes/settings/inline-markdown.ts and their tests are deleted; inline-markdown.svelte, setting-field.svelte and embedder-row.svelte import @lostgradient/markdown/inline-runs; the editable composer is untouched. applications/interborough build exit 0."
+    },
+    {
+      "id": "COR-2775/AC1",
+      "status": "met-on-branch",
+      "evidence": "Every createHash, Bun.CryptoHasher and timingSafeEqual in applications/interborough/src/host production files goes through @lostgradient/cryptography, including a2a-authentication.ts, engine-proxy.ts, tool-source-pending-sign-ins.ts and the provider, plugin and workspace-secret configuration hashes; the stored refresh token is compared with timingSafeEqualText. The inventory test finds no duplicate."
+    },
+    {
+      "id": "COR-2775/AC2",
+      "status": "met-on-branch",
+      "evidence": "cryptography-vectors.test.ts (48 pass) was captured from pre-change code and passed before (vec-before.log) and after (focused3.log); through-host pins with an independent node:crypto oracle exist for the provider, plugin and workspace-secret hashes, the OAuth credential digest, the vault operation id, the panel cache entry name, the unversioned package identity and the CSP script digest; unequal-length comparisons are covered for the relay key, the A2A key, sameSecret and the refresh token. Not through-host pinned: the tool-source revisionOf digest and the CLI asset digest check (equivalence by diff read and a shared-helper vector)."
+    },
+    {
+      "id": "COR-2775/AC3",
+      "status": "met-on-branch",
+      "evidence": "Remaining node:crypto use is randomUUID and randomBytes only, listed by file in src/host/direct-cryptography-inventory.test.ts (global crypto.randomUUID and Bun.hash named as out of scope); credential policy and scopes stay in a2a-authentication.ts and engine-proxy.ts."
+    },
+    {
+      "id": "COR-2775/AC4",
+      "status": "met-on-branch",
+      "evidence": "src/host/direct-cryptography-inventory.test.ts scans production files with the TypeScript syntax tree and fails on a reintroduced duplicate; red with a temporary zz-reintroduced.ts (inv-red.log). It lives beside the host so a host change re-runs it."
+    }
+  ]
+}
