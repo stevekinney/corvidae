@@ -45,6 +45,36 @@ async function settled(page: Page): Promise<void> {
 test.describe('the sample world', () => {
   test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
+  test('desktop content width contains overview actions and activity times without constraining the frame', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 900 });
+    await page.goto('/health');
+    await settled(page);
+    const overview = page.locator('.ib-health-overview');
+    const bounds = await overview.boundingBox();
+    const frame = await page.locator('.ib-health-frame').boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(frame).not.toBeNull();
+    const maximum = await overview.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).maxInlineSize),
+    );
+    expect(maximum).toBe(1152);
+    expect(bounds!.width).toBeLessThanOrEqual(maximum);
+    expect(frame!.width).toBeGreaterThan(bounds!.width);
+    for (const item of [
+      page.getByTestId('needs-attention').getByRole('link', { name: 'Connect a provider' }),
+      page.locator('[data-activity] .ib-recent-activity__time').first(),
+    ]) {
+      const box = await item.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.x + box!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width + 1);
+    }
+    await page.goto('/health/storage');
+    await expect(page.locator('.ib-health-frame')).toHaveAttribute('data-tab', 'storage');
+    expect((await page.locator('.ib-health-frame').boundingBox())!.width).toBeGreaterThan(maximum);
+  });
+
   for (const width of WIDTHS) {
     test(`the Overview is the frame, the counts, Needs attention, Recent activity, three cards and Advanced, at ${width} pixels`, async ({
       page,

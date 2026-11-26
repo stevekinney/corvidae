@@ -302,6 +302,12 @@
     container-type: inline-size;
   }
 
+  @media (min-width: 90rem) {
+    .ib-health-overview {
+      max-inline-size: var(--cinder-content-width);
+    }
+  }
+
   /* Needs attention and Recent activity share the wide column, the metric cards the narrow one
    * beside them. Narrower than 56rem the cards sit under Needs attention and Recent activity
    * follows. */

@@ -89,6 +89,20 @@ async function answerWith(page: Page, checks: readonly Record<string, unknown>[]
 }
 
 test.describe('the list (/checks) on a phone, a tablet, with scorers, a menu open and in the dark', () => {
+  test('desktop content width contains checks and their timestamps', async ({ page }) => {
+    await openChecks(page, 1920);
+    const records = page.locator('.ib-records[data-page="checks"]');
+    const bounds = await records.boundingBox();
+    const timestamp = await rows(page).first().locator('time').boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(timestamp).not.toBeNull();
+    const maximum = await records.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).maxInlineSize),
+    );
+    expect(bounds!.width).toBeLessThanOrEqual(maximum);
+    expect(timestamp!.x + timestamp!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width + 1);
+    expect(maximum).toBe(1152);
+  });
   test('on a phone is two-line rows under day bands, with a Kind select and a Filter button on one row (C2-04, C2-15)', async ({
     page,
     checkA11y,
