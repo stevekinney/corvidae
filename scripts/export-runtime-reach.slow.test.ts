@@ -52,11 +52,13 @@ test('reports normalized Node builtins without making them guard findings', asyn
         exports: { '.': './src/index.ts' },
       }),
       'packages/demo/src/index.ts':
-        "import 'node:fs'; import 'fs'; import 'ws'; import 'undici'; export const value = 1;\n",
+        "import 'node:fs'; import 'fs'; import 'ws'; import 'undici'; import 'bun:sqlite'; export const value = 1;\n",
     },
     async (root) => {
       const report = await scanExportRuntimeReachReport(root);
-      expect(report.findings).toEqual([]);
+      expect(report.findings).toEqual([
+        { package: '@scope/demo', subpath: '.', finding: 'bun:sqlite' },
+      ]);
       expect(report.nodeFindings).toEqual([
         { package: '@scope/demo', subpath: '.', finding: 'node:fs' },
       ]);

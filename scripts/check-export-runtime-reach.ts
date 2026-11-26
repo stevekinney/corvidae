@@ -13,7 +13,9 @@ const NODE_RESOLVER_BUILTINS = new Set(builtinModules.map((name) => name.replace
 // Bun exposes ws and undici through node:module even though they are ordinary dependencies in Node.
 // Keep them external for Bun's bundle probe, but do not report them as Node builtins.
 const NODE_REPORT_BUILTINS = new Set(
-  [...NODE_RESOLVER_BUILTINS].filter((name) => name !== 'undici' && name !== 'ws'),
+  [...NODE_RESOLVER_BUILTINS].filter(
+    (name) => name !== 'undici' && name !== 'ws' && name !== 'bun' && !name.startsWith('bun:'),
+  ),
 );
 const TEST_PATH =
   /\/(?:src\/(?:test|testing)|__fixtures__)\/|(?:\.test-support|-test-fixture)\.[^/]+$/;
