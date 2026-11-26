@@ -390,9 +390,9 @@ export interface BureauReviews {
    * {@link BureauReviews.list}. Otherwise it derives the park as recovery does: the park,
    * its ordinal and its prompt from the run's checkpoint, still pending while the engine's
    * `waitingForSignals` names its signal. A session run's review carries the session from the
-   * durable run input. Empty for a run that is not parked on
-   * a human wait, or that this Bureau has no durable engine to read. Signed pending tool
-   * approvals of a run another process holds are also derived from its persisted session.
+   * durable run input. Pending tool approvals held locally are included; signed approvals of a
+   * run another process holds are derived from its persisted session. A run with no pending
+   * reviews, or an unknown run with no durable engine to read, returns an empty list.
    */
   pendingOf(taskId: string): Promise<PendingReview[]>;
 

@@ -155,6 +155,7 @@ export function createReviewRecords<D extends AgentDefinitions>(
     invalidApprovalReviewIds,
     runAttribution,
   } = core;
+  const peerAdoptedRunIds = new Set<string>();
 
   async function peerApprovalsOfRun(
     runId: string,
@@ -836,7 +837,14 @@ export function createReviewRecords<D extends AgentDefinitions>(
   }
 
   async function pendingReviewsOfRun(runId: string): Promise<PendingReview[]> {
-    return [...(await pendingHumanWaitsOfRun(runId)), ...(await peerApprovalsOfRun(runId))];
+    const waits = await pendingHumanWaitsOfRun(runId);
+    const peer = await peerApprovalsOfRun(runId);
+    if (peerAdoptedRunIds.has(runId)) return [...waits, ...peer];
+    const local = peers
+      .listPendingReviews()
+      .filter((review) => review.kind === 'tool-approval' && review.runId === runId);
+    const known = new Set(local.map((review) => review.id));
+    return [...waits, ...local, ...peer.filter((review) => !known.has(review.id))];
   }
 
   /**
@@ -998,6 +1006,7 @@ export function createReviewRecords<D extends AgentDefinitions>(
       const approvals = runId === undefined ? [] : await peerApprovalsOfRun(runId);
       const peer = approvals.find((review) => review.id === input.id);
       if (peer?.sessionId !== undefined) {
+        peers.assertExpectedReviewRound(input, peer);
         const session = await runtime.sessionStore?.load(peer.sessionId);
         if (session !== undefined) {
           peers.restorePendingApprovalOverrides(session.metadata, peer.runId);
@@ -1007,6 +1016,7 @@ export function createReviewRecords<D extends AgentDefinitions>(
             requestedAt: peer.requestedAt,
           });
           await peers.restoreTerminalReviewSession(session, peer.runId);
+          peerAdoptedRunIds.add(peer.runId);
         }
       }
     }
@@ -1081,8 +1091,14 @@ export function createReviewRecords<D extends AgentDefinitions>(
   ): Promise<(PendingReview & ReviewResolutionFields) | undefined> {
     const pending = peers.listPendingReviews().find((candidate) => candidate.id === id);
     if (pending) {
-      const current = await filterSettledApprovals([pending]);
-      if (current.length > 0) return pending;
+      if (pending.kind === 'tool-approval' && peerAdoptedRunIds.has(pending.runId)) {
+        const current = await peerApprovalsOfRun(pending.runId);
+        const peer = current.find((review) => review.id === id);
+        if (peer) return peer;
+      } else {
+        const current = await filterSettledApprovals([pending]);
+        if (current.length > 0) return pending;
+      }
     }
     // COR-1577: the park of a `bureau.run()` run, which no session holds.
     const runWait = core.runHumanWaits.find(id);

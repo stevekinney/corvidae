@@ -141,6 +141,175 @@ async function resolveThroughOperation(
   return (await response.json()) as ResolveReply;
 }
 
+async function reviewRead(handler: Handler, method: string, params: Record<string, unknown>) {
+  const response = await handler(
+    new Request('http://localhost/jsonrpc', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    }),
+  );
+  return (await response.json()) as {
+    result?: { id?: string; round?: number; reviews?: Array<{ id: string; round: number }> };
+  };
+}
+
+describe('peer adoption stays current across review operations (COR-2763)', () => {
+  it('reads a newer round after a valid peer adoption', async () => {
+    let revision = 0;
+    const charges: number[] = [];
+    const toolbox = createToolbox([chargeCardTool(charges)], {
+      approvalSecret: SECRET,
+      policy: {
+        beforeExecute: () => ({
+          allow: false as const,
+          status: 'needs_approval' as const,
+          reason: `Approval required ${revision}`,
+          action: { message: 'Approve charge' },
+        }),
+      },
+    }) as unknown as Toolbox;
+    await withHarness(
+      { script: [chargeOnce, say('Charged.')], toolbox, storage: 'sqlite' },
+      async (a) => {
+        const b = await a.peer([chargeOnce, say('Charged.')]);
+        try {
+          const [id] = await chatWaitingOnApprovals(a);
+          revision = 1;
+          const first = await resolveThroughOperation(b.handler, {
+            id,
+            decision: 'approve',
+            round: 0,
+          });
+          expect(first.result?.receipt).toBe('superseded');
+          revision = 2;
+          const second = await resolveThroughOperation(a.handler, {
+            id,
+            decision: 'approve',
+            round: 1,
+          });
+          expect(second.result?.receipt).toBe('superseded');
+          const list = await reviewRead(b.handler, 'bureau.reviews.list', {});
+          const detail = await reviewRead(b.handler, 'bureau.reviews.get', { id });
+          expect(list.result?.reviews).toMatchObject([{ id, round: 2 }]);
+          expect(detail.result).toMatchObject({ id, round: 2 });
+          const resolved = await resolveThroughOperation(b.handler, {
+            id,
+            decision: 'approve',
+            round: 2,
+          });
+          expect(resolved.result?.receipt).toBe('applied');
+          expect(charges).toEqual([500]);
+        } finally {
+          await b.dispose();
+        }
+      },
+    );
+  });
+
+  it('shows and resolves the replacement round after an earlier stale decision', async () => {
+    let regate = false;
+    const charges: number[] = [];
+    const toolbox = createToolbox([chargeCardTool(charges)], {
+      approvalSecret: SECRET,
+      policy: {
+        beforeExecute: () => ({
+          allow: false as const,
+          status: 'needs_approval' as const,
+          reason: regate ? 'Approval required again' : 'Operator approval required',
+          action: { message: 'Approve charge' },
+        }),
+      },
+    }) as unknown as Toolbox;
+    await withHarness(
+      { script: [chargeOnce, say('Charged.')], toolbox, storage: 'sqlite' },
+      async (a) => {
+        const b = await a.peer([chargeOnce, say('Charged.')]);
+        try {
+          const [id] = await chatWaitingOnApprovals(a);
+          const refused = await resolveThroughOperation(b.handler, {
+            id,
+            decision: 'approve',
+            round: 1,
+          });
+          expect(refused.error?.data?.httpStatus).toBe(409);
+          expect(b.bureau.reviews.list()).toEqual([]);
+          regate = true;
+          const replacement = await resolveThroughOperation(a.handler, {
+            id,
+            decision: 'approve',
+            round: 0,
+          });
+          expect(replacement.result?.receipt).toBe('superseded');
+          regate = false;
+          const list = await reviewRead(b.handler, 'bureau.reviews.list', {});
+          const detail = await reviewRead(b.handler, 'bureau.reviews.get', { id });
+          expect(list.result?.reviews).toMatchObject([{ id, round: 1 }]);
+          expect(detail.result).toMatchObject({ id, round: 1 });
+          const decided = await resolveThroughOperation(b.handler, {
+            id,
+            decision: 'approve',
+            round: 1,
+          });
+          expect(decided.result?.receipt).toBe('applied');
+          expect(charges).toEqual([500]);
+        } finally {
+          await b.dispose();
+        }
+      },
+    );
+  });
+
+  it('continues the chat when another host settled the first adopted approval', async () => {
+    const charges: number[] = [];
+    let regate = false;
+    const toolbox = createToolbox([chargeCardTool(charges)], {
+      approvalSecret: SECRET,
+      policy: {
+        beforeExecute: () => ({
+          allow: false as const,
+          status: 'needs_approval' as const,
+          reason: regate ? 'Approval required again' : 'Operator approval required',
+          action: { message: 'Approve charge' },
+        }),
+      },
+    }) as unknown as Toolbox;
+    await withHarness(
+      { script: [chargeTwice, say('Both charged.')], toolbox, storage: 'sqlite' },
+      async (a) => {
+        const b = await a.peer([chargeTwice, say('Both charged.')]);
+        try {
+          const [first, second] = await chatWaitingOnApprovals(a);
+          regate = true;
+          const replacement = await resolveThroughOperation(b.handler, {
+            id: first,
+            decision: 'approve',
+            round: 0,
+          });
+          expect(replacement.result?.receipt).toBe('superseded');
+          regate = false;
+          const firstDecision = await resolveThroughOperation(a.handler, {
+            id: first,
+            decision: 'approve',
+            round: 1,
+          });
+          expect(firstDecision.result?.receipt).toBe('applied');
+          const last = await resolveThroughOperation(b.handler, {
+            id: second,
+            decision: 'approve',
+            round: 0,
+          });
+          expect(last.result?.receipt).toBe('applied');
+          expect(last.result?.continuation?.status).toBe('started');
+          expect(charges.toSorted((left, right) => left - right)).toEqual([500, 700]);
+        } finally {
+          await b.dispose();
+        }
+      },
+    );
+  });
+});
+
 async function withHarness<T>(
   options: Parameters<typeof openHarness>[0],
   body: (harness: Harness) => Promise<T>,

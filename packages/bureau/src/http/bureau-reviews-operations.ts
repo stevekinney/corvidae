@@ -110,7 +110,7 @@ async function pendingReviewsOfEveryProcess(
     reviews.list().map(async (review) => {
       if (review.kind !== 'tool-approval') return review;
       const current = await reviews.get(review.id);
-      return current?.status === 'pending' ? review : undefined;
+      return current?.status === 'pending' ? current : undefined;
     }),
   );
   const local = refreshed.filter((review): review is PendingReview => review !== undefined);
