@@ -334,17 +334,5 @@
     "subpath": "./testing",
     "finding": "Bun.spawn",
     "reason": "The testing entry starts subprocess fixtures through Bun."
-  },
-  {
-    "package": "armorer",
-    "subpath": "./coding",
-    "finding": "Bun.file",
-    "reason": "Local coding tools read files with Bun."
-  },
-  {
-    "package": "armorer",
-    "subpath": "./coding",
-    "finding": "Bun.Glob",
-    "reason": "Local coding tools enumerate files with Bun."
   }
 ]

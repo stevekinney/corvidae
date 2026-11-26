@@ -36,6 +36,34 @@ describe('createGlobTool', () => {
     expect(result.truncated).toBe(false);
   });
 
+  it('preserves platform brace and character-class glob syntax', async () => {
+    await writeFile(join(root, 'src', 'component.tsx'), 'component');
+    await writeFile(join(root, 'green.test.ts'), 'green');
+    await writeFile(join(root, 'red.test.ts'), 'red');
+    await writeFile(join(root, 'blue.test.ts'), 'blue');
+    const jail = createRootJail(root);
+    const tool = createGlobTool({ jail });
+
+    const extensions = (await tool({ pattern: 'src/*.{ts,tsx}' })) as GlobResult;
+    const classes = (await tool({ pattern: '[gr]*.test.ts' })) as GlobResult;
+
+    expect(extensions.paths.toSorted()).toEqual(['src/a.ts', 'src/b.ts', 'src/component.tsx']);
+    expect(classes.paths.toSorted()).toEqual(['green.test.ts', 'red.test.ts']);
+  });
+
+  it('skips dot paths for wildcard patterns but accepts an explicit dot path', async () => {
+    await mkdir(join(root, '.private'));
+    await writeFile(join(root, '.private', 'secret.ts'), 'secret');
+    const jail = createRootJail(root);
+    const tool = createGlobTool({ jail });
+
+    const wildcard = (await tool({ pattern: '**/*.ts' })) as GlobResult;
+    const explicit = (await tool({ pattern: '.private/*.ts' })) as GlobResult;
+
+    expect(wildcard.paths).not.toContain('.private/secret.ts');
+    expect(explicit.paths).toEqual(['.private/secret.ts']);
+  });
+
   it('caps results at maxResults and marks truncated', async () => {
     const jail = createRootJail(root);
     const tool = createGlobTool({ jail });
