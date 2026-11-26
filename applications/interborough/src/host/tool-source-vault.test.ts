@@ -4,6 +4,7 @@ import { secretPublicationDigest } from './secret-publication-digest.ts';
  */
 import { generateEncryptionKey } from '@lostgradient/cryptography';
 import { describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 
 import { activeFixtureSecret, memoryHome } from './tool-source-memory-home.test-support.ts';
 import {
@@ -180,6 +181,29 @@ describe('the tool-source vault', () => {
       ),
     ).toBeInstanceOf(ToolSourceSecretsLockedError);
   });
+});
+
+test('names a publication by the SHA-256 of the workspace, the source and the revision it replaces', async () => {
+  const { home, vault } = await vaultOver();
+  const snapshot = await home.bungalow.readConfiguration();
+  await vault.write('files', {
+    credentials: new Map([['token', 'a']]),
+    oauth: undefined,
+    snapshot,
+  });
+  const operations = await home.bungalow.secretProvider.listOperations();
+  expect(operations.map((operation) => operation.id)).toEqual([
+    createHash('sha256')
+      .update(
+        JSON.stringify([
+          'tool-source-vault',
+          home.bungalow.workspaceId,
+          'files',
+          snapshot.revision,
+        ]),
+      )
+      .digest('hex'),
+  ]);
 });
 
 test('a replacement observes the original encrypted publication after response loss', async () => {

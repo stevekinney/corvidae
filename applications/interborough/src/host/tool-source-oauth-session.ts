@@ -1,4 +1,4 @@
-import { sha256HexSync } from '@lostgradient/cryptography';
+import { sha256HexSync, timingSafeEqualText } from '@lostgradient/cryptography';
 import type {
   BeforeMcpOAuthTokenRequest,
   McpOAuthStorageState,
@@ -240,9 +240,13 @@ export function createToolSourceOAuthSession(options: {
         const current = await read();
         await authorize();
         const credentialDigest = sha256HexSync(request.credential);
+        // The stored refresh token is a secret: it is compared in constant time, and no stored one
+        // admits no credential.
+        const storedRefreshToken = current.oauth?.tokens?.refresh_token;
         if (
           request.grantType === 'refresh_token' &&
-          current.oauth?.tokens?.refresh_token !== request.credential
+          (storedRefreshToken === undefined ||
+            !timingSafeEqualText(storedRefreshToken, request.credential))
         )
           refuse();
         const previous = current.oauthClaim;
