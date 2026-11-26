@@ -11,6 +11,7 @@
     // The viewport rule is spelled out: these tests drive the phone form by the viewport.
     collapseBelow = '640px',
     collapseLabel,
+    compactTouch = false,
     orientation,
     refuseTo,
   }: {
@@ -19,6 +20,7 @@
     labelled?: boolean;
     collapseBelow?: string | false;
     collapseLabel?: string;
+    compactTouch?: boolean;
     orientation?: 'horizontal' | 'vertical';
     /** When set, the request hook returns this tab instead of the one proposed. */
     refuseTo?: string;
@@ -31,6 +33,7 @@
   bind:value
   {...onChange === undefined ? {} : { onValueChange: onChange }}
   {collapseBelow}
+  {compactTouch}
   {...collapseLabel === undefined ? {} : { collapseLabel }}
   {...orientation === undefined ? {} : { orientation }}
   {...refuseTo === undefined ? {} : { onValueChangeRequest: () => refuseTo }}

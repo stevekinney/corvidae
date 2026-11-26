@@ -66,8 +66,8 @@ function baseClient(
   }> = [],
 ) {
   return {
-    getTimeline: async () => entries,
     operations: {
+      'weft.workflows.timeline.get': async () => entries,
       'weft.workflows.activities.pending.list': async () => ({ items: pendingItems }),
     },
     activity: {

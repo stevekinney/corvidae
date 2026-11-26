@@ -5,6 +5,7 @@
  * order, so the newest are the end of the last page.
  */
 import { queryAudit, type AuditRecord } from './bureau-audit.ts';
+import type { CatalogOperations } from './generated/bureau-operation-client.generated.ts';
 
 /** The audit type the Bureau records an A2A call under. */
 export const A2A_CALL_TYPE = 'a2a.call';
@@ -49,15 +50,19 @@ export function callOf(record: AuditRecord): A2aCall | undefined {
 }
 
 /** The newest calls inside the window, newest first. */
-export async function getRecentCalls(options?: {
-  readonly signal?: AbortSignal;
-  readonly now?: number;
-}): Promise<readonly A2aCall[]> {
+export async function getRecentCalls(
+  client: Pick<CatalogOperations, 'bureau.audit.query'>,
+  options?: {
+    readonly signal?: AbortSignal;
+    readonly now?: number;
+  },
+): Promise<readonly A2aCall[]> {
   const since = (options?.now ?? Date.now()) - RECENT_CALL_WINDOW_MILLISECONDS;
   let newest: A2aCall[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < MAXIMUM_PAGES; page += 1) {
     const answer = await queryAudit(
+      client,
       { type: A2A_CALL_TYPE, since },
       cursor,
       options?.signal === undefined ? {} : { signal: options.signal },

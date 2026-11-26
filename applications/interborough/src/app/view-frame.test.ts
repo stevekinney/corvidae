@@ -23,6 +23,7 @@ import {
   emptyWorld,
   installWorkflowWorld,
   readyFile,
+  scheduleFixture,
   sourceDefinition,
   workflowFaults,
   type WorkflowStub,
@@ -194,7 +195,14 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
                     { definitions: empty ? [] : [codeSummary()] }
                   : call.method === 'bureau.workflows.list'
                     ? { workflows: [], nextOffset: null }
-                    : { items: [] };
+                    : call.method === 'weft.schedules.list'
+                      ? {
+                          items: empty ? [] : [scheduleFixture('schedule-1', 'order')],
+                          total: empty ? 0 : 1,
+                          offset: 0,
+                          limit: 50,
+                        }
+                      : { items: [] };
     return Response.json({ jsonrpc: '2.0', id: call.id, result });
   }
   // A plugin's page asks the host which panels it serves, and loads the page of the one it finds.
@@ -1169,7 +1177,9 @@ describe('the Workflows area', () => {
     });
     expect(await some.findByTestId('content')).not.toBeNull();
     // The probe asks for this type's runs, and only the first.
-    expect(stub.callsTo('GET /workflows')[0]?.params).toMatchObject({ type: 'order-processing' });
+    expect(stub.callsTo('weft.workflows.list')[0]?.params).toMatchObject({
+      type: 'order-processing',
+    });
   });
 
   test('the runs of a type with none ask again while they are empty, and show a run that starts', async () => {
@@ -1187,7 +1197,7 @@ describe('the Workflows area', () => {
       pattern: '/workflows/:workflow/runs',
     });
     await until(() => expect(frame(container).dataset['state']).toBe('empty'));
-    const asked = stub.callsTo('GET /workflows').length;
+    const asked = stub.callsTo('weft.workflows.list').length;
 
     // The workflow starts, and the page that is already open finds out by itself.
     empty.runs.push({
@@ -1199,13 +1209,13 @@ describe('the Workflows area', () => {
     });
     jest.advanceTimersByTime(RUNS_RECHECK_MS);
     await until(() => expect(frame(container).dataset['state']).toBe('ready'));
-    expect(stub.callsTo('GET /workflows').length).toBeGreaterThan(asked);
+    expect(stub.callsTo('weft.workflows.list').length).toBeGreaterThan(asked);
 
     // With a run to show it asks no more.
-    const settled = stub.callsTo('GET /workflows').length;
+    const settled = stub.callsTo('weft.workflows.list').length;
     jest.advanceTimersByTime(RUNS_RECHECK_MS * 3);
     await settle();
-    expect(stub.callsTo('GET /workflows').length).toBe(settled);
+    expect(stub.callsTo('weft.workflows.list').length).toBe(settled);
   });
 
   test('a view whose probe sets no recheck is asked once, however long it stays empty', async () => {

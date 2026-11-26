@@ -22,7 +22,9 @@ describe('SignalsTab', () => {
   test('shows an empty message when no signal has been delivered to a wait point', async () => {
     const client = {
       signal: async () => {},
-      getTimeline: async (): Promise<WorkflowTimelineEntry[]> => [],
+      operations: {
+        'weft.workflows.timeline.get': async (): Promise<WorkflowTimelineEntry[]> => [],
+      },
     };
 
     const { getByText } = render(SignalsTabHarness, {
@@ -37,16 +39,18 @@ describe('SignalsTab', () => {
   test('lists wait-signal timeline entries as received signals', async () => {
     const client = {
       signal: async () => {},
-      getTimeline: async (): Promise<WorkflowTimelineEntry[]> => [
-        {
-          step: 1,
-          operationType: 'wait-signal',
-          operationLabel: 'advance',
-          inputSummary: '{}',
-          timestamp: 1_000,
-          status: 'completed',
-        },
-      ],
+      operations: {
+        'weft.workflows.timeline.get': async (): Promise<WorkflowTimelineEntry[]> => [
+          {
+            step: 1,
+            operationType: 'wait-signal',
+            operationLabel: 'advance',
+            inputSummary: '{}',
+            timestamp: 1_000,
+            status: 'completed',
+          },
+        ],
+      },
     };
 
     const { getByText } = render(SignalsTabHarness, {
@@ -70,7 +74,9 @@ describe('SignalsTab', () => {
         if (typeof name !== 'string') throw new Error('signal name missing');
         sent.call = { id, name, payload: rest[1] };
       },
-      getTimeline: async (): Promise<WorkflowTimelineEntry[]> => [],
+      operations: {
+        'weft.workflows.timeline.get': async (): Promise<WorkflowTimelineEntry[]> => [],
+      },
     };
 
     const { getByLabelText, getByRole } = render(SignalsTabHarness, {
@@ -90,7 +96,9 @@ describe('SignalsTab', () => {
       signal: async () => {
         outcome.called = true;
       },
-      getTimeline: async (): Promise<WorkflowTimelineEntry[]> => [],
+      operations: {
+        'weft.workflows.timeline.get': async (): Promise<WorkflowTimelineEntry[]> => [],
+      },
     };
 
     const { getByLabelText, getByRole, getByText } = render(SignalsTabHarness, {
@@ -111,7 +119,9 @@ describe('SignalsTab', () => {
       signal: async () => {
         outcome.called = true;
       },
-      getTimeline: async (): Promise<WorkflowTimelineEntry[]> => [],
+      operations: {
+        'weft.workflows.timeline.get': async (): Promise<WorkflowTimelineEntry[]> => [],
+      },
     };
 
     const { getByLabelText, getByRole } = render(SignalsTabHarness, {

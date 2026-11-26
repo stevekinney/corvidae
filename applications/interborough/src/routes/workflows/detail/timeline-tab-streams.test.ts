@@ -55,8 +55,8 @@ function clientWith(entries: WorkflowTimelineEntry[], chunks: Record<string, unk
   return {
     requests,
     client: {
-      getTimeline: async () => entries,
       operations: {
+        'weft.workflows.timeline.get': async () => entries,
         'weft.workflows.activities.pending.list': async () => ({ items: [] }),
         'weft.workflows.streams.chunks': async (input: { key: string; after?: unknown }) => {
           requests.push({

@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { installBureauStub, type BureauStub } from '../../lib/bureau-stub.test-support.ts';
+import { createBureauClient } from '../../lib/generated/bureau-operation-client.generated.ts';
 import {
   auditExportFilename,
   downloadText,
@@ -37,7 +38,10 @@ describe('readAuditExport', () => {
             : { records: [record(4)], nextCursor: null },
     });
 
-    const records = await readAuditExport({ types: ['run.completed', 'run.started'], since: 5 });
+    const records = await readAuditExport(createBureauClient({ baseUrl: '' }), {
+      types: ['run.completed', 'run.started'],
+      since: 5,
+    });
 
     expect(records.map((entry) => entry.sequence)).toEqual([1, 2, 3, 4]);
     const calls = stub.callsTo('bureau.audit.query').map((call) => call.params);
@@ -54,7 +58,7 @@ describe('readAuditExport', () => {
 
   test('is empty for an empty trail', async () => {
     stub = installBureauStub({ 'bureau.audit.query': () => ({ records: [], nextCursor: null }) });
-    expect(await readAuditExport({})).toEqual([]);
+    expect(await readAuditExport(createBureauClient({ baseUrl: '' }), {})).toEqual([]);
   });
 });
 

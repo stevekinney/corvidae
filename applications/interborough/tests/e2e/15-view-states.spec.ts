@@ -190,11 +190,7 @@ const PROBES: Readonly<Record<ProbedView, ProbeRoute>> = {
         ? { tasks: [], nextPageToken: null }
         : { goals: [], nextOffset: null },
   },
-  schedules: {
-    url: /\/v1\/schedules/,
-    matches: (url) => url.pathname === '/v1/schedules',
-    empty: { items: [], total: 0 },
-  },
+  schedules: bureauProbe('weft.schedules.list', { items: [], total: 0 }),
   reviews: bureauProbe('bureau.reviews.list', { reviews: [] }),
   workers: jsonRpcProbe('weft.workers.list'),
   storage: jsonRpcProbe('weft.storage.capabilities'),

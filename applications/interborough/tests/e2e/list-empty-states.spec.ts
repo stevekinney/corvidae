@@ -115,9 +115,17 @@ async function emptyEveryList(page: Page, view: string): Promise<void> {
     }
     await route.fulfill({ response, json: { ...answer, result: emptied(answer.result, method) } });
   });
-  await page.route(/\/v1\/schedules(\?|$)/, (route) =>
-    route.fulfill({ json: { items: [], total: 0 } }),
-  );
+  await page.route(isBureauCall, async (route: Route) => {
+    const body = JSON.parse(route.request().postData() ?? '{}') as {
+      method?: string;
+      id?: unknown;
+    };
+    if (body.method !== 'weft.schedules.list') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({ json: { jsonrpc: '2.0', id: body.id, result: { items: [], total: 0 } } });
+  });
 }
 
 /** Opens `list` with nothing in it, at `width` in `theme`, and answers its empty state. */

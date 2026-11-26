@@ -20,8 +20,10 @@
   import { getRecentCalls } from '../../../lib/a2a-calls.ts';
   import { agentLabel } from '../../../lib/agent-label.ts';
   import { faultErrorStateAdvice } from '../../../lib/faults.ts';
+  import { createBureauClient } from '../../../lib/generated/bureau-operation-client.generated.ts';
   import type { AgentSummary } from '../../../lib/bureau-client.ts';
   import { queryKeys } from '../../../lib/query.ts';
+  import { getPrincipalStore, principalQueryScope } from '../../../lib/scopes.svelte.ts';
 
   interface Props {
     /** The agents the host lists, which name an agent a call reached by its display name. */
@@ -31,11 +33,13 @@
   let { agents }: Props = $props();
 
   const copy = A2A_COPY.recent;
+  const bureau = createBureauClient({ baseUrl: '' });
+  const principal = getPrincipalStore();
 
   const calls = createQuery(
     () => ({
-      queryKey: queryKeys.a2aCalls(),
-      queryFn: ({ signal }) => getRecentCalls({ signal }),
+      queryKey: [...queryKeys.a2aCalls(), principalQueryScope(principal.principal)],
+      queryFn: ({ signal }) => getRecentCalls(bureau, { signal }),
       retry: false,
     }),
     undefined,

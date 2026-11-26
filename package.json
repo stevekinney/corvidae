@@ -35,7 +35,7 @@
     "@lasercat/homogenaize": "^1.2.41",
     "@lezer/highlight": "1.2.3",
     "@libsql/client": "^0.17.2",
-    "@lostgradient/environmentalist": "0.1.0",
+    "@lostgradient/environmentalist": "0.2.0",
     "@lucide/svelte": "^1.56.0",
     "@milkdown/ctx": "^7.17.3",
     "@milkdown/kit": "^7.17.3",
@@ -99,6 +99,7 @@
     "libphonenumber-js": "^1.13.3",
     "lmdb": "^3.5.9",
     "micromark-util-decode-numeric-character-reference": "^2.0.0",
+    "miniflare": "^4.20260730.0",
     "openai": "^7.8.0",
     "openid-client": "6.9.1",
     "oxlint": "^1.83.0",
@@ -236,6 +237,10 @@
   "overrides": {
     "picomatch": "4.0.4",
     "cookie": "0.7.2",
+    "miniflare": {
+      "sharp": "0.35.5",
+      "undici": "7.30.2"
+    },
     "@ag-ui/client/zod": "^4.6.6",
     "@ag-ui/proto/zod": "^4.6.6"
   },

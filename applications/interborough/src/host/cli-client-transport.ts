@@ -1,4 +1,11 @@
 import type { FaultCode } from '@lostgradient/backchannel';
+import { createCatalogClient } from '@lostgradient/backchannel/client';
+
+import {
+  CATALOG_OPERATION_NAMES,
+  type CatalogOperationName,
+  type CatalogOperationTypes,
+} from '../lib/generated/bureau-operation-client.generated.ts';
 
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 
@@ -218,6 +225,30 @@ export async function request(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Run a typed catalog read over the CLI's authenticated management transport. */
+export async function catalogRead<Name extends CatalogOperationName>(
+  target: CliTarget,
+  parsed: Parsed,
+  dependencies: CliClientDependencies,
+  name: Name,
+  input: CatalogOperationTypes[Name]['input'],
+): Promise<CliCommandResult> {
+  const client = createCatalogClient<CatalogOperationTypes>(
+    CATALOG_OPERATION_NAMES,
+    async (method, params) => {
+      const response = await request(target, '/bureau/jsonrpc', parsed, dependencies, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: `cli-${crypto.randomUUID()}`, method, params }),
+      });
+      return isRecord(response.data) && Object.hasOwn(response.data, 'result')
+        ? response.data['result']
+        : response.data;
+    },
+  );
+  return { data: await client[name](input) };
 }
 
 /** Fetch an authenticated binary response without interpreting its bytes as text. */

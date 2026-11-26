@@ -53,19 +53,23 @@ function client(options: {
   missed?: MissedFire[];
   manual?: boolean;
   error?: string;
+  list?: () => Promise<never>;
   timeline?: Array<{ step: number; stepIndex: number; status: string; operationLabel: string }>;
 }): HttpClient {
   return {
     baseUrl: 'http://localhost:1',
     headers: {},
-    list: async () => ({
-      items: options.runs ?? [],
-      total: options.runs?.length ?? 0,
-      nextCursor: null,
-    }),
-    get: async () => ({ error: options.error }),
-    getTimeline: async () => options.timeline ?? [],
     operations: {
+      'weft.workflows.list':
+        options.list ??
+        (async () => ({
+          items: options.runs ?? [],
+          total: options.runs?.length ?? 0,
+          offset: 0,
+          limit: 10,
+        })),
+      'weft.workflows.get': async () => ({ error: options.error }),
+      'weft.workflows.timeline.get': async () => options.timeline ?? [],
       'weft.schedules.missed': async () => ({ missed: options.missed ?? [] }),
       'weft.workflows.scheduleprovenance.get': async () =>
         options.manual === true ? { scheduleId: 'daily', manual: true } : null,
@@ -367,12 +371,11 @@ describe('a schedule that is paused, and one that has never run (rows 72v, 72w, 
 
 describe('a list that could not be read', () => {
   test('says which, and the upcoming runs are still there', async () => {
-    const failing = {
-      ...(client({}) as unknown as Record<string, unknown>),
+    const failing = client({
       list: async () => {
         throw new Error('down');
       },
-    } as unknown as HttpClient;
+    });
     const { container, findByText } = render(ScheduleRunsHarness, {
       props: { client: failing, schedule: schedule(), row: ACTIVE, now: NOW },
     });
@@ -383,13 +386,12 @@ describe('a list that could not be read', () => {
 
   test('says nothing of its own while the server does not answer: the shell says it once (row 73p)', async () => {
     let asked = false;
-    const failing = {
-      ...(client({}) as unknown as Record<string, unknown>),
+    const failing = client({
       list: async () => {
         asked = true;
         throw new Error('down');
       },
-    } as unknown as HttpClient;
+    });
     const monitor = new ConnectionMonitor({
       probe: () => new Promise(() => {}),
       probeDelayMs: () => 3_600_000,

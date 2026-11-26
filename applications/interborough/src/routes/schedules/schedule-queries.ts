@@ -60,27 +60,54 @@ const SCHEDULE_RUN_HISTORY_LIMIT = 10;
  * runs a schedule had launched — see `schedule-runs.svelte` and
  * `schedule-last-fire.svelte`, which share this one read.
  */
-export function fetchScheduleRunHistory(
-  client: Pick<HttpClient, 'list'>,
+export async function fetchScheduleRunHistory(
+  client: { readonly operations: Pick<HttpClient['operations'], 'weft.workflows.list'> },
   scheduleId: string,
 ): Promise<PaginatedResult<WorkflowSummary>> {
-  return client.list({ scheduleId, limit: SCHEDULE_RUN_HISTORY_LIMIT });
+  const page = await client.operations['weft.workflows.list']({
+    scheduleId,
+    limit: SCHEDULE_RUN_HISTORY_LIMIT,
+  });
+  return {
+    ...page,
+    items: page.items.map(({ tags, ...item }) => ({
+      ...item,
+      ...(tags === undefined ? {} : { tags: [...tags] }),
+    })),
+  };
+}
+
+function scheduleSummaryOf(
+  schedule: Awaited<ReturnType<HttpClient['operations']['weft.schedules.get']>>,
+): ScheduleSummary {
+  const { skippedOccurrences, ...rest } = schedule;
+  return {
+    ...rest,
+    queuedRuns: schedule.queuedRuns.map((run) => ({ ...run })),
+    ...(skippedOccurrences === undefined ? {} : { skippedOccurrences: [...skippedOccurrences] }),
+  };
 }
 
 /** `GET /api/v1/schedules` — page of schedule summaries. */
-export function fetchScheduleList(
-  client: Pick<HttpClient, 'listSchedules'>,
+export async function fetchScheduleList(
+  client: { readonly operations: Pick<HttpClient['operations'], 'weft.schedules.list'> },
   filter: ScheduleFilter,
 ): Promise<PaginatedResult<ScheduleSummary>> {
-  return client.listSchedules(filter);
+  const page = await client.operations['weft.schedules.list'](filter);
+  return { ...page, items: page.items.map(scheduleSummaryOf) };
 }
 
 /** `GET /api/v1/schedules/:id` — `null` when no schedule with that id exists. */
-export function fetchScheduleDetail(
-  client: Pick<HttpClient, 'getSchedule'>,
+export async function fetchScheduleDetail(
+  client: { readonly operations: Pick<HttpClient['operations'], 'weft.schedules.get'> },
   id: string,
 ): Promise<ScheduleSummary | null> {
-  return client.getSchedule(id);
+  try {
+    return scheduleSummaryOf(await client.operations['weft.schedules.get']({ scheduleId: id }));
+  } catch (error) {
+    if (error instanceof HttpClientError && error.status === 404) return null;
+    throw error;
+  }
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterAll, describe, expect, it } from 'bun:test';
 
 import {
@@ -13,11 +14,15 @@ import {
 import {
   discoverTestFiles,
   forwardStopSignals,
+  MINIMUM_FREE_MEMORY_BYTES,
   narrowToSelection,
   partitionIntoShards,
   runUiShards,
   SHARD_COUNT,
+  SHARD_SILENCE_LIMIT_MS,
   shardReportName,
+  STOP_GRACE_MS,
+  WATCH_INTERVAL_MS,
   type ShardProcess,
   type SpawnShard,
 } from './run-ui-shards.ts';
@@ -327,5 +332,183 @@ describe('forwardStopSignals', () => {
     expect([...handlers.keys()]).toEqual(['SIGINT', 'SIGTERM']);
     handlers.get('SIGTERM')?.();
     expect(killed).toEqual(['SIGTERM']);
+  });
+});
+
+describe('the hang watchdog', () => {
+  /**
+   * A child that writes `standardOutput`, then neither writes nor exits until it is killed.
+   * `drained` turns true once the runner has read the output and asked for more.
+   */
+  /**
+   * A shard that writes `standardOutput` and then nothing. A signal it doesn't ignore ends it; with
+   * `pipesStayOpen`, its output stays open after it ends, as when its tests outlive it.
+   */
+  function hangingChild(
+    standardOutput: string,
+    behaviour: { ignores?: readonly string[]; pipesStayOpen?: boolean } = {},
+  ): ShardProcess & { killedWith: string[]; drained: () => boolean } {
+    const killedWith: string[] = [];
+    let release: (code: number) => void = () => undefined;
+    let closeOut: () => void = () => undefined;
+    let closeErr: () => void = () => undefined;
+    let sent = false;
+    let askedForMore = false;
+    let ended = false;
+    const exited = new Promise<number>((resolve) => (release = resolve));
+    const stdout = new ReadableStream<Uint8Array>({
+      start(controller) {
+        closeOut = () => controller.close();
+      },
+      pull(controller) {
+        if (!sent) {
+          sent = true;
+          controller.enqueue(new TextEncoder().encode(standardOutput));
+          return;
+        }
+        askedForMore = true;
+        return new Promise<void>(() => undefined);
+      },
+    });
+    const stderr = new ReadableStream<Uint8Array>({
+      start(controller) {
+        closeErr = () => controller.close();
+      },
+    });
+    return {
+      stdout,
+      stderr,
+      exited,
+      killedWith,
+      drained: () => askedForMore,
+      kill: (signal) => {
+        killedWith.push(String(signal));
+        if (ended || behaviour.ignores?.includes(String(signal))) return;
+        ended = true;
+        if (!behaviour.pipesStayOpen) {
+          closeOut();
+          closeErr();
+        }
+        release(signal === 'SIGKILL' ? 137 : 143);
+      },
+    };
+  }
+
+  /** One UI test file, a fake clock, and a watchdog the test fires by hand. */
+  function harness(name: string, child: ShardProcess, freeBytes: () => number) {
+    const repositoryRoot = join(scratch, name);
+    const packageDirectory = join(repositoryRoot, 'applications/interborough');
+    touch(packageDirectory, 'src/lib/only.test.ts');
+    let clock = 0;
+    let check: () => void = () => undefined;
+    const out: string[] = [];
+    const err: string[] = [];
+    const run = runUiShards(['src'], {
+      packageRoot: packageDirectory,
+      repositoryRoot,
+      environment: {},
+      spawn: () => child,
+      subscribe: () => undefined,
+      writeStandardOutput: (text) => out.push(text),
+      writeStandardError: (text) => err.push(text),
+      now: () => clock,
+      every: (_milliseconds, callback) => {
+        check = callback;
+        return () => undefined;
+      },
+      freeMemory: freeBytes,
+    });
+    return {
+      run,
+      /** One watchdog check, `milliseconds` after the last on the clock. */
+      advance: (milliseconds: number) => {
+        clock += milliseconds;
+        check();
+      },
+      /** `milliseconds` of awake time, checked at the watchdog's interval. */
+      pass: (milliseconds: number) => {
+        for (let passed = 0; passed < milliseconds; passed += WATCH_INTERVAL_MS) {
+          clock += WATCH_INTERVAL_MS;
+          check();
+        }
+      },
+      out,
+      err,
+    };
+  }
+
+  it('stops a shard that writes nothing past the silence limit and reports where it was', async () => {
+    const child = hangingChild('src/lib/only.test.ts:\n(pass) one\n');
+    const setup = harness('silent', child, () => 8 * 1024 ** 3);
+    await waitUntil(child.drained, { message: 'the shard output to be read' });
+    setup.pass(SHARD_SILENCE_LIMIT_MS - WATCH_INTERVAL_MS);
+    expect(child.killedWith).toEqual([]);
+    setup.pass(WATCH_INTERVAL_MS);
+    expect(await setup.run).toBe(1);
+    expect(child.killedWith).toEqual(['SIGTERM']);
+    const report = setup.err.join('');
+    expect(report).toContain('ui shard 1 wrote nothing for 10 minutes');
+    expect(report).toContain('(pass) one');
+  });
+
+  it('counts silence in awake time, so a host that slept through the suite does not stop it', async () => {
+    const child = hangingChild('src/lib/only.test.ts:\n(pass) one\n');
+    const setup = harness('asleep', child, () => 8 * 1024 ** 3);
+    await waitUntil(child.drained, { message: 'the shard output to be read' });
+    setup.advance(60 * 60_000);
+    setup.advance(WATCH_INTERVAL_MS);
+    expect(child.killedWith).toEqual([]);
+    setup.pass(SHARD_SILENCE_LIMIT_MS);
+    expect(await setup.run).toBe(1);
+  });
+
+  it('sends SIGKILL to a stopped shard that SIGTERM did not end, once the grace has passed', async () => {
+    const child = hangingChild('src/lib/only.test.ts:\n(pass) one\n', { ignores: ['SIGTERM'] });
+    const setup = harness('stubborn', child, () => 8 * 1024 ** 3);
+    await waitUntil(child.drained, { message: 'the shard output to be read' });
+    setup.pass(SHARD_SILENCE_LIMIT_MS);
+    expect(child.killedWith).toEqual(['SIGTERM']);
+    setup.pass(STOP_GRACE_MS - WATCH_INTERVAL_MS);
+    expect(child.killedWith).toEqual(['SIGTERM']);
+    setup.pass(WATCH_INTERVAL_MS);
+    expect(await setup.run).toBe(1);
+    expect(child.killedWith).toEqual(['SIGTERM', 'SIGKILL']);
+  });
+
+  it('finishes a stopped shard whose tests outlive it and hold its output open', async () => {
+    const child = hangingChild('src/lib/only.test.ts:\n(pass) one\n', { pipesStayOpen: true });
+    const setup = harness('orphaned', child, () => 8 * 1024 ** 3);
+    await waitUntil(child.drained, { message: 'the shard output to be read' });
+    setup.pass(SHARD_SILENCE_LIMIT_MS);
+    expect(await setup.run).toBe(1);
+    expect(setup.out.join('')).toContain('(pass) one');
+  });
+
+  it('writes one snapshot when free memory falls below the floor, and keeps running', async () => {
+    const child = hangingChild('src/lib/only.test.ts:\n(pass) one\n');
+    let free = 8 * 1024 ** 3;
+    const setup = harness('memory', child, () => free);
+    await waitUntil(child.drained, { message: 'the shard output to be read' });
+    setup.advance(1000);
+    expect(setup.err.join('')).not.toContain('run-ui-shards:');
+    free = MINIMUM_FREE_MEMORY_BYTES - 1;
+    setup.advance(1000);
+    setup.advance(1000);
+    expect(child.killedWith).toEqual([]);
+    const snapshot = setup.err.join('');
+    expect(snapshot.split('free memory fell to').length - 1).toBe(1);
+    expect(snapshot).toContain('still running, this is where each shard was');
+    expect(snapshot).toContain('(pass) one');
+    setup.pass(SHARD_SILENCE_LIMIT_MS);
+    expect(await setup.run).toBe(1);
+    expect(child.killedWith).toEqual(['SIGTERM']);
+  });
+
+  it('writes no report for a shard that finishes', async () => {
+    const setup = harness('healthy', fakeChild(0, 'done\n', ''), () => 8 * 1024 ** 3);
+    expect(await setup.run).toBe(0);
+    setup.advance(SHARD_SILENCE_LIMIT_MS * 2);
+    expect(setup.err.join('')).not.toContain('run-ui-shards:');
+    expect(setup.out.join('')).toContain('exit 0');
   });
 });

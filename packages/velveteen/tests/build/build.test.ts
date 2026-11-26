@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { buildProduction } from "../../src/build/index.ts";
 import { readProductionGeneration } from "../../src/build/publication.ts";
 import { normalizeBasePath } from "../../src/build/paths.ts";
+import { createApplication, fetchAssetSource } from "../../src/server/index.ts";
 import { writeProductionFixture } from "./production-fixture.ts";
 
 const buildRoot = join(process.cwd(), ".velveteen/build");
@@ -32,6 +33,49 @@ const hashes = async (
       ]),
     ),
   );
+
+test("D05: build output exports a manifest and server registry for host-owned runtime assets", async () => {
+  await mkdir(buildRoot, { recursive: true });
+  const root = await mkdtemp(join(buildRoot, "build-host-inputs-"));
+  try {
+    const fixture = await writeProductionFixture(root);
+    const generation = await buildProduction({
+      projectDirectory: root,
+      routesDirectory: fixture.routesDirectory,
+      staticDirectory: fixture.staticDirectory,
+      outputDirectory: join(root, "application"),
+      basePath: "/app",
+    });
+    const manifestModule = await import(
+      pathToFileURL(join(generation.directory, "velveteen-manifest.js")).href,
+    );
+    const registryModule = await import(
+      pathToFileURL(join(generation.directory, "velveteen-registry.js")).href,
+    );
+    expect(manifestModule.manifest).toEqual(generation.manifest);
+    const application = await createApplication({
+      generation: {
+        directory: join(root, "missing-generation"),
+        manifest: manifestModule.manifest,
+      },
+      registry: registryModule.registry as never,
+      assets: fetchAssetSource({
+        fetch: () => new Response("host asset"),
+      }),
+    });
+    try {
+      const response = await application.fetch(
+        new Request("https://example.test/app/"),
+      );
+      expect(response.status).toBe(200);
+      expect(await response.text()).toContain("First: 0");
+    } finally {
+      await application.dispose();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("D05: failed syntax and warning rebuilds preserve the published generation", async () => {
   await mkdir(buildRoot, { recursive: true });

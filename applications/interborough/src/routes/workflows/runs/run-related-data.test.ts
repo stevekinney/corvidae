@@ -1,4 +1,5 @@
-import type { WorkflowState, WorkflowSummary } from '@lostgradient/weft/testing';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { HttpClientError, type WorkflowState, type WorkflowSummary } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
 import {
@@ -47,22 +48,28 @@ function client(overrides: { parent?: WorkflowState | null; siblingTotal?: numbe
   return {
     lists,
     client: {
-      get: async (id: string) =>
-        overrides.parent !== undefined
-          ? overrides.parent
-          : id === 'parent'
-            ? state('parent')
-            : null,
-      list: async (filter: { parentWorkflowId?: string }) => {
-        lists.push(filter);
-        const items = byParent[filter.parentWorkflowId ?? ''] ?? [];
-        return {
-          items,
-          total:
-            filter.parentWorkflowId === 'parent' && overrides.siblingTotal !== undefined
-              ? overrides.siblingTotal
-              : items.length,
-        };
+      operations: {
+        'weft.workflows.get': async ({ workflowId }: { workflowId: string }) => {
+          const value =
+            overrides.parent !== undefined
+              ? overrides.parent
+              : workflowId === 'parent'
+                ? state('parent')
+                : null;
+          if (value === null) throw new HttpClientError(404, 'missing');
+          return value;
+        },
+        'weft.workflows.list': async (filter: { parentWorkflowId?: string }) => {
+          lists.push(filter);
+          const items = byParent[filter.parentWorkflowId ?? ''] ?? [];
+          return {
+            items,
+            total:
+              filter.parentWorkflowId === 'parent' && overrides.siblingTotal !== undefined
+                ? overrides.siblingTotal
+                : items.length,
+          };
+        },
       },
     } as unknown as RelatedRunsClient,
   };
@@ -96,6 +103,22 @@ describe('fetchRelatedRuns', () => {
       status: undefined,
       createdAt: undefined,
     });
+  });
+
+  test('does not hide a parent authorization failure', async () => {
+    const { client: source } = client();
+    const denied: RelatedRunsClient = {
+      ...source,
+      operations: {
+        ...source.operations,
+        'weft.workflows.get': async () => {
+          throw new HttpClientError(403, 'forbidden');
+        },
+      },
+    };
+    expect(
+      await rejectionOf(fetchRelatedRuns(denied, { id: 'a', parentWorkflowId: 'parent' })),
+    ).toMatchObject({ status: 403 });
   });
 
   test('counts siblings the page does not hold, without counting the run itself', async () => {

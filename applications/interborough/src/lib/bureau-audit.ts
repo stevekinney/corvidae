@@ -4,8 +4,9 @@
  * the newest (`order: 'newest'`), and pages by a cursor that the answer hands back. The operation
  * takes an upper bound on time (`until`) and an actor (`principal`), which the audit log does not use.
  */
-import { bureauClient, type BureauOutput } from './bureau-api.ts';
+import type { BureauOutput } from './bureau-api.ts';
 import type { Fetcher } from './bureau-client.ts';
+import type { CatalogOperations } from './generated/bureau-operation-client.generated.ts';
 
 type JsonPage = Extract<BureauOutput<'bureau.audit.query'>, { readonly records: unknown }>;
 
@@ -39,6 +40,7 @@ export const AUDIT_PAGE_SIZE = 50;
  * whole matching trail, so ask for it once.
  */
 export async function queryAudit(
+  client: Pick<CatalogOperations, 'bureau.audit.query'>,
   filter: AuditFilter,
   cursor: string | undefined,
   options?: Options & {
@@ -57,7 +59,7 @@ export async function queryAudit(
     ...(filter.resource === undefined || filter.resource === '' ? {} : { runId: filter.resource }),
     ...(cursor === undefined ? {} : { cursor }),
   };
-  const page = await bureauClient['bureau.audit.query'](params, options);
+  const page = await client['bureau.audit.query'](params, options);
   // The `jsonl` format is a download, which no page of the console asks for.
   if (!('records' in page)) throw new Error('The audit trail answered a download, not a page.');
   return page;

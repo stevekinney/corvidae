@@ -82,8 +82,8 @@ function renderTab(
   return render(TimelineTabHarness, {
     props: {
       client: {
-        getTimeline: async () => entries,
         operations: {
+          'weft.workflows.timeline.get': async () => entries,
           'weft.workflows.activities.pending.list': async () => ({ items: pending }),
           ...(readTask === undefined ? {} : { 'weft.tasks.get': readTask }),
         },

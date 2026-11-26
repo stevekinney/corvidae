@@ -7,7 +7,8 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClientError } from '@lostgradient/weft/testing';
+import { HttpClientError } from '@lostgradient/weft';
+import { QueryClient } from '@tanstack/svelte-query';
 
 import { throwingRejectionOf } from '@lostgradient/testing';
 import {
@@ -15,6 +16,7 @@ import {
   AUTHORIZATION_SCOPES,
   isForbidden,
   isUnauthorized,
+  principalQueryScope,
   PrincipalStore,
   resolveHostPrincipal,
   resolvePrincipal,
@@ -27,6 +29,38 @@ import {
 function grantedPrincipal(scopes: readonly AuthorizationScope[] = AUTHORIZATION_SCOPES): Principal {
   return { scopes, unauthenticatedAccess: null };
 }
+
+test('query scope separates workspaces, actors, and changing grants', () => {
+  const principal = {
+    ...grantedPrincipal(['events:read', 'workflows:read']),
+    workspace: { workspaceId: 'one', actorId: 'alice' },
+  };
+  const scope = principalQueryScope(principal);
+  expect(scope).toEqual(
+    principalQueryScope({ ...principal, scopes: [...principal.scopes].reverse() }),
+  );
+  expect(scope).not.toEqual(
+    principalQueryScope({ ...principal, workspace: { workspaceId: 'two', actorId: 'alice' } }),
+  );
+  expect(scope).not.toEqual(
+    principalQueryScope({ ...principal, workspace: { workspaceId: 'one', actorId: 'bob' } }),
+  );
+  expect(scope).not.toEqual(principalQueryScope({ ...principal, scopes: ['events:read'] }));
+});
+
+test('a late answer under revoked grants cannot populate the new scoped key', async () => {
+  const cache = new QueryClient();
+  const principal = grantedPrincipal(['events:read', 'workflows:read']);
+  const oldKey = ['audit', principalQueryScope(principal)];
+  const newKey = ['audit', principalQueryScope({ ...principal, scopes: ['events:read'] })];
+  const pending = Promise.withResolvers<string>();
+  const oldRead = cache.fetchQuery({ queryKey: oldKey, queryFn: () => pending.promise });
+  cache.setQueryData(newKey, 'current');
+  pending.resolve('previous grant');
+  await oldRead;
+  expect(cache.getQueryData(newKey)).toBe('current');
+  cache.clear();
+});
 
 describe('PrincipalStore.bannerMode', () => {
   test('is "auth-required" with no principal', () => {

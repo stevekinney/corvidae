@@ -14,12 +14,53 @@
  * normalization) — assertions below read `headers['authorization']`, not
  * `headers['Authorization']`.
  */
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import type { HttpClient } from '@lostgradient/weft/testing';
+import { HttpClientError, type HttpClient } from '@lostgradient/weft';
 
-import { createClient, getClient, provideClient } from './client.ts';
+import { createClient, fetchWorkflowState, getClient, provideClient } from './client.ts';
+
+test('generated workflow reads preserve future error codes, missing resources and authorization faults', async () => {
+  const state = {
+    id: 'run',
+    type: 'example',
+    status: 'failed' as const,
+    input: null,
+    createdAt: 1,
+    updatedAt: 2,
+    versionTuple: { workflowVersion: '1' },
+    errorCode: 'future-code',
+  };
+  let input: unknown;
+  const client = {
+    operations: {
+      'weft.workflows.get': async (value: unknown) => {
+        input = value;
+        return state;
+      },
+    },
+  };
+  expect(await fetchWorkflowState(client, 'run')).toEqual(state);
+  expect(input).toEqual({ workflowId: 'run' });
+  const missing = {
+    operations: {
+      'weft.workflows.get': async () => {
+        throw new HttpClientError(404, 'missing');
+      },
+    },
+  };
+  expect(await fetchWorkflowState(missing, 'run')).toBeNull();
+  const denied = {
+    operations: {
+      'weft.workflows.get': async () => {
+        throw new HttpClientError(403, 'forbidden');
+      },
+    },
+  };
+  expect(await rejectionOf(fetchWorkflowState(denied, 'run'))).toMatchObject({ status: 403 });
+});
 
 describe('createClient — baseUrl resolution', () => {
   test('an empty baseUrl (same-origin, plan §3.3) resolves to the injected origin', () => {

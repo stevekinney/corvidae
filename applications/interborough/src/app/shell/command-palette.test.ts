@@ -7,6 +7,7 @@ import { Window } from 'happy-dom';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { ShortcutRegistry } from '../../lib/shortcuts.ts';
+import { scheduleFixture } from '../../lib/workflow-world.test-support.ts';
 import { PALETTE_COPY } from '../copy/shell.ts';
 import type { NotificationEntry } from '../notification-items.ts';
 import { memoryStore } from '../notification-store.test-support.ts';
@@ -29,7 +30,7 @@ function landAt(path: string): void {
   router.navigate(path, { replace: true });
 }
 
-/** The engine as the palette searches it; a path that ends with `unreachable` does not answer. */
+/** The engine as the palette searches it; one named operation may be unreachable. */
 function stubEngine(unreachable?: string): void {
   restore = installFetchImplementation(async (input, init) => {
     const text = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -43,6 +44,60 @@ function stubEngine(unreachable?: string): void {
         method?: string;
         params?: Record<string, unknown>;
       };
+      if (call.method === unreachable) throw new Error('the host did not answer');
+      if (call.method === 'weft.schedules.list') {
+        return Response.json({
+          jsonrpc: '2.0',
+          id: call.id,
+          result: {
+            items: [scheduleFixture('schedule-7', 'order')],
+            total: 1,
+            offset: 0,
+            limit: 100,
+          },
+        });
+      }
+      if (call.method === 'weft.reviews.list') {
+        return Response.json({
+          jsonrpc: '2.0',
+          id: call.id,
+          result: {
+            items: [
+              {
+                reviewId: 'review-7',
+                reviewType: 'approval',
+                workflowId: 'run-7',
+                status: 'pending',
+                artifact: null,
+                reviewers: [],
+                allowPartial: false,
+                createdAt: 1,
+              },
+            ],
+          },
+        });
+      }
+      if (call.method === 'weft.workflows.list') {
+        return Response.json({
+          jsonrpc: '2.0',
+          id: call.id,
+          result: {
+            items: [
+              {
+                id: 'run-7',
+                type: 'order',
+                status: 'completed',
+                version: '1',
+                createdAt: 1,
+                updatedAt: 1,
+              },
+            ],
+            total: 1,
+            offset: 0,
+            limit: 50,
+          },
+        });
+      }
       if (call.method === 'bureau.tasks.list') taskListParams.push(call.params ?? {});
       if (call.method === 'bureau.contexts.list') {
         return Response.json({
@@ -365,7 +420,7 @@ describe('a search that failed', () => {
   });
 
   test('says which results may be missing when one domain failed and the others found a match', async () => {
-    stubEngine('/schedules');
+    stubEngine('weft.schedules.list');
     landAt('/chats');
     const view = render(CommandPaletteLauncher, {
       props: { open: true, client: new HttpClient({ baseUrl: 'http://localhost/api' }) },

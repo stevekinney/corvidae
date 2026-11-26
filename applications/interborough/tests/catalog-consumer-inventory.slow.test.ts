@@ -58,6 +58,7 @@ test('catalog consumers remain classified against the served catalogs', async ()
   const discovered: string[] = [];
   const discoveredRest: string[] = [];
   const discoveredCli: string[] = [];
+  const discoveredGeneratedCli: string[] = [];
   const discoveredCliTemplates: string[] = [];
   const discoveredTransport: string[] = [];
   const discoveredMessages = new Set<string>();
@@ -66,6 +67,7 @@ test('catalog consumers remain classified against the served catalogs', async ()
     ...inventory.catalog.map((entry) => entry.path),
     ...inventory.eligible.map((entry) => entry.path),
     ...inventory.cli.map((entry) => entry.path),
+    ...inventory.cliGenerated.map((entry) => entry.path),
     ...inventory.transportBoundaries.map((entry) => entry.path),
     ...inventory.dynamic.map((entry) => entry.path),
   ]);
@@ -129,8 +131,19 @@ test('catalog consumers remain classified against the served catalogs', async ()
             );
         }
         if (/^host\/cli-(?!client|destructive).*\.ts$/u.test(path)) {
-          if (ts.isStringLiteral(node) && /^(?:bureau|weft)\.[a-z.]+$/u.test(node.text))
-            discoveredCli.push(`${path} ${callerOf(node, tree)} ${node.text}`);
+          if (
+            ts.isStringLiteral(node) &&
+            !ts.isLiteralTypeNode(node.parent) &&
+            /^(?:bureau|weft)\.[a-z.]+$/u.test(node.text)
+          ) {
+            const generated =
+              ts.isCallExpression(node.parent) &&
+              ts.isIdentifier(node.parent.expression) &&
+              node.parent.expression.text === 'catalogRead';
+            (generated ? discoveredGeneratedCli : discoveredCli).push(
+              `${path} ${callerOf(node, tree)} ${node.text}`,
+            );
+          }
           if (ts.isTemplateExpression(node) && /^(?:bureau|weft)\./u.test(node.head.text))
             discoveredCliTemplates.push(`${path} ${callerOf(node, tree)} ${node.getText(tree)}`);
         }
@@ -167,7 +180,13 @@ test('catalog consumers remain classified against the served catalogs', async ()
           throw new Error(`Unclassified catalog accessor ${path}: ${node.getText(tree)}`);
         if (ts.isElementAccessExpression(node)) {
           const target = node.expression.getText(tree);
-          if (target === 'bureauClient' || target.endsWith('.operations')) {
+          if (
+            target === 'bureauClient' ||
+            target.endsWith('.operations') ||
+            (target === 'client' &&
+              ts.isStringLiteral(node.argumentExpression) &&
+              node.argumentExpression.text.startsWith('bureau.'))
+          ) {
             const argument = node.argumentExpression;
             const operation = ts.isStringLiteral(argument)
               ? argument.text
@@ -292,6 +311,19 @@ test('catalog consumers remain classified against the served catalogs', async ()
     expect(entry.transport).toBe('Bureau JSON-RPC');
     expect(entry.issue).toMatch(/^COR-262[35]$/u);
   }
+  for (const entry of inventory.cliGenerated) {
+    expect(names.has(entry.operation)).toBe(true);
+    expect((BUREAU_CLIENT_NAMES as readonly string[]).includes(entry.operation)).toBe(true);
+    expect(entry.classification).toBe('generated');
+    expect(entry.transport).toBe('Bureau JSON-RPC');
+  }
+  expect(discoveredGeneratedCli.toSorted()).toEqual(
+    inventory.cliGenerated
+      .flatMap((entry) =>
+        Array<string>(entry.count).fill(`${entry.path} ${entry.caller} ${entry.operation}`),
+      )
+      .toSorted(),
+  );
   expect(discoveredCli.toSorted()).toEqual(
     inventory.cli
       .flatMap((entry) =>
@@ -317,6 +349,7 @@ test('catalog consumers remain classified against the served catalogs', async ()
   }
   const cliOperations = new Set([
     ...inventory.cli.map((entry) => entry.operation),
+    ...inventory.cliGenerated.map((entry) => entry.operation),
     ...inventory.cliTemplates.flatMap((entry) => entry.operations),
   ]);
   for (const operations of Object.values(CLI_OPERATION_MAPPINGS))
@@ -427,6 +460,22 @@ test('catalog consumers remain classified against the served catalogs', async ()
     },
   ]);
   expect(() => assertClassified(discovered.slice(catalogBefore), [])).toThrow(
+    'Unclassified call: fixtures/unlisted-consumer.ts inspect bureau.tasks.get',
+  );
+  const scopedBefore = discovered.length;
+  scanTrees([
+    {
+      path: fixturePath,
+      source: "function inspect(client: Client) { return client['bureau.tasks.get']({}); }",
+      tree: ts.createSourceFile(
+        fixturePath,
+        "function inspect(client: Client) { return client['bureau.tasks.get']({}); }",
+        ts.ScriptTarget.Latest,
+        true,
+      ),
+    },
+  ]);
+  expect(() => assertClassified(discovered.slice(scopedBefore), [])).toThrow(
     'Unclassified call: fixtures/unlisted-consumer.ts inspect bureau.tasks.get',
   );
   const existingPath = 'app/engine-status.svelte.ts';

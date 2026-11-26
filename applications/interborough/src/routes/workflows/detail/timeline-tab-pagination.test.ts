@@ -48,8 +48,8 @@ function renderTimeline(id: string, timeline: WorkflowTimelineEntry[]) {
   return render(TimelineTabHarness, {
     props: {
       client: {
-        getTimeline: async () => timeline,
         operations: {
+          'weft.workflows.timeline.get': async () => timeline,
           'weft.workflows.activities.pending.list': async () => ({ items: [] }),
         },
         activity: {

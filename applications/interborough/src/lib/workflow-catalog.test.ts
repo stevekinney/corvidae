@@ -444,6 +444,9 @@ describe('the activity of a code-defined type', () => {
       lastRunAt: new Date(NOW - 10 * MINUTE).toISOString(),
     });
     expect(activity.get('order-processing')?.schedules).toHaveLength(1);
+    expect(stub.callsTo('weft.schedules.list').map((call) => call.params)).toEqual([
+      { workflowType: 'order-processing' },
+    ]);
     // One total at a time: it never asks the engine for more than a page of one.
     for (const call of stub.callsTo('weft.workflows.list')) expect(call.params['limit']).toBe(1);
   });

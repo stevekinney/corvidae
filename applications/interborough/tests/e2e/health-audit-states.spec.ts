@@ -15,6 +15,7 @@
 import type { Page, Route } from '@playwright/test';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { chooseAuditFilter } from './audit-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, pressRecorder, test } from './fixtures.ts';
@@ -110,7 +111,7 @@ for (const width of WIDTHS) {
       await expect(rows(page).first()).toBeVisible();
 
       // COR-2445: the pane beside the table is never empty while the filters list an event.
-      await main.getByLabel('Who', { exact: true }).selectOption('agents');
+      await chooseAuditFilter(page, 'Who', 'Agents');
       await expect(page).toHaveURL(/actor=agents/);
       const pane = main.locator('.cinder-list-detail__detail');
       await expect(rows(page).first()).toHaveAttribute('aria-current', 'true');
@@ -153,8 +154,8 @@ for (const width of WIDTHS) {
 
       await clear.click();
       await expect(page).toHaveURL(/\/health\/audit(\?record=[^&]+)?$/);
-      await expect(main.getByLabel('Who', { exact: true })).toHaveValue('');
-      await expect(main.getByLabel('Period', { exact: true })).toHaveValue('7d');
+      await expect(main.getByLabel('Who', { exact: true })).toHaveText('Anyone');
+      await expect(main.getByLabel('Period', { exact: true })).toHaveText('Last 7 days');
     });
 
     test('an unavailable event in an empty Audit log has one missing detail and a way back', async ({
@@ -185,7 +186,7 @@ for (const width of WIDTHS) {
       await open(page, width);
       const main = page.locator('main');
       await expect(rows(page).first()).toBeVisible();
-      await main.getByLabel('Who', { exact: true }).selectOption('you');
+      await chooseAuditFilter(page, 'Who', 'You');
 
       const box = main.getByPlaceholder('Search by actor, action or target');
       await box.fill('refund 9999');
@@ -209,7 +210,7 @@ for (const width of WIDTHS) {
       // 83i: Clear filters resets the search as well as Who, the period and the action.
       await main.getByRole('button', { name: 'Clear filters' }).click();
       await expect(box).toHaveValue('');
-      await expect(main.getByLabel('Who', { exact: true })).toHaveValue('');
+      await expect(main.getByLabel('Who', { exact: true })).toHaveText('Anyone');
       await expect(page).toHaveURL(/\/health\/audit(\?record=[^&]*)?$/);
       await expect(rows(page).first()).toBeVisible();
     });
@@ -452,7 +453,7 @@ test.describe('Health › Audit log export and loading states', () => {
         'aria-disabled',
         'true',
       );
-      await expect(main.getByLabel('Period', { exact: true })).toHaveValue('7d');
+      await expect(main.getByLabel('Period', { exact: true })).toHaveText('Last 7 days');
       await captureForDesignReview(page, {
         route: '/health/audit',
         state: 'export-failed',
@@ -480,8 +481,8 @@ test.describe('Health › Audit log export and loading states', () => {
 
     // The real filter selects, at once; nothing is counted yet.
     const filters = main.getByRole('search', { name: 'Filter the audit log' });
-    await expect(filters.getByLabel('Who', { exact: true })).toHaveValue('');
-    await expect(filters.getByLabel('Period', { exact: true })).toHaveValue('7d');
+    await expect(filters.getByLabel('Who', { exact: true })).toHaveText('Anyone');
+    await expect(filters.getByLabel('Period', { exact: true })).toHaveText('Last 7 days');
     await expect(main.getByTestId('audit-count')).toHaveCount(0);
     const loading = main.getByTestId('audit-loading');
     await expect(loading).toBeVisible();

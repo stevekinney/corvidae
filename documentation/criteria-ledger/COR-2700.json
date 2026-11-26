@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2700",
+  "branch": "codex/cor-2700-workers-npm",
+  "checkedAt": "cd20563607175d91c9f2f21cd8e835e8b2bf90ba",
+  "briefVersion": "2c3a367a1758",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Bun-build-backed withWorker creates Miniflare with nodejs_compat, D1, Durable Object, assets, and outbound service support."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "bun run --filter @lostgradient/workerd-testing test:slow passes the six binding scenarios."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "The integration suite spies on Miniflare.prototype.dispose during a callback failure. With only the await dispose line removed it fails with expected 1 call, received 0. Restored code passes."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Miniflare is cataloged and only a workerd-testing devDependency. testing/workerd explicitly registers its fixture as a Knip test entry: the final test-inclusive and production inventories omit fixture-worker.ts, and miniflare-scoped sharp 0.35.5 and undici 7.30.2 overrides make bun run audit pass."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "testing/workerd/README.md documents API, conditions, compatibility settings, flags, and suite integration."
+    }
+  ]
+}

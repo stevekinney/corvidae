@@ -60,7 +60,8 @@
     JsonViewer,
   } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import type { HttpClient, WorkflowEvent, WorkflowState } from '@lostgradient/weft';
+  import { HttpClientError, type HttpClient, type WorkflowEvent } from '@lostgradient/weft';
+  import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
   import { Funnel, X } from '@lucide/svelte';
   import { onDestroy, untrack } from 'svelte';
 
@@ -84,9 +85,15 @@
     exportFilename,
   } from './export-events.ts';
   import { isTerminalStatus } from './workflow-status.ts';
+  import { fetchWorkflowTimeline } from './workflow-timeline-data.ts';
 
   interface EventsTabProps {
-    readonly client: Pick<HttpClient, 'getEvents' | 'getTimeline' | 'baseUrl' | 'headers'>;
+    readonly client: Pick<HttpClient, 'baseUrl' | 'headers'> & {
+      readonly operations: Pick<
+        HttpClient['operations'],
+        'weft.workflows.timeline.get' | 'weft.workflows.events.list'
+      >;
+    };
     readonly workflow: WorkflowState;
   }
 
@@ -103,10 +110,19 @@
   // triggering the `state_referenced_locally` compiler warning.
   const selection = timelineSelectionFor(untrack(() => workflow.id));
 
+  async function fetchEvents(id: string): Promise<WorkflowEvent[]> {
+    try {
+      const page = await client.operations['weft.workflows.events.list']({ workflowId: id });
+      return page.events.map((event) => ({ ...event }));
+    } catch (error) {
+      if (error instanceof HttpClientError && error.status === 404) return [];
+      throw error;
+    }
+  }
+
   const eventsQuery = createQuery(() => ({
     queryKey: workflowEventsKey(workflow.id),
-    queryFn: () =>
-      fetchWorkflowEventsMerged(queryClient, workflow.id, (id) => client.getEvents(id)),
+    queryFn: () => fetchWorkflowEventsMerged(queryClient, workflow.id, fetchEvents),
   }));
 
   // The query's own cache entry is the live-tail cache (`workflowEventsKey`): `queryFn` merges each
@@ -127,7 +143,7 @@
   const refreshCheckpoints = createWorkflowCheckpointRefresher(
     queryClient,
     untrack(() => workflow.id),
-    (id) => client.getEvents(id),
+    fetchEvents,
   );
 
   function startTail(): void {
@@ -229,7 +245,7 @@
 
   async function downloadEventsAndTimeline(): Promise<void> {
     const events = eventsQuery.data ?? [];
-    const timeline = await client.getTimeline(workflow.id);
+    const timeline = await fetchWorkflowTimeline(client, workflow.id);
     downloadJson(
       buildEventsAndTimelineExport(workflow.id, events, timeline),
       exportFilename(workflow.id, 'events-and-timeline'),
