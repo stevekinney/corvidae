@@ -3,12 +3,12 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { spawnPipedWithHangGuard } from '../testing/testing/src/hang-guard.ts';
-import { waitUntil } from '../testing/testing/src/wait-until.ts';
-import { rootScriptEnvironment } from './environment-configuration.ts';
+import { spawnPipedWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { waitUntil } from '@lostgradient/testing/wait-until';
+import { processEnvironment } from './environment-configuration.ts';
 import { ownedCommand } from './owned-process-gate.ts';
-import { processIsAlive } from './owned-process-group.test-support.ts';
 import { runOwnedProcessGroup } from './owned-process-group.ts';
+import { isProcessAlive } from './process-identity.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'owned-process-group-'));
 test('requires the gate command to be an own property', () => {
@@ -23,7 +23,7 @@ let registeredStart = '';
 const exit = await runOwnedProcessGroup({
   command: [process.execPath, '-e', 'await Bun.write(process.argv[1], "completed")', completed],
   cwd: root,
-  environment: rootScriptEnvironment(),
+  environment: processEnvironment(),
   register: async (pid, startedAt) => {
     registeredPid = pid;
     registeredStart = startedAt;
@@ -33,7 +33,7 @@ const exit = await runOwnedProcessGroup({
 const rejected = await runOwnedProcessGroup({
   command: [process.execPath, '-e', 'await Bun.write(process.argv[1], "forbidden")', forbidden],
   cwd: root,
-  environment: rootScriptEnvironment(),
+  environment: processEnvironment(),
   register: async () => {
     throw new Error('registration failed');
   },
@@ -52,7 +52,7 @@ const mutableCommand = [
 const snapshotExit = await runOwnedProcessGroup({
   command: mutableCommand,
   cwd: root,
-  environment: rootScriptEnvironment(),
+  environment: processEnvironment(),
   register: async () => {
     mutableCommand[3] = changedTarget;
   },
@@ -75,7 +75,7 @@ try {
   owner.kill('SIGKILL');
   ownerExit = await owner.exited;
   ownerStopped = true;
-  await waitUntil(() => !processIsAlive(gatePid), {
+  await waitUntil(() => !isProcessAlive(gatePid), {
     message: 'the unapproved gate to exit after owner death',
   });
 } finally {
@@ -107,6 +107,6 @@ test('runs the command captured before registration, even if its caller changes 
 test('a killed owner cannot release an unregistered gate', () => {
   expect(ownerExit).not.toBe(0);
   expect(gatePid).toBeGreaterThan(0);
-  expect(processIsAlive(gatePid)).toBe(false);
+  expect(isProcessAlive(gatePid)).toBe(false);
   expect(existsSync(join(root, 'after-owner-death'))).toBe(false);
 });

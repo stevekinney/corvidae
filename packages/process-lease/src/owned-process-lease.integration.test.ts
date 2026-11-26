@@ -12,10 +12,10 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { spawnPipedWithHangGuard, spawnWithHangGuard } from '../testing/testing/src/hang-guard.ts';
-import { waitUntil } from '../testing/testing/src/wait-until.ts';
+import { spawnPipedWithHangGuard, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { acquireOwnedProcessLease, retireOwnedProcessLease } from './owned-process-lease.ts';
-import { processStartTime } from './run-exclusively.ts';
+import { processStartTime } from './process-identity.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'owned-process-lease-'));
 const collisionPath = join(root, 'collision-lock');

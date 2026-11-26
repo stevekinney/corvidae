@@ -4,17 +4,15 @@ import { lstat, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises
 import { basename, dirname, join } from 'node:path';
 
 import {
-  judgeByProcess,
   ownerFileName,
-  processStartTime,
-  processTableEnvironment,
   readOwner,
   recordProcessGroup,
   removeLock,
-  takeReclaimGuard,
   type HeldHostLock,
   type OwnerRecord,
-} from './run-exclusively.ts';
+} from './lock-records.ts';
+import { processStartTime, processTableEnvironment } from './process-identity.ts';
+import { judgeByProcess, takeReclaimGuard } from './reclaim.ts';
 
 const platform = process.platform;
 if (platform !== 'darwin' && platform !== 'linux')

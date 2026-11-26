@@ -3,6 +3,7 @@ import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { ownerFileName } from '../packages/process-lease/src/index.ts';
 import { spawnWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { waitUntil } from '../testing/testing/src/wait-until.ts';
 import { CONTAINER_CPUS } from './browser-fixtures/scripts/docker-baseline-runner.ts';
@@ -21,7 +22,6 @@ import {
   type HostSlotsOptions,
 } from './host-slots.ts';
 import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
-import { ownerFileName } from './run-exclusively.ts';
 
 const rendererScript = /(?:update-snapshots-docker|run-browser-docker)\.ts/;
 const heavyScript =

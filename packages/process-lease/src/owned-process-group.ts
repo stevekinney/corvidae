@@ -3,7 +3,7 @@ import { constants } from 'node:os';
 import { join } from 'node:path';
 
 import { verifiedGate } from './owned-process-lease.ts';
-import { processStartTime } from './run-exclusively.ts';
+import { processStartTime } from './process-identity.ts';
 
 export interface OwnedProcessGroupOptions {
   readonly command: readonly string[];
