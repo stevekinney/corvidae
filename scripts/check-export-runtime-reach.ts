@@ -218,7 +218,8 @@ export async function scanExportRuntimeReachReport(root = ROOT): Promise<ExportR
   return { findings: sort(findings), nodeFindings: sort(nodeFindings) };
 }
 export async function scanExportRuntimeReach(root = ROOT): Promise<ExportRuntimeReachFinding[]> {
-  return (await scanExportRuntimeReachReport(root)).findings;
+  const report = await scanExportRuntimeReachReport(root);
+  return report.findings;
 }
 
 export function judgeExportRuntimeReach(
