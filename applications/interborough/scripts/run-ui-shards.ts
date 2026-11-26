@@ -23,6 +23,7 @@
  */
 
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { freemem } from 'node:os';
 import { join, relative } from 'node:path';
 
 import {
@@ -35,6 +36,27 @@ import { rootScriptEnvironment } from '../../../scripts/environment-configuratio
 
 /** How many `bun test` processes the UI suite is spread over. */
 export const SHARD_COUNT = 4;
+
+/**
+ * How long a shard may write nothing before the run is treated as hung. Every test already has the
+ * 120-second awake-time hang guard, so ten silent minutes means something outside any one test's
+ * deadline has stopped, such as a synchronous loop that starves the guard's timer. This is a hang
+ * detector, not a performance bound: a healthy shard writes a result line for every file it runs.
+ */
+export const SHARD_SILENCE_LIMIT_MS = 10 * 60_000;
+
+/**
+ * The free memory below which the run stops its shards. On 2026-11-25 the CI runner was lost after
+ * about 46 minutes in four of nine runs, leaving no log; stopping while there is still memory to
+ * write a report turns that into a failure that says which shard was where.
+ */
+export const MINIMUM_FREE_MEMORY_BYTES = 512 * 1024 * 1024;
+
+/** How often the watchdog checks each shard's silence and the free memory. */
+export const WATCH_INTERVAL_MS = 15_000;
+
+/** How many of a shard's last output lines a hang report quotes. */
+const REPORT_TAIL_LINES = 40;
 
 const PACKAGE_ROOT = join(import.meta.dir, '..');
 const REPOSITORY_ROOT = join(PACKAGE_ROOT, '..', '..');
@@ -150,6 +172,72 @@ export interface ShardRunDependencies {
   subscribe?: (signal: NodeJS.Signals, handler: () => void) => unknown;
   writeStandardOutput?: (text: string) => unknown;
   writeStandardError?: (text: string) => unknown;
+  /** The clock the watchdog reads, in milliseconds. */
+  now?: () => number;
+  /** Runs `check` every `milliseconds` until the returned function is called. */
+  every?: (milliseconds: number, check: () => void) => () => void;
+  /** The host's free memory in bytes. */
+  freeMemory?: () => number;
+}
+
+/** A running shard's output as it arrives, and when it last wrote anything. */
+export interface ShardWatch {
+  readonly number: number;
+  readonly child: ShardProcess;
+  output: string;
+  lastActivity: number;
+  finished: boolean;
+}
+
+/** Reads a stream to its end, appending each chunk to the shard's output as it arrives. */
+async function collect(
+  stream: ReadableStream<Uint8Array>,
+  watch: ShardWatch,
+  now: () => number,
+): Promise<string> {
+  const decoder = new TextDecoder();
+  let text = '';
+  for await (const chunk of stream) {
+    const piece = decoder.decode(chunk, { stream: true });
+    text += piece;
+    watch.output += piece;
+    watch.lastActivity = now();
+  }
+  const rest = decoder.decode();
+  text += rest;
+  watch.output += rest;
+  return text;
+}
+
+/**
+ * The report a stopped run writes: why it stopped, the free memory, and each unfinished shard's
+ * silence and last lines, so a hang names the file it was in.
+ */
+export function hangReport(
+  reason: string,
+  watches: readonly ShardWatch[],
+  at: number,
+  freeBytes: number,
+): string {
+  const lines = [
+    `run-ui-shards: ${reason}; stopping every shard. Free memory: ${Math.round(freeBytes / 1024 / 1024)} MiB.`,
+  ];
+  for (const watch of watches) {
+    if (watch.finished) continue;
+    const silentSeconds = Math.round((at - watch.lastActivity) / 1000);
+    const tail = watch.output.trimEnd().split('\n').slice(-REPORT_TAIL_LINES).join('\n');
+    lines.push(
+      `--- ui shard ${watch.number}: still running, silent for ${silentSeconds} s; its last output ---`,
+      tail === '' ? '(no output yet)' : tail,
+    );
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+/** `setInterval`, returning its own cancel. */
+function everyWithInterval(milliseconds: number, check: () => void): () => void {
+  const handle = setInterval(check, milliseconds);
+  return () => clearInterval(handle);
 }
 
 /** Stop every running shard when the run is interrupted or terminated, so none is orphaned. */
@@ -180,6 +268,9 @@ export async function runUiShards(
     subscribe = process.on.bind(process),
     writeStandardOutput = process.stdout.write.bind(process.stdout),
     writeStandardError = process.stderr.write.bind(process.stderr),
+    now = Date.now,
+    every = everyWithInterval,
+    freeMemory = freemem,
   } = dependencies;
   const { flags, roots, ignorePatterns } = splitBunTestArguments(argumentsList);
   const files = narrowToSelection(
@@ -205,6 +296,7 @@ export async function runUiShards(
   const children = new Set<ShardProcess>();
   forwardStopSignals(children, subscribe);
 
+  const watches: ShardWatch[] = [];
   const runs = shards.flatMap((shardFiles, index) => {
     if (shardFiles.length === 0) return [];
     const child = spawn(
@@ -218,14 +310,24 @@ export async function runUiShards(
       { cwd: packageRoot, env: shardEnvironment, stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' },
     );
     children.add(child);
-    // A shard's output is held until it finishes, so concurrent runs never interleave lines.
+    const watch: ShardWatch = {
+      number: index + 1,
+      child,
+      output: '',
+      lastActivity: now(),
+      finished: false,
+    };
+    watches.push(watch);
+    // A shard's output is held until it finishes, so concurrent runs never interleave lines; the
+    // watchdog reads it as it arrives.
     return [
       (async () => {
         const [standardOutput, standardError, exitCode] = await Promise.all([
-          new Response(child.stdout).text(),
-          new Response(child.stderr).text(),
+          collect(child.stdout, watch, now),
+          collect(child.stderr, watch, now),
           child.exited,
         ]);
+        watch.finished = true;
         children.delete(child);
         writeStandardOutput(
           `\n--- ui shard ${index + 1}/${shards.length}: ${shardFiles.length} files, exit ${exitCode} ---\n${standardOutput}`,
@@ -235,7 +337,33 @@ export async function runUiShards(
       })(),
     ];
   });
+
+  // A hang stops the run with a report instead of running until the host gives out.
+  let stopped = false;
+  const stop = (reason: string) => {
+    if (stopped) return;
+    stopped = true;
+    writeStandardError(hangReport(reason, watches, now(), freeMemory()));
+    for (const child of children) child.kill('SIGKILL');
+  };
+  const cancel = every(WATCH_INTERVAL_MS, () => {
+    const at = now();
+    const silent = watches.find(
+      (watch) => !watch.finished && at - watch.lastActivity > SHARD_SILENCE_LIMIT_MS,
+    );
+    if (silent !== undefined) {
+      stop(
+        `ui shard ${silent.number} wrote nothing for ${Math.round(SHARD_SILENCE_LIMIT_MS / 60_000)} minutes`,
+      );
+      return;
+    }
+    const freeBytes = freeMemory();
+    if (freeBytes < MINIMUM_FREE_MEMORY_BYTES)
+      stop(`free memory fell to ${Math.round(freeBytes / 1024 / 1024)} MiB`);
+  });
   const exitCodes = await Promise.all(runs);
+  cancel();
+  if (stopped) return 1;
   return exitCodes.find((code) => code !== 0) ?? 0;
 }
 

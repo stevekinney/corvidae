@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterAll, describe, expect, it } from 'bun:test';
 
 import {
@@ -13,10 +14,12 @@ import {
 import {
   discoverTestFiles,
   forwardStopSignals,
+  MINIMUM_FREE_MEMORY_BYTES,
   narrowToSelection,
   partitionIntoShards,
   runUiShards,
   SHARD_COUNT,
+  SHARD_SILENCE_LIMIT_MS,
   shardReportName,
   type ShardProcess,
   type SpawnShard,
@@ -327,5 +330,125 @@ describe('forwardStopSignals', () => {
     expect([...handlers.keys()]).toEqual(['SIGINT', 'SIGTERM']);
     handlers.get('SIGTERM')?.();
     expect(killed).toEqual(['SIGTERM']);
+  });
+});
+
+describe('the hang watchdog', () => {
+  /**
+   * A child that writes `standardOutput`, then neither writes nor exits until it is killed.
+   * `drained` turns true once the runner has read the output and asked for more.
+   */
+  function hangingChild(
+    standardOutput: string,
+  ): ShardProcess & { killedWith: string[]; drained: () => boolean } {
+    const killedWith: string[] = [];
+    let release: (code: number) => void = () => undefined;
+    let closeOut: () => void = () => undefined;
+    let closeErr: () => void = () => undefined;
+    let sent = false;
+    let askedForMore = false;
+    const exited = new Promise<number>((resolve) => (release = resolve));
+    const stdout = new ReadableStream<Uint8Array>({
+      start(controller) {
+        closeOut = () => controller.close();
+      },
+      pull(controller) {
+        if (!sent) {
+          sent = true;
+          controller.enqueue(new TextEncoder().encode(standardOutput));
+          return;
+        }
+        askedForMore = true;
+        return new Promise<void>(() => undefined);
+      },
+    });
+    const stderr = new ReadableStream<Uint8Array>({
+      start(controller) {
+        closeErr = () => controller.close();
+      },
+    });
+    return {
+      stdout,
+      stderr,
+      exited,
+      killedWith,
+      drained: () => askedForMore,
+      kill: (signal) => {
+        killedWith.push(String(signal));
+        closeOut();
+        closeErr();
+        release(137);
+      },
+    };
+  }
+
+  /** One UI test file, a fake clock, and a watchdog the test fires by hand. */
+  function harness(name: string, child: ShardProcess, freeBytes: () => number) {
+    const repositoryRoot = join(scratch, name);
+    const packageDirectory = join(repositoryRoot, 'applications/interborough');
+    touch(packageDirectory, 'src/lib/only.test.ts');
+    let clock = 0;
+    let check: () => void = () => undefined;
+    const out: string[] = [];
+    const err: string[] = [];
+    const run = runUiShards(['src'], {
+      packageRoot: packageDirectory,
+      repositoryRoot,
+      environment: {},
+      spawn: () => child,
+      subscribe: () => undefined,
+      writeStandardOutput: (text) => out.push(text),
+      writeStandardError: (text) => err.push(text),
+      now: () => clock,
+      every: (_milliseconds, callback) => {
+        check = callback;
+        return () => undefined;
+      },
+      freeMemory: freeBytes,
+    });
+    return {
+      run,
+      advance: (milliseconds: number) => {
+        clock += milliseconds;
+        check();
+      },
+      out,
+      err,
+    };
+  }
+
+  it('stops a shard that writes nothing past the silence limit and reports where it was', async () => {
+    const child = hangingChild('src/lib/only.test.ts:\n(pass) one\n');
+    const setup = harness('silent', child, () => 8 * 1024 ** 3);
+    await waitUntil(child.drained, { message: 'the shard output to be read' });
+    setup.advance(SHARD_SILENCE_LIMIT_MS - 1);
+    expect(child.killedWith).toEqual([]);
+    setup.advance(2);
+    expect(await setup.run).toBe(1);
+    expect(child.killedWith).toEqual(['SIGKILL']);
+    const report = setup.err.join('');
+    expect(report).toContain('ui shard 1 wrote nothing for 10 minutes');
+    expect(report).toContain('(pass) one');
+  });
+
+  it('stops every shard when free memory falls below the floor', async () => {
+    const child = hangingChild('working\n');
+    let free = 8 * 1024 ** 3;
+    const setup = harness('memory', child, () => free);
+    setup.advance(1000);
+    expect(child.killedWith).toEqual([]);
+    free = MINIMUM_FREE_MEMORY_BYTES - 1;
+    setup.advance(1000);
+    expect(await setup.run).toBe(1);
+    expect(child.killedWith).toEqual(['SIGKILL']);
+    expect(setup.err.join('')).toContain('free memory fell to');
+  });
+
+  it('writes no report for a shard that finishes', async () => {
+    const setup = harness('healthy', fakeChild(0, 'done\n', ''), () => 8 * 1024 ** 3);
+    expect(await setup.run).toBe(0);
+    setup.advance(SHARD_SILENCE_LIMIT_MS * 2);
+    expect(setup.err.join('')).not.toContain('run-ui-shards:');
+    expect(setup.out.join('')).toContain('exit 0');
   });
 });
