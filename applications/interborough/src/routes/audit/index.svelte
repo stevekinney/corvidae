@@ -706,6 +706,14 @@
     justify-content: flex-end;
   }
 
+  /* On desktop, let the inputs shrink within the bounded measure before wrapping the toolbar. */
+  @container (min-width: 54rem) {
+    .ib-audit__controls,
+    .ib-audit__filters {
+      flex-wrap: nowrap;
+    }
+  }
+
   /* Two controls share each row on a phone, leaving the first event in view. */
   @container (max-width: 39.99rem) {
     .ib-audit__filters {
