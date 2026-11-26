@@ -46,9 +46,9 @@
  * @module agent-override-store
  */
 
-import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 
+import { sha256HexSync } from '@lostgradient/cryptography';
 import {
   type ConditionalTextValueStore,
   MemoryStorage,
@@ -257,7 +257,7 @@ export function encodeAgentOverrides(overrides: AgentOverrides): string {
 
 /** The hash of `overrides`, a save's `expectedHash`. */
 export function hashAgentOverrides(overrides: AgentOverrides): string {
-  return createHash('sha256').update(encodeAgentOverrides(overrides)).digest('hex');
+  return sha256HexSync(encodeAgentOverrides(overrides));
 }
 
 /** The keys of `next` that differ from `previous`; every key `next` sets when there is none. */

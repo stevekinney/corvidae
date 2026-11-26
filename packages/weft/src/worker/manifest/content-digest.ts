@@ -13,6 +13,7 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 
 import { copyBytesToArrayBuffer } from '@lostgradient/backchannel/internals';
+import { sha256HexSync as sha256TextHexSync } from '@lostgradient/cryptography';
 import { utf8Encode } from './utf8.ts';
 
 /**
@@ -61,10 +62,9 @@ export async function sha256Hex(input: string): Promise<string> {
  * handler, must return immediately rather than block on a durable write).
  * Reaches the identical SHA-256 digest with no async gap at all, so it never
  * races a caller (production or test) that does not itself await the
- * eventual write settling.
+ * eventual write settling. The shared helper keeps this representation aligned
+ * with other persisted SHA-256 digests.
  */
 export function sha256HexSync(input: string): string {
-  const { createHash } = process.getBuiltinModule('node:crypto');
-  const digest = createHash('sha256').update(utf8Encode(input)).digest('hex');
-  return `${CONTENT_DIGEST_ALGORITHM}:${digest}`;
+  return `${CONTENT_DIGEST_ALGORITHM}:${sha256TextHexSync(input)}`;
 }

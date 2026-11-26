@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { sha256HexSync } from '@lostgradient/cryptography';
 
 import { BungalowInputError } from './errors.ts';
 
@@ -55,7 +55,7 @@ export function assertConfigurationWrite(
 export function localConfigurationSnapshot(text: string | undefined): ConfigurationSnapshot {
   return {
     text,
-    revision: text === undefined ? null : createHash('sha256').update(text).digest('hex'),
+    revision: text === undefined ? null : sha256HexSync(text),
   };
 }
 

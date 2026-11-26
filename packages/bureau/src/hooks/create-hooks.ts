@@ -87,8 +87,9 @@ import { captureRunWorkspaceAuthority } from '../run-authority.ts';
  * @module create-hooks
  */
 
-import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
+
+import { sha256HexSync } from '@lostgradient/cryptography';
 
 import type { HookDeliveryFailedEvent, HookDeliveryGaveUpEvent } from '../events.ts';
 import { ownerFromPrincipal, ownerOrLocal } from '../owner-of-record.ts';
@@ -1102,7 +1103,7 @@ function checkedName(name: unknown): string {
  * the one hook.
  */
 function defaultHookIdOf(plugin: string, name: string): string {
-  return `default-${createHash('sha256').update(`${plugin}\u0000${name}`).digest('hex').slice(0, 32)}`;
+  return `default-${sha256HexSync(`${plugin}\u0000${name}`).slice(0, 32)}`;
 }
 
 /** A declaration after every check `create` makes of the same fields. */
