@@ -10,6 +10,7 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { createDeferred, flushMicrotasks } from '@lostgradient/testing/fake-timers';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import type { WorkerOutboundMessage } from '../types.ts';
 import { RevisionRealmExecutionStrategy } from './revision-realm-execution-strategy.ts';
 import type { RevisionRealmAcquireOutcome } from './revision-realm-pool.ts';
@@ -78,7 +79,11 @@ function newStrategy(): {
   const registry = new RevisionRealmRegistry();
   const strategy = new RevisionRealmExecutionStrategy({
     registry,
-    resolveRevisionRealmConfig: () => ({ workerUrl, expectedWorkflowTypes: [ORDER_WORKFLOW_NAME] }),
+    resolveRevisionRealmConfig: () => ({
+      workerUrl,
+      createWorker: bunWorkerFactory,
+      expectedWorkflowTypes: [ORDER_WORKFLOW_NAME],
+    }),
     getWorkflowRevisionPin: () => undefined,
   });
   return { strategy, registry, ...collectMessages(strategy) };
@@ -178,9 +183,14 @@ describe('RevisionRealmExecutionStrategy', () => {
         registry,
         resolveRevisionRealmConfig: (workflowType) =>
           workflowType === ORDER_WORKFLOW_NAME
-            ? { workerUrl, expectedWorkflowTypes: [ORDER_WORKFLOW_NAME] }
+            ? {
+                workerUrl,
+                createWorker: bunWorkerFactory,
+                expectedWorkflowTypes: [ORDER_WORKFLOW_NAME],
+              }
             : {
                 workerUrl: crashWorkerUrl,
+                createWorker: bunWorkerFactory,
                 expectedWorkflowTypes: [CRASH_WORKFLOW_NAME],
                 // Concurrency 1: proves the crashed realm's pool slot is
                 // actually reclaimed, not merely that some realm exists.
@@ -304,6 +314,7 @@ describe('RevisionRealmExecutionStrategy', () => {
         registry,
         resolveRevisionRealmConfig: () => ({
           workerUrl: crashWorkerUrl,
+          createWorker: bunWorkerFactory,
           expectedWorkflowTypes: [CRASH_WORKFLOW_NAME],
           // Concurrency 1: if the crashed realm's pool slot is never
           // reclaimed, the SECOND startWorkflow() below (same still-active

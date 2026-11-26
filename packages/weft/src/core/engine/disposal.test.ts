@@ -2,6 +2,7 @@ import { describe, expect, it, mock } from 'bun:test';
 
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { ActivityRegistry } from '../activity-registry.ts';
 import { WorkflowSourceLoadCancelledEvent } from '../events/workflow-source-events.ts';
 import { buildWorkflowManifestFromDefinition } from '../registry-workflow-manifest.ts';
@@ -536,6 +537,7 @@ describe('defer:false synchronous launch', () => {
       workflowExecutionMode: 'worker',
       workerExecution: {
         workerUrl: new URL('../../workers/test-browser-worker.ts', import.meta.url),
+        createWorker: bunWorkerFactory,
         poolSize: 1,
       },
     });

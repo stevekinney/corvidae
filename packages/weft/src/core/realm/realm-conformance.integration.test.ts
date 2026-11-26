@@ -16,6 +16,7 @@
  * @module core/realm/realm-conformance.test
  */
 
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { ChildProcessRealm } from './child-process-realm.ts';
 import { FakeRealm } from './fake-realm.test-support.ts';
 import type {
@@ -98,6 +99,7 @@ const workerUrl = new URL('./__fixtures__/revision-realm-worker-entry.ts', impor
 function workerRealmConformance(options: RealmConformanceCreateOptions = {}): ConformanceRealm {
   const realm = new WorkerRealm({
     workerUrl,
+    createWorker: bunWorkerFactory,
     expectedWorkflowTypes: EXPECTED_WORKFLOW_TYPES,
     isReferenced: options.isReferenced ?? (() => true),
     maxRestarts: options.maxRestarts ?? 3,

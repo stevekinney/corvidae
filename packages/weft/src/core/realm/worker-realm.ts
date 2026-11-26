@@ -32,6 +32,7 @@
  * @module core/realm/worker-realm
  */
 
+import type { CreateWorker, WorkerLike } from '../../workers/pool.ts';
 import {
   isWorkerRealmReadyMessage,
   validateRealmReadyMessage,
@@ -48,7 +49,6 @@ import {
   isRealmResultMessage,
   type RealmRunMessage,
 } from './worker-realm-messages.ts';
-import type { CreateWorker, WorkerLike } from '../../workers/pool.ts';
 
 /** Activation identifiers fixed for a {@link WorkerRealm}'s entire `Active` lifetime. See {@link WorkerRealm.activate}. */
 export interface WorkerRealmActivation {
@@ -66,7 +66,7 @@ interface PendingWorkerTurn {
 
 export interface WorkerRealmOptions extends RealmLifecycleDependencies {
   readonly workerUrl: string | URL;
-  readonly createWorker?: CreateWorker;
+  readonly createWorker: CreateWorker;
   readonly expectedWorkflowTypes: readonly string[];
   /** Opt-in revision digest check (COR-117's `getExpectedArtifactDigest`) — a revision realm always supplies this, so two revisions of the same workflow TYPE name cannot be confused for one another. */
   readonly expectedArtifactDigest?: string;
@@ -345,9 +345,7 @@ export class WorkerRealm {
   #spawnWorker(): WorkerLike {
     const workerOptions: WorkerOptions & { smol?: boolean } = {};
     if (this.#options.smol) workerOptions.smol = true;
-    const createWorker = this.#options.createWorker ?? ((url, options) =>
-      Reflect.construct(globalThis.Worker, [url, options]) as WorkerLike);
-    const worker = createWorker(this.#options.workerUrl, workerOptions);
+    const worker = this.#options.createWorker(this.#options.workerUrl, workerOptions);
     this.#closePromise = new Promise((resolve) => {
       worker.addEventListener('close', () => resolve(), { once: true });
     });

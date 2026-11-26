@@ -9,10 +9,12 @@
  * @example
  * ```ts
  * import { WorkerPool, type WorkerPoolOptions } from '@lostgradient/weft';
+ * import { bunWorkerFactory } from '@lostgradient/weft/bun';
  *
  * const options: WorkerPoolOptions = {
  *   concurrency: 4,
  *   workerUrl: new URL('./activity-worker.ts', import.meta.url),
+ *   createWorker: bunWorkerFactory,
  *   smol: false,
  * };
  * using pool = new WorkerPool(options);
@@ -22,13 +24,16 @@
 /** The Web Worker contract consumed by Weft's portable worker plumbing. */
 export type WorkerLike = Worker;
 
-export type CreateWorker = (url: string | URL, options?: WorkerOptions & { smol?: boolean }) => WorkerLike;
+export type CreateWorker = (
+  url: string | URL,
+  options?: WorkerOptions & { smol?: boolean },
+) => WorkerLike;
 
 export interface WorkerPoolOptions {
   concurrency: number;
   workerUrl: string | URL;
   /** Host-owned worker constructor. Required so the portable root never selects a runtime. */
-  createWorker?: CreateWorker;
+  createWorker: CreateWorker;
   smol?: boolean;
 }
 
@@ -50,10 +55,12 @@ type PendingWorkerRequest = {
  * @example
  * ```ts
  * import { WorkerPool } from '@lostgradient/weft';
+ * import { bunWorkerFactory } from '@lostgradient/weft/bun';
  *
  * await using pool = new WorkerPool({
  *   concurrency: 2,
  *   workerUrl: new URL('./worker.ts', import.meta.url),
+ *   createWorker: bunWorkerFactory,
  * });
  *
  * const worker = await pool.acquire();
@@ -81,8 +88,7 @@ export class WorkerPool implements Disposable, AsyncDisposable {
     this.#specificWorkerQueue = new Map();
     this.#concurrency = options.concurrency;
     this.#workerUrl = options.workerUrl;
-    this.#createWorkerFactory = options.createWorker ?? ((url, workerOptions) =>
-      Reflect.construct(globalThis.Worker, [url, workerOptions]) as WorkerLike);
+    this.#createWorkerFactory = options.createWorker;
     this.#smol = options.smol ?? false;
     this.#disposed = false;
     this.#asyncDisposeResolve = null;

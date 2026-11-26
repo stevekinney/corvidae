@@ -33,12 +33,12 @@
  * @module core/realm/revision-realm-pool
  */
 
+import type { CreateWorker } from '../../workers/pool.ts';
 import type { ChildProcessRealm, ChildProcessRealmOptions } from './child-process-realm.ts';
 import type { RealmLifecycleState } from './realm-lifecycle.ts';
 import type { RevisionRealmDiagnosticsEntry } from './revision-realm-diagnostics.ts';
 import type { RevisionRealm } from './revision-realm.ts';
 import { WorkerRealm, type WorkerRealmOptions } from './worker-realm.ts';
-import type { CreateWorker } from '../../workers/pool.ts';
 
 /**
  * `child-process-realm.ts` uses Node child-process IPC and `node:url`, neither of which
@@ -83,7 +83,7 @@ export interface RevisionRealmPoolOptions {
   /** Called synchronously after each lifecycle transition of every realm this pool warms. Not called for a realm's initial `warming` state. */
   readonly onRealmStateChanged?: (change: RevisionRealmStateChange) => void;
   readonly workerUrl: string | URL;
-  readonly createWorker?: CreateWorker;
+  readonly createWorker: CreateWorker;
   readonly expectedWorkflowTypes: readonly string[];
   readonly expectedArtifactDigest?: string;
   /** Upper bound on realms concurrently warmed (idle or active) for this revision. */
@@ -410,7 +410,7 @@ export class RevisionRealmPool {
   #buildWorkerRealmOptions(): WorkerRealmOptions {
     return {
       workerUrl: this.#options.workerUrl,
-      ...(this.#options.createWorker === undefined ? {} : { createWorker: this.#options.createWorker }),
+      createWorker: this.#options.createWorker,
       ...this.#sharedRealmOptions(),
       ...(this.#options.smol === undefined ? {} : { smol: this.#options.smol }),
     };

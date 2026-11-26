@@ -9,6 +9,7 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { ActivityRegistry } from '../activity-registry.ts';
 import type { ConstraintCheckState } from '../constraint.ts';
 import { constraint } from '../constraint.ts';
@@ -510,6 +511,7 @@ describe('constraint primitive', () => {
       workflowExecutionMode: 'worker',
       workerExecution: {
         workerUrl: new URL('https://example.invalid/worker.js'),
+        createWorker: bunWorkerFactory,
         poolSize: 1,
       },
     });

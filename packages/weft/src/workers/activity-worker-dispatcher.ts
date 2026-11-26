@@ -31,11 +31,12 @@ const DEFAULT_WORKER_TIMEOUT_MILLISECONDS = 30_000;
  * @example
  * ```ts
  * import { ActivityWorkerDispatcher, WorkerPool, type ActivityWorkerDispatcherOptions } from '@lostgradient/weft';
+ * import { bunWorkerFactory } from '@lostgradient/weft/bun';
  *
  * const options: ActivityWorkerDispatcherOptions = {
  *   timeoutMilliseconds: 60_000,
  * };
- * const pool = new WorkerPool({ concurrency: 4, workerUrl: './worker.ts' });
+ * const pool = new WorkerPool({ concurrency: 4, workerUrl: './worker.ts', createWorker: bunWorkerFactory });
  * using dispatcher = new ActivityWorkerDispatcher(pool, options);
  * void dispatcher;
  * ```
@@ -60,10 +61,12 @@ export type ActivityWorkerDispatcherOptions = {
  * @example
  * ```ts
  * import { ActivityWorkerDispatcher, WorkerPool } from '@lostgradient/weft';
+ * import { bunWorkerFactory } from '@lostgradient/weft/bun';
  *
  * const pool = new WorkerPool({
  *   concurrency: 4,
  *   workerUrl: new URL('./my-worker.ts', import.meta.url),
+ *   createWorker: bunWorkerFactory,
  * });
  * using dispatcher = new ActivityWorkerDispatcher(pool, { timeoutMilliseconds: 30_000 });
  *

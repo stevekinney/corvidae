@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { WorkerPool } from './pool.ts';
 import {
   createWorkflowRunnerContext,
@@ -299,7 +300,7 @@ describe('workflow runner integration', () => {
 
     it('creates a pool and acquires workers from the test worker', async () => {
       const workerUrl = new URL('./test-worker.ts', import.meta.url);
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
 
       const worker = await pool.acquire();
 

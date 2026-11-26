@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { Engine } from './engine.ts';
 import type { WorkflowContext } from './types.ts';
 import { activity, workflow } from './types.ts';
@@ -26,6 +27,7 @@ describe('Engine with smol: true workers', () => {
         activityExecution: {
           mode: 'worker',
           workerUrl: activityWorkerUrl,
+          createWorker: bunWorkerFactory,
           poolSize: 2,
           smol: true,
         },
@@ -57,6 +59,7 @@ describe('Engine with smol: true workers', () => {
         activityExecution: {
           mode: 'worker',
           workerUrl: activityWorkerUrl,
+          createWorker: bunWorkerFactory,
           poolSize: 2,
           smol: true,
         },
@@ -93,6 +96,7 @@ describe('Engine with smol: true workers', () => {
         activityExecution: {
           mode: 'worker',
           workerUrl: activityWorkerUrl,
+          createWorker: bunWorkerFactory,
           poolSize: 1,
           smol: true,
         },
@@ -131,6 +135,7 @@ describe('Engine with smol: true workers', () => {
         activityExecution: {
           mode: 'worker',
           workerUrl: activityWorkerUrl,
+          createWorker: bunWorkerFactory,
           poolSize: 1,
         },
       });
@@ -161,6 +166,7 @@ describe('Engine with smol: true workers', () => {
         activityExecution: {
           mode: 'worker',
           workerUrl: activityWorkerUrl,
+          createWorker: bunWorkerFactory,
           poolSize: 1,
           smol: false,
         },
