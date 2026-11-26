@@ -1,7 +1,5 @@
-/// <reference types="bun" />
-
 /**
- * Real Bun-`Bun.spawn`-IPC-backed revision realm (COR-246).
+ * Real child-process-IPC-backed revision realm (COR-246).
  *
  * Implements the exact same {@link
  * import('./revision-realm.ts').RevisionRealm} port `WorkerRealm` (COR-249)
@@ -11,11 +9,11 @@
  * modules R1 (COR-117) built and proved against the fake realm, and R2
  * (COR-249) proved again against a real `Worker`. Where `WorkerRealm` settles
  * in response to `postMessage` events crossing a `Worker` thread boundary,
- * `ChildProcessRealm` settles in response to `Bun.spawn`'s own IPC channel —
+ * `ChildProcessRealm` settles in response to its child process IPC channel —
  * the realm-ready handshake ({@link
  * import('../worker-realm-readiness.ts').WorkerRealmReadyMessage}) and the
  * shared `realm-run` / `realm-result` / `realm-failure` wire messages
- * ({@link import('./worker-realm-messages.ts')}) travel over `subprocess.send`
+ * ({@link import('./worker-realm-messages.ts')}) travel over child IPC
  * / `process.send` instead of `postMessage`.
  *
  * A child process is a stronger crash/resource boundary than a Worker's
@@ -25,7 +23,7 @@
  * of a real OS process per realm rather than a thread. Bun's IPC channel
  * (`ipc`) is only compatible with another `bun` instance as the child — see
  * `#spawnProcess` — so `scriptPath` must be a script this same Bun binary can
- * run, exactly like `workerUrl` names a script `new Worker()` can run.
+ * run, exactly like `workerUrl` names a worker entry script.
  *
  * One `ChildProcessRealm` instance serves exactly one execution's entire
  * turn sequence, from `activate()` through completion — the same
@@ -44,7 +42,7 @@
  *
  * @module core/realm/child-process-realm
  */
-
+import { fork, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -108,7 +106,7 @@ export interface ChildProcessReclamation {
 }
 
 /**
- * One real `Bun.spawn`-IPC-backed revision realm. See the module doc for the
+ * One real child-process-IPC-backed revision realm. See the module doc for the
  * one-realm-one-execution model and how this relates to `FakeRealm` and
  * `WorkerRealm`.
  */
@@ -116,7 +114,7 @@ export class ChildProcessRealm {
   readonly lifecycle: RealmLifecycle;
   readonly #options: ChildProcessRealmOptions;
   readonly #pendingTurns = new Map<number, PendingChildProcessTurn>();
-  #process: Subprocess;
+  #process: ChildProcess;
   /**
    * True once `.kill()` has been sent to the CURRENT `#process` instance
    * (COR-113), mirroring `WorkerRealm`'s `#workerTerminated`. Deliberately
@@ -142,6 +140,8 @@ export class ChildProcessRealm {
   #readyOutcome: RealmReadyOutcome | null = null;
   #readyWaiters: ((outcome: RealmReadyOutcome) => void)[] = [];
   #readyTimeout: ReturnType<typeof setTimeout> | null = null;
+  #exitPromise!: Promise<number | null>;
+  #resolveExit!: (exitCode: number | null) => void;
 
   constructor(options: ChildProcessRealmOptions) {
     this.#options = options;
@@ -207,7 +207,7 @@ export class ChildProcessRealm {
         },
       });
       const message: RealmRunMessage = { type: 'realm-run', envelope, input };
-      this.#process.send(message);
+      this.#process.send?.(message);
     });
   }
 
@@ -281,7 +281,7 @@ export class ChildProcessRealm {
 
   /** The current child process's OS process id — an observability/test seam, never consulted by production dispatch logic. */
   get pid(): number {
-    return this.#process.pid;
+    return this.#process.pid!;
   }
 
   /**
@@ -294,8 +294,8 @@ export class ChildProcessRealm {
    */
   async whenReclaimed(): Promise<ChildProcessReclamation> {
     const childProcess = this.#process;
-    const exitCode = await childProcess.exited;
-    return { pid: childProcess.pid, exitCode };
+    const exitCode = await this.#exitPromise;
+    return { pid: childProcess.pid!, exitCode };
   }
 
   /**
@@ -306,7 +306,8 @@ export class ChildProcessRealm {
    * fixtures understand. Never called from production code.
    */
   postRawMessageForTesting(message: unknown): void {
-    this.#process.send(message);
+    if (!this.#process.connected) throw new Error('Child process IPC channel is closed');
+    this.#process.send?.(message as never, undefined, undefined, () => {});
   }
 
   /**
@@ -348,36 +349,32 @@ export class ChildProcessRealm {
     this.#settlePendingTurns();
   }
 
-  #spawnProcess(): Subprocess {
+  #spawnProcess(): ChildProcess {
     const spawnEpoch = ++this.#spawnEpoch;
+    this.#exitPromise = new Promise((resolve) => { this.#resolveExit = resolve; });
     const scriptPath =
       typeof this.#options.scriptPath === 'string'
         ? this.#options.scriptPath
         : fileURLToPath(this.#options.scriptPath);
-    const child = Bun.spawn({
-      cmd: [process.execPath, scriptPath],
-      // Bun IPC only speaks to another `bun` instance -- see the module doc.
-      ipc: (message) => {
-        void this.#handleMessage(message).catch(() => {});
-      },
-      onExit: () => {
-        if (spawnEpoch !== this.#spawnEpoch) return;
-        this.#handleProcessDown();
-      },
-      onDisconnect: () => {
-        if (spawnEpoch !== this.#spawnEpoch) return;
-        this.#handleProcessDown();
-      },
+    const child = fork(scriptPath, [], {
       serialization: 'advanced',
-      stdin: 'ignore',
-      // Explicit rather than Bun's own `'pipe'` default: an unread stdout/
-      // stderr pipe fills its OS buffer and blocks the child indefinitely --
-      // a real resource-boundary hazard this adapter's own tests would
-      // otherwise hang on the instant a fixture writes anything to either
-      // stream.
-      stdout: 'inherit',
-      stderr: 'inherit',
+      stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
       ...(this.#options.env === undefined ? {} : { env: this.#options.env }),
+    });
+    child.on('message', (message) => {
+      void this.#handleMessage(message).catch(() => {});
+    });
+    // `send()` can report a closed IPC channel after a load-time child failure;
+    // the paired exit event below owns the realm lifecycle transition.
+    child.on('error', () => {});
+    child.on('exit', (exitCode) => {
+        this.#resolveExit(exitCode);
+        if (spawnEpoch !== this.#spawnEpoch) return;
+        this.#handleProcessDown();
+    });
+    child.on('disconnect', () => {
+        if (spawnEpoch !== this.#spawnEpoch) return;
+        this.#handleProcessDown();
     });
     // See `WorkerRealm#spawnWorker`'s identical doc for why this is sent as
     // a message rather than derived from a spawn option: a shared test
@@ -391,7 +388,7 @@ export class ChildProcessRealm {
         ? {}
         : { artifactDigest: this.#options.workerName }),
     };
-    child.send(configureMessage);
+    child.send?.(configureMessage, undefined, undefined, () => {});
     return child;
   }
 
@@ -490,10 +487,3 @@ export class ChildProcessRealm {
   }
 }
 
-/**
- * Local alias for Bun's own `Subprocess` type, narrowed to the stdio shape
- * this realm always spawns with (`stdin: 'ignore'`, `stdout`/`stderr:
- * 'inherit'`), matching `src/testing/subprocess-lifecycle.ts`'s identical
- * `RunningSubprocess` convention for the same reason.
- */
-type Subprocess = Bun.Subprocess<'ignore', 'inherit', 'inherit'>;

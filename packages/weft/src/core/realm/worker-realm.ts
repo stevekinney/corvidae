@@ -48,6 +48,7 @@ import {
   isRealmResultMessage,
   type RealmRunMessage,
 } from './worker-realm-messages.ts';
+import type { CreateWorker, WorkerLike } from '../../workers/pool.ts';
 
 /** Activation identifiers fixed for a {@link WorkerRealm}'s entire `Active` lifetime. See {@link WorkerRealm.activate}. */
 export interface WorkerRealmActivation {
@@ -65,6 +66,7 @@ interface PendingWorkerTurn {
 
 export interface WorkerRealmOptions extends RealmLifecycleDependencies {
   readonly workerUrl: string | URL;
+  readonly createWorker?: CreateWorker;
   readonly expectedWorkflowTypes: readonly string[];
   /** Opt-in revision digest check (COR-117's `getExpectedArtifactDigest`) — a revision realm always supplies this, so two revisions of the same workflow TYPE name cannot be confused for one another. */
   readonly expectedArtifactDigest?: string;
@@ -92,7 +94,7 @@ export class WorkerRealm {
   readonly lifecycle: RealmLifecycle;
   readonly #options: WorkerRealmOptions;
   readonly #pendingTurns = new Map<number, PendingWorkerTurn>();
-  #worker: Worker;
+  #worker: WorkerLike;
   /**
    * True once `.terminate()` has been sent to the CURRENT `#worker` instance
    * (COR-113). Deliberately independent of `lifecycle.state`: a rejected
@@ -340,16 +342,18 @@ export class WorkerRealm {
     this.#settlePendingTurns();
   }
 
-  #spawnWorker(): Worker {
+  #spawnWorker(): WorkerLike {
     const workerOptions: WorkerOptions & { smol?: boolean } = {};
     if (this.#options.smol) workerOptions.smol = true;
-    const worker = new Worker(this.#options.workerUrl, workerOptions);
+    const createWorker = this.#options.createWorker ?? ((url, options) =>
+      Reflect.construct(globalThis.Worker, [url, options]) as WorkerLike);
+    const worker = createWorker(this.#options.workerUrl, workerOptions);
     this.#closePromise = new Promise((resolve) => {
       worker.addEventListener('close', () => resolve(), { once: true });
     });
-    worker.addEventListener('message', (event: MessageEvent) => {
+    worker.addEventListener('message', ((event: MessageEvent) => {
       void this.#handleMessage(event.data).catch(() => {});
-    });
+    }) as EventListener);
     worker.addEventListener('error', () => {
       this.#handleWorkerFailure();
     });
