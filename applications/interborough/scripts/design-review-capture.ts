@@ -143,6 +143,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/health-storage.spec.ts',
   'tests/e2e/health-audit.spec.ts',
   'tests/e2e/health-audit-states.spec.ts',
+  'tests/e2e/27-audit.spec.ts',
   'tests/e2e/restart.spec.ts',
   'tests/e2e/settings-general.spec.ts',
   'tests/e2e/settings-allowed-models.spec.ts',

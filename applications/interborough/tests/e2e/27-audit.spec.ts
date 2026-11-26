@@ -65,7 +65,7 @@ test('a search can be opened from its address, and the filters are in the row', 
   await expect(events(page).first()).toBeVisible();
 });
 
-test.describe('compact audit controls on touch', () => {
+test.describe('/health/audit compact controls on touch', () => {
   test.use({ hasTouch: true });
   for (const width of [320, 375]) {
     test(`keeps compact faces with 44px interactive regions at ${String(width)}px`, async ({
@@ -164,7 +164,7 @@ test.describe('compact audit controls on touch', () => {
   }
 });
 
-test('the audit content keeps a readable desktop measure', async ({ page }) => {
+test('/health/audit keeps a readable desktop measure', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto('/health/audit');
   await expect(events(page).first()).toBeVisible();
