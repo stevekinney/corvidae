@@ -100,6 +100,7 @@
   import ToolCallTimeline from '../message/tool-call-timeline.svelte';
   import type { BodyMessagePart } from '../message/chat-message-parts.ts';
   import { resolveMessageTurnState } from '../message/turn-state.ts';
+  import { TurnCommands } from '../message/turn-commands.ts';
   import { resolveChatLabels } from '../chat-labels.ts';
   import {
     ApprovalGroup,
@@ -1624,6 +1625,14 @@
   const resolvedComposerStatus = $derived<ChatComposerStatus | undefined>(composerStatus);
   // A dropped stream is about the connection, so its notice stands by the composer and not under
   // the partial reply: the latest assistant turn the host reports as reconnecting supplies it.
+  // What the person pressed on a turn's recovery controls (COR-2725): one command per turn at a
+  // time, tied to the conversation it was pressed in, so an answer that arrives after another
+  // conversation is shown, or after the turn moved on, changes nothing.
+  const turnCommands = new TurnCommands(untrack(() => id));
+  $effect.pre(() => {
+    turnCommands.setScope(id);
+  });
+  $effect(() => () => turnCommands.dispose());
   const reconnectingTurn = $derived.by(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index];
@@ -2686,6 +2695,7 @@
           onEdit={allowEditing && canEdit ? handleEdit : undefined}
           onQuote={allowQuote ? handleQuote : undefined}
           onRegenerate={message.id === lastAssistantMessageId ? onRegenerate : undefined}
+          {turnCommands}
           quoteDisabled={quotes.isFull}
           quoteDisabledDescriptionId={quotes.isFull ? quoteLimitNoteId : undefined}
           oneditingchange={(editing) => handleEditingChange(message.id, editing)}
@@ -2879,9 +2889,13 @@
         <ChatConnectionNotice
           turn={reconnecting.state}
           {turnLabels}
+          busy={turnCommands.pending(reconnecting.messageId) === 'reconnect'}
           onRetry={onRetryConnection === undefined
             ? undefined
-            : () => onRetryConnection(reconnecting.messageId)}
+            : () =>
+                void turnCommands.run('reconnect', reconnecting.messageId, reconnecting.state, () =>
+                  onRetryConnection(reconnecting.messageId),
+                )}
         />
       {/if}
     {/snippet}

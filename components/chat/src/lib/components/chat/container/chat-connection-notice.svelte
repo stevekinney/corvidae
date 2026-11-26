@@ -9,6 +9,8 @@
     turnLabels?: Partial<ChatTurnLabels> | undefined;
     /** Called when the person chooses Retry. Retry shows only when this is set. */
     onRetry?: (() => void) | undefined;
+    /** The retry the person chose is under way: Retry reads busy and ignores presses. */
+    busy?: boolean | undefined;
   };
 </script>
 
@@ -20,13 +22,18 @@
   import { resolveTurnLabels } from '../message/turn-labels.ts';
   import { reconnectWaitFraction } from '../message/turn-state.ts';
 
-  let { turn, turnLabels, onRetry }: ChatConnectionNoticeProps = $props();
+  let { turn, turnLabels, onRetry, busy = false }: ChatConnectionNoticeProps = $props();
 
   const words = $derived(resolveTurnLabels(turnLabels));
 </script>
 
 {#snippet retryAction()}
-  <RetryButton class="chat-turn-action" label={words.retryNow} onclick={() => onRetry?.()} />
+  <RetryButton
+    class="chat-turn-action"
+    label={words.retryNow}
+    loading={busy}
+    onclick={() => onRetry?.()}
+  />
 {/snippet}
 
 <!-- The dropped stream is about the connection, so its notice stands beside the composer, in the

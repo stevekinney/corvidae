@@ -17,6 +17,7 @@
     ToolApprovalReceiptRecord,
   } from '../utilities/types.ts';
   import type { ChatTurnLabels } from './turn-labels.ts';
+  import type { TurnCommandAnswer, TurnCommandKind, TurnCommands } from './turn-commands.ts';
   import type { ChatTurnState } from './turn-state.ts';
   import type { ChatLabels } from '../chat-labels.ts';
 
@@ -117,7 +118,13 @@
      * Regenerate action is drawn, because only the host knows how to write the answer again.
      * Regenerating rewrites the answer: the tool results and approvals that came before it stay.
      */
-    onRegenerate?: ((messageId: string) => void | Promise<void>) | undefined;
+    onRegenerate?: ((messageId: string) => TurnCommandAnswer) | undefined;
+    /**
+     * The commands of this conversation's turns, which run a turn's Continue, Discard, Retry and
+     * Regenerate: one at a time per turn, with its controls busy and its failure said on the turn.
+     * Without it, each control calls its callback directly.
+     */
+    turnCommands?: TurnCommands | undefined;
     /** Disables the Quote action, for example when no more quotes fit. */
     quoteDisabled?: boolean;
     /** The id of an element that explains why Quote is disabled. */
@@ -217,11 +224,11 @@
     /** Host-overridable message action labels. */
     labels?: Partial<ChatLabels> | undefined;
     /** Called with this message's id when the person chooses Continue on a stopped turn. Continue shows only when this is set. */
-    onContinueTurn?: ((messageId: string) => void) | undefined;
+    onContinueTurn?: ((messageId: string) => TurnCommandAnswer) | undefined;
     /** Called with this message's id when the person chooses Discard on a stopped turn. Discard shows only when this is set; the host removes the turn. */
-    onDiscardTurn?: ((messageId: string) => void) | undefined;
+    onDiscardTurn?: ((messageId: string) => TurnCommandAnswer) | undefined;
     /** Called with this message's id when the person chooses Retry on a failed turn or Try again on an empty one. Each shows only when this is set. */
-    onRetryTurn?: ((messageId: string) => void) | undefined;
+    onRetryTurn?: ((messageId: string) => TurnCommandAnswer) | undefined;
     /** Called with a failed tool call's id when the person chooses Retry this step under it. The button shows only when this is set. */
     onRetryStep?: ((toolCallId: string) => void) | undefined;
     /** Says a sentence to a screen reader through the container's announcer, outside the transcript's log. */
@@ -300,6 +307,7 @@
     onEdit,
     onQuote,
     onRegenerate,
+    turnCommands,
     quoteDisabled = false,
     quoteDisabledDescriptionId,
     oneditingchange,
@@ -364,6 +372,25 @@
       turnState?.kind !== 'failed',
   );
   const turnWords = $derived(resolveTurnLabels(turnLabels));
+  // The commands of this turn (COR-2725): one at a time, its controls busy while it runs, and a
+  // command that did not go through said once under the turn. A turn that moves to a state the
+  // command no longer fits drops it.
+  const pendingCommand = $derived(turnCommands?.pending(message.id));
+  const failedCommand = $derived(turnCommands?.failure(message.id));
+  $effect(() => {
+    turnCommands?.reconcile(message.id, turn);
+  });
+  function pressTurn(
+    command: TurnCommandKind,
+    host: ((messageId: string) => TurnCommandAnswer) | undefined,
+  ): void {
+    if (host === undefined) return;
+    if (turnCommands === undefined) {
+      void host(message.id);
+      return;
+    }
+    void turnCommands.run(command, message.id, turn, () => host(message.id));
+  }
   const messageLabels = $derived(resolveChatLabels(labels));
   // Text arrives with a caret only in a state that draws one: a reconnecting turn's partial text
   // stops where it is, muted, until the stream comes back.
@@ -390,8 +417,7 @@
   );
 
   function regenerateMessage(): void {
-    // The click only hands over the message id; the host reports its own failures.
-    void onRegenerate?.(message.id);
+    pressTurn('regenerate', onRegenerate);
   }
 
   function selectionInside(elements: readonly Element[]): string | undefined {
@@ -1004,6 +1030,7 @@
         class="chat-message-action-button chat-message-regenerate-button"
         onclick={regenerateMessage}
         disabled={!regenerateAvailable}
+        aria-busy={pendingCommand === 'regenerate' ? 'true' : undefined}
         aria-label={transcript ? messageLabels.regenerate : messageLabels.regenerateResponse}
       >
         <RefreshCw class="cinder-icon-xs" aria-hidden="true" />
@@ -1023,7 +1050,9 @@
         size="sm"
         variant="secondary"
         aria-describedby={`${messageId}-discard-description`}
-        onclick={() => onDiscardTurn(message.id)}>{turnWords.discard}</Button
+        loading={pendingCommand === 'discard'}
+        disabled={pendingCommand !== undefined && pendingCommand !== 'discard'}
+        onclick={() => pressTurn('discard', onDiscardTurn)}>{turnWords.discard}</Button
       >
       <span id={`${messageId}-discard-description`} class="cinder-sr-only"
         >{turnWords.discardDescription}</span
@@ -1036,7 +1065,9 @@
         size="sm"
         variant="primary"
         aria-describedby={`${messageId}-continue-description`}
-        onclick={() => onContinueTurn(message.id)}>{turnWords.continue}</Button
+        loading={pendingCommand === 'continue'}
+        disabled={pendingCommand !== undefined && pendingCommand !== 'continue'}
+        onclick={() => pressTurn('continue', onContinueTurn)}>{turnWords.continue}</Button
       >
       <span id={`${messageId}-continue-description`} class="cinder-sr-only"
         >{turnWords.continueDescription}</span
@@ -1099,8 +1130,18 @@
   <RetryButton
     class="chat-turn-action"
     label={turn.kind === 'empty' ? turnWords.tryAgain : turnWords.retry}
-    onclick={() => onRetryTurn?.(message.id)}
+    loading={pendingCommand === 'retry'}
+    onclick={() => pressTurn('retry', onRetryTurn)}
   />
+{/snippet}
+
+<!-- A command that did not go through says so once, under the turn it was pressed on. -->
+{#snippet commandFailure()}
+  {#if failedCommand !== undefined}
+    <p class="chat-turn-command-failure" role="alert" dir="auto">
+      {turnWords.commandFailed(failedCommand)}
+    </p>
+  {/if}
 {/snippet}
 
 {#snippet failedTurnAction()}
@@ -1311,6 +1352,7 @@
 
   {#if !isEditing && section !== 'body'}
     {@render turnOutcome()}
+    {@render commandFailure()}
   {/if}
 
   {#if transcript && section !== 'body'}
@@ -2575,6 +2617,15 @@
     min-inline-size: 0;
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
     text-align: start;
+  }
+
+  /* One line under the turn when a command did not go through: danger text, no box of its own. */
+  .chat-turn-command-failure {
+    margin: var(--cinder-space-2) 0 0;
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    color: var(--cinder-status-danger-text);
+    text-align: start;
+    overflow-wrap: anywhere;
   }
 
   /* Keep the stopped notice's text and controls off the card border while preserving the compact

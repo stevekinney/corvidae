@@ -32,6 +32,7 @@ import type { ChatComposerControlsContext } from './input/composer-controls.ts';
 import type { ChatComposerToolbarContext } from './input/composer-markdown.ts';
 import type { ChatComposerStatus } from './input/composer-status.ts';
 import type { MessagePartOverride } from './message/chat-message-parts.ts';
+import type { TurnCommandAnswer } from './message/turn-commands.ts';
 import type { ChatTurnLabels } from './message/turn-labels.ts';
 import type { ChatTurnState } from './message/turn-state.ts';
 import type { ChatQuestionDockLabels } from './question/question-dock-labels.ts';
@@ -365,7 +366,7 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * when this is set, because only the host knows how to write an answer again. Regenerating rewrites the answer itself: the tool results
    * and approvals earlier in the turn stay, and no tool runs again.
    */
-  onRegenerate?: (messageId: string) => void | Promise<void>;
+  onRegenerate?: (messageId: string) => TurnCommandAnswer;
   onEdit?: (event: { messageId: string; content: string }) => void;
   /**
    * Overrides Chat's built-in artifact panel. When supplied, Chat calls this
@@ -483,14 +484,19 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   messageTurnState?: ((message: Message) => ChatTurnState | undefined) | undefined;
   /** The words of a turn's outcome and of the steps under it, any of which the host can replace. */
   turnLabels?: Partial<ChatTurnLabels> | undefined;
-  /** Called with a reconnecting turn's id when the person chooses Retry. Retry shows only when this is set. */
-  onRetryConnection?: ((messageId: string) => void) | undefined;
-  /** Called with a stopped turn's id when the person chooses Continue. Continue shows only when this is set. */
-  onContinueTurn?: ((messageId: string) => void) | undefined;
-  /** Called with a stopped turn's id when the person chooses Discard. Discard shows only when this is set; the host removes the turn from the conversation. */
-  onDiscardTurn?: ((messageId: string) => void) | undefined;
-  /** Called with a failed turn's id when the person chooses Retry, or an empty turn's when they choose Retry. Each shows only when this is set. */
-  onRetryTurn?: ((messageId: string) => void) | undefined;
+  /**
+   * Called with a reconnecting turn's id when the person chooses Retry now. It shows only when this
+   * is set. Like every turn command, it may return a promise: Chat runs one command per turn at a
+   * time, shows the control busy until the host answers, and says once under the turn that the
+   * command did not go through when the host returns or resolves `false` or throws.
+   */
+  onRetryConnection?: ((messageId: string) => TurnCommandAnswer) | undefined;
+  /** Called with a stopped turn's id when the person chooses Continue. Continue shows only when this is set. Runs as {@link ChatProps.onRetryConnection} does. */
+  onContinueTurn?: ((messageId: string) => TurnCommandAnswer) | undefined;
+  /** Called with a stopped turn's id when the person chooses Discard. Discard shows only when this is set; the host removes the turn from the conversation. Runs as {@link ChatProps.onRetryConnection} does. */
+  onDiscardTurn?: ((messageId: string) => TurnCommandAnswer) | undefined;
+  /** Called with a failed turn's id when the person chooses Retry, or an empty turn's when they choose Try again. Each shows only when this is set. Runs as {@link ChatProps.onRetryConnection} does. */
+  onRetryTurn?: ((messageId: string) => TurnCommandAnswer) | undefined;
   /** Called with a failed tool call's id when the person chooses Retry under it. The button shows only when this is set; Copy error always shows. */
   onRetryStep?: ((toolCallId: string) => void) | undefined;
   /** Called when the explicit history trigger is activated. The consumer prepends compatible messages into `conversation`. */

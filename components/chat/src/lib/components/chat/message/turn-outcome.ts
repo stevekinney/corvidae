@@ -11,7 +11,12 @@
 import { isFollowUpMessage } from '../builders.ts';
 import type { ConversationHistory, Message } from '../conversation-model.ts';
 import type { MessageNoteInfo } from '../utilities/index.ts';
-import { CINDER_NOTES_METADATA_KEY, resolveMessageNotes } from '../utilities/index.ts';
+import {
+  CINDER_NOTES_METADATA_KEY,
+  getMessageText,
+  pairToolCallsWithResults,
+  resolveMessageNotes,
+} from '../utilities/index.ts';
 import type { ChatTurnState } from './turn-state.ts';
 
 /** The retry a dropped stream is waiting on. */
@@ -141,9 +146,31 @@ function reconnectingState(
 }
 
 /**
+ * Whether the last turn ended on tool activity, or on a blank reply, with every call answered and
+ * nothing said about its stop: the run finished and wrote no answer. A call with no answer was
+ * interrupted, and one that waits on an approval is not finished, so neither is an empty answer.
+ */
+function endsWithoutAnswer(conversation: ConversationHistory): boolean {
+  const rows = conversation.ids
+    .slice(lastTurnStart(conversation))
+    .flatMap((id) => rowOf(conversation, id) ?? [])
+    .filter((row) => row.hidden !== true);
+  if (!rows.some((row) => row.role === 'assistant')) return false;
+  if (rows.some((row) => (resolveMessageNotes(row) ?? []).some((note) => note.kind === 'stopped')))
+    return false;
+  const last = rows.at(-1);
+  const endsOnBlankReply =
+    last?.role === 'assistant' && last.toolCall === undefined && getMessageText(last).trim() === '';
+  if (last?.role !== 'tool-call' && last?.role !== 'tool-result' && !endsOnBlankReply) return false;
+  return pairToolCallsWithResults(rows).every(
+    (pair) => pair.result !== undefined && pair.result.outcome !== 'action_required',
+  );
+}
+
+/**
  * The outcome of the last turn. A stream that dropped is `reconnecting`; otherwise, once nothing is
  * going, the last turn's stop line is the turn's `stopped` or `failed` state and leaves the
- * conversation.
+ * conversation, and a turn that finished with no answer is `empty`.
  */
 export function resolveTurnOutcome(
   conversation: ConversationHistory,
@@ -159,7 +186,9 @@ export function resolveTurnOutcome(
       assistantId,
       state: reconnectingState(facts.reconnect, facts.now),
     };
-  return { conversation: shown, stop, assistantId, state: stop?.state };
+  if (stop !== undefined) return { conversation: shown, stop, assistantId, state: stop.state };
+  const empty = !facts.running && facts.holding !== true && endsWithoutAnswer(shown);
+  return { conversation: shown, stop, assistantId, state: empty ? { kind: 'empty' } : undefined };
 }
 
 /** The turn state of `message` in `outcome`: only the last assistant message of the last turn has one. */

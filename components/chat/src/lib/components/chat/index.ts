@@ -39,6 +39,14 @@ export {
   CHAT_OVERLAY_INSET_START_PROPERTY,
 } from './container/chat-approval-review.ts';
 export { default as ChatNote } from './message/parts/note-part.svelte';
+export type { TurnCommandAnswer, TurnCommandKind } from './message/turn-commands.ts';
+export { resolveTurnOutcome, turnStateOf } from './message/turn-outcome.ts';
+export type {
+  TurnOutcome,
+  TurnOutcomeFacts,
+  TurnReconnectFacts,
+  TurnStop,
+} from './message/turn-outcome.ts';
 export { DEFAULT_TURN_LABELS } from './message/turn-labels.ts';
 export type { ChatTurnLabels } from './message/turn-labels.ts';
 export { advanceTurnState, isChatTurnState, presentTurnState } from './message/turn-state.ts';

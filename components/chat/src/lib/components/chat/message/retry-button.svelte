@@ -7,6 +7,8 @@
     /** Names what retries when the visible label alone would not, such as the image's name. */
     ariaLabel?: string | undefined;
     class?: string | undefined;
+    /** The command this button runs is under way: the button reads busy and ignores presses. */
+    loading?: boolean | undefined;
     onclick: () => void;
   };
 </script>
@@ -19,6 +21,7 @@
     iconOnly = false,
     ariaLabel,
     class: className,
+    loading = false,
     onclick,
   }: RetryButtonProps = $props();
 </script>
@@ -37,6 +40,7 @@
     quiet
     iconOnly
     {label}
+    {loading}
     aria-label={ariaLabel ?? label}
     {onclick}
   >
@@ -50,6 +54,7 @@
     size="sm"
     variant="secondary"
     {label}
+    {loading}
     {...ariaLabel === undefined ? {} : { 'aria-label': ariaLabel }}
     {onclick}
   >

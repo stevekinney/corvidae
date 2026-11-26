@@ -1,5 +1,6 @@
 import { formatCountdown } from '../../../utilities/format-countdown.ts';
 import type { ToolCallRowStatus } from './tool-call-summary.ts';
+import type { TurnCommandKind } from './turn-commands.ts';
 
 /**
  * The words of a turn's outcome and of the steps under it (COR-2283), kept apart from the
@@ -53,6 +54,11 @@ export type ChatTurnLabels = {
   empty: string;
   /** The button on that row that asks again. Default `Try again`. */
   tryAgain: string;
+  /**
+   * The line under a turn when a command its controls ran (`reconnect`, `retry`, `discard`,
+   * `continue` or `regenerate`) was refused or failed. Default `That did not go through. Try again.`
+   */
+  commandFailed: (command: TurnCommandKind) => string;
   /** Where the step under way falls among the steps so far. Default `Step 2 of 3`. */
   stepPosition: (position: number, total: number) => string;
   /**
@@ -109,6 +115,7 @@ export const DEFAULT_TURN_LABELS: ChatTurnLabels = {
   retry: 'Retry',
   empty: 'The agent finished without writing an answer.',
   tryAgain: 'Try again',
+  commandFailed: () => 'That did not go through. Try again.',
   stepPosition: (position, total) => `Step ${position} of ${total}`,
   stepsDone: (done, total) => `${done} of ${total} ${total === 1 ? 'step' : 'steps'}`,
   steps: (count) => `${count} ${count === 1 ? 'step' : 'steps'}`,
