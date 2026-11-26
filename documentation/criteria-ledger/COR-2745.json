@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2745",
+  "branch": "codex/cor-2745-workers-npm",
+  "checkedAt": "dc577d6551320f22cc2724906806fc86245043da",
+  "briefVersion": "009abc3a77dd",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Required injected host and ./bun, ./node exports; every audited Interborough caller now passes bunServerHost, including the classified production host import; Interborough typecheck and catalog inventory test passed."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "The required Bun type grep emitted no production results; the full workspace-import scan and root test:self passed after conformance switched to its relative Bun-host module."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Pinned Node 22 node-runtime integration passed REST, replay SSE, RemoteWorker activity, MCP, and clean stop after the current correction."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Focused checks passed; full Interborough isolated slice reached 360 passing tests, with only three dirty-worktree release-archive precondition failures."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "The exact runtime-reach slow test and checker passed after removing stale Bun.sleep entries; Bun.serve remains confined to @lostgradient/weft/bun."
+    }
+  ]
+}

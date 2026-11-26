@@ -15,6 +15,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { Engine } from '../../core/engine.ts';
 import type { WorkflowHandle } from '../../core/engine/handles.ts';
 import { nextSignalWaiting } from '../../core/engine/signal-wait-tracking.test-support.ts';
@@ -82,7 +83,7 @@ async function deliverLateResult(
     leasedFixture({ operationId, workflowId: WORKFLOW_ID, workflowExecutionToken }),
   );
   await recordTaskResultDelivery(
-    { engine, port: 0 },
+    { host: bunServerHost, engine, port: 0 },
     {
       operationId,
       attemptToken: 'attempt-token',

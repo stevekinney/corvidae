@@ -18,6 +18,7 @@ import {
 
 const repositoryRoot = new URL('../..', import.meta.url);
 const indexModuleUrl = new URL('src/index.ts', repositoryRoot).href;
+const bunHostModuleUrl = new URL('src/bun-host.ts', repositoryRoot).href;
 const serverModuleUrl = new URL('src/server/index.ts', repositoryRoot).href;
 const sqliteModuleUrl = import.meta.resolve('@lostgradient/storage-bun-sqlite');
 
@@ -70,6 +71,7 @@ const databasePath = readOption('--database', ':memory:');
 function durableEntrypointSource(): string {
   return `
 import { Engine, activity, workflow } from ${JSON.stringify(indexModuleUrl)};
+import { bunServerHost } from ${JSON.stringify(bunHostModuleUrl)};
 import { serve } from ${JSON.stringify(serverModuleUrl)};
 import { BunSQLiteStorage } from ${JSON.stringify(sqliteModuleUrl)};
 
@@ -130,7 +132,7 @@ engine.register(activityThenSignal);
 engine.register(blockingActivityWorkflow);
 engine.register(signalOnly);
 await engine.recoverAll();
-const server = serve({ engine, port, hostname: '127.0.0.1' });
+const server = serve({ host: bunServerHost, engine, port, hostname: '127.0.0.1' });
 console.log('WEFT_SUBPROCESS_READY ' + server.url);
 
 async function stop(exitCode) {

@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * COR-219 residual: `remote-activity-integration.test.ts` and every
  * engine-integrated remote-activity test in `core/engine/` connect only a
@@ -47,7 +48,7 @@ describe('remote activity execution via LongPollWorker (COR-219)', () => {
 
   it('claims a ctx.run()-dispatched task through LongPollWorker (no WebSocket worker ever connects)', async () => {
     engine = new Engine({ activityExecution: { mode: 'remote' } });
-    server = serve({ engine, port: 0, unauthenticatedAccess: 'allow' });
+    server = serve({ host: bunServerHost, engine, port: 0, unauthenticatedAccess: 'allow' });
 
     // Never resolves — this worker only proves the task got LEASED to it via
     // long-poll before this test inspects the durable record. No WebSocket
@@ -114,7 +115,7 @@ describe('remote activity execution via LongPollWorker (COR-219)', () => {
 
   it('completes a ctx.run()-dispatched task end-to-end through LongPollWorker', async () => {
     engine = new Engine({ activityExecution: { mode: 'remote' } });
-    server = serve({ engine, port: 0, unauthenticatedAccess: 'allow' });
+    server = serve({ host: bunServerHost, engine, port: 0, unauthenticatedAccess: 'allow' });
 
     const executedInputs: unknown[] = [];
     longPollWorker = new LongPollWorker({
@@ -169,7 +170,7 @@ describe('remote activity execution via LongPollWorker (COR-219)', () => {
 
   it('cancels a ctx.run()-dispatched task through LongPollWorker, cooperatively, before the cancellation grace deadline', async () => {
     engine = new Engine({ activityExecution: { mode: 'remote' } });
-    server = serve({ engine, port: 0, unauthenticatedAccess: 'allow' });
+    server = serve({ host: bunServerHost, engine, port: 0, unauthenticatedAccess: 'allow' });
 
     // Long-poll has no server-to-worker push channel: the cancellation
     // signal only reaches this worker on its NEXT heartbeat response

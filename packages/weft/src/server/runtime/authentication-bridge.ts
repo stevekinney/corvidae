@@ -1,5 +1,6 @@
-import type { ServerWebSocket } from 'bun';
+import type { Socket } from '@lostgradient/node-host';
 import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
+import type { ServerHandle, ServerHost } from '../host.ts';
 
 import { type AuthConfig, authContextToPrincipal } from '@lostgradient/backchannel';
 import {
@@ -46,6 +47,7 @@ import { runWorkerDisconnectRequeue } from './worker-disconnect-requeue.ts';
 import { handleWorkerSessionRequest } from './worker-sessions.ts';
 
 type ServerFetchOptions = {
+  host: ServerHost<WebSocketData>;
   // Widened to `RegistryAgnosticEngine` (see its JSDoc / #708) to match the
   // public `ServeOptions.engine` / `ResolvedServeOptions.engine` this type is
   // always constructed from; every usage in this file only exercises
@@ -124,7 +126,7 @@ function resolveTaskPrincipal(
 }
 
 export async function handleServerFetchRequest(
-  server: ReturnType<typeof Bun.serve>,
+  server: ServerHandle<WebSocketData>,
   context: ServerContext,
   options: ServerFetchOptions,
   originalRequest: Request,
@@ -147,7 +149,7 @@ export async function handleServerFetchRequest(
 }
 
 async function dispatchServerFetchRequest(
-  server: ReturnType<typeof Bun.serve>,
+  server: ServerHandle<WebSocketData>,
   context: ServerContext,
   options: ServerFetchOptions,
   originalRequest: Request,
@@ -319,9 +321,9 @@ export function createServerWebSocketHandlers(
   options: ServerFetchOptions,
   cleanupWorkflowIndex: (operationId: string) => void,
 ): {
-  open: (ws: ServerWebSocket<WebSocketData>) => void;
-  message: (ws: ServerWebSocket<WebSocketData>, rawMessage: string | Buffer) => void;
-  close: (ws: ServerWebSocket<WebSocketData>) => void;
+  open: (ws: Socket<WebSocketData>) => void;
+  message: (ws: Socket<WebSocketData>, rawMessage: string | Uint8Array) => void;
+  close: (ws: Socket<WebSocketData>) => void;
 } {
   return {
     open(ws) {

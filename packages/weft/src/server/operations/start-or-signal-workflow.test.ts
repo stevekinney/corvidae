@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createOperationRegistry } from '@lostgradient/backchannel/internals';
@@ -750,7 +751,7 @@ describe('weft.workflows.startorsignal over JSON-RPC HTTP', () => {
   it('creates and signals over JSON-RPC, returning the workflow id', async () => {
     const engine = createEngine();
     engines.push(engine);
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     servers.push(server);
 
     const created = await postJsonRpc(server, {
@@ -769,7 +770,7 @@ describe('weft.workflows.startorsignal over JSON-RPC HTTP', () => {
   it('maps a terminal target to a JSON-RPC Conflict error', async () => {
     const engine = createEngine();
     engines.push(engine);
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     servers.push(server);
 
     const completed = await engine.start('completes-immediately', null, { id: 'sos-rpc-terminal' });

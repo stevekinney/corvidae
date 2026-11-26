@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 
@@ -107,8 +108,9 @@ describe('weft.workflows.replay authorization parity', () => {
     const noScopeToken = await issueJwt(['schedules:read']);
     const readToken = await issueJwt(['workflows:read']);
 
-    const anonymousServer = serve({ engine, port: 0 });
+    const anonymousServer = serve({ host: bunServerHost, engine, port: 0 });
     const authenticatedServer = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { jwt: { secret: TEST_SECRET } },
@@ -180,7 +182,7 @@ describe('weft.workflows.replay authorization parity', () => {
     const anonymousEngine = createReplayEngine();
     engines.push(anonymousEngine);
     const anonymousWorkflowId = await createReplayWorkflow(anonymousEngine, 'wf-replay-ws-anon');
-    const anonymousServer = serve({ engine: anonymousEngine, port: 0 });
+    const anonymousServer = serve({ host: bunServerHost, engine: anonymousEngine, port: 0 });
     servers.push(anonymousServer);
 
     const anonymousSocket = await openWebSocket(
@@ -212,6 +214,7 @@ describe('weft.workflows.replay authorization parity', () => {
     const noScopeToken = await issueJwt(['schedules:read']);
     const readToken = await issueJwt(['workflows:read']);
     const authenticatedServer = serve({
+      host: bunServerHost,
       engine: authenticatedEngine,
       port: 0,
       auth: { jwt: { secret: TEST_SECRET } },

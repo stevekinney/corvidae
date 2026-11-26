@@ -1,5 +1,6 @@
 import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { describe, expect, it } from 'bun:test';
 import { decode, encode } from '../core/codec/index.ts';
 import { Engine } from '../core/engine.ts';
@@ -383,6 +384,7 @@ describe('revision-aware worker deployment routing', () => {
     const storage = new MemoryStorage();
     const engine = new Engine({ storage });
     const server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: ['routing-test-key'], defaultApiKeyScopes: ['system:admin', 'system:read'] },
