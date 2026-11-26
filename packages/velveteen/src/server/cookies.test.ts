@@ -108,6 +108,31 @@ test("requires an explicit path for mutations", () => {
   );
 });
 
+test("rejects cookie attribute injection and snapshots expiration", () => {
+  const context = eventFor();
+  expect(() =>
+    context.event.cookies.set("session", "secret", {
+      path: "/account; Path=/",
+    }),
+  ).toThrow("Cookie paths cannot contain invalid characters");
+  expect(() =>
+    context.event.cookies.set("session; Path=/", "secret", { path: "/" }),
+  ).toThrow("Cookie names cannot contain invalid characters");
+  expect(() =>
+    context.event.cookies.set("session", "secret", {
+      domain: "app.test; Domain=evil.test",
+      path: "/",
+    }),
+  ).toThrow("Cookie domains cannot contain invalid characters");
+
+  const expires = new Date("2030-01-02T03:04:05.000Z");
+  context.event.cookies.set("snapshot", "yes", { expires, path: "/" });
+  expires.setUTCFullYear(2031);
+  expect(context.apply(new Response("ok")).headers.getSetCookie()).toContain(
+    "snapshot=yes; Path=/; Expires=Wed, 02 Jan 2030 03:04:05 GMT; Secure; HttpOnly; SameSite=Lax",
+  );
+});
+
 test("scopes internal set-cookie values by path and domain", async () => {
   const seen: Array<{ path: string; cookie: string | null }> = [];
   const context = eventFor(async (request) => {

@@ -34,6 +34,19 @@ function sameSite(value: string): ServerCookie["sameSite"] {
 
 type RequestCookie = { name: string; value: string };
 
+const invalidCookieName = /[\u0000-\u001f\u007f()<>@,;:\\"/\[\]?={}\s]/;
+const invalidCookiePath = /[\u0000-\u001f\u007f;]/;
+const invalidCookieDomain = /[\u0000-\u001f\u007f\s;\\/]/;
+
+function validateCookieOptions(name: string, options: CookieOptions) {
+  if (!name || invalidCookieName.test(name))
+    throw new TypeError("Cookie names cannot contain invalid characters");
+  if (options.path && invalidCookiePath.test(options.path))
+    throw new TypeError("Cookie paths cannot contain invalid characters");
+  if (options.domain && invalidCookieDomain.test(options.domain))
+    throw new TypeError("Cookie domains cannot contain invalid characters");
+}
+
 /** Request cookies preserve duplicate names and their header order from the native runtime. */
 export class RequestCookies implements Iterable<[string, string]> {
   #cookies: RequestCookie[];
@@ -139,6 +152,7 @@ export function createCookie(
 ): ServerCookie {
   if (typeof options.path !== "string")
     throw new TypeError("Cookies require an explicit path");
+  validateCookieOptions(name, options);
   return {
     name,
     value,
@@ -146,6 +160,7 @@ export function createCookie(
     secure: secureByDefault,
     sameSite: "lax",
     ...options,
+    expires: options.expires && new Date(options.expires),
   };
 }
 
