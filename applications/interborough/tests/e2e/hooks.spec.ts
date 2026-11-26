@@ -836,21 +836,28 @@ for (const width of [1280, 1920] as const) {
   });
 }
 
-for (const width of [320, 375] as const) {
-  test(`[hook-row-phone-target] /hooks: the On switch keeps its 44px target without page overflow at ${width} pixels`, async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width, height: 720 });
-    await openHooks(page, '/hooks', [DEFAULT_ON, DEFAULT_OFF]);
-    await expect(page.locator('li[data-hook="default-on"]').getByRole('switch')).toHaveAttribute(
-      'data-cinder-hit-target',
-      '44',
-    );
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-      true,
-    );
-  });
-}
+test.describe('the Hooks list on a coarse-pointer phone', () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  for (const width of [320, 375] as const) {
+    test(`[hook-row-phone-target] /hooks: the On switch has a 44px target without page overflow at ${width} pixels`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 720 });
+      await openHooks(page, '/hooks', [DEFAULT_ON, DEFAULT_OFF]);
+      expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
+      const box = await page
+        .locator('li[data-hook="default-on"]')
+        .getByRole('switch')
+        .boundingBox();
+      expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      ).toBe(true);
+    });
+  }
+});
 
 // R10-01 and R10-02 on the narrowest phones, measured: the status word whole, the Plugin badge just
 // after the name it marks, and the time broken only between its day and its clock.
