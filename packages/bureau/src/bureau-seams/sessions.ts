@@ -56,7 +56,7 @@ import { runtimeWorkspaceOwnerAuthority } from '../http/workspace-principal.ts';
 import { serializeUnknownError } from '../serialization';
 import { writeContextTombstone } from '../context-tombstone';
 import type { AnyToolbox, SignedPendingToolApproval } from 'armorer';
-import { transferDeletionRelease } from './run-operations';
+import { transferDeletionRelease } from '../deletion-release';
 
 /** The callables sessions reads from elsewhere in `constructBureau`. */
 export interface SessionsPeers {

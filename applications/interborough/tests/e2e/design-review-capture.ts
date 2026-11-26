@@ -27,6 +27,7 @@ import { measureGeometry } from '@lostgradient/testing/design-review-geometry-pr
 import {
   designReviewCaptureDirectory,
   designReviewColorScheme,
+  viewportWitnessesJson,
 } from '../../scripts/environment-configuration.ts';
 import {
   E2E_FIRST_RUN_PORT,
@@ -34,6 +35,7 @@ import {
   E2E_PORT,
   E2E_SHOWCASE_PORT,
 } from './e2e-constants.ts';
+import { test } from './fixtures.ts';
 
 /** At or below this width a capture is of a phone, and is taken with a coarse pointer. */
 const PHONE_WIDTH_MAXIMUM = GEOMETRY_THRESHOLDS.phoneWidthMaximum;
@@ -158,6 +160,72 @@ export interface DesignReviewManifestEntry extends DesignReviewCapture {
   readonly geometry?: string;
   /** Why the page could not be measured, when the probe threw; the screenshots are still there. */
   readonly geometryError?: string;
+  /** Named narrow-viewport profiles proved in this physical frame. */
+  readonly witnesses?: readonly string[];
+}
+
+interface ViewportWitness {
+  readonly row: string;
+  readonly specification: string;
+  readonly title: string;
+  readonly route: string;
+  readonly state: string;
+  readonly world: string;
+  readonly name: string;
+  readonly width: number;
+  readonly theme: 'light' | 'dark';
+  readonly targets: readonly string[];
+  readonly scrolling: 'none' | 'outlet';
+}
+
+function viewportWitnesses(): readonly ViewportWitness[] {
+  // `design-review-capture.ts` writes this list from a plan `parseCaptureManifest` validated.
+  return viewportWitnessesJson() as ViewportWitness[];
+}
+
+/**
+ * Holds every witness that shares one frame to that frame, as the screenshot will take it. Every
+ * scroll happens first, one per outlet witness, to its first target; only then is every target of
+ * every witness measured. Checking each witness as it scrolled would let a later scroll push an
+ * earlier, already-checked target out of the one screenshot that records them all (COR-2574).
+ */
+export async function proveWitnessFrame<Target>(
+  witnesses: readonly {
+    readonly witness: { readonly name: string; readonly scrolling: 'none' | 'outlet' };
+    readonly targets: readonly { readonly target: string; readonly locator: Target }[];
+  }[],
+  viewportSize: { readonly width: number; readonly height: number },
+  page: {
+    readonly scroll: (locator: Target) => Promise<void>;
+    readonly measure: (
+      locator: Target,
+    ) => Promise<{ x: number; y: number; width: number; height: number } | null>;
+  },
+): Promise<void> {
+  for (const { witness, targets } of witnesses)
+    if (witness.scrolling === 'outlet' && targets[0] !== undefined)
+      await page.scroll(targets[0].locator);
+  for (const { witness, targets } of witnesses) {
+    for (const { target, locator } of targets) {
+      const box = await page.measure(locator);
+      if (
+        box === null ||
+        box.x < 0 ||
+        box.y < 0 ||
+        box.x + box.width > viewportSize.width ||
+        box.y + box.height > viewportSize.height
+      )
+        throw new Error(
+          `Viewport witness ${witness.name} target ${target} is outside the viewport.`,
+        );
+    }
+  }
+}
+
+/** Playwright prefixes its grep title with the project, which TestInfo stores separately. */
+export function physicalWitnessTitle(): string {
+  const { project, titlePath } = test.info();
+  return [project.name, ...titlePath].filter(Boolean).join(' ');
 }
 
 /**
@@ -375,6 +443,43 @@ async function captureViewport(
   await capture.ready?.(page);
   await waitForMarkdownPaint(page);
 
+  const configuredWitnesses = viewportWitnesses();
+  const title = configuredWitnesses.length === 0 ? undefined : physicalWitnessTitle();
+  const file = configuredWitnesses.length === 0 ? undefined : test.info().file;
+  const matchingWitnesses = configuredWitnesses.filter(
+    (witness) =>
+      file?.endsWith(witness.specification) &&
+      witness.specification.endsWith(`/${capture.source}`) &&
+      witness.title === title &&
+      witness.route === capture.route &&
+      witness.state === capture.state &&
+      witness.world === world &&
+      witness.width === viewportSize.width &&
+      witness.theme === colorScheme,
+  );
+  const witnessTargets = matchingWitnesses.map((witness) => ({
+    witness,
+    targets: witness.targets.map((target) => {
+      // The row names a role and its exact accessible name as text; neither is ever evaluated.
+      const role = /^role:(?<kind>[a-z-]+):(?<name>.+)$/.exec(target)?.groups;
+      const locator =
+        role?.['kind'] === undefined || role['name'] === undefined
+          ? page.getByTestId(target)
+          : page.getByRole(role['kind'] as Parameters<Page['getByRole']>[0], {
+              name: role['name'],
+              exact: true,
+            });
+      return { target, locator };
+    }),
+  }));
+  await proveWitnessFrame(witnessTargets, viewportSize, {
+    scroll: (locator) => locator.scrollIntoViewIfNeeded(),
+    measure: async (locator) => {
+      await expect(locator).toHaveCount(1);
+      return locator.boundingBox();
+    },
+  });
+
   const viewport = `screens/${slug}.png`;
   await page.screenshot({
     path: join(directory, viewport),
@@ -420,6 +525,9 @@ async function captureViewport(
     height: viewportSize.height,
     colorScheme,
     viewport,
+    ...(matchingWitnesses.length === 0
+      ? {}
+      : { witnesses: matchingWitnesses.map(({ row, name }) => `${row}:${name}`) }),
     ...(full === undefined ? {} : { full }),
     ...(geometry === undefined ? {} : { geometry }),
     ...(geometryError === undefined ? {} : { geometryError }),

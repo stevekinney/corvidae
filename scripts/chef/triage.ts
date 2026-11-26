@@ -345,11 +345,11 @@ export interface Citation {
   attached: boolean;
 }
 
-/** One candidate token as a citation: trailing punctuation and `:line` or `#L12` suffixes removed. */
+/** One candidate token as a citation: trailing punctuation and `:12`, `:12-40`, `:12:5` or `#L12` suffixes removed. */
 function tokenCitation(token: string): Pick<Citation, 'kind' | 'value'> | undefined {
   const value = token
     .replace(/^["'(]+|["',.;:)]+$/g, '')
-    .replace(/(?:#L\d+(?:-L?\d+)?|:\d+(?::\d+)?)$/, '')
+    .replace(/(?:#L\d+(?:-L?\d+)?|:\d+(?:[:-]\d+)?)$/, '')
     .replace(/\/$/, '');
   if (/[*<>{}$|\s]/.test(value) || value === '') return undefined;
   if (repositoryRoots.test(value)) return { kind: 'path', value };
@@ -398,7 +398,7 @@ export function citationsIn(description: string): Citation[] {
  * Not resolved, and never failed: a test's name inside a file, a line number, a glob, a path with a
  * placeholder, a path in another repository or outside the known folders, a bare file name other
  * than a test file (a stylesheet cited without its directory), `bun run` after `cd` or `--filter`
- * (that package's scripts), and a path on a line that says it creates or writes it.
+ * (that package's scripts), and a path or test file on a line that says it creates or writes it.
  */
 export function citationFindings(description: string, view: RepositoryView): Finding[] {
   const findings: Finding[] = [];
@@ -424,7 +424,7 @@ export function citationFindings(description: string, view: RepositoryView): Fin
           message: `The issue cites \`bun run ${value}\`, which is not a script of the root package.json on origin/main.`,
         });
     } else if (citation.kind === 'test') {
-      if (!names.has(value))
+      if (!names.has(value) && !citation.producing)
         findings.push({
           code: 'citation-missing',
           message: `The issue cites the test file \`${value}\`, which no path on origin/main has.`,

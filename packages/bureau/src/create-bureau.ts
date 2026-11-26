@@ -409,11 +409,8 @@ import { createOutbox, type OutboxPeers } from './bureau-seams/outbox';
 import { createSessionRestore, type SessionRestorePeers } from './bureau-seams/session-restore';
 import { createMaintenance, type MaintenancePeers } from './bureau-seams/maintenance';
 import { createRunOwnership, type RunOwnershipPeers } from './bureau-seams/run-ownership';
-import {
-  createRunOperations,
-  recoverDeletionReleases,
-  type RunOperationsPeers,
-} from './bureau-seams/run-operations';
+import { createRunOperations, type RunOperationsPeers } from './bureau-seams/run-operations';
+import { recoverDeletionReleases } from './deletion-release';
 import {
   createTerminalSessions,
   type TerminalSessionsPeers,
