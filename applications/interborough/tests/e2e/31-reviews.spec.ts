@@ -442,10 +442,20 @@ test.describe('a tool approval', () => {
 
   test('reconciles a lost decision response without sending the decision twice', async ({
     page,
+    pageErrors,
     request,
   }) => {
     const { review, threadId } = await waitingRefund(page, request, 'reviews-lost-response');
     const resolves = recordResolves(page);
+    const reason = 'the fixture drops the refund approval response after the Bureau answers';
+    pageErrors.expect({
+      pattern: /^request failed: POST \S+\/jsonrpc \(net::ERR_FAILED\)$/,
+      reason,
+    });
+    pageErrors.expect({
+      pattern: /^console error: Failed to load resource: net::ERR_FAILED \(\S+\/jsonrpc:0\)$/,
+      reason,
+    });
     await page.route('**/jsonrpc', async (route) => {
       const call = route.request().postDataJSON() as { method?: string; params?: { id?: string } };
       if (call.method !== 'bureau.reviews.resolve' || call.params?.id !== review.id)
@@ -824,6 +834,7 @@ test.describe('a tool approval', () => {
       try {
         if (decision === 'Approve') await approveReview(pane);
         else await pane.getByRole('button', { name: decision, exact: true }).click();
+        await expect.poll(() => requests.length).toBe(1);
         await expect(pane.getByRole('button', { name: active, exact: true })).toHaveAttribute(
           'aria-busy',
           'true',
