@@ -19,7 +19,8 @@
 //
 // Every viewport image in the capture (each `.png` that isn't a `.full.png`) needs exactly one
 // screen line, with its own verdict of at least `MINIMUM_VERDICT_WORDS` words, written before the
-// review looks at the design reference or the departures. Every sweep category needs one line. A
+// review looks at the design reference or the departures. Every sweep category needs at least one
+// line; a ledger concatenated from area dispatches has one per area, and any `found` blocks. A
 // state line names an image in the capture, or says it wasn't captured.
 //
 // Exit 0: complete, and nothing blocks approval. Exit 1: incomplete or malformed. Exit 3: complete,
@@ -124,12 +125,14 @@ export function checkLedger(directory: string, text: string): LedgerCheck {
       }
       if (!(SWEEP_CATEGORIES as readonly string[]).includes(subject))
         problems.push(`${label}: "${subject}" is not one of ${SWEEP_CATEGORIES.join(', ')}`);
-      if (swept.has(subject)) problems.push(`${label}: sweep ${subject} is answered twice`);
       swept.add(subject);
       if (!(SWEEP_VERDICTS as readonly string[]).includes(verdict))
         problems.push(`${label}: "${verdict}" is not one of ${SWEEP_VERDICTS.join(', ')}`);
       if (evidence === '') problems.push(`${label}: sweep ${subject} needs evidence`);
-      if (verdict === 'found') blocking.push(`sweep ${subject}: found`);
+      // A capture reviewed in several area dispatches has one sweep line per area for each
+      // category; any area that found something blocks, once.
+      if (verdict === 'found' && !blocking.includes(`sweep ${subject}: found`))
+        blocking.push(`sweep ${subject}: found`);
     } else if (kind === 'state') {
       if (fields.length !== 3 || subject === '') {
         problems.push(`${label}: expected "state | description | image or not captured"`);

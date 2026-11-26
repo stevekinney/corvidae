@@ -106,6 +106,23 @@ describe('design coverage ledger', () => {
     });
   });
 
+  test("a ledger concatenated from two area dispatches keeps each area's sweep lines", () => {
+    withCapture((directory) => {
+      const areaOne = ledger([FULL[0]!, FULL[1]!]);
+      const areaTwo = ledger(
+        [FULL[2]!],
+        SWEEP.map((line, index) =>
+          index === 0
+            ? `sweep | ${SWEEP_CATEGORIES[0]} | found | toggle sits apart from its explanation`
+            : line,
+        ),
+      );
+      const result = checkLedger(directory, `${areaOne}\n${areaTwo}`);
+      expect(result.problems).toEqual([]);
+      expect(result.blocking).toEqual([`sweep ${SWEEP_CATEGORIES[0]}: found`]);
+    });
+  });
+
   test('refuses a screen line for a file that is not in the capture', () => {
     withCapture((directory) => {
       const result = checkLedger(
