@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as client from 'openid-client';
-import { createBrowserSignIn } from './browser-sign-in.ts';
+import { createBrowserSignIn, oidc } from './browser-sign-in.ts';
 
 test('requires storage with atomic conditional writes', () => {
   using storage = new MemoryStorage();
@@ -28,6 +28,41 @@ test('requires storage with atomic conditional writes', () => {
       resolveMembership: async () => ({ workspaceId: 'workspace' }),
     }),
   ).toThrow();
+});
+
+test('snapshots OIDC discovery inputs before the first request', async () => {
+  const calls: string[] = [];
+  const configuredFetch: client.CustomFetch = async (url) => {
+    calls.push(url);
+    return Response.json({
+      issuer: 'https://identity.test',
+      authorization_endpoint: 'https://identity.test/authorize',
+      token_endpoint: 'https://identity.test/token',
+      jwks_uri: 'https://identity.test/jwks',
+      response_types_supported: ['code'],
+      subject_types_supported: ['public'],
+      id_token_signing_alg_values_supported: ['RS256'],
+    });
+  };
+  const options = {
+    issuer: 'https://identity.test',
+    clientId: 'application',
+    clientSecret: 'secret',
+    fetch: configuredFetch,
+  };
+  const provider = oidc(options);
+  options.issuer = 'https://changed.test';
+  options.clientId = 'changed-client';
+  options.clientSecret = 'changed-secret';
+  options.fetch = async () => {
+    throw new Error('The provider should use the original Fetch implementation');
+  };
+
+  const configuration = await provider();
+
+  expect(calls).toEqual(['https://identity.test/.well-known/openid-configuration']);
+  expect(configuration.serverMetadata().issuer).toBe('https://identity.test');
+  expect(configuration.clientMetadata().client_id).toBe('application');
 });
 
 const base64 = (value: Uint8Array) => Buffer.from(value).toString('base64url');
