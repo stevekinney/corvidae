@@ -12,6 +12,7 @@ import {
   writeManifest,
 } from '../../../scripts/affected-tests-manifest.ts';
 import {
+  availableMemory,
   discoverTestFiles,
   forwardStopSignals,
   MINIMUM_FREE_MEMORY_BYTES,
@@ -450,5 +451,13 @@ describe('the hang watchdog', () => {
     setup.advance(SHARD_SILENCE_LIMIT_MS * 2);
     expect(setup.err.join('')).not.toContain('run-ui-shards:');
     expect(setup.out.join('')).toContain('exit 0');
+  });
+});
+
+describe('availableMemory', () => {
+  it('reads MemAvailable, not MemFree, from /proc/meminfo', () => {
+    const meminfo =
+      'MemTotal:       16000000 kB\nMemFree:          385024 kB\nMemAvailable:    9000000 kB\n';
+    expect(availableMemory(meminfo)).toBe(9_000_000 * 1024);
   });
 });

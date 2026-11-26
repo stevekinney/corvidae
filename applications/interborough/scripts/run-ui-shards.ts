@@ -22,7 +22,7 @@
  * Usage: `bun scripts/run-ui-shards.ts <bun test arguments>`
  */
 
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { freemem } from 'node:os';
 import { join, relative } from 'node:path';
 
@@ -46,11 +46,30 @@ export const SHARD_COUNT = 4;
 export const SHARD_SILENCE_LIMIT_MS = 10 * 60_000;
 
 /**
- * The free memory below which the run stops its shards. On 2026-11-25 the CI runner was lost after
+ * The available memory below which the run stops its shards. On 2026-11-25 the CI runner was lost after
  * about 46 minutes in four of nine runs, leaving no log; stopping while there is still memory to
  * write a report turns that into a failure that says which shard was where.
  */
 export const MINIMUM_FREE_MEMORY_BYTES = 512 * 1024 * 1024;
+
+/**
+ * The memory the kernel can hand out without swapping, in bytes. On Linux that is `MemAvailable` in
+ * `/proc/meminfo`, not `os.freemem()`: free memory excludes the page cache the kernel reclaims on
+ * demand, so a busy CI runner reads a few hundred MiB "free" while gigabytes are available. Elsewhere
+ * it falls back to `os.freemem()`.
+ */
+export function availableMemory(meminfo?: string): number {
+  let text = meminfo;
+  if (text === undefined) {
+    try {
+      text = readFileSync('/proc/meminfo', 'utf8');
+    } catch {
+      return freemem();
+    }
+  }
+  const match = /^MemAvailable:\s+(\d+)\s+kB$/m.exec(text);
+  return match === null ? freemem() : Number(match[1]) * 1024;
+}
 
 /** How often the watchdog checks each shard's silence and the free memory. */
 export const WATCH_INTERVAL_MS = 15_000;
@@ -270,7 +289,7 @@ export async function runUiShards(
     writeStandardError = process.stderr.write.bind(process.stderr),
     now = Date.now,
     every = everyWithInterval,
-    freeMemory = freemem,
+    freeMemory = availableMemory,
   } = dependencies;
   const { flags, roots, ignorePatterns } = splitBunTestArguments(argumentsList);
   const files = narrowToSelection(
