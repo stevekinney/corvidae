@@ -20,6 +20,7 @@ import {
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { CompressedStorage } from '../storage/compressed-storage.ts';
 import { KEYS } from '../storage/keys.ts';
 import { ActivityRegistry } from './activity-registry.ts';
@@ -7575,6 +7576,7 @@ describe('Engine decode and scoped-state guards', () => {
         new Engine({
           workerExecution: {
             workerUrl: new URL('https://example.invalid/worker.js'),
+            createWorker: bunWorkerFactory,
             poolSize: 1,
           },
         }),

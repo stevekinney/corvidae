@@ -443,6 +443,8 @@ export interface EngineOptions<TServices = unknown>
   workerExecution?: {
     /** URL of the worker script, for example `new URL('./workflow-worker.ts', import.meta.url)`. */
     workerUrl: string | URL;
+    /** Host-owned worker constructor, for example `bunWorkerFactory` or `nodeWorkerFactory`. */
+    createWorker: import('../../workers/pool.ts').CreateWorker;
     /** Maximum number of concurrent workers. Default: 4. */
     poolSize?: number;
     /** Use Bun's `smol` worker option for smaller memory footprint. */
@@ -590,6 +592,8 @@ export type ActivityExecutionOptions =
       mode: 'worker';
       /** URL of the activity worker script (created via `createActivityWorkerEntryUrl`). */
       workerUrl: string | URL;
+      /** Host-owned worker constructor, for example `bunWorkerFactory` or `nodeWorkerFactory`. */
+      createWorker: import('../../workers/pool.ts').CreateWorker;
       /** Maximum number of concurrent activity workers. Default: 4. */
       poolSize?: number;
       /** Use Bun's `smol` worker option for smaller memory footprint. */
@@ -607,12 +611,6 @@ export type ActivityExecutionOptions =
       visibilityTimeoutMilliseconds?: number;
       /** Default requeue/backoff policy recorded on every task this engine enqueues. */
       retryPolicy?: RetryPolicy;
-      /**
-       * Test-only seam: substitute a recording or poison
-       * {@link RemoteActivityBroker} instead of the engine's default,
-       * storage-backed one. A constructor-time option, not a
-       * post-construction setter — production code never needs to supply
-       * this.
-       */
+      /** Test-only substitute for the default storage-backed {@link RemoteActivityBroker}. */
       broker?: RemoteActivityBroker;
     }>;

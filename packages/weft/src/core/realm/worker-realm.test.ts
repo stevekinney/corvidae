@@ -6,6 +6,7 @@ import {
   useFakeTimers,
 } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { WorkerRealm, type WorkerRealmActivation } from './worker-realm.ts';
 
 const workerUrl = new URL('./__fixtures__/revision-realm-worker-entry.ts', import.meta.url);
@@ -29,6 +30,7 @@ function makeRealm(
 ): WorkerRealm {
   return new WorkerRealm({
     workerUrl,
+    createWorker: bunWorkerFactory,
     expectedWorkflowTypes: ['order-workflow'],
     isReferenced: overrides.isReferenced ?? (() => true),
     maxRestarts: overrides.maxRestarts ?? 3,
@@ -241,6 +243,7 @@ describe('WorkerRealm', () => {
       useFakeTimers();
       const realm = new WorkerRealm({
         workerUrl: unresponsiveWorkerUrl,
+        createWorker: bunWorkerFactory,
         expectedWorkflowTypes: ['order-workflow'],
         isReferenced: () => true,
         maxRestarts: 0,
@@ -261,6 +264,7 @@ describe('WorkerRealm', () => {
     it('a real Worker error before the ready handshake ends the realm in Crashed, not a thrown exception', async () => {
       const realm = new WorkerRealm({
         workerUrl: throwingWorkerUrl,
+        createWorker: bunWorkerFactory,
         expectedWorkflowTypes: ['order-workflow'],
         isReferenced: () => true,
         maxRestarts: 0,
