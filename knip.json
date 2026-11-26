@@ -241,6 +241,7 @@
         "**/*.playwright.ts",
         "**/*.spec.ts",
         "src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts",
+        "src/test/review-peer-child.ts",
         "src/hooks/recipient-recovery-child.ts"
       ],
       "project": [
@@ -251,6 +252,7 @@
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!",
         "!src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts!",
+        "!src/test/review-peer-child.ts!",
         "!src/hooks/recipient-recovery-child.ts!"
       ]
     },
