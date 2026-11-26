@@ -186,9 +186,19 @@ describe('Table stackBelow', () => {
     expect(css).toMatch(
       /\.cinder-table\[data-cinder-stacked\] \.cinder-table__cell-detail \{\s*display: none;/,
     );
-    // Only an unbroken string breaks, not every character.
+    // Only an unbroken string breaks, not every character. The one exception is a table that sets
+    // column `sizing` (COR-2769), whose automatic layout must not let one long word widen it.
     expect(css).toMatch(/overflow-wrap: break-word;/);
-    expect(css).not.toMatch(/overflow-wrap: anywhere;/);
+    const breaksAnywhere = Array.from(
+      css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{[^}]*overflow-wrap: anywhere;/g),
+      (match) => match[1]?.trim() ?? '',
+    );
+    expect(breaksAnywhere.length).toBeGreaterThan(0);
+    for (const selector of breaksAnywhere) {
+      expect(selector).toMatch(
+        /^\.cinder-table\[data-cinder-fit\]:not\(\[data-cinder-stacked\]\):has\(\s*> \.cinder-table__header \[data-cinder-sizing\]\s*\)/,
+      );
+    }
   });
 });
 

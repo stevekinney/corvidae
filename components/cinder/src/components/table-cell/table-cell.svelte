@@ -6,7 +6,7 @@
   import type { Attachment } from 'svelte/attachments';
 
   import { createCutText } from '../../_internal/cut-text.svelte.ts';
-  import { tryGetTableContext } from '../table/table.context.ts';
+  import { tryGetTableContext, tryGetTableRowColumnsContext } from '../table/table.context.ts';
   import type { TableCellProps } from './table-cell.types.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import FullTextTooltip from '../../_internal/full-text-tooltip.svelte';
@@ -27,6 +27,16 @@
 
   // A cell with a control tells its table, which stacks its rows only while one is mounted.
   const tableContext = tryGetTableContext();
+
+  // The cell takes its column's `sizing` from the header cell above it: by the position it claims as
+  // it is created (so the server's HTML carries it), then by its DOM position once mounted. A cell
+  // that spans columns belongs to none of them.
+  let columnPosition = $state(tryGetTableRowColumnsContext()?.claimColumn() ?? -1);
+  const spansColumns = $derived(Number(rest.colspan ?? 1) > 1);
+  const sizing = $derived(spansColumns ? undefined : tableContext?.columnSizing?.(columnPosition));
+  const placeColumn: Attachment<HTMLElement> = (cell) => {
+    if (cell instanceof HTMLTableCellElement) columnPosition = cell.cellIndex;
+  };
   $effect(() => {
     if (!controls) return;
     return tableContext?.registerControls?.(controls !== 'fit');
@@ -90,6 +100,8 @@
   data-cinder-truncate={truncate || undefined}
   data-cinder-stack={stack}
   data-cinder-controls={controls === 'fit' ? 'fit' : controls ? '' : undefined}
+  data-cinder-sizing={sizing}
+  {@attach placeColumn}
 >
   {#if truncate}
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the text is cut, so focusing it opens the tooltip with the whole text. -->

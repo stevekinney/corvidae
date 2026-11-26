@@ -1,6 +1,8 @@
 import type { Snippet } from 'svelte';
 import type { HTMLThAttributes } from 'svelte/elements';
 
+import type { TableColumnSizing } from '../table/table.types.ts';
+
 // `aria-sort` is owned by the component (computed from the parent Table's sort state
 // and emitted after the attribute spread), so it's Omit-ted — a consumer value would
 // be silently dropped at runtime.
@@ -24,6 +26,15 @@ export type TableHeaderCellProps = Omit<
   scope?: 'col' | 'colgroup';
   /** Horizontal alignment for the header cell content. Defaults to `'left'`. @default "left" */
   align?: 'left' | 'center' | 'right';
+  /**
+   * How this column takes its width in a `fit` table. `'content'` is for a short value (a status
+   * word, a badge, an identifier, a count): the column is as wide as its widest header or cell,
+   * never wider than half the table, and its cells do not wrap. `'fill'` is for prose: the column
+   * takes the width the `content` columns leave and wraps. Left out, a column shares the width
+   * equally with the others, as every column of a `fit` table with no `sizing` does. It has no
+   * effect outside a `fit` table, or while the table is stacked.
+   */
+  sizing?: TableColumnSizing;
   /** Additional class names merged with `.cinder-table__header-cell`. */
   class?: string;
   /** Cell content (column label). */

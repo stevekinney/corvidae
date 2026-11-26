@@ -7,6 +7,7 @@
   import { untrack } from 'svelte';
 
   import {
+    setTableRowColumnsContext,
     tryGetTableContext,
     tryGetTableHeaderSelectionContext,
     tryGetTableSectionContext,
@@ -27,6 +28,10 @@
 
   const table = tryGetTableContext();
   const selectionEnabled = table?.selectionEnabled ?? false;
+
+  // Each Cinder cell in this row claims the next column position as it is created.
+  let claimedColumns = 0;
+  setTableRowColumnsContext({ claimColumn: () => claimedColumns++ });
 
   const section = tryGetTableSectionContext();
   const headerSelection = tryGetTableHeaderSelectionContext();

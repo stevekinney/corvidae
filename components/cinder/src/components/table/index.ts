@@ -23,6 +23,7 @@ const Table = Object.assign(TableRoot, {
 export default Table;
 export type {
   SortDirection,
+  TableColumnSizing,
   TableContext,
   TableDensity,
   TableHeaderSelectionContext,

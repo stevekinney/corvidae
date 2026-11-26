@@ -423,6 +423,51 @@
   }
 
   /* ----------------------------------------
+   * Column sizing (COR-2769) — a `fit` table whose header cells set `sizing` lays out its columns
+   * by their content instead of sharing the width equally. A `content` column (a status word, a
+   * badge, an identifier, a count) is as wide as its widest header or cell, never wider than half
+   * the table, and does not wrap; a `fill` column takes what the content columns leave and wraps.
+   * The automatic layout keeps the fit guarantee because nothing in it asks for more than the
+   * table has: a fill cell breaks anywhere, a content cell is capped at half the scroll box (a size
+   * container, so `cqi` reads its width), and a truncating cell's text asks for no width at all and
+   * then fills its column. A table with no `sizing` keeps the fixed layout above.
+   * ---------------------------------------- */
+
+  .cinder-table[data-cinder-fit]:has(> .cinder-table__header [data-cinder-sizing]) {
+    table-layout: auto;
+  }
+
+  .cinder-table-scroll:has(
+    > .cinder-table[data-cinder-fit] > .cinder-table__header [data-cinder-sizing]
+  ) {
+    container-type: inline-size;
+  }
+
+  .cinder-table[data-cinder-fit]:not([data-cinder-stacked])
+    :is(.cinder-table__cell, .cinder-table__header-cell)[data-cinder-sizing='content'] {
+    inline-size: 0;
+    max-inline-size: 50cqi;
+    white-space: nowrap;
+  }
+
+  /* A `fill` column, and any column a sized table leaves without `sizing`, breaks anywhere, so one
+   * long word never asks for more than the content columns leave. */
+  .cinder-table[data-cinder-fit]:not([data-cinder-stacked]):has(
+      > .cinder-table__header [data-cinder-sizing]
+    )
+    :is(.cinder-table__cell, .cinder-table__header-cell):not([data-cinder-sizing='content']) {
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-table[data-cinder-fit]:not([data-cinder-stacked]):has(
+      > .cinder-table__header [data-cinder-sizing]
+    )
+    .cinder-table__cell-text {
+    inline-size: 0;
+    min-inline-size: 100%;
+  }
+
+  /* ----------------------------------------
  * Controls — every control in a `controls` column fills the cell, so the
  * controls share the one width the column has and a longer value in one row
  * cannot make its control wider than its neighbours.

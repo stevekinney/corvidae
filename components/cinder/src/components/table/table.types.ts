@@ -50,6 +50,29 @@ export type TableContext = {
   readonly stackCard?: boolean;
   /** True for a `fit` table. Its row header holds to two lines, stacked or not. */
   readonly fit?: boolean;
+  /**
+   * Called by a header cell with its column position and `sizing`, and again with `undefined` when
+   * it leaves that position; `owner` identifies the cell, so it withdraws only its own entry. Body
+   * cells in the same column read it with `columnSizing`.
+   */
+  setColumnSizing?: (column: number, sizing: TableColumnSizing | undefined, owner: object) => void;
+  /** The `sizing` a header cell declared for the column at `column`, if any. */
+  columnSizing?: (column: number) => TableColumnSizing | undefined;
+};
+
+/**
+ * How a column of a `fit` table takes its width: `'content'` is as wide as its widest value and
+ * never wraps (a status word, a badge, an identifier, a count); `'fill'` takes the width the content
+ * columns leave and wraps (prose).
+ */
+export type TableColumnSizing = 'content' | 'fill';
+
+/**
+ * Provided by TableRow: each Cinder cell in the row claims the next column position as it is
+ * created. @internal
+ */
+export type TableRowColumnsContext = {
+  claimColumn: () => number;
 };
 /** Attributes forwarded to Table's generated scroll wrapper. */
 export type TableScrollContainerProps = Omit<
@@ -125,10 +148,12 @@ export type TableProps = Omit<HTMLTableAttributes, 'class'> & {
   framed?: boolean;
   /**
    * Fits the table to its container's width so a long value never makes it scroll sideways. The
-   * columns share the width (a fixed table layout: set a column's width on its header cell or a
-   * `<col>`), a `truncate` cell ends its text with an ellipsis at its column's width with the full
-   * text in a tooltip, and any other cell wraps its text. Leave it off for a table whose columns
-   * should keep their natural widths and scroll when they do not fit.
+   * columns share the width equally (a fixed table layout) unless a header cell sets `sizing`: a
+   * `sizing="content"` column (a status word, a badge, an identifier, a count) is as wide as its
+   * widest value, at most half the table, and does not wrap, and a `sizing="fill"` column (prose)
+   * takes the width the content columns leave. A `truncate` cell ends its text with an ellipsis at
+   * its column's width with the full text in a tooltip, and any other cell wraps its text. Leave it
+   * off for a table whose columns should keep their natural widths and scroll when they do not fit.
    *
    * A `fit` table also stacks below `stackBelow`, as a list of flat rows: the `as="th"` cell (or the
    * first cell with text) is the title, a cell with `stack="end"` sits at its inline end, a cell

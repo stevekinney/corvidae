@@ -3,9 +3,12 @@
 </script>
 
 <script lang="ts">
+  import type { Attachment } from 'svelte/attachments';
+  import { untrack } from 'svelte';
+
   import type { TableHeaderCellProps } from './table-header-cell.types.ts';
 
-  import { getTableContext } from '../table/table.context.ts';
+  import { getTableContext, tryGetTableRowColumnsContext } from '../table/table.context.ts';
   import { classNames } from '../../utilities/class-names.ts';
 
   let {
@@ -13,6 +16,7 @@
     sortable = false,
     scope = 'col',
     align = 'left',
+    sizing,
     class: className,
     children,
     actions,
@@ -20,6 +24,24 @@
   }: TableHeaderCellProps = $props();
 
   const table = getTableContext();
+
+  // The column's `sizing` reaches the body cells under this header through the table. It is
+  // declared as the cell is created, before the body cells are, so the server's HTML carries it;
+  // after mount the cell keeps it current at its DOM position.
+  const owner = {};
+  let columnPosition = $state(tryGetTableRowColumnsContext()?.claimColumn() ?? -1);
+  untrack(() => {
+    if (sizing !== undefined) table.setColumnSizing?.(columnPosition, sizing, owner);
+  });
+  $effect(() => {
+    const position = columnPosition;
+    const value = sizing;
+    table.setColumnSizing?.(position, value, owner);
+    return () => table.setColumnSizing?.(position, undefined, owner);
+  });
+  const placeColumn: Attachment<HTMLTableCellElement> = (cell) => {
+    columnPosition = cell.cellIndex;
+  };
 
   // A column is only actually sortable when both `sortable` is set and a `column`
   // identifier is supplied — the inner <button> renders under that same guard.
@@ -56,7 +78,9 @@
   class={classNames('cinder-table__header-cell', className)}
   data-cinder-align={align}
   data-cinder-sortable={isSortable || undefined}
+  data-cinder-sizing={sizing}
   aria-sort={ariaSort}
+  {@attach placeColumn}
 >
   <div class="cinder-table__header-content">
     {#if isSortable}

@@ -140,8 +140,8 @@ for (const width of [375, 1280]) {
         page,
       }) => {
         await open(page, width, colorScheme);
-        const row = page.locator('[data-testid="description-list"] [data-cinder-linked]');
-        await row.locator('dt').hover();
+        // The link's hit area covers the row, so the pointer rests on the row, not on its term.
+        await page.locator('[data-testid="description-list"] [data-cinder-linked]').hover();
         expectVisibleTint(
           await tint(
             page,
