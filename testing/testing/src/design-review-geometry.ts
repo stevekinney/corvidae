@@ -146,6 +146,38 @@ export interface InsetFact {
   readonly sample: string;
 }
 
+/** Visible text that reads as an identifier, with the typeface it is set in. */
+export interface IdentifierFact {
+  readonly name: string;
+  readonly text: string;
+  /** The first family of the element's computed `font-family`, lowercased. */
+  readonly family: string;
+  /** The first family of `--cinder-font-mono` as computed on the element, lowercased. */
+  readonly mono: string;
+}
+
+/** The room between a table, list or card and the text block that follows it. */
+export interface CaptionGapFact {
+  /** The text block. */
+  readonly name: string;
+  /** The table, list or card above it. */
+  readonly container: string;
+  /** From the container's bottom edge to the text's top. */
+  readonly gap: number;
+  /** `--cinder-space-2` in pixels, or `null` when the page declares none the probe can read. */
+  readonly minimum: number | null;
+  readonly sample: string;
+}
+
+/** A disclosure chevron inside a row of two or more text lines. */
+export interface ChevronFact {
+  readonly name: string;
+  readonly row: string;
+  readonly lines: number;
+  /** The chevron's vertical centre less the row's: positive is below centre. */
+  readonly offset: number;
+}
+
 /** How much of the viewport the chrome around the page's scrolling region takes. */
 export interface ChromeFact {
   /** The region the content scrolls in. */
@@ -183,6 +215,9 @@ export interface GeometryFacts {
   readonly leadingSpace: readonly LeadingSpaceFact[];
   readonly overlaps: readonly OverlapFact[];
   readonly insets: readonly InsetFact[];
+  readonly identifiers: readonly IdentifierFact[];
+  readonly captionGaps: readonly CaptionGapFact[];
+  readonly chevrons: readonly ChevronFact[];
   /** `null` when nothing on the page scrolls. */
   readonly chrome: ChromeFact | null;
   /** The tooltips visible when the page was measured; empty when none was open. */
@@ -271,6 +306,8 @@ export const GEOMETRY_THRESHOLDS = {
   leadingSpaceMinimum: 48,
   /** Content with this much less room after it than before it is pushed, not centered. */
   leadingSpaceImbalanceShare: 0.15,
+  /** A disclosure chevron on a multi-line row sits within this many pixels of the row's centre. */
+  chevronCentreWithin: 1,
 } as const;
 
 /** Every rule, in the order the report lists them, with the heading and the principle it states. */
@@ -376,6 +413,20 @@ export const GEOMETRY_RULES = {
   'border-mixed': {
     title: 'Inconsistent border weights',
     principle: `A page draws its structural borders in at most ${GEOMETRY_THRESHOLDS.structuralBorderWeightsMaximum} weights, counting a dashed line as a weight of its own. A dashed border means one thing on a page.`,
+  },
+  'identifier-proportional': {
+    title: 'Identifiers in a proportional typeface',
+    principle:
+      "An address, a path, an identifier or an operation id is set in Cinder's monospace (`--cinder-font-mono`), so its characters line up and it reads as a value to copy.",
+  },
+  'caption-gap': {
+    title: 'Captions crammed against their container',
+    principle:
+      'A line of text after a table, list or card sits a step of the spacing scale from it, at least `--cinder-space-2`.',
+  },
+  'glyph-off-centre': {
+    title: 'Disclosure chevrons off centre',
+    principle: `A disclosure chevron (a \`__chevron\` element) on a row of two or more lines sits at the row's vertical centre, within ${GEOMETRY_THRESHOLDS.chevronCentreWithin} pixel, not on its first line.`,
   },
 } as const;
 
@@ -814,6 +865,47 @@ function auditInsets(facts: GeometryFacts, capture: GeometryCapture): GeometryFi
   return findings;
 }
 
+function auditIdentifiers(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
+  return facts.identifiers
+    .filter((identifier) => identifier.family !== identifier.mono)
+    .map((identifier) => ({
+      rule: 'identifier-proportional' as const,
+      subject: `${identifier.name} "${identifier.text}"`,
+      measured: `set in ${identifier.family || 'no family'}, not ${identifier.mono}`,
+      capture,
+    }));
+}
+
+function auditCaptionGaps(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
+  if (capture.source === STRESS_SOURCE) return [];
+  const findings: GeometryFinding[] = [];
+  const scaled = facts.spaceScale.length >= SCALE_STEPS_MINIMUM;
+  for (const caption of facts.captionGaps) {
+    const tooClose = caption.minimum !== null && caption.gap < caption.minimum - 0.5;
+    const offScale =
+      scaled && !facts.spaceScale.some((step) => Math.abs(step - caption.gap) <= 0.5);
+    if (!tooClose && !offScale) continue;
+    findings.push({
+      rule: 'caption-gap',
+      subject: `${caption.name} after ${caption.container}`,
+      measured: `"${caption.sample}" starts ${round(caption.gap)}px below it${caption.minimum === null ? '' : `, against a minimum of ${round(caption.minimum)}px`}${offScale ? ' (off the scale)' : ''}`,
+      capture,
+    });
+  }
+  return findings;
+}
+
+function auditChevrons(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
+  return facts.chevrons
+    .filter((chevron) => Math.abs(chevron.offset) > GEOMETRY_THRESHOLDS.chevronCentreWithin)
+    .map((chevron) => ({
+      rule: 'glyph-off-centre' as const,
+      subject: `${chevron.name} in ${chevron.row}`,
+      measured: `${round(Math.abs(chevron.offset))}px ${chevron.offset < 0 ? 'above' : 'below'} the centre of a ${chevron.lines}-line row`,
+      capture,
+    }));
+}
+
 function auditChrome(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
   const thresholds = GEOMETRY_THRESHOLDS;
   const { chrome, viewport } = facts;
@@ -924,6 +1016,9 @@ export function auditCapture(facts: GeometryFacts, capture: GeometryCapture): Ge
     ...auditLeadingSpace(facts, capture),
     ...auditOverlaps(facts, capture),
     ...auditInsets(facts, capture),
+    ...auditIdentifiers(facts, capture),
+    ...auditCaptionGaps(facts, capture),
+    ...auditChevrons(facts, capture),
     ...auditChrome(facts, capture),
     ...auditTooltips(facts, capture),
     ...auditWeights(facts, capture),

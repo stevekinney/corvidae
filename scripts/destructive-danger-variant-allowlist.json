@@ -1,0 +1,10 @@
+{
+  "applications/interborough/src/routes/settings/models/manage-dialog.svelte": 1,
+  "applications/interborough/src/routes/workers/deployment-versions-view.svelte": 2,
+  "applications/playground/src/examples/confirm-dialog/error-action.example.svelte": 1,
+  "applications/playground/src/examples/confirm-dialog/in-flight-and-failed.example.svelte": 1,
+  "applications/playground/src/examples/confirm-dialog/options.example.svelte": 1,
+  "applications/playground/src/examples/confirm-dialog/pending.example.svelte": 1,
+  "applications/playground/src/shell-app/theme-workbench-library.svelte": 1,
+  "components/chat/src/lib/components/chat/message/chat-message.svelte": 1
+}

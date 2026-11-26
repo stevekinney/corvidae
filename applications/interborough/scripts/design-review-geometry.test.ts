@@ -36,6 +36,9 @@ function facts(overrides: Partial<GeometryFacts> = {}): GeometryFacts {
     leadingSpace: [],
     overlaps: [],
     insets: [],
+    identifiers: [],
+    captionGaps: [],
+    chevrons: [],
     chrome: null,
     tooltips: [],
     ...overrides,
@@ -806,6 +809,54 @@ describe('auditGeometry', () => {
     await writeFile(join(measured, 'geometry', 'agents.json'), JSON.stringify(facts()));
     expect(await runGeometryAudit(['--capture', measured], write)).toBe(0);
     expect(written.out).toContain('0 geometry findings from 1 measured captures');
+  });
+});
+
+describe('identifier-proportional', () => {
+  const identifier = (family: string) => ({
+    name: 'span.address',
+    text: '127.0.0.1:7233',
+    family,
+    mono: 'ui-monospace',
+  });
+
+  test('names an identifier set in a proportional face and passes one set in the mono face', () => {
+    const found = audit(facts({ identifiers: [identifier('inter')] }), capture());
+    expect(rules(found)).toEqual(['identifier-proportional']);
+    expect(found[0]?.subject).toBe('span.address "127.0.0.1:7233"');
+    expect(audit(facts({ identifiers: [identifier('ui-monospace')] }), capture())).toEqual([]);
+  });
+});
+
+describe('caption-gap', () => {
+  const caption = (gap: number) => ({
+    name: 'p.caption',
+    container: 'table',
+    gap,
+    minimum: 8,
+    sample: 'Rows are sampled',
+  });
+
+  test('names a caption closer than the scale step of space 2 or off the scale', () => {
+    expect(rules(audit(facts({ captionGaps: [caption(4)] }), capture()))).toEqual(['caption-gap']);
+    expect(rules(audit(facts({ captionGaps: [caption(9)] }), capture()))).toEqual(['caption-gap']);
+    expect(audit(facts({ captionGaps: [caption(12)] }), capture())).toEqual([]);
+  });
+});
+
+describe('glyph-off-centre', () => {
+  const chevron = (offset: number) => ({
+    name: 'span.cinder-grouped-list-item__chevron',
+    row: 'li.cinder-grouped-list-item',
+    lines: 2,
+    offset,
+  });
+
+  test('names a chevron more than a pixel from the centre of its row', () => {
+    const found = audit(facts({ chevrons: [chevron(-10)] }), capture());
+    expect(rules(found)).toEqual(['glyph-off-centre']);
+    expect(found[0]?.measured).toContain('10px above the centre of a 2-line row');
+    expect(audit(facts({ chevrons: [chevron(0.5), chevron(1)] }), capture())).toEqual([]);
   });
 });
 
