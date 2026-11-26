@@ -1,5 +1,0 @@
-{
-  "extends": "@lostgradient/typescript/library.json",
-  "compilerOptions": { "noEmit": true },
-  "include": ["src/**/*.ts"]
-}

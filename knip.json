@@ -278,14 +278,6 @@
       "entry": ["**/*.test.ts"],
       "project": ["**/*.ts"]
     },
-    "applications/equipment-armorer": {
-      "entry": ["src/server.ts!"],
-      "project": ["src/**/*.ts!"]
-    },
-    "applications/equipment-catalog": {
-      "entry": ["src/server.ts!", "src/routes/**/*.svelte!", "scripts/probe-deployment.ts!"],
-      "project": ["src/**/*.{ts,svelte}!", "scripts/**/*.ts!"]
-    },
     "applications/interborough": {
       "entry": [
         "**/*.test.ts",
