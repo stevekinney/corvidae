@@ -13,7 +13,7 @@
  * (`readSampleWorldRecords`). A state the sample world does not hold, a live run and a run waiting
  * on a signal, is covered where the page is built from a table (`run-detail-engine.test.ts`).
  */
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
@@ -34,6 +34,13 @@ async function openRun(page: Page, path: string, width: number): Promise<void> {
   await page.setViewportSize({ width, height: 900 });
   await page.goto(path);
   await expect(page.locator('[data-run-header] [data-status-word]')).toBeVisible();
+}
+
+/** Keep the named content in the frame after each capture viewport change. */
+async function reveal(target: Locator): Promise<void> {
+  await expect(target).toBeVisible();
+  await target.scrollIntoViewIfNeeded();
+  await expect(target).toBeInViewport();
 }
 
 test('/runs/:run desktop content width keeps the failed alert and Details together', async ({
@@ -74,11 +81,21 @@ for (const width of WIDTHS) {
     await expect(again).toHaveAttribute('href', /\/workflows\/.*\/run/);
     await again.click();
     await expect(page).toHaveURL(/\/workflows\/.*\/run/);
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Run Release notes' })).toBeVisible();
+    await expect(page.getByLabel(/^Branch/)).toBeVisible();
+    await expect(page.getByLabel(/^Since/)).toBeVisible();
     await captureForDesignReview(page, {
       route: '/runs/:run',
       state: 'COR-2762 run again destination',
       source: SOURCE,
+      ready: async () => {
+        await expect(
+          page.getByRole('heading', { level: 1, name: 'Run Release notes' }),
+        ).toBeVisible();
+        await expect(page.getByLabel(/^Branch/)).toBeVisible();
+        await expect(page.getByLabel(/^Since/)).toBeVisible();
+        await reveal(page.getByLabel(/^Branch/));
+      },
     });
   });
 
@@ -107,7 +124,13 @@ for (const width of WIDTHS) {
       route: '/runs/:run',
       state: 'COR-2762 open error details',
       source: SOURCE,
+      ready: async () => {
+        await expect(details).toHaveAttribute('aria-expanded', 'true');
+        await reveal(alert.locator('[data-explanation="stack"]'));
+      },
     });
+    await details.click();
+    await expect(alert.locator('[data-explanation="stack"]')).not.toBeVisible();
 
     const payload = page.locator('[data-section="input-output"]');
     await expect(payload).toContainText('No output. The run failed');
@@ -118,6 +141,11 @@ for (const width of WIDTHS) {
       route: '/runs/:run',
       state: 'COR-2762 input output fields',
       source: SOURCE,
+      ready: async () => {
+        await expect(fields).toHaveAttribute('aria-checked', 'true');
+        await reveal(fields);
+        await expect(payload).toContainText(/branch/i);
+      },
     });
     await fields.focus();
     await fields.press('ArrowRight');
@@ -129,6 +157,12 @@ for (const width of WIDTHS) {
       route: '/runs/:run',
       state: 'COR-2762 input output JSON',
       source: SOURCE,
+      ready: async () => {
+        const json = payload.getByRole('radio', { name: 'JSON' }).first();
+        await expect(json).toHaveAttribute('aria-checked', 'true');
+        await reveal(json);
+        await expect(payload).toContainText(/branch/i);
+      },
     });
 
     const rail = page.getByRole('complementary', { name: 'Details' });
@@ -141,6 +175,11 @@ for (const width of WIDTHS) {
       route: '/runs/:run',
       state: 'COR-2762 add tag focused',
       source: SOURCE,
+      ready: async () => {
+        await reveal(tagInput);
+        await tagInput.focus();
+        await expect(tagInput).toBeFocused();
+      },
     });
     await tagInput.press('Escape');
     await expect(addTag).toBeFocused();
@@ -150,6 +189,13 @@ for (const width of WIDTHS) {
       route: '/runs/:run',
       state: 'COR-2762 how it ran',
       source: SOURCE,
+      ready: async () => {
+        await expect(how.getByRole('button', { name: /^How it ran/ }).first()).toHaveAttribute(
+          'aria-expanded',
+          'true',
+        );
+        await reveal(how.locator('[data-step-row]').first());
+      },
     });
     await how.locator('[data-step-row]').first().click();
     await expect(how.locator('article[data-step]')).toBeVisible();
@@ -157,18 +203,32 @@ for (const width of WIDTHS) {
       route: '/runs/:run',
       state: 'COR-2762 selected step',
       source: SOURCE,
+      ready: () => reveal(how.locator('article[data-step]')),
     });
     await rail.locator('[data-section="logs"]').getByRole('button', { name: /^Logs/ }).click();
     await captureForDesignReview(page, {
       route: '/runs/:run',
       state: 'COR-2762 logs open',
       source: SOURCE,
+      ready: async () => {
+        const logs = rail.locator('[data-section="logs"]');
+        await expect(logs.getByRole('button', { name: /^Logs/ })).toHaveAttribute(
+          'aria-expanded',
+          'true',
+        );
+        await reveal(logs);
+      },
     });
     await header.getByRole('button', { name: 'More actions' }).click();
     await captureForDesignReview(page, {
       route: '/runs/:run',
       state: 'COR-2762 more actions open',
       source: SOURCE,
+      ready: async () => {
+        const trigger = header.getByRole('button', { name: 'More actions' });
+        if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
+        await reveal(page.getByRole('menu'));
+      },
     });
   });
 }
