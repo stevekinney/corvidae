@@ -9,7 +9,9 @@ import {
 
 const options: SharedBrowserSignInOptions = {
   origin: 'https://settings.example',
-  provider: new Promise<Awaited<BrowserSignInOptions['provider']>>(() => {}),
+  provider: new Promise<Awaited<Extract<BrowserSignInOptions['provider'], Promise<unknown>>>>(
+    () => {},
+  ),
   resolveAccount: async () => null,
   scopes: async () => [],
   oauth: {

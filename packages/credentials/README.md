@@ -8,6 +8,10 @@
 
 `@lostgradient/credentials/browser-sign-in` provides a server-only Fetch service for OpenID Connect sign-in. Supply an HTTPS public origin, an application-specific cookie name and workspace, an OIDC registration, shared storage with atomic conditional batches, and application-owned account and membership resolvers. The storage must provide current reads and atomic conditional writes across every host that uses it. Use a separate storage and cookie namespace for each application.
 
+The package runs on Cloudflare Workers with `nodejs_compat`. A Worker must supply a Web-standard Fetch runtime, Web Crypto, and a storage implementation with current reads and atomic conditional batches; bind those application-owned dependencies when constructing the services.
+
+`oidc` defers discovery until the first sign-in request. Hosts that route outbound requests through an injected Fetch implementation can pass it as `fetch` to `oidc`.
+
 ```ts
 import { createBrowserSignIn, oidc } from '@lostgradient/credentials/browser-sign-in';
 
