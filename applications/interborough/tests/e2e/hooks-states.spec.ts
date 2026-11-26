@@ -118,6 +118,30 @@ test.describe('/hooks: the hooks list states', () => {
   });
 
   for (const width of WIDTHS) {
+    test(`keeps the full ready-list subtitle and labelled primary New hook at ${width} pixels`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/hooks');
+      const main = page.locator('main');
+
+      await expect(main.getByRole('heading', { level: 1, name: 'Hooks' })).toBeVisible();
+      await expect(main).toContainText(
+        'Run something when something happens: send a webhook, start a workflow, or notify you.',
+      );
+      await expect(headerCreate(page)).toHaveAccessibleName('New hook');
+      await expect(headerCreate(page)).toHaveText('New hook');
+      await expect(headerCreate(page)).toContainClass('button-variant-primary');
+
+      await captureForDesignReview(page, {
+        route: '/hooks',
+        state: `ready header ${width}px`,
+        source: SOURCE,
+      });
+    });
+  }
+
+  for (const width of WIDTHS) {
     test(`nothing yet is the page, with no filter row and one primary New hook, at ${width} pixels`, async ({
       page,
       checkA11y,
@@ -348,6 +372,18 @@ test.describe('/hooks: the hooks list states', () => {
         await expect(firstSwitch).toHaveAccessibleDescription('Off until it’s back');
         await create.focus();
         await expect(create).toBeFocused();
+        await firstSwitch.focus();
+        await expect(firstSwitch).toBeFocused();
+        const writes: string[] = [];
+        page.on('request', (request) => {
+          if ((request.postData() ?? '').includes('"bureau.hooks.update"')) {
+            writes.push(request.postData() ?? '');
+          }
+        });
+        await firstSwitch.press('Enter');
+        await firstSwitch.press('Space');
+        expect(writes).toEqual([]);
+        await expect(firstSwitch).toHaveAttribute('aria-checked', 'true');
         await expect(rows).toHaveCount(5);
         await expect(rows.first().getByRole('link').first()).toHaveAttribute('href', /^\/hooks\//);
         await expect(main.getByRole('searchbox', { name: 'Search hooks' })).toBeEnabled();

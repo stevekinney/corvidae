@@ -275,8 +275,24 @@ test('limits a hook to one agent with Only for: it fires for that agent, and its
   try {
     await runToEnd(request, TEXT_ECHO_AGENT_NAME, thread, 'Say something');
     await page.goto(`/agents/${TEXT_ECHO_AGENT_NAME}/hooks`);
-    const row = page.getByTestId('agent-hooks').locator('li[data-hook]', { hasText: name });
+    const agentHooks = page.getByTestId('agent-hooks');
+    const row = agentHooks.locator('li[data-hook]', { hasText: name });
     await expect(row.locator('[data-status-word="Delivered"]')).toBeVisible();
+    await expect(agentHooks.locator(`li[data-hook="${(other as { id: string }).id}"]`)).toHaveCount(
+      0,
+    );
+    const newHook = agentHooks.getByRole('link', { name: 'New hook' });
+    await expect(newHook).toHaveAttribute(
+      'href',
+      `/hooks/new?agent=${encodeURIComponent(TEXT_ECHO_AGENT_NAME)}`,
+    );
+    await newHook.click();
+    await expect(page).toHaveURL(`/hooks/new?agent=${encodeURIComponent(TEXT_ECHO_AGENT_NAME)}`);
+    await chooseEvent(page, 'review', 'A review is waiting');
+    await expect(page.getByLabel(copy.onlyFor.label)).toHaveValue('agent');
+    await expect(page.getByLabel(copy.onlyFor.subject.agent, { exact: true })).toHaveValue(
+      TEXT_ECHO_AGENT_NAME,
+    );
 
     const { deliveries } = (await bureauCall(request, 'bureau.hooks.deliveries', {
       hookId: (other as { id: string }).id,
