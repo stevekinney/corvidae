@@ -179,7 +179,16 @@ test.describe('a new agent', () => {
         await expect(
           page.getByRole('heading', { level: 1, name: copy.editHeading(loadingName) }),
         ).toBeVisible();
-        await expect(page.getByTestId('agent-loading')).toBeVisible();
+        const loadingForm = page.getByTestId('agent-loading');
+        await expect(loadingForm.locator('.cinder-skeleton-field-control')).toHaveCount(4);
+        await expect(loadingForm.getByTestId('agent-save-status')).toHaveText(copy.edit.loading);
+        const save = loadingForm.getByRole('button', { name: copy.saveAction });
+        await expect(save).toBeDisabled();
+        await expect(save).toHaveAccessibleDescription(copy.edit.loading);
+        await expect(loadingForm.getByRole('button', { name: copy.cancelAction })).toBeEnabled();
+        await expect(page.getByRole('button', { name: copy.try.action, exact: true })).toHaveCount(
+          0,
+        );
         await captureForDesignReview(page, {
           route: '/agents/:agent/edit',
           state: 'loading agent',
