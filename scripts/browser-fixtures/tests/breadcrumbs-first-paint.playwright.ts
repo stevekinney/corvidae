@@ -20,6 +20,10 @@ import {
 
 const SOURCE = new URL('./server-rendered/breadcrumbs.svelte', import.meta.url).pathname;
 const PATH = '/server-rendered/breadcrumbs';
+const CINDER_BREADCRUMBS = new URL(
+  '../../../components/cinder/src/components/breadcrumbs/breadcrumbs.svelte',
+  import.meta.url,
+).pathname;
 const ANCESTORS = [
   { label: 'Home', href: '/' },
   { label: 'Projects', href: '/projects' },
@@ -29,9 +33,18 @@ const WIDE_WORDS = ['Home', '/', 'Projects', '/', 'Cinder', '/', 'Settings'];
 const PHONE_WORDS = ['Cinder', 'Settings'];
 
 let rendered: ServerRenderedPage;
+let custom: ServerRenderedPage;
 
 test.beforeAll(async () => {
-  rendered = await renderServerPage(SOURCE);
+  // The fixture's trail, and the component itself rendered with props: a length other than the
+  // default brings its rules in a style of its own.
+  [rendered, custom] = await Promise.all([
+    renderServerPage(SOURCE),
+    renderServerPage(CINDER_BREADCRUMBS, {
+      items: [...ANCESTORS, { label: 'Settings' }],
+      collapseBelow: '48rem',
+    }),
+  ]);
 });
 
 test.use({ javaScriptEnabled: false });
@@ -90,6 +103,21 @@ test('with no script, a 1280px viewport paints the whole trail and no back link'
   await expect(page.locator('a.cinder-breadcrumbs__back')).toBeHidden();
   await expect(page.locator('[aria-current="page"]')).toBeVisible();
   expect(await visibleWords(trail)).toEqual(WIDE_WORDS);
+});
+
+test('with no script, a collapseBelow of 48rem paints its phone form below 768px and the whole trail above', async ({
+  page,
+}) => {
+  const back = page.locator('a.cinder-breadcrumbs__back');
+
+  await page.setViewportSize({ width: 700, height: 800 });
+  await openServerRenderedPage(page, custom, { path: `${PATH}/collapse-below` });
+  await expect(back).toBeVisible();
+  expect(await visibleWords(page.locator('nav.cinder-breadcrumbs'))).toEqual(PHONE_WORDS);
+
+  await page.setViewportSize({ width: 800, height: 800 });
+  await expect(back).toBeHidden();
+  expect(await visibleWords(page.locator('nav.cinder-breadcrumbs'))).toEqual(WIDE_WORDS);
 });
 
 for (const width of [375, 1280]) {
