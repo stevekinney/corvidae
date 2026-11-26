@@ -2,7 +2,7 @@
   "issue": "COR-2762",
   "branch": "steve/composable-browser-import-boundary",
   "checkedAt": "1bfed57049",
-  "briefVersion": "8cdc1394650d",
+  "briefVersion": "5cf5116924b7",
   "status": "BLOCKED",
   "criteria": [
     {
@@ -59,6 +59,16 @@
       "id": "AC11",
       "status": "met-on-branch",
       "evidence": "Velveteen browser import fixture and skipped spring-forward calculation passed."
+    },
+    {
+      "id": "AC12",
+      "status": "not-met",
+      "evidence": "Typed upstream failure and canonical explanation implemented; one-way review and exact-head hosted verification pending."
+    },
+    {
+      "id": "AC13",
+      "status": "not-met",
+      "evidence": "Browser-only stack and execution-envelope masking implemented; exact-head browser captures pending."
     }
   ]
 }

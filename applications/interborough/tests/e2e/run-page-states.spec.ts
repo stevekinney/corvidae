@@ -117,6 +117,8 @@ for (const width of WIDTHS) {
     await details.focus();
     await details.press('Enter');
     await expect(alert.locator('[data-explanation="stack"]')).toBeVisible();
+    await expect(alert.locator('[data-explanation="stack"]')).not.toContainText('/Users/');
+    await expect(alert.locator('[data-explanation="stack"]')).not.toContainText('file:///');
     expect(await alert.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
       true,
     );
@@ -199,6 +201,9 @@ for (const width of WIDTHS) {
     });
     await how.locator('[data-step-row]').first().click();
     await expect(how.locator('article[data-step]')).toBeVisible();
+    await expect(how.locator('article[data-step] section[aria-label="Input"]')).not.toContainText(
+      world.runs.failed,
+    );
     await captureForDesignReview(page, {
       route: '/runs/:run',
       state: 'COR-2762 selected step',
@@ -220,6 +225,7 @@ for (const width of WIDTHS) {
       },
     });
     await header.getByRole('button', { name: 'More actions' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Copy run ID' })).toBeVisible();
     await captureForDesignReview(page, {
       route: '/runs/:run',
       state: 'COR-2762 more actions open',
@@ -254,7 +260,7 @@ for (const width of WIDTHS) {
       // next follows. The page words neither.
       await expect(
         page.getByTestId('run-step-failure').locator('[data-explanation="summary"]'),
-      ).toContainText(/failed (because|for) /);
+      ).toContainText('GitHub returned HTTP 503');
       await expect(page.getByTestId('run-step-failure')).toContainText('What to do next');
       // The words on which version each button runs on are the header's caption, under the
       // buttons, and the title keeps its line (54z).

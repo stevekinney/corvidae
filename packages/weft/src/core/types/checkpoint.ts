@@ -67,6 +67,7 @@ export interface WorkerReplayOperationFailure {
   error: string;
   /** Optional JavaScript error name captured from the failed operation outcome. */
   errorName?: string;
+  upstreamFailure?: import('../upstream-http-failure.ts').UpstreamHttpFailure;
   /** Optional Weft failure category captured from the failed operation outcome. */
   failureCategory?: FailureCategory;
 }
@@ -399,6 +400,7 @@ export type WorkerOutboundMessage =
       workflowId: WorkflowId;
       error: string;
       errorStack?: string;
+      upstreamFailure?: import('../upstream-http-failure.ts').UpstreamHttpFailure;
       /**
        * The code of the Weft error that failed the run, carried beside the message because the
        * message alone loses it (COR-2529). Absent when the error is not a Weft error.

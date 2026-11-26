@@ -49,6 +49,28 @@ describe('StepDetail', () => {
     expect(fields[1]?.querySelector('pre')?.textContent).toContain('"chargeId": "ch_1"');
   });
 
+  test('hides only the confirmed document execution ID and preserves nested user input', () => {
+    const input = {
+      input: { workflowId: 'user-id', value: 'hello' },
+      trigger: null,
+      previous: null,
+      workflowId: 'run-id',
+      step: 1,
+      stepAddress: '1',
+    };
+    const value = entry({ inputSummary: JSON.stringify(input) });
+    const confirmed = render(StepDetail, {
+      props: { entry: value, documentWorkflowId: 'run-id', bar, open: false },
+    });
+    const shown =
+      confirmed.container.querySelector('section[aria-label="Input"] pre')?.textContent ?? '';
+    expect(shown).not.toContain('run-id');
+    expect(shown).toContain('user-id');
+    confirmed.unmount();
+    const ordinary = render(StepDetail, { props: { entry: value, bar, open: false } });
+    expect(ordinary.container.textContent).toContain('run-id');
+  });
+
   test('labels the output Error for a failed step', () => {
     const { container } = render(StepDetail, {
       props: {

@@ -112,6 +112,7 @@
       readonly activity: Pick<WeftClientActivity, 'complete' | 'completeExceptionally'>;
     };
     readonly workflow: WorkflowState;
+    readonly documentWorkflow?: boolean | undefined;
     readonly liveObservations: WorkflowLiveObservations;
     /** `weft.workflows.finalizer.get` result, fetched once by `runs/run-engine.svelte.ts` and shared with the header badge — see `finalizer-strip.svelte`'s module doc. */
     readonly finalizerStatus: WorkflowFinalizerStatus | null | undefined;
@@ -124,6 +125,7 @@
   let {
     client,
     workflow,
+    documentWorkflow = false,
     liveObservations,
     finalizerStatus,
     canReadStreams = false,
@@ -481,6 +483,7 @@
         {#snippet detail(entry)}
           <StepDetail
             {entry}
+            documentWorkflowId={documentWorkflow ? workflow.id : undefined}
             bar={bars.get(entry.step)}
             open={openSteps.has(entry.step)}
             logs={linesUnder(entry.step)}

@@ -1,3 +1,4 @@
+import { isUpstreamHttpFailure, type UpstreamHttpFailure } from '@lostgradient/weft';
 import type { MultiModalContent } from 'conversationalist';
 
 import type { AgentRunErrorCode, AgentRunErrorKind, GuardrailPhase } from '../errors';
@@ -37,6 +38,7 @@ export interface AgentRunWorkflowResult {
   /** Safe error classifier retained across durable serialization. */
   errorKind?: AgentRunErrorKind | undefined;
   errorCode?: AgentRunErrorCode | undefined;
+  upstreamFailure?: UpstreamHttpFailure | undefined;
   /** The abort reason, when `finishReason` is `aborted`. */
   abortReason?: string | undefined;
   /**
@@ -195,6 +197,13 @@ export function normalizeAgentRunWorkflowResult(value: unknown): AgentRunWorkflo
     throw new UnsupportedRunResultLegacyFieldError('structuredOutput', summary['schemaVersion']);
   }
   assertSummaryShape(summary);
+  if (
+    summary['upstreamFailure'] !== undefined &&
+    (summary['finishReason'] !== 'error' || !isUpstreamHttpFailure(summary['upstreamFailure']))
+  ) {
+    const { upstreamFailure: _upstreamFailure, ...rest } = summary;
+    return rest as unknown as AgentRunWorkflowResult;
+  }
 
   return value as AgentRunWorkflowResult;
 }

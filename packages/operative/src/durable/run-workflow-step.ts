@@ -1,5 +1,10 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import type { WorkflowContext, WorkflowOperation } from '@lostgradient/weft';
+import {
+  upstreamFailureOf,
+  type UpstreamHttpFailure,
+  type WorkflowContext,
+  type WorkflowOperation,
+} from '@lostgradient/weft';
 import type { AnyToolbox } from 'armorer';
 import type { ToolCall } from 'armorer/protocol';
 import { Conversation, type MessageInput, type MultiModalContent } from 'conversationalist';
@@ -81,6 +86,7 @@ export interface DurableStepMemoResult {
   errorFinishReason?: FinishReason | undefined;
   errorKind?: ReturnType<typeof toAgentRunError>['kind'] | undefined;
   errorCode?: ReturnType<typeof toAgentRunError>['code'] | undefined;
+  upstreamFailure?: UpstreamHttpFailure | undefined;
   tripwire?: ReturnType<typeof tripwireDetailFrom> | undefined;
   abortReason?: string | undefined;
   stopFinishReason?: FinishReason | undefined;
@@ -276,6 +282,7 @@ export function runStepMemo(
         outcome.kind === 'error' ? classifyErrorFinishReason(outcome.error) : undefined,
       errorKind: normalizedError?.kind,
       errorCode: normalizedError?.code,
+      upstreamFailure: outcome.kind === 'error' ? upstreamFailureOf(normalizedError) : undefined,
       tripwire: outcome.kind === 'error' ? tripwireDetailFrom(outcome.error) : undefined,
       abortReason: outcome.kind === 'abort' ? outcome.reason : undefined,
       stopFinishReason: outcome.kind === 'stop' ? outcome.finishReason : undefined,

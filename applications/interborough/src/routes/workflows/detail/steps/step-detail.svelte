@@ -11,6 +11,7 @@
   import type { Snippet } from 'svelte';
 
   import { RUN_STEPS_COPY } from '../../../../app/copy/runs.ts';
+  import { displayDocumentActivityInput } from '../../../../lib/run-diagnostic-display.ts';
   import { formatDuration } from '../../../../lib/format/index.ts';
   import LogLines from '../../runs/log-lines.svelte';
   import type { RunLogLine } from '../../runs/run-logs-data.ts';
@@ -20,6 +21,7 @@
 
   interface StepDetailProps {
     readonly entry: WorkflowTimelineEntry;
+    readonly documentWorkflowId?: string | undefined;
     readonly bar: WaterfallBar | undefined;
     /** Whether the run is still in this step; false for a `running` entry it has left. */
     readonly open: boolean;
@@ -29,7 +31,7 @@
     readonly actions?: Snippet | undefined;
   }
 
-  let { entry, bar, open, logs, actions }: StepDetailProps = $props();
+  let { entry, documentWorkflowId, bar, open, logs, actions }: StepDetailProps = $props();
 
   const name = $derived(stepName(entry));
   const status = $derived(stepStatus(entry.status, open));
@@ -67,7 +69,11 @@
   <div class="ib-step-detail__fields">
     <section class="ib-step-detail__field" aria-label={RUN_STEPS_COPY.input}>
       <h4 class="ib-step-detail__label">{RUN_STEPS_COPY.input}</h4>
-      <pre class="ib-step-detail__value">{prettySummary(entry.inputSummary)}</pre>
+      <pre class="ib-step-detail__value">{prettySummary(
+          documentWorkflowId === undefined || entry.operationType !== 'activity'
+            ? entry.inputSummary
+            : displayDocumentActivityInput(entry.inputSummary, documentWorkflowId),
+        )}</pre>
     </section>
     <section
       class="ib-step-detail__field"

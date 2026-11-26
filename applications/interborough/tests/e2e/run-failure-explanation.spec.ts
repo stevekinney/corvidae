@@ -35,7 +35,7 @@ for (const width of WIDTHS) {
       const explanation = block.locator('[data-run-explanation]');
       // The sentence is the server's: it names the step and the cause, from stored identifiers.
       const summary = explanation.locator('[data-explanation="summary"]');
-      await expect(summary).toHaveText(/^The (step ".+"|run) failed (because|for) /);
+      await expect(summary).toContainText('GitHub returned HTTP 503');
       // The cause is plain text on the label's edge, not a badge in the alert's own tint.
       await expect(explanation.locator('[data-explanation="cause"]')).toBeVisible();
       await expect(explanation.locator('[data-explanation="cause"] .cinder-badge')).toHaveCount(0);

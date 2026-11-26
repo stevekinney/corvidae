@@ -2,7 +2,7 @@
  * COR-1527 — how an `agent` step turns its run into a result or a failure, and the run id a step
  * is known by across a restart.
  */
-import type { WorkflowState } from '@lostgradient/weft';
+import { UpstreamHttpError, upstreamFailureOf, type WorkflowState } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import {
@@ -173,6 +173,33 @@ describe('agentStepResultFromRun', () => {
 });
 
 describe('agentStepResultFromState', () => {
+  it('preserves typed upstream facts from live and recovered failures, never from free text', () => {
+    const fact = { source: 'github', status: 503 } as const;
+    const live = thrown(() =>
+      agentStepResultFromRun(
+        'writer',
+        run('error', { error: new UpstreamHttpError(fact, 'unavailable') }),
+      ),
+    );
+    const recovered = thrown(() =>
+      agentStepResultFromState(
+        'writer',
+        stateOf('completed', {
+          result: { content: '', finishReason: 'error', upstreamFailure: fact },
+        }),
+      ),
+    );
+    const failedState = thrown(() =>
+      agentStepResultFromState('writer', stateOf('failed', { upstreamFailure: fact })),
+    );
+    const forged = thrown(() =>
+      agentStepResultFromRun('writer', run('error', { error: new Error('GitHub HTTP 503') })),
+    );
+    expect(upstreamFailureOf(live)).toEqual(fact);
+    expect(upstreamFailureOf(recovered)).toEqual(fact);
+    expect(upstreamFailureOf(failedState)).toEqual(fact);
+    expect(upstreamFailureOf(forged)).toBeUndefined();
+  });
   it('fails a finished run whose summary names a tool that needed an approval (COR-1913)', () => {
     const state = stateOf('completed', {
       result: { content: 'done', finishReason: 'stop-condition', toolNeedingApproval: 'refund' },

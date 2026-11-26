@@ -37,6 +37,7 @@ export interface WorkflowParkState {
   /** The reason the loop ended with, or `undefined` when it broke out to park (COR-1627). */
   finishReason: FinishReason | undefined;
   errorMessage?: string | undefined;
+  upstreamFailure?: import('@lostgradient/weft').UpstreamHttpFailure | undefined;
   abortReason?: string | undefined;
   schemaValidation?: { success: boolean; error?: string | undefined } | undefined;
   output?: unknown;
@@ -277,6 +278,7 @@ export function* runWorkflowPark(
 function resetTerminalState(state: WorkflowParkState): void {
   state.finishReason = undefined;
   state.errorMessage = undefined;
+  state.upstreamFailure = undefined;
   state.abortReason = undefined;
   state.schemaValidation = undefined;
   state.output = undefined;

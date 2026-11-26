@@ -99,6 +99,13 @@ export * from './worker/index.ts';
 // barrel put `Bun.spawn` into the root's browser bundle, which the published package's
 // portability gate refused at the 0.26.0 release (COR-1192).
 export {
+  UpstreamHttpError,
+  attachUpstreamFailure,
+  isUpstreamHttpFailure,
+  upstreamFailureOf,
+  type UpstreamHttpFailure,
+} from './core/upstream-http-failure.ts';
+export {
   UPGRADE_REFUSAL_REASON_PREFIX,
   WORKER_CONFLICT_REASONS,
   type WorkerConflictReason,

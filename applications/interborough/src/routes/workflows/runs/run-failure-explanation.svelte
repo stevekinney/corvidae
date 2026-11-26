@@ -11,6 +11,7 @@
    */
   import { Badge, Button, Collapsible, ErrorState, Stack, Text } from '@lostgradient/cinder';
   import { FailureExplanation } from '@lostgradient/plugin-inspectors/failure-explanation';
+  import { displayStack } from '../../../lib/run-diagnostic-display.ts';
   import {
     buildExplanationModel,
     FAILURE_EXPLANATION_LABELS,
@@ -251,7 +252,7 @@
   {/if}
   {#if errorStack !== undefined && errorStack.length > 0}
     <Collapsible variant="flat" trigger={copy.inBlock.errorDetails}>
-      <pre class="weft-send-tab__result" data-explanation="stack">{errorStack}</pre>
+      <pre class="weft-send-tab__result" data-explanation="stack">{displayStack(errorStack)}</pre>
     </Collapsible>
   {/if}
 </div>

@@ -996,6 +996,7 @@
           {#snippet stepsTab()}
             <RunActivity
               task={task.data}
+              documentWorkflow={record !== undefined}
               threadId={goalTask ? attemptThreadId : undefined}
               {taskEvents}
               note={activityNote}

@@ -623,6 +623,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               status: state.status,
               failureCategory: state.failureCategory,
               errorCode: state.errorCode,
+              upstreamFailure: state.upstreamFailure,
               failedStep: state.failedStep,
             };
       },
