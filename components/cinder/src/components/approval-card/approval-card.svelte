@@ -126,6 +126,7 @@
     onResolve,
     onAskAgain,
     decisionReview,
+    actionRenderer,
     id,
     class: customClassName,
     ...rest
@@ -836,6 +837,7 @@
           {canEditArguments}
           argumentsValue={editableArgumentsValue}
           resolve={resolveIfActionable}
+          {actionRenderer}
         />
         {#if footnote !== undefined}
           <p class="cinder-approval-card__footnote" dir="auto">{footnote}</p>
@@ -1030,6 +1032,7 @@
             {canEditArguments}
             argumentsValue={editableArgumentsValue}
             resolve={resolveIfActionable}
+            {actionRenderer}
           />
           {#if footnote !== undefined}
             <p class="cinder-approval-card__footnote" dir="auto">{footnote}</p>

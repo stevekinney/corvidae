@@ -16,22 +16,30 @@
   import { provideClient } from '../../lib/client.ts';
   import { FleetEventSource } from '../../lib/live-source/index.ts';
   import { createQueryClient } from '../../lib/query.ts';
-  import { providePrincipalStore, type AuthorizationScope } from '../../lib/scopes.svelte.ts';
+  import {
+    providePrincipalStore,
+    type AuthorizationScope,
+    type PrincipalStore,
+  } from '../../lib/scopes.svelte.ts';
 
   interface ReviewsShellHarnessProps {
     client: HttpClient;
     scopes: readonly AuthorizationScope[];
+    onPrincipal?: (store: PrincipalStore) => void;
   }
 
-  let { client, scopes }: ReviewsShellHarnessProps = $props();
+  let { client, scopes, onPrincipal }: ReviewsShellHarnessProps = $props();
 
   const initialClient = untrack(() => client);
   provideClient(initialClient);
-  providePrincipalStore().setPrincipal({
+  const principal = providePrincipalStore();
+  principal.setPrincipal({
+    workspace: { workspaceId: 'workspace-a', actorId: 'actor-a' },
     scopes: untrack(() => scopes),
     subject: 'tester',
     unauthenticatedAccess: null,
   });
+  untrack(() => onPrincipal?.(principal));
   const fleetSource = new FleetEventSource({
     baseUrl: initialClient.baseUrl,
     headers: initialClient.headers,

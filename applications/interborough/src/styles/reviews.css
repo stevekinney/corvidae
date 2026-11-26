@@ -8,11 +8,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-4);
+  max-inline-size: 72rem;
   min-inline-size: 0;
 }
 
 /* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. The
- * inbox is the page at full width, not a card on it: no border and no radius around the frame. */
+ * inbox uses the page's review measure, with no border or radius around the frame. */
 .ib-reviews__frame {
   block-size: max(28rem, calc(100dvh - 16rem));
   min-inline-size: 0;

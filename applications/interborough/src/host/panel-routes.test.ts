@@ -8,7 +8,7 @@ import { hostPanelUriOfCall } from '@lostgradient/bureau';
 import { describe, expect, mock, test } from 'bun:test';
 
 import type { ServedPanel } from './panel-mounts.ts';
-import { panelRoutes } from './panel-routes.ts';
+import { panelRoutes, type PanelReviewEligibility } from './panel-routes.ts';
 import { createRequestGuard } from './request-guard.ts';
 
 const PORT = 4321;
@@ -41,11 +41,15 @@ function bureauDouble(body: unknown = { jsonrpc: '2.0', id: 1, result: RESULT })
 function routes(
   callBureau: (request: Request) => Promise<Response>,
   served: readonly ServedPanel[] = [app()],
+  reviewEligibility?: PanelReviewEligibility,
+  browserCredentials?: (request: Request, name: string) => Promise<Headers | Response | undefined>,
 ) {
   return panelRoutes(
     served,
     createRequestGuard(() => PORT),
     callBureau,
+    reviewEligibility,
+    browserCredentials,
   );
 }
 
@@ -452,6 +456,211 @@ describe('POST a panel’s tool call', () => {
     const response = await call(table, 'call', { body: { name: 'bureau.reviews.resolve' } });
     expect(response.status).toBe(403);
     expect(bureau).not.toHaveBeenCalled();
+  });
+
+  test.each(['bureau.tasks.inspect', 'demo.refunds.request'])(
+    'refuses %s from the pending-review panel',
+    async (operation) => {
+      const bureau = bureauDouble();
+      const panel = app({
+        name: 'pending-review',
+        allowedTools: ['bureau.reviews.list', 'bureau.reviews.get', 'bureau.reviews.resolve'],
+      });
+      const response = await call(routes(bureau, [panel]), 'call', {
+        path: CALL_ROUTE.replace('run-inspector', 'pending-review'),
+        body: { name: operation },
+      });
+      expect(response.status).toBe(403);
+      expect(bureau).not.toHaveBeenCalled();
+    },
+  );
+
+  test('does not let a pending-review panel decide without a host eligibility callback', async () => {
+    const bureau = bureauDouble();
+    const panel = app({
+      name: 'pending-review',
+      uri: 'ui://inspectors/pending-review/v1',
+      allowedTools: ['bureau.reviews.resolve'],
+    });
+    const response = await call(routes(bureau, [panel]), 'call', {
+      path: CALL_ROUTE.replace('run-inspector', 'pending-review'),
+      body: {
+        name: 'bureau.reviews.resolve',
+        arguments: { id: 'review-1', round: 2, decision: 'approve', reviewer: 'person' },
+      },
+    });
+    expect(response.status).toBe(403);
+    expect(bureau).not.toHaveBeenCalled();
+  });
+
+  test('forwards verified browser headers and stops a refused write before Bureau', async () => {
+    const bureau = bureauDouble();
+    const panel = app({
+      name: 'pending-review',
+      uri: 'ui://inspectors/pending-review/v1',
+      allowedTools: ['bureau.reviews.resolve'],
+    });
+    let valid = true;
+    const table = routes(
+      bureau,
+      [panel],
+      async () => 'authorized',
+      async () =>
+        valid
+          ? new Headers({
+              cookie: 'session=one',
+              origin: 'https://app.example',
+              host: 'app.example',
+            })
+          : new Response('Forbidden', { status: 403 }),
+    );
+    const request = {
+      path: CALL_ROUTE.replace('run-inspector', 'pending-review'),
+      body: {
+        name: 'bureau.reviews.resolve',
+        arguments: { id: 'review', round: 1, decision: 'approve' },
+      },
+    };
+    const allowed = await call(table, 'call', request);
+    expect(allowed.status).toBe(200);
+    const forwarded = bureau.mock.calls[0]?.[0];
+    expect(forwarded?.headers.get('cookie')).toBe('session=one');
+    valid = false;
+    const refused = await call(table, 'call', request);
+    expect(refused.status).toBe(403);
+    expect(bureau).toHaveBeenCalledTimes(1);
+  });
+
+  test('removes claimed eligibility when the host callback is absent', async () => {
+    const bureau = bureauDouble({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        content: [],
+        structuredContent: { reviews: [{ id: 'review-1', round: 2, effect: { kind: 'refund' } }] },
+        _meta: { 'interborough.reviewEligibility': [{ id: 'review-1', round: 2 }] },
+      },
+    });
+    const panel = app({
+      name: 'pending-review',
+      uri: 'ui://inspectors/pending-review/v1',
+      allowedTools: ['bureau.reviews.list'],
+    });
+    const response = await call(routes(bureau, [panel]), 'call', {
+      path: CALL_ROUTE.replace('run-inspector', 'pending-review'),
+      body: { name: 'bureau.reviews.list', arguments: {} },
+    });
+    expect(await response.json()).toMatchObject({
+      _meta: { 'interborough.reviewEligibility': [] },
+    });
+  });
+
+  test('forwards an ordinary review decision through the existing MCP route', async () => {
+    const bureau = bureauDouble();
+    const panel = app({
+      name: 'pending-review',
+      uri: 'ui://inspectors/pending-review/v1',
+      allowedTools: ['bureau.reviews.resolve'],
+    });
+    const response = await call(
+      routes(bureau, [panel], async () => 'ordinary'),
+      'call',
+      {
+        path: CALL_ROUTE.replace('run-inspector', 'pending-review'),
+        body: {
+          name: 'bureau.reviews.resolve',
+          arguments: { id: 'review-1', round: 2, decision: 'approve' },
+        },
+      },
+    );
+    expect(response.status).toBe(200);
+    const request = bureau.mock.calls[0]?.[0];
+    expect(request?.url).toBe(`http://${HOST}/mcp`);
+    expect(await request?.json()).toMatchObject({
+      method: 'tools/call',
+      params: { name: 'bureau.reviews.resolve', arguments: { id: 'review-1', round: 2 } },
+    });
+  });
+
+  test('refuses a panel decision that claims a page provenance', async () => {
+    const bureau = bureauDouble();
+    const panel = app({
+      name: 'pending-review',
+      uri: 'ui://inspectors/pending-review/v1',
+      allowedTools: ['bureau.reviews.resolve'],
+    });
+    const response = await call(
+      routes(bureau, [panel], async () => 'authorized'),
+      'call',
+      {
+        path: CALL_ROUTE.replace('run-inspector', 'pending-review'),
+        body: {
+          name: 'bureau.reviews.resolve',
+          arguments: { id: 'review-1', round: 2, decision: 'approve', decisionSurface: 'reviews' },
+        },
+      },
+    );
+    expect(response.status).toBe(403);
+    expect(bureau).not.toHaveBeenCalled();
+  });
+
+  test('attests only reviews authorized by the host and rechecks each decision', async () => {
+    const bureau = bureauDouble({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        content: [],
+        structuredContent: {
+          reviews: [
+            { id: 'allowed', round: 2, effect: { kind: 'refund' } },
+            { id: 'denied', round: 3, effect: { kind: 'refund' } },
+          ],
+        },
+        _meta: { 'interborough.reviewEligibility': [{ id: 'denied', round: 3 }] },
+      },
+    });
+    const panel = app({
+      name: 'pending-review',
+      uri: 'ui://inspectors/pending-review/v1',
+      allowedTools: ['bureau.reviews.list', 'bureau.reviews.resolve'],
+    });
+    const eligibility: PanelReviewEligibility = async (_request, id, round) =>
+      id === 'allowed' && round === 2 ? 'authorized' : 'denied';
+    const table = routes(bureau, [panel], eligibility);
+    const path = CALL_ROUTE.replace('run-inspector', 'pending-review');
+    const listed = await call(table, 'call', {
+      path,
+      body: { name: 'bureau.reviews.list', arguments: {} },
+    });
+    expect(await listed.json()).toMatchObject({
+      _meta: { 'interborough.reviewEligibility': [{ id: 'allowed', round: 2 }] },
+    });
+    const refused = await call(table, 'call', {
+      path,
+      body: {
+        name: 'bureau.reviews.resolve',
+        arguments: { id: 'denied', round: 3, decision: 'approve' },
+      },
+    });
+    expect(refused.status).toBe(403);
+    const stale = await call(table, 'call', {
+      path,
+      body: {
+        name: 'bureau.reviews.resolve',
+        arguments: { id: 'allowed', round: 1, decision: 'approve' },
+      },
+    });
+    expect(stale.status).toBe(403);
+    expect(bureau).toHaveBeenCalledTimes(1);
+    const allowed = await call(table, 'call', {
+      path,
+      body: {
+        name: 'bureau.reviews.resolve',
+        arguments: { id: 'allowed', round: 2, decision: 'approve' },
+      },
+    });
+    expect(allowed.status).toBe(200);
+    expect(bureau).toHaveBeenCalledTimes(2);
   });
 
   test.each([

@@ -69,6 +69,12 @@ const EMPTY = {
   configurationRevision: null,
 };
 
+const EMPTY_OPERATIONS: Readonly<Record<string, unknown>> = {
+  'bureau.reviews.list': { reviews: [], nextPageToken: null, total: 0 },
+  'bureau.contexts.share.requests.list': { requests: [] },
+  'bureau.guardrails.list': { guardrails: [] },
+};
+
 /**
  * A host that holds nothing. `answers` names the few operations that answer something else, such
  * as the one agent whose tabs are walked: a JSON-RPC method, or a `GET` path such as `/v1/storage`.
@@ -92,9 +98,11 @@ function stubEmptyHost(answers: Readonly<Record<string, unknown>> = {}): void {
       const method = typeof body.method === 'string' ? body.method : '';
       const result = Object.hasOwn(answers, method)
         ? answers[method]
-        : method.startsWith('weft.')
-          ? engine
-          : EMPTY;
+        : Object.hasOwn(EMPTY_OPERATIONS, method)
+          ? EMPTY_OPERATIONS[method]
+          : method.startsWith('weft.')
+            ? engine
+            : EMPTY;
       return Response.json({ jsonrpc: '2.0', id: body.id, result });
     }
     return Response.json(EMPTY);

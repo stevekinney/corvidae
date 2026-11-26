@@ -6,7 +6,9 @@
     "build",
     "test-output",
     "src/host/server-integration/**",
-    "src/host/refund-operations.ts"
+    "src/host/refund-operations.ts",
+    "tests/panels/pending-review.spec.ts",
+    "tests/panels/reference-host.ts"
   ],
   "references": [{ "path": "../../packages/velveteen/tsconfig.source.json" }]
 }

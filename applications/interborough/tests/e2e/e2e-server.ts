@@ -45,7 +45,11 @@ import { bindHome, enableDemoPlugin } from '../../src/host/demo-plugin-home.ts';
 import { startHost, type Host } from '../../src/host/host.ts';
 import { workspacePlugins } from '../../src/host/plugins.ts';
 import { fakeProvider, writeProviderHome } from '../../src/host/stub-provider.ts';
-import { createAccessProviderResolver } from './access-provider.ts';
+import {
+  createAccessProviderResolver,
+  REVIEW_REMEMBER_TOOL,
+  reviewRememberTool,
+} from './access-provider.ts';
 import { createBarrier, createBarrierAgents } from './barrier-agent.ts';
 import { startConnectHost, type ConnectHost } from './connect-host.ts';
 import {
@@ -405,6 +409,7 @@ const showcaseStartup = trackStartupPromise(
   }),
 );
 const host = await startHost({
+  extraTools: { [REVIEW_REMEMBER_TOOL]: reviewRememberTool },
   extraAgents: {
     agents: {
       ...createBarrierAgents(barrier),

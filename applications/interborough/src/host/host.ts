@@ -256,6 +256,10 @@ import {
   reportPanelChanges,
   type PanelMountOptions,
 } from './panel-mounts.ts';
+import {
+  createPanelReviewEligibility,
+  sharedPanelBrowserCredentials,
+} from './panel-review-eligibility.ts';
 import { panelRoutes } from './panel-routes.ts';
 import { pluginAttention } from './plugin-attention.ts';
 import { createPluginManager, pluginStartupLines, type PluginManager } from './plugin-manager.ts';
@@ -1876,6 +1880,24 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           (await bureauScopeRefusal(request, apiPrincipal(request))) ??
           (await bureauHandler?.(request)) ??
           new Response('The Bureau is not serving yet.', { status: 503 }),
+        createPanelReviewEligibility({
+          read: (id) => bureau.reviews.get(id),
+          principal: async (request) => {
+            const context = await authority.authenticate(request);
+            return context instanceof Response ? undefined : context.principal;
+          },
+          isTrustedHuman: (principal, request) =>
+            principal.method === 'browser-session' &&
+            !request.headers.has('authorization') &&
+            !request.headers.has('x-api-key'),
+          isProtected: (review) => bureau.internals.reviewPolicy?.matches(review) ?? false,
+          verified: async (review) =>
+            review.kind === 'tool-approval' &&
+            (await bureau.internals.reviewedProvenance(review)) === 'verified',
+          mayDecide: (review, principal) =>
+            bureau.internals.reviewPolicy?.mayDecide(review, principal) ?? false,
+        }),
+        sharedPanelBrowserCredentials(authority.authenticate, sharedBrowser),
       ),
       ...skillRoutes(skills, refuse, authority, log),
       ...toolSourceRoutes(

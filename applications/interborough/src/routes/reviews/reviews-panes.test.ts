@@ -162,7 +162,7 @@ describe('a list that failed', () => {
     let failing = true;
     stub.on('bureau.reviews.list', () => {
       if (failing) throw new StubFault('EngineFailure', 500, 'The Bureau broke.');
-      return { reviews: [toolApprovalFixture()], nextPageToken: null };
+      return { reviews: [toolApprovalFixture()], nextPageToken: null, total: 1 };
     });
     router.navigate('/reviews', { replace: true });
     const { container, findByRole, findByText } = render(Harness, {

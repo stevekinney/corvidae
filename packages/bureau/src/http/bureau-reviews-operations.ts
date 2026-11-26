@@ -71,6 +71,7 @@ import {
   type BureauOwnershipHost,
   ownerOfPrincipal,
 } from './owner-predicate.ts';
+import { snapshotOf } from '../resolved-review-record.ts';
 import type { ReviewContinuation } from './review-continuation.ts';
 import { authorizeWorkspaceOperation } from './workspace-authorization.ts';
 
@@ -725,6 +726,35 @@ async function projectAuthorizedReview(
     : { ...projected, effect: effect as z.input<typeof toolApprovalReviewSchema>['effect'] };
 }
 
+async function authorizedResolvedReview(
+  host: BureauReviewsOperationHost,
+  principal: Principal,
+  record: ResolvedReview,
+): Promise<(PendingReview & ReviewResolutionFields) | undefined> {
+  const retained = reviewOfResolved(record);
+  if (await mayReadPolicy(host, principal, retained)) return retained;
+  if (
+    retained.kind !== 'tool-approval' ||
+    host.reviewedProvenance === undefined ||
+    (await host.reviewedProvenance(retained)) !== 'unresolved'
+  )
+    return undefined;
+  const signed = await host.reviews.get(retained.id);
+  const { ageMilliseconds: _retainedAge, ...retainedSnapshot } = snapshotOf(
+    record.review,
+    record.review.status,
+  );
+  if (!signed || signed.kind !== 'tool-approval') return undefined;
+  const { ageMilliseconds: _signedAge, ...signedSnapshot } = snapshotOf(signed, signed.status);
+  if (
+    JSON.stringify(signedSnapshot) !== JSON.stringify(retainedSnapshot) ||
+    (await host.reviewedProvenance(signed)) !== 'verified' ||
+    !(await mayReadPolicy(host, principal, signed))
+  )
+    return undefined;
+  return { ...signed, ...retained, approval: signed.approval };
+}
+
 const DEFAULT_PAGE_LIMIT = 50;
 
 const reviewsListInput = z
@@ -966,12 +996,14 @@ export const reviewsListOperation = defineOperation<
           resourceOwner: record.owner,
           operatorScope: 'bureau.reviews:read',
         });
-        if (!allowed || !(await mayReadPolicy(host, principal, reviewOfResolved(record)))) continue;
+        if (!allowed) continue;
+        const authorized = await authorizedResolvedReview(host, principal, record);
+        if (!authorized) continue;
         include({
           at: record.decidedAt,
           source: 'bureau',
           id: record.review.id,
-          item: await projectAuthorizedReview(host, reviewOfResolved(record)),
+          item: await projectAuthorizedReview(host, authorized),
         });
       }
     }

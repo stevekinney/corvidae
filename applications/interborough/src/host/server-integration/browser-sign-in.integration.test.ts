@@ -6,6 +6,7 @@ import {
   createFakeProcessor,
   createRefundLedger,
 } from '@lostgradient/plugin-demo/refunds';
+import inspectors, { pendingReview } from '@lostgradient/plugin-inspectors';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createRemoteClient } from '@lostgradient/velveteen/remote/client';
 import { defineRemote } from '@lostgradient/velveteen/remote/server';
@@ -18,9 +19,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as client from 'openid-client';
 import { startHost } from '../host.ts';
+import { buildPanelPage } from '../panel-build.ts';
+import { PANEL_PREBUILT_DIRECTORY_VARIABLE, prebuiltPanelFile } from '../panel-mounts.ts';
 import { reviewedRefundContribution } from '../refund-operations.ts';
-
-const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+import { createSyntheticIssuer } from './synthetic-issuer.test-support.ts';
 
 const privateRemotes = {
   member: defineRemote({
@@ -33,82 +35,9 @@ const privateRemotes = {
 const clientScript = 'export const loaded = true;';
 
 test('listener binds verified browser identities, revokes private access and resumes consent', async () => {
-  const key = await crypto.subtle.generateKey(
-    {
-      name: 'RSASSA-PKCS1-v1_5',
-      modulusLength: 2048,
-      publicExponent: new Uint8Array([1, 0, 1]),
-      hash: 'SHA-256',
-    },
-    true,
-    ['sign', 'verify'],
-  );
-  const jwk = await crypto.subtle.exportKey('jwk', key.publicKey);
-  const pending = new Map<
-    string,
-    { nonce: string; challenge: string; redirect: string; subject: string }
-  >();
-  let subject = 'admin';
-  let issuer = '';
-  let acceptedIssuer = '';
-  const provider = Bun.serve({
-    hostname: '127.0.0.1',
-    port: 0,
-    async fetch(request) {
-      const url = new URL(request.url);
-      if (url.pathname === '/.well-known/openid-configuration')
-        return Response.json({
-          issuer,
-          authorization_endpoint: `${issuer}/authorize`,
-          token_endpoint: `${issuer}/token`,
-          jwks_uri: `${issuer}/jwks`,
-          response_types_supported: ['code'],
-          subject_types_supported: ['public'],
-          id_token_signing_alg_values_supported: ['RS256'],
-          code_challenge_methods_supported: ['S256'],
-        });
-      if (url.pathname === '/jwks')
-        return Response.json({ keys: [{ ...jwk, kid: 'key', alg: 'RS256', use: 'sig' }] });
-      if (url.pathname === '/authorize') {
-        const code = crypto.randomUUID();
-        const redirect = url.searchParams.get('redirect_uri')!;
-        pending.set(code, {
-          nonce: url.searchParams.get('nonce')!,
-          challenge: url.searchParams.get('code_challenge')!,
-          redirect,
-          subject,
-        });
-        const callback = new URL(redirect);
-        callback.searchParams.set('code', code);
-        callback.searchParams.set('state', url.searchParams.get('state')!);
-        return Response.redirect(callback, 302);
-      }
-      const form = new URLSearchParams(await request.text());
-      const grant = pending.get(form.get('code') ?? '');
-      if (
-        !grant ||
-        grant.redirect !== form.get('redirect_uri') ||
-        (await client.calculatePKCECodeChallenge(form.get('code_verifier') ?? '')) !==
-          grant.challenge
-      )
-        return Response.json({ error: 'invalid_grant' }, { status: 400 });
-      pending.delete(form.get('code')!);
-      const now = Math.floor(Date.now() / 1000);
-      const payload = `${encode({ alg: 'RS256', kid: 'key' })}.${encode({ iss: issuer, sub: grant.subject, aud: 'interborough', iat: now, exp: now + 600, nonce: grant.nonce })}`;
-      const signature = await crypto.subtle.sign(
-        'RSASSA-PKCS1-v1_5',
-        key.privateKey,
-        new TextEncoder().encode(payload),
-      );
-      return Response.json({
-        access_token: 'token',
-        token_type: 'Bearer',
-        id_token: `${payload}.${Buffer.from(signature).toString('base64url')}`,
-      });
-    },
-  });
-  issuer = `http://127.0.0.1:${provider.port}`;
-  acceptedIssuer = issuer;
+  const syntheticIssuer = await createSyntheticIssuer();
+  const { issuer, provider } = syntheticIssuer;
+  let acceptedIssuer = issuer;
   const home = await mkdtemp(join(tmpdir(), 'interborough-sign-in-'));
   const bungalow = await openBungalow({
     name: 'interborough',
@@ -216,11 +145,28 @@ test('listener binds verified browser identities, revokes private access and res
   let refundWorker: Awaited<ReturnType<typeof refund.attachWorker>> | undefined;
   let holdLoad = false;
   let holdKeyTargets = false;
+  // Exercise the installed panel's listener without putting source compilation on its startup clock.
+  const panelDirectory = join(home, 'prebuilt-panels');
+  await mkdir(panelDirectory, { recursive: true });
+  const panelPage = await buildPanelPage({
+    entry: pendingReview.entry.href,
+    title: pendingReview.title,
+    styles: pendingReview.styles ?? '',
+  });
+  await writeFile(
+    join(panelDirectory, `${pendingReview.name}.json`),
+    prebuiltPanelFile(pendingReview.uri, panelPage),
+  );
   const host = await startHost({
-    environment: { INTERBOROUGH_HOME: home },
+    environment: {
+      INTERBOROUGH_HOME: home,
+      [PANEL_PREBUILT_DIRECTORY_VARIABLE]: panelDirectory,
+    },
     workspaceId,
     port: 0,
-    plugins: [],
+    plugins: [
+      { descriptor: inspectors, source: 'package', location: '@lostgradient/plugin-inspectors' },
+    ],
     reviewedOperations: {
       agents: refund.agents,
       reviewPolicy: refund.reviewPolicy,
@@ -404,7 +350,7 @@ test('listener binds verified browser identities, revokes private access and res
       headers: { ...Object.fromEntries(new Headers(init.headers)), host: 'settings.example' },
     });
   const signIn = async (identity: string, path = '/auth/sign-in') => {
-    subject = identity;
+    syntheticIssuer.setSubject(identity);
     const started = await send(path);
     const cookie = started.headers.getSetCookie()[0]!.split(';')[0]!;
     const authorized = await fetch(started.headers.get('location')!, { redirect: 'manual' });
@@ -587,12 +533,42 @@ test('listener binds verified browser identities, revokes private access and res
       refundId as string,
     );
     machineSocket.close();
-    const reviewerDecision = await refundRpc(
-      'bureau.reviews.resolve',
-      { id: storedRefund!.reviewId, decision: 'deny', round: 0 },
-      reviewer,
-    );
-    expect(reviewerDecision.result).toBeDefined();
+    const panelCall = (name: string, argumentsValue: object, headers: Record<string, string>) =>
+      send('/host/plugins/inspectors/apps/pending-review/tool-calls', {
+        method: 'POST',
+        headers: {
+          origin: 'https://settings.example',
+          'content-type': 'application/json',
+          ...headers,
+        },
+        body: JSON.stringify({ name, arguments: argumentsValue }),
+      });
+    const decision = { id: storedRefund!.reviewId, decision: 'deny', round: 0 };
+    const listed = await panelCall('bureau.reviews.list', {}, reviewer);
+    expect(listed.status).toBe(200);
+    const listing = (await listed.json()) as { _meta: Record<string, unknown> };
+    expect(listing._meta['interborough.reviewEligibility']).toContainEqual({
+      id: storedRefund!.reviewId,
+      round: 0,
+    });
+    const noProof = await panelCall('bureau.reviews.resolve', decision, {
+      cookie: administrator.cookie!,
+    });
+    const wrongProof = await panelCall('bureau.reviews.resolve', decision, {
+      ...reviewer,
+      'x-csrf-token': 'wrong',
+    });
+    const mixedCredentials = await panelCall('bureau.reviews.resolve', decision, {
+      ...reviewer,
+      'x-api-key': 'machine',
+    });
+    expect(noProof.status).toBe(403);
+    expect(wrongProof.status).toBe(403);
+    expect(mixedCredentials.status).toBe(403);
+    const reviewerDecision = await panelCall('bureau.reviews.resolve', decision, reviewer);
+    expect((await reviewerDecision.json()) as object).toMatchObject({
+      structuredContent: { decision: 'deny', receipt: 'applied' },
+    });
     const remainingBalance = await ledger.balance('merchant', 'order');
     expect(remainingBalance?.reserved).toBe(0);
     const next = await refundRpc(

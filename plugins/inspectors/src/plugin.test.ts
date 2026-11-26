@@ -1,4 +1,5 @@
 import { createBureauCatalogSnapshot, HOST_PANEL_OPERATIONS } from '@lostgradient/bureau';
+import { createReviewsClientWithTransport } from '@lostgradient/bureau-client/reviews';
 import { createPluginTestHost } from '@lostgradient/bureau/testing';
 import { pluginContract } from '@lostgradient/interborough-plugin/testing';
 import { describe, expect, it } from 'bun:test';
@@ -133,7 +134,6 @@ describe('the inspectors plugin', () => {
     const directory = fileURLToPath(new URL('.', import.meta.url));
     for (const [app, folder] of [
       [runInspector, 'run-inspector'],
-      [pendingReview, 'pending-review'],
       [workflowRevisionReview, 'workflow-revision'],
       [scheduleEditor, 'schedule-editor'],
       [runTimeline, 'run-timeline'],
@@ -150,6 +150,12 @@ describe('the inspectors plugin', () => {
       expect(named.size, folder).toBeGreaterThan(0);
       expect([...named].toSorted(), folder).toEqual(app.allowedTools.toSorted());
     }
+  });
+
+  it('declares exactly the generated Reviews operations for the pending-review panel', () => {
+    const client = createReviewsClientWithTransport(async () => undefined);
+    expect(Object.keys(client).toSorted()).toEqual(pendingReview.allowedTools.toSorted());
+    expect(pendingReview.allowedTools).not.toContain('demo.refunds.request');
   });
 
   it('imports the one schedule form state the application’s schedule form imports, and defines none of its own (COR-2545)', async () => {
