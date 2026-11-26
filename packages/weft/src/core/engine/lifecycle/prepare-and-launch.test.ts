@@ -127,7 +127,145 @@ class HeldAbandonStorage extends MemoryStorage {
   }
 }
 
+class HeldReservedLaunchStorage extends MemoryStorage {
+  armed = false;
+  reached = Promise.withResolvers<void>();
+  release = Promise.withResolvers<void>();
+  override async conditionalBatch(
+    conditions: ConditionalBatchCondition[],
+    operations: BatchOperation[],
+  ): Promise<boolean> {
+    if (
+      this.armed &&
+      operations.some(
+        (operation) =>
+          operation.type === 'put' &&
+          operation.key === KEYS.workflow('adopt-race') &&
+          decodeWorkflowState(operation.value).status === 'running',
+      )
+    ) {
+      this.armed = false;
+      this.reached.resolve();
+      await this.release.promise;
+    }
+    return super.conditionalBatch(conditions, operations);
+  }
+}
+
 describe('engine.prepare() / handle.launch() / handle.abandon() (COR-75)', () => {
+  it('releases a stale reserved handle without dropping the successor claim', async () => {
+    const storage = new MemoryStorage();
+    let now = 1_000_000;
+    const definition = workflow({ name: 'release-prepared' }).execute(async function* () {
+      return 'ok';
+    });
+    const options = {
+      storage,
+      workflows: { 'release-prepared': definition },
+      ownership: 'workflow-lease' as const,
+      workflowClaimTtl: '1m' as const,
+      workflowClaimRenewInterval: '5s' as const,
+      backgroundTasks: 'manual' as const,
+      recover: false,
+      getNow: () => now,
+    };
+    await using first = await Engine.create(options);
+    await using second = await Engine.create(options);
+    const workflowOptions = { id: 'release-prepared', tags: ['weft:reserved-start'] };
+    const original = await first.prepare('release-prepared', null, workflowOptions);
+    now += 120_000;
+    const successor = await second.adoptPrepared('release-prepared', null, workflowOptions);
+    await original.release();
+    expect(await rejectionOf(original.abandon())).toBeDefined();
+    expect(await second.claimHolder('release-prepared')).toMatchObject({ heldByThisProcess: true });
+    expect(await second.get('release-prepared')).toMatchObject({ status: 'pending' });
+    const launched = await successor.launch();
+    expect(await launched.result()).toBe('ok');
+  });
+  it('fences an original launch when takeover lands during its durable commit', async () => {
+    const storage = new HeldReservedLaunchStorage();
+    let now = 1_000_000;
+    const definition = workflow({ name: 'adopt-race' }).execute(async function* () {
+      return 'ok';
+    });
+    const options = {
+      storage,
+      workflows: { 'adopt-race': definition },
+      ownership: 'workflow-lease' as const,
+      workflowClaimTtl: '1m' as const,
+      workflowClaimRenewInterval: '5s' as const,
+      backgroundTasks: 'manual' as const,
+      recover: false,
+      getNow: () => now,
+    };
+    await using first = await Engine.create(options);
+    await using second = await Engine.create(options);
+    const workflowOptions = { id: 'adopt-race', tags: ['weft:reserved-start'] };
+    const original = await first.prepare('adopt-race', null, workflowOptions);
+    storage.armed = true;
+    const stale = original.launch();
+    void stale.catch(() => {});
+    try {
+      await storage.reached.promise;
+      now += 120_000;
+      const successor = await second.adoptPrepared('adopt-race', null, workflowOptions);
+      storage.release.resolve();
+      expect(await rejectionOf(stale)).toBeDefined();
+      expect(await second.get('adopt-race')).toMatchObject({ status: 'pending' });
+      const launched = await successor.launch();
+      expect(await launched.result()).toBe('ok');
+    } finally {
+      storage.release.resolve();
+    }
+  });
+  it('adopts an exact prepared workflow under a successor lease and fences its former handle', async () => {
+    const storage = new MemoryStorage();
+    let now = 1_000_000;
+    const definition = workflow({ name: 'adopt-prepared' }).execute(async function* () {
+      return 'ok';
+    });
+    const options = {
+      storage,
+      workflows: { 'adopt-prepared': definition },
+      ownership: 'workflow-lease' as const,
+      workflowClaimTtl: '1m' as const,
+      workflowClaimRenewInterval: '5s' as const,
+      backgroundTasks: 'manual' as const,
+      recover: false,
+      getNow: () => now,
+    };
+    await using first = await Engine.create(options);
+    await using second = await Engine.create(options);
+    const original = await first.prepare(
+      'adopt-prepared',
+      { identity: 'same' },
+      { id: 'adopt-one', tags: ['weft:reserved-start'] },
+    );
+    expect(
+      await rejectionOf(
+        second.adoptPrepared('adopt-prepared', { identity: 'same' }, { id: 'adopt-one' }),
+      ),
+    ).toBeDefined();
+    now += 120_000;
+    expect(
+      await rejectionOf(
+        second.adoptPrepared(
+          'adopt-prepared',
+          { identity: 'other' },
+          { id: 'adopt-one', tags: ['weft:reserved-start'] },
+        ),
+      ),
+    ).toBeDefined();
+    const successor = await second.adoptPrepared(
+      'adopt-prepared',
+      { identity: 'same' },
+      { id: 'adopt-one', tags: ['weft:reserved-start'] },
+    );
+    expect(await rejectionOf(original.launch())).toBeDefined();
+    expect(await second.get('adopt-one')).toMatchObject({ status: 'pending' });
+    const launched = await successor.launch();
+    expect(await launched.result()).toBe('ok');
+  });
   it('does not let a stale prepared handle cancel a successor claim', async () => {
     const storage = new MemoryStorage();
     let now = 1_000_000;

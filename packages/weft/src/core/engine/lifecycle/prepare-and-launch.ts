@@ -69,6 +69,7 @@ import {
 import { validateInboundPayload } from '../payload-validation.ts';
 import { selectPersistedWorkflowStartHeaders } from '../state-utilities.ts';
 import { loadWorkflowState, runSerializedWorkflowStateWrite } from '../storage-io.ts';
+import { decodeWorkflowState } from '../validation.ts';
 import { buildWorkflowConcurrencyStartOperations } from '../workflow-concurrency.ts';
 import {
   refreshWorkflowVisibilityMaintenance,
@@ -126,7 +127,7 @@ export type PreparedWorkflowContext = {
   readonly options: StartWorkflowOptions | undefined;
   readonly claimEpoch: Uint8Array | undefined;
   inFlightRevision: string | undefined;
-  phase: 'prepared' | 'launched' | 'abandoned';
+  phase: 'prepared' | 'launched' | 'abandoned' | 'released';
   reservationReleased: boolean;
 };
 
@@ -136,7 +137,7 @@ export type PrepareWorkflowResult = {
 };
 
 /** Release the pre-commit admission guard held since `prepareWorkflow()`. Safe to call more than once. */
-function releasePreparedWorkflowReservation(
+export function releasePreparedWorkflowReservation(
   internals: EngineInternals,
   context: PreparedWorkflowContext,
 ): void {
@@ -400,7 +401,13 @@ export async function launchPreparedWorkflow(
     let launch: PendingLaunch | undefined;
     try {
       const committed = await runSerializedWorkflowStateWrite(internals, context.workflowId, () =>
-        commitPendingToRunning(internals, context.workflowId, executionDeadline, now),
+        commitPendingToRunning(
+          internals,
+          context.workflowId,
+          executionDeadline,
+          now,
+          context.claimEpoch,
+        ),
       );
       if (!committed) {
         throw new Error(`Cannot launch workflow "${context.workflowId}": it is no longer pending.`);
@@ -482,8 +489,10 @@ async function commitPendingToRunning(
   workflowId: string,
   executionDeadline: number | undefined,
   now: number,
+  claimEpoch: Uint8Array | undefined,
 ): Promise<{ state: WorkflowState; launch: PendingLaunch } | null> {
-  const latestState = await loadWorkflowState(internals, workflowId);
+  const stateBytes = await internals.storage.get(KEYS.workflow(workflowId));
+  const latestState = stateBytes === null ? null : decodeWorkflowState(stateBytes);
   if (!latestState || latestState.status !== 'pending') {
     return null;
   }
@@ -529,7 +538,12 @@ async function commitPendingToRunning(
       internals,
       workflowId,
       operations,
-      [],
+      [
+        { key: KEYS.workflow(workflowId), expectedValue: stateBytes },
+        ...(claimEpoch === undefined
+          ? []
+          : [{ key: KEYS.workflowOwnerEpoch(workflowId), expectedValue: claimEpoch }]),
+      ],
       () => new Error(`Launch transition for workflow "${workflowId}" lost its CAS race.`),
     );
   } catch (error) {
@@ -563,8 +577,10 @@ export async function abandonPreparedWorkflow(
   context: PreparedWorkflowContext,
   terminate: (workflowId: string) => Promise<void>,
 ): Promise<void> {
-  if (context.phase === 'launched') {
-    throw new Error(`Cannot abandon workflow "${context.workflowId}": it was already launched.`);
+  if (context.phase === 'launched' || context.phase === 'released') {
+    throw new Error(
+      `Cannot abandon workflow "${context.workflowId}": it was already ${context.phase}.`,
+    );
   }
   if (context.phase === 'abandoned') {
     return;

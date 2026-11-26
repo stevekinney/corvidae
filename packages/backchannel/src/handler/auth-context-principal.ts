@@ -55,8 +55,8 @@ export function authContextToPrincipal(
     case 'public':
       return anonymousPrincipal();
     default: {
-      const exhaustiveCheck: never = authContext.method;
-      throw new Error(`Unknown auth context method: ${JSON.stringify(exhaustiveCheck)}`);
+      const requiresPrincipal: 'browser-session' | 'connector-token' = authContext.method;
+      throw new Error(`${requiresPrincipal} authentication requires a verified principal`);
     }
   }
 }

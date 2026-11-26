@@ -1,4 +1,4 @@
-import { evaluateCapabilityApproval } from './approval-policy';
+import { evaluateCapabilityApproval, withToolSummary } from './approval-policy';
 import type { ToolPolicyContext, ToolPolicyHooks } from './is-tool';
 import { verifyAndSnapshotPendingApproval } from './toolbox-approval';
 import type { ToolboxOptions } from './toolbox-contracts';
@@ -19,11 +19,14 @@ export function approvalOnlyPolicy(
     const result = await decide(context);
     if (result.decision !== 'deny' && result.decision !== 'approval')
       throw new Error('Unsupported approval-only policy decision');
-    return {
-      allow: false,
-      status: result.decision === 'deny' ? 'deny' : 'needs_approval',
-      ...(result.reason === undefined ? {} : { reason: result.reason }),
-    };
+    return withToolSummary(
+      {
+        allow: false,
+        status: result.decision === 'deny' ? 'deny' : 'needs_approval',
+        ...(result.reason === undefined ? {} : { reason: result.reason }),
+      },
+      context,
+    );
   };
   approvalOnlyHooks.add(beforeAdmission);
   return Object.freeze({ beforeAdmission });

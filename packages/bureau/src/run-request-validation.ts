@@ -123,6 +123,7 @@ function validateMessageRequest(
  * `ActiveRun` the moment it exists, before any of its events can be missed.
  */
 export type SessionTaskFields = {
+  readonly reservation?: StartTaskOptions['reservation'] | undefined;
   readonly taskInput?: TaskInput | undefined;
   /** Where the task came from, as the caller declared it. See {@link StartTaskOptions.origin}. */
   readonly origin?: StartTaskOrigin | undefined;
@@ -340,12 +341,31 @@ export function snapshotStartOptions(options: StartTaskOptions): StartTaskOption
     signal,
     traceContext,
     withTraceContext,
+    reservation,
   } = options;
   if (signal !== undefined && !(signal instanceof AbortSignal)) {
     toBadRequest('"options.signal" must be an AbortSignal');
   }
   if (withTraceContext !== undefined && typeof withTraceContext !== 'function') {
     toBadRequest('"options.withTraceContext" must be a function');
+  }
+  if (
+    reservation !== undefined &&
+    (typeof reservation !== 'object' ||
+      reservation === null ||
+      typeof reservation.runId !== 'string' ||
+      !reservation.runId ||
+      typeof reservation.sessionId !== 'string' ||
+      !reservation.sessionId ||
+      !Number.isSafeInteger(reservation.fence) ||
+      reservation.fence < 1 ||
+      contextId !== undefined ||
+      commandId === undefined ||
+      principal === undefined)
+  ) {
+    toBadRequest(
+      'A reservation needs runId, sessionId, a positive fence, principal and commandId, and no contextId',
+    );
   }
   let declaredOrigin: StartTaskOrigin | undefined;
   try {
@@ -354,6 +374,7 @@ export function snapshotStartOptions(options: StartTaskOptions): StartTaskOption
     return toBadRequest(error instanceof Error ? error.message : '"options.origin" is not valid');
   }
   return {
+    ...(reservation === undefined ? {} : { reservation: { ...reservation } }),
     ...(contextId === undefined ? {} : { contextId }),
     ...(principal === undefined ? {} : { principal }),
     ...(commandId === undefined ? {} : { commandId }),

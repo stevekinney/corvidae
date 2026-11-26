@@ -19,6 +19,7 @@ import { ownerOfPrincipal } from './http/owner-predicate.ts';
 import type { PendingToolApprovalReview, ReviewPolicy } from './bureau-types/reviews.ts';
 import { reviewedToolOrigin } from './task-origin.ts';
 import { withToolboxLayer } from './toolbox-additions.ts';
+import type { BureauTasks, StartTaskOptions } from './bureau-types/tasks.ts';
 const reviewedLayerMarker = Symbol('reviewed-tool-layer');
 
 /** Domain-owned durable intents. Admission must be idempotent for a run and command. */
@@ -70,6 +71,18 @@ export function reviewedToolOperations(
     throw new Error('Reviewed tools require the original signed, state-backed toolbox');
   const names = new Set<string>();
   const agents: Record<string, ReturnType<typeof createAgent>> = Object.create(null);
+  const reservedStarts = new Map<
+    string,
+    (
+      tasks: Pick<BureauTasks, 'start'>,
+      command: unknown,
+      startOptions: {
+        principal: string;
+        requestContext: ToolRequestContext;
+        reservation: NonNullable<StartTaskOptions['reservation']>;
+      },
+    ) => ReturnType<BureauTasks['start']>
+  >();
   const operations = [];
   const selected = new Map<
     string,
@@ -110,6 +123,22 @@ export function reviewedToolOperations(
     const commandInput = requestSchema;
     const toolId = tool.id;
     const agentName = `reviewed:${selection.agent}`;
+    reservedStarts.set(selection.request, (tasks, command, startOptions) => {
+      const parsed = commandInput.parse(command);
+      return tasks.start(agentName, JSON.stringify(parsed), {
+        principal: startOptions.principal,
+        commandId: parsed['commandId'] as string,
+        requestContext: startOptions.requestContext,
+        reservation: startOptions.reservation,
+        origin: reviewedToolOrigin({
+          agent: agentName,
+          tool: toolId,
+          step: 0,
+          result: 0,
+          callId: 'reviewed-call',
+        }),
+      });
+    });
     const publicOutput = (value: unknown) => {
       if (!value || typeof value !== 'object' || Array.isArray(value))
         throw new Error('Invalid reviewed output');
@@ -359,5 +388,19 @@ export function reviewedToolOperations(
     operations,
     reviewPolicy,
     reviewEffects: selections.map((selection) => selection.effectSchema),
+    startReserved(
+      name: string,
+      tasks: Pick<BureauTasks, 'start'>,
+      command: unknown,
+      startOptions: {
+        principal: string;
+        requestContext: ToolRequestContext;
+        reservation: NonNullable<StartTaskOptions['reservation']>;
+      },
+    ) {
+      const start = reservedStarts.get(name);
+      if (!start) throw new Error('Unknown reviewed tool request');
+      return start(tasks, command, startOptions);
+    },
   };
 }

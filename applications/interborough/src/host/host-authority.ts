@@ -25,7 +25,7 @@ import {
 /** Trusted host composition; request payloads cannot select either member. */
 export type HostWorkspaceAuthentication = {
   /** Verify credentials before resolving workspace membership. */
-  readonly authentication: AuthConfig;
+  readonly authentication?: AuthConfig;
   /** Resolve current members in the one workspace bound to this host's storage. */
   readonly workspace: WorkspaceMembershipOptions;
   /**
@@ -37,6 +37,8 @@ export type HostWorkspaceAuthentication = {
 
 /** Request-local authentication and current class authorization. */
 export type HostAuthority = {
+  /** Verify a credential before Bureau resolves its own workspace snapshot. */
+  readonly authenticateCredential: OperationHandlerAuthenticate;
   /** Resolve current authority while pinning the request's original actor and workspace. */
   readonly authenticate: OperationHandlerAuthenticate;
   /** Refuse a route class before invoking its handler. */
@@ -62,6 +64,10 @@ export async function createHostAuthority(
   workspace: WorkspaceMembershipOptions,
   authentication?: AuthConfig,
   allowLocal = false,
+  browser?: {
+    readonly matches: (request: Request) => boolean;
+    readonly authenticate: OperationHandlerAuthenticate;
+  },
 ): Promise<HostAuthority> {
   const credentials =
     authentication === undefined
@@ -80,33 +86,42 @@ export async function createHostAuthority(
         : { principal: { ...context.principal, subject: ANONYMOUS_LOCAL_OWNER } }),
     };
   };
-  const resolve = withWorkspaceMembership(
-    credentials === undefined
-      ? local
-      : (request) =>
-          allowLocal && !request.headers.has('authorization') && !request.headers.has('x-api-key')
-            ? local(request)
-            : credentials(request),
-    workspace,
-  );
+  const authenticateCredential: OperationHandlerAuthenticate = (request) => {
+    if (browser?.matches(request)) return browser.authenticate(request);
+    if (credentials === undefined)
+      return allowLocal
+        ? local(request)
+        : Promise.resolve(new Response('Authentication required', { status: 401 }));
+    return allowLocal && !request.headers.has('authorization') && !request.headers.has('x-api-key')
+      ? local(request)
+      : credentials(request);
+  };
+  const resolve = withWorkspaceMembership(authenticateCredential, workspace);
   const identities = new WeakMap<Request, ReturnType<typeof unauthenticatedLocalAuthContext>>();
   const authenticate: OperationHandlerAuthenticate = async (request) => {
     const resolved = await resolve(request);
     if (resolved instanceof Response) return resolved;
     const identity = resolved.principal?.workspace;
-    const previous = identities.get(request)?.principal?.workspace;
+    const previousPrincipal = identities.get(request)?.principal;
+    const previous = previousPrincipal?.workspace;
     if (
       identity === undefined ||
       (previous !== undefined &&
         (previous.workspaceId !== identity.workspaceId ||
           previous.actorId !== identity.actorId ||
-          previous.owner !== identity.owner))
+          previous.owner !== identity.owner ||
+          (resolved.principal?.method === 'browser-session' &&
+            (previous.membershipRevision !== identity.membershipRevision ||
+              [...(previousPrincipal?.scopes ?? [])].some(
+                (scope) => !resolved.principal?.hasScope(scope),
+              )))))
     )
       return new Response('Workspace identity changed', { status: 403 });
     identities.set(request, resolved);
     return resolved;
   };
   const authority: HostAuthority = {
+    authenticateCredential,
     authenticate,
     async authorize(request, classification) {
       const context = await authenticate(request);

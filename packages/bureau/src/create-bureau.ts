@@ -5,6 +5,10 @@ import {
 import { reviewedProvenanceOf } from './reviewed-provenance.ts';
 import { isTaskOrigin } from './task-origin.ts';
 import {
+  recoveredReservedSessionOrListed,
+  reservedStartCapability,
+} from './reserved-review-recovery.ts';
+import {
   CompletableEventTarget,
   createDefaultRuntimeServices,
   type HookRegistry,
@@ -406,6 +410,7 @@ import { createSessionRestore, type SessionRestorePeers } from './bureau-seams/s
 import { createMaintenance, type MaintenancePeers } from './bureau-seams/maintenance';
 import { createRunOwnership, type RunOwnershipPeers } from './bureau-seams/run-ownership';
 import { createRunOperations, type RunOperationsPeers } from './bureau-seams/run-operations';
+import { recoverDeletionReleases } from './deletion-release';
 import {
   createTerminalSessions,
   type TerminalSessionsPeers,
@@ -2184,6 +2189,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     },
     get restorePendingApprovalOverrides() {
       return restorePendingApprovalOverrides;
+    },
+    get restoreTerminalReviewSession() {
+      return restoreTerminalReviewSession;
     },
     get seedRunSeqGeneration() {
       return seedRunSeqGeneration;
@@ -4954,6 +4962,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1707: `start` is a session run over the task input, returned as a handle; the reads and
   // the cancel are the registry's and the Bureau's own, and `events` reads the `run` owner.
   const bureauTasks = createTasks({
+    ...reservedStartCapability(runtime.durable, options.durableOwnership),
     start: startTask,
     detail: getRun,
     receipt: (query) =>
@@ -5722,7 +5731,16 @@ async function constructBureau<const D extends AgentDefinitions>(
         sessions.push(...page);
         if (page.length < 100) break;
       }
-      for (const session of sessions) {
+      for (const listedSession of sessions) {
+        const durableSession = await runtime.sessionStore.load(listedSession.id);
+        await recoverDeletionReleases(core, durableSession);
+        const session = await recoveredReservedSessionOrListed(
+          listedSession,
+          runtime.sessionStore,
+          runtime.durable.engine,
+          runtime.durable.checkpointStore,
+          runtimeServices,
+        );
         const runId = session.metadata['lastRunId'];
         const status = session.metadata['lastRunStatus'];
         const metadata = session.metadata;

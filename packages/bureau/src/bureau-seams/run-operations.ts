@@ -32,6 +32,7 @@ import { isPlainAuthorityRecord } from '../session-authority';
 import { isTerminalApprovalBindingError } from '../recovered-run-classification';
 import { ownEntry } from '../own-entry';
 import { resolveCancelDurableRun, resolveWaitForDurableRun } from '../durable-run-waits';
+import { transferDeletionRelease } from '../deletion-release';
 
 /** The callables run operations reads from elsewhere in `constructBureau`. */
 export interface RunOperationsPeers {
@@ -294,6 +295,12 @@ export function createRunOperations<D extends AgentDefinitions>(
     for (const review of toolApprovalReviews.values()) {
       const approval = review.approval;
       if (approval.approvalBinding && approval.approvalToken !== undefined) {
+        if (outcome.status === 'revoked' && outcome.principal === 'system:session-deletion')
+          await transferDeletionRelease(core, approvalToolbox, {
+            ...review,
+            sessionId,
+            approval: approval as SignedPendingToolApproval,
+          });
         try {
           await approvalToolbox.revokeApproval(approval as SignedPendingToolApproval);
         } catch (error) {

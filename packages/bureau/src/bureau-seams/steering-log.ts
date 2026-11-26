@@ -34,6 +34,7 @@ import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import {
   SteeringLogCorruptError,
   SteeringLogSealedError,
+  ReservedRunSteeringFenceLostError,
   type SteeringLogEvent,
   appendSteeringLogEvent,
   deleteEndedSteeringLogEntries,
@@ -714,6 +715,8 @@ export function createSteeringLog<D extends AgentDefinitions>(
     sessionId: string,
     incarnation: string,
     event: Exclude<SteeringLogEvent, { type: 'admit' | 'refused' }>,
+    allowExistingPromotion = false,
+    reservationCondition?: { readonly key: string; readonly expectedValue: string },
   ): Promise<void> {
     for (let attempt = 0; attempt < STEERING_APPEND_ATTEMPTS; attempt += 1) {
       const cursor = await catchUpSteering(kv, sessionId, incarnation);
@@ -721,6 +724,7 @@ export function createSteeringLog<D extends AgentDefinitions>(
       // log (a run's boundary outside its promotion, a version this gate
       // never issued) would leave the log unfoldable everywhere.
       if (event.type === 'promoted' && cursor.history.runs.has(event.runId)) {
+        if (allowExistingPromotion && cursor.history.runs.get(event.runId) === 'promoted') return;
         throw new BureauError(
           `Run "${event.runId}" is already in the steering log of session "${sessionId}"; a run is promoted once.`,
           'CONFLICT',
@@ -747,7 +751,15 @@ export function createSteeringLog<D extends AgentDefinitions>(
           'CONFLICT',
         );
       }
-      const appended = await appendSteeringLogEvent(kv, sessionId, incarnation, cursor.head, event);
+      const appended = await appendSteeringLogEvent(
+        kv,
+        sessionId,
+        incarnation,
+        cursor.head,
+        event,
+        null,
+        reservationCondition,
+      );
       if (appended.status === 'appended') {
         applyToCursor(cursor, event);
         cursor.applied += 1;
@@ -759,6 +771,8 @@ export function createSteeringLog<D extends AgentDefinitions>(
         announceSteeringTransitions(cursor.gate, (announced) => emitter.dispatch(announced));
         return;
       }
+      if (appended.status === 'key-taken' && reservationCondition !== undefined)
+        throw new ReservedRunSteeringFenceLostError();
     }
     throw steeringContention(sessionId);
   }

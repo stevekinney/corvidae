@@ -155,6 +155,7 @@ test('boot uses the host-resolved principal and rejects an absent workspace', as
       fetcher,
     ),
   ).toEqual({
+    method: 'api-key',
     scopes: ['system:read'],
     subject: 'credential',
     unauthenticatedAccess: null,
@@ -181,6 +182,29 @@ test('boot retains the host-proven memory-sharing availability', async () => {
     }),
   );
   expect(principal?.workspace?.memorySharing).toBe(true);
+});
+
+test('browser session introspection pins the mapped member and membership revision', async () => {
+  const principal = await resolveHostPrincipal({}, async () =>
+    Response.json({
+      method: 'browser-session',
+      subject: 'person',
+      scopes: ['system:read', 'bureau.tasks:read'],
+      workspace: { workspaceId: 'workspace', actorId: 'member', membershipRevision: 'revision-1' },
+    }),
+  );
+  expect(principal).toEqual({
+    method: 'browser-session',
+    subject: 'person',
+    scopes: ['system:read'],
+    unauthenticatedAccess: null,
+    workspace: {
+      workspaceId: 'workspace',
+      actorId: 'member',
+      membershipRevision: 'revision-1',
+      memorySharing: false,
+    },
+  });
 });
 
 test('the host local owner retains the existing local shell banner state', async () => {

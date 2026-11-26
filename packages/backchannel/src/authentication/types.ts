@@ -229,7 +229,7 @@ export type AuthConfig = {
  * });
  * const result = await authenticate(req);
  * if (result.authenticated) {
- *   const method: AuthMethod = result.method;
+ *   const method = result.method;
  *   console.log(method); // 'api-key'
  * }
  * ```
@@ -255,7 +255,7 @@ export type AuthMethod = 'api-key' | 'jwt' | 'mtls' | 'public' | 'unauthenticate
  */
 export type AuthContext = {
   /** How the caller authenticated. */
-  method: AuthMethod;
+  method: AuthMethod | 'browser-session' | 'connector-token';
   /** The verified JWT claims, when the method is `jwt`. */
   claims?: JWTPayload;
   /** The principal the credential resolved to. */

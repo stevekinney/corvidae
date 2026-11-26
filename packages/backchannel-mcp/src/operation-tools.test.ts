@@ -2,6 +2,7 @@
  * COR-839 — a catalog's `mcpExposable` operations served as MCP tools through
  * `createOperationMcpMount`, driven by the official SDK client in both eras.
  */
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   Client,
   StreamableHTTPClientTransport,
@@ -445,6 +446,19 @@ describe.each(eras)('catalog operations as MCP tools ($era era)', ({ mode, versi
     expect(result.isError).toBe(true);
     expect(result._meta?.['mcp/www_authenticate']).toEqual([challenge]);
     expect(echoCalls).toBe(before);
+  });
+
+  it('filters tool discovery and refuses direct calls to filtered operations', async () => {
+    const options = {
+      operationFilter: (operation) => operation.name === 'probe.echo',
+    } satisfies Partial<OperationMcpMountOptions>;
+    const { client } = await connect(mode, readerContext, options);
+    options.operationFilter = () => true;
+    const { tools } = await client.listTools();
+    expect(tools.map((tool) => tool.name)).toEqual(['probe.echo']);
+    expect(
+      await throwingRejectionOf(client.callTool({ name: 'probe.write', arguments: {} })),
+    ).toThrow('not found');
   });
 
   it('imports and invokes the catalog read through Armorer', async () => {
