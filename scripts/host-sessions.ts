@@ -1161,7 +1161,7 @@ async function denyLeasedStartSession(
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: 'deny',
-      permissionDecisionReason: `This session holds the coordinator lease for ${marker.project} (run ${marker.run}, since ${marker.leasedAt}), and a leased coordinator starts no child session: it dispatches Agent subagents (chef-worker, chef-reviewer) from this one, so that one coordinator takes the owner's instructions. End the lease with \`bun scripts/chef/linear.ts lease ${marker.project} --run ${marker.run} --release\` first if this session should hand work to another.`,
+      permissionDecisionReason: `This session holds the coordinator lease for ${marker.project} (run ${marker.run}, since ${marker.leasedAt}), and a leased coordinator starts no child session: it dispatches Agent subagents (chef-worker, stickler) from this one, so that one coordinator takes the owner's instructions. End the lease with \`bun scripts/chef/linear.ts lease ${marker.project} --run ${marker.run} --release\` first if this session should hand work to another.`,
     },
   };
 }
