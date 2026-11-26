@@ -12,7 +12,6 @@ import {
   writeManifest,
 } from '../../../scripts/affected-tests-manifest.ts';
 import {
-  availableMemory,
   discoverTestFiles,
   forwardStopSignals,
   MINIMUM_FREE_MEMORY_BYTES,
@@ -22,6 +21,8 @@ import {
   SHARD_COUNT,
   SHARD_SILENCE_LIMIT_MS,
   shardReportName,
+  STOP_GRACE_MS,
+  WATCH_INTERVAL_MS,
   type ShardProcess,
   type SpawnShard,
 } from './run-ui-shards.ts';
@@ -339,8 +340,13 @@ describe('the hang watchdog', () => {
    * A child that writes `standardOutput`, then neither writes nor exits until it is killed.
    * `drained` turns true once the runner has read the output and asked for more.
    */
+  /**
+   * A shard that writes `standardOutput` and then nothing. A signal it doesn't ignore ends it; with
+   * `pipesStayOpen`, its output stays open after it ends, as when its tests outlive it.
+   */
   function hangingChild(
     standardOutput: string,
+    behaviour: { ignores?: readonly string[]; pipesStayOpen?: boolean } = {},
   ): ShardProcess & { killedWith: string[]; drained: () => boolean } {
     const killedWith: string[] = [];
     let release: (code: number) => void = () => undefined;
@@ -348,6 +354,7 @@ describe('the hang watchdog', () => {
     let closeErr: () => void = () => undefined;
     let sent = false;
     let askedForMore = false;
+    let ended = false;
     const exited = new Promise<number>((resolve) => (release = resolve));
     const stdout = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -376,9 +383,13 @@ describe('the hang watchdog', () => {
       drained: () => askedForMore,
       kill: (signal) => {
         killedWith.push(String(signal));
-        closeOut();
-        closeErr();
-        release(137);
+        if (ended || behaviour.ignores?.includes(String(signal))) return;
+        ended = true;
+        if (!behaviour.pipesStayOpen) {
+          closeOut();
+          closeErr();
+        }
+        release(signal === 'SIGKILL' ? 137 : 143);
       },
     };
   }
@@ -409,9 +420,17 @@ describe('the hang watchdog', () => {
     });
     return {
       run,
+      /** One watchdog check, `milliseconds` after the last on the clock. */
       advance: (milliseconds: number) => {
         clock += milliseconds;
         check();
+      },
+      /** `milliseconds` of awake time, checked at the watchdog's interval. */
+      pass: (milliseconds: number) => {
+        for (let passed = 0; passed < milliseconds; passed += WATCH_INTERVAL_MS) {
+          clock += WATCH_INTERVAL_MS;
+          check();
+        }
       },
       out,
       err,
@@ -422,14 +441,47 @@ describe('the hang watchdog', () => {
     const child = hangingChild('src/lib/only.test.ts:\n(pass) one\n');
     const setup = harness('silent', child, () => 8 * 1024 ** 3);
     await waitUntil(child.drained, { message: 'the shard output to be read' });
-    setup.advance(SHARD_SILENCE_LIMIT_MS - 1);
+    setup.pass(SHARD_SILENCE_LIMIT_MS - WATCH_INTERVAL_MS);
     expect(child.killedWith).toEqual([]);
-    setup.advance(2);
+    setup.pass(WATCH_INTERVAL_MS);
     expect(await setup.run).toBe(1);
-    expect(child.killedWith).toEqual(['SIGKILL']);
+    expect(child.killedWith).toEqual(['SIGTERM']);
     const report = setup.err.join('');
     expect(report).toContain('ui shard 1 wrote nothing for 10 minutes');
     expect(report).toContain('(pass) one');
+  });
+
+  it('counts silence in awake time, so a host that slept through the suite does not stop it', async () => {
+    const child = hangingChild('src/lib/only.test.ts:\n(pass) one\n');
+    const setup = harness('asleep', child, () => 8 * 1024 ** 3);
+    await waitUntil(child.drained, { message: 'the shard output to be read' });
+    setup.advance(60 * 60_000);
+    setup.advance(WATCH_INTERVAL_MS);
+    expect(child.killedWith).toEqual([]);
+    setup.pass(SHARD_SILENCE_LIMIT_MS);
+    expect(await setup.run).toBe(1);
+  });
+
+  it('sends SIGKILL to a stopped shard that SIGTERM did not end, once the grace has passed', async () => {
+    const child = hangingChild('src/lib/only.test.ts:\n(pass) one\n', { ignores: ['SIGTERM'] });
+    const setup = harness('stubborn', child, () => 8 * 1024 ** 3);
+    await waitUntil(child.drained, { message: 'the shard output to be read' });
+    setup.pass(SHARD_SILENCE_LIMIT_MS);
+    expect(child.killedWith).toEqual(['SIGTERM']);
+    setup.pass(STOP_GRACE_MS - WATCH_INTERVAL_MS);
+    expect(child.killedWith).toEqual(['SIGTERM']);
+    setup.pass(WATCH_INTERVAL_MS);
+    expect(await setup.run).toBe(1);
+    expect(child.killedWith).toEqual(['SIGTERM', 'SIGKILL']);
+  });
+
+  it('finishes a stopped shard whose tests outlive it and hold its output open', async () => {
+    const child = hangingChild('src/lib/only.test.ts:\n(pass) one\n', { pipesStayOpen: true });
+    const setup = harness('orphaned', child, () => 8 * 1024 ** 3);
+    await waitUntil(child.drained, { message: 'the shard output to be read' });
+    setup.pass(SHARD_SILENCE_LIMIT_MS);
+    expect(await setup.run).toBe(1);
+    expect(setup.out.join('')).toContain('(pass) one');
   });
 
   it('writes one snapshot when free memory falls below the floor, and keeps running', async () => {
@@ -447,9 +499,9 @@ describe('the hang watchdog', () => {
     expect(snapshot.split('free memory fell to').length - 1).toBe(1);
     expect(snapshot).toContain('still running, this is where each shard was');
     expect(snapshot).toContain('(pass) one');
-    setup.advance(SHARD_SILENCE_LIMIT_MS);
+    setup.pass(SHARD_SILENCE_LIMIT_MS);
     expect(await setup.run).toBe(1);
-    expect(child.killedWith).toEqual(['SIGKILL']);
+    expect(child.killedWith).toEqual(['SIGTERM']);
   });
 
   it('writes no report for a shard that finishes', async () => {
@@ -458,13 +510,5 @@ describe('the hang watchdog', () => {
     setup.advance(SHARD_SILENCE_LIMIT_MS * 2);
     expect(setup.err.join('')).not.toContain('run-ui-shards:');
     expect(setup.out.join('')).toContain('exit 0');
-  });
-});
-
-describe('availableMemory', () => {
-  it('reads MemAvailable, not MemFree, from /proc/meminfo', () => {
-    const meminfo =
-      'MemTotal:       16000000 kB\nMemFree:          385024 kB\nMemAvailable:    9000000 kB\n';
-    expect(availableMemory(meminfo)).toBe(9_000_000 * 1024);
   });
 });
