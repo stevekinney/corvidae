@@ -32,15 +32,15 @@ function client(options: {
 }): RunDetailClient {
   const failing = new Set(options.failing ?? []);
   return {
-    get: () =>
-      failing.has('get')
-        ? Promise.reject(new Error('no'))
-        : Promise.resolve({ error: options.error }),
-    getTimeline: () =>
-      failing.has('timeline')
-        ? Promise.reject(new Error('no'))
-        : Promise.resolve(options.timeline ?? []),
     operations: {
+      'weft.workflows.get': () =>
+        failing.has('get')
+          ? Promise.reject(new Error('no'))
+          : Promise.resolve({ error: options.error }),
+      'weft.workflows.timeline.get': () =>
+        failing.has('timeline')
+          ? Promise.reject(new Error('no'))
+          : Promise.resolve(options.timeline ?? []),
       'weft.workflows.scheduleprovenance.get': () =>
         failing.has('provenance')
           ? Promise.reject(new Error('no'))

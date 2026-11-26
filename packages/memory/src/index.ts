@@ -211,7 +211,6 @@ export type { CreateReflectionHookOptions } from './reflection';
 export type { GetMemoryStatusOptions, MemoryStatus } from './status';
 export type { TemporalDecayOptions } from './temporal-decay';
 export type { TemporalValidityMetadata } from './temporal-validity';
-export type { InMemoryMemoryRecordStorageOptions } from './test/index';
 export type { BM25Options } from './text-search';
 export type { TextSearchProvider } from './text-search-provider';
 export type { CreateMemoryRecallToolOptions } from './tools';
@@ -391,12 +390,6 @@ export { createReflectionHook } from './reflection';
 export { getMemoryStatus } from './status';
 export { applyTemporalDecay, computeTemporalDecay } from './temporal-decay';
 export { filterByValidity, isValidAtTimestamp, stampSupersession } from './temporal-validity';
-export {
-  TEST_EMBEDDER_ID,
-  createInMemoryMemoryRecordStorage,
-  createMockEmbedder,
-  createTestEmbedders,
-} from './test/index';
 export { computeBM25Scores, tokenize } from './text-search';
 export { createMemoryForgetTool, createMemoryRecallTool, createMemoryStoreTool } from './tools';
 

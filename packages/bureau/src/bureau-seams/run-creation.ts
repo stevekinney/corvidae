@@ -29,6 +29,7 @@ import { describeDefinitionDrift } from '../agent-definition-pin';
 import { BUREAU_AGENT_NAME, detachBestEffortPromise } from '../bureau-construction-support';
 import type { BureauCore, ChatRunSpend } from './core';
 import { BureauError, ContextArchivedError, toBadRequest } from '../bureau-errors';
+import { reservedStartCapability } from '../reserved-review-recovery.ts';
 import type { BureauSteeringGate } from '../steering';
 import {
   SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
@@ -61,6 +62,7 @@ import {
   digestRunCreationPayload,
   serializeTaskInput,
   serializeTaskRequestContext,
+  serializeReservedTaskRequestContext,
 } from '../command-ledger';
 import type { ReleasableConversation } from '../catalog-run-asset-release';
 import {
@@ -81,7 +83,11 @@ import {
   requestTextOf,
   validateCreateRunRequest,
 } from '../run-request-validation';
-import { type SteeringLogEvent, steeringSessionRunTag } from '../steering-log';
+import {
+  type SteeringLogEvent,
+  ReservedRunSteeringFenceLostError,
+  steeringSessionRunTag,
+} from '../steering-log';
 import {
   isTrustedReviewedOrigin,
   type TaskOrigin,
@@ -164,6 +170,8 @@ export interface RunCreationPeers {
     sessionId: string,
     incarnation: string,
     event: Exclude<SteeringLogEvent, { type: 'admit' | 'refused' }>,
+    allowExistingPromotion?: boolean,
+    reservationCondition?: { readonly key: string; readonly expectedValue: string },
   ) => Promise<void>;
   /** `runtime.kv`, when this Bureau keeps durable steering. */
   readonly durableSteeringStore: () => ConditionalTextValueStore | undefined;
@@ -224,6 +232,33 @@ function ordinaryRunProvenance(
   return !Object.hasOwn(origin, 'reviewedTool') && !agentName.startsWith('reviewed:')
     ? runId
     : null;
+}
+
+function assertReservedStartCapability(
+  reservation: (CreateRunRequest & SessionTaskFields)['reservation'],
+  durable: BureauCore<AgentDefinitions>['runtime']['durable'],
+  ownership: BureauCore<AgentDefinitions>['options']['durableOwnership'],
+): void {
+  if (
+    reservation !== undefined &&
+    !reservedStartCapability(durable, ownership).reservedStartsSupported
+  )
+    throw new BureauError('Reserved starts require durable workflow-lease ownership', 'CONFLICT');
+}
+
+function reservedMetadata(
+  reservation: (CreateRunRequest & SessionTaskFields)['reservation'],
+  runId: string,
+) {
+  return reservation === undefined
+    ? {}
+    : { reservedStartFence: reservation.fence, reservedStartRunId: runId };
+}
+
+function reservedDurableFlags(reservation: (CreateRunRequest & SessionTaskFields)['reservation']) {
+  return reservation === undefined
+    ? { tags: [] as string[] }
+    : { tags: ['weft:reserved-start'], adoptReserved: true as const };
 }
 
 function unresolvedStart(
@@ -378,12 +413,20 @@ export function createRunCreation<D extends AgentDefinitions>(
     core.assertRunAdmissionOpen('run');
 
     requireLedgerForRequest(request);
+    assertReservedStartCapability(
+      request.reservation,
+      runtime.durable,
+      core.options.durableOwnership,
+    );
 
-    const sessionId = request.sessionId?.trim() ?? runtimeServices.identifiers.next('session');
+    const sessionId =
+      request.reservation?.sessionId ??
+      request.sessionId?.trim() ??
+      runtimeServices.identifiers.next('session');
     // COR-1481 — a context being deleted takes no new task: it reads as one that does
     // not exist, until the deletion has committed and the id may name a new incarnation.
     rejectDeletingSession(sessionId);
-    const runId = runtimeServices.identifiers.next('run');
+    const runId = request.reservation?.runId ?? runtimeServices.identifiers.next('run');
     // The text that stands for the request where only text fits: flow control,
     // and the session's `lastUserMessage`.
     const requestText = requestTextOf(request);
@@ -392,6 +435,10 @@ export function createRunCreation<D extends AgentDefinitions>(
     // created it, so an existing session decides; a new one takes the named agent, or the
     // default `bureau`. Every refusal here lands before anything is persisted.
     const { session, conversation } = await peers.loadConversation(sessionId);
+    const resumingReservedSession =
+      request.reservation !== undefined && session?.metadata['lastRunId'] === runId;
+    if (request.reservation !== undefined && session !== undefined && !resumingReservedSession)
+      throw new BureauError('Reserved session belongs to another run', 'CONFLICT');
     const baseConversationHistory = conversation.current;
     rejectUnopenableNewSessionIdentifier('"sessionId"', sessionId, session !== undefined);
 
@@ -430,7 +477,9 @@ export function createRunCreation<D extends AgentDefinitions>(
       ),
       owner,
     );
-    if (isTransportIssuedAuthority(requestContext)) {
+    if (request.reservation !== undefined && request.requestContext === undefined)
+      throw new BureauError('Reserved starts require current request authority.', 'CONFLICT');
+    if (request.reservation !== undefined || isTransportIssuedAuthority(requestContext)) {
       if (!core.requestAuthorityValidator) {
         throw new BureauError(
           'Cannot create run: transport-issued request authority cannot be validated.',
@@ -478,12 +527,25 @@ export function createRunCreation<D extends AgentDefinitions>(
               agentName,
               input: serializeTaskInput(request.taskInput ?? legacyTaskInputOf(request)),
               contextId: request.sessionId?.trim(),
-              requestContext: serializeTaskRequestContext(request.requestContext),
+              requestContext:
+                request.reservation === undefined
+                  ? serializeTaskRequestContext(request.requestContext)
+                  : serializeReservedTaskRequestContext(request.requestContext),
             }),
-            claim: { runId, sessionId },
+            claim: {
+              runId,
+              sessionId,
+              ...(request.reservation === undefined
+                ? {}
+                : { reservationFence: request.reservation.fence }),
+            },
           });
     if (ledgerAttempt?.kind === 'replay') return ledgerAttempt.result;
     const ledgerClaim = ledgerAttempt;
+    if (request.reservation !== undefined) {
+      if (ledgerClaim === undefined) throw new Error('Reserved start requires a durable ledger');
+      await ledgerClaim.assertCurrent();
+    }
     // COR-2285 — an archived context takes no new task. Decided after the ledger, so an exact
     // retry of a task started before the archive still replays it, and after the owner check, so
     // another owner's archived context reads as one that does not exist. The save below decides it
@@ -535,12 +597,14 @@ export function createRunCreation<D extends AgentDefinitions>(
         }
       }
 
-      if (request.message !== undefined) conversation.appendUserMessage(request.message);
-      if (request.inputParts !== undefined) appendAgentInput(conversation, request.inputParts);
-      appendRequestRows(
-        conversation,
-        request.appendMessagesForRun?.(runId) ?? request.appendMessages,
-      );
+      if (!resumingReservedSession) {
+        if (request.message !== undefined) conversation.appendUserMessage(request.message);
+        if (request.inputParts !== undefined) appendAgentInput(conversation, request.inputParts);
+        appendRequestRows(
+          conversation,
+          request.appendMessagesForRun?.(runId) ?? request.appendMessages,
+        );
+      }
       // A run answers the row the conversation ends in: a user message, or a
       // tool result (the outcome of an approval) with nothing newer.
       assertConversationAnswerable(conversation);
@@ -584,71 +648,71 @@ export function createRunCreation<D extends AgentDefinitions>(
         await core.fileAgents?.recordBoundRun(sessionAgent.agentBinding, runId);
         heldAgentReference = core.fileAgents !== undefined;
       }
+      const sessionMetadata = () => ({
+        lastRunId: runId,
+        ordinaryRunId: ordinaryRunProvenance(taskOrigin, agentName, runId),
+        ...reservedMetadata(request.reservation, runId),
+        lastRunStatus: 'running',
+        // This run's own starting entry: durable steering counts it as
+        // starting, until its `promoted` entry is logged and for a bounded
+        // time, even when another run's save replaces `lastRunId`.
+        ...(peers.durableSteeringStore() === undefined
+          ? {}
+          : { steeringStartingRuns: { [runId]: runtimeServices.clock.nowISO() } }),
+        lastUserMessage: requestText,
+        // COR-1577 — the definition the named agent had when this run started, so recovery can
+        // tell when the catalog's has moved on. Null for the default agent, which has none.
+        [SESSION_AGENT_REVISION_METADATA_KEY]: sessionAgent?.definitionRevision ?? null,
+        // COR-1524 — the file the agent was read from, by hash, so recovery builds from the
+        // snapshot. Null for a code-defined agent, and for the default one.
+        [SESSION_AGENT_DEFINITION_HASH_METADATA_KEY]: sessionAgent?.agentBinding?.hash ?? null,
+        // COR-2230 — what a code agent was when this run started, which recovery compares with
+        // the agent it finds: the plugin version (a built-in agent has none) and the overrides
+        // in force. Null for a file agent and the default agent.
+        ...sessionPinMetadata(sessionAgent?.agentPin, runId),
+        // Reset the active-skill snapshot at the start of every run so a reused
+        // session never seeds a fresh run with the PREVIOUS run's active skills.
+        // The snapshot is otherwise written only by createSkillRecordSnapshotHook
+        // after the run's first onStep boundary; if the durable process crashes
+        // before that first snapshot, recovery would read this session's stale
+        // records and pre-seed the new run with skills a live fresh run would not
+        // have. null clears it: buildRunDepsFromSession runs the value through
+        // isSkillActivationRecordArray, which rejects null → the recovered run
+        // starts empty, exactly as a fresh run would (PRRT_kwDORvupsc6Mddv3).
+        //
+        // All three keys, not just the records. The run id and step are what
+        // readCommittedScheduledSkillSnapshot matches on, and a stale pair left
+        // behind would let it accept a committed step snapshot belonging to a
+        // previous run on this session.
+        activeSkillRecords: null,
+        activeSkillRecordsRunId: null,
+        activeSkillRecordsStep: null,
+        // Durable recovery needs the authority that was safe to persist at
+        // dispatch time. Credentials, tracing, and other request-local data
+        // intentionally never cross the session boundary.
+        lastRequestAuthority: persistedRequestAuthority(requestContext, agentName),
+        lastRequestAuthorities: { [runId]: persistedRequestAuthority(requestContext, agentName) },
+        // AB-359, COR-718 — persist the run's OWNER (`request.principal`, or
+        // `anonymous:local` when it states none), never
+        // `requestContext.authority.principalId`: that is tool-execution
+        // authority, and it is synthesized as `run:${runId}` when the caller
+        // omitted a principal, per `normalizeRunRequestContext` above. Persisting
+        // it lets a recovered run's real owner authorize against durable
+        // `eventHistory` after a process restart, when `runAttribution` (AB-54's
+        // in-memory-only map) has been lost. Written unconditionally, like
+        // `runAttribution.set` above: every run has an owner, so a restart
+        // reads the same owner the run had live.
+        lastRunOwningPrincipals: { [runId]: owner },
+        // COR-718 — the session's owner, written once: `mergeMetadata` keeps the
+        // stored owner when the session already has one.
+        [SESSION_OWNER_METADATA_KEY]: owner,
+        // COR-1911 — the session of an agent being tried says so once, when it is created.
+        ...peers.triedOriginMetadata(triedRun, session),
+      });
       const savedAsRunning = await peers.saveSession(
         sessionId,
         conversation,
-        {
-          lastRunId: runId,
-          // Bind ordinary provenance to the same session update as the latest run. A reviewed
-          // run clears it, and a later run can never inherit another run's classification.
-          ordinaryRunId: ordinaryRunProvenance(taskOrigin, agentName, runId),
-          lastRunStatus: 'running',
-          // This run's own starting entry: durable steering counts it as
-          // starting, until its `promoted` entry is logged and for a bounded
-          // time, even when another run's save replaces `lastRunId`.
-          ...(peers.durableSteeringStore() === undefined
-            ? {}
-            : { steeringStartingRuns: { [runId]: runtimeServices.clock.nowISO() } }),
-          lastUserMessage: requestText,
-          // COR-1577 — the definition the named agent had when this run started, so recovery can
-          // tell when the catalog's has moved on. Null for the default agent, which has none.
-          [SESSION_AGENT_REVISION_METADATA_KEY]: sessionAgent?.definitionRevision ?? null,
-          // COR-1524 — the file the agent was read from, by hash, so recovery builds from the
-          // snapshot. Null for a code-defined agent, and for the default one.
-          [SESSION_AGENT_DEFINITION_HASH_METADATA_KEY]: sessionAgent?.agentBinding?.hash ?? null,
-          // COR-2230 — what a code agent was when this run started, which recovery compares with
-          // the agent it finds: the plugin version (a built-in agent has none) and the overrides
-          // in force. Null for a file agent and the default agent.
-          ...sessionPinMetadata(sessionAgent?.agentPin, runId),
-          // Reset the active-skill snapshot at the start of every run so a reused
-          // session never seeds a fresh run with the PREVIOUS run's active skills.
-          // The snapshot is otherwise written only by createSkillRecordSnapshotHook
-          // after the run's first onStep boundary; if the durable process crashes
-          // before that first snapshot, recovery would read this session's stale
-          // records and pre-seed the new run with skills a live fresh run would not
-          // have. null clears it: buildRunDepsFromSession runs the value through
-          // isSkillActivationRecordArray, which rejects null → the recovered run
-          // starts empty, exactly as a fresh run would (PRRT_kwDORvupsc6Mddv3).
-          //
-          // All three keys, not just the records. The run id and step are what
-          // readCommittedScheduledSkillSnapshot matches on, and a stale pair left
-          // behind would let it accept a committed step snapshot belonging to a
-          // previous run on this session.
-          activeSkillRecords: null,
-          activeSkillRecordsRunId: null,
-          activeSkillRecordsStep: null,
-          // Durable recovery needs the authority that was safe to persist at
-          // dispatch time. Credentials, tracing, and other request-local data
-          // intentionally never cross the session boundary.
-          lastRequestAuthority: persistedRequestAuthority(requestContext, agentName),
-          lastRequestAuthorities: { [runId]: persistedRequestAuthority(requestContext, agentName) },
-          // AB-359, COR-718 — persist the run's OWNER (`request.principal`, or
-          // `anonymous:local` when it states none), never
-          // `requestContext.authority.principalId`: that is tool-execution
-          // authority, and it is synthesized as `run:${runId}` when the caller
-          // omitted a principal, per `normalizeRunRequestContext` above. Persisting
-          // it lets a recovered run's real owner authorize against durable
-          // `eventHistory` after a process restart, when `runAttribution` (AB-54's
-          // in-memory-only map) has been lost. Written unconditionally, like
-          // `runAttribution.set` above: every run has an owner, so a restart
-          // reads the same owner the run had live.
-          lastRunOwningPrincipals: { [runId]: owner },
-          // COR-718 — the session's owner, written once: `mergeMetadata` keeps the
-          // stored owner when the session already has one.
-          [SESSION_OWNER_METADATA_KEY]: owner,
-          // COR-1911 — the session of an agent being tried says so once, when it is created.
-          ...peers.triedOriginMetadata(triedRun, session),
-        },
+        sessionMetadata(),
         // Stamp a new session with the dispatched agent (PRRT_kwDORvupsc6MbUsN) so it
         // is not always recorded as the house default 'bureau'. An existing session keeps the
         // agent it was created for.
@@ -659,8 +723,18 @@ export function createRunCreation<D extends AgentDefinitions>(
         // COR-2285 — this save starts the run, so it refuses a context archived meanwhile.
         true,
         // COR-2437 — a continuation's own judgment, decided inside the same atomic update.
-        request.startGuard,
+        (current) => {
+          request.startGuard?.(current);
+          if (request.reservation === undefined || current === undefined) return;
+          const fence = current.metadata['reservedStartFence'];
+          if (
+            current.metadata['lastRunId'] !== runId ||
+            (typeof fence === 'number' && fence > request.reservation.fence)
+          )
+            throw new BureauError('Reserved session was superseded', 'CONFLICT');
+        },
       );
+      if (request.reservation !== undefined) await ledgerClaim?.assertCurrent();
       notifySessionSaved(request, runId, savedAsRunning);
 
       // F3 — opt-in `requestHumanInput` wiring for a REAL durable run
@@ -777,6 +851,11 @@ export function createRunCreation<D extends AgentDefinitions>(
         try {
           await runtime.sessionStore?.update(sessionId, (current) => {
             if (current?.incarnation !== steeringSession.incarnation) return undefined;
+            if (
+              request.reservation !== undefined &&
+              current.metadata['reservedStartFence'] !== request.reservation.fence
+            )
+              return undefined;
             // Never starting now, whichever run is the session's latest.
             const starting = current.metadata['steeringStartingRuns'];
             const stillStarting =
@@ -807,11 +886,17 @@ export function createRunCreation<D extends AgentDefinitions>(
       if (steeringKv !== undefined && steeringSession !== undefined) {
         try {
           await peers.enqueueSteering(sessionId, () =>
-            peers.appendThenApplySteering(steeringKv, sessionId, steeringSession.incarnation, {
-              type: 'promoted',
-              runId,
-              now: runtimeServices.clock.nowISO(),
-            }),
+            peers.appendThenApplySteering(
+              steeringKv,
+              sessionId,
+              steeringSession.incarnation,
+              {
+                type: 'promoted',
+                runId,
+                now: runtimeServices.clock.nowISO(),
+              },
+              request.reservation !== undefined,
+            ),
           );
         } catch (error) {
           await markStartFailed(error);
@@ -843,7 +928,13 @@ export function createRunCreation<D extends AgentDefinitions>(
       // restored. This is deliberately scoped to the `beforeLaunch` rejection: ordinary terminal
       // errors retain their usual conversation save.
       let admissionRejectedBeforeLaunch = false;
-      const authorizeTaskAdmission = request.authorizeTaskAdmission;
+      const authorizeTaskAdmission =
+        request.reservation === undefined
+          ? request.authorizeTaskAdmission
+          : async (admittedRunId: string, kind: 'durable' | 'local') => {
+              await ledgerClaim?.assertCurrent();
+              await request.authorizeTaskAdmission?.(admittedRunId, kind);
+            };
       const confirmTaskAdmission = request.confirmTaskAdmission;
       const rejectTaskAdmission = request.rejectTaskAdmission;
       let preserveRejectedContinuation = false;
@@ -863,7 +954,7 @@ export function createRunCreation<D extends AgentDefinitions>(
       try {
         // COR-1481 — the task's record, before anything of the run starts, so a
         // record that cannot be written ends the start like any other start failure.
-        await core.tasks.recordAdmission({
+        const taskAdmission = () => ({
           taskId: runId,
           contextId: sessionId,
           incarnation: runSessionIncarnations.get(runId) ?? savedAsRunning?.incarnation ?? '',
@@ -874,7 +965,11 @@ export function createRunCreation<D extends AgentDefinitions>(
           message: request.message ?? (requestText === '' ? undefined : requestText),
           tools: toolGrant,
           admissionFence: request.taskAdmissionFence?.(runId),
+          ...(request.reservation === undefined
+            ? {}
+            : { reservationFence: request.reservation.fence }),
         });
+        await core.tasks.recordAdmission(taskAdmission());
         await request.assertTaskAdmissionLive?.(runId);
         // COR-1476 — inside the block below, so a gate that cannot be built
         // (its session read fails) ends the promoted run like any other start
@@ -888,7 +983,7 @@ export function createRunCreation<D extends AgentDefinitions>(
         // registers: a deletion that began during the awaits above has already looked
         // for this session's runs and would not find this one.
         assertRunCreationStillOpen(sessionId);
-        startedRunOptions = {
+        const buildStartedRunOptions = (): RunOptions => ({
           generate: runRuntime.generate,
           toolbox: runToolbox,
           conversation,
@@ -949,7 +1044,8 @@ export function createRunCreation<D extends AgentDefinitions>(
           ...(request.withTraceContext === undefined
             ? {}
             : { withTraceContext: request.withTraceContext }),
-        };
+        });
+        startedRunOptions = buildStartedRunOptions();
         // Durable runs claim this receipt in their post-prepare `beforeLaunch` fence. An in-memory
         // run has no such boundary, so it claims only after all synchronous preparation succeeded,
         // immediately before irreversible local creation. Keep the optional call outside the
@@ -985,8 +1081,10 @@ export function createRunCreation<D extends AgentDefinitions>(
                 sessionId,
                 // Lets durable steering in any process find this run as live
                 // for this session incarnation (`liveSessionRunIdsEverywhere`).
+                ...reservedDurableFlags(request.reservation),
                 tags: [
                   taskOriginTag(taskOrigin),
+                  ...reservedDurableFlags(request.reservation).tags,
                   ...(steeringSession === undefined
                     ? []
                     : [steeringSessionRunTag(sessionId, steeringSession.incarnation)]),
@@ -1015,20 +1113,67 @@ export function createRunCreation<D extends AgentDefinitions>(
         );
       } catch (error) {
         await preserveRejectedLocalContinuation();
-        if (!preserveRejectedContinuation) await core.tasks.discard(runId).catch(() => undefined);
+        if (!preserveRejectedContinuation)
+          await core.tasks.discard(runId, request.reservation?.fence).catch(() => undefined);
         // Promoted but never started, so no terminal listener will ever log
         // its end: log it here, or every process would count this run as
         // starting and keep a pause bound to it accepted.
-        peers.logRunBoundarySteering(sessionId, steeringGate, {
+        const endEvent = {
           type: 'run-ended',
           runId,
           now: runtimeServices.clock.nowISO(),
-        });
+        } as const;
         // COR-1476 — a run that never starts has ended: it releases its gate
         // and, with no other run on the session, cancels the input left open.
         // Tracked rather than awaited, as a terminal listener's settlement is,
         // so a write that must be retried never holds this caller's rejection.
-        peers.trackSessionInputSettlement(peers.settleSessionInputsAfterRunEnd(sessionId, runId));
+        const settleFailedStart = async () => {
+          if (
+            request.reservation !== undefined &&
+            ledgerClaim !== undefined &&
+            steeringKv &&
+            steeringSession
+          ) {
+            try {
+              const ended = await peers.enqueueSteering(sessionId, async () => {
+                let condition = await ledgerClaim.currentCondition();
+                while (condition) {
+                  try {
+                    await peers.appendThenApplySteering(
+                      steeringKv,
+                      sessionId,
+                      steeringSession.incarnation,
+                      endEvent,
+                      false,
+                      condition,
+                    );
+                    return true;
+                  } catch (appendError) {
+                    if (!(appendError instanceof ReservedRunSteeringFenceLostError))
+                      throw appendError;
+                    const next = await ledgerClaim.currentCondition();
+                    if (!next || next.expectedValue === condition.expectedValue) return false;
+                    condition = next;
+                  }
+                }
+                return false;
+              });
+              if (!ended) return;
+              peers.logRunBoundarySteering(sessionId, steeringGate, endEvent);
+              peers.trackSessionInputSettlement(
+                peers.settleSessionInputsAfterRunEnd(sessionId, runId),
+              );
+            } catch (fenceError) {
+              if (!(fenceError instanceof ReservedRunSteeringFenceLostError)) throw fenceError;
+            }
+          } else {
+            peers.logRunBoundarySteering(sessionId, steeringGate, endEvent);
+            peers.trackSessionInputSettlement(
+              peers.settleSessionInputsAfterRunEnd(sessionId, runId),
+            );
+          }
+        };
+        await settleFailedStart();
         await markStartFailed(error);
         throw error;
       }

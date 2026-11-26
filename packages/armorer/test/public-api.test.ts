@@ -68,6 +68,7 @@ describe('public API contract', () => {
   it('exports the root and the subpaths that keep optional dependencies out of it, nothing else', () => {
     expect(pkg.exports).toEqual({
       '.': './src/index.ts',
+      './testing': './src/testing/index.ts',
       './protocol': './src/protocol/index.ts',
       './mcp/http': './src/integrations/mcp/http.ts',
       './open-ai/agents': './src/adapters/open-ai/agents/index.ts',

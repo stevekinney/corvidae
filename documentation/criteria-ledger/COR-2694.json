@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2694",
+  "branch": "cor-2694-ac1",
+  "checkedAt": "dcf29a243de1d90ca1cc56efb5148bdfa6e29aee",
+  "briefVersion": "dbaa18f57fbc",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "probe identifiers() judges the innermost element whose whole visible text matches; self-test uses real CopyableValue markup and its stylesheet: mono passes, proportional fails; failed at 09f857c, passes at dcf29a2"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "unchanged; integration test passes"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "unchanged; integration test passes"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "unchanged; geometry test passes"
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "111 unit tests and 6 integration tests pass"
+    }
+  ]
+}

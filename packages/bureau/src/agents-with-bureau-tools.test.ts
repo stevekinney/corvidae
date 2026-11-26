@@ -3,7 +3,8 @@
  * from the built-in plugin's tools once the Bureau has made them, and it joins the catalog as an
  * entry of `agents` does, among the users of the tools it holds.
  */
-import { createAgent, createScriptedGenerate, stopWhen } from '@lostgradient/operative';
+import { createAgent, stopWhen } from '@lostgradient/operative';
+import { createScriptedGenerate } from '@lostgradient/operative/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterEach, describe, expect, it } from 'bun:test';

@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./testing": "./src/testing/index.ts",
     "./decision-testing": "./src/decision-testing.ts",
     "./provider-kit": "./src/provider-kit.ts",
     "./provider-testing": "./src/provider-testing.ts",

@@ -17,18 +17,18 @@
     type ToolApprovalAction,
     type ToolApprovalMessagePart,
   } from '@lostgradient/chat';
+  import {
+    ReviewApprovalButtons,
+    type ToolApprovalActions,
+  } from '@lostgradient/bureau-client/reviews/ui';
+  import type { Snippet } from 'svelte';
 
   import { getConnection } from '../../app/connection.svelte.ts';
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import type { BureauToolApproval } from '../../lib/bureau-reviews.ts';
   import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
-  import {
-    approvalQuestion,
-    argumentEntries,
-    declaredSummary,
-    reasonSaysAlways,
-  } from '../../lib/tool-text.ts';
+  import { approvalQuestion, argumentEntries, declaredSummary } from '../../lib/tool-text.ts';
   import { decidedByName } from './review-items.ts';
   import ReviewSource from './review-source.svelte';
   import type { ReviewOutcome } from './review-outcome.ts';
@@ -42,9 +42,17 @@
     /** What became of the last decision, when it was not simply recorded. */
     readonly outcome: ReviewOutcome | undefined;
     readonly onDecide: (resolution: ApprovalResolution) => void;
+    readonly actions: ToolApprovalActions;
   }
 
-  let { review, note = $bindable(''), deciding, outcome, onDecide }: ApprovalPaneProps = $props();
+  let {
+    review,
+    note = $bindable(''),
+    deciding,
+    outcome,
+    onDecide,
+    actions,
+  }: ApprovalPaneProps = $props();
 
   const states = {
     pending: 'pending',
@@ -67,11 +75,6 @@
       summary: declaredSummary(review.approval.action.message, review.approval.reason),
     }),
   );
-  /**
-   * Whether the tool asks on every call (its mode is Always), which allowing it for the rest of the
-   * chat would not change, so the choice is not offered.
-   */
-  const alwaysAsks = $derived(reasonSaysAlways(review.approval.reason));
   const action = $derived(
     review.approval.action.type === 'approval' ? review.approval.action : undefined,
   );
@@ -131,7 +134,7 @@
     },
     ...(action?.consequence === undefined ? {} : { consequence: action.consequence }),
     ...(action?.expiresAt === undefined ? {} : { expiresAt: action.expiresAt }),
-    ...(alwaysAsks ? {} : { rememberScope: CHAT_COPY.approval.rememberScope }),
+    ...(actions.canRemember ? { rememberScope: CHAT_COPY.approval.rememberScope } : {}),
     ...(connection.unreachable ? { disabledReason: CHAT_COPY.approval.unreachable } : {}),
     ...(deciding === undefined ? {} : { resolving: deciding }),
     ...(outcome?.tone === 'danger'
@@ -162,8 +165,31 @@
 </script>
 
 <div data-kind="tool-approval" data-review={review.id}>
+  {#snippet actionRenderer(controls: Snippet)}
+    <ReviewApprovalButtons {actions} label={question} {controls} />
+  {/snippet}
   {#snippet source()}
     <ReviewSource {review} {waiting} />
+    {#if review.effect?.kind === 'refund'}
+      <p>
+        {new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: review.effect.currency,
+        }).format(review.effect.cents / 100)}
+        for order {review.effect.orderId}.
+        {review.effect.status === 'succeeded'
+          ? 'Refunded'
+          : review.effect.status === 'needs-reconciliation'
+            ? 'Needs reconciliation'
+            : review.effect.status === 'provider-pending'
+              ? 'Refund pending'
+              : review.effect.status === 'failed'
+                ? 'Refund failed'
+                : review.status === 'approved'
+                  ? 'Approved'
+                  : 'Awaiting approval'}
+      </p>
+    {/if}
     {#if !hasInput}
       <p>{REVIEWS_COPY.noInput}</p>
     {/if}
@@ -173,7 +199,7 @@
     layout="detail"
     context={source}
     bind:reason={note}
-    appearance={{ ...appearance, noteInitiallyOpen: true }}
+    appearance={{ ...appearance, noteInitiallyOpen: true, actionRenderer }}
     onApprovalResolve={(_, resolution) => onDecide(resolution)}
   />
   {#if outcome !== undefined && outcome.tone !== 'danger'}

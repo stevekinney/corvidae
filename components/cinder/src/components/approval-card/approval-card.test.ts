@@ -25,6 +25,8 @@ const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/s
 const { createRawSnippet } = await import('svelte');
 const { tick } = await import('svelte');
 const { default: ApprovalCard } = await import('./approval-card.svelte');
+const { default: ActionRendererFixture } =
+  await import('./approval-card-action-renderer.fixture.svelte');
 const approvalCardSchema = readComponentSchema('approval-card');
 const { default: CodeHighlighterContextFixture } =
   await import('../../test/fixtures/code-highlighter-context-fixture.svelte');
@@ -68,6 +70,16 @@ function approvalCardProps(overrides: Partial<ApprovalCardProps> = {}): Approval
 }
 
 describe('ApprovalCard', () => {
+  test('renders guarded controls through the action renderer', async () => {
+    const onResolve = mock(() => undefined);
+    const { getByTestId, getByRole } = render(ActionRendererFixture, { onResolve });
+    const approve = getByRole('button', { name: 'Approve' });
+    expect(getByTestId('custom-action-renderer').contains(approve)).toBe(true);
+    await fireEvent.click(approve);
+    expect(onResolve).not.toHaveBeenCalled();
+    await fireEvent.click(approve);
+    expect(onResolve).toHaveBeenCalledTimes(1);
+  });
   test('draws its heading as the first row of the body, on the card fill with no band', () => {
     const styles = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
     const ownedHeaderRule = styles.match(/\.cinder-approval-card__header\s*\{[^}]*\}/)?.[0] ?? '';
@@ -95,6 +107,7 @@ describe('ApprovalCard', () => {
     expect(approvalCardSchema.required).toContain('operation');
     expect(approvalCardSchema.properties).toHaveProperty('operation');
     expect(approvalCardSchema.metadata?.unsupportedProps?.map((prop) => prop.name)).toEqual([
+      'actionRenderer',
       'context',
       'decisionReview',
       'onAskAgain',

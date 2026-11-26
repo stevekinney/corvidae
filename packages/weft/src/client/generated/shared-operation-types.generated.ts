@@ -24,6 +24,22 @@ export type SharedActionConfirmationTokenC_9dd0ee71 = {
   readonly scope: SharedFilterMatchedSampleLimit_d19cbf0c;
   readonly skippedTeardownPending?: ReadonlyArray<string>;
 };
+export type SharedActivityContractHashActi_47a95180 = {
+  readonly activityContractHash: string;
+  readonly activityContracts: Record<string, string>;
+  readonly activityName: string;
+  readonly artifactDigest: string;
+  readonly boundAt: number;
+  readonly buildId: string;
+  readonly checkpointId: string;
+  readonly deploymentName: string;
+  readonly manifestDigest: string;
+  readonly routingGeneration: number;
+  readonly workflowContractHash: string;
+  readonly workflowId: string;
+  readonly workflowRevision: string;
+  readonly workflowType: string;
+};
 export type SharedActivityContractHashArti_d7d91df4 = {
   readonly activityContractHash?: string;
   readonly artifactDigest?: string;
@@ -45,6 +61,11 @@ export type SharedAffectedWorkersHealthInF_c3f6ebcc = {
   readonly inFlight: number;
   readonly target: 'worker';
   readonly workerId: string;
+};
+export type SharedAgentVersionToolVersions_951e6df7 = {
+  readonly agentVersion?: string;
+  readonly toolVersions?: ReadonlyArray<string>;
+  readonly workflowVersion: string;
 };
 export type SharedAttemptAttemptTokenDiges_a17e1950 = {
   readonly attempt: number;
@@ -139,6 +160,38 @@ export type SharedAttributesFailedStepLimi_0c9f0a5f = {
   readonly tags?: ReadonlyArray<string>;
   readonly type?: string;
 };
+export type SharedBackfillCreatedAtCronExp_d35299f1 = {
+  readonly backfill: boolean;
+  readonly createdAt: number;
+  readonly cronExpression?: string;
+  readonly currentWorkflowId?: string;
+  readonly description?: string;
+  readonly id: string;
+  readonly intervalMs?: number;
+  readonly jitterMs?: number;
+  readonly lastFireAt?: number;
+  readonly lastMissedFireAt?: number;
+  readonly lastSkippedAt?: number;
+  readonly metadata?: Record<string, unknown>;
+  readonly missedFireCount: number;
+  readonly nextFireAt: number | null;
+  readonly overlap: 'skip' | 'queue' | 'cancel-running' | 'allow';
+  readonly pinnedRevision?: string;
+  readonly queuedRuns: ReadonlyArray<{
+    readonly manual?: true;
+    readonly occurrence?: number;
+    readonly queuedAt: number;
+    readonly workflowId: string;
+  }>;
+  readonly revision: number;
+  readonly revisionPolicy: 'active-at-fire' | 'pinned';
+  readonly skippedCount: number;
+  readonly skippedOccurrences?: ReadonlyArray<number>;
+  readonly status: 'active' | 'paused' | 'cancelled';
+  readonly timeZone: string;
+  readonly updatedAt: number;
+  readonly workflowType: string;
+};
 export type SharedBackoffMultiplierInitial_64d024ea = {
   readonly backoffMultiplier: number;
   readonly initialBackoff: number | string;
@@ -208,3 +261,27 @@ export type SharedInputLabelOperationType_dfed1127 = {
   readonly output?: string;
   readonly status: 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out';
 };
+export type CatalogDefinition_6340ec4cb5e439a2a109174d3db8ff3e22ebd0d3893a519fb1b4ff8190de7cf5_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8 =
+  | null
+  | boolean
+  | number
+  | string
+  | ReadonlyArray<CatalogDefinition_6340ec4cb5e439a2a109174d3db8ff3e22ebd0d3893a519fb1b4ff8190de7cf5_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8>
+  | {
+      readonly [
+        key: string
+      ]: CatalogDefinition_6340ec4cb5e439a2a109174d3db8ff3e22ebd0d3893a519fb1b4ff8190de7cf5_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8;
+    };
+export type CatalogDefinition_a19bdf4bf818348b3125a9daf9a11ff6541e7895b52b75f858842e9778e62ad9_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8 =
+  {
+    readonly branches?: ReadonlyArray<CatalogDefinition_a19bdf4bf818348b3125a9daf9a11ff6541e7895b52b75f858842e9778e62ad9_e59fe36e54990054da27c9b8b1656404ddc8fe27a4bc0234839658a0cfb054a8>;
+    readonly documentStep?: number;
+    readonly documentStepAddress?: string;
+    readonly errorSummary?: string;
+    readonly index: number;
+    readonly key?: string;
+    readonly operationId: string;
+    readonly operationLabel: string;
+    readonly operationType: string;
+    readonly outcome: 'fulfilled' | 'rejected' | 'won' | 'lost';
+  };

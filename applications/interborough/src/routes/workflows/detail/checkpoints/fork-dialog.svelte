@@ -78,6 +78,7 @@
   import { ChevronDown, ChevronRight, GitFork } from '@lucide/svelte';
 
   import { RUN_FORK_PREVIEW_COPY } from '../../../../app/copy/runs.ts';
+  import { HttpClientError } from '@lostgradient/weft';
   import { faultTreatment } from '../../../../lib/faults.ts';
   import { formatRelativeTime } from '../../../../lib/format/index.ts';
   import { queryKeys } from '../../../../lib/query.ts';
@@ -129,7 +130,14 @@
   // page's own cached record. `client.get` resolves `null` for a purged run.
   const sourceQuery = createQuery(() => ({
     queryKey: [...queryKeys.workflows.detail(workflowId), 'fork-source'] as const,
-    queryFn: () => client.get(workflowId),
+    queryFn: async () => {
+      try {
+        return await client.operations['weft.workflows.get']({ workflowId });
+      } catch (error) {
+        if (error instanceof HttpClientError && error.status === 404) return null;
+        throw error;
+      }
+    },
     refetchOnMount: 'always' as const,
   }));
 

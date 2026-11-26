@@ -1,4 +1,5 @@
 export type { ConformanceTarget, ConformanceTargets } from '../conformance/targets.ts';
+export { flushPortableMicrotasks, yieldToPortableEventLoop } from '../portable-event-loop.ts';
 export {
   ChaosNonRetryableError,
   ChaosTimeoutError,
@@ -7,7 +8,6 @@ export {
 } from './chaos.ts';
 export type { ChaosScenario, FaultClass } from './chaos.ts';
 export { createConformanceTargets } from './conformance-targets.ts';
-export { flushPortableMicrotasks, yieldToPortableEventLoop } from './event-loop.ts';
 export { ActivityMockRegistry } from './mocks.ts';
 export type { MockCall, MockHandle, MockedActivity } from './mocks.ts';
 export { killAndReboot, spawnServerSubprocess, withSubprocessServer } from './subprocess-engine.ts';

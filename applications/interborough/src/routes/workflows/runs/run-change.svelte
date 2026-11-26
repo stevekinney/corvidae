@@ -7,7 +7,7 @@
    * The signals and updates the run has already received are listed with their forms.
    */
   import { Collapsible, Section } from '@lostgradient/cinder';
-  import type { WorkflowState } from '@lostgradient/weft';
+  import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
 
   import { RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
   import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';

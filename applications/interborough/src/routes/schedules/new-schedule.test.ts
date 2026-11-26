@@ -249,7 +249,7 @@ describe('the page', () => {
     );
     expect(headings).toEqual([COPY.whatRunsHeading, COPY.whenHeading]);
     const workflow = await trigger();
-    expect(workflow.textContent).toContain(COPY.workflowPlaceholder);
+    await waitFor(() => expect(workflow.textContent).toContain(COPY.workflowPlaceholder));
     expect(document.querySelector('label[for="ib-schedule-new-workflow"]')?.textContent).toContain(
       'Workflow',
     );

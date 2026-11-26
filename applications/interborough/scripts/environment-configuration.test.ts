@@ -8,6 +8,7 @@ import {
   endToEndPortOverride,
   isContinuousIntegration,
   requiresFreshServer,
+  viewportWitnessesJson,
 } from './environment-configuration.ts';
 
 test('reads opt-in browser qualification identity', () => {
@@ -133,6 +134,26 @@ describe('the design-review capture settings', () => {
     expect(designReviewColorScheme()).toBe('dark');
     process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = 'sepia';
     expect(() => designReviewColorScheme()).toThrow('must be light or dark, not "sepia"');
+  });
+
+  test('viewport witnesses are the JSON list the capture sets, empty when unset, and refused otherwise', () => {
+    const saved = process.env['INTERBOROUGH_VIEWPORT_WITNESSES'];
+    try {
+      delete process.env['INTERBOROUGH_VIEWPORT_WITNESSES'];
+      expect(viewportWitnessesJson()).toEqual([]);
+      process.env['INTERBOROUGH_VIEWPORT_WITNESSES'] = '';
+      expect(viewportWitnessesJson()).toEqual([]);
+      process.env['INTERBOROUGH_VIEWPORT_WITNESSES'] = '[{"row":"12a","name":"phone-light"}]';
+      expect(viewportWitnessesJson()).toEqual([{ row: '12a', name: 'phone-light' }]);
+      for (const refused of ['{"row":"12a"}', 'not json'])
+        expect(() => {
+          process.env['INTERBOROUGH_VIEWPORT_WITNESSES'] = refused;
+          viewportWitnessesJson();
+        }).toThrow('INTERBOROUGH_VIEWPORT_WITNESSES is not a valid witness manifest.');
+    } finally {
+      if (saved === undefined) delete process.env['INTERBOROUGH_VIEWPORT_WITNESSES'];
+      else process.env['INTERBOROUGH_VIEWPORT_WITNESSES'] = saved;
+    }
   });
 });
 

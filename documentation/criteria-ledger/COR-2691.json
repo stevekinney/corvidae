@@ -1,0 +1,39 @@
+{
+  "issue": "COR-2691",
+  "branch": "worktree-wf_44e8a165-e52-4",
+  "checkedAt": "da1ee202b1fb2c6aeb5a38f42f91d27568505780",
+  "briefVersion": "b77e94a9b946",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "scripts/check-destructive-danger-variant.ts; literal, direct copy-path and alias (agent-delete-dialog) tests pass"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "tests with offender and compliant case per component, plus Reset filters, Discard draft, Cancel, Dropdown menu"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "skip-count test; guard prints skipped 344"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "scripts/destructive-danger-variant-allowlist.json; allowlist test with judgeCounts"
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "chained in lint:guards; owner-rules.json row; owner-rules.test.ts passes"
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "bun run lint:root exit 0 includes lint:guards"
+    }
+  ]
+}

@@ -25,7 +25,7 @@ import type { DeploymentSecrets } from './deployment-secrets.ts';
 import { createEnvironmentSecretProvider } from './environment-secret-provider.ts';
 import { BungalowInputError, BungalowLockedError, BungalowStateError } from './errors.ts';
 import { TEST_NAME, useTemporaryDirectories } from './fixtures.test-support.ts';
-import { defaultAcquireLock, type RootLock } from './lock.ts';
+import { acquirePortableLock, defaultAcquireLock, type RootLock } from './lock.ts';
 import {
   createLocalSecretProvider,
   SecretProviderError,
@@ -33,6 +33,7 @@ import {
 } from './secret-provider.ts';
 import { generateUlid } from './ulid.ts';
 
+const runner = { describe, test };
 const temporaryDirectory = useTemporaryDirectories();
 const homes: Bungalow[] = [];
 afterEach(() => {
@@ -66,7 +67,11 @@ async function inspectHome<Result>(
 const acquireLock = await defaultAcquireLock();
 
 describe('the default lock conforms', () => {
-  describeRootLock(acquireLock);
+  describeRootLock(runner, acquireLock);
+});
+
+describe('the portable lock conforms', () => {
+  describeRootLock(runner, acquirePortableLock);
 });
 
 describe('a deliberately wrong lock is rejected', () => {
@@ -198,7 +203,7 @@ describe('the local file deployment-secret store conforms', () => {
     const store = await create();
     expect(store.writable).toBe(true);
   });
-  describeDeploymentSecrets(create);
+  describeDeploymentSecrets(runner, create);
 });
 
 describe('the environment deployment-secret store conforms', () => {
@@ -212,7 +217,7 @@ describe('the environment deployment-secret store conforms', () => {
     const store = await create();
     expect(store.writable).toBe(false);
   });
-  describeDeploymentSecrets(create, { key: 'api-key', value: SECRET_VALUE });
+  describeDeploymentSecrets(runner, create, { key: 'api-key', value: SECRET_VALUE });
 });
 
 describe('the deployment-secret store of a read-only local home conforms', () => {
@@ -229,7 +234,7 @@ describe('the deployment-secret store of a read-only local home conforms', () =>
     const store = await create();
     expect(store.writable).toBe(false);
   });
-  describeDeploymentSecrets(create, { key: 'seeded-key', value: 'seeded-value' });
+  describeDeploymentSecrets(runner, create, { key: 'seeded-key', value: 'seeded-value' });
 });
 
 /**
@@ -543,7 +548,7 @@ describe('a local home conforms', () => {
     ]);
     expect(stated).toEqual(['writable', true]);
   });
-  describeBungalow(open);
+  describeBungalow(runner, open);
 });
 
 describe('a read-only local home conforms', () => {
@@ -565,7 +570,7 @@ describe('a read-only local home conforms', () => {
     ]);
     expect(stated).toEqual(['read-only', false]);
   });
-  describeBungalow(open);
+  describeBungalow(runner, open);
 });
 
 describe('a remote home conforms', () => {
@@ -577,7 +582,7 @@ describe('a remote home conforms', () => {
     ]);
     expect(stated).toEqual(['read-only', false]);
   });
-  describeBungalow(open);
+  describeBungalow(runner, open);
 });
 
 describe('a remote home with writable configuration conforms', () => {
@@ -589,7 +594,7 @@ describe('a remote home with writable configuration conforms', () => {
     ]);
     expect(stated).toEqual(['writable', false]);
   });
-  describeBungalow(open);
+  describeBungalow(runner, open);
 });
 
 /** Open the local home at one fresh root each call, and let `override` replace some of its members. */

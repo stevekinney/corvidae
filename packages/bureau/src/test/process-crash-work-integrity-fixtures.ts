@@ -17,12 +17,11 @@ import {
   createMemoryAuthority,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
-  createMockEmbedder,
   createWeftMemoryRecordStorage,
   type GovernedMemory,
   createMemoryVectorStore,
-  createTestEmbedders,
 } from '@lostgradient/memory';
+import { createMockEmbedder, createTestEmbedders } from '@lostgradient/memory/testing';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { type Storage, textValueStore } from '@lostgradient/storage';

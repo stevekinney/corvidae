@@ -12,7 +12,6 @@ Default to direct execution for small cohesive work, decided at planning. Once a
 
 ## Keep contexts small
 
-- A leased coordinator above about 200K tokens brings the note up to date and compacts at the next batch boundary; a hook denies its Agent, Workflow and `start_session` calls until it does. Workers and unleased sessions are never fenced.
 - At each batch boundary, record `lastCtx` (`transcript-usage.ts`) and tokens per merged change in the note. When tokens per merged change double from the run's earlier batches, stop dispatching and ask the owner.
 - Every connected tool costs about 43 tokens on every call of every agent. On Claude Code, at run start, list the connectors with `mcp__ccd_connectors__session_connectors_status`, turn off each one the run does not need with `mcp__ccd_connectors__set_session_connector_enabled` (keep Linear and any the scope names), and record the list in the note before dispatching. Before any stop, turn each recorded connector back on and read the status back. Codex has no session connector switch.
 - Resume an agent only while its context is small; otherwise dispatch a fresh one with the brief, open findings, and commit range.
@@ -39,5 +38,7 @@ By default a worker pushes a branch, and the coordinator verifies and squash-mer
 ## Worktrees
 
 On Claude Code the Agent tool makes a worker's worktree under `<main checkout>/.claude/worktrees`. Make any other with `bun scripts/chef/worktree.ts create --provider claude --name <name> --branch <branch>`, which never attaches `main` to a second worktree. Remove one with `bun scripts/chef/worktree.ts remove --provider claude --name <name>` once its branch is delivered and `leftovers.ts` shows nothing running in it; its header lists what it refuses.
+
+A correction outside the workflow is dispatched with `isolation: "worktree"`; a plain dispatch runs in your worktree, where the edit hook refuses its writes. It branches from the pushed head, runs `bun install --frozen-lockfile` (for Interborough also `bun run tokens:seed` in `components/cinder`), and pushes `HEAD:<branch>` as a fast-forward.
 
 A worker in a shared, canonical, or production checkout (one that another owner, the user, or a deployment also uses) records `git status --porcelain` for both checkouts before its first change, changes one authorized path, and stops until the coordinator confirms the canonical checkout is unchanged. Never reset or automatically clean a checkout. Every path a worker's diff deletes or renames needs a reason in its return.

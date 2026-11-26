@@ -7,14 +7,16 @@ import { EventType, type ResumeEntry } from '@ag-ui/core';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createGovernedMemory,
-  createInMemoryMemoryRecordStorage,
   createMemoryAuthority,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
-  createMockEmbedder,
   createMemoryVectorStore,
-  createTestEmbedders,
 } from '@lostgradient/memory';
+import {
+  createInMemoryMemoryRecordStorage,
+  createMockEmbedder,
+  createTestEmbedders,
+} from '@lostgradient/memory/testing';
 import { type InputDetector, stopWhen, type Toolbox } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';

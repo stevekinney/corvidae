@@ -51,8 +51,46 @@ const critique = (overrides: Record<string, unknown> = {}) => ({
       board: 'Runs',
       text: 'Runs as cards',
       states: [
-        { route: '/runs', state: 'ready', kind: 'ready' },
-        { route: '/runs', state: 'empty', kind: 'empty' },
+        {
+          route: '/runs',
+          state: 'ready',
+          kind: 'ready',
+          witness: {
+            specification: 'applications/interborough/tests/e2e/runs-states.spec.ts',
+            title: '/runs ready at 375 pixels',
+            world: 'sample-world',
+            profiles: [
+              {
+                name: 'phone-light',
+                width: 375,
+                theme: 'light',
+                targets: ['runs-list'],
+                visible: 'Runs are visible.',
+                scrolling: 'none',
+              },
+            ],
+          },
+        },
+        {
+          route: '/runs',
+          state: 'empty',
+          kind: 'empty',
+          witness: {
+            specification: 'applications/interborough/tests/e2e/runs-states.spec.ts',
+            title: '/runs empty at 375 pixels',
+            world: 'sample-world',
+            profiles: [
+              {
+                name: 'phone-light',
+                width: 375,
+                theme: 'light',
+                targets: ['runs-list'],
+                visible: 'Runs are visible.',
+                scrolling: 'none',
+              },
+            ],
+          },
+        },
       ],
     },
   ],
@@ -85,7 +123,7 @@ describe('design-critique write', () => {
     );
     expect(result.code).toBe(0);
     const file = JSON.parse(readFileSync(join(sandbox, 'COR-7', 'rows.resolved.json'), 'utf8'));
-    expect(file).toMatchObject({ version: 1, issue: 'COR-7' });
+    expect(file).toMatchObject({ version: 2, issue: 'COR-7' });
   });
 
   test('refuses a critique with a row that declares no states, writing nothing', async () => {

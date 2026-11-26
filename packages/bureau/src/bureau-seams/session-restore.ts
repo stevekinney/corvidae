@@ -240,11 +240,14 @@ export function createSessionRestore<D extends AgentDefinitions>(
     session: Pick<AgentSession, 'id' | 'agentName' | 'metadata' | 'updatedAt'>,
     restoredRunId?: string,
     committed?: ReadonlySet<string>,
+    beforeApprovalRestore?: (toolbox: BureauToolbox) => Promise<void>,
   ): Promise<void> {
     const runId = restoredRunId ?? session.metadata['lastRunId'];
     if (
       typeof runId !== 'string' ||
-      (runId === session.metadata['lastRunId'] && session.metadata['lastRunStatus'] === 'running')
+      (beforeApprovalRestore === undefined &&
+        runId === session.metadata['lastRunId'] &&
+        session.metadata['lastRunStatus'] === 'running')
     )
       return;
     const hasPendingOverride = Object.keys(
@@ -260,6 +263,8 @@ export function createSessionRestore<D extends AgentDefinitions>(
       runtimeServices.clock.now,
     );
     if (!requestContext) {
+      if (beforeApprovalRestore)
+        throw new Error('Reviewed approval authority is unavailable for context deletion');
       const overrides = session.metadata['pendingApprovalOverrides'];
       if (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) {
         for (const reviewId of Object.keys(overrides)) {
@@ -346,6 +351,7 @@ export function createSessionRestore<D extends AgentDefinitions>(
     runRequestContexts.set(runId, requestContext);
     runToolboxesByRunId.set(runId, runRuntime.toolbox);
     if (scheduledFire) adoptRestoredScheduledFire(scheduledFireReviewState, runId);
+    await beforeApprovalRestore?.(runRuntime.toolbox);
     await peers.restorePendingApprovalStates(
       runRuntime.toolbox,
       session.metadata,

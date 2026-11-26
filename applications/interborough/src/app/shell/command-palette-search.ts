@@ -100,10 +100,10 @@ export interface ConsoleSearchResults {
   /** The workflow types whose name or description matches. */
   readonly definitions: CatalogRow[];
   /** Runs, by the start of their identifier. */
-  readonly workflows: WorkflowSummary[];
+  readonly workflows: Pick<WorkflowSummary, 'id' | 'type'>[];
   readonly schedules: ScheduleMatch[];
   readonly workers: { id: string; queue: string }[];
-  readonly reviews: ReviewListEntry[];
+  readonly reviews: Pick<ReviewListEntry, 'reviewId' | 'reviewType'>[];
   /** The tools of the catalog whose name or description matches. */
   readonly tools: CatalogTool[];
   /** The agents whose name matches, each of which a new chat can be opened with. */
@@ -542,22 +542,20 @@ export async function searchConsole(
         ? reading(
             failed,
             groups.runs,
-            client
-              .list({ idPrefix, limit: 50 })
-              .then((result) =>
-                result.items
-                  .filter((workflow) => workflow.id.startsWith(idPrefix))
-                  .slice(0, RESULTS_PER_GROUP),
-              ),
-            [] as WorkflowSummary[],
+            client.operations['weft.workflows.list']({ idPrefix, limit: 50 }).then((result) =>
+              result.items
+                .filter((workflow) => workflow.id.startsWith(idPrefix))
+                .slice(0, RESULTS_PER_GROUP),
+            ),
+            [] as Pick<WorkflowSummary, 'id' | 'type'>[],
           )
-        : Promise.resolve([] as WorkflowSummary[]),
+        : Promise.resolve([] as Pick<WorkflowSummary, 'id' | 'type'>[]),
       options.scheduleReadGate.disabled
         ? Promise.resolve([] as ScheduleMatch[])
         : reading(
             failed,
             groups.schedules,
-            client.listSchedules({ limit: 100 }).then((result) =>
+            client.operations['weft.schedules.list']({ limit: 100 }).then((result) =>
               loadScheduleOverlay(client).then((overlay) =>
                 result.items
                   .map((schedule) => scheduleMatch(schedule, overlay))
@@ -585,18 +583,16 @@ export async function searchConsole(
             [] as { id: string; queue: string }[],
           ),
       reviewGate.disabled
-        ? Promise.resolve([] as ReviewListEntry[])
+        ? Promise.resolve([] as Pick<ReviewListEntry, 'reviewId' | 'reviewType'>[])
         : reading(
             failed,
             groups.reviews,
-            client
-              .listReviews({})
-              .then((result) =>
-                result
-                  .filter((review) => containsQuery(query, review.reviewId))
-                  .slice(0, RESULTS_PER_GROUP),
-              ),
-            [] as ReviewListEntry[],
+            client.operations['weft.reviews.list']({}).then((result) =>
+              result.items
+                .filter((review) => containsQuery(query, review.reviewId))
+                .slice(0, RESULTS_PER_GROUP),
+            ),
+            [] as Pick<ReviewListEntry, 'reviewId' | 'reviewType'>[],
           ),
       reading(
         failed,

@@ -52,6 +52,25 @@ function renderListbox(props: Record<string, unknown> = {}) {
 }
 
 describe('Select listbox presentation: trigger', () => {
+  test('an explicitly offered empty value shows its label and can be selected', async () => {
+    const changes: string[] = [];
+    const { container } = renderListbox({
+      value: '',
+      options: [
+        { value: '', label: 'Anyone' },
+        { value: 'you', label: 'You' },
+      ],
+      onValueChange: (value: string) => changes.push(value),
+    });
+    expect(trigger(container).textContent).toContain('Anyone');
+    await openByClick(container);
+    expect(options().map((option) => option.textContent?.trim())).toEqual(['Anyone', 'You']);
+    await fireEvent.click(requiredInstance(options()[1], HTMLElement));
+    expect(changes).toEqual(['you']);
+    await openByClick(container);
+    await fireEvent.click(requiredInstance(options()[0], HTMLElement));
+    expect(changes).toEqual(['you', '']);
+  });
   test('renders a select-only combobox button, named by its label, showing the current label', () => {
     const { container } = renderListbox({ value: 'echo' });
     const button = trigger(container);

@@ -14,7 +14,7 @@ import {
   readBackendDescriptors,
   withBackendDescriptors,
 } from '@lostgradient/operative';
-import { createTestToolbox } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 

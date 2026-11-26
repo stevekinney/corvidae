@@ -320,10 +320,13 @@ export async function openPeerStream(
 
 /** The human waits the run is parked on, less the ones a resume just answered. */
 async function humanWaitsOf(context: PeerStreamContext): Promise<PendingHumanWaitReview[]> {
-  const waits = await context.bureau.reviews
+  const waits: PendingReview[] = await context.bureau.reviews
     .pendingOf(context.nativeRunId)
     .catch((): PendingHumanWaitReview[] => []);
-  return waits.filter((review) => !context.answered.has(review.id));
+  return waits.filter(
+    (review): review is PendingHumanWaitReview =>
+      review.kind === 'human-wait' && !context.answered.has(review.id),
+  );
 }
 
 function endWithApprovals(

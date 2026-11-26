@@ -47,7 +47,6 @@ import {
   type ProcessEntry,
   type ProcessTable,
 } from './bun-test-pool.ts';
-import { contextFenceDecision, fencedToolNames } from './chef/context-fence.ts';
 import { defaultGit, stateDirectoryOf, type GitReader } from './chef/report.ts';
 import { resolveMainCheckout } from './chef/repository-locations.ts';
 import { questionDecision, workerStopDecision, type FenceOutput } from './chef/session-fences.ts';
@@ -1162,7 +1161,7 @@ async function denyLeasedStartSession(
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: 'deny',
-      permissionDecisionReason: `This session holds the coordinator lease for ${marker.project} (run ${marker.run}, since ${marker.leasedAt}), and a leased coordinator starts no child session: it dispatches Agent subagents (chef-worker, chef-reviewer) from this one, so that one coordinator takes the owner's instructions. End the lease with \`bun scripts/chef/linear.ts lease ${marker.project} --run ${marker.run} --release\` first if this session should hand work to another.`,
+      permissionDecisionReason: `This session holds the coordinator lease for ${marker.project} (run ${marker.run}, since ${marker.leasedAt}), and a leased coordinator starts no child session: it dispatches Agent subagents (chef-worker, stickler) from this one, so that one coordinator takes the owner's instructions. End the lease with \`bun scripts/chef/linear.ts lease ${marker.project} --run ${marker.run} --release\` first if this session should hand work to another.`,
     },
   };
 }
@@ -1181,8 +1180,7 @@ async function leasedSession(
 
 /**
  * The charter mechanisms of `scripts/chef/session-fences.ts`, decided before anything is admitted or
- * recorded: a worker's stop without a valid report, a question from a leased session, and a fenced
- * tool (`context-fence.ts`) from a leased coordinator above 200K tokens. Only a refusal is returned; a decision that could not read its input is logged and the event goes on.
+ * recorded: a worker's stop without a valid report, and a question from a leased session. Only a refusal is returned; a decision that could not read its input is logged and the event goes on.
  */
 async function sessionFences(
   input: HookInput,
@@ -1204,12 +1202,6 @@ async function sessionFences(
       });
     } else if (event === 'PreToolUse' && tool === 'AskUserQuestion') {
       decision = questionDecision(await leasedSession(sessionId, context));
-    } else if (event === 'PreToolUse' && fencedToolNames.has(tool)) {
-      decision = contextFenceDecision({
-        leased: await leasedSession(sessionId, context),
-        agentId: text(input.agent_id),
-        transcriptPath: text(input.transcript_path),
-      });
     }
   } catch (error) {
     context.report?.([`session-fences: not enforced, ${String(error)}`]);

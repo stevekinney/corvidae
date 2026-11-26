@@ -1,7 +1,9 @@
+import { readFile, stat } from 'node:fs/promises';
 import { z } from 'zod';
 
 import { createTool } from '../create-tool';
 import type { Tool } from '../is-tool';
+import { scanPaths } from './glob';
 import type { RootJail } from './jail';
 
 /** Default cap on the number of matches returned. */
@@ -88,24 +90,16 @@ export function createGrepTool(options: CreateGrepToolOptions): Tool {
       let filesScanned = 0;
       let truncated = false;
 
-      const glob = new Bun.Glob(globPattern);
-      const scan = glob.scan({
-        cwd: jail.root,
-        onlyFiles: true,
-        dot: false,
-        followSymlinks: false,
-      });
-
-      for await (const relativeCandidate of scan) {
+      for await (const relativeCandidate of scanPaths(jail.root, globPattern, true)) {
         if (truncated) break;
 
         let text: string;
         try {
           const resolvedPath = await jail.resolve(relativeCandidate);
-          const file = Bun.file(resolvedPath);
-          if (file.size > maxFileBytes) continue;
+          const details = await stat(resolvedPath);
+          if (details.size > maxFileBytes) continue;
           filesScanned += 1;
-          text = await file.text();
+          text = await readFile(resolvedPath, 'utf8');
         } catch {
           // Symlink escapes the root, a transient read error, or another
           // traversal/I-O issue: skip this candidate.

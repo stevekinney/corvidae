@@ -60,6 +60,7 @@ export interface DurableActiveRunOptions {
    * acknowledged or any start lifecycle/effect runs. A rejection abandons the prepared record.
    */
   beforeLaunch?: (() => Promise<void>) | undefined;
+  adoptReserved?: boolean | undefined;
   livenessClock?: StallWatchdogClock | undefined;
   livenessOwner?: string | undefined;
 }

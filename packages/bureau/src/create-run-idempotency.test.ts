@@ -12,8 +12,8 @@ import {
   type GenerateFunction,
   type RunResult,
   stopWhen,
-  waitForCondition,
 } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 

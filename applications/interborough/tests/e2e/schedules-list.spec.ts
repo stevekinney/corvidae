@@ -155,9 +155,15 @@ const NOW_MS = Date.parse('2026-11-02T16:46:00.000Z');
 
 /** Weekly cleanup paused since its workflow was deleted, and Inbox triage resumed. */
 async function drawRowStatesOutsideTheSampleWorld(page: Page): Promise<void> {
-  await page.route(/\/v1\/schedules(\?|$)/, async (route) => {
+  await page.route('**/jsonrpc', async (route) => {
+    const { method } = bureauRequest(route);
+    if (method !== 'weft.schedules.list') {
+      await route.fallback();
+      return;
+    }
     await changed(route, (body) => {
-      const items = body['items'] as Record<string, unknown>[];
+      const result = body['result'] as Record<string, unknown>;
+      const items = result['items'] as Record<string, unknown>[];
       const triage = items.find((item) => item['description'] === 'Inbox triage');
       if (triage === undefined) throw new Error('the sample world lists Inbox triage');
       triage['status'] = 'active';
@@ -173,7 +179,7 @@ async function drawRowStatesOutsideTheSampleWorld(page: Page): Promise<void> {
         lastFireAt: Date.parse('2026-10-25T07:00:00.000Z'),
         nextFireAt: Date.parse('2026-11-08T08:00:00.000Z'),
       });
-      body['total'] = items.length;
+      result['total'] = items.length;
     });
   });
   await page.route('**/jsonrpc', async (route) => {

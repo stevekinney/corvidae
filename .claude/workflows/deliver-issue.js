@@ -7,7 +7,8 @@ export const meta = {
 
 // The coordinator runs brief.ts with --json and the pinned repository and base. In
 // args.preparedBriefs[issue], record its process exit as exitCode, its JSON path as
-// briefPath (empty on refusal), and copy the matching assignment's identity.base into base.
+// briefPath (empty on refusal), copy the matching assignment's identity.base into base, and copy
+// its route (`branch` or `pull-request`, the route the brief promises) into route.
 // Preserve error, needsResolvedRows and owned paths.
 // Set validated only after checking the result and issue identity. After a design
 // critique, the coordinator can rerun preparation against the validated rows and
@@ -54,8 +55,32 @@ const CRITIQUE_SCHEMA = {
                   type: 'string',
                   enum: ['ready', 'loading', 'empty', 'first-run', 'error', 'forbidden', 'other'],
                 },
+                witness: {
+                  type: 'object',
+                  properties: {
+                    specification: { type: 'string' },
+                    title: { type: 'string' },
+                    world: { type: 'string' },
+                    profiles: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          name: { type: 'string' },
+                          width: { type: 'integer' },
+                          theme: { type: 'string', enum: ['light', 'dark'] },
+                          targets: { type: 'array', items: { type: 'string' } },
+                          visible: { type: 'string' },
+                          scrolling: { type: 'string', enum: ['none', 'outlet'] },
+                        },
+                        required: ['name', 'width', 'theme', 'targets', 'visible', 'scrolling'],
+                      },
+                    },
+                  },
+                  required: ['specification', 'title', 'world', 'profiles'],
+                },
               },
-              required: ['route', 'state', 'kind'],
+              required: ['route', 'state', 'kind', 'witness'],
             },
           },
           widths: { type: 'array', items: { type: 'integer' } },
@@ -110,6 +135,9 @@ const FETCH_BASE_SCHEMA = {
     exitCode: { type: 'integer' },
     base: { type: 'string' },
     error: { type: 'string' },
+    ancestor: { type: 'boolean' },
+    briefDigest: { type: 'string' },
+    currentDigest: { type: 'string' },
   },
   required: ['exitCode'],
 };
@@ -123,6 +151,7 @@ const IMPLEMENT_SCHEMA = {
     branch: { type: 'string' },
     worktree: { type: 'string' },
     report: { type: 'string' },
+    pullRequest: { type: 'integer' },
   },
   required: ['status', 'startingBase', 'head', 'branch', 'worktree', 'report'],
 };
@@ -135,8 +164,29 @@ const CHECKS_SCHEMA = {
     head: { type: 'string' },
     reportOk: { type: 'boolean' },
     reportProblems: { type: 'array', items: { type: 'string' } },
+    pending: { type: 'array', items: { type: 'string' } },
   },
   required: ['exitCode', 'line', 'head', 'reportOk'],
+};
+
+const PENDING_SCHEMA = {
+  type: 'object',
+  properties: {
+    head: { type: 'string' },
+    results: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          command: { type: 'string' },
+          exitCode: { type: 'integer' },
+          signal: { type: 'string' },
+        },
+        required: ['command', 'exitCode'],
+      },
+    },
+  },
+  required: ['head', 'results'],
 };
 
 const DISPATCH_SCHEMA = {
@@ -181,14 +231,18 @@ const COMPARE_SCHEMA = {
   required: ['headSha', 'complete', 'noEvidence', 'hasNew'],
 };
 
+// The contract check's answer (`.claude/agents/stickler.md`): "Conforms to the contract" or
+// "N departures". A departure is a not-met criterion, a departure from a decision, constraint or
+// out-of-scope item, or an unexplained hunk; an unverifiable criterion is reported, not blocking.
 const VERDICT = {
   type: 'object',
   properties: {
-    verdict: { type: 'string', enum: ['approve', 'blocked'] },
-    findings: { type: 'array', items: { type: 'string' } },
+    status: { type: 'string', enum: ['conforms', 'departures'] },
+    departures: { type: 'array', items: { type: 'string' } },
+    unverifiable: { type: 'array', items: { type: 'string' } },
     evidencePath: { type: 'string' },
   },
-  required: ['verdict', 'findings'],
+  required: ['status', 'departures'],
 };
 
 const CORRECTION_SCHEMA = {
@@ -310,8 +364,9 @@ async function resolveRows(issue, steps, context) {
       }`,
       'This dispatch is a pre-build critique of rows, not a screenshot review: use Bash only for that command and for greps, and return the JSON the schema names instead of the findings formats.',
       'For every row id: declare each state the row covers as a route (a route pattern from applications/interborough/src/app/routes.ts) and the exact state name a capture specification writes (grep the `state:` strings in applications/interborough/tests/e2e), with a kind. First-run and empty states are first-class: declare them whenever the row shows them. Leave widths and themes out unless the row narrows them; the default is 1920, 1280 and 375 in light and dark because the state specs capture only those. Name 768 in widths only for a ready state with data, which the showcase specs capture.',
+      'For every state, also name its physical viewport witness (COR-2574): the repository-relative Playwright specification that captures it (`applications/interborough/tests/e2e/<name>.spec.ts` or `applications/interborough/tests/panels/<name>.spec.ts`), the full project-qualified title of the one test that captures it, exactly as `cd applications/interborough && bun --bun playwright test --list <specification>` prints it with the ` › ` separators and the brackets around the project removed and words joined by single spaces (for example `chromium e2e/runs-states.spec.ts /runs ready at 375 pixels`), the fixture world the capture records, which is the host the spec opens the page on (`sample-world` for the showcase host the state specs use, `first-run`, `plugin-pages`, `stress` for `responsive.spec.ts`, otherwise `e2e-host`; `designReviewWorld` in `applications/interborough/tests/e2e/design-review-capture.ts` decides it), and at least one profile: a kebab-case name, a width the spec captures (a phone width for the narrow witness), a theme, the targets that must be wholly inside that viewport (stable `data-testid` values, or `role:<role>:<exact accessible name>`), what a reviewer should see in the frame including any intended scrolling, and `scrolling` (`outlet` when the test scrolls the targets into view, otherwise `none`). Name only specifications and titles the listing shows.',
       'For every literal criterion in `literals`: say whether the rows are consistent with it or conflict with it (`checked`). Record each conflict, and each pair of rows that contradict each other, as a decision or a deferral with a reason, in `conflicts`. Never leave one open; when you cannot choose, defer it with the reason "owner decision needed".',
-      'Return rows (id, board, text, states, optional widths and themes), checked and conflicts.',
+      'Return rows (id, board, text, states with their witnesses, optional widths and themes), checked and conflicts.',
     ].join('\n'),
     {
       label: `critique ${issue}`,
@@ -377,7 +432,7 @@ function runChecks(issue, worktree, branch, head) {
     [
       `Run the focused checks of ${issue} on the branch head ${head}. Invoke no skills. Change nothing in the repository.`,
       `cd ${worktree}. Run \`git fetch origin ${branch}\`, then confirm \`git rev-parse HEAD\` and \`git rev-parse FETCH_HEAD\` both equal ${head}. If either differs, return exitCode 3, line "head mismatch" and the head you found.`,
-      'Otherwise run `bun scripts/chef/focused-checks.ts` once, with its output redirected to a file under tmp/ in that worktree, in the background if it runs long, and wait for it to exit. Never rerun it. Return exitCode (its exit code), line (the last non-empty line of that file) and head.',
+      'Otherwise run `bun scripts/chef/focused-checks.ts` once, with its output redirected to a file under tmp/ in that worktree, in the background if it runs long, and wait for it to exit. Never rerun it. Return exitCode (its exit code), line (the last non-empty line of that file), head, and pending: for every line of the file that starts `focused-checks: <step>: pending` and names a command after `run it directly: `, that command, verbatim (an empty array when there is none).',
       `Then, from the same worktree, run \`bun scripts/chef/report.ts check ${issue} --head ${head}\` once and read its JSON: return reportOk (its ok, false when it printed nothing) and reportProblems (its problems). It verifies that the worker's report exists, is valid, names the current brief version, lists every correction, was not recorded through the three-blocks escape, and is for this head.`,
     ].join('\n'),
     {
@@ -390,13 +445,100 @@ function runChecks(issue, worktree, branch, head) {
   );
 }
 
-function fetchDispatchBase(issue) {
+/** Runs the stages the focused checks left pending, each once, without the pool-wait bound. */
+function runPending(issue, worktree, branch, head, commands) {
+  log(`${issue}: running ${commands.length} pending stage(s) directly at ${head}`);
+  return agent(
+    [
+      `Run the pending focused-check stages of ${issue} at head ${head}. Invoke no skills. Change nothing in the repository.`,
+      `cd ${worktree}. Run \`git fetch origin ${branch}\` and confirm \`git rev-parse HEAD\` equals ${head}; if it differs, return the head you found and no results.`,
+      'Run each command below once, from that directory, with its output redirected to a file under tmp/ there, in the background, and wait for it to exit; never rerun one and never add a wait of your own. Return head and results: each command, verbatim, with its exit code, and signal (its name, such as SIGTERM) when a signal ended it.',
+      ...commands.map((command) => `- ${command}`),
+    ].join('\n'),
+    {
+      label: `pending ${issue}`,
+      phase: 'check',
+      schema: PENDING_SCHEMA,
+      model: 'haiku',
+      effort: 'low',
+    },
+  );
+}
+
+// A pending stage that runs and still is not admitted (or hits the hang guard) gave no verdict.
+const PENDING_NOT_RUN = [70, 75, 76];
+
+/**
+ * Whether a pending stage gave no verdict: it was still not admitted, hit the hang guard, or a
+ * signal ended it, either reported by name or as `run-exclusively.ts`'s 128 + signal number.
+ */
+function gaveNoVerdict(result) {
+  return (
+    PENDING_NOT_RUN.includes(result.exitCode) ||
+    (typeof result.signal === 'string' && result.signal.trim() !== '') ||
+    (result.exitCode > 128 && result.exitCode <= 128 + 64)
+  );
+}
+
+/** The failed-step count of a focused-checks summary line, or null when it names none. */
+function failedSteps(line) {
+  const match = /\b(\d+) failed\b/.exec(typeof line === 'string' ? line : '');
+  return match === null ? null : Number(match[1]);
+}
+
+/**
+ * Focused checks that exit non-zero with no failed step gave no verdict: a pending stage is run
+ * directly, and a hung or killed step goes to the coordinator. Neither is a defect, so neither
+ * opens a correction. Returns null when a step failed (an ordinary finding), { findings } after
+ * the pending stages ran, or a judgment.
+ */
+async function noVerdict(issue, checks, where, steps, evidence) {
+  if (checks.exitCode === 0 || failedSteps(checks.line) !== 0) return null;
+  const commands = (Array.isArray(checks.pending) ? checks.pending : []).filter(
+    (command) => typeof command === 'string' && command.trim() !== '',
+  );
+  const stop = (why) =>
+    judgment(
+      issue,
+      `focused checks gave no verdict (${why}); that is not a defect, so no correction was opened`,
+      steps,
+      where,
+    );
+  if (/\bhung\b|killed by a signal/.test(checks.line) || commands.length === 0)
+    return stop(checks.line);
+  const ran = await runPending(issue, where.worktree, where.branch, where.head, commands);
+  if (ran === null) return judgment(issue, 'pending stage step failed', steps, where);
+  evidence.pending = ran;
+  if (ran.head !== where.head)
+    return judgment(issue, `pending stages ran at ${ran.head}, not ${where.head}`, steps, where);
+  const results = Array.isArray(ran.results) ? ran.results : [];
+  const result = (command) => results.find((entry) => entry.command === command);
+  const unrun = commands.filter((command) => !result(command) || gaveNoVerdict(result(command)));
+  if (unrun.length > 0) return stop(`still not run: ${unrun.join('; ')}`);
+  return {
+    findings: commands
+      .filter((command) => result(command).exitCode !== 0)
+      .map(
+        (command) =>
+          `pending check \`${command}\` failed when run directly (exit ${result(command).exitCode})`,
+      ),
+  };
+}
+
+/**
+ * Fetches the default branch. When it has moved past the brief's base, the same step says whether
+ * the base is its ancestor and reads the issue body digest of the brief on disk and of a fresh
+ * `--stdout` brief, so a moved base is accepted unless the issue itself changed.
+ */
+function fetchDispatchBase(issue, briefBase, briefPath, run) {
   phase('brief');
+  const runFlag = typeof run === 'string' && run !== '' ? ` --run ${run}` : '';
   return agent(
     [
       'Read the configured defaultBranch from scripts/chef/repository.json in this checkout.',
       'Fetch it with `git fetch --no-tags origin "refs/heads/<default>:refs/remotes/origin/<default>"`, substituting that branch name in both places.',
       'If the fetch succeeds, return exitCode 0 and base from `git rev-parse --verify refs/remotes/origin/<default>`. If either command fails, return its nonzero exitCode and error. Change no files and leave the checkout where it is.',
+      `If that base is not ${briefBase}, also run \`git merge-base --is-ancestor ${briefBase} <that base>\` and return ancestor true when it exits 0, false otherwise; return briefDigest, the value of the \`Issue body digest:\` line of the file ${briefPath}; and run \`bun scripts/chef/brief.ts ${issue} --stdout${runFlag}\` once and return currentDigest, the value of the \`Issue body digest:\` line it prints. Leave out a value you could not read.`,
     ].join('\n'),
     {
       label: `fetch base ${issue}`,
@@ -465,15 +607,26 @@ function compareRun(issue, runId) {
   );
 }
 
-function review(issue, branch, head) {
+/**
+ * The acceptance review of every candidate: the read-only contract check. Its contract is the
+ * issue's own sections of the brief; its range starts where the worker started (or at the default
+ * branch for a coordinator-requested correction, which has no recorded start).
+ */
+function review(issue, where, base, briefPath) {
   phase('review');
-  log(`${issue}: reviewing ${branch} at ${head}`);
+  log(`${issue}: checking ${where.branch} at ${where.head} against its contract`);
+  const contract =
+    typeof briefPath === 'string' && briefPath !== ''
+      ? briefPath
+      : `tmp/chef/briefs/${issue}.md in the main checkout (the parent directory of the output of \`git rev-parse --path-format=absolute --git-common-dir\`)`;
   return agent(
     [
-      `Review branch ${branch} of ${issue} at head ${head}, against the diff of exactly that head (fetch the branch if needed; check \`git rev-parse HEAD\` matches).`,
-      'Review per your charter and AGENTS.md "Review guidelines". Return verdict approve or blocked, the blocking findings, and the evidence path.',
+      `Check branch ${where.branch} of ${issue} at head ${where.head} against its contract. cd ${where.worktree} and confirm \`git rev-parse HEAD\` is ${where.head}; change nothing.`,
+      `The contract is the issue's own sections of the brief file ${contract}: its brief, criteria, decisions, out of scope, constraints, files, verification and delivery boundary. The charter rules and coordinator sections are not contract.`,
+      `The diff is \`git diff ${base}...${where.head}\`.`,
+      'Return status conforms or departures, each departure as one line (the contract line and the diff location), each unverifiable criterion as one line, and evidencePath: the reference to cite for this check (the diff range and head).',
     ].join('\n'),
-    { label: `review ${issue}`, phase: 'review', schema: VERDICT, agentType: 'chef-reviewer' },
+    { label: `review ${issue}`, phase: 'review', schema: VERDICT, agentType: 'stickler' },
   );
 }
 
@@ -617,10 +770,14 @@ async function runCorrection(context, where, findings, key) {
 }
 
 /** The structured result the coordinator lands from: only facts a step returned. */
-function evidenceRequest(issue, run, built, head, evidence, verdict, override, chosen) {
+function evidenceRequest(issue, run, built, head, evidence, verdict, override, chosen, route) {
   return {
     workerModel: { model: chosen.model, rule: chosen.rule },
     issue,
+    // The route the brief promised: `delivery-request.ts prepare --route <route>`, then
+    // `deliver.ts --pr <pullRequest>` for a pull request or `deliver.ts --branch` otherwise.
+    route,
+    pullRequest: Number.isInteger(built.pullRequest) ? built.pullRequest : null,
     run: run === undefined ? null : run,
     repository: REPOSITORY,
     startingBase: normalizeCommitSha(built.startingBase),
@@ -637,7 +794,11 @@ function evidenceRequest(issue, run, built, head, evidence, verdict, override, c
       noEvidence: evidence.compare.noEvidence,
       hasNew: evidence.compare.hasNew,
     },
-    review: { verdict: verdict.verdict, evidencePath: verdict.evidencePath },
+    review: {
+      verdict: verdict.status,
+      evidencePath: verdict.evidencePath,
+      unverifiable: Array.isArray(verdict.unverifiable) ? verdict.unverifiable : [],
+    },
     override: override === null ? null : override,
   };
 }
@@ -709,6 +870,7 @@ async function deliverOne(issue) {
   }
   let briefPath = prepared.briefPath.trim();
   let briefBase = normalizeCommitSha(prepared.base);
+  let route = prepared.route;
   let overridden = null;
   if (prepared.exitCode !== 0) {
     if (override === null) {
@@ -737,6 +899,7 @@ async function deliverOne(issue) {
     steps.overrideBrief = written;
     briefPath = written.briefPath;
     briefBase = normalizeCommitSha(written.base);
+    route = written.route;
     log(`${issue}: brief override recorded: ${override.reason}`);
   } else if (!briefPath.startsWith('/')) {
     return judgment(issue, 'brief exited 0 without an absolute brief path', steps);
@@ -744,7 +907,14 @@ async function deliverOne(issue) {
 
   if (briefBase === undefined)
     return judgment(issue, 'validated brief has no pinned base SHA', steps);
-  const fetched = await fetchDispatchBase(issue);
+  // The route the brief promises the worker is the route delivery takes (#1305 review).
+  if (route !== 'branch' && route !== 'pull-request')
+    return judgment(
+      issue,
+      'validated brief names no delivery route (branch or pull-request, from brief.ts --json); no worker',
+      steps,
+    );
+  const fetched = await fetchDispatchBase(issue, briefBase, briefPath, run);
   steps.fetchBase = fetched;
   if (fetched === null || fetched.exitCode !== 0)
     return judgment(
@@ -755,12 +925,32 @@ async function deliverOne(issue) {
   const fetchedBase = normalizeCommitSha(fetched.base);
   if (fetchedBase === undefined)
     return judgment(issue, 'fetch of the default branch did not return a commit SHA', steps);
-  if (fetchedBase !== briefBase)
-    return judgment(
-      issue,
-      `validated brief pins ${briefBase}; fetched default branch is ${fetched.base}. Prepare a fresh brief.`,
-      steps,
-    );
+  // A moved base needs no new evidence run (owner decision, 2026-11-21): the brief stands while its
+  // base is an ancestor of the fetched branch and the issue body is unchanged.
+  if (fetchedBase !== briefBase) {
+    if (fetched.ancestor !== true)
+      return judgment(
+        issue,
+        `validated brief pins ${briefBase}, which is not an ancestor of the fetched default branch ${fetched.base}. Prepare a fresh brief.`,
+        steps,
+      );
+    const digests = [fetched.briefDigest, fetched.currentDigest];
+    if (digests.some((value) => typeof value !== 'string' || value.trim() === ''))
+      return judgment(
+        issue,
+        'the default branch moved and the issue body digest could not be compared. Prepare a fresh brief.',
+        steps,
+      );
+    if (fetched.briefDigest.trim() !== fetched.currentDigest.trim())
+      return judgment(
+        issue,
+        `the issue body changed since the brief (digest ${fetched.briefDigest} became ${fetched.currentDigest}). Prepare a fresh brief.`,
+        steps,
+      );
+    log(`${issue}: default branch moved to ${fetched.base}; the brief's base is its ancestor`);
+  }
+  // The native worktree starts at the brief's base or, once the default branch moved, at its tip.
+  const acceptedStarts = fetchedBase === briefBase ? [briefBase] : [briefBase, fetchedBase];
 
   const ownedPaths = [
     ...(args && args.paths && Array.isArray(args.paths[issue]) ? args.paths[issue] : []),
@@ -772,8 +962,10 @@ async function deliverOne(issue) {
   log(`${issue}: dispatching chef-worker (${chosen.model}: ${chosen.rule}) from ${briefPath}`);
   const built = await agent(
     [
-      `Before editing, run \`git rev-parse --verify HEAD\` in your assigned worktree and record the result as startingBase. If it differs from ${briefBase}, make no changes and return status blocked, the observed SHA as both startingBase and head, the assigned branch and worktree path, and a report explaining the mismatch.`,
-      `Implement the issue from the brief file ${briefPath} and nothing else. This is the branch path: push your branch, open no pull request, and return startingBase, the pushed head, the branch name and your worktree path. ${NO_MERGE}`,
+      `Before editing, run \`git rev-parse --verify HEAD\` in your assigned worktree and record the result as startingBase. If it is not ${acceptedStarts.join(' or ')}, make no changes and return status blocked, the observed SHA as both startingBase and head, the assigned branch and worktree path, and a report explaining the mismatch.${acceptedStarts.length > 1 ? ` The default branch moved past the brief's \`Starting base:\` line (${briefBase}) to ${fetchedBase}; either start is accepted.` : ''}`,
+      route === 'pull-request'
+        ? `Implement the issue from the brief file ${briefPath} and nothing else. This is the pull-request route its Delivery boundary names: push your branch, open a pull request for it (not a draft), and return startingBase, the pushed head, the branch name, your worktree path and pullRequest (its number). ${NO_MERGE}`
+        : `Implement the issue from the brief file ${briefPath} and nothing else. This is the branch path: push your branch, open no pull request, and return startingBase, the pushed head, the branch name and your worktree path. ${NO_MERGE}`,
     ].join('\n'),
     {
       label: `implement ${issue}`,
@@ -786,10 +978,10 @@ async function deliverOne(issue) {
   );
   if (built === null) return judgment(issue, 'implementation failed', steps);
   steps.implement = built;
-  if (normalizeCommitSha(built.startingBase) !== briefBase)
+  if (!acceptedStarts.includes(normalizeCommitSha(built.startingBase)))
     return judgment(
       issue,
-      `worktree started at ${built.startingBase}; expected fetched base ${briefBase}`,
+      `worktree started at ${built.startingBase}; expected ${acceptedStarts.join(' or ')}`,
       steps,
       {
         head: built.head,
@@ -812,7 +1004,12 @@ async function deliverOne(issue) {
     overridden,
     steps,
     briefPath,
-    state: correctionState(issue, null, []),
+    route,
+    state: correctionState(
+      issue,
+      Number.isInteger(built.pullRequest) ? built.pullRequest : null,
+      [],
+    ),
   };
   let head = built.head;
   for (let round = 1; round <= MAXIMUM_ROUNDS; round += 1) {
@@ -875,13 +1072,26 @@ async function verifyRound(context, head, round, key) {
         steps,
         where,
       );
-    let findings = verifyBlockers(evidence);
+    const unsettled = await noVerdict(issue, checks, where, steps, evidence);
+    if (unsettled !== null && unsettled.status !== undefined) return unsettled;
+    let findings = unsettled === null ? verifyBlockers(evidence) : unsettled.findings;
 
     if (findings.length === 0) {
-      const verdict = await review(issue, built.branch, head);
+      const verdict = await review(
+        issue,
+        where,
+        normalizeCommitSha(built.startingBase) ?? 'origin/main',
+        context.briefPath,
+      );
       if (verdict === null) return judgment(issue, 'local review failed', steps, where);
       evidence.review = verdict;
-      if (verdict.verdict !== 'approve') return { findings: verdict.findings };
+      if (verdict.status !== 'conforms')
+        return {
+          findings:
+            Array.isArray(verdict.departures) && verdict.departures.length > 0
+              ? verdict.departures
+              : ['the contract check reported departures without naming them'],
+        };
       if (!verdict.evidencePath?.trim())
         return judgment(issue, 'local review did not return an evidence reference', steps, where);
       const dispatch = await dispatchEvidence(
@@ -936,6 +1146,7 @@ async function verifyRound(context, head, round, key) {
             verdict,
             overridden,
             chosen,
+            context.route,
           ),
         };
       }
@@ -983,6 +1194,8 @@ async function correctOne(request) {
     overridden: null,
     steps,
     briefPath: text(request.briefPath) ? request.briefPath : undefined,
+    // A correction keeps the route the candidate is on: a pull request when it names one.
+    route: request.pr === undefined ? 'branch' : 'pull-request',
     state: correctionState(
       issue,
       request.pr === undefined ? null : request.pr,

@@ -14,6 +14,10 @@ import { getSettings } from '../lib/bureau-settings.ts';
 import { listTasks } from '../lib/bureau-tasks.ts';
 import { defaultAgentQuery, workflowAuthorQuery } from '../lib/default-agent.ts';
 import { classifyFault } from '../lib/faults.ts';
+import {
+  createBureauClient,
+  type CatalogOperations,
+} from '../lib/generated/bureau-operation-client.generated.ts';
 import { getPanels, loadPluginApp } from '../lib/host-panels.ts';
 import { getPlugins, type PluginStanding } from '../lib/host-plugins.ts';
 import { startedFromWorkflows } from '../lib/new-chat-address.ts';
@@ -111,14 +115,18 @@ async function probeUnlistedAgent(queryClient: QueryClient, agent: string): Prom
 }
 
 /** The audit log: empty when the caller may see no event, which the Bureau answers for any caller. */
-async function probeAudit(): Promise<ViewProbeResult> {
-  const page = await queryAudit({ types: AUDIT_EVENT_TYPES }, undefined, { limit: 1 });
+async function probeAudit(
+  client: Pick<CatalogOperations, 'bureau.audit.query'>,
+): Promise<ViewProbeResult> {
+  const page = await queryAudit(client, { types: AUDIT_EVENT_TYPES }, undefined, { limit: 1 });
   return { empty: page.records.length === 0 };
 }
 
 /** The checks: empty when the caller sees no result. The Bureau answers any caller with the ones about what it owns. */
-async function probeChecks(): Promise<ViewProbeResult> {
-  const page = await listChecks({}, undefined, { limit: 1 });
+async function probeChecks(
+  client: Pick<CatalogOperations, 'bureau.checks.list'>,
+): Promise<ViewProbeResult> {
+  const page = await listChecks(client, {}, undefined, { limit: 1 });
   return { empty: page.checks.length === 0 };
 }
 
@@ -207,7 +215,7 @@ async function probeWorkflowType(
   }
   if ((await resolveWorkflow(client, type)) === undefined) throw notFound('workflow');
   if (pattern === '/workflows/:workflow/runs') {
-    const page = await client.list({ type, limit: 1 });
+    const page = await client.operations['weft.workflows.list']({ type, limit: 1 });
     // A first run of the type is the engine's `workflow:started`.
     return page.items.length === 0
       ? { empty: true, recheckMs: RUNS_RECHECK_MS, liveSource: 'fleet' }
@@ -331,8 +339,10 @@ export function probeFor(
         }
         return { empty: false };
       };
-    case 'audit':
-      return probeAudit;
+    case 'audit': {
+      const client = createBureauClient({ baseUrl: '' });
+      return () => probeAudit(client);
+    }
     case 'settings':
       // Plugins reads the host's own route, and the page words that read's loading and failure itself;
       // the Settings frame around it still reads the Bureau's settings for the restart notice.
@@ -377,7 +387,7 @@ export function probeFor(
         });
     }
     case 'checks':
-      return probeChecks;
+      return () => probeChecks(createBureauClient({ baseUrl: '' }));
     case 'capabilities':
       // The catalog is what the page cannot do without: asking for it settles whether the caller
       // may read it. The skills are read by the page, which says so itself when they are missing.
@@ -405,7 +415,7 @@ export function probeFor(
       // One schedule's page asks for that schedule, and says in its own words when it is not there.
       if (parameters['schedule'] !== undefined) return undefined;
       return async (client) => {
-        const page = await client.listSchedules({});
+        const page = await client.operations['weft.schedules.list']({});
         return { empty: page.items.length === 0 };
       };
     case 'reviews':

@@ -11,7 +11,7 @@
  * unsupported-outcome metrics. Given the same scenario and baseline revision
  * it is the same trace, which is how a scorer re-derives it during replay.
  */
-import { createManualRuntimeServices } from '@lostgradient/operative';
+import { createManualRuntimeServices } from '@lostgradient/operative/testing';
 
 import {
   type AdmissionOutcome,

@@ -569,4 +569,61 @@ describe('hosted OAuth issuer', () => {
     expect(html).toContain('original-subject');
     expect(html).not.toContain('changed-subject');
   });
+
+  test('consent allows only the selected registered callback origin', async () => {
+    using storage = new MemoryStorage();
+    const origin = 'https://issuer.test';
+    const resource = `${origin}/mcp`;
+    const issuer = hostedOAuth({
+      issuer: origin,
+      resource,
+      scopes: ['read'],
+      startingScopes: ['read'],
+      scopeDescriptions: { read: 'Read' },
+      store: new OAuthStore(storage),
+      identity: {
+        session: async () => ({ subject: 'subject', tenant: 'tenant', binding: 'session' }),
+        signIn: async () => new Response(null, { status: 401 }),
+        principalForGrant: async () => ({ delegableScopes: ['read'] }),
+      },
+    });
+    const callbacks = [
+      'https://client.test/oauth/callback?app=one',
+      'http://127.0.0.1:46213/callback',
+    ];
+    const registration = await issuer.handle(
+      new Request(`${origin}/oauth/register`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          application_type: 'native',
+          redirect_uris: callbacks,
+          token_endpoint_auth_method: 'none',
+        }),
+      }),
+    );
+    expect(registration.status).toBe(201);
+    const client = await registration.json();
+    const authorize = (redirect: string) => {
+      const query = new URLSearchParams({
+        client_id: client.client_id,
+        redirect_uri: redirect,
+        response_type: 'code',
+        code_challenge: createHash('sha256').update('a'.repeat(43)).digest('base64url'),
+        code_challenge_method: 'S256',
+        resource,
+      });
+      return issuer.handle(new Request(`${origin}/oauth/authorize?${query}`));
+    };
+    for (const callback of callbacks) {
+      const response = await authorize(callback);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-security-policy')).toBe(
+        `default-src 'none'; form-action 'self' ${new URL(callback).origin}; base-uri 'none'`,
+      );
+    }
+    const unregistered = await authorize('https://unregistered.test/callback');
+    expect(unregistered.status).toBe(400);
+    expect(unregistered.headers.get('content-security-policy')).toBeNull();
+  });
 });

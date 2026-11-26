@@ -752,26 +752,6 @@ export {
   TaskFailedEvent,
   TaskRoutedEvent,
 } from './supervisor-contracts';
-export type {
-  DurableEventHistoryFixture,
-  DurableEventHistoryFixtureOptions,
-  DurableEventHistoryFixtureRecord,
-} from './test/durable-event-history-fixture';
-export {
-  createDurableEventHistoryFixture,
-  DURABLE_EVENT_HISTORY_FIXTURE_SEQUENCE,
-  seedSchemaVersionMismatchRecord,
-} from './test/durable-event-history-fixture';
-export type {
-  BureauFaultOperation,
-  BureauFaultPlan,
-  BureauFaultPlanEntry,
-} from './test/fault-plan';
-export {
-  BureauFaultSelectorResolutionError,
-  selectAuditWriteFaultTarget,
-  selectWebhookDeliveryFaultTarget,
-} from './test/fault-plan';
 // COR-89 — `BureauOptions.runtime` takes a `RuntimeServices`, and a test
 // drives a Bureau by passing a `ManualRuntimeServices`, so the factory that
 // builds one is reachable from this package too. The source owner is the

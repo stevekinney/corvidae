@@ -13,8 +13,9 @@
   import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
   import { HEALTH_RUNNING_RUNS_KEY } from '../../lib/live-source/cache-integration.ts';
   import { readAttention } from '../../lib/bureau-attention.ts';
+  import { createBureauClient } from '../../lib/generated/bureau-operation-client.generated.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { getPrincipalStore, isForbidden } from '../../lib/scopes.svelte.ts';
+  import { getPrincipalStore, isForbidden, principalQueryScope } from '../../lib/scopes.svelte.ts';
   import { waitingReviewsQuery } from '../reviews/reviews-data.ts';
   import { aggregateInputFor, failedRecentlyFilter } from './health-counts.ts';
   import { parseWorkflowAggregateResult } from './aggregate-output.ts';
@@ -45,6 +46,7 @@
   const LOADING_DELAY_MILLISECONDS = 300;
 
   const client = getClient();
+  const bureau = createBureauClient({ baseUrl: '' });
   const principalStore = getPrincipalStore();
   const canReadRuns = $derived(principalStore.hasScope('workflows:read'));
   const fleetLive = useFleetEventsLive();
@@ -134,9 +136,11 @@
         .map(([run, kind]) => `${run}:${kind}`)
         .toSorted()
         .join(','),
+      principalQueryScope(principalStore.principal),
     ],
     queryFn: ({ signal }) =>
       loadRecentActivity({
+        client: bureau,
         attention: attention.data?.items ?? [],
         waitingRuns: waitingByRun,
         now: Date.now(),

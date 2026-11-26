@@ -95,15 +95,8 @@ async function triageAsDrawn(page: Page, id: string): Promise<void> {
   await rewriteOperation(page, 'bureau.workflows.list', (answer) =>
     listWithSignalStarted(answer, id),
   );
-  await page.route(
-    (url) => url.pathname.endsWith('/schedules') && url.searchParams.get('workflowType') === id,
-    async (route: Route) => {
-      const response = await route.fetch();
-      await route.fulfill({
-        response,
-        json: asOutsideSchedule((await response.json()) as JsonRecord),
-      });
-    },
+  await rewriteOperation(page, 'weft.schedules.list', (answer, params) =>
+    params['workflowType'] === id ? asOutsideSchedule(answer) : answer,
   );
 }
 
@@ -400,15 +393,8 @@ for (const width of WIDTHS) {
       await rewriteOperation(page, 'bureau.workflows.revisions', (answer, params) =>
         params['id'] === id ? { ...answer, savedVersionCount: REFUND_VERSIONS } : answer,
       );
-      await page.route(
-        (url) => url.pathname.endsWith('/schedules') && url.searchParams.get('workflowType') === id,
-        async (route: Route) => {
-          const response = await route.fetch();
-          await route.fulfill({
-            response,
-            json: asRefundOutsideSchedule((await response.json()) as JsonRecord),
-          });
-        },
+      await rewriteOperation(page, 'weft.schedules.list', (answer, params) =>
+        params['workflowType'] === id ? asRefundOutsideSchedule(answer) : answer,
       );
       await openWorkflow(page, `/workflows/${encodeURIComponent(id)}`, width);
       await expect(detail(page).getByTestId('workflow-state')).toHaveText("Can't load");

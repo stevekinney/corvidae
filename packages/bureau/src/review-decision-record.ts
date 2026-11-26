@@ -120,6 +120,18 @@ export type ReviewDecisionRequest = {
   readonly principal: string;
   readonly reason?: string | undefined;
   readonly digest: string;
+  readonly deletionRelease?: DeletionReleaseClaim;
+};
+
+export type DeletionReleaseClaim = {
+  readonly sessionId: string;
+  readonly incarnation: string;
+  readonly handler: string;
+  readonly identifier: string;
+  readonly runId: string;
+  readonly reviewId: string;
+  readonly round: number;
+  readonly toolRevision: string;
 };
 
 type StoredDecision = {
@@ -128,6 +140,7 @@ type StoredDecision = {
   readonly reason?: string;
   readonly digest: string;
   readonly recorded: boolean;
+  readonly deletionRelease?: DeletionReleaseClaim;
 };
 
 export type ReviewDecisionClaim =
@@ -149,6 +162,10 @@ export type ReviewDecisionRecords = {
   claim(request: ReviewDecisionRequest): Promise<ReviewDecisionClaim>;
   /** Reads the exact decision record without creating or changing it. */
   inspect(request: ReviewDecisionRequest): Promise<ReviewDecisionInspection>;
+  deletionRelease(
+    reviewId: string,
+    round: number,
+  ): Promise<{ digest: string; release: DeletionReleaseClaim } | undefined>;
   /** Deletes the record this caller claimed, if it is still exactly what the claim wrote. */
   release(request: ReviewDecisionRequest, value: string): Promise<void>;
   /**
@@ -165,6 +182,7 @@ function serialize(request: ReviewDecisionRequest, recorded: boolean): string {
     principal: request.principal,
     ...(request.reason === undefined ? {} : { reason: request.reason }),
     digest: request.digest,
+    ...(request.deletionRelease === undefined ? {} : { deletionRelease: request.deletionRelease }),
     recorded,
   } satisfies StoredDecision);
 }
@@ -194,7 +212,8 @@ function isSameDecision(stored: StoredDecision, request: ReviewDecisionRequest):
     stored.decision === request.decision &&
     stored.principal === request.principal &&
     stored.reason === request.reason &&
-    stored.digest === request.digest
+    stored.digest === request.digest &&
+    JSON.stringify(stored.deletionRelease) === JSON.stringify(request.deletionRelease)
   );
 }
 
@@ -204,12 +223,42 @@ export function createReviewDecisionRecords(
   if (kv === undefined) {
     return {
       inspect: () => Promise.resolve({ outcome: 'missing' }),
+      deletionRelease: () => Promise.resolve(undefined),
       claim: () => Promise.resolve({ outcome: 'unfenced' }),
       release: () => Promise.resolve(),
       markRecorded: () => Promise.resolve(true),
     };
   }
   return {
+    async deletionRelease(reviewId, round) {
+      const raw = await kv.get(reviewDecisionKey(reviewId, round));
+      if (raw === null) return undefined;
+      const held = parse(raw);
+      if (!held) throw new Error('Review decision record is unreadable');
+      if (held.principal !== 'system:session-deletion') return undefined;
+      const release = held.deletionRelease;
+      if (
+        held.decision !== 'deny' ||
+        !release ||
+        typeof release !== 'object' ||
+        release.reviewId !== reviewId ||
+        release.round !== round ||
+        typeof release.sessionId !== 'string' ||
+        typeof release.incarnation !== 'string' ||
+        typeof release.handler !== 'string' ||
+        typeof release.identifier !== 'string' ||
+        typeof release.runId !== 'string' ||
+        typeof release.toolRevision !== 'string' ||
+        !release.sessionId ||
+        !release.incarnation ||
+        !release.handler ||
+        !release.identifier ||
+        !release.runId ||
+        !release.toolRevision
+      )
+        throw new Error('Deletion release claim is unreadable');
+      return { digest: held.digest, release };
+    },
     async inspect(request) {
       const raw = await kv.get(reviewDecisionKey(request.reviewId, request.round));
       if (raw === null) return { outcome: 'missing' };

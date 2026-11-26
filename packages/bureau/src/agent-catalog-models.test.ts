@@ -3,7 +3,8 @@
  * `bureau.agents.models` operation: it describes what one agent allows a session to be switched
  * to, against the deployment's model catalog as it is when the call is made.
  */
-import { createAgent, createMockGenerate } from '@lostgradient/operative';
+import { createAgent } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { type AgentDefinitions, createAgentCatalog } from './agent-catalog';

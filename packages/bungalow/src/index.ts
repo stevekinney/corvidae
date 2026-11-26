@@ -1,5 +1,6 @@
 export { openBungalow, openLocalBungalow, openTemporaryBungalow } from './bungalow.ts';
 export type {
+  AcquireLock,
   Bungalow,
   ContentLocation,
   DatabaseLocation,
@@ -8,6 +9,7 @@ export type {
   OpenLocalBungalowOptions,
   OpenRemoteBungalowOptions,
   OpenTemporaryBungalowOptions,
+  PresignerFactory,
   SecretProviderFactory,
 } from './bungalow.ts';
 export type {
@@ -29,10 +31,24 @@ export {
   BungalowStateError,
   BungalowUnsupportedError,
 } from './errors.ts';
-export { acquireLocalRootLockDescriptor } from './lock.ts';
+export { acquireLocalRootLockDescriptor, acquirePortableLock } from './lock.ts';
 export type { RootLock } from './lock.ts';
+export { ObjectStoreRequestError } from './object-store.ts';
+export type {
+  BungalowObjectStore,
+  ListedObjectEntry,
+  ObjectListInput,
+  ObjectListing,
+} from './object-store.ts';
+export { createSigV4Presigner } from './presign.ts';
+export type {
+  ObjectPresigner,
+  PresignMethod,
+  PresignOptions,
+  SigV4PresignerOptions,
+} from './presign.ts';
 export type { RemoteBungalowDescriptor } from './remote-configuration.ts';
-export { openRemoteBungalow } from './remote.ts';
+export { defaultPresigner, openRemoteBungalow } from './remote.ts';
 export { bungalowHomeVariable, resolveBungalowRoot } from './resolve-root.ts';
 export type { BungalowEnvironment, ResolveBungalowRootOptions } from './resolve-root.ts';
 

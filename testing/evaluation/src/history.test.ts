@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 
 import { sha256Hex } from '@lostgradient/cryptography';
+import { type RunResultBase } from '@lostgradient/operative';
 import {
   createManualRuntimeServices,
   createScriptedGenerate,
-  type RunResultBase,
   type ScriptedGenerateStep,
-} from '@lostgradient/operative';
+} from '@lostgradient/operative/testing';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing';
 

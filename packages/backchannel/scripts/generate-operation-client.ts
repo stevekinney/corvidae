@@ -16,7 +16,11 @@ import { compareStrings } from '../src/internals.ts';
 import { join } from 'node:path';
 
 import { renderOperationBehaviors } from './operation-behaviors.ts';
-import { renderAliasDeclarations, selectAliases } from './operation-client-aliases.ts';
+import {
+  referencedRootAliases,
+  renderAliasDeclarations,
+  selectAliases,
+} from './operation-client-aliases.ts';
 import {
   GENERATED_HEADER,
   operationDomains,
@@ -24,7 +28,7 @@ import {
   subscriptionTypesSource,
   type OperationDomainName,
 } from './operation-client-domains.ts';
-import { schemaToNode } from './operation-client-schema.ts';
+import { canonicalKey, parseSchema, renderNode } from './operation-client-schema.ts';
 import { svelteClientSource } from './operation-client-svelte.ts';
 
 export type { OperationDomainName } from './operation-client-domains.ts';
@@ -141,6 +145,17 @@ export type OperationClientOptions = {
   readonly outputDirectory: string;
   /** The name of the main generated file. Defaults to `operation-client.generated.ts`. */
   readonly outputFile?: string | undefined;
+  /** Select generated entry points; domain and shared types are always emitted. */
+  readonly entries?:
+    readonly ('client' | 'portable' | 'fetch' | 'behaviors' | 'svelte')[] | undefined;
+  /** Emit only the operation type map in the main client entry. */
+  readonly typeOnlyClient?: boolean | undefined;
+  /** Exclude command bindings when a consumer supplies its own actions. */
+  readonly svelteCommands?: boolean | undefined;
+  /** Omit generic provider exports when a consumer supplies its own provider. */
+  readonly svelteProvider?: boolean | undefined;
+  /** Export only shared types directly referenced by operation entries. */
+  readonly referencedSharedTypesOnly?: boolean | undefined;
   /** Emit transport-injected and Fetch entries alongside the existing client. */
   readonly portableEntries?: boolean | undefined;
   /** Emit bindings for declared behavior using the optional Svelte runtime. */
@@ -232,38 +247,62 @@ export async function createOperationClientSources(
 
   const subscriptionOperations = selectSubscriptions(snapshot, options);
 
-  const roots = [
-    ...clientOperations.flatMap((operation) => [
-      schemaToNode(operation.inputSchema),
-      schemaToNode(operation.outputSchema),
-    ]),
+  const schemaRoots = [
+    ...clientOperations.flatMap((operation) => [operation.inputSchema, operation.outputSchema]),
     ...subscriptionOperations.flatMap((operation) => [
-      schemaToNode(operation.inputSchema),
-      schemaToNode(operation.eventSchema ?? {}),
+      operation.inputSchema,
+      operation.eventSchema ?? {},
     ]),
   ];
+  const parsedRoots = schemaRoots.map(parseSchema);
+  const definitions = new Map(parsedRoots.flatMap((parsed) => [...parsed.definitions]));
+  const roots = [...parsedRoots.map((parsed) => parsed.root), ...definitions.values()];
 
   const { aliasNameByKey, nodeByKey } = selectAliases(roots);
+  const allAliases = new Map(aliasNameByKey);
+  for (const name of definitions.keys())
+    allAliases.set(canonicalKey({ kind: 'reference', name }), name);
   const domains = operationDomains(clientOperations, options.domainName);
   const imports = domains
     .map((domain) => `import type { ${domain.typeName} } from './${domain.fileName}';`)
     .join('\n');
   const types = domains.map((domain) => domain.typeName).join(' & ') || '{}';
-  const aliasDeclarations = renderAliasDeclarations(aliasNameByKey, nodeByKey);
+  const aliasDeclarations = [
+    ...renderAliasDeclarations(aliasNameByKey, nodeByKey),
+    ...[...definitions.entries()]
+      .toSorted(([left], [right]) => compareStrings(left, right))
+      .map(([name, node]) => `type ${name} = ${renderNode(node, allAliases)};`),
+  ];
+  const referencedAliases = options.referencedSharedTypesOnly
+    ? referencedRootAliases(
+        parsedRoots.map((parsed) => parsed.root),
+        allAliases,
+      )
+    : undefined;
+  const declarationNames = [
+    ...[...aliasNameByKey.values()].toSorted(compareStrings),
+    ...[...definitions.keys()].toSorted(compareStrings),
+  ];
 
   const sources = new Map<string, string>();
+  const includes = (entry: 'client' | 'portable' | 'fetch' | 'behaviors' | 'svelte') =>
+    options.entries === undefined || options.entries.includes(entry);
+  if (options.svelte && includes('svelte') && !includes('client'))
+    throw new Error('Svelte bindings require the client entry');
+  if (options.portableEntries && includes('fetch') && !includes('portable'))
+    throw new Error('The Fetch entry requires the portable entry');
   for (const domain of domains)
-    sources.set(domain.fileName, operationDomainSource(domain, aliasNameByKey));
+    sources.set(domain.fileName, operationDomainSource(domain, allAliases));
   if (aliasDeclarations.length)
     sources.set(
       'shared-operation-types.generated.ts',
-      `${GENERATED_HEADER}\n${aliasDeclarations.map((declaration) => `export ${declaration}`).join('\n')}\n`,
+      `${GENERATED_HEADER}\n${aliasDeclarations.map((declaration, index) => `${referencedAliases === undefined || referencedAliases.has(declarationNames[index]!) ? 'export ' : ''}${declaration}`).join('\n')}\n`,
     );
 
   if (subscriptionOperations.length)
     sources.set(
       SUBSCRIPTION_TYPES_FILE,
-      subscriptionTypesSource(subscriptionOperations, aliasNameByKey),
+      subscriptionTypesSource(subscriptionOperations, allAliases),
     );
 
   const names = exampleNames(
@@ -273,29 +312,34 @@ export async function createOperationClientSources(
     subscriptionOperations,
   );
   const behaviors = renderOperationBehaviors(snapshot.operations);
-  if (behaviors !== undefined) sources.set('operation-behaviors.generated.ts', behaviors);
-  sources.set(
-    outputFile,
-    mainSource({
-      options,
-      connection,
-      runtimeSpecifier,
-      restPathPrefix,
-      imports,
-      types,
-      catalogNames,
-      clientNames,
-      restBindings,
-      subscriptionNames: subscriptionOperations.map((operation) => `  '${operation.name}',`),
-      names,
-    }),
-  );
-
-  if (options.portableEntries) {
-    const portableFile = 'portable-operation-client.generated.ts';
+  if (behaviors !== undefined && includes('behaviors'))
+    sources.set('operation-behaviors.generated.ts', behaviors);
+  if (includes('client'))
     sources.set(
-      portableFile,
-      `${GENERATED_HEADER}
+      outputFile,
+      options.typeOnlyClient
+        ? `${GENERATED_HEADER}\n${imports}\nexport type ClientOperationTypes = ${types};\n`
+        : mainSource({
+            options,
+            connection,
+            runtimeSpecifier,
+            restPathPrefix,
+            imports,
+            types,
+            catalogNames,
+            clientNames,
+            restBindings,
+            subscriptionNames: subscriptionOperations.map((operation) => `  '${operation.name}',`),
+            names,
+          }),
+    );
+
+  if (options.portableEntries && (includes('portable') || includes('fetch'))) {
+    const portableFile = 'portable-operation-client.generated.ts';
+    if (includes('portable'))
+      sources.set(
+        portableFile,
+        `${GENERATED_HEADER}
 import { createCatalogClient, type CatalogClient, type CatalogTransport } from '${runtimeSpecifier}';
 ${imports}
 
@@ -310,10 +354,11 @@ export function ${options.factoryName}WithTransport(transport: CatalogTransport)
   return createCatalogClient<CatalogOperationTypes>(operationNames, transport);
 }
 `,
-    );
-    sources.set(
-      'fetch-operation-client.generated.ts',
-      `${GENERATED_HEADER}
+      );
+    if (includes('fetch'))
+      sources.set(
+        'fetch-operation-client.generated.ts',
+        `${GENERATED_HEADER}
 import { httpJsonRpcTransport, type JsonRpcHttpConnection${subscriptionOperations.length ? ', createSubscriptionClient, sseSubscriptionTransport' : ''} } from '${runtimeSpecifier}';
 import { ${options.factoryName}WithTransport } from './${portableFile}';
 ${
@@ -341,13 +386,20 @@ export function ${options.factoryName}WithFetch(connection: JsonRpcHttpConnectio
   }
 }
 `,
-    );
+      );
   }
 
-  if (options.svelte) {
+  if (options.svelte && includes('svelte')) {
     sources.set(
       'operation-client.svelte.ts',
-      svelteClientSource(clientOperations, subscriptionOperations, outputFile, options.serverName),
+      svelteClientSource(
+        clientOperations,
+        subscriptionOperations,
+        outputFile,
+        options.serverName,
+        options.svelteCommands,
+        options.svelteProvider,
+      ),
     );
   }
 

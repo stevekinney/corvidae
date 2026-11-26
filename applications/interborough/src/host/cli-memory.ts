@@ -1,4 +1,4 @@
-import { request, type CliTarget } from './cli-client-transport.ts';
+import { catalogRead, request, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 import { isDryRun } from './cli-destructive.ts';
 
@@ -73,26 +73,27 @@ async function memory(
 ): Promise<CliCommandResult> {
   const action = parsed.arguments[0] ?? 'list';
   const agentId = agent(parsed);
-  if (action === 'list')
-    return rpc(target, parsed, dependencies, 'bureau.memory.list', {
+  if (action === 'list') {
+    const limit = integerOption(parsed, 'limit');
+    const offset = integerOption(parsed, 'offset');
+    return catalogRead(target, parsed, dependencies, 'bureau.memory.list', {
       agentId,
-      ...(integerOption(parsed, 'limit') === undefined
-        ? {}
-        : { limit: integerOption(parsed, 'limit') }),
-      ...(integerOption(parsed, 'offset') === undefined
-        ? {}
-        : { offset: integerOption(parsed, 'offset') }),
+      ...(limit === undefined ? {} : { limit }),
+      ...(offset === undefined ? {} : { offset }),
     });
-  if (action === 'search')
-    return rpc(target, parsed, dependencies, 'bureau.memory.search', {
+  }
+  if (action === 'search') {
+    const limit = integerOption(parsed, 'limit');
+    return catalogRead(target, parsed, dependencies, 'bureau.memory.search', {
       agentId,
       query: option(parsed, 'query') ?? parsed.arguments[1] ?? '',
-      ...(integerOption(parsed, 'limit') === undefined
-        ? {}
-        : { limit: integerOption(parsed, 'limit') }),
+      ...(limit === undefined ? {} : { limit }),
     });
+  }
   if (action === 'export') {
-    const response = await rpc(target, parsed, dependencies, 'bureau.memory.export', { agentId });
+    const response = await catalogRead(target, parsed, dependencies, 'bureau.memory.export', {
+      agentId,
+    });
     const value = record(response.data);
     const memories = Array.isArray(value['memories']) ? value['memories'] : [];
     const limit = integerOption(parsed, 'limit') ?? (memories.length || 1);
@@ -107,7 +108,7 @@ async function memory(
     };
   }
   if (action === 'get')
-    return rpc(target, parsed, dependencies, 'bureau.memory.get', {
+    return catalogRead(target, parsed, dependencies, 'bureau.memory.get', {
       agentId,
       id: identifier(parsed),
     });

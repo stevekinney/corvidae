@@ -77,7 +77,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
  * The review as the record keeps it: what a reader needs to see what was decided, and none of a tool
  * approval's signed token, binding, or metadata. `status` is forced to the decision's.
  */
-function snapshotOf(review: PendingReview, status: ReviewStatus): PendingReview {
+export function snapshotOf(review: PendingReview, status: ReviewStatus): PendingReview {
   const common = {
     id: review.id,
     runId: review.runId,

@@ -12,13 +12,15 @@ import { join } from 'node:path';
 
 import {
   createGovernedMemory,
-  createInMemoryMemoryRecordStorage,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
-  createMockEmbedder,
   createMemoryVectorStore,
-  createTestEmbedders,
 } from '@lostgradient/memory';
+import {
+  createInMemoryMemoryRecordStorage,
+  createMockEmbedder,
+  createTestEmbedders,
+} from '@lostgradient/memory/testing';
 import { createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { WorkerDeploymentCatalog } from '@lostgradient/weft';

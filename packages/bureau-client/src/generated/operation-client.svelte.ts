@@ -4,10 +4,8 @@ import {
   createReactiveRead,
   type CatalogHost,
 } from '@lostgradient/backchannel-svelte';
-import type { ReviewsOperationTypes as ClientOperationTypes } from './reviews-operations.generated.ts';
+import type { ClientOperationTypes } from './operation-client.generated.ts';
 
-export { getReviewsHost } from '../reviews/context.ts';
-export { default as ReviewsProvider } from '../reviews/ReviewsProvider.svelte';
 export function useBureauReviewsGet(
   host: CatalogHost,
   input: () => ClientOperationTypes['bureau.reviews.get']['input'],
@@ -39,5 +37,3 @@ export function useBureauReviewsList(
     }),
   );
 }
-
-export { useApprovalDecision } from '../reviews/tool-approval-actions.svelte.ts';

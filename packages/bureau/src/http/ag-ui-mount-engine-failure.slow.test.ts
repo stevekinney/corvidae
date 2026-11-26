@@ -15,7 +15,7 @@
  * here, and Bun's fake timers mis-count leaked real intervals in this repository, so none is used.
  */
 import { EventType } from '@ag-ui/core';
-import { createScriptedGenerate, type ScriptedGenerateStep } from '@lostgradient/operative';
+import { createScriptedGenerate, type ScriptedGenerateStep } from '@lostgradient/operative/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { runAgentInput, startRequest } from './ag-ui-fixtures.test-support.ts';

@@ -124,12 +124,21 @@
    */
   import { Badge, Button, CopyButton, Section, Skeleton, Tooltip } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
-  import type { HttpClient, WorkflowState } from '@lostgradient/weft';
+  import type { HttpClient } from '@lostgradient/weft';
+  import {
+    fetchWorkflowState,
+    type WorkflowReadState as WorkflowState,
+  } from '../../../lib/client.ts';
   import { ArrowRight, CalendarClock, GitFork } from '@lucide/svelte';
 
   import { RUN_COMPARISON_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
   import { formatRelativeTime, truncateId } from '../../../lib/format/index.ts';
   import { queryKeys } from '../../../lib/query.ts';
+  import {
+    getPrincipalStore,
+    hasPrincipalStore,
+    principalQueryScope,
+  } from '../../../lib/scopes.svelte.ts';
   import { router, scheduleDetailPath, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import {
     EAGER_REVISION_HEDGE,
@@ -143,8 +152,11 @@
   import { getScheduleProvenance, scheduleProvenanceQueryKey } from './workflow-observability.ts';
 
   interface LineagePanelProps {
-    readonly client: Pick<HttpClient, 'get'> & {
-      readonly operations: Pick<HttpClient['operations'], 'weft.workflows.scheduleprovenance.get'> &
+    readonly client: {
+      readonly operations: Pick<
+        HttpClient['operations'],
+        'weft.workflows.scheduleprovenance.get' | 'weft.workflows.get'
+      > &
         WorkflowActiveRevisionClient['operations'] &
         ForkComparisonClient['operations'];
     };
@@ -155,10 +167,14 @@
 
   const forkedFrom = $derived(workflow.forkedFrom);
   const restartedFrom = $derived(workflow.restartedFrom);
+  const principal = hasPrincipalStore() ? getPrincipalStore() : undefined;
 
   const forkSourceQuery = createQuery(() => ({
-    queryKey: queryKeys.workflows.detail(forkedFrom?.workflowId ?? ''),
-    queryFn: () => client.get(forkedFrom?.workflowId ?? ''),
+    queryKey: [
+      ...queryKeys.workflows.detail(forkedFrom?.workflowId ?? ''),
+      principalQueryScope(principal?.principal ?? null),
+    ],
+    queryFn: () => fetchWorkflowState(client, forkedFrom?.workflowId ?? ''),
     enabled: forkedFrom !== undefined,
   }));
 

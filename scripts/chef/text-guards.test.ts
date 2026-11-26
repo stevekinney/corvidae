@@ -132,6 +132,10 @@ describe('alreadyFailingOnBase', () => {
   });
 });
 
+/** A guard process: `bun scripts/<guard>.ts`, not the install that precedes the guards. */
+const isGuard = (call: { command: string[] }) =>
+  call.command[0] === 'bun' && call.command[1] !== 'install';
+
 /** A fake `git` and `bun` that creates the worktree directory with a package.json in it. */
 function fakeRunner(
   options: {
@@ -140,12 +144,15 @@ function fakeRunner(
     stdout?: Record<string, string>;
     removeCode?: number;
     addCode?: number;
+    installCode?: number;
     onGuard?: () => void;
   } = {},
 ) {
   const calls: { command: string[]; cwd: string | undefined }[] = [];
   const runner: Runner = (command, runnerOptions) => {
     calls.push({ command, cwd: runnerOptions?.cwd });
+    if (command[0] === 'bun' && command[1] === 'install')
+      return reply('', options.installCode ?? 0, options.installCode ? 'error: lockfile' : '');
     if (command[0] === 'git' && command[1] === 'worktree' && command[2] === 'add') {
       if (options.addCode !== undefined) return reply('', options.addCode, 'fatal: bad revision');
       const tree = command[4] ?? '';
@@ -181,21 +188,34 @@ describe('runTextGuards', () => {
     const result = runTextGuards(runner, sandbox, REVISION);
     expect(result).toEqual({ ok: true, failures: [] });
     expect(calls.map((call) => call.command.slice(0, 4).join(' '))).toEqual([
+      'bun install --frozen-lockfile',
       'git worktree add --detach',
       'bun scripts/check-one.ts',
       'bun scripts/check-two.ts',
       'bun scripts/check-three.ts',
       'git worktree remove --force',
     ]);
-    const add = calls[0]?.command ?? [];
+    // P-COR-128: the linked install was stale against the lockfile (environmentalist 0.1.0 against
+    // 0.2.0), so a guard failed "already on main". The source checkout installs first.
+    expect(calls[0]?.cwd).toBe(sandbox);
+    const add = calls[1]?.command ?? [];
     expect(add).toContain('--detach');
     expect(add.at(-1)).toBe(REVISION);
-    expect(calls[0]?.cwd).toBe(sandbox);
+    expect(calls[1]?.cwd).toBe(sandbox);
     const tree = add.at(-2) ?? '';
     // Every guard ran in the worktree, and `git worktree remove --force` named the same directory.
-    expect(calls.slice(1, 4).every((call) => call.cwd === tree)).toBe(true);
-    expect(calls[4]?.command.at(-1)).toBe(tree);
+    expect(calls.slice(2, 5).every((call) => call.cwd === tree)).toBe(true);
+    expect(calls[5]?.command.at(-1)).toBe(tree);
     expect(tree.startsWith(sandbox)).toBe(false);
+  });
+
+  test('reports an install that fails as a setup failure and adds no worktree', () => {
+    const { runner, calls } = fakeRunner({ installCode: 1 });
+    const result = runTextGuards(runner, sandbox, REVISION);
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0]).toMatchObject({ guard: GUARD_SETUP, findings: [] });
+    expect(result.failures[0]?.output).toContain('bun install --frozen-lockfile');
+    expect(calls.some((call) => call.command[0] === 'git')).toBe(false);
   });
 
   test('names the failing guard from the process that failed, not from what other guards printed', () => {
@@ -213,11 +233,11 @@ describe('runTextGuards', () => {
     const { runner, calls } = fakeRunner({ codes: { 'check-one': 1, 'check-three': 2 } });
     const all = runTextGuards(runner, sandbox, REVISION);
     expect(all.failures.map((failure) => failure.guard)).toEqual(['check-one', 'check-three']);
-    expect(calls.filter((call) => call.command[0] === 'bun')).toHaveLength(3);
+    expect(calls.filter(isGuard)).toHaveLength(3);
     const narrowed = fakeRunner({ codes: { 'check-one': 1, 'check-three': 2 } });
     const some = runTextGuards(narrowed.runner, sandbox, REVISION, ['check-three']);
     expect(some.failures.map((failure) => failure.guard)).toEqual(['check-three']);
-    expect(narrowed.calls.filter((call) => call.command[0] === 'bun')).toHaveLength(1);
+    expect(narrowed.calls.filter(isGuard)).toHaveLength(1);
     // A name the tree does not have runs nothing, so it cannot match a failure on the branch.
     const missing = runTextGuards(fakeRunner().runner, sandbox, REVISION, ['check-ghost']);
     expect(missing).toEqual({ ok: true, failures: [] });
@@ -255,6 +275,6 @@ describe('runTextGuards', () => {
     expect(runTextGuards(garbled.runner, sandbox, REVISION).failures[0]).toMatchObject({
       guard: GUARD_SETUP,
     });
-    expect(garbled.calls.filter((call) => call.command[0] === 'bun')).toHaveLength(0);
+    expect(garbled.calls.filter(isGuard)).toHaveLength(0);
   });
 });

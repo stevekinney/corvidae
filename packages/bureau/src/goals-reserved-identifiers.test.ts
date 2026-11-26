@@ -8,7 +8,8 @@
  * purge by id. So every prefix a goal derives an id under is refused for every
  * id an ordinary caller chooses, and a goal still runs under its own.
  */
-import { createMockGenerate, stopWhen, createAgent } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 

@@ -3,11 +3,11 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { createAgent } from '@lostgradient/operative';
 import {
-  createAgent,
   createManualRuntimeServices,
   createScriptedGenerate,
-} from '@lostgradient/operative';
+} from '@lostgradient/operative/testing';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing';
 
 import committedBaseline from './fixtures/release-gate/baseline-run.json';

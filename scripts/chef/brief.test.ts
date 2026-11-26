@@ -14,10 +14,13 @@ import { join } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import {
   blockerLines,
+  briefRoute,
   charterRules,
   deliveryRule,
   designLinks,
   designRowIds,
+  issueBodyDigestOf,
+  issueVerificationLead,
   pathsIn,
   pushRule,
   renderBrief,
@@ -145,8 +148,11 @@ describe('renderBrief', () => {
       paths: ['a/b.ts'],
       verify: ['bun test a'],
     });
-    expect(text).toContain('- `a/b.ts`');
-    expect(text).not.toContain('thing.test.ts');
+    // The issue's own Files section still travels verbatim; only the owned paths are replaced.
+    const owned = sectionOf(text, /^owned paths\b/i) ?? '';
+    expect(owned).toContain('- `a/b.ts`');
+    expect(owned).not.toContain('thing.test.ts');
+    expect(sectionOf(text, /^files\b/i)).toContain('- `scripts/chef/thing.test.ts`');
     expect(text).toContain('- `bun test a`');
     expect(text).not.toContain('- `bun run typecheck:root`');
   });
@@ -299,6 +305,19 @@ describe('charter rules', () => {
     const rules = charterRules.join('\n');
     expect(rules).not.toContain('merge-gate.ts --pr');
     expect(rules).toContain('you do not merge');
+  });
+
+  // P-COR-128: a pending step was treated as a failure and corrected; it is a stage to run.
+  test('tell a worker to run a pending step directly, never to correct it', () => {
+    const rule = charterRules.find((candidate) => candidate.startsWith('**Checks:**')) ?? '';
+    expect(rule).toContain('is no failure and no correction');
+    expect(rule).toContain('run the command its `run it directly:` line names, once');
+    for (const path of ['.claude/agents/chef-worker.md', '.codex/agents/chef-worker.toml']) {
+      const text = readFileSync(join(import.meta.dir, '../..', path), 'utf8');
+      expect(text, path).toContain(
+        'report the step pending with the command that runs it directly',
+      );
+    }
   });
 
   test('tell a worker to push its own branch after every commit, never to main', () => {
@@ -565,10 +584,148 @@ describe('the create-task ticket template', () => {
       ['Out of scope', 'Filled out of scope.'],
       ['Constraints', 'Filled constraints.'],
       ['Files', '- `scripts/chef/thing.ts`'],
-      ['Verification', '- `bun scripts/chef/focused-checks.ts`'],
+      ['Verification', `${issueVerificationLead}\n\n- \`bun test scripts/chef/thing.test.ts\``],
       ['Delivery boundary', 'Filled delivery boundary.'],
+      ['Checks', "The coordinator's checks for this brief; run them as the Checks rule says."],
     ])
       expect(text).toContain(`## ${title}\n\n${body}`);
+    expect(text).toContain('- `bun scripts/chef/focused-checks.ts`');
+  });
+});
+
+// The P-COR-128 trial (2026-11-25): every chef brief dropped the Files entries without a slash
+// (`package.json`, where "chained in lint:guards" lands) and replaced the issue's Verification with
+// the focused checks alone, and the Delivery rule contradicted the issue's boundary. The issue's
+// own sections now travel verbatim; coordinator context sits in sections of its own.
+describe('a brief is lossless for the issue sections', () => {
+  const sections = new Map<string, string[]>([
+    [
+      'Brief',
+      [
+        'The geometry probe measures edges, gaps and insets, but not three defects the owner found.',
+      ],
+    ],
+    [
+      'Current behavior',
+      [
+        '* `measureGeometry` (`testing/testing/src/design-review-geometry-probe.ts` (line 1145)) records boxes. Verified.',
+      ],
+    ],
+    [
+      'Acceptance criteria',
+      [
+        '* AC1: A new rule `identifier-proportional` reports a host and port such as `127.0.0.1:7233`.',
+        '* AC2: The guard is chained in `lint:guards`.',
+      ],
+    ],
+    ['Decisions', ['* The tolerance is 1px (planner decision, owner may overturn).']],
+    ['Out of scope', ['* Failing CI on these findings.']],
+    ['Constraints', ['* Read all boxes in one browser evaluation (`check-separate-box-reads`).']],
+    [
+      'Files',
+      [
+        '`testing/testing/src/design-review-geometry-probe.ts`',
+        '`package.json`',
+        '`applications/interborough/src/app/copy/`',
+      ],
+    ],
+    [
+      'Verification',
+      [
+        '* `bun scripts/chef/focused-checks.ts`',
+        '* `bun scripts/bun-test.ts applications/interborough/scripts/design-review-geometry.test.ts`',
+        '* `bun scripts/bun-test.ts testing/testing/src/design-review-geometry-probe.integration.test.ts` (it launches a browser)',
+        '* `bun run lint:guards`',
+        '* The coordinator runs `applications/interborough/tests/e2e/design-review-geometry-probe.spec.ts` in CI.',
+      ],
+    ],
+    ['Delivery boundary', ['A merged pull request.']],
+  ]);
+  const body = [...sections]
+    .map(([title, lines]) => `## ${title}\n\n${lines.join('\n')}`)
+    .join('\n\n');
+
+  test('carries every non-empty line of every template section', () => {
+    const brief = renderBrief(issue(body), { paths: [], verify: [], model: 'Sonnet' });
+    const briefLines = new Set(brief.split('\n').map((line) => line.trim()));
+    for (const [title, lines] of sections)
+      for (const line of lines) expect(briefLines.has(line), `${title}: ${line}`).toBe(true);
+  });
+
+  test("states the issue's boundary and the route that reaches it, never overriding it", () => {
+    const brief = renderBrief(issue(body), { paths: [], verify: [], model: 'Sonnet' });
+    expect(brief).not.toContain('outranks any delivery wording');
+    const boundary = sectionOf(brief, /^delivery\s+boundary\b/i) ?? '';
+    expect(boundary).toContain('A merged pull request.');
+    expect(boundary).toContain('--route pull-request');
+    const branchOnly = renderBrief(
+      issue(body.replace('A merged pull request.', 'The change merged into `main`.')),
+      { paths: [], verify: [], model: 'Sonnet' },
+    );
+    expect(sectionOf(branchOnly, /^delivery\s+boundary\b/i)).toContain('deliver.ts --branch');
+    // The route the brief promises is the one `--json` reports for the coordinator to take.
+    expect(briefRoute(brief)).toBe('pull-request');
+    expect(briefRoute(branchOnly)).toBe('branch');
+  });
+
+  // Codex on #1305: a description with no brief heading is carried whole, and its boundary must
+  // still set the route and gain the route line.
+  test('a headingless description takes the route its Delivery boundary names', () => {
+    const headingless = [
+      '## Scope',
+      '',
+      'Remove `a/b.ts`.',
+      '',
+      '## Delivery boundary',
+      '',
+      'A merged pull request.',
+    ].join('\n');
+    const brief = renderBrief(issue(headingless), { paths: [], verify: [], model: 'Sonnet' });
+    expect(briefRoute(brief)).toBe('pull-request');
+    expect(brief).toContain('--route pull-request');
+    const branch = renderBrief(
+      issue(headingless.replace('A merged pull request.', 'Merged into `main`.')),
+      { paths: [], verify: [], model: 'Sonnet' },
+    );
+    expect(briefRoute(branch)).toBe('branch');
+    expect(branch).toContain('deliver.ts --branch');
+  });
+
+  test('a boundary cut off a long headingless description still sets the route', () => {
+    const long = [
+      '## Scope',
+      '',
+      'x'.repeat(17_000),
+      '',
+      '## Delivery boundary',
+      '',
+      'A merged pull request.',
+    ].join('\n');
+    const brief = renderBrief(issue(long), { paths: [], verify: [], model: 'Sonnet' });
+    expect(brief).toContain('[description cut at');
+    expect(briefRoute(brief)).toBe('pull-request');
+    expect(brief).toContain('A merged pull request.');
+  });
+
+  test("names the issue's verification as commands to run, apart from the coordinator's checks", () => {
+    const brief = renderBrief(issue(body), { paths: [], verify: [], model: 'Sonnet' });
+    expect(sectionOf(brief, /^verification\b/i)).toContain("The issue's verification: run these");
+    expect(sectionOf(brief, /^checks\b/i)).toContain('`bun scripts/chef/focused-checks.ts`');
+  });
+});
+
+describe('the issue body digest', () => {
+  // A moved base is accepted when the issue body is unchanged; a claim's state move changes
+  // `updatedAt`, so the digest must not include it.
+  test('ends every brief, ignores updatedAt and follows the description', () => {
+    const brief = renderBrief(issue(description), { paths: [], verify: [], model: 'Sonnet' });
+    expect(brief).toContain(`\nIssue body digest: ${issueBodyDigestOf([issue(description)])}\n`);
+    expect(issueBodyDigestOf([{ ...issue(description), updatedAt: '2026-11-25T00:00:00Z' }])).toBe(
+      issueBodyDigestOf([issue(description)]),
+    );
+    expect(issueBodyDigestOf([issue(`${description}\n- amended`)])).not.toBe(
+      issueBodyDigestOf([issue(description)]),
+    );
   });
 });
 
@@ -1458,7 +1615,7 @@ describe('design rows need rows.resolved.json', () => {
   });
   const resolvedFile = (overrides: Record<string, unknown> = {}) =>
     JSON.stringify({
-      version: 1,
+      version: 2,
       issue: 'COR-7',
       rows: [
         {
@@ -1466,8 +1623,46 @@ describe('design rows need rows.resolved.json', () => {
           board: 'Runs',
           text: 'Runs as cards',
           states: [
-            { route: '/runs', state: 'ready', kind: 'ready' },
-            { route: '/runs', state: 'empty', kind: 'empty' },
+            {
+              route: '/runs',
+              state: 'ready',
+              kind: 'ready',
+              witness: {
+                specification: 'applications/interborough/tests/e2e/runs-states.spec.ts',
+                title: '/runs ready at 375 pixels',
+                world: 'sample-world',
+                profiles: [
+                  {
+                    name: 'phone-light',
+                    width: 375,
+                    theme: 'light',
+                    targets: ['runs-list'],
+                    visible: 'Runs are visible.',
+                    scrolling: 'none',
+                  },
+                ],
+              },
+            },
+            {
+              route: '/runs',
+              state: 'empty',
+              kind: 'empty',
+              witness: {
+                specification: 'applications/interborough/tests/e2e/runs-states.spec.ts',
+                title: '/runs empty at 375 pixels',
+                world: 'sample-world',
+                profiles: [
+                  {
+                    name: 'phone-light',
+                    width: 375,
+                    theme: 'light',
+                    targets: ['runs-list'],
+                    visible: 'Runs are visible.',
+                    scrolling: 'none',
+                  },
+                ],
+              },
+            },
           ],
         },
       ],

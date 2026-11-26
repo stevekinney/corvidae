@@ -5,6 +5,7 @@
   "references": [
     { "path": "../storage/tsconfig.source.json" },
     { "path": "../storage-postgres/tsconfig.source.json" },
-    { "path": "../../testing/testing/tsconfig.source.json" }
+    { "path": "../../testing/testing/tsconfig.source.json" },
+    { "path": "../../testing/workerd/tsconfig.source.json" }
   ]
 }

@@ -10,8 +10,9 @@
  * its contrast against the surface outside it, the left edges content starts on, the gaps between
  * stacked siblings and the edges they start and end on, wide rows whose content starts far from
  * their leading edge, the area of each control that takes a tap, what covers a control or a line of
- * text, boxes with more room above their content than below it, and how much of the viewport the
- * chrome around the scrolling region takes.
+ * text, boxes with more room above their content than below it, how much of the viewport the
+ * chrome around the scrolling region takes, how strongly each control's face reads against its
+ * parent, and how far each visible tooltip sits from the element it describes.
  */
 import type { Page } from '@playwright/test';
 
@@ -473,6 +474,51 @@ export function collectGeometryFacts(): GeometryFacts {
     return 'other';
   }
 
+  /**
+   * How strongly a control's face reads against the surface of its parent: the contrast of its
+   * fill, or of its border where the fill is transparent. `null` when it paints neither.
+   */
+  function weightOf(
+    element: Element,
+    style: CSSStyleDeclaration,
+  ): GeometryFacts['controls'][number]['weight'] {
+    const ground = surfaceOf(element.parentElement);
+    const fill = colorOf(style.backgroundColor);
+    if (fill[3] > 0) return { contrast: contrast(over(fill, ground), ground), outlined: false };
+    const border = colorOf(style.borderTopColor);
+    if (
+      Number.parseFloat(style.borderTopWidth) > 0 &&
+      style.borderTopStyle !== 'none' &&
+      border[3] > 0
+    ) {
+      return { contrast: contrast(over(border, ground), ground), outlined: true };
+    }
+    return null;
+  }
+
+  /** Each tooltip on show and the element that `aria-describedby` or `aria-labelledby` ties it to. */
+  function tooltips(): GeometryFacts['tooltips'][number][] {
+    const found: GeometryFacts['tooltips'][number][] = [];
+    for (const tooltip of document.querySelectorAll('[role="tooltip"]')) {
+      if (!isShown(tooltip) || tooltip.id === '') continue;
+      const id = CSS.escape(tooltip.id);
+      const anchor = document.querySelector(
+        `[aria-describedby~="${id}"], [aria-labelledby~="${id}"]`,
+      );
+      if (anchor === null) continue;
+      const tip = tooltip.getBoundingClientRect();
+      const owner = anchor.getBoundingClientRect();
+      found.push({
+        name: nameOf(tooltip),
+        anchor: nameOf(anchor),
+        horizontalGap: half(Math.max(owner.left - tip.right, tip.left - owner.right, 0)),
+        verticalGap: half(Math.max(owner.top - tip.bottom, tip.top - owner.bottom, 0)),
+        sample: sampleOf(tooltip.textContent ?? ''),
+      });
+    }
+    return found;
+  }
+
   function controls(): GeometryFacts['controls'][number][] {
     const found: GeometryFacts['controls'][number][] = [];
     for (const element of document.querySelectorAll(CONTROL_SELECTOR)) {
@@ -552,6 +598,7 @@ export function collectGeometryFacts(): GeometryFacts {
           hit.bottom > layout.bottom,
         unreached: unreachedSides(element),
         parent: parentOf(element),
+        weight: weightOf(element, style),
         // Filling a container that hugs it is not stretching, so it must also span half the viewport.
         fullWidth: rect.width >= available - 1 && rect.width >= viewportWidth / 2,
       });
@@ -1096,6 +1143,142 @@ export function collectGeometryFacts(): GeometryFacts {
     return found;
   }
 
+  function firstFamily(value: string): string {
+    const [family = ''] = value.split(',');
+    return family
+      .trim()
+      .replaceAll(/^["']|["']$/g, '')
+      .toLowerCase();
+  }
+
+  /** Visible text that reads as an identifier, with the first family it is set in and the mono one. */
+  function identifiers(): GeometryFacts['identifiers'][number][] {
+    const PATTERNS = [
+      // A host and a port, but never a clock time (`12:30`).
+      /^(?!\d{1,2}:\d{2}$)[a-z0-9][a-z0-9.-]*:\d{2,5}$/i,
+      /^(?:~|)(?:\/[\w.@+-]+){2,}\/?$/,
+      /^[0-9A-HJKMNP-TV-Z]{26}$/,
+      /^[a-z][a-z0-9_]+(?:\.[a-z][a-z0-9_]+)+$/,
+    ];
+    const LONGEST_IDENTIFIER = 200;
+    const isIdentifier = (text: string): boolean => PATTERNS.some((pattern) => pattern.test(text));
+    // The visible text of an element and everything in it, so an address a component splits across
+    // inline children (`CopyableValue`'s parts and pieces) reads as the one string it shows.
+    const wholeText = new Map<Element, string>();
+    const textOf = (element: Element): string => {
+      const known = wholeText.get(element);
+      if (known !== undefined) return known;
+      const whole = textNodes(element, true)
+        .map((node) => node.data)
+        .join('')
+        .trim();
+      wholeText.set(element, whole);
+      return whole;
+    };
+    // The innermost element whose whole text is an identifier: the text node's own element when the
+    // node is one, else the nearest ancestor that is.
+    const holderOf = (node: Text): { element: Element; text: string } | null => {
+      const parent = node.parentElement;
+      if (parent === null) return null;
+      const own = node.data.trim();
+      if (isIdentifier(own)) return { element: parent, text: own };
+      for (
+        let element: Element | null = parent;
+        element !== null && element !== document.body;
+        element = element.parentElement
+      ) {
+        const text = textOf(element);
+        if (text.length > LONGEST_IDENTIFIER) return null;
+        if (isIdentifier(text)) return { element, text };
+      }
+      return null;
+    };
+    const found: GeometryFacts['identifiers'][number][] = [];
+    const seen = new Set<string>();
+    for (const node of textNodes(document.body, true)) {
+      const holder = holderOf(node);
+      if (holder === null) continue;
+      const style = getComputedStyle(holder.element);
+      const mono = firstFamily(style.getPropertyValue('--cinder-font-mono'));
+      if (mono === '') continue;
+      const name = nameOf(holder.element);
+      const family = firstFamily(style.fontFamily);
+      // The family is part of the key, so a proportional copy is never hidden by a mono one.
+      const key = `${name}\n${holder.text}\n${family}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      found.push({ name, text: holder.text, family, mono });
+    }
+    return found;
+  }
+
+  /** A pixel length written in a custom property, or `null` when it is not a plain `rem` or `px`. */
+  function lengthOf(property: string): number | null {
+    const value = getComputedStyle(document.documentElement).getPropertyValue(property).trim();
+    const declared = /^([\d.]+)(rem|px)?$/.exec(value);
+    if (declared === null) return null;
+    const amount = Number.parseFloat(declared[1] ?? '');
+    const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+    return half(declared[2] === 'rem' ? amount * rootFontSize : amount);
+  }
+
+  /** The room between a table, list or card and the text block that follows it. */
+  function captionGaps(): GeometryFacts['captionGaps'][number][] {
+    const CONTAINERS = 'table, ul, ol, .cinder-card, .cinder-grouped-list';
+    const HEADINGS = new Set(['P', 'FIGCAPTION', 'SMALL', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
+    const minimum = lengthOf('--cinder-space-2');
+    const found: GeometryFacts['captionGaps'][number][] = [];
+    for (const container of document.body.querySelectorAll(CONTAINERS)) {
+      const text = container.nextElementSibling;
+      if (text === null || !isShown(container) || !isShown(text)) continue;
+      if (text.matches(CONTAINERS) || text.matches(CONTROL_SELECTOR)) continue;
+      const hasText = textNodes(text, false).length > 0;
+      if (!HEADINGS.has(text.tagName) && !hasText) continue;
+      const position = getComputedStyle(text).position;
+      if (position === 'absolute' || position === 'fixed') continue;
+      found.push({
+        name: nameOf(text),
+        container: nameOf(container),
+        gap: half(text.getBoundingClientRect().top - container.getBoundingClientRect().bottom),
+        minimum,
+        sample: sampleOf(text.textContent ?? ''),
+      });
+    }
+    return found;
+  }
+
+  /** Each disclosure chevron inside a row of two or more text lines, and how far off centre it sits. */
+  function chevrons(): GeometryFacts['chevrons'][number][] {
+    const ROW = 'a, button, li, [role="button"], [role="link"], [role="listitem"]';
+    const found: GeometryFacts['chevrons'][number][] = [];
+    for (const chevron of document.body.querySelectorAll('[class*="__chevron"]')) {
+      if (![...chevron.classList].some((name) => name.endsWith('__chevron'))) continue;
+      const row = chevron.parentElement?.closest(ROW) ?? null;
+      if (row === null || !isShown(chevron) || !isShown(row)) continue;
+      const spans = textNodes(row, true)
+        .flatMap((node) => rectsOf(node))
+        .map((rect) => ({ top: rect.top, bottom: rect.bottom }))
+        .toSorted((left, right) => left.top - right.top);
+      let lines = 0;
+      let reach = Number.NEGATIVE_INFINITY;
+      for (const span of spans) {
+        // A box that starts below the last one ended is another line; one that overlaps shares it.
+        if (span.top >= reach - 1) lines += 1;
+        reach = Math.max(reach, span.bottom);
+      }
+      if (lines < 2) continue;
+      const rowBox = row.getBoundingClientRect();
+      const chevronBox = chevron.getBoundingClientRect();
+      found.push({
+        name: nameOf(chevron),
+        row: nameOf(row),
+        lines,
+        offset: half(chevronBox.top + chevronBox.height / 2 - (rowBox.top + rowBox.height / 2)),
+      });
+    }
+    return found;
+  }
+
   /** How much of the viewport sits above and below the region that scrolls the page's content. */
   function chrome(): GeometryFacts['chrome'] {
     const viewportHeight = window.innerHeight;
@@ -1137,7 +1320,11 @@ export function collectGeometryFacts(): GeometryFacts {
     leadingSpace: leadingSpace(),
     overlaps: overlaps(),
     insets: insets(),
+    identifiers: identifiers(),
+    captionGaps: captionGaps(),
+    chevrons: chevrons(),
     chrome: chrome(),
+    tooltips: tooltips(),
   };
 }
 

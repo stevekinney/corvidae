@@ -366,7 +366,7 @@ export async function loadCodeActivity(
   }
   async function schedulesOf(type: string): Promise<CodeActivity['schedules']> {
     try {
-      const page = await client.listSchedules({ workflowType: type });
+      const page = await client.operations['weft.schedules.list']({ workflowType: type });
       return startingSchedules(page.items);
     } catch {
       return null;

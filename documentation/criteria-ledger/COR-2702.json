@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2702",
+  "branch": "codex/cor-2702-workers-npm",
+  "checkedAt": "12c392a1ef03ee66c593794619629ca4ecb7aa81",
+  "briefVersion": "d4d2c70b1e73",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "packages/mcp/src/oauth/workerd.integration.test.ts passes under @lostgradient/workerd-testing and drives registration, S256 authorization, code exchange, refresh rotation/replay refusal, revocation, and a 401 protected request."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "The workerd integration bundle loads the default DNS module through the issuer and proves clientMetadataDocumentFetch.lookupImpl is called for URL-form client metadata."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "bun run --filter @lostgradient/mcp typecheck and test pass; the Worker dependency is explicit with no runtime detection."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "packages/mcp/README.md documents nodejs_compat and the required complete DNS lookup dependency."
+    }
+  ]
+}

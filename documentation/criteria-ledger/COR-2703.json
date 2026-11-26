@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2703",
+  "branch": "codex/cor-2703-workers-npm",
+  "checkedAt": "943bc64431db09678394a0b91aca68c72264249d",
+  "briefVersion": "40ba95efa061",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "package test ignores *.integration.test.ts and test:slow selects it; focused isolated lane passed."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "src/workerd.integration.test.ts passed both 2025-11-25 and 2026-07-28 Streamable HTTP list/call paths through dispatchFetch."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "bun run test, typecheck, and lint passed; root runtime-detection guard passed."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "README explicitly documents Cloudflare Workers hosting."
+    }
+  ]
+}

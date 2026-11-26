@@ -308,7 +308,7 @@ describe('a human wait of a run with no session (COR-1577)', () => {
 
 describe('bureau.reviews.list', () => {
   it('returns the pending reviews without the approval token, binding, or metadata', async () => {
-    const handler = serve(stubHost());
+    const handler = serve(stubHost({ get: async () => toolApprovalReview() }));
 
     const body = await call(handler, 'bureau.reviews.list', {});
 

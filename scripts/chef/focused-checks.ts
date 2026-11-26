@@ -57,6 +57,10 @@
 // Cinder's styles, tokens or shared code, or one more than `FIXTURE_SPEC_LIMIT` specs name, gets
 // the whole suite's command instead. No step runs them.
 //
+// A step the test pool did not admit within the bound is pending, never passed: the output names
+// it in a `<step>: pending (pool busy); run it directly: <command>` line, the command without the
+// bound, and a pending step with no failure beside it is a stage to run, never a defect to correct.
+//
 // Exit codes: 0 every step passed, 1 a step failed or the changed set could not be read,
 // 2 invalid usage, 3 a step was killed by a signal, 4 a step hung. 3 and 4 outrank 1: a step that
 // gave no verdict is not a test failure, and the run is incomplete.
@@ -493,6 +497,18 @@ export interface StepResult {
   hung?: true;
   /** The test pool did not admit this step, so it did not start tests. */
   pending?: true;
+  /** For a pending step: the command that runs it directly, without the pool-wait bound. */
+  direct?: string;
+}
+
+/**
+ * A step's command without the pool-wait bound ({@link poolWaitVariable}), so it waits as long as
+ * the slot holders run instead of giving up after five minutes; an `env` left with no assignment is
+ * dropped. A pending step is a stage that never ran, not a failure: this is how it is run.
+ */
+export function directCommand(command: readonly string[]): string[] {
+  const kept = command.filter((part) => !part.startsWith(`${poolWaitVariable}=`));
+  return kept[0] === 'env' && !/^\w+=/.test(kept[1] ?? '') ? kept.slice(1) : kept;
 }
 
 /** How a step ended without an exit code: by a signal, or by outliving the hang guard. */
@@ -748,7 +764,7 @@ export async function runChecks(
             command,
             exitCode: ended,
             ...(ended === poolBusyExitCode || ended === poolAdmissionErrorExitCode
-              ? { pending: true as const }
+              ? { pending: true as const, direct: directCommand(step.command).join(' ') }
               : {}),
           }
         : { name: step.name, command, exitCode: null, ...ended },
@@ -780,6 +796,10 @@ export async function runChecks(
   const lines = [
     ...warnings.map((warning) => `focused-checks: warning: ${warning}`),
     ...(options.dryRun ? results.map((step) => `  ${step.name}: ${step.command}`) : []),
+    ...pending.map(
+      (step) =>
+        `focused-checks: ${step.name}: pending (pool busy); run it directly: ${step.direct ?? step.command}`,
+    ),
     ...killed.map((step) => `focused-checks: ${step.name}: killed by ${step.signal}`),
     ...hung.map(
       (step) =>

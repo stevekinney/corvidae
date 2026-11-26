@@ -10,14 +10,16 @@ import {
 } from '@lostgradient/lifecycle';
 import {
   createGovernedMemory,
-  createInMemoryMemoryRecordStorage,
   createMemoryAuthority,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
-  createMockEmbedder,
   createMemoryVectorStore,
-  createTestEmbedders,
 } from '@lostgradient/memory';
+import {
+  createInMemoryMemoryRecordStorage,
+  createMockEmbedder,
+  createTestEmbedders,
+} from '@lostgradient/memory/testing';
 import {
   createAgentSession,
   createDurableActiveRun,

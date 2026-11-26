@@ -10,7 +10,7 @@
    * the Bureau's record of its trigger, result and error.
    */
   import { Alert, Button, Markdown, Section, Stack, VisuallyHidden } from '@lostgradient/cinder';
-  import type { WorkflowState } from '@lostgradient/weft';
+  import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';

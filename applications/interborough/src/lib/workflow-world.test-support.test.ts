@@ -22,6 +22,20 @@ function call(method: string, params: unknown, path = '/bureau/jsonrpc'): Promis
 }
 
 describe('the workflow world', () => {
+  test('reads a schedule through JSON-RPC and faults when it is missing', async () => {
+    const schedule = scheduleFixture('nightly', 'order');
+    stub = installWorkflowWorld(emptyWorld({ schedules: [schedule] }));
+    const found = await call('weft.schedules.get', { scheduleId: 'nightly' }, '/jsonrpc');
+    expect(await found.json()).toMatchObject({ result: schedule });
+    const missing = await call('weft.schedules.get', { scheduleId: 'missing' }, '/jsonrpc');
+    expect(await missing.json()).toMatchObject({
+      error: { data: { weftCode: 'NotFound', httpStatus: 404 } },
+    });
+    expect(stub.callsTo('weft.schedules.get').map(({ params }) => params)).toEqual([
+      { scheduleId: 'nightly' },
+      { scheduleId: 'missing' },
+    ]);
+  });
   test('answers 400 to a body that names no method, and records no call', async () => {
     stub = installWorkflowWorld();
 

@@ -5,7 +5,7 @@
  * run with no run id has none.
  */
 import { HookRegistry } from '@lostgradient/lifecycle';
-import { createTestToolbox } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 

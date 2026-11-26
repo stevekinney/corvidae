@@ -139,9 +139,11 @@ import {
   type AgentDefinitions,
   type AgentWithBureauTools,
   type Bureau,
+  type BureauHandlerOptions,
   type BureauOptions,
   type BureauPluginEntry,
   type SettingsOptions,
+  type WorkspaceMembershipOptions,
 } from '@lostgradient/bureau';
 import type { SkillCatalogChange } from '@lostgradient/bureau/skills';
 import {
@@ -254,6 +256,10 @@ import {
   reportPanelChanges,
   type PanelMountOptions,
 } from './panel-mounts.ts';
+import {
+  createPanelReviewEligibility,
+  sharedPanelBrowserCredentials,
+} from './panel-review-eligibility.ts';
 import { panelRoutes } from './panel-routes.ts';
 import { pluginAttention } from './plugin-attention.ts';
 import { createPluginManager, pluginStartupLines, type PluginManager } from './plugin-manager.ts';
@@ -263,9 +269,20 @@ import { providerAttention } from './provider-attention.ts';
 import { createProviderManager, type ProviderManager } from './provider-manager.ts';
 import { providerRoutes } from './provider-routes.ts';
 import { contributedProviders, type ModelSelection } from './providers.ts';
-import { allowedHosts, createRequestGuard, rawPathOf } from './request-guard.ts';
+import {
+  allowedHosts,
+  createRequestGuard,
+  createSharedWebGuard,
+  rawPathOf,
+} from './request-guard.ts';
 import { HOST_RESTART_ROUTE, type HostRestartStanding } from './restart.ts';
 import { bureauScopeRefusal, refuseWritesWithoutScope } from './scope-gate.ts';
+import {
+  createSharedBrowserSignIn,
+  sharedBrowserRoutes,
+  sharedBrowserServerHooks,
+  type SharedBrowserSignInOptions,
+} from './shared-browser-sign-in.ts';
 import { isShellNavigation } from './shell-request.ts';
 import {
   createSkillManager,
@@ -433,6 +450,8 @@ export type HostOptions = {
   readonly workspaceId?: string;
   /** Inject verified credentials and a directory for this exact workspace; no listener expansion. */
   readonly workspaceAuthentication?: HostWorkspaceAuthentication;
+  /** Explicit HTTPS browser origin and trusted identity and delegation policy. */
+  readonly sharedBrowserSignIn?: SharedBrowserSignInOptions;
   /** Trusted provider factory; browser payloads cannot select it. */
   readonly secretProvider?: SecretProviderFactory;
   /** Opt in to revision-checked remote configuration publication. */
@@ -475,6 +494,15 @@ export type HostOptions = {
   >;
   /** Agents to define beside the ones the plugins contribute, for tests that need an agent of their own. */
   readonly extraAgents?: ExtraAgents;
+  /** Reviewed operation contributions and their background worker, owned by the host. */
+  readonly reviewedOperations?: {
+    readonly agents: AgentDefinitions;
+    readonly reviewPolicy: NonNullable<BureauOptions['reviewPolicy']>;
+    readonly operations: NonNullable<BureauHandlerOptions['operations']>;
+    readonly reviewEffects: NonNullable<BureauHandlerOptions['reviewEffects']>;
+    readonly releasePlugin: BureauPluginEntry;
+    readonly attach: (bureau: Bureau<AgentDefinitions>) => Promise<{ dispose(): Promise<void> }>;
+  };
   /**
    * Tools to offer beside the ones tool sources bring: an agent file may name them and the catalog
    * lists them with their tier. The sample world's built-in tools (Lookup order, Issue refund and
@@ -788,6 +816,99 @@ function publicOriginGuards(
   };
 }
 
+function validateWorkspaceConfiguration(options: HostOptions, workspaceId: string): void {
+  const configured = options.workspaceAuthentication;
+  if (
+    configured !== undefined &&
+    ((!configured.authentication && !options.sharedBrowserSignIn) ||
+      configured.workspace?.workspaceId !== workspaceId)
+  )
+    throw new Error('Workspace authentication requires credentials and this workspace directory.');
+  if (options.sharedBrowserSignIn && !configured)
+    throw new Error('Shared browser sign-in requires a workspace directory.');
+}
+
+function sharedBrowserForHost(
+  options: HostOptions,
+  workspace: WorkspaceMembershipOptions,
+  storage: Storage,
+  a2aOrigin: URL | undefined,
+) {
+  const configured = options.sharedBrowserSignIn;
+  if (!configured) return undefined;
+  if (a2aOrigin?.origin === configured.origin)
+    throw new Error('The shared web and A2A origins must be distinct.');
+  return createSharedBrowserSignIn(configured, workspace, storage);
+}
+
+function sharedConnectorDirectory(
+  workspace: WorkspaceMembershipOptions,
+  enabled: boolean,
+): WorkspaceMembershipOptions {
+  if (!enabled) return workspace;
+  return {
+    ...workspace,
+    resolveMembership: (credential) =>
+      workspace.resolveMembership(
+        credential.method === 'connector-token'
+          ? { ...credential, method: 'browser-session' }
+          : credential,
+      ),
+  };
+}
+
+function hostRequestGuards(
+  port: () => number,
+  a2aOrigin: URL | undefined,
+  browser: ReturnType<typeof createSharedBrowserSignIn> | undefined,
+  browserOrigin: string | undefined,
+) {
+  const loopback = createRequestGuard(port);
+  const refuse = browserOrigin ? createSharedWebGuard(new URL(browserOrigin), loopback) : loopback;
+  const { bureau: a2a, trigger } = publicOriginGuards(port, a2aOrigin, loopback);
+  return {
+    refuse,
+    refuseBureau: (request: Request) =>
+      browser?.matches(request) ? refuse(request) : a2a(request),
+    refuseTrigger: trigger,
+  };
+}
+
+async function startPrivateSettingsServer(
+  options: SharedBrowserSignInOptions | undefined,
+  authority: HostAuthority,
+  port: () => number,
+  held: Held,
+) {
+  const server = await options?.createPrivateServer?.(
+    sharedBrowserServerHooks(authority, options.origin, port),
+  );
+  if (server) held.privateServer = server;
+  return server;
+}
+
+function bureauAuthenticationOptions(
+  browser: ReturnType<typeof createSharedBrowserSignIn> | undefined,
+  configured: HostWorkspaceAuthentication | undefined,
+  authentication: Parameters<typeof createHostAuthority>[1],
+  authority: HostAuthority,
+) {
+  if (browser) return { authenticateRequest: authority.authenticateCredential };
+  if (configured) return { authentication: authentication! };
+  return {
+    unauthenticatedAccess: 'allow' as const,
+    ...(authentication === undefined ? {} : { authentication }),
+  };
+}
+
+async function attachReviewedWorker(
+  held: Held,
+  reviewed: HostOptions['reviewedOperations'],
+  bureau: Bureau<AgentDefinitions>,
+): Promise<void> {
+  if (reviewed !== undefined) held.reviewedWorker = await reviewed.attach(bureau);
+}
+
 /**
  * Where the `/bureau` prefix comes off a request before the Bureau handler sees it, or `undefined`
  * for a path that does not literally start with the prefix, which it never cuts a fixed number of
@@ -957,8 +1078,28 @@ function memorySharingAvailableOf(
   return options.workspaceAuthentication?.memorySharingAvailable;
 }
 
+function snapshotHostOptions(options: HostOptions): HostOptions {
+  const shared = options.sharedBrowserSignIn;
+  if (shared === undefined) return options;
+  return {
+    ...options,
+    sharedBrowserSignIn: {
+      ...shared,
+      oauth: {
+        ...shared.oauth,
+        scopes: [...shared.oauth.scopes],
+        startingScopes: [...shared.oauth.startingScopes],
+        scopeDescriptions: { ...shared.oauth.scopeDescriptions },
+        operationScopes: { ...shared.oauth.operationScopes },
+      },
+      ...(shared.keyManagement === undefined ? {} : { keyManagement: { ...shared.keyManagement } }),
+    },
+  };
+}
+
 /** Start the host. The caller owns it and must `close()` it. */
 export async function startHost(options: HostOptions = {}): Promise<Host> {
+  options = snapshotHostOptions(options);
   const incarnationId = randomUUID();
   // The clock the host's own times are read from: its runtime's, so they agree with its Bureau's.
   const clock = options.runtime?.clock ?? { now: () => Date.now() };
@@ -980,7 +1121,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   // The A2A allowlist is read the same way: after the first await it would be the caller's live array.
   const a2aAgents = options.a2aAgents === undefined ? undefined : [...options.a2aAgents];
   // The plugin lists are read the same way, so the Bureau and the routes see the plugins this host was started with.
-  const packagePlugins = [...(options.plugins ?? workspacePlugins())];
+  const packagePlugins = [
+    ...(options.plugins ?? workspacePlugins()),
+    ...(options.reviewedOperations === undefined ? [] : [options.reviewedOperations.releasePlugin]),
+  ];
   const developmentPlugins = [...(options.developmentPlugins ?? [])];
   const log = options.log ?? ((message: string) => console.info(message));
   // The public origin (COR-1904, COR-2169) is read from the caller's environment before it can
@@ -1033,14 +1177,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   };
   try {
     // No engine, plugin or listener may start before the workspace is bound and secrets validate.
-    if (
-      options.workspaceAuthentication !== undefined &&
-      (options.workspaceAuthentication.authentication === undefined ||
-        options.workspaceAuthentication.workspace?.workspaceId !== bungalow.workspaceId)
-    )
-      throw new Error(
-        'Workspace authentication requires credentials and this workspace directory.',
-      );
+    validateWorkspaceConfiguration(options, bungalow.workspaceId);
     const database = redactDatabase(bungalow.database, databaseKinds);
     const stateDescription = describeDatabaseState(bungalow.database, databaseKinds);
     const workspaceSecrets = createWorkspaceSecrets(bungalow);
@@ -1297,7 +1434,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const configuredWorkspace = options.workspaceAuthentication?.workspace ?? localWorkspace;
     if (configuredWorkspace.workspaceId !== bungalow.workspaceId)
       throw new Error('The authentication directory belongs to another workspace.');
-    const workspace =
+    const baseWorkspace =
       options.workspaceAuthentication === undefined || a2aExposure.authentication === undefined
         ? configuredWorkspace
         : {
@@ -1313,14 +1450,25 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
                 ? ((await localWorkspace.resolveOwnerMembership?.(owner)) ?? null)
                 : ((await configuredWorkspace.resolveOwnerMembership?.(owner)) ?? null),
           };
+    const workspace = sharedConnectorDirectory(
+      baseWorkspace,
+      options.sharedBrowserSignIn !== undefined,
+    );
     const authentication = await combineHostAuthentication(
       options.workspaceAuthentication?.authentication,
       a2aExposure.authentication,
+    );
+    const sharedBrowser = sharedBrowserForHost(
+      options,
+      workspace,
+      storage,
+      a2aExposure.publicOrigin,
     );
     const authority = await createHostAuthority(
       workspace,
       authentication,
       options.workspaceAuthentication === undefined,
+      sharedBrowser,
     );
     const bureau = await createBureau({
       peerCallsReady: (journal) => {
@@ -1330,7 +1478,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       workspace,
       id: bungalow.workspaceId,
       ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
-      agents: { ...options.extraAgents?.agents },
+      agents: { ...options.extraAgents?.agents, ...options.reviewedOperations?.agents },
+      ...(options.reviewedOperations === undefined
+        ? {}
+        : { reviewPolicy: options.reviewedOperations.reviewPolicy }),
       ...(options.extraAgents?.withBureauTools === undefined
         ? {}
         : { agentsWithBureauTools: { ...options.extraAgents.withBureauTools } }),
@@ -1468,6 +1619,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       ],
     });
     held.bureau = bureau;
+    await attachReviewedWorker(held, options.reviewedOperations, bureau);
     // The records past their retention window go once a night (COR-2009): the Bureau leaves them
     // to this clean-up (`expiredRecords: 'on-request'`), and Data and retention reports it.
     const nightlyCleanUp = startNightlyCleanUp({
@@ -1593,13 +1745,13 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     // Every route, the relay, and every WebSocket upgrade go through one guard (`request-guard.ts`).
     let listening: Bun.Server<HostSocketData> | undefined;
-    const refuse = createRequestGuard(() => listening?.port ?? 0);
     // `/bureau/*` and the trigger route alone also answer the public origin, each with a guard of
     // its own surface: the A2A and asset paths (COR-1904), and `/triggers/<workflow>` (COR-2169).
-    const { bureau: refuseBureau, trigger: refuseTrigger } = publicOriginGuards(
+    const { refuse, refuseBureau, refuseTrigger } = hostRequestGuards(
       () => listening?.port ?? 0,
       a2aExposure.publicOrigin,
-      refuse,
+      sharedBrowser,
+      options.sharedBrowserSignIn?.origin,
     );
     // Who a request to Interborough's own operations acts as: the local person, holding every scope
     // of Interborough's API, unless the host was started with another (`scope-gate.ts`).
@@ -1618,8 +1770,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       options.onRestartRequested === undefined
         ? undefined
         : restartHandler(options.onRestartRequested);
+    const privateServer = await startPrivateSettingsServer(
+      options.sharedBrowserSignIn,
+      authority,
+      () => listening?.port ?? 0,
+      held,
+    );
     const publicRoutes = {
       ...applicationRoutes(buildDirectory, refuse, shell),
+      ...sharedBrowserRoutes(sharedBrowser, authority, privateServer),
       '/api/v1/principal': {
         GET: (request: Request) =>
           hostPrincipalResponse(request, authority, memorySharingAvailable),
@@ -1643,6 +1802,18 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         if (refusal !== undefined) return refusal;
         if (bureauHandler === undefined) {
           return new Response('The Bureau is not serving yet.', { status: 503 });
+        }
+        if (
+          sharedBrowser?.matches(request) &&
+          rawPathOf(request) === '/bureau/mcp' &&
+          (request.headers.has('authorization') || !request.headers.has('cookie'))
+        ) {
+          return sharedBrowser.protectedMcp(request, async (protectedRequest) => {
+            const inner = withoutBureauPrefix(protectedRequest);
+            return inner === undefined
+              ? new Response('Forbidden', { status: 403 })
+              : bureauHandler!(inner);
+          });
         }
         const bureauRequest = withoutBureauPrefix(request);
         if (bureauRequest === undefined) {
@@ -1709,6 +1880,24 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           (await bureauScopeRefusal(request, apiPrincipal(request))) ??
           (await bureauHandler?.(request)) ??
           new Response('The Bureau is not serving yet.', { status: 503 }),
+        createPanelReviewEligibility({
+          read: (id) => bureau.reviews.get(id),
+          principal: async (request) => {
+            const context = await authority.authenticate(request);
+            return context instanceof Response ? undefined : context.principal;
+          },
+          isTrustedHuman: (principal, request) =>
+            principal.method === 'browser-session' &&
+            !request.headers.has('authorization') &&
+            !request.headers.has('x-api-key'),
+          isProtected: (review) => bureau.internals.reviewPolicy?.matches(review) ?? false,
+          verified: async (review) =>
+            review.kind === 'tool-approval' &&
+            (await bureau.internals.reviewedProvenance(review)) === 'verified',
+          mayDecide: (review, principal) =>
+            bureau.internals.reviewPolicy?.mayDecide(review, principal) ?? false,
+        }),
+        sharedPanelBrowserCredentials(authority.authenticate, sharedBrowser),
       ),
       ...skillRoutes(skills, refuse, authority, log),
       ...toolSourceRoutes(
@@ -1892,14 +2081,20 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     bureauHandler = createBureauHandler(bureau, {
       workspace,
+      ...(options.reviewedOperations === undefined
+        ? {}
+        : {
+            operations: options.reviewedOperations.operations,
+            reviewEffects: options.reviewedOperations.reviewEffects,
+          }),
       // The local caller, unless the request carries a credential. With an A2A key configured
       // (COR-1904), a credential is checked against it, and A2A's JSON-RPC routes require one.
-      ...(options.workspaceAuthentication === undefined
-        ? {
-            unauthenticatedAccess: 'allow' as const,
-            ...(authentication === undefined ? {} : { authentication }),
-          }
-        : { authentication: authentication! }),
+      ...bureauAuthenticationOptions(
+        sharedBrowser,
+        options.workspaceAuthentication,
+        authentication,
+        authority,
+      ),
       // Chat runs over AG-UI: the mount starts, attaches to, and resumes a run, and takes the
       // `RunAgentInput` Chat's transport sends.
       agUi: {},
@@ -1908,7 +2103,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // what a local caller does as `anonymous:local`, which the engine's relayed principal is not.
       // Its run inspector is an MCP App (COR-910): the page is built here, in this application, and
       // handed to the adapter as an injected `ui://` resource linked to `bureau.tasks.inspect`.
-      mcp: mcpMounts,
+      mcp: {
+        ...mcpMounts,
+        ...(sharedBrowser === undefined
+          ? {}
+          : {
+              scopeChallenge: sharedBrowser.scopeChallenge,
+              operationFilter: sharedBrowser.operationFilter,
+            }),
+      },
       // A2A (COR-1819): an agent that opts in is served at `<origin>/bureau/a2a/<name>`, which is
       // where the `/bureau/*` route above sends it once the prefix is removed. Without an A2A key
       // the listener is loopback-only behind the request guard and every call acts as the owner,
@@ -2087,7 +2290,9 @@ type Held = {
   /** Where this host recorded its address, until teardown removes it. */
   instanceRecord?: { readonly home: string; readonly pid: number };
   storage?: Storage;
+  privateServer?: { dispose(): Promise<void> };
   bureau?: Bureau<AgentDefinitions>;
+  reviewedWorker?: { dispose(): Promise<void> };
   providers?: ProviderManager;
   plugins?: PluginManager;
   skills?: SkillManager;
@@ -2133,10 +2338,12 @@ async function teardown(held: Held): Promise<void> {
   await step(held.skills && (() => held.skills?.close()));
   // End the reload streams first, so no page is left reading a host that is going away.
   await step(held.devReload && (() => held.devReload?.close()));
+  await step(held.privateServer && (() => held.privateServer?.dispose()));
   await step(held.publicServer && (() => held.publicServer?.stop(true)));
   await step(held.server && (() => held.server?.stop()));
   await step(held.pushDelivery && (() => held.pushDelivery?.stop()));
   await step(held.nightlyCleanUp && (() => held.nightlyCleanUp?.close()));
+  await step(held.reviewedWorker && (() => held.reviewedWorker?.dispose()));
   await step(held.bureau && (() => held.bureau?.shutdown({ policy: 'detach' })));
   // After the Bureau: a run still in flight may be calling a source's tool.
   await step(held.toolSources && (() => held.toolSources?.close()));

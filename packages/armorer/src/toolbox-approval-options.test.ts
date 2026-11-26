@@ -34,6 +34,13 @@ describe('getToolboxApprovalOptions', () => {
       status: 'needs_approval',
       reason: 'checked',
     });
+    expect(
+      await policy.beforeAdmission!({
+        ...context,
+        params: { order: 'order-1001' },
+        metadata: { summary: 'Refund order {order}' },
+      }),
+    ).toMatchObject({ action: { message: 'Refund order order-1001' } });
     const invalid = approvalOnlyPolicy(() => ({ decision: 'input' }) as never);
     expect(await rejectionOf(invalid.beforeAdmission!(context))).toMatchObject({
       message: 'Unsupported approval-only policy decision',

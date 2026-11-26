@@ -16,14 +16,11 @@ import type {
 } from '@lostgradient/weft';
 
 import {
-  createInfiniteQuery,
   createMutation,
   createQuery,
   useQueryClient,
-  type CreateInfiniteQueryResult,
   type CreateMutationResult,
   type CreateQueryResult,
-  type InfiniteData,
 } from '@tanstack/svelte-query';
 
 import { useBureauEventsLive, useFleetEventsLive } from '../../app/live-polling.svelte.ts';
@@ -32,21 +29,29 @@ import {
   isReviewNoLongerWaiting,
   listBureauReviews,
   listPendingReviews,
-  pageReviews,
-  resolveBureauReview,
-  type ApprovalDecisionSurface,
   type BureauReview,
   type ListedReview,
-  type ReviewDecision,
-  type ReviewResolution,
 } from '../../lib/bureau-reviews.ts';
 import { respondToTask, type TaskRespondAnswer } from '../../lib/bureau-tasks.ts';
 import { faultTreatment } from '../../lib/faults.ts';
 import { queryKeys } from '../../lib/query.ts';
 import { invalidateReviewQueries } from '../../lib/review-queries.ts';
+import {
+  getPrincipalStore,
+  hasPrincipalStore,
+  principalQueryScope,
+} from '../../lib/scopes.svelte.ts';
 
 /** How often the list and the count ask what is waiting, while the feed that carries it is not live. */
 export const REVIEW_POLL_MILLISECONDS = 5_000;
+type WeftReviewsClient = {
+  readonly operations: Pick<HttpClient['operations'], 'weft.reviews.list'>;
+};
+
+/** Refresh lists whose query observers already expose failures to the Reviews fault banner. */
+export async function refreshObservedReviews(...reads: readonly (() => Promise<unknown>)[]) {
+  await Promise.allSettled(reads.map(async (read) => read()));
+}
 
 /**
  * The options of the engine's `reviews.list({status})` query. Only the pending list is polled: a
@@ -57,15 +62,33 @@ export const REVIEW_POLL_MILLISECONDS = 5_000;
  * read where it can change.
  */
 export function weftReviewsQueryOptions(
-  client: HttpClient,
+  client: WeftReviewsClient,
   status: ReviewStatus,
   enabled = true,
   fleetLive = false,
+  scope?: readonly unknown[],
 ) {
   return {
-    queryKey: queryKeys.reviews.list({ status }),
-    queryFn: () => client.listReviews({ status }),
+    queryKey:
+      scope === undefined
+        ? queryKeys.reviews.list({ status })
+        : [...queryKeys.reviews.list({ status }), scope],
+    queryFn: async (): Promise<ReviewListEntry[]> => {
+      const page = await client.operations['weft.reviews.list']({ status });
+      return page.items.map((review) => ({ ...review, reviewers: [...review.reviewers] }));
+    },
     enabled,
+    ...(scope === undefined
+      ? {}
+      : {
+          placeholderData: (
+            previous: ReviewListEntry[] | undefined,
+            previousQuery: { queryKey: readonly unknown[] } | undefined,
+          ) =>
+            JSON.stringify(previousQuery?.queryKey.at(-1)) === JSON.stringify(scope)
+              ? previous
+              : undefined,
+        }),
     // poll-reason: fallback
     ...(status === 'pending' && !fleetLive ? { refetchInterval: REVIEW_POLL_MILLISECONDS } : {}),
   };
@@ -77,13 +100,20 @@ export function weftReviewsQueryOptions(
  * changes.
  */
 export function reviewListQuery(
-  client: HttpClient,
+  client: WeftReviewsClient,
   status: () => ReviewStatus,
   options: { readonly enabled?: () => boolean } = {},
 ): CreateQueryResult<ReviewListEntry[]> {
   const fleetLive = useFleetEventsLive();
+  const principal = hasPrincipalStore() ? getPrincipalStore() : undefined;
   return createQuery(() =>
-    weftReviewsQueryOptions(client, status(), options.enabled?.() ?? true, fleetLive()),
+    weftReviewsQueryOptions(
+      client,
+      status(),
+      options.enabled?.() ?? true,
+      fleetLive(),
+      principalQueryScope(principal?.principal ?? null),
+    ),
   );
 }
 
@@ -102,9 +132,6 @@ export function bureauReviewsQuery(): CreateQueryResult<readonly BureauReview[]>
     retry: false,
   }));
 }
-
-/** How many decided reviews the Done tab reads at a time. */
-export const DONE_PAGE_SIZE = 25;
 
 /**
  * Everything waiting on the person, the Bureau's questions and approvals and the engine's workflow
@@ -128,31 +155,6 @@ export function waitingReviewsQuery(
     retry: false,
     retryOnMount: false,
     refetchOnMount: false,
-  }));
-}
-
-/**
- * The reviews a person decided, latest decision first, a page at a time. `enabled` keeps the Done
- * tab from asking until it is opened. Call it while a component initializes.
- */
-export function doneReviewsQuery(
-  enabled: () => boolean,
-): CreateInfiniteQueryResult<InfiniteData<Awaited<ReturnType<typeof pageReviews>>, string | null>> {
-  return createInfiniteQuery(() => ({
-    queryKey: queryKeys.reviews.inbox('resolved'),
-    queryFn: ({ pageParam, signal }) =>
-      pageReviews(
-        {
-          status: 'resolved',
-          limit: DONE_PAGE_SIZE,
-          ...(pageParam === null ? {} : { pageToken: pageParam }),
-        },
-        { signal },
-      ),
-    initialPageParam: null as string | null,
-    getNextPageParam: (last) => last.nextPageToken ?? undefined,
-    enabled: enabled(),
-    retry: false,
   }));
 }
 
@@ -180,55 +182,6 @@ export function submitReviewDecisionMutation(
     mutationFn: ({ reviewId, options }: SubmitReviewDecisionVariables) =>
       client.submitReview(reviewId, options),
     onSuccess: () => {
-      void invalidateReviewQueries(queryClient);
-    },
-  }));
-}
-
-export interface ResolveBureauReviewVariables {
-  readonly id: string;
-  readonly decision: ReviewDecision;
-  readonly reason?: string;
-  /** The round of the tool approval the row showed, so a review gated again since is not decided. */
-  readonly round?: number;
-  /** Approve and allow the tool for the rest of the chat. Only an approval of a tool takes it. */
-  readonly remember?: boolean;
-  /**
-   * Where the decision was made, which only a tool approval takes: the Reviews page sends
-   * `reviews`, so the chat that asked names Reviews after a reload (COR-2292).
-   */
-  readonly decisionSurface?: ApprovalDecisionSurface;
-}
-
-/** What a decision came to: the Bureau's answer, or that it took effect and its outcome was not written. */
-export type ResolveBureauReviewResult = ReviewResolution & {
-  /** Set when the decision took effect and only its write into the conversation failed. */
-  readonly outcomeNotWritten?: true;
-};
-
-/**
- * Mutation for `bureau.reviews.resolve`. Whether the decision took effect or lost a race, the lists
- * are asked again at once, because either way the review is not what they last showed. A decision
- * whose outcome the Bureau could not write into the conversation took effect, so it is a result
- * and not a failure, and no toast says it failed.
- */
-export function resolveBureauReviewMutation(): CreateMutationResult<
-  ResolveBureauReviewResult,
-  Error,
-  ResolveBureauReviewVariables
-> {
-  const queryClient = useQueryClient();
-
-  return createMutation(() => ({
-    mutationFn: async (variables: ResolveBureauReviewVariables) => {
-      const result = await resolveBureauReview(variables);
-      return 'warning' in result && result.warning === 'APPROVAL_OUTCOME_NOT_WRITTEN'
-        ? { ...result, outcomeNotWritten: true as const }
-        : result;
-    },
-    // The Reviews pane owns the inline outcome and retry for this mutation.
-    onError: () => undefined,
-    onSettled: () => {
       void invalidateReviewQueries(queryClient);
     },
   }));

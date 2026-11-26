@@ -198,7 +198,7 @@ describe('the session count', () => {
     expect([workerPlaces(workerAndReadOnly), readOnlyAgents(workerAndReadOnly)]).toEqual([1, 1]);
 
     const workerAndOpus = foldSession([
-      { ...admit('t-opus'), agentType: 'chef-reviewer', opus: true },
+      { ...admit('t-opus'), agentType: 'stickler', opus: true },
       { ...admit('t-worker'), agentType: 'chef-worker' },
       start('a'),
       stop('a'),
@@ -436,11 +436,11 @@ describe('Opus places', () => {
 
   test('an Opus agent that started second keeps its own place when the Sonnet agent stops first', () => {
     const state = foldSession([
-      typed('t-opus', 'chef-reviewer', true),
+      typed('t-opus', 'stickler', true),
       typed('t-sonnet', 'chef-worker', false),
       // Sonnet starts first, though its dispatch is the younger one.
       startTyped('a-sonnet', 'chef-worker'),
-      startTyped('a-opus', 'chef-reviewer'),
+      startTyped('a-opus', 'stickler'),
       stop('a-sonnet'),
     ]);
     expect(workerPlaces(state)).toBe(1);

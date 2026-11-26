@@ -7,12 +7,8 @@
  * snapshot resends an input the run already took.
  */
 import { EventType } from '@ag-ui/core';
-import {
-  createAgent,
-  createScriptedGenerate,
-  type ScriptedGenerateStep,
-  stopWhen,
-} from '@lostgradient/operative';
+import { createAgent, stopWhen } from '@lostgradient/operative';
+import { createScriptedGenerate, type ScriptedGenerateStep } from '@lostgradient/operative/testing';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { describe, expect, it, spyOn } from 'bun:test';
 

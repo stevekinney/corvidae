@@ -272,6 +272,7 @@ export interface TaskRecord {
   readonly incarnation: string;
   readonly agentName: string | null;
   readonly owner: string;
+  readonly reservationFence?: number | undefined;
   /**
    * The principal that started the work on the owner's behalf, when that is not the owner: a
    * schedule's fire is owned by the schedule's owner and started by the scheduler's service
@@ -419,6 +420,7 @@ export interface TaskAdmission {
   readonly incarnation: string;
   readonly agentName: string | null;
   readonly owner: string;
+  readonly reservationFence?: number | undefined;
   /** See {@link TaskRecord.actor}. */
   readonly actor?: string | undefined;
   /** See {@link TaskRecord.kind}. */
@@ -541,6 +543,8 @@ export interface TaskRegistryHost {
     readonly { readonly taskId: string; readonly phase: LiveTask['phase'] }[]
   >;
   readonly pendingReviews: () => readonly PendingReview[];
+  readonly pendingPeerReviews?: (taskId: string) => Promise<readonly PendingReview[]>;
+  readonly filterSettledApprovals?: (reviews: readonly PendingReview[]) => Promise<PendingReview[]>;
   /** The incarnation of the context's live session, or `undefined` when it has none. */
   readonly currentIncarnation: (contextId: string) => Promise<string | undefined>;
   /**
@@ -834,7 +838,7 @@ export interface TaskRegistry {
    */
   recordRetrying(taskId: string, retrying: TaskRetrying | null): Promise<boolean>;
   /** Removes a record whose task never started. */
-  discard(taskId: string): Promise<void>;
+  discard(taskId: string, reservationFence?: number): Promise<void>;
   /**
    * Binds a task to the session incarnation its run turned out to run in (COR-1482). A schedule's
    * fire is written before the session it runs in exists, and a fresh session gets its
@@ -994,7 +998,10 @@ export interface TaskRegistry {
     tasks: readonly { readonly taskId: string; readonly closed: Promise<CleanupAcknowledgement> }[],
     waitMilliseconds: number,
   ): Promise<readonly { readonly taskId: string; readonly cleanup: TaskCleanupState }[]>;
-  get(taskId: string): Promise<TaskView | undefined>;
+  get(
+    taskId: string,
+    readOptions?: { readonly refreshReviews?: boolean },
+  ): Promise<TaskView | undefined>;
   /** A task's own message history; `undefined` for a task this registry does not hold. */
   history(taskId: string): Promise<readonly TaskMessage[] | undefined>;
   /** The owner of record of a task, or `undefined` when no record exists. */
@@ -1265,6 +1272,10 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     typeof value['incarnation'] === 'string' &&
     isStringOrNull(value['agentName']) &&
     typeof value['owner'] === 'string' &&
+    (value['reservationFence'] === undefined ||
+      (typeof value['reservationFence'] === 'number' &&
+        Number.isSafeInteger(value['reservationFence']) &&
+        value['reservationFence'] > 0)) &&
     (value['actor'] === undefined || typeof value['actor'] === 'string') &&
     (value['kind'] === undefined || value['kind'] === 'schedule-fire') &&
     (value['ownerProcess'] === undefined || typeof value['ownerProcess'] === 'string') &&
@@ -1956,10 +1967,20 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     return watcher;
   }
 
-  async function getView(taskId: string): Promise<TaskView | undefined> {
-    const record = await read(taskId);
+  async function getView(
+    taskId: string,
+    readOptions?: { readonly refreshReviews?: boolean },
+  ): Promise<TaskView | undefined> {
+    let record = await read(taskId);
     if (record === undefined) return undefined;
-    const grouped = reviewsByRun(host.pendingReviews().filter((review) => review.runId === taskId));
+    const listed = host.pendingReviews().filter((review) => review.runId === taskId);
+    if (readOptions?.refreshReviews !== true) return viewOf(record, listed);
+    const local = (await host.filterSettledApprovals?.(listed)) ?? listed;
+    const peer = (await host.pendingPeerReviews?.(taskId)) ?? [];
+    record = await read(taskId);
+    if (record === undefined) return undefined;
+    const seen = new Set(local.map((review) => review.id));
+    const grouped = reviewsByRun([...local, ...peer.filter((review) => !seen.has(review.id))]);
     return viewOf(record, grouped.get(taskId));
   }
 
@@ -2193,6 +2214,9 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         incarnation: admission.incarnation,
         agentName: admission.agentName,
         owner: admission.owner,
+        ...(admission.reservationFence === undefined
+          ? {}
+          : { reservationFence: admission.reservationFence }),
         ...(admission.actor === undefined ? {} : { actor: admission.actor }),
         ...(admission.kind === undefined ? {} : { kind: admission.kind }),
         ...(admission.origin === undefined ? {} : { origin: admission.origin }),
@@ -2203,6 +2227,59 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       };
       const key = recordKey(admission.taskId);
       const indexKey = contextIndexKey(admission.contextId, admission.taskId);
+      if (admission.reservationFence !== undefined) {
+        for (let attempt = 0; attempt < MAX_UPDATE_ATTEMPTS; attempt += 1) {
+          const raw = await kv.get(key);
+          if (raw === null) {
+            if (
+              await kv.conditionalBatch(
+                [
+                  { key, expectedValue: null },
+                  { key: indexKey, expectedValue: null },
+                ],
+                [
+                  { type: 'set', key, value: JSON.stringify(record) },
+                  { type: 'set', key: indexKey, value: admission.taskId },
+                ],
+              )
+            )
+              return;
+            if ((await kv.get(key)) === null && (await kv.get(indexKey)) !== null)
+              throw new Error(`Reserved task index for "${admission.taskId}" has no record.`);
+            continue;
+          }
+          const existing = parseRecord(key, raw);
+          if (
+            existing.contextId !== admission.contextId ||
+            existing.incarnation !== admission.incarnation ||
+            existing.agentName !== admission.agentName ||
+            existing.owner !== admission.owner ||
+            JSON.stringify(existing.origin) !== JSON.stringify(admission.origin) ||
+            existing.history[0]?.text !== admission.message ||
+            existing.reservationFence === undefined ||
+            existing.reservationFence > admission.reservationFence
+          )
+            throw new Error(`Reserved task admission for "${admission.taskId}" was fenced off.`);
+          if (existing.reservationFence === admission.reservationFence) return;
+          if (
+            await kv.conditionalBatch(
+              [{ key, expectedValue: raw }],
+              [
+                {
+                  type: 'set',
+                  key,
+                  value: JSON.stringify({
+                    ...existing,
+                    reservationFence: admission.reservationFence,
+                  }),
+                },
+              ],
+            )
+          )
+            return;
+        }
+        throw new Error(`Could not atomically admit reserved task "${admission.taskId}".`);
+      }
       // Written once: a second admission of the same run id leaves the first.
       const admitted = await kv.conditionalBatch(
         [
@@ -2426,8 +2503,25 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       });
     },
 
-    async discard(taskId) {
-      await this.remove(taskId);
+    async discard(taskId, reservationFence) {
+      if (reservationFence === undefined) return this.remove(taskId);
+      const key = recordKey(taskId);
+      const raw = await kv.get(key);
+      if (raw === null) return;
+      const record = parseRecord(key, raw);
+      if (record.reservationFence !== reservationFence) return;
+      if (
+        await kv.conditionalBatch(
+          [{ key, expectedValue: raw }],
+          [
+            { type: 'delete', key },
+            { type: 'delete', key: contextIndexKey(record.contextId, taskId) },
+          ],
+        )
+      ) {
+        watchers.delete(taskId);
+        observed.delete(taskId);
+      }
     },
 
     async bindIncarnation(taskId, incarnation) {

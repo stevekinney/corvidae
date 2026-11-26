@@ -274,7 +274,7 @@ export const tasksGetOperation = defineOperation<
     if (!(await mayAccessTask(host, principal, input.taskId, 'bureau.tasks:read'))) {
       throw resourceNotFound('task', input.taskId);
     }
-    const task = await host.tasks.get(input.taskId);
+    const task = await host.tasks.get(input.taskId, { refreshReviews: true });
     if (task === undefined) throw resourceNotFound('task', input.taskId);
     return { ...task, openWaits: [...task.openWaits], attention: [...task.attention] };
   },

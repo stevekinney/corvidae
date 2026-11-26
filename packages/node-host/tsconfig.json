@@ -1,0 +1,5 @@
+{
+  "extends": "@lostgradient/typescript/library.json",
+  "compilerOptions": { "types": ["node", "bun"] },
+  "include": ["src"]
+}

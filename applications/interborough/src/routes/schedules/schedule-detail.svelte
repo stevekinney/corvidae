@@ -60,7 +60,7 @@
     workflowDetailPath,
   } from '../../lib/router.svelte.ts';
   import { AGENT_RUN_TYPE, kindOf } from '../../lib/schedule-kinds.ts';
-  import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
+  import { getPrincipalStore, principalQueryScope, scopeGate } from '../../lib/scopes.svelte.ts';
   import { getWorkflowFile, resumeWorkflowFile } from '../../lib/workflow-files.ts';
   import {
     internalWorkflowsPath,
@@ -116,7 +116,7 @@
   const writeGate = $derived(scopeGate(principal, ['schedules:write']));
 
   const detailQuery = createQuery(() => ({
-    queryKey: scheduleDetailQueryKey(id),
+    queryKey: [...scheduleDetailQueryKey(id), principalQueryScope(principal.principal)],
     queryFn: () => fetchScheduleDetail(client, id),
     enabled: !readGate.disabled,
   }));
@@ -150,7 +150,7 @@
   // The runs the schedule launched, which the Runs list and the last-run words read from the same
   // cache entry: the newest one that is going says so in the heading and the summary line.
   const runHistory = createQuery(() => ({
-    queryKey: scheduleRunHistoryQueryKey(id),
+    queryKey: [...scheduleRunHistoryQueryKey(id), principalQueryScope(principal.principal)],
     queryFn: () => fetchScheduleRunHistory(client, id),
     enabled: !readGate.disabled,
     retry: false,

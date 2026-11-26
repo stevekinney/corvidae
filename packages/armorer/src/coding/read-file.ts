@@ -1,3 +1,4 @@
+import { open, stat } from 'node:fs/promises';
 import { z } from 'zod';
 
 import { createTool } from '../create-tool';
@@ -78,14 +79,23 @@ export function createReadFileTool(options: CreateReadFileToolOptions): Tool {
     metadata: { readOnly: true, mutates: false, dangerous: false },
     async execute({ path, offset = 0, limit }): Promise<ReadFileResult> {
       const resolvedPath = await jail.resolve(path);
-      const file = Bun.file(resolvedPath);
-      if (!(await file.exists())) {
-        throw new Error(`File not found: ${path}`);
+      let size: number;
+      try {
+        const details = await stat(resolvedPath);
+        size = details.size;
+      } catch (error) {
+        if (isMissingPathError(error)) throw new Error(`File not found: ${path}`, { cause: error });
+        throw error;
       }
 
-      const truncatedByBytes = file.size > maxBytes;
-      const sliceSize = Math.min(file.size, maxBytes);
-      const buffer = await file.slice(0, sliceSize).arrayBuffer();
+      const truncatedByBytes = size > maxBytes;
+      const buffer = Buffer.alloc(Math.min(size, maxBytes));
+      const handle = await open(resolvedPath, 'r');
+      try {
+        await handle.read(buffer, 0, buffer.length, 0);
+      } finally {
+        await handle.close();
+      }
       const text = new TextDecoder('utf-8', { fatal: false }).decode(buffer);
 
       const lines = text.split('\n');
@@ -113,4 +123,8 @@ export function createReadFileTool(options: CreateReadFileToolOptions): Tool {
       return result;
     },
   });
+}
+
+function isMissingPathError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
 }

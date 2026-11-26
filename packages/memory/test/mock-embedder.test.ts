@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { createMockEmbedder } from '../src/index';
+import { createMockEmbedder } from '../src/testing/index';
 
 describe('createMockEmbedder', () => {
   it('produces vectors of the specified dimension', () => {

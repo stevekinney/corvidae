@@ -234,7 +234,7 @@ describe('a code-defined type', () => {
       ['every-5', 'active'],
       ['nightly', 'paused'],
     ]);
-    expect(stub?.callsTo('GET /schedules')[0]?.params).toMatchObject({
+    expect(stub?.callsTo('weft.schedules.list')[0]?.params).toMatchObject({
       workflowType: 'order-processing',
     });
   });
@@ -242,7 +242,7 @@ describe('a code-defined type', () => {
   test('has no schedules section, and says nothing of one, when none starts it', async () => {
     const { container } = open('/workflows/order-processing', { schedules: [] });
     const root = await ready(container);
-    await waitFor(() => expect(stub?.callsTo('GET /schedules').length).toBeGreaterThan(0));
+    await waitFor(() => expect(stub?.callsTo('weft.schedules.list').length).toBeGreaterThan(0));
     expect(testId(root, 'workflow-schedules')).toBeNull();
     expect(testId(root, 'workflow-line-starts')).toBeNull();
   });
@@ -657,7 +657,7 @@ describe('an agent-authored type', () => {
       workflow: 'digest',
       limit: 20,
     });
-    expect(stub?.callsTo('GET /workflows')).toEqual([]);
+    expect(stub?.callsTo('weft.workflows.list')).toEqual([]);
   });
 
   test('offers edit in the header, and pause, delete and send signal in the menu, for a file that loaded', async () => {

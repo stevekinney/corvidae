@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2743",
+  "branch": "codex/cor-2743-workers-npm",
+  "checkedAt": "6a6891c6613d39a43c696bdff7f45c82010499cc",
+  "briefVersion": "1f4941f08acc",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-main",
+      "evidence": "environmentalist PR #18 merged at 646a064d9c0d69da96b232229929e000a278a8be"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-main",
+      "evidence": "@lostgradient/environmentalist@0.2.0 published with verified integrity and provenance"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "catalog and lock use 0.2.0; four packages delegate to createEnvironmentRecordSource"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "four named package test commands and focused checks pass"
+    }
+  ]
+}

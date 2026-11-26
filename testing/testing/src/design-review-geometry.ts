@@ -50,6 +50,11 @@ export interface ControlFact {
   readonly unreached: readonly string[] | null;
   /** A number shared by the controls of one parent, so controls in one row can be told apart. */
   readonly parent: number;
+  /**
+   * How strongly its face reads against its parent's surface: the WCAG contrast ratio of its fill,
+   * or of its border where the fill is transparent (`outlined`). `null` when it paints neither.
+   */
+  readonly weight: { readonly contrast: number; readonly outlined: boolean } | null;
   /** Whether it fills its container's inline size and at least half the viewport. */
   readonly fullWidth: boolean;
   /** Whether it draws a box of its own, a border or a fill, so its padding is something a person sees. */
@@ -141,6 +146,38 @@ export interface InsetFact {
   readonly sample: string;
 }
 
+/** Visible text that reads as an identifier, with the typeface it is set in. */
+export interface IdentifierFact {
+  readonly name: string;
+  readonly text: string;
+  /** The first family of the element's computed `font-family`, lowercased. */
+  readonly family: string;
+  /** The first family of `--cinder-font-mono` as computed on the element, lowercased. */
+  readonly mono: string;
+}
+
+/** The room between a table, list or card and the text block that follows it. */
+export interface CaptionGapFact {
+  /** The text block. */
+  readonly name: string;
+  /** The table, list or card above it. */
+  readonly container: string;
+  /** From the container's bottom edge to the text's top. */
+  readonly gap: number;
+  /** `--cinder-space-2` in pixels, or `null` when the page declares none the probe can read. */
+  readonly minimum: number | null;
+  readonly sample: string;
+}
+
+/** A disclosure chevron inside a row of two or more text lines. */
+export interface ChevronFact {
+  readonly name: string;
+  readonly row: string;
+  readonly lines: number;
+  /** The chevron's vertical centre less the row's: positive is below centre. */
+  readonly offset: number;
+}
+
 /** How much of the viewport the chrome around the page's scrolling region takes. */
 export interface ChromeFact {
   /** The region the content scrolls in. */
@@ -149,6 +186,18 @@ export interface ChromeFact {
   readonly top: number;
   /** The pixels of viewport below it: a composer, a docked bar, a drawer. */
   readonly bottom: number;
+}
+
+/** A tooltip on show, and where it sits against the element that `aria-describedby` or `aria-labelledby` ties it to. */
+export interface TooltipFact {
+  readonly name: string;
+  /** The element it describes. */
+  readonly anchor: string;
+  /** The empty distance between the two boxes along the inline axis, 0 where they overlap. */
+  readonly horizontalGap: number;
+  /** The same along the block axis. */
+  readonly verticalGap: number;
+  readonly sample: string;
 }
 
 /** What the probe measured on one captured page. */
@@ -166,8 +215,13 @@ export interface GeometryFacts {
   readonly leadingSpace: readonly LeadingSpaceFact[];
   readonly overlaps: readonly OverlapFact[];
   readonly insets: readonly InsetFact[];
+  readonly identifiers: readonly IdentifierFact[];
+  readonly captionGaps: readonly CaptionGapFact[];
+  readonly chevrons: readonly ChevronFact[];
   /** `null` when nothing on the page scrolls. */
   readonly chrome: ChromeFact | null;
+  /** The tooltips visible when the page was measured; empty when none was open. */
+  readonly tooltips: readonly TooltipFact[];
 }
 
 /** The fields of a manifest line the audit reads. */
@@ -229,6 +283,8 @@ export const GEOMETRY_THRESHOLDS = {
   lineHeightsPerSizeMaximum: 2,
   /** Text smaller than this is not readable. */
   fontSizeMinimum: 11,
+  /** A tooltip's nearest edge sits no further than this from what it describes: twice Cinder's own 8px offset. */
+  tooltipDistanceMaximum: 16,
   /** A border between surface and content should read no more strongly than this. */
   structuralBorderContrastMaximum: 1.5,
   /**
@@ -250,6 +306,8 @@ export const GEOMETRY_THRESHOLDS = {
   leadingSpaceMinimum: 48,
   /** Content with this much less room after it than before it is pushed, not centered. */
   leadingSpaceImbalanceShare: 0.15,
+  /** A disclosure chevron on a multi-line row sits within this many pixels of the row's centre. */
+  chevronCentreWithin: 1,
 } as const;
 
 /** Every rule, in the order the report lists them, with the heading and the principle it states. */
@@ -335,6 +393,15 @@ export const GEOMETRY_RULES = {
     title: 'Text too small',
     principle: `No text is smaller than ${GEOMETRY_THRESHOLDS.fontSizeMinimum} pixels.`,
   },
+  'tooltip-far': {
+    title: 'Tooltips far from their anchor',
+    principle: `A visible tooltip's nearest edge is at most ${GEOMETRY_THRESHOLDS.tooltipDistanceMaximum} pixels from the element it describes (twice Cinder's 8 pixel offset), and one placed beside it shares a vertical span with it. It reports only on a capture that shows a tooltip.`,
+  },
+  'primary-lighter': {
+    title: 'Primary action lighter than its sibling',
+    principle:
+      'Among buttons in one row, a primary, danger or soft-danger button reads at least as strongly against its parent as the secondary or outlined button beside it: the contrast of its fill, or of its border where the fill is transparent, is never lower.',
+  },
   'border-heavy': {
     title: 'Heavy borders',
     principle: `A border between a surface and its content reads at no more than ${GEOMETRY_THRESHOLDS.structuralBorderContrastMaximum}:1 against the surface outside it, and a control's border at no more than ${GEOMETRY_THRESHOLDS.controlBorderContrastMaximum}:1.`,
@@ -346,6 +413,20 @@ export const GEOMETRY_RULES = {
   'border-mixed': {
     title: 'Inconsistent border weights',
     principle: `A page draws its structural borders in at most ${GEOMETRY_THRESHOLDS.structuralBorderWeightsMaximum} weights, counting a dashed line as a weight of its own. A dashed border means one thing on a page.`,
+  },
+  'identifier-proportional': {
+    title: 'Identifiers in a proportional typeface',
+    principle:
+      "An address, a path, an identifier or an operation id is set in Cinder's monospace (`--cinder-font-mono`), so its characters line up and it reads as a value to copy.",
+  },
+  'caption-gap': {
+    title: 'Captions crammed against their container',
+    principle:
+      'A line of text after a table, list or card sits a step of the spacing scale from it, at least `--cinder-space-2`.',
+  },
+  'glyph-off-centre': {
+    title: 'Disclosure chevrons off centre',
+    principle: `A disclosure chevron (a \`__chevron\` element) on a row of two or more lines sits at the row's vertical centre, within ${GEOMETRY_THRESHOLDS.chevronCentreWithin} pixel, not on its first line.`,
   },
 } as const;
 
@@ -784,6 +865,47 @@ function auditInsets(facts: GeometryFacts, capture: GeometryCapture): GeometryFi
   return findings;
 }
 
+function auditIdentifiers(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
+  return facts.identifiers
+    .filter((identifier) => identifier.family !== identifier.mono)
+    .map((identifier) => ({
+      rule: 'identifier-proportional' as const,
+      subject: `${identifier.name} "${identifier.text}"`,
+      measured: `set in ${identifier.family || 'no family'}, not ${identifier.mono}`,
+      capture,
+    }));
+}
+
+function auditCaptionGaps(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
+  if (capture.source === STRESS_SOURCE) return [];
+  const findings: GeometryFinding[] = [];
+  const scaled = facts.spaceScale.length >= SCALE_STEPS_MINIMUM;
+  for (const caption of facts.captionGaps) {
+    const tooClose = caption.minimum !== null && caption.gap < caption.minimum - 0.5;
+    const offScale =
+      scaled && !facts.spaceScale.some((step) => Math.abs(step - caption.gap) <= 0.5);
+    if (!tooClose && !offScale) continue;
+    findings.push({
+      rule: 'caption-gap',
+      subject: `${caption.name} after ${caption.container}`,
+      measured: `"${caption.sample}" starts ${round(caption.gap)}px below it${caption.minimum === null ? '' : `, against a minimum of ${round(caption.minimum)}px`}${offScale ? ' (off the scale)' : ''}`,
+      capture,
+    });
+  }
+  return findings;
+}
+
+function auditChevrons(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
+  return facts.chevrons
+    .filter((chevron) => Math.abs(chevron.offset) > GEOMETRY_THRESHOLDS.chevronCentreWithin)
+    .map((chevron) => ({
+      rule: 'glyph-off-centre' as const,
+      subject: `${chevron.name} in ${chevron.row}`,
+      measured: `${round(Math.abs(chevron.offset))}px ${chevron.offset < 0 ? 'above' : 'below'} the centre of a ${chevron.lines}-line row`,
+      capture,
+    }));
+}
+
 function auditChrome(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
   const thresholds = GEOMETRY_THRESHOLDS;
   const { chrome, viewport } = facts;
@@ -829,6 +951,60 @@ function auditLeadingSpace(facts: GeometryFacts, capture: GeometryCapture): Geom
   return findings;
 }
 
+const STRONG_VARIANTS = new Set(['primary', 'danger', 'soft-danger']);
+
+function auditTooltips(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
+  const limit = GEOMETRY_THRESHOLDS.tooltipDistanceMaximum;
+  const findings: GeometryFinding[] = [];
+  for (const tooltip of facts.tooltips) {
+    const distance = Math.hypot(tooltip.horizontalGap, tooltip.verticalGap);
+    // A tooltip above or below its anchor overlaps it along the inline axis; one beside it has to
+    // share a vertical span with it, or it points at the row above or below.
+    const offRow = tooltip.horizontalGap > 0 && tooltip.verticalGap > 0;
+    if (distance <= limit && !offRow) continue;
+    findings.push({
+      rule: 'tooltip-far',
+      subject: `${tooltip.name} for ${tooltip.anchor}`,
+      measured: `"${tooltip.sample}" is ${round(distance)}px from its anchor${offRow ? ' and shares no vertical span with it' : ''}, over the ${limit}px limit`,
+      capture,
+    });
+  }
+  return findings;
+}
+
+function auditWeights(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
+  const findings: GeometryFinding[] = [];
+  const rows = new Map<number, ControlFact[]>();
+  for (const control of facts.controls) {
+    if (control.kind !== 'button' || control.weight === null) continue;
+    const row = rows.get(control.parent);
+    if (row === undefined) rows.set(control.parent, [control]);
+    else row.push(control);
+  }
+  const label = (control: ControlFact): string =>
+    control.text === '' ? control.accessibleLabel : control.text;
+  for (const row of rows.values()) {
+    const quiet = row.filter(
+      (control) => control.variant === 'secondary' || control.weight?.outlined === true,
+    );
+    for (const strong of row) {
+      if (!STRONG_VARIANTS.has(strong.variant) || strong.weight === null) continue;
+      const strongContrast = strong.weight.contrast;
+      const stronger = quiet
+        .filter((control) => (control.weight?.contrast ?? 0) > strongContrast)
+        .toSorted((left, right) => (right.weight?.contrast ?? 0) - (left.weight?.contrast ?? 0))[0];
+      if (stronger?.weight == null) continue;
+      findings.push({
+        rule: 'primary-lighter',
+        subject: `${strong.name}[variant=${strong.variant}]`,
+        measured: `"${label(strong)}" reads ${round(strongContrast)}:1 against its parent, below "${label(stronger)}" beside it at ${round(stronger.weight.contrast)}:1 (${stronger.weight.outlined ? 'border' : 'fill'})`,
+        capture,
+      });
+    }
+  }
+  return findings;
+}
+
 /** Holds one capture's measured facts to every rule. */
 export function auditCapture(facts: GeometryFacts, capture: GeometryCapture): GeometryFinding[] {
   return [
@@ -840,7 +1016,12 @@ export function auditCapture(facts: GeometryFacts, capture: GeometryCapture): Ge
     ...auditLeadingSpace(facts, capture),
     ...auditOverlaps(facts, capture),
     ...auditInsets(facts, capture),
+    ...auditIdentifiers(facts, capture),
+    ...auditCaptionGaps(facts, capture),
+    ...auditChevrons(facts, capture),
     ...auditChrome(facts, capture),
+    ...auditTooltips(facts, capture),
+    ...auditWeights(facts, capture),
   ];
 }
 

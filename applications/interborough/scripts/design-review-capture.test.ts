@@ -16,6 +16,7 @@ import {
   designReviewSlug,
   designReviewWorld,
   nextFrame,
+  proveWitnessFrame,
   withPointerCleanup,
 } from '../tests/e2e/design-review-capture.ts';
 import { E2E_FIRST_RUN_PORT, E2E_PORT, E2E_SHOWCASE_PORT } from '../tests/e2e/e2e-constants.ts';
@@ -97,6 +98,7 @@ describe('parseArguments', () => {
       'tests/e2e/health-storage.spec.ts',
       'tests/e2e/health-audit.spec.ts',
       'tests/e2e/health-audit-states.spec.ts',
+      'tests/e2e/27-audit.spec.ts',
       'tests/e2e/restart.spec.ts',
       'tests/e2e/settings-general.spec.ts',
       'tests/e2e/settings-allowed-models.spec.ts',
@@ -155,6 +157,7 @@ describe('parseArguments', () => {
       'tests/e2e/fault-remediation.spec.ts',
       'tests/e2e/confirm-dialog-states.spec.ts',
       'tests/panels/schedule-editor-states.spec.ts',
+      'tests/panels/pending-review.spec.ts',
       'tests/e2e/fork-comparison-states.spec.ts',
       'tests/panels/run-comparison-states.spec.ts',
       'tests/panels/failure-explanation-states.spec.ts',
@@ -201,6 +204,7 @@ describe('parseArguments', () => {
       'tests/e2e/health-storage.spec.ts',
       'tests/e2e/health-audit.spec.ts',
       'tests/e2e/health-audit-states.spec.ts',
+      'tests/e2e/27-audit.spec.ts',
       'tests/e2e/restart.spec.ts',
       'tests/e2e/settings-general.spec.ts',
       'tests/e2e/settings-allowed-models.spec.ts',
@@ -258,6 +262,7 @@ describe('parseArguments', () => {
       'tests/e2e/fault-remediation.spec.ts',
       'tests/e2e/confirm-dialog-states.spec.ts',
       'tests/panels/schedule-editor-states.spec.ts',
+      'tests/panels/pending-review.spec.ts',
       'tests/e2e/fork-comparison-states.spec.ts',
       'tests/panels/run-comparison-states.spec.ts',
       'tests/panels/failure-explanation-states.spec.ts',
@@ -289,6 +294,7 @@ describe('parseArguments', () => {
       'tests/e2e/health-storage.spec.ts',
       'tests/e2e/health-audit.spec.ts',
       'tests/e2e/health-audit-states.spec.ts',
+      'tests/e2e/27-audit.spec.ts',
       'tests/e2e/restart.spec.ts',
       'tests/e2e/settings-general.spec.ts',
       'tests/e2e/settings-allowed-models.spec.ts',
@@ -346,6 +352,7 @@ describe('parseArguments', () => {
       'tests/e2e/fault-remediation.spec.ts',
       'tests/e2e/confirm-dialog-states.spec.ts',
       'tests/panels/schedule-editor-states.spec.ts',
+      'tests/panels/pending-review.spec.ts',
       'tests/e2e/fork-comparison-states.spec.ts',
       'tests/panels/run-comparison-states.spec.ts',
       'tests/panels/failure-explanation-states.spec.ts',
@@ -770,6 +777,66 @@ describe('capture file names', () => {
   });
 });
 
+describe('proveWitnessFrame', () => {
+  /** A page whose targets sit at a document offset; scrolling to one puts it at the top. */
+  function scrollingPage(offsets: Record<string, number>) {
+    let scrollY = 0;
+    return {
+      scroll: async (locator: string) => {
+        scrollY = offsets[locator] ?? 0;
+      },
+      measure: async (locator: string) => ({
+        x: 0,
+        y: (offsets[locator] ?? 0) - scrollY,
+        width: 100,
+        height: 40,
+      }),
+    };
+  }
+  const viewport = { width: 375, height: 900 };
+  const entry = (name: string, scrolling: 'none' | 'outlet', targets: string[]) => ({
+    witness: { name, scrolling },
+    targets: targets.map((target) => ({ target, locator: target })),
+  });
+
+  test('holds every target of an outlet witness to the one frame after its scroll', async () => {
+    const page = scrollingPage({ heading: 2000, more: 4000 });
+    expect(
+      await rejectionOf(
+        proveWitnessFrame([entry('phone', 'outlet', ['heading', 'more'])], viewport, page),
+      ),
+    ).toMatchObject({ message: 'Viewport witness phone target more is outside the viewport.' });
+  });
+
+  test('a later witness scrolling the shared frame fails an earlier one it pushed out', async () => {
+    const page = scrollingPage({ heading: 100, more: 2000 });
+    const error = await rejectionOf(
+      proveWitnessFrame(
+        [entry('top', 'none', ['heading']), entry('bottom', 'outlet', ['more'])],
+        viewport,
+        page,
+      ),
+    );
+    expect(error).toMatchObject({
+      message: 'Viewport witness top target heading is outside the viewport.',
+    });
+  });
+
+  test('passes witnesses whose targets all fit the frame', async () => {
+    const page = scrollingPage({ heading: 100, filter: 300 });
+    expect(
+      await proveWitnessFrame(
+        [entry('top', 'none', ['heading']), entry('filter', 'none', ['filter'])],
+        viewport,
+        scrollingPage({ heading: 100, filter: 300 }),
+      ),
+    ).toBeUndefined();
+    expect(
+      await proveWitnessFrame([entry('top', 'none', ['heading', 'filter'])], viewport, page),
+    ).toBeUndefined();
+  });
+});
+
 describe('nextFrame', () => {
   test('ends under a stopped page clock, which never delivers an animation frame', async () => {
     // COR-2227: Home's loading capture stops the clock (`page.clock.pauseAt`), and Playwright's
@@ -815,7 +882,18 @@ describe('nextFrame', () => {
         this.#disconnected = true;
       }
     };
-    const page = { evaluate: async (pageFunction: () => Promise<void>) => pageFunction() };
+    const document = new Window().document;
+    const savedDocument = scope['document'];
+    const page = {
+      evaluate: async (pageFunction: () => Promise<void>) => {
+        scope['document'] = document;
+        try {
+          return await pageFunction();
+        } finally {
+          scope['document'] = savedDocument;
+        }
+      },
+    };
     try {
       await nextFrame(page as never);
     } finally {
@@ -823,6 +901,7 @@ describe('nextFrame', () => {
       else scope['document'] = saved.document;
       scope['requestAnimationFrame'] = saved.requestAnimationFrame;
       scope['ResizeObserver'] = saved.ResizeObserver;
+      scope['document'] = savedDocument;
     }
     expect(animationFramesAsked).toBe(0);
     expect(observations).toBe(2);
@@ -1094,7 +1173,11 @@ describe('captureDesignReview', () => {
         leadingSpace: [],
         overlaps: [],
         insets: [],
+        identifiers: [],
+        captionGaps: [],
+        chevrons: [],
         chrome: null,
+        tooltips: [],
       }),
     );
     const manifest = JSON.stringify({
@@ -1171,7 +1254,12 @@ describe('captureDesignReview', () => {
       const path = join(directory, 'expected.json');
       await writeFile(
         path,
-        JSON.stringify({ version: 1, issue: 'COR-9', captures: widths.map(expectation) }),
+        JSON.stringify({
+          version: 2,
+          issue: 'COR-9',
+          captures: widths.map(expectation),
+          witnesses: [],
+        }),
       );
       return path;
     }
@@ -1198,6 +1286,7 @@ describe('captureDesignReview', () => {
       expect(summary.coverage.complete).toBe(false);
       expect(summary.coverage.expected).toBe(3);
       expect(summary.coverage.missing).toEqual([expectation(1920)]);
+      expect(summary.coverage.missingWitnesses).toEqual([]);
     });
 
     test('exits 0 and records complete coverage when every declared state was captured', async () => {
@@ -1215,7 +1304,278 @@ describe('captureDesignReview', () => {
       ).toBe(0);
       expect(calls.err).not.toContain('missing capture');
       const summary = JSON.parse(await readFile(join(out, 'summary.json'), 'utf8'));
-      expect(summary.coverage).toEqual({ expected: 3, missing: [], complete: true });
+      expect(summary.coverage).toEqual({
+        expected: 3,
+        missing: [],
+        missingWitnesses: [],
+        complete: true,
+      });
+    });
+
+    describe('viewport witnesses (COR-2574)', () => {
+      const witness = {
+        row: '12a',
+        route: '/',
+        state: 'first run fresh installation',
+        kind: 'first-run',
+        specification: 'applications/interborough/tests/e2e/first-run.spec.ts',
+        title: 'chromium e2e/first-run.spec.ts Home (/) on a phone (12a) is one column',
+        world: 'e2e-host',
+        name: 'phone-light',
+        width: 375,
+        theme: 'light',
+        targets: ['role:heading:Welcome'],
+        visible: 'The welcome heading is in the first phone frame.',
+        scrolling: 'none',
+      };
+      const witnessLine = (viewport: string, witnesses = ['12a:phone-light']) =>
+        JSON.stringify({
+          route: '/',
+          state: 'first run fresh installation',
+          width: 375,
+          colorScheme: 'light',
+          source: 'first-run.spec.ts',
+          world: 'e2e-host',
+          viewport,
+          witnesses,
+        });
+
+      async function witnessPlan(): Promise<string> {
+        const path = join(directory, 'expected.json');
+        await writeFile(
+          path,
+          JSON.stringify({
+            version: 2,
+            issue: 'COR-9',
+            captures: [expectation(375)],
+            witnesses: [witness],
+          }),
+        );
+        return path;
+      }
+
+      /** Stands in for Playwright: writes the manifest, the frames it names and a JSON report. */
+      function witnessRun(options: {
+        manifest: string;
+        frames?: readonly string[];
+        selected?: number;
+      }): {
+        commands: { command: readonly string[]; variables: Record<string, string> }[];
+        err: () => string;
+        environment: CaptureEnvironment;
+      } {
+        const commands: { command: readonly string[]; variables: Record<string, string> }[] = [];
+        let err = '';
+        const environment: CaptureEnvironment = {
+          standardOutput: () => {},
+          standardError: (text) => {
+            err += text;
+          },
+          portIsFree: () => true,
+          async run(command, variables) {
+            commands.push({ command, variables });
+            const out = variables['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] ?? '';
+            await writeFile(join(out, 'manifest.jsonl'), options.manifest);
+            for (const frame of options.frames ?? []) {
+              await mkdir(join(out, 'screens'), { recursive: true });
+              await writeFile(join(out, frame), 'png');
+            }
+            const report = variables['PLAYWRIGHT_JSON_OUTPUT_NAME'];
+            if (report !== undefined && variables['INTERBOROUGH_VIEWPORT_WITNESSES'] !== undefined)
+              await writeFile(
+                report,
+                JSON.stringify({
+                  suites: [
+                    {
+                      file: 'e2e/first-run.spec.ts',
+                      specs: Array.from({ length: options.selected ?? 1 }, () => ({})),
+                    },
+                  ],
+                }),
+              );
+            return 0;
+          },
+        };
+        return { commands, err: () => err, environment };
+      }
+
+      test('a narrow run runs only the witness, by its literal anchored title, and writes a receipt of its viewport frame', async () => {
+        const run = witnessRun({
+          manifest: witnessLine('screens/first-run.png'),
+          frames: ['screens/first-run.png'],
+        });
+        const out = join(directory, 'capture');
+        expect(
+          await captureDesignReview(
+            ['--out', out, '--narrow', '--expect', await witnessPlan()],
+            run.environment,
+          ),
+        ).toBe(0);
+        expect(run.commands).toHaveLength(1);
+        const [only] = run.commands;
+        expect(only!.command).toContain('tests/e2e/first-run.spec.ts');
+        expect(only!.command).not.toContain(witness.specification);
+        expect(only!.command.at(-1)).toBe(
+          '^chromium e2e/first\\-run\\.spec\\.ts Home \\(/\\) on a phone \\(12a\\) is one column$',
+        );
+        expect(only!.variables['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME']).toBe('light');
+        expect(JSON.parse(only!.variables['INTERBOROUGH_VIEWPORT_WITNESSES']!)).toEqual([witness]);
+        expect(JSON.parse(await readFile(join(out, 'viewport-witnesses.json'), 'utf8'))).toEqual([
+          { row: '12a', name: 'phone-light', viewport: 'witnesses/screens/first-run.png' },
+        ]);
+        expect(only!.variables['INTERBOROUGH_DESIGN_REVIEW_CAPTURE']).toBe(join(out, 'witnesses'));
+        const summary = JSON.parse(await readFile(join(out, 'summary.json'), 'utf8'));
+        // A narrow run proves the witnesses, never the broad plan, so no round can count it.
+        expect(summary.coverage).toEqual({
+          expected: 0,
+          missing: [],
+          missingWitnesses: [],
+          complete: true,
+        });
+      });
+
+      test('a broad run with a plan runs the witnesses first, then every scheme', async () => {
+        const run = witnessRun({
+          manifest: witnessLine('screens/first-run.png'),
+          frames: ['screens/first-run.png'],
+        });
+        const out = join(directory, 'capture');
+        await captureDesignReview(
+          ['--out', out, '--scheme', 'light', '--expect', await witnessPlan()],
+          run.environment,
+        );
+        expect(
+          run.commands.map(
+            ({ variables }) => variables['INTERBOROUGH_VIEWPORT_WITNESSES'] !== undefined,
+          ),
+        ).toEqual([true, false]);
+        // The broad run writes elsewhere, so it cannot overwrite the frame the targets were held to.
+        expect(
+          run.commands.map(({ variables }) => variables['INTERBOROUGH_DESIGN_REVIEW_CAPTURE']),
+        ).toEqual([join(out, 'witnesses'), out]);
+      });
+
+      test('a broad frame cannot stand in for a witness frame, nor an earlier run vouch for this one', async () => {
+        const out = join(directory, 'capture');
+        // An earlier run left a proving frame and line in the witness directory.
+        await mkdir(join(out, 'witnesses', 'screens'), { recursive: true });
+        await writeFile(
+          join(out, 'witnesses', 'manifest.jsonl'),
+          witnessLine('screens/first-run.png'),
+        );
+        await writeFile(join(out, 'witnesses', 'screens', 'first-run.png'), 'png');
+        // This run's witness wrote nothing; only the broad run's directory holds a proving line.
+        let call = 0;
+        const environment: CaptureEnvironment = {
+          standardOutput: () => {},
+          standardError: () => {},
+          portIsFree: () => true,
+          async run(_command, variables) {
+            call += 1;
+            const target = variables['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] ?? '';
+            if (call === 1) {
+              await writeFile(
+                variables['PLAYWRIGHT_JSON_OUTPUT_NAME']!,
+                JSON.stringify({ suites: [{ file: 'e2e/first-run.spec.ts', specs: [{}] }] }),
+              );
+              return 0;
+            }
+            await mkdir(join(target, 'screens'), { recursive: true });
+            await writeFile(join(target, 'screens', 'first-run.png'), 'png');
+            await writeFile(join(target, 'manifest.jsonl'), witnessLine('screens/first-run.png'));
+            return 0;
+          },
+        };
+        expect(
+          await captureDesignReview(
+            ['--out', out, '--scheme', 'light', '--expect', await witnessPlan()],
+            environment,
+          ),
+        ).toBe(1);
+        const summary = JSON.parse(await readFile(join(out, 'summary.json'), 'utf8'));
+        expect(summary.coverage.missing).toEqual([]);
+        expect(summary.coverage.missingWitnesses).toEqual([witness]);
+      });
+
+      test('fails a title that selects no test, or more than one', async () => {
+        for (const selected of [0, 2]) {
+          const run = witnessRun({
+            manifest: witnessLine('screens/first-run.png'),
+            frames: ['screens/first-run.png'],
+            selected,
+          });
+          const out = join(directory, `capture-${selected}`);
+          expect(
+            await captureDesignReview(
+              ['--out', out, '--narrow', '--expect', await witnessPlan()],
+              run.environment,
+            ),
+          ).toBe(1);
+          expect(run.err()).toContain(`did not resolve exactly one test`);
+          expect(run.err()).toContain(`(it selected ${selected})`);
+          const summary = JSON.parse(await readFile(join(out, 'summary.json'), 'utf8'));
+          expect(summary.coverage.missingWitnesses).toEqual([witness]);
+          expect(JSON.parse(await readFile(join(out, 'viewport-witnesses.json'), 'utf8'))).toEqual(
+            [],
+          );
+        }
+      });
+
+      test('fails a witness whose test failed, even when its frame was written', async () => {
+        const run = witnessRun({
+          manifest: witnessLine('screens/first-run.png'),
+          frames: ['screens/first-run.png'],
+        });
+        const failing: CaptureEnvironment = {
+          ...run.environment,
+          run: async (command, variables) => {
+            await run.environment.run(command, variables);
+            return 1;
+          },
+        };
+        const out = join(directory, 'capture');
+        expect(
+          await captureDesignReview(
+            ['--out', out, '--narrow', '--expect', await witnessPlan()],
+            failing,
+          ),
+        ).toBe(1);
+        expect(run.err()).toContain('failed its test (exit 1)');
+      });
+
+      test('fails a witness whose frame is missing, full-page only, or records another witness', async () => {
+        const cases = [
+          { manifest: witnessLine('screens/first-run.png'), frames: [] },
+          {
+            manifest: witnessLine('screens/first-run.full.png'),
+            frames: ['screens/first-run.full.png'],
+          },
+          {
+            manifest: witnessLine('screens/first-run.png', ['12a:phone-dark']),
+            frames: ['screens/first-run.png'],
+          },
+        ];
+        for (const [index, entry] of cases.entries()) {
+          const run = witnessRun(entry);
+          const out = join(directory, `capture-${index}`);
+          expect(
+            await captureDesignReview(
+              ['--out', out, '--narrow', '--expect', await witnessPlan()],
+              run.environment,
+            ),
+          ).toBe(1);
+          expect(run.err()).toContain('missing viewport witness: row 12a, phone-light');
+          expect(JSON.parse(await readFile(join(out, 'viewport-witnesses.json'), 'utf8'))).toEqual(
+            [],
+          );
+        }
+      });
+
+      test('refuses --narrow without a plan', async () => {
+        const { calls, environment } = standIn({});
+        expect(await captureDesignReview(['--narrow'], environment)).toBe(2);
+        expect(calls.err).toContain('--narrow needs --expect');
+      });
     });
 
     test('answers 2 for an expected-captures file it cannot read, and runs nothing', async () => {

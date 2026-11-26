@@ -102,6 +102,19 @@ describe('check-prose-questions', () => {
     expect(result?.decision).toBe('block');
   });
 
+  // P-COR-128: a leased chef coordinator is denied AskUserQuestion (scripts/chef/session-fences.ts),
+  // and this hook demanded it, so the two contradicted each other. A leased session returns
+  // needs-decision by ending its turn, so its prose question is allowed.
+  test('allows a leased session to end its turn with a needs-decision question', () => {
+    const body = transcript(
+      user('go'),
+      assistant(text('Needs decision: fold the install into the CI lane. Should I do that?')),
+    );
+    expect(decide({}, body, { leased: true })).toBeUndefined();
+    expect(decide({}, body, { leased: false })?.decision).toBe('block');
+    expect(reason).toContain('needs-decision');
+  });
+
   test('blocks the real turn that triggered this hook', () => {
     const final =
       'Item 12 requires deleting the remote branches that the earlier runs left behind, and the review says that needs your OK.';
