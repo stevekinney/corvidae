@@ -34,7 +34,13 @@
 </script>
 
 {#if cards.length > 0}
-  <StatisticGroup variant="cards" columns={4} label={copy.label} data-testid="health-counts">
+  <StatisticGroup
+    variant="plain"
+    columns={4}
+    label={copy.label}
+    class="ib-health-counts"
+    data-testid="health-counts"
+  >
     {#each cards as card (card.key)}
       <Statistic
         label={card.label}
@@ -46,3 +52,11 @@
     {/each}
   </StatisticGroup>
 {/if}
+
+<style>
+  @media (max-width: 30rem) {
+    :global(.ib-health-counts > .cinder-statistic-group__grid) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+</style>

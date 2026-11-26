@@ -40,9 +40,30 @@
   metaTooltip={lineTwo}
 >
   {#snippet status()}<StatusDot {word} />{/snippet}
-  {#snippet title()}{name}{/snippet}
-  {#snippet time()}
-    <time datetime={row.timestamp}>{clockTime(at, zone)}</time>
+  {#snippet title()}
+    <span class="ib-checks-row__name">{name}</span>
+    <time class="ib-checks-row__time" datetime={row.timestamp}>{clockTime(at, zone)}</time>
   {/snippet}
   {#snippet meta()}{lineTwo}{/snippet}
 </StackedListItem>
+
+<style>
+  .ib-checks-row__name {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    min-inline-size: 0;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+
+  .ib-checks-row__time {
+    flex: none;
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-xs);
+    font-weight: normal;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+</style>

@@ -45,6 +45,80 @@ async function settled(page: Page): Promise<void> {
 test.describe('the sample world', () => {
   test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
+  for (const width of [320, 375]) {
+    test(`COR-2736 phone attention action fits at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 640 });
+      await page.goto('/health');
+      await settled(page);
+      const attention = page.getByTestId('needs-attention');
+      const heading = attention.getByRole('heading', { name: 'Needs attention' });
+      const action = attention.getByRole('link', { name: 'Connect a provider' });
+      await expect(heading).toBeInViewport();
+      await expect(action).toBeInViewport();
+      const actionBox = await action.boundingBox();
+      expect(actionBox!.y + actionBox!.height).toBeLessThanOrEqual(640);
+      await action.focus();
+      await expect(action).toBeFocused();
+      await expect(page.getByTestId('health-counts')).toHaveAttribute(
+        'data-cinder-variant',
+        'plain',
+      );
+    });
+  }
+
+  test('COR-2736 captures storage details and expanded Advanced', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/health');
+    await settled(page);
+    const details = page.getByRole('button', { name: 'Storage details' });
+    await details.focus();
+    await page.keyboard.press('Enter');
+    await expect(details).toHaveAttribute('aria-expanded', 'true');
+    await captureForDesignReview(page, {
+      route: '/health',
+      state: 'storage details expanded',
+      source: SOURCE,
+    });
+    await page.keyboard.press('Escape');
+    await expect(details).toBeFocused();
+    const advanced = page.getByTestId('advanced-diagnostics');
+    const disclosure = advanced.locator('button[aria-expanded]');
+    await disclosure.focus();
+    await page.keyboard.press('Enter');
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+    await expect(advanced.locator('[data-section="checks"]')).toContainText('3 need attention');
+    await expect(page.getByTestId('needs-attention').locator('li')).toHaveCount(3);
+    await captureForDesignReview(page, {
+      route: '/health',
+      state: 'advanced expanded',
+      source: SOURCE,
+    });
+    await page.getByTestId('needs-attention').getByRole('link', { name: 'View storage' }).click();
+    await expect(page).toHaveURL(/\/health\/storage/);
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'storage alert destination',
+      source: SOURCE,
+    });
+  });
+
+  test('COR-2736 captures phone Health section selector', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 900 });
+    await page.goto('/health');
+    await settled(page);
+    const section = page.getByRole('combobox', { name: 'Section' });
+    await section.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('option', { name: 'Overview' })).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/health',
+      state: 'section selector open',
+      source: SOURCE,
+    });
+    await page.keyboard.press('Escape');
+    await expect(section).toBeFocused();
+  });
+
   test('desktop content width contains overview actions and activity times without constraining the frame', async ({
     page,
   }) => {
