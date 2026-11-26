@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2705",
+  "branch": "codex/cor-2705-workers-npm",
+  "checkedAt": "8688df9a8",
+  "briefVersion": "c0e6e9914f38",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "All production files under packages/velveteen/src/server are free of Bun member access; the existing Bun-specific server test remains a test-only runtime fixture."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "CookieOptions explicitly declares every supported option. bun run typecheck:root and bun run --filter @lostgradient/interborough typecheck passed."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "44ea3d475 added cookies.test.ts and passed it against Bun Cookie and CookieMap. The unchanged test passed after the portable implementation at 8688df9a8."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "bun run --filter @lostgradient/velveteen test:server and bun run --filter @lostgradient/velveteen test passed."
+    }
+  ]
+}
