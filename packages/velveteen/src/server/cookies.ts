@@ -56,17 +56,25 @@ const invalidCookieNameCharacters = new Set([
 ]);
 
 function containsCookieControlCharacter(value: string) {
-  return [...value].some((character) => {
-    const codePoint = character.codePointAt(0);
-    return codePoint !== undefined && (codePoint < 0x20 || codePoint === 0x7f);
-  });
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit < 0x20 || codeUnit === 0x7f) return true;
+  }
+  return false;
+}
+
+function containsInvalidCookieNameCharacter(name: string) {
+  for (const character of name) {
+    if (invalidCookieNameCharacters.has(character)) return true;
+  }
+  return false;
 }
 
 function validateCookieOptions(name: string, options: CookieOptions) {
   if (
     !name ||
     containsCookieControlCharacter(name) ||
-    [...name].some((character) => invalidCookieNameCharacters.has(character))
+    containsInvalidCookieNameCharacter(name)
   )
     throw new TypeError("Cookie names cannot contain invalid characters");
   if (
