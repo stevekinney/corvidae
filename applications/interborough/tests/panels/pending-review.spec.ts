@@ -144,11 +144,11 @@ async function open(
           },
           _meta: metadata,
         });
-        host.rawHandlers['bureau.reviews.get'] = (args) => ({
-          content: [],
-          structuredContent: state.queue.find((item) => item.id === args['id']),
-          _meta: metadata,
-        });
+        host.rawHandlers['bureau.reviews.get'] = (args) => {
+          const item = state.queue.find((candidate) => candidate.id === args['id']);
+          if (item === undefined) throw new Error('NotFound');
+          return { content: [], structuredContent: item, _meta: metadata };
+        };
       }
       await host.mount(html, csp, {}, title, hostContext as McpUiHostContext | undefined);
     },

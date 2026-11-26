@@ -1,5 +1,7 @@
 import type { Principal } from '@lostgradient/backchannel';
+import type { HostAuthority } from './host-authority.ts';
 import type { PanelReviewEligibility } from './panel-routes.ts';
+import type { createSharedBrowserSignIn } from './shared-browser-sign-in.ts';
 
 /** Reverify browser credentials and their write proof before an in-process panel call. */
 export function createPanelBrowserCredentials(options: {
@@ -8,16 +10,38 @@ export function createPanelBrowserCredentials(options: {
 }) {
   return async (request: Request, name: string): Promise<Headers | Response | undefined> => {
     if (request.headers.has('authorization') || request.headers.has('x-api-key')) return undefined;
-    if ((await options.principal(request))?.method !== 'browser-session') return undefined;
+    const principal = await options.principal(request);
+    if (principal?.method !== 'browser-session') return undefined;
     if (name === 'bureau.reviews.resolve' && !(await options.validWrite(request)))
       return new Response('Forbidden', { status: 403 });
     const headers = new Headers();
-    for (const name of ['host', 'origin', 'cookie', 'x-csrf-token']) {
-      const value = request.headers.get(name);
-      if (value !== null) headers.set(name, value);
+    for (const headerName of ['host', 'origin', 'cookie', 'x-csrf-token']) {
+      const value = request.headers.get(headerName);
+      if (value !== null) headers.set(headerName, value);
     }
     return headers;
   };
+}
+
+/** Wire the panel bridge to the host's shared browser sign-in, when configured. */
+export function sharedPanelBrowserCredentials(
+  authenticate: HostAuthority['authenticate'],
+  sharedBrowser:
+    Pick<ReturnType<typeof createSharedBrowserSignIn>, 'browser' | 'publicRequest'> | undefined,
+) {
+  if (sharedBrowser === undefined) return undefined;
+  return createPanelBrowserCredentials({
+    principal: async (request) => {
+      const context = await authenticate(request);
+      return context instanceof Response ? undefined : context.principal;
+    },
+    validWrite: (request) =>
+      sharedBrowser.browser.validWrite(
+        sharedBrowser.publicRequest(
+          new Request(request.url, { method: request.method, headers: request.headers }),
+        ),
+      ),
+  });
 }
 
 /** Build eligibility from a verified principal and the current authoritative review. */

@@ -6,7 +6,7 @@ import {
   createFakeProcessor,
   createRefundLedger,
 } from '@lostgradient/plugin-demo/refunds';
-import inspectors from '@lostgradient/plugin-inspectors';
+import inspectors, { pendingReview } from '@lostgradient/plugin-inspectors';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createRemoteClient } from '@lostgradient/velveteen/remote/client';
 import { defineRemote } from '@lostgradient/velveteen/remote/server';
@@ -19,6 +19,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as client from 'openid-client';
 import { startHost } from '../host.ts';
+import { buildPanelPage } from '../panel-build.ts';
+import { PANEL_PREBUILT_DIRECTORY_VARIABLE, prebuiltPanelFile } from '../panel-mounts.ts';
 import { reviewedRefundContribution } from '../refund-operations.ts';
 import { createSyntheticIssuer } from './synthetic-issuer.test-support.ts';
 
@@ -143,8 +145,23 @@ test('listener binds verified browser identities, revokes private access and res
   let refundWorker: Awaited<ReturnType<typeof refund.attachWorker>> | undefined;
   let holdLoad = false;
   let holdKeyTargets = false;
+  // Exercise the installed panel's listener without putting source compilation on its startup clock.
+  const panelDirectory = join(home, 'prebuilt-panels');
+  await mkdir(panelDirectory, { recursive: true });
+  const panelPage = await buildPanelPage({
+    entry: pendingReview.entry.href,
+    title: pendingReview.title,
+    styles: pendingReview.styles ?? '',
+  });
+  await writeFile(
+    join(panelDirectory, `${pendingReview.name}.json`),
+    prebuiltPanelFile(pendingReview.uri, panelPage),
+  );
   const host = await startHost({
-    environment: { INTERBOROUGH_HOME: home },
+    environment: {
+      INTERBOROUGH_HOME: home,
+      [PANEL_PREBUILT_DIRECTORY_VARIABLE]: panelDirectory,
+    },
     workspaceId,
     port: 0,
     plugins: [
@@ -528,6 +545,7 @@ test('listener binds verified browser identities, revokes private access and res
       });
     const decision = { id: storedRefund!.reviewId, decision: 'deny', round: 0 };
     const listed = await panelCall('bureau.reviews.list', {}, reviewer);
+    expect(listed.status).toBe(200);
     const listing = (await listed.json()) as { _meta: Record<string, unknown> };
     expect(listing._meta['interborough.reviewEligibility']).toContainEqual({
       id: storedRefund!.reviewId,

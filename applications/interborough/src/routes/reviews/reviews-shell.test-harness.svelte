@@ -39,7 +39,7 @@
     subject: 'tester',
     unauthenticatedAccess: null,
   });
-  onPrincipal?.(principal);
+  untrack(() => onPrincipal?.(principal));
   const fleetSource = new FleetEventSource({
     baseUrl: initialClient.baseUrl,
     headers: initialClient.headers,

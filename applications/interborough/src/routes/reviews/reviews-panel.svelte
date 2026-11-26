@@ -157,7 +157,7 @@
     { id: string; round: number; decision: 'approve' | 'deny'; run: () => void } | undefined;
   const actionsFor = useToolApprovalActions({
     ...host,
-    onOutcome: (seen, outcome, receipt, error) => {
+    onOutcome: (seen, approvalOutcome, receipt, error) => {
       inFlightApproval = undefined;
       const current = items.find((item) => item.key === `bureau:${seen.id}`)?.review;
       if (current?.kind === 'tool-approval' && current.round !== seen.round) return;
@@ -166,13 +166,13 @@
         const advance = pendingAdvance;
         pendingAdvance = undefined;
         if (
-          (outcome === 'applied' || outcome === 'outcome-not-written') &&
+          (approvalOutcome === 'applied' || approvalOutcome === 'outcome-not-written') &&
           current?.kind === 'tool-approval' &&
           current.round === seen.round
         )
           advance.run();
       }
-      onApprovalOutcome(seen, outcome, receipt, decision, error);
+      onApprovalOutcome(seen, approvalOutcome, receipt, decision, error);
     },
   });
 

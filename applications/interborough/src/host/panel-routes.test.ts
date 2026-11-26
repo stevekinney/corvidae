@@ -521,10 +521,13 @@ describe('POST a panel’s tool call', () => {
         arguments: { id: 'review', round: 1, decision: 'approve' },
       },
     };
-    expect((await call(table, 'call', request)).status).toBe(200);
-    expect((bureau.mock.calls[0]?.[0] as Request).headers.get('cookie')).toBe('session=one');
+    const allowed = await call(table, 'call', request);
+    expect(allowed.status).toBe(200);
+    const forwarded = bureau.mock.calls[0]?.[0];
+    expect(forwarded?.headers.get('cookie')).toBe('session=one');
     valid = false;
-    expect((await call(table, 'call', request)).status).toBe(403);
+    const refused = await call(table, 'call', request);
+    expect(refused.status).toBe(403);
     expect(bureau).toHaveBeenCalledTimes(1);
   });
 

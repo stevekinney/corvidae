@@ -257,8 +257,8 @@ import {
   type PanelMountOptions,
 } from './panel-mounts.ts';
 import {
-  createPanelBrowserCredentials,
   createPanelReviewEligibility,
+  sharedPanelBrowserCredentials,
 } from './panel-review-eligibility.ts';
 import { panelRoutes } from './panel-routes.ts';
 import { pluginAttention } from './plugin-attention.ts';
@@ -1897,20 +1897,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           mayDecide: (review, principal) =>
             bureau.internals.reviewPolicy?.mayDecide(review, principal) ?? false,
         }),
-        sharedBrowser
-          ? createPanelBrowserCredentials({
-              principal: async (request) => {
-                const context = await authority.authenticate(request);
-                return context instanceof Response ? undefined : context.principal;
-              },
-              validWrite: (request) =>
-                sharedBrowser.browser.validWrite(
-                  sharedBrowser.publicRequest(
-                    new Request(request.url, { method: request.method, headers: request.headers }),
-                  ),
-                ),
-            })
-          : undefined,
+        sharedPanelBrowserCredentials(authority.authenticate, sharedBrowser),
       ),
       ...skillRoutes(skills, refuse, authority, log),
       ...toolSourceRoutes(
