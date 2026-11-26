@@ -92,6 +92,29 @@ describe('a subscription against the operation handler', () => {
     });
   });
 
+  it('reads one multiline JSON event when a network chunk divides a CRLF', async () => {
+    const encoder = new TextEncoder();
+    const fetchStub: CatalogFetch = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode('id: 1\r\nevent: started\r\ndata: {"kind":"started",\r'),
+            );
+            controller.enqueue(encoder.encode('\ndata: "value":42}\r\n\r'));
+            controller.enqueue(encoder.encode('\n'));
+            controller.close();
+          },
+        }),
+        { headers: { 'content-type': 'text/event-stream' } },
+      );
+    const received: SubscriptionMessage<unknown>[] = [];
+    const transport = sseSubscriptionTransport({ baseUrl: BASE_URL, fetch: fetchStub });
+    for await (const message of transport('probe.jobs.watch', {})) received.push(message);
+
+    expect(received).toEqual([{ type: 'event', id: '1', data: { kind: 'started', value: 42 } }]);
+  });
+
   it('yields replay-complete once, then follows events published live', async () => {
     const { host, handler } = fixtureHandler();
     host.feed.publish('old');

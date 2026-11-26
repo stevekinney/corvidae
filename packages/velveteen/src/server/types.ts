@@ -85,6 +85,17 @@ export type ServerRegistry = RuntimeRegistry & {
   ): { body: string; head: string };
 };
 export type FetchHandler = (request: Request) => Response | Promise<Response>;
+/** A host-owned source for the public assets named in a production manifest. */
+export type AssetSource = {
+  get(
+    url: URL,
+    request: Request,
+  ): Response | undefined | Promise<Response | undefined>;
+};
+/** A host binding that can serve a Request, such as a Workers ASSETS binding. */
+export type AssetFetcher = {
+  fetch(request: Request): Response | Promise<Response>;
+};
 export type FetchService =
   FetchHandler | { fetch: FetchHandler; close?: () => void | Promise<void> };
 /** One service with an application-relative mount and exact public root paths. */
@@ -106,6 +117,7 @@ export type ApplicationOptions = {
   remoteForms?: RemoteForms;
   generation: ProductionGeneration;
   registry?: ServerRegistry;
+  assets?: AssetSource;
   hooks?: ServerHooks;
   template?: string;
   platform?: unknown;

@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2756",
+  "branch": "steve/cor-2756-backchannel-client-generation",
+  "checkedAt": "28d43cf03b841010095aa080b4ffddea766a5e05",
+  "briefVersion": "81416e60642c",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "not-met",
+      "evidence": "Regression added; direct test did not acquire a pool slot."
+    },
+    {
+      "id": "AC2",
+      "status": "not-met",
+      "evidence": "Consumer scripts use generator selections and authored composition; focused checks incomplete."
+    },
+    {
+      "id": "AC3",
+      "status": "not-met",
+      "evidence": "Validation and no-UI bundle regression added; local test and installed browser verification not run."
+    },
+    {
+      "id": "AC4",
+      "status": "not-met",
+      "evidence": "Three generators run twice with matching filename and SHA-256 manifests; installed and compile-time regression gates incomplete."
+    }
+  ]
+}

@@ -15,11 +15,12 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-function eventStreamResponse(body: string): Response {
+function eventStreamResponse(...chunks: readonly string[]): Response {
+  const encoder = new TextEncoder();
   return new Response(
     new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode(body));
+        for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
         controller.close();
       },
     }),
@@ -117,6 +118,33 @@ describe('SseWorkflowEventSubscription', () => {
     expect(requests[0]?.headers.get('accept')).toBe('text/event-stream');
     expect(received.map((event) => event.type)).toEqual(['workflow:completed']);
     expect(events.map((event) => event.type)).toEqual(['workflow:completed']);
+  });
+
+  it('delivers one multiline workflow event when a network chunk divides a CRLF', async () => {
+    globalThis.fetch = Object.assign(
+      async () =>
+        eventStreamResponse(
+          'id: 7\r\nevent: workflow:completed\r\ndata: {"kind":"workflow:completed",\r',
+          '\ndata: "workflowId":"wf-sse","selector":"events","sequence":7,"cursor":"7",\r\n',
+          'data: "emittedAtMs":123,"payload":{"workflowId":"wf-sse"}}\r\n\r',
+          '\n',
+        ),
+      { preconnect: originalFetch.preconnect },
+    );
+    const received: WorkflowEvent[] = [];
+    const subscription = new SseWorkflowEventSubscription(
+      'http://localhost:7233/v1/workflows/wf-sse/events/sse',
+      {},
+      'wf-sse',
+      (event) => received.push(event),
+      { bufferForIteration: true, maxReconnectAttempts: 0 },
+    );
+
+    const events: WorkflowEvent[] = [];
+    for await (const event of subscription) events.push(event);
+    expect(events).toEqual(received);
+    expect(received.map((event) => event.type)).toEqual(['workflow:completed']);
+    expect(subscription.closeReason).toBe('workflow-terminal');
   });
 
   it('reconnects with Last-Event-ID after a non-terminal disconnect', async () => {
