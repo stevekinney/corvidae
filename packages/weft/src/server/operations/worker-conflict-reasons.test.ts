@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
+import * as client from '../../client/index.ts';
 import {
   UPGRADE_REFUSAL_REASON_PREFIX,
   WORKER_CONFLICT_REASONS,
 } from '../../core/worker-conflict-reasons.ts';
 import * as weft from '../../index.ts';
-import * as client from '../../client/index.ts';
 
 describe('worker Conflict reasons', () => {
   it('shares the public client and root values', () => {

@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2762",
+  "branch": "steve/composable-browser-import-boundary",
+  "checkedAt": "3ede504192",
+  "briefVersion": "4153611a51e8",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Velveteen production fixture passed; Weft conflict and forget-worker tests passed; focused lint and type checks passed."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Velveteen production fixture and Operative human-wait-parks and message-identifiers tests passed; focused type checks passed."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Interborough production build and focused direct tests passed; focused lint and type checks passed."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "velveteen-browser-imports.integration.test.ts passed positive production build and real server-only negative control."
+    }
+  ]
+}
