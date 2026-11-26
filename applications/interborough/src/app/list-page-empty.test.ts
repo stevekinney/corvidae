@@ -92,9 +92,11 @@ function stubEmptyHost(answers: Readonly<Record<string, unknown>> = {}): void {
       const method = typeof body.method === 'string' ? body.method : '';
       const result = Object.hasOwn(answers, method)
         ? answers[method]
-        : method.startsWith('weft.')
-          ? engine
-          : EMPTY;
+        : method === 'bureau.reviews.list'
+          ? { reviews: [], nextPageToken: null, total: 0 }
+          : method.startsWith('weft.')
+            ? engine
+            : EMPTY;
       return Response.json({ jsonrpc: '2.0', id: body.id, result });
     }
     return Response.json(EMPTY);
