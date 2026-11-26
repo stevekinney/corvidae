@@ -10,7 +10,12 @@ const options: ApplicationOptions = {
       version: 1,
       basePath: "",
       routing: { version: 1, nodes: [], routes: [] },
-      client: { file: "client.js", url: "/client.js", stylesheets: [], nodes: {} },
+      client: {
+        file: "client.js",
+        url: "/client.js",
+        stylesheets: [],
+        nodes: {},
+      },
       server: { file: "server.js", nodes: {} },
       routes: {},
       assets: [],
@@ -74,9 +79,9 @@ test("serializes every supported cookie attribute with defaults", () => {
 test("requires an explicit path for mutations", () => {
   const context = eventFor();
 
-  expect(() => context.event.cookies.set("missing", "path", {} as never)).toThrow(
-    "Cookies require an explicit path",
-  );
+  expect(() =>
+    context.event.cookies.set("missing", "path", {} as never),
+  ).toThrow("Cookies require an explicit path");
   expect(() => context.event.cookies.delete("missing", {} as never)).toThrow(
     "Cookies require an explicit path",
   );

@@ -130,6 +130,8 @@ export function serializeCookie(cookie: ServerCookie) {
   if (cookie.httpOnly) attributes.push("HttpOnly");
   if (cookie.partitioned) attributes.push("Partitioned");
   if (cookie.sameSite)
-    attributes.push(`SameSite=${cookie.sameSite[0]!.toUpperCase()}${cookie.sameSite.slice(1)}`);
+    attributes.push(
+      `SameSite=${cookie.sameSite[0]!.toUpperCase()}${cookie.sameSite.slice(1)}`,
+    );
   return attributes.join("; ");
 }

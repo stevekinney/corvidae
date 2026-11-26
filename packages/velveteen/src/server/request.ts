@@ -1,9 +1,6 @@
 import type { Fetch } from "../data/contract.ts";
 import { loadRequest } from "../data/fetch.ts";
-import type {
-  ApplicationOptions,
-  RequestEvent,
-} from "./types.ts";
+import type { ApplicationOptions, RequestEvent } from "./types.ts";
 import {
   createCookie,
   parseRequestCookies,
