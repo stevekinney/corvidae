@@ -22,6 +22,8 @@ A `ready-for-review` return is accepted only after `bun scripts/chef/leftovers.t
 
 `delivery-request.ts prepare` writes the request `deliver.ts` lands from, records your approval, and dispatches its one bound run; `check` dry-runs landing's verification. Details, dead ends and the report ledger: [delivery requests](../../../../documentation/repository/delivery-requests.md).
 
+`check` refuses a run that lost a job, and stays that strict. When a control shows `main` lost the same job in the same window (P-COR-128: a runner VM shut down in `Tests (interborough ui)`), record the job, its annotation and the `main` run in the note and a pull-request body, then deliver that pull request with `gh pr merge --squash` once its other checks pass.
+
 ## Exit codes
 
 `bun scripts/chef/deliver.ts` exits 0 when done, 1 at a named step, 2 on bad usage; steps: `merge-gate.ts`, `direct-merge.ts`, `delivery-closeout.ts`. The skill covers `threads`, `conflict`, `revert`, `guards`, `head`, and `merge`. The rest:
