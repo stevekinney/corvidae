@@ -1,4 +1,4 @@
-import { waitForRunState } from '@lostgradient/operative';
+import { waitForRunState } from '@lostgradient/operative/testing';
 
 import type { BureauTasks } from '../bureau-types/tasks.ts';
 import type { RunDetail } from '../bureau-types/runs.ts';

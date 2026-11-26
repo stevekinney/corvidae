@@ -6,7 +6,8 @@
  * it is called, with `UNSUPPORTED_MEDIA_TYPE`.
  */
 import { EventType, type Event } from '@ag-ui/core';
-import { type BackendDescriptor, waitForCondition } from '@lostgradient/operative';
+import { type BackendDescriptor } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { base64Of, pngBytes, wavBytes } from '../testing/asset-fixtures.test-support.ts';

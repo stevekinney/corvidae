@@ -20,12 +20,8 @@ import {
   createMemoryVectorStore,
   createTestEmbedders,
 } from '@lostgradient/memory';
-import {
-  createAgent,
-  type GenerateFunction,
-  stopWhen,
-  waitForCondition,
-} from '@lostgradient/operative';
+import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 

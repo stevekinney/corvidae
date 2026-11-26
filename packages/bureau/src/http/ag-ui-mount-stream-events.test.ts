@@ -7,13 +7,15 @@ import { EventType, type Event } from '@ag-ui/core';
 import {
   createAgent,
   createOutputPIIValidator,
-  createScriptedGenerate,
   type GuardrailsOptions,
   stopWhen,
-  type ScriptedGenerateStep,
   type Toolbox,
-  waitForCondition,
 } from '@lostgradient/operative';
+import {
+  createScriptedGenerate,
+  type ScriptedGenerateStep,
+  waitForCondition,
+} from '@lostgradient/operative/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';

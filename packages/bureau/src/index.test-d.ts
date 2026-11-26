@@ -13,31 +13,35 @@ import type {
   AgentRunForName,
   Bureau,
   BureauOptions,
-  BureauFaultOperation,
-  BureauFaultPlan,
-  BureauFaultPlanEntry,
   BureauRunOptions,
-  DurableEventHistoryFixture,
-  DurableEventHistoryFixtureOptions,
-  DurableEventHistoryFixtureRecord,
   RunCreationReceipt,
   RunCreationReceiptLocation,
 } from './index';
 import {
-  BureauFaultSelectorResolutionError,
   BureauLedgerConflictError,
   COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS,
   createCommandLedger,
-  createDurableEventHistoryFixture,
   createRunCreationLedger,
   digestCommandPayload,
   digestRunCreationPayload,
-  DURABLE_EVENT_HISTORY_FIXTURE_SEQUENCE,
   RUN_CREATION_OPERATION_VERSION,
   RunCreationReceiptUnrecordedError,
+} from './index';
+import type {
+  BureauFaultOperation,
+  BureauFaultPlan,
+  BureauFaultPlanEntry,
+  DurableEventHistoryFixture,
+  DurableEventHistoryFixtureOptions,
+  DurableEventHistoryFixtureRecord,
+} from './testing';
+import {
+  BureauFaultSelectorResolutionError,
+  createDurableEventHistoryFixture,
+  DURABLE_EVENT_HISTORY_FIXTURE_SEQUENCE,
   selectAuditWriteFaultTarget,
   selectWebhookDeliveryFaultTarget,
-} from './index';
+} from './testing';
 import type * as BureauEntry from './index';
 
 declare const runOptions: BureauRunOptions;

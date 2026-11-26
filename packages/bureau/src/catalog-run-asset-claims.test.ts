@@ -27,9 +27,9 @@ import {
   type GenerateContext,
   stopWhen,
   type Validator,
-  waitForCondition,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';

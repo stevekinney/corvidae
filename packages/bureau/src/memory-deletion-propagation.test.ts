@@ -17,7 +17,8 @@ import {
   createMemoryVectorStore,
   createTestEmbedders,
 } from '@lostgradient/memory';
-import { stopWhen, waitForCondition, createAgent } from '@lostgradient/operative';
+import { stopWhen, createAgent } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 

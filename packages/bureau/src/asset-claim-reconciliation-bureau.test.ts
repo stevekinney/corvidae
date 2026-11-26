@@ -16,9 +16,9 @@ import {
   createAgentSession,
   SESSION_OWNER_METADATA_KEY,
   stopWhen,
-  waitForCondition,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { appendMessages, createConversationHistory } from 'conversationalist';

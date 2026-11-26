@@ -29,7 +29,6 @@ import {
   type CombinedOperativeEventMap,
   createAgent,
   createAgentSession,
-  createMockGenerate as createSequentialGenerate,
   createScheduleWakeupTool,
   createSessionStore,
   createStore,
@@ -58,6 +57,7 @@ import {
   stopWhen,
   type Toolbox,
 } from '@lostgradient/operative';
+import { createMockGenerate as createSequentialGenerate } from '@lostgradient/operative/testing';
 import { discoverSkills, type SkillCatalogRevision } from './skills';
 import {
   type ConditionalTextValueStore,

@@ -265,6 +265,7 @@ export const SELF_ENTRY_POINTS: Readonly<Record<string, string>> = {
   '@lostgradient/operative/provider-kit': 'src/provider-kit.ts',
   '@lostgradient/operative/provider-testing': 'src/provider-testing.ts',
   '@lostgradient/operative/run-engine-workflow-types': 'src/durable/run-engine-workflow-types.ts',
+  '@lostgradient/operative/testing': 'src/testing/index.ts',
 };
 
 /** The source files of a package, keyed by package-relative path. */

@@ -15,7 +15,11 @@
  * Every Bureau is closed through `harness.close()` → `assertBureauQuiescent`.
  */
 import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
-import { createFaultEngine, type FaultPlan, waitForCondition } from '@lostgradient/operative';
+import {
+  createFaultEngine,
+  type FaultPlan,
+  waitForCondition,
+} from '@lostgradient/operative/testing';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 

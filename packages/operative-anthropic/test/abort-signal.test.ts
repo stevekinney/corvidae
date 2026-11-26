@@ -15,9 +15,9 @@ import {
   createActiveRun,
   createAgentRun,
   noToolCalls,
-  waitForCondition,
 } from '@lostgradient/operative';
 import type { GenerateContext, StreamingHandle } from '@lostgradient/operative/provider-kit';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import type {
   AnthropicMessageCreateRequest,
   AnthropicRequestOptions,

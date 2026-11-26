@@ -9,15 +9,17 @@ import {
   type BackendDescriptor,
   createAgent,
   type MediaCostEstimator,
-  createScriptedGenerate,
   type GuardrailsOptions,
-  type ScriptedGenerate,
-  type ScriptedGenerateStep,
   type StepContext,
   type StopCondition,
   stopWhen,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import {
+  createScriptedGenerate,
+  type ScriptedGenerate,
+  type ScriptedGenerateStep,
+} from '@lostgradient/operative/testing';
 import {
   type AuthConfig,
   createOperationHandler,
