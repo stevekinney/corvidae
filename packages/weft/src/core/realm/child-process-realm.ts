@@ -141,7 +141,6 @@ export class ChildProcessRealm {
   #readyWaiters: ((outcome: RealmReadyOutcome) => void)[] = [];
   #readyTimeout: ReturnType<typeof setTimeout> | null = null;
   #exitPromise!: Promise<number | null>;
-  #resolveExit!: (exitCode: number | null) => void;
 
   constructor(options: ChildProcessRealmOptions) {
     this.#options = options;
@@ -351,7 +350,10 @@ export class ChildProcessRealm {
 
   #spawnProcess(): ChildProcess {
     const spawnEpoch = ++this.#spawnEpoch;
-    this.#exitPromise = new Promise((resolve) => { this.#resolveExit = resolve; });
+    let resolveExit!: (exitCode: number | null) => void;
+    this.#exitPromise = new Promise((resolve) => {
+      resolveExit = resolve;
+    });
     const scriptPath =
       typeof this.#options.scriptPath === 'string'
         ? this.#options.scriptPath
@@ -368,13 +370,13 @@ export class ChildProcessRealm {
     // the paired exit event below owns the realm lifecycle transition.
     child.on('error', () => {});
     child.on('exit', (exitCode) => {
-        this.#resolveExit(exitCode);
-        if (spawnEpoch !== this.#spawnEpoch) return;
-        this.#handleProcessDown();
+      resolveExit(exitCode);
+      if (spawnEpoch !== this.#spawnEpoch) return;
+      this.#handleProcessDown();
     });
     child.on('disconnect', () => {
-        if (spawnEpoch !== this.#spawnEpoch) return;
-        this.#handleProcessDown();
+      if (spawnEpoch !== this.#spawnEpoch) return;
+      this.#handleProcessDown();
     });
     // See `WorkerRealm#spawnWorker`'s identical doc for why this is sent as
     // a message rather than derived from a spawn option: a shared test
@@ -486,4 +488,3 @@ export class ChildProcessRealm {
     }
   }
 }
-

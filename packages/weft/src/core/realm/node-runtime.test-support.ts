@@ -26,13 +26,14 @@ const childFailure = (async () => {
     scriptPath: fixtureUrl('node-runtime-throwing-child.mjs'),
     expectedWorkflowTypes: ['node-runtime'],
     isReferenced: () => true,
+    maxRestarts: 0,
   });
   const readiness = await realm.waitUntilReady();
   await realm.whenReclaimed();
   return readiness;
 })();
 
-void test('Node worker and child realms run through portable transports', async () => {
+void test('Node worker adapter and child realm failure use portable transports', async () => {
   await using pool = new WorkerPool({
     concurrency: 1,
     workerUrl: activityWorkerUrl,

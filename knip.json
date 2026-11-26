@@ -123,7 +123,8 @@
         "**/*.fixture.svelte",
         "**/*.playwright.ts",
         "**/*.spec.ts",
-        "src/server/node-runtime.test-support.ts"
+        "src/server/node-runtime.test-support.ts",
+        "src/core/realm/node-runtime.test-support.ts"
       ],
       "project": [
         "src/**/*.ts!",
