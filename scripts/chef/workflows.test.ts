@@ -587,11 +587,12 @@ describe('workflow scripts', () => {
   // (a pool slot not granted, exit 75). The workflow sent each to a correction that demanded a
   // failing-first test for a defect that did not exist (995K workflow tokens, two NEEDS_JUDGMENT).
   // A pending stage with nothing failed is run directly instead, and never corrected.
+  const pendingCommand = 'env SELECTION=d bunx turbo run test:self --filter=//';
   const pendingChecks = {
     exitCode: 1,
     line: 'focused-checks: 5 passed, 0 failed, 1 pending (tests:root)',
     head: 'abc',
-    pending: ['env SELECTION=d bunx turbo run test:self --filter=//'],
+    pending: [pendingCommand],
   };
 
   test('deliver-issue.js runs a pending stage directly instead of correcting it', async () => {
@@ -599,7 +600,7 @@ describe('workflow scripts', () => {
       {},
       {
         checks: pendingChecks,
-        pending: { head: 'abc', results: [{ command: pendingChecks.pending[0], exitCode: 0 }] },
+        pending: { head: 'abc', results: [{ command: pendingCommand, exitCode: 0 }] },
       },
     );
     expect(delivery.labels).toEqual([
@@ -613,7 +614,7 @@ describe('workflow scripts', () => {
       'compare',
     ]);
     const prompt = delivery.calls.find((call) => call.label.startsWith('pending'))?.prompt ?? '';
-    expect(prompt).toContain(pendingChecks.pending[0]);
+    expect(prompt).toContain(pendingCommand);
     expect(prompt).toContain('cd /worktree');
     expect(delivery.result[0]?.status).toBe('READY_TO_LAND');
   });
@@ -623,12 +624,12 @@ describe('workflow scripts', () => {
       {},
       {
         checks: pendingChecks,
-        pending: { head: 'abc', results: [{ command: pendingChecks.pending[0], exitCode: 1 }] },
+        pending: { head: 'abc', results: [{ command: pendingCommand, exitCode: 1 }] },
       },
     );
     expect(delivery.labels).toContain('correct');
     const fix = delivery.calls.find((call) => call.label.startsWith('correct'))?.prompt ?? '';
-    expect(fix).toContain(pendingChecks.pending[0]);
+    expect(fix).toContain(pendingCommand);
   });
 
   for (const [name, stubs] of [
@@ -636,7 +637,7 @@ describe('workflow scripts', () => {
       'a pending stage still not admitted',
       {
         checks: pendingChecks,
-        pending: { head: 'abc', results: [{ command: pendingChecks.pending[0], exitCode: 75 }] },
+        pending: { head: 'abc', results: [{ command: pendingCommand, exitCode: 75 }] },
       },
     ],
     [
