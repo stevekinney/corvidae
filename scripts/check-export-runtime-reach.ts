@@ -5,13 +5,13 @@
  * code or a test kit.
  */
 
-import { builtinModules } from 'node:module';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { builtinModules } from 'node:module';
 import { join, relative } from 'node:path';
 import ts from 'typescript';
 
 const ROOT = join(import.meta.dir, '..');
-export const ALLOWLIST_FILE = join(import.meta.dir, 'export-runtime-reach-allowlist.json');
+const ALLOWLIST_FILE = join(import.meta.dir, 'export-runtime-reach-allowlist.json');
 const WORKSPACE_DIRECTORIES = ['packages', 'components'] as const;
 const NODE_BUILTINS = new Set(builtinModules.map((name) => name.replace(/^node:/, '')));
 const TEST_PATH =
@@ -64,10 +64,17 @@ function workspaces(root: string): Workspace[] {
         return [];
       }
     })
-    .filter((item): item is { directory: string; value: { name: string; exports?: Record<string, unknown> } } => {
-      const manifest = item.value as { name?: unknown; exports?: unknown };
-      return typeof manifest.name === 'string' && typeof manifest.exports === 'object';
-    })
+    .filter(
+      (
+        item,
+      ): item is {
+        directory: string;
+        value: { name: string; exports?: Record<string, unknown> };
+      } => {
+        const manifest = item.value as { name?: unknown; exports?: unknown };
+        return typeof manifest.name === 'string' && typeof manifest.exports === 'object';
+      },
+    )
     .map(({ directory, value }) => ({
       directory,
       name: value.name,
@@ -97,11 +104,20 @@ function isCheckedExport(subpath: string, source: string): boolean {
 }
 
 function testingExport(subpath: string): boolean {
-  return subpath === './testing' || subpath.startsWith('./testing/') || /^\.\/[^/]+-testing$/.test(subpath);
+  return (
+    subpath === './testing' ||
+    subpath.startsWith('./testing/') ||
+    /^\.\/[^/]+-testing$/.test(subpath)
+  );
 }
 
 function bunMembers(path: string): string[] {
-  const source = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true);
+  const source = ts.createSourceFile(
+    path,
+    readFileSync(path, 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+  );
   const members = new Set<string>();
   const visit = (node: ts.Node): void => {
     if (
@@ -123,7 +139,7 @@ function pathFromInput(root: string, input: string): string | undefined {
 }
 
 /** Bundles one export under workerd conditions and lists its exceptional reachable implementation. */
-export async function findingsForExport(
+async function findingsForExport(
   root: string,
   workspace: Workspace,
   subpath: string,
@@ -152,7 +168,11 @@ export async function findingsForExport(
             if (workspacePath !== undefined) return { path: workspacePath };
             if (
               /\.generated\.(?:[cm]?[jt]s)$/.test(argument.path) &&
-              !existsSync(argument.path.startsWith('/') ? argument.path : join(argument.resolveDir, argument.path))
+              !existsSync(
+                argument.path.startsWith('/')
+                  ? argument.path
+                  : join(argument.resolveDir, argument.path),
+              )
             ) {
               return { path: argument.path, external: true };
             }
@@ -189,9 +209,7 @@ export async function findingsForExport(
       findings.add(`test-kit: ${relativePath}`);
     }
   }
-  return [...findings]
-    .toSorted()
-    .map((finding) => ({ package: workspace.name, subpath, finding }));
+  return [...findings].toSorted().map((finding) => ({ package: workspace.name, subpath, finding }));
 }
 
 /** Returns all guarded reachability findings across public packages and components. */
@@ -240,8 +258,11 @@ async function main(): Promise<void> {
   const rootIndex = process.argv.indexOf('--root');
   const root = rootIndex === -1 ? ROOT : process.argv[rootIndex + 1];
   if (root === undefined) throw new Error('--root needs a directory');
-  const allowlistPath = root === ROOT ? ALLOWLIST_FILE : join(root, 'scripts/export-runtime-reach-allowlist.json');
-  const allowlist: ExportRuntimeReachAllowlistEntry[] = (await Bun.file(allowlistPath).json()) as ExportRuntimeReachAllowlistEntry[];
+  const allowlistPath =
+    root === ROOT ? ALLOWLIST_FILE : join(root, 'scripts/export-runtime-reach-allowlist.json');
+  const allowlist: ExportRuntimeReachAllowlistEntry[] = (await Bun.file(
+    allowlistPath,
+  ).json()) as ExportRuntimeReachAllowlistEntry[];
   const verdict = judgeExportRuntimeReach(await scanExportRuntimeReach(root), allowlist);
   if (process.argv.includes('--shrink')) {
     await Bun.write(allowlistPath, `${JSON.stringify(verdict.shrunk, null, 2)}\n`);

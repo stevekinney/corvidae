@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
-import { createAgent, createScriptedTool } from '@lostgradient/operative';
-import { createScriptedGenerate } from '@lostgradient/operative/testing';
+import { createAgent } from '@lostgradient/operative';
+import { createScriptedGenerate, createScriptedTool } from '@lostgradient/operative/testing';
 
 import {
   datasetInput,
