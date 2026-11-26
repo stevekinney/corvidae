@@ -162,8 +162,13 @@ for (const width of WIDTHS) {
       ready: async () => {
         const json = payload.getByRole('radio', { name: 'JSON' }).first();
         await expect(json).toHaveAttribute('aria-checked', 'true');
-        await reveal(json);
-        await expect(payload).toContainText(/branch/i);
+        const input = payload.getByRole('treeitem', { name: /^input: object,/ });
+        await expect(input).toBeVisible();
+        if ((await input.getAttribute('aria-expanded')) !== 'true') {
+          await input.getByRole('button', { name: /^input: object,/ }).click();
+        }
+        await expect(input).toHaveAttribute('aria-expanded', 'true');
+        await reveal(input.getByRole('treeitem', { name: /^branch:/i }));
       },
     });
 
