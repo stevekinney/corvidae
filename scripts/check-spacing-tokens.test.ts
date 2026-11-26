@@ -73,15 +73,22 @@ describe('spacing tokens', () => {
     ]);
   });
 
-  test('scans only what git lists as tracked, so the generated token stylesheet is never read', () => {
+  test('takes exactly the tracked list, so the ignored generated stylesheets are never read', () => {
+    // `tokens-base.css` and `token-utilities.css` are generated, git-ignored and on disk after an
+    // install, outside `tokens/`: a directory walk would return them, and would miss
+    // `tracked-only.css`, which exists only in the tracked list.
     const listed = [
-      'components/cinder/src/tokens/modes/dark.css',
-      'components/cinder/src/components/button/button.css',
+      'components/cinder/src/styles/foundation.css',
+      'components/cinder/src/styles/tracked-only.css',
       '',
     ].join('\0');
-    expect(trackedSpacingFiles(() => listed)).toEqual([
-      'components/cinder/src/components/button/button.css',
+    const files = trackedSpacingFiles(() => listed);
+    expect(files).toEqual([
+      'components/cinder/src/styles/foundation.css',
+      'components/cinder/src/styles/tracked-only.css',
     ]);
+    expect(files).not.toContain('components/cinder/src/styles/tokens-base.css');
+    expect(files).not.toContain('components/cinder/src/styles/token-utilities.css');
   });
 });
 
@@ -106,6 +113,19 @@ describe('the spacing allowlist', () => {
       scripts: Record<string, string>;
     };
     expect(manifest.scripts['lint:guards']).toContain('bun scripts/check-spacing-tokens.ts');
+  });
+
+  test('reports both a stale entry and an exceeded count when the allowlist drifts from the tree', () => {
+    const found = new Map([
+      ['over.css', ['1 - gap: 4px', '2 - gap: 8px']],
+      ['under.css', ['1 - gap: 4px']],
+    ]);
+    const verdict = judgeCounts(found, { 'over.css': 1, 'under.css': 3, 'gone.css': 2 });
+    expect(verdict.problems).toEqual(['over.css:2 - gap: 8px']);
+    expect(verdict.stale).toEqual([
+      'under.css - lists 3 but holds 1',
+      'gone.css - lists 2 but holds 0',
+    ]);
   });
 
   test('fails a file beyond its entry and one with none, and never raises an entry', () => {

@@ -83,6 +83,14 @@ describe('the owner-rule register', () => {
     expect(problems).toEqual([]);
   });
 
+  test('lint:guards joins every command with a spaced &&, so the chain parser sees each guard', () => {
+    const guards = packageManifest.scripts['lint:guards']!;
+    expect(guards).not.toMatch(/&&(?! )|(?<! )&&/);
+    const commands = guards.split(' && ');
+    for (const command of commands) expect(command).toMatch(/^bun scripts\/[\w./-]+\.ts$/);
+    expect(chainedGuards(guards)).toEqual(commands.map((command) => command.slice('bun '.length)));
+  });
+
   test('fails on a guard script that does not exist', () => {
     const problems = judgeRegister(
       [cleanRule],
