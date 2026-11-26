@@ -9,7 +9,7 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClientError } from '@lostgradient/weft/testing';
+import { HttpClientError } from '@lostgradient/weft';
 
 import type { FaultTreatment } from '../lib/faults.ts';
 import { router } from '../lib/router.svelte.ts';
