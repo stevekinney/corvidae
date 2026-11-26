@@ -6,14 +6,14 @@ export {
   exportEncryptionKey,
   generateEncryptionKey,
   importEncryptionKey,
-} from './encryption';
+} from './encryption.ts';
 export type {
   CryptographyErrorCode,
   EncryptedValue,
   EncryptionKey,
   ImportEncryptionKeyOptions,
   Keyring,
-} from './encryption';
+} from './encryption.ts';
 export {
   createIncrementalHash,
   hmacSha256HexSync,
@@ -24,5 +24,5 @@ export {
   sha256HexSync,
   timingSafeEqualHex,
   timingSafeEqualText,
-} from './hash';
-export type { IncrementalHash } from './hash';
+} from './hash.ts';
+export type { IncrementalHash } from './hash.ts';

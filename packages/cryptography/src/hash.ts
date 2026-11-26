@@ -105,8 +105,9 @@ function getBuiltinModuleFn(): ((specifier: string) => unknown) | undefined {
 
 function requireNodeCrypto(): NodeCrypto {
   const runtimeOverride = getHashRuntimeOverride();
-  if (runtimeOverride?.require) {
-    const module = runtimeOverride.require('node:crypto');
+  const injectedLoader = runtimeOverride?.require;
+  if (injectedLoader) {
+    const module = injectedLoader('node:crypto');
     if (isNodeCrypto(module)) return module;
     throw new Error('node:crypto is not available in this environment.');
   }
