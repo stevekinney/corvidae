@@ -26,7 +26,7 @@ export const SCANNED_DIRECTORIES = ['applications/interborough/src'];
 export const ALLOWLIST_PATH = 'scripts/empty-state-layout-allowlist.json';
 
 /** The text of the opening tag that starts at `start`, closed by the first `>` outside braces and quotes. */
-function readTag(source: string, start: number): string {
+export function readTag(source: string, start: number): string {
   let depth = 0;
   let quote = '';
   for (let index = start; index < source.length; index += 1) {
