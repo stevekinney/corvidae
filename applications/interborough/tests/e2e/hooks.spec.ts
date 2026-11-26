@@ -792,11 +792,12 @@ for (const width of [1280, 1920] as const) {
     };
     await openHooks(page, '/hooks', [onCall]);
     const row = page.locator('li[data-hook="page-on-call"]');
-    const [status, title, time, toggle] = await Promise.all([
+    const [status, title, time, toggle, label] = await Promise.all([
       row.locator('.cinder-stacked-list-item__status').boundingBox(),
       row.locator('.cinder-stacked-list-item__title').boundingBox(),
       row.locator('.cinder-stacked-list-item__time').boundingBox(),
       row.getByRole('switch').boundingBox(),
+      row.locator('.cinder-toggle__label').boundingBox(),
     ]);
     const centre = (box: { y: number; height: number } | null) =>
       (box?.y ?? Number.NaN) + (box?.height ?? Number.NaN) / 2;
@@ -805,10 +806,24 @@ for (const width of [1280, 1920] as const) {
       ['status', status],
       ['timestamp', time],
       ['switch', toggle],
+      ['On label', label],
     ] as const) {
       expect(Math.abs(centre(box) - titleCentre), `${name} centre at ${width}`).toBeLessThanOrEqual(
         2,
       );
+    }
+    const outlet = page.locator('main.weft-shell-outlet');
+    const measure = await outlet.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    });
+    expect(measure, `Hooks list measure at ${width}`).toBeLessThanOrEqual(960);
+    if (width === 1280) {
+      await captureForDesignReview(page, {
+        route: '/hooks',
+        state: 'owner-row-alignment',
+        source: SOURCE,
+      });
     }
   });
 }
