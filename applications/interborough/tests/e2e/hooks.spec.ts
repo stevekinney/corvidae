@@ -784,12 +784,10 @@ for (const width of [1280, 1920] as const) {
     page,
   }) => {
     await page.setViewportSize({ width, height: 720 });
-    const onCall = {
-      ...DEFAULT_ON,
-      id: 'page-on-call',
+    const onCall = hookRecord('page-on-call', {
       name: 'Page on-call when a run fails',
       declaredBy: null,
-    };
+    });
     await openHooks(page, '/hooks', [onCall]);
     const row = page.locator('li[data-hook="page-on-call"]');
     const [status, title, time, toggle, label] = await Promise.all([
