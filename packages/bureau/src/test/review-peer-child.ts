@@ -103,10 +103,10 @@ const server = Bun.serve({
     if (input.action === 'start') {
       const run = await bureau.tasks.start('default', 'Charge', { principal: membership.owner });
       await bureau.tasks.wait(run.id);
-      await waitUntil(
-        async () =>
-          (await bureau.contexts.get(run.contextId))?.metadata['lastRunStatus'] !== 'running',
-      );
+      await waitUntil(async () => {
+        const session = await bureau.contexts.get(run.contextId);
+        return session?.metadata['lastRunStatus'] !== 'running';
+      });
       return Response.json({
         runId: run.id,
         sessionId: run.contextId,

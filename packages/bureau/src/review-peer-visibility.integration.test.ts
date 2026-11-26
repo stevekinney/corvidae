@@ -2,13 +2,21 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from 'bun:test';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { expectScenarioPassed, settleScenario } from './test/hoisted-scenario';
 
-test('a running peer discovers a signed approval admitted after boot', async () => {
+const outcome = await settleScenario(async (scope) => {
   const directory = await mkdtemp(join(tmpdir(), 'review-peer-'));
-  const children: ReturnType<typeof Bun.spawn>[] = [];
+  const children: ReturnType<typeof spawnWithHangGuard>[] = [];
+  const cleanup = async () => {
+    for (const child of children) if (child.exitCode === null) child.kill();
+    await Promise.all(children.map((child) => child.exited));
+    await rm(directory, { recursive: true, force: true });
+  };
+  scope.onHang(cleanup);
   try {
     async function start(workspace = 'workspace-a') {
-      const child = Bun.spawn(
+      const child = spawnWithHangGuard(
         [
           'bun',
           join(import.meta.dir, 'test/review-peer-child.ts'),
@@ -26,21 +34,21 @@ test('a running peer discovers a signed approval admitted after boot', async () 
       };
       return {
         ...info,
-        call: async (body: unknown) =>
-          (
-            await fetch(`http://127.0.0.1:${info.port}`, {
-              method: 'POST',
-              body: JSON.stringify(body),
-            })
-          ).json(),
-        rpc: async (method: string, params: unknown) =>
-          (
-            await fetch(`http://127.0.0.1:${info.port}/jsonrpc`, {
-              method: 'POST',
-              headers: { 'content-type': 'application/json', 'X-API-Key': 'alice' },
-              body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-            })
-          ).json(),
+        call: async (body: unknown) => {
+          const response = await fetch(`http://127.0.0.1:${info.port}`, {
+            method: 'POST',
+            body: JSON.stringify(body),
+          });
+          return response.json();
+        },
+        rpc: async (method: string, params: unknown) => {
+          const response = await fetch(`http://127.0.0.1:${info.port}/jsonrpc`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'X-API-Key': 'alice' },
+            body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+          });
+          return response.json();
+        },
       };
     }
     const a = await start();
@@ -147,8 +155,10 @@ test('a running peer discovers a signed approval admitted after boot', async () 
     });
     expect(await b.call({ action: 'counts' })).toEqual({ decisions: 1, effects: 1 });
   } finally {
-    for (const child of children) child.kill();
-    await Promise.all(children.map((child) => child.exited));
-    await rm(directory, { recursive: true, force: true });
+    await cleanup();
   }
+}, 120_000);
+
+test('a running peer discovers a signed approval admitted after boot', () => {
+  expectScenarioPassed(outcome);
 });

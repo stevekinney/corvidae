@@ -259,17 +259,16 @@ export function createReviewRecords<D extends AgentDefinitions>(
   async function filterSettledApprovals(
     reviews: readonly PendingReview[],
   ): Promise<PendingReview[]> {
-    return (
-      await Promise.all(
-        reviews.map(async (review) => {
-          if (review.kind !== 'tool-approval' || !review.sessionId || !runtime.sessionStore)
-            return review;
-          const session = await runtime.sessionStore.load(review.sessionId);
-          const decided = session?.metadata['resolvedReviewIds'];
-          return Array.isArray(decided) && decided.includes(review.id) ? undefined : review;
-        }),
-      )
-    ).filter((review): review is PendingReview => review !== undefined);
+    const current = await Promise.all(
+      reviews.map(async (review) => {
+        if (review.kind !== 'tool-approval' || !review.sessionId || !runtime.sessionStore)
+          return review;
+        const session = await runtime.sessionStore.load(review.sessionId);
+        const decided = session?.metadata['resolvedReviewIds'];
+        return Array.isArray(decided) && decided.includes(review.id) ? undefined : review;
+      }),
+    );
+    return current.filter((review): review is PendingReview => review !== undefined);
   }
 
   /**
@@ -995,10 +994,8 @@ export function createReviewRecords<D extends AgentDefinitions>(
       !peers.listPendingReviews().some((review) => review.id === input.id)
     ) {
       const runId = reviewRunId(input.id);
-      const peer =
-        runId === undefined
-          ? undefined
-          : (await peerApprovalsOfRun(runId)).find((review) => review.id === input.id);
+      const approvals = runId === undefined ? [] : await peerApprovalsOfRun(runId);
+      const peer = approvals.find((review) => review.id === input.id);
       if (peer?.sessionId !== undefined) {
         const session = await runtime.sessionStore?.load(peer.sessionId);
         if (session !== undefined) {
@@ -1082,7 +1079,10 @@ export function createReviewRecords<D extends AgentDefinitions>(
     id: string,
   ): Promise<(PendingReview & ReviewResolutionFields) | undefined> {
     const pending = peers.listPendingReviews().find((candidate) => candidate.id === id);
-    if (pending && (await filterSettledApprovals([pending])).length > 0) return pending;
+    if (pending) {
+      const current = await filterSettledApprovals([pending]);
+      if (current.length > 0) return pending;
+    }
     // COR-1577: the park of a `bureau.run()` run, which no session holds.
     const runWait = core.runHumanWaits.find(id);
     if (runWait) return runWait;
@@ -1094,10 +1094,8 @@ export function createReviewRecords<D extends AgentDefinitions>(
     if (derived) return derived;
     if (id.startsWith('approval:')) {
       const runId = reviewRunId(id);
-      const peer =
-        runId === undefined
-          ? undefined
-          : (await peerApprovalsOfRun(runId)).find((review) => review.id === id);
+      const approvals = runId === undefined ? [] : await peerApprovalsOfRun(runId);
+      const peer = approvals.find((review) => review.id === id);
       if (peer) return peer;
     }
     // COR-1828: the audit trail is where a closed review is read from, with what it was asked. A
