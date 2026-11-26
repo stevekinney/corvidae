@@ -77,6 +77,7 @@ export function createBureauClientSources(): Promise<ReadonlyMap<string, string>
     factoryName: 'createBureauClient',
     outputDirectory: bureauOutputDirectory,
     portableEntries: true,
+    referencedSharedTypesOnly: true,
     subscriptions: 'generic',
     subscriptionRoutes: { pathPrefix: '/bureau/v1/subscriptions' },
     svelte: true,

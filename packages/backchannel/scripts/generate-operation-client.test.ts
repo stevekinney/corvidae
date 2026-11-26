@@ -254,6 +254,9 @@ describe('createOperationClientSources for a catalog that is not Weft', () => {
     expect(main).toMatch(
       /CLIENT_OPERATION_NAMES = \[\s*'probe\.jobs\.cancel',\s*'probe\.jobs\.list',\s*'probe\.users\.get',\s*\] as const/u,
     );
+    const clientNames = main.match(/CLIENT_OPERATION_NAMES = \[([^\]]+)\]/u)?.[1] ?? '';
+    expect(clientNames).toContain("'probe.users.get'");
+    expect(clientNames.replace("'probe.users.get'", '')).not.toContain("'probe.users.get'");
   });
 
   it('strips the REST path prefix its options name', async () => {

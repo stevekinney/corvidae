@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { CATALOG_OPERATION_BEHAVIORS } from '../src/bureau-generated/operation-behaviors.generated.ts';
 import {
   CATALOG_OPERATION_NAMES,
+  CLIENT_OPERATION_NAMES,
   SUBSCRIPTION_OPERATION_NAMES,
 } from '../src/bureau-generated/operation-client.generated.ts';
 import {
@@ -27,13 +28,32 @@ it('generates the same committed bytes twice', async () => {
 it('generates the served Bureau inventory deterministically', async () => {
   const first = await createBureauClientSources();
   expect([...first]).toEqual([...(await createBureauClientSources())]);
-  expect((await readdir(bureauOutputDirectory)).toSorted()).toEqual([...first.keys()].toSorted());
+  const files = await readdir(bureauOutputDirectory);
+  expect(files.toSorted()).toEqual([...first.keys()].toSorted());
   for (const [name, source] of first)
     expect(await Bun.file(join(bureauOutputDirectory, name)).text()).toBe(source);
   const operations = createBureauCatalogSnapshot().operations;
   expect([...CATALOG_OPERATION_NAMES].toSorted()).toEqual(
     operations
       .filter((operation) => operation.kind === 'unary' && operation.transports.jsonRpcHttp)
+      .map((operation) => operation.name)
+      .toSorted(),
+  );
+  expect([...CLIENT_OPERATION_NAMES].toSorted()).toEqual(
+    operations
+      .filter((operation) => {
+        if (operation.kind !== 'unary') return false;
+        if (operation.transports.jsonRpcHttp) return true;
+        const rest = operation.rest;
+        return (
+          operation.transports.http &&
+          rest !== undefined &&
+          rest.success.kind !== 'streaming' &&
+          Object.values(rest.inputSources).every(
+            (source) => source.kind !== 'body' || source.mediaType !== 'application/octet-stream',
+          )
+        );
+      })
       .map((operation) => operation.name)
       .toSorted(),
   );
@@ -74,7 +94,7 @@ it('generates the served Bureau inventory deterministically', async () => {
       operation.name
         .split(/[^A-Za-z0-9]+/u)
         .filter(Boolean)
-        .map((part) => part[0]!.toUpperCase() + part.slice(1))
+        .map((part) => part[0].toUpperCase() + part.slice(1))
         .join(''),
     )
     .toSorted();

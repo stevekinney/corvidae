@@ -1,10 +1,11 @@
+import type { CatalogOperations } from '@lostgradient/bureau-sdk';
 import type { HttpClient } from '@lostgradient/weft';
 import type { QueryClient } from '@tanstack/svelte-query';
 
 import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts';
 import { agentsListQuery } from '../lib/agent-queries.ts';
 import { AUDIT_EVENT_TYPES } from '../lib/audit-event-types.ts';
-import { createBureauClient, type CatalogOperations } from '../lib/bureau-api.ts';
+import { createBureauClient } from '../lib/bureau-api.ts';
 import { queryAudit } from '../lib/bureau-audit.ts';
 import { listChecks } from '../lib/bureau-checks.ts';
 import { listAgents } from '../lib/bureau-client.ts';

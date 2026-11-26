@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/client.ts",
+    "./fetch": "./src/bureau-generated/fetch-operation-client.generated.ts",
     "./svelte": "./src/svelte.ts",
     "./reviews": "./src/reviews/client.ts",
     "./reviews/svelte": "./src/reviews/svelte.ts",

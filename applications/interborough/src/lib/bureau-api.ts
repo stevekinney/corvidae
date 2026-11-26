@@ -7,7 +7,6 @@ import {
 } from '@lostgradient/bureau-sdk';
 import { bureauTransport, type BureauClientConnection } from './bureau-transport.ts';
 
-export type { CatalogOperations } from '@lostgradient/bureau-sdk';
 export type { BureauDryRunOutput, BureauEvent, BureauInput, BureauOutput };
 
 export function createBureauClient(connection: BureauClientConnection) {
