@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2738",
+  "branch": "codex/cor-2738-workers-npm",
+  "checkedAt": "9972d7513c33c43d6cb20e66aa28f0733fcc8e10",
+  "briefVersion": "1119433ea767",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "check-export-runtime-reach bundles every eligible package/component export with workerd conditions."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "slow regression test covers Bun.file, stale entries, and repository allowlist exactness."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Bureau and Operative test surfaces moved to ./testing; callers typecheck."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Root scan reports no Bureau or Operative test-kit/native SQLite finding."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "Bureau candidate/base suite and Operative suite passed."
+    }
+  ]
+}
