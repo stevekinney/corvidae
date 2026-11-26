@@ -205,14 +205,18 @@ const COMPARE_SCHEMA = {
   required: ['headSha', 'complete', 'noEvidence', 'hasNew'],
 };
 
+// The contract check's answer (`.claude/agents/stickler.md`): "Conforms to the contract" or
+// "N departures". A departure is a not-met criterion, a departure from a decision, constraint or
+// out-of-scope item, or an unexplained hunk; an unverifiable criterion is reported, not blocking.
 const VERDICT = {
   type: 'object',
   properties: {
-    verdict: { type: 'string', enum: ['approve', 'blocked'] },
-    findings: { type: 'array', items: { type: 'string' } },
+    status: { type: 'string', enum: ['conforms', 'departures'] },
+    departures: { type: 'array', items: { type: 'string' } },
+    unverifiable: { type: 'array', items: { type: 'string' } },
     evidencePath: { type: 'string' },
   },
-  required: ['verdict', 'findings'],
+  required: ['status', 'departures'],
 };
 
 const CORRECTION_SCHEMA = {
@@ -490,15 +494,26 @@ function compareRun(issue, runId) {
   );
 }
 
-function review(issue, branch, head) {
+/**
+ * The acceptance review of every candidate: the read-only contract check. Its contract is the
+ * issue's own sections of the brief; its range starts where the worker started (or at the default
+ * branch for a coordinator-requested correction, which has no recorded start).
+ */
+function review(issue, where, base, briefPath) {
   phase('review');
-  log(`${issue}: reviewing ${branch} at ${head}`);
+  log(`${issue}: checking ${where.branch} at ${where.head} against its contract`);
+  const contract =
+    typeof briefPath === 'string' && briefPath !== ''
+      ? briefPath
+      : `tmp/chef/briefs/${issue}.md in the main checkout (the parent directory of the output of \`git rev-parse --path-format=absolute --git-common-dir\`)`;
   return agent(
     [
-      `Review branch ${branch} of ${issue} at head ${head}, against the diff of exactly that head (fetch the branch if needed; check \`git rev-parse HEAD\` matches).`,
-      'Review per your charter and AGENTS.md "Review guidelines". Return verdict approve or blocked, the blocking findings, and the evidence path.',
+      `Check branch ${where.branch} of ${issue} at head ${where.head} against its contract. cd ${where.worktree} and confirm \`git rev-parse HEAD\` is ${where.head}; change nothing.`,
+      `The contract is the issue's own sections of the brief file ${contract}: its brief, criteria, decisions, out of scope, constraints, files, verification and delivery boundary. The charter rules and coordinator sections are not contract.`,
+      `The diff is \`git diff ${base}...${where.head}\`.`,
+      'Return status conforms or departures, each departure as one line (the contract line and the diff location), each unverifiable criterion as one line, and evidencePath: the reference to cite for this check (the diff range and head).',
     ].join('\n'),
-    { label: `review ${issue}`, phase: 'review', schema: VERDICT, agentType: 'chef-reviewer' },
+    { label: `review ${issue}`, phase: 'review', schema: VERDICT, agentType: 'stickler' },
   );
 }
 
@@ -662,7 +677,11 @@ function evidenceRequest(issue, run, built, head, evidence, verdict, override, c
       noEvidence: evidence.compare.noEvidence,
       hasNew: evidence.compare.hasNew,
     },
-    review: { verdict: verdict.verdict, evidencePath: verdict.evidencePath },
+    review: {
+      verdict: verdict.status,
+      evidencePath: verdict.evidencePath,
+      unverifiable: Array.isArray(verdict.unverifiable) ? verdict.unverifiable : [],
+    },
     override: override === null ? null : override,
   };
 }
@@ -903,10 +922,21 @@ async function verifyRound(context, head, round, key) {
     let findings = verifyBlockers(evidence);
 
     if (findings.length === 0) {
-      const verdict = await review(issue, built.branch, head);
+      const verdict = await review(
+        issue,
+        where,
+        normalizeCommitSha(built.startingBase) ?? 'origin/main',
+        context.briefPath,
+      );
       if (verdict === null) return judgment(issue, 'local review failed', steps, where);
       evidence.review = verdict;
-      if (verdict.verdict !== 'approve') return { findings: verdict.findings };
+      if (verdict.status !== 'conforms')
+        return {
+          findings:
+            Array.isArray(verdict.departures) && verdict.departures.length > 0
+              ? verdict.departures
+              : ['the contract check reported departures without naming them'],
+        };
       if (!verdict.evidencePath?.trim())
         return judgment(issue, 'local review did not return an evidence reference', steps, where);
       const dispatch = await dispatchEvidence(

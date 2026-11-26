@@ -70,7 +70,7 @@ const cleanResponses: Responses = {
     noEvidence: false,
     hasNew: false,
   },
-  review: { verdict: 'approve', findings: [], evidencePath: 'tmp/chef/review.md' },
+  review: { status: 'conforms', departures: [], evidencePath: 'tmp/chef/review.md' },
   classify: { classes: [], seenOnBranch: [] },
   correct: {
     status: 'ready-for-review',
@@ -248,7 +248,7 @@ describe('workflow scripts', () => {
       });
 
       // An agent call is a read-only lookup (`model: 'haiku'`, asked to push or commit nothing), a
-      // review (`chef-reviewer`), or an implementation, which must run as `chef-worker`: a
+      // review (`stickler`), or an implementation, which must run as `chef-worker`: a
       // `general-purpose` worker starts near 69K tokens of context against 18K (COR-2372).
       test('dispatches every implementation to the chef-worker agent type', () => {
         const calls = source.split(/\bagent\(/).slice(1);
@@ -267,8 +267,8 @@ describe('workflow scripts', () => {
           if (agentType === 'chef-worker' && file === 'deliver-issue.js')
             expect(options).toMatch(/\bmodel:\s*(chosen\.model|model),?\s*\}/);
           else if (agentType !== undefined) expect(options).not.toMatch(/\bmodel:/);
-          // The two read-only reviewers: the code reviewer and the pre-build design critique.
-          if (agentType === 'chef-reviewer' || agentType === 'design-reviewer') continue;
+          // The two read-only reviewers: the contract check and the pre-build design critique.
+          if (agentType === 'stickler' || agentType === 'design-reviewer') continue;
           if (agentType === undefined && /model:\s*'haiku'/.test(options)) {
             expect(prompt).not.toMatch(/\b(push|commit)\b/i);
             continue;
@@ -358,7 +358,7 @@ describe('workflow scripts', () => {
   });
 
   // Models come from agent frontmatter alone, so a file without `model:` runs on whatever the
-  // session uses (chef-reviewer drifted that way).
+  // session uses (the retired chef-reviewer drifted that way).
   test('every agent file names its model', () => {
     const agentsDirectory = join(root, '.claude', 'agents');
     const files = readdirSync(agentsDirectory).filter((name) => name.endsWith('.md'));
@@ -394,7 +394,7 @@ describe('workflow scripts', () => {
       ciRun: '99',
       checks: 'focused checks: ok',
       comparison: { complete: true, noEvidence: false, hasNew: false },
-      review: { verdict: 'approve', evidencePath: 'tmp/chef/review.md' },
+      review: { verdict: 'conforms', evidencePath: 'tmp/chef/review.md', unverifiable: [] },
       override: null,
     });
     const prompts = Object.fromEntries(delivery.calls.map((call) => [call.label, call.prompt]));
@@ -405,12 +405,48 @@ describe('workflow scripts', () => {
     expect(prompts['wait COR-7']).toContain('bun scripts/chef/wait-run.ts 99');
     expect(prompts['compare COR-7']).toContain('bun scripts/chef/ci-compare.ts 99');
     expect(delivery.calls.find((call) => call.label.startsWith('review'))?.options.agentType).toBe(
-      'chef-reviewer',
+      'stickler',
     );
   });
 
+  // The trial of 2026-11-25 (P-COR-128): the code reviewer approved a head whose self-test used a
+  // stand-in for the real component; the contract check found it. Every candidate gets the contract
+  // check, against the issue's own sections of its brief and the diff from the worker's start.
+  test('deliver-issue.js hands the contract check the brief, the diff range and the worktree', async () => {
+    const delivery = await runDelivery();
+    const review = delivery.calls.find((call) => call.label.startsWith('review'));
+    expect(review?.prompt).toContain('/main/tmp/chef/briefs/COR-7.md');
+    expect(review?.prompt).toContain(`git diff ${dispatchBase}...abc`);
+    expect(review?.prompt).toContain('cd /worktree');
+    expect(review?.prompt).not.toMatch(/\bapprove\b/);
+  });
+
+  test('a contract check with departures sends them to a correction, and unverifiable criteria travel without blocking', async () => {
+    const departed = await runDelivery(
+      {},
+      { review: { status: 'departures', departures: ['AC1: the self-test uses a stand-in'] } },
+    );
+    const fix = departed.calls.find((call) => call.label.startsWith('correct'));
+    expect(fix?.prompt).toContain('AC1: the self-test uses a stand-in');
+    const unverifiable = await runDelivery(
+      {},
+      {
+        review: {
+          status: 'conforms',
+          departures: [],
+          unverifiable: ['AC4: needs a browser'],
+          evidencePath: 'tmp/chef/review.md',
+        },
+      },
+    );
+    expect(unverifiable.result[0]?.status).toBe('READY_TO_LAND');
+    expect(unverifiable.result[0]?.evidenceRequest?.['review']).toMatchObject({
+      unverifiable: ['AC4: needs a browser'],
+    });
+  });
+
   test('a local approval without an evidence reference cannot start discretionary CI', async () => {
-    const delivery = await runDelivery({}, { review: { verdict: 'approve', findings: [] } });
+    const delivery = await runDelivery({}, { review: { status: 'conforms', departures: [] } });
     expect(delivery.labels).toEqual(['fetch', 'implement', 'checks', 'review']);
     expect(delivery.result[0]?.reason).toContain('did not return an evidence reference');
   });
@@ -450,7 +486,7 @@ describe('workflow scripts', () => {
   test('deliver-issue.js sends the correction worker its brief path, the corrections and the report command', async () => {
     const delivery = await runDelivery(
       {},
-      { review: { verdict: 'blocked', findings: ['a defect'] } },
+      { review: { status: 'departures', departures: ['a defect'] } },
     );
     const prompt = delivery.calls.find((call) => call.label.startsWith('correct'))?.prompt ?? '';
     expect(prompt).toContain('tmp/chef/briefs/COR-7.md');
@@ -499,8 +535,8 @@ describe('workflow scripts', () => {
       {
         review: (count: number) =>
           count === 1
-            ? { verdict: 'blocked', findings: ['a defect'] }
-            : { verdict: 'approve', findings: [], evidencePath: 'tmp/chef/review.md' },
+            ? { status: 'departures', departures: ['a defect'] }
+            : { status: 'conforms', departures: [], evidencePath: 'tmp/chef/review.md' },
         checks: (count: number) => ({ exitCode: 0, line: 'ok', head: head(count) }),
         dispatch: (count: number) => ({
           ...(cleanResponses['dispatch'] as object),
@@ -552,7 +588,7 @@ describe('workflow scripts', () => {
       'an incomplete run',
       { compare: perRound({ ...(cleanResponses['compare'] as object), complete: false }) },
     ],
-    ['a blocked review', { review: { verdict: 'blocked', findings: ['a defect'] } }],
+    ['a blocked review', { review: { status: 'departures', departures: ['a defect'] } }],
   ] as [string, Responses][]) {
     test(`deliver-issue.js sends ${name} to one correction, then to judgment`, async () => {
       const delivery = await runDelivery(
@@ -582,8 +618,8 @@ describe('workflow scripts', () => {
     return runDelivery(arguments_, {
       review: (count: number) =>
         count === 1
-          ? { verdict: 'blocked', findings: ['a defect'] }
-          : { verdict: 'approve', findings: [], evidencePath: 'tmp/chef/review.md' },
+          ? { status: 'departures', departures: ['a defect'] }
+          : { status: 'conforms', departures: [], evidencePath: 'tmp/chef/review.md' },
       checks: (count: number) => ({ exitCode: 0, line: 'ok', head: head(count) }),
       dispatch: { ...(cleanResponses['dispatch'] as object), headSha: head(2) },
       wait: { ...(cleanResponses['wait'] as object), headSha: head(2) },
