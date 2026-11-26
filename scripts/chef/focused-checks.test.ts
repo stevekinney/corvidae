@@ -500,15 +500,12 @@ describe('runChecks', () => {
     expect(line).toBe(
       'focused-checks: typecheck:root: pending (pool busy); run it directly: bun scripts/host-slots.ts --slots=1 -- bun run typecheck:root',
     );
-    const json = JSON.parse(
-      (
-        await runChecks(
-          '/repo',
-          { ...options, json: true },
-          dependencies(runner, { typecheck: 75 }),
-        )
-      ).output,
-    ) as { steps: { name: string; direct?: string }[] };
+    const structured = await runChecks(
+      '/repo',
+      { ...options, json: true },
+      dependencies(runner, { typecheck: 75 }),
+    );
+    const json = JSON.parse(structured.output) as { steps: { name: string; direct?: string }[] };
     expect(json.steps.find((step) => step.name === 'typecheck:root')?.direct).toBe(
       'bun scripts/host-slots.ts --slots=1 -- bun run typecheck:root',
     );

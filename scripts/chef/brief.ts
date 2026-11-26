@@ -122,7 +122,7 @@ export const deliveryRule =
  * never overrides it silently: a boundary that names a pull request is delivered as one, any other
  * by a squash merge of the pushed branch.
  */
-export function deliveryRoute(boundary: string): string {
+function deliveryRoute(boundary: string): string {
   return /\bpull\s+request\b/i.test(boundary)
     ? 'Chef route: this boundary names a pull request, so the coordinator delivers it as one (`delivery-request.ts prepare --route pull-request`, then `deliver.ts --pr`); you push your branch and report, and open the pull request when the dispatch asks for one.'
     : 'Chef route: the coordinator reaches this boundary by a squash merge of your pushed branch (`deliver.ts --branch`); you push your branch and report.';
