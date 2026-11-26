@@ -28,6 +28,14 @@
       "renderedSourceSha": "0f0b4d1f1bc0f0a08562995eb0b019b453758631",
       "suiteExitCode": 0
     },
+    "data-table": {
+      "renderedSourceSha": "988852ec548b6e664c0f5babb556e64495fca8b9",
+      "suiteExitCode": 0
+    },
+    "description-list": {
+      "renderedSourceSha": "988852ec548b6e664c0f5babb556e64495fca8b9",
+      "suiteExitCode": 0
+    },
     "markdown-editor": {
       "renderedSourceSha": "2a0143ee0a04a6dc0d5a2b1777e3b4db5e2260f1",
       "suiteExitCode": 0
@@ -62,6 +70,10 @@
     },
     "review-editor-scroll": {
       "renderedSourceSha": "2a0143ee0a04a6dc0d5a2b1777e3b4db5e2260f1",
+      "suiteExitCode": 0
+    },
+    "table": {
+      "renderedSourceSha": "988852ec548b6e664c0f5babb556e64495fca8b9",
       "suiteExitCode": 0
     },
     "token-computation": {

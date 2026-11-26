@@ -29,8 +29,9 @@ export type TableHeaderCellProps = Omit<
   /**
    * How this column takes its width in a `fit` table. `'content'` is for a short value (a status
    * word, a badge, an identifier, a count): the column is as wide as its widest header or cell,
-   * never wider than half the table, and its cells do not wrap. `'fill'` is for prose: the column
-   * takes the width the `content` columns leave and wraps. Left out, a column shares the width
+   * never wider than half the table, and its cells do not wrap; a longer value ends in an ellipsis
+   * with the whole value in a tooltip. `'fill'` is for prose: the column takes the width the
+   * `content` columns leave and wraps, held to the prose measure. Left out, a column shares the width
    * equally with the others, as every column of a `fit` table with no `sizing` does. It has no
    * effect outside a `fit` table, or while the table is stacked.
    */
