@@ -5,19 +5,21 @@
  * to be on screen.
  */
 import { queryAudit, type AuditFilter, type AuditRecord } from '../../lib/bureau-audit.ts';
+import type { CatalogOperations } from '../../lib/generated/bureau-operation-client.generated.ts';
 
 /** The most records one request asks for: the Bureau's own ceiling, to read the trail in few requests. */
 export const EXPORT_PAGE_SIZE = 100;
 
 /** Every record the filter matches, newest first. */
 export async function readAuditExport(
+  client: Pick<CatalogOperations, 'bureau.audit.query'>,
   filter: AuditFilter,
   signal?: AbortSignal,
 ): Promise<readonly AuditRecord[]> {
   const records: AuditRecord[] = [];
   let cursor: string | undefined;
   do {
-    const page = await queryAudit(filter, cursor, {
+    const page = await queryAudit(client, filter, cursor, {
       limit: EXPORT_PAGE_SIZE,
       order: 'newest',
       ...(signal === undefined ? {} : { signal }),

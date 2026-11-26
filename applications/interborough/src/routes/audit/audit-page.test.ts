@@ -61,6 +61,11 @@ function filtersInAddress(): string[] {
 const MINUTE = 60_000;
 const NOW = Date.now();
 
+async function chooseFilter(trigger: HTMLElement, option: string): Promise<void> {
+  await fireEvent.click(trigger);
+  await fireEvent.click(await within(document.body).findByRole('option', { name: option }));
+}
+
 /** A record `minutesAgo` minutes before the page opened. */
 function record(sequence: number, minutesAgo: number, overrides: Record<string, unknown> = {}) {
   return {
@@ -308,12 +313,14 @@ describe('the table', () => {
       open(FULL);
     await findByText('Removed the Anthropic key');
 
-    expect((getByLabelText(AUDIT_COPY.actorLabel) as HTMLSelectElement).value).toBe('');
-    expect((getByLabelText(AUDIT_COPY.periodLabel) as HTMLSelectElement).value).toBe('7d');
-    expect((getByLabelText(AUDIT_COPY.actionLabel) as HTMLSelectElement).value).toBe('');
-    const options = (label: string) =>
-      [...(getByLabelText(label) as HTMLSelectElement).options].map((option) => option.text);
-    expect(options(AUDIT_COPY.actionLabel)).toEqual([
+    expect(getByLabelText(AUDIT_COPY.actorLabel).textContent).toContain('Anyone');
+    expect(getByLabelText(AUDIT_COPY.periodLabel).textContent).toContain('Last 7 days');
+    expect(getByLabelText(AUDIT_COPY.actionLabel).textContent).toContain('Any action');
+    const action = getByLabelText(AUDIT_COPY.actionLabel);
+    const actor = getByLabelText(AUDIT_COPY.actorLabel);
+    await fireEvent.click(action);
+    const actionOptions = await within(document.body).findAllByRole('option');
+    expect(actionOptions.map((option) => option.textContent?.trim())).toEqual([
       'Any action',
       'Approved',
       'Deleted',
@@ -321,7 +328,17 @@ describe('the table', () => {
       'Removed',
       'Started',
     ]);
-    expect(options(AUDIT_COPY.actorLabel)).toEqual(['Anyone', 'You', 'Agents', 'Interborough']);
+    await fireEvent.keyDown(action, { key: 'Escape' });
+    await waitFor(() => expect(within(document.body).queryAllByRole('option')).toHaveLength(0));
+    await fireEvent.click(actor);
+    const actorOptions = await within(document.body).findAllByRole('option');
+    expect(actorOptions.map((option) => option.textContent?.trim())).toEqual([
+      'Anyone',
+      'You',
+      'Agents',
+      'Interborough',
+    ]);
+    await fireEvent.keyDown(actor, { key: 'Escape' });
     expect(getByPlaceholderText('Search by actor, action or target')).not.toBeNull();
     expect(getByTestId('audit-count').textContent).toBe('4 events');
     const exportButton = getByRole('button', { name: AUDIT_COPY.exportAction });
@@ -577,9 +594,7 @@ describe('the open event', () => {
     expect(rowsOf(container)[0]?.getAttribute('aria-current')).toBe('true');
     const before = new URLSearchParams(window.location.search).get('record');
 
-    await fireEvent.change(getByLabelText(AUDIT_COPY.actionLabel), {
-      target: { value: 'started' },
-    });
+    await chooseFilter(getByLabelText(AUDIT_COPY.actionLabel), 'Started');
 
     await waitFor(() => {
       expect(rowsOf(container)).toHaveLength(1);
@@ -597,14 +612,14 @@ describe('the filters', () => {
     const { findByText, getByLabelText } = open(FULL);
     await findByText('Removed the Anthropic key');
 
-    await fireEvent.change(getByLabelText(AUDIT_COPY.periodLabel), { target: { value: '30d' } });
+    await chooseFilter(getByLabelText(AUDIT_COPY.periodLabel), 'Last 30 days');
 
     await waitFor(() => {
       const since = Number(queries().at(-1)?.['since']);
       expect(since).toBeLessThan(NOW - 29 * 24 * 60 * MINUTE);
     });
     expect(window.location.search).toContain('period=30d');
-    await fireEvent.change(getByLabelText(AUDIT_COPY.periodLabel), { target: { value: 'all' } });
+    await chooseFilter(getByLabelText(AUDIT_COPY.periodLabel), 'All time');
     await waitFor(() => expect(queries().at(-1)).not.toHaveProperty('since'));
   });
 
@@ -612,9 +627,7 @@ describe('the filters', () => {
     const { findByText, getByLabelText } = open(FULL);
     await findByText('Removed the Anthropic key');
 
-    await fireEvent.change(getByLabelText(AUDIT_COPY.actionLabel), {
-      target: { value: 'removed' },
-    });
+    await chooseFilter(getByLabelText(AUDIT_COPY.actionLabel), 'Removed');
 
     await waitFor(() =>
       expect(queries().at(-1)?.['types']).toEqual(['tool.source.removed', 'provider.disconnected']),
@@ -626,15 +639,13 @@ describe('the filters', () => {
     const { container, findByText, getByLabelText } = open(FULL);
     await findByText('Removed the Anthropic key');
 
-    await fireEvent.change(getByLabelText(AUDIT_COPY.actorLabel), { target: { value: 'agents' } });
+    await chooseFilter(getByLabelText(AUDIT_COPY.actorLabel), 'Agents');
 
     await waitFor(() =>
       expect(rowsOf(container).map((row) => cellsOf(row)[1])).toEqual(['Tool runner']),
     );
     expect(new Set(queries().map((params) => JSON.stringify(params))).size).toBe(1);
-    await fireEvent.change(getByLabelText(AUDIT_COPY.actorLabel), {
-      target: { value: 'interborough' },
-    });
+    await chooseFilter(getByLabelText(AUDIT_COPY.actorLabel), 'Interborough');
     await waitFor(() =>
       expect(rowsOf(container).map((row) => cellsOf(row)[1])).toEqual(['Interborough']),
     );
@@ -679,9 +690,9 @@ describe('the filters', () => {
     );
     await findByText('Started a run');
 
-    expect((getByLabelText(AUDIT_COPY.actorLabel) as HTMLSelectElement).value).toBe('you');
-    expect((getByLabelText(AUDIT_COPY.periodLabel) as HTMLSelectElement).value).toBe('today');
-    expect((getByLabelText(AUDIT_COPY.actionLabel) as HTMLSelectElement).value).toBe('started');
+    expect(getByLabelText(AUDIT_COPY.actorLabel).textContent).toContain('You');
+    expect(getByLabelText(AUDIT_COPY.periodLabel).textContent).toContain('Today');
+    expect(getByLabelText(AUDIT_COPY.actionLabel).textContent).toContain('Started');
   });
 
   test('a value the page does not offer is the default', async () => {
@@ -691,8 +702,8 @@ describe('the filters', () => {
       { at: '/health/audit?actor=nobody&period=forever&action=exploded' },
     );
     await findByText('Removed the Anthropic key');
-    expect((getByLabelText(AUDIT_COPY.actorLabel) as HTMLSelectElement).value).toBe('');
-    expect((getByLabelText(AUDIT_COPY.periodLabel) as HTMLSelectElement).value).toBe('7d');
+    expect(getByLabelText(AUDIT_COPY.actorLabel).textContent).toContain('Anyone');
+    expect(getByLabelText(AUDIT_COPY.periodLabel).textContent).toContain('Last 7 days');
   });
 });
 
@@ -985,7 +996,7 @@ describe('who may see it', () => {
     } as never);
     await findByText('Removed the Anthropic key');
     failing = true;
-    await fireEvent.change(getByLabelText(AUDIT_COPY.periodLabel), { target: { value: 'all' } });
+    await chooseFilter(getByLabelText(AUDIT_COPY.periodLabel), 'All time');
 
     // Row 82w: Health's own heading stays, the error says the status, and Try again is the one action: this page is already on Health.
     await findByText(AUDIT_COPY.failed.title);

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { PACKAGE_AUTHORIZATION_SCOPE_PATTERN } from '../src/index.ts';
 
-import { renderNode, schemaToNode, type TypeNode } from './operation-client-schema.ts';
+import { parseSchema, renderNode, schemaToNode, type TypeNode } from './operation-client-schema.ts';
 
 const NO_ALIASES = new Map<string, string>();
 /** Render a JSON Schema with no alias substitution — the pre-hoist baseline. */
@@ -11,6 +11,41 @@ function renderInline(schema: Record<string, unknown>): string {
 }
 
 describe('schemaToNode + renderNode — emitted text contract', () => {
+  it('keeps unknown references and unguarded cycles unknown', () => {
+    expect(renderInline({ $ref: 'https://example.com/schema' })).toBe('unknown');
+    expect(renderInline({ $ref: '#/$defs/missing', $defs: {} })).toBe('unknown');
+    expect(renderInline({ $ref: '#/$defs/a', $defs: { a: { $ref: '#/$defs/a' } } })).toBe(
+      'unknown',
+    );
+    expect(
+      renderInline({
+        $ref: '#/$defs/a',
+        $defs: { a: { anyOf: [{ anyOf: [{ $ref: '#/$defs/a' }] }, { type: 'string' }] } },
+      }),
+    ).toBe('unknown');
+    const parsed = parseSchema({
+      $defs: { 'a/b': { type: 'object', properties: { next: { $ref: '#/$defs/a~1b' } } } },
+      $ref: '#/$defs/a~1b',
+    });
+    expect(parsed.root.kind).toBe('reference');
+    expect(parsed.definitions.size).toBe(1);
+  });
+
+  it('does not resolve a rebased nested document against its parent definitions', () => {
+    const parsed = parseSchema({
+      $defs: { item: { type: 'string' } },
+      type: 'object',
+      properties: {
+        nested: {
+          $id: 'other.json',
+          type: 'object',
+          properties: { item: { $ref: '#/$defs/item' } },
+        },
+      },
+    });
+    expect(renderNode(parsed.root, NO_ALIASES)).toContain('"item"?: unknown');
+    expect(parsed.definitions.size).toBe(0);
+  });
   // These assertions pin the exact TypeScript text the generator emits for each
   // supported schema feature. Snapshot schemas arrive key-sorted, so on the real
   // catalog this matches the pre-refactor `Object.entries` order byte-for-byte;
@@ -21,6 +56,32 @@ describe('schemaToNode + renderNode — emitted text contract', () => {
     expect(renderInline({ type: 'integer' })).toBe('number');
     expect(renderInline({ type: 'boolean' })).toBe('boolean');
     expect(renderInline({ type: 'null' })).toBe('null');
+  });
+
+  it('renders schema-defined dictionary values without changing opaque objects', () => {
+    expect(
+      renderInline({
+        type: 'object',
+        additionalProperties: { type: 'string', enum: ['approved', 'rejected'] },
+      }),
+    ).toBe('Record<string, "approved" | "rejected">');
+    expect(
+      renderInline({
+        type: 'object',
+        properties: {},
+        additionalProperties: {
+          type: 'object',
+          properties: { count: { type: ['integer', 'null'] } },
+          required: ['count'],
+        },
+      }),
+    ).toBe('Record<string, { readonly "count": number | null; }>');
+    expect(renderInline({ type: 'object', additionalProperties: {} })).toBe(
+      'Record<string, unknown>',
+    );
+    expect(renderInline({ type: 'object', properties: {}, additionalProperties: false })).toBe(
+      '{  }',
+    );
   });
 
   it('renders arrays as ReadonlyArray', () => {

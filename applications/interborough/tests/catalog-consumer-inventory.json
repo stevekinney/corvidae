@@ -1887,69 +1887,201 @@
       "transport": "composed JSON-RPC",
       "caller": "<module>",
       "count": 1
-    }
-  ],
-  "eligible": [
+    },
     {
       "path": "app/shell/command-palette-search.ts",
-      "method": "list",
       "operation": "weft.workflows.list",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
       "caller": "searchConsole",
       "count": 1
     },
     {
       "path": "app/shell/command-palette-search.ts",
-      "method": "listReviews",
       "operation": "weft.reviews.list",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
       "caller": "searchConsole",
       "count": 1
     },
     {
       "path": "app/shell/command-palette-search.ts",
-      "method": "listSchedules",
       "operation": "weft.schedules.list",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
       "caller": "searchConsole",
+      "count": 1
+    },
+    {
+      "path": "lib/workflow-catalog.ts",
+      "operation": "weft.schedules.list",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "schedulesOf",
+      "count": 1
+    },
+    {
+      "path": "routes/schedules/schedule-queries.ts",
+      "operation": "weft.schedules.get",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "fetchScheduleDetail",
+      "count": 1
+    },
+    {
+      "path": "routes/schedules/schedule-queries.ts",
+      "operation": "weft.schedules.list",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "fetchScheduleList",
+      "count": 1
+    },
+    {
+      "path": "routes/schedules/schedule-queries.ts",
+      "operation": "weft.workflows.list",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "fetchScheduleRunHistory",
+      "count": 1
+    },
+    {
+      "path": "routes/schedules/schedule-run-details.ts",
+      "operation": "weft.workflows.get",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "fetchRunDetail",
+      "count": 1
+    },
+    {
+      "path": "routes/schedules/schedule-run-details.ts",
+      "operation": "weft.workflows.timeline.get",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "fetchRunDetail",
       "count": 1
     },
     {
       "path": "app/view-probes.ts",
-      "method": "listSchedules",
       "operation": "weft.schedules.list",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
       "caller": "probeFor",
       "count": 1
     },
     {
       "path": "app/view-probes.ts",
-      "method": "list",
       "operation": "weft.workflows.list",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
       "caller": "probeWorkflowType",
       "count": 1
     },
     {
-      "path": "lib/workflow-catalog.ts",
-      "method": "listSchedules",
-      "operation": "weft.schedules.list",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "schedulesOf",
+      "path": "routes/workflow-definitions/recent-runs.svelte",
+      "operation": "weft.workflows.list",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "<module>",
       "count": 1
     },
+    {
+      "path": "routes/workflow-definitions/workflow-detail.svelte",
+      "operation": "weft.workflows.list",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "<module>",
+      "count": 1
+    },
+    {
+      "path": "routes/workflow-definitions/run-setup-form.svelte",
+      "operation": "weft.schedules.list",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "<module>",
+      "count": 1
+    },
+    {
+      "path": "routes/workflow-definitions/workflow-detail.svelte",
+      "operation": "weft.schedules.list",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "<module>",
+      "count": 1
+    },
+    {
+      "path": "routes/workflows/detail/workflow-timeline-data.ts",
+      "operation": "weft.workflows.timeline.get",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "fetchWorkflowTimeline",
+      "count": 1
+    },
+    {
+      "path": "routes/workflows/detail/events-tab.svelte",
+      "operation": "weft.workflows.events.list",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "fetchEvents",
+      "count": 1
+    },
+    {
+      "path": "routes/workflows/runs/run-related-data.ts",
+      "operation": "weft.workflows.get",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "fetchRelatedRuns",
+      "count": 1
+    },
+    {
+      "path": "routes/workflows/runs/run-related-data.ts",
+      "operation": "weft.workflows.list",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "fetchRelatedRuns",
+      "count": 2
+    },
+    {
+      "path": "routes/schedules/schedule-writes.ts",
+      "operation": "weft.schedules.get",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "assertUnchanged",
+      "count": 1
+    },
+    {
+      "path": "routes/workflows/detail/checkpoints/fork-dialog.svelte",
+      "operation": "weft.workflows.get",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "<module>",
+      "count": 1
+    },
+    {
+      "path": "routes/workflows/list/workflow-list.svelte",
+      "operation": "weft.workflows.list",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "<module>",
+      "count": 1
+    },
+    {
+      "path": "lib/client.ts",
+      "operation": "weft.workflows.get",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "fetchWorkflowState",
+      "count": 1
+    },
+    {
+      "path": "routes/reviews/reviews-data.ts",
+      "operation": "weft.reviews.list",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "weftReviewsQueryOptions",
+      "count": 1
+    }
+  ],
+  "eligible": [
     {
       "path": "routes/reviews/reviews-data.ts",
       "method": "submitReview",
@@ -1958,16 +2090,6 @@
       "transport": "Weft HTTP REST",
       "issue": "COR-2625",
       "caller": "submitReviewDecisionMutation",
-      "count": 1
-    },
-    {
-      "path": "routes/reviews/reviews-data.ts",
-      "method": "listReviews",
-      "operation": "weft.reviews.list",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "weftReviewsQueryOptions",
       "count": 1
     },
     {
@@ -1988,36 +2110,6 @@
       "transport": "Weft HTTP REST",
       "issue": "COR-2623",
       "caller": "createSchedule",
-      "count": 1
-    },
-    {
-      "path": "routes/schedules/schedule-queries.ts",
-      "method": "getSchedule",
-      "operation": "weft.schedules.get",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "fetchScheduleDetail",
-      "count": 1
-    },
-    {
-      "path": "routes/schedules/schedule-queries.ts",
-      "method": "listSchedules",
-      "operation": "weft.schedules.list",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "fetchScheduleList",
-      "count": 1
-    },
-    {
-      "path": "routes/schedules/schedule-queries.ts",
-      "method": "list",
-      "operation": "weft.workflows.list",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "fetchScheduleRunHistory",
       "count": 1
     },
     {
@@ -2051,56 +2143,6 @@
       "count": 1
     },
     {
-      "path": "routes/schedules/schedule-run-details.ts",
-      "method": "get",
-      "operation": "weft.workflows.get",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "fetchRunDetail",
-      "count": 1
-    },
-    {
-      "path": "routes/schedules/schedule-run-details.ts",
-      "method": "getTimeline",
-      "operation": "weft.workflows.timeline.get",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "fetchRunDetail",
-      "count": 1
-    },
-    {
-      "path": "routes/schedules/schedule-writes.ts",
-      "method": "getSchedule",
-      "operation": "weft.schedules.get",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "assertUnchanged",
-      "count": 1
-    },
-    {
-      "path": "routes/workflow-definitions/recent-runs.svelte",
-      "method": "list",
-      "operation": "weft.workflows.list",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
-      "path": "routes/workflow-definitions/run-setup-form.svelte",
-      "method": "listSchedules",
-      "operation": "weft.schedules.list",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
       "path": "routes/workflow-definitions/run-setup-form.svelte",
       "method": "start",
       "operation": "weft.workflows.start",
@@ -2109,26 +2151,6 @@
       "issue": "COR-2625",
       "caller": "<module>",
       "count": 2
-    },
-    {
-      "path": "routes/workflow-definitions/workflow-detail.svelte",
-      "method": "list",
-      "operation": "weft.workflows.list",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
-      "path": "routes/workflow-definitions/workflow-detail.svelte",
-      "method": "listSchedules",
-      "operation": "weft.schedules.list",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "<module>",
-      "count": 1
     },
     {
       "path": "routes/workflows/detail/async-activity/async-activity-drawer.svelte",
@@ -2171,62 +2193,12 @@
       "count": 1
     },
     {
-      "path": "routes/workflows/detail/checkpoints/fork-dialog.svelte",
-      "method": "get",
-      "operation": "weft.workflows.get",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/detail/events-tab.svelte",
-      "method": "getEvents",
-      "operation": "weft.workflows.events.list",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "<module>",
-      "count": 2
-    },
-    {
-      "path": "routes/workflows/detail/events-tab.svelte",
-      "method": "getTimeline",
-      "operation": "weft.workflows.timeline.get",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "downloadEventsAndTimeline",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/detail/lineage-panel.svelte",
-      "method": "get",
-      "operation": "weft.workflows.get",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
       "path": "routes/workflows/detail/restart-dialog.svelte",
       "method": "startOrSignal",
       "operation": "weft.workflows.startorsignal",
       "classification": "eligible",
       "transport": "Weft HTTP REST",
       "issue": "COR-2625",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/detail/signals-tab.svelte",
-      "method": "getTimeline",
-      "operation": "weft.workflows.timeline.get",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
       "caller": "<module>",
       "count": 1
     },
@@ -2241,52 +2213,12 @@
       "count": 1
     },
     {
-      "path": "routes/workflows/detail/timeline-tab.svelte",
-      "method": "getTimeline",
-      "operation": "weft.workflows.timeline.get",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/list/workflow-list.svelte",
-      "method": "list",
-      "operation": "weft.workflows.list",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/runs/run-detail.svelte",
-      "method": "getTimeline",
-      "operation": "weft.workflows.timeline.get",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
       "path": "routes/workflows/runs/run-engine.svelte.ts",
       "method": "cancel",
       "operation": "weft.workflows.cancel",
       "classification": "eligible",
       "transport": "Weft HTTP REST",
       "issue": "COR-2625",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/runs/run-engine.svelte.ts",
-      "method": "get",
-      "operation": "weft.workflows.get",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
       "caller": "<module>",
       "count": 1
     },
@@ -2329,26 +2261,6 @@
       "issue": "COR-2625",
       "caller": "runQuery",
       "count": 1
-    },
-    {
-      "path": "routes/workflows/runs/run-related-data.ts",
-      "method": "get",
-      "operation": "weft.workflows.get",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "fetchRelatedRuns",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/runs/run-related-data.ts",
-      "method": "list",
-      "operation": "weft.workflows.list",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2623",
-      "caller": "fetchRelatedRuns",
-      "count": 2
     },
     {
       "path": "routes/workflows/runs/run-tags.svelte",
@@ -2437,55 +2349,10 @@
     },
     {
       "path": "host/cli-automation.ts",
-      "operation": "bureau.goals.get",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "goals",
-      "count": 1
-    },
-    {
-      "path": "host/cli-automation.ts",
-      "operation": "bureau.goals.list",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "goals",
-      "count": 1
-    },
-    {
-      "path": "host/cli-automation.ts",
       "operation": "bureau.hooks.create",
       "classification": "eligible",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
-      "caller": "hooks",
-      "count": 1
-    },
-    {
-      "path": "host/cli-automation.ts",
-      "operation": "bureau.hooks.deliveries",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "hooks",
-      "count": 1
-    },
-    {
-      "path": "host/cli-automation.ts",
-      "operation": "bureau.hooks.get",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "hooks",
-      "count": 1
-    },
-    {
-      "path": "host/cli-automation.ts",
-      "operation": "bureau.hooks.list",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
       "caller": "hooks",
       "count": 1
     },
@@ -2513,24 +2380,6 @@
       "classification": "eligible",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
-      "caller": "schedules",
-      "count": 1
-    },
-    {
-      "path": "host/cli-automation.ts",
-      "operation": "bureau.schedules.get",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "schedules",
-      "count": 2
-    },
-    {
-      "path": "host/cli-automation.ts",
-      "operation": "bureau.schedules.list",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
       "caller": "schedules",
       "count": 1
     },
@@ -2716,65 +2565,11 @@
     },
     {
       "path": "host/cli-configuration.ts",
-      "operation": "bureau.agents.catalog",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "executeConfiguration",
-      "count": 2
-    },
-    {
-      "path": "host/cli-configuration.ts",
-      "operation": "bureau.skills.list",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "executeConfiguration",
-      "count": 1
-    },
-    {
-      "path": "host/cli-configuration.ts",
-      "operation": "bureau.plugins.contributions",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "providers",
-      "count": 1
-    },
-    {
-      "path": "host/cli-configuration.ts",
-      "operation": "bureau.settings.get",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "settings",
-      "count": 2
-    },
-    {
-      "path": "host/cli-configuration.ts",
-      "operation": "bureau.settings.schema",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "settings",
-      "count": 1
-    },
-    {
-      "path": "host/cli-configuration.ts",
       "operation": "bureau.settings.update",
       "classification": "eligible",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
       "caller": "settings",
-      "count": 1
-    },
-    {
-      "path": "host/cli-definitions.ts",
-      "operation": "bureau.agents.catalog",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "agentCommand",
       "count": 1
     },
     {
@@ -2797,37 +2592,10 @@
     },
     {
       "path": "host/cli-definitions.ts",
-      "operation": "bureau.agents.definitions.get",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "agentCommand",
-      "count": 1
-    },
-    {
-      "path": "host/cli-definitions.ts",
-      "operation": "bureau.agents.definitions.list",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "agentCommand",
-      "count": 1
-    },
-    {
-      "path": "host/cli-definitions.ts",
       "operation": "bureau.agents.try",
       "classification": "eligible",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
-      "caller": "agentCommand",
-      "count": 1
-    },
-    {
-      "path": "host/cli-definitions.ts",
-      "operation": "bureau.agents.versions.list",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
       "caller": "agentCommand",
       "count": 1
     },
@@ -2838,33 +2606,6 @@
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
       "caller": "agentCommand",
-      "count": 1
-    },
-    {
-      "path": "host/cli-definitions.ts",
-      "operation": "bureau.workflows.get",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "workflowCommand",
-      "count": 1
-    },
-    {
-      "path": "host/cli-definitions.ts",
-      "operation": "bureau.workflows.history",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "workflowCommand",
-      "count": 1
-    },
-    {
-      "path": "host/cli-definitions.ts",
-      "operation": "bureau.workflows.list",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "workflowCommand",
       "count": 1
     },
     {
@@ -2896,15 +2637,6 @@
     },
     {
       "path": "host/cli-memory.ts",
-      "operation": "bureau.memory.export",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "memory",
-      "count": 1
-    },
-    {
-      "path": "host/cli-memory.ts",
       "operation": "bureau.memory.forget",
       "classification": "eligible",
       "transport": "Bureau JSON-RPC",
@@ -2914,37 +2646,10 @@
     },
     {
       "path": "host/cli-memory.ts",
-      "operation": "bureau.memory.get",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "memory",
-      "count": 1
-    },
-    {
-      "path": "host/cli-memory.ts",
-      "operation": "bureau.memory.list",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "memory",
-      "count": 1
-    },
-    {
-      "path": "host/cli-memory.ts",
       "operation": "bureau.memory.remember",
       "classification": "eligible",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
-      "caller": "memory",
-      "count": 1
-    },
-    {
-      "path": "host/cli-memory.ts",
-      "operation": "bureau.memory.search",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
       "caller": "memory",
       "count": 1
     },
@@ -2977,47 +2682,11 @@
     },
     {
       "path": "host/cli-runs.ts",
-      "operation": "bureau.tasks.explain",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "explain",
-      "count": 1
-    },
-    {
-      "path": "host/cli-runs.ts",
       "operation": "bureau.tasks.explanation.generate",
       "classification": "eligible",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
       "caller": "explain",
-      "count": 1
-    },
-    {
-      "path": "host/cli-runs.ts",
-      "operation": "bureau.tasks.get",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "getOrInspect",
-      "count": 1
-    },
-    {
-      "path": "host/cli-runs.ts",
-      "operation": "bureau.tasks.inspect",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "getOrInspect",
-      "count": 1
-    },
-    {
-      "path": "host/cli-runs.ts",
-      "operation": "bureau.workflows.runs.get",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2623",
-      "caller": "getOrInspect",
       "count": 1
     },
     {
@@ -3049,6 +2718,13 @@
     }
   ],
   "delegatedBoundaries": [
+    {
+      "path": "host/cli-runs.ts",
+      "anchor": "status !== undefined && !isWorkflowStatus(status)",
+      "protocol": "Bureau JSON-RPC invalid task and workflow list filters",
+      "owner": "Interborough CLI",
+      "reason": "Invalid finite filters keep their original authenticated server validation and exit behavior; valid filters use generated operations."
+    },
     {
       "path": "lib/bureau-assets.ts",
       "anchor": "/assets/${encodeURIComponent(assetId)}/content",
@@ -3198,10 +2874,10 @@
       "reason": "The guard wraps and forwards the original fetch for catalog and host traffic.",
       "expressions": [
         "armWriteGuard previousFetch(input, requestInit)",
-        "armWriteGuard sha256:57c739a5ea783af0ee4fb7202ec963210b4320d67117308c3ba889fd43a78731",
-        "armWriteGuard sha256:57c739a5ea783af0ee4fb7202ec963210b4320d67117308c3ba889fd43a78731",
-        "armWriteGuard sha256:57c739a5ea783af0ee4fb7202ec963210b4320d67117308c3ba889fd43a78731",
-        "armWriteGuard sha256:57c739a5ea783af0ee4fb7202ec963210b4320d67117308c3ba889fd43a78731"
+        "armWriteGuard sha256:bcc05274480290acbec995501b02b3ceecdadf7b417c01639aec0dda7f00c12c",
+        "armWriteGuard sha256:bcc05274480290acbec995501b02b3ceecdadf7b417c01639aec0dda7f00c12c",
+        "armWriteGuard sha256:bcc05274480290acbec995501b02b3ceecdadf7b417c01639aec0dda7f00c12c",
+        "armWriteGuard sha256:bcc05274480290acbec995501b02b3ceecdadf7b417c01639aec0dda7f00c12c"
       ]
     },
     {
@@ -3263,11 +2939,11 @@
     {
       "path": "app/shell/shell.svelte",
       "classification": "exceptional",
-      "transport": "GET /v1/health",
-      "owner": "Weft health",
-      "reason": "The shell probes the anonymous health endpoint.",
+      "transport": "GET /v1/health or /api/v1/principal",
+      "owner": "Interborough host and Weft health",
+      "reason": "The shell probes local engine health or the authenticated shared browser principal.",
       "expressions": [
-        "<module> fetch(`${initialClient.baseUrl}/v1/health`, { headers: initialClient.headers, cache: 'no-store', })"
+        "<module> fetch( sharedBrowser ? '/api/v1/principal' : `${initialClient.baseUrl}/v1/health`, { headers: initialClient.headers, cache: 'no-store', }, )"
       ]
     },
     {
@@ -3497,8 +3173,22 @@
       "reason": "The host resolves its authenticated workspace principal independently of the engine relay.",
       "expressions": [
         "resolveHostPrincipal fetcher('/api/v1/principal', { headers, cache: 'no-store' })",
-        "resolveHostPrincipal sha256:d57ca1a5412b9cb566e1055096c7e3e85c4604416b1118bf7d1ae9546f31a0b2",
-        "resolveHostPrincipal sha256:d57ca1a5412b9cb566e1055096c7e3e85c4604416b1118bf7d1ae9546f31a0b2"
+        "resolveHostPrincipal sha256:56a797ce4ddf5ff36f0edd1acbca8079f7122c8d6e0f49685895ccc78e9dba27",
+        "resolveHostPrincipal sha256:56a797ce4ddf5ff36f0edd1acbca8079f7122c8d6e0f49685895ccc78e9dba27"
+      ]
+    },
+    {
+      "path": "host/shared-browser-sign-in.ts",
+      "classification": "boundary",
+      "transport": "Shared-origin sign-in and private server fetch",
+      "owner": "Interborough host",
+      "reason": "The host forwards authenticated requests to the browser sign-in service and private server, and request-local internal fetches to the configured listener.",
+      "expressions": [
+        "handleFetch sha256:d0898ab4e3b58c6b6546660d62455155882719d18c98d061b58c8308bc17e76c",
+        "handleFetch next(request)",
+        "handleFetch fetch(target, { method: request.method, headers, redirect: 'manual', signal: event.signal, })",
+        "sharedBrowserRoutes shared.browser.fetch(shared.publicRequest(request))",
+        "sharedBrowserRoutes privateServer.fetch(shared.publicRequest(request))"
       ]
     },
     {
@@ -3755,7 +3445,7 @@
     "app/shell/shell.svelte @lostgradient/weft type { HttpClient }",
     "app/task-event-queries.ts ../lib/live-source/fleet-event-source.svelte.ts type { FleetEventFrame }",
     "app/view-frame.svelte ../lib/client.ts { getClient }",
-    "app/view-frame.svelte ../lib/scopes.svelte.ts { getPrincipalStore }",
+    "app/view-frame.svelte ../lib/scopes.svelte.ts { getPrincipalStore, principalQueryScope }",
     "app/view-frame.svelte ./view-probes.ts { probeFor, ViewProbeFault, type ViewProbeResult }",
     "app/view-probes.ts ../lib/agent-definitions.ts { getAgentCatalog, getAgentDefinition }",
     "app/view-probes.ts ../lib/bureau-audit.ts { queryAudit }",
@@ -3779,7 +3469,7 @@
     "host/api-routes.ts ../lib/host-session.ts { HOST_SESSION_ROUTE, type HostSession }",
     "host/cli-assets.ts ./cli-client-transport.ts { request, requestBytes, type CliTarget }",
     "host/cli-assets.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
-    "host/cli-automation.ts ./cli-client-transport.ts { request, type CliTarget }",
+    "host/cli-automation.ts ./cli-client-transport.ts { catalogRead, request, type CliTarget }",
     "host/cli-automation.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
     "host/cli-chat-assets.ts ./cli-client-transport.ts { request, type CliTarget }",
     "host/cli-chat-assets.ts ./cli-client.ts type { CliClientDependencies, Parsed }",
@@ -3789,6 +3479,7 @@
     "host/cli-client-connections.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
     "host/cli-client-preferences.ts ./cli-client.ts type { CliClientDependencies, CliConnection }",
     "host/cli-client-transport.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
+    "host/cli-client-transport.ts @lostgradient/backchannel/client { createCatalogClient }",
     "host/cli-client.ts ./cli-assets.ts { executeAssets }",
     "host/cli-client.ts ./cli-automation.ts { executeAutomation }",
     "host/cli-client.ts ./cli-chat.ts { executeChat, executeReviewsOrRuns }",
@@ -3799,17 +3490,17 @@
     "host/cli-client.ts ./cli-runs.ts { executeAudit, executeRuns }",
     "host/cli-client.ts ./instance-record.ts { liveInstanceUrl }",
     "host/cli-client.ts @lostgradient/weft { createCatalogSnapshot }",
-    "host/cli-configuration.ts ./cli-client-transport.ts { request, type CliTarget }",
+    "host/cli-configuration.ts ./cli-client-transport.ts { catalogRead, request, type CliTarget }",
     "host/cli-configuration.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
-    "host/cli-definitions.ts ./cli-client-transport.ts { request, type CliTarget }",
+    "host/cli-definitions.ts ./cli-client-transport.ts { catalogRead, request, type CliTarget }",
     "host/cli-definitions.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
     "host/cli-definitions.ts ./cli-runs.ts { executeRuns }",
     "host/cli-destructive.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
     "host/cli-mcp.ts ./cli-client-transport.ts type { CliTarget }",
     "host/cli-mcp.ts ./cli-client.ts type { CliCommandResult, Parsed }",
-    "host/cli-memory.ts ./cli-client-transport.ts { request, type CliTarget }",
+    "host/cli-memory.ts ./cli-client-transport.ts { catalogRead, request, type CliTarget }",
     "host/cli-memory.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
-    "host/cli-runs.ts ./cli-client-transport.ts { faultRefusedBeforeAnyEffect, request, stream, type CliTarget, }",
+    "host/cli-runs.ts ./cli-client-transport.ts { catalogRead, faultRefusedBeforeAnyEffect, request, stream, type CliTarget, }",
     "host/cli-runs.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
     "host/cli.ts ./cli-client.ts { executeCli }",
     "host/engine-proxy.ts @lostgradient/weft { AUTHORIZATION_SCOPES }",
@@ -3826,11 +3517,13 @@
     "host/host.ts ./engine-proxy.ts { createLocalAuthentication, isEngineRequestPath, relayRequest, webSocketRelayData, }",
     "host/host.ts ./host-storage.ts { hostStorageReport, hostStorageSummary }",
     "host/host.ts ./instance-record.ts { instanceRecordPath, removeInstanceRecord, writeInstanceRecord, }",
+    "host/host.ts ./shared-browser-sign-in.ts { createSharedBrowserSignIn, sharedBrowserRoutes, sharedBrowserServerHooks, type SharedBrowserSignInOptions, }",
     "host/host.ts ./tool-source-manager.ts { createToolSourceManager, type ToolSourceManager }",
     "host/host.ts ./tool-source-routes.ts { toolSourceRoutes }",
     "host/host.ts @lostgradient/weft { serve, type AlertingOptions, type RegistryAgnosticEngine, type ServeOptions, type WeftServer, }",
     "host/host.ts @lostgradient/weft/a2a { createEgressPolicy, type A2APeerUpdate, type EgressPolicy }",
     "host/panel-routes.ts @lostgradient/weft { MCP_LEGACY_PROTOCOL_VERSION }",
+    "host/refund-operations.ts @lostgradient/weft { WorkflowClaimUnavailableError }",
     "host/shell-request.ts ./engine-proxy.ts { isEngineRequestPath }",
     "host/showcase.ts @lostgradient/weft type { AlertingOptions }",
     "host/tool-source-routes.ts ./openapi-inspection.ts { inspectOpenApiAddress, inspectOpenApiSpec, type OpenApiFetchFailure, type OpenApiInspection, }",
@@ -3851,9 +3544,9 @@
     "lib/bureau-assets.ts @lostgradient/weft { HttpClientError }",
     "lib/bureau-attention.ts ./bureau-api.ts { bureauClient, type BureauOutput }",
     "lib/bureau-attention.ts ./bureau-client.ts type { Fetcher }",
-    "lib/bureau-audit.ts ./bureau-api.ts { bureauClient, type BureauOutput }",
+    "lib/bureau-audit.ts ./bureau-api.ts type { BureauOutput }",
     "lib/bureau-audit.ts ./bureau-client.ts type { Fetcher }",
-    "lib/bureau-checks.ts ./bureau-api.ts { bureauClient, type BureauOutput }",
+    "lib/bureau-checks.ts ./bureau-api.ts type { BureauOutput }",
     "lib/bureau-checks.ts ./bureau-client.ts type { Fetcher }",
     "lib/bureau-client.ts ./bureau-api.ts { bureauClient, type BureauInput, type BureauOutput }",
     "lib/bureau-client.ts @lostgradient/weft { HttpClientError }",
@@ -3901,12 +3594,12 @@
     "lib/bureau-workflow-catalog.ts ./bureau-client.ts type { Fetcher }",
     "lib/chat-attachments.ts ./bureau-assets.ts { ASSET_FILE_PROVIDER, AttachmentUploadError, uploadAsset }",
     "lib/chat-attachments.ts ./bureau-client.ts type { agentMediaSchema, Fetcher }",
-    "lib/client.ts @lostgradient/weft { HttpClient }",
+    "lib/client.ts @lostgradient/weft { HttpClient, HttpClientError }",
     "lib/config.ts @lostgradient/weft type { WorkflowEventTransport }",
     "lib/default-agent.ts ./bureau-client.ts { listAgents, type AgentSummary, type Fetcher }",
     "lib/default-agent.ts ./host-plugins.ts { getPlugins, type PluginsSnapshot }",
     "lib/faults.ts @lostgradient/weft { HttpClientError, isWeftFault, type WeftErrorCode }",
-    "lib/filters.ts @lostgradient/weft type { FailureCategory, ListFilter, WorkflowStatus }",
+    "lib/filters.ts @lostgradient/weft type { FailureCategory, HttpClient, ListFilter, WorkflowStatus }",
     "lib/host-clean-up.ts ./bureau-client.ts type { Fetcher }",
     "lib/host-panels.ts ./bureau-client.ts type { Fetcher }",
     "lib/host-paths.ts ./bureau-client.ts type { Fetcher }",
@@ -4045,6 +3738,7 @@
     "routes/audit/audit-lookups.svelte.ts ../../lib/memory-client.ts { getMemory }",
     "routes/audit/audit-states.ts @lostgradient/weft { HttpClientError }",
     "routes/audit/index.svelte ../../lib/bureau-audit.ts { queryAudit }",
+    "routes/audit/index.svelte ../../lib/scopes.svelte.ts { getPrincipalStore, principalQueryScope }",
     "routes/capabilities/capability-presentation.ts ../../lib/agent-definitions.ts type { AgentCatalog, ToolApproval }",
     "routes/capabilities/capability-presentation.ts ../../lib/bureau-skills.ts type { Skill }",
     "routes/capabilities/capability-presentation.ts ../../lib/host-plugins.ts type { PluginStanding }",
@@ -4134,6 +3828,7 @@
     "routes/chat/turn-states.ts ./chat-session.svelte.ts type { ChatReconnect }",
     "routes/checks/checks-list.svelte ../../lib/bureau-checks.ts { listChecks, type CheckRow }",
     "routes/checks/checks-list.svelte ../../lib/bureau-client.ts { listAgents }",
+    "routes/checks/checks-list.svelte ../../lib/scopes.svelte.ts { getPrincipalStore, principalQueryScope }",
     "routes/checks/checks-row.svelte ../../lib/bureau-checks.ts type { CheckRow }",
     "routes/checks/checks-rows.ts ../../lib/bureau-checks.ts { CHECK_OUTCOMES, type CheckFilter, type CheckKind, type CheckOutcome, type CheckRow, }",
     "routes/goals/goal-create.svelte ../../lib/bureau-client.ts { listAgents }",
@@ -4178,7 +3873,7 @@
     "routes/health/health-frame.svelte ../../lib/host-paths.ts { getHostPaths }",
     "routes/health/index.svelte ../../lib/bureau-attention.ts { readAttention }",
     "routes/health/index.svelte ../../lib/client.ts { getClient }",
-    "routes/health/index.svelte ../../lib/scopes.svelte.ts { getPrincipalStore, isForbidden }",
+    "routes/health/index.svelte ../../lib/scopes.svelte.ts { getPrincipalStore, isForbidden, principalQueryScope }",
     "routes/health/index.svelte ../reviews/reviews-data.ts { waitingReviewsQuery }",
     "routes/health/recent-activity-data.ts ../../lib/bureau-attention.ts type { AttentionItem }",
     "routes/health/recent-activity-data.ts ../../lib/bureau-audit.ts type { AuditRecord }",
@@ -4278,6 +3973,7 @@
     "routes/reviews/review-source.svelte ../../lib/bureau-reviews.ts type { ListedReview }",
     "routes/reviews/reviews-data.ts ../../lib/bureau-reviews.ts { isReviewNoLongerWaiting, listBureauReviews, listPendingReviews, pageReviews, resolveBureauReview, type ApprovalDecisionSurface, type BureauReview, type ListedReview, type ReviewDecision, type ReviewResolution, }",
     "routes/reviews/reviews-data.ts ../../lib/bureau-tasks.ts { respondToTask, type TaskRespondAnswer }",
+    "routes/reviews/reviews-data.ts ../../lib/scopes.svelte.ts { getPrincipalStore, hasPrincipalStore, principalQueryScope, }",
     "routes/reviews/reviews-data.ts @lostgradient/weft type { HttpClient, ReviewListEntry, ReviewStatus, SubmitReviewOptions, }",
     "routes/reviews/reviews-panel.svelte ../../lib/bureau-reviews.ts type { BureauHumanWait, BureauReview, ListedReview, ReviewDecision, }",
     "routes/reviews/reviews-panel.svelte ../../lib/scopes.svelte.ts type { ScopeGate }",
@@ -4293,7 +3989,7 @@
     "routes/schedules/new-schedule.svelte ../../lib/bureau-client.ts { listAgents }",
     "routes/schedules/new-schedule.svelte ../../lib/bureau-schedules.ts { createAgentSchedule, updateAgentSchedule }",
     "routes/schedules/new-schedule.svelte ../../lib/client.ts { getClient }",
-    "routes/schedules/new-schedule.svelte ../../lib/scopes.svelte.ts { getPrincipalStore, scopeGate }",
+    "routes/schedules/new-schedule.svelte ../../lib/scopes.svelte.ts { getPrincipalStore, principalQueryScope, scopeGate }",
     "routes/schedules/new-schedule.svelte ../../lib/workflow-catalog.ts { CATALOG_STALE_TIME_MS, loadCatalog, resolveWorkflow, }",
     "routes/schedules/new-schedule.svelte ./schedule-queries.ts { createSchedule, fetchScheduleDetail, fetchScheduleList, updateScheduleSpec, }",
     "routes/schedules/overlap-policy.ts @lostgradient/weft type { ScheduleOverlapPolicy }",
@@ -4312,7 +4008,7 @@
     "routes/schedules/schedule-detail-model.ts @lostgradient/weft type { ScheduleSummary }",
     "routes/schedules/schedule-detail.svelte ../../app/engine-status.svelte.ts { getFleetEventSource }",
     "routes/schedules/schedule-detail.svelte ../../lib/client.ts { getClient }",
-    "routes/schedules/schedule-detail.svelte ../../lib/scopes.svelte.ts { getPrincipalStore, scopeGate }",
+    "routes/schedules/schedule-detail.svelte ../../lib/scopes.svelte.ts { getPrincipalStore, principalQueryScope, scopeGate }",
     "routes/schedules/schedule-detail.svelte ../../lib/workflow-files.ts { getWorkflowFile, resumeWorkflowFile }",
     "routes/schedules/schedule-detail.svelte ./schedule-queries.ts { fetchScheduleDetail, fetchScheduleRunHistory, scheduleDetailQueryKey, scheduleMissedQueryKey, scheduleRunHistoryQueryKey, }",
     "routes/schedules/schedule-detail.svelte ./schedule-writes.ts { actionsOf, type ScheduleTarget as Target }",
@@ -4321,14 +4017,16 @@
     "routes/schedules/schedule-edit-model.ts ../../lib/bureau-schedules.ts type { AgentScheduleUpdate }",
     "routes/schedules/schedule-edit-model.ts @lostgradient/weft type { ScheduleSpec, ScheduleSummary, ScheduleUpdateOptions }",
     "routes/schedules/schedule-edit.svelte ../../lib/client.ts { getClient }",
+    "routes/schedules/schedule-edit.svelte ../../lib/scopes.svelte.ts { getPrincipalStore, principalQueryScope }",
     "routes/schedules/schedule-edit.svelte ./schedule-queries.ts { fetchScheduleDetail, scheduleDetailQueryKey }",
     "routes/schedules/schedule-file-chip.svelte ../../lib/host-paths.ts { getHostPaths, workflowFilePath, workflowRelativePath }",
     "routes/schedules/schedule-form-state.svelte.ts @lostgradient/weft type { ScheduleOverlapPolicy, ScheduleRevisionPolicy, ScheduleSpec, ScheduleUpdateOptions, }",
     "routes/schedules/schedule-last-fire.svelte ../../lib/client.ts { getClient }",
+    "routes/schedules/schedule-last-fire.svelte ../../lib/scopes.svelte.ts { getPrincipalStore, principalQueryScope }",
     "routes/schedules/schedule-last-fire.svelte ./schedule-queries.ts { fetchScheduleRunHistory, scheduleRunHistoryQueryKey }",
     "routes/schedules/schedule-last-fire.svelte ./schedule-run-details.ts { fetchRunDetail, runDetailQueryKey }",
     "routes/schedules/schedule-list.svelte ../../lib/client.ts { getClient }",
-    "routes/schedules/schedule-list.svelte ../../lib/scopes.svelte.ts { getPrincipalStore, scopeGate }",
+    "routes/schedules/schedule-list.svelte ../../lib/scopes.svelte.ts { getPrincipalStore, principalQueryScope, scopeGate }",
     "routes/schedules/schedule-list.svelte ./schedule-queries.ts { fetchScheduleList }",
     "routes/schedules/schedule-list.svelte @lostgradient/weft type { ScheduleSummary }",
     "routes/schedules/schedule-queries.ts ../../lib/bureau-schedules.ts type { MissedFire, RunNowOutcome }",
@@ -4351,6 +4049,7 @@
     "routes/schedules/schedule-runs-model.ts ../../lib/bureau-schedules.ts type { MissedFire }",
     "routes/schedules/schedule-runs-model.ts @lostgradient/weft type { ScheduleSummary, WorkflowSummary }",
     "routes/schedules/schedule-runs.svelte ../../lib/client.ts { getClient }",
+    "routes/schedules/schedule-runs.svelte ../../lib/scopes.svelte.ts { getPrincipalStore, principalQueryScope }",
     "routes/schedules/schedule-runs.svelte ./schedule-queries.ts { fetchScheduleRunHistory, scheduleMissedQueryKey, scheduleRunHistoryQueryKey, }",
     "routes/schedules/schedule-runs.svelte ./schedule-run-details.ts { fetchRunDetail, runDetailLine, runDetailQueryKey }",
     "routes/schedules/schedule-runs.svelte ./schedule-writes.ts { missedOf }",
@@ -4358,12 +4057,13 @@
     "routes/schedules/schedule-writes.ts ../../lib/bureau-schedules.ts { cancelAgentSchedule, isOccurrenceNotNext, listAgentScheduleMissed, pauseAgentSchedule, resumeAgentSchedule, runNowAgentSchedule, skipNextAgentSchedule, unskipAgentSchedule, type MissedFire, type RunNowOutcome, }",
     "routes/schedules/schedule-writes.ts ../../lib/workflow-files.ts { pauseWorkflowFile, resumeWorkflowFile, startWorkflowFile, }",
     "routes/schedules/schedule-writes.ts ./schedule-queries.ts { cancelSchedule, listScheduleMissed, pauseSchedule, resumeSchedule, runNowSchedule, skipNextSchedule, unskipSchedule, type ScheduleControlClient, }",
-    "routes/schedules/schedule-writes.ts @lostgradient/weft { isWeftFault, type HttpClient, type ScheduleSummary }",
+    "routes/schedules/schedule-writes.ts @lostgradient/weft { HttpClientError, isWeftFault, type HttpClient, type ScheduleSummary, }",
     "routes/settings/a2a/a2a-body.svelte ../../../lib/agent-definitions.ts { listAgentDefinitions }",
     "routes/settings/a2a/a2a-body.svelte ../../../lib/bureau-client.ts { listAgents }",
     "routes/settings/a2a/a2a-body.svelte ../../../lib/bureau-settings.ts { getSettings, updateSettings, type SettingKeyState, type SettingsSchema, type SettingsSnapshot, }",
     "routes/settings/a2a/a2a-body.svelte ../../../lib/host-paths.ts { getHostPaths }",
     "routes/settings/a2a/recent-calls.svelte ../../../lib/bureau-client.ts type { AgentSummary }",
+    "routes/settings/a2a/recent-calls.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore, principalQueryScope }",
     "routes/settings/allowed-models-body.svelte ../../lib/bureau-settings.ts { getSettings, settingsFaultOf, updateSettings, type SettingKeyState, type SettingsSchema, type SettingsSnapshot, }",
     "routes/settings/allowed-models-body.svelte ../../lib/host-providers.ts { getProviders, type ProviderModel }",
     "routes/settings/api-reference/api-reference-body.svelte ../../../lib/bureau-settings.ts type { SettingsSchema, SettingsSnapshot }",
@@ -4387,6 +4087,7 @@
     "routes/settings/general-settings.svelte ../../lib/host-paths.ts { getHostPaths }",
     "routes/settings/mcp/mcp-body.svelte ../../../lib/bureau-settings.ts type { SettingsSchema, SettingsSnapshot }",
     "routes/settings/mcp/mcp-body.svelte ../../../lib/client.ts { getClient }",
+    "routes/settings/mcp/mcp-body.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore }",
     "routes/settings/mcp/mcp-body.svelte ../../system/discovery-client.ts { discoveryOrigin }",
     "routes/settings/models/decisions-section.svelte ../../../lib/bureau-decisions.ts { decisionRowName, listDecisionModels, type DecisionModelRow, }",
     "routes/settings/models/decisions-section.svelte ../../../lib/bureau-settings.ts type { SchemaNode, SettingKeyState }",
@@ -4635,30 +4336,39 @@
     "routes/workflows/detail/checkpoints/fork-dialog.svelte ../../../../lib/workflow-revision.ts { EAGER_REVISION_HEDGE }",
     "routes/workflows/detail/checkpoints/fork-dialog.svelte ./checkpoints-data.ts type { ForkClient, ForkSourceClient }",
     "routes/workflows/detail/checkpoints/fork-dialog.svelte ./fork-comparison-data.ts { fetchForkPreview, forkPreviewQueryKey, type ForkPreviewClient, type ForkPreviewRequest, }",
+    "routes/workflows/detail/checkpoints/fork-dialog.svelte @lostgradient/weft { HttpClientError }",
     "routes/workflows/detail/checkpoints/fork-revision-picker.ts @lostgradient/weft type { ForkOptions }",
     "routes/workflows/detail/checkpoints/fork-revision-picker.ts @lostgradient/weft { HttpClientError, isWeftFault }",
     "routes/workflows/detail/checkpoints/replay-view.svelte ../../../../lib/scopes.svelte.ts { getPrincipalStore, scopeGate }",
     "routes/workflows/detail/checkpoints/replay-view.svelte ../../../../lib/workflow-revision.ts { EAGER_REVISION_HEDGE }",
     "routes/workflows/detail/checkpoints/replay-view.svelte ./checkpoints-data.ts { replayQueryKey, replayWorkflow }",
     "routes/workflows/detail/checkpoints/replay-view.svelte @lostgradient/weft type { HttpClient }",
+    "routes/workflows/detail/events-tab.svelte ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
     "routes/workflows/detail/events-tab.svelte ../../../lib/live-source/workflow-tail-source.svelte.ts { WorkflowTailSource }",
-    "routes/workflows/detail/events-tab.svelte @lostgradient/weft type { HttpClient, WorkflowEvent, WorkflowState }",
+    "routes/workflows/detail/events-tab.svelte ./workflow-timeline-data.ts { fetchWorkflowTimeline }",
+    "routes/workflows/detail/events-tab.svelte @lostgradient/weft { HttpClientError, type HttpClient, type WorkflowEvent }",
     "routes/workflows/detail/export-events.ts @lostgradient/weft type { WorkflowEvent, WorkflowTimelineEntry }",
+    "routes/workflows/detail/lineage-panel.svelte ../../../lib/client.ts { fetchWorkflowState, type WorkflowReadState as WorkflowState, }",
+    "routes/workflows/detail/lineage-panel.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore, hasPrincipalStore, principalQueryScope, }",
     "routes/workflows/detail/lineage-panel.svelte ../../../lib/workflow-revision.ts { EAGER_REVISION_HEDGE, FRESH_START_REVISION_HEDGE, type WorkflowActiveRevisionClient, }",
     "routes/workflows/detail/lineage-panel.svelte ./checkpoints/fork-comparison-data.ts type { ForkComparisonClient }",
     "routes/workflows/detail/lineage-panel.svelte ./workflow-observability.ts { getScheduleProvenance, scheduleProvenanceQueryKey }",
-    "routes/workflows/detail/lineage-panel.svelte @lostgradient/weft type { HttpClient, WorkflowState }",
+    "routes/workflows/detail/lineage-panel.svelte @lostgradient/weft type { HttpClient }",
     "routes/workflows/detail/remote-activity-panel.svelte ../../../lib/scopes.svelte.ts { isForbidden, scopeReason }",
     "routes/workflows/detail/remote-activity-panel.svelte ../../workers/workers-data.ts { MalformedTaskLedgerError, parseTaskLedgerDetail }",
     "routes/workflows/detail/remote-task-step.svelte ../../workers/workers-data.ts { parseTaskLedgerDetail }",
+    "routes/workflows/detail/restart-dialog.svelte ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
     "routes/workflows/detail/restart-dialog.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore, scopeGate }",
     "routes/workflows/detail/restart-dialog.svelte ../../../lib/workflow-revision.ts { fetchActiveWorkflowRevision, FRESH_START_REVISION_HEDGE, type WorkflowActiveRevisionClient, }",
     "routes/workflows/detail/restart-dialog.svelte ./restart-worker-override.svelte RestartWorkerOverride",
-    "routes/workflows/detail/restart-dialog.svelte @lostgradient/weft type { ClientStartOrSignalOptions, WorkerStartOverridePreview, StartOrSignalOutcome, StartOrSignalSignal, WorkflowState, }",
+    "routes/workflows/detail/restart-dialog.svelte @lostgradient/weft type { ClientStartOrSignalOptions, WorkerStartOverridePreview, StartOrSignalOutcome, StartOrSignalSignal, }",
+    "routes/workflows/detail/restart-worker-override.svelte ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
     "routes/workflows/detail/restart-worker-override.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore, scopeGate }",
-    "routes/workflows/detail/restart-worker-override.svelte @lostgradient/weft type { WorkerStartOverridePreview, WorkflowState }",
-    "routes/workflows/detail/signals-tab.svelte ../../../lib/scopes.svelte.ts type { ScopeGate }",
-    "routes/workflows/detail/signals-tab.svelte @lostgradient/weft type { HttpClient, WorkflowState }",
+    "routes/workflows/detail/restart-worker-override.svelte @lostgradient/weft type { WorkerStartOverridePreview }",
+    "routes/workflows/detail/signals-tab.svelte ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
+    "routes/workflows/detail/signals-tab.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore, hasPrincipalStore, principalQueryScope, type ScopeGate, }",
+    "routes/workflows/detail/signals-tab.svelte ./workflow-timeline-data.ts { fetchWorkflowTimeline, signalHistoryFromTimeline, workflowTimelineQueryKey, }",
+    "routes/workflows/detail/signals-tab.svelte @lostgradient/weft type { HttpClient }",
     "routes/workflows/detail/steps/step-detail.svelte ../../runs/run-logs-data.ts type { RunLogLine }",
     "routes/workflows/detail/steps/step-detail.svelte @lostgradient/weft type { WorkflowTimelineEntry }",
     "routes/workflows/detail/steps/step-presentation.ts @lostgradient/weft type { WorkflowTimelineEntry, WorkflowTimelineStatus }",
@@ -4667,27 +4377,30 @@
     "routes/workflows/detail/streams/stream-chunks-view.svelte ../../../../app/engine-status.svelte.ts { getFleetEventSource, hasFleetEventSource, }",
     "routes/workflows/detail/streams/stream-chunks-view.svelte ./stream-chunks-data.ts { appendNewChunks, displayStreamKey, readStreamChunks, STREAM_POLL_INTERVAL_MS, TOKENS_STREAM_KEY, streamChunksAreSwept, type StreamChunk, type StreamChunksClient, }",
     "routes/workflows/detail/streams/stream-chunks-view.svelte @lostgradient/weft type { WorkflowStatus }",
+    "routes/workflows/detail/timeline-tab.svelte ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
+    "routes/workflows/detail/timeline-tab.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore, hasPrincipalStore, principalQueryScope, }",
     "routes/workflows/detail/timeline-tab.svelte ../runs/run-logs-data.ts { LOGS_OPERATION, fetchRunLogs, placeLogLines, workflowLogsQueryKey, type LogsClient, }",
     "routes/workflows/detail/timeline-tab.svelte ./async-activity/async-activity-drawer.svelte AsyncActivityDrawer",
     "routes/workflows/detail/timeline-tab.svelte ./streams/stream-chunks-data.ts type { StreamChunksClient }",
-    "routes/workflows/detail/timeline-tab.svelte @lostgradient/weft type { WeftClientActivity, HttpClient, WorkflowFinalizerStatus, WorkflowState, WorkflowTimelineEntry, }",
+    "routes/workflows/detail/timeline-tab.svelte ./workflow-timeline-data.ts { fetchWorkflowTimeline, workflowTimelineQueryKey }",
+    "routes/workflows/detail/timeline-tab.svelte @lostgradient/weft type { WeftClientActivity, HttpClient, WorkflowFinalizerStatus, WorkflowTimelineEntry, }",
     "routes/workflows/detail/timeline/finalizer-strip.svelte @lostgradient/weft type { WorkflowFinalizerStatus, WorkflowStatus }",
     "routes/workflows/detail/timeline/timeline-filters.ts @lostgradient/weft type { WorkflowTimelineEntry }",
     "routes/workflows/detail/timeline/timeline-mapping.ts @lostgradient/weft type { WorkflowTimelineEntry, WorkflowTimelineOperationDetail }",
     "routes/workflows/detail/timeline/timeline-step-state.ts @lostgradient/weft type { WorkflowTimelineStatus }",
     "routes/workflows/detail/timeline/workflow-live-observations.svelte.ts ../../../../lib/live-source/fleet-event-source.svelte.ts type { FleetEventFrame }",
+    "routes/workflows/detail/timeline/workflow-live-observations.svelte.ts ../workflow-timeline-data.ts { workflowTimelineQueryKey }",
+    "routes/workflows/detail/updates-tab.svelte ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
     "routes/workflows/detail/updates-tab.svelte ./updates/updates-data.ts { isSubmissionTimeout, readUpdateHistoryPages, sendUpdate, UPDATE_HISTORY_POLL_INTERVAL_MS, updateHistoryQueryKey, type UpdatesClient, }",
-    "routes/workflows/detail/updates-tab.svelte @lostgradient/weft type { WorkflowState }",
     "routes/workflows/detail/updates/update-history-row.svelte ./updates-data.ts { describeUpdate, entryNeedsResult, readUpdateResult, updateResultQueryKey, type UpdateHistoryEntry, type UpdatesClient, }",
     "routes/workflows/detail/updates/updates-data.ts @lostgradient/weft type { HttpClient }",
-    "routes/workflows/detail/worker-binding-panel.svelte @lostgradient/weft type { WorkflowState }",
+    "routes/workflows/detail/worker-binding-panel.svelte ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
     "routes/workflows/detail/worker-override.ts @lostgradient/weft { HttpClientError, UPGRADE_REFUSAL_REASON_PREFIX, WORKER_CONFLICT_REASONS, type WorkerStartOverridePreview, }",
     "routes/workflows/detail/workflow-observability.ts @lostgradient/weft type { WorkflowFinalizerStatus, WorkflowScheduleProvenance }",
     "routes/workflows/detail/workflow-status.ts @lostgradient/weft type { WorkflowFinalizerStatus, WorkflowStatus }",
-    "routes/workflows/detail/workflow-timeline-data.ts @lostgradient/weft type { WorkflowTimelineEntry, WorkflowTimelineStatus }",
+    "routes/workflows/detail/workflow-timeline-data.ts @lostgradient/weft { HttpClientError, type HttpClient, type WorkflowTimelineEntry, type WorkflowTimelineOperationDetail, type WorkflowTimelineStatus, }",
     "routes/workflows/index.svelte ../../lib/scopes.svelte.ts { getPrincipalStore }",
     "routes/workflows/index.svelte ./aggregate/aggregate-view.svelte AggregateView",
-    "routes/workflows/index.svelte ./runs/run-detail.svelte RunDetail",
     "routes/workflows/list/bulk-action-dialog.svelte @lostgradient/weft { HttpClientError, type BulkOperationDryRunResult }",
     "routes/workflows/list/bulk-list-filter.ts @lostgradient/weft type { FailureCategory, WorkflowStatus }",
     "routes/workflows/list/bulk-operations-client.ts @lostgradient/weft type { BulkCancelResult, BulkDeleteResult, BulkOperationDryRunResult, BulkRetryFailedResult, BulkSignalResult, BulkTagResult, HttpClient, PurgeResult, }",
@@ -4702,7 +4415,7 @@
     "routes/workflows/list/workflow-list-live.svelte.ts ../../../lib/live-source/fleet-event-source.svelte.ts type { FleetEventFrame }",
     "routes/workflows/list/workflow-list.svelte ../../../app/engine-status.svelte.ts { getFleetEventSource }",
     "routes/workflows/list/workflow-list.svelte ../../../lib/client.ts { getClient }",
-    "routes/workflows/list/workflow-list.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore, scopeGate }",
+    "routes/workflows/list/workflow-list.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore, principalQueryScope, scopeGate }",
     "routes/workflows/list/workflow-list.svelte ../../../lib/workflow-files.ts { getWorkflowFileRun, type WorkflowFileRunDetail }",
     "routes/workflows/list/workflow-status-badge.ts @lostgradient/weft type { WorkflowStatus }",
     "routes/workflows/list/workflow-table.svelte ../../../lib/workflow-files.ts type { WorkflowFileRun }",
@@ -4714,8 +4427,8 @@
     "routes/workflows/runs/related-run-link.svelte ../../../lib/workflow-revision.ts type { RevisionActiveComparison }",
     "routes/workflows/runs/related-run-link.svelte ./run-related-data.ts type { RelatedRun }",
     "routes/workflows/runs/run-activity.svelte ../../../lib/bureau-tasks.ts type { TaskView }",
+    "routes/workflows/runs/run-activity.svelte ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
     "routes/workflows/runs/run-activity.svelte ./run-engine.svelte.ts type { RunEngine }",
-    "routes/workflows/runs/run-activity.svelte @lostgradient/weft type { WorkflowState }",
     "routes/workflows/runs/run-activity.ts ../../../lib/bureau-tasks.ts type { TaskView }",
     "routes/workflows/runs/run-again.svelte.ts ../../../lib/bureau-attention.ts { readScheduleAttention }",
     "routes/workflows/runs/run-again.svelte.ts ../../../lib/bureau-schedules.ts { runNowAgentSchedule, type RunNowOutcome }",
@@ -4724,10 +4437,10 @@
     "routes/workflows/runs/run-attention-note.ts ../../../lib/bureau-tasks.ts { isTerminalState, TASK_ATTENTION_KINDS, type TaskAttention, type TaskView, }",
     "routes/workflows/runs/run-cancel-note.svelte ../../../lib/bureau-tasks.ts type { TaskCancelAnswer, TaskCancelReceipt, TaskView }",
     "routes/workflows/runs/run-cancel.svelte ../../../lib/bureau-tasks.ts { cancelTask, isOwnedElsewhere, isTerminalState, type TaskCancelAnswer, type TaskCancelReceipt, type TaskView, }",
+    "routes/workflows/runs/run-change.svelte ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
     "routes/workflows/runs/run-change.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore, scopeGate }",
     "routes/workflows/runs/run-change.svelte ../detail/signals-tab.svelte SignalsTab",
     "routes/workflows/runs/run-change.svelte ./run-engine.svelte.ts type { RunEngine }",
-    "routes/workflows/runs/run-change.svelte @lostgradient/weft type { WorkflowState }",
     "routes/workflows/runs/run-chat-related.svelte ../../../lib/bureau-tasks.ts { listAllTasks, type TaskView }",
     "routes/workflows/runs/run-chat-related.ts ../../../lib/bureau-tasks.ts type { TaskView }",
     "routes/workflows/runs/run-detail.svelte ../../../lib/bureau-attention.ts { readScheduleAttention }",
@@ -4735,12 +4448,12 @@
     "routes/workflows/runs/run-detail.svelte ../../../lib/bureau-goals.ts { listAllGoals }",
     "routes/workflows/runs/run-detail.svelte ../../../lib/bureau-schedules.ts { listBureauSchedules }",
     "routes/workflows/runs/run-detail.svelte ../../../lib/bureau-tasks.ts { getTask, isTerminalState, type TaskCleanup, type TaskView, }",
-    "routes/workflows/runs/run-detail.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore }",
+    "routes/workflows/runs/run-detail.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore, principalQueryScope }",
     "routes/workflows/runs/run-detail.svelte ../../../lib/workflow-files.ts { getWorkflowFileRun }",
     "routes/workflows/runs/run-detail.svelte ../detail/attributes/attributes-data.ts { attributesQueryKey, readAttributes }",
-    "routes/workflows/runs/run-detail.svelte ../detail/lineage-panel.svelte LineagePanel",
     "routes/workflows/runs/run-detail.svelte ../detail/restart-dialog.svelte RestartDialog",
     "routes/workflows/runs/run-detail.svelte ../detail/workflow-observability.ts { getScheduleProvenance, scheduleProvenanceQueryKey, }",
+    "routes/workflows/runs/run-detail.svelte ../detail/workflow-timeline-data.ts { fetchWorkflowTimeline, workflowTimelineQueryKey, }",
     "routes/workflows/runs/run-detail.svelte ./run-engine-attributes.ts { attributesClientOf, hasVersioning }",
     "routes/workflows/runs/run-detail.svelte ./run-engine.svelte.ts { RunEngine }",
     "routes/workflows/runs/run-detail.svelte ./task-follower.svelte.ts { TaskFollower }",
@@ -4748,29 +4461,29 @@
     "routes/workflows/runs/run-details.svelte ../../../lib/bureau-goals.ts type { Goal }",
     "routes/workflows/runs/run-details.svelte ../../../lib/bureau-schedules.ts type { BureauSchedule }",
     "routes/workflows/runs/run-details.svelte ../../../lib/bureau-tasks.ts type { TaskView }",
+    "routes/workflows/runs/run-details.svelte ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
     "routes/workflows/runs/run-details.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore, scopeGate }",
     "routes/workflows/runs/run-details.svelte ../../../lib/workflow-files.ts type { WorkflowFileRun }",
     "routes/workflows/runs/run-details.svelte ../../../lib/workflow-revision.ts { classifyRevisionAgainstActive }",
     "routes/workflows/runs/run-details.svelte ./run-engine.svelte.ts type { RunEngine }",
     "routes/workflows/runs/run-details.svelte ./run-logs.svelte RunLogs",
     "routes/workflows/runs/run-details.svelte ./run-tags.svelte RunTags",
-    "routes/workflows/runs/run-details.svelte @lostgradient/weft type { WorkflowState }",
+    "routes/workflows/runs/run-engine-attributes.ts ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
     "routes/workflows/runs/run-engine-attributes.ts ../detail/attributes/attributes-data.ts type { AttributesClient }",
-    "routes/workflows/runs/run-engine-attributes.ts @lostgradient/weft type { HttpClient, WorkflowState }",
+    "routes/workflows/runs/run-engine-attributes.ts @lostgradient/weft type { HttpClient }",
+    "routes/workflows/runs/run-engine-history.svelte ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
     "routes/workflows/runs/run-engine-history.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore }",
     "routes/workflows/runs/run-engine-history.svelte ../detail/events-tab.svelte EventsTab",
     "routes/workflows/runs/run-engine-history.svelte ./run-engine.svelte.ts type { RunEngine }",
-    "routes/workflows/runs/run-engine-history.svelte @lostgradient/weft type { WorkflowState }",
+    "routes/workflows/runs/run-engine-panels.svelte ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
     "routes/workflows/runs/run-engine-panels.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore }",
-    "routes/workflows/runs/run-engine-panels.svelte ../detail/lineage-panel.svelte LineagePanel",
     "routes/workflows/runs/run-engine-panels.svelte ./run-engine-attributes.ts { attributesClientOf }",
     "routes/workflows/runs/run-engine-panels.svelte ./run-engine.svelte.ts type { RunEngine }",
-    "routes/workflows/runs/run-engine-panels.svelte @lostgradient/weft type { WorkflowState }",
-    "routes/workflows/runs/run-engine.svelte.ts ../../../lib/client.ts { getClient }",
-    "routes/workflows/runs/run-engine.svelte.ts ../../../lib/scopes.svelte.ts { getPrincipalStore, scopeGate, type ScopeGate }",
+    "routes/workflows/runs/run-engine.svelte.ts ../../../lib/client.ts { fetchWorkflowState, getClient, type WorkflowReadState }",
+    "routes/workflows/runs/run-engine.svelte.ts ../../../lib/scopes.svelte.ts { getPrincipalStore, principalQueryScope, scopeGate, type ScopeGate, }",
     "routes/workflows/runs/run-engine.svelte.ts ../../../lib/workflow-revision.ts { fetchActiveWorkflowRevision, type WorkflowCatalogActivePointerLike, }",
     "routes/workflows/runs/run-engine.svelte.ts ../detail/workflow-observability.ts { finalizerQueryKey, getFinalizerStatus }",
-    "routes/workflows/runs/run-engine.svelte.ts @lostgradient/weft type { HttpClient, WorkflowFinalizerStatus, WorkflowState }",
+    "routes/workflows/runs/run-engine.svelte.ts @lostgradient/weft type { HttpClient, WorkflowFinalizerStatus }",
     "routes/workflows/runs/run-failure-explanation.svelte ../../../lib/bureau-tasks.ts { explainRunFailure, generateModelExplanation, readModelExplanation, }",
     "routes/workflows/runs/run-failure-explanation.svelte ../../../lib/host-providers.ts { getProviders }",
     "routes/workflows/runs/run-failure-explanation.svelte @lostgradient/weft type { WorkflowState }",
@@ -4784,8 +4497,8 @@
     "routes/workflows/runs/run-hooks.ts ../../../lib/bureau-tasks.ts type { TaskFailedHook, TaskHook, TaskHooks }",
     "routes/workflows/runs/run-input-output.svelte ../../../lib/bureau-client.ts { getThreadMessages }",
     "routes/workflows/runs/run-input-output.svelte ../../../lib/bureau-tasks.ts { isScheduleFire, isTerminalState, type TaskView }",
+    "routes/workflows/runs/run-input-output.svelte ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
     "routes/workflows/runs/run-input-output.svelte ../../../lib/workflow-files.ts type { WorkflowFileRunDetail }",
-    "routes/workflows/runs/run-input-output.svelte @lostgradient/weft type { WorkflowState }",
     "routes/workflows/runs/run-inspector.ts ../../../lib/bureau-tasks.ts type { TaskView }",
     "routes/workflows/runs/run-instance-happened.svelte ../../../lib/scopes.svelte.ts type { ScopeGate }",
     "routes/workflows/runs/run-instance-happened.svelte @lostgradient/weft type { WorkflowState }",
@@ -4808,13 +4521,13 @@
     "routes/workflows/runs/run-message-blocked.svelte ../../../lib/agent-definitions.ts { getAgentCatalog, hasAvailableModel }",
     "routes/workflows/runs/run-message-blocked.svelte ../../../lib/bureau-tasks.ts { isTerminalState, type TaskView }",
     "routes/workflows/runs/run-panels.svelte ../../../lib/host-panels.ts { getPanels, loadPluginApp, pluginToolCaller }",
+    "routes/workflows/runs/run-payload-cards.svelte ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
     "routes/workflows/runs/run-payload-cards.svelte ../../../lib/workflow-files.ts type { WorkflowFileRunDetail }",
-    "routes/workflows/runs/run-payload-cards.svelte @lostgradient/weft type { WorkflowState }",
     "routes/workflows/runs/run-payload.svelte ../../../lib/bureau-client.ts { getContext, listAgents }",
     "routes/workflows/runs/run-payload.svelte ../../../lib/bureau-tasks.ts { getTask }",
     "routes/workflows/runs/run-query.svelte ../../../lib/scopes.svelte.ts type { ScopeGate }",
     "routes/workflows/runs/run-related-data.ts ../../../lib/workflow-revision.ts type { WorkflowActiveRevisionClient }",
-    "routes/workflows/runs/run-related-data.ts @lostgradient/weft type { HttpClient, WorkflowState, WorkflowSummary }",
+    "routes/workflows/runs/run-related-data.ts @lostgradient/weft { HttpClientError, type HttpClient, type WorkflowSummary }",
     "routes/workflows/runs/run-related-lines.ts ../../../lib/bureau-goals.ts type { Goal }",
     "routes/workflows/runs/run-related-lines.ts ../../../lib/bureau-schedules.ts type { BureauSchedule }",
     "routes/workflows/runs/run-related-runs.svelte ../../../lib/bureau-goals.ts type { Goal }",
@@ -4830,13 +4543,14 @@
     "routes/workflows/runs/run-send-message.svelte ../../../lib/bureau-client.ts { sendContextInput }",
     "routes/workflows/runs/run-send-message.svelte ../../../lib/bureau-tasks.ts type { TaskView }",
     "routes/workflows/runs/run-status-line.ts ../../../lib/bureau-tasks.ts { isTerminalState, type TaskView }",
+    "routes/workflows/runs/run-tags.svelte ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
     "routes/workflows/runs/run-tags.svelte ../../../lib/scopes.svelte.ts type { ScopeGate }",
-    "routes/workflows/runs/run-tags.svelte @lostgradient/weft type { HttpClient, WorkflowState }",
+    "routes/workflows/runs/run-tags.svelte @lostgradient/weft type { HttpClient }",
     "routes/workflows/runs/run-timeline.svelte ../../../app/engine-status.svelte.ts { getFleetEventSource }",
+    "routes/workflows/runs/run-timeline.svelte ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
     "routes/workflows/runs/run-timeline.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore }",
     "routes/workflows/runs/run-timeline.svelte ../detail/timeline-tab.svelte TimelineTab",
     "routes/workflows/runs/run-timeline.svelte ./run-engine.svelte.ts type { RunEngine }",
-    "routes/workflows/runs/run-timeline.svelte @lostgradient/weft type { WorkflowState }",
     "routes/workflows/runs/run-tool-calls.svelte ../../../lib/bureau-client.ts { getThreadMessages }",
     "routes/workflows/runs/run-tool-calls.svelte ../../../lib/bureau-tasks.ts type { TaskView }",
     "routes/workflows/runs/run-topology.svelte ./run-related-data.ts type { RelatedRun, RelatedRuns }",
@@ -4860,6 +4574,132 @@
     "views/workers-view.svelte ../routes/workers/index.svelte WorkersRoute"
   ],
   "hostRoutes": [
+    {
+      "route": "GET /auth/sign-in",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "GET /auth/callback",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "GET /auth/session",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "POST /auth/sign-out",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "POST /key-admin/jsonrpc",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "GET /settings/api-keys",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "GET /settings/connected-apps",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "HEAD /settings/api-keys",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "A browser session is required before forwarding the private settings page request."
+    },
+    {
+      "route": "POST /settings/api-keys",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "The private Velveteen settings application handles the guarded page action."
+    },
+    {
+      "route": "HEAD /settings/connected-apps",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "A browser session is required before forwarding the private settings page request."
+    },
+    {
+      "route": "POST /settings/connected-apps",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "The private Velveteen settings application handles the guarded page action."
+    },
+    {
+      "route": "GET /_assets/*",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "The private Velveteen build serves only its declared browser artifacts under this prefix."
+    },
+    {
+      "route": "HEAD /_assets/*",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "The private Velveteen build serves only its declared browser artifacts under this prefix."
+    },
+    {
+      "route": "POST /_remote/*",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "Private Velveteen remotes require the verified browser session and same origin."
+    },
+    {
+      "route": "GET /.well-known/oauth-authorization-server",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "GET /.well-known/oauth-protected-resource/bureau/mcp",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "POST /oauth/register",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "GET /oauth/authorize",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "POST /oauth/authorize",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "POST /oauth/token",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
+    {
+      "route": "POST /oauth/revoke",
+      "protocol": "HTTP",
+      "owner": "Interborough shared browser host",
+      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
+    },
     {
       "route": "GET /api/v1/principal",
       "protocol": "HTTP",
@@ -5147,6 +4987,269 @@
       "protocol": "HTTP",
       "owner": "Interborough trigger host",
       "reason": "External trigger delivery uses its authenticated HTTP route."
+    }
+  ],
+  "cliGenerated": [
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.goals.get",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "goals",
+      "count": 1
+    },
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.goals.list",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "goals",
+      "count": 1
+    },
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.hooks.deliveries",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "hooks",
+      "count": 1
+    },
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.hooks.get",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "hooks",
+      "count": 1
+    },
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.hooks.list",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "hooks",
+      "count": 1
+    },
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.schedules.get",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "schedules",
+      "count": 2
+    },
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.schedules.list",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "schedules",
+      "count": 1
+    },
+    {
+      "path": "host/cli-configuration.ts",
+      "operation": "bureau.agents.catalog",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "executeConfiguration",
+      "count": 2
+    },
+    {
+      "path": "host/cli-configuration.ts",
+      "operation": "bureau.skills.list",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "executeConfiguration",
+      "count": 1
+    },
+    {
+      "path": "host/cli-configuration.ts",
+      "operation": "bureau.plugins.contributions",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "providers",
+      "count": 1
+    },
+    {
+      "path": "host/cli-configuration.ts",
+      "operation": "bureau.settings.get",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "settings",
+      "count": 2
+    },
+    {
+      "path": "host/cli-configuration.ts",
+      "operation": "bureau.settings.schema",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "settings",
+      "count": 1
+    },
+    {
+      "path": "host/cli-definitions.ts",
+      "operation": "bureau.agents.catalog",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "agentCommand",
+      "count": 1
+    },
+    {
+      "path": "host/cli-definitions.ts",
+      "operation": "bureau.agents.definitions.get",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "agentCommand",
+      "count": 1
+    },
+    {
+      "path": "host/cli-definitions.ts",
+      "operation": "bureau.agents.definitions.list",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "agentCommand",
+      "count": 1
+    },
+    {
+      "path": "host/cli-definitions.ts",
+      "operation": "bureau.agents.versions.list",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "agentCommand",
+      "count": 1
+    },
+    {
+      "path": "host/cli-definitions.ts",
+      "operation": "bureau.workflows.get",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "workflowCommand",
+      "count": 1
+    },
+    {
+      "path": "host/cli-definitions.ts",
+      "operation": "bureau.workflows.history",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "workflowCommand",
+      "count": 1
+    },
+    {
+      "path": "host/cli-definitions.ts",
+      "operation": "bureau.workflows.list",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "workflowCommand",
+      "count": 1
+    },
+    {
+      "path": "host/cli-memory.ts",
+      "operation": "bureau.memory.export",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "memory",
+      "count": 1
+    },
+    {
+      "path": "host/cli-memory.ts",
+      "operation": "bureau.memory.get",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "memory",
+      "count": 1
+    },
+    {
+      "path": "host/cli-memory.ts",
+      "operation": "bureau.memory.list",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "memory",
+      "count": 1
+    },
+    {
+      "path": "host/cli-memory.ts",
+      "operation": "bureau.memory.search",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "memory",
+      "count": 1
+    },
+    {
+      "path": "host/cli-runs.ts",
+      "operation": "bureau.tasks.explain",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "explain",
+      "count": 1
+    },
+    {
+      "path": "host/cli-runs.ts",
+      "operation": "bureau.tasks.get",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "getOrInspect",
+      "count": 1
+    },
+    {
+      "path": "host/cli-runs.ts",
+      "operation": "bureau.tasks.inspect",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "getOrInspect",
+      "count": 1
+    },
+    {
+      "path": "host/cli-runs.ts",
+      "operation": "bureau.workflows.runs.get",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "getOrInspect",
+      "count": 1
+    },
+    {
+      "path": "host/cli-runs.ts",
+      "operation": "bureau.tasks.list",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "list",
+      "count": 1
+    },
+    {
+      "path": "host/cli-runs.ts",
+      "operation": "bureau.workflows.runs.list",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2623",
+      "caller": "list",
+      "count": 1
     }
   ]
 }

@@ -235,7 +235,7 @@ try {
         },
         engines:
           library === 'bungalow'
-            ? { bun: '>=1.4.4' }
+            ? { node: '>=22', bun: '>=1.4.4' }
             : { node: library === 'operative' ? '>=22.3' : '>=22', bun: '>=1.4.0' },
         ...(library === 'bungalow' ? { os: ['darwin', 'linux'] } : {}),
         exports,
@@ -256,10 +256,7 @@ try {
     readme
       .replace(
         /^## Workspace usage\n\n[^\n]+/m,
-        '## Installation\n\n```sh\n' +
-          (library === 'bungalow' ? 'bun add ' : 'npm install ') +
-          packageName +
-          '\n```',
+        '## Installation\n\n```sh\nnpm install ' + packageName + '\n```',
       )
       .replaceAll('(#workspace-usage)', '(#installation)'),
   );

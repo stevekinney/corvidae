@@ -98,6 +98,7 @@ export function createTaskStart<D extends AgentDefinitions>(
       agentName,
       ...fields,
       ...(startOptions.contextId === undefined ? {} : { sessionId: startOptions.contextId }),
+      ...(startOptions.reservation === undefined ? {} : { reservation: startOptions.reservation }),
       ...(startOptions.principal === undefined ? {} : { principal: startOptions.principal }),
       ...(startOptions.commandId === undefined
         ? {}

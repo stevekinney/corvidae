@@ -9,6 +9,23 @@
     inline-size: 100%;
   }
 
+  @media (any-pointer: coarse) {
+    .cinder-search-field[data-cinder-compact-touch] {
+      position: relative;
+    }
+
+    .cinder-search-field[data-cinder-compact-touch]::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: 0;
+    }
+
+    .cinder-search-field[data-cinder-compact-touch] .cinder-input[data-cinder-size='md'] {
+      --_cinder-input-height: var(--_cinder-painted-height-md);
+    }
+  }
+
   /* ----------------------------------------
  * Leading icon
  * ---------------------------------------- */

@@ -13,6 +13,7 @@ import { MCP_COPY } from '../../src/app/copy/mcp.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_PORT, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 const SOURCE = 'settings-mcp.spec.ts';
 const ROUTE = '/settings/mcp';
@@ -37,6 +38,20 @@ async function open(page: Page) {
 test.describe('Settings › MCP', () => {
   test.beforeEach(async ({ page }) => {
     await open(page);
+  });
+
+  test('aligns the restart banner with the content on desktop', async ({ page }) => {
+    const banner = page.getByTestId('settings-restart-summary');
+    const content = page.getByRole('group', { name: MCP_COPY.groupLabel });
+    await expect(banner).toBeVisible();
+
+    for (const width of [1280, 1920]) {
+      await page.setViewportSize({ width, height: 1080 });
+      const boxes = await readBoxes(page, { banner, content });
+      expect(boxes.banner.x).toBeCloseTo(boxes.content.x, 0);
+      expect(boxes.banner.width).toBeCloseTo(boxes.content.width, 0);
+      await captureForDesignReview(page, { route: ROUTE, state: 'restart-banner', source: SOURCE });
+    }
   });
 
   test('reads the endpoint address, and the configuration for Claude Code and for any other client', async ({

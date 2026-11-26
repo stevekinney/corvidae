@@ -74,24 +74,26 @@ const LOCKED = { disabled: true, title: 'Requires schedules:read' } as const;
 
 function fakeClient(calls: { schedules: number }): HttpClient {
   return {
-    list: async () => ({
-      items: [
-        { id: 'nightly-order', type: 'order' },
-        { id: 'weekly-order', type: 'order' },
-      ],
-      total: 2,
-    }),
-    listSchedules: async () => {
-      calls.schedules += 1;
-      return {
-        items: [
-          { id: 'nightly-rollup', workflowType: 'sweep' },
-          { id: 'weekly-digest', workflowType: 'digest' },
-        ],
-      };
-    },
-    listReviews: async () => [{ reviewId: 'nightly-review' }, { reviewId: 'other-review' }],
     operations: {
+      'weft.workflows.list': async () => ({
+        items: [
+          { id: 'nightly-order', type: 'order' },
+          { id: 'weekly-order', type: 'order' },
+        ],
+        total: 2,
+      }),
+      'weft.schedules.list': async () => {
+        calls.schedules += 1;
+        return {
+          items: [
+            { id: 'nightly-rollup', workflowType: 'sweep' },
+            { id: 'weekly-digest', workflowType: 'digest' },
+          ],
+        };
+      },
+      'weft.reviews.list': async () => ({
+        items: [{ reviewId: 'nightly-review' }, { reviewId: 'other-review' }],
+      }),
       'weft.workers.list': async () => ({
         items: [
           { id: 'nightly-worker', queue: 'default' },
@@ -150,10 +152,12 @@ describe('searchConsole', () => {
       throw new Error('403 Forbidden');
     };
     const failing = {
-      list: refuse,
-      listSchedules: refuse,
-      listReviews: refuse,
-      operations: { 'weft.workers.list': refuse },
+      operations: {
+        'weft.workflows.list': refuse,
+        'weft.schedules.list': refuse,
+        'weft.reviews.list': refuse,
+        'weft.workers.list': refuse,
+      },
     } as unknown as HttpClient;
 
     const results = await searchConsole(failing, 'nightly', {
@@ -606,16 +610,18 @@ describe('searchConsole by kind and scope', () => {
     const restore = noAgents();
     try {
       const client = {
-        listSchedules: async () => ({
-          items: [
-            {
-              id: 'bureau-workflow-schedule:order-refund:1',
-              workflowType: 'order-refund',
-              description: 'Weekly refund audit',
-            },
-            { id: 'bureau-workflow-schedule:refund-digest:1', workflowType: 'refund-digest' },
-          ],
-        }),
+        operations: {
+          'weft.schedules.list': async () => ({
+            items: [
+              {
+                id: 'bureau-workflow-schedule:order-refund:1',
+                workflowType: 'order-refund',
+                description: 'Weekly refund audit',
+              },
+              { id: 'bureau-workflow-schedule:refund-digest:1', workflowType: 'refund-digest' },
+            ],
+          }),
+        },
       } as unknown as HttpClient;
       const results = await searchConsole(client, 'refund', {
         scheduleReadGate: OPEN,
@@ -647,16 +653,16 @@ describe('searchConsole by kind and scope', () => {
     const restore = noAgents();
     const reads: string[] = [];
     const client = {
-      list: async () => {
-        reads.push('runs');
-        return { items: [], total: 0 };
-      },
-      listSchedules: async () => ({ items: [] }),
-      listReviews: async () => {
-        reads.push('reviews');
-        return [];
-      },
       operations: {
+        'weft.workflows.list': async () => {
+          reads.push('runs');
+          return { items: [], total: 0 };
+        },
+        'weft.schedules.list': async () => ({ items: [] }),
+        'weft.reviews.list': async () => {
+          reads.push('reviews');
+          return { items: [] };
+        },
         'weft.workers.list': async () => {
           reads.push('workers');
           return { items: [] };

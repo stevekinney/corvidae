@@ -35,7 +35,7 @@ export type ServerSentEventFrame = {
 export type ServerSentEventParseResult = {
   /** The complete frames, in order. */
   readonly frames: ReadonlyArray<ServerSentEventFrame>;
-  /** The unfinished tail. */
+  /** The unfinished tail, including any trailing CR that could begin a CRLF. */
   readonly remainder: string;
 };
 
@@ -64,10 +64,24 @@ export function parseServerSentEventChunk(
   text: string,
   previousRemainder = '',
 ): ServerSentEventParseResult {
-  const combined = `${previousRemainder}${text}`.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
-  const parts = combined.split('\n\n');
-  const remainder = parts.pop() ?? '';
-  const frames = parts.map(parseServerSentEventFrame).filter((frame) => frame !== null);
+  const combined = previousRemainder + text;
+  const frames: ServerSentEventFrame[] = [];
+  let frameStart = 0;
+  let lineStart = 0;
+
+  for (const ending of combined.matchAll(/\r\n?|\n/gu)) {
+    const nextLine = ending.index + ending[0].length;
+    if (ending.index === lineStart) {
+      const frame = parseServerSentEventFrame(combined.slice(frameStart, lineStart));
+      if (frame !== null) frames.push(frame);
+      frameStart = nextLine;
+    }
+    lineStart = nextLine;
+  }
+
+  // Replay a terminal blank CR as an empty line. Its LF may arrive in the next chunk.
+  const remainder =
+    frameStart === combined.length && combined.endsWith('\r') ? '\r' : combined.slice(frameStart);
   return { frames, remainder };
 }
 
@@ -78,7 +92,7 @@ function parseServerSentEventFrame(block: string): ServerSentEventFrame | null {
     dataLines: [],
   };
 
-  for (const rawLine of block.split('\n')) {
+  for (const rawLine of block.split(/\r\n?|\n/u)) {
     applyServerSentEventLine(parts, rawLine);
   }
 

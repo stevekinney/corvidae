@@ -7,6 +7,7 @@
 import { HttpClientError } from '@lostgradient/weft';
 
 import { bureauClient, type BureauOutput, type WithUndefined } from './bureau-api.ts';
+import type { CatalogOperations } from './generated/bureau-operation-client.generated.ts';
 import type { CATALOG_OPERATION_BEHAVIORS } from './generated/operation-behaviors.generated.ts';
 
 type ReviewConflictReason =
@@ -147,8 +148,12 @@ export async function listPendingReviews(options?: Options): Promise<readonly Li
 }
 
 /** One review by its id, pending or not. One the caller may not see is a not-found fault. */
-export async function getBureauReview(id: string, options?: Options): Promise<BureauReview> {
-  return reviewWithSource(await bureauClient['bureau.reviews.get']({ id }, options));
+export async function getBureauReview(
+  id: string,
+  options?: Options,
+  client: Pick<CatalogOperations, 'bureau.reviews.get'> = bureauClient,
+): Promise<BureauReview> {
+  return reviewWithSource(await client['bureau.reviews.get']({ id }, options));
 }
 
 /** One decision a person can give a review: approve it, deny it, or reject it. */

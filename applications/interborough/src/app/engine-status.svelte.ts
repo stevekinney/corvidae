@@ -45,6 +45,8 @@ async function checkHealth(client: Pick<HttpClient, 'baseUrl' | 'headers'>): Pro
 }
 
 export interface EngineStatusControllerOptions {
+  /** Shared browser sessions cannot use deployment-wide fleet or health endpoints. */
+  readonly enabled?: boolean;
   /** Overrides the `/v1/health` poll interval — tests inject a small value rather than waiting out the real 20s default. */
   readonly healthPollIntervalMs?: number;
   /** Overrides the fleet source's reconnect backoff curve — tests inject a near-zero function rather than waiting out the real 1s+/attempt curve to reach the fallback cap. */
@@ -64,6 +66,7 @@ export class EngineStatusController {
     this.fleetSource = new FleetEventSource({
       baseUrl: client.baseUrl,
       headers: client.headers,
+      enabled: options?.enabled ?? true,
       ...(options?.fleetReconnectDelayMs === undefined
         ? {}
         : { computeReconnectDelayMs: options.fleetReconnectDelayMs }),
@@ -76,7 +79,8 @@ export class EngineStatusController {
     // The shared connection is opened by subscribing; the consumers that read the feed (the Engine
     // view's activity, the task evidence) subscribe for themselves.
     this.#unsubscribeFleet = this.fleetSource.subscribe(() => {});
-    this.#unsubscribeHealth = this.#healthPoll.subscribe(() => {});
+    this.#unsubscribeHealth =
+      options?.enabled === false ? () => {} : this.#healthPoll.subscribe(() => {});
   }
 
   /**

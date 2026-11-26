@@ -411,6 +411,10 @@ describe('citations resolved against origin/main', () => {
     ]);
   });
 
+  test('a :line-range suffix resolves like a :line suffix', () => {
+    expect(messages('See `scripts/chef/a.ts:10-24` and `scripts/chef/a.ts:3:7`.')).toEqual([]);
+  });
+
   test('a scripts/ path resolves relative to a workspace too', () => {
     const workspace = {
       ...view,
@@ -466,6 +470,10 @@ describe('citations resolved against origin/main', () => {
     expect(
       messages('Create `scripts/chef/new-thing.ts`. The run writes `tmp/chef/out/log.txt`.'),
     ).toEqual([]);
+  });
+
+  test('a test file an issue says it adds need not exist yet', () => {
+    expect(messages('- Each library adds a new `node-runtime.integration.test.ts`.')).toEqual([]);
   });
 
   test('citationsIn lists each citation once, with its kind', () => {

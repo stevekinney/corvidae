@@ -181,6 +181,7 @@ function observeLaunch(engine: RegistryAgnosticEngine): { launched(): Promise<vo
     const prepared = await realPrepare(...args);
     return {
       id: prepared.id,
+      release: () => prepared.release(),
       launch: async () => {
         const handle = await prepared.launch();
         resolveLaunched();

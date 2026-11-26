@@ -46,14 +46,12 @@
     page: string;
     /**
      * How wide the section's column is. `default` is the reading width every section shares (46rem).
-     * `wide` is for a section that draws a list beside a detail (64rem), and, on a wide desktop, puts
-     * the restart notice in the same column, so the notice, the heading and the content share one
-     * inline start and one inline end.
+     * `wide` is for a section that draws a list beside a detail (64rem).
      */
     measure?: 'default' | 'wide';
     /**
      * The section's settings. It draws straight into the page's grid, so it places what it draws
-     * in the grid areas `banner` (a sticky notice over the whole page) and `content` (the reading
+     * in the grid areas `banner` (a sticky notice) and `content` (the reading
      * column); a section saves each setting as it is left. `setHeaderStatus` puts a status at the
      * right of the heading ("Saved just now"), or takes it away when given nothing.
      */
@@ -235,7 +233,7 @@
   /*
    * One page: the section navigation in a 170px column beside one reading column, from 640px up
    * (design rows 05f, 47a). Below it the heading, the section select, a notice and the content
-   * stack. A section can add a sticky notice in the `banner` area over the whole page.
+   * stack. A section can add a sticky notice in the `banner` area.
    */
   .weft-settings {
     /* One reading width for every section, so the column ends at the same edge on each of them. */
@@ -263,11 +261,10 @@
     --ib-settings-measure: 64rem;
   }
 
-  /* Where the cap binds (a wide desktop) the restart notice takes the content column too, under the
-     empty cell above the navigation, and the same cap, so its two edges are the heading's and the
-     content's. Below this the notice spans the page, over the navigation, as on every section. */
-  @media (min-width: 90rem) {
-    .weft-settings[data-measure='wide'] {
+  /* On desktop the restart notice shares the heading and content edges. At intermediate widths,
+     the full grid gives the notice and its actions space to wrap above the navigation. */
+  @media (min-width: 80rem) {
+    .weft-settings {
       --ib-settings-banner-measure: var(--ib-settings-measure);
       grid-template-areas:
         '. banner'

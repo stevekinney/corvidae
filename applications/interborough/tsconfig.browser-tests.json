@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "exclude": [
+    "node_modules",
+    "coverage",
+    "build",
+    "test-output",
+    "src/host/server-integration/**",
+    "src/host/refund-operations.ts"
+  ],
+  "references": [{ "path": "../../packages/velveteen/tsconfig.source.json" }]
+}

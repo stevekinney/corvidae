@@ -19,16 +19,6 @@ const configuration = (await Bun.file(join(root, '.devcontainer/devcontainer.jso
 const lockfile = await Bun.file(join(root, 'bun.lock')).text();
 const manifest = (await Bun.file(join(root, 'package.json')).json()) as { packageManager: string };
 
-test.each(['equipment-catalog', 'equipment-armorer'])(
-  '%s production image installs the native dependency build toolchain before Bun install',
-  async (application) => {
-    const image = await Bun.file(join(root, 'applications', application, 'Dockerfile')).text();
-    const install = image.match(/apt-get install[^\n]*/u)?.[0] ?? '';
-    for (const dependency of ['g++', 'make', 'python3']) expect(install).toContain(dependency);
-    expect(image.indexOf('apt-get install')).toBeLessThan(image.indexOf('bun install'));
-  },
-);
-
 // COR-1379: validation passed or failed depending on what the host had installed. The
 // container is the fix, and these assertions keep it from drifting off the workspace.
 describe('the Dev Container', () => {

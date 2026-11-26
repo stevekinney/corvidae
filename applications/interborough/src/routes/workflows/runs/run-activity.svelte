@@ -7,7 +7,7 @@
    * the timeline but not the events still has the timeline.
    */
   import { Section, Stack } from '@lostgradient/cinder';
-  import type { WorkflowState } from '@lostgradient/weft';
+  import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
 
   import { RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
   import { TASK_COPY } from '../../../app/copy/tasks.ts';

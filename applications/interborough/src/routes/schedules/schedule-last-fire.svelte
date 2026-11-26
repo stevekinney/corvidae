@@ -17,6 +17,7 @@
 
   import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
   import { getClient } from '../../lib/client.ts';
+  import { getPrincipalStore, principalQueryScope } from '../../lib/scopes.svelte.ts';
   import { fetchRunDetail, runDetailQueryKey } from './schedule-run-details.ts';
   import { fetchScheduleRunHistory, scheduleRunHistoryQueryKey } from './schedule-queries.ts';
 
@@ -36,8 +37,9 @@
   let { scheduleId, lastFireAt, phone = false, summary = false }: Props = $props();
 
   const client = getClient();
+  const principal = getPrincipalStore();
   const history = createQuery(() => ({
-    queryKey: scheduleRunHistoryQueryKey(scheduleId),
+    queryKey: [...scheduleRunHistoryQueryKey(scheduleId), principalQueryScope(principal.principal)],
     queryFn: () => fetchScheduleRunHistory(client, scheduleId),
     enabled: lastFireAt !== undefined,
     retry: false,
@@ -65,7 +67,7 @@
   });
   // Only the summary line says where a run that failed stopped, so only it reads the run's steps.
   const detail = createQuery(() => ({
-    queryKey: runDetailQueryKey(newest?.id ?? ''),
+    queryKey: [...runDetailQueryKey(newest?.id ?? ''), principalQueryScope(principal.principal)],
     queryFn: () => fetchRunDetail(client, newest?.id ?? ''),
     enabled: summary && outcome === 'failed' && newest !== undefined,
     retry: false,

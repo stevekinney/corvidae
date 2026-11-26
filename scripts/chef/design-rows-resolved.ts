@@ -16,7 +16,7 @@
 
 import { join } from 'node:path';
 
-export const RESOLVED_VERSION = 1 as const;
+export const RESOLVED_VERSION = 2 as const;
 
 /**
  * The widths a row is captured at when it names none, each from the specs that capture it:
@@ -47,11 +47,44 @@ export const STATE_KINDS = [
 
 export type StateKind = (typeof STATE_KINDS)[number];
 
+/** One named physical viewport a state must prove before its broad review can begin. */
+export interface ViewportWitnessProfile {
+  readonly name: string;
+  readonly width: number;
+  readonly theme: 'light' | 'dark';
+  /** Stable `data-testid` values or `role:<role>:<exact accessible name>` descriptors. */
+  readonly targets: readonly string[];
+  /** What a reviewer should see in the viewport image. */
+  readonly visible: string;
+  /** Whether the test intentionally scrolls the outlet before proving its targets. */
+  readonly scrolling: 'none' | 'outlet';
+}
+
+/** The exact Playwright state that produces a row's narrow physical witness. */
+interface ViewportWitness {
+  /**
+   * Repository-relative Playwright specification under Interborough's end-to-end or panel tests,
+   * for example `applications/interborough/tests/e2e/runs-states.spec.ts`.
+   */
+  readonly specification: string;
+  /**
+   * The full, literal, project-qualified title Playwright matches `--grep` against: the project,
+   * the file relative to `tests/`, and the title path, joined by spaces, as `bun --bun playwright
+   * test --list` names it, for example `chromium e2e/runs-states.spec.ts /runs ready at 375 pixels`.
+   * It is escaped and anchored, never evaluated, and must select exactly one test.
+   */
+  readonly title: string;
+  /** Fixture world recorded by the capture manifest. */
+  readonly world: string;
+  readonly profiles: readonly ViewportWitnessProfile[];
+}
+
 /** One capture a row needs: the route pattern and the state name the capture writes. */
 export interface ResolvedState {
   readonly route: string;
   readonly state: string;
   readonly kind: StateKind;
+  readonly witness: ViewportWitness;
 }
 
 export interface ResolvedRow {
@@ -138,7 +171,86 @@ function stateProblems(id: string, states: unknown): string[] {
       if (!nonEmpty(state['state'])) problems.push(`${label} needs a state name`);
       if (!(STATE_KINDS as readonly unknown[]).includes(state['kind']))
         problems.push(`${label} kind must be one of ${STATE_KINDS.join(', ')}`);
+      problems.push(...witnessProblems(label, state['witness']));
     }
+  }
+  return problems;
+}
+
+/**
+ * The fixture worlds a capture records, from the host the page was served by (`designReviewWorld`
+ * in `applications/interborough/tests/e2e/design-review-capture.ts`).
+ */
+export const WITNESS_WORLDS = [
+  'sample-world',
+  'first-run',
+  'plugin-pages',
+  'stress',
+  'e2e-host',
+] as const;
+
+/** The directory Playwright runs from; a witness's specification is passed relative to it. */
+export const WITNESS_APPLICATION_DIRECTORY = 'applications/interborough/';
+
+/** The repository-relative Playwright specifications a witness may name. */
+export const WITNESS_SPECIFICATION =
+  /^applications\/interborough\/tests\/(?:e2e|panels)\/[a-z0-9][a-z0-9-]*\.spec\.ts$/;
+
+/** A `data-testid` value or a `role:<role>:<exact accessible name>` descriptor, matched as text. */
+export function isWitnessTarget(target: unknown): target is string {
+  return (
+    typeof target === 'string' &&
+    (/^[a-z][a-z0-9-]*$/.test(target) || /^role:[a-z-]+:[^:\n]+$/.test(target))
+  );
+}
+
+function witnessProblems(label: string, value: unknown): string[] {
+  const witness = record(value);
+  if (witness === undefined) return [`${label} needs a viewport witness`];
+  const problems: string[] = [];
+  const specification = witness['specification'];
+  if (!nonEmpty(specification) || !WITNESS_SPECIFICATION.test(specification))
+    problems.push(`${label} witness needs a repository-relative Playwright specification`);
+  if (!nonEmpty(witness['title']) || witness['title'].includes('\n'))
+    problems.push(`${label} witness needs one literal full title`);
+  if (!(WITNESS_WORLDS as readonly unknown[]).includes(witness['world']))
+    problems.push(`${label} witness world must be one of ${WITNESS_WORLDS.join(', ')}`);
+  const profiles = witness['profiles'];
+  if (!Array.isArray(profiles) || profiles.length === 0) {
+    problems.push(`${label} witness needs at least one viewport profile`);
+    return problems;
+  }
+  const names = new Set<string>();
+  const viewports = new Set<string>();
+  for (const [index, entry] of profiles.entries()) {
+    const profile = record(entry);
+    const profileLabel = `${label} witness profile ${index + 1}`;
+    if (profile === undefined) {
+      problems.push(`${profileLabel} is not an object`);
+      continue;
+    }
+    const name = profile['name'];
+    if (!nonEmpty(name) || !/^[a-z][a-z0-9-]*$/.test(name))
+      problems.push(`${profileLabel} needs a kebab-case name`);
+    else if (names.has(name)) problems.push(`${label} witness profile ${name} appears twice`);
+    else names.add(name);
+    const width = profile['width'];
+    if (!Number.isInteger(width) || typeof width !== 'number' || width <= 0)
+      problems.push(`${profileLabel} needs a positive whole width`);
+    const theme = profile['theme'];
+    if (theme !== 'light' && theme !== 'dark')
+      problems.push(`${profileLabel} theme must be light or dark`);
+    else if (typeof width === 'number' && Number.isInteger(width)) {
+      const key = `${width}|${theme}`;
+      if (viewports.has(key)) problems.push(`${label} witness repeats viewport ${key}`);
+      else viewports.add(key);
+    }
+    const targets = profile['targets'];
+    if (!Array.isArray(targets) || targets.length === 0 || !targets.every(isWitnessTarget))
+      problems.push(`${profileLabel} needs named data-testid or role targets`);
+    if (!nonEmpty(profile['visible'])) problems.push(`${profileLabel} needs a visible expectation`);
+    if (profile['scrolling'] !== 'none' && profile['scrolling'] !== 'outlet')
+      problems.push(`${profileLabel} scrolling must be none or outlet`);
   }
   return problems;
 }

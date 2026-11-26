@@ -6,7 +6,7 @@
  */
 
 import type { PluginSetupContext } from '@lostgradient/interborough-plugin';
-import { createTool, createToolbox } from 'armorer';
+import { approvalOnlyPolicy, createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 import { REFUND_TOOL_REVISION, type createRefundLedger } from './refund-ledger.ts';
 import { submitApprovedRefund, type createFakeProcessor } from './refund-processor.ts';
@@ -33,32 +33,29 @@ export function createAdmittedRefundTool(
       mutates: true,
       summary: 'Refund order {orderId} for {cents} minor units ({currency})',
     },
-    policy: {
-      async beforeAdmission(context) {
-        const decision = await hostPolicy?.beforeExecute?.(context);
-        const reason = 'Tool "issue-refund" (mutating tier) requires approval (mode: always).';
-        if (
-          typeof decision === 'object' &&
+    policy: approvalOnlyPolicy(async (context) => {
+      const decision = await hostPolicy?.beforeExecute?.(context);
+      const reason = 'Tool "issue-refund" (mutating tier) requires approval (mode: always).';
+      if (typeof decision === 'object' && decision !== null && decision.status === 'needs_approval')
+        return {
+          decision: 'approval',
+          reason:
+            decision.reason === undefined ? reason : `${reason} [host policy: ${decision.reason}]`,
+        };
+      if (
+        decision === false ||
+        (typeof decision === 'object' &&
           decision !== null &&
-          decision.status === 'needs_approval'
-        )
-          return {
-            ...decision,
-            reason:
-              decision.reason === undefined
-                ? reason
-                : `${reason} [host policy: ${decision.reason}]`,
-          };
-        if (
-          decision === false ||
-          (typeof decision === 'object' &&
-            decision !== null &&
-            (decision.status === 'deny' || decision.allow === false))
-        )
-          return decision;
-        return { allow: false, status: 'needs_approval', reason };
-      },
-    },
+          (decision.status === 'deny' || decision.allow === false))
+      )
+        return {
+          decision: 'deny',
+          ...(typeof decision === 'object' && decision !== null && decision.reason !== undefined
+            ? { reason: decision.reason }
+            : {}),
+        };
+      return { decision: 'approval', reason };
+    }),
     execute: async ({ refundId, orderId, cents, currency }, context) => {
       const refund = await ledger.get(refundId);
       if (

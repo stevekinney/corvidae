@@ -8,6 +8,15 @@ import { expect, test } from '@playwright/test';
 import { auditCapture, type GeometryCapture } from '@lostgradient/testing/design-review-geometry';
 import { measureGeometry } from '@lostgradient/testing/design-review-geometry-probe';
 
+import { physicalWitnessTitle } from './design-review-capture.ts';
+
+test('constructs the exact grep title for a physical witness', () => {
+  const info = test.info();
+  expect(physicalWitnessTitle()).toBe(
+    [info.project.name, 'e2e/design-review-geometry-probe.spec.ts', info.title].join(' '),
+  );
+});
+
 const PAGE = `
   <style>
     :root { --cinder-space-0: 0; --cinder-space-2: 0.5rem; --cinder-space-3: 0.75rem; --cinder-space-4: 1rem; }
@@ -360,4 +369,53 @@ test('the probe finds a floating control on shown text and not on text a scrolle
   // tall, cut away at 60.
   expect(await overText(130)).toEqual(['button.float over p.last']);
   expect(await overText(60)).toEqual([]);
+});
+
+/**
+ * A control that opens a tooltip on hover, and a button row whose primary reads lighter than the
+ * outlined button beside it. With nothing hovered no tooltip is visible and `tooltip-far` is quiet.
+ */
+const WEIGHT_PAGE = `
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; font: 14px/1.5 sans-serif; background: #fff; }
+    button { font: inherit; height: 32px; padding: 0 16px; margin: 0 8px 0 0; }
+    .tip-anchor { display: block; margin-bottom: 200px; border: 1px solid #333; background: #fff; }
+    [role='tooltip'] { position: absolute; visibility: hidden; left: 24px; top: 70px; padding: 4px; }
+    .tip-anchor:hover + [role='tooltip'] { visibility: visible; }
+    .soft-danger { background: rgba(200, 0, 0, 0.08); border: 0; }
+    .danger { background: #b00020; color: #fff; border: 0; }
+    .outlined { background: transparent; border: 1px solid #999; }
+  </style>
+  <button class="tip-anchor" aria-describedby="tip">Hover me</button>
+  <div role="tooltip" id="tip">Describes the button</div>
+  <div class="row-soft">
+    <button class="cinder-button button-variant-soft-danger soft-danger">Delete</button>
+    <button class="cinder-button button-variant-secondary outlined">Keep</button>
+  </div>
+  <div class="row-solid">
+    <button class="cinder-button button-variant-danger danger">Delete</button>
+    <button class="cinder-button button-variant-secondary outlined">Keep</button>
+  </div>
+`;
+
+test('the probe measures a hovered tooltip and the weight of a primary beside a secondary', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 600, height: 800 });
+  await page.setContent(WEIGHT_PAGE);
+  const rested = await measureGeometry(page);
+  expect(rested.tooltips).toEqual([]);
+  expect(auditCapture(rested, capture).filter((finding) => finding.rule === 'tooltip-far')).toEqual(
+    [],
+  );
+
+  await page.hover('.tip-anchor');
+  const hovered = await measureGeometry(page);
+  expect(hovered.tooltips).toHaveLength(1);
+  const found = auditCapture(hovered, capture);
+  expect(found.filter((finding) => finding.rule === 'tooltip-far')).toEqual([]);
+  expect(
+    found.filter((finding) => finding.rule === 'primary-lighter').map((finding) => finding.subject),
+  ).toEqual(['button.cinder-button[variant=soft-danger]']);
 });

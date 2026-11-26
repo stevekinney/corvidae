@@ -57,12 +57,15 @@ export interface ForkClient {
 
 /**
  * The one read the fork dialog's open-time refetch needs (COR-15): the
- * source run's current persisted `revision`, or `null` for a purged run
- * (`HttpClient.get`'s documented 404 contract). A real `HttpClient`
- * satisfies it structurally — its `WorkflowState` result has `revision`.
+ * source run's current persisted `revision`. A real generated client returns
+ * the complete state; a missing source is a 404 fault.
  */
 export interface ForkSourceClient {
-  get(workflowId: string): Promise<{ readonly revision?: string | undefined } | null>;
+  readonly operations: {
+    readonly 'weft.workflows.get': (input: {
+      readonly workflowId: string;
+    }) => Promise<{ readonly revision?: string | undefined }>;
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -20,7 +20,7 @@
    * Without `updates:write` the send form is not drawn.
    */
   import { Button, EmptyState, Input, JsonEditor, Skeleton } from '@lostgradient/cinder';
-  import type { WorkflowState } from '@lostgradient/weft';
+  import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
   import { createQuery, keepPreviousData, useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy } from 'svelte';
 

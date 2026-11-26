@@ -16,7 +16,7 @@ import { TASK_COPY } from '../../src/app/copy/tasks.ts';
 import { WORKFLOW_COPY } from '../../src/app/copy/workflows.ts';
 import { bureau } from './agent-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
-import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { expect, test } from './fixtures.ts';
 import { expectEngineMissesForFileRuns } from './task-support.ts';
 import {
   createWorkflowFile,
@@ -378,7 +378,6 @@ test.describe('Start run', () => {
   test('answers a run’s page from the Bureau’s record when the console’s engine does not hold the run', async ({
     page,
     request,
-    pageErrors,
   }) => {
     const id = 'e2e-page-record';
     created.add(id);
@@ -393,11 +392,18 @@ test.describe('Start run', () => {
     // The end-to-end host's console engine is a fixture engine, so it answers the page's read of a
     // workflow file's instance with a 404 (the Bureau's engine holds it). On a host whose console
     // engine is the Bureau's there is no such answer.
-    pageErrors.expect({
-      pattern: loggedFailedResponse(404, new RegExp(`/v1/workflows/${runId}`)),
-      reason: 'the fixture console engine does not hold the Bureau’s workflow instances',
+    const engineLookup = page.waitForResponse((response) => {
+      const body = response.request().postData();
+      return (
+        response.url().endsWith('/jsonrpc') &&
+        body !== null &&
+        body.includes('weft.workflows.get') &&
+        body.includes(runId)
+      );
     });
     await page.goto(`/runs/${runId}`);
+    const response = await engineLookup;
+    expect(await response.json()).toMatchObject({ error: { data: { httpStatus: 404 } } });
 
     // The Bureau's record of the instance fills the page: the workflow leads it in words, as the
     // Details rail names it ("e2e-page-record" reads "E2e page record", row S68), and the rail links

@@ -21,7 +21,7 @@
     Section,
     Tooltip,
   } from '@lostgradient/cinder';
-  import type { WorkflowState } from '@lostgradient/weft';
+  import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
   import { CircleAlert, Info } from '@lucide/svelte';
 
   import { formatRelativeTime, truncateId } from '../../../lib/format/index.ts';

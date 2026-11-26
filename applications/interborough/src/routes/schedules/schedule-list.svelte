@@ -57,7 +57,7 @@
   import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router, scheduleCreatePath } from '../../lib/router.svelte.ts';
-  import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
+  import { getPrincipalStore, principalQueryScope, scopeGate } from '../../lib/scopes.svelte.ts';
   import FaultBanner from './fault-banner.svelte';
   import { OVERLAY_FAILURE } from './overlay-failure.ts';
   import { useScheduleOverlay } from './overlay-query.svelte.ts';
@@ -109,9 +109,10 @@
   const writeGate = $derived(scopeGate(principal, ['schedules:write']));
   // Every schedule is read once and narrowed here, because each segment carries a count of its own.
   const listQuery = createQuery(() => ({
-    queryKey: queryKeys.schedules.list({}),
+    queryKey: [...queryKeys.schedules.list({}), principalQueryScope(principal.principal)],
     queryFn: () => fetchScheduleList(client, {}),
     enabled: !readGate.disabled,
+    placeholderData: () => undefined,
   }));
 
   // A read that failed with nothing to show replaces the list; one that failed over schedules

@@ -24,7 +24,7 @@
  *
  *   bun scripts/design-review-capture.ts [--out <dir>] [--scheme light|dark|both]
  *     [--data showcase|stress|both] [--specs all|responsive|states] [--grep <pattern>]
- *     [--shard <index>/<count>] [--expect <expected-captures.json>]
+ *     [--shard <index>/<count>] [--expect <expected-captures.json>] [--narrow]
  *
  * `--shard` captures one shard of the specifications the other flags chose (`design-review-shards.ts`
  * plans them by weight, whole files each), so a runner takes a sixth of a sweep; the workflow runs
@@ -39,6 +39,12 @@
  * --manifest` writes the file from the issue's `rows.resolved.json`): after the run, each expected
  * route, state, width and scheme that `manifest.jsonl` does not show is named on standard error,
  * `summary.json` records the coverage, and the run exits 1. Without it nothing is held to a plan.
+ * The plan also names each declared state's physical viewport witnesses (COR-2574): before the
+ * broad run, each witness's specification runs alone with its literal title, escaped and anchored,
+ * as the `--grep`, and must select exactly one test, whose named targets must sit inside the
+ * viewport; coverage then needs an actual viewport PNG (never a `.full.png`) that records each
+ * witness, and `viewport-witnesses.json` lists every row and profile with its frame. `--narrow`
+ * runs only the witnesses, for the physical review that gates accepting a broad capture.
  *
  * `--data` chooses the content: `showcase` runs only the showcase specifications, `stress` runs the
  * responsive and view-states specifications, and `both` (the default) runs every one of them. `--specs`
@@ -56,10 +62,11 @@
  * and asks for a free `INTERBOROUGH_E2E_PORT` instead of screenshotting someone else's tree.
  */
 import { readFileSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { WITNESS_APPLICATION_DIRECTORY } from '../../../scripts/chef/design-rows-resolved.ts';
 import { ensureCinderGenerated } from '../../../scripts/ensure-cinder-generated.ts';
 import { withHostSlots, withMemoryAdmission, type HostSlots } from '../../../scripts/host-slots.ts';
 import { runInProcessGroup } from '../../../scripts/run-exclusively.ts';
@@ -67,7 +74,9 @@ import { auditGeometry } from './design-review-geometry.ts';
 import {
   describeMissing,
   missingCaptures,
+  missingViewportWitnesses,
   parseCaptureManifest,
+  viewportWitnessProof,
   wideCaptureHint,
   type CapturedLine,
   type CaptureExpectation,
@@ -143,6 +152,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/health-storage.spec.ts',
   'tests/e2e/health-audit.spec.ts',
   'tests/e2e/health-audit-states.spec.ts',
+  'tests/e2e/27-audit.spec.ts',
   'tests/e2e/restart.spec.ts',
   'tests/e2e/settings-general.spec.ts',
   'tests/e2e/settings-allowed-models.spec.ts',
@@ -265,6 +275,8 @@ interface Options {
   readonly shard: { readonly index: number; readonly count: number } | undefined;
   /** The expected-captures file (`design-review-rows.ts --manifest`) the capture is held to. */
   readonly expect?: string;
+  /** Runs only literal row witnesses, before a broad review accepts their frames. */
+  readonly narrow: boolean;
 }
 
 /** Reads the command line, or answers the usage error to print. */
@@ -282,8 +294,13 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
   let grep: string | undefined;
   let shard: Options['shard'];
   let expectFile: string | undefined;
+  let narrow = false;
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
+    if (flag === '--narrow') {
+      narrow = true;
+      continue;
+    }
     const value = argv[index + 1];
     if (value === undefined || value.startsWith('--')) return `${flag ?? ''} needs a value`;
     index += 1;
@@ -326,6 +343,8 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
   if (specsGiven && data === 'showcase') {
     return '--specs narrows the stress data, so it cannot be used with --data showcase';
   }
+  // The narrow run is the expected plan's witnesses, so without a plan it would run nothing.
+  if (narrow && expectFile === undefined) return '--narrow needs --expect <expected-captures.json>';
   // A specification both lists hold (the view states) runs once, where it is first listed.
   const specifications = [
     ...new Set([
@@ -342,6 +361,7 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
         : (planShards(specifications, shard.count)[shard.index - 1]?.specifications ?? []),
     grep,
     shard,
+    narrow,
     ...(expectFile === undefined ? {} : { expect: expectFile }),
   };
 }
@@ -408,6 +428,10 @@ type ReportSuite = {
   readonly suites?: readonly ReportSuite[];
 };
 
+function escapeTitleForGrep(title: string): string {
+  return title.replaceAll(/[|\\{}()[\]^$+*?.-]/g, '\\$&');
+}
+
 function testsIn(suite: ReportSuite): number {
   return (
     (suite.specs?.length ?? 0) +
@@ -447,6 +471,18 @@ export function specificationsThatRanNothing(
       testsOf(sourceOf(specification)).some((test) => filter.test(test.path));
     return expected && ranIn(specification) === 0;
   });
+}
+
+/** The narrow run's literal title must select exactly one test in its declared specification. */
+function selectedTestCount(
+  report: { readonly suites?: readonly ReportSuite[] } | undefined,
+  specification: string,
+): number {
+  return (report?.suites ?? [])
+    .filter(
+      (suite) => suite.file === specification || specification.endsWith(`/${suite.file ?? ''}`),
+    )
+    .reduce((count, suite) => count + testsIn(suite), 0);
 }
 
 /** The probe accepts connections only to hold the port, so it ignores whatever a client sends. */
@@ -589,7 +625,66 @@ export async function captureDesignReview(
     return 0;
   }
   const runs: { scheme: Scheme; exitCode: number; ranNothing: string[] }[] = [];
-  for (const scheme of options.schemes) {
+  const failedWitnesses: CaptureManifest['witnesses'][number][] = [];
+  // The witnesses capture into their own directory, run by run: a broad run's frame of the same
+  // slug would otherwise overwrite the one the targets were checked against, and an earlier run's
+  // frames left in a reused directory would vouch for this one.
+  const witnessDirectory = join(options.out, WITNESS_DIRECTORY);
+  await rm(witnessDirectory, { recursive: true, force: true });
+  if (expected !== undefined) {
+    await mkdir(witnessDirectory, { recursive: true });
+    const groups = Map.groupBy(
+      expected.witnesses,
+      (witness) => `${witness.specification}\0${witness.title}\0${witness.theme}`,
+    );
+    for (const [groupIndex, witnesses] of [...groups.values()].entries()) {
+      const witness = witnesses[0]!;
+      // One report per run, removed first, so a run that writes none is never judged by another's.
+      const report = join(options.out, `playwright-witness-${groupIndex + 1}.json`);
+      await rm(report, { force: true });
+      const command = [
+        'bun',
+        '--bun',
+        'playwright',
+        'test',
+        '--config',
+        'playwright.config.ts',
+        '--reporter=list,json',
+        // Playwright runs in the application directory; the manifest validated the prefix.
+        witness.specification.slice(WITNESS_APPLICATION_DIRECTORY.length),
+        '--grep',
+        `^${escapeTitleForGrep(witness.title)}$`,
+      ];
+      environment.standardOutput(
+        `design review: witnessing row ${witness.row} ${witness.name}: ${command.join(' ')}\n`,
+      );
+      const exitCode = await environment.run(command, {
+        INTERBOROUGH_DESIGN_REVIEW_CAPTURE: witnessDirectory,
+        INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME: witness.theme,
+        INTERBOROUGH_VIEWPORT_WITNESSES: JSON.stringify(witnesses),
+        PLAYWRIGHT_JSON_OUTPUT_NAME: report,
+      });
+      // A witness counts only from a run that selected exactly its one test and passed: a frame
+      // another test wrote, or one taken before a failed assertion, proves nothing about this one.
+      const selected = selectedTestCount(await readReport(report), witness.specification);
+      if (selected !== 1) {
+        environment.standardError(
+          `design review: viewport witness row ${witness.row} ${witness.name} did not resolve exactly one test for ${witness.specification} title "${witness.title}" (it selected ${selected})\n`,
+        );
+        failedWitnesses.push(...witnesses);
+        runs.push({ scheme: witness.theme, exitCode: 1, ranNothing: [] });
+      } else {
+        if (exitCode !== 0) {
+          environment.standardError(
+            `design review: viewport witness row ${witness.row} ${witness.name} failed its test (exit ${exitCode}) for ${witness.specification} title "${witness.title}"\n`,
+          );
+          failedWitnesses.push(...witnesses);
+        }
+        runs.push({ scheme: witness.theme, exitCode, ranNothing: [] });
+      }
+    }
+  }
+  for (const scheme of options.narrow ? [] : options.schemes) {
     // The JSON report says how many tests each specification ran, so one that ran none is named.
     const report = join(options.out, `playwright-${scheme}.json`);
     const command = [
@@ -624,14 +719,17 @@ export async function captureDesignReview(
     }
     runs.push({ scheme, exitCode, ranNothing });
   }
-  const captures = await captureCount(options.out);
+  // A narrow run's captures are its witness frames; a broad run's are the plan's.
+  const captures = await captureCount(options.narrow ? witnessDirectory : options.out);
   await writeReviewOrder(options.out);
   const geometry = await auditGeometry(options.out);
   const ranNothing = runs.some((run) => run.ranNothing.length > 0);
   // Coverage comes before anything else counts: a declared state that no capture shows is named,
   // and the run exits 1 (`design-rounds.ts` counts only a capture whose coverage is complete).
   const coverage =
-    expected === undefined ? undefined : await coverageOf(options.out, expected, environment);
+    expected === undefined
+      ? undefined
+      : await coverageOf(options.out, expected, environment, !options.narrow, failedWitnesses);
   const summary = {
     out: options.out,
     captures,
@@ -683,16 +781,16 @@ function shardHasTests(options: Options): boolean {
 export interface Coverage {
   readonly expected: number;
   readonly missing: readonly CaptureExpectation[];
+  readonly missingWitnesses: CaptureManifest['witnesses'];
   readonly complete: boolean;
 }
 
-/** Holds the capture's `manifest.jsonl` to an expected-captures manifest, naming each one missing. */
-async function coverageOf(
-  out: string,
-  manifest: CaptureManifest,
-  environment: CaptureEnvironment,
-): Promise<Coverage> {
-  const text = await readFile(join(out, 'manifest.jsonl'), 'utf8').catch(() => '');
+/** The subdirectory of a capture the viewport witness runs write their frames and manifest to. */
+export const WITNESS_DIRECTORY = 'witnesses';
+
+/** The lines of a directory's `manifest.jsonl`, none when it has none. */
+async function capturedLines(directory: string): Promise<CapturedLine[]> {
+  const text = await readFile(join(directory, 'manifest.jsonl'), 'utf8').catch(() => '');
   const lines: CapturedLine[] = [];
   for (const line of text.split('\n')) {
     if (line.trim() === '') continue;
@@ -702,12 +800,71 @@ async function coverageOf(
       // A torn line shows nothing, so what it would have shown is reported missing.
     }
   }
-  const missing = missingCaptures(manifest.captures, lines);
+  return lines;
+}
+
+/** Holds the capture's `manifest.jsonl` to an expected-captures manifest, naming each one missing. */
+async function coverageOf(
+  out: string,
+  manifest: CaptureManifest,
+  environment: CaptureEnvironment,
+  includeCaptures: boolean,
+  failedWitnesses: CaptureManifest['witnesses'],
+): Promise<Coverage> {
+  const lines = await capturedLines(out);
+  const missing = includeCaptures ? missingCaptures(manifest.captures, lines) : [];
+  // Witnesses are proven only by the witness runs' own frames, never by a broad run's.
+  const witnessDirectory = join(out, WITNESS_DIRECTORY);
+  const witnessLines = await capturedLines(witnessDirectory);
+  const framed = await Promise.all(
+    witnessLines.map(async (line) => {
+      const viewport = line.viewport;
+      if (
+        typeof viewport !== 'string' ||
+        !viewport.startsWith('screens/') ||
+        !viewport.endsWith('.png') ||
+        viewport.includes('..') ||
+        viewport.endsWith('.full.png')
+      )
+        return undefined;
+      return (await Bun.file(join(witnessDirectory, viewport)).exists()) ? line : undefined;
+    }),
+  );
+  const physicalLines = framed.filter((line): line is CapturedLine => line !== undefined);
+  // A witness whose run selected no single test, or failed, is missing whatever frames exist.
+  const failed = new Set(failedWitnesses);
+  const unproven = new Set(missingViewportWitnesses(manifest.witnesses, physicalLines));
+  const missingWitnesses = manifest.witnesses.filter(
+    (witness) => failed.has(witness) || unproven.has(witness),
+  );
   for (const entry of missing)
     environment.standardError(`design review: ${describeMissing(entry)}\n`);
   const hint = wideCaptureHint(missing);
   if (hint !== undefined) environment.standardError(`design review: ${hint}\n`);
-  return { expected: manifest.captures.length, missing, complete: missing.length === 0 };
+  for (const witness of missingWitnesses)
+    environment.standardError(
+      `design review: missing viewport witness: row ${witness.row}, ${witness.name}, ${witness.specification}, title "${witness.title}", ${witness.world}, ${witness.width}px ${witness.theme}; expected ${witness.visible}\n`,
+    );
+  // The receipt, row by row: each proven witness and the actual viewport frame that proves it.
+  const receipt = manifest.witnesses.flatMap((witness) => {
+    const line = failed.has(witness) ? undefined : viewportWitnessProof(witness, physicalLines);
+    return line === undefined
+      ? []
+      : [
+          {
+            row: witness.row,
+            name: witness.name,
+            viewport: `${WITNESS_DIRECTORY}/${line.viewport}`,
+          },
+        ];
+  });
+  await writeFile(join(out, 'viewport-witnesses.json'), `${JSON.stringify(receipt, null, 2)}\n`);
+  return {
+    expected: includeCaptures ? manifest.captures.length : 0,
+    missing,
+    missingWitnesses,
+    complete: missing.length === 0 && missingWitnesses.length === 0,
+  };
 }
 
 /** Playwright's JSON report, or `undefined` when the run wrote none. */

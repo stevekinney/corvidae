@@ -5,7 +5,7 @@
  * The seeded engine runs its activities in process, so no run here has a real remote dispatch to
  * read (`activityExecution` is engine-wide, and a remote-mode console engine would change every
  * fixture workflow). The spec opens a real seeded run and answers the requests the Timeline tab
- * makes about it (`GET .../timeline`, the pending-activity list, and `weft.tasks.get`) with what a
+ * makes about it (`weft.workflows.timeline.get`, the pending-activity list, and `weft.tasks.get`) with what a
  * remote-mode engine returns, so the page, its states, and its layout are real and only the data is
  * scripted. The ledger answers for exactly two ids and `NotFound` for every other, so the spec also
  * proves which key the page reads: a settled step by its entry's `taskOperationId`, a running step
@@ -127,13 +127,6 @@ async function scriptRemoteRun(page: Page): Promise<Scripted> {
   if (href === null) throw new Error('The seeded run has no link.');
 
   const ledgerReads: string[] = [];
-  await page.route('**/workflows/*/timeline', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(TIMELINE),
-    });
-  });
   await page.route('**/jsonrpc', async (route) => {
     const body = route.request().postDataJSON() as {
       id?: unknown;
@@ -146,7 +139,9 @@ async function scriptRemoteRun(page: Page): Promise<Scripted> {
         contentType: 'application/json',
         body: JSON.stringify({ jsonrpc: '2.0', id: body?.id ?? null, ...payload }),
       });
-    if (body?.method === 'weft.workflows.activities.pending.list') {
+    if (body?.method === 'weft.workflows.timeline.get') {
+      await reply({ result: TIMELINE });
+    } else if (body?.method === 'weft.workflows.activities.pending.list') {
       await reply({ result: { items: PENDING } });
     } else if (body?.method === 'weft.tasks.get') {
       const operationId = String(body.params?.operationId);

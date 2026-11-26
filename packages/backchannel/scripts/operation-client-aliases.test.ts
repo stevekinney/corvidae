@@ -4,9 +4,37 @@ import {
   aliasNameFor,
   assignAliasNames,
   isHoistWorthy,
+  referencedRootAliases,
   selectAliases,
 } from './operation-client-aliases.ts';
-import { canonicalKey, schemaToNode, type TypeNode } from './operation-client-schema.ts';
+import {
+  canonicalKey,
+  renderRoot,
+  schemaToNode,
+  type TypeNode,
+} from './operation-client-schema.ts';
+
+it('reuses a nested dictionary value shape consistently', () => {
+  const value = {
+    type: 'object',
+    properties: { id: { type: 'string' }, label: { type: 'string' }, count: { type: 'integer' } },
+    required: ['id', 'label', 'count'],
+  };
+  const valueNode = schemaToNode(value);
+  const dictionary = schemaToNode({ type: 'object', additionalProperties: value });
+  const nested = schemaToNode({
+    type: 'object',
+    properties: { entries: { type: 'object', additionalProperties: value } },
+    required: ['entries'],
+  });
+  const { aliasNameByKey } = selectAliases([nested, dictionary, valueNode, valueNode]);
+  const alias = aliasNameByKey.get(canonicalKey(valueNode));
+  expect(alias).toBeDefined();
+  expect(renderRoot(dictionary, aliasNameByKey)).toBe(`Record<string, ${alias}>`);
+  expect(renderRoot(nested, aliasNameByKey)).toBe(
+    `{ readonly "entries": Record<string, ${alias}>; }`,
+  );
+});
 
 function compareAliasEntries(first: [string, string], second: [string, string]): number {
   return first[0] < second[0] ? -1 : 1;
@@ -19,6 +47,22 @@ const object = (...names: string[]): TypeNode => ({
     optional: false,
     value: { kind: 'primitive', text: 'string' },
   })),
+});
+
+it('exports only aliases referenced by operation roots, not nested alias bodies', () => {
+  const inner = object('a', 'b', 'c');
+  const outer: TypeNode = {
+    kind: 'object',
+    fields: [{ name: 'inner', optional: false, value: inner }],
+  };
+  const aliases = new Map([
+    [canonicalKey(inner), 'Inner'],
+    [canonicalKey(outer), 'Outer'],
+  ]);
+  expect([...referencedRootAliases([outer], aliases)]).toEqual(['Outer']);
+  expect([...referencedRootAliases([{ kind: 'array', element: inner }], aliases)]).toEqual([
+    'Inner',
+  ]);
 });
 
 const nestedPair = (): { inner: TypeNode; outer: TypeNode } => {

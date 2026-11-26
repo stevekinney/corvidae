@@ -1,12 +1,15 @@
 /**
- * Bun-only APIs stay in a few modules, so a later Node or Electron host stays possible: the guard
- * does not make the package run on Node, it stops the Bun-only surface from spreading.
+ * Bun-only APIs stay in as few modules as possible, so the package runs on Node with an injected
+ * lock (COR-2698). `node-runtime.integration.test.ts` runs it there; this guard stops the Bun-only
+ * surface from spreading back.
  *
  * - No source module imports `bun:ffi` statically. It is imported only dynamically, when the default
  *   `flock(2)` lock is first acquired, so a host with its own lock, a remote home, or another
  *   runtime can import the package without it.
  * - Outside `ALLOWED`, no source module uses the `Bun` global as a value or imports any `bun:`
- *   module. A type-only use such as the `Bun.S3Client` annotation does not count.
+ *   module. A type-only use such as the `Bun.S3Client` annotation does not count here.
+ * - No source module names the `Bun` namespace at all, types included, so a Node host type-checks
+ *   the package without `@types/bun`.
  * - A module in `ALLOWED` must still need to be there, so the list only shrinks.
  * - The package index reaches neither `conformance.ts` nor any `bun:test` import, so importing
  *   `@lostgradient/bungalow` loads no test runner.
@@ -19,12 +22,8 @@ import ts from 'typescript';
 
 /** The modules that may use a Bun-only API, and why. */
 const ALLOWED = [
-  // `Bun.sleepSync` while it polls for a lock holder, and `bun:ffi` imported on first use.
+  // `bun:ffi`, imported on first use by the default `flock(2)` lock.
   'lock.ts',
-  // `Bun.S3Client`, which remote mode is built on.
-  'remote.ts',
-  // `bun:test`, for the `describe…` wrappers, behind the `./conformance` subpath.
-  'conformance.ts',
 ] as const;
 
 const SOURCE = dirname(new URL(import.meta.url).pathname);
@@ -175,6 +174,19 @@ describe('the scan', () => {
 describe('the guard', () => {
   test('passes on the package source', () => {
     expect(problemsIn(sourceModules(), ALLOWED)).toEqual([]);
+  });
+
+  test('no source module names the Bun namespace, not even as a type', () => {
+    const naming: string[] = [];
+    for (const [name, code] of Object.entries(sourceModules())) {
+      const file = ts.createSourceFile(name, code, ts.ScriptTarget.Latest, true);
+      const visit = (node: ts.Node): void => {
+        if (ts.isIdentifier(node) && node.text === 'Bun') naming.push(name);
+        ts.forEachChild(node, visit);
+      };
+      visit(file);
+    }
+    expect([...new Set(naming)]).toEqual([]);
   });
 
   test('keeps the modules it names, so the list only shrinks', () => {

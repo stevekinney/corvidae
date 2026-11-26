@@ -71,6 +71,7 @@ export function spyEngine(engine: RegistryAgnosticEngine): EngineSpy {
       const prepared = await realPrepare(...args);
       return {
         id: prepared.id,
+        release: () => prepared.release(),
         launch: () => {
           spy.launches.push(prepared.id);
           return prepared.launch();

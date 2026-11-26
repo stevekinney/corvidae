@@ -168,7 +168,7 @@
   );
   const flat = $derived(sections.flatMap((section) => section.members.map((m) => m.option)));
   const selectedOption = $derived(
-    value === undefined || value === '' ? undefined : options.find((o) => o.value === value),
+    value === undefined ? undefined : options.find((o) => o.value === value),
   );
 
   let open = $state(false);

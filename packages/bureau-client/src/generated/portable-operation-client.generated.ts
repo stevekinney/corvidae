@@ -4,7 +4,6 @@ import {
   type CatalogClient,
   type CatalogTransport,
 } from '@lostgradient/backchannel/client';
-import { validatedReviewsTransport } from '../reviews/validation.ts';
 import type { ReviewsOperationTypes } from './reviews-operations.generated.ts';
 
 const operationNames = [
@@ -19,13 +18,5 @@ type CatalogOperationTypes = Pick<ReviewsOperationTypes, (typeof operationNames)
 export function createReviewsClientWithTransport(
   transport: CatalogTransport,
 ): CatalogClient<CatalogOperationTypes> {
-  return createCatalogClient<CatalogOperationTypes>(
-    operationNames,
-    validatedReviewsTransport(transport),
-  );
+  return createCatalogClient<CatalogOperationTypes>(operationNames, transport);
 }
-
-export type { ReviewsOperationTypes } from './reviews-operations.generated.ts';
-
-export { parseReviewsOpeningSnapshot, validatedReviewsTransport } from '../reviews/validation.ts';
-export type { ReviewsOpeningSnapshot } from '../reviews/validation.ts';

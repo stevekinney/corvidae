@@ -66,7 +66,7 @@
   import { faultErrorStateAdvice, faultTreatment, isNetworkFailure } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router, scheduleDetailPath } from '../../lib/router.svelte.ts';
-  import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
+  import { getPrincipalStore, principalQueryScope, scopeGate } from '../../lib/scopes.svelte.ts';
   import {
     CATALOG_STALE_TIME_MS,
     loadCatalog,
@@ -167,11 +167,15 @@
     }),
     undefined,
   );
-  const existingKey = queryKeys.schedules.list({});
+  const existingKey = () => [
+    ...queryKeys.schedules.list({}),
+    principalQueryScope(principal.principal),
+  ];
   const existing = createQuery(
     () => ({
-      queryKey: existingKey,
+      queryKey: existingKey(),
       queryFn: () => fetchScheduleList(client, {}),
+      placeholderData: () => undefined,
       retry: false,
     }),
     undefined,
@@ -537,7 +541,7 @@
     const except = target?.schedule.id;
     try {
       const fresh = await queryClient.fetchQuery({
-        queryKey: existingKey,
+        queryKey: existingKey(),
         queryFn: () => fetchScheduleList(client, {}),
         staleTime: 0,
       });

@@ -11,6 +11,7 @@ import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { bureauClient, type BureauInput, type BureauOutput } from './bureau-api.ts';
+import type { CatalogOperations } from './generated/bureau-operation-client.generated.ts';
 
 /** The part of `fetch` the application's requests use, so a test can stand a stub in for it. */
 export type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -126,8 +127,9 @@ export async function getBureauId(options?: { readonly signal?: AbortSignal }): 
 export async function getContext(
   contextId: string,
   options?: { readonly signal?: AbortSignal },
+  client: Pick<CatalogOperations, 'bureau.contexts.get'> = bureauClient,
 ): Promise<ContextDetail> {
-  const detail = await bureauClient['bureau.contexts.get']({ contextId }, options);
+  const detail = await client['bureau.contexts.get']({ contextId }, options);
   return {
     ...chatContextOf(detail),
     model: detail.model,
@@ -520,10 +522,11 @@ export function agentSummaryOf(
 }
 
 /** The agents the Bureau lists, each of which can take a chat (`bureau.agents.list`). */
-export async function listAgents(options?: {
-  readonly signal?: AbortSignal;
-}): Promise<readonly AgentSummary[]> {
-  const body = await bureauClient['bureau.agents.list']({}, options);
+export async function listAgents(
+  options?: { readonly signal?: AbortSignal },
+  client: Pick<CatalogOperations, 'bureau.agents.list'> = bureauClient,
+): Promise<readonly AgentSummary[]> {
+  const body = await client['bureau.agents.list']({}, options);
   return body.agents.map(agentSummaryOf);
 }
 

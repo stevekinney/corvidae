@@ -8,7 +8,7 @@
 import { rejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { HttpClientError, isWeftFault, type ScheduleSummary } from '@lostgradient/weft';
+import { HttpClient, HttpClientError, isWeftFault, type ScheduleSummary } from '@lostgradient/weft';
 
 import { classifyFault } from '../../lib/faults.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
@@ -75,12 +75,14 @@ describe('scheduleRunHistoryQueryKey', () => {
 });
 
 describe('fetchScheduleRunHistory', () => {
-  test('delegates to client.list with the scheduleId filter and a bounded limit', async () => {
+  test('reads the generated workflow list with the scheduleId filter and a bounded limit', async () => {
     let receivedFilter: unknown;
     const client = {
-      list: async (filter: unknown) => {
-        receivedFilter = filter;
-        return { items: [], total: 0, offset: 0, limit: 10 };
+      operations: {
+        'weft.workflows.list': async (filter: unknown) => {
+          receivedFilter = filter;
+          return { items: [], total: 0, offset: 0, limit: 10 };
+        },
       },
     };
 
@@ -91,12 +93,14 @@ describe('fetchScheduleRunHistory', () => {
 });
 
 describe('fetchScheduleList', () => {
-  test('delegates to client.listSchedules with the given filter', async () => {
+  test('reads the generated schedule list with the given filter', async () => {
     let receivedFilter: unknown;
     const client = {
-      listSchedules: async (filter: unknown) => {
-        receivedFilter = filter;
-        return { items: [SUMMARY], total: 1, offset: 0, limit: 50 };
+      operations: {
+        'weft.schedules.list': async (filter: unknown) => {
+          receivedFilter = filter;
+          return { items: [SUMMARY], total: 1, offset: 0, limit: 50 };
+        },
       },
     };
 
@@ -108,12 +112,63 @@ describe('fetchScheduleList', () => {
 });
 
 describe('fetchScheduleDetail', () => {
-  test('delegates to client.getSchedule and passes through null', async () => {
-    const found = { getSchedule: async () => SUMMARY };
-    expect(await fetchScheduleDetail(found, 'nightly-rollup')).toBe(SUMMARY);
+  test('reads the generated schedule detail and maps not found to null', async () => {
+    const found = { operations: { 'weft.schedules.get': async () => SUMMARY } };
+    expect(await fetchScheduleDetail(found, 'nightly-rollup')).toEqual(SUMMARY);
 
-    const missing = { getSchedule: async () => null };
+    const missing = {
+      operations: {
+        'weft.schedules.get': async () => {
+          throw new HttpClientError(404, 'missing');
+        },
+      },
+    };
     expect(await fetchScheduleDetail(missing, 'missing')).toBeNull();
+  });
+
+  test('preserves authorization faults', async () => {
+    const fault = new HttpClientError(403, 'forbidden');
+    const client = {
+      operations: {
+        'weft.schedules.get': async () => {
+          throw fault;
+        },
+      },
+    };
+    expect(await rejectionOf(fetchScheduleDetail(client, 'private'))).toBe(fault);
+  });
+
+  test('maps the generated transport’s missing schedule fault to null', async () => {
+    const requests: { url: string; body: unknown }[] = [];
+    const restore = installFetchImplementation((input, init) => {
+      if (typeof init?.body !== 'string') throw new Error('expected JSON request body');
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      requests.push({ url, body: JSON.parse(init.body) });
+      return Promise.resolve(
+        Response.json({
+          jsonrpc: '2.0',
+          id: 'weft.schedules.get',
+          error: { code: -32004, message: 'missing', data: { httpStatus: 404 } },
+        }),
+      );
+    });
+    try {
+      const client = new HttpClient({ baseUrl: 'http://host:7399' });
+      expect(await fetchScheduleDetail(client, 'missing')).toBeNull();
+      expect(requests).toEqual([
+        {
+          url: 'http://host:7399/jsonrpc',
+          body: {
+            jsonrpc: '2.0',
+            method: 'weft.schedules.get',
+            params: { scheduleId: 'missing' },
+            id: 'weft.schedules.get',
+          },
+        },
+      ]);
+    } finally {
+      restore();
+    }
   });
 });
 

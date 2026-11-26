@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
-import { request, type CliTarget } from './cli-client-transport.ts';
+import { catalogRead, request, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 import { isDryRun } from './cli-destructive.ts';
 import { executeRuns } from './cli-runs.ts';
@@ -102,18 +102,18 @@ async function agentCommand(
   dependencies: CliClientDependencies,
 ): Promise<CliCommandResult> {
   const action = parsed.arguments[0] ?? 'list';
-  if (action === 'list')
-    return rpc(target, parsed, dependencies, 'bureau.agents.definitions.list', {
-      ...(integerOption(parsed, 'limit') === undefined
-        ? {}
-        : { limit: integerOption(parsed, 'limit') }),
-      ...(integerOption(parsed, 'offset') === undefined
-        ? {}
-        : { offset: integerOption(parsed, 'offset') }),
+  if (action === 'list') {
+    const limit = integerOption(parsed, 'limit');
+    const offset = integerOption(parsed, 'offset');
+    return catalogRead(target, parsed, dependencies, 'bureau.agents.definitions.list', {
+      ...(limit === undefined ? {} : { limit }),
+      ...(offset === undefined ? {} : { offset }),
     });
-  if (action === 'models') return rpc(target, parsed, dependencies, 'bureau.agents.catalog', {});
+  }
+  if (action === 'models')
+    return catalogRead(target, parsed, dependencies, 'bureau.agents.catalog', {});
   if (action === 'get')
-    return rpc(target, parsed, dependencies, 'bureau.agents.definitions.get', {
+    return catalogRead(target, parsed, dependencies, 'bureau.agents.definitions.get', {
       id: identifier(parsed),
     });
   if (action === 'duplicate')
@@ -130,7 +130,7 @@ async function agentCommand(
     const subcommand = parsed.arguments[1] ?? 'list';
     const id = identifier(parsed, 2);
     if (subcommand === 'list')
-      return rpc(target, parsed, dependencies, 'bureau.agents.versions.list', { id });
+      return catalogRead(target, parsed, dependencies, 'bureau.agents.versions.list', { id });
     if (subcommand === 'restore')
       return rpc(target, parsed, dependencies, 'bureau.agents.versions.restore', {
         id,
@@ -167,20 +167,21 @@ async function workflowCommand(
   dependencies: CliClientDependencies,
 ): Promise<CliCommandResult> {
   const action = parsed.arguments[0] ?? 'list';
-  if (action === 'list')
-    return rpc(target, parsed, dependencies, 'bureau.workflows.list', {
-      ...(integerOption(parsed, 'limit') === undefined
-        ? {}
-        : { limit: integerOption(parsed, 'limit') }),
-      ...(integerOption(parsed, 'offset') === undefined
-        ? {}
-        : { offset: integerOption(parsed, 'offset') }),
+  if (action === 'list') {
+    const limit = integerOption(parsed, 'limit');
+    const offset = integerOption(parsed, 'offset');
+    return catalogRead(target, parsed, dependencies, 'bureau.workflows.list', {
+      ...(limit === undefined ? {} : { limit }),
+      ...(offset === undefined ? {} : { offset }),
       ...(parsed.options.get('include-runs') === true ? { includeRuns: true } : {}),
     });
+  }
   if (action === 'get')
-    return rpc(target, parsed, dependencies, 'bureau.workflows.get', { id: identifier(parsed) });
+    return catalogRead(target, parsed, dependencies, 'bureau.workflows.get', {
+      id: identifier(parsed),
+    });
   if (action === 'history')
-    return rpc(target, parsed, dependencies, 'bureau.workflows.history', {
+    return catalogRead(target, parsed, dependencies, 'bureau.workflows.history', {
       id: identifier(parsed),
     });
   if (action === 'signal') {

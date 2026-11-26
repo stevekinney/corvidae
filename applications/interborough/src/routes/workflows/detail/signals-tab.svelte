@@ -9,15 +9,27 @@
    */
   import { Badge, Button, Input, JsonEditor, Skeleton, Tooltip } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import type { HttpClient, WorkflowState } from '@lostgradient/weft';
+  import type { HttpClient } from '@lostgradient/weft';
+  import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
   import { Radio } from '@lucide/svelte';
 
   import { formatRelativeTime } from '../../../lib/format/index.ts';
-  import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
-  import { signalHistoryFromTimeline, workflowTimelineQueryKey } from './workflow-timeline-data.ts';
+  import {
+    getPrincipalStore,
+    hasPrincipalStore,
+    principalQueryScope,
+    type ScopeGate,
+  } from '../../../lib/scopes.svelte.ts';
+  import {
+    fetchWorkflowTimeline,
+    signalHistoryFromTimeline,
+    workflowTimelineQueryKey,
+  } from './workflow-timeline-data.ts';
 
   interface SignalsTabProps {
-    readonly client: Pick<HttpClient, 'signal' | 'getTimeline'>;
+    readonly client: Pick<HttpClient, 'signal'> & {
+      readonly operations: Pick<HttpClient['operations'], 'weft.workflows.timeline.get'>;
+    };
     readonly workflow: WorkflowState;
     /** Whether the principal holds `signals:write`, which `weft.workflows.signal` requires; open when omitted. */
     readonly sendGate?: ScopeGate | undefined;
@@ -30,10 +42,14 @@
   }: SignalsTabProps = $props();
 
   const queryClient = useQueryClient();
+  const timelinePrincipal = hasPrincipalStore() ? getPrincipalStore() : undefined;
 
   const timelineQuery = createQuery(() => ({
-    queryKey: workflowTimelineQueryKey(workflow.id),
-    queryFn: () => client.getTimeline(workflow.id),
+    queryKey: [
+      ...workflowTimelineQueryKey(workflow.id),
+      principalQueryScope(timelinePrincipal?.principal ?? null),
+    ],
+    queryFn: () => fetchWorkflowTimeline(client, workflow.id),
   }));
 
   const receivedSignals = $derived(signalHistoryFromTimeline(timelineQuery.data ?? []));

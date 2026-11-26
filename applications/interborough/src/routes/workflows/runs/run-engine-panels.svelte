@@ -7,7 +7,7 @@
    * `attributes:read` (and `attributes:write` to edit); the rest need only the read of the run.
    */
   import { Stack } from '@lostgradient/cinder';
-  import type { WorkflowState } from '@lostgradient/weft';
+  import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
 
   import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';
   import AttributesPanel from '../detail/attributes/attributes-panel.svelte';
