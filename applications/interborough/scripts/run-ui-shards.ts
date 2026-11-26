@@ -46,9 +46,11 @@ export const SHARD_COUNT = 4;
 export const SHARD_SILENCE_LIMIT_MS = 10 * 60_000;
 
 /**
- * The available memory below which the run stops its shards. On 2026-11-25 the CI runner was lost after
- * about 46 minutes in four of nine runs, leaving no log; stopping while there is still memory to
- * write a report turns that into a failure that says which shard was where.
+ * The available memory below which the run writes one snapshot of every shard, and keeps running. On
+ * 2026-11-25 the CI runner was lost after about 46 minutes in four of nine runs, leaving no log, so a
+ * snapshot written while there is still memory says which shard was where if the runner then dies.
+ * Low memory alone is not a failure: a healthy run on 2026-11-26 dipped to 250 MiB available and
+ * passed every test, so stopping at this floor failed a good run.
  */
 export const MINIMUM_FREE_MEMORY_BYTES = 512 * 1024 * 1024;
 
@@ -229,17 +231,18 @@ async function collect(
 }
 
 /**
- * The report a stopped run writes: why it stopped, the free memory, and each unfinished shard's
- * silence and last lines, so a hang names the file it was in.
+ * The report a stopped run, or a low-memory snapshot, writes: why, what it does next, the free memory,
+ * and each unfinished shard's silence and last lines, so a hang names the file it was in.
  */
 export function hangReport(
   reason: string,
   watches: readonly ShardWatch[],
   at: number,
   freeBytes: number,
+  action = 'stopping every shard',
 ): string {
   const lines = [
-    `run-ui-shards: ${reason}; stopping every shard. Free memory: ${Math.round(freeBytes / 1024 / 1024)} MiB.`,
+    `run-ui-shards: ${reason}; ${action}. Free memory: ${Math.round(freeBytes / 1024 / 1024)} MiB.`,
   ];
   for (const watch of watches) {
     if (watch.finished) continue;
@@ -365,6 +368,7 @@ export async function runUiShards(
     writeStandardError(hangReport(reason, watches, now(), freeMemory()));
     for (const child of children) child.kill('SIGKILL');
   };
+  let snapshotWritten = false;
   const cancel = every(WATCH_INTERVAL_MS, () => {
     const at = now();
     const silent = watches.find(
@@ -377,8 +381,17 @@ export async function runUiShards(
       return;
     }
     const freeBytes = freeMemory();
-    if (freeBytes < MINIMUM_FREE_MEMORY_BYTES)
-      stop(`free memory fell to ${Math.round(freeBytes / 1024 / 1024)} MiB`);
+    if (snapshotWritten || freeBytes >= MINIMUM_FREE_MEMORY_BYTES) return;
+    snapshotWritten = true;
+    writeStandardError(
+      hangReport(
+        `free memory fell to ${Math.round(freeBytes / 1024 / 1024)} MiB`,
+        watches,
+        at,
+        freeBytes,
+        'still running, this is where each shard was',
+      ),
+    );
   });
   const exitCodes = await Promise.all(runs);
   cancel();

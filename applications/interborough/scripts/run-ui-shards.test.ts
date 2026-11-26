@@ -432,17 +432,24 @@ describe('the hang watchdog', () => {
     expect(report).toContain('(pass) one');
   });
 
-  it('stops every shard when free memory falls below the floor', async () => {
-    const child = hangingChild('working\n');
+  it('writes one snapshot when free memory falls below the floor, and keeps running', async () => {
+    const child = hangingChild('src/lib/only.test.ts:\n(pass) one\n');
     let free = 8 * 1024 ** 3;
     const setup = harness('memory', child, () => free);
+    await waitUntil(child.drained, { message: 'the shard output to be read' });
     setup.advance(1000);
-    expect(child.killedWith).toEqual([]);
+    expect(setup.err.join('')).not.toContain('run-ui-shards:');
     free = MINIMUM_FREE_MEMORY_BYTES - 1;
     setup.advance(1000);
+    setup.advance(1000);
+    expect(child.killedWith).toEqual([]);
+    const snapshot = setup.err.join('');
+    expect(snapshot.split('free memory fell to').length - 1).toBe(1);
+    expect(snapshot).toContain('still running, this is where each shard was');
+    expect(snapshot).toContain('(pass) one');
+    setup.advance(SHARD_SILENCE_LIMIT_MS);
     expect(await setup.run).toBe(1);
     expect(child.killedWith).toEqual(['SIGKILL']);
-    expect(setup.err.join('')).toContain('free memory fell to');
   });
 
   it('writes no report for a shard that finishes', async () => {
