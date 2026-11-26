@@ -213,6 +213,7 @@
         "bun-primitives.test.ts",
         "src/**/*.test.ts",
         "tests/**/*.test.ts",
+        "tests/workerd/fixture/worker.ts",
         "tests/fixtures/candidate/server.ts",
         "src/actions/server.ts!",
         "src/client/index.ts!",

@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2707",
+  "branch": "codex/cor-2707-workers-npm",
+  "checkedAt": "a6a7b27fd90bfc3342ab122271651e323535801b",
+  "briefVersion": "1da14a0a0575",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "tests/workerd/fixture builds with buildProduction; its Worker imports velveteen-manifest.js and velveteen-registry.js, uses fetchAssetSource(env.ASSETS), and exports default fetch plus Counter Durable Object."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "worker.integration.test.ts passes through the workerd helper and verifies page load data, built static bytes, mounted Fetch service, cookie authentication, and Durable Object load data."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Velveteen README documents the Worker entry, generated modules, fetchAssetSource, nodejs_compat, and build-time boundary."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "bun run --filter @lostgradient/velveteen test:slow and the focused isolated lane passed the fixture."
+    }
+  ]
+}
