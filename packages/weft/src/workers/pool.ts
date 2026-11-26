@@ -166,23 +166,13 @@ export class WorkerPool implements Disposable, AsyncDisposable {
    * a replacement worker if the pool still has capacity.
    */
   discard(worker: WorkerLike): void {
-    if (!this.#workers.has(worker)) {
-      return;
-    }
-
-    this.#workers.delete(worker);
-    this.#removeAvailableWorker(worker);
-    this.#rejectSpecificWorkerWaiters(
-      worker,
-      new Error('Worker was discarded from this WorkerPool'),
-    );
+    if (!this.#removeWorker(worker, new Error('Worker was discarded from this WorkerPool'))) return;
     void worker.terminate();
-    this.#drainGenericQueue();
-    this.#checkAsyncDispose();
   }
 
   /** Release a worker back to the pool. */
   release(worker: WorkerLike): void {
+    if (!this.#workers.has(worker)) return;
     // During graceful shutdown, accept releases so we can track when all
     // in-flight workers have been returned, then terminate.
     if (this.#disposed && !this.#asyncDisposeResolve) {
@@ -275,7 +265,19 @@ export class WorkerPool implements Disposable, AsyncDisposable {
     }
     const worker = this.#createWorkerFactory(this.#workerUrl, options);
     this.#workers.add(worker);
+    worker.addEventListener('close', () => {
+      this.#removeWorker(worker, new Error('Worker closed before it was released'));
+    });
     return worker;
+  }
+
+  #removeWorker(worker: WorkerLike, error: Error): boolean {
+    if (!this.#workers.delete(worker)) return false;
+    this.#removeAvailableWorker(worker);
+    this.#rejectSpecificWorkerWaiters(worker, error);
+    this.#drainGenericQueue();
+    this.#checkAsyncDispose();
+    return true;
   }
 
   #terminateAll(): void {
@@ -290,10 +292,7 @@ export class WorkerPool implements Disposable, AsyncDisposable {
   }
 
   #removeAvailableWorker(worker: WorkerLike): void {
-    const availableIndex = this.#available.indexOf(worker);
-    if (availableIndex >= 0) {
-      this.#available.splice(availableIndex, 1);
-    }
+    this.#available = this.#available.filter((available) => available !== worker);
   }
 
   #rejectSpecificWorkerWaiters(worker: WorkerLike, error: Error): void {

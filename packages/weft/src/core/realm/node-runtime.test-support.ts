@@ -204,6 +204,47 @@ void test('Node worker factory forwards ArrayBuffer and MessagePort transfer lis
   }
 });
 
+void test('Node worker pool replaces an idle worker that exits through its control port', async () => {
+  const pool = new WorkerPool({
+    concurrency: 1,
+    workerUrl: new URL(
+      'data:text/javascript,self.onmessage%3Devent%3D%3E%7Bif(event.data.port)%7Bconst%20port%3Devent.data.port%3Bport.onmessage%3D()%3D%3Eprocess.exit(1)%3BpostMessage(%22ready%22)%3B%7Delse%20postMessage(event.data)%3B%7D',
+    ),
+    createWorker: nodeWorkerFactory,
+  });
+  const worker = await pool.acquire();
+  const { port1, port2 } = new MessageChannel();
+  try {
+    const ready = new Promise<void>((resolve) => {
+      worker.addEventListener('message', (event) => {
+        if (event instanceof MessageEvent && event.data === 'ready') resolve();
+      });
+    });
+    const closed = new Promise<void>((resolve) => worker.addEventListener('close', () => resolve()));
+    worker.postMessage({ port: port1 }, [port1]);
+    await ready;
+    pool.release(worker);
+    port2.postMessage('exit');
+    await closed;
+    const replacement = await pool.acquire();
+    assert.notStrictEqual(replacement, worker);
+    try {
+      const echoed = new Promise<unknown>((resolve) => {
+        replacement.addEventListener('message', (event) => {
+          if (event instanceof MessageEvent) resolve(event.data);
+        });
+      });
+      replacement.postMessage('replacement');
+      assert.equal(await echoed, 'replacement');
+    } finally {
+      pool.release(replacement);
+    }
+  } finally {
+    port2.close();
+    await pool[Symbol.asyncDispose]();
+  }
+});
+
 void test('Node worker factory reports one error before closing an unexpected exit', async () => {
   const worker = nodeWorkerFactory(new URL('data:text/javascript,process.exit(1)'));
   try {
