@@ -1,0 +1,49 @@
+{
+  "issue": "COR-2725",
+  "branch": "chef/chat-recovery",
+  "checkedAt": "c9f4ee8f35",
+  "briefVersion": "522303fe7d6a",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "needs-decision",
+      "evidence": "Chat now owns the last-turn outcome (message/turn-outcome.ts: resolveTurnOutcome, turnStateOf) and the recovery commands (message/turn-commands.ts). Interborough's turn-states.ts and its test are deleted; its toasts for Discard and Continue and the composer's second reconnect line are gone. Not removed: the stop note with Retry beside it (noteAction, retryNoteId, failedStopNoteId in stop-line.ts) and the rail footnote for a turn with no assistant row. Interborough has no private CSS for the stop line or retry, so none was removed."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "bun run --cwd components/chat test exit 0 and focused-checks exit 0 run: turn-commands.test.ts (57 cells, nine inputs by six states), chat-turn-commands.test.ts (duplicate press, busy controls, refused and thrown answers said once, answer after an id change, answer after the turn moved on, duplicate Retry now, duplicate Regenerate), chat-conversation-states.test.ts (Discard answered after a session switch, refused Discard inline with no toast, dropped run said once), chat-conversation-stopped.test.ts (setting refusal after a switch), chat-session-retry.svelte.test.ts (double Retry sends one turn), chat-session-reconnect.svelte.test.ts (double Retry now reads once). Red against main at f429470056 (5 route and session cases, 5 component cases, 19 matrix cells). Bureau stays the source of run status and journal replay; the registry keeps workspace-scoped sessions; neither changed."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-main",
+      "evidence": "chat-message-turn-states.test.ts 'the caret is a 2 px bar in the accent colour' and turn-state.test.ts 'R2'; unchanged by this branch."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Chat draws R3 (chat-message-turn-states.test.ts, chat-turn-outcomes.test.ts). On the route, chat-conversation-states.test.ts 'a run whose stream dropped says so once, on its turn, with Retry now (R3)' shows the warning with attempt X of Y, the next try and Retry now, with the composer count and the failure alert no longer repeating it (red with the composer change reverted). Pixel look not verified on this host."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-main",
+      "evidence": "R4 pill, partial answer, Continue and Discard: chat-turn-outcomes.test.ts, chat-message-turn-states.test.ts; route chat-conversation-states.test.ts 'is Stopped on the turn with Discard and Continue'. The busy state and failure line this branch adds are AC2."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-main",
+      "evidence": "R5 danger alert, cause, what Retry keeps, Retry: chat-message-turn-states.test.ts; route chat-conversation-states.test.ts 'a reply that failed partway (19p)'."
+    },
+    {
+      "id": "AC7",
+      "status": "needs-decision",
+      "evidence": "R6 is drawn on the route for a turn that narrated and ended on a finished tool call (chat-conversation-states.test.ts 'the empty answer, with Try again, and the rail has no footnote (R6)'), with its time in the row and no rail footnote. A turn of only tool calls has no assistant row, so it keeps the row 20h footnote; a turn whose last call errored or was refused keeps it too, because Chat cannot tell a refusal from a failure."
+    },
+    {
+      "id": "AC8",
+      "status": "met-on-branch",
+      "evidence": "Named interaction tests for the shared component (chat-turn-commands.test.ts, turn-commands.test.ts, turn-outcome.test.ts) and the real route (chat-conversation-states.test.ts, chat-conversation-stopped.test.ts), all green in focused-checks run 5. Cinder Button loading and disabled, the danger status token and dir=auto on the failure line; Discard, Continue and Retry stay gated by readOnly and discardableRun. Responsive layout, keyboard focus, reduced motion and RTL visuals are not verified on this host."
+    }
+  ]
+}
