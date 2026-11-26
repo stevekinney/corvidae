@@ -22,6 +22,7 @@
  * @module core/realm/revision-realm-registry
  */
 
+import type { CreateWorker } from '../../workers/pool.ts';
 import type { RevisionRealmPoolDiagnostics } from './revision-realm-diagnostics.ts';
 import {
   RevisionRealmPool,
@@ -34,6 +35,7 @@ import type { RevisionRealm } from './revision-realm.ts';
 
 export interface RevisionRealmConfig {
   readonly workerUrl: string | URL;
+  readonly createWorker: CreateWorker;
   readonly expectedWorkflowTypes: readonly string[];
   readonly expectedArtifactDigest?: string;
   /** Upper bound on realms concurrently warmed for this one `(name, revision)`. Defaults to {@link DEFAULT_REVISION_REALM_CONCURRENCY}. */
@@ -98,6 +100,7 @@ export class RevisionRealmRegistry {
         for (const listener of this.#stateListeners) listener(change);
       },
       workerUrl: config.workerUrl,
+      createWorker: config.createWorker,
       expectedWorkflowTypes: config.expectedWorkflowTypes,
       concurrency: config.concurrency ?? DEFAULT_REVISION_REALM_CONCURRENCY,
       ...(config.expectedArtifactDigest === undefined

@@ -16,6 +16,7 @@ import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-su
 
 import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { KEYS } from '../../storage/keys.ts';
 import { encode } from '../codec.ts';
 import { DevelopmentWarningEvent, ScheduleFiredEvent } from '../events.ts';
@@ -132,6 +133,7 @@ describe('ctx.services — worker mode rejection', () => {
       workflowExecutionMode: 'worker',
       workerExecution: {
         workerUrl: new URL('../../workers/test-browser-worker.ts', import.meta.url),
+        createWorker: bunWorkerFactory,
         poolSize: 1,
       },
     });

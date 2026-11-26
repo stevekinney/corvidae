@@ -1,0 +1,266 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { MessageChannel } from 'node:worker_threads';
+
+import { MemoryStorage } from '@lostgradient/storage';
+import { nodeWorkerFactory } from '../../node-host.ts';
+import { ActivityWorkerDispatcher } from '../../workers/activity-worker-dispatcher.ts';
+import {
+  createActivityWorkerEntryUrl,
+  revokeActivityWorkerEntryUrl,
+} from '../../workers/activity-worker-entry.ts';
+import { WorkerPool } from '../../workers/pool.ts';
+import { deriveWorkflowDefinitionRevision } from '../engine/definition-revision.ts';
+import { Engine } from '../engine/index.ts';
+import { workflowSource } from '../source/index.ts';
+import { activity, workflow, type WorkflowDefinition } from '../types.ts';
+import { NODE_RUNTIME_WORKFLOW_NAME } from './__fixtures__/node-runtime-activity-handler.fixture.ts';
+import { readNodeRuntimeRealmTestEnvironment } from './node-runtime-test-environment.ts';
+
+// The generated activity Blob imports this exported loop from this bundled test artifact.
+export { initializeActivityWorkerMessageLoop } from '../../workers/activity-worker-entry.ts';
+
+const echo = activity({
+  name: 'echo',
+  execute: async (input: unknown) => ({ activity: input }),
+});
+const throwActivity = activity({
+  name: 'throw',
+  execute: async () => {
+    throw new Error('node runtime child failure');
+  },
+});
+
+function realmDefinition(): WorkflowDefinition {
+  return workflow({ name: NODE_RUNTIME_WORKFLOW_NAME })
+    .activities({ echo, throw: throwActivity })
+    .execute(async function* () {
+      throw new Error('realm fixture must execute this workflow');
+    });
+}
+
+async function revisionFor(definition: WorkflowDefinition): Promise<string> {
+  return deriveWorkflowDefinitionRevision(definition);
+}
+
+async function runRealm(
+  transport: 'worker' | 'child-process',
+  workerUrl: string,
+  input: 'native' | 'fail',
+): Promise<void> {
+  const definition = realmDefinition();
+  const revision = await revisionFor(definition);
+  using engine = new Engine({
+    storage: new MemoryStorage(),
+    backgroundTasks: 'manual',
+    workflowExecutionMode: 'realm',
+    revisionRealmExecution: {
+      resolveRevisionRealmConfig: (_name, candidate) =>
+        candidate === revision
+          ? {
+              workerUrl,
+              createWorker: nodeWorkerFactory,
+              expectedWorkflowTypes: [NODE_RUNTIME_WORKFLOW_NAME],
+              transport,
+              maxRestarts: 0,
+            }
+          : undefined,
+    },
+  });
+  engine.registerSource(
+    workflowSource(
+      {
+        name: NODE_RUNTIME_WORKFLOW_NAME,
+        location: './sentinel.ts',
+        exportName: NODE_RUNTIME_WORKFLOW_NAME,
+        revision,
+      },
+      () => Promise.resolve({ [NODE_RUNTIME_WORKFLOW_NAME]: definition }),
+    ),
+  );
+  await engine.resolveWorkflowSource(NODE_RUNTIME_WORKFLOW_NAME, revision);
+  const active = await engine.workflows.getActive(NODE_RUNTIME_WORKFLOW_NAME);
+  const activation = await engine.workflows.activate(NODE_RUNTIME_WORKFLOW_NAME, revision, {
+    ...(active === null ? {} : { expectedGeneration: active.generation }),
+    policy: { requireExactRevision: false },
+  });
+  assert.equal(activation.applied, true);
+  const handle = await engine.start(NODE_RUNTIME_WORKFLOW_NAME, input);
+  if (input === 'fail') {
+    await assert.rejects(handle.result(), /node runtime child failure/u);
+    return;
+  }
+  assert.deepEqual(await handle.result(), { activity: 'native' });
+}
+
+void test('Node Engine executes one in-process activity workflow', async () => {
+  const definition = workflow({ name: 'node-runtime-in-process' })
+    .activities({ echo })
+    .execute(async function* (context, input: unknown) {
+      return yield* context.run(echo, input);
+    });
+  using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+  engine.register(definition);
+  const handle = await engine.start(definition.name, 'native');
+  assert.deepEqual(await handle.result(), {
+    activity: 'native',
+  });
+});
+
+void test('Node Engine executes one Worker realm activity workflow', async () => {
+  const { workerFixture } = readNodeRuntimeRealmTestEnvironment();
+  assert.ok(workerFixture);
+  await runRealm('worker', workerFixture, 'native');
+});
+
+void test('Node Engine executes and fails child-process realm activity workflows', async () => {
+  const { childFixture } = readNodeRuntimeRealmTestEnvironment();
+  assert.ok(childFixture);
+  await runRealm('child-process', childFixture, 'native');
+  await runRealm('child-process', childFixture, 'fail');
+});
+
+void test('Node worker factory reports a crashing module through its error event', async () => {
+  const worker = nodeWorkerFactory(
+    new URL('data:text/javascript,throw%20new%20Error(%22native%20worker%20crash%22)'),
+  );
+  try {
+    const message = await new Promise<string>((resolve) => {
+      worker.addEventListener('error', (event) => {
+        const message = Reflect.get(event, 'message');
+        if (typeof message === 'string') {
+          resolve(message);
+        }
+      });
+    });
+    assert.equal(message, 'native worker crash');
+  } finally {
+    await worker.terminate();
+  }
+});
+
+void test('Node worker factory runs a generated activity Blob entry', async () => {
+  const url = createActivityWorkerEntryUrl(
+    new Map([
+      [
+        'double',
+        (input: unknown) => {
+          if (input === 'fail') globalThis.process.exit(1);
+          return Number(input) * 2;
+        },
+      ],
+    ]),
+  );
+  try {
+    using pool = new WorkerPool({
+      concurrency: 1,
+      workerUrl: url,
+      createWorker: nodeWorkerFactory,
+    });
+    using dispatcher = new ActivityWorkerDispatcher(pool);
+    assert.deepEqual(
+      await dispatcher.execute({
+        operationId: 'generated-blob-failure',
+        activityName: 'double',
+        input: 'fail',
+        attempt: 1,
+      }),
+      {
+        operationId: 'generated-blob-failure',
+        status: 'failed',
+        error: 'Activity worker crashed: Node worker exited unexpectedly with code 1',
+      },
+    );
+    assert.deepEqual(
+      await dispatcher.execute({
+        operationId: 'generated-blob',
+        activityName: 'double',
+        input: 21,
+        attempt: 1,
+      }),
+      { operationId: 'generated-blob', status: 'completed', value: 42 },
+    );
+  } finally {
+    revokeActivityWorkerEntryUrl(url);
+  }
+});
+
+void test('Node worker factory forwards ArrayBuffer and MessagePort transfer lists', async () => {
+  const worker = nodeWorkerFactory(
+    new URL(
+      'data:text/javascript,self.onmessage%3Devent%3D%3Eevent.data.port.postMessage(event.data.buffer.byteLength)',
+    ),
+  );
+  const { port1, port2 } = new MessageChannel();
+  const buffer = new ArrayBuffer(8);
+  try {
+    const received = new Promise<number>((resolve) => port2.once('message', resolve));
+    worker.postMessage({ buffer, port: port1 }, [buffer, port1]);
+    assert.equal(buffer.byteLength, 0);
+    assert.equal(await received, 8);
+  } finally {
+    port2.close();
+    await worker.terminate();
+  }
+});
+
+void test('Node worker pool replaces an idle worker that exits through its control port', async () => {
+  const pool = new WorkerPool({
+    concurrency: 1,
+    workerUrl: new URL(
+      'data:text/javascript,self.onmessage%3Devent%3D%3E%7Bif(event.data.port)%7Bconst%20port%3Devent.data.port%3Bport.onmessage%3D()%3D%3Eprocess.exit(1)%3BpostMessage(%22ready%22)%3B%7Delse%20postMessage(event.data)%3B%7D',
+    ),
+    createWorker: nodeWorkerFactory,
+  });
+  const worker = await pool.acquire();
+  const { port1, port2 } = new MessageChannel();
+  try {
+    const ready = new Promise<void>((resolve) => {
+      worker.addEventListener('message', (event) => {
+        if (event instanceof MessageEvent && event.data === 'ready') resolve();
+      });
+    });
+    const closed = new Promise<void>((resolve) =>
+      worker.addEventListener('close', () => resolve()),
+    );
+    worker.postMessage({ port: port1 }, [port1]);
+    await ready;
+    pool.release(worker);
+    port2.postMessage('exit');
+    await closed;
+    const replacement = await pool.acquire();
+    assert.notStrictEqual(replacement, worker);
+    try {
+      const echoed = new Promise<unknown>((resolve) => {
+        replacement.addEventListener('message', (event) => {
+          if (event instanceof MessageEvent) resolve(event.data);
+        });
+      });
+      replacement.postMessage('replacement');
+      assert.equal(await echoed, 'replacement');
+    } finally {
+      pool.release(replacement);
+    }
+  } finally {
+    port2.close();
+    await pool[Symbol.asyncDispose]();
+  }
+});
+
+void test('Node worker factory reports one error before closing an unexpected exit', async () => {
+  const worker = nodeWorkerFactory(new URL('data:text/javascript,process.exit(1)'));
+  try {
+    const events: string[] = [];
+    const closed = new Promise<void>((resolve) => {
+      worker.addEventListener('error', (event) => {
+        const message = Reflect.get(event, 'message');
+        if (typeof message === 'string') events.push(message);
+      });
+      worker.addEventListener('close', () => resolve());
+    });
+    await closed;
+    assert.deepEqual(events, ['Node worker exited unexpectedly with code 1']);
+  } finally {
+    await worker.terminate();
+  }
+});

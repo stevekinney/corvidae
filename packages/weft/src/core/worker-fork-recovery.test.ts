@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { KEYS } from '../storage/keys.ts';
 import { deserializeCheckpoint } from './checkpoint/serialization.ts';
 import { Engine, ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING } from './engine.ts';
@@ -46,7 +47,12 @@ function createWorkerEngine(storage: MemoryStorage): Engine {
     onLog: logs.sink,
     workflowLogs: logs,
     workflowExecutionMode: 'worker',
-    workerExecution: { workerUrl, poolSize: 1, workflowTurnTimeoutMs: 30_000 },
+    workerExecution: {
+      workerUrl,
+      createWorker: bunWorkerFactory,
+      poolSize: 1,
+      workflowTurnTimeoutMs: 30_000,
+    },
   });
   // The bodies run in the worker; the host only needs the names and activities.
   for (const name of ['three-waits', 'effect-after-wait', 'versioned']) {

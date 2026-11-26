@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { Engine, ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING } from '../engine.ts';
 import { activity } from '../types/activity.ts';
 import { workflow } from '../types/workflow-function.ts';
@@ -43,7 +44,12 @@ function createWorkerEngine(storage = new MemoryStorage()): Engine {
     onLog: logs.sink,
     workflowLogs: logs,
     workflowExecutionMode: 'worker',
-    workerExecution: { workerUrl, poolSize: 1, workflowTurnTimeoutMs: 30_000 },
+    workerExecution: {
+      workerUrl,
+      createWorker: bunWorkerFactory,
+      poolSize: 1,
+      workflowTurnTimeoutMs: 30_000,
+    },
   });
   // The bodies run in the worker; the host only needs the names and activities.
   for (const name of ['step-basic', 'step-signal-resume', 'step-retry', 'step-version']) {

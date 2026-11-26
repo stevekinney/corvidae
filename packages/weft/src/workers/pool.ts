@@ -3,30 +3,55 @@
  *
  * `concurrency` sets the maximum number of Worker instances created; once this
  * limit is reached, `acquire()` calls queue until a worker is released.
- * `workerUrl` is the script URL passed to `new Worker()`.  Set `smol: true` on
+ * `workerUrl` is the script URL passed to the supplied factory. Set `smol: true` on
  * Bun to request a reduced-heap worker.
  *
  * @example
  * ```ts
  * import { WorkerPool, type WorkerPoolOptions } from '@lostgradient/weft';
+ * import { bunWorkerFactory } from '@lostgradient/weft/bun';
  *
  * const options: WorkerPoolOptions = {
  *   concurrency: 4,
  *   workerUrl: new URL('./activity-worker.ts', import.meta.url),
+ *   createWorker: bunWorkerFactory,
  *   smol: false,
  * };
  * using pool = new WorkerPool(options);
  * void pool;
  * ```
  */
+/** The Web Worker surface consumed by Weft's portable worker plumbing. */
+export interface WorkerLike {
+  postMessage(message: unknown, transfer?: Transferable[]): void;
+  terminate(): void | Promise<number>;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void;
+}
+
+export type CreateWorker = (
+  url: string | URL,
+  options?: WorkerOptions & { smol?: boolean },
+) => WorkerLike;
+
 export interface WorkerPoolOptions {
   concurrency: number;
   workerUrl: string | URL;
+  /** Host-owned worker constructor. Required so the portable root never selects a runtime. */
+  createWorker: CreateWorker;
   smol?: boolean;
 }
 
 type PendingWorkerRequest = {
-  resolve: (worker: Worker) => void;
+  resolve: (worker: WorkerLike) => void;
   reject: (error: Error) => void;
 };
 
@@ -43,10 +68,12 @@ type PendingWorkerRequest = {
  * @example
  * ```ts
  * import { WorkerPool } from '@lostgradient/weft';
+ * import { bunWorkerFactory } from '@lostgradient/weft/bun';
  *
  * await using pool = new WorkerPool({
  *   concurrency: 2,
  *   workerUrl: new URL('./worker.ts', import.meta.url),
+ *   createWorker: bunWorkerFactory,
  * });
  *
  * const worker = await pool.acquire();
@@ -56,12 +83,13 @@ type PendingWorkerRequest = {
  * ```
  */
 export class WorkerPool implements Disposable, AsyncDisposable {
-  #workers: Set<Worker>;
-  #available: Worker[];
+  #workers: Set<WorkerLike>;
+  #available: WorkerLike[];
   #queue: PendingWorkerRequest[];
-  #specificWorkerQueue: Map<Worker, PendingWorkerRequest[]>;
+  #specificWorkerQueue: Map<WorkerLike, PendingWorkerRequest[]>;
   #concurrency: number;
   #workerUrl: string | URL;
+  #createWorkerFactory: CreateWorker;
   #smol: boolean;
   #disposed: boolean;
   #asyncDisposeResolve: (() => void) | null;
@@ -73,13 +101,14 @@ export class WorkerPool implements Disposable, AsyncDisposable {
     this.#specificWorkerQueue = new Map();
     this.#concurrency = options.concurrency;
     this.#workerUrl = options.workerUrl;
+    this.#createWorkerFactory = options.createWorker;
     this.#smol = options.smol ?? false;
     this.#disposed = false;
     this.#asyncDisposeResolve = null;
   }
 
   /** Acquire a worker from the pool. Blocks if at capacity. */
-  async acquire(): Promise<Worker> {
+  async acquire(): Promise<WorkerLike> {
     if (this.#disposed) {
       throw new Error('WorkerPool has been disposed');
     }
@@ -97,7 +126,7 @@ export class WorkerPool implements Disposable, AsyncDisposable {
     }
 
     // Otherwise, queue the request and wait.
-    return new Promise<Worker>((resolve, reject) => {
+    return new Promise<WorkerLike>((resolve, reject) => {
       this.#queue.push({ resolve, reject });
     });
   }
@@ -109,7 +138,7 @@ export class WorkerPool implements Disposable, AsyncDisposable {
    * generator state for parked workflow execution without reserving unrelated
    * idle workers while the target worker is still busy.
    */
-  async acquireSpecificWorker(worker: Worker): Promise<Worker> {
+  async acquireSpecificWorker(worker: WorkerLike): Promise<WorkerLike> {
     if (this.#disposed) {
       throw new Error('WorkerPool has been disposed');
     }
@@ -124,7 +153,7 @@ export class WorkerPool implements Disposable, AsyncDisposable {
       return worker;
     }
 
-    return new Promise<Worker>((resolve, reject) => {
+    return new Promise<WorkerLike>((resolve, reject) => {
       const waiters = this.#specificWorkerQueue.get(worker) ?? [];
       waiters.push({ resolve, reject });
       this.#specificWorkerQueue.set(worker, waiters);
@@ -136,24 +165,14 @@ export class WorkerPool implements Disposable, AsyncDisposable {
    * set. Pending requests for that exact worker fail; generic waiters may get
    * a replacement worker if the pool still has capacity.
    */
-  discard(worker: Worker): void {
-    if (!this.#workers.has(worker)) {
-      return;
-    }
-
-    this.#workers.delete(worker);
-    this.#removeAvailableWorker(worker);
-    this.#rejectSpecificWorkerWaiters(
-      worker,
-      new Error('Worker was discarded from this WorkerPool'),
-    );
-    worker.terminate();
-    this.#drainGenericQueue();
-    this.#checkAsyncDispose();
+  discard(worker: WorkerLike): void {
+    if (!this.#removeWorker(worker, new Error('Worker was discarded from this WorkerPool'))) return;
+    void worker.terminate();
   }
 
   /** Release a worker back to the pool. */
-  release(worker: Worker): void {
+  release(worker: WorkerLike): void {
+    if (!this.#workers.has(worker)) return;
     // During graceful shutdown, accept releases so we can track when all
     // in-flight workers have been returned, then terminate.
     if (this.#disposed && !this.#asyncDisposeResolve) {
@@ -239,20 +258,32 @@ export class WorkerPool implements Disposable, AsyncDisposable {
     });
   }
 
-  #createWorker(): Worker {
+  #createWorker(): WorkerLike {
     const options: WorkerOptions & { smol?: boolean } = {};
     if (this.#smol) {
       options.smol = true;
     }
-    const worker = new Worker(this.#workerUrl, options);
+    const worker = this.#createWorkerFactory(this.#workerUrl, options);
     this.#workers.add(worker);
+    worker.addEventListener('close', () => {
+      this.#removeWorker(worker, new Error('Worker closed before it was released'));
+    });
     return worker;
+  }
+
+  #removeWorker(worker: WorkerLike, error: Error): boolean {
+    if (!this.#workers.delete(worker)) return false;
+    this.#removeAvailableWorker(worker);
+    this.#rejectSpecificWorkerWaiters(worker, error);
+    this.#drainGenericQueue();
+    this.#checkAsyncDispose();
+    return true;
   }
 
   #terminateAll(): void {
     this.#rejectAllWaiters(new Error('WorkerPool has been disposed'));
     for (const worker of this.#workers) {
-      worker.terminate();
+      void worker.terminate();
     }
     this.#workers.clear();
     this.#available.length = 0;
@@ -260,14 +291,11 @@ export class WorkerPool implements Disposable, AsyncDisposable {
     this.#specificWorkerQueue.clear();
   }
 
-  #removeAvailableWorker(worker: Worker): void {
-    const availableIndex = this.#available.indexOf(worker);
-    if (availableIndex >= 0) {
-      this.#available.splice(availableIndex, 1);
-    }
+  #removeAvailableWorker(worker: WorkerLike): void {
+    this.#available = this.#available.filter((available) => available !== worker);
   }
 
-  #rejectSpecificWorkerWaiters(worker: Worker, error: Error): void {
+  #rejectSpecificWorkerWaiters(worker: WorkerLike, error: Error): void {
     const waiters = this.#specificWorkerQueue.get(worker);
     if (!waiters) {
       return;

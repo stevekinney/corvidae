@@ -12,7 +12,7 @@
  *
  * Every realm this pool warms is also fixed to one `transport`: `'worker'`
  * (a real Bun `Worker`, the default — unchanged from before COR-246) or
- * `'child-process'` (a real `Bun.spawn` IPC child process). `workerUrl`
+ * `'child-process'` (a real child-process IPC process). `workerUrl`
  * doubles as the child-process transport's bootstrap script path — both
  * transports speak the identical realm protocol over a different wire, so
  * one field naming "the bootstrap this pool spawns" is enough; see
@@ -33,37 +33,20 @@
  * @module core/realm/revision-realm-pool
  */
 
-import type { ChildProcessRealm, ChildProcessRealmOptions } from './child-process-realm.ts';
+import type { CreateWorker } from '../../workers/pool.ts';
+import { createChildProcessRealm, type ChildProcessRealmOptions } from './child-process-realm.ts';
 import type { RealmLifecycleState } from './realm-lifecycle.ts';
 import type { RevisionRealmDiagnosticsEntry } from './revision-realm-diagnostics.ts';
 import type { RevisionRealm } from './revision-realm.ts';
 import { WorkerRealm, type WorkerRealmOptions } from './worker-realm.ts';
 
 /**
- * `child-process-realm.ts` uses `Bun.spawn` and `node:url`, neither of which
- * exists in a browser -- and `RevisionRealmPool` is reachable from this
- * package's root `Engine` export, which the root's own browser-bundle
- * portability gate (`src/root-testing-surface.test.ts`, COR-1192) builds and
- * scans. A STATIC `import` of `child-process-realm.ts` here would bundle
- * that code into the browser build regardless of whether `transport:
- * 'child-process'` is ever actually selected at runtime. Loading it through
- * `import()` with a specifier held in a variable (not a string literal
- * `import()` call, which Bun's bundler still resolves and inlines the same
- * way a static `import` does -- confirmed directly against Bun 1.4.2)
- * is what keeps the bundler from tracing into it at all: the browser build
- * emits an unresolved runtime `import(...)` call instead of inlining the
- * module, so `Bun.spawn` never appears in that bundle's output. Type-only
- * imports above are erased entirely and carry no such risk.
+ * `RevisionRealmPool` is reachable from the package root's `Engine` export,
+ * including its browser bundle. `child-process-realm.ts` therefore keeps its
+ * class portable and defers Node's IPC and URL builtins to its async factory.
+ * This static import is safe: selecting the child-process transport is what
+ * loads those builtin operations, never importing the root itself.
  */
-const CHILD_PROCESS_REALM_MODULE_SPECIFIER = './child-process-realm.ts';
-let cachedChildProcessRealmConstructor: Promise<typeof ChildProcessRealm> | undefined;
-
-function loadChildProcessRealmConstructor(): Promise<typeof ChildProcessRealm> {
-  cachedChildProcessRealmConstructor ??= import(CHILD_PROCESS_REALM_MODULE_SPECIFIER).then(
-    (module_: { ChildProcessRealm: typeof ChildProcessRealm }) => module_.ChildProcessRealm,
-  );
-  return cachedChildProcessRealmConstructor;
-}
 
 /** Which real transport a `RevisionRealmPool` spawns realms over. Omitted (or `'worker'`) is the unchanged default — see the module doc. */
 export type RevisionRealmTransport = 'worker' | 'child-process';
@@ -82,6 +65,7 @@ export interface RevisionRealmPoolOptions {
   /** Called synchronously after each lifecycle transition of every realm this pool warms. Not called for a realm's initial `warming` state. */
   readonly onRealmStateChanged?: (change: RevisionRealmStateChange) => void;
   readonly workerUrl: string | URL;
+  readonly createWorker: CreateWorker;
   readonly expectedWorkflowTypes: readonly string[];
   readonly expectedArtifactDigest?: string;
   /** Upper bound on realms concurrently warmed (idle or active) for this revision. */
@@ -354,8 +338,7 @@ export class RevisionRealmPool {
     }
     this.#warmingReservations += 1;
     try {
-      const ChildProcessRealmConstructor = await loadChildProcessRealmConstructor();
-      const realm = new ChildProcessRealmConstructor(this.#buildChildProcessRealmOptions());
+      const realm = await createChildProcessRealm(this.#buildChildProcessRealmOptions());
       this.#realms.add(realm);
       this.#reportTransitions(realm);
       return realm;
@@ -408,6 +391,7 @@ export class RevisionRealmPool {
   #buildWorkerRealmOptions(): WorkerRealmOptions {
     return {
       workerUrl: this.#options.workerUrl,
+      createWorker: this.#options.createWorker,
       ...this.#sharedRealmOptions(),
       ...(this.#options.smol === undefined ? {} : { smol: this.#options.smol }),
     };
