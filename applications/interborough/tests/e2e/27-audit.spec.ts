@@ -126,11 +126,15 @@ test.describe('/health/audit compact controls on touch', () => {
         await events(page)
           .first()
           .evaluate((row) => {
+            const scrollBox = row.closest('.cinder-table-scroll');
+            if (scrollBox === null) throw new Error('Audit event has no table scroll viewport');
             const box = row.getBoundingClientRect();
-            const hit = document.elementFromPoint(
-              box.left + box.width / 2,
-              box.top + box.height / 2,
-            );
+            const clip = scrollBox.getBoundingClientRect();
+            // The cells can be wider than the viewport. Hit the middle of the visible row.
+            const left = Math.max(box.left, clip.left, 0);
+            const right = Math.min(box.right, clip.right, innerWidth);
+            if (right <= left) return false;
+            const hit = document.elementFromPoint((left + right) / 2, box.top + box.height / 2);
             return hit !== null && row.contains(hit);
           }),
       ).toBe(true);
@@ -176,16 +180,19 @@ test('/health/audit keeps a readable desktop measure', async ({ page }) => {
   const exportButton = page.getByRole('button', { name: AUDIT_COPY.exportAction });
   await expect(table).toBeVisible();
   await expect(detail).toBeVisible();
-  const { area, tableBox, detailBox, controlsBox, exportBox } = await readBoxes(page, {
+  await expect(audit.locator('.ib-audit__layout')).toHaveAttribute('data-cinder-layout', 'split');
+  const tableViewport = audit.locator('.cinder-table-scroll').filter({ has: table });
+  await expect(tableViewport).toHaveCSS('overflow-x', 'auto');
+  const { area, tableViewportBox, detailBox, controlsBox, exportBox } = await readBoxes(page, {
     area: audit,
-    tableBox: table,
+    tableViewportBox: tableViewport,
     detailBox: detail,
     controlsBox: controls,
     exportBox: exportButton,
   });
   expect(area.width).toBeLessThanOrEqual(960);
-  expect(detailBox.x).toBeGreaterThanOrEqual(tableBox.x + tableBox.width);
-  for (const box of [tableBox, detailBox, controlsBox, exportBox]) {
+  expect(detailBox.x).toBeGreaterThanOrEqual(tableViewportBox.x + tableViewportBox.width);
+  for (const box of [tableViewportBox, detailBox, controlsBox, exportBox]) {
     expect(box.x).toBeGreaterThanOrEqual(area.x);
     expect(box.x + box.width).toBeLessThanOrEqual(area.x + area.width + 1);
   }
