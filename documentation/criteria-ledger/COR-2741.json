@@ -1,34 +1,39 @@
 {
   "issue": "COR-2741",
   "branch": "codex/cor-2741-workers-npm",
-  "checkedAt": "3d2dabf974bf409cfa4ba45b40c587cec59581bd",
+  "checkedAt": "27c7728afcac000604946230d4bddb90fee60de8",
   "briefVersion": "dfa0abc806b2",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "timingSafeEqualText encodes UTF-8, rejects unequal byte lengths, and delegates equal-length input to timingSafeEqual; hash.test.ts covers byte-length and same-length mismatches."
+      "evidence": "cryptography exports and tests timingSafeEqualText with UTF-8 byte-length and equal-length mismatch coverage."
     },
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "The listed secret comparisons and SHA-256/PKCE digests use cryptography helpers; both required git grep commands print nothing."
+      "evidence": "listed secret comparisons and SHA-256/PKCE digests use cryptography helpers."
     },
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "MCP test and test:slow plus Bureau, Backchannel, Weft, and Bungalow package tests pass with OAuth behavior and persisted digest representations preserved."
+      "evidence": "focused package and integration verification preserves OAuth behavior and digest representations."
     },
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "workerd.integration.test.ts exercises synchronous and asynchronous hash helpers, HMAC, both equality results, and incremental versus one-shot known vectors through withWorker."
+      "evidence": "workerd integration vectors cover exports, equality values, and incremental hashing."
     },
     {
       "id": "AC5",
       "status": "met-on-branch",
-      "evidence": "node-runtime.integration.test.ts runs the same vectors through native Node 22.23.4; package test ignores integration files and test:slow selects them."
+      "evidence": "native Node 22 integration vectors pass and the slow lane selects integration files."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "audit spec waits for the visible selected active option after reopen and Any action after Home before Enter; both compact widths preserve label and URL assertions. Persistent focused checks passed."
     }
   ]
 }
