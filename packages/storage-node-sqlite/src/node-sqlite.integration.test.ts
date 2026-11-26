@@ -385,7 +385,11 @@ const scenario3 = await outcomeOf(async () => {
       path('./node-sqlite-durability.integration.ts'),
       path('./test/bun-test-shim.integration.ts'),
     ],
-    { env: environment, shim: true },
+    {
+      env: environment,
+      nodeArguments: ['--js-explicit-resource-management'],
+      shim: true,
+    },
   );
   expect(child.exitCode, describeChildFailure(child.stdout, child.stderr)).toBe(0);
   // 23 integration cases, 25 contract cases, 7 durability cases, and the shim's own 5.

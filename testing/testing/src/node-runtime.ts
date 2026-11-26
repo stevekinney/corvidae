@@ -20,6 +20,8 @@ const NODE_IDENTITY = 'process.stdout.write(process.versions.bun ? "bun" : proce
 export interface NodeTestOptions {
   readonly bundle?: boolean;
   readonly env?: Record<string, string | undefined>;
+  /** Explicit Node CLI arguments required by a test fixture's JavaScript syntax. */
+  readonly nodeArguments?: readonly string[];
   readonly shim?: boolean;
 }
 
@@ -131,7 +133,7 @@ export async function runNodeTests(
   const version = await nodeVersion(binary);
   const bundle = options.bundle === true ? await bundledFiles(files) : undefined;
   try {
-    const command = [binary];
+    const command = [binary, ...(options.nodeArguments ?? [])];
     if (options.shim === true)
       command.push('--import', new URL('./node-runtime-register.ts', import.meta.url).pathname);
     command.push('--test', '--test-reporter=tap', ...(bundle?.files ?? files));
