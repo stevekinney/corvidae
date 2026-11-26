@@ -16,7 +16,11 @@ import { compareStrings } from '../src/internals.ts';
 import { join } from 'node:path';
 
 import { renderOperationBehaviors } from './operation-behaviors.ts';
-import { renderAliasDeclarations, selectAliases } from './operation-client-aliases.ts';
+import {
+  referencedRootAliases,
+  renderAliasDeclarations,
+  selectAliases,
+} from './operation-client-aliases.ts';
 import {
   GENERATED_HEADER,
   operationDomains,
@@ -148,6 +152,10 @@ export type OperationClientOptions = {
   readonly typeOnlyClient?: boolean | undefined;
   /** Exclude command bindings when a consumer supplies its own actions. */
   readonly svelteCommands?: boolean | undefined;
+  /** Omit generic provider exports when a consumer supplies its own provider. */
+  readonly svelteProvider?: boolean | undefined;
+  /** Export only shared types directly referenced by operation entries. */
+  readonly referencedSharedTypesOnly?: boolean | undefined;
   /** Emit transport-injected and Fetch entries alongside the existing client. */
   readonly portableEntries?: boolean | undefined;
   /** Emit bindings for declared behavior using the optional Svelte runtime. */
@@ -265,6 +273,16 @@ export async function createOperationClientSources(
       .toSorted(([left], [right]) => compareStrings(left, right))
       .map(([name, node]) => `type ${name} = ${renderNode(node, allAliases)};`),
   ];
+  const referencedAliases = options.referencedSharedTypesOnly
+    ? referencedRootAliases(
+        parsedRoots.map((parsed) => parsed.root),
+        allAliases,
+      )
+    : undefined;
+  const declarationNames = [
+    ...[...aliasNameByKey.values()].toSorted(compareStrings),
+    ...[...definitions.keys()].toSorted(compareStrings),
+  ];
 
   const sources = new Map<string, string>();
   const includes = (entry: 'client' | 'portable' | 'fetch' | 'behaviors' | 'svelte') =>
@@ -278,7 +296,7 @@ export async function createOperationClientSources(
   if (aliasDeclarations.length)
     sources.set(
       'shared-operation-types.generated.ts',
-      `${GENERATED_HEADER}\n${aliasDeclarations.map((declaration) => `export ${declaration}`).join('\n')}\n`,
+      `${GENERATED_HEADER}\n${aliasDeclarations.map((declaration, index) => `${referencedAliases === undefined || referencedAliases.has(declarationNames[index]!) ? 'export ' : ''}${declaration}`).join('\n')}\n`,
     );
 
   if (subscriptionOperations.length)
@@ -380,6 +398,7 @@ export function ${options.factoryName}WithFetch(connection: JsonRpcHttpConnectio
         outputFile,
         options.serverName,
         options.svelteCommands,
+        options.svelteProvider,
       ),
     );
   }

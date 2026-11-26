@@ -318,6 +318,7 @@ it('selects deterministic client entries for the three consumer shapes', async (
       entries: ['client', 'portable', 'svelte'] as const,
       portableEntries: true,
       svelteCommands: false,
+      svelteProvider: false,
     },
   ]) {
     const configured = fixtureOptions({ ...options, svelte: true, typeOnlyClient: true });
@@ -332,9 +333,11 @@ it('selects deterministic client entries for the three consumer shapes', async (
     expect(first.has('portable-operation-client.generated.ts')).toBe(
       options.serverName === 'Reviews',
     );
-    if (options.serverName === 'Reviews')
+    if (options.serverName === 'Reviews') {
       expect(first.get('operation-client.svelte.ts')).not.toContain('useProbeJobsCancel');
-    else expect(first.get('operation-client.svelte.ts')).toContain('useProbeJobsCancel');
+      expect(first.get('operation-client.svelte.ts')).not.toContain('ReviewsProvider');
+      expect(first.get('operation-client.svelte.ts')).not.toContain('getReviewsHost');
+    } else expect(first.get('operation-client.svelte.ts')).toContain('useProbeJobsCancel');
   }
 });
 

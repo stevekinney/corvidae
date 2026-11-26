@@ -6,8 +6,6 @@ import {
 } from '@lostgradient/backchannel-svelte';
 import type { ClientOperationTypes } from './operation-client.generated.ts';
 
-export { getCatalogHost as getReviewsHost } from '@lostgradient/backchannel-svelte';
-export { default as ReviewsProvider } from '@lostgradient/backchannel-svelte/provider';
 export function useBureauReviewsGet(
   host: CatalogHost,
   input: () => ClientOperationTypes['bureau.reviews.get']['input'],

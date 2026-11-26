@@ -32,6 +32,27 @@ export type AliasSelection = {
   readonly nodeByKey: ReadonlyMap<string, TypeNode>;
 };
 
+/** Names referenced from operation roots after alias substitution. */
+export function referencedRootAliases(
+  roots: readonly TypeNode[],
+  aliases: ReadonlyMap<string, string>,
+): Set<string> {
+  const referenced = new Set<string>();
+  const visit = (node: TypeNode): void => {
+    const alias = aliases.get(canonicalKey(node));
+    if (alias !== undefined) {
+      referenced.add(alias);
+      return;
+    }
+    if (node.kind === 'array') visit(node.element);
+    else if (node.kind === 'record' && node.value !== undefined) visit(node.value);
+    else if (node.kind === 'union') for (const member of node.members) visit(member);
+    else if (node.kind === 'object') for (const field of node.fields) visit(field.value);
+  };
+  for (const root of roots) visit(root);
+  return referenced;
+}
+
 /**
  * Select which structural shapes to hoist into aliases. Prunes to a fixed point
  * so that every surviving alias is referenced at least twice across the emitted

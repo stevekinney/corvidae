@@ -89,6 +89,8 @@ export async function createReviewsClientSources(): Promise<ReadonlyMap<string, 
       entries: ['client', 'portable', 'svelte'],
       typeOnlyClient: true,
       svelteCommands: false,
+      svelteProvider: false,
+      referencedSharedTypesOnly: true,
       format: async (contents, filePath) =>
         format(contents, { ...(await resolveConfig(filePath)), filepath: filePath }),
     },

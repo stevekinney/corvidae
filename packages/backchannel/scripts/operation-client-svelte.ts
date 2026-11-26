@@ -8,6 +8,7 @@ export function svelteClientSource(
   outputFile: string,
   serverName: string,
   commands = true,
+  providerExports = true,
 ): string {
   const usedNames = new Set<string>();
   const declaredReads = operations
@@ -62,8 +63,7 @@ export function svelteClientSource(
 import { createReactiveRead, ${commands ? 'createCommand, ' : ''}${operations.some((operation) => operation.behavior?.kind === 'read' && operation.behavior.pagination) ? 'createPagination, ' : ''}${streams.length ? 'createSubscription, ' : ''}type CatalogHost } from '@lostgradient/backchannel-svelte';
 import type { ClientOperationTypes } from './${outputFile}';
 ${streams.length ? "import type { SubscriptionOperationTypes } from './subscription-operations.generated.ts';" : ''}
-export { default as ${provider}Provider } from '@lostgradient/backchannel-svelte/provider';
-export { getCatalogHost as get${provider}Host } from '@lostgradient/backchannel-svelte';
+${providerExports ? `export { default as ${provider}Provider } from '@lostgradient/backchannel-svelte/provider';\nexport { getCatalogHost as get${provider}Host } from '@lostgradient/backchannel-svelte';` : ''}
 ${[...bindings, ...streams].join('\n\n')}
 `;
 }
