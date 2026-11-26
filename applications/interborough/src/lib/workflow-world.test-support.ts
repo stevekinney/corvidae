@@ -1022,6 +1022,12 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
   };
 
   const weftHandlers: Record<string, (params: Record<string, unknown>) => unknown> = {
+    'weft.schedules.get': (params) => {
+      const schedule = findSchedule(String(params['scheduleId']));
+      if (schedule === undefined)
+        throw workflowFaults.notFound(`schedule ${String(params['scheduleId'])}`);
+      return schedule;
+    },
     'weft.schedules.list': (params) => {
       if (world.failSchedules) throw workflowFaults.unavailable();
       const items = world.schedules.filter(
@@ -1065,7 +1071,12 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       // A page is `limit` runs from `offset`, and the total counts every match, as the engine does.
       const offset = typeof params['offset'] === 'number' ? params['offset'] : 0;
       const limit = typeof params['limit'] === 'number' ? params['limit'] : matching.length;
-      return { items: matching.slice(offset, offset + limit), total: matching.length };
+      return {
+        items: matching.slice(offset, offset + limit).map((run) => ({ version: '1', ...run })),
+        total: matching.length,
+        offset,
+        limit,
+      };
     },
     // The runs counted by the one dimension asked for (`type` or `status`), among those whose status
     // the filter names, as the engine counts them.

@@ -463,6 +463,7 @@
               onValueChange={(value) => go({ action: value as AuditDraft['action'] })}
             />
             <SearchField
+              compactTouch
               aria-label={copy.textLabel}
               placeholder={copy.textPlaceholder}
               class="ib-audit__search"
@@ -705,11 +706,15 @@
     justify-content: flex-end;
   }
 
-  /* On a narrow page each control takes its own row. */
+  /* Two controls share each row on a phone, leaving the first event in view. */
   @container (max-width: 39.99rem) {
+    .ib-audit__filters {
+      flex-basis: 100%;
+    }
+
     .ib-audit__filters > :global(.ib-audit__select),
     .ib-audit__filters > :global(.ib-audit__search) {
-      flex: 1 1 100%;
+      flex: 1 1 calc(50% - var(--cinder-space-1-5));
     }
   }
 

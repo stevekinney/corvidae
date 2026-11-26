@@ -37,6 +37,16 @@
     inline-size: 100%;
   }
 
+  .cinder-tabs__collapse .cinder-select {
+    min-block-size: var(--cinder-touch-target-min);
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-tabs__collapse button[data-cinder-compact-touch] {
+      min-block-size: var(--_cinder-painted-height-md);
+    }
+  }
+
   /* ----------------------------------------
  * Tab list
  * ---------------------------------------- */

@@ -71,7 +71,7 @@ test.describe('compact audit controls on touch', () => {
     test(`keeps compact faces with 44px interactive regions at ${String(width)}px`, async ({
       page,
     }) => {
-      await page.setViewportSize({ width, height: 900 });
+      await page.setViewportSize({ width, height: width === 320 ? 640 : 667 });
       await page.goto('/health/audit');
       await expect(events(page).first()).toBeVisible();
       for (const label of [
@@ -98,17 +98,68 @@ test.describe('compact audit controls on touch', () => {
         expect(geometry.target).toBeGreaterThanOrEqual(44);
         expect(geometry.reaches).toBe(true);
       }
+      const search = page.getByRole('searchbox', { name: AUDIT_COPY.textLabel });
+      const searchFace = page.locator('.ib-audit__search');
+      const searchGeometry = await searchFace.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const hit = getComputedStyle(element, '::before');
+        return {
+          x: bounds.left + bounds.width / 2,
+          y: bounds.top - 5,
+          height: bounds.height,
+          target: bounds.height - Number.parseFloat(hit.top) - Number.parseFloat(hit.bottom),
+          reaches:
+            document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top - 5) === element,
+        };
+      });
+      expect(searchGeometry.height).toBeGreaterThanOrEqual(31);
+      expect(searchGeometry.height).toBeLessThanOrEqual(33);
+      expect(searchGeometry.target).toBeGreaterThanOrEqual(44);
+      expect(searchGeometry.reaches).toBe(true);
+      const { firstEvent, navigation } = await readBoxes(page, {
+        firstEvent: events(page).first(),
+        navigation: page.locator('nav.weft-shell-tab-bar'),
+      });
+      expect(firstEvent.y).toBeGreaterThanOrEqual(0);
+      expect(firstEvent.y + firstEvent.height).toBeLessThanOrEqual(navigation.y);
+      expect(
+        await events(page)
+          .first()
+          .evaluate((row) => {
+            const box = row.getBoundingClientRect();
+            const hit = document.elementFromPoint(
+              box.left + box.width / 2,
+              box.top + box.height / 2,
+            );
+            return hit !== null && row.contains(hit);
+          }),
+      ).toBe(true);
       await captureForDesignReview(page, {
         route: '/health/audit',
         state: `compact touch controls at ${String(width)} pixels`,
         source: '27-audit.spec.ts',
         ready: () => expect(events(page).first()).toBeVisible(),
       });
+      await page.mouse.click(searchGeometry.x, searchGeometry.y);
+      await expect(search).toBeFocused();
+      await page.keyboard.type('probe');
+      await expect(search).toHaveValue('probe');
+      await search.fill('');
       await page.getByRole('combobox', { name: AUDIT_COPY.actionLabel, exact: true }).focus();
       await page.keyboard.press('ArrowDown');
-      await expect(page.getByRole('listbox')).toBeVisible();
+      await expect(
+        page.getByRole('combobox', { name: AUDIT_COPY.actionLabel, exact: true }),
+      ).toHaveAttribute('aria-expanded', 'true');
+      await expect(page.getByRole('option', { name: 'Started', exact: true })).toBeVisible();
       await page.getByRole('option', { name: 'Started', exact: true }).click();
       await expect(page).toHaveURL(/action=started/);
+      const action = page.getByRole('combobox', { name: AUDIT_COPY.actionLabel, exact: true });
+      await action.focus();
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('Home');
+      await page.keyboard.press('Enter');
+      await expect(action).toHaveText('Any action');
+      await expect(page).not.toHaveURL(/action=/);
     });
   }
 });

@@ -65,7 +65,7 @@ export async function loadRecentActivity(read: ActivityRead): Promise<RecentActi
   let query: AuditReader;
   if (read.queryAudit === undefined) {
     const client = read.client;
-    if (client === undefined) throw new Error('Recent activity requires a Bureau client.');
+    if (client === undefined) throw new Error('Recent activity requires a client.');
     query = (...args) => queryAudit(client, ...args);
   } else {
     query = read.queryAudit;
