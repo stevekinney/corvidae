@@ -1,0 +1,39 @@
+{
+  "issue": "COR-2739",
+  "branch": "codex/cor-2739-workers-npm",
+  "checkedAt": "3ab38ae1f13c40d765071d4f1c401b0ce9f2dd70",
+  "briefVersion": "cbf8f2a20f0b",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Shared node-runtime export, resolver, runner, and shim added."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Bungalow, Bureau, and storage migrate to the shared runner; local resolvers and shim removed."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "node-runtime.integration.test.ts covers passing, failing, and bundled extensionless fixtures."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Testing, storage-node-sqlite, and Bungalow slow lanes pass with Node v22.23.4; storage explicitly enables resource management syntax."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "turbo test:slow hashes CORVIDAE_NODE_BINARY and task-cache test passed."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "Test lane documentation added."
+    }
+  ]
+}
