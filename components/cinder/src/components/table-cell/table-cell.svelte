@@ -34,6 +34,12 @@
   let columnPosition = $state(tryGetTableRowColumnsContext()?.claimColumn() ?? -1);
   const spansColumns = $derived(Number(rest.colspan ?? 1) > 1);
   const sizing = $derived(spansColumns ? undefined : tableContext?.columnSizing?.(columnPosition));
+  // A `content` cell never wraps, so a value longer than its column's cap (half the table) is cut
+  // the way a `truncate` cell is: an ellipsis, and the whole value in a tooltip. Flat card rows
+  // keep their own layout.
+  const cutsAtCap = $derived(sizing === 'content' && tableContext?.stackCard !== true);
+  // A `fill` cell holds prose, held to a readable measure.
+  const holdsProse = $derived(sizing === 'fill' && tableContext?.stackCard !== true);
   const placeColumn: Attachment<HTMLElement> = (cell) => {
     if (cell instanceof HTMLTableCellElement) columnPosition = cell.cellIndex;
   };
@@ -93,7 +99,7 @@
 <svelte:element
   this={as}
   {...rest}
-  title={truncate ? undefined : title}
+  title={truncate || cutsAtCap ? undefined : title}
   scope={as === 'th' ? 'row' : undefined}
   class={classNames('cinder-table__cell', className)}
   data-cinder-align={align}
@@ -103,7 +109,7 @@
   data-cinder-sizing={sizing}
   {@attach placeColumn}
 >
-  {#if truncate}
+  {#if truncate || cutsAtCap}
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the text is cut, so focusing it opens the tooltip with the whole text. -->
     <span
       class="cinder-table__cell-text"
@@ -127,6 +133,8 @@
         text={title ?? titleText ?? ''}
         triggerRef={titleCut.trigger}
       />{/if}
+  {:else if holdsProse}
+    <span class="cinder-table__cell-prose">{@render children?.()}</span>
   {:else}
     {@render children?.()}
   {/if}{#if detail}<span class="cinder-table__cell-detail">{@render detail()}</span>{/if}

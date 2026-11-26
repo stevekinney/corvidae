@@ -26,10 +26,18 @@ type Tint = {
 };
 
 async function open(page: Page, width: number, colorScheme: 'light' | 'dark'): Promise<void> {
+  // The fixture host takes its theme from storage, not from the emulated media query.
+  await page.addInitScript(
+    (theme) => localStorage.setItem('browser-fixture-theme', theme),
+    colorScheme,
+  );
   await page.emulateMedia({ colorScheme });
   await page.setViewportSize({ width, height: 900 });
   await page.goto(fixtureRoute('stacked-rows-leading-edge'), { waitUntil: 'load' });
   await expect(page.locator('.cinder-table[data-cinder-stack-card]')).toBeVisible();
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe(
+    colorScheme,
+  );
 }
 
 /** Left edge of the first glyph of `selector`'s text, read from a Range over its text. */
@@ -134,6 +142,27 @@ for (const width of [375, 1280]) {
             '[data-cinder-stack-title]',
           ),
         );
+      });
+
+      test('a focused linked stacked row draws its ring inside the tint, where nothing clips it', async ({
+        page,
+      }) => {
+        await open(page, width, colorScheme);
+        const link = page.locator('[data-testid="table"] tbody a');
+        await link.focus();
+        await page.keyboard.press('Shift+Tab');
+        await page.keyboard.press('Tab');
+        await expect(link).toBeFocused();
+        const linkedRow = '[data-testid="table"] tbody tr:has(a)';
+        const ring = await page.evaluate(
+          (query) => getComputedStyle(document.querySelector(query)!, '::after').boxShadow,
+          linkedRow,
+        );
+        // An inset ring lies inside the tint's box, which the clip check below proves is whole.
+        expect(ring).toContain('inset');
+        const measured = await tint(page, linkedRow, 'tr', '[data-cinder-stack-title]');
+        expect(measured.text - measured.left).toBeGreaterThanOrEqual(11);
+        expect(measured.clippedBy).toEqual([]);
       });
 
       test('a hovered linked default list row draws its whole tint at least 11px before its term', async ({

@@ -459,12 +459,23 @@
     overflow-wrap: anywhere;
   }
 
+  /* A truncating cell outside a content column asks for no width, then fills its column. A content
+   * cell's text keeps its width, so the column is as wide as its value up to the cap, where the
+   * fit rule above (`max-inline-size: 100%`) ends it in an ellipsis. */
   .cinder-table[data-cinder-fit]:not([data-cinder-stacked]):has(
       > .cinder-table__header [data-cinder-sizing]
     )
+    .cinder-table__cell:not([data-cinder-sizing='content'])
     .cinder-table__cell-text {
     inline-size: 0;
     min-inline-size: 100%;
+  }
+
+  /* Prose in a fill column keeps a readable measure; the rest of the column is the ragged end of its
+   * lines, inside the fill cell, never width taken from another column. */
+  .cinder-table[data-cinder-fit]:not([data-cinder-stacked]) .cinder-table__cell-prose {
+    display: block;
+    max-inline-size: var(--cinder-content-width-prose);
   }
 
   /* ----------------------------------------
@@ -993,8 +1004,10 @@
   .cinder-table[data-cinder-stack-card]
     .cinder-table__body
     .cinder-table__row:has(.cinder-table__cell[data-cinder-stack-title] a:focus-visible)::after {
+    /* Inset, inside the tint's shape: the scroll box clips at the tint's edges, so an outset ring
+     * would lose its sides. */
     outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
   }
 
   @media (forced-colors: active) {

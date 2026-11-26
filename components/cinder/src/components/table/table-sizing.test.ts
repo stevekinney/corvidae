@@ -85,9 +85,31 @@ describe('Table column sizing', () => {
     // A truncating cell asks for no width, then fills its column and ends in an ellipsis.
     const truncated = declarationsFor(
       css,
-      '.cinder-table[data-cinder-fit]:not([data-cinder-stacked]):has( > .cinder-table__header [data-cinder-sizing] ) .cinder-table__cell-text',
+      ".cinder-table[data-cinder-fit]:not([data-cinder-stacked]):has( > .cinder-table__header [data-cinder-sizing] ) .cinder-table__cell:not([data-cinder-sizing='content']) .cinder-table__cell-text",
     );
     expect(truncated.get('inline-size')).toBe('0');
     expect(truncated.get('min-inline-size')).toBe('100%');
+    // Prose in a fill column keeps the readable measure.
+    expect(
+      declarationsFor(
+        css,
+        '.cinder-table[data-cinder-fit]:not([data-cinder-stacked]) .cinder-table__cell-prose',
+      ).get('max-inline-size'),
+    ).toBe('var(--cinder-content-width-prose)');
+  });
+
+  test('a content cell cuts a long value with an ellipsis, and a fill cell holds its prose to a measure', () => {
+    const { container } = render(SizingFixture, {});
+    flushSync();
+    const firstRow = container.querySelector('tbody tr');
+    const [check, result, found] = Array.from(firstRow?.children ?? []);
+    // Content cells take the truncate path: one line of text that ends in an ellipsis when cut.
+    expect(check?.querySelector(':scope > .cinder-table__cell-text')).not.toBeNull();
+    expect(result?.querySelector(':scope > .cinder-table__cell-text')).not.toBeNull();
+    // A content cell is not marked `truncate`: that is the caller's prop, not the column's.
+    expect(result?.hasAttribute('data-cinder-truncate')).toBe(false);
+    expect(found?.querySelector(':scope > .cinder-table__cell-prose')?.textContent).toContain(
+      'port 7233',
+    );
   });
 });

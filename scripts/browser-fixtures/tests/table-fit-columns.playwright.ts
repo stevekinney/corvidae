@@ -95,33 +95,56 @@ for (const width of [1280, 1024]) {
     page,
   }) => {
     await open(page, width);
-    const layout = await page.evaluate(() =>
-      ['fit-columns', 'fit-columns-long'].map((id) => {
-        const scroll = document.querySelector(`[data-testid="${id}"] .cinder-table-scroll`)!;
-        const table = scroll.querySelector('table')!;
-        const name = document.querySelector(`[data-testid="${id}"] tbody td`)!;
-        const text = document.querySelector(`[data-testid="${id}"] .cinder-table__cell-text`);
+    const layout = await page.evaluate(() => {
+      // Whether a cell's text is cut, ends in an ellipsis inside its cell, and takes focus to open
+      // the tooltip with the whole value.
+      const cut = (cell: Element) => {
+        const text = cell.querySelector(':scope > .cinder-table__cell-text') as HTMLElement | null;
+        if (!text) return undefined;
         return {
-          client: scroll.clientWidth,
-          scroll: scroll.scrollWidth,
-          table: table.getBoundingClientRect().width,
-          firstCell: name.getBoundingClientRect().width,
-          ellipsis: text
-            ? {
-                style: getComputedStyle(text).textOverflow,
-                cut: text.scrollWidth > text.clientWidth,
-                fits:
-                  text.getBoundingClientRect().right <=
-                  text.parentElement!.getBoundingClientRect().right + 0.5,
-              }
-            : undefined,
+          style: getComputedStyle(text).textOverflow,
+          cut: text.scrollWidth > text.clientWidth,
+          fits: text.getBoundingClientRect().right <= cell.getBoundingClientRect().right + 0.5,
+          focusable: text.tabIndex === 0,
         };
-      }),
+      };
+      const boxes = ['fit-columns', 'fit-columns-long'].map((id) => {
+        const scroll = document.querySelector(`[data-testid="${id}"] .cinder-table-scroll`)!;
+        return { client: scroll.clientWidth, scroll: scroll.scrollWidth };
+      });
+      const longTable = document.querySelector('[data-testid="fit-columns-long"] table')!;
+      const [name, key] = Array.from(longTable.querySelectorAll('tbody td'));
+      return {
+        boxes,
+        table: longTable.getBoundingClientRect().width,
+        nameWidth: name!.getBoundingClientRect().width,
+        name: cut(name!),
+        key: cut(key!),
+      };
+    });
+    for (const box of layout.boxes) expect(box.scroll).toBeLessThanOrEqual(box.client);
+    expect(layout.nameWidth).toBeLessThanOrEqual(layout.table / 2 + 1);
+    const ended = { style: 'ellipsis', cut: true, fits: true, focusable: true };
+    expect(layout.name).toEqual(ended);
+    expect(layout.key).toEqual(ended);
+  });
+
+  test(`at ${width}px prose in the fill column keeps a readable measure`, async ({ page }) => {
+    await open(page, width);
+    const measures = await page.evaluate(() =>
+      Array.from(
+        document.querySelectorAll('[data-testid="fit-columns"] .cinder-table__cell-prose'),
+        (prose) => ({
+          width: prose.getBoundingClientRect().width,
+          cap: Number.parseFloat(getComputedStyle(prose).maxInlineSize),
+        }),
+      ),
     );
-    for (const box of layout) expect(box.scroll).toBeLessThanOrEqual(box.client);
-    const long = layout[1]!;
-    expect(long.firstCell).toBeLessThanOrEqual(long.table / 2 + 1);
-    expect(long.ellipsis).toEqual({ style: 'ellipsis', cut: true, fits: true });
+    expect(measures).toHaveLength(3);
+    for (const prose of measures) {
+      expect(Number.isFinite(prose.cap)).toBe(true);
+      expect(prose.width).toBeLessThanOrEqual(prose.cap + 0.5);
+    }
   });
 }
 

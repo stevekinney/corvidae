@@ -633,7 +633,7 @@ describe('Table fit stacks into cards', () => {
         css,
         `${rowSelector}:has(.cinder-table__cell[data-cinder-stack-title] a:focus-visible)::after`,
       ).get('box-shadow'),
-    ).toBe('var(--_cinder-focus-ring-shadow)');
+    ).toBe('inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color)');
     // The row itself paints no tint and no ring.
     expect(
       declarationsFor(
