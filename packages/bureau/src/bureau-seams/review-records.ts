@@ -1108,6 +1108,8 @@ export function createReviewRecords<D extends AgentDefinitions>(
   ): Promise<(PendingReview & ReviewResolutionFields) | undefined> {
     const pending = peers.listPendingReviews().find((candidate) => candidate.id === id);
     if (pending) {
+      if (pending.kind !== 'tool-approval' || pending.approval.approvalBinding === undefined)
+        return pending;
       const current = await filterSettledApprovals([pending]);
       if (current[0]) return current[0];
     }
