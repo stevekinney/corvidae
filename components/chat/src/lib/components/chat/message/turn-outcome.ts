@@ -70,11 +70,11 @@ function rowOf(conversation: ConversationHistory, id: string): Message | undefin
 
 /** Whether `row` is a message the person opened a turn with: a follow-up joins the turn it went to. */
 function opensTurn(row: Message | undefined): boolean {
-  return row?.role === 'user' && row.hidden !== true && !isFollowUpMessage(row);
+  return row?.role === 'user' && !row.hidden && !isFollowUpMessage(row);
 }
 
 /** The index of the row that opens the last turn: 0 when no row opens one. */
-export function lastTurnStart(conversation: ConversationHistory): number {
+function lastTurnStart(conversation: ConversationHistory): number {
   for (let at = conversation.ids.length - 1; at >= 0; at -= 1) {
     if (opensTurn(rowOf(conversation, conversation.ids[at] ?? ''))) return at;
   }
@@ -154,7 +154,7 @@ function endsWithoutAnswer(conversation: ConversationHistory): boolean {
   const rows = conversation.ids
     .slice(lastTurnStart(conversation))
     .flatMap((id) => rowOf(conversation, id) ?? [])
-    .filter((row) => row.hidden !== true);
+    .filter((row) => !row.hidden);
   if (!rows.some((row) => row.role === 'assistant')) return false;
   if (rows.some((row) => (resolveMessageNotes(row) ?? []).some((note) => note.kind === 'stopped')))
     return false;

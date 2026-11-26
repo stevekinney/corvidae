@@ -132,7 +132,7 @@ describe('the stop line the run left', () => {
     expect(lastTurnStop(conversation)).toBeUndefined();
     expect(withoutStopLine(conversation, lastTurnStop(conversation))).toBe(conversation);
     expect(resolveTurnOutcome(conversation, IDLE).state).toBeUndefined();
-    expect(lastAssistantId(conversation)).toBe(conversation.ids[1]!);
+    expect(lastAssistantId(conversation)).toBe(conversation.ids[1]);
   });
 
   test('leaves the notice that a restarted server ended the chat where it is', () => {
@@ -152,7 +152,7 @@ describe('an answer that was never written (R6)', () => {
     const conversation = endedOnATool();
     const outcome = resolveTurnOutcome(conversation, IDLE);
     expect(outcome.state).toEqual({ kind: 'empty' });
-    expect(outcome.assistantId).toBe(conversation.ids[1]!);
+    expect(outcome.assistantId).toBe(conversation.ids[1]);
   });
 
   test('is not an outcome while the run goes, a decision waits, or the turn ended on a written answer', () => {
