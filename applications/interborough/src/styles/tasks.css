@@ -20,7 +20,8 @@
 }
 
 @media (min-width: 90rem) {
-  .ib-run__layout {
+  .ib-run__layout,
+  .ib-run[data-failed-run] > [data-run-header] {
     max-inline-size: var(--cinder-content-width);
   }
 }
@@ -239,7 +240,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The actions inside a failed step's block (row 14t): retry, run again, open the step. */
+/* The failed step can be opened without repeating the header's execution actions. */
 .ib-run-happened__actions {
   display: flex;
   flex-wrap: wrap;
@@ -264,6 +265,20 @@
 
 .ib-run-explanation__fallback {
   margin: 0;
+}
+
+@media (max-width: 639.98px) {
+  .ib-run[data-failed-run] .weft-overview-tab__failure {
+    display: block;
+  }
+
+  .ib-run[data-failed-run] .weft-overview-tab__failure > .cinder-alert__icon {
+    position: absolute;
+  }
+
+  .ib-run[data-failed-run] .weft-overview-tab__failure .cinder-alert__heading {
+    padding-inline-start: calc(1.25rem + var(--cinder-space-3));
+  }
 }
 
 /* An entry still to come reads quieter than what has happened. */

@@ -426,15 +426,11 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     // What the step said, never the error's JSON (row 55b).
     expect(block.textContent).not.toContain('{');
     const actions = block.querySelector('[data-run-failure-actions]');
-    expect(actions?.textContent).toContain('Retry from step 2');
-    expect(actions?.textContent).toContain('runs on 1.2.0');
-    // COR-2489 design round: the block says the version once, beside its button (14t); the
-    // header's caption says it once more (54z), and nothing in the block says it a third time.
-    expect(block.textContent?.split('1.2.0').length).toBe(2);
+    expect(actions?.textContent).not.toContain('Retry from step 2');
+    expect(actions?.textContent).not.toContain('Run again');
     expect(block.querySelector('[data-run-retry-sentence]')?.textContent).toContain(
       'Retry from this step keeps step 1’s result and runs step 2 again.',
     );
-    expect(actions?.textContent).toContain('Run again');
     expect(actions?.textContent).toContain('Open step 2');
     // COR-2533: the block carries what the Bureau stored about the failure, in the server’s words.
     await waitFor(() =>
@@ -456,6 +452,25 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     expect(view.container.querySelector('aside')?.textContent).toContain(
       'Ran on an older version of this workflow. The current one is 1.3.0.',
     );
+    const headerElement = view.container.querySelector('[data-run-header]');
+    expect(headerElement?.textContent).toContain('Retry from this step runs on 1.2.0');
+    expect(headerElement?.textContent).toContain('Run again runs on 1.3.0');
+    expect(view.getByRole('link', { name: 'Run again' }).getAttribute('href')).toContain(
+      '/workflows/release-notes/run',
+    );
+    let retried = false;
+    fetchScript.routeJsonRpcMethod('bureau.workflows.runs.retry', {}, (params) => {
+      retried =
+        typeof params === 'object' &&
+        params !== null &&
+        'runId' in params &&
+        params.runId === 'release-run' &&
+        'step' in params &&
+        params.step === 2;
+      return retried;
+    });
+    await fireEvent.click(view.getByRole('button', { name: 'Retry from this step' }));
+    await waitFor(() => expect(retried).toBe(true));
   });
 
   test('COR-2543: a failed instance mounts a panel placed on a failed run in its Inspector tab, and a completed one does not', async () => {

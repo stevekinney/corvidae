@@ -821,8 +821,6 @@
     failure={instanceFailed ? (workflow?.error ?? record?.error ?? undefined) : undefined}
     triesTook={stepTries?.took}
     retryVersion={retryAction === undefined ? undefined : instance.version?.ran}
-    retry={retryAction}
-    runAgain={runAgainAction}
     onOpenStep={() => {
       howOverride = true;
       howTab = 'steps';
@@ -890,7 +888,11 @@
     />
   </article>
 {:else}
-  <article class="ib-run" aria-label={TASK_COPY.runTitle}>
+  <article
+    class="ib-run"
+    data-failed-run={instanceFailed ? '' : undefined}
+    aria-label={TASK_COPY.runTitle}
+  >
     {#if summary !== undefined}
       <RunHeader
         runId={initialRunId}

@@ -21,6 +21,7 @@ export {
   WorkflowTimedOutEvent,
 } from '../core/events/workflow-events.ts';
 export { REGISTRY_VERSION } from '../core/registry-snapshot.ts';
+export { getNextCronOccurrence } from '../core/schedule/cron-occurrence.ts';
 export type {
   PendingAsyncActivityInfo,
   PendingAsyncActivityListOptions,
