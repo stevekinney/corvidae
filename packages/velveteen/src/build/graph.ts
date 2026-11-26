@@ -409,6 +409,14 @@ export async function buildProductionGraph(
       JSON.stringify(manifest, null, 2) + "\n",
     );
     await Bun.write(
+      join(staging, "velveteen-manifest.js"),
+      `export const manifest = ${JSON.stringify(manifest, null, 2)};\n`,
+    );
+    await Bun.write(
+      join(staging, "velveteen-registry.js"),
+      `import * as registry from ${JSON.stringify(`./${serverFile}`)};\nexport { registry };\n`,
+    );
+    await Bun.write(
       join(staging, "build-metadata.json"),
       JSON.stringify(
         { browser: browserBuild.metafile, server: serverBuild.metafile },

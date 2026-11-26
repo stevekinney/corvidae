@@ -11,6 +11,7 @@ import { queryAudit } from '../../lib/bureau-audit.ts';
 import { getContext } from '../../lib/bureau-client.ts';
 import { getBureauReview } from '../../lib/bureau-reviews.ts';
 import { listBureauSchedules } from '../../lib/bureau-schedules.ts';
+import type { CatalogOperations } from '../../lib/generated/bureau-operation-client.generated.ts';
 import { reviewIdOf, summaryOf, withoutAmount } from '../audit/audit-events.ts';
 import type { WaitKind } from './health-overview-data.ts';
 import {
@@ -35,21 +36,40 @@ export interface RecentActivity {
 }
 
 /** What {@link loadRecentActivity} reads and who it asks. */
-export interface ActivityRead {
+type AuditReader = (
+  ...args: Parameters<typeof queryAudit> extends [unknown, ...infer Rest] ? Rest : never
+) => ReturnType<typeof queryAudit>;
+
+export type ActivityRead = {
   readonly attention: readonly AttentionItem[];
   readonly waitingRuns: ReadonlyMap<string, WaitKind>;
   readonly now: number;
   readonly signal?: AbortSignal;
   /** The trail's pages; a test hands its own. */
-  readonly queryAudit?: typeof queryAudit;
   readonly getContext?: typeof getContext;
   readonly listSchedules?: typeof listBureauSchedules;
   readonly getReview?: typeof getBureauReview;
-}
+} & (
+  | {
+      readonly client: Pick<CatalogOperations, 'bureau.audit.query'>;
+      readonly queryAudit?: AuditReader;
+    }
+  | {
+      readonly client?: Pick<CatalogOperations, 'bureau.audit.query'>;
+      readonly queryAudit: AuditReader;
+    }
+);
 
 /** Reads and words Recent activity. */
 export async function loadRecentActivity(read: ActivityRead): Promise<RecentActivity> {
-  const query = read.queryAudit ?? queryAudit;
+  let query: AuditReader;
+  if (read.queryAudit === undefined) {
+    const client = read.client;
+    if (client === undefined) throw new Error('Recent activity requires a client.');
+    query = (...args) => queryAudit(client, ...args);
+  } else {
+    query = read.queryAudit;
+  }
   const records: AuditRecord[] = [];
   let total: number | undefined;
   let cursor: string | undefined;

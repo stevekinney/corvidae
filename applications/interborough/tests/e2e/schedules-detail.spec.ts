@@ -18,9 +18,10 @@
 import type { Page, Route } from '@playwright/test';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
-import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { expect, test } from './fixtures.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -404,7 +405,6 @@ async function answerStart(page: Page): Promise<void> {
 
 test('Run now on Release notes digest says so in a toast that opens the run, and its actions are Open file and Run now', async ({
   page,
-  pageErrors,
   checkA11y,
 }) => {
   await page.setViewportSize({ width: 1280, height: 1000 });
@@ -421,20 +421,26 @@ test('Run now on Release notes digest says so in a toast that opens the run, and
   // The page asks the engine for the schedule's runs again once the run has started, and the one
   // that started is among them (row 73t); until then the engine's list is the world's own.
   let started = false;
-  // The run is the test's own, so the engine, asked for it, says it has none.
-  pageErrors.expectEvery({
-    pattern: loggedFailedResponse(404, /\/v1\/workflows\/run-release-notes-now/),
-    reason: 'the run the test adds to the timeline does not exist on the engine',
-  });
-  const runsRead = /\/v1\/workflows\?.*schedule_id=/;
-  await page.route(runsRead, async (route) => {
+  const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+  const scheduleId = world.schedules.releaseNotesDigest;
+  await page.route('**/jsonrpc', async (route) => {
+    const body = route.request().postDataJSON() as {
+      method?: string;
+      params?: { scheduleId?: string };
+    };
+    if (body.method !== 'weft.workflows.list' || body.params?.scheduleId !== scheduleId) {
+      await route.fallback();
+      return;
+    }
     const response = await route.fetch();
     if (!started) {
       await route.fulfill({ response });
       return;
     }
-    const json = (await response.json()) as { items?: Record<string, unknown>[] };
-    const [newest] = json.items ?? [];
+    const json = (await response.json()) as {
+      result: { items: Record<string, unknown>[]; total: number };
+    };
+    const [newest] = json.result.items;
     if (newest === undefined) {
       await route.fulfill({ response, json });
       return;
@@ -449,7 +455,17 @@ test('Run now on Release notes digest says so in a toast that opens the run, and
       createdAt: now,
       updatedAt: now,
     };
-    await route.fulfill({ response, json: { ...json, items: [running, ...(json.items ?? [])] } });
+    await route.fulfill({
+      response,
+      json: {
+        ...json,
+        result: {
+          ...json.result,
+          items: [running, ...json.result.items],
+          total: json.result.total + 1,
+        },
+      },
+    });
   });
   const timeline = runsList(page);
   const before = await timeline.locator('a[href]').count();
@@ -817,56 +833,83 @@ const GOING_RUN = 'run-release-notes-going';
 async function answerGoingRun(page: Page): Promise<void> {
   const clock = await page.evaluate(() => Date.now());
   const startedAt = clock - 38_000;
-  await page.route(
-    (url) => url.pathname.endsWith('/workflows') && url.searchParams.has('schedule_id'),
-    async (route: Route) => {
+  const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+  const scheduleId = world.schedules.releaseNotesDigest;
+  await page.route('**/jsonrpc', async (route: Route) => {
+    const request = route.request().postDataJSON() as {
+      id?: unknown;
+      method?: string;
+      params?: { scheduleId?: string; workflowId?: string };
+    };
+    if (request.method === 'weft.workflows.list' && request.params?.scheduleId === scheduleId) {
       const response = await route.fetch();
-      const body = (await response.json()) as { items: unknown[]; total: number };
+      const body = (await response.json()) as { result: { items: unknown[]; total: number } };
       await route.fulfill({
         response,
         json: {
           ...body,
-          items: [
-            {
-              id: GOING_RUN,
-              type: 'release-notes',
-              status: 'running',
-              version: '1',
-              createdAt: startedAt,
-              updatedAt: startedAt,
-            },
-            ...body.items,
-          ],
-          total: body.total + 1,
+          result: {
+            ...body.result,
+            items: [
+              {
+                id: GOING_RUN,
+                type: 'release-notes',
+                status: 'running',
+                version: '1',
+                createdAt: startedAt,
+                updatedAt: startedAt,
+              },
+              ...body.result.items,
+            ],
+            total: body.result.total + 1,
+          },
         },
       });
-    },
-  );
-  await page.route(
-    (url) => url.pathname.endsWith(`/workflows/${GOING_RUN}/timeline`),
-    async (route: Route) => {
-      await route.fulfill({
-        json: [
-          { step: 1, stepIndex: 1, status: 'running', operationLabel: 'Collecting merged changes' },
-        ],
-      });
-    },
-  );
-  await page.route(
-    (url) => url.pathname.endsWith(`/workflows/${GOING_RUN}`),
-    async (route: Route) => {
+      return;
+    }
+    if (
+      request.method === 'weft.workflows.timeline.get' &&
+      request.params?.workflowId === GOING_RUN
+    ) {
       await route.fulfill({
         json: {
-          id: GOING_RUN,
-          type: 'release-notes',
-          status: 'running',
-          version: '1',
-          createdAt: startedAt,
-          updatedAt: startedAt,
+          jsonrpc: '2.0',
+          id: request.id,
+          result: [
+            {
+              step: 1,
+              stepIndex: 1,
+              status: 'running',
+              operationLabel: 'Collecting merged changes',
+              operationType: 'activity',
+              inputSummary: '',
+              timestamp: startedAt,
+            },
+          ],
         },
       });
-    },
-  );
+      return;
+    }
+    if (request.method === 'weft.workflows.get' && request.params?.workflowId === GOING_RUN) {
+      await route.fulfill({
+        json: {
+          jsonrpc: '2.0',
+          id: request.id,
+          result: {
+            id: GOING_RUN,
+            type: 'release-notes',
+            status: 'running',
+            input: {},
+            versionTuple: { workflowVersion: '1' },
+            createdAt: startedAt,
+            updatedAt: startedAt,
+          },
+        },
+      });
+      return;
+    }
+    await route.fallback();
+  });
   await page.route('**/jsonrpc', async (route: Route) => {
     const body = route.request().postDataJSON() as {
       id?: unknown;
@@ -885,7 +928,7 @@ async function answerGoingRun(page: Page): Promise<void> {
       json: {
         jsonrpc: '2.0',
         id: body.id,
-        result: { scheduleId: 'release-notes-digest', manual: true },
+        result: { scheduleId, manual: true },
       },
     });
   });

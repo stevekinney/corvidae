@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2706",
+  "branch": "codex/cor-2706-workers-npm",
+  "checkedAt": "8c2473ed1",
+  "briefVersion": "29bd58129401",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "AssetSource and fetchAssetSource are exported; server tests cover a host fetcher while the default serving path remains unchanged."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "server.test.ts serves a page with supplied manifest and registry whose generation directory does not exist."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "build.test.ts imports velveteen-manifest.js and velveteen-registry.js from a production build and uses them to create an application; README documents both modules."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Velveteen test, test:build, test:server, test:package-consumer, and Interborough typecheck passed; focused checks passed."
+    }
+  ]
+}

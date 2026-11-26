@@ -60,8 +60,8 @@
     WorkerStartOverridePreview,
     StartOrSignalOutcome,
     StartOrSignalSignal,
-    WorkflowState,
   } from '@lostgradient/weft';
+  import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
 
   import { faultTreatment } from '../../../lib/faults.ts';
   import { truncateId } from '../../../lib/format/index.ts';

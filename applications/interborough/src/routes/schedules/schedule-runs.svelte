@@ -29,6 +29,7 @@
   import { getConnection } from '../../app/connection.svelte.ts';
   import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';
   import { getClient } from '../../lib/client.ts';
+  import { getPrincipalStore, principalQueryScope } from '../../lib/scopes.svelte.ts';
   import { faultTreatment } from '../../lib/faults.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { browserTimeZone } from './cadence.ts';
@@ -79,11 +80,15 @@
 
   const copy = SCHEDULE_COPY.detail.runs;
   const client = getClient();
+  const principal = getPrincipalStore();
   const connection = getConnection();
   const zone = browserTimeZone();
 
   const runs = createQuery(() => ({
-    queryKey: scheduleRunHistoryQueryKey(schedule.id),
+    queryKey: [
+      ...scheduleRunHistoryQueryKey(schedule.id),
+      principalQueryScope(principal.principal),
+    ],
     queryFn: () => fetchScheduleRunHistory(client, schedule.id),
   }));
   const missed = createQuery(() => ({
@@ -112,7 +117,7 @@
   const detailed = $derived(past.runs.filter((run) => run.needsDetail));
   const details = createQueries(() => ({
     queries: detailed.map((run) => ({
-      queryKey: runDetailQueryKey(run.id),
+      queryKey: [...runDetailQueryKey(run.id), principalQueryScope(principal.principal)],
       queryFn: () => fetchRunDetail(client, run.id),
       retry: false,
     })),

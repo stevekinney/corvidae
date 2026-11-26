@@ -14,6 +14,7 @@
 import { HttpClientError, type ScheduleSpec } from '@lostgradient/weft';
 import { bureauClient, type BureauOutput } from './bureau-api.ts';
 import type { Fetcher } from './bureau-client.ts';
+import type { CatalogOperations } from './generated/bureau-operation-client.generated.ts';
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
@@ -48,11 +49,14 @@ export type BureauScheduleReceipt = BureauOutput<'bureau.schedules.pause'>;
 const LISTING_PAGE_SIZE = 100;
 
 /** Every schedule the caller may see, following the pages to the end. */
-export async function listBureauSchedules(options?: Options): Promise<readonly BureauSchedule[]> {
+export async function listBureauSchedules(
+  options?: Options,
+  client: Pick<CatalogOperations, 'bureau.schedules.list'> = bureauClient,
+): Promise<readonly BureauSchedule[]> {
   const schedules: BureauSchedule[] = [];
   let offset: number | null = 0;
   while (offset !== null) {
-    const page: BureauOutput<'bureau.schedules.list'> = await bureauClient['bureau.schedules.list'](
+    const page: BureauOutput<'bureau.schedules.list'> = await client['bureau.schedules.list'](
       { limit: LISTING_PAGE_SIZE, offset },
       options,
     );

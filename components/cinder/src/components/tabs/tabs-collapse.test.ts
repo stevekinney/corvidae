@@ -76,12 +76,20 @@ describe('Tabs narrow collapse', () => {
     flushSync();
 
     const select = trigger(container);
+    expect(select.hasAttribute('data-cinder-compact-touch')).toBe(false);
     expect(select.getAttribute('aria-label') ?? select.textContent).toContain('Access');
     expect(container.querySelector('.cinder-select__prefix')?.textContent?.trim()).toBe('Tab:');
     expect(container.querySelector('.cinder-select__value')?.textContent?.trim()).toBe('Access');
     expect(container.querySelector('.cinder-tabs')?.hasAttribute('data-cinder-collapsed')).toBe(
       true,
     );
+  });
+
+  test('opts the collapsed selector into the compact touch target', () => {
+    setPhone(true);
+    const { container } = render(TabsHarness, { props: { active: 'access', compactTouch: true } });
+    flushSync();
+    expect(trigger(container).hasAttribute('data-cinder-compact-touch')).toBe(true);
   });
 
   test('keeps the tabs mounted but hidden, so panels still name themselves', () => {
@@ -265,8 +273,5 @@ describe('Tabs narrow collapse', () => {
 
   test('the stylesheet keeps the select full width above the panels', () => {
     expect(tabsCss).toMatch(/\.cinder-tabs__collapse\s*\{[^}]*inline-size:\s*100%/);
-    expect(tabsCss).toMatch(
-      /\.cinder-tabs__collapse \.cinder-select\s*\{[^}]*min-block-size:\s*var\(--cinder-touch-target-min\)/,
-    );
   });
 });

@@ -5,7 +5,12 @@
  * `bureau.workflows.pause` and `resume` with the hash of the file the caller read, and any other
  * through the engine, which has no stale check.
  */
-import { isWeftFault, type HttpClient, type ScheduleSummary } from '@lostgradient/weft';
+import {
+  HttpClientError,
+  isWeftFault,
+  type HttpClient,
+  type ScheduleSummary,
+} from '@lostgradient/weft';
 
 import {
   cancelAgentSchedule,
@@ -195,15 +200,18 @@ export class StaleScheduleError extends Error {
 
 /** Refuses a write to an engine schedule that moved on after the page read it. */
 async function assertUnchanged(
-  client: Pick<HttpClient, 'getSchedule'>,
+  client: Pick<HttpClient, 'operations'>,
   target: ScheduleTarget,
 ): Promise<void> {
-  const now = await client.getSchedule(target.schedule.id);
-  if (
-    now === null ||
-    now.revision !== target.schedule.revision ||
-    now.status !== target.schedule.status
-  ) {
+  let now;
+  try {
+    now = await client.operations['weft.schedules.get']({ scheduleId: target.schedule.id });
+  } catch (error) {
+    if (error instanceof HttpClientError && error.status === 404)
+      throw new StaleScheduleError(target.schedule.id);
+    throw error;
+  }
+  if (now.revision !== target.schedule.revision || now.status !== target.schedule.status) {
     throw new StaleScheduleError(target.schedule.id);
   }
 }

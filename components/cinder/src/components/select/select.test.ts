@@ -38,6 +38,13 @@ function idsIn(container: Element): string[] {
 }
 
 describe('Select', () => {
+  test('compact listbox touch targets use the painted height and extend their hit area', () => {
+    const css = readSelectStyles();
+    expect(css).toMatch(
+      /data-cinder-compact-touch[^}]*min-height:\s*var\(--_cinder-painted-height-md\)/,
+    );
+    expect(css).toMatch(/data-cinder-compact-touch\]::before\s*\{[^}]*--cinder-touch-target-min/);
+  });
   test('a native pick the request hook refuses is put back on the control', async () => {
     const onValueChange = mock((_value: string) => {});
     const { container } = render(Select, {

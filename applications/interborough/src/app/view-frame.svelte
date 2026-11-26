@@ -45,7 +45,7 @@
   import { router } from '../lib/router.svelte.ts';
   import NewChatLoading from '../routes/chat/new-chat-loading.svelte';
   import HealthFrame from '../routes/health/health-frame.svelte';
-  import { getPrincipalStore } from '../lib/scopes.svelte.ts';
+  import { getPrincipalStore, principalQueryScope } from '../lib/scopes.svelte.ts';
   import { getConnection } from './connection.svelte.ts';
   import { AGENT_EDITOR_COPY, AGENTS_COPY } from './copy/agents.ts';
   import { CHAT_COPY } from './copy/chat.ts';
@@ -167,7 +167,13 @@
     // Read here, not in the interval below, which TanStack calls on its own and so is not tracked.
     const live = { bureau: bureauLive(), fleet: fleetLive() };
     return {
-      queryKey: queryKeys.view(initial.view, probeInstance()),
+      queryKey:
+        initial.view === 'audit' || initial.view === 'checks'
+          ? [
+              ...queryKeys.view(initial.view, probeInstance()),
+              principalQueryScope(principalStore.principal),
+            ]
+          : queryKeys.view(initial.view, probeInstance()),
       queryFn: () => (probe ? probe(client, queryClient) : Promise.resolve({ empty: false })),
       enabled: probe !== undefined && !scopeDenied,
       retry: false,

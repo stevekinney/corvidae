@@ -12,6 +12,7 @@ import {
 } from './a2a-calls.ts';
 import type { AuditRecord } from './bureau-audit.ts';
 import { installBureauStub, type BureauStub } from './bureau-stub.test-support.ts';
+import { createBureauClient } from './generated/bureau-operation-client.generated.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {
@@ -70,7 +71,7 @@ describe('the recent calls', () => {
       },
     });
 
-    const calls = await getRecentCalls({ now: NOW });
+    const calls = await getRecentCalls(createBureauClient({ baseUrl: '' }), { now: NOW });
 
     expect(calls).toHaveLength(RECENT_CALL_COUNT);
     expect(calls.map((call) => call.taskId)).toEqual(
@@ -86,6 +87,6 @@ describe('the recent calls', () => {
   test('are none when the trail keeps none', async () => {
     stub = installBureauStub({ 'bureau.audit.query': () => ({ records: [], nextCursor: null }) });
 
-    expect(await getRecentCalls({ now: NOW })).toEqual([]);
+    expect(await getRecentCalls(createBureauClient({ baseUrl: '' }), { now: NOW })).toEqual([]);
   });
 });

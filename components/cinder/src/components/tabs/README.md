@@ -95,6 +95,7 @@ The `trailing` wrapper is `aria-hidden`, so its content is omitted from the tab'
 | `collapseBelow` | `string` \| `false` | no | — | Viewport width below which a horizontal tab bar always collapses to the select, whether or not it fits. A simple CSS length such as `'640px'`, or `false` for no viewport rule. Vertical tabs never collapse. Default `false`. |
 | `collapseLabel` | `string` | no | — | The select's accessible name and the prefix before the current tab's label in its trigger. Default `"Tab"`. |
 | `collapseOnOverflow` | `boolean` | no | `true` | Collapses a horizontal tab bar into a select reading "Tab: Access" when the bar does not fit its container, measured as FilterBar measures its row: the bar's content width against the width it has. Tabs that fit stay a bar at every width, so a phone with three short tabs keeps them. The tabs stay in the page, hidden, and the panels keep their names. Set `false` to keep a bar that scrolls sideways instead. Vertical tabs never collapse. |
+| `compactTouch` | `boolean` | no | — | Keep the collapsed selector's painted face compact while extending its touch target. |
 | `fill` | `boolean` | no | `false` | Fill the available space when Tabs is placed inside a bounded flex parent, letting the active TabPanel occupy the remaining height. |
 | `orientation` | `"horizontal"` \| `"vertical"` | no | `"horizontal"` | Layout orientation. Affects which arrow keys move between tabs. |
 | `value` | `string` | no | — | Bound active tab value. |

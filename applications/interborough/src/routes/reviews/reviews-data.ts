@@ -36,9 +36,17 @@ import { respondToTask, type TaskRespondAnswer } from '../../lib/bureau-tasks.ts
 import { faultTreatment } from '../../lib/faults.ts';
 import { queryKeys } from '../../lib/query.ts';
 import { invalidateReviewQueries } from '../../lib/review-queries.ts';
+import {
+  getPrincipalStore,
+  hasPrincipalStore,
+  principalQueryScope,
+} from '../../lib/scopes.svelte.ts';
 
 /** How often the list and the count ask what is waiting, while the feed that carries it is not live. */
 export const REVIEW_POLL_MILLISECONDS = 5_000;
+type WeftReviewsClient = {
+  readonly operations: Pick<HttpClient['operations'], 'weft.reviews.list'>;
+};
 
 /** Refresh lists whose query observers already expose failures to the Reviews fault banner. */
 export async function refreshObservedReviews(...reads: readonly (() => Promise<unknown>)[]) {
@@ -54,15 +62,33 @@ export async function refreshObservedReviews(...reads: readonly (() => Promise<u
  * read where it can change.
  */
 export function weftReviewsQueryOptions(
-  client: HttpClient,
+  client: WeftReviewsClient,
   status: ReviewStatus,
   enabled = true,
   fleetLive = false,
+  scope?: readonly unknown[],
 ) {
   return {
-    queryKey: queryKeys.reviews.list({ status }),
-    queryFn: () => client.listReviews({ status }),
+    queryKey:
+      scope === undefined
+        ? queryKeys.reviews.list({ status })
+        : [...queryKeys.reviews.list({ status }), scope],
+    queryFn: async (): Promise<ReviewListEntry[]> => {
+      const page = await client.operations['weft.reviews.list']({ status });
+      return page.items.map((review) => ({ ...review, reviewers: [...review.reviewers] }));
+    },
     enabled,
+    ...(scope === undefined
+      ? {}
+      : {
+          placeholderData: (
+            previous: ReviewListEntry[] | undefined,
+            previousQuery: { queryKey: readonly unknown[] } | undefined,
+          ) =>
+            JSON.stringify(previousQuery?.queryKey.at(-1)) === JSON.stringify(scope)
+              ? previous
+              : undefined,
+        }),
     // poll-reason: fallback
     ...(status === 'pending' && !fleetLive ? { refetchInterval: REVIEW_POLL_MILLISECONDS } : {}),
   };
@@ -74,13 +100,20 @@ export function weftReviewsQueryOptions(
  * changes.
  */
 export function reviewListQuery(
-  client: HttpClient,
+  client: WeftReviewsClient,
   status: () => ReviewStatus,
   options: { readonly enabled?: () => boolean } = {},
 ): CreateQueryResult<ReviewListEntry[]> {
   const fleetLive = useFleetEventsLive();
+  const principal = hasPrincipalStore() ? getPrincipalStore() : undefined;
   return createQuery(() =>
-    weftReviewsQueryOptions(client, status(), options.enabled?.() ?? true, fleetLive()),
+    weftReviewsQueryOptions(
+      client,
+      status(),
+      options.enabled?.() ?? true,
+      fleetLive(),
+      principalQueryScope(principal?.principal ?? null),
+    ),
   );
 }
 

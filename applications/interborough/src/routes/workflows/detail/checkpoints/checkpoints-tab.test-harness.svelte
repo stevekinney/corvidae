@@ -4,18 +4,14 @@
    * shared context provider — `CheckpointsTab` reads `getPrincipalStore()`
    * for the replay scope gate) around `<CheckpointsTab>`.
    */
-  import { HttpClient } from '@lostgradient/weft';
+  import { HttpClient, HttpClientError } from '@lostgradient/weft';
   import type { WorkflowReplay } from '@lostgradient/weft';
   import type { QueryClient } from '@tanstack/svelte-query';
 
   import type { Principal } from '../../../../lib/scopes.svelte.ts';
   import WorkflowRouteHarness from '../../list/workflow-route-harness.test-harness.svelte';
   import CheckpointsTab from './checkpoints-tab.svelte';
-  import type {
-    CheckpointsOperationsClient,
-    ForkClient,
-    ForkSourceClient,
-  } from './checkpoints-data.ts';
+  import type { CheckpointsOperationsClient, ForkClient } from './checkpoints-data.ts';
   import type { ForkComparisonClient, ForkPreviewClient } from './fork-comparison-data.ts';
   import { forkOperations } from './fork-comparison.test-support.ts';
   import type { WorkflowRevisionListClient } from './fork-revision-picker.ts';
@@ -30,7 +26,7 @@
           Partial<ForkComparisonClient['operations'] & ForkPreviewClient['operations']>;
         replayTo: (id: string, step: number) => Promise<WorkflowReplay | null>;
         /** The fork dialog's open-time source refetch (COR-15); defaults to "purged" so tests that don't care keep the page-load revision. */
-        get?: ForkSourceClient['get'];
+        get?: (workflowId: string) => Promise<{ readonly revision?: string | undefined } | null>;
       };
     workflowId: string;
     principal: Principal;
@@ -59,9 +55,16 @@
 <WorkflowRouteHarness client={contextClient} {principal} {queryClient}>
   <CheckpointsTab
     client={{
-      get: async () => null,
       ...client,
-      operations: { ...forkOperations(), ...client.operations },
+      operations: {
+        ...forkOperations(),
+        ...client.operations,
+        'weft.workflows.get': async ({ workflowId }: { workflowId: string }) => {
+          const value = await client.get?.(workflowId);
+          if (value == null) throw new HttpClientError(404, 'missing');
+          return value;
+        },
+      },
     }}
     {workflowId}
     {workflowType}

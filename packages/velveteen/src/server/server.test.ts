@@ -3,7 +3,7 @@ import { throwingRejectionOf } from "@lostgradient/testing/promise-outcome";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createApplication, sequence } from "./index.ts";
+import { createApplication, fetchAssetSource, sequence } from "./index.ts";
 import type { ProductionGeneration } from "../build/manifest-types.ts";
 
 const generation = (basePath = ""): ProductionGeneration => ({
@@ -85,6 +85,45 @@ const textOf = async (promise: Promise<Response>) => {
 };
 
 describe("server application", () => {
+  test("uses host assets and a supplied registry without a generation directory", async () => {
+    const supplied = generation();
+    supplied.directory = join(tmpdir(), "velveteen-missing-generation");
+    supplied.manifest.assets = [
+      {
+        file: "browser/app.js",
+        target: "browser",
+        bytes: 0,
+        sha256: "0".repeat(64),
+        url: "/_assets/app.js",
+        contentType: "text/javascript",
+        immutable: true,
+      },
+    ];
+    const requests: string[] = [];
+    const app = await createApplication({
+      generation: supplied,
+      registry: registry([]) as never,
+      assets: fetchAssetSource({
+        fetch(request) {
+          requests.push(request.url);
+          return new Response("host asset");
+        },
+      }),
+    });
+    try {
+      const page = await app.fetch(new Request("https://example.test/"));
+      expect(page.status).toBe(200);
+      expect(await page.text()).toContain('"root":"ready"');
+      const asset = await app.fetch(
+        new Request("https://example.test/_assets/app.js"),
+      );
+      expect(await asset.text()).toBe("host asset");
+      expect(requests).toEqual(["https://example.test/_assets/app.js"]);
+    } finally {
+      await app.dispose();
+    }
+  });
+
   test("admits only declared cookie-free originless machine forms to their own mount", async () => {
     const app = await createApplication({
       generation: generation(),

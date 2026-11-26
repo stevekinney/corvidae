@@ -7,7 +7,7 @@
  * look like it started by itself. Each side is read up to {@link RELATED_LIMIT} runs, with the
  * total, so a parent with hundreds of children is shown as a count and a few of them.
  */
-import type { HttpClient, WorkflowState, WorkflowSummary } from '@lostgradient/weft';
+import { HttpClientError, type HttpClient, type WorkflowSummary } from '@lostgradient/weft';
 import type { QueryKey } from '@tanstack/svelte-query';
 
 import type { WorkflowActiveRevisionClient } from '../../../lib/workflow-revision.ts';
@@ -22,7 +22,9 @@ export interface RelatedRunSubject {
 }
 
 /** What the page needs of the client: the reads, and the catalog's active revision for the badge. */
-export type RelatedRunsClient = Pick<HttpClient, 'get' | 'list'> & WorkflowActiveRevisionClient;
+export type RelatedRunsClient = {
+  readonly operations: Pick<HttpClient['operations'], 'weft.workflows.get' | 'weft.workflows.list'>;
+} & WorkflowActiveRevisionClient;
 
 /** A run, as far as a link to it needs. */
 export interface RelatedRun {
@@ -55,7 +57,9 @@ export function relatedRunsQueryKey(runId: string, parentId: string | undefined)
   return ['workflows', 'related', runId, parentId ?? ''];
 }
 
-function summarized(run: WorkflowSummary | WorkflowState): RelatedRun {
+function summarized(
+  run: Pick<WorkflowSummary, 'id' | 'type' | 'status' | 'createdAt' | 'revision'>,
+): RelatedRun {
   return {
     id: run.id,
     type: run.type,
@@ -78,11 +82,21 @@ export async function fetchRelatedRuns(
   // Snapshot what the reads need: the caller's object can change while they are in flight.
   const { id: runId, parentWorkflowId: parentId } = run;
   const [parentState, childPage, siblingPage] = await Promise.all([
-    parentId === undefined ? Promise.resolve(undefined) : client.get(parentId),
-    client.list({ parentWorkflowId: runId, limit: RELATED_LIMIT }),
     parentId === undefined
       ? Promise.resolve(undefined)
-      : client.list({ parentWorkflowId: parentId, limit: RELATED_LIMIT }),
+      : client.operations['weft.workflows.get']({ workflowId: parentId }).catch(
+          (error: unknown) => {
+            if (error instanceof HttpClientError && error.status === 404) return null;
+            throw error;
+          },
+        ),
+    client.operations['weft.workflows.list']({ parentWorkflowId: runId, limit: RELATED_LIMIT }),
+    parentId === undefined
+      ? Promise.resolve(undefined)
+      : client.operations['weft.workflows.list']({
+          parentWorkflowId: parentId,
+          limit: RELATED_LIMIT,
+        }),
   ]);
 
   const parent: RelatedRun | undefined =
