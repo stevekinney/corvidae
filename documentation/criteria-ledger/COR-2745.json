@@ -1,14 +1,14 @@
 {
   "issue": "COR-2745",
   "branch": "codex/cor-2745-workers-npm",
-  "checkedAt": "877b342f7a07f8a025783908d80a11ff1431c2fe",
+  "checkedAt": "dc577d6551320f22cc2724906806fc86245043da",
   "briefVersion": "009abc3a77dd",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "Required injected host and ./bun, ./node exports; every audited Interborough caller now passes bunServerHost, and Interborough typecheck passed."
+      "evidence": "Required injected host and ./bun, ./node exports; every audited Interborough caller now passes bunServerHost, including the classified production host import; Interborough typecheck and catalog inventory test passed."
     },
     {
       "id": "AC2",
