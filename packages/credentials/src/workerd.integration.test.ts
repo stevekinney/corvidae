@@ -9,7 +9,8 @@ type WithWorker = <T>(
   callback: (bindings: WorkerBindings) => Promise<T>,
 ) => Promise<T>;
 
-const { withWorker } = (await import('@lostgradient/' + 'workerd-testing')) as {
+const workerdTestingPackage = '@lostgradient/workerd-testing';
+const { withWorker } = (await import(workerdTestingPackage)) as {
   withWorker: WithWorker;
 };
 const entry = new URL('./workerd-fixture.ts', import.meta.url).pathname;
@@ -97,33 +98,25 @@ test('runs API keys and browser sign-in in workerd', async () => {
   };
 
   await withWorker({ entry, outboundService }, async ({ dispatchFetch }) => {
-    const issued = (await (
-      await dispatchFetch('https://credentials.test/keys/issue', { method: 'POST' })
-    ).json()) as {
+    const issuedResponse = await dispatchFetch('https://credentials.test/keys/issue', {
+      method: 'POST',
+    });
+    const issued = (await issuedResponse.json()) as {
       id: string;
       secret: string;
     };
-    expect(
-      (
-        await dispatchFetch('https://credentials.test/protected', {
-          headers: { 'x-api-key': issued.secret },
-        })
-      ).status,
-    ).toBe(200);
-    expect(
-      (
-        await dispatchFetch(`https://credentials.test/keys/revoke?id=${issued.id}`, {
-          method: 'POST',
-        })
-      ).status,
-    ).toBe(204);
-    expect(
-      (
-        await dispatchFetch('https://credentials.test/protected', {
-          headers: { 'x-api-key': issued.secret },
-        })
-      ).status,
-    ).toBe(401);
+    const verified = await dispatchFetch('https://credentials.test/protected', {
+      headers: { 'x-api-key': issued.secret },
+    });
+    expect(verified.status).toBe(200);
+    const revoked = await dispatchFetch(`https://credentials.test/keys/revoke?id=${issued.id}`, {
+      method: 'POST',
+    });
+    expect(revoked.status).toBe(204);
+    const rejected = await dispatchFetch('https://credentials.test/protected', {
+      headers: { 'x-api-key': issued.secret },
+    });
+    expect(rejected.status).toBe(401);
 
     const signIn = await dispatchFetch(
       'https://credentials.test/auth/sign-in?returnTo=/protected',
@@ -132,7 +125,8 @@ test('runs API keys and browser sign-in in workerd', async () => {
       },
     );
     expect(signIn.status, await signIn.text()).toBe(303);
-    const transactionCookie = signIn.headers.getSetCookie()[0]!.split(';', 1)[0]!;
+    const transactionCookie = signIn.headers.getSetCookie()[0].split(';', 1)[0];
+    if (!transactionCookie) throw new Error('Missing sign-in transaction cookie');
     const authorization = await outboundService(new Request(signIn.headers.get('location')!));
     expect(authorization.status).toBe(302);
     const callback = authorization.headers.get('location')!;
@@ -142,13 +136,10 @@ test('runs API keys and browser sign-in in workerd', async () => {
     });
     expect(signedIn.status).toBe(303);
     const sessionCookie = cookie(signedIn, 'credentials_session')!;
-    expect(
-      (
-        await dispatchFetch('https://credentials.test/protected', {
-          headers: { cookie: sessionCookie },
-        })
-      ).status,
-    ).toBe(200);
+    const authenticated = await dispatchFetch('https://credentials.test/protected', {
+      headers: { cookie: sessionCookie },
+    });
+    expect(authenticated.status).toBe(200);
     expect(requests).toEqual(
       new Set(['/.well-known/openid-configuration', '/authorize', '/token', '/jwks']),
     );
