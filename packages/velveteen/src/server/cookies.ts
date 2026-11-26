@@ -94,7 +94,7 @@ function validateCookieOptions(name: string, options: CookieOptions) {
 }
 
 /** Request cookies preserve duplicate names and their header order from the native runtime. */
-export class RequestCookies implements Iterable<[string, string]> {
+class RequestCookies implements Iterable<[string, string]> {
   #cookies: RequestCookie[];
 
   constructor(cookies: RequestCookie[]) {
