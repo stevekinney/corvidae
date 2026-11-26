@@ -4,7 +4,7 @@ import type { PanelReviewEligibility } from './panel-routes.ts';
 import type { createSharedBrowserSignIn } from './shared-browser-sign-in.ts';
 
 /** Reverify browser credentials and their write proof before an in-process panel call. */
-export function createPanelBrowserCredentials(options: {
+function createPanelBrowserCredentials(options: {
   principal(request: Request): Promise<Principal | undefined>;
   validWrite(request: Request): Promise<boolean>;
 }) {
@@ -27,7 +27,11 @@ export function createPanelBrowserCredentials(options: {
 export function sharedPanelBrowserCredentials(
   authenticate: HostAuthority['authenticate'],
   sharedBrowser:
-    Pick<ReturnType<typeof createSharedBrowserSignIn>, 'browser' | 'publicRequest'> | undefined,
+    | {
+        browser: Pick<ReturnType<typeof createSharedBrowserSignIn>['browser'], 'validWrite'>;
+        publicRequest: ReturnType<typeof createSharedBrowserSignIn>['publicRequest'];
+      }
+    | undefined,
 ) {
   if (sharedBrowser === undefined) return undefined;
   return createPanelBrowserCredentials({

@@ -1,8 +1,13 @@
-import { principalFromApiKey, type Principal } from '@lostgradient/backchannel';
+import {
+  principalFromApiKey,
+  unauthenticatedLocalAuthContext,
+  type Principal,
+} from '@lostgradient/backchannel';
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
 import { expect, test } from 'bun:test';
 import {
-  createPanelBrowserCredentials,
   createPanelReviewEligibility,
+  sharedPanelBrowserCredentials,
 } from './panel-review-eligibility.ts';
 
 test('forwards only a verified browser session with its valid write proof', async () => {
@@ -10,12 +15,18 @@ test('forwards only a verified browser session with its valid write proof', asyn
     ...principalFromApiKey({ subject: 'person', scopes: [] }),
     method: 'browser-session' as const,
   };
-  const credentials = createPanelBrowserCredentials({
-    principal: async () => browser,
-    validWrite: async (request) =>
-      request.headers.get('origin') === 'https://app.example' &&
-      request.headers.get('x-csrf-token') === 'proof',
-  });
+  const credentials = sharedPanelBrowserCredentials(
+    async () => ({ ...unauthenticatedLocalAuthContext(WEFT_SCOPE_VOCABULARY), principal: browser }),
+    {
+      browser: {
+        validWrite: async (request) =>
+          request.headers.get('origin') === 'https://app.example' &&
+          request.headers.get('x-csrf-token') === 'proof',
+      },
+      publicRequest: (request) => request,
+    },
+  );
+  if (credentials === undefined) throw new Error('Shared browser credentials must be configured');
   const request = (headers: Record<string, string>) =>
     new Request('https://app.example/', { method: 'POST', headers });
   const headers = {
