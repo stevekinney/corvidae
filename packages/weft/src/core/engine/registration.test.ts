@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec.ts';
 import { buildWorkflowContract } from '../contract/build.ts';
@@ -159,6 +160,7 @@ describe('finalizer registration (#446)', () => {
       workflowExecutionMode: 'worker',
       workerExecution: {
         workerUrl: new URL('https://example.invalid/worker.js'),
+        createWorker: bunWorkerFactory,
         poolSize: 1,
       },
     });

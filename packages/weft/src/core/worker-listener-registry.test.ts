@@ -46,7 +46,7 @@ describe('WorkerListenerRegistry', () => {
     } as unknown as Worker;
     const handlers = {
       message: (_message: unknown) => {},
-      error: (_event: ErrorEvent) => {},
+      error: (_message: string) => {},
       messageerror: () => {},
     };
 

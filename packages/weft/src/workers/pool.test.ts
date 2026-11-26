@@ -2,6 +2,7 @@ import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { WorkerPool } from './pool.ts';
 
 const workerUrl = new URL('./test-worker.ts', import.meta.url);
@@ -19,7 +20,7 @@ describe('WorkerPool', () => {
 
   describe('lazy worker creation', () => {
     it('creates workers on acquire up to the concurrency limit', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
 
       expect(pool.totalCount).toBe(0);
 
@@ -34,7 +35,7 @@ describe('WorkerPool', () => {
     });
 
     it('reuses released workers instead of creating new ones', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
 
       const worker1 = await pool.acquire();
       pool.release(worker1);
@@ -53,7 +54,7 @@ describe('WorkerPool', () => {
 
   describe('queuing beyond concurrency', () => {
     it('queues acquire requests when at capacity', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
 
       const worker1 = await pool.acquire();
       expect(pool.totalCount).toBe(1);
@@ -73,7 +74,7 @@ describe('WorkerPool', () => {
     });
 
     it('queues multiple requests and resolves them in order', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
 
       const worker = await pool.acquire();
       const results: number[] = [];
@@ -107,7 +108,7 @@ describe('WorkerPool', () => {
 
   describe('release', () => {
     it('hands worker directly to the next queued request', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
 
       const worker = await pool.acquire();
 
@@ -128,7 +129,7 @@ describe('WorkerPool', () => {
     });
 
     it('returns worker to available pool when no requests are queued', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
 
       const worker = await pool.acquire();
       expect(pool.availableCount).toBe(0);
@@ -144,12 +145,12 @@ describe('WorkerPool', () => {
 
   describe('availableCount', () => {
     it('starts at zero', () => {
-      pool = new WorkerPool({ concurrency: 3, workerUrl });
+      pool = new WorkerPool({ concurrency: 3, workerUrl, createWorker: bunWorkerFactory });
       expect(pool.availableCount).toBe(0);
     });
 
     it('increases when workers are released', async () => {
-      pool = new WorkerPool({ concurrency: 3, workerUrl });
+      pool = new WorkerPool({ concurrency: 3, workerUrl, createWorker: bunWorkerFactory });
 
       const w1 = await pool.acquire();
       const w2 = await pool.acquire();
@@ -164,7 +165,7 @@ describe('WorkerPool', () => {
     });
 
     it('decreases when available workers are acquired', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
 
       const worker = await pool.acquire();
       pool.release(worker);
@@ -181,12 +182,12 @@ describe('WorkerPool', () => {
 
   describe('totalCount', () => {
     it('starts at zero', () => {
-      pool = new WorkerPool({ concurrency: 3, workerUrl });
+      pool = new WorkerPool({ concurrency: 3, workerUrl, createWorker: bunWorkerFactory });
       expect(pool.totalCount).toBe(0);
     });
 
     it('tracks the total number of created workers', async () => {
-      pool = new WorkerPool({ concurrency: 3, workerUrl });
+      pool = new WorkerPool({ concurrency: 3, workerUrl, createWorker: bunWorkerFactory });
 
       const w1 = await pool.acquire();
       expect(pool.totalCount).toBe(1);
@@ -212,12 +213,12 @@ describe('WorkerPool', () => {
 
   describe('pendingCount', () => {
     it('starts at zero', () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
       expect(pool.pendingCount).toBe(0);
     });
 
     it('increases when acquire is called at capacity', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
 
       const worker = await pool.acquire();
       const firstQueuedAcquire = pool.acquire();
@@ -239,7 +240,7 @@ describe('WorkerPool', () => {
 
   describe('[Symbol.dispose]()', () => {
     it('terminates all workers immediately', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
 
       const w1 = await pool.acquire();
       const w2 = await pool.acquire();
@@ -254,7 +255,7 @@ describe('WorkerPool', () => {
     });
 
     it('terminates in-use workers as well', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
 
       await pool.acquire();
       await pool.acquire();
@@ -271,14 +272,14 @@ describe('WorkerPool', () => {
 
   describe('acquire after dispose', () => {
     it('throws an error after synchronous dispose', () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
       pool[Symbol.dispose]();
 
       expect(() => pool.acquire()).toThrow('WorkerPool has been disposed');
     });
 
     it('throws an error after async dispose', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
       await pool[Symbol.asyncDispose]();
 
       expect(() => pool.acquire()).toThrow('WorkerPool has been disposed');
@@ -287,7 +288,7 @@ describe('WorkerPool', () => {
 
   describe('dispose edge cases', () => {
     it('rejects queued generic waiters when the pool is disposed', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
 
       await pool.acquire();
       const waiter = pool.acquire();
@@ -300,7 +301,7 @@ describe('WorkerPool', () => {
     });
 
     it('rejects acquireSpecificWorker after dispose', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
       const worker = await pool.acquire();
       pool[Symbol.dispose]();
 
@@ -310,7 +311,7 @@ describe('WorkerPool', () => {
     });
 
     it('ignores a release after the pool was disposed', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
       const worker = await pool.acquire();
       pool[Symbol.dispose]();
 
@@ -320,7 +321,7 @@ describe('WorkerPool', () => {
     });
 
     it('treats a second graceful dispose as a no-op', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
       await pool[Symbol.asyncDispose]();
 
       await pool[Symbol.asyncDispose]();
@@ -329,7 +330,7 @@ describe('WorkerPool', () => {
     });
 
     it('treats a second synchronous dispose as a no-op', () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
       pool[Symbol.dispose]();
 
       pool[Symbol.dispose]();
@@ -344,7 +345,7 @@ describe('WorkerPool', () => {
 
   describe('acquireSpecificWorker', () => {
     it('returns an available requested worker without disturbing other idle workers', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
 
       const targetWorker = await pool.acquire();
       const otherWorker = await pool.acquire();
@@ -363,7 +364,7 @@ describe('WorkerPool', () => {
     });
 
     it('waits for the exact in-use worker while unrelated workers serve generic acquires', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
 
       const targetWorker = await pool.acquire();
       const otherWorker = await pool.acquire();
@@ -398,8 +399,12 @@ describe('WorkerPool', () => {
     });
 
     it('throws when the requested worker belongs to a different pool', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
-      const otherPool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
+      const otherPool = new WorkerPool({
+        concurrency: 1,
+        workerUrl,
+        createWorker: bunWorkerFactory,
+      });
 
       try {
         const foreignWorker = await otherPool.acquire();
@@ -413,7 +418,7 @@ describe('WorkerPool', () => {
     });
 
     it('rejects pending specific requests when the pool is disposed', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
 
       const worker = await pool.acquire();
       const specificAcquire = pool.acquireSpecificWorker(worker);
@@ -432,7 +437,7 @@ describe('WorkerPool', () => {
 
   describe('discard', () => {
     it('removes an available worker so acquire creates a replacement', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
 
       const worker = await pool.acquire();
       pool.release(worker);
@@ -451,7 +456,7 @@ describe('WorkerPool', () => {
     });
 
     it('rejects pending requests for the discarded worker', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
 
       const worker = await pool.acquire();
       const specificAcquire = pool.acquireSpecificWorker(worker);
@@ -466,7 +471,7 @@ describe('WorkerPool', () => {
     });
 
     it('ignores a worker that does not belong to the pool', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
       const foreign = new Worker(workerUrl);
 
       try {
@@ -479,7 +484,7 @@ describe('WorkerPool', () => {
     });
 
     it('serves as many queued generic waiters as the freed slot allows and keeps the rest queued', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
 
       const worker = await pool.acquire();
       const firstWaiter = pool.acquire();
@@ -498,7 +503,7 @@ describe('WorkerPool', () => {
     });
 
     it('settles a graceful dispose when the last in-flight worker is discarded', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
 
       const worker = await pool.acquire();
       const disposal = pool[Symbol.asyncDispose]();
@@ -510,7 +515,7 @@ describe('WorkerPool', () => {
     });
 
     it('creates a replacement for generic waiters after discarding an in-use worker', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
 
       const worker = await pool.acquire();
       const genericAcquire = pool.acquire();
@@ -533,7 +538,7 @@ describe('WorkerPool', () => {
 
   describe('concurrency limit', () => {
     it('never creates more workers than the concurrency limit', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
 
       const w1 = await pool.acquire();
       const w2 = await pool.acquire();
@@ -561,7 +566,7 @@ describe('WorkerPool', () => {
 
   describe('[Symbol.asyncDispose]()', () => {
     it('waits for in-flight workers before terminating', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
 
       const w1 = await pool.acquire();
       const w2 = await pool.acquire();
@@ -589,7 +594,7 @@ describe('WorkerPool', () => {
     });
 
     it('resolves immediately when no workers are in use', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
 
       const worker = await pool.acquire();
       pool.release(worker);
@@ -605,26 +610,38 @@ describe('WorkerPool', () => {
 
   describe('smol option', () => {
     it('defaults smol to false', () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
       // Pool constructs without error, verifying default behavior
       expect(pool.totalCount).toBe(0);
     });
 
     it('accepts smol: true without error', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl, smol: true });
+      pool = new WorkerPool({
+        concurrency: 1,
+        workerUrl,
+        createWorker: bunWorkerFactory,
+        smol: true,
+      });
       const worker = await pool.acquire();
       expect(worker).toBeDefined();
       pool.release(worker);
     });
 
     it('creates functional workers with smol: true that can process messages', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl, smol: true });
+      pool = new WorkerPool({
+        concurrency: 1,
+        workerUrl,
+        createWorker: bunWorkerFactory,
+        smol: true,
+      });
 
       const worker = await pool.acquire();
 
       const response = await new Promise<{ echo: string }>((resolve) => {
-        worker.addEventListener('message', (event: MessageEvent) => {
-          resolve(event.data);
+        worker.addEventListener('message', (event: Event) => {
+          if (event instanceof MessageEvent) {
+            resolve(event.data);
+          }
         });
         worker.postMessage('smol-test');
       });
@@ -635,7 +652,12 @@ describe('WorkerPool', () => {
     });
 
     it('manages multiple smol workers at concurrency limits', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl, smol: true });
+      pool = new WorkerPool({
+        concurrency: 2,
+        workerUrl,
+        createWorker: bunWorkerFactory,
+        smol: true,
+      });
 
       const worker1 = await pool.acquire();
       const worker2 = await pool.acquire();
@@ -645,14 +667,18 @@ describe('WorkerPool', () => {
       // Both workers should process messages independently
       const [response1, response2] = await Promise.all([
         new Promise<{ echo: string }>((resolve) => {
-          worker1.addEventListener('message', (event: MessageEvent) => {
-            resolve(event.data);
+          worker1.addEventListener('message', (event: Event) => {
+            if (event instanceof MessageEvent) {
+              resolve(event.data);
+            }
           });
           worker1.postMessage('first');
         }),
         new Promise<{ echo: string }>((resolve) => {
-          worker2.addEventListener('message', (event: MessageEvent) => {
-            resolve(event.data);
+          worker2.addEventListener('message', (event: Event) => {
+            if (event instanceof MessageEvent) {
+              resolve(event.data);
+            }
           });
           worker2.postMessage('second');
         }),
@@ -666,7 +692,12 @@ describe('WorkerPool', () => {
     });
 
     it('reuses smol workers after release', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl, smol: true });
+      pool = new WorkerPool({
+        concurrency: 1,
+        workerUrl,
+        createWorker: bunWorkerFactory,
+        smol: true,
+      });
 
       const worker1 = await pool.acquire();
       pool.release(worker1);
@@ -685,13 +716,15 @@ describe('WorkerPool', () => {
 
   describe('worker functionality', () => {
     it('creates workers that can process messages', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
 
       const worker = await pool.acquire();
 
       const response = await new Promise<{ echo: string }>((resolve) => {
-        worker.addEventListener('message', (event: MessageEvent) => {
-          resolve(event.data);
+        worker.addEventListener('message', (event: Event) => {
+          if (event instanceof MessageEvent) {
+            resolve(event.data);
+          }
         });
         worker.postMessage('hello');
       });

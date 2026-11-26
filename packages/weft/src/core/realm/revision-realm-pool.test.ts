@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { ChildProcessRealm } from './child-process-realm.ts';
 import { RealmLifecycle } from './realm-lifecycle.ts';
 import { RevisionRealmPool, type RevisionRealmStateChange } from './revision-realm-pool.ts';
@@ -19,6 +20,7 @@ function makePool(overrides: Partial<{ concurrency: number }> = {}): RevisionRea
   return new RevisionRealmPool({
     workflowRevision: 'revision-a',
     workerUrl,
+    createWorker: bunWorkerFactory,
     expectedWorkflowTypes: ['order-workflow'],
     expectedArtifactDigest: 'digest-a',
     workerName: 'digest-a',
@@ -150,6 +152,7 @@ describe('RevisionRealmPool', () => {
       const pool = new RevisionRealmPool({
         workflowRevision: 'revision-a',
         workerUrl: unresponsiveWorkerUrl,
+        createWorker: bunWorkerFactory,
         expectedWorkflowTypes: ['order-workflow'],
         concurrency: 1,
         realmReadyTimeoutMs: 5,
@@ -169,6 +172,7 @@ describe('RevisionRealmPool', () => {
       const pool = new RevisionRealmPool({
         workflowRevision: 'revision-a',
         workerUrl,
+        createWorker: bunWorkerFactory,
         expectedWorkflowTypes: ['order-workflow'],
         workerName: 'digest-a',
         concurrency: 1,
@@ -264,6 +268,7 @@ describe('RevisionRealmPool', () => {
     const pool = new RevisionRealmPool({
       workflowRevision: 'revision-a',
       workerUrl,
+      createWorker: bunWorkerFactory,
       expectedWorkflowTypes: ['order-workflow'],
       expectedArtifactDigest: 'digest-a',
       workerName: 'digest-a',
@@ -295,6 +300,7 @@ describe('RevisionRealmPool', () => {
     const pool = new RevisionRealmPool({
       workflowRevision: 'revision-a',
       workerUrl,
+      createWorker: bunWorkerFactory,
       expectedWorkflowTypes: ['order-workflow'],
       expectedArtifactDigest: 'digest-a',
       workerName: 'digest-a',
@@ -323,6 +329,7 @@ describe('RevisionRealmPool', () => {
       const pool = new RevisionRealmPool({
         workflowRevision: 'revision-a',
         workerUrl,
+        createWorker: bunWorkerFactory,
         expectedWorkflowTypes: ['order-workflow'],
         // The fixture worker advertises `digest-a`; the pool expects
         // `digest-b`, so `validateRealmReadyMessage` rejects the handshake
@@ -384,6 +391,7 @@ describe('RevisionRealmPool', () => {
       const pool = new RevisionRealmPool({
         workflowRevision: 'revision-a',
         workerUrl: childProcessScriptPath,
+        createWorker: bunWorkerFactory,
         expectedWorkflowTypes: ['order-workflow'],
         expectedArtifactDigest: 'digest-a',
         workerName: 'digest-a',
@@ -410,6 +418,7 @@ describe('RevisionRealmPool', () => {
       const pool = new RevisionRealmPool({
         workflowRevision: 'revision-a',
         workerUrl: childProcessScriptPath,
+        createWorker: bunWorkerFactory,
         expectedWorkflowTypes: ['order-workflow'],
         expectedArtifactDigest: 'digest-a',
         workerName: 'digest-a',

@@ -219,6 +219,7 @@ export const checkout = workflow({ name: 'checkout', version: '1.0.0' }).execute
 ```typescript
 // host.ts — never imports checkout-v1.workflow.ts.
 import { Engine, workflow, workflowSource } from '@lostgradient/weft';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 
 const checkoutRevisionV1 = 'sha256:...'; // the same content-derived revision the real implementation resolves to
 
@@ -229,6 +230,7 @@ const engine = new Engine({
       if (workflowType === 'checkout' && revision === checkoutRevisionV1) {
         return {
           workerUrl: new URL('./checkout-v1-worker.ts', import.meta.url),
+          createWorker: bunWorkerFactory,
           expectedWorkflowTypes: ['checkout'],
         };
       }

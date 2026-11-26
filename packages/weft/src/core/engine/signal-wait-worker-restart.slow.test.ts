@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import type { Storage } from '@lostgradient/storage';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { storageBackends } from '../../testing/storage-backends.test-support.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { Engine, ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING } from './index.ts';
@@ -32,7 +33,12 @@ function createWorkerEngine(storage: Storage): Engine {
   const engine = new Engine({
     storage,
     workflowExecutionMode: 'worker',
-    workerExecution: { workerUrl, poolSize: 1, workflowTurnTimeoutMs: 30_000 },
+    workerExecution: {
+      workerUrl,
+      createWorker: bunWorkerFactory,
+      poolSize: 1,
+      workflowTurnTimeoutMs: 30_000,
+    },
   });
   engine.register(waitSignalThenComplete);
   return engine;

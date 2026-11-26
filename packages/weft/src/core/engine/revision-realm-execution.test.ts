@@ -20,6 +20,7 @@ import { describe, expect, it, mock, spyOn } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { ActivityRegistry } from '../activity-registry.ts';
 import type { RevisionRealmConfig } from '../realm/revision-realm-registry.ts';
 import { buildWorkflowManifestFromDefinition } from '../registry-workflow-manifest.ts';
@@ -173,6 +174,7 @@ describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
         revision,
         {
           workerUrl: sentinelWorkerUrl,
+          createWorker: bunWorkerFactory,
           expectedWorkflowTypes: [SENTINEL_WORKFLOW_NAME],
         },
       ],
@@ -204,6 +206,7 @@ describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
         revisionA,
         {
           workerUrl: revisionAWorkerUrl,
+          createWorker: bunWorkerFactory,
           expectedWorkflowTypes: [ORDER_WORKFLOW_NAME],
           expectedArtifactDigest: 'r2e-digest-a',
           workerName: 'r2e-digest-a',
@@ -213,6 +216,7 @@ describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
         revisionB,
         {
           workerUrl: revisionBWorkerUrl,
+          createWorker: bunWorkerFactory,
           expectedWorkflowTypes: [ORDER_WORKFLOW_NAME],
           expectedArtifactDigest: 'r2e-digest-b',
           workerName: 'r2e-digest-b',
@@ -262,6 +266,7 @@ describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
         revision,
         {
           workerUrl: revisionAWorkerUrl,
+          createWorker: bunWorkerFactory,
           expectedWorkflowTypes: [ORDER_WORKFLOW_NAME],
           expectedArtifactDigest: 'r2e-diagnostics-digest',
           workerName: 'r2e-diagnostics-digest',
@@ -312,8 +317,22 @@ describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
     const revisionA = await revisionFor(placeholderDefinition(ORDER_WORKFLOW_NAME, 'drain-a'));
     const revisionB = await revisionFor(placeholderDefinition(ORDER_WORKFLOW_NAME, 'drain-b'));
     const configByRevision = new Map<string, RevisionRealmConfig>([
-      [revisionA, { workerUrl: revisionAWorkerUrl, expectedWorkflowTypes: [ORDER_WORKFLOW_NAME] }],
-      [revisionB, { workerUrl: revisionBWorkerUrl, expectedWorkflowTypes: [ORDER_WORKFLOW_NAME] }],
+      [
+        revisionA,
+        {
+          workerUrl: revisionAWorkerUrl,
+          createWorker: bunWorkerFactory,
+          expectedWorkflowTypes: [ORDER_WORKFLOW_NAME],
+        },
+      ],
+      [
+        revisionB,
+        {
+          workerUrl: revisionBWorkerUrl,
+          createWorker: bunWorkerFactory,
+          expectedWorkflowTypes: [ORDER_WORKFLOW_NAME],
+        },
+      ],
     ]);
     const { engine } = newRealmEngine(configByRevision);
     const terminateSpy = spyOn(Worker.prototype, 'terminate');
@@ -355,7 +374,14 @@ describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
   it('disposes the engine and terminates every realm exactly once (P-COR-29 criterion 8, COR-113 disposal path)', async () => {
     const revisionA = await revisionFor(placeholderDefinition(ORDER_WORKFLOW_NAME, 'dispose-a'));
     const configByRevision = new Map<string, RevisionRealmConfig>([
-      [revisionA, { workerUrl: revisionAWorkerUrl, expectedWorkflowTypes: [ORDER_WORKFLOW_NAME] }],
+      [
+        revisionA,
+        {
+          workerUrl: revisionAWorkerUrl,
+          createWorker: bunWorkerFactory,
+          expectedWorkflowTypes: [ORDER_WORKFLOW_NAME],
+        },
+      ],
     ]);
     const { engine } = newRealmEngine(configByRevision);
     const terminateSpy = spyOn(Worker.prototype, 'terminate');
@@ -378,8 +404,22 @@ describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
     const revisionA = await revisionFor(placeholderDefinition(ORDER_WORKFLOW_NAME, 'recover-a'));
     const revisionB = await revisionFor(placeholderDefinition(ORDER_WORKFLOW_NAME, 'recover-b'));
     const configByRevision = new Map<string, RevisionRealmConfig>([
-      [revisionA, { workerUrl: revisionAWorkerUrl, expectedWorkflowTypes: [ORDER_WORKFLOW_NAME] }],
-      [revisionB, { workerUrl: revisionBWorkerUrl, expectedWorkflowTypes: [ORDER_WORKFLOW_NAME] }],
+      [
+        revisionA,
+        {
+          workerUrl: revisionAWorkerUrl,
+          createWorker: bunWorkerFactory,
+          expectedWorkflowTypes: [ORDER_WORKFLOW_NAME],
+        },
+      ],
+      [
+        revisionB,
+        {
+          workerUrl: revisionBWorkerUrl,
+          createWorker: bunWorkerFactory,
+          expectedWorkflowTypes: [ORDER_WORKFLOW_NAME],
+        },
+      ],
     ]);
     const { engine: engine1, storage } = newRealmEngine(configByRevision);
     await registerAndActivate(engine1, ORDER_WORKFLOW_NAME, revisionA, 'recover-a');
@@ -451,7 +491,14 @@ describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
     // resolution, not a probabilistic race.
     const revision = await revisionFor(placeholderDefinition(ORDER_WORKFLOW_NAME, 'cancel-race'));
     const configByRevision = new Map<string, RevisionRealmConfig>([
-      [revision, { workerUrl: revisionAWorkerUrl, expectedWorkflowTypes: [ORDER_WORKFLOW_NAME] }],
+      [
+        revision,
+        {
+          workerUrl: revisionAWorkerUrl,
+          createWorker: bunWorkerFactory,
+          expectedWorkflowTypes: [ORDER_WORKFLOW_NAME],
+        },
+      ],
     ]);
     const { engine } = newRealmEngine(configByRevision);
     try {

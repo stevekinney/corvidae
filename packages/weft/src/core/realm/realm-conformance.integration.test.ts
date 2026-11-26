@@ -16,7 +16,8 @@
  * @module core/realm/realm-conformance.test
  */
 
-import { ChildProcessRealm } from './child-process-realm.ts';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
+import { ChildProcessRealm, createChildProcessRealm } from './child-process-realm.ts';
 import { FakeRealm } from './fake-realm.test-support.ts';
 import type {
   ConformanceRealm,
@@ -98,6 +99,7 @@ const workerUrl = new URL('./__fixtures__/revision-realm-worker-entry.ts', impor
 function workerRealmConformance(options: RealmConformanceCreateOptions = {}): ConformanceRealm {
   const realm = new WorkerRealm({
     workerUrl,
+    createWorker: bunWorkerFactory,
     expectedWorkflowTypes: EXPECTED_WORKFLOW_TYPES,
     isReferenced: options.isReferenced ?? (() => true),
     maxRestarts: options.maxRestarts ?? 3,
@@ -136,6 +138,15 @@ const childProcessScriptPath = new URL(
   './__fixtures__/revision-realm-child-process-entry.ts',
   import.meta.url,
 );
+
+const nativeBootstrap = await createChildProcessRealm({
+  scriptPath: childProcessScriptPath,
+  expectedWorkflowTypes: EXPECTED_WORKFLOW_TYPES,
+  isReferenced: () => false,
+  maxRestarts: 0,
+});
+nativeBootstrap.discard();
+await nativeBootstrap.whenReclaimed();
 
 function childProcessRealmConformance(
   options: RealmConformanceCreateOptions = {},
