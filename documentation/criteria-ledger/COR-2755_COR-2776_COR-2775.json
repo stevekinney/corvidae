@@ -1,7 +1,7 @@
 {
   "issue": "COR-2755_COR-2776_COR-2775",
   "branch": "chef/interborough-small",
-  "checkedAt": "098540b29bda5d817644922e451a7f6339c684d2",
+  "checkedAt": "5cbe8c8ae5dfd3a05ab63f64b4ff0518cb0b2365",
   "briefVersion": "eba169a7e2de",
   "status": "READY",
   "criteria": [
@@ -58,7 +58,7 @@
     {
       "id": "COR-2775/AC4",
       "status": "met-on-branch",
-      "evidence": "src/host/direct-cryptography-inventory.test.ts scans production files with the TypeScript syntax tree and fails on a reintroduced duplicate; red with a temporary zz-reintroduced.ts (inv-red.log). It lives beside the host so a host change re-runs it."
+      "evidence": "src/host/direct-cryptography-inventory.test.ts scans production files with the TypeScript syntax tree and fails on a reintroduced duplicate, including Bun.SHA* classes and Bun.sha; red with temporary probes zz-reintroduced.ts (inv-red.log) and zz-bun-sha-probe.ts (inv-bun-red.log). It lives beside the host so a host change re-runs it."
     }
   ]
 }
