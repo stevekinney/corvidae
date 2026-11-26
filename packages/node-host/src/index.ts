@@ -6,6 +6,7 @@ import {
 import { createServer as createHttpsServer } from 'node:https';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import type { TlsOptions } from 'node:tls';
 
 import { WebSocketServer, WebSocket as WebSocketSocket } from 'ws';
 
@@ -68,8 +69,8 @@ export type ServeOptions<Data> = {
   readonly port?: number;
   /** Exact path handlers evaluated before {@link fetch}. */
   readonly routes?: Readonly<Record<string, HostRoute>>;
-  /** PEM certificate and private key for HTTPS. */
-  readonly tls?: { readonly cert: string | Buffer; readonly key: string | Buffer };
+  /** TLS options passed intact to Node's HTTPS server, including mTLS enforcement. */
+  readonly tls?: Pick<TlsOptions, 'ca' | 'cert' | 'key' | 'rejectUnauthorized' | 'requestCert'>;
   /** WebSocket lifecycle callbacks and transport limits. */
   readonly websocket?: WebSocketHandlers<Data>;
 };
@@ -282,10 +283,7 @@ export function serve<Data>(options: ServeOptions<Data>): NodeHost<Data> {
     return wrapper;
   };
 
-  const server =
-    options.tls === undefined
-      ? createHttpServer()
-      : createHttpsServer({ cert: options.tls.cert, key: options.tls.key });
+  const server = options.tls === undefined ? createHttpServer() : createHttpsServer(options.tls);
 
   server.on('request', async (incoming, outgoing) => {
     const request = requestFromIncoming(incoming, hostname, requestedPort, secure);

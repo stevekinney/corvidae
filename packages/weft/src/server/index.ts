@@ -747,6 +747,14 @@ export function serve(options: ServeOptions): WeftServer {
   // repeated `serve()` calls in library/test contexts.
 
   const scheme = tlsOptions ? 'https' : 'http';
+  const ready = Promise.all([
+    context.taskLedgerRecovery.ready,
+    server.ready ?? Promise.resolve(),
+  ]).then(() => undefined);
+  // `ready` is optional for callers, but must not turn a startup recovery
+  // failure into a process-level unhandled rejection. Awaiters still receive
+  // the original failure from this promise.
+  ready.catch(() => undefined);
 
   const weftServer: WeftServer = {
     get port() {
@@ -761,9 +769,7 @@ export function serve(options: ServeOptions): WeftServer {
     registry: context.registry,
     taskQueue: context.taskQueue,
     operationNames: Object.freeze(context.liveOperationRegistry.list().map(({ name }) => name)),
-    ready: Promise.all([context.taskLedgerRecovery.ready, server.ready ?? Promise.resolve()]).then(
-      () => undefined,
-    ),
+    ready,
     connections: () => ({ ...context.connectionCounts }),
     async stop() {
       await stack.dispose();

@@ -166,3 +166,28 @@ void test('Node host sends HTTPS Request URLs to fetch handlers', async () => {
     host.stop(true);
   }
 });
+
+void test('Node host enforces configured client certificates', async () => {
+  const host = serve({
+    port: 0,
+    tls: {
+      cert: certificate,
+      key: privateKey,
+      ca: certificate,
+      requestCert: true,
+      rejectUnauthorized: true,
+    },
+    fetch: () => new Response('secure'),
+  });
+  try {
+    await host.ready;
+    await new Promise<void>((resolve, reject) => {
+      const client = request(host.url, { rejectUnauthorized: false });
+      client.once('response', () => reject(new Error('expected client certificate rejection')));
+      client.once('error', resolve);
+      client.end();
+    });
+  } finally {
+    host.stop(true);
+  }
+});
