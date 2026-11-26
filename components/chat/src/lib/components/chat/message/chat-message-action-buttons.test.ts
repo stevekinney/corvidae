@@ -116,7 +116,7 @@ describe('chat message action buttons', () => {
   });
 
   test('Regenerate is an optional action that follows Quote, in both presentations', () => {
-    expect(source).toContain('onRegenerate?: ((messageId: string) => void | Promise<void>)');
+    expect(source).toContain('onRegenerate?: ((messageId: string) => TurnCommandAnswer)');
     expect(source).toContain('chat-message-action-button chat-message-regenerate-button');
     expect(source.indexOf('chat-message-quote-button')).toBeLessThan(
       source.indexOf('chat-message-regenerate-button'),
