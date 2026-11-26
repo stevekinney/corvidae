@@ -139,12 +139,20 @@ test.describe('the list (/checks) on a phone, a tablet, with scorers, a menu ope
         state: `${facet} facet open`,
         source: SOURCE,
       });
+      await page.keyboard.press('Escape');
+      await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      await expect(trigger).toBeFocused();
+      await trigger.click();
+      const value = await page
+        .locator('.cinder-filter-bar__options input[type="radio"]')
+        .first()
+        .inputValue();
       await options.first().click();
       const selected = filterBar(page).getByRole('button', { name: new RegExp(`^${facet}:`) });
-      await expect(selected).toHaveAttribute('aria-expanded', 'true');
-      await page.keyboard.press('Escape');
       await expect(selected).toHaveAttribute('aria-expanded', 'false');
-      await expect(selected).toBeFocused();
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get(facet.toLowerCase()))
+        .toBe(value);
     }
   });
 
