@@ -1069,7 +1069,12 @@ test('[hook-editor-switch-undo] /hooks/:hook: the On switch saves immediately, k
   await name.fill(hook.name);
   await toggle.click();
   await expect(toast).toBeVisible();
-  await page.goto('/hooks');
+  await page
+    .getByRole('navigation', { name: 'Breadcrumb' })
+    .getByRole('link', { name: 'Hooks', exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/hooks$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Hooks' })).toBeVisible();
   // Negative witness: ToastHost survives the SPA route leave, since the editor drops its toast ID.
   await expect(toast).toBeVisible();
   await captureForDesignReview(page, {
@@ -1103,7 +1108,9 @@ test('[hook-editor-delivery-log-slow] /hooks/:hook: delivery placeholders start 
   await expect(page.getByLabel(copy.check.nameLabel)).toBeVisible();
   await expect.poll(() => deliveryRequests).toBe(1);
   await expect(deliveries.locator('.cinder-skeleton').first()).not.toBeVisible();
-  await page.clock.runFor(300);
+  await page.clock.runFor(299);
+  await expect(deliveries.locator('.cinder-skeleton').first()).not.toBeVisible();
+  await page.clock.runFor(1);
   await expect(deliveries.locator('.cinder-skeleton').first()).toBeVisible();
   await expect(deliveries).not.toContainText(HOOKS_COPY.editor.deliveries.stillLoading);
   await page.clock.runFor(9_699);
