@@ -10,6 +10,7 @@
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
 
 import { HUMAN_INPUT_PROMPT } from '@lostgradient/plugin-demo';
+import { designReviewColorScheme } from '../../scripts/environment-configuration.ts';
 import { REVIEWS_COPY } from '../../src/app/copy/reviews.ts';
 import { REVIEW_REMEMBER_MARKER, REVIEW_REMEMBER_TOOL } from './access-provider.ts';
 import { createAgentFile, removeAgent } from './agent-support.ts';
@@ -987,6 +988,60 @@ test.describe('a tool approval', () => {
 
 test.describe('a phone tool approval', () => {
   test.use({ viewport: { width: 375, height: 640 }, hasTouch: true, isMobile: true });
+
+  test('/reviews compact Status remains touchable and opens the pending detail', async ({
+    page,
+    request,
+  }) => {
+    await withAlwaysRefundMode(request, async () => {
+      const { review } = await waitingRefund(
+        page,
+        request,
+        'reviews-mobile-status',
+        REFUND_APPROVAL,
+      );
+      for (const theme of ['light', 'dark'] as const) {
+        await page.emulateMedia({ colorScheme: theme });
+        for (const width of [320, 375]) {
+          await page.setViewportSize({ width, height: 640 });
+          await page.goto('/reviews');
+          const status = page.getByRole('combobox', { name: 'Status' });
+          await expect(status).toBeVisible();
+          const box = await status.boundingBox();
+          if (box === null) throw new Error('Status must have a painted box');
+          expect(box.height).toBeGreaterThanOrEqual(31);
+          expect(box.height).toBeLessThanOrEqual(33);
+          expect(box.width).toBeGreaterThanOrEqual(44);
+          const hit = await status.evaluate((element) => {
+            const style = getComputedStyle(element, '::before');
+            return { top: parseFloat(style.top), bottom: parseFloat(style.bottom) };
+          });
+          expect(box.height - hit.top - hit.bottom).toBeGreaterThanOrEqual(44);
+          if (theme === (designReviewColorScheme() ?? 'light')) {
+            await captureForDesignReview(page, {
+              route: '/reviews',
+              state: `pending refund compact Status ${width}`,
+              source: '31-reviews.spec.ts',
+            });
+          }
+          await page.touchscreen.tap(box.x + box.width / 2, box.y - 3);
+          await page.getByRole('option', { name: /^Done/ }).tap();
+          await expect(page).toHaveURL(/tab=done/);
+          await status.focus();
+          await status.press('Enter');
+          await status.press('Home');
+          await status.press('Enter');
+          await expect(page).not.toHaveURL(/tab=done/);
+          await rowOf(page, review).tap();
+          await expect(paneOf(page)).toContainText(REFUND_APPROVAL.question);
+          const input = paneOf(page).getByRole('group', { name: 'Input', exact: true });
+          const actions = paneOf(page).getByRole('group', { name: 'Approval actions' });
+          const boxes = await readBoxes(page, { input, actions });
+          expect(boxes.actions.y).toBeGreaterThanOrEqual(boxes.input.y + boxes.input.height);
+        }
+      }
+    });
+  });
 
   test('shared Reviews approval detail shows full Fields values and reachable actions on a phone', async ({
     page,

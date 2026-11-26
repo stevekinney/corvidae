@@ -280,6 +280,7 @@ describe('an approval', () => {
       requestedAt: Date.now() - 120_000,
       approval: {
         ...APPROVAL.approval,
+        mayRemember: false,
         reason: 'Tool "issue-refund" (dangerous tier) requires approval (mode: always).',
       },
     });
