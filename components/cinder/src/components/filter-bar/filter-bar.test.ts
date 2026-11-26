@@ -923,6 +923,11 @@ describe('FilterBar medium layout (row 10f)', () => {
       onSegmentChange: (value: string) => changes.push(value),
     });
     expect(container.querySelector('[role="radiogroup"]')).toBeNull();
+    expect(
+      container
+        .querySelector('.cinder-select[role="combobox"]')
+        ?.hasAttribute('data-cinder-compact-touch'),
+    ).toBe(true);
     expect(textOf(container.querySelector('.cinder-select__prefix'))).toBe('Status:');
     expect(textOf(container.querySelector('.cinder-select__value'))).toBe('All 19');
     expect(

@@ -27,15 +27,14 @@
     type DataListGroup,
   } from '@lostgradient/cinder';
   import { Check } from '@lucide/svelte';
+  import { getReviewsHost } from '@lostgradient/bureau-client/reviews/svelte';
+  import { useToolApprovalActions } from '@lostgradient/bureau-client/reviews/ui';
+  import type { ApprovalOutcome } from '@lostgradient/bureau-client/reviews/ui';
+  import type { ReviewsOperationTypes } from '@lostgradient/bureau-client/reviews';
 
   import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import ListPageEmpty from '../../app/list-page-empty.svelte';
-  import type {
-    BureauHumanWait,
-    BureauReview,
-    ListedReview,
-    ReviewDecision,
-  } from '../../lib/bureau-reviews.ts';
+  import type { BureauHumanWait, BureauReview, ListedReview } from '../../lib/bureau-reviews.ts';
   import {
     calendarDay,
     clockTime,
@@ -63,17 +62,6 @@
     type InboxItem,
   } from './review-items.ts';
   import type { ReviewOutcome } from './review-outcome.ts';
-
-  /** What the page asks of a decision on one of the Bureau's reviews. */
-  export interface ResolveRequest {
-    readonly review: BureauReview;
-    readonly decision: ReviewDecision;
-    readonly reason: string | undefined;
-    /** Approve and allow the tool for the rest of the chat. */
-    readonly remember: boolean;
-    /** Called when the Bureau took the decision, so the list can move on to the next review. */
-    readonly onDone: () => void;
-  }
 
   /** The approval action currently sent from this panel, held only for its review round. */
   interface InFlightApproval {
@@ -106,7 +94,13 @@
     readonly hasMore?: boolean;
     readonly loadingMore?: boolean;
     readonly onLoadMore?: () => Promise<void>;
-    readonly onResolve: (request: ResolveRequest) => void;
+    readonly onApprovalOutcome: (
+      seen: { id: string; round: number },
+      outcome: ApprovalOutcome,
+      receipt: ReviewsOperationTypes['bureau.reviews.resolve']['output'] | undefined,
+      decision: 'approve' | 'deny',
+      error: unknown,
+    ) => void;
     readonly onAnswer: (review: BureauHumanWait, answer: unknown, onDone: () => void) => void;
     /** Sends a decision on a workflow review; `onDone` is called when it was taken, so the list can move on. */
     readonly onSubmit: (
@@ -130,7 +124,7 @@
     hasMore = false,
     loadingMore = false,
     onLoadMore,
-    onResolve,
+    onApprovalOutcome,
     onAnswer,
     onSubmit,
   }: ReviewsPanelProps = $props();
@@ -158,6 +152,29 @@
   });
   /** The note typed with a denial, by review, so it stays with its review while another is open. */
   const notes = new SvelteMap<string, string>();
+  const host = getReviewsHost();
+  let pendingAdvance:
+    { id: string; round: number; decision: 'approve' | 'deny'; run: () => void } | undefined;
+  const actionsFor = useToolApprovalActions({
+    ...host,
+    onOutcome: (seen, approvalOutcome, receipt, error) => {
+      inFlightApproval = undefined;
+      const current = items.find((item) => item.key === `bureau:${seen.id}`)?.review;
+      if (current?.kind === 'tool-approval' && current.round !== seen.round) return;
+      const decision = pendingAdvance?.decision ?? 'approve';
+      if (pendingAdvance?.id === seen.id && pendingAdvance.round === seen.round) {
+        const advance = pendingAdvance;
+        pendingAdvance = undefined;
+        if (
+          (approvalOutcome === 'applied' || approvalOutcome === 'outcome-not-written') &&
+          current?.kind === 'tool-approval' &&
+          current.round === seen.round
+        )
+          advance.run();
+      }
+      onApprovalOutcome(seen, approvalOutcome, receipt, decision, error);
+    },
+  });
 
   /**
    * The reviews this page decided, which leave the list at once: the list is read again only after
@@ -319,18 +336,6 @@
    */
   let decisionKeysArmed = $state(true);
 
-  /**
-   * Whether a decision has been sent and the page has not yet reported it in flight. `resolving`
-   * only turns true when the page next renders, so a second press made in the same moment would
-   * send the same decision twice; this closes that gap and is cleared as `resolving` settles.
-   */
-  let decisionSent = false;
-  $effect(() => {
-    // A refusal or a superseded decision is written to `outcome`, which settles the send too.
-    void outcome;
-    if (!resolving) decisionSent = false;
-  });
-
   /** Turns the deciding keys back on once the review that just opened has rendered and painted. */
   async function armDecisionKeysWhenSeen(): Promise<void> {
     decisionKeysArmed = false;
@@ -380,9 +385,10 @@
     review: Extract<BureauReview, { kind: 'tool-approval' }>,
     resolution: ApprovalResolution,
   ): void {
-    if (mode !== 'waiting' || resolving || decisionSent || review.status !== 'pending') return;
+    if (mode !== 'waiting' || resolving || review.status !== 'pending') return;
     if (resolution.decision !== 'approve' && resolution.decision !== 'deny') return;
-    decisionSent = true;
+    const actions = actionsFor(review);
+    if (actions.disabled) return;
     inFlightApproval = {
       reviewId: review.id,
       round: review.round,
@@ -396,28 +402,18 @@
       REVIEWS_COPY.announce(word, reviewTitle(review)),
     );
     const onDone = (): void => {
-      decisionSent = false;
-      notes.delete(review.id);
+      notes.delete(`${review.id}:${review.round}`);
       advance();
     };
-    if (denied) {
-      // A denial with a note is a rejection with that reason, which the agent reads.
-      onResolve({
-        review,
-        decision: note === undefined ? 'deny' : 'reject',
-        reason: note,
-        remember: false,
-        onDone,
-      });
-    } else {
-      onResolve({
-        review,
-        decision: 'approve',
-        reason: note,
-        remember: resolution.remember,
-        onDone,
-      });
-    }
+    pendingAdvance = {
+      id: review.id,
+      round: review.round,
+      decision: denied ? 'deny' : 'approve',
+      run: onDone,
+    };
+    if (denied) actions.deny(note);
+    else if (resolution.remember) actions.remember(note);
+    else actions.approve(note);
   }
 
   /** Uses the same controls for keys and pointer input, including the confirmation step. */
@@ -663,8 +659,10 @@
                 {@const review = item.review}
                 <ApprovalPane
                   {review}
+                  actions={actionsFor(review)}
                   bind:note={
-                    () => notes.get(review.id) ?? '', (value) => notes.set(review.id, value)
+                    () => notes.get(`${review.id}:${review.round}`) ?? '',
+                    (value) => notes.set(`${review.id}:${review.round}`, value)
                   }
                   deciding={inFlightApproval?.reviewId === review.id &&
                   inFlightApproval.round === review.round

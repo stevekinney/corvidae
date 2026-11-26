@@ -653,6 +653,12 @@ describe('reviewedToolOperations', () => {
       );
       expect(approved.result).toMatchObject({ receipt: 'applied' });
       expect(calls).toEqual([signedArguments]);
+      const retained = await rpc('bureau.reviews.list', { status: 'resolved' }, 'reviewer');
+      expect(retained.result).toMatchObject({
+        total: 1,
+        reviews: [{ id: review.id, status: 'approved', round: 1, effect: { kind: 'inventory' } }],
+      });
+      expect(JSON.stringify(retained)).not.toContain(review.approval.approvalToken!);
       const secondRequest = await rpc(selection.request, { commandId: 'two', itemId: 'two' });
       expect(secondRequest.result).toEqual({
         itemId: 'two',

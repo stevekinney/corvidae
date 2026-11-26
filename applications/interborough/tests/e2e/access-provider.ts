@@ -10,6 +10,8 @@
  * so counting the calls already in the conversation keeps the lookup script from asking twice.
  */
 import type { GenerateContext, GenerateFunction, GenerateResponse } from '@lostgradient/operative';
+import { createTool } from 'armorer';
+import { z } from 'zod';
 
 import type { HostOptions } from '../../src/host/host.ts';
 
@@ -18,6 +20,17 @@ export const ACCESS_LOOKUP_MARKER = '[access:lookup]';
 
 /** What the first message of a chat carries to be answered with a lookup on every step. */
 export const ACCESS_LOOP_MARKER = '[access:loop]';
+export const REVIEW_REMEMBER_MARKER = '[reviews:remember]';
+export const REVIEW_REMEMBER_TOOL = 'e2e-review-remember';
+
+export const reviewRememberTool = createTool({
+  name: REVIEW_REMEMBER_TOOL,
+  version: '1.0.0',
+  description: 'Records a harmless review fixture value.',
+  input: z.object({ value: z.string() }),
+  metadata: { mutates: true },
+  execute: async ({ value }) => ({ value, recorded: true }),
+});
 
 /** What the scripted agent says once its lookup has a result. */
 export const ACCESS_REPLY = 'The order was looked up.';
@@ -55,6 +68,20 @@ export function createAccessProviderResolver(fallback: ProviderResolver): Provid
     const stub = fallback(definitions, provider, streamEventTarget, streaming);
     const generate: GenerateFunction = async (context) => {
       const opener = openerOf(context);
+      if (opener?.includes(REVIEW_REMEMBER_MARKER)) {
+        if (
+          context.conversation
+            .getMessages()
+            .some((message) => message.toolResult?.outcome === 'success')
+        )
+          return { content: 'The fixture value was recorded.', toolCalls: [] };
+        return {
+          content: '',
+          toolCalls: [
+            { id: 'review-remember', name: REVIEW_REMEMBER_TOOL, arguments: { value: 'proof' } },
+          ],
+        };
+      }
       if (opener?.includes(ACCESS_LOOP_MARKER) === true) return lookup(context, true);
       if (opener?.includes(ACCESS_LOOKUP_MARKER) === true) return lookup(context, false);
       return stub(context);

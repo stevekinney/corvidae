@@ -18,6 +18,7 @@
       Pick<
         ApprovalCardProps,
         | 'context'
+        | 'actionRenderer'
         | 'consequence'
         | 'decidedAt'
         | 'decidedBy'
