@@ -18,7 +18,7 @@ import { isMetadataExport, sourceExportViolations } from './workspace-exports';
 
 const root = join(import.meta.dir, '..');
 const componentLibraries = ['cinder', 'chat', 'editor', 'terminal'];
-const verificationLibraries = ['testing', 'evaluation'];
+const verificationLibraries = ['testing', 'evaluation', 'workerd'];
 function checksSourcesAfterReferenceBuild(
   command: string,
   sourceConfigurations: readonly string[] = ['tsconfig.json'],
@@ -63,6 +63,7 @@ const libraries = [
   'editor',
   'markdown',
   'testing',
+  'workerd',
   'terminal',
   'ventriloquist',
 ];
@@ -75,6 +76,7 @@ const libraries = [
  */
 const unscopedWorkspaceNames = new Set(['armorer', 'conversationalist']);
 function publicWorkspaceName(directoryName: string): string {
+  if (directoryName === 'workerd') return '@lostgradient/workerd-testing';
   return unscopedWorkspaceNames.has(directoryName)
     ? directoryName
     : `@lostgradient/${directoryName}`;
@@ -132,6 +134,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/storage-turso',
   '@lostgradient/storage-web-extension',
   '@lostgradient/testing',
+  '@lostgradient/workerd-testing',
   '@lostgradient/typescript',
   '@lostgradient/component-tooling',
   '@lostgradient/interborough',

@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2705",
+  "branch": "codex/cor-2705-workers-npm",
+  "checkedAt": "74e349bfa7f860b037ece93989fa8d39c3b09aa3",
+  "briefVersion": "c0e6e9914f38",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "git grep -n \"Bun\\.\" -- packages/velveteen/src/server returned no matches; server tests now import their runtime primitives directly."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "CookieOptions explicitly declares every supported option. bun run typecheck:root and bun run --filter @lostgradient/interborough typecheck passed."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "44ea3d475 added cookies.test.ts and passed it against Bun Cookie and CookieMap. The unchanged baseline cases passed after the portable implementation, and 72ca387a6 added duplicate-name parity: first-match lookup, ordered iteration, and replacement mutation."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "bun run --filter @lostgradient/velveteen test:server and bun run --filter @lostgradient/velveteen test passed."
+    }
+  ]
+}
