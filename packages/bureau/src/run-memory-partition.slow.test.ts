@@ -5,14 +5,16 @@
  */
 import {
   createGovernedMemory,
-  createInMemoryMemoryRecordStorage,
   createMemoryAuthority,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
-  createMockEmbedder,
   createMemoryVectorStore,
-  createTestEmbedders,
 } from '@lostgradient/memory';
+import {
+  createInMemoryMemoryRecordStorage,
+  createMockEmbedder,
+  createTestEmbedders,
+} from '@lostgradient/memory/testing';
 import { stopWhen, createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';

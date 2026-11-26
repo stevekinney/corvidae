@@ -51,7 +51,10 @@ export { error, redirect } from "../data/errors.ts";
 
 type ServerHandle = NonNullable<ServerHooks["handle"]>;
 const adoptMounts = Symbol("adopt mounts");
-type AssetRoutes = Record<string, (request: Request) => Response>;
+type AssetRoutes = Record<
+  string,
+  (request: Request) => Response | Promise<Response>
+>;
 type Application = {
   fetch(request: Request): Promise<Response>;
   routes: AssetRoutes;

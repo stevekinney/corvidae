@@ -2,12 +2,8 @@
 // apart from the session transcript, and its owner outlives the run store.
 
 import { createDefaultRuntimeServices, createManualRuntimeServices } from '@lostgradient/lifecycle';
-import {
-  createAgent,
-  createMockGenerate,
-  type GenerateFunction,
-  stopWhen,
-} from '@lostgradient/operative';
+import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 

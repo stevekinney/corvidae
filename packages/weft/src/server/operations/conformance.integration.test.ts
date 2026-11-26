@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * `weft.conformance.targets` / `weft.conformance.report` — the server-side
  * counterpart of `cli/cli-conformance.integration.test.ts` and
@@ -235,6 +236,7 @@ const replacementCleanup = await outcomeOf(async () => {
 const servedTargets = await outcomeOf(async () => {
   const engine = new Engine({ storage: new MemoryStorage() });
   const server = serve({
+    host: bunServerHost,
     engine,
     port: 0,
     hostname: '127.0.0.1',
@@ -433,12 +435,13 @@ describe('weft.conformance.report — target selection and access', () => {
 });
 
 describe('weft.conformance.* — served through serve() and the generated client', () => {
-  it('lists and runs serve({ conformanceTargets }) targets over JSON-RPC HTTP', () =>
+  it('lists and runs serve({ host: bunServerHost, conformanceTargets }) targets over JSON-RPC HTTP', () =>
     rethrow(servedTargets));
 
   it('registers no targets when conformanceTargets is omitted', async () => {
     const engine = new Engine({ storage: new MemoryStorage() });
     const server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       hostname: '127.0.0.1',

@@ -5,14 +5,16 @@
  */
 import {
   createGovernedMemory,
-  createInMemoryMemoryRecordStorage,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
-  createMockEmbedder,
   type MemoryGovernanceNotification,
   createMemoryVectorStore,
-  createTestEmbedders,
 } from '@lostgradient/memory';
+import {
+  createInMemoryMemoryRecordStorage,
+  createMockEmbedder,
+  createTestEmbedders,
+} from '@lostgradient/memory/testing';
 import {
   createAgent,
   createContextEpochSealer,

@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
@@ -81,7 +82,12 @@ function createBenchmarkServer(engine: Engine): WeftServer {
   const warningSpy = spyOn(console, 'warn').mockImplementation(() => {});
 
   try {
-    const server = serve({ engine, port: 0, publicOrigin: 'http://localhost' });
+    const server = serve({
+      host: bunServerHost,
+      engine,
+      port: 0,
+      publicOrigin: 'http://localhost',
+    });
     expect(warningSpy).toHaveBeenCalledTimes(1);
     expect(warningSpy).toHaveBeenCalledWith(NO_AUTHENTICATION_WARNING);
     return server;

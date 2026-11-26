@@ -1,10 +1,10 @@
 import { describe, expect, spyOn, test } from 'bun:test';
 
+import { type RunResultBase } from '@lostgradient/operative';
 import {
   createManualRuntimeServices,
   createScriptedGenerate,
-  type RunResultBase,
-} from '@lostgradient/operative';
+} from '@lostgradient/operative/testing';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 
 import { EvaluatorConfigurationError } from './configuration';

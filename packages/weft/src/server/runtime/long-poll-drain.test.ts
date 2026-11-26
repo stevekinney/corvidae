@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
 import { createDeferred } from '@lostgradient/testing/fake-timers';
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { Engine } from '../../core/engine.ts';
 import type { RemoteTaskRecord } from '../../core/task-ledger/task-ledger-types.ts';
 import {
@@ -51,7 +52,12 @@ afterEach(async () => {
 
 async function startServer(): Promise<WeftServer> {
   engine = new Engine({ storage: new MemoryStorage() });
-  const options = { engine, port: 0, unauthenticatedAccess: 'allow' } satisfies ServeOptions;
+  const options = {
+    host: bunServerHost,
+    engine,
+    port: 0,
+    unauthenticatedAccess: 'allow',
+  } satisfies ServeOptions;
   useManualTaskReconciliationForTesting(options);
   server = serve(options);
   await server.ready;

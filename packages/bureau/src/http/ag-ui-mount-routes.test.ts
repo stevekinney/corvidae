@@ -6,7 +6,8 @@
 import type { TaskHandle } from '../bureau-types/tasks.ts';
 import { EventType, type RunAgentInput } from '@ag-ui/core';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { stopWhen, type Toolbox, waitForCondition } from '@lostgradient/operative';
+import { stopWhen, type Toolbox } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';

@@ -3,7 +3,8 @@
  * `perChatUsd` ends `budget-exceeded` naming `perChatUsd` before any model call, a run under the
  * limit is not affected, and a toolbox `budget` refusal ends the run `budget-exceeded`.
  */
-import { createTestToolbox, createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 import { z } from 'zod';

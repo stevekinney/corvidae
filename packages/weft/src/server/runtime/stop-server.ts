@@ -1,12 +1,11 @@
-import type { Server } from 'bun';
-
+import type { ServerHandle } from '../host.ts';
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
 
 const SERVER_FORCE_STOP_SETTLE_TIMEOUT_MS = 250;
 
-export async function stopBunServerForShutdown(server: Server<WebSocketData>): Promise<void> {
+export async function stopServerForShutdown(server: ServerHandle<WebSocketData>): Promise<void> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
-  const stopPromise = server.stop(true);
+  const stopPromise = Promise.resolve(server.stop(true));
   stopPromise.catch((error: unknown) => {
     console.error('[weft] Bun server stop failed:', error);
   });

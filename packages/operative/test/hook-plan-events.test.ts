@@ -1,5 +1,5 @@
 import { createManualRuntimeServices, HookRegistry } from '@lostgradient/lifecycle';
-import { createTestToolbox } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 

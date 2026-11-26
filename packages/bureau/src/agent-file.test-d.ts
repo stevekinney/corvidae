@@ -2,7 +2,8 @@
 // agent's literal key, and takes any string for an agent only known at run time (a file agent),
 // answering with an untyped handle.
 
-import { createAgent, createMockGenerate } from '@lostgradient/operative';
+import { createAgent } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { z } from 'zod';
 
 import type { Bureau } from './bureau-types/facade';

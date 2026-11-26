@@ -1,0 +1,224 @@
+[
+  {
+    "package": "@lostgradient/backchannel",
+    "subpath": "./testing",
+    "finding": "bun:test",
+    "reason": "Testing entry uses Bun's test API."
+  },
+  {
+    "package": "@lostgradient/backchannel",
+    "subpath": "./testing",
+    "finding": "Bun.file",
+    "reason": "Testing entry reads fixture files through Bun."
+  },
+  {
+    "package": "@lostgradient/backchannel",
+    "subpath": "./testing",
+    "finding": "Bun.spawn",
+    "reason": "Testing entry runs fixture processes through Bun."
+  },
+  {
+    "package": "@lostgradient/backchannel",
+    "subpath": "./testing",
+    "finding": "Bun.write",
+    "reason": "Testing entry writes fixture files through Bun."
+  },
+  {
+    "package": "@lostgradient/bungalow",
+    "subpath": ".",
+    "finding": "bun:ffi",
+    "reason": "The default local lock is Bun-specific pending its portability work."
+  },
+  {
+    "package": "@lostgradient/bureau",
+    "subpath": "./testing",
+    "finding": "bun:sqlite",
+    "reason": "Bureau's testing entry intentionally owns native SQLite fixtures."
+  },
+  {
+    "package": "@lostgradient/interborough-plugin",
+    "subpath": "./testing",
+    "finding": "bun:test",
+    "reason": "Testing entry uses Bun's test API."
+  },
+  {
+    "package": "@lostgradient/operative",
+    "subpath": "./decision-testing",
+    "finding": "bun:test",
+    "reason": "Decision testing uses Bun's test API."
+  },
+  {
+    "package": "@lostgradient/operative",
+    "subpath": "./provider-testing",
+    "finding": "bun:test",
+    "reason": "Provider testing uses Bun's test API."
+  },
+  {
+    "package": "@lostgradient/storage-bun-sqlite",
+    "subpath": ".",
+    "finding": "bun:sqlite",
+    "reason": "This adapter targets Bun SQLite by construction."
+  },
+  {
+    "package": "@lostgradient/storage",
+    "subpath": "./testing",
+    "finding": "bun:test",
+    "reason": "Testing entry uses Bun's test API."
+  },
+  {
+    "package": "@lostgradient/storage",
+    "subpath": "./testing",
+    "finding": "Bun.inspect",
+    "reason": "Testing entry inspects test failures through Bun."
+  },
+  {
+    "package": "@lostgradient/storage",
+    "subpath": "./testing",
+    "finding": "Bun.spawn",
+    "reason": "Testing entry starts storage fixtures through Bun."
+  },
+  {
+    "package": "@lostgradient/velveteen",
+    "subpath": "./build/publication",
+    "finding": "Bun.write",
+    "reason": "Build-time publication writes generated output with Bun."
+  },
+  {
+    "package": "@lostgradient/velveteen",
+    "subpath": "./build",
+    "finding": "Bun.build",
+    "reason": "Velveteen's build tool targets Bun."
+  },
+  {
+    "package": "@lostgradient/velveteen",
+    "subpath": "./build",
+    "finding": "Bun.file",
+    "reason": "Velveteen's build tool reads files with Bun."
+  },
+  {
+    "package": "@lostgradient/velveteen",
+    "subpath": "./build",
+    "finding": "Bun.Glob",
+    "reason": "Velveteen's build tool enumerates files with Bun."
+  },
+  {
+    "package": "@lostgradient/velveteen",
+    "subpath": "./build",
+    "finding": "Bun.ModuleGraph",
+    "reason": "Velveteen's build tool analyzes modules with Bun."
+  },
+  {
+    "package": "@lostgradient/velveteen",
+    "subpath": "./build",
+    "finding": "Bun.write",
+    "reason": "Velveteen's build tool writes output with Bun."
+  },
+  {
+    "package": "@lostgradient/velveteen",
+    "subpath": "./compiler",
+    "finding": "Bun.file",
+    "reason": "Velveteen's compiler is a Bun build-time tool."
+  },
+  {
+    "package": "@lostgradient/velveteen",
+    "subpath": "./create",
+    "finding": "Bun.argv",
+    "reason": "Velveteen's project creator is a Bun command-line tool."
+  },
+  {
+    "package": "@lostgradient/velveteen",
+    "subpath": "./create",
+    "finding": "Bun.spawnSync",
+    "reason": "Velveteen's project creator runs Bun commands."
+  },
+  {
+    "package": "@lostgradient/velveteen",
+    "subpath": "./routing",
+    "finding": "Bun.Glob",
+    "reason": "Velveteen's routing generator is a Bun build-time tool."
+  },
+  {
+    "package": "@lostgradient/velveteen",
+    "subpath": "./routing",
+    "finding": "Bun.ModuleGraph",
+    "reason": "Velveteen's routing generator analyzes Bun modules."
+  },
+  {
+    "package": "@lostgradient/velveteen",
+    "subpath": "./types",
+    "finding": "Bun.file",
+    "reason": "The build-time type generator reads files with Bun."
+  },
+  {
+    "package": "@lostgradient/ventriloquist",
+    "subpath": "./bun",
+    "finding": "bun:ffi",
+    "reason": "The Bun process host uses Bun FFI."
+  },
+  {
+    "package": "@lostgradient/ventriloquist",
+    "subpath": "./bun",
+    "finding": "Bun.spawn",
+    "reason": "The Bun process host spawns local processes."
+  },
+  {
+    "package": "@lostgradient/ventriloquist",
+    "subpath": "./bun",
+    "finding": "Bun.which",
+    "reason": "The Bun process host resolves local executables."
+  },
+  {
+    "package": "@lostgradient/ventriloquist",
+    "subpath": "./websocket",
+    "finding": "bun:ffi",
+    "reason": "The local PTY WebSocket host uses Bun FFI."
+  },
+  {
+    "package": "@lostgradient/ventriloquist",
+    "subpath": "./websocket",
+    "finding": "Bun.serve",
+    "reason": "The local PTY WebSocket host serves through Bun."
+  },
+  {
+    "package": "@lostgradient/ventriloquist",
+    "subpath": "./websocket",
+    "finding": "Bun.spawn",
+    "reason": "The local PTY WebSocket host spawns processes."
+  },
+  {
+    "package": "@lostgradient/ventriloquist",
+    "subpath": "./websocket",
+    "finding": "Bun.which",
+    "reason": "The local PTY WebSocket host resolves executables."
+  },
+  {
+    "package": "@lostgradient/weft",
+    "subpath": "./bun",
+    "finding": "Bun.serve",
+    "reason": "The Bun host."
+  },
+  {
+    "package": "@lostgradient/weft",
+    "subpath": "./testing",
+    "finding": "Bun.env",
+    "reason": "The testing entry reads fixture configuration through Bun."
+  },
+  {
+    "package": "@lostgradient/weft",
+    "subpath": "./testing",
+    "finding": "Bun.serve",
+    "reason": "The testing entry hosts subprocess fixtures through Bun."
+  },
+  {
+    "package": "@lostgradient/weft",
+    "subpath": "./testing",
+    "finding": "Bun.sleep",
+    "reason": "The testing entry controls deterministic fixture time through Bun."
+  },
+  {
+    "package": "@lostgradient/weft",
+    "subpath": "./testing",
+    "finding": "Bun.spawn",
+    "reason": "The testing entry starts subprocess fixtures through Bun."
+  }
+]

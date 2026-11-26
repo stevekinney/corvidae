@@ -1,4 +1,4 @@
-import type { ServerWebSocket } from 'bun';
+import type { Socket } from '@lostgradient/node-host';
 
 import type { Authenticator, Principal, RateLimiter } from '@lostgradient/backchannel';
 import type {
@@ -75,9 +75,9 @@ export interface ServerContext {
   readonly registry: WorkerRegistry;
   readonly longPollWorkerSessions: Map<string, LongPollWorkerSession>;
   readonly taskQueue: TaskQueue;
-  readonly workerSockets: Map<string, ServerWebSocket<WebSocketData>>;
-  readonly streamSockets: Map<string, Set<ServerWebSocket<WebSocketData>>>;
-  readonly watchSockets: Map<string, Set<ServerWebSocket<WebSocketData>>>;
+  readonly workerSockets: Map<string, Socket<WebSocketData>>;
+  readonly streamSockets: Map<string, Set<Socket<WebSocketData>>>;
+  readonly watchSockets: Map<string, Set<Socket<WebSocketData>>>;
   readonly workflowStreamConnectionCounts: Map<string, number>;
   readonly maxStreamConnectionsPerWorkflow: number;
   /** Tracks per-workflow worker affinity for sticky routing. Maps workflowId to workerId. */

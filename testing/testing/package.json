@@ -23,6 +23,7 @@
     "./fake-timers": "./src/fake-timers.ts",
     "./hang-guard": "./src/hang-guard.ts",
     "./module-scope-scenario": "./src/module-scope-scenario.ts",
+    "./node-runtime": "./src/node-runtime.ts",
     "./playwright/component-page-fixture": "./src/playwright/component-page-fixture.ts",
     "./playwright/component-sweep": "./src/playwright/component-sweep.ts",
     "./playwright/editor-fixture": "./src/playwright/editor-fixture.ts",

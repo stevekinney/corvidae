@@ -30,7 +30,7 @@ The full rules behind AGENTS.md "Workspace and dependencies", "Release intent" a
 
 ### Worktree accumulation and Spotlight
 
-Merged worktrees left in place keep `fseventsd` and Spotlight busy (COR-2398): one development host showed 332 worktrees and about 175% of a core between the two daemons. `bun scripts/chef/deliver.ts` removes the delivered worktree by default (`--keep-worktree` opts out), and `bun scripts/chef/worktree.ts stale` lists every worktree under the accepted roots with its branch, age, cleanliness, lock, live processes and delivered state; `stale --remove` removes the clean, unlocked, idle, delivered ones and never the main checkout or the worktree it runs from.
+Merged worktrees left in place keep `fseventsd` and Spotlight busy (COR-2398): one development host showed 332 worktrees and about 175% of a core between the two daemons. `bun scripts/chef/deliver.ts` removes the delivered worktree by default (`--keep-worktree` opts out), and `bun scripts/chef/worktree.ts stale` lists every worktree under the accepted roots with its branch, age, cleanliness, lock, live processes and delivered state; `stale --remove` removes the clean, unlocked, idle, delivered ones and never the main checkout, the worktree it runs from, or one an unfinished delivery request owns. Nothing runs it on its own: the coordinator runs `bun scripts/chef/closeout-sweep.ts` at batch and run closeout, which also prunes idle worker scratch.
 
 The two worktree roots are:
 

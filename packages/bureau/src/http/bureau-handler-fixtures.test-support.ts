@@ -2,7 +2,8 @@
  * Test-only Bureau construction shared by the handler tests and the wire goldens.
  */
 
-import { createAgent, createMockGenerate, type GenerateFunction } from '@lostgradient/operative';
+import { createAgent, type GenerateFunction } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 
 import type { AgentDefinitions } from '../agent-catalog';

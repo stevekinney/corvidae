@@ -1,4 +1,5 @@
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * Operation-catalog live verification — verifies that `serve()` wires the
  * live `OperationRegistry` + `REST_BINDINGS` into `handleRequest`, and that
@@ -104,6 +105,7 @@ describe('operation catalog — live operation registry matches REST_BINDINGS', 
     await waitForStatus(engine, jsonRpcSignalHandle.id, 'running');
 
     const server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { jwt: { secret: TEST_SECRET } },
@@ -212,7 +214,7 @@ describe('operation catalog — end-to-end serve() to REST pipeline', () => {
     const handle = await engine.start('hold', { track: 8 }, {});
     await waitForStatus(engine, handle.id, 'running');
 
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
     const response = await fetch(`${server.url}/v1/workflows/${handle.id}`);
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/json');
@@ -222,7 +224,7 @@ describe('operation catalog — end-to-end serve() to REST pipeline', () => {
 
   it('GET /openapi.json returns a valid OpenAPI 3.1 document that includes the route', async () => {
     engine = createHoldEngine();
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
 
     const response = await fetch(`${server.url}/openapi.json`);
     expect(response.status).toBe(200);
@@ -237,6 +239,7 @@ describe('operation catalog — end-to-end serve() to REST pipeline', () => {
     await seedPreviewableWorkerStartOverrideWorkflow(storage, 'preview-jsonrpc');
     engine = new Engine({ storage });
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { jwt: { secret: TEST_SECRET } },

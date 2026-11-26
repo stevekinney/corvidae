@@ -6,13 +6,12 @@
  * announcements of it (COR-1806; see `ag-ui-mount-stream-events.test.ts`).
  */
 import { EventType } from '@ag-ui/core';
+import { createAgent, stopWhen } from '@lostgradient/operative';
 import {
-  createAgent,
   createScriptedGenerate,
   type ScriptedGenerate,
   type ScriptedGenerateStep,
-  stopWhen,
-} from '@lostgradient/operative';
+} from '@lostgradient/operative/testing';
 import { createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 

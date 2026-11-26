@@ -37,14 +37,14 @@ import type {
   ReproductionArtifact as OperativeReproductionArtifact,
   ReproductionCleanupReport,
   ScriptedOutcome,
-} from '@lostgradient/operative';
+} from '@lostgradient/operative/testing';
 import { summarizeToolInput } from '@lostgradient/operative';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import type { BureauShutdownReport } from '../bureau-types/facade';
 import type { BureauTestHarness } from './harness';
 
-export type { ScriptedOutcome } from '@lostgradient/operative';
+export type { ScriptedOutcome } from '@lostgradient/operative/testing';
 
 /**
  * AB-92 AC8's `ReproductionArtifact`, instantiated with Bureau's own

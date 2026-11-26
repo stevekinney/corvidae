@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
-import { createScriptedGenerate, type GenerateResponse } from '@lostgradient/operative';
+import { type GenerateResponse } from '@lostgradient/operative';
+import { createScriptedGenerate } from '@lostgradient/operative/testing';
 
 import { parseEvaluatorConfiguration } from './configuration';
 import { parseEvaluationDataset } from './datasets';

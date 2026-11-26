@@ -2,7 +2,7 @@
  * COR-1709 — `decisionValidator`: a goal whose validator asks a decision. A scripted `true` passes
  * the goal and a scripted `false` retries it, and the validator says it is stochastic.
  */
-import { createMockGenerate } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';

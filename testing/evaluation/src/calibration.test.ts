@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { createScriptedGenerate } from '@lostgradient/operative';
+import { createScriptedGenerate } from '@lostgradient/operative/testing';
 
 import {
   calibrationRecordSchema,

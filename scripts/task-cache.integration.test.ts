@@ -849,6 +849,11 @@ test('the tasks the selector narrows declare the selection variable, so no resul
   }
 });
 
+test('the native Node test lane keys on its pinned binary', async () => {
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  expect(configuration.tasks['test:slow'].env).toContain('CORVIDAE_NODE_BINARY');
+});
+
 test('a package task keys on every root script it runs and every root script those import', async () => {
   // A task that runs `bun ../../scripts/x.ts` replays a cached result unless x.ts, and what x.ts
   // imports, are among its inputs: the package's own files do not change when a root script does.

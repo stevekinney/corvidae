@@ -88,7 +88,8 @@
     "prettier": "catalog:velveteen",
     "prettier-plugin-svelte": "catalog:",
     "svelte": "catalog:",
-    "svelte-check": "catalog:velveteen"
+    "svelte-check": "catalog:velveteen",
+    "ws": "catalog:"
   },
   "files": [
     "src",

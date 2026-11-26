@@ -15,7 +15,8 @@ import {
   type RunOptions,
   stopWhen,
 } from '@lostgradient/operative';
-import { createTestToolbox, createTool, createToolbox, type Tool } from 'armorer';
+import { createTool, createToolbox, type Tool } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 import { z } from 'zod';

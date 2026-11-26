@@ -1,14 +1,13 @@
 import { tmpdir } from 'node:os';
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import {
-  createAgent,
   createEventRecorder,
   type EventRecorder,
-  type GenerateFunction,
   readReproductionArtifact,
   writeReproductionArtifact,
-} from '@lostgradient/operative';
+} from '@lostgradient/operative/testing';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';

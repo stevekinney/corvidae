@@ -39,4 +39,6 @@ By default a worker pushes a branch, and the coordinator verifies and squash-mer
 
 On Claude Code the Agent tool makes a worker's worktree under `<main checkout>/.claude/worktrees`. Make any other with `bun scripts/chef/worktree.ts create --provider claude --name <name> --branch <branch>`, which never attaches `main` to a second worktree. Remove one with `bun scripts/chef/worktree.ts remove --provider claude --name <name>` once its branch is delivered and `leftovers.ts` shows nothing running in it; its header lists what it refuses.
 
+A correction outside the workflow is dispatched with `isolation: "worktree"`; a plain dispatch runs in your worktree, where the edit hook refuses its writes. It branches from the pushed head, runs `bun install --frozen-lockfile` (for Interborough also `bun run tokens:seed` in `components/cinder`), and pushes `HEAD:<branch>` as a fast-forward.
+
 A worker in a shared, canonical, or production checkout (one that another owner, the user, or a deployment also uses) records `git status --porcelain` for both checkouts before its first change, changes one authorized path, and stops until the coordinator confirms the canonical checkout is unchanged. Never reset or automatically clean a checkout. Every path a worker's diff deletes or renames needs a reason in its return.

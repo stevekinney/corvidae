@@ -1,3 +1,7 @@
+import { realpathSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
+
 /**
  * Thrown whenever a requested path would resolve outside a {@link RootJail}'s
  * root — via `..` traversal, an absolute path outside the root, or a
@@ -48,8 +52,6 @@ export interface RootJail {
  */
 export function createRootJail(root: string): RootJail;
 export function createRootJail(root: unknown): RootJail {
-  const { realpathSync } = process.getBuiltinModule('node:fs');
-  const path = process.getBuiltinModule('node:path');
   if (typeof root !== 'string' || root.trim() === '') {
     throw new PathTraversalError('Root jail requires a non-empty root path', {
       requestedPath: String(root),
@@ -59,7 +61,7 @@ export function createRootJail(root: unknown): RootJail {
 
   let canonicalRoot: string;
   try {
-    canonicalRoot = realpathSync(path.resolve(root));
+    canonicalRoot = realpathSync(resolve(root));
   } catch {
     throw new PathTraversalError(`Root path does not exist: ${root}`, {
       requestedPath: root,
@@ -74,7 +76,6 @@ export function createRootJail(root: unknown): RootJail {
 }
 
 function assertWithinRoot(candidate: string, root: string, requestedPath: string): void {
-  const { sep } = process.getBuiltinModule('node:path');
   if (candidate === root || candidate.startsWith(root + sep)) return;
   throw new PathTraversalError(`Path "${requestedPath}" escapes root "${root}"`, {
     requestedPath,
@@ -83,7 +84,6 @@ function assertWithinRoot(candidate: string, root: string, requestedPath: string
 }
 
 async function resolveWithinRoot(relativePath: unknown, root: string): Promise<string> {
-  const path = process.getBuiltinModule('node:path');
   if (typeof relativePath !== 'string' || relativePath.length === 0) {
     throw new PathTraversalError('Path must be a non-empty string', {
       requestedPath: String(relativePath),
@@ -96,14 +96,14 @@ async function resolveWithinRoot(relativePath: unknown, root: string): Promise<s
       root,
     });
   }
-  if (path.isAbsolute(relativePath)) {
+  if (isAbsolute(relativePath)) {
     throw new PathTraversalError(`Path "${relativePath}" must be relative to the root`, {
       requestedPath: relativePath,
       root,
     });
   }
 
-  const candidate = path.normalize(path.join(root, relativePath));
+  const candidate = normalize(join(root, relativePath));
   assertWithinRoot(candidate, root, relativePath);
 
   const real = await realpathWithinRoot(candidate, root);
@@ -120,26 +120,24 @@ async function resolveWithinRoot(relativePath: unknown, root: string): Promise<s
  * dereferenced before the caller checks containment.
  */
 async function realpathWithinRoot(candidate: string, root: string): Promise<string> {
-  const { realpath } = process.getBuiltinModule('node:fs/promises');
-  const path = process.getBuiltinModule('node:path');
   let current = candidate;
   const suffix: string[] = [];
 
   for (;;) {
     try {
       const real = await realpath(current);
-      return suffix.length > 0 ? path.join(real, ...suffix) : real;
+      return suffix.length > 0 ? join(real, ...suffix) : real;
     } catch (error) {
       if (!isMissingPathError(error)) {
         throw error;
       }
-      const parent = path.dirname(current);
+      const parent = dirname(current);
       if (current === root || parent === current) {
         // Hit the jail root (or filesystem root) without finding an
         // existing ancestor to dereference; nothing left to resolve.
-        return suffix.length > 0 ? path.join(current, ...suffix) : current;
+        return suffix.length > 0 ? join(current, ...suffix) : current;
       }
-      suffix.unshift(path.basename(current));
+      suffix.unshift(basename(current));
       current = parent;
     }
   }

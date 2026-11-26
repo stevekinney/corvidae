@@ -6,7 +6,8 @@ import { workspaceAdministratorDirectory } from './workspace-privacy-fixtures.te
  * same thing for both.
  */
 import { EventType } from '@ag-ui/core';
-import { stopWhen, type Toolbox, waitForCondition } from '@lostgradient/operative';
+import { stopWhen, type Toolbox } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';

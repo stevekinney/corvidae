@@ -10,17 +10,19 @@ import {
   createGovernedMemory,
   createEmbedderRegistry,
   createWeftMemoryRecordStorage,
-  createInMemoryMemoryRecordStorage,
   createMemoryAuthority,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
-  createMockEmbedder,
   type GovernedMemory,
   type MemoryAuthority,
   createMemoryVectorStore,
-  createTestEmbedders,
   MEMORY_RELEASE_REJECTIONS,
 } from '@lostgradient/memory';
+import {
+  createInMemoryMemoryRecordStorage,
+  createMockEmbedder,
+  createTestEmbedders,
+} from '@lostgradient/memory/testing';
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import {
   type AuthConfig,

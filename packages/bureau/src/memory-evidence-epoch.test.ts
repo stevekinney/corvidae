@@ -7,14 +7,16 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createGovernedMemory,
-  createInMemoryMemoryRecordStorage,
   createMemoryAuthority,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
   type GovernedMemory,
   createMemoryVectorStore,
-  createTestEmbedders,
 } from '@lostgradient/memory';
+import {
+  createInMemoryMemoryRecordStorage,
+  createTestEmbedders,
+} from '@lostgradient/memory/testing';
 import {
   type ContextEpochSealer,
   type ContextSourceRecord,

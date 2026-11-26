@@ -5,7 +5,8 @@
  * outlives the process that announced it.
  */
 import { MemoryStorage } from '@lostgradient/storage';
-import { createAgent, createMockGenerate, stopWhen, type Toolbox } from '@lostgradient/operative';
+import { createAgent, stopWhen, type Toolbox } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { createToolbox } from 'armorer';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';

@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
@@ -281,7 +282,7 @@ describe('MCP Streamable HTTP transport', () => {
 
   it('initializes, lists tools, calls a registered workflow tool, and hides activities', async () => {
     const engine = createEngine();
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
     await initialize(server);
 
     const tools = await mcpJson(server, {
@@ -415,7 +416,7 @@ describe('MCP Streamable HTTP transport', () => {
       return { message: `Hello, ${input.name ?? 'there'}!` };
     });
     engine.register(countedTool);
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
     await initialize(server);
 
     await mcpJson(server, {
@@ -483,7 +484,7 @@ describe('MCP Streamable HTTP transport', () => {
         inputSchema: makeBrokenSchema('activity'),
       }),
     );
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
     await initialize(server);
 
     const tools = await mcpJson(server, {
@@ -600,7 +601,7 @@ describe('MCP Streamable HTTP transport', () => {
 
   it('lists and cancels workflows through the built-in tools', async () => {
     const engine = createEngine();
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
     await initialize(server);
     const handle = await engine.start('hold-for-cancel', { label: 'built-in-tools' });
     await waitForStatus(engine, handle.id, 'running');
@@ -659,7 +660,7 @@ describe('MCP Streamable HTTP transport', () => {
 
   it('reads workflow resources and emits resource update notifications for subscriptions', async () => {
     const engine = createEngine();
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
     await initialize(server);
 
     const handle = await engine.start('hold-for-cancel', { label: 'resource-test' });
@@ -769,7 +770,7 @@ describe('MCP Streamable HTTP transport', () => {
 
   it('notifies subscribed search resources when workflow visibility changes', async () => {
     const engine = createEngine();
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
     const handle = await engine.start(
       'hold-for-cancel',
       { label: 'search-subscription' },
@@ -836,7 +837,7 @@ describe('MCP Streamable HTTP transport', () => {
 
   it('returns a running result when a per-workflow MCP tool call reaches timeoutMs', async () => {
     const engine = createEngine();
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
     await initialize(server);
     let workflowId = '';
     const pendingCall = mcpJson(server, {
@@ -888,7 +889,7 @@ describe('MCP Streamable HTTP transport', () => {
 
   it('keeps workflow input timeoutMs separate from MCP tool timeoutMs', async () => {
     const engine = createEngine();
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
     await initialize(server);
 
     const completed = await mcpJson(server, {
@@ -938,7 +939,7 @@ describe('MCP Streamable HTTP transport', () => {
 
   it('cancels the workflow when a 2026-07-28 client cancels an in-flight workflow tool call', async () => {
     const engine = createEngine();
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
     const client = await connectModernClient(server);
     const request = new AbortController();
 
@@ -1035,7 +1036,7 @@ describe('MCP Streamable HTTP transport', () => {
 
   it('accepts cancellation notifications on the stateless 2025-era lane and keeps serving', async () => {
     const engine = createEngine();
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
     await initialize(server);
 
     // A well-formed cancellation for a request this lane is not running is

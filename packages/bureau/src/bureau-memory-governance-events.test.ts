@@ -4,16 +4,18 @@
  */
 import {
   createGovernedMemory,
-  createInMemoryMemoryRecordStorage,
   createMemoryAuthority,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
-  createMockEmbedder,
   type GovernedMemory,
   type MemoryGovernanceNotification,
   createMemoryVectorStore,
-  createTestEmbedders,
 } from '@lostgradient/memory';
+import {
+  createInMemoryMemoryRecordStorage,
+  createMockEmbedder,
+  createTestEmbedders,
+} from '@lostgradient/memory/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

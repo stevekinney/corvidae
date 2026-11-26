@@ -11,9 +11,9 @@ import {
   createAgentSession,
   SESSION_OWNER_METADATA_KEY,
   stopWhen,
-  waitForCondition,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { waitForTaskState } from './test';
 import { MemoryStorage } from '@lostgradient/storage';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
