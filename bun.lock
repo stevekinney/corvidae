@@ -414,6 +414,7 @@
       "name": "@lostgradient/backchannel",
       "dependencies": {
         "@lostgradient/credentials": "workspace:*",
+        "@lostgradient/cryptography": "workspace:*",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -486,6 +487,9 @@
     },
     "packages/bungalow": {
       "name": "@lostgradient/bungalow",
+      "dependencies": {
+        "@lostgradient/cryptography": "workspace:*",
+      },
       "devDependencies": {
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
@@ -652,7 +656,9 @@
     "packages/cryptography": {
       "name": "@lostgradient/cryptography",
       "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
+        "@lostgradient/workerd-testing": "workspace:*",
         "@types/bun": "catalog:",
         "oxlint": "catalog:",
         "typescript": "catalog:",
@@ -725,6 +731,7 @@
       "name": "@lostgradient/mcp",
       "version": "0.0.0",
       "dependencies": {
+        "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/storage-postgres": "workspace:*",
         "pg": "catalog:",
@@ -1088,6 +1095,7 @@
       },
       "dependencies": {
         "@lostgradient/backchannel": "workspace:*",
+        "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/environmentalist": "catalog:",
         "@lostgradient/node-host": "workspace:*",
         "@lostgradient/storage": "workspace:*",

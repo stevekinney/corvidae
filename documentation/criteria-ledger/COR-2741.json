@@ -1,0 +1,39 @@
+{
+  "issue": "COR-2741",
+  "branch": "codex/cor-2741-workers-npm",
+  "checkedAt": "8460fbaacb2db0fd160e925bfed6294f1a496c0e",
+  "briefVersion": "dfa0abc806b2",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "cryptography exports and tests timingSafeEqualText with UTF-8 byte-length and equal-length mismatch coverage."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "listed secret comparisons and SHA-256/PKCE digests use cryptography helpers."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "post-merge focused checks and Weft slow verification pass while preserving OAuth behavior and digest representations."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "pinned post-merge cryptography slow verification covers workerd vectors."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "pinned post-merge cryptography slow verification covers native Node vectors."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "audit spec waits for the visible selected active option after reopen and Any action after Home before Enter; both compact widths preserve label and URL assertions. Persistent focused checks passed."
+    }
+  ]
+}

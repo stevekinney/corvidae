@@ -15,8 +15,7 @@
  * @module owner-guardrails
  */
 
-import { createHash } from 'node:crypto';
-
+import { sha256HexSync } from '@lostgradient/cryptography';
 import { z } from 'zod';
 
 import type { GuardrailListing } from './plugins/plugin-types';
@@ -126,9 +125,9 @@ export function ownerCopiesNamedBy(
  */
 export function guardrailIdentity(base: string, copies: readonly OwnerGuardrailCopy[]): string {
   if (copies.length === 0) return base;
-  return createHash('sha256')
-    .update(`${base}\n${copies.map(({ id, digest }) => `guardrail\0${id}\0${digest}\n`).join('')}`)
-    .digest('hex');
+  return sha256HexSync(
+    `${base}\n${copies.map(({ id, digest }) => `guardrail\0${id}\0${digest}\n`).join('')}`,
+  );
 }
 
 /** Whether two lists copy the same guardrails at the same digests, in the same order. */
