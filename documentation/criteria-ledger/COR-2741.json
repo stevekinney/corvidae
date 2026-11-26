@@ -1,7 +1,7 @@
 {
   "issue": "COR-2741",
   "branch": "codex/cor-2741-workers-npm",
-  "checkedAt": "27c7728afcac000604946230d4bddb90fee60de8",
+  "checkedAt": "8460fbaacb2db0fd160e925bfed6294f1a496c0e",
   "briefVersion": "dfa0abc806b2",
   "status": "READY",
   "criteria": [
@@ -18,17 +18,17 @@
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "focused package and integration verification preserves OAuth behavior and digest representations."
+      "evidence": "post-merge focused checks and Weft slow verification pass while preserving OAuth behavior and digest representations."
     },
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "workerd integration vectors cover exports, equality values, and incremental hashing."
+      "evidence": "pinned post-merge cryptography slow verification covers workerd vectors."
     },
     {
       "id": "AC5",
       "status": "met-on-branch",
-      "evidence": "native Node 22 integration vectors pass and the slow lane selects integration files."
+      "evidence": "pinned post-merge cryptography slow verification covers native Node vectors."
     },
     {
       "id": "AC6",
