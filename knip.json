@@ -101,6 +101,27 @@
         "!src/**/*.bench.ts!"
       ]
     },
+    "packages/credentials": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts",
+        "src/workerd-fixture.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!",
+        "!src/workerd-fixture.ts!"
+      ]
+    },
     "packages/mcp": {
       "entry": [
         "**/*.test.ts",

@@ -635,6 +635,7 @@
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@lostgradient/velveteen": "workspace:*",
+        "@lostgradient/workerd-testing": "workspace:*",
         "@types/bun": "catalog:",
         "armorer": "workspace:*",
         "oxlint": "catalog:",

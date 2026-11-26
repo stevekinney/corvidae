@@ -17,7 +17,7 @@ export type BrowserSignInOptions = {
   storage: Storage;
   workspaceId: string;
   cookieName: string;
-  provider: Promise<client.Configuration>;
+  provider: Promise<client.Configuration> | (() => Promise<client.Configuration>);
   resolveAccount: (identity: Identity) => Promise<string | null>;
   resolveMembership: (identity: {
     subjectId: string;
@@ -30,16 +30,19 @@ export function oidc(options: {
   issuer: string;
   clientId: string;
   clientSecret: string;
-}): Promise<client.Configuration> {
-  return client.discovery(
-    new URL(options.issuer),
-    options.clientId,
-    { client_secret: options.clientSecret, [client.clockTolerance]: 0 },
-    undefined,
-    {
-      execute: [client.enableNonRepudiationChecks],
-    },
-  );
+  fetch?: client.CustomFetch;
+}): () => Promise<client.Configuration> {
+  return () =>
+    client.discovery(
+      new URL(options.issuer),
+      options.clientId,
+      { client_secret: options.clientSecret, [client.clockTolerance]: 0 },
+      undefined,
+      {
+        execute: [client.enableNonRepudiationChecks],
+        ...(options.fetch === undefined ? {} : { [client.customFetch]: options.fetch }),
+      },
+    );
 }
 
 const encoder = new TextEncoder();
@@ -79,10 +82,14 @@ export function createBrowserSignIn(options: BrowserSignInOptions) {
   if (!options.storage.capabilities().conditionalBatch || !options.storage.conditionalBatch)
     throw new TypeError('Atomic conditional storage is required');
   const secure = origin.protocol === 'https:';
-  const provider = options.provider.then((configuration) => {
-    client.enableNonRepudiationChecks(configuration);
-    return configuration;
-  });
+  let configuredProvider: Promise<client.Configuration> | undefined;
+  const provider = () =>
+    (configuredProvider ??= Promise.resolve(
+      typeof options.provider === 'function' ? options.provider() : options.provider,
+    ).then((configuration) => {
+      client.enableNonRepudiationChecks(configuration);
+      return configuration;
+    }));
   const prefix = `browser-sign-in:${options.cookieName}:`;
   const sessionKey = async (credential: string) => `${prefix}session:${await digest(credential)}`;
   const transactionKey = (state: string) => `${prefix}transaction:${state}`;
@@ -156,7 +163,7 @@ export function createBrowserSignIn(options: BrowserSignInOptions) {
       ))
     )
       throw new Error('Transaction collision');
-    const configuration = await provider;
+    const configuration = await provider();
     const url = client.buildAuthorizationUrl(configuration, {
       redirect_uri: new URL('/auth/callback', origin).href,
       scope: 'openid',
@@ -192,7 +199,7 @@ export function createBrowserSignIn(options: BrowserSignInOptions) {
     )
       return new Response('Invalid sign-in', { status: 400 });
     try {
-      const configuration = await provider;
+      const configuration = await provider();
       const result = await client.authorizationCodeGrant(configuration, url, {
         expectedState: state,
         expectedNonce: transaction.nonce,
