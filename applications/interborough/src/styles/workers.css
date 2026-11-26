@@ -41,6 +41,13 @@
   overflow: hidden;
 }
 
+/* A default DescriptionList starts its rows on its own content edge (COR-2760), so a list set
+ * straight into this frame takes the title's inset, and its linked rows' 12px tint stays inside the
+ * frame's clip. */
+.weft-workers-panel > .cinder-description-list {
+  padding-inline: var(--cinder-density-pad-inline);
+}
+
 .weft-workers-panel__title {
   margin: 0;
   padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
