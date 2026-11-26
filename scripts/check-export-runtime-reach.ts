@@ -21,6 +21,10 @@ export interface ExportRuntimeReachFinding {
 export interface ExportRuntimeReachAllowlistEntry extends ExportRuntimeReachFinding {
   reason: string;
 }
+export interface ExportRuntimeReachReport {
+  findings: ExportRuntimeReachFinding[];
+  nodeFindings: ExportRuntimeReachFinding[];
+}
 interface Workspace {
   directory: string;
   name: string;
@@ -129,7 +133,7 @@ async function findingsForExport(
   subpath: string,
   source: string,
   workspacePaths: ReadonlyMap<string, string>,
-): Promise<ExportRuntimeReachFinding[]> {
+): Promise<ExportRuntimeReachReport> {
   const result = await Bun.build({
     entrypoints: [join(workspace.directory, source)],
     target: 'browser',
@@ -172,9 +176,13 @@ async function findingsForExport(
       `${workspace.name} ${subpath}: bundle failed\\n${result.logs.map((log) => log.message).join('\\n')}`,
     );
   const findings = new Set<string>();
+  const nodeFindings = new Set<string>();
   for (const [input, metadata] of Object.entries(result.metafile?.inputs ?? {})) {
-    for (const imported of metadata.imports)
+    for (const imported of metadata.imports) {
       if (imported.external && imported.path.startsWith('bun:')) findings.add(imported.path);
+      if (imported.external && NODE_BUILTINS.has(imported.path.replace(/^node:/, '')))
+        nodeFindings.add(`node:${imported.path.replace(/^node:/, '')}`);
+    }
     const path = inputPath(root, input);
     if (path === undefined) continue;
     for (const member of bunMembers(path)) findings.add(member);
@@ -183,24 +191,34 @@ async function findingsForExport(
       findings.add(`test-kit: ${sourcePath}`);
     }
   }
-  return [...findings].toSorted().map((finding) => ({ package: workspace.name, subpath, finding }));
+  const asFindings = (values: ReadonlySet<string>) =>
+    [...values].toSorted().map((finding) => ({ package: workspace.name, subpath, finding }));
+  return { findings: asFindings(findings), nodeFindings: asFindings(nodeFindings) };
 }
 
-export async function scanExportRuntimeReach(root = ROOT): Promise<ExportRuntimeReachFinding[]> {
+export async function scanExportRuntimeReachReport(root = ROOT): Promise<ExportRuntimeReachReport> {
   const allWorkspaces = workspaces(root);
   const paths = workspaceSpecifierPaths(allWorkspaces);
   const findings: ExportRuntimeReachFinding[] = [];
+  const nodeFindings: ExportRuntimeReachFinding[] = [];
   for (const workspace of allWorkspaces)
     for (const [subpath, source] of Object.entries(workspace.exports)) {
       if (!subpath.includes('*') && !source.endsWith('.json') && !source.endsWith('.css')) {
-        findings.push(...(await findingsForExport(root, workspace, subpath, source, paths)));
+        const report = await findingsForExport(root, workspace, subpath, source, paths);
+        findings.push(...report.findings);
+        nodeFindings.push(...report.nodeFindings);
       }
     }
-  return findings.toSorted((left, right) =>
-    `${left.package}\0${left.subpath}\0${left.finding}`.localeCompare(
-      `${right.package}\0${right.subpath}\0${right.finding}`,
-    ),
-  );
+  const sort = (values: ExportRuntimeReachFinding[]) =>
+    values.toSorted((left, right) =>
+      `${left.package}\0${left.subpath}\0${left.finding}`.localeCompare(
+        `${right.package}\0${right.subpath}\0${right.finding}`,
+      ),
+    );
+  return { findings: sort(findings), nodeFindings: sort(nodeFindings) };
+}
+export async function scanExportRuntimeReach(root = ROOT): Promise<ExportRuntimeReachFinding[]> {
+  return (await scanExportRuntimeReachReport(root)).findings;
 }
 
 export function judgeExportRuntimeReach(

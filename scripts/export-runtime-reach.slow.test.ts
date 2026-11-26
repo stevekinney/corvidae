@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import {
   judgeExportRuntimeReach,
   scanExportRuntimeReach,
+  scanExportRuntimeReachReport,
   type ExportRuntimeReachAllowlistEntry,
 } from './check-export-runtime-reach.ts';
 
@@ -38,6 +39,25 @@ test('reports a public export that reaches Bun.file', async () => {
     async (root) => {
       expect(judgeExportRuntimeReach(await scanExportRuntimeReach(root), []).unlisted).toEqual([
         { package: '@scope/demo', subpath: '.', finding: 'Bun.file' },
+      ]);
+    },
+  );
+});
+
+test('reports normalized Node builtins without making them guard findings', async () => {
+  await withRepository(
+    {
+      'packages/demo/package.json': JSON.stringify({
+        name: '@scope/demo',
+        exports: { '.': './src/index.ts' },
+      }),
+      'packages/demo/src/index.ts': "import 'node:fs'; import 'fs'; export const value = 1;\n",
+    },
+    async (root) => {
+      const report = await scanExportRuntimeReachReport(root);
+      expect(report.findings).toEqual([]);
+      expect(report.nodeFindings).toEqual([
+        { package: '@scope/demo', subpath: '.', finding: 'node:fs' },
       ]);
     },
   );
