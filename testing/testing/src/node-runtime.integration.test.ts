@@ -4,13 +4,19 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
+import { environmentConfiguration } from './environment-configuration.ts';
+import { runWithHangGuard } from './hang-guard.ts';
 import { throwingRejectionOf } from './helpers/promise-outcome.ts';
 import { resolveNativeNode, runNodeTests } from './node-runtime.ts';
 
 const fixture = (name: string) =>
   new URL(`./node-runtime-fixtures/${name}`, import.meta.url).pathname;
 
-const nativeVersion = process.env['CORVIDAE_NODE_BINARY'];
+const nativeVersion = environmentConfiguration().corvidaeNodeBinary;
+const expectedNativeVersion =
+  nativeVersion === undefined || nativeVersion === ''
+    ? undefined
+    : (await runWithHangGuard([nativeVersion, '--version'])).stdout.toString().trim();
 const passing = await runNodeTests([fixture('passing.ts')], { shim: true });
 const failing = await runNodeTests([fixture('failing.ts')], { shim: true });
 const bundled = await runNodeTests([fixture('bundled.ts')], { bundle: true, shim: true });
@@ -34,7 +40,7 @@ const snapshotted = await snapshotsCallerInputs;
 const fakeNodeRefusal = await (async () => {
   const directory = mkdtempSync(join(tmpdir(), 'corvidae-node-runtime-fake-'));
   const binary = join(directory, 'node');
-  const original = process.env['CORVIDAE_NODE_BINARY'];
+  const original = environmentConfiguration().corvidaeNodeBinary;
   try {
     writeFileSync(
       binary,
@@ -59,9 +65,7 @@ describe('runNodeTests', () => {
 
   test('returns the Node version selected by CORVIDAE_NODE_BINARY', () => {
     if (nativeVersion !== undefined && nativeVersion !== '') {
-      expect(passing.version).toBe(
-        Bun.spawnSync([nativeVersion, '--version']).stdout.toString().trim(),
-      );
+      expect(passing.version).toBe(expectedNativeVersion);
     }
   });
 

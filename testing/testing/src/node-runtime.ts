@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 
+import { environmentConfiguration } from './environment-configuration.ts';
 import { runWithHangGuard } from './hang-guard.ts';
 
 export {
@@ -39,9 +40,8 @@ async function nodeVersion(binary: string): Promise<string> {
   const version = result.stdout.toString().trim();
   const major = /^v(\d+)\./u.exec(version)?.[1];
   if (result.exitCode !== 0 || major === undefined) {
-    throw new Error(
-      `Native Node binary ${binary} did not report a Node version: ${version || result.stderr}`,
-    );
+    const reported = version === '' ? result.stderr.toString().trim() : version;
+    throw new Error(`Native Node binary ${binary} did not report a Node version: ${reported}`);
   }
   if (Number(major) < 22) {
     throw new Error(`Native Node binary ${binary} is ${version}; Node 22 or later is required.`);
@@ -56,13 +56,14 @@ async function isNativeNode(binary: string): Promise<boolean> {
 
 /** Locate Node 22+ without accepting Bun's `node` shims. */
 export async function resolveNativeNode(): Promise<string> {
-  const pinned = process.env['CORVIDAE_NODE_BINARY'];
+  const environment = environmentConfiguration();
+  const pinned = environment.corvidaeNodeBinary;
   if (pinned !== undefined && pinned !== '') {
     await nodeVersion(pinned);
     if (await isNativeNode(pinned)) return pinned;
     throw new Error(`CORVIDAE_NODE_BINARY does not name a native Node binary: ${pinned}`);
   }
-  for (const directory of (process.env['PATH'] ?? '').split(delimiter).filter(existsSync)) {
+  for (const directory of (environment.path ?? '').split(delimiter).filter(existsSync)) {
     const candidate = Bun.which('node', { PATH: directory });
     if (candidate === null) continue;
     if (!(await isNativeNode(candidate))) continue;
