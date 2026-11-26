@@ -16,12 +16,16 @@ export function displayStack(stack: string): string {
     .join('\n');
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /** Omit the engine's own run identifier from a confirmed document activity envelope. */
 export function displayDocumentActivityInput(summary: string, workflowId: string): string {
   try {
     const parsed: unknown = JSON.parse(summary);
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return summary;
-    const record = parsed as Record<string, unknown>;
+    if (!isRecord(parsed)) return summary;
+    const record = parsed;
     if (
       record['workflowId'] !== workflowId ||
       !Number.isSafeInteger(record['step']) ||
