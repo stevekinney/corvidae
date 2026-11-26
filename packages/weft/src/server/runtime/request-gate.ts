@@ -24,6 +24,7 @@ import {
   normalizeRequestPathname,
   unauthorizedResponse,
 } from '@lostgradient/backchannel/internals';
+import type { ServerHandle } from '../host.ts';
 import { shapeWeftRestFaultAsJson } from '../weft-operation-fault.ts';
 import type { ServerContext } from './context.ts';
 
@@ -111,7 +112,7 @@ function subjectFromAuthContext(authContext: AuthContext | undefined): string | 
  * neither is available.
  */
 function rateLimitKeyForRequest(
-  server: ReturnType<typeof Bun.serve>,
+  server: ServerHandle<unknown>,
   request: Request,
   authContext: AuthContext | undefined,
 ): string {
@@ -135,7 +136,7 @@ function rateLimitKeyForRequest(
  */
 function enforceRateLimit(
   context: ServerContext,
-  server: ReturnType<typeof Bun.serve>,
+  server: ServerHandle<unknown>,
   request: Request,
   authContext: AuthContext | undefined,
   publicBypass: boolean,
@@ -178,7 +179,7 @@ function enforceRateLimit(
  * on the `/api/…` prefix path.
  */
 export async function gateRequest(
-  server: ReturnType<typeof Bun.serve>,
+  server: ServerHandle<unknown>,
   context: ServerContext,
   request: Request,
   originalRequest: Request = request,

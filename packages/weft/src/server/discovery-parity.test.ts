@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
@@ -76,7 +77,7 @@ describe('Discovery parity', () => {
     const engine = createHoldEngine();
     engines.push(engine);
 
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     servers.push(server);
 
     const openApiResponse = await fetch(`${server.url}/openapi.json`);
@@ -125,7 +126,7 @@ describe('Discovery parity', () => {
     const engine = createHoldEngine();
     engines.push(engine);
 
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     servers.push(server);
 
     const routeResponse = await fetch(`${server.url}/openrpc.json`);

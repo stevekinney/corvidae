@@ -4,11 +4,8 @@
  * with a `ModelPolicyDeniedError`, before any provider is called, only when the policy leaves no
  * row. The policy is read at each decision, so a change applies to the next one.
  */
-import {
-  type BackendDescriptor,
-  createMockGenerate,
-  type GenerateFunction,
-} from '@lostgradient/operative';
+import { type BackendDescriptor, type GenerateFunction } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 

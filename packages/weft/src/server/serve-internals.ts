@@ -22,6 +22,7 @@ import {
   validateCorsOptions,
   type AdditionalScopeSet,
 } from '@lostgradient/backchannel/internals';
+import type { ServeOptions as HostServeOptions } from '@lostgradient/node-host';
 import type { ConformanceTargetRunner } from '../conformance/targets.ts';
 import type { Engine } from '../core/engine.ts';
 import { getEnginePayloadSizeMaxBytes } from '../core/engine/payload-size-policy.ts';
@@ -33,6 +34,7 @@ import { WorkerRegistry } from '../worker/registry.ts';
 import { DeadlineTracker } from './deadline-tracker.ts';
 import { createEngineEventFeedBackend } from './engine-event-feed-backend.ts';
 import { createFleetEventFeed } from './fleet-event-feed.ts';
+import type { ServerHandle } from './host.ts';
 import { SERVER_IDLE_TIMEOUT_SECONDS } from './idle-timeout.ts';
 import type { ServeOptions } from './index.ts';
 import {
@@ -122,13 +124,13 @@ const AUTHENTICATION_REQUIRED_ENVIRONMENT_VARIABLE = 'WEFT_SERVER_AUTHENTICATION
  * `tests/auth-warning-filter.test.ts`) and not part of the public API surface.
  */
 export const NO_AUTHENTICATION_WARNING =
-  '[weft] WARNING: server started with NO authentication; every built-in operation is accessible to any caller, and every request runs as the "unauthenticated-local" principal holding every built-in scope (an operation that needs a package scope registered through additionalScopes still needs a credential holding it). Configure serve({ auth }) to lock down, or set unauthenticatedAccess: "reject" in production to fail closed.';
+  '[weft] WARNING: server started with NO authentication; every built-in operation is accessible to any caller, and every request runs as the "unauthenticated-local" principal holding every built-in scope (an operation that needs a package scope registered through additionalScopes still needs a credential holding it). Configure serve({ host: bunServerHost, auth }) to lock down, or set unauthenticatedAccess: "reject" in production to fail closed.';
 export const MCP_ORIGIN_CONFIGURATION_WARNING =
-  '[weft] WARNING: MCP HTTP transport is enabled without publicOrigin or trustedHosts. Cross-origin /mcp requests are rejected, and discovery routes that emit absolute URLs return 503. Configure serve({ publicOrigin: "https://api.example.com" }) or serve({ trustedHosts: ["api.example.com"] }) before exposing the server through a browser or reverse proxy.';
+  '[weft] WARNING: MCP HTTP transport is enabled without publicOrigin or trustedHosts. Cross-origin /mcp requests are rejected, and discovery routes that emit absolute URLs return 503. Configure serve({ host: bunServerHost, publicOrigin: "https://api.example.com" }) or serve({ host: bunServerHost, trustedHosts: ["api.example.com"] }) before exposing the server through a browser or reverse proxy.';
 const NO_AUTHENTICATION_REJECT_ERROR =
-  '[weft] Refusing to start server with no authentication. Configure serve({ auth }) or set unauthenticatedAccess: "allow" only for trusted local development.';
+  '[weft] Refusing to start server with no authentication. Configure serve({ host: bunServerHost, auth }) or set unauthenticatedAccess: "allow" only for trusted local development.';
 const NO_AUTHENTICATION_ENVIRONMENT_ERROR =
-  '[weft] Refusing to start server with no authentication because WEFT_SERVER_AUTHENTICATION_REQUIRED requires authentication. Configure serve({ auth }) or unset WEFT_SERVER_AUTHENTICATION_REQUIRED only for trusted local development.';
+  '[weft] Refusing to start server with no authentication because WEFT_SERVER_AUTHENTICATION_REQUIRED requires authentication. Configure serve({ host: bunServerHost, auth }) or unset WEFT_SERVER_AUTHENTICATION_REQUIRED only for trusted local development.';
 const STATIC_API_KEYS_WITHOUT_SCOPES_ERROR =
   '[weft] Refusing to start server: auth.apiKeys admit callers with no scopes. Configure auth.defaultApiKeyScopes (the scopes every static API key holds) or auth.resolveApiKeyPrincipal (a per-key principal); every operation requires a scope, so an unscoped key would be refused everywhere.';
 const TRUTHY_AUTHENTICATION_REQUIREMENT_VALUES = new Set(['1', 'true', 'yes', 'on']);
@@ -191,7 +193,7 @@ function assertStaticApiKeysHaveScopes(
 }
 
 export function assertAuthenticationPosture(
-  options: ServeOptions,
+  options: Omit<ServeOptions, 'host'>,
   environmentRequirement = resolveServerEnvironment().weftServerAuthenticationRequired,
 ): void {
   if (options.auth) return;
@@ -207,18 +209,38 @@ export function assertAuthenticationPosture(
   console.warn(NO_AUTHENTICATION_WARNING);
 }
 
-export function warnIfMcpOriginConfigurationMissing(options: ServeOptions): void {
+export function warnIfMcpOriginConfigurationMissing(options: Omit<ServeOptions, 'host'>): void {
   if (options.publicOrigin !== undefined || options.trustedHosts !== undefined) return;
   console.warn(MCP_ORIGIN_CONFIGURATION_WARNING);
 }
 
 /**
- * A mutable holder for the Bun server instance. The `fetch` handler needs to
+ * A mutable holder for the selected host's server instance. The `fetch` handler needs to
  * call back into the server (for WebSocket upgrades) but the server isn't
- * created until `Bun.serve()` is called. The holder is populated immediately
- * after `Bun.serve()` returns, before any requests can be handled.
+ * created until the host is called. The holder is populated immediately
+ * after it returns, before any requests can be handled.
  */
-export type ServerHolder = { current: ReturnType<typeof Bun.serve> | null };
+export type ServerHolder = { current: ServerHandle<WebSocketData> | null };
+
+/** Small portable LIFO disposer for the server lifetime. */
+export class ServerDisposalStack {
+  #callbacks: Array<() => void | Promise<void>> = [];
+  #disposed: Promise<void> | undefined;
+
+  defer(callback: () => void | Promise<void>): void {
+    this.#callbacks.push(callback);
+  }
+
+  dispose(): Promise<void> {
+    if (this.#disposed !== undefined) return this.#disposed;
+    this.#disposed = (async () => {
+      for (const callback of this.#callbacks.toReversed()) await callback();
+    })();
+    return this.#disposed;
+  }
+}
+
+type DeferredCleanup = { defer(callback: () => void | Promise<void>): void };
 
 /** `ServeOptions` with `prometheusExporter` guaranteed present. */
 export type ResolvedServeOptions = ServeOptions & {
@@ -263,9 +285,9 @@ function createServerAuthenticator(options: ServeOptions): Promise<Authenticator
 
 /**
  * Resolves all network configuration defaults and validates the auth config
- * synchronously so misconfigurations fail fast before `Bun.serve()` binds.
+ * synchronously so misconfigurations fail fast before the host binds.
  */
-export function resolveNetworkConfig(options: ServeOptions): ResolvedNetworkConfig {
+export function resolveNetworkConfig(options: Omit<ServeOptions, 'host'>): ResolvedNetworkConfig {
   // Fail fast before binding: a malformed or `weft.`-namespaced registration
   // would otherwise surface only as a rejected authenticator promise.
   const additionalScopes = createAdditionalScopeSet(options.additionalScopes);
@@ -294,7 +316,7 @@ export function resolveNetworkConfig(options: ServeOptions): ResolvedNetworkConf
   const serverMetricsCollector = new MetricsCollector();
   const prometheusExporter =
     options.prometheusExporter ?? createMetricsCollectorExporter(serverMetricsCollector);
-  const serverOptions: ResolvedServeOptions = { ...options, prometheusExporter };
+  const serverOptions = { ...options, prometheusExporter } as ResolvedServeOptions;
   const tlsOptions = buildTLSOptions(options.auth);
   return { port, hostname, development, tlsOptions, serverOptions, serverMetricsCollector };
 }
@@ -431,9 +453,9 @@ export function buildServerContext(
 }
 
 /**
- * Returns the `fetch` handler for `Bun.serve()`. The handler reads the server
+ * Returns the selected host's `fetch` handler. The handler reads the server
  * instance from `serverHolder.current`, which is populated right after
- * `Bun.serve()` returns. This avoids a circular dependency between the server
+ * host returns. This avoids a circular dependency between the server
  * reference and its own fetch callback.
  */
 export function buildFetchHandler(
@@ -466,7 +488,7 @@ export function cleanupWorkflowIndex(context: ServerContext, operationId: string
 }
 
 /**
- * Assembles the `Bun.serve()` options object. Separating this avoids a
+ * Assembles the host options object. Separating this avoids a
  * conditional spread (`...(tlsOptions ? { tls } : {})`) inside `serve()`.
  *
  * Sets a constant `maxPayloadLength` of `WEBSOCKET_MAX_PAYLOAD_BYTES` (4 MiB)
@@ -476,16 +498,16 @@ export function cleanupWorkflowIndex(context: ServerContext, operationId: string
  * the raw-frame limit with the application value-size policy would cause false
  * rejections in the wrong unit).
  */
-export function buildBunServeConfig(
+export function buildServerHostConfig(
   port: number,
   hostname: string,
   development: boolean,
-  routes: Bun.Serve.Routes<WebSocketData, string>,
+  routes: NonNullable<HostServeOptions<WebSocketData>['routes']>,
   tlsOptions: ReturnType<typeof buildTLSOptions>,
   fetchHandler: (request: Request) => Promise<Response | undefined>,
   websocketCallbacks: ReturnType<typeof createServerWebSocketHandlers>,
-): Parameters<typeof Bun.serve<WebSocketData>>[0] {
-  const config: Parameters<typeof Bun.serve<WebSocketData>>[0] = {
+): HostServeOptions<WebSocketData> {
+  const config: HostServeOptions<WebSocketData> = {
     port,
     hostname,
     development,
@@ -494,10 +516,7 @@ export function buildBunServeConfig(
     idleTimeout: SERVER_IDLE_TIMEOUT_SECONDS,
     websocket: { ...websocketCallbacks, maxPayloadLength: WEBSOCKET_MAX_PAYLOAD_BYTES },
   };
-  if (tlsOptions) {
-    config.tls = tlsOptions;
-  }
-  return config;
+  return tlsOptions ? { ...config, tls: tlsOptions } : config;
 }
 
 /**
@@ -506,7 +525,7 @@ export function buildBunServeConfig(
  * the most-recently-registered item is torn down first.
  */
 export function registerStackDisposers(
-  stack: AsyncDisposableStack,
+  stack: DeferredCleanup,
   context: ServerContext,
   options: ServeOptions,
   broadcastingHandle: EventBroadcastingHandle,
@@ -554,10 +573,6 @@ export function registerStackDisposers(
       }, context.visibilityPollMs)
     : undefined;
 
-  // Periodic full-storage reconciliation to catch orphaned inflight records
-  // that were never tracked in the heap (e.g., written by another process or
-  // left over from a crash). Runs at 12x the visibility poll interval to keep
-  // cost low while still providing a safety net.
   const reconciliationIntervalMs = context.visibilityPollMs * RECONCILIATION_MULTIPLIER;
   const reconciliationHandle = schedulesTaskReconciliation
     ? setInterval(() => {
@@ -565,31 +580,17 @@ export function registerStackDisposers(
       }, reconciliationIntervalMs)
     : undefined;
 
-  // Registered last — disposed first: clear all intervals and pending timers.
   stack.defer(() => {
-    // Set first: a still-running startup recovery scan (or a reconciliation
-    // pass racing shutdown) checks this before arming a new timer or issuing
-    // a durable write, so it stops making progress instead of doing work
-    // against a stopped server after this disposer returns.
     context.stopping = true;
     if (visibilityPollHandle !== undefined) clearInterval(visibilityPollHandle);
     if (reconciliationHandle !== undefined) clearInterval(reconciliationHandle);
     context.deadlineTracker.clear();
-    // Clear all pending backoff-delay timers to prevent callbacks firing
-    // against a stopped server.
     for (const timer of context.pendingTimers) {
       clearTimeout(timer);
     }
     context.pendingTimers.clear();
-    // End any pending worker-reconnect grace windows so their timers cannot
-    // fire against a torn-down registry/storage, and so `shutdownAllWorkers`
-    // below does not wait on a socket that already closed.
     endWorkerReconnectGracePeriods(context, options, onOperationCleanup);
-    // Tear down the task queue: clears expiration timers and settles any parked
-    // long-poll waiters with null so no timer fires and no poll promise leaks
-    // against a stopped server.
     context.taskQueue[Symbol.dispose]();
-    // Release the rate limiter's per-key window map.
     context.rateLimiter?.dispose();
   });
 }

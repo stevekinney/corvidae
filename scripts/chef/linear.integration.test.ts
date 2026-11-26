@@ -1311,6 +1311,15 @@ sandbox = mkdtempSync(join(tmpdir(), 'linear-durable-'));
 const claimScenario11 = await (async () => {
   const fake = fakeLinear();
   await take(fake, 'run-a');
+  // P-COR-128: the release needs the claim's generation, and `read` never printed it.
+  const read = await run(['read', 'COR-1'], withClock(fake));
+  expect(read.code).toBe(0);
+  expect(read.output).toContain('claim: held by run run-a, generation 1');
+  const missing = await throwingRejectionOf(
+    run(['claim', 'COR-1', '--release', '--run', 'run-a'], withClock(fake)),
+  );
+  expect(missing).toThrow(UsageError);
+  expect(missing).toThrow('`linear.ts read <ID>` prints it');
   const released = await run(
     ['claim', 'COR-1', '--release', '--run', 'run-a', '--generation', '1'],
     withClock(fake),
@@ -1338,6 +1347,13 @@ const claimScenario12 = await (async () => {
   );
   expect(other.code).toBe(1);
   expect(other.output).toContain('release lacks current authority');
+  // A release at another generation names the one this run holds (the trial passed the lease's 2).
+  const stale = await run(
+    ['claim', 'COR-1', '--release', '--run', 'run-a', '--generation', '2'],
+    withClock(fake),
+  );
+  expect(stale.code).toBe(1);
+  expect(stale.output).toContain('this run holds generation 1');
   expect(claimLines(fake)[0]?.body).toContain('status held');
 
   return true;

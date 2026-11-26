@@ -11,9 +11,9 @@ import {
   createAgent,
   type GenerateContext,
   stopWhen,
-  waitForCondition,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';

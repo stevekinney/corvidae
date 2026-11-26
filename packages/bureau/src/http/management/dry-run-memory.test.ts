@@ -8,14 +8,16 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createGovernedMemory,
-  createInMemoryMemoryRecordStorage,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
   createMemoryVectorStore,
-  createMockEmbedder,
-  createTestEmbedders,
   type GovernedMemory,
 } from '@lostgradient/memory';
+import {
+  createInMemoryMemoryRecordStorage,
+  createMockEmbedder,
+  createTestEmbedders,
+} from '@lostgradient/memory/testing';
 import { type AuthConfig, principalFromApiKey } from '@lostgradient/backchannel';
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';

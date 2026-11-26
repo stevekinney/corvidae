@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { createScriptedGenerate, type ScriptedGenerateStep } from '@lostgradient/operative';
+import { createScriptedGenerate, type ScriptedGenerateStep } from '@lostgradient/operative/testing';
 
 import { EvaluatorConfigurationError, parseEvaluatorConfiguration } from './configuration';
 import { modelConfigurationInput } from './evaluation.test-support';

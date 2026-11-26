@@ -11,12 +11,8 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import {
-  createAgent,
-  stopWhen,
-  waitForCondition,
-  type GenerateFunction,
-} from '@lostgradient/operative';
+import { createAgent, stopWhen, type GenerateFunction } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { principalFromApiKey } from '@lostgradient/backchannel';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 

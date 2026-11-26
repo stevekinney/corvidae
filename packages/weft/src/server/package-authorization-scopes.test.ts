@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 import { getPrincipalOperation } from './operations/get-principal.ts';
 /**
@@ -220,10 +221,17 @@ describe('additionalScopes — validation at construction', () => {
     try {
       const bad = ['bureau'] as unknown as PackageAuthorizationScope[];
       expect(() =>
-        serve({ engine, port: 0, auth: { jwt: { secret: SECRET } }, additionalScopes: bad }),
+        serve({
+          host: bunServerHost,
+          engine,
+          port: 0,
+          auth: { jwt: { secret: SECRET } },
+          additionalScopes: bad,
+        }),
       ).toThrow(/additionalScopes/);
       expect(() =>
         serve({
+          host: bunServerHost,
           engine,
           port: 0,
           auth: { jwt: { secret: SECRET } },
@@ -292,6 +300,7 @@ describe('additionalScopes — weft.system.principal', () => {
   it('reads back a registered scope held by the caller', async () => {
     engine = new Engine({ storage: new MemoryStorage() });
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { jwt: { secret: SECRET } },
@@ -335,6 +344,7 @@ describe('additionalScopes — JSON-RPC over WebSocket', () => {
   it('keeps a registered scope on the principal admitted at the upgrade', async () => {
     const engine = new Engine({ storage: new MemoryStorage() });
     const server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { jwt: { secret: SECRET } },
@@ -390,12 +400,14 @@ describe('additionalScopes — isolation', () => {
     const firstEngine = new Engine({ storage: new MemoryStorage() });
     const secondEngine = new Engine({ storage: new MemoryStorage() });
     const first = serve({
+      host: bunServerHost,
       engine: firstEngine,
       port: 0,
       auth: { jwt: { secret: SECRET } },
       additionalScopes: [TASKS_READ],
     });
     const second = serve({
+      host: bunServerHost,
       engine: secondEngine,
       port: 0,
       auth: { jwt: { secret: SECRET } },

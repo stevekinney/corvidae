@@ -8,10 +8,8 @@
  * that stops making progress and is reported as the reason it exited, rather
  * than being measured.
  */
-import { existsSync } from 'node:fs';
-import { delimiter } from 'node:path';
-
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { resolveNativeNode } from '@lostgradient/testing/node-runtime';
 
 import { nativeNodeEnvironment } from './environment-configuration';
 
@@ -133,34 +131,19 @@ export function startHost(
   };
 }
 
-/** Locates native Node exactly as the Node SQLite adapter's `node-sqlite.integration.test.ts` does, skipping Bun's `node` shims. */
-export function resolveNativeNode(searchPath: string): string {
-  for (const directory of searchPath.split(delimiter).filter(existsSync)) {
-    const candidate = Bun.which('node', { PATH: directory });
-    if (candidate === null) continue;
-    const identity = Bun.spawnSync([
-      candidate,
-      '--eval',
-      'process.stdout.write(process.versions.bun ? "bun" : process.release.name)',
-    ]);
-    if (identity.exitCode === 0 && identity.stdout.toString() === 'node') return candidate;
-  }
-  throw new Error('The native Node signal-shutdown hosts require Node.js.');
-}
-
 export type HostRuntime = 'bun' | 'node';
 
 /** How a host file is launched: `bun <host>`, or `node --import <hooks> <host>`. */
-export function hostCommand(
+export async function hostCommand(
   hostRuntime: HostRuntime,
   hooks: string,
-): {
+): Promise<{
   readonly command: (host: string, ...args: string[]) => string[];
   readonly env?: Record<string, string | undefined>;
-} {
+}> {
   if (hostRuntime === 'bun') return { command: (host, ...args) => ['bun', host, ...args] };
   const environment = nativeNodeEnvironment();
-  const node = resolveNativeNode(environment.searchPath);
+  const node = await resolveNativeNode();
   return {
     command: (host, ...args) => [node, '--import', hooks, host, ...args],
     env: environment.env,

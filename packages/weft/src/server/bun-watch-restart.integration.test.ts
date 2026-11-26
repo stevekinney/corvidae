@@ -43,11 +43,13 @@ const REVISION_MODULE_NAME = 'revision.ts';
 function entrypointSource(): string {
   const repoRoot = new URL('../..', import.meta.url);
   const indexUrl = new URL('src/index.ts', repoRoot).href;
+  const bunHostUrl = new URL('src/bun-host.ts', repoRoot).href;
   const serverUrl = new URL('src/server/index.ts', repoRoot).href;
   const sqliteUrl = import.meta.resolve('@lostgradient/storage-bun-sqlite');
   return `
 import { GENERATION } from './${REVISION_MODULE_NAME}';
 import { Engine, workflow } from ${JSON.stringify(indexUrl)};
+import { bunServerHost } from ${JSON.stringify(bunHostUrl)};
 import { serve } from ${JSON.stringify(serverUrl)};
 import { BunSQLiteStorage } from ${JSON.stringify(sqliteUrl)};
 
@@ -72,7 +74,7 @@ const engine = new Engine({ storage });
 engine.register(watchRestartWorkflow);
 await engine.recoverAll();
 
-const server = serve({ engine, port, hostname: '127.0.0.1' });
+const server = serve({ host: bunServerHost, engine, port, hostname: '127.0.0.1' });
 
 if (GENERATION === 1) {
   await engine.start('watch-restart-workflow', undefined, { id: 'watch-restart-run' });

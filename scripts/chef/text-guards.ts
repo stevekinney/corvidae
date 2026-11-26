@@ -10,6 +10,10 @@
 // `origin/main` exactly as they do in a normal checkout. Every guard finds its root from its own
 // file's location (`import.meta.dir`), so each one checks the tree it is in.
 //
+// The tree links the source checkout's `node_modules` (`linkNodeModules`), so the source checkout
+// runs `bun install --frozen-lockfile` first; a failed install is a setup failure. When the tree's
+// lockfile differs from the source checkout's, the linked install still follows the checkout's.
+//
 // The worktree is always removed afterwards (`git worktree remove --force`, then the directory); a
 // removal that fails is a failure of the step, named, because a leaked worktree is a defect and
 // nothing irreversible has happened yet.
@@ -175,6 +179,14 @@ export function runTextGuards(
   revision: string,
   only?: readonly string[],
 ): GuardsResult {
+  // The tree borrows the source checkout's `node_modules`, so install them against its lockfile
+  // first: a stale install made a guard fail on every tree and read as "already failing on main"
+  // (P-COR-128, environmentalist 0.1.0 against a lockfile at 0.2.0).
+  const installed = runner(['bun', 'install', '--frozen-lockfile'], { cwd: worktree });
+  if (installed.code !== 0)
+    return setupFailure(
+      `bun install --frozen-lockfile in ${worktree} failed (exit ${installed.code}): ${excerpt(findingsOf(installed, worktree))}`,
+    );
   const parent = mkdtempSync(join(tmpdir(), 'direct-merge-guards-'));
   const tree = join(parent, 'tree');
   let added = false;

@@ -6,14 +6,16 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createGovernedMemory,
-  createInMemoryMemoryRecordStorage,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
-  createMockEmbedder,
   type GovernedMemory,
   createMemoryVectorStore,
-  createTestEmbedders,
 } from '@lostgradient/memory';
+import {
+  createInMemoryMemoryRecordStorage,
+  createMockEmbedder,
+  createTestEmbedders,
+} from '@lostgradient/memory/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 

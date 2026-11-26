@@ -3846,7 +3846,7 @@ export class Engine<
  * satisfy `RegistryAgnosticEngine` (see this type's `.test-d.ts` coverage).
  *
  * Host-facing options that accept an already-constructed `Engine` without
- * needing the two chained-builder registration methods — `serve({ engine })`,
+ * needing the two chained-builder registration methods — `serve({ host: bunServerHost, engine })`,
  * the Service Worker helpers, the MCP session/HTTP/stdio surfaces — use this
  * type instead of the bare default `Engine`, so both `new Engine({ storage })`
  * and `Engine.create({ workflows })` are accepted without a call-site cast.

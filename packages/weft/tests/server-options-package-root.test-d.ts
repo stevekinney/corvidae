@@ -31,6 +31,7 @@ import {
   type WorkflowEventFeed,
   type WorkflowEventFeedBackend,
 } from '@lostgradient/weft';
+import { bunServerHost } from '@lostgradient/weft/bun';
 
 const packageRootEngine = new Engine();
 const packageRootPrometheusExporter = createMetricsCollectorExporter(undefined);
@@ -43,6 +44,7 @@ alertSnapshot.rule.threshold = 10;
 alertSnapshot.status = 'idle';
 
 const packageRootServeOptions: ServeOptions = {
+  host: bunServerHost,
   engine: packageRootEngine,
   prometheusExporter: packageRootPrometheusExporter,
 };
@@ -55,12 +57,14 @@ const packageRootRoutes: ServeRoutes = {
 void packageRootRoutes;
 
 const packageRootRoutesServeOptions: ServeOptions = {
+  host: bunServerHost,
   engine: packageRootEngine,
   routes: packageRootRoutes,
 };
 void packageRootRoutesServeOptions;
 
 const invalidPackageRootRoutesServeOptions: ServeOptions = {
+  host: bunServerHost,
   engine: packageRootEngine,
   // @ts-expect-error each route must be a Bun route value.
   routes: { '/status': { shell: true } },
@@ -68,6 +72,7 @@ const invalidPackageRootRoutesServeOptions: ServeOptions = {
 void invalidPackageRootRoutesServeOptions;
 
 const removedMetricsCollectorServeOptions: ServeOptions = {
+  host: bunServerHost,
   engine: packageRootEngine,
   // @ts-expect-error `metricsCollector` is no longer a public package server option.
   metricsCollector: undefined,
@@ -108,6 +113,7 @@ const packageRootWorkerAdmissionPolicy: WorkerAdmissionPolicy = (
 };
 
 const fullyTypedPackageRootServeOptions: ServeOptions = {
+  host: bunServerHost,
   engine: packageRootEngine,
   auth: packageRootAuth,
   maxRequestBodyBytes: 1_048_576,
@@ -175,10 +181,10 @@ async function verifyPackageRootConcreteWorkflowRegistryEngineAcceptedByServe():
     return { b: input.a };
   });
   const concreteEngine = await Engine.create({ workflows: { greet } });
-  const options: ServeOptions = { engine: concreteEngine };
+  const options: ServeOptions = { host: bunServerHost, engine: concreteEngine };
   void options;
 
-  await using server = serve({ engine: concreteEngine, port: 0 });
+  await using server = serve({ host: bunServerHost, engine: concreteEngine, port: 0 });
   void server;
 
   // Copilot review on #708 (PR #715): pin the same invariant for

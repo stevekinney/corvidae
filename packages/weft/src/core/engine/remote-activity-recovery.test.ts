@@ -25,6 +25,7 @@ import { afterEach, describe, expect, it, mock, setSystemTime } from 'bun:test';
 
 import { createDeferred, waitForCondition, waitForever } from '@lostgradient/testing/fake-timers';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { serve, type ServeOptions, type WeftServer } from '../../server/index.ts';
 import { commitTaskLedgerCompletion } from '../../server/runtime/task-ledger-completion.ts';
 import { useManualTaskReconciliationForTesting } from '../../server/runtime/task-reconciliation.ts';
@@ -307,6 +308,7 @@ describe('remote activity recovery (COR-152)', () => {
     });
 
     const firstServerOptions = {
+      host: bunServerHost,
       engine,
       port: 0,
       unauthenticatedAccess: 'allow',
@@ -386,6 +388,7 @@ describe('remote activity recovery (COR-152)', () => {
     expect(await readOnlyTaskLedgerRecord(engine)).toEqual(leasedBeforeStop);
 
     const secondServerOptions = {
+      host: bunServerHost,
       engine,
       port: 0,
       unauthenticatedAccess: 'allow',

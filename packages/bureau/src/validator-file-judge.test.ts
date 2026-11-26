@@ -8,7 +8,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createMockGenerate, type GenerateFunction } from '@lostgradient/operative';
+import { type GenerateFunction } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';

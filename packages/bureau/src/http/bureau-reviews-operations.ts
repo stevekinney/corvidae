@@ -106,17 +106,25 @@ const RUNNING_RUNS_PAGE_SIZE = 100;
 async function pendingReviewsOfEveryProcess(
   reviews: BureauReviewsOperationHost['reviews'],
 ): Promise<PendingReview[]> {
-  const local = reviews.list();
+  const listed = reviews.list();
   const engine = reviews.durableEngine?.();
   const derive = reviews.pendingOf;
-  if (engine === undefined || derive === undefined) return local;
+  if (engine === undefined || derive === undefined) return listed;
+  const refreshed = await Promise.all(
+    listed.map(async (review) => {
+      if (review.kind !== 'tool-approval' || review.approval.approvalBinding === undefined)
+        return review;
+      const current = await reviews.get(review.id);
+      return current?.status === 'pending' ? current : undefined;
+    }),
+  );
+  const local = refreshed.filter((review): review is PendingReview => review !== undefined);
   const merged = [...local];
   const seen = new Set(local.map((review) => review.id));
   // Paged by what each page reports, not by the size asked for, which the engine may cap.
   let offset = 0;
   for (;;) {
     const page = await engine.list({
-      status: 'running',
       type: 'agentRun',
       limit: RUNNING_RUNS_PAGE_SIZE,
       offset,

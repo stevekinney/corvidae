@@ -6,11 +6,11 @@
  */
 import {
   createAgent,
-  createMockGenerate,
   type GenerateFunction,
   type InputDetector,
   stopWhen,
 } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';

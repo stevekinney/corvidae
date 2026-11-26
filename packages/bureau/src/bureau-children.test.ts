@@ -19,13 +19,13 @@ import {
   hasDefinitionResolver,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   type RunnableAgent,
-  createMockGenerate,
   defineChildSignals,
   type GenerateFunction,
   readParentSignals,
   stopWhen,
   type Toolbox,
 } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import {
   type ConditionalTextValueStore,
   MemoryStorage,

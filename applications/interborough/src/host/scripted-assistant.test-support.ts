@@ -3,7 +3,8 @@
  * whose workflow files or schedules name an agent and do not care which. It is passed as
  * `HostOptions.extraAgents`, so the test does not depend on the demo plugin.
  */
-import { createAgent, createScriptedGenerate, stopWhen } from '@lostgradient/operative';
+import { createAgent, stopWhen } from '@lostgradient/operative';
+import { createScriptedGenerate } from '@lostgradient/operative/testing';
 
 import type { ExtraAgents } from './host.ts';
 

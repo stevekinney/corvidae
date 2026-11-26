@@ -6,7 +6,8 @@
  */
 import { EventType } from '@ag-ui/core';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { type Toolbox, waitForCondition } from '@lostgradient/operative';
+import { type Toolbox } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';

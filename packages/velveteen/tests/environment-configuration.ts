@@ -11,6 +11,7 @@ export type VelveteenTestEnvironment = Readonly<{
   inventoryRemoveOwner?: string;
   inventoryRemoveScript?: string;
   layoutKCorrupt: boolean;
+  nodeGeneration?: string;
   optionalRestCorrupt: boolean;
   referenceKit?: string;
   remoteSplitBatches: boolean;
@@ -38,6 +39,7 @@ export function readVelveteenTestEnvironment(): VelveteenTestEnvironment {
     inventoryRemoveOwner: environment.VELVETEEN_INVENTORY_REMOVE_OWNER,
     inventoryRemoveScript: environment.VELVETEEN_INVENTORY_REMOVE_SCRIPT,
     layoutKCorrupt: environment.VELVETEEN_LAYOUT_K_CORRUPT === "1",
+    nodeGeneration: environment.VELVETEEN_NODE_GENERATION,
     optionalRestCorrupt: environment.VELVETEEN_OPTIONAL_REST_CORRUPT === "1",
     referenceKit: environment.VELVETEEN_REFERENCE_KIT,
     remoteSplitBatches: environment.VELVETEEN_REMOTE_SPLIT_BATCHES === "1",

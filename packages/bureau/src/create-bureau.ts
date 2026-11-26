@@ -2685,6 +2685,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     chatOfParentRun,
     recordReviewStatusTransition,
     pendingHumanWaitsOfRun,
+    pendingReviewsOfRun,
+    filterSettledApprovals,
     sealHumanWaitAnswer,
     refuseUnsealedSecrets,
     prepareHumanWaitDelivery,
@@ -3822,6 +3824,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       // The public list: a `bureau.run()` run's human wait (COR-1577) is a review of its
       // task too, so it holds the task at `input-required` and `respond` can answer it.
       pendingReviews: () => [...listPendingReviews(), ...runHumanWaits.list()],
+      pendingPeerReviews: (taskId) => pendingReviewsOfRun(taskId),
+      filterSettledApprovals: (reviews) => filterSettledApprovals(reviews),
       releaseClosedReview: async (taskId, reviewId, eventKind) => {
         // A review this process closed itself is finished by its own release, which prunes the
         // session before it drops the override: this event is that close read back.
@@ -4903,7 +4907,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     mayRemember: grantLoosensReview,
     listRunHumanWaits: () => [...runHumanWaits.list(), ...workflowReviewWaits.list()],
     get: getReview,
-    pendingOf: pendingHumanWaitsOfRun,
+    pendingOf: pendingReviewsOfRun,
     resolve: resolveAnyReview,
   });
 

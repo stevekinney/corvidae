@@ -9,7 +9,7 @@
  * @module server/runtime/websocket-worker-registration
  */
 
-import type { ServerWebSocket } from 'bun';
+import type { Socket } from '@lostgradient/node-host';
 
 import { WorkerConnectedEvent } from '../../core/events.ts';
 import type { WorkerDeploymentVersionState } from '../../worker/deployment-routing.ts';
@@ -114,7 +114,7 @@ function buildWorkerRegistrationInfo(
  */
 function admitReconnectingSocket(
   context: ServerContext,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   message: RegisterMessage,
   manifest: WorkerManifest,
 ): boolean {
@@ -168,7 +168,7 @@ function admitReconnectingSocket(
 function commitWorkerRegistration(
   context: ServerContext,
   options: ServeOptions,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   message: RegisterMessage,
   manifest: WorkerManifest,
   queue: string,
@@ -258,7 +258,7 @@ function commitWorkerRegistration(
 async function completeRegistration(
   context: ServerContext,
   options: ServeOptions,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   message: RegisterMessage,
   manifest: WorkerManifest,
   canonicalJson: string,
@@ -357,7 +357,7 @@ async function completeRegistration(
 export async function registerWorker(
   context: ServerContext,
   options: ServeOptions,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   message: RegisterMessage,
   cleanupWorkflowIndex: (operationId: string) => void,
 ): Promise<void> {

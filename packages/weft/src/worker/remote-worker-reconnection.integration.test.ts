@@ -12,6 +12,8 @@
  */
 
 import { afterEach, describe, expect, it } from 'bun:test';
+
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -150,6 +152,7 @@ function createSetup(
   const storage = new MemoryStorage();
   const engine = new Engine({ storage });
   const serveOptions: ServeOptions = {
+    host: bunServerHost,
     engine,
     port: 0,
     routingPolicy: 'round-robin',
@@ -1134,11 +1137,13 @@ async function recoverInFlightTaskAcrossSigkill(): Promise<void> {
   function entrypointSource(): string {
     const repoRoot = new URL('../..', import.meta.url);
     const indexUrl = new URL('src/index.ts', repoRoot).href;
+    const bunHostUrl = new URL('src/bun-host.ts', repoRoot).href;
     const serverUrl = new URL('src/server/index.ts', repoRoot).href;
     const sqliteUrl = import.meta.resolve('@lostgradient/storage-bun-sqlite');
     const taskLedgerUrl = new URL('src/core/task-ledger/task-ledger.ts', repoRoot).href;
     return `
 import { Engine, activity } from ${JSON.stringify(indexUrl)};
+import { bunServerHost } from ${JSON.stringify(bunHostUrl)};
 import { serve } from ${JSON.stringify(serverUrl)};
 import { BunSQLiteStorage } from ${JSON.stringify(sqliteUrl)};
 import { decodeRemoteTaskRecord, isRemoteTaskTerminalResolved, taskLedgerKey } from ${JSON.stringify(taskLedgerUrl)};
@@ -1156,7 +1161,7 @@ const storage = new BunSQLiteStorage(databasePath);
 const engine = new Engine({ storage });
 engine.register(echo);
 await engine.recoverAll();
-const server = serve({
+const server = serve({ host: bunServerHost,
   engine,
   port,
   hostname: '127.0.0.1',

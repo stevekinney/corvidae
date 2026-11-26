@@ -1,5 +1,6 @@
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { Engine, serve } from '@lostgradient/weft';
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { resolveExampleEnvironment } from '../../environment-configuration.ts';
 
 import { createOrderProcessingEngine, orderProcessingSchedule } from './registry';
@@ -22,6 +23,7 @@ if (import.meta.main) {
   }
 
   await using server = serve({
+    host: bunServerHost,
     engine,
     hostname,
     port,

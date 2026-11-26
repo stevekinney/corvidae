@@ -9,7 +9,7 @@
  * @module server/runtime/websocket-registration-rejection
  */
 
-import type { ServerWebSocket } from 'bun';
+import type { Socket } from '@lostgradient/node-host';
 
 import type { WorkerDeploymentVersionState } from '../../worker/deployment-routing.ts';
 import type { WorkerManifest } from '../../worker/manifest/index.ts';
@@ -29,7 +29,7 @@ import { rejectRegistration } from './websocket-worker-messaging.ts';
  */
 export function rejectAndRecordRegistration(
   context: ServerContext,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   code: RegisterErrorMessage['code'],
   message: string,
   workerId: string | undefined,
@@ -64,7 +64,7 @@ export function rejectAndRecordRegistration(
  */
 export async function recordVersionOrReject(
   context: ServerContext,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   message: RegisterMessage,
   manifest: WorkerManifest,
   acceptedManifestDigest: string,

@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import * as shim from './bun-test-shim.ts';
+import * as shim from '@lostgradient/testing/node-runtime';
 
 const { expect, jest } = shim;
 

@@ -3526,6 +3526,7 @@
     "host/host.ts ./tool-source-routes.ts { toolSourceRoutes }",
     "host/host.ts @lostgradient/weft { serve, type AlertingOptions, type RegistryAgnosticEngine, type ServeOptions, type WeftServer, }",
     "host/host.ts @lostgradient/weft/a2a { createEgressPolicy, type A2APeerUpdate, type EgressPolicy }",
+    "host/host.ts @lostgradient/weft/bun { bunServerHost }",
     "host/panel-review-eligibility.ts ./shared-browser-sign-in.ts type { createSharedBrowserSignIn }",
     "host/panel-routes.ts @lostgradient/weft { MCP_LEGACY_PROTOCOL_VERSION }",
     "host/refund-operations.ts @lostgradient/weft { WorkflowClaimUnavailableError }",

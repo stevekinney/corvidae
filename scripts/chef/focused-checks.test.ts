@@ -7,6 +7,7 @@ import type { Manifest } from '../affected-tests-manifest.ts';
 import {
   broaderObligations,
   diffSize,
+  directCommand,
   directManifest,
   directTests,
   FILE_LIMIT,
@@ -482,6 +483,39 @@ describe('runChecks', () => {
     expect(pending).toBeDefined();
     expect(pending).toMatchObject({ name: 'lint:root', exitCode: 75, pending: true });
     expect(pending?.command).toBe('bun run lint:root');
+  });
+
+  // The P-COR-128 trial: "0 failed, N pending" was read as a failure and sent to a correction that
+  // demanded a failing test for a defect that did not exist. A pending step prints the command that
+  // runs it directly, without the pool-wait bound, so its stage is run instead of corrected.
+  test('names the direct command of a pending step, without the pool-wait bound', async () => {
+    const { runner } = fakeRunner({ changed: ['scripts/chef/a.ts'] });
+    const deps = dependencies(runner, { typecheck: 75 });
+    const result = await runChecks('/repo', options, deps);
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('0 failed, 1 pending (typecheck:root)');
+    const line = result.output
+      .split('\n')
+      .find((each) => each.startsWith('focused-checks: typecheck:root: pending'));
+    expect(line).toBe(
+      'focused-checks: typecheck:root: pending (pool busy); run it directly: bun scripts/host-slots.ts --slots=1 -- bun run typecheck:root',
+    );
+    const structured = await runChecks(
+      '/repo',
+      { ...options, json: true },
+      dependencies(runner, { typecheck: 75 }),
+    );
+    const json = JSON.parse(structured.output) as { steps: { name: string; direct?: string }[] };
+    expect(json.steps.find((step) => step.name === 'typecheck:root')?.direct).toBe(
+      'bun scripts/host-slots.ts --slots=1 -- bun run typecheck:root',
+    );
+    expect(directCommand(['env', 'CORVIDAE_TEST_POOL_WAIT_SECONDS=300', 'bun', 'x'])).toEqual([
+      'bun',
+      'x',
+    ]);
+    expect(
+      directCommand(['env', 'SELECTION=d', 'CORVIDAE_TEST_POOL_WAIT_SECONDS=300', 'bunx', 'turbo']),
+    ).toEqual(['env', 'SELECTION=d', 'bunx', 'turbo']);
   });
 
   test('reports a step ended by a signal as killed, with exit code 3 and not as failed', async () => {

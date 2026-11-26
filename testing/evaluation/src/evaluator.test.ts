@@ -1,10 +1,10 @@
 import { describe, expect, mock, test } from 'bun:test';
 
+import { type RunResultBase } from '@lostgradient/operative';
 import {
   createManualRuntimeServices,
   createScriptedGenerate,
-  type RunResultBase,
-} from '@lostgradient/operative';
+} from '@lostgradient/operative/testing';
 import { throwingRejectionOf } from '@lostgradient/testing';
 
 import { EvaluatorConfigurationError, parseEvaluatorConfiguration } from './configuration';

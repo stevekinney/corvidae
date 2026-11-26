@@ -7,11 +7,11 @@
  */
 import {
   createAgentSession,
-  createMockGenerate,
   createSessionStore,
   stopWhen,
   createAgent,
 } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { MemoryStorage, textValueStore, type Storage } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 import { createConversationHistory } from 'conversationalist';

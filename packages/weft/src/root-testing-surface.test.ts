@@ -11,16 +11,20 @@ import * as testing from './testing/index.ts';
  * COR-1192. The root once re-exported the whole testing barrel, which carried the subprocess
  * engine's `Bun.spawn` into the root's browser bundle; the published package's portability gate
  * refused the 0.26.0 release on it, and nothing in this workspace had checked the bundle first.
- * The root keeps the portable testing primitives and leaves process-spawning helpers to
+ * The root keeps only its portable event-loop utility; test kits live under
  * `@lostgradient/weft/testing`; the bundle check below is the gate the release tripped on.
  */
 describe('the root entry and the testing barrel', () => {
-  test('the root exports the portable testing primitives', () => {
-    expect(typeof root.TestEngine).toBe('function');
-    expect(typeof root.TimeControl).toBe('function');
-    expect(typeof root.ActivityMockRegistry).toBe('function');
-    expect(typeof root.withChaos).toBe('function');
+  test('the root exports only the portable event-loop utility', () => {
     expect(typeof root.flushPortableMicrotasks).toBe('function');
+    expect(typeof root.yieldToPortableEventLoop).toBe('function');
+  });
+
+  test('the testing subpath exports test kits that the root excludes', () => {
+    for (const name of ['TestEngine', 'TimeControl', 'ActivityMockRegistry', 'withChaos']) {
+      expect((root as Record<string, unknown>)[name], name).toBeUndefined();
+      expect(typeof (testing as Record<string, unknown>)[name], name).toBe('function');
+    }
   });
 
   test('weft.system.principal for a package handler to register comes from @lostgradient/backchannel', () => {

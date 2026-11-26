@@ -5,7 +5,8 @@
  * thread, does not hold what the model wrote.
  */
 import { appendMessages, createConversationHistory } from '@lostgradient/chat';
-import { createAgent, createMockGenerate, stopWhen } from '@lostgradient/operative';
+import { createAgent, stopWhen } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, test } from 'bun:test';
 

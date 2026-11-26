@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { describe, expect, it } from 'bun:test';
 
 import type { WorkflowContext } from '../index.ts';
@@ -36,7 +37,7 @@ const echoWorkflow = workflow({ name: 'echo' }).execute(async function* (
 function createServedEngine(): { engine: Engine; url: string; stop: () => Promise<void> } {
   const engine = new Engine();
   engine.register(echoWorkflow);
-  const server = serve({ engine, port: 0 });
+  const server = serve({ host: bunServerHost, engine, port: 0 });
   return {
     engine,
     url: server.url,

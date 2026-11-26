@@ -9,11 +9,8 @@
  * evaluator, so a gate file selects one by path. Trials run case by case in
  * dataset order, so one shared agent script answers them in that order.
  */
-import {
-  createAgent,
-  createScriptedGenerate,
-  type ScriptedGenerateStep,
-} from '@lostgradient/operative';
+import { createAgent } from '@lostgradient/operative';
+import { createScriptedGenerate, type ScriptedGenerateStep } from '@lostgradient/operative/testing';
 
 import { parseEvaluatorConfiguration } from '../../configuration';
 import { judgeRevisionOf } from '../../judge-drift';

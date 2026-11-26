@@ -162,6 +162,7 @@ import {
   type WeftServer,
 } from '@lostgradient/weft';
 import { createEgressPolicy, type A2APeerUpdate, type EgressPolicy } from '@lostgradient/weft/a2a';
+import { bunServerHost } from '@lostgradient/weft/bun';
 
 import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
@@ -2134,6 +2135,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // HostOptions exposes timing options only; this listener serves the built-in registry.
     const engineInventory = inventoryEngineRelay();
     const server = serve({
+      host: bunServerHost,
       engine,
       hostname: LOOPBACK,
       port: 0,

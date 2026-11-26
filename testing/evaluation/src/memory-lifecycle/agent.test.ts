@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { createScriptedGenerate, type ScriptedGenerateStep } from '@lostgradient/operative';
+import { createScriptedGenerate, type ScriptedGenerateStep } from '@lostgradient/operative/testing';
 
 import { createScenarioAgent, createScenarioSubject, fitContext, referenceModel } from './agent';
 import { memoryLifecycleEnvelope } from './envelope';

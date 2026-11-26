@@ -1,9 +1,5 @@
-import {
-  stopWhen,
-  waitForCondition,
-  createAgent,
-  type GenerateFunction,
-} from '@lostgradient/operative';
+import { stopWhen, createAgent, type GenerateFunction } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { MemoryStorage, type BatchOperation } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';

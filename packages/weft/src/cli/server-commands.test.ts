@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { describe, expect, it } from 'bun:test';
 
 import { Engine, serve } from '../index.ts';
@@ -20,7 +21,7 @@ function healthCommand(overrides: Partial<ServerCommand> = {}): ServerCommand {
 describe('weft server health', () => {
   it('returns exit 0 against a live server', async () => {
     const engine = new Engine();
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     try {
       const result = await executeServer(healthCommand({ server: server.url }));
       expect(result.exitCode).toBe(0);
@@ -39,7 +40,7 @@ describe('weft server health', () => {
 
   it('--wait returns 0 once a server is up and non-zero when none appears', async () => {
     const engine = new Engine();
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     try {
       const ready = await executeServer(
         healthCommand({ server: server.url, wait: true, waitTimeoutMs: 2000 }),
@@ -59,7 +60,7 @@ describe('weft server health', () => {
 
   it('emits JSON when requested', async () => {
     const engine = new Engine();
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     try {
       const result = await executeServer(healthCommand({ server: server.url, json: true }));
       expect(result.exitCode).toBe(0);
@@ -86,7 +87,7 @@ describe('weft server health', () => {
 describe('weft server info', () => {
   it('reports health and the catalog operation count', async () => {
     const engine = new Engine();
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     try {
       const result = await executeServer(healthCommand({ action: 'info', server: server.url }));
       expect(result.exitCode).toBe(0);

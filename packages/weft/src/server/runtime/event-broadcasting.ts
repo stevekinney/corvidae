@@ -13,7 +13,9 @@ import {
 import { getWorkflowIdFromEvent } from '../../core/events/workflow-event-id.ts';
 import { KEYS } from '../../storage/keys.ts';
 import type { FleetEventFeed } from '../fleet-event-feed.ts';
+import type { ServerHandle } from '../host.ts';
 import type { ServeOptions } from '../index.ts';
+import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
 import { claimNextSequence } from '../runtime-helpers.ts';
 import {
   CLIENT_VISIBLE_EVENT_TYPES,
@@ -64,7 +66,7 @@ function serializeEvent(event: Event): string | null {
  * import { wireEventBroadcasting, type EventBroadcastingHandle } from '@lostgradient/weft';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
- * const bunServer = Bun.serve({ fetch: () => new Response('ok') });
+ * const bunServer = bunServerHost({ fetch: () => new Response('ok') });
  * const handle: EventBroadcastingHandle = wireEventBroadcasting(engine, bunServer);
  * // Later, on shutdown:
  * await handle.dispose();
@@ -163,7 +165,7 @@ export function registerWorkflowEventLifecycle(
  * import { wireEventBroadcasting } from '@lostgradient/weft';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
- * const bunServer = Bun.serve({ fetch: () => new Response('ok') });
+ * const bunServer = bunServerHost({ fetch: () => new Response('ok') });
  * const handle = wireEventBroadcasting(engine, bunServer);
  *
  * // Wire a terminal-event listener to clean up per-workflow bookkeeping.
@@ -178,7 +180,7 @@ export function registerWorkflowEventLifecycle(
  */
 export function wireEventBroadcasting(
   engine: Engine,
-  server: ReturnType<typeof Bun.serve>,
+  server: ServerHandle<WebSocketData>,
   options?: {
     publishTokenMessage?: (workflowId: string, sequence: number, message: string) => void;
     publishWatchMessage?: (workflowId: string, sequence: number, message: string) => void;
