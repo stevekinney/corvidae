@@ -1,7 +1,7 @@
 {
   "issue": "COR-2739",
   "branch": "codex/cor-2739-workers-npm",
-  "checkedAt": "e673db7c59097aa507a0fe7b377ab4bdc9cb3140",
+  "checkedAt": "cf77f7833f710c75380d5baf28fddf1527fb1c7f",
   "briefVersion": "cbf8f2a20f0b",
   "status": "BLOCKED",
   "criteria": [
