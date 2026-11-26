@@ -7,7 +7,8 @@ export const meta = {
 
 // The coordinator runs brief.ts with --json and the pinned repository and base. In
 // args.preparedBriefs[issue], record its process exit as exitCode, its JSON path as
-// briefPath (empty on refusal), and copy the matching assignment's identity.base into base.
+// briefPath (empty on refusal), copy the matching assignment's identity.base into base, and copy
+// its route (`branch` or `pull-request`, the route the brief promises) into route.
 // Preserve error, needsResolvedRows and owned paths.
 // Set validated only after checking the result and issue identity. After a design
 // critique, the coordinator can rerun preparation against the validated rows and
@@ -150,6 +151,7 @@ const IMPLEMENT_SCHEMA = {
     branch: { type: 'string' },
     worktree: { type: 'string' },
     report: { type: 'string' },
+    pullRequest: { type: 'integer' },
   },
   required: ['status', 'startingBase', 'head', 'branch', 'worktree', 'report'],
 };
@@ -175,7 +177,11 @@ const PENDING_SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
-        properties: { command: { type: 'string' }, exitCode: { type: 'integer' } },
+        properties: {
+          command: { type: 'string' },
+          exitCode: { type: 'integer' },
+          signal: { type: 'string' },
+        },
         required: ['command', 'exitCode'],
       },
     },
@@ -446,7 +452,7 @@ function runPending(issue, worktree, branch, head, commands) {
     [
       `Run the pending focused-check stages of ${issue} at head ${head}. Invoke no skills. Change nothing in the repository.`,
       `cd ${worktree}. Run \`git fetch origin ${branch}\` and confirm \`git rev-parse HEAD\` equals ${head}; if it differs, return the head you found and no results.`,
-      'Run each command below once, from that directory, with its output redirected to a file under tmp/ there, in the background, and wait for it to exit; never rerun one and never add a wait of your own. Return head and results: each command, verbatim, with its exit code.',
+      'Run each command below once, from that directory, with its output redirected to a file under tmp/ there, in the background, and wait for it to exit; never rerun one and never add a wait of your own. Return head and results: each command, verbatim, with its exit code, and signal (its name, such as SIGTERM) when a signal ended it.',
       ...commands.map((command) => `- ${command}`),
     ].join('\n'),
     {
@@ -461,6 +467,18 @@ function runPending(issue, worktree, branch, head, commands) {
 
 // A pending stage that runs and still is not admitted (or hits the hang guard) gave no verdict.
 const PENDING_NOT_RUN = [70, 75, 76];
+
+/**
+ * Whether a pending stage gave no verdict: it was still not admitted, hit the hang guard, or a
+ * signal ended it, either reported by name or as `run-exclusively.ts`'s 128 + signal number.
+ */
+function gaveNoVerdict(result) {
+  return (
+    PENDING_NOT_RUN.includes(result.exitCode) ||
+    (typeof result.signal === 'string' && result.signal.trim() !== '') ||
+    (result.exitCode > 128 && result.exitCode <= 128 + 64)
+  );
+}
 
 /** The failed-step count of a focused-checks summary line, or null when it names none. */
 function failedSteps(line) {
@@ -495,9 +513,7 @@ async function noVerdict(issue, checks, where, steps, evidence) {
     return judgment(issue, `pending stages ran at ${ran.head}, not ${where.head}`, steps, where);
   const results = Array.isArray(ran.results) ? ran.results : [];
   const result = (command) => results.find((entry) => entry.command === command);
-  const unrun = commands.filter(
-    (command) => !result(command) || PENDING_NOT_RUN.includes(result(command).exitCode),
-  );
+  const unrun = commands.filter((command) => !result(command) || gaveNoVerdict(result(command)));
   if (unrun.length > 0) return stop(`still not run: ${unrun.join('; ')}`);
   return {
     findings: commands
@@ -754,10 +770,14 @@ async function runCorrection(context, where, findings, key) {
 }
 
 /** The structured result the coordinator lands from: only facts a step returned. */
-function evidenceRequest(issue, run, built, head, evidence, verdict, override, chosen) {
+function evidenceRequest(issue, run, built, head, evidence, verdict, override, chosen, route) {
   return {
     workerModel: { model: chosen.model, rule: chosen.rule },
     issue,
+    // The route the brief promised: `delivery-request.ts prepare --route <route>`, then
+    // `deliver.ts --pr <pullRequest>` for a pull request or `deliver.ts --branch` otherwise.
+    route,
+    pullRequest: Number.isInteger(built.pullRequest) ? built.pullRequest : null,
     run: run === undefined ? null : run,
     repository: REPOSITORY,
     startingBase: normalizeCommitSha(built.startingBase),
@@ -850,6 +870,7 @@ async function deliverOne(issue) {
   }
   let briefPath = prepared.briefPath.trim();
   let briefBase = normalizeCommitSha(prepared.base);
+  let route = prepared.route;
   let overridden = null;
   if (prepared.exitCode !== 0) {
     if (override === null) {
@@ -878,6 +899,7 @@ async function deliverOne(issue) {
     steps.overrideBrief = written;
     briefPath = written.briefPath;
     briefBase = normalizeCommitSha(written.base);
+    route = written.route;
     log(`${issue}: brief override recorded: ${override.reason}`);
   } else if (!briefPath.startsWith('/')) {
     return judgment(issue, 'brief exited 0 without an absolute brief path', steps);
@@ -885,6 +907,13 @@ async function deliverOne(issue) {
 
   if (briefBase === undefined)
     return judgment(issue, 'validated brief has no pinned base SHA', steps);
+  // The route the brief promises the worker is the route delivery takes (#1305 review).
+  if (route !== 'branch' && route !== 'pull-request')
+    return judgment(
+      issue,
+      'validated brief names no delivery route (branch or pull-request, from brief.ts --json); no worker',
+      steps,
+    );
   const fetched = await fetchDispatchBase(issue, briefBase, briefPath, run);
   steps.fetchBase = fetched;
   if (fetched === null || fetched.exitCode !== 0)
@@ -934,7 +963,9 @@ async function deliverOne(issue) {
   const built = await agent(
     [
       `Before editing, run \`git rev-parse --verify HEAD\` in your assigned worktree and record the result as startingBase. If it is not ${acceptedStarts.join(' or ')}, make no changes and return status blocked, the observed SHA as both startingBase and head, the assigned branch and worktree path, and a report explaining the mismatch.${acceptedStarts.length > 1 ? ` The default branch moved past the brief's \`Starting base:\` line (${briefBase}) to ${fetchedBase}; either start is accepted.` : ''}`,
-      `Implement the issue from the brief file ${briefPath} and nothing else. This is the branch path: push your branch, open no pull request, and return startingBase, the pushed head, the branch name and your worktree path. ${NO_MERGE}`,
+      route === 'pull-request'
+        ? `Implement the issue from the brief file ${briefPath} and nothing else. This is the pull-request route its Delivery boundary names: push your branch, open a pull request for it (not a draft), and return startingBase, the pushed head, the branch name, your worktree path and pullRequest (its number). ${NO_MERGE}`
+        : `Implement the issue from the brief file ${briefPath} and nothing else. This is the branch path: push your branch, open no pull request, and return startingBase, the pushed head, the branch name and your worktree path. ${NO_MERGE}`,
     ].join('\n'),
     {
       label: `implement ${issue}`,
@@ -973,7 +1004,12 @@ async function deliverOne(issue) {
     overridden,
     steps,
     briefPath,
-    state: correctionState(issue, null, []),
+    route,
+    state: correctionState(
+      issue,
+      Number.isInteger(built.pullRequest) ? built.pullRequest : null,
+      [],
+    ),
   };
   let head = built.head;
   for (let round = 1; round <= MAXIMUM_ROUNDS; round += 1) {
@@ -1110,6 +1146,7 @@ async function verifyRound(context, head, round, key) {
             verdict,
             overridden,
             chosen,
+            context.route,
           ),
         };
       }
@@ -1157,6 +1194,8 @@ async function correctOne(request) {
     overridden: null,
     steps,
     briefPath: text(request.briefPath) ? request.briefPath : undefined,
+    // A correction keeps the route the candidate is on: a pull request when it names one.
+    route: request.pr === undefined ? 'branch' : 'pull-request',
     state: correctionState(
       issue,
       request.pr === undefined ? null : request.pr,

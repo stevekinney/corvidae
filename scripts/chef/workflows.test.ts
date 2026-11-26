@@ -99,6 +99,7 @@ const briefRecord = (issue = 'COR-7', fields: Record<string, unknown> = {}) => (
   exitCode: 0,
   briefPath: `/main/tmp/chef/briefs/${issue}.md`,
   base: dispatchBase,
+  route: 'branch',
   ...fields,
 });
 const refusedBrief = (error = 'COR-1 blocks COR-7') =>
@@ -299,6 +300,32 @@ describe('workflow scripts', () => {
     expect(prompt).toContain('open no pull request');
   });
 
+  // #1305 review: the brief promised "A merged pull request." would be delivered as one, but no
+  // step took that route. The route `brief.ts --json` reports is the route the worker and the
+  // evidence request take.
+  test('a brief whose route is a pull request is implemented and delivered as one', async () => {
+    const delivery = await runDelivery({
+      preparedBriefs: { 'COR-7': briefRecord('COR-7', { route: 'pull-request' }) },
+    });
+    const implement = delivery.calls.find((call) => call.label.startsWith('implement'));
+    expect(implement?.prompt).toContain('pull-request route');
+    expect(implement?.prompt).toContain('open a pull request');
+    expect(implement?.prompt).not.toContain('open no pull request');
+    expect(delivery.result[0]?.evidenceRequest?.['route']).toBe('pull-request');
+    const branch = await runDelivery();
+    expect(branch.result[0]?.evidenceRequest?.['route']).toBe('branch');
+  });
+
+  test('a brief that names no delivery route dispatches no worker', async () => {
+    for (const route of [undefined, 'merge']) {
+      const delivery = await runDelivery({
+        preparedBriefs: { 'COR-7': briefRecord('COR-7', { route }) },
+      });
+      expect(delivery.calls).toHaveLength(0);
+      expect(delivery.result[0]?.reason).toContain('delivery route');
+    }
+  });
+
   test('fetches the default branch before dispatch and gates the native checkout on that SHA', async () => {
     const delivery = await runDelivery();
     expect(delivery.calls.slice(0, 2).map((call) => call.label)).toEqual([
@@ -431,7 +458,7 @@ describe('workflow scripts', () => {
   });
 
   // Models come from agent frontmatter alone, so a file without `model:` runs on whatever the
-  // session uses (the retired chef-reviewer drifted that way).
+  // session uses (a reviewer definition without one drifted that way).
   test('every agent file names its model', () => {
     const agentsDirectory = join(root, '.claude', 'agents');
     const files = readdirSync(agentsDirectory).filter((name) => name.endsWith('.md'));
@@ -482,7 +509,7 @@ describe('workflow scripts', () => {
     );
   });
 
-  // The trial of 2026-11-25 (P-COR-128): the code reviewer approved a head whose self-test used a
+  // The trial of 2026-11-25 (P-COR-128): the earlier reviewer approved a head whose self-test used a
   // stand-in for the real component; the contract check found it. Every candidate gets the contract
   // check, against the issue's own sections of its brief and the diff from the worker's start.
   test('deliver-issue.js hands the contract check the brief, the diff range and the worktree', async () => {
@@ -638,6 +665,25 @@ describe('workflow scripts', () => {
       {
         checks: pendingChecks,
         pending: { head: 'abc', results: [{ command: pendingCommand, exitCode: 75 }] },
+      },
+    ],
+    // Codex on #1305: a pending stage whose child a signal ends (`run-exclusively.ts` returns
+    // 128 + the signal number) gave no verdict, so it is no defect to correct.
+    [
+      'a pending stage a signal ended (exit 143)',
+      {
+        checks: pendingChecks,
+        pending: { head: 'abc', results: [{ command: pendingCommand, exitCode: 143 }] },
+      },
+    ],
+    [
+      'a pending stage reported killed by a signal',
+      {
+        checks: pendingChecks,
+        pending: {
+          head: 'abc',
+          results: [{ command: pendingCommand, exitCode: 1, signal: 'SIGTERM' }],
+        },
       },
     ],
     [

@@ -122,10 +122,22 @@ export const deliveryRule =
  * never overrides it silently: a boundary that names a pull request is delivered as one, any other
  * by a squash merge of the pushed branch.
  */
+const pullRequestRouteLine =
+  'Chef route: this boundary names a pull request, so the coordinator delivers it as one (`delivery-request.ts prepare --route pull-request`, then `deliver.ts --pr`); you push your branch and report, and open the pull request when the dispatch asks for one.';
+const branchRouteLine =
+  'Chef route: the coordinator reaches this boundary by a squash merge of your pushed branch (`deliver.ts --branch`); you push your branch and report.';
+
 function deliveryRoute(boundary: string): string {
-  return /\bpull\s+request\b/i.test(boundary)
-    ? 'Chef route: this boundary names a pull request, so the coordinator delivers it as one (`delivery-request.ts prepare --route pull-request`, then `deliver.ts --pr`); you push your branch and report, and open the pull request when the dispatch asks for one.'
-    : 'Chef route: the coordinator reaches this boundary by a squash merge of your pushed branch (`deliver.ts --branch`); you push your branch and report.';
+  return /\bpull\s+request\b/i.test(boundary) ? pullRequestRouteLine : branchRouteLine;
+}
+
+/**
+ * The route a rendered brief promises, which `--json` reports as `route` and the coordinator passes
+ * to `deliver-issue.js`, so the route the brief names is the one delivery takes: `pull-request` when
+ * any issue's boundary names one, otherwise `branch`.
+ */
+export function briefRoute(text: string): 'pull-request' | 'branch' {
+  return text.includes(pullRequestRouteLine) ? 'pull-request' : 'branch';
 }
 
 /** What precedes the issue's own Verification section: its commands are the worker's to run. */
@@ -1283,7 +1295,9 @@ export async function run(
         : await readBrief(identifier, options, dependencies);
       return {
         code: 0,
-        output: json ? JSON.stringify({ ok: true, ...brief }) : brief.text,
+        output: json
+          ? JSON.stringify({ ok: true, route: briefRoute(brief.text), ...brief })
+          : brief.text,
       };
     }
     // The scratch root is the main checkout's `tmp/chef/scratch`; with `--out-dir`, `scratch` inside it.
@@ -1353,6 +1367,7 @@ export async function run(
       path,
       identifier: brief.identifier,
       bytes: brief.bytes,
+      route: briefRoute(brief.text),
       ...(brief.scratch === undefined ? {} : { scratch: brief.scratch }),
       ...contracts,
     };

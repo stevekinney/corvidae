@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import {
   blockerLines,
+  briefRoute,
   charterRules,
   deliveryRule,
   designLinks,
@@ -662,6 +663,9 @@ describe('a brief is lossless for the issue sections', () => {
       { paths: [], verify: [], model: 'Sonnet' },
     );
     expect(sectionOf(branchOnly, /^delivery\s+boundary\b/i)).toContain('deliver.ts --branch');
+    // The route the brief promises is the one `--json` reports for the coordinator to take.
+    expect(briefRoute(brief)).toBe('pull-request');
+    expect(briefRoute(branchOnly)).toBe('branch');
   });
 
   test("names the issue's verification as commands to run, apart from the coordinator's checks", () => {
