@@ -1,49 +1,49 @@
 {
   "issue": "COR-2725",
   "branch": "chef/chat-recovery",
-  "checkedAt": "c9f4ee8f35",
+  "checkedAt": "c8eeaa6743",
   "briefVersion": "522303fe7d6a",
-  "status": "BLOCKED",
+  "status": "READY",
   "criteria": [
     {
       "id": "AC1",
-      "status": "needs-decision",
-      "evidence": "Chat now owns the last-turn outcome (message/turn-outcome.ts: resolveTurnOutcome, turnStateOf) and the recovery commands (message/turn-commands.ts). Interborough's turn-states.ts and its test are deleted; its toasts for Discard and Continue and the composer's second reconnect line are gone. Not removed: the stop note with Retry beside it (noteAction, retryNoteId, failedStopNoteId in stop-line.ts) and the rail footnote for a turn with no assistant row. Interborough has no private CSS for the stop line or retry, so none was removed."
+      "status": "met-on-branch",
+      "evidence": "Chat owns the last turn's outcome and its recovery commands (message/turn-outcome.ts, message/turn-commands.ts). Interborough's turn-states.ts, the rail footnote path (endsTheTurn, endLabel on ToolCalls, runFinishedNoReply copy and their tests), the Discard and Continue toasts, and the composer's second reconnect line are deleted. A turn that ends on its steps (tool calls only, narrated then tools, last call errored or refused) draws stopped, failed, empty or reconnecting through Chat's anchor after the steps, so its stop note and Retry are gone: chat-conversation-states.test.ts and chat-conversation-stopped.test.ts assert no .chat-note, one outcome, no footnote. Kept on purpose: the stop note with Retry for a failed turn that is the person's message alone (no step made, so no row to anchor after; chat-conversation-states 'a discarded turn keeps the plain stopped line' relies on it), and the Why it failed link on earlier failed attempts (row 20b, COR-2533). Interborough has no private CSS for the stop line or retry."
     },
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "bun run --cwd components/chat test exit 0 and focused-checks exit 0 run: turn-commands.test.ts (57 cells, nine inputs by six states), chat-turn-commands.test.ts (duplicate press, busy controls, refused and thrown answers said once, answer after an id change, answer after the turn moved on, duplicate Retry now, duplicate Regenerate), chat-conversation-states.test.ts (Discard answered after a session switch, refused Discard inline with no toast, dropped run said once), chat-conversation-stopped.test.ts (setting refusal after a switch), chat-session-retry.svelte.test.ts (double Retry sends one turn), chat-session-reconnect.svelte.test.ts (double Retry now reads once). Red against main at f429470056 (5 route and session cases, 5 component cases, 19 matrix cells). Bureau stays the source of run status and journal replay; the registry keeps workspace-scoped sessions; neither changed."
+      "evidence": "turn-commands.test.ts (57 cells), chat-turn-commands.test.ts, chat-turn-outcome-anchor.test.ts (3 call shapes by stopped/failed/empty, commands once, plus a dropped stream), turn-outcome-anchor.test.ts (3 shapes by 4 outcomes), chat-conversation-states.test.ts (Discard answered after a session switch, refused Discard inline, dropped run said once, Discard on a tool-only stopped turn sends run-states-ended-on-tool), chat-conversation-stopped.test.ts (setting refusal after a switch), chat-session-retry.svelte.test.ts, chat-session-reconnect.svelte.test.ts. Red against main at f429470056 and 65e0b1ed23. Bureau remains the source of run status and journal replay; the registry keeps workspace-scoped sessions; neither changed."
     },
     {
       "id": "AC3",
       "status": "met-on-main",
-      "evidence": "chat-message-turn-states.test.ts 'the caret is a 2 px bar in the accent colour' and turn-state.test.ts 'R2'; unchanged by this branch."
+      "evidence": "chat-message-turn-states.test.ts 'the caret is a 2 px bar in the accent colour' and turn-state.test.ts 'R2'; unchanged."
     },
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "Chat draws R3 (chat-message-turn-states.test.ts, chat-turn-outcomes.test.ts). On the route, chat-conversation-states.test.ts 'a run whose stream dropped says so once, on its turn, with Retry now (R3)' shows the warning with attempt X of Y, the next try and Retry now, with the composer count and the failure alert no longer repeating it (red with the composer change reverted). Pixel look not verified on this host."
+      "evidence": "Chat draws R3 (chat-message-turn-states.test.ts, chat-turn-outcomes.test.ts). On the route, chat-conversation-states.test.ts 'a run whose stream dropped says so once' shows attempt X of Y, Next try and Retry now, with the composer count and the failure alert no longer repeating it; chat-turn-outcome-anchor.test.ts covers a dropped stream on a tool-only turn. Pixel look not verified on this host."
     },
     {
       "id": "AC5",
-      "status": "met-on-main",
-      "evidence": "R4 pill, partial answer, Continue and Discard: chat-turn-outcomes.test.ts, chat-message-turn-states.test.ts; route chat-conversation-states.test.ts 'is Stopped on the turn with Discard and Continue'. The busy state and failure line this branch adds are AC2."
+      "status": "met-on-branch",
+      "evidence": "R4 pill, partial answer, Continue and Discard: chat-turn-outcomes.test.ts, chat-message-turn-states.test.ts, route 'is Stopped on the turn with Discard and Continue'; now also for a turn of only tool calls (chat-conversation-states.test.ts 'a turn of only tool calls the person stopped')."
     },
     {
       "id": "AC6",
-      "status": "met-on-main",
-      "evidence": "R5 danger alert, cause, what Retry keeps, Retry: chat-message-turn-states.test.ts; route chat-conversation-states.test.ts 'a reply that failed partway (19p)'."
+      "status": "met-on-branch",
+      "evidence": "R5 danger alert, cause, what Retry keeps, Retry: chat-message-turn-states.test.ts, route 'a reply that failed partway (19p)'; now also for a turn of only tool calls, 'Failed before an answer.' with Retry and Why it failed (chat-conversation-stopped.test.ts AC3 COR-2533, chat-conversation-states.test.ts)."
     },
     {
       "id": "AC7",
-      "status": "needs-decision",
-      "evidence": "R6 is drawn on the route for a turn that narrated and ended on a finished tool call (chat-conversation-states.test.ts 'the empty answer, with Try again, and the rail has no footnote (R6)'), with its time in the row and no rail footnote. A turn of only tool calls has no assistant row, so it keeps the row 20h footnote; a turn whose last call errored or was refused keeps it too, because Chat cannot tell a refusal from a failure."
+      "status": "met-on-branch",
+      "evidence": "R6 on the route for every turn that ends on its steps: narrated then tool (with an order assertion: the row follows the rail), tool calls only (row 20h), last call errored, last call refused (chat-conversation-states.test.ts); the dashed neutral row, its time in the row, Try again, no rail footnote, no line of time under it. Pixel look not verified on this host."
     },
     {
       "id": "AC8",
       "status": "met-on-branch",
-      "evidence": "Named interaction tests for the shared component (chat-turn-commands.test.ts, turn-commands.test.ts, turn-outcome.test.ts) and the real route (chat-conversation-states.test.ts, chat-conversation-stopped.test.ts), all green in focused-checks run 5. Cinder Button loading and disabled, the danger status token and dir=auto on the failure line; Discard, Continue and Retry stay gated by readOnly and discardableRun. Responsive layout, keyboard focus, reduced motion and RTL visuals are not verified on this host."
+      "evidence": "Named interaction tests for the shared component (chat-turn-commands.test.ts, chat-turn-outcome-anchor.test.ts, turn-commands.test.ts, turn-outcome*.test.ts) and the real route (chat-conversation-states.test.ts, chat-conversation-stopped.test.ts), green in focused-checks exit 0. Cinder Button loading and disabled, the danger status token, dir=auto on the failure line; Discard, Continue and Retry stay gated by readOnly and discardableRun. Responsive layout, keyboard focus, reduced motion and RTL visuals not verified on this host."
     }
   ]
 }
