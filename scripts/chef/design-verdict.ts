@@ -2,7 +2,8 @@
 // The design verdict a head carries into landing (`landing-evidence.ts`).
 //
 // Usage:
-//   bun scripts/chef/design-verdict.ts record --head <sha> --file <rows file> --state-directory <dir>
+//   bun scripts/chef/design-verdict.ts record --head <sha> --file <rows file> --capture <capture directory>
+//     --ledger <coverage ledger> --state-directory <dir>
 //
 // The coordinator runs `record` after the design-reviewer's verdict. `--file` is the verdicts file of
 // the design-review skill (`row-id | verdict | evidence`, one row per line, no header). It is
@@ -10,11 +11,18 @@
 // `<state directory>/design-verdicts/<head>.verdicts`, the coordinator's execution-state directory
 // (the `--state-directory` of its verification request), never the worktree. Landing passes only
 // when every row is `matches` or `deferred`; `record` accepts every known word, because a failing
-// verdict is a verdict too. Exit 0 recorded, 1 refused, 2 invalid usage.
+// verdict is a verdict too.
+//
+// The review's coverage ledger (`design-coverage.ts`) comes with it. An incomplete ledger is refused,
+// because a review that never judged a capture has not happened. A complete ledger that blocks
+// approval (a screen judged wrong or unsure, a sweep that found something, a state not captured) is
+// recorded as one more failing row, `coverage-ledger`, so landing refuses the head. The ledger is
+// kept beside the verdicts as `<head>.ledger`. Exit 0 recorded, 1 refused, 2 invalid usage.
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
+import { checkLedger } from './design-coverage.ts';
 import { emitResult, parseOptions, UsageError } from './process-runner.ts';
 
 export { UsageError };
@@ -71,10 +79,27 @@ export function failingVerdictRows(text: string): string[] {
   });
 }
 
+/** The failing row a blocking coverage ledger adds, kept within the evidence limit. */
+function coverageRow(blocking: readonly string[]): string {
+  const evidence = `approval blocked by the coverage ledger: ${blocking.join('; ')}`.replaceAll(
+    '|',
+    '/',
+  );
+  const short =
+    evidence.length <= MAXIMUM_EVIDENCE_LENGTH
+      ? evidence
+      : `${evidence.slice(0, MAXIMUM_EVIDENCE_LENGTH - 3)}...`;
+  return `coverage-ledger | unverified | ${short}`;
+}
+
 export function run(argv: string[]): { code: number; output: string } {
-  const parsed = parseOptions(argv, { values: ['head', 'file', 'state-directory'] });
+  const parsed = parseOptions(argv, {
+    values: ['head', 'file', 'capture', 'ledger', 'state-directory'],
+  });
   if (parsed.positionals[0] !== 'record' || parsed.positionals.length !== 1)
-    throw new UsageError('Usage: design-verdict.ts record --head <sha> --file <rows file>');
+    throw new UsageError(
+      'Usage: design-verdict.ts record --head <sha> --file <rows file> --capture <capture directory> --ledger <coverage ledger> --state-directory <dir>',
+    );
   const head = parsed.values['head'];
   if (head === undefined || !/^[0-9a-f]{40}$/.test(head))
     throw new UsageError('--head must be a full commit SHA.');
@@ -85,13 +110,31 @@ export function run(argv: string[]): { code: number; output: string } {
     throw new UsageError(
       '--state-directory is required: the coordinator execution-state directory.',
     );
-  const text = readFileSync(resolve(file), 'utf8');
-  const problems = verdictFileProblems(text);
+  const capture = parsed.values['capture'];
+  const ledgerFile = parsed.values['ledger'];
+  if (capture === undefined || ledgerFile === undefined)
+    throw new UsageError(
+      "--capture and --ledger are required: the review's capture directory and its coverage ledger (design-coverage.ts).",
+    );
+  const rowsText = readFileSync(resolve(file), 'utf8');
+  const problems = verdictFileProblems(rowsText);
   if (problems.length > 0) return { code: 1, output: `refused: ${problems.join('; ')}` };
+  const ledgerText = readFileSync(resolve(ledgerFile), 'utf8');
+  const ledger = checkLedger(capture, ledgerText);
+  if (ledger.problems.length > 0)
+    return {
+      code: 1,
+      output: `refused, the coverage ledger is incomplete: ${ledger.problems.join('; ')}`,
+    };
+  const text =
+    ledger.blocking.length === 0
+      ? rowsText
+      : `${rowsText.trimEnd()}\n${coverageRow(ledger.blocking)}\n`;
   const target = designVerdictPath(resolve(stateDirectory), head);
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(`${target}.tmp`, text);
   renameSync(`${target}.tmp`, target);
+  writeFileSync(target.replace(/\.verdicts$/, '.ledger'), ledgerText);
   const failing = failingVerdictRows(text);
   return {
     code: 0,
