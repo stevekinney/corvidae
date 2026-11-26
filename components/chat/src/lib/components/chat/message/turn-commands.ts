@@ -36,9 +36,7 @@ export type TurnCommandStart =
   | { readonly status: 'ignored'; readonly reason: 'duplicate' | 'busy' | 'not-applicable' };
 
 /** The states each command applies to. */
-export const TURN_COMMAND_STATES: Readonly<
-  Record<TurnCommandKind, readonly ChatTurnState['kind'][]>
-> = {
+const TURN_COMMAND_STATES: Readonly<Record<TurnCommandKind, readonly ChatTurnState['kind'][]>> = {
   reconnect: ['reconnecting'],
   retry: ['failed', 'empty'],
   discard: ['stopped'],

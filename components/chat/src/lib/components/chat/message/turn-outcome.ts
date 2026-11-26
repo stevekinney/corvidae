@@ -82,7 +82,7 @@ function lastTurnStart(conversation: ConversationHistory): number {
 }
 
 /** The id of the last assistant message of the conversation. */
-export function lastAssistantId(conversation: ConversationHistory): string | undefined {
+function lastAssistantId(conversation: ConversationHistory): string | undefined {
   for (let index = conversation.ids.length - 1; index >= 0; index -= 1) {
     const id = conversation.ids[index];
     if (id !== undefined && rowOf(conversation, id)?.role === 'assistant') return id;
@@ -91,7 +91,7 @@ export function lastAssistantId(conversation: ConversationHistory): string | und
 }
 
 /** Reads the last turn's stop line, excluding the notice that a restarted server ended the chat. */
-export function lastTurnStop(conversation: ConversationHistory): TurnStop | undefined {
+function lastTurnStop(conversation: ConversationHistory): TurnStop | undefined {
   const currentTurn = conversation.ids.slice(lastTurnStart(conversation));
   // A stop note may belong to the new person's message when a run ends before producing a reply.
   // Keep it there. Replacing the previous turn's assistant would falsely mark a completed reply
@@ -115,7 +115,7 @@ export function lastTurnStop(conversation: ConversationHistory): TurnStop | unde
 }
 
 /** `conversation` without the stop line that `stop` says Chat draws as a turn state. */
-export function withoutStopLine(
+function withoutStopLine(
   conversation: ConversationHistory,
   stop: TurnStop | undefined,
 ): ConversationHistory {
@@ -148,7 +148,8 @@ function reconnectingState(
 /**
  * Whether the last turn ended on tool activity, or on a blank reply, with every call answered and
  * nothing said about its stop: the run finished and wrote no answer. A call with no answer was
- * interrupted, and one that waits on an approval is not finished, so neither is an empty answer.
+ * interrupted, one that waits on an approval is not finished, and one that errored (failed, or was
+ * refused) is not a finished call, so none of them is an empty answer.
  */
 function endsWithoutAnswer(conversation: ConversationHistory): boolean {
   const rows = conversation.ids
@@ -162,8 +163,11 @@ function endsWithoutAnswer(conversation: ConversationHistory): boolean {
   const endsOnBlankReply =
     last?.role === 'assistant' && last.toolCall === undefined && getMessageText(last).trim() === '';
   if (last?.role !== 'tool-call' && last?.role !== 'tool-result' && !endsOnBlankReply) return false;
+  // A step that failed offers its own Retry this step, and a refusal ends a turn the host words
+  // itself: only calls that finished leave a turn with no answer to write.
   return pairToolCallsWithResults(rows).every(
-    (pair) => pair.result !== undefined && pair.result.outcome !== 'action_required',
+    (pair) =>
+      pair.result !== undefined && !['action_required', 'error'].includes(pair.result.outcome),
   );
 }
 

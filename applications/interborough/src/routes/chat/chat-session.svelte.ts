@@ -910,26 +910,37 @@ export class ChatSessionState {
    * forgotten, nothing is sent and the failure says so. A last message with files, or one that is
    * not plain text, is not offered again here (`canRetryTurn`).
    */
-  retryTurn(options: { readonly tools?: ReadonlyMap<string, ToolInfo> } = {}): Promise<void> {
-    // A second Retry while the first is forgetting grants or sending is the same retry, not a
-    // second turn (COR-2725).
-    if (this.#retryingTurn !== undefined) return this.#retryingTurn;
-    const attempt = this.#retryTurn(options);
-    const settled = attempt.finally(() => {
-      if (this.#retryingTurn === settled) this.#retryingTurn = undefined;
-    });
-    this.#retryingTurn = settled;
-    return settled;
+  async retryTurn(options: { readonly tools?: ReadonlyMap<string, ToolInfo> } = {}): Promise<void> {
+    // A second Retry while the first is still forgetting grants is the same retry, not a second
+    // turn (COR-2725): it waits for the first to be prepared and sends nothing. The guard ends when
+    // the turn is handed to `send`, so a run that parks or whose stream drops never holds it.
+    if (this.#retryPreparation !== undefined) {
+      await this.#retryPreparation;
+      return;
+    }
+    const preparation = this.#prepareRetry(options);
+    this.#retryPreparation = preparation;
+    let text: string | undefined;
+    try {
+      text = await preparation;
+    } finally {
+      if (this.#retryPreparation === preparation) this.#retryPreparation = undefined;
+    }
+    if (text === undefined) return;
+    return this.send(text);
   }
 
-  #retryingTurn: Promise<void> | undefined;
+  #retryPreparation: Promise<string | undefined> | undefined;
 
-  async #retryTurn(options: { readonly tools?: ReadonlyMap<string, ToolInfo> }): Promise<void> {
-    if (this.#readOnly) return;
+  /** What to send again: the last message's text, once the grants of interrupted calls are forgotten; `undefined` when nothing is sent. */
+  async #prepareRetry(options: {
+    readonly tools?: ReadonlyMap<string, ToolInfo>;
+  }): Promise<string | undefined> {
+    if (this.#readOnly) return undefined;
     const id = this.#lastUserRowId();
     const row = id === undefined ? undefined : this.conversation.messages[id];
     const text = row === undefined ? undefined : retryText(row);
-    if (id === undefined || text === undefined) return;
+    if (id === undefined || text === undefined) return undefined;
     const tools = this.interruptedCallsThatMayChange(options.tools);
     if (tools.length > 0) {
       try {
@@ -938,14 +949,14 @@ export class ChatSessionState {
           { signal: this.#abort.signal },
         );
       } catch (error) {
-        if (this.#abort.signal.aborted) return;
+        if (this.#abort.signal.aborted) return undefined;
         if (isNotFound(error)) this.#onNotFound?.();
         this.failure = CHAT_COPY.stopLine.retryFailed;
-        return;
+        return undefined;
       }
     }
     this.failure = undefined;
-    return this.send(text);
+    return text;
   }
 
   /** Retries only an expired approval that belongs to the current final turn. */

@@ -69,6 +69,8 @@ function serve(
     connected?: boolean;
     context?: Record<string, unknown>;
     answers?: Answers;
+    /** The run's stream, when the thread has one going; a thread with none answers as a finished one does. */
+    stream?: () => Response;
   } = {},
 ) {
   const served = bureau(
@@ -96,6 +98,7 @@ function serve(
         return provider(options.hasKey ?? true, options.connected);
       if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages });
       if (!url.includes('/threads/')) return undefined;
+      if (options.stream !== undefined) return options.stream();
       return new Response(
         `data: ${JSON.stringify({ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' })}\n\n`,
         { headers: { 'content-type': 'text/event-stream' } },
@@ -794,6 +797,37 @@ describe('the last turn’s outcome and its recovery commands (COR-2725)', () =>
     expect(document.body.textContent).not.toContain(CHAT_COPY.discardTurn.failed);
     expect(document.querySelector('.chat-turn-command-failure')).toBeNull();
     expect(discard.hasAttribute('disabled')).toBe(false);
+  });
+
+  test('a run whose stream dropped says so once, on its turn, with Retry now (R3), and the composer does not count the attempts again', async () => {
+    const partial = [
+      ...BILLING,
+      { id: 'run-billing:step:0', role: 'assistant', content: 'I will start with the invoices' },
+    ];
+    // The stream reads the run's rows, then ends with no terminal event: it dropped.
+    const dropped = (): Response =>
+      new Response(
+        [
+          { type: 'RUN_STARTED', threadId: 'session-1', runId: 'run-billing' },
+          { type: 'MESSAGES_SNAPSHOT', messages: partial },
+        ]
+          .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+          .join(''),
+        { headers: { 'content-type': 'text/event-stream' } },
+      );
+    serve(partial, { stream: dropped });
+    const { container, findByRole } = mount();
+
+    const retryNow = await findByRole('button', { name: 'Retry now' });
+    const notice = retryNow.closest('.chat-connection-notice');
+    expect(notice?.textContent).toMatch(/Connection lost\. Reconnecting, attempt 1 of \d+\./u);
+    // One account of the reconnect: the turn's warning, not also the composer's count.
+    expect(container.querySelectorAll('.chat-connection-notice')).toHaveLength(1);
+    expect(container.textContent).not.toContain('Reconnecting… attempt');
+    expect(container.querySelector('.chat-turn-outcome')).toBeNull();
+    // The failure the dropped stream left is the same story: no second account of it above the chat.
+    expect(container.textContent).not.toContain('The agent did not answer');
+    expect(container.querySelector('[data-testid="chat-alerts"]')?.textContent?.trim()).toBe('');
   });
 
   const NARRATED_THEN_TOOL = [

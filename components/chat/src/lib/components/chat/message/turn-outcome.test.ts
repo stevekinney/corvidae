@@ -15,21 +15,14 @@ import {
 } from '../builders.ts';
 import type { ConversationHistory } from '../conversation-model.ts';
 import { CINDER_NOTES_METADATA_KEY, resolveMessageNotes } from '../utilities/index.ts';
-import {
-  lastAssistantId,
-  lastTurnStop,
-  resolveTurnOutcome,
-  turnStateOf,
-  withoutStopLine,
-  type TurnOutcomeFacts,
-} from './turn-outcome.ts';
+import { resolveTurnOutcome, turnStateOf, type TurnOutcomeFacts } from './turn-outcome.ts';
 
 const IDLE: TurnOutcomeFacts = { running: false, now: 1_000 };
 
 function note(
   conversation: ConversationHistory,
   rowId: string,
-  entry: Record<string, unknown>,
+  entry: Record<string, string | boolean>,
 ): ConversationHistory {
   const row = conversation.messages[rowId]!;
   return {
@@ -129,10 +122,11 @@ describe('the stop line the run left', () => {
       reason: 'The provider stopped.',
       failed: true,
     });
-    expect(lastTurnStop(conversation)).toBeUndefined();
-    expect(withoutStopLine(conversation, lastTurnStop(conversation))).toBe(conversation);
-    expect(resolveTurnOutcome(conversation, IDLE).state).toBeUndefined();
-    expect(lastAssistantId(conversation)).toBe(conversation.ids[1]);
+    const outcome = resolveTurnOutcome(conversation, IDLE);
+    expect(outcome.stop).toBeUndefined();
+    expect(outcome.conversation).toBe(conversation);
+    expect(outcome.state).toBeUndefined();
+    expect(outcome.assistantId).toBe(conversation.ids[1]);
   });
 
   test('leaves the notice that a restarted server ended the chat where it is', () => {
@@ -178,6 +172,25 @@ describe('an answer that was never written (R6)', () => {
       content: '',
     });
     expect(resolveTurnOutcome(parked, IDLE).state).toBeUndefined();
+  });
+
+  test('is not an outcome when the last call failed or was refused: its own Retry this step and wording stand', () => {
+    const asked = appendAssistantMessage(
+      appendUserMessage(createConversationHistory({ id: 'c' }), 'Look up order 4398'),
+      'Let me check the orders.',
+    );
+    const called = appendToolCall(asked, {
+      id: 'call-1',
+      name: 'lookup-order',
+      arguments: { orderId: '4398' },
+    });
+    const failed = appendToolResult(called, {
+      callId: 'call-1',
+      outcome: 'error',
+      content: null,
+      error: { code: 'timeout', category: 'timeout', retryable: true, message: 'Timed out.' },
+    });
+    expect(resolveTurnOutcome(failed, IDLE).state).toBeUndefined();
   });
 
   test('yields to a stop, a failure and a dropped stream: one outcome per turn', () => {

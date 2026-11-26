@@ -691,7 +691,7 @@
       connectHref: router.href('/settings/models'),
       newChatHref: router.href('/chats/new'),
       reconnectAttempt: session.reconnectAttempt,
-      reconnectOnTurn: outcome.assistantId !== undefined && outcome.state?.kind === 'reconnecting',
+      reconnectOnTurn,
       restoredDraft:
         restoredDraftAt === undefined
           ? undefined
@@ -1019,6 +1019,16 @@
   });
   onDestroy(() => approvalPlacement.release());
 
+  // A command that answers after the person left this chat says nothing: its toast would land over
+  // the chat they went to (COR-2725).
+  let left = false;
+  onDestroy(() => {
+    left = true;
+  });
+  function warnUnlessLeft(text: string): void {
+    if (!left) showToast(text, { variant: 'warning', duration: 0 });
+  }
+
   /** Scrolls the first approval's row into view and focuses it, once it is drawn. */
   async function focusApproval(): Promise<void> {
     let approvalOwnedFocus = false;
@@ -1176,6 +1186,11 @@
   );
   const lastStop = $derived(outcome.stop);
   const shown = $derived(outcome.conversation);
+  // A dropped run says it once, on its turn: with the retry and its countdown. The composer does not
+  // count the attempts again and the failure the drop left does not stand above the chat.
+  const reconnectOnTurn = $derived(
+    outcome.assistantId !== undefined && outcome.state?.kind === 'reconnecting',
+  );
   const currentTurnMessageIds = $derived(new Set(shown.ids.slice(lastTurnStart(shown))));
   const failedTurnExplanation = $derived.by(() => {
     if (readOnly || lastStop?.state.kind !== 'failed') return undefined;
@@ -1285,10 +1300,7 @@
         notices: SETTINGS.permissionNotices,
       });
       if (!result.applied) {
-        showToast(result.notice ?? SETTINGS.permissionNotices.notChanged, {
-          variant: 'warning',
-          duration: 0,
-        });
+        warnUnlessLeft(result.notice ?? SETTINGS.permissionNotices.notChanged);
         return;
       }
       const onChanges = SETTINGS.permissionOptions.find((entry) => entry.value === 'on-changes');
@@ -1332,10 +1344,7 @@
         notices: SETTINGS.permissionNotices,
       });
       if (!result.applied) {
-        showToast(result.notice ?? SETTINGS.permissionNotices.notChanged, {
-          variant: 'warning',
-          duration: 0,
-        });
+        warnUnlessLeft(result.notice ?? SETTINGS.permissionNotices.notChanged);
         return;
       }
       const onChanges = SETTINGS.permissionOptions.find((option) => option.value === 'on-changes');
@@ -1721,6 +1730,7 @@
   // message that never got an answer is marked "Not sent".
   const failureShownInTranscript = $derived(
     retryNoteId !== undefined ||
+      reconnectOnTurn ||
       (session.failureWasTransport &&
         Object.values(session.conversation.messages).some(
           (row) => row.metadata['_deliveryStatus'] === 'failed',

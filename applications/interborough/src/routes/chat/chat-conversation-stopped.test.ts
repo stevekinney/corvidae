@@ -5,11 +5,13 @@
  * turn after the failed attempt, which stays on record with its status line (row 20b), while the
  * interrupted tool goes back through its approval (row 20c).
  */
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { router } from '../../lib/router.svelte.ts';
 import ChatConversation from './chat-conversation.svelte';
+import SessionSwitch from './chat-session-switch.test-harness.svelte';
 import ChatToasts from './chat-toasts.test-harness.svelte';
 import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
 
@@ -111,6 +113,8 @@ const REFUND_THEN_LOOKUP_THREAD: Served['thread'] = [
 type Served = {
   calls: { method: string; params: Record<string, unknown> }[];
   readonly started: string[];
+  /** Answers the held setting change as refused; set once the change is asked for. */
+  releaseSteer?: () => void;
   thread: {
     id: string;
     role: string;
@@ -129,7 +133,7 @@ function open(
   tier: 'read-only' | 'dangerous',
   options: {
     readonly permissionMode?: string;
-    readonly steer?: 'accepted' | 'rejected';
+    readonly steer?: 'accepted' | 'rejected' | 'held';
     readonly served?: Partial<Served>;
     readonly thread?: Served['thread'];
     readonly lookup?: boolean;
@@ -169,9 +173,14 @@ function open(
       'bureau.agents.catalog': () => catalog(tier, options.lookup === true),
       'bureau.contexts.forgetgrants': () => ({ forgotten: ['default:issue-refund@1.0.0'] }),
       'bureau.contexts.steer': () =>
-        options.steer === 'rejected'
-          ? { outcome: 'rejected', failure: { reason: 'policy-denied' } }
-          : { outcome: 'accepted' },
+        options.steer === 'held'
+          ? new Promise((resolve) => {
+              served.releaseSteer = () =>
+                resolve({ outcome: 'rejected', failure: { reason: 'policy-denied' } });
+            })
+          : options.steer === 'rejected'
+            ? { outcome: 'rejected', failure: { reason: 'policy-denied' } }
+            : { outcome: 'accepted' },
     },
     (url, init) => {
       if (url.endsWith('/messages')) {
@@ -209,7 +218,16 @@ function open(
   landAt('/chats/session-1');
   return {
     served,
-    view: mount({ sessionId: 'session-1', title: 'Refund', agentName: 'assistant' }),
+    view:
+      options.steer === 'held'
+        ? (render(SessionSwitch, {
+            props: {
+              page: ChatConversation,
+              sessionId: 'session-1',
+              pageProps: { title: 'Refund', agentName: 'assistant' },
+            },
+          } as never) as ReturnType<typeof mount>)
+        : mount({ sessionId: 'session-1', title: 'Refund', agentName: 'assistant' }),
   };
 }
 
@@ -374,6 +392,19 @@ describe('a chat whose run failed on a call', () => {
 
     await findByText('This chat cannot use that mode.');
     expect(served.calls.some((call) => call.method === 'bureau.contexts.forgetgrants')).toBe(false);
+    expect(served.started).toEqual([]);
+  });
+
+  test('a refusal of that setting that arrives after the person moved to another chat says nothing there (COR-2725)', async () => {
+    const { served, view } = open('dangerous', { permissionMode: 'allow-all', steer: 'held' });
+
+    await fireEvent.click(await view.findByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(served.releaseSteer).toBeDefined());
+    await view.rerender({ sessionId: 'session-2' } as never);
+    served.releaseSteer?.();
+    await quietFor(50);
+
+    expect(document.body.textContent).not.toContain('This chat cannot use that mode.');
     expect(served.started).toEqual([]);
   });
 });

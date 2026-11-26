@@ -9,7 +9,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { TURN_COMMAND_STATES, TurnCommands, type TurnCommandKind } from './turn-commands.ts';
+import { TurnCommands, type TurnCommandKind } from './turn-commands.ts';
 import { advanceTurnState, type ChatTurnState } from './turn-state.ts';
 
 const STATES = {
@@ -40,8 +40,9 @@ function commandsFor(state: StateName): TurnCommands {
 
 /** The first command that applies to a state, which the inputs that need a command in flight use. */
 function applicableTo(state: StateName): TurnCommandKind | undefined {
-  return (Object.keys(TURN_COMMAND_STATES) as TurnCommandKind[]).find((command) =>
-    TURN_COMMAND_STATES[command].includes(STATES[state].kind),
+  const commands: TurnCommandKind[] = ['reconnect', 'retry', 'discard', 'continue', 'regenerate'];
+  return commands.find(
+    (command) => new TurnCommands('probe').begin(command, TURN, STATES[state]).status === 'started',
   );
 }
 
