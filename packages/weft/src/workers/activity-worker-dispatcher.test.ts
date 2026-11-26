@@ -209,6 +209,7 @@ describe('ActivityWorkerDispatcher', () => {
       const fakePool = {
         acquire: async () => worker,
         release: () => {},
+        discard: () => worker.terminate(),
         availableCount: 0,
         totalCount: 1,
         pendingCount: 0,
@@ -250,6 +251,7 @@ describe('ActivityWorkerDispatcher', () => {
         release: () => {
           released = true;
         },
+        discard: () => worker.terminate(),
         availableCount: 0,
         totalCount: 1,
         pendingCount: 0,

@@ -150,7 +150,7 @@ export class ActivityWorkerDispatcher implements Disposable, AsyncDisposable {
           clearTimeout(timer);
           worker.removeEventListener('message', onMessage as EventListener);
           worker.removeEventListener('error', onError as EventListener);
-          worker.removeEventListener('messageerror', onMessageError as EventListener);
+          worker.removeEventListener('messageerror', onMessageError);
         };
 
         const discard = () => {
@@ -161,7 +161,7 @@ export class ActivityWorkerDispatcher implements Disposable, AsyncDisposable {
 
         worker.addEventListener('message', onMessage as EventListener);
         worker.addEventListener('error', onError as EventListener);
-        worker.addEventListener('messageerror', onMessageError as EventListener);
+        worker.addEventListener('messageerror', onMessageError);
         worker.postMessage(request);
       });
     } finally {
