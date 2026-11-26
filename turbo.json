@@ -110,7 +110,7 @@
     "test:slow": {
       "outputs": [],
       "dependsOn": ["transit", "metadata", "^metadata"],
-      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION", "CORVIDAE_NODE_BINARY"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
