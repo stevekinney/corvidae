@@ -2,7 +2,10 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { flushSync, tick } from 'svelte';
 
-import { stripCinderComponentsLayer } from '@lostgradient/component-tooling/test/css.ts';
+import {
+  declarationsFor,
+  stripCinderComponentsLayer,
+} from '@lostgradient/component-tooling/test/css.ts';
 import {
   DEFAULT_TEST_VIEWPORT,
   setTestViewportWidth,
@@ -587,6 +590,64 @@ describe('Table fit stacks into cards', () => {
       /\.cinder-table\[data-cinder-stack-card\]\s+\.cinder-table__body\s+\.cinder-table__row \{[^}]*display: grid;/,
     );
     expect(css).toMatch(/\[data-cinder-stack-empty\][^{]*\{\s*display: none;/);
+  });
+
+  // COR-2760: a card row starts on the content's leading edge, and its tint reaches 12px past it.
+  test('a card row starts on the content edge and keeps a gap at its end', async () => {
+    const css = await Bun.file(new URL('./table.css', import.meta.url)).text();
+    const row = declarationsFor(
+      css,
+      '.cinder-table[data-cinder-stack-card] .cinder-table__body .cinder-table__row',
+    );
+    expect(row.get('padding-inline')).toBe('0 var(--cinder-space-2)');
+    expect(row.get('isolation')).toBe('isolate');
+  });
+
+  test('the card tint and focus ring sit on a pseudo-element 12px past the row start, inside the scroll box', async () => {
+    const css = await Bun.file(new URL('./table.css', import.meta.url)).text();
+    const rowSelector =
+      '.cinder-table[data-cinder-stack-card] .cinder-table__body .cinder-table__row';
+    const tint = declarationsFor(css, `${rowSelector}::after`);
+    expect(tint.get('content')).toBe("''");
+    expect(tint.get('position')).toBe('absolute');
+    expect(tint.get('inset-inline')).toBe('calc(var(--cinder-space-3) * -1) 0');
+    expect(tint.get('z-index')).toBe('-1');
+    expect(
+      declarationsFor(
+        css,
+        `${rowSelector}:is([data-cinder-open], [data-cinder-current])::after`,
+      ).get('background'),
+    ).toBe('color-mix(in oklch, var(--cinder-accent-solid), transparent 92%)');
+    expect(
+      declarationsFor(
+        css,
+        `${rowSelector}:has(.cinder-table__cell[data-cinder-stack-title] a:focus-visible)::after`,
+      ).get('box-shadow'),
+    ).toBe('var(--_cinder-focus-ring-shadow)');
+    // The row itself paints no tint and no ring.
+    expect(
+      declarationsFor(
+        css,
+        `${rowSelector}:is(:hover, [data-cinder-open], [data-cinder-current])`,
+      ).get('background'),
+    ).toBe('transparent');
+    expect(
+      declarationsFor(
+        css,
+        `${rowSelector}:has(.cinder-table__cell[data-cinder-stack-title] a:focus-visible)`,
+      ).size,
+    ).toBe(0);
+
+    const scroll = declarationsFor(
+      css,
+      '.cinder-table-scroll:has(> .cinder-table[data-cinder-stack-card])',
+    );
+    expect(scroll.get('padding-inline-start')).toBe('var(--cinder-space-3)');
+    expect(scroll.get('margin-inline-start')).toBe('calc(var(--cinder-space-3) * -1)');
+    // The table draws no frame in card form, so it must not clip the tint either.
+    expect(declarationsFor(css, '.cinder-table[data-cinder-stack-card]').get('overflow')).toBe(
+      'visible',
+    );
   });
 });
 

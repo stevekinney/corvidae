@@ -100,6 +100,8 @@ A records table whose values can be very long (a storage key, a URL, a model ide
 </Table>
 ```
 
+Below `stackBelow` a `fit` table stacks into flat rows. They draw no fill and no frame, so each row starts on the content's leading edge, the same edge as the heading above it, and keeps a small gap at its trailing edge for a control. The hover, open and current tint and a linked row's focus ring reach 12px past the row's start, so the tint never starts at the title's first glyph. The scroll box makes room for that 12px outside the content edge, so nothing clips it.
+
 The leaves are also named exports of `@lostgradient/cinder`.
 
 ## Props

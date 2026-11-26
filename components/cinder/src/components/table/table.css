@@ -638,15 +638,25 @@
  * at the same specificity, so it replaces what that layout set for the same cells.
  * ---------------------------------------- */
 
+  /* The rows start on the content's leading edge (COR-2760): the scroll box reaches one gutter past
+   * that edge and pads it back, so its content edge stays on the page's and the row tint, which
+   * reaches into that gutter, stays inside the box's clip. `inline-size: auto` lets the negative
+   * margin widen the box instead of leaving its trailing edge a gutter short. */
   .cinder-table-scroll:has(> .cinder-table[data-cinder-stack-card]) {
     border: 0;
     border-radius: 0;
     background: transparent;
     --_cinder-scroll-fade-color: var(--cinder-surface-canvas);
+    inline-size: auto;
+    max-inline-size: none;
+    padding-inline-start: var(--cinder-space-3);
+    margin-inline-start: calc(var(--cinder-space-3) * -1);
   }
 
+  /* The table draws no frame here, so it does not clip: the row tint reaches past its start. */
   .cinder-table[data-cinder-stack-card] {
     background: transparent;
+    overflow: visible;
     --_cinder-table-fill: transparent;
   }
 
@@ -685,9 +695,11 @@
     row-gap: var(--cinder-space-1);
     align-items: baseline;
     padding-block: var(--cinder-space-3);
-    padding-inline: var(--cinder-space-4);
+    /* The title starts on the content's edge; a trailing control keeps a gap from the end. */
+    padding-inline: 0 var(--cinder-space-2);
     border-radius: 0;
     box-shadow: none;
+    isolation: isolate;
   }
 
   /* No break line: there is no control line to separate. */
@@ -883,13 +895,6 @@
     box-shadow: none;
   }
 
-  .cinder-table[data-cinder-stack-card]
-    .cinder-table__body
-    .cinder-table__row:has(.cinder-table__cell[data-cinder-stack-title] a:focus-visible) {
-    outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
-  }
-
   /* The row itself carries the tint in either the table or its stacked cards. */
   .cinder-table .cinder-table__row:is([data-cinder-open], [data-cinder-current]),
   .cinder-table .cinder-table__row:is([data-cinder-open], [data-cinder-current]):hover {
@@ -898,6 +903,65 @@
 
   @media (forced-colors: active) {
     .cinder-table .cinder-table__row:is([data-cinder-open], [data-cinder-current]) {
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+    }
+  }
+
+  /* ----------------------------------------
+   * Card tint (COR-2760) — a card row sits on the content's edge, so its hover, open and current
+   * tint and its focus ring are drawn on the row's `::after`, which reaches one gutter past the
+   * row's start: the tint never starts at the title's first glyph, the same 12px a flat
+   * DescriptionList's linked row gets. It lies behind the row's text (the row isolates). Declared
+   * after the row tint above, so the row itself paints nothing.
+   * ---------------------------------------- */
+
+  .cinder-table[data-cinder-stack-card] .cinder-table__body .cinder-table__row,
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__row:is(:hover, [data-cinder-open], [data-cinder-current]) {
+    background: transparent;
+  }
+
+  .cinder-table[data-cinder-stack-card] .cinder-table__body .cinder-table__row::after {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline: calc(var(--cinder-space-3) * -1) 0;
+    z-index: -1;
+    border-radius: var(--cinder-radius-control);
+    transition: background var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  @media (hover: hover) {
+    .cinder-table[data-cinder-stack-card] .cinder-table__body .cinder-table__row:hover::after {
+      background: var(--_cinder-table-row-hover);
+    }
+  }
+
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__row:is([data-cinder-open], [data-cinder-current])::after {
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
+  }
+
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__row:has(.cinder-table__cell[data-cinder-stack-title] a:focus-visible)::after {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-table[data-cinder-stack-card]
+      .cinder-table__body
+      .cinder-table__row:is([data-cinder-open], [data-cinder-current]) {
+      outline: none;
+    }
+
+    .cinder-table[data-cinder-stack-card]
+      .cinder-table__body
+      .cinder-table__row:is([data-cinder-open], [data-cinder-current])::after {
       outline: 1px solid Highlight;
       outline-offset: -1px;
     }
