@@ -44,6 +44,10 @@ export interface ReviewedToolSelection {
   readonly effectSchema: z.ZodObject;
   readonly intents: ReviewedToolIntents;
   readonly access: {
+    readonly allowOtherOwners?: boolean;
+    readonly recover?: (
+      review: PendingToolApprovalReview,
+    ) => Promise<import('armorer').ToolExecutionResult | undefined>;
     readonly requestScopes: readonly [string, ...string[]];
     readonly readScopes: readonly [string, ...string[]];
     readonly mayRead: (
@@ -339,6 +343,10 @@ export function reviewedToolOperations(
     mayDecide: (review, principal) =>
       review.kind === 'tool-approval' &&
       (find(review)?.selection.access.mayDecide(review, principal) ?? false),
+    mayAccessOtherOwner: (review) =>
+      review.kind === 'tool-approval' && find(review)?.selection.access.allowOtherOwners === true,
+    recover: async (review) => find(review)?.selection.access.recover?.(review),
+    mayRecover: (review) => find(review)?.selection.access.recover !== undefined,
     verifyReviewed: (review, original, provenance) => {
       try {
         const current = verifyToolboxPendingApproval(toolbox, review.approval);

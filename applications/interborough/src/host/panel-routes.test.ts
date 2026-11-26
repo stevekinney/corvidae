@@ -556,7 +556,11 @@ describe('POST a panel’s tool call', () => {
   });
 
   test('forwards an ordinary review decision through the existing MCP route', async () => {
-    const bureau = bureauDouble();
+    let observedPanel: string | undefined;
+    const bureau = mock(async (_request: Request) => {
+      observedPanel = hostPanelUriOfCall();
+      return Response.json({ jsonrpc: '2.0', id: 1, result: RESULT });
+    });
     const panel = app({
       name: 'pending-review',
       uri: 'ui://inspectors/pending-review/v1',
@@ -574,6 +578,8 @@ describe('POST a panel’s tool call', () => {
       },
     );
     expect(response.status).toBe(200);
+    expect(observedPanel).toBe('ui://inspectors/pending-review/v1');
+    expect(hostPanelUriOfCall()).toBeUndefined();
     const request = bureau.mock.calls[0]?.[0];
     expect(request?.url).toBe(`http://${HOST}/mcp`);
     expect(await request?.json()).toMatchObject({

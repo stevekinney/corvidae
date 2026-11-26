@@ -1,6 +1,10 @@
 import { type JSONValue, type OnStepHook } from '@lostgradient/operative';
 import { TERMINAL_REVIEW_STATUSES } from './review-closing-events';
-import type { ApprovalPeerRecovery, PendingReview } from './bureau-types/reviews';
+import type {
+  ApprovalPeerRecovery,
+  PendingReview,
+  ReviewedApprovalRecovery,
+} from './bureau-types/reviews';
 
 export function omitKeysWithPrefix(
   record: Record<string, JSONValue>,
@@ -74,6 +78,7 @@ interface ApprovalResolutionStartedRecord {
   id: string;
   startedAt: number | undefined;
   peerRecovery?: ApprovalPeerRecovery;
+  reviewedRecovery?: ReviewedApprovalRecovery;
 }
 
 /** Reads the started marker in either form, dropping entries that are neither. */
@@ -90,6 +95,28 @@ export function readApprovalResolutionStarted(
       records.push({
         id: entry['id'],
         startedAt: typeof startedAt === 'number' ? startedAt : undefined,
+        ...(isJsonObject(entry['reviewedRecovery']) &&
+        isJsonObject(entry['reviewedRecovery']['request']) &&
+        entry['reviewedRecovery']['request']['reviewId'] === entry['id'] &&
+        entry['reviewedRecovery']['request']['decision'] === 'approve' &&
+        typeof entry['reviewedRecovery']['request']['principal'] === 'string' &&
+        typeof entry['reviewedRecovery']['request']['digest'] === 'string' &&
+        (entry['reviewedRecovery']['request']['reason'] === undefined ||
+          typeof entry['reviewedRecovery']['request']['reason'] === 'string') &&
+        typeof entry['reviewedRecovery']['request']['round'] === 'number' &&
+        Number.isSafeInteger(entry['reviewedRecovery']['request']['round']) &&
+        entry['reviewedRecovery']['request']['round'] >= 0 &&
+        isJsonObject(entry['reviewedRecovery']['reviewerProvenance']) &&
+        typeof entry['reviewedRecovery']['reviewerProvenance']['actorId'] === 'string' &&
+        typeof entry['reviewedRecovery']['reviewerProvenance']['workspaceId'] === 'string' &&
+        typeof entry['reviewedRecovery']['reviewerProvenance']['transport'] === 'string' &&
+        (entry['reviewedRecovery']['reviewerProvenance']['panelUri'] === undefined ||
+          typeof entry['reviewedRecovery']['reviewerProvenance']['panelUri'] === 'string') &&
+        (entry['reviewedRecovery']['decisionSurface'] === undefined ||
+          entry['reviewedRecovery']['decisionSurface'] === 'reviews' ||
+          entry['reviewedRecovery']['decisionSurface'] === 'chat')
+          ? { reviewedRecovery: entry['reviewedRecovery'] as unknown as ReviewedApprovalRecovery }
+          : {}),
         ...(isJsonObject(entry['peerRecovery']) &&
         entry['peerRecovery']['version'] === 1 &&
         typeof entry['peerRecovery']['toolDefinitionRevision'] === 'string' &&
@@ -122,6 +149,9 @@ export function writeApprovalResolutionStarted(
     record.startedAt === undefined
       ? {
           id: record.id,
+          ...(record.reviewedRecovery === undefined
+            ? {}
+            : { reviewedRecovery: record.reviewedRecovery as unknown as JSONValue }),
           ...(record.peerRecovery === undefined
             ? {}
             : { peerRecovery: record.peerRecovery as unknown as JSONValue }),
@@ -129,6 +159,9 @@ export function writeApprovalResolutionStarted(
       : {
           id: record.id,
           startedAt: record.startedAt,
+          ...(record.reviewedRecovery === undefined
+            ? {}
+            : { reviewedRecovery: record.reviewedRecovery as unknown as JSONValue }),
           ...(record.peerRecovery === undefined
             ? {}
             : { peerRecovery: record.peerRecovery as unknown as JSONValue }),
