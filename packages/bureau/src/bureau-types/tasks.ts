@@ -63,6 +63,12 @@ export type TaskInput =
     };
 /** How {@link BureauTasks.start} starts a task. */
 export interface StartTaskOptions {
+  /** A durable domain reservation; the owner must advance its fence on recovery. */
+  readonly reservation?: {
+    readonly runId: string;
+    readonly sessionId: string;
+    readonly fence: number;
+  };
   /**
    * The context to continue. Omitted, the task creates a context. A context bound to another
    * agent is `BAD_REQUEST`; another principal's reads as one that does not exist (`NOT_FOUND`).
@@ -323,6 +329,10 @@ export type TaskOutputOf<
  * them authorizes the caller beyond the principal a start or a receipt names.
  */
 export interface BureauTasks<D extends AgentDefinitions = AgentDefinitions> {
+  /** Whether deterministic reserved starts have durable workflow-lease fencing. */
+  readonly reservedStartsSupported: boolean;
+  /** Acquire the workflow lease before advancing an external reserved-start fence. */
+  reserveStartClaim(runId: string): Promise<{ handoff(): void; release(): Promise<void> }>;
   /**
    * Starts a task of the catalog agent `agentName` with `input`, in the context
    * `options.contextId` names or in a new one. The task is durable when a durable engine is

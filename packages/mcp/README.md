@@ -12,14 +12,14 @@ The same entry provides `createPostgresGrantRevocationChannel`. Pass its `publis
 
 ## Hosted connector probes
 
-These independent probes exercise a public deployment before a real Claude or ChatGPT connector is tested. Pass a canonical HTTPS origin, its absolute MCP mount path, and the scope names to each command. The OAuth probe additionally requires the expected browser identity provider origin. For example, from `packages/mcp`:
+These independent probes exercise a public deployment before you test a Claude or ChatGPT connector. Set `MCP_PUBLIC_ORIGIN` to the canonical HTTPS origin, `MCP_RESOURCE_PATH` to the absolute MCP mount path, and `MCP_READ_SCOPE` and `MCP_WRITE_SCOPE` to the deployment's scope names. For the OAuth probe, set `MCP_IDENTITY_ORIGIN` to the expected browser identity provider origin. Run the commands from `packages/mcp`.
 
 ```bash
-bun run test:deployed-smoke -- https://equipment-catalog-production.up.railway.app /api/mcp equipment:read equipment:write
-bun run test:connector:inspector -- https://equipment-catalog-production.up.railway.app /api/mcp equipment:read equipment:write
-bun run test:deployed-oauth -- https://equipment-catalog-production.up.railway.app /api/mcp equipment:read equipment:write --identity-origin https://equipment-issuer-production.up.railway.app
+bun run test:deployed-smoke -- "$MCP_PUBLIC_ORIGIN" "$MCP_RESOURCE_PATH" "$MCP_READ_SCOPE" "$MCP_WRITE_SCOPE"
+bun run test:connector:inspector -- "$MCP_PUBLIC_ORIGIN" "$MCP_RESOURCE_PATH" "$MCP_READ_SCOPE" "$MCP_WRITE_SCOPE"
+bun run test:deployed-oauth -- "$MCP_PUBLIC_ORIGIN" "$MCP_RESOURCE_PATH" "$MCP_READ_SCOPE" "$MCP_WRITE_SCOPE" --identity-origin "$MCP_IDENTITY_ORIGIN"
 ```
 
-For the standalone deployment use `https://equipment-armorer-production.up.railway.app` and `/mcp`. The smoke probe checks public DNS, TLS, discovery, audience, scopes, and the unauthenticated challenge. Inspector runs the pinned Inspector CLI without stored authorization and prints its interactive continuation. The OAuth probe dynamically registers a public client, checks an invalid grant and the redirect to the expected identity provider, then listens on loopback while the operator signs in and approves consent. It exchanges the code, initializes MCP, and revokes the token without printing it. Each invocation creates a persistent registered client. Pass `--prepare-only` to stop before interactive sign-in; rerun without that flag to complete it. Use the synthetic staging identities and confirm the selected consent subject before approving.
+The smoke probe checks public DNS, TLS, discovery, audience, scopes, and the unauthenticated challenge. Inspector runs the pinned Inspector CLI without stored authorization and prints its interactive continuation. The OAuth probe dynamically registers a public client, checks an invalid grant and the redirect to the expected identity provider, then listens on loopback while the operator signs in and approves consent. It exchanges the code, initializes MCP, and revokes the token without printing it. Each invocation creates a persistent registered client. Pass `--prepare-only` to stop before interactive sign-in, then rerun without that flag to complete it. Use a test identity and confirm the selected consent subject before approving.
 
-These commands do not establish acceptance for hosted Claude or ChatGPT: the operator must separately complete sign-in, tool calls, permission changes, and revocation in each real client against both resources.
+For hosted Claude and ChatGPT acceptance, sign in, call the tools, test permission changes, and revoke access in each real client against each deployed resource.

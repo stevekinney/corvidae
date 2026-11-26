@@ -62,9 +62,15 @@ test('operator edits a schedule across a background refetch and the unsaved chan
   await overlap.selectOption('allow');
 
   // Background refetch before saving.
-  const detailRefetched = page.waitForResponse((response) =>
-    /\/schedules\/e2e-edit-refetch-schedule/.test(response.url()),
-  );
+  const detailRefetched = page.waitForResponse((response) => {
+    const body = response.request().postData();
+    return (
+      response.url().endsWith('/jsonrpc') &&
+      body !== null &&
+      body.includes('weft.schedules.get') &&
+      body.includes(SCHEDULE_ID)
+    );
+  });
   await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange', { bubbles: true })));
   await detailRefetched;
 

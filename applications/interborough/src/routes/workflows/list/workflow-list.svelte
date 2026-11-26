@@ -13,7 +13,7 @@
     PageHeader,
     Skeleton,
   } from '@lostgradient/cinder';
-  import { createQuery, keepPreviousData, useQueryClient } from '@tanstack/svelte-query';
+  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
   import { getFleetEventSource } from '../../../app/engine-status.svelte.ts';
@@ -23,6 +23,7 @@
   import {
     parseWorkflowListFilter,
     serializeWorkflowListFilter,
+    workflowListOperationInput,
     type WorkflowListQuery,
   } from '../../../lib/filters.ts';
   import {
@@ -32,7 +33,7 @@
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import { getWorkflowFileRun, type WorkflowFileRunDetail } from '../../../lib/workflow-files.ts';
-  import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
+  import { getPrincipalStore, principalQueryScope, scopeGate } from '../../../lib/scopes.svelte.ts';
   import {
     ENGINE_RUNS_PATH,
     workflowRunsPath,
@@ -110,9 +111,24 @@
   }
 
   const listQuery = createQuery(() => ({
-    queryKey: queryKeys.workflows.list(filter),
-    queryFn: () => client.list(filter),
-    placeholderData: keepPreviousData,
+    queryKey: [...queryKeys.workflows.list(filter), principalQueryScope(principalStore.principal)],
+    queryFn: async () => {
+      const page = await client.operations['weft.workflows.list'](
+        workflowListOperationInput(filter),
+      );
+      return {
+        ...page,
+        items: page.items.map(({ tags, ...item }) => ({
+          ...item,
+          ...(tags === undefined ? {} : { tags: [...tags] }),
+        })),
+      };
+    },
+    placeholderData: (previous, previousQuery) =>
+      JSON.stringify(previousQuery?.queryKey.at(-1)) ===
+      JSON.stringify(principalQueryScope(principalStore.principal))
+        ? previous
+        : undefined,
     enabled: !listGate.disabled,
   }));
 

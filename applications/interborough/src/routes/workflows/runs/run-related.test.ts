@@ -44,28 +44,28 @@ function client(
         generation: 1,
         activatedAt: 1,
       }),
-    },
-    get: async () => parentState,
-    list: async (filter: { parentWorkflowId?: string }) => {
-      if (options.failList) throw new Error('list is down');
-      if (options.empty) return { items: [], total: 0 };
-      if (filter.parentWorkflowId === 'parent-run-id-000') {
+      'weft.workflows.get': async () => parentState,
+      'weft.workflows.list': async (filter: { parentWorkflowId?: string }) => {
+        if (options.failList) throw new Error('list is down');
+        if (options.empty) return { items: [], total: 0 };
+        if (filter.parentWorkflowId === 'parent-run-id-000') {
+          return {
+            items: [
+              summary('self-run-id-0001', 'self-type'),
+              summary('peer-run-id-0001', 'peer-type'),
+            ],
+            total: 2,
+          };
+        }
+        const count = options.manyChildren ?? 1;
         return {
-          items: [
-            summary('self-run-id-0001', 'self-type'),
-            summary('peer-run-id-0001', 'peer-type'),
-          ],
-          total: 2,
+          items: Array.from({ length: count }, (_, index) => ({
+            ...summary(`kid-run-id-${String(index).padStart(4, '0')}`, 'kid-type'),
+            ...(options.kidRevision === undefined ? {} : { revision: options.kidRevision }),
+          })),
+          total: options.childTotal ?? count,
         };
-      }
-      const count = options.manyChildren ?? 1;
-      return {
-        items: Array.from({ length: count }, (_, index) => ({
-          ...summary(`kid-run-id-${String(index).padStart(4, '0')}`, 'kid-type'),
-          ...(options.kidRevision === undefined ? {} : { revision: options.kidRevision }),
-        })),
-        total: options.childTotal ?? count,
-      };
+      },
     },
   } as unknown as RelatedRunsClient;
 }

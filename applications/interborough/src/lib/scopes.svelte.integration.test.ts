@@ -57,6 +57,7 @@ beforeAll(async () => {
   authedServer = serve({
     engine: authedEngine,
     port: 0,
+    trustedHosts: ['127.0.0.1'],
     auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: GRANTED_SCOPES },
   });
   authedBaseUrl = authedServer.url.replace(/\/+$/, '');
@@ -65,6 +66,7 @@ beforeAll(async () => {
   anonymousServer = serve({
     engine: anonymousEngine,
     port: 0,
+    trustedHosts: ['127.0.0.1'],
     unauthenticatedAccess: 'allow',
   });
   anonymousBaseUrl = anonymousServer.url.replace(/\/+$/, '');

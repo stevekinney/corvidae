@@ -516,6 +516,69 @@ const notObserved = async (): Promise<RunCreationObservation> => ({
 });
 
 describe('createRunCreationLedger', () => {
+  it('lets a fenced reserved successor adopt an orphan once without allowing the old claimant to settle', async () => {
+    const { fixture, kv, runtime, ledger } = runCreationLedger(async () => ({
+      live: undefined,
+      durableStatus: null,
+    }));
+    try {
+      const original = await ledger.begin(beginInput({ claim: { ...CLAIM, reservationFence: 1 } }));
+      if (original.kind !== 'claimed') throw new Error('expected original claim');
+      const successorLedger = createRunCreationLedger({
+        kv,
+        clock: runtime.clock,
+        identifiers: runtime.identifiers,
+        observe: async () => ({ live: undefined, durableStatus: null }),
+      });
+      const attempts = await Promise.all([
+        successorLedger.begin(beginInput({ claim: { ...CLAIM, reservationFence: 2 } })),
+        successorLedger.begin(beginInput({ claim: { ...CLAIM, reservationFence: 2 } })),
+      ]);
+      const acquired = attempts.filter((attempt) => attempt.kind === 'claimed');
+      expect(acquired).toHaveLength(1);
+      expect(await rejectionOf(original.complete(summary()))).toBeInstanceOf(
+        RunCreationReceiptUnrecordedError,
+      );
+      await original.release(new Error('stale'));
+      const successor = acquired[0];
+      if (!successor || successor.kind !== 'claimed') throw new Error('missing successor');
+      expect(await successor.complete(summary()).then((value) => value.id)).toBe(CLAIM.runId);
+      expect(
+        await successorLedger
+          .locate({
+            callerId: 'alice',
+            agentName: 'bureau',
+            requestId: 'request-1',
+          })
+          .then((value) => value.status),
+      ).toBe('recorded');
+    } finally {
+      await fixture.dispose();
+    }
+  });
+  it('does not take over a reserved run already visible in the durable engine', async () => {
+    const { fixture, kv, runtime, ledger } = runCreationLedger(async () => ({
+      live: undefined,
+      durableStatus: 'running',
+    }));
+    try {
+      const original = await ledger.begin(beginInput({ claim: { ...CLAIM, reservationFence: 1 } }));
+      if (original.kind !== 'claimed') throw new Error('expected original claim');
+      const successorLedger = createRunCreationLedger({
+        kv,
+        clock: runtime.clock,
+        identifiers: runtime.identifiers,
+        observe: async () => ({ live: undefined, durableStatus: 'running' }),
+      });
+      const replay = await successorLedger.begin(
+        beginInput({ claim: { ...CLAIM, reservationFence: 2 } }),
+      );
+      expect(replay.kind).toBe('replay');
+      if (replay.kind === 'replay') expect(replay.result.id).toBe(CLAIM.runId);
+    } finally {
+      await fixture.dispose();
+    }
+  });
   it('returns a durable receipt with the run id, request id, creation time, and status', async () => {
     const { fixture, ledger } = runCreationLedger(notObserved);
     try {

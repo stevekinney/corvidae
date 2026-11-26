@@ -2,7 +2,7 @@
  * The page that edits a schedule, at `/schedules/:id/edit` (COR-2018, rows 74r, 74t, 75p, 75q), on
  * the sample world: Daily summary opens as the New schedule form filled in, with focus on Repeats,
  * and a schedule whose workflow was deleted (Weekly cleanup, paused: a captioned state outside the
- * sample world, drawn by answering the engine's REST read of Inbox triage with another workflow type)
+ * sample world, drawn by answering the engine's schedule read of Inbox triage with another workflow type)
  * keeps the old name in the Workflow field and moves focus to it on Save. Nothing here saves,
  * because the showcase host's four schedules are the world every other specification reads; saving
  * is proved with `schedule-edit-pages.test.ts` and `schedule-edit.test.ts`.
@@ -77,21 +77,33 @@ test('Edit Weekly cleanup keeps the old workflow name marked, says it was delete
   const address = await addressOf(page, 'Inbox triage');
   const id = decodeURIComponent(address.split('/').at(-1) ?? '');
   // The engine's read of the schedule answers as one whose workflow was deleted.
-  await page.route(
-    (url) => url.pathname.endsWith(`/schedules/${encodeURIComponent(id)}`),
-    async (route) => {
-      if (route.request().method() !== 'GET') {
-        await route.fallback();
-        return;
-      }
-      const response = await route.fetch();
-      const original = await response.text();
-      const text = original
-        .replace('"workflowType":"triage-inbox"', '"workflowType":"weekly-cleanup"')
-        .replace('"description":"Inbox triage"', '"description":"Weekly cleanup"');
-      await route.fulfill({ response, body: text });
-    },
-  );
+  await page.route('**/jsonrpc', async (route) => {
+    const request = route.request().postDataJSON() as {
+      method?: string;
+      params?: { scheduleId?: string };
+    } | null;
+    if (request?.method !== 'weft.schedules.get' || request.params?.scheduleId !== id) {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const envelope = (await response.json()) as { result?: Record<string, unknown> };
+    expect(envelope.result).toMatchObject({
+      workflowType: 'triage-inbox',
+      description: 'Inbox triage',
+    });
+    await route.fulfill({
+      response,
+      json: {
+        ...envelope,
+        result: {
+          ...envelope.result,
+          workflowType: 'weekly-cleanup',
+          description: 'Weekly cleanup',
+        },
+      },
+    });
+  });
   await page.goto(`${address}/edit`);
   const main = page.locator('main');
 

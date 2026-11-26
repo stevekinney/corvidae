@@ -78,6 +78,7 @@
   <Tabs
     value={active}
     collapseLabel={HEALTH_FRAME_COPY.tabsLabel}
+    compactTouch={active === 'audit'}
     activateOnFocus={false}
     onValueChange={open}
   >

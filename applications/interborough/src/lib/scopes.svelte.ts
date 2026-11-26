@@ -80,10 +80,13 @@ export type UnauthenticatedAccessPolicy = 'warn' | 'allow' | 'reject';
 
 /** Who the server says the caller is and the scopes it granted them. */
 export interface Principal {
+  /** Authentication method reported by the host, when the host resolved this principal. */
+  method?: z.infer<typeof hostPrincipalSchema>['method'];
   /** Server-resolved identity used to isolate browser data. */
   workspace?: {
     readonly workspaceId: string;
     readonly actorId: string;
+    readonly membershipRevision?: string;
     /** Whether the trusted directory proved another eligible owner exists for memory sharing. */
     readonly memorySharing?: boolean;
   };
@@ -106,6 +109,16 @@ export interface Principal {
    * accepted credential), which shows no banner.
    */
   unauthenticatedAccess: UnauthenticatedAccessPolicy | null;
+}
+
+/** The caller identity and grants that determine which private query result may be reused. */
+export function principalQueryScope(principal: Principal | null): readonly unknown[] {
+  return [
+    principal?.workspace?.workspaceId ?? null,
+    principal?.workspace?.actorId ?? null,
+    principal?.subject ?? null,
+    [...(principal?.scopes ?? [])].toSorted(),
+  ];
 }
 
 /**
@@ -343,6 +356,8 @@ const hostPrincipalSchema = z.object({
   method: z.enum([
     'jwt',
     'api-key',
+    'browser-session',
+    'connector-token',
     'mtls',
     'stdio-local',
     'unauthenticated-local',
@@ -353,6 +368,7 @@ const hostPrincipalSchema = z.object({
   workspace: z.object({
     workspaceId: z.string().min(1),
     actorId: z.string().min(1),
+    membershipRevision: z.string().min(1).optional(),
     memorySharing: z.boolean().optional(),
   }),
 });
@@ -366,11 +382,21 @@ export async function resolveHostPrincipal(
   if (response.status === 401) return null;
   if (!response.ok) throw new Error(`Host principal request failed: ${response.status}`);
   const result = hostPrincipalSchema.parse(await response.json());
+  if (result.method === 'browser-session' && result.workspace.membershipRevision === undefined)
+    throw new Error('Browser session membership revision unavailable');
   return {
+    method: result.method,
     scopes: result.method === 'unauthenticated' ? [] : result.scopes.filter(isConsoleScope),
     subject: result.subject,
     unauthenticatedAccess: result.method === 'unauthenticated' ? 'warn' : null,
-    workspace: { ...result.workspace, memorySharing: result.workspace.memorySharing === true },
+    workspace: {
+      workspaceId: result.workspace.workspaceId,
+      actorId: result.workspace.actorId,
+      ...(result.method === 'browser-session' && result.workspace.membershipRevision !== undefined
+        ? { membershipRevision: result.workspace.membershipRevision }
+        : {}),
+      memorySharing: result.workspace.memorySharing === true,
+    },
   };
 }
 

@@ -40,13 +40,20 @@ function clientListing(
   return {
     baseUrl: 'http://localhost:1',
     headers: {},
-    list: async () => ({ items: history.runs, nextCursor: null }),
-    get: async () => ({}),
-    getTimeline: async () =>
-      failedStep === undefined
-        ? []
-        : [{ ...failedStep, status: 'failed', operationLabel: 'Collect' }],
-    operations: { 'weft.workflows.scheduleprovenance.get': async () => null },
+    operations: {
+      'weft.workflows.list': async () => ({
+        items: history.runs,
+        total: history.runs.length,
+        offset: 0,
+        limit: 10,
+      }),
+      'weft.workflows.get': async () => ({}),
+      'weft.workflows.timeline.get': async () =>
+        failedStep === undefined
+          ? []
+          : [{ ...failedStep, status: 'failed', operationLabel: 'Collect' }],
+      'weft.workflows.scheduleprovenance.get': async () => null,
+    },
   } as unknown as HttpClient;
 }
 

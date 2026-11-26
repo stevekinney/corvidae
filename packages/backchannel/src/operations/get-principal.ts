@@ -24,6 +24,8 @@ import type { UnknownRestBinding } from '../rest-binding.ts';
 const principalMethodSchema = z.enum([
   'jwt',
   'api-key',
+  'browser-session',
+  'connector-token',
   'mtls',
   'stdio-local',
   'unauthenticated-local',
@@ -87,7 +89,7 @@ export function createGetPrincipalOperation(vocabulary: ScopeVocabulary) {
     summary: "Report the caller's resolved principal and granted scopes",
     description:
       "Report the caller's own resolved principal: the authentication method ('jwt', 'api-key', " +
-      "'mtls', 'stdio-local', 'unauthenticated-local', or 'unauthenticated'), the normalized subject " +
+      "'browser-session', 'connector-token', 'mtls', 'stdio-local', 'unauthenticated-local', or 'unauthenticated'), the normalized subject " +
       'when one exists, and ' +
       'the granted authorization scopes, sorted. Public access: an unauthenticated caller ' +
       "receives method 'unauthenticated' with an empty scope list rather than an error, so " +

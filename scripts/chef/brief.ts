@@ -294,10 +294,13 @@ function resolvedLines(identifier: string, resolved: ResolvedRows | undefined): 
         : `- Decision (rows ${conflict.rows.join(', ')}): ${conflict.criterion}. Reason: ${conflict.reason}`,
     ),
     ...(resolved.conflicts.length === 0 ? ['- No row conflicts with a literal criterion.'] : []),
-    ...resolved.rows.map(
-      (row) =>
-        `- Row ${row.id} is captured in: ${row.states.map((state) => `${state.route} "${state.state}" (${state.kind})`).join('; ')}. Build every one of these states.`,
-    ),
+    ...resolved.rows.flatMap((row) => [
+      `- Row ${row.id} is captured in: ${row.states.map((state) => `${state.route} "${state.state}" (${state.kind})`).join('; ')}. Build every one of these states.`,
+      ...row.states.map(
+        (state) =>
+          `  - Physical witness for ${state.route} "${state.state}": ${state.witness.specification}, title "${state.witness.title}", ${state.witness.world}; ${state.witness.profiles.map((profile) => `${profile.name} (${profile.width}px ${profile.theme}, ${profile.scrolling} scroll): ${profile.visible}; targets ${profile.targets.join(', ')}`).join(' | ')}.`,
+      ),
+    ]),
     '',
   ];
 }

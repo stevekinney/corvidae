@@ -5,8 +5,9 @@
  * newest first, paged by a cursor the answer hands back. A row names the check, the agent, the
  * outcome, the time and the run, and never any text a check produced.
  */
-import { bureauClient, type BureauOutput } from './bureau-api.ts';
+import type { BureauOutput } from './bureau-api.ts';
 import type { Fetcher } from './bureau-client.ts';
+import type { CatalogOperations } from './generated/bureau-operation-client.generated.ts';
 
 /** Where a check result is kept, as the operation names it. */
 export const CHECK_KINDS = [
@@ -76,6 +77,7 @@ export const CHECK_PAGE_SIZE = 50;
  * sent. Newest first; a cursor continues into older results.
  */
 export async function listChecks(
+  client: Pick<CatalogOperations, 'bureau.checks.list'>,
   filter: CheckFilter,
   cursor: string | undefined,
   options?: Options & { readonly limit?: number },
@@ -90,5 +92,5 @@ export async function listChecks(
     ...(filter.until === undefined ? {} : { until: filter.until }),
     ...(cursor === undefined ? {} : { cursor }),
   };
-  return bureauClient['bureau.checks.list'](params, options);
+  return client['bureau.checks.list'](params, options);
 }

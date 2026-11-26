@@ -19,15 +19,26 @@ import { isMetadataExport, sourceExportViolations } from './workspace-exports';
 const root = join(import.meta.dir, '..');
 const componentLibraries = ['cinder', 'chat', 'editor', 'terminal'];
 const verificationLibraries = ['testing', 'evaluation'];
-function checksSourcesAfterReferenceBuild(command: string): boolean {
+function checksSourcesAfterReferenceBuild(
+  command: string,
+  sourceConfigurations: readonly string[] = ['tsconfig.json'],
+): boolean {
   const [build, ...checks] = command.split(' && ');
+  const checkedConfigurations = new Set(
+    checks.map(
+      (check) => /^svelte-check\b.*\s--tsconfig (?:\.\/)?([^\s]+)(?:\s|$)/.exec(check)?.[1],
+    ),
+  );
   return (
     /^tsc -b (?:\.\/)?tsconfig\.references\.json$/.test(build ?? '') &&
-    checks.some((check) =>
-      /^svelte-check\b.*\s--tsconfig (?:\.\/)?tsconfig\.json(?:\s|$)/.test(check),
-    )
+    sourceConfigurations.every((configuration) => checkedConfigurations.has(configuration))
   );
 }
+const interboroughSourceConfigurations = [
+  'tsconfig.browser.json',
+  'tsconfig.browser-tests.json',
+  'src/host/server-integration/tsconfig.json',
+] as const;
 const libraries = [
   'backchannel',
   'backchannel-mcp',
@@ -91,9 +102,6 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/operative-typesafe',
   '@lostgradient/cryptography',
   '@lostgradient/credentials',
-  '@lostgradient/equipment-fixture',
-  '@lostgradient/equipment-armorer',
-  '@lostgradient/equipment-catalog',
   '@lostgradient/evaluation',
   '@lostgradient/lifecycle',
   '@lostgradient/bungalow',
@@ -250,6 +258,52 @@ describe('internal workspace architecture', () => {
         'tsc -b tsconfig.references.json && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings',
       ),
     ).toBe(true);
+  });
+  test('Interborough checks every source partition after building declarations', () => {
+    const referenceBuild = 'tsc -b tsconfig.references.json';
+    const sourceChecks = interboroughSourceConfigurations.map(
+      (configuration) => `svelte-check --tsconfig ./${configuration} --fail-on-warnings`,
+    );
+    expect(
+      checksSourcesAfterReferenceBuild(
+        [referenceBuild, ...sourceChecks.slice(0, -1)].join(' && '),
+        interboroughSourceConfigurations,
+      ),
+    ).toBe(false);
+    expect(
+      checksSourcesAfterReferenceBuild(
+        [...sourceChecks, referenceBuild].join(' && '),
+        interboroughSourceConfigurations,
+      ),
+    ).toBe(false);
+    expect(
+      checksSourcesAfterReferenceBuild(
+        [referenceBuild, ...sourceChecks].join(' && '),
+        interboroughSourceConfigurations,
+      ),
+    ).toBe(true);
+  });
+  test('Interborough checks the full application tree and isolates its server integration fixtures', () => {
+    function filesIn(configuration: string): Set<string> {
+      const path = join(root, 'applications/interborough', configuration);
+      const loaded = ts.readConfigFile(path, ts.sys.readFile);
+      expect(loaded.error, configuration).toBeUndefined();
+      const parsed = ts.parseJsonConfigFileContent(loaded.config, ts.sys, dirname(path));
+      expect(parsed.errors, configuration).toEqual([]);
+      return new Set(parsed.fileNames);
+    }
+    const [browserConfiguration, applicationConfiguration, serverIntegrationConfiguration] =
+      interboroughSourceConfigurations;
+    const browser = filesIn(browserConfiguration);
+    const application = filesIn(applicationConfiguration);
+    const serverIntegration = filesIn(serverIntegrationConfiguration);
+    const fixtures = [...serverIntegration].filter((file) => !file.endsWith('/src/ambient.d.ts'));
+    expect(fixtures.length).toBeGreaterThan(0);
+    for (const file of fixtures) {
+      expect(application.has(file), file).toBe(false);
+      expect(browser.has(file), file).toBe(false);
+    }
+    expect(application.union(serverIntegration)).toEqual(filesIn('tsconfig.json'));
   });
   test('validation runs root self-tests once and retains sequential quality and audit gates', async () => {
     const { scripts = {} } = await readManifest('.');
@@ -441,9 +495,14 @@ describe('internal workspace architecture', () => {
           expect(referencesConfiguration.references, directory).toEqual(
             typescriptConfiguration.references,
           );
-          expect(checksSourcesAfterReferenceBuild(scripts['typecheck'] ?? ''), directory).toBe(
-            true,
-          );
+          const sourceConfigurations =
+            directory === 'applications/interborough'
+              ? interboroughSourceConfigurations
+              : undefined;
+          expect(
+            checksSourcesAfterReferenceBuild(scripts['typecheck'] ?? '', sourceConfigurations),
+            directory,
+          ).toBe(true);
         } else {
           expect(scripts['typecheck'], directory).toMatch(/^tsc -b (?:\.\/)?tsconfig\.json\b/);
         }
@@ -736,7 +795,7 @@ describe('internal workspace architecture', () => {
         // Design system artifact under `tmp/` (components/cinder/README.md "Design system"); they
         // build no package output and publish nothing from the workspace.
         if (library === 'cinder' && command.startsWith('design-system:')) continue;
-        // `release:check` is the pre-backport sweep of documentation and published-surface checks
+        // `release:check` is the pre-release sweep of documentation and published-surface checks
         // (COR-2370); it packs, publishes, and releases nothing.
         if (command === 'release:check') continue;
         expect(command).not.toMatch(/build|pack|publish|release|prepare|postinstall/);

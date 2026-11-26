@@ -8,6 +8,12 @@ import type { Page } from '@playwright/test';
 import { VIEW_COPY } from '../../src/app/copy/view-pages.ts';
 import { expect } from './fixtures.ts';
 
+/** Chooses an Audit filter through its accessible listbox. */
+export async function chooseAuditFilter(page: Page, label: string, option: string): Promise<void> {
+  await page.getByRole('combobox', { name: label, exact: true }).click();
+  await page.getByRole('option', { name: option, exact: true }).click();
+}
+
 /**
  * Requires the audit path, with or without a record, then waits for the first audit row or the
  * empty state. The path comes first: another page can hold a table row too, so a row alone does not

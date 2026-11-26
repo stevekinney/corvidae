@@ -207,6 +207,60 @@ describe('the decision record of a sealed answer', () => {
 });
 
 describe('secret references and the records behind them', () => {
+  it('keeps a deletion release tuple bound to its exact review decision', async () => {
+    const records = createReviewDecisionRecords(textValueStore(new MemoryStorage()));
+    const release = {
+      sessionId: 'session',
+      incarnation: 'incarnation',
+      handler: 'reviewed:refund',
+      identifier: 'refund',
+      runId: 'run',
+      reviewId: 'approval:run:call',
+      round: 0,
+      toolRevision: 'tool:1',
+    };
+    const request = {
+      reviewId: release.reviewId,
+      round: 0,
+      decision: 'deny' as const,
+      principal: 'system:session-deletion',
+      digest: 'signed-digest',
+      deletionRelease: release,
+    };
+    const claimed = await records.claim(request);
+    const replayed = await records.claim(request);
+    const substituted = await records.claim({
+      ...request,
+      deletionRelease: { ...release, identifier: 'other' },
+    });
+    expect(claimed.outcome).toBe('claimed');
+    expect(replayed.outcome).toBe('same');
+    expect(substituted.outcome).toBe('conflict');
+    expect(await records.deletionRelease(release.reviewId, 0)).toEqual({
+      digest: request.digest,
+      release,
+    });
+    const competing = await records.claim({
+      reviewId: release.reviewId,
+      round: 0,
+      decision: 'approve',
+      principal: 'reviewer',
+      digest: 'another',
+    });
+    expect(competing.outcome).toBe('conflict');
+    const deciding = createReviewDecisionRecords(textValueStore(new MemoryStorage()));
+    const approved = await deciding.claim({
+      reviewId: release.reviewId,
+      round: 0,
+      decision: 'approve',
+      principal: 'reviewer',
+      digest: 'another',
+    });
+    const refused = await deciding.claim(request);
+    expect(approved.outcome).toBe('claimed');
+    expect(refused.outcome).toBe('conflict');
+    expect(await deciding.deletionRelease(release.reviewId, 0)).toBeUndefined();
+  });
   it('gives one review’s field and another review’s whole answer different references', async () => {
     const kv = textValueStore(new MemoryStorage());
     const store = createSecretAnswerStore({ kv, keys: await keys(), now: () => 1 });

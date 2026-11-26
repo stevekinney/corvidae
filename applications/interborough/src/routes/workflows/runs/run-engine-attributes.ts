@@ -2,7 +2,8 @@
  * The engine's search attribute operations as the attributes panel reads them, and whether a run
  * has anything for the run page's Versioning tab (COR-2424, row 54i).
  */
-import type { HttpClient, WorkflowState } from '@lostgradient/weft';
+import type { HttpClient } from '@lostgradient/weft';
+import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
 
 import type { AttributesClient } from '../detail/attributes/attributes-data.ts';
 

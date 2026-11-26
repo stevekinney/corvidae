@@ -105,6 +105,7 @@
   principalStore.setPrincipal(resolvedPrincipal);
 
   const queryClient = useQueryClient();
+  const sharedBrowser = resolvedPrincipal.method === 'browser-session';
 
   // The pages plugins add are in the palette as "Go to" rows, with no keys (COR-2213).
   const plugins = usePluginPages();
@@ -117,11 +118,17 @@
   // says when it is back, at which point what the page kept is fetched again.
   const connection = provideConnection(
     new ConnectionMonitor({
-      probe: () =>
-        fetch(`${initialClient.baseUrl}/v1/health`, {
-          headers: initialClient.headers,
-          cache: 'no-store',
-        }),
+      probe: async () => {
+        const response = await fetch(
+          sharedBrowser ? '/api/v1/principal' : `${initialClient.baseUrl}/v1/health`,
+          {
+            headers: initialClient.headers,
+            cache: 'no-store',
+          },
+        );
+        if (sharedBrowser && (response.status === 401 || response.status === 403)) checkIdentity();
+        return response;
+      },
       onRecovered: () => void askAgainAfterOutage(queryClient),
     }),
   );
@@ -137,7 +144,8 @@
           if (current?.workspace === undefined) authExpiredHandler(initialClient);
           else if (
             current.workspace.workspaceId !== resolvedPrincipal.workspace?.workspaceId ||
-            current.workspace.actorId !== resolvedPrincipal.workspace?.actorId
+            current.workspace.actorId !== resolvedPrincipal.workspace?.actorId ||
+            current.workspace.membershipRevision !== resolvedPrincipal.workspace?.membershipRevision
           )
             identityMismatchHandler(initialClient);
           return undefined;
@@ -217,7 +225,7 @@
   const notifications = new NotificationStore({
     storage: browserWorkspaceStorage(resolvedPrincipal.workspace, 'localStorage'),
   });
-  const engineStatus = new EngineStatusController(initialClient);
+  const engineStatus = new EngineStatusController(initialClient, { enabled: !sharedBrowser });
   // Additive Track B workaround — see `engine-status.svelte.ts`'s
   // `provideFleetEventSource()` doc: shares the ONE fleet SSE connection with
   // route components instead of each opening its own.
@@ -238,7 +246,7 @@
   // A host problem is named in the bell as well as by the status dot: the dot turns red or amber,
   // and the bell says which problem it is and keeps saying it until the engine answers again.
   $effect(() => {
-    notifications.reportEngineStatus(engineStatus.status, Date.now());
+    if (!sharedBrowser) notifications.reportEngineStatus(engineStatus.status, Date.now());
   });
 
   // What is waiting on the person, and what finished, comes from the Bureau.
@@ -315,13 +323,15 @@
   // The engine's feed giving up is the server being unreachable. While the feed is only retrying
   // the server may be fine, so that asks the server once instead of saying it is down.
   $effect(() => {
+    if (sharedBrowser) return;
     const status = engineStatus.status;
     untrack(() => {
       if (status === 'stale' || status === 'closed') connection.reportUnreachable();
     });
   });
   $effect(() => {
-    if (engineStatus.fleetSource.status === 'reconnecting') untrack(() => void connection.check());
+    if (!sharedBrowser && engineStatus.fleetSource.status === 'reconnecting')
+      untrack(() => void connection.check());
   });
 
   // A dead-lettered or delivered task result refreshes the task evidence on screen and the

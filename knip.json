@@ -256,6 +256,7 @@
         "src/**/*.{ts,svelte}!",
         "scripts/**/*.ts",
         "!src/**/*.test.ts!",
+        "!src/**/*.test-support.ts!",
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!"
@@ -278,14 +279,6 @@
       "entry": ["**/*.test.ts"],
       "project": ["**/*.ts"]
     },
-    "applications/equipment-armorer": {
-      "entry": ["src/server.ts!"],
-      "project": ["src/**/*.ts!"]
-    },
-    "applications/equipment-catalog": {
-      "entry": ["src/server.ts!", "src/routes/**/*.svelte!", "scripts/probe-deployment.ts!"],
-      "project": ["src/**/*.{ts,svelte}!", "scripts/**/*.ts!"]
-    },
     "applications/interborough": {
       "entry": [
         "**/*.test.ts",
@@ -297,13 +290,15 @@
         "**/*.spec.ts",
         "scripts/browser-build.ts!",
         "scripts/startup-process-control.ts",
-        "src/host/{cli,dev,serve}.ts!",
+        "src/host/{cli,dev,serve,refund-operations}.ts!",
         "src/host/supervisor-owned.test-support.ts"
       ],
       "project": [
         "src/**/*.{ts,svelte}!",
         "scripts/**/*.ts",
         "!src/**/*.test.ts!",
+        "!src/**/*.test-harness.svelte!",
+        "!src/**/*.test-support.ts!",
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!",

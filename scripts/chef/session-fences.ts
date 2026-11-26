@@ -11,7 +11,6 @@
 //   a worker that cannot write the file is not trapped.
 // - `AskUserQuestion` is denied for a session holding a live lease marker; unleased sessions
 //   (`/groom`, `/create-task`) keep it.
-// - The context fence on a leased coordinator is `scripts/chef/context-fence.ts`.
 //
 // Every decision that cannot read its own input fails open and says why in `systemMessage`; only
 // the refusals above deny.
@@ -36,7 +35,7 @@ export type FenceOutput = {
   };
 };
 
-export function deny(reason: string): FenceOutput {
+function deny(reason: string): FenceOutput {
   return {
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
@@ -46,7 +45,7 @@ export function deny(reason: string): FenceOutput {
   };
 }
 
-export function failOpen(reason: string): FenceOutput {
+function failOpen(reason: string): FenceOutput {
   return { systemMessage: `session-fences: ${reason}; not enforced.` };
 }
 

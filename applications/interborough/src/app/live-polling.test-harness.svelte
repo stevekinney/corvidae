@@ -18,7 +18,7 @@
 
   interface Props {
     queryClient: QueryClient;
-    client: Pick<HttpClient, 'listReviews'>;
+    client: { operations: Pick<HttpClient['operations'], 'weft.reviews.list'> };
     bureauEvents: BureauEventSource;
     fleetEvents: FleetEventSource;
   }

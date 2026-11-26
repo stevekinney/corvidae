@@ -71,7 +71,12 @@ export function emptyRecoveredStepMetadata(): Record<string, never> {
  * The session metadata boot recovery needs to decide a recovered run's fate,
  * loaded by id from the owning session. `null` ⇒ the session does not exist.
  */
-export type RecoveredRunSessionMetadata = { lastRunId?: unknown; lastRunStatus?: unknown } | null;
+export type RecoveredRunSessionMetadata = {
+  lastRunId?: unknown;
+  lastRunStatus?: unknown;
+  reservedStartRunId?: unknown;
+  reservedStartFence?: unknown;
+} | null;
 
 /**
  * The outcome of loading a recovered run's owning session: a successful load

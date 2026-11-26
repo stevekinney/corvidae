@@ -387,11 +387,12 @@ for (const width of [1280, 375] as const) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     const sent = page.waitForRequest((request) => {
-      const url = new URL(request.url());
+      if (!isBureauCall(new URL(request.url()))) return false;
+      const body = request.postDataJSON() as { method?: string; params?: ListRequest };
       return (
-        url.pathname.endsWith('/workflows') &&
-        url.searchParams.get('failed_step') === 'charge-card' &&
-        url.searchParams.get('retrying') === 'true'
+        body.method === 'weft.workflows.list' &&
+        body.params?.['failedStep'] === 'charge-card' &&
+        body.params?.['retrying'] === true
       );
     });
     await page.goto('/health/runs?failed_step=charge-card&retrying=true');

@@ -27,14 +27,18 @@ export type RunDetail = {
 };
 
 /** The reads a run's detail takes off the client, narrowed so a plain test fake can satisfy them. */
-export type RunDetailClient = Pick<HttpClient, 'get' | 'getTimeline'> &
-  WorkflowScheduleProvenanceClient;
+export type RunDetailClient = {
+  readonly operations: Pick<
+    HttpClient['operations'],
+    'weft.workflows.get' | 'weft.workflows.timeline.get'
+  >;
+} & WorkflowScheduleProvenanceClient;
 
 export function runDetailQueryKey(runId: string): QueryKey {
   return ['schedules', 'run-detail', runId] as const;
 }
 
-function stepOf(entry: WorkflowTimelineEntry): number {
+function stepOf(entry: Pick<WorkflowTimelineEntry, 'step' | 'stepIndex'>): number {
   return (entry.stepIndex ?? entry.step) + 1;
 }
 
@@ -42,8 +46,8 @@ function stepOf(entry: WorkflowTimelineEntry): number {
 export async function fetchRunDetail(client: RunDetailClient, runId: string): Promise<RunDetail> {
   const [provenance, state, timeline] = await Promise.allSettled([
     getScheduleProvenance(client, runId),
-    client.get(runId),
-    client.getTimeline(runId),
+    client.operations['weft.workflows.get']({ workflowId: runId }),
+    client.operations['weft.workflows.timeline.get']({ workflowId: runId }),
   ]);
   const manual = provenance.status === 'fulfilled' && provenance.value?.manual === true;
   const entries = timeline.status === 'fulfilled' ? timeline.value : [];

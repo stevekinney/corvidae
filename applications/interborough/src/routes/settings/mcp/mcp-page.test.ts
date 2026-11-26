@@ -4,12 +4,14 @@
  * was served from plus `/bureau/mcp`; the Bureau is a stub, since nothing here is a setting.
  */
 import { HttpClient } from '@lostgradient/weft';
-import { cleanup, render, within } from '@testing-library/svelte';
+import { cleanup, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { MCP_COPY } from '../../../app/copy/mcp.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
+import SharedShellHarness from '../../../app/shell/shared-shell.test-harness.svelte';
 import type { BureauStub } from '../../../lib/bureau-stub.test-support.ts';
+import { installFetchImplementation } from '../../../lib/live-source/fetch.test-support.ts';
 import { claudeCodeAddCommand } from '../../../lib/mcp-connection.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
@@ -24,18 +26,77 @@ afterEach(() => {
 
 const ENDPOINT = 'http://localhost/bureau/mcp';
 
-function open() {
+function open(method?: 'browser-session') {
   stub = installSettingsBureau(servedSettings(), {});
   landAt('/settings/mcp');
   return render(RouteOutletHarness, {
     props: {
       client: new HttpClient({ baseUrl: 'http://localhost/api' }),
       scopes: AUTHORIZATION_SCOPES,
+      ...(method === undefined ? {} : { method }),
     },
   } as never);
 }
 
 describe('Settings › MCP', () => {
+  test('the real shared shell keeps settings actions available without the deployment fleet feed', async () => {
+    stub = installSettingsBureau(servedSettings(), {});
+    landAt('/settings/mcp');
+    const online = Object.getOwnPropertyDescriptor(navigator, 'onLine');
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+    const original = globalThis.fetch;
+    const requests: string[] = [];
+    const restoreFetch = installFetchImplementation(async (input, init) => {
+      requests.push(String(input instanceof Request ? input.url : input));
+      if (requests.at(-1) === '/api/v1/principal')
+        return Response.json({
+          method: 'browser-session',
+          subject: 'administrator',
+          scopes: [],
+          workspace: {
+            workspaceId: 'workspace',
+            actorId: 'administrator',
+            membershipRevision: 'one',
+          },
+        });
+      if (/\/v1\/(?:events\/sse|health)/.test(requests.at(-1)!))
+        return new Response('Forbidden', { status: 403 });
+      try {
+        return await original(input, init);
+      } catch {
+        return new Response('Forbidden', { status: 403 });
+      }
+    });
+    try {
+      const view = render(SharedShellHarness);
+      const group = await view.findByRole('group', { name: MCP_COPY.groupLabel });
+      const action = within(group).getByRole('button', { name: MCP_COPY.endpoint.copy });
+      expect(action.hasAttribute('disabled')).toBe(false);
+      expect(action.getAttribute('aria-disabled')).not.toBe('true');
+      expect(view.container.querySelector('.weft-shell')?.getAttribute('data-connection')).toBe(
+        'reachable',
+      );
+      expect(requests.some((url) => /\/v1\/(?:events\/sse|health)/.test(url))).toBe(false);
+      window.dispatchEvent(new window.Event('offline'));
+      await waitFor(() =>
+        expect(view.container.querySelector('.weft-shell')?.getAttribute('data-connection')).toBe(
+          'unreachable',
+        ),
+      );
+      window.dispatchEvent(new window.Event('online'));
+      await waitFor(() =>
+        expect(view.container.querySelector('.weft-shell')?.getAttribute('data-connection')).toBe(
+          'reachable',
+        ),
+      );
+      expect(requests).toContain('/api/v1/principal');
+      expect(requests.some((url) => /\/v1\/(?:events\/sse|health)/.test(url))).toBe(false);
+    } finally {
+      restoreFetch();
+      if (online === undefined) Reflect.deleteProperty(navigator, 'onLine');
+      else Object.defineProperty(navigator, 'onLine', online);
+    }
+  });
   test('reads the endpoint address from the origin the page was served from', async () => {
     const view = open();
     expect(await view.findByRole('heading', { level: 1, name: 'MCP' })).not.toBeNull();
@@ -50,6 +111,9 @@ describe('Settings › MCP', () => {
     const group = await view.findByRole('group', { name: MCP_COPY.groupLabel });
     expect(within(group).getByTestId('mcp-claude-code').textContent).toContain(
       claudeCodeAddCommand('interborough', ENDPOINT),
+    );
+    expect(within(group).getByTestId('mcp-claude-code').textContent).not.toContain(
+      'claude mcp login interborough',
     );
     const generic = within(group).getByTestId('mcp-generic').textContent ?? '';
     expect(generic).toContain('"mcpServers"');
@@ -85,6 +149,22 @@ describe('Settings › MCP', () => {
     expect(description?.textContent).toContain(
       'It needs no sign-in: the host listens on this computer only.',
     );
+  });
+
+  test('explains shared OAuth sign-in and limited grants while preserving connection details', async () => {
+    const view = open('browser-session');
+    const group = await view.findByRole('group', { name: MCP_COPY.groupLabel });
+    expect(within(group).getByText(MCP_COPY.endpoint.sharedDescription)).not.toBeNull();
+    expect(within(group).getByText(MCP_COPY.claudeCode.sharedDescription)).not.toBeNull();
+    expect(group.textContent).toContain('Use a client that supports MCP OAuth');
+    expect(group.textContent).not.toContain('It needs no sign-in');
+    expect(within(group).getByTestId('mcp-claude-code').textContent).toContain(
+      claudeCodeAddCommand('interborough', ENDPOINT),
+    );
+    expect(within(group).getByTestId('mcp-claude-code').textContent).toContain(
+      'claude mcp login interborough',
+    );
+    expect(within(group).getByTestId('mcp-generic').textContent).toContain(`"url": "${ENDPOINT}"`);
   });
 
   test('sets .mcp.json in code and names the HTTP transport', async () => {

@@ -27,6 +27,7 @@
     collapseOnOverflow = true,
     collapseBelow = false,
     collapseLabel = 'Tab',
+    compactTouch = false,
     fill = false,
     activateOnFocus,
     class: className,
@@ -446,6 +447,7 @@
       id={`${baseId}-collapse`}
       class="cinder-tabs__collapse"
       presentation="listbox"
+      data-cinder-compact-touch={compactTouch ? '' : undefined}
       label={collapseLabel}
       labelVisible={false}
       valuePrefix={`${collapseLabel}:`}

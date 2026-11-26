@@ -334,7 +334,7 @@
     () => ({
       queryKey: queryKeys.workflowCatalog.schedules(type),
       queryFn: async () => {
-        const page = await client.listSchedules({ workflowType: type });
+        const page = await client.operations['weft.schedules.list']({ workflowType: type });
         return startingSchedules(page.items);
       },
     }),

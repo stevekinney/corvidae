@@ -239,6 +239,22 @@ describe('the task record keys', () => {
 });
 
 describe('recordAdmission and history', () => {
+  it('preserves a reserved task against a stale claimant and rejects identity collisions', async () => {
+    const { registry } = build();
+    await admit(registry, 'reserved-run', { reservationFence: 1 });
+    await admit(registry, 'reserved-run', { reservationFence: 2 });
+    await registry.discard('reserved-run', 1);
+    expect(await registry.get('reserved-run')).toMatchObject({ id: 'reserved-run', owner: OWNER });
+    expect(await registry.history('reserved-run')).toHaveLength(1);
+    expect(
+      await rejectionOf(admit(registry, 'reserved-run', { reservationFence: 1 })),
+    ).toBeInstanceOf(Error);
+    expect(
+      await rejectionOf(admit(registry, 'reserved-run', { reservationFence: 3, owner: 'other' })),
+    ).toBeInstanceOf(Error);
+    await registry.discard('reserved-run', 2);
+    expect(await registry.get('reserved-run')).toBeUndefined();
+  });
   it('records the originating user message as the task history, with its own message identifier', async () => {
     const { registry } = build();
     await admit(registry, 'run-1', { message: 'Please plan my trip' });

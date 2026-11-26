@@ -46,6 +46,9 @@ test('a trigger delivery is deployment-operator with the trigger-receive admissi
 test('a trigger-receive route takes the public-origin guard and skips authorize and release, and no other route does', async () => {
   const calls: string[] = [];
   const authority = {
+    authenticateCredential: () => {
+      throw new Error('not called');
+    },
     authenticate: () => {
       throw new Error('not called');
     },

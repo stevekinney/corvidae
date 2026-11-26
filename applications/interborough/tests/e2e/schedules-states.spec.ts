@@ -4,11 +4,11 @@
  * show, and one that failed over rows already on screen. The page keeps its header in every one of
  * them (`ownsStates` in `src/app/views.ts`), so each is read at the header as well as the body. The
  * showcase host holds the sample world's four schedules, so a state that is not that world is drawn
- * by answering the engine's list (`/v1/schedules`) differently, which is also the probe the view
+ * by answering the engine's `weft.schedules.list` differently, which is also the probe the view
  * frame makes. The timings the placeholders keep (nothing for 300 ms, a status line at 10 s) are
  * proved with fake timers in `schedule-list-states.test.ts`, not slept here.
  */
-import type { Page } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
 
 import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
@@ -19,16 +19,32 @@ test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
 const SOURCE = 'schedules-states.spec.ts';
 const WIDTHS = [1280, 375] as const;
-const SCHEDULES_READ = /\/v1\/schedules(\?|$)/;
+const SCHEDULES_READ = '**/jsonrpc';
 /** How Chromium words a failed answer for the list in the console, which ends the address with a line number. */
-const SCHEDULES_LOGGED = /\/v1\/schedules/;
+const SCHEDULES_LOGGED = /\/jsonrpc/;
 const HOST_REQUESTS = /\/(v1|bureau|api)\/|\/jsonrpc$/;
 
 const NOTHING = { items: [], total: 0 };
 
+async function routeScheduleRead(
+  page: Page,
+  respond: (route: Route) => Promise<void>,
+): Promise<() => Promise<void>> {
+  const handler = async (route: Route) => {
+    const body = route.request().postData() ?? '';
+    if (!body.includes('"weft.schedules.list"')) return route.fallback();
+    return respond(route);
+  };
+  await page.route(SCHEDULES_READ, handler);
+  return () => page.unroute(SCHEDULES_READ, handler);
+}
+
 /** The engine lists no schedules, so the page has nothing to show. */
 async function listNothing(page: Page): Promise<void> {
-  await page.route(SCHEDULES_READ, (route) => route.fulfill({ json: NOTHING }));
+  await routeScheduleRead(page, (route) => {
+    const body = route.request().postDataJSON() as { id?: unknown };
+    return route.fulfill({ json: { jsonrpc: '2.0', id: body.id, result: NOTHING } });
+  });
 }
 
 /** The header's "+": a secondary icon button named for what it makes. */
@@ -142,7 +158,7 @@ for (const width of WIDTHS) {
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });
-    await page.route(SCHEDULES_READ, async (route) => {
+    await routeScheduleRead(page, async (route) => {
       await held;
       await route.fallback();
     });
@@ -199,7 +215,7 @@ for (const width of WIDTHS) {
       pattern: loggedFailedResponse(500, SCHEDULES_LOGGED),
       reason: 'the test answers the schedules list with a 500',
     });
-    await page.route(SCHEDULES_READ, (route) =>
+    const unrouteScheduleRead = await routeScheduleRead(page, (route) =>
       route.fulfill({ status: 500, json: { error: 'The server broke.' } }),
     );
     await page.goto('/schedules');
@@ -226,7 +242,7 @@ for (const width of WIDTHS) {
     await checkA11y(`schedules failed first load at ${width}px`);
 
     // The server comes back, and Try again reads the list.
-    await page.unroute(SCHEDULES_READ);
+    await unrouteScheduleRead();
     await primaryButtons(page).first().click();
     await expect(main.locator('li[data-schedule]')).toHaveCount(4);
     await expect(headerCreate(page)).not.toHaveAttribute('aria-disabled', 'true');
@@ -251,7 +267,7 @@ for (const width of WIDTHS) {
     // The read keeps failing until Try again is pressed, so the banner's own countdown cannot
     // recover it and remove the button under the click.
     let pressed: () => Promise<boolean> = async () => false;
-    await page.route(SCHEDULES_READ, async (route) => {
+    await routeScheduleRead(page, async (route) => {
       if (await pressed()) {
         await route.fallback();
         return;

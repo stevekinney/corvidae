@@ -5,8 +5,8 @@
    * address is the origin this page was served from, since that is the one the person reached the
    * host at, plus `/bureau/mcp`. Every shape comes from `src/lib/mcp-connection.ts`, the functions
    * `interborough mcp`, the start lines and the Claude Code smoke test also use. Nothing here is a
-   * setting, and nothing names a credential: the endpoint needs none. The restart notice every
-   * section shares sits above it.
+   * setting. The endpoint's authentication depends on the host-resolved principal. The restart
+   * notice every section shares sits above it.
    */
   import { CodeBlock, CopyableValue, FormSection } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
@@ -17,6 +17,7 @@
   import { getClient } from '../../../lib/client.ts';
   import { codeHighlighter } from '../../../lib/code-highlighter.ts';
   import { mcpConnection } from '../../../lib/mcp-connection.ts';
+  import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';
   import { discoveryOrigin } from '../../system/discovery-client.ts';
   import SettingsRestartNotice from '../settings-restart-notice.svelte';
   import { SettingsSession } from '../settings-session.svelte.ts';
@@ -30,6 +31,9 @@
 
   const copy = MCP_COPY;
   const connection = mcpConnection(discoveryOrigin(getClient()));
+  const loginCommand = ['claude', 'mcp', 'login', connection.name].join(' ');
+  const principal = getPrincipalStore();
+  const shared = $derived(principal.principal?.method === 'browser-session');
 
   // The page edits no setting, but, like every section, its restart notice counts, reverts and
   // restarts the ones saved elsewhere.
@@ -50,7 +54,11 @@
 
 <div class="ib-mcp" role="group" aria-label={copy.groupLabel}>
   <!-- Three sections of one kind: one heading size, one description style, one column. -->
-  <FormSection columns={1} heading={copy.endpoint.heading} description={copy.endpoint.description}>
+  <FormSection
+    columns={1}
+    heading={copy.endpoint.heading}
+    description={shared ? copy.endpoint.sharedDescription : copy.endpoint.description}
+  >
     <div class="ib-mcp__address">
       <CopyableValue
         value={connection.endpoint}
@@ -64,11 +72,13 @@
   <FormSection
     columns={1}
     heading={copy.claudeCode.heading}
-    description={copy.claudeCode.description}
+    description={shared ? copy.claudeCode.sharedDescription : copy.claudeCode.description}
   >
     <div class="ib-mcp__code" data-testid="mcp-claude-code">
       <CodeBlock
-        code={connection.claudeCode.command}
+        code={shared
+          ? `${connection.claudeCode.command}\n${loginCommand}`
+          : connection.claudeCode.command}
         copyLabel={copy.claudeCode.copy}
         copyable
         wrap
@@ -79,7 +89,7 @@
   <FormSection columns={1} heading={copy.generic.heading}>
     {#snippet descriptionContent()}{copy.generic.description.before}<code
         >{copy.generic.description.file}</code
-      >{copy.generic.description.after}{/snippet}
+      >{shared ? copy.generic.description.sharedAfter : copy.generic.description.after}{/snippet}
     <div class="ib-mcp__code" data-testid="mcp-generic">
       <CodeBlock
         code={connection.generic.text}

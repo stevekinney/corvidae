@@ -68,7 +68,7 @@ export type SharedAgeMillisecondsAgentName_3e6ceabe = {
     | 'canceled'
     | 'superseded';
 };
-export type SharedAgeMillisecondsAgentName_7cfdfed5 = {
+export type SharedAgeMillisecondsAgentName_f089bf60 = {
   readonly ageMilliseconds: number;
   readonly agentName?: string;
   readonly id: string;
