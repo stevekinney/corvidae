@@ -1,7 +1,7 @@
 {
   "issue": "COR-2745",
   "branch": "codex/cor-2745-workers-npm",
-  "checkedAt": "0b23e314a1fda866e81cc820867c2691fe274881",
+  "checkedAt": "877b342f7a07f8a025783908d80a11ff1431c2fe",
   "briefVersion": "009abc3a77dd",
   "status": "READY",
   "criteria": [
@@ -13,7 +13,7 @@
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "The required Bun type grep emitted no production results; root self-import check passed after the CLI relative import correction."
+      "evidence": "The required Bun type grep emitted no production results; the full workspace-import scan and root test:self passed after conformance switched to its relative Bun-host module."
     },
     {
       "id": "AC3",
