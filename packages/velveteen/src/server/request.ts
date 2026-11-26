@@ -2,9 +2,15 @@ import type { Fetch } from "../data/contract.ts";
 import { loadRequest } from "../data/fetch.ts";
 import type {
   ApplicationOptions,
-  CookieOptions,
   RequestEvent,
 } from "./types.ts";
+import {
+  createCookie,
+  parseRequestCookies,
+  parseSetCookie,
+  serializeCookie,
+  type ServerCookie,
+} from "./cookies.ts";
 
 export function createEvent(
   request: Request,
@@ -13,9 +19,9 @@ export function createEvent(
   dispatch: Fetch,
   options: ApplicationOptions,
 ) {
-  const jar = new Bun.CookieMap(request.headers.get("cookie") ?? "");
+  const jar = parseRequestCookies(request.headers.get("cookie") ?? "");
   type CookieScope = {
-    cookie: Bun.Cookie;
+    cookie: ServerCookie;
     path: string;
     secure: boolean;
     domain?: string;
@@ -24,16 +30,6 @@ export function createEvent(
   };
   const cookieScopes = new Map<string, CookieScope>();
   const headers = new Headers();
-  const defaults = (value: CookieOptions) => {
-    if (typeof value?.path !== "string")
-      throw new TypeError("Cookies require an explicit path");
-    return {
-      httpOnly: true,
-      secure: url.protocol === "https:",
-      sameSite: "lax" as const,
-      ...value,
-    };
-  };
   const domainMatches = (domain: string | undefined, hostname: string) => {
     if (!domain) return true;
     const normalized = domain.toLowerCase().replace(/^\./, "");
@@ -46,7 +42,7 @@ export function createEvent(
   const scopeKey = (name: string, path: string, domain?: string) =>
     JSON.stringify([name, domain?.toLowerCase().replace(/^\./, ""), path]);
   const storeCookie = (
-    cookie: Bun.Cookie,
+    cookie: ServerCookie,
     source: URL,
     defaultPath: string,
   ) => {
@@ -56,7 +52,7 @@ export function createEvent(
     cookieScopes.set(key, {
       cookie,
       path,
-      secure: cookie.secure,
+      secure: cookie.secure ?? false,
       domain: cookie.domain,
       expires: cookie.expires,
       expiresAt:
@@ -64,7 +60,7 @@ export function createEvent(
           ? undefined
           : Date.now() + cookie.maxAge * 1000,
     });
-    jar.set(cookie.name, cookie.value, cookie.toJSON());
+    jar.set(cookie.name, cookie.value);
   };
   const event: RequestEvent = {
     request,
@@ -78,21 +74,22 @@ export function createEvent(
       get: (name) => jar.get(name) ?? undefined,
       getAll: () => [...jar].map(([name, value]) => ({ name, value })),
       set: (name, value, attributes) => {
-        const cookie = new Bun.Cookie({
+        const cookie = createCookie(
           name,
           value,
-          ...defaults(attributes),
-        });
-        storeCookie(cookie, url, cookie.path);
+          attributes,
+          url.protocol === "https:",
+        );
+        storeCookie(cookie, url, attributes.path);
       },
       delete: (name, attributes) => {
-        const cookie = new Bun.Cookie({
+        const cookie = createCookie(
           name,
-          value: "",
-          ...defaults(attributes),
-          maxAge: 0,
-        });
-        storeCookie(cookie, url, cookie.path);
+          "",
+          { ...attributes, maxAge: 0 },
+          url.protocol === "https:",
+        );
+        storeCookie(cookie, url, attributes.path);
       },
     },
     fetch: async (input, init) => {
@@ -169,7 +166,7 @@ export function createEvent(
         )
           return;
         for (const header of response.headers.getSetCookie()) {
-          const cookie = Bun.Cookie.parse(header);
+          const cookie = parseSetCookie(header);
           if (!cookie) continue;
           const responseURLObject = new URL(responseURL);
           const responsePath = responseURLObject.pathname;
@@ -284,7 +281,7 @@ export function createEvent(
       const combined = new Headers(response.headers);
       for (const [name, value] of headers) combined.set(name, value);
       for (const { cookie } of cookieScopes.values())
-        combined.append("set-cookie", cookie.serialize());
+        combined.append("set-cookie", serializeCookie(cookie));
       return new Response(response.body, {
         status: response.status,
         statusText: response.statusText,

@@ -20,8 +20,15 @@ declare global {
   }
 }
 
-export type CookieOptions = Omit<Bun.CookieInit, "name" | "value"> & {
+export type CookieOptions = {
   path: string;
+  domain?: string;
+  expires?: Date;
+  maxAge?: number;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: "strict" | "lax" | "none";
+  partitioned?: boolean;
 };
 type Cookies = {
   get(name: string): string | undefined;
