@@ -365,6 +365,8 @@
         "tests/**/*.playwright.ts",
         "src/fixtures/tool-call-rail.svelte",
         "src/fixtures/backchannel-svelte.svelte",
+        "src/fixtures/grouped-list-more.svelte",
+        "src/fixtures/grouped-list-header-edge.svelte",
         "fixtures/workspace-web-components.ts"
       ],
       "project": ["src/**/*.{ts,svelte}", "scripts/**/*.ts", "tests/**/*.playwright.ts"]
