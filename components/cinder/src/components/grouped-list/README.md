@@ -22,6 +22,16 @@
 </GroupedList>
 ```
 
+### A link to the full set
+
+When the group shows only part of a set (the latest events of a run, the first few results), end it with `more` rather than a link placed after the `GroupedList`. The link is drawn as a `Link` in its `more` form, 8px under the group, or under its footer, on the rows' text inset. Its hit area reaches 44px under a coarse pointer without moving it.
+
+```svelte
+<GroupedList header="Recent events" more={{ label: 'View the whole History', href: '/history' }}>
+  <!-- the latest three rows -->
+</GroupedList>
+```
+
 ## Props
 
 <!-- generated:props:start -->
@@ -34,6 +44,7 @@
 | `footer` | `string` | no | — | A note drawn under the group, outside its surface, in small muted text. |
 | `header` | `string` | no | — | A header drawn above the group, outside its surface, in small muted text. It also names the list. |
 | `children` | `(opaque)` | no | — | The rows: GroupedListItem elements. Not expressible in JSON Schema; see the component types for the signature. |
+| `more` | `(opaque)` | no | — | A link to the full set when the group shows only part of it ("View the whole History"), drawn under the group as a Cinder `Link` in its `more` form, on the rows' text inset. It renders after `footer` when both are set. Use it instead of a link placed after the GroupedList, which nothing spaces or insets. It always navigates, so it takes an `href` and no callback. Not expressible in JSON Schema; see the component types for the signature. |
 | `onItemAdd` | `(opaque)` | no | — | Adds a quick-add first row: a leading accent "+" and a borderless input. Return submits the trimmed text here and clears the input; an empty entry is ignored. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

@@ -9,6 +9,7 @@ setupHappyDom();
 
 const { render, fireEvent } = await import('@testing-library/svelte');
 const { default: GroupedList } = await import('./grouped-list.svelte');
+const { declarationsFor } = await import('@lostgradient/component-tooling/test/css.ts');
 
 const rows = createRawSnippet(() => ({ render: () => '<li class="row">Row</li>' }));
 
@@ -62,5 +63,56 @@ describe('GroupedList', () => {
   test('stylesheet styles parts by class, never by element descendant', () => {
     const css = readFileSync(new URL('./grouped-list.css', import.meta.url), 'utf8');
     expect(css).not.toMatch(/\.cinder-grouped-list[\w-]*\s+(span|p|div|a|li)\b/);
+  });
+
+  describe('more link (COR-2765)', () => {
+    const css = readFileSync(new URL('./grouped-list.css', import.meta.url), 'utf8');
+
+    test('with `more`, renders exactly one more link with the label and href', () => {
+      const { container } = render(GroupedList, {
+        children: rows,
+        more: { label: 'View the whole History', href: '/history' },
+      });
+      const links = container.querySelectorAll('a.cinder-grouped-list__more');
+      expect(links).toHaveLength(1);
+      expect(links[0]?.textContent?.trim()).toBe('View the whole History');
+      expect(links[0]?.getAttribute('href')).toBe('/history');
+    });
+
+    test('without `more`, no more link renders', () => {
+      const { container } = render(GroupedList, { children: rows });
+      expect(container.querySelector('.cinder-grouped-list__more')).toBeNull();
+      expect(container.querySelector('.cinder-grouped-list__more-row')).toBeNull();
+    });
+
+    test('the more link is a Cinder Link in its `more` form, in the primary colour, outside the list', () => {
+      const { container } = render(GroupedList, {
+        children: rows,
+        more: { label: 'View all', href: '/all' },
+      });
+      const link = container.querySelector('a.cinder-grouped-list__more');
+      expect(link?.hasAttribute('data-cinder-link')).toBe(true);
+      expect(link?.getAttribute('data-variant')).toBe('more');
+      expect(link?.getAttribute('data-color')).toBe('primary');
+      expect(container.querySelector('ul')?.contains(link ?? null)).toBe(false);
+    });
+
+    test('the more link follows the footer when both are set', () => {
+      const { container } = render(GroupedList, {
+        children: rows,
+        footer: 'Showing the latest 3.',
+        more: { label: 'View all', href: '/all' },
+      });
+      const footer = container.querySelector('.cinder-grouped-list__footer');
+      const row = container.querySelector('.cinder-grouped-list__more-row');
+      expect(footer && row).toBeTruthy();
+      expect(footer!.compareDocumentPosition(row!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    test('the more row sits 8px under the group, on the footer inline inset', () => {
+      const row = declarationsFor(css, '.cinder-grouped-list__more-row');
+      expect(row.get('margin-block-start')).toBe('var(--cinder-space-2)');
+      expect(row.get('padding-inline')).toBe('var(--cinder-space-4)');
+    });
   });
 });
