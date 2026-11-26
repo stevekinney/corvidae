@@ -129,17 +129,22 @@ export async function runNodeTests(
   files: readonly string[],
   options: NodeTestOptions = {},
 ): Promise<NodeTestResult> {
+  const selectedFiles = [...files];
+  const bundleRequested = options.bundle === true;
+  const environment = options.env === undefined ? undefined : { ...options.env };
+  const nodeArguments = [...(options.nodeArguments ?? [])];
+  const shimRequested = options.shim === true;
   const binary = await resolveNativeNode();
   const version = await nodeVersion(binary);
-  const bundle = options.bundle === true ? await bundledFiles(files) : undefined;
+  const bundle = bundleRequested ? await bundledFiles(selectedFiles) : undefined;
   try {
-    const command = [binary, ...(options.nodeArguments ?? [])];
-    if (options.shim === true)
+    const command = [binary, ...nodeArguments];
+    if (shimRequested)
       command.push('--import', new URL('./node-runtime-register.ts', import.meta.url).pathname);
-    command.push('--test', '--test-reporter=tap', ...(bundle?.files ?? files));
+    command.push('--test', '--test-reporter=tap', ...(bundle?.files ?? selectedFiles));
     const child = await runWithHangGuard(
       command,
-      options.env === undefined ? undefined : { env: options.env },
+      environment === undefined ? undefined : { env: environment },
     );
     const stdout = child.stdout.toString();
     return {

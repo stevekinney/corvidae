@@ -14,6 +14,22 @@ const nativeVersion = process.env['CORVIDAE_NODE_BINARY'];
 const passing = await runNodeTests([fixture('passing.ts')], { shim: true });
 const failing = await runNodeTests([fixture('failing.ts')], { shim: true });
 const bundled = await runNodeTests([fixture('bundled.ts')], { bundle: true, shim: true });
+const mutableFiles = [fixture('passing.ts')];
+const mutableArguments: string[] = [];
+const mutableEnvironment = { ...process.env };
+const mutableOptions = {
+  bundle: false,
+  env: mutableEnvironment,
+  nodeArguments: mutableArguments,
+  shim: true,
+};
+const snapshotsCallerInputs = runNodeTests(mutableFiles, mutableOptions);
+mutableFiles.length = 0;
+mutableArguments.push('--invalid-option');
+mutableEnvironment['NODE_OPTIONS'] = '--invalid-option';
+(mutableOptions as { bundle: boolean; shim: boolean }).bundle = true;
+(mutableOptions as { bundle: boolean; shim: boolean }).shim = false;
+const snapshotted = await snapshotsCallerInputs;
 
 const fakeNodeRefusal = await (async () => {
   const directory = mkdtempSync(join(tmpdir(), 'corvidae-node-runtime-fake-'));
@@ -57,6 +73,11 @@ describe('runNodeTests', () => {
   test('bundles an extensionless sibling import', () => {
     expect(bundled.exitCode).toBe(0);
     expect(bundled.passCount).toBe(1);
+  });
+
+  test('snapshots caller-owned inputs before resolving Node', () => {
+    expect(snapshotted.exitCode).toBe(0);
+    expect(snapshotted.passCount).toBe(2);
   });
 
   test('refuses a fake Node 20 binary', () => {
