@@ -1,7 +1,7 @@
 {
   "issue": "COR-2763",
   "branch": "steve/composable-peer-signed-approvals",
-  "checkedAt": "20d8fd223e32b96292cef9b343062712202fe444",
+  "checkedAt": "073e1c5496c72138a64a720ecbf4dc27ffbd377d",
   "briefVersion": "fe971b199f42",
   "status": "READY",
   "criteria": [
@@ -18,7 +18,7 @@
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "review-peer-visibility.integration.test.ts: simultaneous approvals, one decision and effect, settlement and repeat; review-continuation.test.ts covers both settlement orders, stale-round adoption and newer durable rounds on each host"
+      "evidence": "review-peer-visibility.integration.test.ts: simultaneous approvals, one decision and effect, settlement and repeat; review-continuation.test.ts covers both settlement orders, stale-round adoption and newer durable rounds; nine paired-control files pass unchanged"
     },
     {
       "id": "AC4",
