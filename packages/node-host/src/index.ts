@@ -383,9 +383,14 @@ export function serve<Data>(options: ServeOptions<Data>): NodeHost<Data> {
       };
     },
     stop(closeActiveConnections = false) {
-      if (closeActiveConnections) for (const socket of sockets) socket.terminate();
       webSocketServer.close();
       server.close();
+      if (!closeActiveConnections) return;
+      // `server.close()` stops accepting connections but lets current HTTP
+      // responses drain. For a forced stop, close them after admission has
+      // stopped; upgraded sockets are not included, so terminate those too.
+      server.closeAllConnections();
+      for (const socket of sockets) socket.terminate();
     },
     timeout(request, seconds) {
       requests.get(request)?.socket.setTimeout(seconds * 1_000);

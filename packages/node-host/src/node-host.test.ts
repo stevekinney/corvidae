@@ -61,6 +61,37 @@ void test('Node host cancels a streamed response when its client disconnects', a
   }
 });
 
+void test('Node host fast stop closes an active SSE response and cancels its source', async () => {
+  const cancelled = Promise.withResolvers<unknown>();
+  const host = serve({
+    port: 0,
+    fetch: () =>
+      new Response(
+        new ReadableStream({
+          cancel(reason) {
+            cancelled.resolve(reason);
+          },
+        }),
+        { headers: { 'content-type': 'text/event-stream' } },
+      ),
+  });
+  try {
+    await host.ready;
+    const response = await fetch(host.url);
+    assert.equal(response.status, 200);
+    const body = response.body;
+    if (body === null) throw new Error('expected SSE response body');
+    const closed = body.getReader().read();
+    host.stop(true);
+    await cancelled.promise;
+    // Clients may surface a forced socket close as either EOF or ECONNRESET;
+    // awaiting either outcome proves the active response did not remain open.
+    await closed.catch(() => undefined);
+  } finally {
+    host.stop(true);
+  }
+});
+
 const certificate = `-----BEGIN CERTIFICATE-----
 MIIDCTCCAfGgAwIBAgIUOeqL3GYucCk2iEe3Fno8/vu093QwDQYJKoZIhvcNAQEL
 BQAwFDESMBAGA1UEAwwJMTI3LjAuMC4xMB4XDTI2MTEyNjEwNTk1MVoXDTI2MTEy
