@@ -27,10 +27,10 @@
     type DataListGroup,
   } from '@lostgradient/cinder';
   import { Check } from '@lucide/svelte';
-  import { getReviewsHost } from '@lostgradient/bureau-client/reviews/svelte';
-  import { useToolApprovalActions } from '@lostgradient/bureau-client/reviews/ui';
-  import type { ApprovalOutcome } from '@lostgradient/bureau-client/reviews/ui';
-  import type { ReviewsOperationTypes } from '@lostgradient/bureau-client/reviews';
+  import { getReviewsHost } from '@lostgradient/bureau-sdk/reviews/svelte';
+  import { useToolApprovalActions } from '@lostgradient/bureau-sdk/reviews/ui';
+  import type { ApprovalOutcome } from '@lostgradient/bureau-sdk/reviews/ui';
+  import type { ReviewsOperationTypes } from '@lostgradient/bureau-sdk/reviews';
 
   import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
   import ListPageEmpty from '../../app/list-page-empty.svelte';

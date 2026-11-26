@@ -4,6 +4,7 @@ import type { QueryClient } from '@tanstack/svelte-query';
 import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts';
 import { agentsListQuery } from '../lib/agent-queries.ts';
 import { AUDIT_EVENT_TYPES } from '../lib/audit-event-types.ts';
+import { createBureauClient, type CatalogOperations } from '../lib/bureau-api.ts';
 import { queryAudit } from '../lib/bureau-audit.ts';
 import { listChecks } from '../lib/bureau-checks.ts';
 import { listAgents } from '../lib/bureau-client.ts';
@@ -14,10 +15,6 @@ import { getSettings } from '../lib/bureau-settings.ts';
 import { listTasks } from '../lib/bureau-tasks.ts';
 import { defaultAgentQuery, workflowAuthorQuery } from '../lib/default-agent.ts';
 import { classifyFault } from '../lib/faults.ts';
-import {
-  createBureauClient,
-  type CatalogOperations,
-} from '../lib/generated/bureau-operation-client.generated.ts';
 import { getPanels, loadPluginApp } from '../lib/host-panels.ts';
 import { getPlugins, type PluginStanding } from '../lib/host-plugins.ts';
 import { startedFromWorkflows } from '../lib/new-chat-address.ts';

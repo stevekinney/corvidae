@@ -3,10 +3,10 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { createBureauClient } from './bureau-api.ts';
 import { listChecks } from './bureau-checks.ts';
 import { checkFixture } from './bureau-fixtures.test-support.ts';
 import { installBureauStub, type BureauStub } from './bureau-stub.test-support.ts';
-import { createBureauClient } from './generated/bureau-operation-client.generated.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {

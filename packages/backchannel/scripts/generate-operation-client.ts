@@ -234,6 +234,11 @@ export async function createOperationClientSources(
     compareStrings(left.name, right.name),
   );
   const catalogNames = catalogOperations.map((operation) => `  '${operation.name}',`);
+  const dryRunNames = catalogOperations
+    .filter((operation) => operation.supportsDryRun)
+    .map((operation) => JSON.stringify(operation.name))
+    .join(' | ');
+  const dryRunParameter = dryRunNames ? `, ${dryRunNames}` : '';
   const clientNames = clientOperations.map((operation) => `  '${operation.name}',`);
   const restBindings = restOnlyOperations.map((operation) => {
     const rest = operation.rest;
@@ -327,6 +332,7 @@ export async function createOperationClientSources(
             imports,
             types,
             catalogNames,
+            dryRunParameter,
             clientNames,
             restBindings,
             subscriptionNames: subscriptionOperations.map((operation) => `  '${operation.name}',`),
@@ -350,8 +356,8 @@ ${catalogNames.join('\n')}
 type CatalogOperationTypes = Pick<${types}, (typeof operationNames)[number]>;
 
 /** Bind this catalog to a host-provided transport. */
-export function ${options.factoryName}WithTransport(transport: CatalogTransport): CatalogClient<CatalogOperationTypes> {
-  return createCatalogClient<CatalogOperationTypes>(operationNames, transport);
+export function ${options.factoryName}WithTransport(transport: CatalogTransport): CatalogClient<CatalogOperationTypes${dryRunParameter}> {
+  return createCatalogClient<CatalogOperationTypes${dryRunParameter}>(operationNames, transport);
 }
 `,
       );
@@ -477,6 +483,7 @@ type MainSourceInput = {
   readonly imports: string;
   readonly types: string;
   readonly catalogNames: readonly string[];
+  readonly dryRunParameter: string;
   readonly clientNames: readonly string[];
   readonly restBindings: readonly string[];
   readonly subscriptionNames: readonly string[];
@@ -692,7 +699,7 @@ export type CatalogOperationTypes = Pick<ClientOperationTypes, CatalogOperationN
  * console.log(typeof listAlerts);
  * \`\`\`
  */
-export type CatalogOperations = CatalogClient<CatalogOperationTypes>;
+export type CatalogOperations = CatalogClient<CatalogOperationTypes${input.dryRunParameter}>;
 
 /**
  * A client shaped over every operation, REST included: each operation name is
@@ -734,7 +741,7 @@ ${
   subscribed
     ? `export function ${factory}(${parameter}): CatalogOperations & SubscriptionOperations {
   return {
-    ...createCatalogClient<CatalogOperationTypes>(
+    ...createCatalogClient<CatalogOperationTypes${input.dryRunParameter}>(
       CATALOG_OPERATION_NAMES,
       ${connection.transportName}(connection),
     ),
@@ -745,7 +752,7 @@ ${
   };
 }`
     : `export function ${factory}(${parameter}): CatalogOperations {
-  return createCatalogClient<CatalogOperationTypes>(
+  return createCatalogClient<CatalogOperationTypes${input.dryRunParameter}>(
     CATALOG_OPERATION_NAMES,
     ${connection.transportName}(connection),
   );

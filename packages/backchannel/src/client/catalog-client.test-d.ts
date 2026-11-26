@@ -43,3 +43,26 @@ const generated = createProbeClientWithTransport(ignoring);
 export const generatedResult: Promise<null> = generated['probe.jobs.cancel']({ id: 'job' });
 // @ts-expect-error generated input requires an id.
 generated['probe.jobs.cancel']({});
+
+type Preview = { readonly dryRun: true; readonly preview: string };
+type Result = { readonly value: string };
+type PreviewOperations = {
+  flagged: { input: { dryRun?: boolean }; output: Result | Preview };
+  unflagged: { input: { dryRun?: boolean }; output: Result | Preview };
+};
+declare const previews: CatalogClient<PreviewOperations, 'flagged'>;
+declare const runtimeBoolean: boolean;
+export const omitted: Promise<Result> = previews.flagged({});
+export const explicitFalse: Promise<Result> = previews.flagged({ dryRun: false });
+export const explicitTrue: Promise<Preview> = previews.flagged({ dryRun: true });
+export const dynamic: Promise<Result | Preview> = previews.flagged({ dryRun: runtimeBoolean });
+export const control: Promise<Result | Preview> = previews.unflagged({ dryRun: true });
+
+function callGeneric<Name extends keyof PreviewOperations>(
+  genericClient: CatalogClient<PreviewOperations>,
+  name: Name,
+  input: PreviewOperations[Name]['input'],
+): Promise<PreviewOperations[Name]['output']> {
+  return genericClient[name](input);
+}
+export { callGeneric };

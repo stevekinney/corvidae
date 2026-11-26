@@ -11,11 +11,11 @@ import {
 import { parse } from 'svelte/compiler';
 import ts from 'typescript';
 
-import { CLI_OPERATION_MAPPINGS } from '../src/host/cli-client.ts';
 import {
   CLIENT_OPERATION_NAMES as BUREAU_CLIENT_NAMES,
   SUBSCRIPTION_OPERATION_NAMES,
-} from '../src/lib/generated/bureau-operation-client.generated.ts';
+} from '@lostgradient/bureau-sdk';
+import { CLI_OPERATION_MAPPINGS } from '../src/host/cli-client.ts';
 import inventory from './catalog-consumer-inventory.json';
 import { assertClassified, callerOf, scanTransport } from './catalog-consumer-transport.ts';
 
@@ -122,7 +122,7 @@ test('catalog consumers remain classified against the served catalogs', async ()
             : '';
           if (
             transportSources.has(target) ||
-            /(?:bureau-api|\/lib\/client|\/client\.ts|host-(?:clean-up|panels|paths|plugins|providers|session|storage|tool-sources)|@ag-ui\/|@lostgradient\/(?:weft|backchannel\/client|bureau-client))/u.test(
+            /(?:bureau-api|\/lib\/client|\/client\.ts|host-(?:clean-up|panels|paths|plugins|providers|session|storage|tool-sources)|@ag-ui\/|@lostgradient\/(?:weft|backchannel\/client|bureau-sdk))/u.test(
               specifier,
             )
           )

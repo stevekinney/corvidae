@@ -4,8 +4,8 @@
  * not only the pages the table has loaded, so the file is what a search finds and not what happens
  * to be on screen.
  */
+import type { CatalogOperations } from '@lostgradient/bureau-sdk';
 import { queryAudit, type AuditFilter, type AuditRecord } from '../../lib/bureau-audit.ts';
-import type { CatalogOperations } from '../../lib/generated/bureau-operation-client.generated.ts';
 
 /** The most records one request asks for: the Bureau's own ceiling, to read the trail in few requests. */
 export const EXPORT_PAGE_SIZE = 100;

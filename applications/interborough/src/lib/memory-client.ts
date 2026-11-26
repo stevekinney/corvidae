@@ -11,9 +11,9 @@
  */
 import { HttpClientError } from '@lostgradient/weft';
 
+import type { CatalogOperations } from '@lostgradient/bureau-sdk';
 import { bureauClient, type BureauOutput } from './bureau-api.ts';
 import type { Fetcher } from './bureau-client.ts';
-import type { CatalogOperations } from './generated/bureau-operation-client.generated.ts';
 
 /** Where a call is sent from: an abort signal, and a `fetch` for a caller that is not a page. */
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };

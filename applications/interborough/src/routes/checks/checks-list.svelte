@@ -50,7 +50,7 @@
   import { listChecks, type CheckRow } from '../../lib/bureau-checks.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import { faultErrorStateAdvice } from '../../lib/faults.ts';
-  import { createBureauClient } from '../../lib/generated/bureau-operation-client.generated.ts';
+  import { createBureauClient } from '../../lib/bureau-api.ts';
   import { followLinks } from '../../lib/follow-links.ts';
   import { viewerTimeZone } from '../../lib/format/clock.ts';
   import { queryKeys } from '../../lib/query.ts';

@@ -60,7 +60,7 @@
   import { queryAudit } from '../../lib/bureau-audit.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import { faultErrorStateAdvice } from '../../lib/faults.ts';
-  import { createBureauClient } from '../../lib/generated/bureau-operation-client.generated.ts';
+  import { createBureauClient } from '../../lib/bureau-api.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { getPrincipalStore, principalQueryScope } from '../../lib/scopes.svelte.ts';

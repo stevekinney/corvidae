@@ -24,6 +24,25 @@ async function generatedText(
 }
 
 describe('createOperationClientSources for a catalog that is not Weft', () => {
+  it('generates dry-run typing only for operations with catalog support', async () => {
+    const base = fixtureSnapshot();
+    const operation = base.operations.find(
+      (item) => item.kind === 'unary' && item.transports.jsonRpcHttp,
+    );
+    if (!operation) throw new Error('missing fixture operation');
+    const sources = await createOperationClientSources(
+      {
+        ...base,
+        operations: base.operations.map((item) =>
+          item === operation ? { ...item, supportsDryRun: true as const } : item,
+        ),
+      },
+      fixtureOptions({ portableEntries: true }),
+    );
+    const parameter = `CatalogOperationTypes, "${operation.name}"`;
+    expect(sources.get('operation-client.generated.ts')).toContain(parameter);
+    expect(sources.get('portable-operation-client.generated.ts')).toContain(parameter);
+  });
   it('typechecks scoped recursive definitions in split and portable clients', async () => {
     const base = fixtureSnapshot();
     const operation = base.operations.find((item) => item.name === 'probe.jobs.list');

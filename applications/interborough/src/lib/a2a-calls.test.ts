@@ -10,9 +10,9 @@ import {
   RECENT_CALL_COUNT,
   RECENT_CALL_WINDOW_MILLISECONDS,
 } from './a2a-calls.ts';
+import { createBureauClient } from './bureau-api.ts';
 import type { AuditRecord } from './bureau-audit.ts';
 import { installBureauStub, type BureauStub } from './bureau-stub.test-support.ts';
-import { createBureauClient } from './generated/bureau-operation-client.generated.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {
