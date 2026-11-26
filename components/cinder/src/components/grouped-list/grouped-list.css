@@ -16,10 +16,13 @@
 
   /* The header and footer are outside the surface, so their text shares the page edge, the
    * surface's own edge, rather than the rows' inset; only text inside a surface takes its inset
-   * (owner rule, COR-2768). */
+   * (owner rule, COR-2768). Where a container is the same raised surface as the group (a modal
+   * drawer), the group's edge is invisible, and that container sets the private label inset to the
+   * rows' inset so the labels line up with the row text instead of with nothing. */
   .cinder-grouped-list__header,
   .cinder-grouped-list__footer {
     margin: 0;
+    padding-inline: var(--_cinder-grouped-list-label-inset, 0);
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-muted);
   }
@@ -42,6 +45,7 @@
     display: flex;
     margin: 0;
     margin-block-start: var(--cinder-space-2);
+    padding-inline: var(--_cinder-grouped-list-label-inset, 0);
   }
 
   .cinder-grouped-list__group {

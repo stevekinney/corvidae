@@ -112,7 +112,7 @@ describe('GroupedList', () => {
     test('the more row sits 8px under the group, on the group edge (COR-2768)', () => {
       const row = declarationsFor(css, '.cinder-grouped-list__more-row');
       expect(row.get('margin-block-start')).toBe('var(--cinder-space-2)');
-      expect(row.get('padding-inline') ?? '0').toBe('0');
+      expect(row.get('padding-inline')).toBe('var(--_cinder-grouped-list-label-inset, 0)');
       expect(row.get('display')).toBe('flex');
     });
   });
@@ -137,13 +137,24 @@ describe('GroupedList', () => {
           const inlineValues =
             declaration.prop === 'padding' || declaration.prop === 'margin'
               ? [values[1] ?? values[0], values[3] ?? values[1] ?? values[0]]
-              : values;
-          if (inlineValues.some((value) => value !== '0')) {
+              : [declaration.value];
+          // The one inset allowed is the private label inset, which is 0 unless a container whose
+          // surface hides the group's sets it (a modal drawer).
+          const allowed = new Set(['0', 'var(--_cinder-grouped-list-label-inset, 0)']);
+          if (inlineValues.some((value) => !allowed.has(value))) {
             offenders.push(`${rule.selector} { ${declaration.prop}: ${declaration.value} }`);
           }
         });
       });
       expect(offenders).toEqual([]);
+    });
+
+    test('the header and footer read the private label inset, which defaults to the group edge', () => {
+      for (const selector of ['.cinder-grouped-list__header', '.cinder-grouped-list__footer']) {
+        expect(declarationsFor(css, selector).get('padding-inline')).toBe(
+          'var(--_cinder-grouped-list-label-inset, 0)',
+        );
+      }
     });
 
     test('the quick-add row keeps its 16px inset, because its text is inside the surface', () => {

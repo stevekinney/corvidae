@@ -1,3 +1,4 @@
+import { openFixture } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test, type Page } from '@playwright/test';
 import { fixtureRoute } from './layout-fixture.ts';
 
@@ -96,3 +97,31 @@ test('under touch at 375px the header and footer sit on the group edge', async (
     await context.close();
   }
 });
+
+// In a modal drawer the body is the same raised surface as the group, so the group's edge is
+// invisible; the drawer hands the labels the rows' inset, and the header lines up with the row
+// titles instead of with nothing (COR-2768 design review).
+for (const width of [375, 1280] as const) {
+  test(`in a modal drawer sheet the header lines up with the row titles at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openFixture(page, 'drawer', { fixtureName: 'sheet-header-bar' });
+    const sheet = page.locator('.cinder-drawer__body .cinder-grouped-list');
+    await expect(sheet).toBeVisible();
+    const lefts = await sheet.evaluate((root) => {
+      const textLeft = (selector: string) => {
+        const element = root.querySelector<HTMLElement>(selector);
+        if (element === null) throw new Error(`missing ${selector}`);
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return range.getBoundingClientRect().left;
+      };
+      return {
+        header: textLeft('.cinder-grouped-list__header'),
+        title: textLeft('.cinder-grouped-list-item__title'),
+      };
+    });
+    expect(Math.abs(lefts.header - lefts.title)).toBeLessThanOrEqual(1);
+  });
+}

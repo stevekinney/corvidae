@@ -202,3 +202,24 @@ describe('drawer.css header bar (COR-2322 AC7)', () => {
     expect(declared(title, 'text-align')).toBe('center');
   });
 });
+
+// COR-2768: a modal drawer's body is the same raised surface as a GroupedList's group, so the group's
+// edge is invisible there. The drawer hands the group's labels the rows' inset, so the header, the
+// footer and the more link line up with the row text; a non-modal drawer is inset, the group shows,
+// and the labels go back to the group's edge.
+describe('GroupedList labels in a drawer (COR-2768)', () => {
+  test('a modal drawer body gives GroupedList labels the rows inset', () => {
+    expect(declared('.cinder-drawer__body', '--_cinder-grouped-list-label-inset')).toBe(
+      'var(--cinder-space-4)',
+    );
+  });
+
+  test('a non-modal drawer body, whose group surface shows, puts them back on the group edge', () => {
+    expect(
+      declared(
+        ".cinder-drawer[data-cinder-modal='false'] .cinder-drawer__body",
+        '--_cinder-grouped-list-label-inset',
+      ),
+    ).toBe('0');
+  });
+});
