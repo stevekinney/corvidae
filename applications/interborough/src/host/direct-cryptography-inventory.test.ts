@@ -3,7 +3,8 @@
  * sweep of `packages/`). A secret comparison or a SHA-256 routine belongs to
  * `@lostgradient/cryptography`: this directory calls `timingSafeEqualText`, `timingSafeEqualHex`,
  * `sha256HexSync`, `sha256BytesHexSync` and `createIncrementalHash`, and never `node:crypto`'s
- * `createHash`, `createHmac` or `timingSafeEqual`, `Bun.CryptoHasher` or `crypto.subtle`. The test
+ * `createHash`, `createHmac` or `timingSafeEqual`, `Bun.CryptoHasher`, `Bun.SHA256` and the other
+ * `Bun.SHA*` classes, `Bun.sha` or `crypto.subtle`. The test
  * reads the syntax of every non-test file here, so a reintroduced duplicate fails by file and
  * line. It lives beside the source it scans, so a change to the host re-runs it.
  *
@@ -36,6 +37,13 @@ const DUPLICATE_IDENTIFIERS = new Set([
   'createHmac',
   'timingSafeEqual',
   'CryptoHasher',
+  // Bun's own SHA classes: `new Bun.SHA256()`, `Bun.SHA256.hash(...)` and the rest.
+  'SHA1',
+  'SHA224',
+  'SHA256',
+  'SHA384',
+  'SHA512',
+  'SHA512_256',
 ]);
 
 const CRYPTO_MODULES = new Set(['node:crypto', 'crypto']);
@@ -80,6 +88,13 @@ function directCryptography(text: string, fileName = 'file.ts'): readonly Direct
       record(node, node.text, true);
     } else if (ts.isPropertyAccessExpression(node) && node.name.text === 'subtle') {
       record(node, 'crypto.subtle', true);
+    } else if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'Bun' &&
+      node.name.text === 'sha'
+    ) {
+      record(node, 'Bun.sha', true);
     }
     ts.forEachChild(node, visit);
   };
@@ -114,6 +129,9 @@ describe('what counts as direct cryptography', () => {
         "const d = await crypto.subtle.digest('SHA-256', bytes);",
         "const e = require('node:crypto');",
         "const f = await import('node:crypto');",
+        'const g = new Bun.SHA256().update(text).digest();',
+        'const h = Bun.SHA512.hash(text);',
+        'const i = Bun.sha(text);',
       ].join('\n'),
     );
     expect(calls.filter((call) => call.duplicate).map((call) => call.primitive)).toEqual([
@@ -122,6 +140,9 @@ describe('what counts as direct cryptography', () => {
       'createHmac',
       'CryptoHasher',
       'crypto.subtle',
+      'SHA256',
+      'SHA512',
+      'Bun.sha',
     ]);
     expect(calls.filter((call) => !call.duplicate).map((call) => call.primitive)).toEqual([
       'createHash',
