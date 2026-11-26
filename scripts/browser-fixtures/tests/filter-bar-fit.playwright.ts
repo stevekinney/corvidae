@@ -59,6 +59,52 @@ test.describe('FilterBar folds by its measured width', () => {
     });
   });
 
+  test('contains long choice facets and preserves short choice and Escape behavior', async ({
+    page,
+  }) => {
+    await page.goto(`${FILTER_BAR_ROUTE}&choice-containment=1`, { waitUntil: 'load' });
+    const bar = page.getByRole('search', { name: 'Choice facet containment' });
+    await bar.getByRole('button', { name: 'Outcome', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Outcome' });
+    const last = dialog.getByRole('radio', { name: 'Outcome 20' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveCSS('overflow-y', 'auto');
+    expect(await dialog.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
+      true,
+    );
+    expect(
+      await last.evaluate((element) => {
+        const surface = element.closest('[role="dialog"]')!;
+        return element.getBoundingClientRect().top >= surface.getBoundingClientRect().bottom;
+      }),
+    ).toBe(true);
+    await last.scrollIntoViewIfNeeded();
+    expect(
+      await last.evaluate((element) => {
+        const option = element.getBoundingClientRect();
+        const surface = element.closest('[role="dialog"]')!.getBoundingClientRect();
+        return option.top >= surface.top && option.bottom <= surface.bottom;
+      }),
+    ).toBe(true);
+    await last.check();
+    await expect(
+      bar.getByRole('button', { name: 'Outcome: Outcome 20', exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(
+      bar.getByRole('button', { name: 'Outcome: Outcome 20', exact: true }),
+    ).toBeFocused();
+
+    await bar.getByRole('button', { name: 'Agent: Tool runner', exact: true }).click();
+    const short = page.getByRole('dialog', { name: 'Agent' });
+    expect(await short.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(
+      true,
+    );
+    await short.getByRole('radio', { name: 'Assistant' }).check();
+    await expect(bar.getByRole('button', { name: 'Agent: Assistant', exact: true })).toBeVisible();
+  });
+
   test('stays wide down to the width its controls need, folds just under it, and unfolds when it widens', async ({
     page,
   }) => {

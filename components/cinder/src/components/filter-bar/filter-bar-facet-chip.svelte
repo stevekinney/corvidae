@@ -80,7 +80,13 @@
   {/if}
 </span>
 
-<Popover bind:open triggerRef={trigger} label={facet.title ?? facet.label} placement="bottom-start">
+<Popover
+  bind:open
+  triggerRef={trigger}
+  label={facet.title ?? facet.label}
+  placement="bottom-start"
+  class="cinder-filter-bar__choice-popover"
+>
   <FilterBarOptions
     {facet}
     {values}
