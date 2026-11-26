@@ -66,10 +66,10 @@ const invalidRoutesServeOptions: ServeOptions = {
 };
 void invalidRoutesServeOptions;
 
-// @ts-expect-error `metricsCollector` is no longer a public server option.
 const rejectedServeOptions: ServeOptions = {
   host: bunServerHost,
   engine,
+  // @ts-expect-error `metricsCollector` is no longer a public server option.
   metricsCollector: new MetricsCollector(),
 };
 void rejectedServeOptions;

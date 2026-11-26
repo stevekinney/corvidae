@@ -1,3 +1,5 @@
+import { sleep } from '../../runtime/portable.ts';
+
 export async function withRetry<T>(
   operation: () => Promise<T>,
   label: string,
@@ -18,4 +20,3 @@ export async function withRetry<T>(
 
   throw lastError;
 }
-import { sleep } from '../../runtime/portable.ts';

@@ -227,7 +227,7 @@ function routeFor(
       route,
       rank: pattern.includes('*') ? 2 : pattern.includes(':') ? 1 : 0,
     }))
-    .sort(
+    .toSorted(
       (left, right) =>
         left.rank - right.rank || compareRouteSpecificity(left.pattern, right.pattern),
     );
@@ -343,11 +343,8 @@ export function serve<Data>(options: ServeOptions<Data>): NodeHost<Data> {
     try {
       const matched = routeFor(options.routes, new URL(request.url).pathname, request.method);
       const routedRequest = Object.assign(request, { params: matched?.params ?? {} });
-      const response = await (routeResponse(
-        matched?.route,
-        routedRequest,
-        nodeHost as NodeHost<unknown>,
-      ) ?? options.fetch(request));
+      const response = await (routeResponse(matched?.route, routedRequest, nodeHost) ??
+        options.fetch(request));
       await sendResponse(outgoing, response ?? new Response('Not found', { status: 404 }));
     } catch {
       if (!outgoing.headersSent)

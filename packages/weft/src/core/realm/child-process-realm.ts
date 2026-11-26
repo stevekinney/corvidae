@@ -1,3 +1,5 @@
+/// <reference types="bun" />
+
 /**
  * Real Bun-`Bun.spawn`-IPC-backed revision realm (COR-246).
  *

@@ -234,7 +234,7 @@ export class ServerDisposalStack {
   dispose(): Promise<void> {
     if (this.#disposed !== undefined) return this.#disposed;
     this.#disposed = (async () => {
-      for (const callback of this.#callbacks.reverse()) await callback();
+      for (const callback of this.#callbacks.toReversed()) await callback();
     })();
     return this.#disposed;
   }
@@ -573,10 +573,6 @@ export function registerStackDisposers(
       }, context.visibilityPollMs)
     : undefined;
 
-  // Periodic full-storage reconciliation to catch orphaned inflight records
-  // that were never tracked in the heap (e.g., written by another process or
-  // left over from a crash). Runs at 12x the visibility poll interval to keep
-  // cost low while still providing a safety net.
   const reconciliationIntervalMs = context.visibilityPollMs * RECONCILIATION_MULTIPLIER;
   const reconciliationHandle = schedulesTaskReconciliation
     ? setInterval(() => {
@@ -584,31 +580,17 @@ export function registerStackDisposers(
       }, reconciliationIntervalMs)
     : undefined;
 
-  // Registered last — disposed first: clear all intervals and pending timers.
   stack.defer(() => {
-    // Set first: a still-running startup recovery scan (or a reconciliation
-    // pass racing shutdown) checks this before arming a new timer or issuing
-    // a durable write, so it stops making progress instead of doing work
-    // against a stopped server after this disposer returns.
     context.stopping = true;
     if (visibilityPollHandle !== undefined) clearInterval(visibilityPollHandle);
     if (reconciliationHandle !== undefined) clearInterval(reconciliationHandle);
     context.deadlineTracker.clear();
-    // Clear all pending backoff-delay timers to prevent callbacks firing
-    // against a stopped server.
     for (const timer of context.pendingTimers) {
       clearTimeout(timer);
     }
     context.pendingTimers.clear();
-    // End any pending worker-reconnect grace windows so their timers cannot
-    // fire against a torn-down registry/storage, and so `shutdownAllWorkers`
-    // below does not wait on a socket that already closed.
     endWorkerReconnectGracePeriods(context, options, onOperationCleanup);
-    // Tear down the task queue: clears expiration timers and settles any parked
-    // long-poll waiters with null so no timer fires and no poll promise leaks
-    // against a stopped server.
     context.taskQueue[Symbol.dispose]();
-    // Release the rate limiter's per-key window map.
     context.rateLimiter?.dispose();
   });
 }

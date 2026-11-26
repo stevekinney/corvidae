@@ -31,57 +31,15 @@
   },
   {
     "package": "@lostgradient/bureau",
-    "subpath": "./sources",
-    "finding": "Bun.sleep",
-    "reason": "The source package reaches Weft's Bun timers pending its portability work."
-  },
-  {
-    "package": "@lostgradient/bureau",
     "subpath": "./testing",
     "finding": "bun:sqlite",
     "reason": "Bureau's testing entry intentionally owns native SQLite fixtures."
-  },
-  {
-    "package": "@lostgradient/bureau",
-    "subpath": "./testing",
-    "finding": "Bun.sleep",
-    "reason": "Bureau's testing entry reaches Weft's Bun timers."
-  },
-  {
-    "package": "@lostgradient/bureau",
-    "subpath": "./tool-operations",
-    "finding": "Bun.sleep",
-    "reason": "The operation entry reaches Weft's Bun timers pending its portability work."
-  },
-  {
-    "package": "@lostgradient/bureau",
-    "subpath": ".",
-    "finding": "Bun.sleep",
-    "reason": "Bureau reaches Weft's Bun timers pending its portability work."
   },
   {
     "package": "@lostgradient/interborough-plugin",
     "subpath": "./testing",
     "finding": "bun:test",
     "reason": "Testing entry uses Bun's test API."
-  },
-  {
-    "package": "@lostgradient/interborough-plugin",
-    "subpath": "./testing",
-    "finding": "Bun.sleep",
-    "reason": "Testing entry reaches Weft's Bun timers."
-  },
-  {
-    "package": "@lostgradient/memory",
-    "subpath": ".",
-    "finding": "Bun.sleep",
-    "reason": "Memory reaches Weft's Bun timers pending its portability work."
-  },
-  {
-    "package": "@lostgradient/operative-typesafe",
-    "subpath": ".",
-    "finding": "Bun.sleep",
-    "reason": "The decision model reaches Weft's Bun timers pending its portability work."
   },
   {
     "package": "@lostgradient/operative",
@@ -94,18 +52,6 @@
     "subpath": "./provider-testing",
     "finding": "bun:test",
     "reason": "Provider testing uses Bun's test API."
-  },
-  {
-    "package": "@lostgradient/operative",
-    "subpath": "./testing",
-    "finding": "Bun.sleep",
-    "reason": "Testing entry reaches Weft's Bun timers."
-  },
-  {
-    "package": "@lostgradient/operative",
-    "subpath": ".",
-    "finding": "Bun.sleep",
-    "reason": "Operative reaches Weft's Bun timers pending its portability work."
   },
   {
     "package": "@lostgradient/storage-bun-sqlite",
@@ -250,12 +196,6 @@
     "subpath": "./bun",
     "finding": "Bun.serve",
     "reason": "The Bun host."
-  },
-  {
-    "package": "@lostgradient/weft",
-    "subpath": ".",
-    "finding": "Bun.sleep",
-    "reason": "Weft's current retry and shutdown timers use Bun."
   },
   {
     "package": "@lostgradient/weft",

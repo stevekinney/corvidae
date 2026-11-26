@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { bunServerHost } from '@lostgradient/weft/bun';
+import { bunServerHost } from './bun-host.ts';
 
 import {
   API_HELP_TEXT,

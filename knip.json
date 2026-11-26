@@ -110,6 +110,28 @@
         "!src/host-contract.ts!"
       ]
     },
+    "packages/weft": {
+      "ignoreDependencies": ["ws"],
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts",
+        "src/server/node-runtime.test-support.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.test-support.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
+      ]
+    },
     "packages/credentials": {
       "ignoreDependencies": ["@lostgradient/workerd-testing"],
       "entry": [

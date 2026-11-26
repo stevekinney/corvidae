@@ -119,7 +119,8 @@ void test('Weft serves REST, worker activity, events, MCP, and clean shutdown th
       body: JSON.stringify({ jsonrpc: '2.0', id: 'tools', method: 'tools/list', params: {} }),
     });
     assert.equal(tools.status, 200);
-    const payload = (await tools.text()).split('\n').find((line) => line.startsWith('data: '));
+    const toolsText = await tools.text();
+    const payload = toolsText.split('\n').find((line) => line.startsWith('data: '));
     assert.ok(payload);
     assert.ok(
       Array.isArray(
