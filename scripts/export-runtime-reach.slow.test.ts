@@ -51,7 +51,8 @@ test('reports normalized Node builtins without making them guard findings', asyn
         name: '@scope/demo',
         exports: { '.': './src/index.ts' },
       }),
-      'packages/demo/src/index.ts': "import 'node:fs'; import 'fs'; export const value = 1;\n",
+      'packages/demo/src/index.ts':
+        "import 'node:fs'; import 'fs'; import 'ws'; import 'undici'; export const value = 1;\n",
     },
     async (root) => {
       const report = await scanExportRuntimeReachReport(root);

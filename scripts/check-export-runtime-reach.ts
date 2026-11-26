@@ -9,7 +9,12 @@ import ts from 'typescript';
 const ROOT = join(import.meta.dir, '..');
 const ALLOWLIST_FILE = join(import.meta.dir, 'export-runtime-reach-allowlist.json');
 const WORKSPACE_DIRECTORIES = ['packages', 'components'] as const;
-const NODE_BUILTINS = new Set(builtinModules.map((name) => name.replace(/^node:/, '')));
+const NODE_RESOLVER_BUILTINS = new Set(builtinModules.map((name) => name.replace(/^node:/, '')));
+// Bun exposes ws and undici through node:module even though they are ordinary dependencies in Node.
+// Keep them external for Bun's bundle probe, but do not report them as Node builtins.
+const NODE_REPORT_BUILTINS = new Set(
+  [...NODE_RESOLVER_BUILTINS].filter((name) => name !== 'undici' && name !== 'ws'),
+);
 const TEST_PATH =
   /\/(?:src\/(?:test|testing)|__fixtures__)\/|(?:\.test-support|-test-fixture)\.[^/]+$/;
 
@@ -164,7 +169,8 @@ async function findingsForExport(
             ) {
               return { path: argument.path, external: true };
             }
-            if (NODE_BUILTINS.has(argument.path)) return { path: argument.path, external: true };
+            if (NODE_RESOLVER_BUILTINS.has(argument.path))
+              return { path: argument.path, external: true };
             return undefined;
           });
         },
@@ -180,7 +186,7 @@ async function findingsForExport(
   for (const [input, metadata] of Object.entries(result.metafile?.inputs ?? {})) {
     for (const imported of metadata.imports) {
       if (imported.external && imported.path.startsWith('bun:')) findings.add(imported.path);
-      if (imported.external && NODE_BUILTINS.has(imported.path.replace(/^node:/, '')))
+      if (imported.external && NODE_REPORT_BUILTINS.has(imported.path.replace(/^node:/, '')))
         nodeFindings.add(`node:${imported.path.replace(/^node:/, '')}`);
     }
     const path = inputPath(root, input);
