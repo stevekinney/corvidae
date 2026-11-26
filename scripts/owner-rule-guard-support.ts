@@ -115,6 +115,8 @@ export type CountGuard = {
   exclude?: RegExp;
   /** The allowlist's path relative to the repository root. */
   allowlistPath: string;
+  /** Replaces the directory walk: the files to scan, as paths relative to the repository root. */
+  listFiles?: () => string[];
   /** The sites in one file, each as `<line> - <text>`. */
   find: (source: string, relativePath: string) => string[];
 };
@@ -127,8 +129,12 @@ export function shorten(text: string, length = 120): string {
 /** Runs a count guard against the working tree and sets the exit code. */
 export async function runCountGuard(guard: CountGuard): Promise<void> {
   const paths: string[] = [];
-  for (const directory of guard.directories) {
-    collectFiles(join(repositoryRoot, directory), guard.extensions, paths, guard.exclude);
+  if (guard.listFiles !== undefined) {
+    for (const file of guard.listFiles()) paths.push(join(repositoryRoot, file));
+  } else {
+    for (const directory of guard.directories) {
+      collectFiles(join(repositoryRoot, directory), guard.extensions, paths, guard.exclude);
+    }
   }
   const found = new Map<string, string[]>();
   for (const path of paths.toSorted()) {
