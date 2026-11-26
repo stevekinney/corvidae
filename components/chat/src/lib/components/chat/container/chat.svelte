@@ -101,7 +101,7 @@
   import type { BodyMessagePart } from '../message/chat-message-parts.ts';
   import { resolveMessageTurnState } from '../message/turn-state.ts';
   import { TurnCommands } from '../message/turn-commands.ts';
-  import { isTurnOutcomeAnchor, toolOnlyTurnAnchor } from '../message/turn-outcome.ts';
+  import { isTurnOutcomeAnchor, toolEndedTurnAnchor } from '../message/turn-outcome.ts';
   import { resolveChatLabels } from '../chat-labels.ts';
   import {
     ApprovalGroup,
@@ -1644,7 +1644,7 @@
   });
   $effect(() => () => turnCommands.dispose());
   const reconnectingTurn = $derived.by(() => {
-    const anchor = toolOnlyTurnAnchor(messages);
+    const anchor = toolEndedTurnAnchor(messages);
     const anchorState =
       anchor === undefined ? undefined : resolveMessageTurnState(anchor, messageTurnState);
     if (anchor !== undefined && anchorState?.kind === 'reconnecting') {
@@ -2031,13 +2031,15 @@
     isRunActive: () => composerSending || approvalWaiting,
     isSendNowAvailable: () => composerStatus?.kind !== 'offline',
     getRunOutcome: () => {
-      const latestAssistant =
-        toolOnlyTurnAnchor(messages) ??
-        messages.findLast((message) => message.role === 'assistant');
+      const anchor = toolEndedTurnAnchor(messages);
+      const latestAssistant = messages.findLast((message) => message.role === 'assistant');
       const outcome =
-        latestAssistant === undefined
+        (anchor === undefined
           ? undefined
-          : resolveMessageTurnState(latestAssistant, messageTurnState)?.kind;
+          : resolveMessageTurnState(anchor, messageTurnState)?.kind) ??
+        (latestAssistant === undefined
+          ? undefined
+          : resolveMessageTurnState(latestAssistant, messageTurnState)?.kind);
       return outcome === 'stopped' || outcome === 'failed' ? outcome : undefined;
     },
     getConversationIdentity: () => conversationId,

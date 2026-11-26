@@ -7,7 +7,7 @@
  */
 
 import type { Message, ToolCallPair } from '../conversation-model.ts';
-import { toolOnlyTurnAnchor } from '../message/turn-outcome.ts';
+import { toolEndedTurnAnchor } from '../message/turn-outcome.ts';
 import {
   CINDER_ARTIFACT_METADATA_KEY,
   CINDER_NOTES_METADATA_KEY,
@@ -127,7 +127,7 @@ export interface ChatRenderRowOptions {
   deferOutcome?: (message: Message) => boolean;
   /**
    * Whether the outcome of a last turn with no assistant message (its run only called tools) is
-   * drawn: asked of the anchor `toolOnlyTurnAnchor` makes for the turn. When it is, the outcome is
+   * drawn: asked of the anchor `toolEndedTurnAnchor` makes for the turn. When it is, the outcome is
    * the last row, after the turn's steps. Absent, none is drawn.
    */
   turnEndOutcome?: (anchor: Message) => boolean;
@@ -558,7 +558,9 @@ export function useChatMessageGroups(
       pendingToolCallIds: actionRequiredToolCallIds,
       ...renderOptions,
       turnEndAnchor:
-        renderOptions?.turnEndOutcome === undefined ? undefined : toolOnlyTurnAnchor(getMessages()),
+        renderOptions?.turnEndOutcome === undefined
+          ? undefined
+          : toolEndedTurnAnchor(getMessages()),
       ungroupedToolCallIds: new Set([
         ...(renderOptions?.ungroupedToolCallIds ?? []),
         ...(options.getAnsweredToolCallIds?.() ?? []),

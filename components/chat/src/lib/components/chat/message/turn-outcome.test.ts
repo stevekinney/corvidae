@@ -142,11 +142,12 @@ describe('the stop line the run left', () => {
 });
 
 describe('an answer that was never written (R6)', () => {
-  test('is the empty state of a turn that ended on a tool, drawn on its last assistant message', () => {
+  test('is the empty state of a turn that ended on a tool, drawn after its steps on the turn’s anchor', () => {
     const conversation = endedOnATool();
     const outcome = resolveTurnOutcome(conversation, IDLE);
     expect(outcome.state).toEqual({ kind: 'empty' });
-    expect(outcome.assistantId).toBe(conversation.ids[1]);
+    expect(outcome.assistantId).toBe(`${conversation.ids.at(-1)!}:outcome`);
+    expect(outcome.rowId).toBe(conversation.ids.at(-1));
   });
 
   test('is not an outcome while the run goes, a decision waits, or the turn ended on a written answer', () => {

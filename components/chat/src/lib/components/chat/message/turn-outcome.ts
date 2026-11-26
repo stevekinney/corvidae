@@ -58,9 +58,13 @@ export type TurnOutcome = {
   readonly conversation: ConversationHistory;
   /** The turn's stop, when its run stopped or failed. */
   readonly stop: TurnStop | undefined;
-  /** The assistant message the outcome is drawn on: the last of the last turn. */
+  /**
+   * The message the outcome is drawn on: the last assistant message of the last turn, or the turn's
+   * anchor after its steps when it ends on them (a dropped stream stays on the assistant message,
+   * whose partial text it mutes).
+   */
   readonly assistantId: string | undefined;
-  /** The row of the conversation the outcome belongs to: the assistant message itself. */
+  /** The row of the conversation the outcome belongs to: that assistant message, or the turn's last row. */
   readonly rowId: string | undefined;
   /** The state of that message, and `undefined` while the turn is simply writing or finished. */
   readonly state: ChatTurnState | undefined;
@@ -81,17 +85,17 @@ function lastTurnRows(rows: readonly Message[]): Message[] {
 }
 
 /**
- * The message a turn's outcome is drawn on when the turn has no assistant message, because its run
- * only called tools (RunStates R3 to R6 supersede the rail footnote and the stop note that stood
- * there). It is no row of the conversation: it stands after the turn's last row, with that row's
- * time, so the outcome reads after the steps. `undefined` for a turn that has an assistant message
- * or no tool call.
+ * The message a turn's outcome is drawn on when the turn ends on its steps (RunStates R3 to R6
+ * supersede the rail footnote and the stop note that stood there): the run only called tools, or
+ * narrated and then called them, and wrote nothing after. It is no row of the conversation: it
+ * stands after the turn's last row, with that row's time, so the turn reads as its text, its
+ * steps, then how it ended. `undefined` for a turn that ends on text, or has no tool call.
  */
-export function toolOnlyTurnAnchor(rows: readonly Message[]): Message | undefined {
+export function toolEndedTurnAnchor(rows: readonly Message[]): Message | undefined {
   const turn = lastTurnRows(rows);
   const last = turn.at(-1);
   if (last === undefined) return undefined;
-  if (turn.some((row) => row.role === 'assistant')) return undefined;
+  if (last.role !== 'tool-call' && last.role !== 'tool-result') return undefined;
   if (!turn.some((row) => row.role === 'tool-call')) return undefined;
   return {
     id: `${last.id}:outcome`,
@@ -233,17 +237,23 @@ export function resolveTurnOutcome(
 ): TurnOutcome {
   const stop = facts.running ? undefined : lastTurnStop(conversation);
   const shown = withoutStopLine(conversation, stop);
-  const anchor = toolOnlyTurnAnchor(shown.ids.flatMap((id) => rowOf(shown, id) ?? []));
+  const rows = shown.ids.flatMap((id) => rowOf(shown, id) ?? []);
+  const anchor = toolEndedTurnAnchor(rows);
   const assistantId = anchor?.id ?? lastAssistantId(shown);
   const rowId = anchor === undefined ? assistantId : anchoredRowId(anchor);
-  if (facts.reconnect?.runDropped === true)
+  if (facts.reconnect?.runDropped === true) {
+    // A dropped stream mutes the partial text of the turn's own assistant message; only a turn with
+    // none draws it on the anchor.
+    const own = lastTurnRows(rows).some((row) => row.role === 'assistant');
+    const reconnecting = anchor !== undefined && !own;
     return {
       conversation: shown,
       stop,
-      assistantId,
-      rowId,
+      assistantId: reconnecting ? anchor.id : lastAssistantId(shown),
+      rowId: reconnecting ? anchoredRowId(anchor) : lastAssistantId(shown),
       state: reconnectingState(facts.reconnect, facts.now),
     };
+  }
   if (stop !== undefined)
     return { conversation: shown, stop, assistantId, rowId, state: stop.state };
   const empty = !facts.running && facts.holding !== true && endsWithoutAnswer(shown);

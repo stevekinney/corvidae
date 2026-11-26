@@ -1,6 +1,6 @@
 import { isStreamingMessage } from '../builders.ts';
 import type { ConversationHistory, Message, ToolResult } from '../conversation-model.ts';
-import { toolOnlyTurnAnchor } from '../message/turn-outcome.ts';
+import { toolEndedTurnAnchor } from '../message/turn-outcome.ts';
 import type { ChatTurnState } from '../message/turn-state.ts';
 import { resolveMessageTurnState } from '../message/turn-state.ts';
 import {
@@ -82,7 +82,7 @@ export function useChatTranscript(options: UseChatTranscriptOptions): UseChatTra
   const turnReconnects = $derived.by(() => {
     const activeMessageId = options.getStreamingMessageId() ?? messages.at(-1)?.id;
     const activeMessage = messages.find((message) => message.id === activeMessageId);
-    const anchor = toolOnlyTurnAnchor(messages);
+    const anchor = toolEndedTurnAnchor(messages);
     return (
       (activeMessage !== undefined &&
         resolveMessageTurnState(activeMessage, options.getMessageTurnState?.())?.kind ===

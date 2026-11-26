@@ -21,7 +21,7 @@ import type { ConversationHistory } from '../conversation-model.ts';
 import { CINDER_NOTES_METADATA_KEY, resolveMessageNotes } from '../utilities/index.ts';
 import {
   resolveTurnOutcome,
-  toolOnlyTurnAnchor,
+  toolEndedTurnAnchor,
   turnStateOf,
   type TurnOutcomeFacts,
 } from './turn-outcome.ts';
@@ -110,7 +110,7 @@ describe('a turn with no assistant message', () => {
       test(`${shape}, ${name}: one outcome, drawn after the steps on the turn's anchor`, () => {
         const conversation = outcome.prepare(turnOf(shape));
         const rows = conversation.ids.map((id) => conversation.messages[id]!);
-        const anchor = toolOnlyTurnAnchor(rows);
+        const anchor = toolEndedTurnAnchor(rows);
         expect(anchor?.role).toBe('assistant');
         // The anchor stands for the turn's last row, so it follows the steps.
         expect(anchor?.id).toBe(`${conversation.ids.at(-1)!}:outcome`);
@@ -144,7 +144,7 @@ describe('a turn with no assistant message', () => {
 
   test('has no anchor when the turn has an assistant message, no tool call, or a call still waiting', () => {
     const asked = appendUserMessage(createConversationHistory({ id: 'c' }), 'Hello');
-    expect(toolOnlyTurnAnchor([asked.messages[asked.ids[0]!]!])).toBeUndefined();
+    expect(toolEndedTurnAnchor([asked.messages[asked.ids[0]!]!])).toBeUndefined();
     const called = appendToolCall(asked, { id: 'c1', name: 'lookup', arguments: {} });
     const parked = appendToolResult(called, {
       callId: 'c1',

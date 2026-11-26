@@ -927,7 +927,13 @@ describe('the last turn’s outcome and its recovery commands (COR-2725)', () =>
         },
       ],
     },
-    { id: 'run-1:step:0:result:call-1', role: 'tool', toolCallId: 'call-1', content: 'Shipped' },
+    {
+      id: 'run-1:step:0:result:call-1',
+      role: 'tool',
+      toolCallId: 'call-1',
+      content: 'Shipped',
+      metadata: { 'conversationalist:createdAt': '2026-11-02T16:34:02.000Z' },
+    },
   ];
   const finishedRun = (): unknown => ({
     tasks: tasksOf('ended-on-tool-call').map((task) => ({ ...task, contextId: 'session-1' })),
@@ -949,5 +955,37 @@ describe('the last turn’s outcome and its recovery commands (COR-2725)', () =>
     ).toBeNull();
     expect(container.textContent).not.toContain('Run finished, no reply');
     expect(container.querySelectorAll('.chat-turn-outcome')).toHaveLength(1);
+    // The turn reads as its text, its steps, then how it ended.
+    const rail = container.querySelector('[data-tool-group]');
+    expect(rail).not.toBeNull();
+    expect(
+      Boolean(rail!.compareDocumentPosition(outcome!) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+  });
+
+  test('Discard on a turn of only tool calls the person stopped asks the Bureau to discard that run', async () => {
+    const served = serve(ONLY_TOOLS('finished'), {
+      answers: {
+        'bureau.tasks.list': stoppedRun('canceled'),
+        'bureau.contexts.discardturn': (params) => ({
+          contextId: 'session-1',
+          runId: params['runId'],
+          removed: 1,
+          revision: 4,
+        }),
+      },
+    });
+    const { findByRole } = mount();
+
+    await fireEvent.click(await findByRole('button', { name: 'Discard' }));
+
+    await waitFor(() =>
+      expect(served.calls.some((call) => call.method === 'bureau.contexts.discardturn')).toBe(true),
+    );
+    const call = served.calls.find((entry) => entry.method === 'bureau.contexts.discardturn');
+    expect(call?.params).toMatchObject({
+      contextId: 'session-1',
+      runId: 'run-states-ended-on-tool',
+    });
   });
 });
