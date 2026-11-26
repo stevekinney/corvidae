@@ -1,83 +1,55 @@
 /// <reference lib="dom" />
-import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+/**
+ * COR-2770: the phone form is chosen in CSS, not in script. Both forms are in the markup at every
+ * viewport (the whole trail and the back link to the parent), and a viewport query in
+ * `breadcrumbs.css` shows one of them. happy-dom evaluates no viewport query, so these tests pin the
+ * markup the component renders and the declarations the stylesheet holds; the browser checks in
+ * `scripts/browser-fixtures/tests/breadcrumbs-first-paint.playwright.ts` measure what paints.
+ */
+import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
+import {
+  atRuleDeclarationsFor,
+  declarationsFor,
+} from '@lostgradient/component-tooling/test/css.ts';
 import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
-
-// A controllable `matchMedia`, installed before the first query is read, so a test can put the
-// viewport in its phone form and back.
-type Listener = (event: Event) => void;
-const listeners = new Set<Listener>();
-let phone = false;
-const originalMatchMedia = Object.getOwnPropertyDescriptor(window, 'matchMedia');
-Object.defineProperty(window, 'matchMedia', {
-  configurable: true,
-  value: (query: string) => ({
-    media: query,
-    get matches() {
-      return phone;
-    },
-    addEventListener: (_type: string, listener: Listener) => listeners.add(listener),
-    removeEventListener: (_type: string, listener: Listener) => listeners.delete(listener),
-    addListener: (listener: Listener) => listeners.add(listener),
-    removeListener: (listener: Listener) => listeners.delete(listener),
-  }),
-});
-
-afterAll(() => {
-  if (originalMatchMedia) Object.defineProperty(window, 'matchMedia', originalMatchMedia);
-  else Reflect.deleteProperty(window, 'matchMedia');
-});
 
 const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
 const { createRawSnippet, flushSync } = await import('svelte');
 const { default: Breadcrumbs } = await import('./breadcrumbs.svelte');
 
 const stylesheet = readFileSync(new URL('./breadcrumbs.css', import.meta.url), 'utf8');
-
-function setPhone(next: boolean) {
-  phone = next;
-  for (const listener of listeners) listener(new Event('change'));
-  flushSync();
-}
+const PHONE_QUERY = '(width < 640px)';
+const PHONE = ".cinder-breadcrumbs[data-cinder-phone-below='640px']";
 
 afterEach(() => {
   cleanup();
-  setPhone(false);
 });
 
 const trail = [{ label: 'Runs', href: '/runs' }, { label: 'Look up order 4472' }];
 
 describe('Breadcrumbs phone form', () => {
-  test('shows the whole trail on a wide viewport', () => {
-    const { container } = render(Breadcrumbs, { items: trail });
-
-    expect(container.querySelector('.cinder-breadcrumbs__back')).toBeNull();
-    expect(container.querySelectorAll('li')).toHaveLength(2);
-    expect(container.querySelector('nav')?.hasAttribute('data-cinder-collapsed')).toBe(false);
-  });
-
-  test('collapses to a back link labelled with the parent, then the current page', () => {
-    setPhone(true);
+  test('renders both forms: the whole trail and a back link labelled with the parent', () => {
     const { container } = render(Breadcrumbs, { items: trail });
 
     const back = container.querySelector<HTMLAnchorElement>('.cinder-breadcrumbs__back');
     expect(back?.getAttribute('href')).toBe('/runs');
     expect(back?.getAttribute('aria-label')).toBe('Back to Runs');
     expect(back?.textContent?.trim()).toBe('Runs');
-    const items = container.querySelectorAll('li');
-    expect(items).toHaveLength(1);
-    expect(items[0]?.textContent?.trim()).toBe('Look up order 4472');
-    expect(container.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe(
-      'Look up order 4472',
+    expect(container.querySelectorAll('li')).toHaveLength(2);
+    expect(container.querySelector('a.cinder-breadcrumbs__link')?.getAttribute('href')).toBe(
+      '/runs',
     );
-    expect(container.querySelector('.cinder-breadcrumbs__separator')).toBeNull();
+    expect(container.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    const nav = container.querySelector('nav');
+    expect(nav?.getAttribute('data-cinder-phone-below')).toBe('640px');
+    expect(nav?.hasAttribute('data-cinder-collapsed')).toBe(false);
   });
 
-  test('keeps only the parent and the leaf of a deeper trail', () => {
-    setPhone(true);
+  test('the back link of a deeper trail goes to the parent, and every ancestor stays in the list', () => {
     const { container } = render(Breadcrumbs, {
       items: [
         { label: 'Home', href: '/' },
@@ -89,20 +61,31 @@ describe('Breadcrumbs phone form', () => {
     expect(container.querySelector('.cinder-breadcrumbs__back')?.getAttribute('href')).toBe(
       '/goals',
     );
-    expect(container.querySelectorAll('li')).toHaveLength(1);
-    expect(container.textContent).not.toContain('Home');
+    expect(
+      [...container.querySelectorAll('a.cinder-breadcrumbs__link')].map((link) =>
+        link.getAttribute('href'),
+      ),
+    ).toEqual(['/', '/goals']);
   });
 
   test('a trail at a section root shows only the current page', () => {
-    setPhone(true);
     const { container } = render(Breadcrumbs, { items: [{ label: 'Runs' }] });
 
     expect(container.querySelector('.cinder-breadcrumbs__back')).toBeNull();
     expect(container.querySelectorAll('li')).toHaveLength(1);
+    expect(container.querySelector('[aria-current="page"]')?.textContent).toBe('Runs');
+  });
+
+  test('a parent without an href has no back link', () => {
+    const { container } = render(Breadcrumbs, {
+      items: [{ label: 'Runs' }, { label: 'Look up order 4472' }],
+    });
+
+    expect(container.querySelector('.cinder-breadcrumbs__back')).toBeNull();
+    expect(container.querySelectorAll('li')).toHaveLength(2);
   });
 
   test('backLabel names the back link and replaces {label}', () => {
-    setPhone(true);
     const { container } = render(Breadcrumbs, { items: trail, backLabel: 'Return to {label}' });
 
     expect(container.querySelector('.cinder-breadcrumbs__back')?.getAttribute('aria-label')).toBe(
@@ -110,67 +93,115 @@ describe('Breadcrumbs phone form', () => {
     );
   });
 
-  test('collapseBelow={false} always shows the whole trail', () => {
-    setPhone(true);
+  test('collapseBelow={false} renders only the whole trail', () => {
     const { container } = render(Breadcrumbs, { items: trail, collapseBelow: false });
 
     expect(container.querySelector('.cinder-breadcrumbs__back')).toBeNull();
     expect(container.querySelectorAll('li')).toHaveLength(2);
+    expect(container.querySelector('nav')?.hasAttribute('data-cinder-phone-below')).toBe(false);
+    expect(container.querySelector('style')).toBeNull();
   });
 
-  test('follows the viewport as it crosses the breakpoint', () => {
+  test('the default length adds no style of its own: breadcrumbs.css holds its rules', () => {
     const { container } = render(Breadcrumbs, { items: trail });
-    expect(container.querySelector('.cinder-breadcrumbs__back')).toBeNull();
 
-    setPhone(true);
-    expect(container.querySelector('.cinder-breadcrumbs__back')).not.toBeNull();
+    expect(container.querySelector('style')).toBeNull();
+  });
 
-    setPhone(false);
-    expect(container.querySelector('.cinder-breadcrumbs__back')).toBeNull();
-    expect(container.querySelectorAll('li')).toHaveLength(2);
+  test('another length brings the phone form for that length in a style beside the trail', () => {
+    const { container } = render(Breadcrumbs, { items: trail, collapseBelow: '48rem' });
+
+    expect(container.querySelector('nav')?.getAttribute('data-cinder-phone-below')).toBe('48rem');
+    const style = container.querySelector('nav > style')?.textContent ?? '';
+    expect(style).toContain('@media not all and (min-width: 48rem)');
+    expect(style).toContain(
+      '.cinder-breadcrumbs[data-cinder-phone-below="48rem"] .cinder-breadcrumbs__back { display: inline-flex; }',
+    );
+    expect(style).not.toContain('640px');
+    expect(container.querySelector('.cinder-breadcrumbs__back')?.getAttribute('href')).toBe(
+      '/runs',
+    );
   });
 
   test('rejects a breakpoint that is not a CSS length', () => {
     expect(() => render(Breadcrumbs, { items: trail, collapseBelow: 'phone' })).toThrow(
-      /collapseBelow/,
+      'Breadcrumbs collapseBelow must be a CSS length such as "640px", or false.',
     );
   });
 
-  test('the back link is a touch target and the leaf truncates first', () => {
-    expect(stylesheet).toMatch(
-      /\.cinder-breadcrumbs__back::after\s*\{[^}]*block-size:\s*var\(--cinder-touch-target-min\)/,
+  test('wider than 640px the back link is display: none, so only the whole trail shows', () => {
+    expect(declarationsFor(stylesheet, '.cinder-breadcrumbs__back').get('display')).toBe('none');
+  });
+
+  test('narrower than 640px the ancestors are display: none and the back link and the current page show', () => {
+    expect(
+      atRuleDeclarationsFor(
+        stylesheet,
+        'media',
+        PHONE_QUERY,
+        `${PHONE} .cinder-breadcrumbs__item:not(:last-child)`,
+      ).get('display'),
+    ).toBe('none');
+    expect(
+      atRuleDeclarationsFor(
+        stylesheet,
+        'media',
+        PHONE_QUERY,
+        `${PHONE} .cinder-breadcrumbs__back`,
+      ).get('display'),
+    ).toBe('inline-flex');
+    expect(atRuleDeclarationsFor(stylesheet, 'media', PHONE_QUERY, PHONE).get('display')).toBe(
+      'flex',
     );
-    expect(stylesheet).toMatch(
-      /\[data-cinder-collapsed\]\s+\.cinder-breadcrumbs__list\s*\{[^}]*flex:\s*1 100000 auto/,
-    );
+  });
+
+  test('the phone form is keyed to the trail that asks for 640px, and no rule outside the query hides an ancestor', () => {
+    for (const selector of [
+      PHONE,
+      `${PHONE} .cinder-breadcrumbs__back`,
+      `${PHONE} .cinder-breadcrumbs__list`,
+      `${PHONE} .cinder-breadcrumbs__current`,
+    ]) {
+      expect(
+        atRuleDeclarationsFor(stylesheet, 'media', PHONE_QUERY, selector).size,
+      ).toBeGreaterThan(0);
+    }
+    const outsideQuery = stylesheet.slice(0, stylesheet.indexOf(`@media ${PHONE_QUERY}`));
+    expect(outsideQuery).not.toContain('data-cinder-phone-below');
+  });
+
+  test('the back link has a 44px hit area that takes no layout space', () => {
+    const hit = declarationsFor(stylesheet, '.cinder-breadcrumbs__back::after');
+    expect(hit.get('block-size')).toBe('var(--cinder-touch-target-min)');
+    expect(hit.get('position')).toBe('absolute');
   });
 
   test('the back link is not capped, so the current page truncates before the parent does', () => {
-    const rule = /\.cinder-breadcrumbs__back\s*\{([^}]*)\}/.exec(stylesheet)?.[1] ?? '';
-    expect(rule).toMatch(/flex:\s*0 1 auto/);
-    expect(rule).not.toMatch(/max-inline-size/);
+    const rule = declarationsFor(stylesheet, '.cinder-breadcrumbs__back');
+    expect(rule.get('flex')).toBe('0 1 auto');
+    expect(rule.has('max-inline-size')).toBe(false);
   });
 
   test('on a tablet trail the current crumb shrinks before any ancestor does', () => {
-    const shrink = (selector: RegExp): number =>
-      Number(
-        new RegExp(`${selector.source}\\s*\\{[^}]*flex-shrink:\\s*(\\d+)`).exec(stylesheet)?.[1],
-      );
-    expect(shrink(/\.cinder-breadcrumbs__item:last-child/)).toBeGreaterThan(
-      shrink(/\.cinder-breadcrumbs__item/),
+    const shrink = (selector: string): number =>
+      Number(declarationsFor(stylesheet, selector).get('flex-shrink'));
+    expect(shrink('.cinder-breadcrumbs__item:last-child')).toBeGreaterThan(
+      shrink('.cinder-breadcrumbs__item'),
     );
   });
 
   test('the current crumb outweighs an ancestor so far that no fraction of a pixel reaches it', () => {
     // A ratio of 100 to 1 still shrinks a four-character "Runs" by a third of a pixel when the
     // current title is long, which is enough for its ellipsis to engage on a label that fits ("Ru…").
-    const listFactor = Number(
-      /\[data-cinder-collapsed\]\s+\.cinder-breadcrumbs__list\s*\{[^}]*flex:\s*1 (\d+) auto/.exec(
-        stylesheet,
-      )?.[1],
+    const list = atRuleDeclarationsFor(
+      stylesheet,
+      'media',
+      PHONE_QUERY,
+      `${PHONE} .cinder-breadcrumbs__list`,
     );
+    const listFactor = Number(/^1 (\d+) auto$/.exec(list.get('flex') ?? '')?.[1]);
     const leafFactor = Number(
-      /\.cinder-breadcrumbs__item:last-child\s*\{[^}]*flex-shrink:\s*(\d+)/.exec(stylesheet)?.[1],
+      declarationsFor(stylesheet, '.cinder-breadcrumbs__item:last-child').get('flex-shrink'),
     );
     expect(listFactor).toBeGreaterThanOrEqual(100_000);
     expect(leafFactor).toBeGreaterThanOrEqual(100_000);
@@ -237,8 +268,7 @@ describe('Breadcrumbs current page popover', () => {
     );
   });
 
-  test('keeps the popover trigger in the phone form', () => {
-    setPhone(true);
+  test('keeps the popover trigger beside the back link, for the phone form', () => {
     const { container } = render(Breadcrumbs, { items: longTrail });
 
     expect(container.querySelector('.cinder-breadcrumbs__back')?.getAttribute('href')).toBe(
