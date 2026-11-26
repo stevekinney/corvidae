@@ -22,6 +22,7 @@
     "test:browser-consent": "bun ../../scripts/bun-test.ts ../credentials/src/browser-consent.integration.test.ts ../storage-postgres/src/postgres.integration.test.ts ../storage/src/sql/postgres-conditional-batch-retry.test.ts"
   },
   "dependencies": {
+    "@lostgradient/cryptography": "workspace:*",
     "@lostgradient/storage": "workspace:*",
     "@lostgradient/storage-postgres": "workspace:*",
     "pg": "catalog:",

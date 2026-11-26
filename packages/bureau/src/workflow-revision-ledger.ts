@@ -31,8 +31,7 @@
  * @module workflow-revision-ledger
  */
 
-import { createHash } from 'node:crypto';
-
+import { sha256HexSync } from '@lostgradient/cryptography';
 import {
   type ConditionalTextValueStore,
   MemoryStorage,
@@ -171,7 +170,7 @@ function same(left: unknown, right: unknown): boolean {
 
 /** The SHA-256 of a version's content, hex: equal for two files that hold the same version. */
 export function revisionContentDigest(content: WorkflowRevisionContent): string {
-  return createHash('sha256').update(canonicalJson(content)).digest('hex');
+  return sha256HexSync(canonicalJson(content));
 }
 
 function titleOf(step: WorkflowFileStep): string | null {

@@ -10,7 +10,7 @@
  * @module definition-source
  */
 
-import { createHash } from 'node:crypto';
+import { sha256BytesHexSync } from '@lostgradient/cryptography';
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { Tool } from 'armorer';
@@ -110,7 +110,7 @@ export interface DefinitionSource {
 
 /** The SHA-256 of a definition's bytes, as lowercase hex: the `hash` of a {@link DefinitionEntry}. */
 export function hashDefinitionBytes(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex');
+  return sha256BytesHexSync(bytes);
 }
 
 /** A write or delete that found the definition in a different state than the caller expected. */

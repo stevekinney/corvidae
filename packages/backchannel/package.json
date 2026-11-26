@@ -21,6 +21,7 @@
     "test:slow": "bun ../../scripts/bun-test-selected.ts .slow.test.ts .integration.test.ts"
   },
   "dependencies": {
+    "@lostgradient/cryptography": "workspace:*",
     "@lostgradient/credentials": "workspace:*",
     "zod": "catalog:"
   },
