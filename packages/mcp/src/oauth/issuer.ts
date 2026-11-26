@@ -3,7 +3,10 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import { z } from 'zod';
 import type { VerifiedGrant } from '../http.ts';
 import { OAuthStore, type OAuthClient } from '../oauth-store.ts';
-import { fetchClientIdMetadataDocument } from './client-metadata-documents.ts';
+import {
+  fetchClientIdMetadataDocument,
+  type ClientMetadataDocumentFetchDependencies,
+} from './client-metadata-documents.ts';
 import { isValidClientName, isValidRedirectUri } from './security-utilities.ts';
 
 type Identity = {
@@ -29,6 +32,11 @@ type Options = {
     }): Promise<{ delegableScopes: string[] } | null>;
   };
   notifyGrantRevoked?: (grantId: string) => Promise<void>;
+  /**
+   * Dependencies for resolving and fetching a URL-form client ID metadata document.
+   * Workers should supply their DNS resolver here because they do not expose a local resolver.
+   */
+  clientMetadataDocumentFetch?: ClientMetadataDocumentFetchDependencies;
 };
 const random = () => randomBytes(32).toString('base64url');
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -88,6 +96,7 @@ type HostedProfileOptions<T extends { delegableScopes: string[] }> = {
   defaultScopes: string[];
   scopeDescriptions: Record<string, string>;
   notifyGrantRevoked?: (grantId: string) => Promise<void>;
+  clientMetadataDocumentFetch?: ClientMetadataDocumentFetchDependencies;
   subscribeGrantRevocation?: (grantId: string, listener: () => void) => () => void;
 };
 
@@ -114,6 +123,9 @@ export function hostedOAuth<T extends { delegableScopes: string[] }>(
     stores: configuration.stores,
     defaultScopes: [...configuration.defaultScopes],
     scopeDescriptions: { ...configuration.scopeDescriptions },
+    ...(configuration.clientMetadataDocumentFetch === undefined
+      ? {}
+      : { clientMetadataDocumentFetch: { ...configuration.clientMetadataDocumentFetch } }),
     ...(configuration.notifyGrantRevoked === undefined
       ? {}
       : { notifyGrantRevoked: configuration.notifyGrantRevoked.bind(configuration) }),
@@ -152,6 +164,9 @@ export function hostedOAuth<T extends { delegableScopes: string[] }>(
         scopeDescriptions: profile.scopeDescriptions,
         store: profile.stores,
         identity: profile.identity,
+        ...(profile.clientMetadataDocumentFetch === undefined
+          ? {}
+          : { clientMetadataDocumentFetch: profile.clientMetadataDocumentFetch }),
         ...(profile.notifyGrantRevoked === undefined
           ? {}
           : { notifyGrantRevoked: profile.notifyGrantRevoked }),
@@ -209,7 +224,7 @@ function createHostedOAuth(configuration: Options) {
   const clientFor = async (id: string): Promise<OAuthClient | null> => {
     const saved = await options.store.getClient(id);
     if (saved) return saved.issuer === options.issuer ? saved : null;
-    const document = await fetchClientIdMetadataDocument(id);
+    const document = await fetchClientIdMetadataDocument(id, options.clientMetadataDocumentFetch);
     return document
       ? {
           issuer: options.issuer,
