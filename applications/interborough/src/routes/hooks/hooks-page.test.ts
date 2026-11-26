@@ -1487,6 +1487,11 @@ describe('a saved hook’s header', () => {
     await view.findByRole('heading', { level: 1, name: 'Hooks' });
     release();
     await waitFor(() => expect(served.hooks[0]?.enabled).toBe(false));
+    await waitFor(() =>
+      expect(
+        within(row(view.container, 'alpha')!).getByRole('switch').getAttribute('aria-checked'),
+      ).toBe('false'),
+    );
     expect(
       view.queryByText(HOOKS_COPY.editor.toggled.off('Page on-call when a run fails')),
     ).toBeNull();

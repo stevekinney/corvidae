@@ -435,7 +435,7 @@ const defaults = HOOKS_COPY.defaultHook;
 const standing = HOOKS_COPY.standing;
 
 type Fault = { readonly status: number; readonly message: string; readonly data?: object };
-type Answer = (params: Record<string, unknown>) => unknown | Fault;
+type Answer = (params: Record<string, unknown>) => unknown;
 type Call = { readonly method: string; readonly params: Record<string, unknown> };
 
 function isFault(answer: unknown): answer is Fault {
@@ -1020,13 +1020,15 @@ test('[hook-editor-switch-undo] /hooks/:hook: the On switch saves immediately, k
     name: 'Page on-call when a run fails',
     declaredBy: null,
   });
+  const hooks = [hook];
   let saved = hook;
-  const calls = await openHooks(page, '/hooks/on-call', [hook], {
+  const calls = await openHooks(page, '/hooks/on-call', hooks, {
     'bureau.hooks.get': () => saved,
     'bureau.hooks.update': (params) => {
       const enabled = params['enabled'];
       if (typeof enabled !== 'boolean') throw new Error('The switch write must carry enabled.');
       saved = { ...saved, enabled, revision: Number(params['expectedRevision']) + 1 };
+      hooks[0] = saved;
       return saved;
     },
   });
@@ -1075,13 +1077,58 @@ test('[hook-editor-switch-undo] /hooks/:hook: the On switch saves immediately, k
     .click();
   await expect(page).toHaveURL(/\/hooks$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Hooks' })).toBeVisible();
-  // Negative witness: ToastHost survives the SPA route leave, since the editor drops its toast ID.
-  await expect(toast).toBeVisible();
+  await expect(toast).toHaveCount(0);
+  await expect(page.locator('li[data-hook="on-call"]').getByRole('switch')).toHaveAttribute(
+    'aria-checked',
+    'false',
+  );
   await captureForDesignReview(page, {
     route: '/hooks',
     state: 'hook-editor-switch-undo',
     source: SOURCE,
   });
+});
+
+// PageHooks 85j: a switch response is durable after navigation, but its page-local Undo is not.
+test('[hook-editor-switch-leave-late-success] /hooks/:hook: a switch write that answers after the editor is left refreshes the list without an old Undo', async ({
+  page,
+}) => {
+  const hook = hookRecord('late-switch', {
+    name: 'Page on-call when a run fails',
+    declaredBy: null,
+  });
+  const hooks = [hook];
+  let saved = hook;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const calls = await openHooks(page, '/hooks/late-switch', hooks, {
+    'bureau.hooks.get': () => saved,
+    'bureau.hooks.update': async (params) => {
+      await held;
+      const enabled = params['enabled'];
+      if (typeof enabled !== 'boolean') throw new Error('The switch write must carry enabled.');
+      saved = { ...saved, enabled, revision: Number(params['expectedRevision']) + 1 };
+      hooks[0] = saved;
+      return saved;
+    },
+  });
+  await page.getByTestId('hook-header').getByRole('switch').click();
+  await expect
+    .poll(() => calls.filter((call) => call.method === 'bureau.hooks.update'))
+    .toHaveLength(1);
+
+  await page
+    .getByRole('navigation', { name: 'Breadcrumb' })
+    .getByRole('link', { name: 'Hooks', exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/hooks$/);
+  const listSwitch = page.locator('li[data-hook="late-switch"]').getByRole('switch');
+  await expect(listSwitch).toHaveAttribute('aria-checked', 'true');
+  release();
+  await expect(listSwitch).toHaveAttribute('aria-checked', 'false');
+  await expect(page.locator('.cinder-toast')).toHaveCount(0);
 });
 
 // PageHooks 86b: the slow delivery-log state is timed from its own request, while the form is ready.

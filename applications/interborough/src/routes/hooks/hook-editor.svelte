@@ -681,6 +681,11 @@
    */
   function adopt(before: Hook, saved: Hook): void {
     if (loadedRevision === before.revision) loadedRevision = saved.revision;
+    reconcileSavedHook(saved);
+  }
+
+  /** Reconciles a durable write even when the editor that started it has since been left. */
+  function reconcileSavedHook(saved: Hook): void {
     queryClient.setQueryData(queryKeys.hooks.detail(hookId), saved);
     void queryClient.invalidateQueries({ queryKey: ['hooks'] });
   }
@@ -691,18 +696,17 @@
     void queryClient.invalidateQueries({ queryKey: queryKeys.hooks.detail(hookId) });
   }
 
-  /** The one Undo that belongs to this editor, rather than a toast another page showed. */
-  let toggleUndoToast: string | undefined;
+  /** Every Undo this editor showed, rather than a toast another page showed. */
+  let toggleUndoToasts: string[] = [];
   let editorActive = true;
-  function dismissToggleUndo(): void {
-    const toast = toggleUndoToast;
-    toggleUndoToast = undefined;
-    if (toast !== undefined) dismissToast(toast);
+  function dismissToggleUndos(): void {
+    for (const toast of toggleUndoToasts) dismissToast(toast);
+    toggleUndoToasts = [];
   }
   // The outlet keys hook pages by their address, so destruction is leaving or changing this hook.
   onDestroy(() => {
     editorActive = false;
-    dismissToggleUndo();
+    dismissToggleUndos();
   });
 
   const switching = createMutation(() => ({
@@ -710,7 +714,10 @@
       updateHook(input.hook.id, input.hook.revision, { enabled: input.enabled }),
     onSuccess: (saved, input) => {
       // A write can answer after this editor's route was left. Its old Undo belongs nowhere then.
-      if (!editorActive) return;
+      if (!editorActive) {
+        void queryClient.invalidateQueries({ queryKey: ['hooks'] });
+        return;
+      }
       adopt(input.hook, saved);
       if (input.undoing) return;
       const name = editorTitle(
@@ -718,13 +725,21 @@
         anyScopeOf(scopeKindsFor(saved.events, kinds.data ?? [])),
         titleOfPlugin,
       );
-      dismissToggleUndo();
-      toggleUndoToast = showToast(saved.enabled ? copy.toggled.on(name) : copy.toggled.off(name), {
+      let toast: string | undefined;
+      toast = showToast(saved.enabled ? copy.toggled.on(name) : copy.toggled.off(name), {
         undo: () => switching.mutate({ hook: saved, enabled: input.hook.enabled, undoing: true }),
+        onClose: () => {
+          if (toast !== undefined)
+            toggleUndoToasts = toggleUndoToasts.filter((candidate) => candidate !== toast);
+        },
       });
+      if (toast !== undefined) toggleUndoToasts = [...toggleUndoToasts, toast];
     },
-    onError: (error: unknown) => {
-      if (!editorActive) return;
+    onError: (error: unknown, input) => {
+      if (!editorActive) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.hooks.detail(input.hook.id) });
+        return;
+      }
       if (agentFaultOf(error).kind === 'stale') {
         refuseStale();
         return;
