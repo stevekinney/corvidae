@@ -113,6 +113,7 @@ describe('GroupedList', () => {
       const row = declarationsFor(css, '.cinder-grouped-list__more-row');
       expect(row.get('margin-block-start')).toBe('var(--cinder-space-2)');
       expect(row.get('padding-inline')).toBe('var(--cinder-space-4)');
+      expect(row.get('display')).toBe('flex');
     });
   });
 });

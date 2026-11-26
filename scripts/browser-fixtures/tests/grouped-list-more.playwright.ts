@@ -40,7 +40,7 @@ async function measure(page: import('@playwright/test').Page, testId: string): P
     return {
       groupBottom: box('.cinder-grouped-list__group').bottom,
       footerBottom: footer === null ? null : footer.getBoundingClientRect().bottom,
-      linkTop: link.top,
+      linkTop: linkText.top,
       linkLeft: linkText.left,
       titleLeft: textBox('.cinder-grouped-list-item__title').left,
       centerX: link.left + link.width / 2,
