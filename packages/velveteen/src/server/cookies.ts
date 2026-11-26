@@ -108,7 +108,8 @@ class RequestCookies implements Iterable<[string, string]> {
   set(name: string, value: string) {
     const first = this.#cookies.findIndex((cookie) => cookie.name === name);
     this.#cookies = this.#cookies.filter((cookie) => cookie.name !== name);
-    this.#cookies.splice(first < 0 ? this.#cookies.length : first, 0, {
+    if (value === "") return;
+    this.#cookies.splice(first < 0 ? 0 : first, 0, {
       name,
       value,
     });
@@ -198,6 +199,8 @@ export function createCookie(
 ): ServerCookie {
   if (typeof options.path !== "string")
     throw new TypeError("Cookies require an explicit path");
+  if (options.expires && Number.isNaN(options.expires.getTime()))
+    throw new RangeError("expires must be a valid Date");
   validateCookieOptions(name, options);
   return {
     name,

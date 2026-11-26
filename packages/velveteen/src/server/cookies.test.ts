@@ -1,3 +1,4 @@
+import { Cookie, CookieMap } from "bun";
 import { expect, test } from "bun:test";
 import type { Fetch } from "../data/contract.ts";
 import { createEvent } from "./request.ts";
@@ -77,6 +78,29 @@ test("preserves duplicate request cookies in header order", () => {
   ]);
 });
 
+test("matches native request-cookie mutations", () => {
+  const header = "session=private; session=root; other=1";
+  const native = new CookieMap(header);
+  const context = eventFor(
+    undefined,
+    new Request("https://app.test/", { headers: { cookie: header } }),
+  );
+
+  expect(context.event.cookies.get("session")).toBe(
+    native.get("session") ?? undefined,
+  );
+  context.event.cookies.set("session", "next", { path: "/" });
+  native.set("session", "next");
+  context.event.cookies.set("new", "3", { path: "/" });
+  native.set("new", "3");
+  context.event.cookies.delete("session", { path: "/" });
+  native.set("session", "");
+
+  expect(context.event.cookies.getAll()).toEqual(
+    [...native].map(([name, value]) => ({ name, value })),
+  );
+});
+
 test("serializes every supported cookie attribute with defaults", () => {
   const context = eventFor();
   context.event.cookies.set("all", "space value", {
@@ -131,6 +155,16 @@ test("rejects cookie attribute injection and snapshots expiration", () => {
   expect(context.apply(new Response("ok")).headers.getSetCookie()).toContain(
     "snapshot=yes; Path=/; Expires=Wed, 02 Jan 2030 03:04:05 GMT; Secure; HttpOnly; SameSite=Lax",
   );
+});
+
+test("rejects invalid expiration dates like the native cookie", () => {
+  const expires = new Date("invalid");
+  expect(
+    () => new Cookie({ name: "expires", value: "yes", path: "/", expires }),
+  ).toThrow(RangeError);
+  expect(() =>
+    eventFor().event.cookies.set("expires", "yes", { expires, path: "/" }),
+  ).toThrow(RangeError);
 });
 
 test("scopes internal set-cookie values by path and domain", async () => {
