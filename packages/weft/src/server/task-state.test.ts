@@ -1,4 +1,5 @@
 import { sleepForTesting, waitForCondition } from '@lostgradient/testing/fake-timers';
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
@@ -74,7 +75,13 @@ describe('task state invariant (server integration)', () => {
   function setup(options: { workerReconnectGracePeriodMs?: number } = {}): void {
     storage = new MemoryStorage();
     engine = createEngine(storage);
-    server = serve({ engine, port: 0, workerShutdownTimeoutMs: 50, ...options });
+    server = serve({
+      host: bunServerHost,
+      engine,
+      port: 0,
+      workerShutdownTimeoutMs: 50,
+      ...options,
+    });
   }
 
   // Post-cutover (WFT-22), a task's current state lives at exactly one

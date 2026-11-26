@@ -4,12 +4,27 @@ import {
   type ServerResponse,
 } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
+import type { Socket as NodeSocket } from 'node:net';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import type { TlsOptions } from 'node:tls';
 
 import { WebSocketServer, WebSocket as WebSocketSocket } from 'ws';
 
-/** An exact-path response or handler registered in {@link ServeOptions.routes}. */
-export type HostRoute = Response | ((request: Request) => Response | Promise<Response>);
+const requestAbortControllers = new WeakMap<
+  Request,
+  { controller: AbortController; socket: NodeSocket }
+>();
+const socketAbortControllers = new WeakMap<NodeSocket, Set<AbortController>>();
+
+type HostRouteHandler = (
+  request: Request & { readonly params: Readonly<Record<string, string>> },
+  server: NodeHost<unknown>,
+) => Response | Promise<Response>;
+
+/** A response, handler, or method map registered in {@link ServeOptions.routes}. */
+export type HostRoute =
+  Response | HostRouteHandler | Partial<Record<string, Response | HostRouteHandler>>;
 
 /** The Bun-compatible operations available to a server-side WebSocket. */
 export type Socket<Data> = {
@@ -22,7 +37,7 @@ export type Socket<Data> = {
   /** Reports whether the socket belongs to a published topic. */
   isSubscribed(topic: string): boolean;
   /** Sends one text or binary message and reports whether it was admitted. */
-  send(message: string | ArrayBuffer | ArrayBufferView): number;
+  send(message: string): number;
   /** Adds the socket to a publication topic. */
   subscribe(topic: string): void;
   /** Immediately closes the underlying transport. */
@@ -51,14 +66,18 @@ export type WebSocketHandlers<Data> = {
 export type ServeOptions<Data> = {
   /** Handles requests that no exact route claims, including upgrade requests. */
   readonly fetch: (request: Request) => Response | Promise<Response | undefined> | undefined;
+  /** Preserved for Bun host parity; Node does not implement Bun development mode. */
+  readonly development?: boolean;
+  /** Seconds an idle HTTP connection may remain open. */
+  readonly idleTimeout?: number;
   /** Interface on which Node listens. */
   readonly hostname?: string;
   /** TCP port on which Node listens. */
   readonly port?: number;
   /** Exact path handlers evaluated before {@link fetch}. */
   readonly routes?: Readonly<Record<string, HostRoute>>;
-  /** PEM certificate and private key for HTTPS. */
-  readonly tls?: { readonly cert: string | Buffer; readonly key: string | Buffer };
+  /** TLS options passed intact to Node's HTTPS server, including mTLS enforcement. */
+  readonly tls?: Pick<TlsOptions, 'ca' | 'cert' | 'key' | 'rejectUnauthorized' | 'requestCert'>;
   /** WebSocket lifecycle callbacks and transport limits. */
   readonly websocket?: WebSocketHandlers<Data>;
 };
@@ -74,7 +93,7 @@ export type NodeHost<Data> = {
   /** Base URL constructed from the bound address. */
   readonly url: URL;
   /** Sends a message to every socket subscribed to one topic. */
-  publish(topic: string, message: string | ArrayBuffer | ArrayBufferView): number;
+  publish(topic: string, message: string): number;
   /** Returns the remote peer information for a pending request. */
   requestIP(
     request: Request,
@@ -114,41 +133,71 @@ function requestFromIncoming(
     if (value === undefined) continue;
     headers.set(name, Array.isArray(value) ? value.join(', ') : value);
   }
-  const init: RequestInit & { duplex?: 'half' } = { headers, method: request.method ?? 'GET' };
+  const controller = new AbortController();
+  let controllers = socketAbortControllers.get(request.socket);
+  if (controllers === undefined) {
+    controllers = new Set();
+    socketAbortControllers.set(request.socket, controllers);
+    request.socket.once('close', () => {
+      for (const active of controllers ?? []) active.abort();
+      socketAbortControllers.delete(request.socket);
+    });
+  }
+  controllers.add(controller);
+  request.once('aborted', () => controller.abort());
+  const init: RequestInit & { duplex?: 'half' } = {
+    headers,
+    method: request.method ?? 'GET',
+    signal: controller.signal,
+  };
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     init.body = Readable.toWeb(request) as unknown as ReadableStream;
     init.duplex = 'half';
   }
-  return new Request(requestUrl(request, hostname, port, secure), init);
+  const fetchRequest = new Request(requestUrl(request, hostname, port, secure), init);
+  requestAbortControllers.set(fetchRequest, { controller, socket: request.socket });
+  return fetchRequest;
+}
+
+function releaseRequestAbort(request: Request): void {
+  const entry = requestAbortControllers.get(request);
+  if (entry === undefined) return;
+  socketAbortControllers.get(entry.socket)?.delete(entry.controller);
+  requestAbortControllers.delete(request);
 }
 
 async function sendResponse(response: ServerResponse, source: Response): Promise<void> {
   response.statusCode = source.status;
   source.headers.forEach((value, name) => response.setHeader(name, value));
+  // An SSE response may wait indefinitely for its first event. Flush its
+  // headers before reading the stream so the client can establish and later
+  // cancel the subscription without waiting for a payload.
+  response.flushHeaders();
   if (source.body === null) {
     response.end();
     return;
   }
-  const reader = source.body.getReader();
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!response.write(value))
-        await new Promise<void>((resolve) => response.once('drain', resolve));
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  response.end();
+  // `pipeline` propagates a client disconnect through `Readable.fromWeb`,
+  // cancelling the Web stream. A hand-rolled read/write loop leaves an SSE
+  // subscription awaiting its next event after the HTTP response closes.
+  await pipeline(
+    Readable.fromWeb(source.body as unknown as Parameters<typeof Readable.fromWeb>[0]),
+    response,
+  );
 }
 
 function routeResponse(
   route: HostRoute | undefined,
-  request: Request,
+  request: Request & { readonly params: Readonly<Record<string, string>> },
+  server: NodeHost<unknown>,
 ): Response | Promise<Response> | undefined {
   if (route === undefined) return undefined;
-  return typeof route === 'function' ? route(request) : route.clone();
+  if (typeof route === 'object' && !(route instanceof Response)) {
+    return Object.hasOwn(route, request.method)
+      ? routeResponse(route[request.method], request, server)
+      : undefined;
+  }
+  return typeof route === 'function' ? route(request, server) : route.clone();
 }
 
 async function rejectUpgrade(
@@ -169,9 +218,58 @@ async function rejectUpgrade(
 function routeFor(
   routes: ServeOptions<unknown>['routes'],
   pathname: string,
-): HostRoute | undefined {
-  if (routes === undefined || !Object.hasOwn(routes, pathname)) return undefined;
-  return routes[pathname];
+  method: string,
+): { route: HostRoute; params: Readonly<Record<string, string>> } | undefined {
+  if (routes === undefined) return undefined;
+  const candidates = Object.entries(routes)
+    .map(([pattern, route]) => ({
+      pattern,
+      route,
+      rank: pattern.includes('*') ? 2 : pattern.includes(':') ? 1 : 0,
+    }))
+    .toSorted(
+      (left, right) =>
+        left.rank - right.rank || compareRouteSpecificity(left.pattern, right.pattern),
+    );
+  for (const { pattern, route } of candidates) {
+    if (!routeHandlesMethod(route, method)) continue;
+    const names: string[] = [];
+    const expression = pattern
+      .split('/')
+      .map((segment) => {
+        if (segment === '*') return '(.*)';
+        if (segment.startsWith(':')) {
+          names.push(segment.slice(1));
+          return '([^/]+)';
+        }
+        return segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      })
+      .join('/');
+    const match = new RegExp(`^${expression}$`).exec(pathname);
+    if (match === null) continue;
+    return {
+      route,
+      params: Object.fromEntries(
+        names.map((name, index) => [name, decodeURIComponent(match[index + 1]!)]),
+      ),
+    };
+  }
+  return undefined;
+}
+
+function compareRouteSpecificity(left: string, right: string): number {
+  const leftSegments = left.split('/').filter(Boolean);
+  const rightSegments = right.split('/').filter(Boolean);
+  const rank = (segment: string): number => (segment === '*' ? 0 : segment.startsWith(':') ? 1 : 2);
+  for (let index = 0; index < Math.min(leftSegments.length, rightSegments.length); index++) {
+    const difference = rank(rightSegments[index]!) - rank(leftSegments[index]!);
+    if (difference !== 0) return difference;
+  }
+  return rightSegments.length - leftSegments.length;
+}
+
+function routeHandlesMethod(route: HostRoute, method: string): boolean {
+  return typeof route !== 'object' || route instanceof Response || Object.hasOwn(route, method);
 }
 
 /**
@@ -186,6 +284,7 @@ export function serve<Data>(options: ServeOptions<Data>): NodeHost<Data> {
   const pending = new WeakMap<Request, PendingUpgrade>();
   const subscriptions = new Map<string, Set<Socket<Data>>>();
   const sockets = new Set<WebSocketSocket>();
+  let nodeHost!: NodeHost<Data>;
   const wrappers = new WeakMap<WebSocketSocket, Socket<Data>>();
   const webSocket = options.websocket;
   const webSocketServer = new WebSocketServer({
@@ -236,22 +335,23 @@ export function serve<Data>(options: ServeOptions<Data>): NodeHost<Data> {
     return wrapper;
   };
 
-  const server =
-    options.tls === undefined
-      ? createHttpServer()
-      : createHttpsServer({ cert: options.tls.cert, key: options.tls.key });
+  const server = options.tls === undefined ? createHttpServer() : createHttpsServer(options.tls);
 
   server.on('request', async (incoming, outgoing) => {
     const request = requestFromIncoming(incoming, hostname, requestedPort, secure);
     requests.set(request, incoming);
     try {
-      const route = routeFor(options.routes, new URL(request.url).pathname);
-      const response = await (routeResponse(route, request) ?? options.fetch(request));
+      const matched = routeFor(options.routes, new URL(request.url).pathname, request.method);
+      const routedRequest = Object.assign(request, { params: matched?.params ?? {} });
+      const response = await (routeResponse(matched?.route, routedRequest, nodeHost) ??
+        options.fetch(request));
       await sendResponse(outgoing, response ?? new Response('Not found', { status: 404 }));
     } catch {
       if (!outgoing.headersSent)
         await sendResponse(outgoing, new Response('Internal server error', { status: 500 }));
       else outgoing.destroy();
+    } finally {
+      releaseRequestAbort(request);
     }
   });
 
@@ -265,6 +365,7 @@ export function serve<Data>(options: ServeOptions<Data>): NodeHost<Data> {
         const fallback = response ?? new Response('Not found', { status: 404 });
         void rejectUpgrade(socket, fallback);
       }
+      releaseRequestAbort(request);
       return undefined;
     });
   });
@@ -303,9 +404,10 @@ export function serve<Data>(options: ServeOptions<Data>): NodeHost<Data> {
       resolve();
     });
   });
-  if (webSocket?.idleTimeout !== undefined) server.setTimeout(webSocket.idleTimeout * 1_000);
+  const idleTimeout = options.idleTimeout ?? webSocket?.idleTimeout;
+  if (idleTimeout !== undefined) server.setTimeout(idleTimeout * 1_000);
 
-  return {
+  nodeHost = {
     hostname,
     ready,
     get port() {
@@ -331,9 +433,14 @@ export function serve<Data>(options: ServeOptions<Data>): NodeHost<Data> {
       };
     },
     stop(closeActiveConnections = false) {
-      if (closeActiveConnections) for (const socket of sockets) socket.terminate();
       webSocketServer.close();
       server.close();
+      if (!closeActiveConnections) return;
+      // `server.close()` stops accepting connections but lets current HTTP
+      // responses drain. For a forced stop, close them after admission has
+      // stopped; upgraded sockets are not included, so terminate those too.
+      server.closeAllConnections();
+      for (const socket of sockets) socket.terminate();
     },
     timeout(request, seconds) {
       requests.get(request)?.socket.setTimeout(seconds * 1_000);
@@ -342,10 +449,12 @@ export function serve<Data>(options: ServeOptions<Data>): NodeHost<Data> {
       const upgrade = pending.get(request);
       if (upgrade === undefined) return false;
       pending.delete(request);
+      releaseRequestAbort(request);
       webSocketServer.handleUpgrade(upgrade.request, upgrade.socket, upgrade.head, (raw) => {
         webSocketServer.emit('connection', raw, upgrade.request, data);
       });
       return true;
     },
   };
+  return nodeHost;
 }

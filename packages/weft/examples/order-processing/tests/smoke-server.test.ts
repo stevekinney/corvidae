@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { describe, expect, it } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -18,6 +19,7 @@ describe('order-processing server smoke check', () => {
       await engine.schedule(orderProcessingSchedule);
 
       await using server = serve({
+        host: bunServerHost,
         routes: {
           '/': new Response('<html><body>order shell</body></html>', {
             headers: { 'Content-Type': 'text/html' },

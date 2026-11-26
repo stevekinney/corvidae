@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -664,6 +665,7 @@ describe('OpenAPI security schemes — live server honesty', () => {
 
     const engine = new Engine({ storage: new MemoryStorage() });
     const server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: ['test-key'], defaultApiKeyScopes: ['workflows:read'] },

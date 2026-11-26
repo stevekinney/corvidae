@@ -180,7 +180,7 @@ export type McpHttpRequestOptions = {
 /**
  * Handle one MCP Streamable HTTP request.
  *
- * Most applications should use `serve({ engine })`, which mounts `/mcp`
+ * Most applications should use `serve({ host: bunServerHost, engine })`, which mounts `/mcp`
  * automatically. Use this helper when embedding the MCP transport in a custom
  * Bun server. It refuses a cross-origin request that names neither the public
  * origin nor a trusted host, refuses an anonymous caller when authentication
@@ -197,7 +197,7 @@ export type McpHttpRequestOptions = {
  * await using engine = new Engine({ storage });
  * await using endpoint = createMcpEndpoint(engine);
  *
- * Bun.serve({
+ * bunServerHost({
  *   fetch(request) {
  *     return handleMcpHttpRequest({ request, endpoint, authRequired: false });
  *   },

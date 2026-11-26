@@ -62,7 +62,7 @@ export type WorkflowEventsSubscriptionEnvelope = z.infer<typeof workflowEventsSu
  * Access is selector-specific: event envelopes require `events:read`, while
  * token-stream envelopes require `streams:read`. Anonymous callers and
  * authenticated callers without the matching scope are denied. Operators
- * running `serve({ engine })` without auth must add an authentication layer
+ * running `serve({ host: bunServerHost, engine })` without auth must add an authentication layer
  * before exposing this endpoint to untrusted networks.
  */
 export const workflowEventsSubscriptionOperation = defineOperation({

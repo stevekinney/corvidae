@@ -1,5 +1,5 @@
 /**
- * Bun.serve() wrapper with WebSocket and SSE support, caller-supplied extra
+ * Server-host wrapper with WebSocket and SSE support, caller-supplied extra
  * routes, and clean shutdown.
  *
  * @module server
@@ -16,12 +16,14 @@ import {
   type RegistrableOperation,
   overlapsReservedRoute,
 } from '@lostgradient/backchannel/internals';
+import type { ServeOptions as HostServeOptions } from '@lostgradient/node-host';
 import { requireStorageCapability } from '@lostgradient/storage';
 import type { ConformanceTargetRunner } from '../conformance/targets.ts';
 import type { Engine, RegistryAgnosticEngine } from '../core/engine.ts';
 import type { RetryPolicy } from '../core/types.ts';
 import type { PrometheusExporter } from '../observability/metrics.ts';
 import { type RoutingPolicy, WorkerRegistry } from '../worker/registry.ts';
+import type { ServerHandle, ServerHost } from './host.ts';
 import type { WebSocketData } from './json-rpc-websocket-runtime.ts';
 import type { WorkflowReadAuthorizer } from './operations/compare-workflow.ts';
 import { createServerWebSocketHandlers } from './runtime/authentication-bridge.ts';
@@ -33,7 +35,7 @@ import {
   shutdownAllWorkers as shutdownAllWorkersImpl,
   shutdownWorker as shutdownWorkerImpl,
 } from './runtime/shutdown.ts';
-import { stopBunServerForShutdown } from './runtime/stop-server.ts';
+import { stopServerForShutdown } from './runtime/stop-server.ts';
 import { cancelTask, dispatchTaskImpl } from './runtime/task-dispatch.ts';
 import {
   type TaskResultView,
@@ -42,9 +44,10 @@ import {
 } from './runtime/task-result-view.ts';
 import { publishTokenMessage, publishWatchMessage } from './runtime/websocket-stream.ts';
 import {
-  buildBunServeConfig,
+  ServerDisposalStack,
   buildFetchHandler,
   buildServerContext,
+  buildServerHostConfig,
   cleanupWorkflowIndex,
   registerStackDisposers,
   resolveNetworkConfig,
@@ -97,7 +100,7 @@ export type { SchedulingPolicy } from './task-queue-types.ts';
 export { TaskQueue } from './task-queue.ts';
 
 /**
- * Bun route table accepted by `serve({ routes })`.
+ * Bun route table accepted by `serve({ host: bunServerHost, routes })`.
  *
  * It is Bun's own `routes` type, parameterized by the data Weft attaches to its
  * WebSocket connections, so a route handler receives the same `server` that
@@ -114,7 +117,10 @@ export { TaskQueue } from './task-queue.ts';
  * void routes;
  * ```
  */
-export type ServeRoutes = Bun.Serve.Routes<WebSocketData, string>;
+export type ServeRoutes = NonNullable<HostServeOptions<WebSocketData>['routes']>;
+
+/** The runtime-specific function that binds Weft's HTTP and WebSocket server. */
+export type { ServerHost } from './host.ts';
 
 /**
  * Startup policy for `serve()` when no `auth` configuration is supplied.
@@ -155,6 +161,8 @@ export type UnauthenticatedAccessPolicy = 'warn' | 'allow' | 'reject';
  * ```
  */
 export interface ServeOptions {
+  /** Required runtime host. Import `bunServerHost` or `nodeServerHost` from its subpath. */
+  host: ServerHost<WebSocketData>;
   /**
    * The engine `serve()` hosts. Typed as {@link RegistryAgnosticEngine}
    * (see its JSDoc) rather than the plain default `Engine`, so both
@@ -229,7 +237,7 @@ export interface ServeOptions {
    * import { createConformanceTargets } from '@lostgradient/weft/testing';
    *
    * const engine = new Engine({ storage: new MemoryStorage() });
-   * await using server = serve({
+   * await using server = serve({ host: bunServerHost,
    *   engine,
    *   port: 0,
    *   conformanceTargets: createConformanceTargets({
@@ -246,7 +254,7 @@ export interface ServeOptions {
   development?: boolean;
   /**
    * Extra Bun routes served on the same origin as Weft's API, passed through
-   * to `Bun.serve()`'s own `routes` option. Bun matches these before the
+   * to the selected host's `routes` option. Hosts match these before the
    * handler that serves Weft's API and discovery endpoints, so a key may not
    * claim any of them: `serve()` throws before binding the port when a key
    * equals or falls under `/api` or `/v1`, equals `/mcp`, `/jsonrpc`, or a
@@ -422,7 +430,7 @@ export interface ServeOptions {
    * Allowlist of `Host` values trusted to source absolute URLs in
    * discovery routes that emit absolute URLs, including
    * `/.well-known/api-catalog` and `/.well-known/mcp.json`. Required (with
-   * `publicOrigin` as the alternative) in production — Bun.serve() resolves
+   * `publicOrigin` as the alternative) in production — the selected host resolves
    * `request.url` from the incoming Host header so attackers can otherwise
    * poison the discovery URLs.
    */
@@ -524,7 +532,7 @@ export interface TaskDispatch {
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });
- * await using server: WeftServer = serve({ engine, port: 4000 });
+ * await using server: WeftServer = serve({ host: bunServerHost, engine, port: 4000 });
  *
  * console.log(server.url);            // http://localhost:4000
  * console.log(server.registry);       // WorkerRegistry instance
@@ -657,7 +665,7 @@ function resolveServeRoutes(routes: ServeRoutes | undefined): ServeRoutes {
  *   }),
  * );
  *
- * await using server = serve({ engine, port: 7233 });
+ * await using server = serve({ host: bunServerHost, engine, port: 7233 });
  * console.log(`Weft listening on ${server.url}`);
  * ```
  */
@@ -684,9 +692,9 @@ export function serve(options: ServeOptions): WeftServer {
   );
   const boundCleanup = (operationId: string): void => cleanupWorkflowIndex(context, operationId);
 
-  const serverHolder: { current: ReturnType<typeof Bun.serve> | null } = { current: null };
-  const server = Bun.serve<WebSocketData>(
-    buildBunServeConfig(
+  const serverHolder: { current: ServerHandle<WebSocketData> | null } = { current: null };
+  const server = options.host(
+    buildServerHostConfig(
       port,
       hostname,
       development,
@@ -698,10 +706,10 @@ export function serve(options: ServeOptions): WeftServer {
   );
   serverHolder.current = server;
 
-  const stack = new AsyncDisposableStack();
+  const stack = new ServerDisposalStack();
   // Register the server-stop disposer before wiring anything else, so a failure
   // during broadcasting setup still releases the bound port instead of leaking it.
-  stack.defer(() => stopBunServerForShutdown(server));
+  stack.defer(() => stopServerForShutdown(server));
 
   let broadcastingHandle: EventBroadcastingHandle;
   try {
@@ -726,7 +734,7 @@ export function serve(options: ServeOptions): WeftServer {
     // bound server. `serve()` is synchronous, so we kick the stop and rely on
     // Bun's force-stop to release the port promptly; the returned promise is
     // best-effort and the error propagation is what the caller observes.
-    void stopBunServerForShutdown(server);
+    void stopServerForShutdown(server);
     throw error;
   }
 
@@ -738,21 +746,33 @@ export function serve(options: ServeOptions): WeftServer {
   // installing it here would race with the CLI and leak handlers across
   // repeated `serve()` calls in library/test contexts.
 
-  const resolvedPort = server.port ?? port;
-  const resolvedHostname = server.hostname ?? hostname;
   const scheme = tlsOptions ? 'https' : 'http';
+  const ready = Promise.all([
+    context.taskLedgerRecovery.ready,
+    server.ready ?? Promise.resolve(),
+  ]).then(() => undefined);
+  // `ready` is optional for callers, but must not turn a startup recovery
+  // failure into a process-level unhandled rejection. Awaiters still receive
+  // the original failure from this promise.
+  ready.catch(() => undefined);
 
   const weftServer: WeftServer = {
-    port: resolvedPort,
-    hostname: resolvedHostname,
-    url: `${scheme}://${resolvedHostname}:${resolvedPort}`,
+    get port() {
+      return server.port ?? port;
+    },
+    get hostname() {
+      return server.hostname ?? hostname;
+    },
+    get url() {
+      return `${scheme}://${server.hostname ?? hostname}:${server.port ?? port}`;
+    },
     registry: context.registry,
     taskQueue: context.taskQueue,
     operationNames: Object.freeze(context.liveOperationRegistry.list().map(({ name }) => name)),
-    ready: context.taskLedgerRecovery.ready,
+    ready,
     connections: () => ({ ...context.connectionCounts }),
     async stop() {
-      await stack[Symbol.asyncDispose]();
+      await stack.dispose();
     },
     dispatchTask: (task) => dispatchTaskImpl(context, options, task),
     getTaskResult: (operationId) => getTaskResultViewImpl(options.engine.storage, operationId),
@@ -764,7 +784,7 @@ export function serve(options: ServeOptions): WeftServer {
     cancelTask: (operationId, cancellationReason) =>
       cancelTask(context, options, operationId, cancellationReason),
     [Symbol.asyncDispose]() {
-      return stack[Symbol.asyncDispose]();
+      return stack.dispose();
     },
   };
   return weftServer;

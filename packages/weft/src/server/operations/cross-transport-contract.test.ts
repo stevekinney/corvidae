@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
 /**
  * Cross-transport contract for the data-driven runtime operations.
@@ -105,7 +106,12 @@ describe('runtime operation cross-transport contract', () => {
     // and both transports reach the same engine result with the same shape.
     const engine = createTestEngine();
     engines.push(engine);
-    const server = serve({ engine, port: 0, auth: { jwt: { secret: TEST_SECRET } } });
+    const server = serve({
+      host: bunServerHost,
+      engine,
+      port: 0,
+      auth: { jwt: { secret: TEST_SECRET } },
+    });
     servers.push(server);
 
     const token = await issueJwt(['system:read']);
@@ -131,7 +137,12 @@ describe('runtime operation cross-transport contract', () => {
 
     const engine = createTestEngine();
     engines.push(engine);
-    const server = serve({ engine, port: 0, auth: { jwt: { secret: TEST_SECRET } } });
+    const server = serve({
+      host: bunServerHost,
+      engine,
+      port: 0,
+      auth: { jwt: { secret: TEST_SECRET } },
+    });
     servers.push(server);
 
     // A principal authenticated with the wrong scope is rejected Forbidden on

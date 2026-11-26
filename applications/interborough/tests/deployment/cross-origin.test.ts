@@ -22,6 +22,7 @@
 import { type CorsOptions } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 import { Engine, serve, type WeftServer } from '@lostgradient/weft';
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 const ALLOWED_ORIGIN = 'https://weft-ui.example.com';
@@ -37,7 +38,13 @@ afterEach(async () => {
 
 function startCorsServer(cors: CorsOptions): WeftServer {
   const engine = new Engine({ storage: new MemoryStorage() });
-  const server = serve({ engine, port: 0, cors, unauthenticatedAccess: 'allow' });
+  const server = serve({
+    host: bunServerHost,
+    engine,
+    port: 0,
+    cors,
+    unauthenticatedAccess: 'allow',
+  });
   activeServer = server;
   return server;
 }
@@ -121,6 +128,7 @@ describe('Cross-origin mode — illegal configuration rejected at boot (plan §3
     try {
       expect(() =>
         serve({
+          host: bunServerHost,
           engine,
           port: 0,
           cors: { allowedOrigins: ['*'], credentials: true },
@@ -137,6 +145,7 @@ describe('Cross-origin mode — illegal configuration rejected at boot (plan §3
     try {
       expect(() =>
         serve({
+          host: bunServerHost,
           engine,
           port: 0,
           cors: { allowedOrigins: ['*'], allowedHeaders: ['Authorization'] },

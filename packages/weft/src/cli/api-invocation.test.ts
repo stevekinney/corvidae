@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { describe, expect, it } from 'bun:test';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -27,7 +28,7 @@ describe('api command', () => {
 
   it('invokes a unary catalog operation against a live server', async () => {
     const engine = new Engine();
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     try {
       const result = await executeApi({
         command: 'api',
@@ -50,7 +51,7 @@ describe('api command', () => {
 
   it('--dry-run sets dryRun on an operation whose input has it, without --yes for a destructive one', async () => {
     const engine = new Engine();
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     try {
       const result = await executeApi({
         command: 'api',
@@ -83,7 +84,7 @@ describe('api command', () => {
         return yield* ctx.waitForSignal('go');
       }),
     );
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     try {
       await engine.start('parked', null, { id: 'wf-parked' });
       await waitForCondition(() => isParkedOn(engine, 'wf-parked', 'go'), {
@@ -150,7 +151,7 @@ describe('api command', () => {
 
   it('invokes a unary catalog operation through the generated typed client', async () => {
     const engine = new Engine();
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     try {
       const client = createWeftClient({ server: server.url });
       const result = await client['weft.workflows.list']({});
@@ -168,7 +169,7 @@ describe('api command', () => {
     await Bun.write(inputPath, JSON.stringify({ workflowId: 'missing-workflow' }));
 
     const engine = new Engine();
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     try {
       const failedOperation = await executeApi({
         command: 'api',
@@ -230,7 +231,7 @@ describe('api command', () => {
 
   it('defaults omitted input to an empty object, rejects malformed JSON, and renders human operation faults', async () => {
     const engine = new Engine();
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     try {
       const omittedInput = await executeApi({
         command: 'api',

@@ -1098,6 +1098,7 @@
         "@lostgradient/backchannel": "workspace:*",
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/environmentalist": "catalog:",
+        "@lostgradient/node-host": "workspace:*",
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/storage-bun-sqlite": "workspace:*",
         "@lostgradient/storage-indexeddb": "workspace:*",
@@ -1122,6 +1123,7 @@
         "prettier": "catalog:",
         "standardwebhooks": "catalog:",
         "typescript": "catalog:",
+        "ws": "catalog:",
       },
       "peerDependencies": {
         "@a2a-js/sdk": "1.3.0",

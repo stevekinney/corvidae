@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -76,7 +77,7 @@ describe('AsyncAPI document', () => {
   it('GET /asyncapi.json returns an AsyncAPI 3.0 document', async () => {
     const engine = createEngine();
     engines.push(engine);
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     servers.push(server);
 
     const response = await fetch(`${server.url}/asyncapi.json`);
@@ -179,6 +180,7 @@ describe('AsyncAPI document', () => {
     const engine = createEngine();
     engines.push(engine);
     const server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: ['test-key'], defaultApiKeyScopes: ['workflows:read'] },

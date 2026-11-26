@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 
@@ -1111,7 +1112,7 @@ describe('serve() with authentication', () => {
 
   it('allows unauthenticated requests when no auth is configured', async () => {
     engine = createEngine();
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
 
     const response = await fetch(`${server.url}/v1/workflows`, {
       method: 'POST',
@@ -1125,6 +1126,7 @@ describe('serve() with authentication', () => {
   it('rejects unauthenticated requests when auth is configured', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read', 'workflows:write'] },
@@ -1140,6 +1142,7 @@ describe('serve() with authentication', () => {
   it('allows authenticated API key requests', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read', 'workflows:write'] },
@@ -1159,7 +1162,12 @@ describe('serve() with authentication', () => {
 
   it('allows authenticated JWT requests', async () => {
     engine = createEngine();
-    server = serve({ engine, port: 0, auth: { jwt: { secret: TEST_SECRET } } });
+    server = serve({
+      host: bunServerHost,
+      engine,
+      port: 0,
+      auth: { jwt: { secret: TEST_SECRET } },
+    });
 
     const token = await signJWT({ sub: 'user-1', scope: 'workflows:write' }, TEST_SECRET);
 
@@ -1178,6 +1186,7 @@ describe('serve() with authentication', () => {
   it('allows health check without authentication', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read', 'workflows:write'] },
@@ -1191,6 +1200,7 @@ describe('serve() with authentication', () => {
   it('allows metrics endpoint without authentication', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read', 'workflows:write'] },
@@ -1204,6 +1214,7 @@ describe('serve() with authentication', () => {
   it('rejects requests with an invalid API key', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read', 'workflows:write'] },
@@ -1219,6 +1230,7 @@ describe('serve() with authentication', () => {
   it('includes WWW-Authenticate header on 401 responses', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read', 'workflows:write'] },
@@ -1234,6 +1246,7 @@ describe('serve() with authentication', () => {
     engine = createEngine();
     // A key that holds a scope, but not the one under test, so it is admitted and then refused.
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read'] },
@@ -1252,6 +1265,7 @@ describe('serve() with authentication', () => {
 
     await server.stop();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workers:write'] },
@@ -1270,6 +1284,7 @@ describe('serve() with authentication', () => {
     engine = createEngine();
     // A key that holds a scope, but not the one under test, so it is admitted and then refused.
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read'] },
@@ -1304,6 +1319,7 @@ describe('serve() with authentication', () => {
 
     await server.stop();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workers:write'] },
@@ -1353,6 +1369,7 @@ describe('serve() with authentication', () => {
     engine = createEngine();
     // A key that holds a scope, but not the one under test, so it is admitted and then refused.
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read'] },
@@ -1368,6 +1385,7 @@ describe('serve() with authentication', () => {
 
     await server.stop();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['system:read'] },
@@ -1383,7 +1401,7 @@ describe('serve() with authentication', () => {
 
   it('throws on invalid auth configuration', () => {
     engine = createEngine();
-    expect(() => serve({ engine, port: 0, auth: {} })).toThrow(
+    expect(() => serve({ host: bunServerHost, engine, port: 0, auth: {} })).toThrow(
       'at least one authentication method',
     );
   });

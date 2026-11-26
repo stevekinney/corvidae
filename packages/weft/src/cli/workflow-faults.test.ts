@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * A failed `weft workflow` or `weft schedule` command reports the structured fault the server (or
  * the CLI) found: `{ ok: false, error: { code, message, retryable, remediation? } }` under
@@ -20,7 +21,7 @@ const base = { command: 'workflow' as const, help: false, json: true, quiet: fal
 
 async function withServer<Result>(run: (url: string) => Promise<Result>): Promise<Result> {
   const engine = new Engine();
-  const server = serve({ engine, port: 0 });
+  const server = serve({ host: bunServerHost, engine, port: 0 });
   try {
     return await run(server.url);
   } finally {
@@ -97,6 +98,7 @@ describe('weft workflow failures', () => {
     const engine = new Engine();
     const key = 'weft_key_valid123456789012345678901';
     const server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: [key], defaultApiKeyScopes: ['workflows:read'] },

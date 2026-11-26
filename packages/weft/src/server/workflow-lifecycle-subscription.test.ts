@@ -1,4 +1,5 @@
 import { MemoryStorage } from '@lostgradient/storage';
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { AUTHORIZATION_SCOPES } from '../authorization-scopes.ts';
 
@@ -64,6 +65,7 @@ function startServer(): { server: WeftServer; engine: Engine } {
   engine.register(gated);
   engines.push(engine);
   const server = serve({
+    host: bunServerHost,
     engine,
     port: 0,
     auth: { apiKeys: [API_KEY], defaultApiKeyScopes: AUTHORIZATION_SCOPES },

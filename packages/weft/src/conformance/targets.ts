@@ -5,7 +5,7 @@
  * A remote caller selects a target by name and nothing else. The command a
  * target spawns, and its timeout, come only from the runner the host builds
  * with `createConformanceTargets` (in `testing/conformance-targets.ts`) and
- * passes to `serve({ conformanceTargets })` — configuration the host process
+ * passes to `serve({ host: bunServerHost, conformanceTargets })` — configuration the host process
  * owns — never from a request. Accepting a
  * command over the wire would turn the operation into remote code execution
  * on the server host; naming a pre-registered command keeps the set of

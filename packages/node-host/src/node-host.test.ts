@@ -7,6 +7,129 @@ import { serve } from './index.ts';
 
 hostContract('Node host', serve);
 
+void test('Node host gives exact and parameter routes precedence over wildcards', async () => {
+  const host = serve({
+    port: 0,
+    fetch: () => new Response('fallback'),
+    routes: {
+      '/reports/*': () => new Response('wildcard'),
+      '/reports/private/*': () => new Response('private wildcard'),
+      '/reports/:id': (request) => new Response(`parameter:${request.params['id']}`),
+      '/reports/top': new Response('exact'),
+      '/:tenant/foo': () => new Response('parameter-first'),
+      '/bar/:id': () => new Response('static-first'),
+      '/thing': { POST: new Response('exact post') },
+      '/:single': () => new Response('parameter fallback'),
+      '/uploads': { POST: new Response('created', { status: 201 }) },
+    },
+  });
+  try {
+    await host.ready;
+    const exact = await fetch(new URL('/reports/top', host.url));
+    assert.equal(await exact.text(), 'exact');
+    const parameter = await fetch(new URL('/reports/Q%201', host.url));
+    assert.equal(await parameter.text(), 'parameter:Q 1');
+    const wildcard = await fetch(new URL('/reports/with/slash', host.url));
+    assert.equal(await wildcard.text(), 'wildcard');
+    const privateWildcard = await fetch(new URL('/reports/private/with/slash', host.url));
+    assert.equal(await privateWildcard.text(), 'private wildcard');
+    const mixedParameter = await fetch(new URL('/bar/foo', host.url));
+    assert.equal(await mixedParameter.text(), 'static-first');
+    for (const method of ['GET', 'PUT']) {
+      const methodFallback = await fetch(new URL('/thing', host.url), { method });
+      assert.equal(await methodFallback.text(), 'parameter fallback');
+    }
+    const exactPost = await fetch(new URL('/thing', host.url), { method: 'POST' });
+    assert.equal(await exactPost.text(), 'exact post');
+    const created = await fetch(new URL('/uploads', host.url), { method: 'POST' });
+    assert.equal(created.status, 201);
+    const fallback = await fetch(new URL('/uploads/extra', host.url));
+    assert.equal(await fallback.text(), 'fallback');
+  } finally {
+    host.stop(true);
+  }
+});
+
+void test('Node host aborts the Fetch request when its client disconnects', async () => {
+  const aborted = Promise.withResolvers<void>();
+  const host = serve({
+    port: 0,
+    fetch: (request) => {
+      request.signal.addEventListener('abort', () => aborted.resolve(), { once: true });
+      return new Response(new ReadableStream(), {
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    },
+  });
+  try {
+    await host.ready;
+    const controller = new AbortController();
+    const response = await fetch(host.url, { signal: controller.signal });
+    assert.equal(response.status, 200);
+    controller.abort();
+    await aborted.promise;
+  } finally {
+    host.stop(true);
+  }
+});
+
+void test('Node host cancels a streamed response when its client disconnects', async () => {
+  const cancelled = Promise.withResolvers<unknown>();
+  const host = serve({
+    port: 0,
+    fetch: () =>
+      new Response(
+        new ReadableStream({
+          cancel(reason) {
+            cancelled.resolve(reason);
+          },
+        }),
+        { headers: { 'content-type': 'text/event-stream' } },
+      ),
+  });
+  try {
+    await host.ready;
+    const controller = new AbortController();
+    const response = await fetch(host.url, { signal: controller.signal });
+    assert.equal(response.status, 200);
+    controller.abort();
+    await cancelled.promise;
+  } finally {
+    host.stop(true);
+  }
+});
+
+void test('Node host fast stop closes an active SSE response and cancels its source', async () => {
+  const cancelled = Promise.withResolvers<unknown>();
+  const host = serve({
+    port: 0,
+    fetch: () =>
+      new Response(
+        new ReadableStream({
+          cancel(reason) {
+            cancelled.resolve(reason);
+          },
+        }),
+        { headers: { 'content-type': 'text/event-stream' } },
+      ),
+  });
+  try {
+    await host.ready;
+    const response = await fetch(host.url);
+    assert.equal(response.status, 200);
+    const body = response.body;
+    if (body === null) throw new Error('expected SSE response body');
+    const closed = body.getReader().read();
+    host.stop(true);
+    await cancelled.promise;
+    // Clients may surface a forced socket close as either EOF or ECONNRESET;
+    // awaiting either outcome proves the active response did not remain open.
+    await closed.catch(() => undefined);
+  } finally {
+    host.stop(true);
+  }
+});
+
 const certificate = `-----BEGIN CERTIFICATE-----
 MIIDCTCCAfGgAwIBAgIUOeqL3GYucCk2iEe3Fno8/vu093QwDQYJKoZIhvcNAQEL
 BQAwFDESMBAGA1UEAwwJMTI3LjAuMC4xMB4XDTI2MTEyNjEwNTk1MVoXDTI2MTEy
@@ -77,6 +200,31 @@ void test('Node host sends HTTPS Request URLs to fetch handlers', async () => {
       client.end();
     });
     assert.equal(new URL(seen).protocol, 'https:');
+  } finally {
+    host.stop(true);
+  }
+});
+
+void test('Node host enforces configured client certificates', async () => {
+  const host = serve({
+    port: 0,
+    tls: {
+      cert: certificate,
+      key: privateKey,
+      ca: certificate,
+      requestCert: true,
+      rejectUnauthorized: true,
+    },
+    fetch: () => new Response('secure'),
+  });
+  try {
+    await host.ready;
+    await new Promise<void>((resolve, reject) => {
+      const client = request(host.url, { rejectUnauthorized: false });
+      client.once('response', () => reject(new Error('expected client certificate rejection')));
+      client.once('error', resolve);
+      client.end();
+    });
   } finally {
     host.stop(true);
   }

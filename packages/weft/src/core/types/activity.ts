@@ -140,7 +140,7 @@ export interface ActivityContext {
    * a workflow id can forge this activity's result or error. Treat the completed
    * value as hostile external input (validate it as you would a signal payload),
    * The transport query requires `workflows:read`; completion and failure require
-   * `workflows:write`. Configure `serve({ auth })` with those scopes before
+   * `workflows:write`. Configure `serve({ host: bunServerHost, auth })` with those scopes before
    * exposing the routes.
    *
    * `completeAsync()` never returns normally — it throws an internal sentinel

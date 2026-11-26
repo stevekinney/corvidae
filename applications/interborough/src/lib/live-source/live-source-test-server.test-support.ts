@@ -47,6 +47,7 @@
  * second hand-copy of weft's (not-yet-publicly-exported) scope vocabulary.
  */
 import { Engine, serve } from '@lostgradient/weft';
+import { bunServerHost } from '@lostgradient/weft/bun';
 
 import { workflows } from '../../../fixtures/workflows.ts';
 import { AUTHORIZATION_SCOPES } from '../scopes.svelte.ts';
@@ -84,6 +85,7 @@ export async function startLiveSourceTestServer(
 ): Promise<LiveSourceTestServer> {
   const engine = await createTestEngine(options.getNow, options.schedulerPollIntervalMs);
   const server = serve({
+    host: bunServerHost,
     engine,
     port: 0,
     auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: AUTHORIZATION_SCOPES },

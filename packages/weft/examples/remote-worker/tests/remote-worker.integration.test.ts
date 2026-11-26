@@ -20,7 +20,7 @@ const scenario1 = await outcomeOf(async () => {
   const stderr = await new Response(proc.stderr).text();
 
   expect(exitCode).toBe(0);
-  // `serve({ port: 0 })` with no `publicOrigin`/`trustedHosts` configured
+  // `serve({ host: bunServerHost, port: 0 })` with no `publicOrigin`/`trustedHosts` configured
   // always logs its own startup warning — expected here, not a failure.
   // Anything else on stderr (a stack trace, an unhandled rejection) is not.
   expect(stderr.replace(/\[weft\] WARNING: MCP HTTP transport[^\n]*\n?/g, '')).toBe('');

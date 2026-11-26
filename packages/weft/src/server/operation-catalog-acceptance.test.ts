@@ -1,4 +1,5 @@
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
@@ -81,7 +82,7 @@ async function collectReplayEvents(engine: Engine, workflowId: string): Promise<
 }
 
 // `weft.workflows.events` requires `events:read`. Tests below that drive
-// subscriptions configure `serve({ auth: { apiKeys: [...] } })` and present
+// subscriptions configure `serve({ host: bunServerHost, auth: { apiKeys: [...] } })` and present
 // the matching key on the WebSocket Authorization header.
 const SUBSCRIBE_TEST_API_KEY = 'weft_test_parity_events_read_key_xxxxxxxxxxxxxxxxxxx';
 const subscribeServeOptions = {
@@ -197,7 +198,7 @@ async function expectWebSocketProjectionMatchesReplay(
   const replayed = await collectReplayEvents(engine, handle.id);
   expect(replayed.length).toBeGreaterThan(0);
 
-  const server = serve({ engine, ...subscribeServeOptions });
+  const server = serve({ host: bunServerHost, engine, ...subscribeServeOptions });
   assignServer(server);
   const wireEnvelopes = await collectWebSocketDeliveredEnvelopes(
     server,
@@ -425,7 +426,7 @@ describe('Operation-catalog acceptance coverage', () => {
   it('stdio is a separate opt-in local entrypoint, disabled by default. It is not implicitly enabled by serve() and is not treated as a public unauthenticated surface.', async () => {
     const engine = createSignalWorkflowEngine();
     engines.push(engine);
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
 
     expect(server.url.startsWith('http')).toBe(true);
     expect(Reflect.has(server, 'stdio')).toBe(false);
@@ -443,7 +444,7 @@ describe('Operation-catalog acceptance coverage', () => {
     const handle = await engine.start('hold', { hello: 'three-transports' }, {});
     await waitForEventCount(engine, handle.id, 1);
 
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
 
     // --- Transport 1: HTTP POST /jsonrpc ---
     const httpResponse = await fetch(`${server.url}/jsonrpc`, {

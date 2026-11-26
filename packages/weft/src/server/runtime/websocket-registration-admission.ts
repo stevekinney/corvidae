@@ -8,7 +8,7 @@
  * @module server/runtime/websocket-registration-admission
  */
 
-import type { ServerWebSocket } from 'bun';
+import type { Socket } from '@lostgradient/node-host';
 
 import { isAuthenticated } from '@lostgradient/backchannel/internals';
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
@@ -58,7 +58,7 @@ export const HIJACK_MESSAGE = 'workerId is already registered to an active conne
  */
 export function isActiveWorkerIdHijack(
   context: ServerContext,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   workerId: string,
 ): boolean {
   if (context.pendingWorkerRequeues.has(workerId)) return false;

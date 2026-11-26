@@ -1,4 +1,5 @@
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * End-to-end integration — `serve()` routes POST `/jsonrpc` into the
  * JSON-RPC HTTP adapter against the live operation registry.
@@ -104,7 +105,7 @@ describe('serve() — POST /jsonrpc', () => {
     const handle = await engine.start('hold', { hello: 'world' }, {});
     await waitForStatus(engine, handle.id, 'running');
 
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
 
     const response = await fetch(`${server.url}/jsonrpc`, {
       method: 'POST',
@@ -140,7 +141,7 @@ describe('serve() — POST /jsonrpc', () => {
     const handle = await engine.start('hold', { hello: 'world' }, {});
     await waitForStatus(engine, handle.id, 'running');
 
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
 
     const response = await fetch(`${server.url}/jsonrpc`, {
       method: 'POST',
@@ -169,7 +170,7 @@ describe('serve() — POST /jsonrpc', () => {
     const engine = createCrashEngine(storage);
     await startSplitFailureCategoryWorkflow(engine, storage, 'json-rpc-failed-with-category');
 
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
 
     for (const [id, include] of [
       [9, ['failureCategory']],
@@ -217,7 +218,7 @@ describe('serve() — POST /jsonrpc', () => {
       KEYS.scheduleRunBySchedule('json-rpc-schedule', scheduled.id),
       new Uint8Array(0),
     );
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
 
     const response = await fetch(`${server.url}/jsonrpc`, {
       method: 'POST',
@@ -240,7 +241,7 @@ describe('serve() — POST /jsonrpc', () => {
 
   it('rejects weft.workflows.list unsupported include parameters', async () => {
     const engine = createHoldEngine();
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
 
     for (const [id, include] of [
       [11, ['failureCategory', 'input']],
@@ -270,7 +271,7 @@ describe('serve() — POST /jsonrpc', () => {
 
   it('returns MethodNotFound for an unknown method', async () => {
     const engine = createHoldEngine();
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
 
     const response = await fetch(`${server.url}/jsonrpc`, {
       method: 'POST',
@@ -294,7 +295,7 @@ describe('serve() — POST /jsonrpc', () => {
 
   it('rejects GET /jsonrpc with 405', async () => {
     const engine = createHoldEngine();
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
 
     const response = await fetch(`${server.url}/jsonrpc`, { method: 'GET' });
     expect(response.status).toBe(405);
@@ -303,7 +304,7 @@ describe('serve() — POST /jsonrpc', () => {
 
   it('rejects non-JSON content-type with 415', async () => {
     const engine = createHoldEngine();
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
 
     const response = await fetch(`${server.url}/jsonrpc`, {
       method: 'POST',
@@ -321,6 +322,7 @@ describe('serve() — POST /jsonrpc', () => {
     // JSON-RPC requests past the auth gate — this pins the invariant.
     const engine = createHoldEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: ['valid-key'], defaultApiKeyScopes: ['workflows:read'] },
@@ -353,6 +355,7 @@ describe('serve() — POST /jsonrpc', () => {
     // credential produces a tidy 401 without the server crashing.
     const engine = createHoldEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: ['valid-key'], defaultApiKeyScopes: ['workflows:read'] },
@@ -384,6 +387,7 @@ describe('serve() — POST /jsonrpc', () => {
     await waitForStatus(engine, handle.id, 'running');
 
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: ['valid-key'], defaultApiKeyScopes: ['workflows:read'] },

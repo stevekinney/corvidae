@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { AUTHORIZATION_SCOPES, WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 /**
  * The `unauthenticated-local` principal and the scope requirement on static
@@ -94,6 +95,7 @@ describe('serve() with no authentication', () => {
         try {
           engine = createEngine();
           server = serve({
+            host: bunServerHost,
             engine,
             port: 0,
             publicOrigin: 'http://localhost',
@@ -115,6 +117,7 @@ describe('serve() with no authentication', () => {
         try {
           engine = createEngine();
           server = serve({
+            host: bunServerHost,
             engine,
             port: 0,
             publicOrigin: 'http://localhost',
@@ -145,7 +148,7 @@ describe('serve() with no authentication', () => {
     const warningSpy = spyOn(console, 'warn').mockImplementation(() => {});
     try {
       engine = createEngine();
-      server = serve({ engine, port: 0, publicOrigin: 'http://localhost' });
+      server = serve({ host: bunServerHost, engine, port: 0, publicOrigin: 'http://localhost' });
     } finally {
       warningSpy.mockRestore();
     }
@@ -172,7 +175,7 @@ describe('serve() with no authentication', () => {
     const warningSpy = spyOn(console, 'warn').mockImplementation(() => {});
     try {
       engine = createEngine();
-      server = serve({ engine, port: 0, publicOrigin: 'http://localhost' });
+      server = serve({ host: bunServerHost, engine, port: 0, publicOrigin: 'http://localhost' });
 
       expect(warningSpy).toHaveBeenCalledWith(NO_AUTHENTICATION_WARNING);
       expect(NO_AUTHENTICATION_WARNING).toContain(
@@ -191,7 +194,12 @@ describe('serve() with no authentication', () => {
     const rejectingEngine = createEngine();
     engine = rejectingEngine;
     expect(() =>
-      serve({ engine: rejectingEngine, port: 0, unauthenticatedAccess: 'reject' }),
+      serve({
+        host: bunServerHost,
+        engine: rejectingEngine,
+        port: 0,
+        unauthenticatedAccess: 'reject',
+      }),
     ).toThrow('Refusing to start server with no authentication');
   });
 
@@ -202,7 +210,12 @@ describe('serve() with no authentication', () => {
       const requiringEngine = createEngine();
       engine = requiringEngine;
       expect(() =>
-        serve({ engine: requiringEngine, port: 0, unauthenticatedAccess: 'allow' }),
+        serve({
+          host: bunServerHost,
+          engine: requiringEngine,
+          port: 0,
+          unauthenticatedAccess: 'allow',
+        }),
       ).toThrow('WEFT_SERVER_AUTHENTICATION_REQUIRED');
     } finally {
       if (previous === undefined) delete Bun.env['WEFT_SERVER_AUTHENTICATION_REQUIRED'];
@@ -225,6 +238,7 @@ describe('serve() with authentication configured', () => {
   it('never gives a credential-bearing caller the local principal', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       publicOrigin: 'http://localhost',
@@ -241,6 +255,7 @@ describe('serve() with authentication configured', () => {
   it('refuses a credential-less caller instead of running it as the local user', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       publicOrigin: 'http://localhost',
@@ -256,6 +271,7 @@ describe('serve() with authentication configured', () => {
   it('refuses a key to an operation whose scope it does not hold', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       publicOrigin: 'http://localhost',
@@ -284,7 +300,7 @@ describe('serve() with static API keys', () => {
   function expectRefusal(auth: AuthConfig): void {
     const refusingEngine = createEngine();
     engine = refusingEngine;
-    expect(() => serve({ engine: refusingEngine, port: 0, auth })).toThrow(
+    expect(() => serve({ host: bunServerHost, engine: refusingEngine, port: 0, auth })).toThrow(
       /defaultApiKeyScopes.*resolveApiKeyPrincipal/s,
     );
   }
@@ -306,6 +322,7 @@ describe('serve() with static API keys', () => {
   it('starts with non-empty default scopes', () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       publicOrigin: 'http://localhost',
@@ -317,6 +334,7 @@ describe('serve() with static API keys', () => {
   it('starts with a registered package scope as the only default scope', () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       publicOrigin: 'http://localhost',
@@ -329,6 +347,7 @@ describe('serve() with static API keys', () => {
   it('starts with a resolver in place of default scopes', () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       publicOrigin: 'http://localhost',
@@ -340,6 +359,7 @@ describe('serve() with static API keys', () => {
   it('does not constrain a server that authenticates by JWT alone', () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       publicOrigin: 'http://localhost',
