@@ -18,6 +18,7 @@ import {
   deliveryRule,
   designLinks,
   designRowIds,
+  issueVerificationLead,
   pathsIn,
   pushRule,
   renderBrief,
@@ -145,8 +146,11 @@ describe('renderBrief', () => {
       paths: ['a/b.ts'],
       verify: ['bun test a'],
     });
-    expect(text).toContain('- `a/b.ts`');
-    expect(text).not.toContain('thing.test.ts');
+    // The issue's own Files section still travels verbatim; only the owned paths are replaced.
+    const owned = sectionOf(text, /^owned paths\b/i) ?? '';
+    expect(owned).toContain('- `a/b.ts`');
+    expect(owned).not.toContain('thing.test.ts');
+    expect(sectionOf(text, /^files\b/i)).toContain('- `scripts/chef/thing.test.ts`');
     expect(text).toContain('- `bun test a`');
     expect(text).not.toContain('- `bun run typecheck:root`');
   });
@@ -565,10 +569,91 @@ describe('the create-task ticket template', () => {
       ['Out of scope', 'Filled out of scope.'],
       ['Constraints', 'Filled constraints.'],
       ['Files', '- `scripts/chef/thing.ts`'],
-      ['Verification', '- `bun scripts/chef/focused-checks.ts`'],
+      ['Verification', `${issueVerificationLead}\n\n- \`bun test scripts/chef/thing.test.ts\``],
       ['Delivery boundary', 'Filled delivery boundary.'],
+      ['Checks', "The coordinator's checks for this brief; run them as the Checks rule says."],
     ])
       expect(text).toContain(`## ${title}\n\n${body}`);
+    expect(text).toContain('- `bun scripts/chef/focused-checks.ts`');
+  });
+});
+
+// The P-COR-128 trial (2026-11-25): every chef brief dropped the Files entries without a slash
+// (`package.json`, where "chained in lint:guards" lands) and replaced the issue's Verification with
+// the focused checks alone, and the Delivery rule contradicted the issue's boundary. The issue's
+// own sections now travel verbatim; coordinator context sits in sections of its own.
+describe('a brief is lossless for the issue sections', () => {
+  const sections = new Map<string, string[]>([
+    [
+      'Brief',
+      [
+        'The geometry probe measures edges, gaps and insets, but not three defects the owner found.',
+      ],
+    ],
+    [
+      'Current behavior',
+      [
+        '* `measureGeometry` (`testing/testing/src/design-review-geometry-probe.ts` (line 1145)) records boxes. Verified.',
+      ],
+    ],
+    [
+      'Acceptance criteria',
+      [
+        '* AC1: A new rule `identifier-proportional` reports a host and port such as `127.0.0.1:7233`.',
+        '* AC2: The guard is chained in `lint:guards`.',
+      ],
+    ],
+    ['Decisions', ['* The tolerance is 1px (planner decision, owner may overturn).']],
+    ['Out of scope', ['* Failing CI on these findings.']],
+    ['Constraints', ['* Read all boxes in one browser evaluation (`check-separate-box-reads`).']],
+    [
+      'Files',
+      [
+        '`testing/testing/src/design-review-geometry-probe.ts`',
+        '`package.json`',
+        '`applications/interborough/src/app/copy/`',
+      ],
+    ],
+    [
+      'Verification',
+      [
+        '* `bun scripts/chef/focused-checks.ts`',
+        '* `bun scripts/bun-test.ts applications/interborough/scripts/design-review-geometry.test.ts`',
+        '* `bun scripts/bun-test.ts testing/testing/src/design-review-geometry-probe.integration.test.ts` (it launches a browser)',
+        '* `bun run lint:guards`',
+        '* The coordinator runs `applications/interborough/tests/e2e/design-review-geometry-probe.spec.ts` in CI.',
+      ],
+    ],
+    ['Delivery boundary', ['A merged pull request.']],
+  ]);
+  const body = [...sections]
+    .map(([title, lines]) => `## ${title}\n\n${lines.join('\n')}`)
+    .join('\n\n');
+
+  test('carries every non-empty line of every template section', () => {
+    const brief = renderBrief(issue(body), { paths: [], verify: [], model: 'Sonnet' });
+    const briefLines = new Set(brief.split('\n').map((line) => line.trim()));
+    for (const [title, lines] of sections)
+      for (const line of lines) expect(briefLines.has(line), `${title}: ${line}`).toBe(true);
+  });
+
+  test("states the issue's boundary and the route that reaches it, never overriding it", () => {
+    const brief = renderBrief(issue(body), { paths: [], verify: [], model: 'Sonnet' });
+    expect(brief).not.toContain('outranks any delivery wording');
+    const boundary = sectionOf(brief, /^delivery\s+boundary\b/i) ?? '';
+    expect(boundary).toContain('A merged pull request.');
+    expect(boundary).toContain('--route pull-request');
+    const branchOnly = renderBrief(
+      issue(body.replace('A merged pull request.', 'The change merged into `main`.')),
+      { paths: [], verify: [], model: 'Sonnet' },
+    );
+    expect(sectionOf(branchOnly, /^delivery\s+boundary\b/i)).toContain('deliver.ts --branch');
+  });
+
+  test("names the issue's verification as commands to run, apart from the coordinator's checks", () => {
+    const brief = renderBrief(issue(body), { paths: [], verify: [], model: 'Sonnet' });
+    expect(sectionOf(brief, /^verification\b/i)).toContain("The issue's verification: run these");
+    expect(sectionOf(brief, /^checks\b/i)).toContain('`bun scripts/chef/focused-checks.ts`');
   });
 });
 

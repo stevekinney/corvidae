@@ -23,8 +23,10 @@
 //     `sharedHeading`) and that links the document holding it keeps its heading and a one-line
 //     pointer, so a programme's preamble is read once, in the document, not in every brief;
 //   - the issue's brief (an "Execution brief" or "Brief" heading) followed by its Current behavior,
-//     Acceptance criteria, Decisions, Out of scope, Constraints and Delivery boundary sections and
-//     every dated revision, or the whole description when it has no brief heading;
+//     Acceptance criteria, Decisions, Out of scope, Constraints, Files, Verification and Delivery
+//     boundary sections, verbatim, and every dated revision, or the whole description when it has
+//     no brief heading. Verification gains a lead naming its commands the worker's to run, and the
+//     Delivery boundary a line naming the chef route that reaches it (`deliveryRoute`);
 //   - when the issue names a design (a claude.ai artifact link or a "Design source" section): the
 //     design rows, the rows its acceptance criteria leave out, and the instruction to build against
 //     the saved boards and return a design-review verdict per row. An issue with design rows is
@@ -38,10 +40,10 @@
 //   - the claim: the issue's newest claim comment (`linear.ts claim`) as one line, or "None". A
 //     live claim by a run other than `--run` (or any live claim, without `--run`) is exit 1 and no
 //     brief is written; `--stdout` still prints it, since a read-only scout takes no claim;
-//   - the files: each `--path`, else the "Files" section, else the path-like code spans in the
-//     description;
-//   - the verification commands: coordinator-approved `--verify` commands, or the focused checks
-//     for what the worker changed; issue Verification prose is never executable authority;
+//   - the owned paths: each `--path`, else the path-like entries of the "Files" section, else the
+//     path-like code spans in the description;
+//   - the checks: coordinator-approved `--verify` commands, or the focused checks for what the
+//     worker changed; only these enter the machine-readable verification plan;
 //   - the charter rules every worker gets (`charterRules` below, their one source; the
 //     `references/execution-record.md` "Worker charter" template points here): cost, checks,
 //     browser suites on CI only, the scratch directory, branch updates, delivery, the review
@@ -113,7 +115,22 @@ export const pushRule =
  * document restates it (`brief.test.ts` checks the agent definition and the Codex protocol).
  */
 export const deliveryRule =
-  'push your branch and report, and open no pull request unless the dispatch asks for one; you do not merge, because the coordinator verifies and merges your branch (or a pull request through `deliver.ts`); on a conflict, merge `main` in, rerun the focused checks, and return the new head; a red `main` is a warning, not a refusal; and this rule outranks any delivery wording in the issue.';
+  'push your branch and report, and open no pull request unless the dispatch asks for one; you do not merge, because the coordinator verifies and merges your branch (or a pull request through `deliver.ts`); on a conflict, merge `main` in, rerun the focused checks, and return the new head; a red `main` is a warning, not a refusal; and the Delivery boundary section of each issue names the route the coordinator takes to reach that boundary.';
+
+/**
+ * The chef route that reaches an issue's delivery boundary, stated under the boundary so the brief
+ * never overrides it silently: a boundary that names a pull request is delivered as one, any other
+ * by a squash merge of the pushed branch.
+ */
+export function deliveryRoute(boundary: string): string {
+  return /\bpull\s+request\b/i.test(boundary)
+    ? 'Chef route: this boundary names a pull request, so the coordinator delivers it as one (`delivery-request.ts prepare --route pull-request`, then `deliver.ts --pr`); you push your branch and report, and open the pull request when the dispatch asks for one.'
+    : 'Chef route: the coordinator reaches this boundary by a squash merge of your pushed branch (`deliver.ts --branch`); you push your branch and report.';
+}
+
+/** What precedes the issue's own Verification section: its commands are the worker's to run. */
+export const issueVerificationLead =
+  "The issue's verification: run these, as the charter allows. A command the Browser suites rule keeps off this host goes in your handoff, for the coordinator to run in CI.";
 
 /**
  * The charter rules: the one source of the worker-facing rules. `brief.test.ts` keeps each in step
@@ -415,7 +432,13 @@ const briefHeading = /execution\s+brief|^brief$/i;
  * The sections a brief carries after the issue's own brief, in this order. Each is the issue's
  * section under a matching heading; Acceptance criteria is the one that is always shown.
  */
-const carriedSections: { title: string; heading: RegExp; missing?: string }[] = [
+const carriedSections: {
+  title: string;
+  heading: RegExp;
+  missing?: string;
+  before?: (body: string) => string;
+  after?: (body: string) => string;
+}[] = [
   { title: 'Current behavior', heading: /^current\s+behaviou?r\b/i },
   {
     title: 'Acceptance criteria',
@@ -425,7 +448,9 @@ const carriedSections: { title: string; heading: RegExp; missing?: string }[] = 
   { title: 'Decisions', heading: /^decisions?\b/i },
   { title: 'Out of scope', heading: /^out\s+of\s+scope\b/i },
   { title: 'Constraints', heading: /^constraints?\b/i },
-  { title: 'Delivery boundary', heading: /^delivery\s+boundary\b/i },
+  { title: 'Files', heading: /^files?\b|files? to (?:change|touch)/i },
+  { title: 'Verification', heading: /^verification\b/i, before: () => issueVerificationLead },
+  { title: 'Delivery boundary', heading: /^delivery\s+boundary\b/i, after: deliveryRoute },
 ];
 const pathLimit = 40;
 
@@ -663,23 +688,27 @@ function writeContextSnapshots(options: BriefOptions, scratch: string | undefine
     }
 }
 
-/** The files, verification and charter sections that close every brief. */
+/** The coordinator's owned paths, checks and charter sections that close every brief. */
 function filesAndRules(options: BriefOptions, issues: readonly IssueSummary[]): string[] {
   const paths = [...new Set(issues.flatMap((issue) => pathsOfIssue(issue, options)))];
-  // Issue descriptions are requirement data, not command authority. Only coordinator-provided
-  // commands appear in both the rendered brief and the machine-readable verification plan.
+  // The machine-readable verification plan takes only coordinator-provided commands; the issue's
+  // own Verification section travels verbatim under the issue, as commands the worker runs.
   const verificationBody = verificationCommands(options.verify).map(
     (command) => `- \`${command}\``,
   );
   return [
     ...(options.base === undefined ? [] : [`Starting base: \`${options.base}\``, '']),
-    '## Files',
+    '## Owned paths',
+    '',
+    "The repository paths the coordinator's assignment records (`--path`, else the path-like entries of the issue's Files section).",
     '',
     ...(paths.length > 0
       ? paths.slice(0, pathLimit).map((path) => `- \`${path}\``)
       : ['- (none named; inspect the nearby code first and keep the change inside one workspace)']),
     '',
-    '## Verification',
+    '## Checks',
+    '',
+    "The coordinator's checks for this brief; run them as the Checks rule says.",
     '',
     ...verificationBody,
     '',
@@ -752,9 +781,15 @@ function issueLines(issue: IssueSummary, options: BriefOptions, depth: number): 
     '',
   ];
   if (execution !== undefined) {
+    // The issue's sections travel verbatim; a lead or a route line is added around them, never in
+    // place of a line of theirs.
     for (const section of carriedSections) {
       const body = sectionOf(description, section.heading) ?? section.missing;
-      if (body !== undefined) lines.push(heading(section.title), '', body, '');
+      if (body === undefined) continue;
+      lines.push(heading(section.title), '');
+      if (section.before !== undefined) lines.push(section.before(body), '');
+      lines.push(body, '');
+      if (section.after !== undefined) lines.push(section.after(body), '');
     }
     // Dated revisions settle decisions and amend criteria, so they travel whole and in order.
     for (const revision of sectionsOf(description).filter((entry) =>
