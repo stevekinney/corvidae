@@ -98,7 +98,7 @@ export class ActivityWorkerDispatcher implements Disposable, AsyncDisposable {
    */
   async execute(request: ActivityExecutionRequest): Promise<ActivityExecutionResult> {
     const worker = await this.#pool.acquire();
-    let terminated = false;
+    let discarded = false;
 
     try {
       return await new Promise<ActivityExecutionResult>((resolve) => {
@@ -123,6 +123,16 @@ export class ActivityWorkerDispatcher implements Disposable, AsyncDisposable {
             status: 'failed',
             error: `Activity worker crashed: ${event.message ?? 'unknown error'}`,
           });
+          discard();
+        };
+
+        const onMessageError = () => {
+          settle({
+            operationId: request.operationId,
+            status: 'failed',
+            error: 'Activity worker messageerror event',
+          });
+          discard();
         };
 
         const timer = setTimeout(() => {
@@ -133,24 +143,29 @@ export class ActivityWorkerDispatcher implements Disposable, AsyncDisposable {
               `Activity "${request.activityName}" timed out after ${this.#timeoutMilliseconds}ms ` +
               `(operationId: ${request.operationId})`,
           });
-          // Terminate the unresponsive worker so it doesn't linger.
-          // Mark as terminated so the finally block skips pool release.
-          terminated = true;
-          void worker.terminate();
+          discard();
         }, this.#timeoutMilliseconds);
 
         const cleanup = () => {
           clearTimeout(timer);
           worker.removeEventListener('message', onMessage as EventListener);
           worker.removeEventListener('error', onError as EventListener);
+          worker.removeEventListener('messageerror', onMessageError as EventListener);
+        };
+
+        const discard = () => {
+          if (discarded) return;
+          discarded = true;
+          this.#pool.discard(worker);
         };
 
         worker.addEventListener('message', onMessage as EventListener);
         worker.addEventListener('error', onError as EventListener);
+        worker.addEventListener('messageerror', onMessageError as EventListener);
         worker.postMessage(request);
       });
     } finally {
-      if (!terminated) {
+      if (!discarded) {
         this.#pool.release(worker);
       }
     }

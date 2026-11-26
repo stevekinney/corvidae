@@ -141,7 +141,15 @@ void test('Node worker factory reports a crashing module through its error event
 
 void test('Node worker factory runs a generated activity Blob entry', async () => {
   const url = createActivityWorkerEntryUrl(
-    new Map([['double', (input: unknown) => Number(input) * 2]]),
+    new Map([
+      [
+        'double',
+        (input: unknown) => {
+          if (input === 'fail') globalThis.process.exit(1);
+          return Number(input) * 2;
+        },
+      ],
+    ]),
   );
   try {
     using pool = new WorkerPool({
@@ -150,6 +158,19 @@ void test('Node worker factory runs a generated activity Blob entry', async () =
       createWorker: nodeWorkerFactory,
     });
     using dispatcher = new ActivityWorkerDispatcher(pool);
+    assert.deepEqual(
+      await dispatcher.execute({
+        operationId: 'generated-blob-failure',
+        activityName: 'double',
+        input: 'fail',
+        attempt: 1,
+      }),
+      {
+        operationId: 'generated-blob-failure',
+        status: 'failed',
+        error: 'Activity worker crashed: Node worker exited unexpectedly with code 1',
+      },
+    );
     assert.deepEqual(
       await dispatcher.execute({
         operationId: 'generated-blob',
