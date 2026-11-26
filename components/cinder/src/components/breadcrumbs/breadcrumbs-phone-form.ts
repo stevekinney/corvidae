@@ -7,14 +7,14 @@
  */
 
 /** The trail's attribute naming the viewport width below which it takes its phone form. */
-export const PHONE_BELOW_ATTRIBUTE = 'data-cinder-phone-below';
+const PHONE_BELOW_ATTRIBUTE = 'data-cinder-phone-below';
 
 /**
  * Each phone-form rule as the part of its selector after the trail's own, and its declarations.
  * The ancestors and the "…" item hide with `display: none`, and the back link shows, so the
  * accessibility tree holds one form at a time.
  */
-export const PHONE_FORM_RULES: readonly (readonly [selector: string, declarations: string])[] = [
+const PHONE_FORM_RULES: readonly (readonly [selector: string, declarations: string])[] = [
   ['', 'display: flex; align-items: center; min-inline-size: 0;'],
   [' .cinder-breadcrumbs__back', 'display: inline-flex;'],
   [' .cinder-breadcrumbs__item:not(:last-child)', 'display: none;'],
@@ -26,7 +26,7 @@ export const PHONE_FORM_RULES: readonly (readonly [selector: string, declaration
 ];
 
 /** The selector of the trails whose phone form starts below `length`. */
-export function phoneFormScope(length: string): string {
+function phoneFormScope(length: string): string {
   return `.cinder-breadcrumbs[${PHONE_BELOW_ATTRIBUTE}="${length}"]`;
 }
 

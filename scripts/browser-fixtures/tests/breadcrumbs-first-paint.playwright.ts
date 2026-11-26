@@ -94,7 +94,8 @@ test('with no script, a 1280px viewport paints the whole trail and no back link'
 
 for (const width of [375, 1280]) {
   test(`at ${width}px the first paint is the hydrated layout`, async ({ page, browser }) => {
-    const firstPaint = await (await openFirstPaint(page, width)).boundingBox();
+    const firstPaintTrail = await openFirstPaint(page, width);
+    const firstPaint = await firstPaintTrail.boundingBox();
 
     const context = await browser.newContext({
       javaScriptEnabled: true,

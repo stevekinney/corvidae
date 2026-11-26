@@ -28,7 +28,7 @@ const STYLESHEET = /<link\b[^>]*\brel="stylesheet"[^>]*>/iu;
  * carries the theme the host would apply from storage. Throws when the page has no stylesheet link
  * or no empty target, so a changed host page fails loudly instead of yielding an unstyled check.
  */
-export function serverRenderedDocument(
+function serverRenderedDocument(
   hostPage: string,
   body: string,
   theme: ServerRenderedTheme = 'light',
