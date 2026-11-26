@@ -435,8 +435,19 @@ const defaults = HOOKS_COPY.defaultHook;
 const standing = HOOKS_COPY.standing;
 
 type Fault = { readonly status: number; readonly message: string; readonly data?: object };
-type Answer = (params: Record<string, unknown>) => unknown;
+type Answer = (params: Record<string, unknown>) => unknown | Fault;
 type Call = { readonly method: string; readonly params: Record<string, unknown> };
+
+function isFault(answer: unknown): answer is Fault {
+  return (
+    typeof answer === 'object' &&
+    answer !== null &&
+    'status' in answer &&
+    'message' in answer &&
+    typeof answer.status === 'number' &&
+    typeof answer.message === 'string'
+  );
+}
 
 /** Answers each Bureau method named, records the calls, and sends every other method on to the host. */
 async function serveBureau(
@@ -473,6 +484,21 @@ async function serveBureau(
     }
     // An answer may be held (a promise), so a test can show the page while a read is in flight.
     const result: unknown = await answer(body.params ?? {});
+    if (isFault(result)) {
+      await route.fulfill({
+        status: result.status,
+        json: {
+          jsonrpc: '2.0',
+          id: body.id,
+          error: {
+            code: -32000,
+            message: result.message,
+            data: { weftCode: 'InvalidParams', httpStatus: result.status, ...result.data },
+          },
+        },
+      });
+      return;
+    }
     await route.fulfill({ json: { jsonrpc: '2.0', id: body.id, result } });
   });
   return calls;
@@ -981,6 +1007,162 @@ test('[default-hook-toggle-failed] /hooks: a switch the Bureau refuses says so i
     state: 'default-hook-toggle-failed',
     source: SOURCE,
   });
+});
+
+// PageHooks 85j: this write is deliberately separate from the form's Save hook.
+test('[hook-editor-switch-undo] /hooks/:hook: the On switch saves immediately, keeps an Undo toast on the page, and does not save a draft', async ({
+  page,
+}) => {
+  const hook = hookRecord('on-call', {
+    name: 'Page on-call when a run fails',
+    declaredBy: null,
+  });
+  const calls = await openHooks(page, '/hooks/on-call', [hook], {
+    'bureau.hooks.update': (params) => ({
+      ...hook,
+      enabled: params['enabled'],
+      revision: Number(params['expectedRevision']) + 1,
+    }),
+  });
+  const name = page.getByLabel(copy.check.nameLabel);
+  await name.fill('A draft that must stay unsaved');
+  const toggle = page.getByTestId('hook-header').getByRole('switch');
+  await toggle.click();
+
+  const toast = page.locator('.cinder-toast', { hasText: copy.toggled.off(hook.name) });
+  await expect(toast).toBeVisible();
+  await expect(toast.getByRole('button', { name: 'Undo' })).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  expect(calls.filter((call) => call.method === 'bureau.hooks.update')).toHaveLength(1);
+  expect(calls.find((call) => call.method === 'bureau.hooks.update')?.params).toEqual({
+    hookId: hook.id,
+    expectedRevision: 1,
+    enabled: false,
+  });
+  await captureForDesignReview(page, {
+    route: '/hooks/:hook',
+    state: 'hook-editor-switch-undo',
+    source: SOURCE,
+  });
+
+  await toast.getByRole('button', { name: 'Undo' }).click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect(name).toHaveValue('A draft that must stay unsaved');
+  expect(calls.filter((call) => call.method === 'bureau.hooks.update')).toHaveLength(2);
+  expect(calls.filter((call) => call.method === 'bureau.hooks.update')[1]?.params).toEqual({
+    hookId: hook.id,
+    expectedRevision: 2,
+    enabled: true,
+  });
+});
+
+// PageHooks 86b: the slow delivery-log state is timed from its own request, while the form is ready.
+test('[hook-editor-delivery-log-slow] /hooks/:hook: delivery placeholders start after 300 ms and add Still loading with Cancel after 10 s', async ({
+  page,
+}) => {
+  const now = Date.UTC(2026, 10, 2, 12);
+  await page.clock.install({ time: now - 1_000 });
+  await page.clock.pauseAt(now);
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const hook = hookRecord('slow-log', { declaredBy: null });
+  await openHooks(page, '/hooks/slow-log', [hook], {
+    'bureau.hooks.deliveries': async () => {
+      await held;
+      return { deliveries: [] };
+    },
+  });
+  const deliveries = page.getByTestId('hook-deliveries');
+  await expect(page.getByLabel(copy.check.nameLabel)).toBeVisible();
+  await page.clock.runFor(300);
+  await expect(deliveries.locator('.cinder-skeleton').first()).toBeVisible();
+  await page.clock.runFor(10_000);
+  await expect(deliveries.getByText(HOOKS_COPY.editor.deliveries.stillLoading)).toBeVisible();
+  await expect(deliveries.getByRole('button', { name: 'Cancel' })).toBeVisible();
+  await page.clock.resume();
+  await captureForDesignReview(page, {
+    route: '/hooks/:hook',
+    state: 'hook-editor-delivery-log-slow',
+    source: SOURCE,
+  });
+
+  await deliveries.getByRole('button', { name: 'Cancel' }).click();
+  release();
+});
+
+// PageHooks 86c: a retry may read the log again, but must not reread or change the adjacent hook.
+test('[hook-editor-delivery-log-retry] /hooks/:hook: a classified log failure retries only the log and preserves the visible draft', async ({
+  page,
+  pageErrors,
+}) => {
+  pageErrors.expectEvery({
+    pattern: loggedFailedResponse(500, /\/jsonrpc/),
+    reason: 'the first delivery-log read answers with the classified server failure',
+  });
+  const hook = hookRecord('retry-log', { declaredBy: null });
+  let fail = true;
+  const calls = await openHooks(page, '/hooks/retry-log', [hook], {
+    'bureau.hooks.deliveries': () => {
+      if (fail) {
+        fail = false;
+        return { status: 500, message: 'The log server broke.' };
+      }
+      return { deliveries: [] };
+    },
+  });
+  const name = page.getByLabel(copy.check.nameLabel);
+  await name.fill('A draft that retry must leave alone');
+  const deliveries = page.getByTestId('hook-deliveries');
+  await expect(deliveries).toContainText(HOOKS_COPY.editor.deliveries.loadFailed.title);
+  await expect(deliveries).toContainText(HOOKS_COPY.editor.deliveries.loadFailed.answered(500));
+  const hookReads = calls.filter((call) => call.method === 'bureau.hooks.get').length;
+  const logReads = calls.filter((call) => call.method === 'bureau.hooks.deliveries').length;
+  await captureForDesignReview(page, {
+    route: '/hooks/:hook',
+    state: 'hook-editor-delivery-log-retry',
+    source: SOURCE,
+  });
+
+  await deliveries.getByRole('button', { name: 'Try again' }).click();
+  await expect(
+    deliveries.getByRole('heading', { name: HOOKS_COPY.editor.deliveries.none.title }),
+  ).toBeVisible();
+  await expect(name).toHaveValue('A draft that retry must leave alone');
+  expect(calls.filter((call) => call.method === 'bureau.hooks.deliveries')).toHaveLength(
+    logReads + 1,
+  );
+  expect(calls.filter((call) => call.method === 'bureau.hooks.get')).toHaveLength(hookReads);
+  expect(calls.filter((call) => call.method === 'bureau.hooks.update')).toEqual([]);
+});
+
+// PageHooks 86d: the current visible fallback is the durable ID, not the human-readable former name.
+test('[hook-editor-deleted-workflow-id-fallback] /hooks/:hook: a deleted workflow stays marked, explains the remedy, and Save returns focus without a write', async ({
+  page,
+}) => {
+  const hook = hookRecord('deleted-workflow', {
+    declaredBy: null,
+    action: { type: 'start-workflow', workflowId: 'weekly-cleanup', input: 'payload' },
+  });
+  const calls = await openHooks(page, '/hooks/deleted-workflow', [hook], {
+    'bureau.workflows.list': () => ({ workflows: [], nextOffset: null }),
+  });
+  const workflow = page.getByLabel(copy.workflow.label);
+  await expect(workflow).toHaveValue('weekly-cleanup');
+  await expect(workflow.locator('option').nth(1)).toHaveText(
+    copy.workflow.deletedName('weekly-cleanup'),
+  );
+  await expect(page.getByText(copy.workflow.deleted, { exact: true })).toBeVisible();
+  await captureForDesignReview(page, {
+    route: '/hooks/:hook',
+    state: 'hook-editor-deleted-workflow-id-fallback',
+    source: SOURCE,
+  });
+
+  await page.getByRole('button', { name: copy.check.save }).click();
+  await expect(workflow).toBeFocused();
+  expect(calls.filter((call) => call.method === 'bureau.hooks.update')).toEqual([]);
 });
 
 // R10-25: a default hook appears in each list state like any other hook.
