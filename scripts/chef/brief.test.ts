@@ -668,6 +668,45 @@ describe('a brief is lossless for the issue sections', () => {
     expect(briefRoute(branchOnly)).toBe('branch');
   });
 
+  // Codex on #1305: a description with no brief heading is carried whole, and its boundary must
+  // still set the route and gain the route line.
+  test('a headingless description takes the route its Delivery boundary names', () => {
+    const headingless = [
+      '## Scope',
+      '',
+      'Remove `a/b.ts`.',
+      '',
+      '## Delivery boundary',
+      '',
+      'A merged pull request.',
+    ].join('\n');
+    const brief = renderBrief(issue(headingless), { paths: [], verify: [], model: 'Sonnet' });
+    expect(briefRoute(brief)).toBe('pull-request');
+    expect(brief).toContain('--route pull-request');
+    const branch = renderBrief(
+      issue(headingless.replace('A merged pull request.', 'Merged into `main`.')),
+      { paths: [], verify: [], model: 'Sonnet' },
+    );
+    expect(briefRoute(branch)).toBe('branch');
+    expect(branch).toContain('deliver.ts --branch');
+  });
+
+  test('a boundary cut off a long headingless description still sets the route', () => {
+    const long = [
+      '## Scope',
+      '',
+      'x'.repeat(17_000),
+      '',
+      '## Delivery boundary',
+      '',
+      'A merged pull request.',
+    ].join('\n');
+    const brief = renderBrief(issue(long), { paths: [], verify: [], model: 'Sonnet' });
+    expect(brief).toContain('[description cut at');
+    expect(briefRoute(brief)).toBe('pull-request');
+    expect(brief).toContain('A merged pull request.');
+  });
+
   test("names the issue's verification as commands to run, apart from the coordinator's checks", () => {
     const brief = renderBrief(issue(body), { paths: [], verify: [], model: 'Sonnet' });
     expect(sectionOf(brief, /^verification\b/i)).toContain("The issue's verification: run these");

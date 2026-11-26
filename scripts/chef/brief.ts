@@ -127,17 +127,31 @@ const pullRequestRouteLine =
 const branchRouteLine =
   'Chef route: the coordinator reaches this boundary by a squash merge of your pushed branch (`deliver.ts --branch`); you push your branch and report.';
 
+/** Whether a Delivery boundary names a pull request, ignoring a route line the brief added. */
+function namesPullRequest(boundary: string): boolean {
+  const own = boundary
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith('Chef route:'))
+    .join('\n');
+  return /\bpull\s+request\b/i.test(own);
+}
+
 function deliveryRoute(boundary: string): string {
-  return /\bpull\s+request\b/i.test(boundary) ? pullRequestRouteLine : branchRouteLine;
+  return namesPullRequest(boundary) ? pullRequestRouteLine : branchRouteLine;
 }
 
 /**
  * The route a rendered brief promises, which `--json` reports as `route` and the coordinator passes
  * to `deliver-issue.js`, so the route the brief names is the one delivery takes: `pull-request` when
- * any issue's boundary names one, otherwise `branch`.
+ * any Delivery boundary section in it names one, otherwise `branch`. It reads the boundaries the
+ * brief carries (as a carried section, or inside a headingless description), never the route line.
  */
 export function briefRoute(text: string): 'pull-request' | 'branch' {
-  return text.includes(pullRequestRouteLine) ? 'pull-request' : 'branch';
+  return sectionsOf(text).some(
+    (section) => /^delivery\s+boundary\b/i.test(section.heading) && namesPullRequest(section.body),
+  )
+    ? 'pull-request'
+    : 'branch';
 }
 
 /** What precedes the issue's own Verification section: its commands are the worker's to run. */
@@ -808,6 +822,14 @@ function issueLines(issue: IssueSummary, options: BriefOptions, depth: number): 
     execution ?? (source || '(the issue has no description)'),
     '',
   ];
+  // A headingless description travels whole, so its Delivery boundary gets the route line here; a
+  // boundary the length cut dropped is carried again, so the route still follows it.
+  const boundary = sectionOf(description, /^delivery\s+boundary\b/i);
+  if (execution === undefined && boundary !== undefined) {
+    if (source?.includes(boundary) !== true)
+      lines.push(heading('Delivery boundary'), '', boundary, '');
+    lines.push(deliveryRoute(boundary), '');
+  }
   if (execution !== undefined) {
     // The issue's sections travel verbatim; a lead or a route line is added around them, never in
     // place of a line of theirs.
