@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2763",
+  "branch": "steve/composable-peer-signed-approvals",
+  "checkedAt": "56547ac6fe",
+  "briefVersion": "fe971b199f42",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "review-peer-visibility.integration.test.ts: both live processes list, get, and task reads agree"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "review-peer-visibility.integration.test.ts: foreign workspace, missing owner and authority, changed capabilities, missing and invalid binding, expiry, zero decision/effect counts"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "review-peer-visibility.integration.test.ts: simultaneous approvals, one decision and effect, settlement and repeat; multi-instance and Reviews operation tests passed"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "pre-fix real-process command exited 1 on B's missing review; same isolated command exited 0 with distinct PIDs and durable counts"
+    }
+  ]
+}
