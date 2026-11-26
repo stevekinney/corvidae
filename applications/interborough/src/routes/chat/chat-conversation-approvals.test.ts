@@ -464,7 +464,8 @@ describe('the header title', () => {
     landAt('/chats/session-1');
     const { findByTestId } = mount('Fix `` in snake_case_name and **open');
 
-    const heading = (await findByTestId('chat-header')).querySelector('h1');
+    const header = await findByTestId('chat-header');
+    const heading = header.querySelector('h1');
     expect(heading?.textContent).toBe('Fix `` in snake_case_name and **open');
     expect(heading?.querySelector('strong, em, code')).toBeNull();
   });

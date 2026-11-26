@@ -129,7 +129,8 @@ test('refuses a refresh credential when no refresh token is stored', async () =>
 test('records the claim by the SHA-256 digest of the credential, in hex', async () => {
   const { session, vault } = await fixture();
   await admission(session().beforeTokenRequest(request));
-  const claim = (await vault.read('source')).oauthClaim;
+  const stored = await vault.read('source');
+  const claim = stored.oauthClaim;
   expect(claim?.credentialDigest).toBe(createHash('sha256').update('refresh-one').digest('hex'));
   expect(claim?.credentialDigest).toBe(
     '083a57c20884c1571d411d227f461a0bf4d96a580c13e6af06b79021247f76ff',

@@ -168,7 +168,8 @@ describe('production host source', () => {
   }
 
   test('scans the production files of the host directory', async () => {
-    const files = (await scan()).map(({ file }) => file);
+    const scanned = await scan();
+    const files = scanned.map(({ file }) => file);
     expect(files.length).toBeGreaterThan(100);
     expect(files).toContain('a2a-authentication.ts');
     expect(files).toContain('engine-proxy.ts');
