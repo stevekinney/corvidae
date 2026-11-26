@@ -1,5 +1,4 @@
-import { environmentalist } from '@lostgradient/environmentalist';
-import type { Source } from '@lostgradient/environmentalist/types';
+import { createEnvironmentRecordSource, environmentalist } from '@lostgradient/environmentalist';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -10,25 +9,7 @@ const schema = z.object({
     .meta({ env: 'WEFT_KEEP_DURABILITY_FIXTURES' }),
 });
 
-function loadEnvironment() {
-  const environment = typeof process !== 'undefined' ? process.env : {};
-  const mapping = {
-    keepDurabilityFixtures: 'WEFT_KEEP_DURABILITY_FIXTURES',
-  };
-  const values: Record<string, string> = {};
-  for (const [key, name] of Object.entries(mapping)) {
-    const value = environment[name];
-    if (value !== undefined) values[key] = value;
-  }
-  return { values, location: 'runtime environment' };
-}
-
-const source: Source = {
-  id: 'storage-environment',
-  kind: 'string',
-  load: loadEnvironment,
-  loadSync: loadEnvironment,
-};
+const source = createEnvironmentRecordSource({ schema });
 
 /**
  * Resolve the storage package's settings from the environment without requiring a server runtime.

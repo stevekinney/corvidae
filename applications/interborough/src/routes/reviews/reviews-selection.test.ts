@@ -6,7 +6,7 @@
  */
 import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { REVIEWS_COPY } from '../../app/copy/reviews.ts';
@@ -21,13 +21,22 @@ import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import Harness from './reviews-shell.test-harness.svelte';
 
+// Every fixture is timed relative to now, so the clock is pinned to noon UTC before any fixture is
+// built: a run that crossed midnight UTC once rendered decisions made a minute earlier under
+// "Yesterday", and the day-band assertions failed.
+const NOW = new Date('2026-11-02T12:00:00.000Z');
+setSystemTime(NOW);
+
 let stub: BureauWorldStub | undefined;
 let restoreMeasure: (() => void) | undefined;
 
 beforeEach(() => {
+  setSystemTime(NOW);
   if (!(window instanceof Window)) throw new Error('expected a happy-dom test window');
   window.happyDOM.setURL('http://localhost/');
 });
+
+afterAll(() => setSystemTime());
 
 afterEach(() => {
   cleanup();

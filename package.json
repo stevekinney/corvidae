@@ -35,7 +35,7 @@
     "@lasercat/homogenaize": "^1.2.41",
     "@lezer/highlight": "1.2.3",
     "@libsql/client": "^0.17.2",
-    "@lostgradient/environmentalist": "0.1.0",
+    "@lostgradient/environmentalist": "0.2.0",
     "@lucide/svelte": "^1.56.0",
     "@milkdown/ctx": "^7.17.3",
     "@milkdown/kit": "^7.17.3",

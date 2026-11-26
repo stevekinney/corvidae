@@ -1387,7 +1387,7 @@
     "@lasercat/homogenaize": "^1.2.41",
     "@lezer/highlight": "1.2.3",
     "@libsql/client": "^0.17.2",
-    "@lostgradient/environmentalist": "0.1.0",
+    "@lostgradient/environmentalist": "0.2.0",
     "@lucide/svelte": "^1.56.0",
     "@milkdown/ctx": "^7.17.3",
     "@milkdown/kit": "^7.17.3",
@@ -1685,7 +1685,7 @@
 
     "@lostgradient/editor": ["@lostgradient/editor@workspace:components/editor"],
 
-    "@lostgradient/environmentalist": ["@lostgradient/environmentalist@0.1.0", "", { "dependencies": { "change-case": "^5.4.4", "dotenv": "^17.2.0", "jiti": "^2.4.2", "toml": "^5.0.0", "yaml": "^2.8.0" }, "optionalDependencies": { "ts-morph": "^28.0.0" }, "peerDependencies": { "react": ">=18", "svelte": ">=5", "zod": "^4" }, "optionalPeers": ["react", "svelte"], "bin": { "environmentalist": "dist/cli.js" } }, "sha512-9uV5b6kX5p3ahctWj4NyqXArpybIYLfdjFfeI8VWz0QN6OT73sWCLejRjokKJMtIxCS+SpM965lpNCJhaGL41g=="],
+    "@lostgradient/environmentalist": ["@lostgradient/environmentalist@0.2.0", "", { "dependencies": { "change-case": "^5.4.4", "dotenv": "^17.2.0", "jiti": "^2.4.2", "toml": "^5.0.0", "yaml": "^2.8.0" }, "optionalDependencies": { "ts-morph": "^28.0.0" }, "peerDependencies": { "react": ">=18", "svelte": ">=5", "zod": "^4" }, "optionalPeers": ["react", "svelte"], "bin": { "environmentalist": "dist/cli.js" } }, "sha512-sDkw0oO3i/fhtr8ddM8pAIdcl33rns1Cr/vuVxRQxyDXTYXpwuZQP8afQo2Y9Kr4yPcwB5TovnQbhjEmwtb7TQ=="],
 
     "@lostgradient/evaluation": ["@lostgradient/evaluation@workspace:testing/evaluation"],
 
