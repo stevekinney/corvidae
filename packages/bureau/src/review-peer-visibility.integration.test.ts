@@ -19,7 +19,7 @@ const outcome = await settleScenario(async (scope) => {
       const child = spawnWithHangGuard(
         [
           'bun',
-          join(import.meta.dir, 'test/review-peer-child.ts'),
+            join(import.meta.dir, 'test', 'review-peer-child.ts'),
           join(directory, 'database.sqlite'),
           workspace,
         ],
