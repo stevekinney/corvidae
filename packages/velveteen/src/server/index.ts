@@ -2,8 +2,6 @@ import { runAction } from "../actions/server.ts";
 import { resolvePageOptions } from "./page-options.ts";
 import { dispatchRemote } from "../remote/server.ts";
 import { runRemoteForm } from "../remote/forms.ts";
-import { join } from "node:path";
-import { createProductionAssetRoutes } from "../build/serving.ts";
 import { matchRoute } from "../routing/match.ts";
 import type {
   Data,
@@ -29,6 +27,8 @@ import { renderPage, resolveDeferred } from "./render.ts";
 import { createRequestTrace } from "./tracing.ts";
 import { dispatchMount, startMounts, validateMounts } from "./mounts.ts";
 import type {
+  AssetFetcher,
+  AssetSource,
   ApplicationOptions,
   RequestEvent,
   ServerRegistry,
@@ -36,6 +36,8 @@ import type {
 } from "./types.ts";
 export type {
   ApplicationOptions,
+  AssetFetcher,
+  AssetSource,
   RequestEvent,
   ServerHooks,
   ServerLoadEvent,
@@ -49,9 +51,10 @@ export { error, redirect } from "../data/errors.ts";
 
 type ServerHandle = NonNullable<ServerHooks["handle"]>;
 const adoptMounts = Symbol("adopt mounts");
+type AssetRoutes = Record<string, (request: Request) => Response>;
 type Application = {
   fetch(request: Request): Promise<Response>;
-  routes: ReturnType<typeof createProductionAssetRoutes>;
+  routes: AssetRoutes;
   replaceGeneration(
     generation: ApplicationOptions["generation"],
     registry?: ServerRegistry,
@@ -60,6 +63,11 @@ type Application = {
   dispose(): Promise<void>;
   [adoptMounts](): void;
 };
+
+/** Adapt a host's Fetch binding to Velveteen's production asset source. */
+export const fetchAssetSource = (fetcher: AssetFetcher): AssetSource => ({
+  get: (_url, request) => fetcher.fetch(request),
+});
 
 /** Compose server middleware in declaration order with nested post-processing. */
 export function sequence(...handlers: ServerHandle[]): ServerHandle {
@@ -117,11 +125,31 @@ async function createGeneration(
   inherited?: Awaited<ReturnType<typeof startMounts>>,
 ): Promise<Application> {
   const { generation, hooks } = options;
+  const suppliedRegistry = options.registry;
+  const suppliedAssets = options.assets;
   const registry: ServerRegistry =
-    options.registry ??
-    (await import(join(generation.directory, generation.manifest.server.file)));
-  const assets = createProductionAssetRoutes(generation);
-  const paths = validateMounts(options, registry, assets);
+    suppliedRegistry ??
+    (await import(
+      (await import("node:path")).join(
+        generation.directory,
+        generation.manifest.server.file,
+      )
+    ));
+  const filesystemAssets = suppliedAssets
+    ? undefined
+    : (await import("../build/serving.ts")).createProductionAssetRoutes(
+        generation,
+      );
+  const assets: AssetSource = suppliedAssets ?? {
+    get: (url, request) => filesystemAssets![url.pathname]?.(request),
+  };
+  const assetUrls = new Set(
+    generation.manifest.assets.map((asset) => asset.url),
+  );
+  const assetPaths = Object.fromEntries(
+    generation.manifest.assets.map((asset) => [asset.url, true]),
+  );
+  const paths = validateMounts(options, registry, assetPaths);
   const owner = inherited ?? (await startMounts(options, paths));
   let ownsMounts = !inherited;
   let replacing = false;
@@ -169,8 +197,11 @@ async function createGeneration(
         status: 403,
       });
     }
-    const asset = assets[new URL(request.url).pathname];
-    if (asset) return asset(request);
+    const requestUrl = new URL(request.url);
+    if (assetUrls.has(requestUrl.pathname)) {
+      const asset = await assets.get(requestUrl, request);
+      if (asset) return asset;
+    }
     if (retirement && (!parent || !active.has(parent)))
       return new Response("Application retiring", { status: 503 });
     const controller = new AbortController();
@@ -184,7 +215,7 @@ async function createGeneration(
       if (active.size === 0) retirement?.resolve();
       request.signal.removeEventListener("abort", abort);
     };
-    const url = new URL(request.url),
+    const url = requestUrl,
       base = generation.manifest.basePath;
     const context = createEvent(
       request,
@@ -557,7 +588,7 @@ async function createGeneration(
   };
   return {
     fetch: (request: Request) => dispatch(request),
-    routes: assets,
+    routes: filesystemAssets ?? {},
     async replaceGeneration(
       nextGeneration: ApplicationOptions["generation"],
       nextRegistry?: ServerRegistry,
