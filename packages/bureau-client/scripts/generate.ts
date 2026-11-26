@@ -86,90 +86,16 @@ export async function createReviewsClientSources(): Promise<ReadonlyMap<string, 
       outputDirectory,
       portableEntries: true,
       svelte: true,
+      entries: ['client', 'portable', 'svelte'],
+      typeOnlyClient: true,
+      svelteCommands: false,
+      svelteProvider: false,
+      referencedSharedTypesOnly: true,
       format: async (contents, filePath) =>
         format(contents, { ...(await resolveConfig(filePath)), filepath: filePath }),
     },
   );
-  const output = new Map<string, string>();
-  const operationTypes = sources.get('reviews-operations.generated.ts');
-  if (!operationTypes) throw new Error('Reviews operation types were not generated');
-  const included = new Set([
-    'operation-client.svelte.ts',
-    'portable-operation-client.generated.ts',
-    'reviews-operations.generated.ts',
-    'shared-operation-types.generated.ts',
-  ]);
-  for (const [name, source] of sources) {
-    if (!included.has(name)) continue;
-    const complete =
-      name === 'operation-client.svelte.ts'
-        ? source
-            .replace('  createCommand,\n', '')
-            .replace(
-              "import type { ClientOperationTypes } from './operation-client.generated.ts';",
-              "import type { ReviewsOperationTypes as ClientOperationTypes } from './reviews-operations.generated.ts';",
-            )
-            .replace(
-              "export { getCatalogHost as getReviewsHost } from '@lostgradient/backchannel-svelte';",
-              "export { getReviewsHost } from '../reviews/context.ts';",
-            )
-            .replace(
-              "export { default as ReviewsProvider } from '@lostgradient/backchannel-svelte/provider';",
-              "export { default as ReviewsProvider } from '../reviews/ReviewsProvider.svelte';",
-            )
-            .replace(
-              /export function useBureauReviewsResolve\(host: CatalogHost\) \{[\s\S]*?\n\}\n/u,
-              "export { useApprovalDecision } from '../reviews/tool-approval-actions.svelte.ts';\n",
-            )
-        : name === 'portable-operation-client.generated.ts'
-          ? `${source}\nexport type { ReviewsOperationTypes } from './reviews-operations.generated.ts';\n`
-          : name === 'shared-operation-types.generated.ts'
-            ? source.replace(/export type (Shared\w+)/gu, (declaration, typeName: string) =>
-                operationTypes.includes(typeName) ? declaration : `type ${typeName}`,
-              )
-            : source;
-    if (
-      name === 'operation-client.svelte.ts' &&
-      (!complete.includes('export { useApprovalDecision }') ||
-        !complete.includes('export { getReviewsHost }') ||
-        !complete.includes('../reviews/ReviewsProvider.svelte') ||
-        complete.includes('./operation-client.generated.ts') ||
-        complete.includes('useBureauReviewsResolve'))
-    )
-      throw new Error('Reviews bindings were not replaced');
-    const filePath = join(outputDirectory, name);
-    output.set(
-      name,
-      await format(complete, { ...(await resolveConfig(filePath)), filepath: filePath }),
-    );
-  }
-  const portable = output.get('portable-operation-client.generated.ts');
-  if (!portable) throw new Error('Portable Reviews client was not generated');
-  if (
-    !portable.includes(
-      'return createCatalogClient<CatalogOperationTypes>(operationNames, transport);',
-    )
-  )
-    throw new Error('Portable Reviews transport binding was not found');
-  output.set(
-    'portable-operation-client.generated.ts',
-    await format(
-      portable
-        .replace(
-          'return createCatalogClient<CatalogOperationTypes>(operationNames, transport);',
-          'return createCatalogClient<CatalogOperationTypes>(operationNames, validatedReviewsTransport(transport));',
-        )
-        .replace(
-          'import type { ReviewsOperationTypes }',
-          "import { validatedReviewsTransport } from '../reviews/validation.ts';\nimport type { ReviewsOperationTypes }",
-        ) +
-        "\nexport { parseReviewsOpeningSnapshot, validatedReviewsTransport } from '../reviews/validation.ts';\nexport type { ReviewsOpeningSnapshot } from '../reviews/validation.ts';\n",
-      {
-        ...(await resolveConfig(join(outputDirectory, 'portable-operation-client.generated.ts'))),
-        filepath: join(outputDirectory, 'portable-operation-client.generated.ts'),
-      },
-    ),
-  );
+  const output = new Map(sources);
   const list = schemas['bureau.reviews.list'];
   if (!list) throw new Error('Reviews list schema missing');
   for (const schema of Object.values(schemas)) assertSupportedSchema(schema);
