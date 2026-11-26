@@ -56,6 +56,27 @@ test("parses quoted and percent-encoded request cookie values", () => {
   ]);
 });
 
+test("preserves duplicate request cookies in header order", () => {
+  const context = eventFor(
+    undefined,
+    new Request("https://app.test/", {
+      headers: { cookie: "session=private; session=root; other=1" },
+    }),
+  );
+
+  expect(context.event.cookies.get("session")).toBe("private");
+  expect(context.event.cookies.getAll()).toEqual([
+    { name: "session", value: "private" },
+    { name: "session", value: "root" },
+    { name: "other", value: "1" },
+  ]);
+  context.event.cookies.set("session", "next", { path: "/" });
+  expect(context.event.cookies.getAll()).toEqual([
+    { name: "session", value: "next" },
+    { name: "other", value: "1" },
+  ]);
+});
+
 test("serializes every supported cookie attribute with defaults", () => {
   const context = eventFor();
   context.event.cookies.set("all", "space value", {

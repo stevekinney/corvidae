@@ -32,17 +32,48 @@ function sameSite(value: string): ServerCookie["sameSite"] {
   }
 }
 
+type RequestCookie = { name: string; value: string };
+
+/** Request cookies preserve duplicate names and their header order from the native runtime. */
+export class RequestCookies implements Iterable<[string, string]> {
+  #cookies: RequestCookie[];
+
+  constructor(cookies: RequestCookie[]) {
+    this.#cookies = cookies;
+  }
+
+  get(name: string) {
+    return this.#cookies.find((cookie) => cookie.name === name)?.value;
+  }
+
+  set(name: string, value: string) {
+    const first = this.#cookies.findIndex((cookie) => cookie.name === name);
+    this.#cookies = this.#cookies.filter((cookie) => cookie.name !== name);
+    this.#cookies.splice(first < 0 ? this.#cookies.length : first, 0, {
+      name,
+      value,
+    });
+  }
+
+  *[Symbol.iterator](): Iterator<[string, string]> {
+    for (const cookie of this.#cookies) yield [cookie.name, cookie.value];
+  }
+}
+
 /** Parses the request Cookie header into the values visible to application code. */
 export function parseRequestCookies(header: string) {
-  const cookies = new Map<string, string>();
+  const cookies: RequestCookie[] = [];
   for (const part of header.split(";")) {
     const separator = part.indexOf("=");
     if (separator < 1) continue;
     const name = part.slice(0, separator).trim();
     if (!name) continue;
-    cookies.set(name, decodeCookieValue(part.slice(separator + 1).trim()));
+    cookies.push({
+      name,
+      value: decodeCookieValue(part.slice(separator + 1).trim()),
+    });
   }
-  return cookies;
+  return new RequestCookies(cookies);
 }
 
 /** Parses one Set-Cookie header without requiring a runtime-specific cookie implementation. */

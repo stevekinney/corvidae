@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { serve } from "bun";
 import { throwingRejectionOf } from "@lostgradient/testing/promise-outcome";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApplication, sequence } from "./index.ts";
@@ -389,7 +391,7 @@ describe("server application", () => {
       registry: registry([]) as never,
       mounts: { "/api": () => () => new Response("http") },
     });
-    const server = Bun.serve({
+    const server = serve({
       hostname: "127.0.0.1",
       port: 0,
       fetch(request, server) {
@@ -669,7 +671,7 @@ describe("server application", () => {
     try {
       await mkdir(join(directory, "static/api"), { recursive: true });
       const bytes = new TextEncoder().encode("asset");
-      await Bun.write(join(directory, "static/api/logo.svg"), bytes);
+      await writeFile(join(directory, "static/api/logo.svg"), bytes);
       const assetGeneration = generation();
       assetGeneration.directory = directory;
       assetGeneration.manifest.assets = [
@@ -678,7 +680,7 @@ describe("server application", () => {
           target: "static",
           url: "/api/logo.svg",
           bytes: bytes.byteLength,
-          sha256: new Bun.CryptoHasher("sha256").update(bytes).digest("hex"),
+          sha256: createHash("sha256").update(bytes).digest("hex"),
           contentType: "image/svg+xml",
           immutable: false,
         },
@@ -693,7 +695,7 @@ describe("server application", () => {
         ),
       ).toThrow("conflicts with asset");
       await mkdir(join(directory, "static/café"), { recursive: true });
-      await Bun.write(join(directory, "static/café/logo.svg"), bytes);
+      await writeFile(join(directory, "static/café/logo.svg"), bytes);
       assetGeneration.manifest.assets = [
         {
           ...assetGeneration.manifest.assets[0],
