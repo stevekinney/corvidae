@@ -54,12 +54,12 @@
   } from '@lostgradient/cinder';
   import { Play, Trash2 } from '@lucide/svelte';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import { tick, untrack } from 'svelte';
+  import { onDestroy, tick, untrack } from 'svelte';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { RETRY_LABEL, STALE_COPY } from '../../app/copy/views.ts';
   import NotFoundState from '../../app/not-found-state.svelte';
-  import { showFault, showToast } from '../../app/toast-host.svelte';
+  import { dismissToast, showFault, showToast } from '../../app/toast-host.svelte';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
   import {
     createHook,
@@ -691,10 +691,26 @@
     void queryClient.invalidateQueries({ queryKey: queryKeys.hooks.detail(hookId) });
   }
 
+  /** The one Undo that belongs to this editor, rather than a toast another page showed. */
+  let toggleUndoToast: string | undefined;
+  let editorActive = true;
+  function dismissToggleUndo(): void {
+    const toast = toggleUndoToast;
+    toggleUndoToast = undefined;
+    if (toast !== undefined) dismissToast(toast);
+  }
+  // The outlet keys hook pages by their address, so destruction is leaving or changing this hook.
+  onDestroy(() => {
+    editorActive = false;
+    dismissToggleUndo();
+  });
+
   const switching = createMutation(() => ({
     mutationFn: (input: { hook: Hook; enabled: boolean; undoing: boolean }) =>
       updateHook(input.hook.id, input.hook.revision, { enabled: input.enabled }),
     onSuccess: (saved, input) => {
+      // A write can answer after this editor's route was left. Its old Undo belongs nowhere then.
+      if (!editorActive) return;
       adopt(input.hook, saved);
       if (input.undoing) return;
       const name = editorTitle(
@@ -702,11 +718,13 @@
         anyScopeOf(scopeKindsFor(saved.events, kinds.data ?? [])),
         titleOfPlugin,
       );
-      showToast(saved.enabled ? copy.toggled.on(name) : copy.toggled.off(name), {
+      dismissToggleUndo();
+      toggleUndoToast = showToast(saved.enabled ? copy.toggled.on(name) : copy.toggled.off(name), {
         undo: () => switching.mutate({ hook: saved, enabled: input.hook.enabled, undoing: true }),
       });
     },
     onError: (error: unknown) => {
+      if (!editorActive) return;
       if (agentFaultOf(error).kind === 'stale') {
         refuseStale();
         return;

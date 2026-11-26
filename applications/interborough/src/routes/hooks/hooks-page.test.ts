@@ -162,6 +162,8 @@ function open(
     holdRead?: boolean;
     /** The read of a hook's deliveries never answers, so only the delivery log is still loading. */
     holdDeliveries?: boolean;
+    /** Holds one hook update before it reaches the Bureau, to prove its answer after page leave. */
+    holdUpdate?: Promise<void>;
   } = {},
 ) {
   const served: Served = {
@@ -253,7 +255,8 @@ function open(
       ];
       return sent;
     },
-    'bureau.hooks.update': (params) => {
+    'bureau.hooks.update': async (params) => {
+      await options.holdUpdate;
       const entry = found(params);
       if (params['expectedRevision'] !== entry.revision) {
         throw new StubFault('StaleRevision', 409, 'The hook changed since it was read.', {
@@ -1454,6 +1457,40 @@ describe('a saved hook’s header', () => {
     await waitFor(() =>
       expect(within(header).getByRole('switch').getAttribute('aria-checked')).toBe('true'),
     );
+  });
+
+  test('removes the switch Undo when this hook editor is left', async () => {
+    const { view } = open([named()], { path: '/hooks/alpha' });
+    const header = await view.findByTestId('hook-header');
+    await fireEvent.click(within(header).getByRole('switch'));
+    await view.findByText(HOOKS_COPY.editor.toggled.off('Page on-call when a run fails'));
+
+    router.navigate('/hooks');
+    await view.findByRole('heading', { level: 1, name: 'Hooks' });
+    expect(
+      view.queryByText(HOOKS_COPY.editor.toggled.off('Page on-call when a run fails')),
+    ).toBeNull();
+    expect(view.queryByRole('button', { name: 'Undo' })).toBeNull();
+  });
+
+  test('does not publish an old switch Undo after its held write answers on another page', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { served, view } = open([named()], { path: '/hooks/alpha', holdUpdate: held });
+    const header = await view.findByTestId('hook-header');
+    await fireEvent.click(within(header).getByRole('switch'));
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.update')).toHaveLength(1));
+
+    router.navigate('/hooks');
+    await view.findByRole('heading', { level: 1, name: 'Hooks' });
+    release();
+    await waitFor(() => expect(served.hooks[0]?.enabled).toBe(false));
+    expect(
+      view.queryByText(HOOKS_COPY.editor.toggled.off('Page on-call when a run fails')),
+    ).toBeNull();
+    expect(view.queryByRole('button', { name: 'Undo' })).toBeNull();
   });
 
   test('the switch saves alone: what was typed stays, and the next Save names the new revision', async () => {
