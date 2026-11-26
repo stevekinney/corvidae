@@ -333,6 +333,11 @@ test.describe('/hooks: the hooks list states', () => {
         'aria-disabled',
         'true',
       );
+      const firstHeldReason = main.locator('li[data-hook]').first().getByTestId('hook-held-reason');
+      await expect(firstHeldReason).toHaveText('The On switch is off until Interborough answers.');
+      await firstHeldReason.evaluate((reason) => {
+        reason.setAttribute('data-testid', 'first-hook-held-reason');
+      });
       await expect(headerCreate(page)).toHaveAttribute('aria-disabled', 'true');
       await expect(main.getByRole('searchbox', { name: 'Search hooks' })).toBeEnabled();
 
@@ -370,9 +375,13 @@ test.describe('/hooks: the hooks list states', () => {
         await expect(create).toHaveAttribute('aria-disabled', 'true');
         await expect(firstSwitch).toHaveAttribute('aria-disabled', 'true');
         await expect(firstSwitch).toHaveAccessibleDescription('Off until it’s back');
-        await expect(rows.first().getByTestId('hook-held-reason')).toHaveText(
+        const firstHeldReason = rows.first().getByTestId('hook-held-reason');
+        await expect(firstHeldReason).toHaveText(
           'The On switch is off until Interborough answers.',
         );
+        await firstHeldReason.evaluate((reason) => {
+          reason.setAttribute('data-testid', 'first-hook-held-reason');
+        });
         await create.focus();
         await expect(create).toBeFocused();
         await firstSwitch.focus();

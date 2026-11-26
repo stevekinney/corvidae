@@ -49,7 +49,7 @@
     /** The hooks to show, each with its newest delivery. */
     hooks: readonly ListedHook[];
     /** The visible third row line while StaleRegion holds each row's On switch. */
-    heldReason?: string;
+    heldReason?: string | undefined;
   }
 
   let { hooks, heldReason }: Props = $props();
