@@ -25,11 +25,6 @@ export function competitionDirectory(): string | undefined {
   return process.env['COR_2653_COMPETITION_DIRECTORY'];
 }
 
-/** Serialized configuration passed to the refund race's independent host process. */
-export function refundRaceConfiguration(): string | undefined {
-  return process.env['REFUND_RACE_CONFIG'];
-}
-
 export function browserQualification(): { enabled: boolean; run: string; revision: string } {
   return {
     enabled: process.env['COR_2653_QUALIFICATION'] === '1',

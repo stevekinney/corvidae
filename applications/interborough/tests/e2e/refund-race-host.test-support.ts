@@ -9,7 +9,7 @@ import inspectors from '@lostgradient/plugin-inspectors';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { createToolbox } from 'armorer';
 import * as client from 'openid-client';
-import { refundRaceConfiguration } from '../../scripts/environment-configuration.ts';
+import { processEnvironment } from '../../src/host/environment-configuration.ts';
 import { startHost } from '../../src/host/host.ts';
 import { reviewedRefundContribution } from '../../src/host/refund-operations.ts';
 import { durableApprovalStore } from '../../src/host/server-integration/refund.test-support.ts';
@@ -26,7 +26,9 @@ type Configuration = {
   distinctOwners?: boolean;
   revokedActors?: string[];
 };
-const input = JSON.parse(refundRaceConfiguration() ?? 'null') as Configuration | null;
+const input = JSON.parse(
+  processEnvironment()['REFUND_RACE_CONFIG'] ?? 'null',
+) as Configuration | null;
 if (!input) throw new Error('Missing host configuration');
 const ledgerStorage = new BunSQLiteStorage(input.ledgerPath);
 const providerStorage = new BunSQLiteStorage(input.providerPath);
