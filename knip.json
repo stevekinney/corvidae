@@ -307,7 +307,12 @@
       ]
     },
     "testing/*": {
-      "entry": ["**/*.test.ts", "**/*.integration.test.ts", "**/*.slow.test.ts"],
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "src/node-runtime-fixtures/{sibling,failing,bundled,passing}.ts"
+      ],
       "project": ["src/**/*.ts!", "!src/**/*.test.ts!", "scripts/**/*.ts"]
     },
     "testing/workerd": {

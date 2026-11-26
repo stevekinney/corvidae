@@ -126,7 +126,7 @@ function expectExit(exit: Awaited<HostProcess['finished']>, exitCode: number): v
 
 async function weftScenario(hostRuntime: HostRuntime, scope: ScenarioScope): Promise<void> {
   await withHosts(scope, `weft-${hostRuntime}`, async ({ directory, launch }) => {
-    const { command, env } = hostCommand(hostRuntime, HOOKS);
+    const { command, env } = await hostCommand(hostRuntime, HOOKS);
     const host = launch(command(join(HOSTS, 'weft-host.ts'), 'start', directory), env);
 
     const ready = await host.waitFor('ready');
@@ -148,7 +148,7 @@ async function weftScenario(hostRuntime: HostRuntime, scope: ScenarioScope): Pro
 
 async function operativeScenario(hostRuntime: HostRuntime, scope: ScenarioScope): Promise<void> {
   await withHosts(scope, `operative-${hostRuntime}`, async ({ directory, launch }) => {
-    const { command, env } = hostCommand(hostRuntime, HOOKS);
+    const { command, env } = await hostCommand(hostRuntime, HOOKS);
     const host = launch(command(join(HOSTS, 'operative-host.ts'), 'start', directory), env);
 
     const ready = await host.waitFor('ready');
