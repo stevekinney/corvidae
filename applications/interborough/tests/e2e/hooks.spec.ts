@@ -1013,16 +1013,22 @@ test('[default-hook-toggle-failed] /hooks: a switch the Bureau refuses says so i
 test('[hook-editor-switch-undo] /hooks/:hook: the On switch saves immediately, keeps an Undo toast on the page, and does not save a draft', async ({
   page,
 }) => {
+  const now = Date.UTC(2026, 10, 2, 12);
+  await page.clock.install({ time: now - 1_000 });
+  await page.clock.pauseAt(now);
   const hook = hookRecord('on-call', {
     name: 'Page on-call when a run fails',
     declaredBy: null,
   });
+  let saved = hook;
   const calls = await openHooks(page, '/hooks/on-call', [hook], {
-    'bureau.hooks.update': (params) => ({
-      ...hook,
-      enabled: params['enabled'],
-      revision: Number(params['expectedRevision']) + 1,
-    }),
+    'bureau.hooks.get': () => saved,
+    'bureau.hooks.update': (params) => {
+      const enabled = params['enabled'];
+      if (typeof enabled !== 'boolean') throw new Error('The switch write must carry enabled.');
+      saved = { ...saved, enabled, revision: Number(params['expectedRevision']) + 1 };
+      return saved;
+    },
   });
   const name = page.getByLabel(copy.check.nameLabel);
   await name.fill('A draft that must stay unsaved');
@@ -1033,12 +1039,16 @@ test('[hook-editor-switch-undo] /hooks/:hook: the On switch saves immediately, k
   await expect(toast).toBeVisible();
   await expect(toast.getByRole('button', { name: 'Undo' })).toBeVisible();
   await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  // Undo is an action, not a short-lived notification: ordinary toast time must not remove it.
+  await page.clock.runFor(60_000);
+  await expect(toast).toBeVisible();
   expect(calls.filter((call) => call.method === 'bureau.hooks.update')).toHaveLength(1);
   expect(calls.find((call) => call.method === 'bureau.hooks.update')?.params).toEqual({
     hookId: hook.id,
     expectedRevision: 1,
     enabled: false,
   });
+  await page.clock.resume();
   await captureForDesignReview(page, {
     route: '/hooks/:hook',
     state: 'hook-editor-switch-undo',
@@ -1054,6 +1064,19 @@ test('[hook-editor-switch-undo] /hooks/:hook: the On switch saves immediately, k
     expectedRevision: 2,
     enabled: true,
   });
+
+  // Clear the draft before leaving, so a form-level leave guard cannot hide the toast behavior.
+  await name.fill(hook.name);
+  await toggle.click();
+  await expect(toast).toBeVisible();
+  await page.goto('/hooks');
+  // Negative witness: ToastHost survives the SPA route leave, since the editor drops its toast ID.
+  await expect(toast).toBeVisible();
+  await captureForDesignReview(page, {
+    route: '/hooks',
+    state: 'hook-editor-switch-undo',
+    source: SOURCE,
+  });
 });
 
 // PageHooks 86b: the slow delivery-log state is timed from its own request, while the form is ready.
@@ -1068,17 +1091,24 @@ test('[hook-editor-delivery-log-slow] /hooks/:hook: delivery placeholders start 
     release = resolve;
   });
   const hook = hookRecord('slow-log', { declaredBy: null });
+  let deliveryRequests = 0;
   await openHooks(page, '/hooks/slow-log', [hook], {
     'bureau.hooks.deliveries': async () => {
+      deliveryRequests += 1;
       await held;
       return { deliveries: [] };
     },
   });
   const deliveries = page.getByTestId('hook-deliveries');
   await expect(page.getByLabel(copy.check.nameLabel)).toBeVisible();
+  await expect.poll(() => deliveryRequests).toBe(1);
+  await expect(deliveries.locator('.cinder-skeleton').first()).not.toBeVisible();
   await page.clock.runFor(300);
   await expect(deliveries.locator('.cinder-skeleton').first()).toBeVisible();
-  await page.clock.runFor(10_000);
+  await expect(deliveries).not.toContainText(HOOKS_COPY.editor.deliveries.stillLoading);
+  await page.clock.runFor(9_699);
+  await expect(deliveries).not.toContainText(HOOKS_COPY.editor.deliveries.stillLoading);
+  await page.clock.runFor(1);
   await expect(deliveries.getByText(HOOKS_COPY.editor.deliveries.stillLoading)).toBeVisible();
   await expect(deliveries.getByRole('button', { name: 'Cancel' })).toBeVisible();
   await page.clock.resume();
@@ -1148,12 +1178,13 @@ test('[hook-editor-deleted-workflow-id-fallback] /hooks/:hook: a deleted workflo
   const calls = await openHooks(page, '/hooks/deleted-workflow', [hook], {
     'bureau.workflows.list': () => ({ workflows: [], nextOffset: null }),
   });
-  const workflow = page.getByLabel(copy.workflow.label);
+  const workflow = page.getByLabel(copy.workflow.label, { exact: true });
   await expect(workflow).toHaveValue('weekly-cleanup');
   await expect(workflow.locator('option').nth(1)).toHaveText(
     copy.workflow.deletedName('weekly-cleanup'),
   );
   await expect(page.getByText(copy.workflow.deleted, { exact: true })).toBeVisible();
+  await expect(workflow).toHaveAttribute('aria-invalid', 'true');
   await captureForDesignReview(page, {
     route: '/hooks/:hook',
     state: 'hook-editor-deleted-workflow-id-fallback',
