@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { open } from "node:fs/promises";
 import { join, relative } from "node:path";
+import { Duplex, Readable } from "node:stream";
+import { createBrotliCompress, createGzip } from "node:zlib";
 import type {
   ProductionGeneration,
   ProductionAsset,
@@ -46,7 +49,7 @@ const notAllowed = () =>
     headers: { allow: "GET, HEAD" },
   });
 
-type AssetRoute = (request: Request) => Response;
+type AssetRoute = (request: Request) => Response | Promise<Response>;
 
 type CompressionEncoding = "br" | "gzip";
 
@@ -104,13 +107,60 @@ const negotiateEncoding = (
   return identityAllowed ? "identity" : null;
 };
 
-const compressionFormat = (
-  encoding: CompressionEncoding,
-): Bun.CompressionFormat => (encoding === "br" ? "brotli" : "gzip");
+const compressionFormat = (encoding: CompressionEncoding) =>
+  encoding === "br" ? "brotli" : "gzip";
 
-const BunCompressionStream = CompressionStream as new (
-  format: Bun.CompressionFormat,
-) => CompressionStream;
+const compressionFallback = (encoding: CompressionEncoding) =>
+  Duplex.toWeb(
+    encoding === "br" ? createBrotliCompress() : createGzip(),
+  ) as unknown as TransformStream;
+
+const compress = (
+  stream: ReadableStream,
+  encoding: CompressionEncoding,
+): ReadableStream => {
+  try {
+    // The DOM declaration intentionally excludes Bun's brotli format.
+    return stream.pipeThrough(
+      new CompressionStream(compressionFormat(encoding) as CompressionFormat),
+    );
+  } catch {
+    return stream.pipeThrough(compressionFallback(encoding));
+  }
+};
+
+type ByteRange = { end: number; start: number };
+
+const parseRange = (value: string | null, bytes: number): ByteRange | null | undefined => {
+  if (value === null) return null;
+  const match = /^\s*bytes\s*=\s*(\d*)\s*-\s*(\d*)\s*$/iu.exec(value);
+  if (!match) return null;
+  const [, rawStart, rawEnd] = match;
+  if (rawStart === "" && rawEnd === "") return undefined;
+  if (rawStart === "") {
+    const suffix = Number(rawEnd);
+    if (!Number.isSafeInteger(suffix)) return null;
+    return suffix === 0
+      ? undefined
+      : { start: Math.max(bytes - suffix, 0), end: bytes - 1 };
+  }
+  const start = Number(rawStart);
+  const end = rawEnd === "" ? bytes - 1 : Number(rawEnd);
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) return null;
+  if (start >= bytes) return undefined;
+  if (start > end) return null;
+  return { start, end: Math.min(end, bytes - 1) };
+};
+
+const streamFile = async (
+  file: string,
+  range?: ByteRange,
+): Promise<ReadableStream> => {
+  const handle = await open(file);
+  return Readable.toWeb(
+    handle.createReadStream(range && { start: range.start, end: range.end }),
+  ) as unknown as ReadableStream;
+};
 
 const representationTag = (etag: string, encoding: CompressionEncoding) =>
   `${etag.slice(0, -1)}-${encoding}"`;
@@ -149,13 +199,13 @@ export const createProductionAssetRoutes = (
     const canCompress =
       options.compression === true &&
       compressibleContentType(asset.contentType);
-    const serve = (request: Request): Response => {
+    const serve = async (request: Request): Promise<Response> => {
       if (request.method !== "GET" && request.method !== "HEAD")
         return notAllowed();
       const encoding = canCompress
         ? negotiateEncoding(
             request.headers.get("accept-encoding"),
-            request.headers.has("range"),
+            request.method === "GET" && request.headers.has("range"),
           )
         : "identity";
       const responseHeaders = { ...headers };
@@ -168,6 +218,8 @@ export const createProductionAssetRoutes = (
       if (encoding !== "identity") {
         responseHeaders["content-encoding"] = encoding;
         responseHeaders.etag = representationTag(etag, encoding);
+      } else {
+        responseHeaders["content-length"] = String(asset.bytes);
       }
       if (
         matchesIfNoneMatch(
@@ -177,21 +229,35 @@ export const createProductionAssetRoutes = (
       ) {
         return new Response(null, { status: 304, headers: responseHeaders });
       }
-      if (request.method === "HEAD" && canCompress) {
-        if (encoding === "identity") {
-          responseHeaders["content-length"] = String(asset.bytes);
-        }
-        return new Response(null, { headers: responseHeaders });
+      const range = parseRange(
+        request.method === "GET" ? request.headers.get("range") : null,
+        asset.bytes,
+      );
+      if (range === undefined)
+        return new Response(null, {
+          status: 416,
+          headers: {
+            "accept-ranges": "bytes",
+            "content-range": `bytes */${asset.bytes}`,
+          },
+        });
+      if (range !== null) {
+        responseHeaders["accept-ranges"] = "bytes";
+        responseHeaders["content-length"] = String(range.end - range.start + 1);
+        responseHeaders["content-range"] = `bytes ${range.start}-${range.end}/${asset.bytes}`;
+      }
+      if (request.method === "HEAD") {
+        return new Response(null, { status: range ? 206 : 200, headers: responseHeaders });
       }
       if (encoding === "identity") {
-        return new Response(Bun.file(file), { headers: responseHeaders });
+        return new Response(await streamFile(file, range ?? undefined), {
+          status: range ? 206 : 200,
+          headers: responseHeaders,
+        });
       }
-      const stream = Bun.file(file)
-        .stream()
-        // Bun supports the native brotli format, while the DOM declaration
-        // intentionally only lists the standard CompressionStream formats.
-        .pipeThrough(new BunCompressionStream(compressionFormat(encoding)));
-      return new Response(stream, { headers: responseHeaders });
+      return new Response(compress(await streamFile(file), encoding), {
+        headers: responseHeaders,
+      });
     };
     routes[asset.url] = serve;
   }
