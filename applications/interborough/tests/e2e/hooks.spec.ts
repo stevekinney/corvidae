@@ -795,9 +795,17 @@ for (const width of [1280, 1920] as const) {
     const [status, title, time, toggle, label] = await Promise.all([
       row.locator('.cinder-stacked-list-item__status').boundingBox(),
       row.locator('.cinder-stacked-list-item__title').boundingBox(),
-      row.locator('.cinder-stacked-list-item__time').boundingBox(),
+      row.locator('.cinder-stacked-list-item__time').evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return range.getBoundingClientRect().toJSON();
+      }),
       row.getByRole('switch').boundingBox(),
-      row.locator('.cinder-toggle-field__label').boundingBox(),
+      row.locator('.cinder-toggle-field__label').evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return range.getBoundingClientRect().toJSON();
+      }),
     ]);
     const centre = (box: { y: number; height: number } | null) =>
       (box?.y ?? Number.NaN) + (box?.height ?? Number.NaN) / 2;
@@ -825,6 +833,22 @@ for (const width of [1280, 1920] as const) {
         source: SOURCE,
       });
     }
+  });
+}
+
+for (const width of [320, 375] as const) {
+  test(`[hook-row-phone-target] /hooks: the On switch keeps its 44px target without page overflow at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 720 });
+    await openHooks(page, '/hooks', [DEFAULT_ON, DEFAULT_OFF]);
+    await expect(page.locator('li[data-hook="default-on"]').getByRole('switch')).toHaveAttribute(
+      'data-cinder-hit-target',
+      '44',
+    );
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+      true,
+    );
   });
 }
 
