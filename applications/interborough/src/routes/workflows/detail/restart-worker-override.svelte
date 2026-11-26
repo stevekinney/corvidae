@@ -23,7 +23,8 @@
    */
   import { Button, Checkbox, DescriptionList, Tooltip } from '@lostgradient/cinder';
   import { createMutation } from '@tanstack/svelte-query';
-  import type { WorkerStartOverridePreview, WorkflowState } from '@lostgradient/weft';
+  import type { WorkerStartOverridePreview } from '@lostgradient/weft';
+  import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
   import { onDestroy } from 'svelte';
 
   import { formatRelativeTime } from '../../../lib/format/index.ts';

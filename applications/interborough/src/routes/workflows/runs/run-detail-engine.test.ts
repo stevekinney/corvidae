@@ -16,9 +16,14 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
 import { TASK_COPY } from '../../../app/copy/tasks.ts';
 import { contextDetailFixture, taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
+import { installFetchImplementation } from '../../../lib/live-source/fetch.test-support.ts';
 import { queryKeys } from '../../../lib/query.ts';
 import { router } from '../../../lib/router.svelte.ts';
-import { AUTHORIZATION_SCOPES, type Principal } from '../../../lib/scopes.svelte.ts';
+import {
+  AUTHORIZATION_SCOPES,
+  principalQueryScope,
+  type Principal,
+} from '../../../lib/scopes.svelte.ts';
 import { workflowTypeName } from '../../../lib/workflow-type-name.ts';
 import { openStepNumber } from '../detail/steps/open-step.test-support.ts';
 import {
@@ -101,9 +106,25 @@ function mount(
  * substring of the others', so it goes last.
  */
 function routeRun(id: string, overrides: Record<string, unknown> = {}): void {
-  fetchScript.routeUrl(`/workflows/${id}/timeline`, []);
+  fetchScript.routeJsonRpcMethod(
+    'weft.workflows.timeline.get',
+    [],
+    (params) =>
+      typeof params === 'object' &&
+      params !== null &&
+      'workflowId' in params &&
+      params.workflowId === id,
+  );
   fetchScript.routeJsonRpcMethod('weft.workflows.activities.pending.list', { items: [] });
-  fetchScript.routeUrl(`/workflows/${id}`, baseWorkflow({ id, ...overrides }));
+  fetchScript.routeJsonRpcMethod(
+    'weft.workflows.get',
+    baseWorkflow({ id, ...overrides }),
+    (params) =>
+      typeof params === 'object' &&
+      params !== null &&
+      'workflowId' in params &&
+      params.workflowId === id,
+  );
 }
 
 /**
@@ -190,8 +211,8 @@ function jsonRpcMethodsCalled(): string[] {
 describe('a run nothing holds', () => {
   test('is said not to have been found, with a next step', async () => {
     const bogusId = '00000000-0000-0000-0000-000000000000';
-    // `HttpClient.get()` resolves a 404 GET to `null` rather than throwing.
-    fetchScript.routeUrlStatus(`/workflows/${bogusId}`, 404);
+    // The generated read maps the engine's NotFound fault to null.
+    fetchScript.routeJsonRpcMethodNotFound('weft.workflows.get', 'No such workflow');
     fetchScript.routeJsonRpcMethodNotFound('bureau.workflows.runs.get', 'No such run');
 
     const view = mount(bogusId);
@@ -207,7 +228,7 @@ describe('a run of a workflow file the engine does not hold', () => {
   // Bureau holds the instance either way, so the page says what the run is.
   test('is drawn from the Bureau’s record: one header, one status, its input and a link to the workflow', async () => {
     const id = 'f3a9c0de-0000-4000-8000-000000000001';
-    fetchScript.routeUrlStatus(`/workflows/${id}`, 404);
+    fetchScript.routeJsonRpcMethodNotFound('weft.workflows.get', 'Workflow not found');
     fetchScript.routeJsonRpcMethod('bureau.workflows.runs.get', {
       id,
       workflow: 'e2e-approval',
@@ -261,7 +282,7 @@ describe('a run of a workflow file the engine does not hold', () => {
 
   test('names the run a person started between the person and "This run", with its day and time (row 54l)', async () => {
     const id = 'f3a9c0de-0000-4000-8000-000000000009';
-    fetchScript.routeUrlStatus(`/workflows/${id}`, 404);
+    fetchScript.routeJsonRpcMethodNotFound('weft.workflows.get', 'Workflow not found');
     fetchScript.routeJsonRpcMethod('bureau.workflows.runs.get', {
       id,
       workflow: 'e2e-approval',
@@ -291,7 +312,7 @@ describe('a run of a workflow file the engine does not hold', () => {
 
   test('says the run could not be loaded when the Bureau fails, rather than that it is missing', async () => {
     const id = 'f3a9c0de-0000-4000-8000-000000000002';
-    fetchScript.routeUrlStatus(`/workflows/${id}`, 404);
+    fetchScript.routeJsonRpcMethodNotFound('weft.workflows.get', 'Workflow not found');
     fetchScript.routeJsonRpcMethodUnprocessable('bureau.workflows.runs.get', 'The Bureau broke.');
 
     const view = mount(id);
@@ -304,12 +325,42 @@ describe('a run of a workflow file the engine does not hold', () => {
 describe('a run the engine cannot be read for', () => {
   test('a 500 from the workflow fetch is told as a fault with a retry', async () => {
     const id = 'wf-detail-fault-1';
-    fetchScript.routeUrlStatus(`/workflows/${id}`, 500);
+    fetchScript.routeJsonRpcMethodServerError('weft.workflows.get', 'Workflow unavailable');
+    fetchScript.routeJsonRpcMethodNotFound('bureau.workflows.runs.get', 'No such run');
 
-    const view = mount(id);
+    // Force the engine fault to settle before the task's NotFound reveals it to the page.
+    let releaseTask = () => {};
+    const taskGate = new Promise<void>((resolve) => {
+      releaseTask = resolve;
+    });
+    const originalFetch = globalThis.fetch;
+    const restoreFetch = installFetchImplementation(async (input, init) => {
+      if (typeof init?.body === 'string' && init.body.includes('"bureau.tasks.get"'))
+        await taskGate;
+      return originalFetch(input, init);
+    });
+    try {
+      const queryClient = newQueryClient();
+      const view = mount(id, GRANTED_PRINCIPAL, queryClient);
+      const scopedKey = [...queryKeys.workflows.detail(id), principalQueryScope(GRANTED_PRINCIPAL)];
+      await waitFor(() => expect(queryClient.getQueryState(scopedKey)?.status).toBe('error'));
+      releaseTask();
 
-    expect(await view.findByRole('alert')).not.toBeNull();
-    expect(view.getByRole('button', { name: 'Try again' })).not.toBeNull();
+      expect(await view.findByRole('alert')).not.toBeNull();
+      const reads = jsonRpcMethodsCalled().filter(
+        (method) => method === 'weft.workflows.get',
+      ).length;
+      await fireEvent.click(view.getByRole('button', { name: 'Try again' }));
+      await waitFor(() =>
+        expect(
+          jsonRpcMethodsCalled().filter((method) => method === 'weft.workflows.get').length,
+        ).toBeGreaterThan(reads),
+      );
+      await waitFor(() => expect(queryClient.getQueryState(scopedKey)?.status).toBe('error'));
+    } finally {
+      releaseTask();
+      restoreFetch();
+    }
   });
 });
 
@@ -329,8 +380,12 @@ describe('a run the engine holds', () => {
       origin: { kind: 'agent-run', runId: 'calling-run-1', agentId: 'assistant' },
     });
 
-    const view = mount(id);
+    const queryClient = newQueryClient();
+    const view = mount(id, GRANTED_PRINCIPAL, queryClient);
     await waitFor(() => expect(jsonRpcMethodsCalled()).toContain('bureau.workflows.runs.get'));
+    await waitFor(() =>
+      expect(queryClient.getQueryState(queryKeys.workflows.fileRun(id))?.status).toBe('success'),
+    );
     const lineage = await view.findByTestId('run-lineage');
     await waitFor(() => expect(lineage.textContent).toContain("An agent's tool call"));
     expect(lineage.textContent).toContain('Assistant');
@@ -342,7 +397,7 @@ describe('a run the engine holds', () => {
 
   test('is one header with one status, and only How it ran holds tabs, Steps first (row 54i)', async () => {
     const id = 'wf-detail-loaded-1';
-    fetchScript.routeUrl(`/workflows/${id}/events`, { events: [] });
+    fetchScript.routeJsonRpcMethod('weft.workflows.events.list', { events: [] });
     routeRun(id, { id });
 
     const view = mount(id);
@@ -368,7 +423,7 @@ describe('a run the engine holds', () => {
 
   test('opens its events from the Events disclosure, with no address change', async () => {
     const id = 'wf-detail-loaded-2';
-    fetchScript.routeUrl(`/workflows/${id}/events`, { events: [] });
+    fetchScript.routeJsonRpcMethod('weft.workflows.events.list', { events: [] });
     routeRun(id, { id });
 
     const view = mount(id);
@@ -556,7 +611,7 @@ describe('a run the Bureau describes', () => {
     expect(
       await view.findByRole('heading', { level: 2, name: 'Change or ask this run' }),
     ).not.toBeNull();
-    expect(fetchScript.calls.some((call) => call.url.includes('/workflows/task-1'))).toBe(true);
+    expect(jsonRpcMethodsCalled()).toContain('weft.workflows.get');
     // The task's own Cancel run stands; the engine's cancel is not offered a second time.
     expect(view.getAllByRole('button', { name: 'Cancel run' })).toHaveLength(1);
     await openMoreActions(view);
@@ -566,14 +621,12 @@ describe('a run the Bureau describes', () => {
 
   test('has no engine sections when the engine does not hold it', async () => {
     describeTask('task-2');
-    fetchScript.routeUrlStatus('/workflows/task-2', 404);
+    fetchScript.routeJsonRpcMethodNotFound('weft.workflows.get', 'No such workflow');
 
     const view = mount('task-2');
 
     expect(await view.findByRole('heading', { level: 1, name: 'echo' })).not.toBeNull();
-    await waitFor(() =>
-      expect(fetchScript.calls.some((call) => call.url.includes('/workflows/task-2'))).toBe(true),
-    );
+    await waitFor(() => expect(jsonRpcMethodsCalled()).toContain('weft.workflows.get'));
     expect(view.queryByRole('heading', { level: 2, name: 'Change or ask this run' })).toBeNull();
   });
 
@@ -598,7 +651,7 @@ describe('a run the Bureau describes', () => {
 
   test('says the engine could not be read, with Retry, when it fails', async () => {
     describeTask('task-4');
-    fetchScript.routeUrlStatus('/workflows/task-4', 500);
+    fetchScript.routeJsonRpcMethodServerError('weft.workflows.get', 'Workflow unavailable');
 
     const view = mount('task-4');
 
@@ -610,11 +663,11 @@ describe('a run the Bureau describes', () => {
     const retry = within(failure.parentElement as HTMLElement).getByRole('button', {
       name: 'Try again',
     });
-    const reads = fetchScript.calls.filter((call) => call.url.includes('/workflows/task-4')).length;
+    const reads = jsonRpcMethodsCalled().filter((method) => method === 'weft.workflows.get').length;
     await fireEvent.click(retry);
     await waitFor(() =>
       expect(
-        fetchScript.calls.filter((call) => call.url.includes('/workflows/task-4')).length,
+        jsonRpcMethodsCalled().filter((method) => method === 'weft.workflows.get').length,
       ).toBeGreaterThan(reads),
     );
     expect(view.queryByRole('heading', { level: 2, name: 'Change or ask this run' })).toBeNull();
@@ -626,7 +679,7 @@ describe('a run the Bureau describes', () => {
     const view = mount('task-3', principalWith());
 
     expect(await view.findByRole('heading', { level: 1, name: 'echo' })).not.toBeNull();
-    expect(fetchScript.calls.some((call) => call.url.includes('/workflows/task-3'))).toBe(false);
+    expect(jsonRpcMethodsCalled()).not.toContain('weft.workflows.get');
   });
 });
 
@@ -638,7 +691,12 @@ describe('the sections a caller sees', () => {
 
     // Nothing the Bureau holds either, so the run is not found; the engine is never asked.
     expect(await view.findByText(TASK_COPY.notFound.title)).not.toBeNull();
-    expect(fetchScript.calls.some((call) => call.url.includes(`/workflows/${id}`))).toBe(false);
+    expect(
+      fetchScript.calls.some(
+        (call) =>
+          typeof call.init?.body === 'string' && call.init.body.includes('weft.workflows.get'),
+      ),
+    ).toBe(false);
   });
 
   test('without events:read the Events disclosure says which scope it needs', async () => {
@@ -650,15 +708,18 @@ describe('the sections a caller sees', () => {
     await fireEvent.click(await view.findByRole('button', { name: 'Events' }));
 
     expect(await view.findByText(/Requires events:read/)).not.toBeNull();
-    expect(fetchScript.calls.some((call) => call.url.includes(`/workflows/${id}/events`))).toBe(
-      false,
-    );
+    expect(
+      fetchScript.calls.some(
+        (call) =>
+          typeof call.init?.body === 'string' &&
+          call.init.body.includes('weft.workflows.events.list'),
+      ),
+    ).toBe(false);
   });
 
   test('without queries:read the query form is disabled, and without signals:write so is the signal', async () => {
     const id = 'wf-sections-change-1';
     routeRun(id, { id });
-    fetchScript.routeUrl(`/workflows/${id}/timeline`, []);
 
     const view = mount(id, ALL_BUT('queries:read', 'signals:write'));
     await openTab(view, 'Inspector');
@@ -771,7 +832,7 @@ describe('the sections a caller sees', () => {
 
   function routeTimeline(id: string): void {
     fetchScript.routeJsonRpcMethod('weft.workflows.activities.pending.list', { items: [] });
-    fetchScript.routeUrl(`/workflows/${id}/timeline`, [
+    fetchScript.routeJsonRpcMethod('weft.workflows.timeline.get', [
       {
         step: 1,
         operationType: 'stream',
@@ -811,8 +872,8 @@ describe('the sections a caller sees', () => {
 describe('the lines a run logged', () => {
   function routeLoggedRun(id: string): void {
     fetchScript.routeJsonRpcMethod('weft.workflows.activities.pending.list', { items: [] });
-    fetchScript.routeUrl(
-      `/workflows/${id}/timeline`,
+    fetchScript.routeJsonRpcMethod(
+      'weft.workflows.timeline.get',
       [0, 1].map((step) => ({
         step,
         stepIndex: step,

@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import addFormats from 'ajv-formats';
 import Ajv2020 from 'ajv/dist/2020.js';
 
-import { request, type CliTarget } from './cli-client-transport.ts';
+import { catalogRead, request, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 import { cliPreview, isDryRun, previewTargetNotFound } from './cli-destructive.ts';
 
@@ -239,7 +239,7 @@ async function providers(target: CliTarget, parsed: Parsed, dependencies: CliCli
         { usage: true },
       );
     const value = record(await input(parsed, dependencies, { allowInline: false }));
-    const contributions = await rpc(
+    const contributions = await catalogRead(
       target,
       parsed,
       dependencies,
@@ -408,10 +408,11 @@ async function plugins(target: CliTarget, parsed: Parsed, dependencies: CliClien
 
 async function settings(target: CliTarget, parsed: Parsed, dependencies: CliClientDependencies) {
   const action = parsed.arguments[0] ?? 'get';
-  if (action === 'get') return rpc(target, parsed, dependencies, 'bureau.settings.get', {});
-  if (action === 'schema') return rpc(target, parsed, dependencies, 'bureau.settings.schema', {});
+  if (action === 'get') return catalogRead(target, parsed, dependencies, 'bureau.settings.get', {});
+  if (action === 'schema')
+    return catalogRead(target, parsed, dependencies, 'bureau.settings.schema', {});
   if (action === 'set') {
-    const current = await rpc(target, parsed, dependencies, 'bureau.settings.get', {});
+    const current = await catalogRead(target, parsed, dependencies, 'bureau.settings.get', {});
     const patch = record(await input(parsed, dependencies));
     const revision = record(current.data)['revision'];
     if (typeof revision !== 'number' && option(parsed, 'expected-revision') === undefined)
@@ -437,17 +438,17 @@ export async function executeConfiguration(
 ): Promise<CliCommandResult> {
   if (parsed.command === 'providers') return providers(target, parsed, dependencies);
   if (parsed.command === 'models') {
-    const result = await rpc(target, parsed, dependencies, 'bureau.agents.catalog', {});
+    const result = await catalogRead(target, parsed, dependencies, 'bureau.agents.catalog', {});
     return { ...result, data: record(result.data)['models'] ?? [] };
   }
   if (parsed.command === 'tools') {
-    const result = await rpc(target, parsed, dependencies, 'bureau.agents.catalog', {});
+    const result = await catalogRead(target, parsed, dependencies, 'bureau.agents.catalog', {});
     return { ...result, data: record(result.data)['tools'] ?? [] };
   }
   if (parsed.command === 'tool-sources') return toolSources(target, parsed, dependencies);
   if (parsed.command === 'plugins') return plugins(target, parsed, dependencies);
   if (parsed.command === 'skills')
-    return rpc(target, parsed, dependencies, 'bureau.skills.list', {});
+    return catalogRead(target, parsed, dependencies, 'bureau.skills.list', {});
   if (parsed.command === 'settings') return settings(target, parsed, dependencies);
   throw Object.assign(new Error(`Unsupported command: ${parsed.command}`), { usage: true });
 }

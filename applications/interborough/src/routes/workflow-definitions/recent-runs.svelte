@@ -105,7 +105,7 @@
             failure: run.failure ?? null,
           }));
         }
-        const page = await client.list({ type, limit: RECENT_LIMIT });
+        const page = await client.operations['weft.workflows.list']({ type, limit: RECENT_LIMIT });
         return page.items.map((run) => ({
           id: run.id,
           status: run.status,

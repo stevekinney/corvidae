@@ -5,7 +5,7 @@
  * for want of knowing which owns it.
  */
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing';
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient, HttpClientError } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { installBureauStub, type BureauStub } from '../../lib/bureau-stub.test-support.ts';
@@ -171,7 +171,12 @@ describe('a write to an engine schedule that moved on after it was read', () => 
   ) {
     const calls: string[] = [];
     const fake = {
-      getSchedule: () => Promise.resolve(now === null ? null : { nextFireAt: 1000, ...now }),
+      operations: {
+        'weft.schedules.get': async () => {
+          if (now === null) throw new HttpClientError(404, 'missing');
+          return { nextFireAt: 1000, ...now };
+        },
+      },
       pauseSchedule: (id: string) => Promise.resolve(void calls.push(`pause ${id}`)),
       resumeSchedule: (id: string) => Promise.resolve(void calls.push(`resume ${id}`)),
       cancelSchedule: (id: string) => Promise.resolve(void calls.push(`cancel ${id}`)),
@@ -199,6 +204,26 @@ describe('a write to an engine schedule that moved on after it was read', () => 
         StaleScheduleError,
       );
       expect(moved.calls).toEqual([]);
+    }
+  });
+
+  test('preserves a forbidden schedule read instead of treating it as stale', async () => {
+    const restore = installFetchImplementation(() =>
+      Promise.resolve(
+        Response.json({
+          jsonrpc: '2.0',
+          id: 'weft.schedules.get',
+          error: { code: -32000, message: 'forbidden', data: { httpStatus: 403 } },
+        }),
+      ),
+    );
+    try {
+      const client = new HttpClient({ baseUrl: 'http://localhost:1' });
+      expect(await rejectionOf(pauseTarget(client, target({ kind: 'code' })))).toMatchObject({
+        status: 403,
+      });
+    } finally {
+      restore();
     }
   });
 
@@ -241,7 +266,9 @@ describe('a write to an engine schedule that moved on after it was read', () => 
   test('takes a skip back through the engine for a workflow file’s schedule, naming the run, at its unskip address', async () => {
     // The Bureau holds the schedule paused while its file cannot load, and its runs still come.
     const held = {
-      getSchedule: () => Promise.resolve({ revision: 3, status: 'paused', nextFireAt: 1000 }),
+      operations: {
+        'weft.schedules.get': async () => ({ revision: 3, status: 'paused', nextFireAt: 1000 }),
+      },
       baseUrl: 'http://localhost/api',
       headers: {},
     } as unknown as HttpClient;
@@ -300,7 +327,9 @@ describe('a skip the server refuses because the run it named is no longer the ne
         ),
       ),
     );
-    const engine = { getSchedule: () => Promise.resolve({ revision: 3, status: 'active' }) };
+    const engine = {
+      operations: { 'weft.schedules.get': async () => ({ revision: 3, status: 'active' }) },
+    };
 
     expect(
       await rejectionOf(
@@ -325,7 +354,9 @@ describe('a skip the server refuses because the run it named is no longer the ne
         ),
       ),
     );
-    const engine = { getSchedule: () => Promise.resolve({ revision: 3, status: 'active' }) };
+    const engine = {
+      operations: { 'weft.schedules.get': async () => ({ revision: 3, status: 'active' }) },
+    };
 
     expect(
       await rejectionOf(
@@ -344,7 +375,9 @@ describe('a skip the server refuses because the run it named is no longer the ne
         Response.json({ error: 'Schedule is paused', weftCode: 'Conflict' }, { status: 409 }),
       ),
     );
-    const engine = { getSchedule: () => Promise.resolve({ revision: 3, status: 'active' }) };
+    const engine = {
+      operations: { 'weft.schedules.get': async () => ({ revision: 3, status: 'active' }) },
+    };
 
     const refused = await rejectionOf(
       skipNextTarget(
@@ -399,7 +432,9 @@ describe('taking a skip back for a code schedule the engine refuses for another 
       ),
     );
     try {
-      const engine = { getSchedule: () => Promise.resolve({ revision: 3, status: 'active' }) };
+      const engine = {
+        operations: { 'weft.schedules.get': async () => ({ revision: 3, status: 'active' }) },
+      };
       const refused = await rejectionOf(
         unskipTarget(
           { ...engine, baseUrl: 'http://localhost/api', headers: {} } as unknown as HttpClient,

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { listChecks } from './bureau-checks.ts';
 import { checkFixture } from './bureau-fixtures.test-support.ts';
 import { installBureauStub, type BureauStub } from './bureau-stub.test-support.ts';
+import { createBureauClient } from './generated/bureau-operation-client.generated.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {
@@ -17,8 +18,10 @@ describe('a read of the checks', () => {
   test('asks for fifty results and sends only the filters it was given, with the cursor', async () => {
     stub = installBureauStub({ 'bureau.checks.list': () => ({ checks: [], nextCursor: null }) });
 
-    await listChecks({}, undefined);
+    const client = createBureauClient({ baseUrl: '' });
+    await listChecks(client, {}, undefined);
     await listChecks(
+      client,
       {
         kind: 'scorer.recorded',
         checkId: 'tone@2',
@@ -53,7 +56,7 @@ describe('a read of the checks', () => {
       'bureau.checks.list': () => ({ checks: [checkFixture('a'), scored], nextCursor: 'next' }),
     });
 
-    const page = await listChecks({}, undefined);
+    const page = await listChecks(createBureauClient({ baseUrl: '' }), {}, undefined);
 
     expect(page.checks).toEqual([checkFixture('a'), scored]);
     expect(page.nextCursor).toBe('next');

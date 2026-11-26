@@ -97,6 +97,8 @@ export type TabsProps = {
    * Default `"Tab"`.
    */
   collapseLabel?: string;
+  /** Keep the collapsed selector's painted face compact while extending its touch target. */
+  compactTouch?: boolean;
   /**
    * When true (default for horizontal), focusing a tab also activates it
    * (the panel updates immediately). Vertical defaults to manual activation

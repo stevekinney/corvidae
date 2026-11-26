@@ -6,7 +6,7 @@
    */
   import { Collapsible, EmptyState } from '@lostgradient/cinder';
   import Lock from '@lucide/svelte/icons/lock';
-  import type { WorkflowState } from '@lostgradient/weft';
+  import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
 
   import { RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
   import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';

@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2623",
+  "branch": "steve/composable-scoped-read-migration",
+  "checkedAt": "e038dcf355",
+  "briefVersion": "abd4255bcdc1",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Scoped generated audit, checks and schedule reads; owning regression tests passed. Full workspace typecheck pending host admission."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Owning schedule, workflow, audit, checks, scope and fault regressions passed; aggregate test admission pending."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Formatted catalog consumer inventory: 1 test, 2106 assertions, exit 0."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "CLI finite read regression: 21 tests, exit 0; invalid enum requests preserve raw endpoint and server faults by owner decision."
+    }
+  ]
+}

@@ -55,8 +55,10 @@ afterEach(() => {
 
 function client(events: WorkflowEvent[] = []) {
   return {
-    getEvents: async (): Promise<WorkflowEvent[]> => events,
-    getTimeline: async (): Promise<WorkflowTimelineEntry[]> => [],
+    operations: {
+      'weft.workflows.timeline.get': async (): Promise<WorkflowTimelineEntry[]> => [],
+      'weft.workflows.events.list': async () => ({ events }),
+    },
     baseUrl: 'http://weft.test',
     headers: {},
   };

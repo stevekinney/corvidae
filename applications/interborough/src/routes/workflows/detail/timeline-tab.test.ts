@@ -70,8 +70,8 @@ function baseClient(
   }> = [],
 ) {
   return {
-    getTimeline: async () => entries,
     operations: {
+      'weft.workflows.timeline.get': async () => entries,
       'weft.workflows.activities.pending.list': async () => ({ items: pendingItems }),
     },
     activity: {
@@ -258,8 +258,11 @@ describe('TimelineTab', () => {
       props: {
         client: {
           ...baseClient([]),
-          getTimeline: async () => {
-            throw new Error('timeline is down');
+          operations: {
+            ...baseClient([]).operations,
+            'weft.workflows.timeline.get': async () => {
+              throw new Error('timeline is down');
+            },
           },
         },
         workflow: workflow({ id: 'wf-error-1' }),

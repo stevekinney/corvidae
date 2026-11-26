@@ -18,6 +18,7 @@ import type { AuditRecord } from '../../lib/bureau-audit.ts';
 import { getContext, listAgents } from '../../lib/bureau-client.ts';
 import { getBureauReview, type BureauToolApproval } from '../../lib/bureau-reviews.ts';
 import { listBureauSchedules } from '../../lib/bureau-schedules.ts';
+import type { CatalogOperations } from '../../lib/generated/bureau-operation-client.generated.ts';
 import { getMemory } from '../../lib/memory-client.ts';
 import { queryKeys } from '../../lib/query.ts';
 import { lookupRequestsFor, type AuditLookups, type AuditTool } from './audit-events.ts';
@@ -48,7 +49,11 @@ function inTurn(maximum: number) {
 }
 
 /** The lookups for the records the page holds, which fill in as the reads arrive. */
-export function useAuditLookups(records: () => readonly AuditRecord[]): {
+export function useAuditLookups(
+  client: CatalogOperations,
+  scope: () => readonly unknown[],
+  records: () => readonly AuditRecord[],
+): {
   readonly current: AuditLookups;
 } {
   const requests = $derived(lookupRequestsFor(records()));
@@ -56,8 +61,8 @@ export function useAuditLookups(records: () => readonly AuditRecord[]): {
 
   const catalog = createQuery(
     () => ({
-      queryKey: queryKeys.agents.list(),
-      queryFn: ({ signal }) => listAgents({ signal }),
+      queryKey: [...queryKeys.agents.list(), scope()],
+      queryFn: ({ signal }) => listAgents({ signal }, client),
       retry: false,
       staleTime: 60_000,
     }),
@@ -65,8 +70,8 @@ export function useAuditLookups(records: () => readonly AuditRecord[]): {
   );
   const tools = createQuery(
     () => ({
-      queryKey: queryKeys.agents.catalog(),
-      queryFn: ({ signal }) => getAgentCatalog({ signal }),
+      queryKey: [...queryKeys.agents.catalog(), scope()],
+      queryFn: ({ signal }) => getAgentCatalog({ signal }, client),
       retry: false,
       staleTime: 60_000,
     }),
@@ -74,8 +79,8 @@ export function useAuditLookups(records: () => readonly AuditRecord[]): {
   );
   const schedules = createQuery(
     () => ({
-      queryKey: queryKeys.audit.schedules(),
-      queryFn: ({ signal }) => listBureauSchedules({ signal }),
+      queryKey: [...queryKeys.audit.schedules(), scope()],
+      queryFn: ({ signal }) => listBureauSchedules({ signal }, client),
       enabled: requests.scheduleIds.length > 0,
       retry: false,
       staleTime: 60_000,
@@ -84,9 +89,9 @@ export function useAuditLookups(records: () => readonly AuditRecord[]): {
   );
   const reviews = createQueries(() => ({
     queries: requests.reviewIds.map((reviewId) => ({
-      queryKey: queryKeys.bureauReviews.detail(reviewId),
+      queryKey: [...queryKeys.bureauReviews.detail(reviewId), scope()],
       queryFn: ({ signal }: { signal: AbortSignal }) =>
-        turn(signal, () => getBureauReview(reviewId, { signal })),
+        turn(signal, () => getBureauReview(reviewId, { signal }, client)),
       retry: false,
       staleTime: 60_000,
     })),
@@ -100,18 +105,18 @@ export function useAuditLookups(records: () => readonly AuditRecord[]): {
   const sessionIds = $derived([...new Set([...requests.sessionIds, ...reviewSessionIds])]);
   const chats = createQueries(() => ({
     queries: sessionIds.map((sessionId) => ({
-      queryKey: queryKeys.contexts.detail(sessionId),
+      queryKey: [...queryKeys.contexts.detail(sessionId), scope()],
       queryFn: ({ signal }: { signal: AbortSignal }) =>
-        turn(signal, () => getContext(sessionId, { signal })),
+        turn(signal, () => getContext(sessionId, { signal }, client)),
       retry: false,
       staleTime: 60_000,
     })),
   }));
   const memories = createQueries(() => ({
     queries: requests.memories.map(({ agent, id }) => ({
-      queryKey: queryKeys.memory.detail(agent, id),
+      queryKey: [...queryKeys.memory.detail(agent, id), scope()],
       queryFn: ({ signal }: { signal: AbortSignal }) =>
-        turn(signal, () => getMemory(agent, id, { signal })),
+        turn(signal, () => getMemory(agent, id, { signal }, client)),
       retry: false,
       staleTime: 60_000,
     })),

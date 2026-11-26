@@ -1,5 +1,5 @@
 /**
- * Pure derivations over `GET …/timeline` (`client.getTimeline(id)`) for the
+ * Generated timeline read and derivations over its entries for the
  * Signals tab (plan T2.6).
  *
  * ## Why the timeline, not `getEvents()`
@@ -16,7 +16,7 @@
  * with `operationLabel` as the signal name — confirmed against the same
  * live workflow. This module reads that instead. (The Timeline *tab*'s own
  * UI, T3.1, is a different track; this module only calls the same
- * read-only `client.getTimeline()` the Timeline tab will also call — no
+ * same read the Timeline tab also calls — no
  * coupling to its component.)
  *
  * ## Children moved off the timeline entirely (weft#732 item 1, shipped 0.15.0)
@@ -33,8 +33,53 @@
  * query `client.list({ parentWorkflowId })` directly instead — real ids,
  * real links, no timeline coupling.
  */
-import type { WorkflowTimelineEntry, WorkflowTimelineStatus } from '@lostgradient/weft';
+import {
+  HttpClientError,
+  type HttpClient,
+  type WorkflowTimelineEntry,
+  type WorkflowTimelineOperationDetail,
+  type WorkflowTimelineStatus,
+} from '@lostgradient/weft';
 import type { QueryKey } from '@tanstack/svelte-query';
+
+type TimelineEntry = Awaited<
+  ReturnType<HttpClient['operations']['weft.workflows.timeline.get']>
+>[number];
+type TimelineBranch = NonNullable<TimelineEntry['branches']>[number];
+
+function mutableBranch(branch: TimelineBranch): WorkflowTimelineOperationDetail {
+  const { branches, ...fields } = branch;
+  return {
+    ...fields,
+    ...(branches === undefined ? {} : { branches: branches.map(mutableBranch) }),
+  };
+}
+
+function mutableVersion(
+  version: NonNullable<TimelineEntry['versionTuple']>,
+): NonNullable<WorkflowTimelineEntry['versionTuple']> {
+  const { toolVersions, ...fields } = version;
+  return { ...fields, ...(toolVersions === undefined ? {} : { toolVersions: [...toolVersions] }) };
+}
+
+/** Reads the generated timeline while preserving the ergonomic client's missing-run behavior. */
+export async function fetchWorkflowTimeline(
+  client: { readonly operations: Pick<HttpClient['operations'], 'weft.workflows.timeline.get'> },
+  workflowId: string,
+): Promise<WorkflowTimelineEntry[]> {
+  try {
+    const entries = await client.operations['weft.workflows.timeline.get']({ workflowId });
+    return entries.map(({ branches, children, versionTuple, ...fields }) => ({
+      ...fields,
+      ...(branches === undefined ? {} : { branches: branches.map(mutableBranch) }),
+      ...(children === undefined ? {} : { children: children.map(mutableBranch) }),
+      ...(versionTuple === undefined ? {} : { versionTuple: mutableVersion(versionTuple) }),
+    }));
+  } catch (error) {
+    if (error instanceof HttpClientError && error.status === 404) return [];
+    throw error;
+  }
+}
 
 /** Shared `getTimeline(id)` query key — used by the Signals tab (history), the Timeline tab, and the Events tab's linked selection, so all readers share the same TanStack Query cache entry instead of drifting into separately-keyed duplicate fetches. */
 export function workflowTimelineQueryKey(workflowId: string): QueryKey {

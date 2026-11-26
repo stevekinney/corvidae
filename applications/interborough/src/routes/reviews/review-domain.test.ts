@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { CompletedReviewEntry } from '@lostgradient/weft';
+import { REVIEW_POLL_MILLISECONDS, weftReviewsQueryOptions } from './reviews-data.ts';
 
 import {
   classifyArtifactValue,
@@ -33,6 +34,27 @@ function pendingEntry(overrides: Partial<{ createdAt: number; timeout: number }>
     ...overrides,
   };
 }
+
+test('engine review query uses the generated operation and keeps its polling contract', async () => {
+  const review = pendingEntry();
+  let input: unknown;
+  const client = {
+    operations: {
+      'weft.reviews.list': async (value: unknown) => {
+        input = value;
+        return { items: [review] };
+      },
+    },
+  };
+  const options = weftReviewsQueryOptions(client, 'pending', true, false);
+  const items = await options.queryFn();
+  expect(input).toEqual({ status: 'pending' });
+  expect(items).toEqual([review]);
+  expect(items[0]?.reviewers).not.toBe(review.reviewers);
+  expect(options.refetchInterval).toBe(REVIEW_POLL_MILLISECONDS);
+  expect(weftReviewsQueryOptions(client, 'pending', true, true).refetchInterval).toBeUndefined();
+  expect(weftReviewsQueryOptions(client, 'completed').refetchInterval).toBeUndefined();
+});
 
 describe('reviewDeadline', () => {
   test('reports no deadline when timeout is undefined', () => {

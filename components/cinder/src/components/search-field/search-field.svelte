@@ -19,6 +19,7 @@
     placeholder,
     appearance,
     size = 'md',
+    compactTouch = false,
     shortcut,
     disabled,
     readonly,
@@ -83,6 +84,18 @@
     onValueChange?.('');
     onClear?.();
   }
+
+  function handleCompactPointer(event: PointerEvent) {
+    if (compactTouch && !resolvedDisabled && event.target === event.currentTarget) {
+      event.preventDefault();
+      inputElement?.focus();
+    }
+  }
+
+  const focusCompactTarget: Attachment<HTMLElement> = (element) => {
+    element.addEventListener('pointerdown', handleCompactPointer);
+    return () => element.removeEventListener('pointerdown', handleCompactPointer);
+  };
 </script>
 
 {#snippet leadingIcon()}
@@ -111,8 +124,10 @@
 
 <div
   class={classNames('cinder-search-field', customClassName)}
+  data-cinder-compact-touch={compactTouch ? '' : undefined}
   data-disabled={resolvedDisabled ? '' : undefined}
   data-invalid={isInvalid ? '' : undefined}
+  {@attach focusCompactTarget}
 >
   <Input
     {...rest}

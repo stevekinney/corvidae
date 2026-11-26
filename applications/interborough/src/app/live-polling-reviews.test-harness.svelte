@@ -5,10 +5,14 @@
 
   import { bureauReviewsQuery, reviewListQuery } from '../routes/reviews/reviews-data.ts';
 
-  let { client }: { client: Pick<HttpClient, 'listReviews'> } = $props();
+  let { client }: { client: { operations: Pick<HttpClient['operations'], 'weft.reviews.list'> } } =
+    $props();
 
   const bureauReviews = bureauReviewsQuery();
-  const engineReviews = reviewListQuery(untrack(() => client) as HttpClient, () => 'pending');
+  const engineReviews = reviewListQuery(
+    untrack(() => client),
+    () => 'pending',
+  );
 </script>
 
 <output

@@ -18,6 +18,7 @@ import { settle } from '../lib/fake-timers.test-support.ts';
 import { ServerUnreachableError } from '../lib/faults.ts';
 import { installFetchImplementation } from '../lib/live-source/fetch.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../lib/scopes.svelte.ts';
+import { scheduleFixture } from '../lib/workflow-world.test-support.ts';
 import { ChatSessionState, MAX_RECONNECT_ATTEMPTS } from '../routes/chat/chat-session.svelte.ts';
 import type { ConnectionMonitor } from './connection.svelte.ts';
 import { VIEW_COPY } from './copy/view-pages.ts';
@@ -49,8 +50,17 @@ function host(initial: HostMode) {
     const url = new URL(text, 'http://localhost');
     if (state.mode === 'stopped') throw new TypeError('Failed to fetch');
     if (url.pathname.endsWith('/health')) return Response.json({ status: 'ok' });
-    if (init?.method !== undefined && init.method !== 'GET') state.writes += 1;
-    state.schedulesRequests += 1;
+    const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+    const method =
+      typeof body === 'object' && body !== null ? Reflect.get(body, 'method') : undefined;
+    if (method === 'weft.schedules.list') state.schedulesRequests += 1;
+    if (
+      init?.method !== undefined &&
+      init.method !== 'GET' &&
+      method !== 'weft.schedules.list' &&
+      method !== 'bureau.goals.list'
+    )
+      state.writes += 1;
     if (state.mode === 'fails') {
       return Response.json({ error: 'The server broke.' }, { status: 500 });
     }
@@ -59,6 +69,15 @@ function host(initial: HostMode) {
       const id: unknown = Reflect.get(JSON.parse(init.body) as object, 'id');
       const goals = state.empty ? [] : [goalFixture('goal-1')];
       return Response.json({ jsonrpc: '2.0', id, result: { goals, nextOffset: null } });
+    }
+    if (method === 'weft.schedules.list') {
+      const id: unknown = Reflect.get(body as object, 'id');
+      const items = state.empty ? [] : [scheduleFixture('schedule-1', 'order')];
+      return Response.json({
+        jsonrpc: '2.0',
+        id,
+        result: { items, total: items.length, offset: 0, limit: 50 },
+      });
     }
     return state.empty
       ? Response.json({ items: [], total: 0 })

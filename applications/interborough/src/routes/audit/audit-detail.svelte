@@ -24,6 +24,7 @@
   import { showToast } from '../../app/toast-host.svelte';
   import { listAgentVersions } from '../../lib/agent-definitions.ts';
   import { followLinks } from '../../lib/follow-links.ts';
+  import type { CatalogOperations } from '../../lib/generated/bureau-operation-client.generated.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { instructionPatch } from './audit-diff.ts';
@@ -36,9 +37,11 @@
     lookups: AuditLookups;
     /** The reference time for "Today" and "Yesterday", in epoch milliseconds. */
     now: number;
+    client: Pick<CatalogOperations, 'bureau.agents.versions.list'>;
+    queryScope: () => readonly unknown[];
   }
 
-  let { event, lookups, now }: Props = $props();
+  let { event, lookups, now, client, queryScope }: Props = $props();
 
   /** The most lines of a long change the pane shows before Show all. */
   const DIFF_LINES = 6;
@@ -57,8 +60,8 @@
   const changedKeys = $derived(String(event.record.detail?.['changedKeys'] ?? ''));
   const versions = createQuery(
     () => ({
-      queryKey: queryKeys.agents.versions(agentId ?? ''),
-      queryFn: ({ signal }) => listAgentVersions(agentId ?? '', { signal }),
+      queryKey: [...queryKeys.agents.versions(agentId ?? ''), queryScope()],
+      queryFn: ({ signal }) => listAgentVersions(agentId ?? '', { signal }, client),
       enabled:
         agentId !== undefined &&
         typeof revision === 'number' &&

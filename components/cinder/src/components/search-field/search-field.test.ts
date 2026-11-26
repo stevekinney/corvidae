@@ -27,6 +27,32 @@ const { default: FormFieldSearchFieldFixture } =
   await import('../../test/fixtures/form-field-search-field-fixture.svelte');
 
 describe('SearchField rendering', () => {
+  test('the opt-in compact touch surface focuses the real search input', async () => {
+    const { container } = render(SearchField, {
+      props: { id: 'compact-search', compactTouch: true },
+    });
+    const root = requiredInstance(container.querySelector('.cinder-search-field'), HTMLElement);
+    const input = requiredInstance(container.querySelector('#compact-search'), HTMLInputElement);
+    expect(root.hasAttribute('data-cinder-compact-touch')).toBe(true);
+    await fireEvent.pointerDown(root);
+    expect(document.activeElement).toBe(input);
+    const css = readFileSync(new URL('./search-field.css', import.meta.url), 'utf8');
+    expect(css).toContain('--cinder-touch-target-min');
+    expect(css).toContain('--_cinder-painted-height-md');
+  });
+
+  test('the compact touch surface does not focus a disabled search input', async () => {
+    const { container } = render(SearchField, {
+      props: { id: 'disabled-compact-search', compactTouch: true, disabled: true },
+    });
+    const root = requiredInstance(container.querySelector('.cinder-search-field'), HTMLElement);
+    const input = requiredInstance(
+      container.querySelector('#disabled-compact-search'),
+      HTMLInputElement,
+    );
+    await fireEvent.pointerDown(root);
+    expect(document.activeElement).not.toBe(input);
+  });
   test('sidecar imports the composed Input styles', () => {
     const styles = readFileSync(new URL('./search-field.css', import.meta.url), 'utf8');
     expect(styles).toContain("@import '../input/input.css';");

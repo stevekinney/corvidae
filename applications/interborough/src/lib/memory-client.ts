@@ -13,6 +13,7 @@ import { HttpClientError } from '@lostgradient/weft';
 
 import { bureauClient, type BureauOutput } from './bureau-api.ts';
 import type { Fetcher } from './bureau-client.ts';
+import type { CatalogOperations } from './generated/bureau-operation-client.generated.ts';
 
 /** Where a call is sent from: an abort signal, and a `fetch` for a caller that is not a page. */
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
@@ -96,8 +97,9 @@ export async function getMemory(
   agentId: string,
   id: string,
   options?: Options,
+  client: Pick<CatalogOperations, 'bureau.memory.get'> = bureauClient,
 ): Promise<MemoryDetail> {
-  return bureauClient['bureau.memory.get']({ agentId, id }, options);
+  return client['bureau.memory.get']({ agentId, id }, options);
 }
 
 /**

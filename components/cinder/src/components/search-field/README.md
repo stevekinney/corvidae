@@ -24,6 +24,7 @@ Dedicated text input with a clear button and search icon for filtering or queryi
 | --- | --- | --- | --- | --- |
 | `appearance` | `"outlined"` \| `"filled"` | no | — | How the field is drawn, forwarded to the inner Input. `"outlined"` is the control fill inside a 1px edge. `"filled"` is an inset fill inside the same 1px `--cinder-control-border` edge, which keeps the 3:1 boundary the fill alone would lose. Left unset, the field follows its density: `filled` under `data-density="comfortable"`, `outlined` otherwise. |
 | `class` | `string` | no | — | Additional class merged with `.cinder-search-field`. |
+| `compactTouch` | `boolean` | no | — | Keep the medium face compact while extending its coarse-pointer hit area. |
 | `disabled` | `boolean` | no | — | Disables the input and the clear button. |
 | `id` | `string` | no | — | Stable id for the input element. Required when composing with `FormField`. |
 | `name` | `string` | no | — | `name` attribute for form submission. |

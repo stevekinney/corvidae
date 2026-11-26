@@ -7,11 +7,27 @@
  */
 import { getContext, setContext } from 'svelte';
 
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient, HttpClientError } from '@lostgradient/weft';
 
 import type { WeftUiRuntimeConfig } from './config.ts';
 
 const CLIENT_CONTEXT_KEY = Symbol('weft-ui-client');
+
+/** The state the generated workflow read returns, including future error codes. */
+export type WorkflowReadState = Awaited<ReturnType<HttpClient['operations']['weft.workflows.get']>>;
+
+/** Reads one workflow, retaining the previous missing-workflow result. */
+export async function fetchWorkflowState(
+  client: { readonly operations: Pick<HttpClient['operations'], 'weft.workflows.get'> },
+  workflowId: string,
+): Promise<WorkflowReadState | null> {
+  try {
+    return await client.operations['weft.workflows.get']({ workflowId });
+  } catch (error) {
+    if (error instanceof HttpClientError && error.status === 404) return null;
+    throw error;
+  }
+}
 
 function isAbsoluteUrl(value: string): boolean {
   return URL.canParse(value);
