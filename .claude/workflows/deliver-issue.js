@@ -159,8 +159,25 @@ const CHECKS_SCHEMA = {
     head: { type: 'string' },
     reportOk: { type: 'boolean' },
     reportProblems: { type: 'array', items: { type: 'string' } },
+    pending: { type: 'array', items: { type: 'string' } },
   },
   required: ['exitCode', 'line', 'head', 'reportOk'],
+};
+
+const PENDING_SCHEMA = {
+  type: 'object',
+  properties: {
+    head: { type: 'string' },
+    results: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { command: { type: 'string' }, exitCode: { type: 'integer' } },
+        required: ['command', 'exitCode'],
+      },
+    },
+  },
+  required: ['head', 'results'],
 };
 
 const DISPATCH_SCHEMA = {
@@ -406,7 +423,7 @@ function runChecks(issue, worktree, branch, head) {
     [
       `Run the focused checks of ${issue} on the branch head ${head}. Invoke no skills. Change nothing in the repository.`,
       `cd ${worktree}. Run \`git fetch origin ${branch}\`, then confirm \`git rev-parse HEAD\` and \`git rev-parse FETCH_HEAD\` both equal ${head}. If either differs, return exitCode 3, line "head mismatch" and the head you found.`,
-      'Otherwise run `bun scripts/chef/focused-checks.ts` once, with its output redirected to a file under tmp/ in that worktree, in the background if it runs long, and wait for it to exit. Never rerun it. Return exitCode (its exit code), line (the last non-empty line of that file) and head.',
+      'Otherwise run `bun scripts/chef/focused-checks.ts` once, with its output redirected to a file under tmp/ in that worktree, in the background if it runs long, and wait for it to exit. Never rerun it. Return exitCode (its exit code), line (the last non-empty line of that file), head, and pending: for every line of the file that starts `focused-checks: <step>: pending` and names a command after `run it directly: `, that command, verbatim (an empty array when there is none).',
       `Then, from the same worktree, run \`bun scripts/chef/report.ts check ${issue} --head ${head}\` once and read its JSON: return reportOk (its ok, false when it printed nothing) and reportProblems (its problems). It verifies that the worker's report exists, is valid, names the current brief version, lists every correction, was not recorded through the three-blocks escape, and is for this head.`,
     ].join('\n'),
     {
@@ -417,6 +434,76 @@ function runChecks(issue, worktree, branch, head) {
       effort: 'low',
     },
   );
+}
+
+/** Runs the stages the focused checks left pending, each once, without the pool-wait bound. */
+function runPending(issue, worktree, branch, head, commands) {
+  log(`${issue}: running ${commands.length} pending stage(s) directly at ${head}`);
+  return agent(
+    [
+      `Run the pending focused-check stages of ${issue} at head ${head}. Invoke no skills. Change nothing in the repository.`,
+      `cd ${worktree}. Run \`git fetch origin ${branch}\` and confirm \`git rev-parse HEAD\` equals ${head}; if it differs, return the head you found and no results.`,
+      'Run each command below once, from that directory, with its output redirected to a file under tmp/ there, in the background, and wait for it to exit; never rerun one and never add a wait of your own. Return head and results: each command, verbatim, with its exit code.',
+      ...commands.map((command) => `- ${command}`),
+    ].join('\n'),
+    {
+      label: `pending ${issue}`,
+      phase: 'check',
+      schema: PENDING_SCHEMA,
+      model: 'haiku',
+      effort: 'low',
+    },
+  );
+}
+
+// A pending stage that runs and still is not admitted (or hits the hang guard) gave no verdict.
+const PENDING_NOT_RUN = [70, 75, 76];
+
+/** The failed-step count of a focused-checks summary line, or null when it names none. */
+function failedSteps(line) {
+  const match = /\b(\d+) failed\b/.exec(typeof line === 'string' ? line : '');
+  return match === null ? null : Number(match[1]);
+}
+
+/**
+ * Focused checks that exit non-zero with no failed step gave no verdict: a pending stage is run
+ * directly, and a hung or killed step goes to the coordinator. Neither is a defect, so neither
+ * opens a correction. Returns null when a step failed (an ordinary finding), { findings } after
+ * the pending stages ran, or a judgment.
+ */
+async function noVerdict(issue, checks, where, steps, evidence) {
+  if (checks.exitCode === 0 || failedSteps(checks.line) !== 0) return null;
+  const commands = (Array.isArray(checks.pending) ? checks.pending : []).filter(
+    (command) => typeof command === 'string' && command.trim() !== '',
+  );
+  const stop = (why) =>
+    judgment(
+      issue,
+      `focused checks gave no verdict (${why}); that is not a defect, so no correction was opened`,
+      steps,
+      where,
+    );
+  if (/\bhung\b|killed by a signal/.test(checks.line) || commands.length === 0)
+    return stop(checks.line);
+  const ran = await runPending(issue, where.worktree, where.branch, where.head, commands);
+  if (ran === null) return judgment(issue, 'pending stage step failed', steps, where);
+  evidence.pending = ran;
+  if (ran.head !== where.head)
+    return judgment(issue, `pending stages ran at ${ran.head}, not ${where.head}`, steps, where);
+  const results = Array.isArray(ran.results) ? ran.results : [];
+  const result = (command) => results.find((entry) => entry.command === command);
+  const unrun = commands.filter(
+    (command) => !result(command) || PENDING_NOT_RUN.includes(result(command).exitCode),
+  );
+  if (unrun.length > 0) return stop(`still not run: ${unrun.join('; ')}`);
+  return {
+    findings: commands
+      .filter((command) => result(command).exitCode !== 0)
+      .map(
+        (command) =>
+          `pending check \`${command}\` failed when run directly (exit ${result(command).exitCode})`,
+      ),
+  };
 }
 
 function fetchDispatchBase(issue) {
@@ -919,7 +1006,9 @@ async function verifyRound(context, head, round, key) {
         steps,
         where,
       );
-    let findings = verifyBlockers(evidence);
+    const unsettled = await noVerdict(issue, checks, where, steps, evidence);
+    if (unsettled !== null && unsettled.status !== undefined) return unsettled;
+    let findings = unsettled === null ? verifyBlockers(evidence) : unsettled.findings;
 
     if (findings.length === 0) {
       const verdict = await review(

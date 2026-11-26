@@ -305,6 +305,19 @@ describe('charter rules', () => {
     expect(rules).toContain('you do not merge');
   });
 
+  // P-COR-128: a pending step was treated as a failure and corrected; it is a stage to run.
+  test('tell a worker to run a pending step directly, never to correct it', () => {
+    const rule = charterRules.find((candidate) => candidate.startsWith('**Checks:**')) ?? '';
+    expect(rule).toContain('is no failure and no correction');
+    expect(rule).toContain('run the command its `run it directly:` line names, once');
+    for (const path of ['.claude/agents/chef-worker.md', '.codex/agents/chef-worker.toml']) {
+      const text = readFileSync(join(import.meta.dir, '../..', path), 'utf8');
+      expect(text, path).toContain(
+        'report the step pending with the command that runs it directly',
+      );
+    }
+  });
+
   test('tell a worker to push its own branch after every commit, never to main', () => {
     const rule = charterRules.find((candidate) => candidate.startsWith('**Push:**')) ?? '';
     expect(rule).toContain('after every commit, push your own branch to origin');

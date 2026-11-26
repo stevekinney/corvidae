@@ -510,6 +510,78 @@ describe('workflow scripts', () => {
     expect(delivery.result[0]?.evidenceRequest).toBeNull();
   });
 
+  // The P-COR-128 trial: COR-2691 and COR-2694 came back from focused checks "0 failed, N pending"
+  // (a pool slot not granted, exit 75). The workflow sent each to a correction that demanded a
+  // failing-first test for a defect that did not exist (995K workflow tokens, two NEEDS_JUDGMENT).
+  // A pending stage with nothing failed is run directly instead, and never corrected.
+  const pendingChecks = {
+    exitCode: 1,
+    line: 'focused-checks: 5 passed, 0 failed, 1 pending (tests:root)',
+    head: 'abc',
+    pending: ['env SELECTION=d bunx turbo run test:self --filter=//'],
+  };
+
+  test('deliver-issue.js runs a pending stage directly instead of correcting it', async () => {
+    const delivery = await runDelivery(
+      {},
+      {
+        checks: pendingChecks,
+        pending: { head: 'abc', results: [{ command: pendingChecks.pending[0], exitCode: 0 }] },
+      },
+    );
+    expect(delivery.labels).toEqual([
+      'fetch',
+      'implement',
+      'checks',
+      'pending',
+      'review',
+      'dispatch',
+      'wait',
+      'compare',
+    ]);
+    const prompt = delivery.calls.find((call) => call.label.startsWith('pending'))?.prompt ?? '';
+    expect(prompt).toContain(pendingChecks.pending[0]);
+    expect(prompt).toContain('cd /worktree');
+    expect(delivery.result[0]?.status).toBe('READY_TO_LAND');
+  });
+
+  test('deliver-issue.js corrects a pending stage only when it fails once run', async () => {
+    const delivery = await runDelivery(
+      {},
+      {
+        checks: pendingChecks,
+        pending: { head: 'abc', results: [{ command: pendingChecks.pending[0], exitCode: 1 }] },
+      },
+    );
+    expect(delivery.labels).toContain('correct');
+    const fix = delivery.calls.find((call) => call.label.startsWith('correct'))?.prompt ?? '';
+    expect(fix).toContain(pendingChecks.pending[0]);
+  });
+
+  for (const [name, stubs] of [
+    [
+      'a pending stage still not admitted',
+      {
+        checks: pendingChecks,
+        pending: { head: 'abc', results: [{ command: pendingChecks.pending[0], exitCode: 75 }] },
+      },
+    ],
+    [
+      'a hung step with nothing failed',
+      {
+        checks: { exitCode: 4, line: 'focused-checks: 4 passed, 0 failed, 1 hung', head: 'abc' },
+      },
+    ],
+  ] as [string, Responses][]) {
+    test(`deliver-issue.js sends ${name} to judgment, never to a correction`, async () => {
+      const delivery = await runDelivery({}, stubs);
+      expect(delivery.labels).not.toContain('correct');
+      expect(delivery.labels).not.toContain('classify');
+      expect(delivery.result[0]?.status).toBe('NEEDS_JUDGMENT');
+      expect(delivery.result[0]?.reason).toContain('no verdict');
+    });
+  }
+
   test('deliver-issue.js re-runs the checks after one correction and then asks for judgment', async () => {
     const delivery = await runDelivery(
       {},
