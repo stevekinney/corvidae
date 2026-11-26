@@ -543,6 +543,8 @@ export interface TaskRegistryHost {
     readonly { readonly taskId: string; readonly phase: LiveTask['phase'] }[]
   >;
   readonly pendingReviews: () => readonly PendingReview[];
+  readonly pendingPeerReviews?: (taskId: string) => Promise<readonly PendingReview[]>;
+  readonly filterSettledApprovals?: (reviews: readonly PendingReview[]) => Promise<PendingReview[]>;
   /** The incarnation of the context's live session, or `undefined` when it has none. */
   readonly currentIncarnation: (contextId: string) => Promise<string | undefined>;
   /**
@@ -1965,7 +1967,11 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
   async function getView(taskId: string): Promise<TaskView | undefined> {
     const record = await read(taskId);
     if (record === undefined) return undefined;
-    const grouped = reviewsByRun(host.pendingReviews().filter((review) => review.runId === taskId));
+    const listed = host.pendingReviews().filter((review) => review.runId === taskId);
+    const local = (await host.filterSettledApprovals?.(listed)) ?? listed;
+    const peer = (await host.pendingPeerReviews?.(taskId)) ?? [];
+    const seen = new Set(local.map((review) => review.id));
+    const grouped = reviewsByRun([...local, ...peer.filter((review) => !seen.has(review.id))]);
     return viewOf(record, grouped.get(taskId));
   }
 

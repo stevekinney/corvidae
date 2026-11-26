@@ -5,7 +5,7 @@
  * `constructBureau` and reached only through `createBureau`; the parent and nine seams call into it.
  */
 import { ANONYMOUS_LOCAL_OWNER, EXPIRY_ACTOR } from '../owner-of-record';
-import type { ActiveRun, PermissionMode } from '@lostgradient/operative';
+import type { ActiveRun, AgentSession, JSONValue, PermissionMode } from '@lostgradient/operative';
 import type { AgentDefinitions } from '../agent-catalog';
 import type { AgentFileDefinitionInput } from '../agent-file';
 import type {
@@ -26,7 +26,7 @@ import type {
   ScheduledFireApprovalEnding,
   SteeringCursor,
 } from './core';
-import { BureauError, ReviewAnswerInvalidError } from '../bureau-errors';
+import { BureauError, pinnedToolUnavailable, ReviewAnswerInvalidError } from '../bureau-errors';
 import {
   type ChatPermissionReading,
   ChatPermissionUnavailableError,
@@ -56,9 +56,24 @@ import { findRunAgentName, serializeUnknownError } from '../serialization';
 import { isTryAgentName } from '../agent-try';
 import { reviewCanceledDedupeKey } from '../review-closing-events';
 import { validateReviewAnswer } from '../review-answer';
+import { validateApprovalBinding, verifyToolboxPendingApproval } from 'armorer';
+import { recoveredRequestContextFromMetadata } from '../session-request-context';
+import type { SessionAgentRun } from '../runtime-composition-types';
+import { AGENT_SCHEDULE_WORKFLOW_TYPE } from '../workflow-schedule';
 
 /** The callables review records reads from elsewhere in `constructBureau`. */
 export interface ReviewRecordsPeers {
+  readonly restorePendingApprovalOverrides: (metadata: unknown, runId: string) => void;
+  readonly restoreTerminalReviewSession: (
+    session: Pick<AgentSession, 'id' | 'agentName' | 'metadata' | 'updatedAt'>,
+    runId?: string,
+  ) => Promise<void>;
+  readonly resolveRecoveredSessionAgent: (
+    agentName: string,
+    runId: string,
+    metadata: Record<string, JSONValue>,
+    sessionId: string,
+  ) => Promise<SessionAgentRun | undefined | 'unavailable'>;
   /** Prunes the persisted invalid-approval review state, retrying. */
   readonly prunePersistedInvalidApprovalReviewStateWithRetry: (
     sessionId: string,
@@ -140,6 +155,122 @@ export function createReviewRecords<D extends AgentDefinitions>(
     invalidApprovalReviewIds,
     runAttribution,
   } = core;
+
+  async function peerApprovalsOfRun(
+    runId: string,
+  ): Promise<Extract<PendingReview, { kind: 'tool-approval' }>[]> {
+    if (!runtime.durable || !runtime.sessionStore || store.getRun(runId) !== undefined) return [];
+    const run = await runtime.durable.engine.get(runId);
+    if (
+      !run ||
+      run.type !== AGENT_SCHEDULE_WORKFLOW_TYPE ||
+      (run.status !== 'running' && run.status !== 'completed')
+    )
+      return [];
+    const input = run?.input;
+    if (
+      typeof input !== 'object' ||
+      input === null ||
+      !('sessionId' in input) ||
+      typeof input.sessionId !== 'string'
+    )
+      return [];
+    const session = await runtime.sessionStore.load(input.sessionId);
+    if (!session || !(await peers.runOwner(runId))) return [];
+    const context = recoveredRequestContextFromMetadata(
+      session.metadata,
+      runId,
+      session.id,
+      session.agentName,
+      runtimeServices.clock.now,
+    );
+    if (
+      !context ||
+      (core.isTransportIssuedAuthority(context) &&
+        (!core.requestAuthorityValidator || !(await core.requestAuthorityValidator(context))))
+    )
+      return [];
+    const agent = await peers.resolveRecoveredSessionAgent(
+      context.agentId ?? session.agentName,
+      runId,
+      session.metadata,
+      session.id,
+    );
+    if (agent === 'unavailable') return [];
+    const toolbox = agent?.options.toolbox ?? runtime.baseToolbox;
+    const overrides = session.metadata['pendingApprovalOverrides'];
+    if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) return [];
+    const decided = session.metadata['resolvedReviewIds'];
+    const rounds = session.metadata['pendingApprovalRounds'];
+    const now = runtimeServices.clock.now();
+    const result: Extract<PendingReview, { kind: 'tool-approval' }>[] = [];
+    for (const [id, value] of Object.entries(overrides)) {
+      if (!id.startsWith(`approval:${runId}:`) || (Array.isArray(decided) && decided.includes(id)))
+        continue;
+      try {
+        const approval = verifyToolboxPendingApproval(toolbox, value as never);
+        const binding = approval.approvalBinding;
+        if (
+          !binding ||
+          id !== `approval:${runId}:${approval.callId}` ||
+          pinnedToolUnavailable(toolbox, approval)
+        )
+          continue;
+        validateApprovalBinding(
+          binding,
+          {
+            runId,
+            ...(context.agentId === undefined ? {} : { agentId: context.agentId }),
+            principalId: context.authority.principalId,
+            tenantId: context.authority.tenantId,
+            ownerId: context.authority.ownerId,
+            authorizationRevision: context.authority.authorizationRevision,
+            ...(context.audience === undefined ? {} : { audience: context.audience }),
+          },
+          now,
+        );
+        const round =
+          rounds &&
+          typeof rounds === 'object' &&
+          !Array.isArray(rounds) &&
+          Object.hasOwn(rounds, id)
+            ? (rounds as Record<string, JSONValue>)[id]
+            : undefined;
+        const requestedAt = Date.parse(session.updatedAt) || now;
+        result.push({
+          kind: 'tool-approval',
+          id,
+          runId,
+          sessionId: session.id,
+          agentName: session.agentName,
+          approval,
+          requestedAt,
+          ageMilliseconds: now - requestedAt,
+          status: 'pending',
+          round: typeof round === 'number' && Number.isInteger(round) && round > 0 ? round : 0,
+        });
+      } catch {
+        continue;
+      }
+    }
+    return result;
+  }
+
+  async function filterSettledApprovals(
+    reviews: readonly PendingReview[],
+  ): Promise<PendingReview[]> {
+    return (
+      await Promise.all(
+        reviews.map(async (review) => {
+          if (review.kind !== 'tool-approval' || !review.sessionId || !runtime.sessionStore)
+            return review;
+          const session = await runtime.sessionStore.load(review.sessionId);
+          const decided = session?.metadata['resolvedReviewIds'];
+          return Array.isArray(decided) && decided.includes(review.id) ? undefined : review;
+        }),
+      )
+    ).filter((review): review is PendingReview => review !== undefined);
+  }
 
   /**
    * COR-1828, COR-1990 — the `remembered` and `loosened` fields of a resolution that was asked to
@@ -704,6 +835,10 @@ export function createReviewRecords<D extends AgentDefinitions>(
     return derived === undefined ? [] : [derived];
   }
 
+  async function pendingReviewsOfRun(runId: string): Promise<PendingReview[]> {
+    return [...(await pendingHumanWaitsOfRun(runId)), ...(await peerApprovalsOfRun(runId))];
+  }
+
   /**
    * COR-1579 — the human wait `id` names when this process lists no review under it: the park of
    * a run another process holds, derived by its run id. `undefined` for anything this process
@@ -855,6 +990,28 @@ export function createReviewRecords<D extends AgentDefinitions>(
     // COR-1828: the engine's human waits skip `resolveReview`, so the shape of the decision is refused here.
     peers.assertDecisionFitsInput(requested);
     const input = await humanWaitAnswerFittingItsSchema(requested);
+    if (
+      input.id.startsWith('approval:') &&
+      !peers.listPendingReviews().some((review) => review.id === input.id)
+    ) {
+      const runId = reviewRunId(input.id);
+      const peer =
+        runId === undefined
+          ? undefined
+          : (await peerApprovalsOfRun(runId)).find((review) => review.id === input.id);
+      if (peer?.sessionId !== undefined) {
+        const session = await runtime.sessionStore?.load(peer.sessionId);
+        if (session !== undefined) {
+          peers.restorePendingApprovalOverrides(session.metadata, peer.runId);
+          terminalReviewSessions.set(peer.runId, {
+            sessionId: session.id,
+            agentName: session.agentName,
+            requestedAt: peer.requestedAt,
+          });
+          await peers.restoreTerminalReviewSession(session, peer.runId);
+        }
+      }
+    }
     if (core.runHumanWaits.has(input.id)) {
       peers.assertExpectedReviewRound(input, { id: input.id, kind: 'human-wait' });
       return core.runHumanWaits.resolve(input);
@@ -925,7 +1082,7 @@ export function createReviewRecords<D extends AgentDefinitions>(
     id: string,
   ): Promise<(PendingReview & ReviewResolutionFields) | undefined> {
     const pending = peers.listPendingReviews().find((candidate) => candidate.id === id);
-    if (pending) return pending;
+    if (pending && (await filterSettledApprovals([pending])).length > 0) return pending;
     // COR-1577: the park of a `bureau.run()` run, which no session holds.
     const runWait = core.runHumanWaits.find(id);
     if (runWait) return runWait;
@@ -935,6 +1092,14 @@ export function createReviewRecords<D extends AgentDefinitions>(
     // COR-1579: the park of a run another process holds.
     const derived = await derivedHumanWait(id);
     if (derived) return derived;
+    if (id.startsWith('approval:')) {
+      const runId = reviewRunId(id);
+      const peer =
+        runId === undefined
+          ? undefined
+          : (await peerApprovalsOfRun(runId)).find((review) => review.id === id);
+      if (peer) return peer;
+    }
     // COR-1828: the audit trail is where a closed review is read from, with what it was asked. A
     // Bureau with none, or whose trail no longer holds it, reads the review's own record, which
     // says who decided it and when and keeps what was asked and answered.
@@ -1123,6 +1288,8 @@ export function createReviewRecords<D extends AgentDefinitions>(
     chatOfParentRun,
     recordReviewStatusTransition,
     pendingHumanWaitsOfRun,
+    pendingReviewsOfRun,
+    filterSettledApprovals,
     sealHumanWaitAnswer,
     refuseUnsealedSecrets,
     prepareHumanWaitDelivery,

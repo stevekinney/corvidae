@@ -106,7 +106,15 @@ const RUNNING_RUNS_PAGE_SIZE = 100;
 async function pendingReviewsOfEveryProcess(
   reviews: BureauReviewsOperationHost['reviews'],
 ): Promise<PendingReview[]> {
-  const local = reviews.list();
+  const local = (
+    await Promise.all(
+      reviews.list().map(async (review) => {
+        if (review.kind !== 'tool-approval') return review;
+        const current = await reviews.get(review.id);
+        return current?.status === 'pending' ? review : undefined;
+      }),
+    )
+  ).filter((review): review is PendingReview => review !== undefined);
   const engine = reviews.durableEngine?.();
   const derive = reviews.pendingOf;
   if (engine === undefined || derive === undefined) return local;
@@ -116,7 +124,6 @@ async function pendingReviewsOfEveryProcess(
   let offset = 0;
   for (;;) {
     const page = await engine.list({
-      status: 'running',
       type: 'agentRun',
       limit: RUNNING_RUNS_PAGE_SIZE,
       offset,

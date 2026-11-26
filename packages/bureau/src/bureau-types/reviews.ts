@@ -391,10 +391,10 @@ export interface BureauReviews {
    * its ordinal and its prompt from the run's checkpoint, still pending while the engine's
    * `waitingForSignals` names its signal. A session run's review carries the session from the
    * durable run input. Empty for a run that is not parked on
-   * a human wait, or that this Bureau has no durable engine to read. Pending tool approvals are
-   * not derived.
+   * a human wait, or that this Bureau has no durable engine to read. Signed pending tool
+   * approvals of a run another process holds are also derived from its persisted session.
    */
-  pendingOf(taskId: string): Promise<PendingHumanWaitReview[]>;
+  pendingOf(taskId: string): Promise<PendingReview[]>;
 
   /**
    * Approve, deny, or reject a pending review (AB-46). Approve resumes the
