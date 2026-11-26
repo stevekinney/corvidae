@@ -78,6 +78,22 @@
       "scans": ["components/cinder/src", "components/chat/src", "applications/interborough/src"]
     },
     {
+      "id": "destructive-actions-look-dangerous",
+      "rule": "A button or confirm whose label starts with a destructive verb (Delete, Remove, Terminate, Destroy, Purge, Revoke, Drop, Wipe) renders the danger treatment: a Button is danger or ghost-danger, never soft-danger, and an InlineConfirm or ConfirmDialog is destructive.",
+      "date": "2026-11-25",
+      "source": "Owner live review, 2026-11-25, item 23: an accent-coloured destructive action, then a soft-danger face that read lighter than its secondary",
+      "guard": {
+        "script": "scripts/check-destructive-danger-variant.ts",
+        "test": "scripts/check-destructive-danger-variant.test.ts",
+        "allowlist": "scripts/destructive-danger-variant-allowlist.json"
+      },
+      "scans": [
+        "applications/interborough/src",
+        "components/chat/src",
+        "applications/playground/src"
+      ]
+    },
+    {
       "id": "status-words-are-badges",
       "rule": "A status word is a badge, not plain text.",
       "date": "2026-11-19",

@@ -266,6 +266,15 @@
       "entry": ["**/*.test.ts", "**/*.integration.test.ts", "**/*.slow.test.ts"],
       "project": ["src/**/*.ts!", "!src/**/*.test.ts!", "scripts/**/*.ts"]
     },
+    "testing/workerd": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "src/fixture-worker.ts"
+      ],
+      "project": ["src/**/*.ts!", "!src/**/*.test.ts!", "scripts/**/*.ts"]
+    },
     "scripts/browser-fixtures": {
       "entry": [
         "tests/**/*.playwright.ts",
