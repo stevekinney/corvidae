@@ -25,6 +25,7 @@
  * the JSON-RPC semantics come from the shared session.
  */
 
+import { timingSafeEqualText } from '@lostgradient/cryptography';
 import type { ScopeVocabulary } from './authorization-scope.ts';
 import { faultErrorData } from './fault-to-json-rpc.ts';
 import { splitNewlineDelimitedBuffer } from './json-rpc-framing.ts';
@@ -247,7 +248,7 @@ async function runStartupTokenAdmission(
   const asObject = parsed as Record<string, unknown>;
   const params = asObject['params'];
   const providedToken = isPlainObject(params) ? params['token'] : undefined;
-  if (typeof providedToken !== 'string' || !constantTimeStringEqual(providedToken, expectedToken)) {
+  if (typeof providedToken !== 'string' || !timingSafeEqualText(providedToken, expectedToken)) {
     const id = asId(asObject['id']);
     await io.writeFrame({
       jsonrpc: JSON_RPC_VERSION,
@@ -442,11 +443,3 @@ function asId(value: unknown): JsonRpcId {
  * would need to already control the stdin side, so this is
  * defense-in-depth rather than a load-bearing mitigation.
  */
-function constantTimeStringEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < a.length; i += 1) {
-    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return mismatch === 0;
-}

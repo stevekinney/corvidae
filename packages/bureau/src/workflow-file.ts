@@ -67,8 +67,7 @@
  * @module workflow-file
  */
 
-import { createHash } from 'node:crypto';
-
+import { sha256BytesHexSync, sha256HexSync } from '@lostgradient/cryptography';
 import {
   canonicalWorkflowDocumentJson,
   type DocumentWorkflowHost,
@@ -388,7 +387,7 @@ export function checkWorkflowIdentifier(
 
 /** The SHA-256 of a file's bytes, hex: the hash `expectedHash` is compared against. */
 export function hashWorkflowFileBytes(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex');
+  return sha256BytesHexSync(bytes);
 }
 
 /**
@@ -398,9 +397,7 @@ export function hashWorkflowFileBytes(bytes: Uint8Array): string {
  */
 export function workflowVersionOf(document: WorkflowDocument): string {
   // Weft derives the version from the document it is given, which carries the mapped handler names.
-  return `sha256:${createHash('sha256')
-    .update(canonicalWorkflowDocumentJson(toWeftDocument(document)))
-    .digest('hex')}`;
+  return `sha256:${sha256HexSync(canonicalWorkflowDocumentJson(toWeftDocument(document)))}`;
 }
 
 /** Decode a file's bytes as UTF-8, or `undefined` when they are not valid UTF-8. */
