@@ -1,14 +1,24 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { MessageChannel } from 'node:worker_threads';
 
 import { MemoryStorage } from '@lostgradient/storage';
 import { nodeWorkerFactory } from '../../node-host.ts';
+import { ActivityWorkerDispatcher } from '../../workers/activity-worker-dispatcher.ts';
+import {
+  createActivityWorkerEntryUrl,
+  revokeActivityWorkerEntryUrl,
+} from '../../workers/activity-worker-entry.ts';
+import { WorkerPool } from '../../workers/pool.ts';
 import { deriveWorkflowDefinitionRevision } from '../engine/definition-revision.ts';
 import { Engine } from '../engine/index.ts';
 import { workflowSource } from '../source/index.ts';
 import { activity, workflow, type WorkflowDefinition } from '../types.ts';
 import { NODE_RUNTIME_WORKFLOW_NAME } from './__fixtures__/node-runtime-activity-handler.fixture.ts';
 import { readNodeRuntimeRealmTestEnvironment } from './node-runtime-test-environment.ts';
+
+// The generated activity Blob imports this exported loop from this bundled test artifact.
+export { initializeActivityWorkerMessageLoop } from '../../workers/activity-worker-entry.ts';
 
 const echo = activity({
   name: 'echo',
@@ -124,6 +134,68 @@ void test('Node worker factory reports a crashing module through its error event
       });
     });
     assert.equal(message, 'native worker crash');
+  } finally {
+    await worker.terminate();
+  }
+});
+
+void test('Node worker factory runs a generated activity Blob entry', async () => {
+  const url = createActivityWorkerEntryUrl(
+    new Map([['double', (input: unknown) => Number(input) * 2]]),
+  );
+  try {
+    using pool = new WorkerPool({
+      concurrency: 1,
+      workerUrl: url,
+      createWorker: nodeWorkerFactory,
+    });
+    using dispatcher = new ActivityWorkerDispatcher(pool);
+    assert.deepEqual(
+      await dispatcher.execute({
+        operationId: 'generated-blob',
+        activityName: 'double',
+        input: 21,
+        attempt: 1,
+      }),
+      { operationId: 'generated-blob', status: 'completed', value: 42 },
+    );
+  } finally {
+    revokeActivityWorkerEntryUrl(url);
+  }
+});
+
+void test('Node worker factory forwards ArrayBuffer and MessagePort transfer lists', async () => {
+  const worker = nodeWorkerFactory(
+    new URL(
+      'data:text/javascript,self.onmessage%3Devent%3D%3Eevent.data.port.postMessage(event.data.buffer.byteLength)',
+    ),
+  );
+  const { port1, port2 } = new MessageChannel();
+  const buffer = new ArrayBuffer(8);
+  try {
+    const received = new Promise<number>((resolve) => port2.once('message', resolve));
+    worker.postMessage({ buffer, port: port1 }, [buffer, port1]);
+    assert.equal(buffer.byteLength, 0);
+    assert.equal(await received, 8);
+  } finally {
+    port2.close();
+    await worker.terminate();
+  }
+});
+
+void test('Node worker factory reports one error before closing an unexpected exit', async () => {
+  const worker = nodeWorkerFactory(new URL('data:text/javascript,process.exit(1)'));
+  try {
+    const events: string[] = [];
+    const closed = new Promise<void>((resolve) => {
+      worker.addEventListener('error', (event) => {
+        const message = Reflect.get(event, 'message');
+        if (typeof message === 'string') events.push(message);
+      });
+      worker.addEventListener('close', () => resolve());
+    });
+    await closed;
+    assert.deepEqual(events, ['Node worker exited unexpectedly with code 1']);
   } finally {
     await worker.terminate();
   }

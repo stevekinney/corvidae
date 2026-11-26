@@ -1,12 +1,17 @@
-import { Worker } from 'node:worker_threads';
+import { resolveObjectURL } from 'node:buffer';
+import { Worker, type TransferListItem } from 'node:worker_threads';
 
 import type { CreateWorker } from './workers/pool.ts';
 
 class NodeWorkerAdapter extends EventTarget {
   readonly #worker: Worker;
+  #terminationRequested = false;
+  #failureReported = false;
 
   constructor(url: string | URL) {
     super();
+    const entry = String(url);
+    const source = entry.startsWith('blob:') ? resolveObjectURL(entry) : undefined;
     this.#worker = new Worker(
       `
       const { parentPort, workerData } = require('node:worker_threads');
@@ -27,14 +32,18 @@ class NodeWorkerAdapter extends EventTarget {
         if (!ready) queuedMessages.push(data);
         else deliver(data);
       });
-      import(workerData.entry).then(() => {
+      const entry = workerData.source
+        ? workerData.source.text().then(source =>
+            'data:text/javascript;base64,' + Buffer.from(source).toString('base64'))
+        : Promise.resolve(workerData.entry);
+      entry.then(entry => import(entry)).then(() => {
         ready = true;
         for (const message of queuedMessages) deliver(message);
       }).catch(error => { throw error; });
     `,
       {
         eval: true,
-        workerData: { entry: String(url) },
+        workerData: { entry, source },
       },
     );
     this.#worker.on('message', (data) => {
@@ -44,16 +53,28 @@ class NodeWorkerAdapter extends EventTarget {
       this.dispatchEvent(new MessageEvent('messageerror', { data }));
     });
     this.#worker.on('error', (error) => {
-      this.dispatchEvent(Object.assign(new Event('error'), { error, message: error.message }));
+      this.#reportFailure(error);
     });
-    this.#worker.on('exit', () => this.dispatchEvent(new Event('close')));
+    this.#worker.on('exit', (code) => {
+      if (!this.#terminationRequested) {
+        this.#reportFailure(new Error(`Node worker exited unexpectedly with code ${code}`));
+      }
+      this.dispatchEvent(new Event('close'));
+    });
   }
 
-  postMessage(message: unknown): void {
-    this.#worker.postMessage(message);
+  postMessage(message: unknown, transfer?: Transferable[]): void {
+    this.#worker.postMessage(message, transfer as TransferListItem[] | undefined);
   }
   terminate(): Promise<number> {
+    this.#terminationRequested = true;
     return this.#worker.terminate();
+  }
+
+  #reportFailure(error: Error): void {
+    if (this.#failureReported) return;
+    this.#failureReported = true;
+    this.dispatchEvent(Object.assign(new Event('error'), { error, message: error.message }));
   }
 }
 
