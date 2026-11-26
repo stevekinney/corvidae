@@ -902,6 +902,20 @@
         "typescript": "catalog:",
       },
     },
+    "packages/storage-d1": {
+      "name": "@lostgradient/storage-d1",
+      "dependencies": {
+        "@lostgradient/storage": "workspace:*",
+      },
+      "devDependencies": {
+        "@lostgradient/mcp": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@lostgradient/workerd-testing": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/storage-indexeddb": {
       "name": "@lostgradient/storage-indexeddb",
       "dependencies": {
@@ -1827,6 +1841,8 @@
     "@lostgradient/storage-bun-sqlite": ["@lostgradient/storage-bun-sqlite@workspace:packages/storage-bun-sqlite"],
 
     "@lostgradient/storage-cloudflare": ["@lostgradient/storage-cloudflare@workspace:packages/storage-cloudflare"],
+
+    "@lostgradient/storage-d1": ["@lostgradient/storage-d1@workspace:packages/storage-d1"],
 
     "@lostgradient/storage-indexeddb": ["@lostgradient/storage-indexeddb@workspace:packages/storage-indexeddb"],
 

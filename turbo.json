@@ -956,6 +956,22 @@
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
+    "@lostgradient/storage-d1#test:coverage": {
+      "dependsOn": ["transit"],
+      "outputs": ["coverage/**"],
+      "env": ["CODEX_CI", "NODE_ENV"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/bun-test.ts",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts"
+      ]
+    },
     "@lostgradient/storage-lmdb#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],

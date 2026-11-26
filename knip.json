@@ -146,6 +146,24 @@
         "!src/**/*.bench.ts!"
       ]
     },
+    "packages/storage-d1": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "src/fixture-worker.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!",
+        "!src/fixture-worker.ts!"
+      ]
+    },
     "packages/backchannel-mcp": {
       "entry": [
         "**/*.test.ts",
