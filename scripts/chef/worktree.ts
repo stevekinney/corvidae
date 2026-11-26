@@ -16,8 +16,8 @@
 // without it every provider's root is accepted. `stale` lists, read-only, every worktree under the
 // accepted roots with its branch, age, cleanliness, lock, live processes and delivered state (the
 // two tests, and their limits, are on `classifyDelivered`); `--remove` removes those that are clean,
-// unlocked and delivered, never the main checkout or the worktree it runs from, and keeps every
-// branch, local and remote. A worktree locked in the Agent tool's form (`isAgentLockReason`) is
+// unlocked and delivered, never the main checkout, the worktree it runs from, or one a delivery
+// request still owns (`deliveryOwnedWorktrees`), and keeps every branch, local and remote. A worktree locked in the Agent tool's form (`isAgentLockReason`) is
 // also removable when delivered and clean, but only with no process at all inside it (none is
 // ended), no ignored file outside dependency and cache directories, and no use of its Git files
 // within `AGENT_QUIET_MILLISECONDS`. It reads `origin/<default>` as last fetched (`--remove`
@@ -60,6 +60,7 @@
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -729,6 +730,56 @@ function* lsofOpenFiles(stdout: string): Generator<{ pid: number; command: strin
   }
 }
 
+/**
+ * The worktrees a delivery request still owns: each `tmp/chef/requests/*.json` that names a
+ * `worktree` and an `operationId` whose execution-state operation has not recorded a complete
+ * closeout (absent, or `closeout.complete` not `true`). A delivery that keeps its worktree while
+ * member completion gates remain, or one still in flight, resumes from that worktree, so no sweep
+ * removes it. An unreadable state file protects every requested worktree and says so.
+ */
+function deliveryOwnedWorktrees(checkout: string): { paths: Set<string>; notes: string[] } {
+  const paths = new Set<string>();
+  const notes: string[] = [];
+  const requests = join(checkout, 'tmp', 'chef', 'requests');
+  if (!existsSync(requests)) return { paths, notes };
+  type Operations = Record<string, { closeout?: { complete?: unknown } } | undefined>;
+  let operations: Operations | undefined = {};
+  const statePath = join(checkout, 'tmp', 'chef', 'execution-state', 'execution-state.json');
+  if (existsSync(statePath)) {
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(statePath, 'utf8'));
+      const read = (parsed as { operations?: unknown } | null)?.operations;
+      operations =
+        typeof read === 'object' && read !== null && !Array.isArray(read)
+          ? (read as Operations)
+          : undefined;
+    } catch {
+      operations = undefined;
+    }
+    if (operations === undefined)
+      notes.push(`${statePath} is unreadable; every requested worktree is kept`);
+  }
+  for (const name of readdirSync(requests)) {
+    // A pending request names no worktree yet; only a prepared request does.
+    if (!name.endsWith('.json') || name.endsWith('.pending.json')) continue;
+    let request: { worktree?: unknown; operationId?: unknown };
+    try {
+      request = JSON.parse(readFileSync(join(requests, name), 'utf8')) as typeof request;
+    } catch {
+      notes.push(`delivery request ${name} is unreadable and protects nothing`);
+      continue;
+    }
+    if (typeof request.worktree !== 'string' || typeof request.operationId !== 'string') continue;
+    const operation =
+      operations !== undefined && Object.hasOwn(operations, request.operationId)
+        ? operations[request.operationId]
+        : undefined;
+    if (operation?.closeout?.complete === true) continue;
+    paths.add(realpath(request.worktree));
+  }
+  return { paths, notes };
+}
+
 /** The heads known to be delivered, and every local commit that only they reach. */
 interface DeliveredHeads {
   /** The ledger's heads and the merged pull requests' heads. */
@@ -952,6 +1003,7 @@ export function staleWorktrees(
   }
 
   const deliveredHeads = collectDeliveredHeads(runner, checkout, config);
+  const owned = deliveryOwnedWorktrees(checkout);
   const now = clock();
   const entries = candidates.map((entry): StaleEntry => {
     const root = realpath(entry.path);
@@ -1010,6 +1062,7 @@ export function staleWorktrees(
       const ignored = firstWorkIgnoredPath(runner, entry.path);
       if (ignored !== undefined) stale.keep.push(`ignored files: ${ignored}`);
     }
+    if (owned.paths.has(root)) stale.keep.push('a delivery request still owns it');
     if (!stale.delivered) stale.keep.push('branch not delivered');
     if (branch === config.defaultBranch) stale.keep.push('default branch checked out');
     return stale;
@@ -1019,7 +1072,7 @@ export function staleWorktrees(
     entries,
     removed: [],
     refused: [],
-    notes: deliveredHeads.notes,
+    notes: [...deliveredHeads.notes, ...owned.notes],
   };
   if (!options.remove) return result;
   for (const entry of entries.filter((item) => item.keep.length === 0)) {
