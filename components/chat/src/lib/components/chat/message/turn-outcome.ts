@@ -60,9 +60,19 @@ export type TurnOutcome = {
   readonly stop: TurnStop | undefined;
   /** The assistant message the outcome is drawn on: the last of the last turn. */
   readonly assistantId: string | undefined;
+  /** The row of the conversation the outcome belongs to: the assistant message itself. */
+  readonly rowId: string | undefined;
   /** The state of that message, and `undefined` while the turn is simply writing or finished. */
   readonly state: ChatTurnState | undefined;
 };
+
+/** Marks the message that stands for a turn with no assistant message. */
+export const TURN_OUTCOME_ANCHOR_KEY = 'cinder:turn-outcome-anchor';
+
+/** The message a tool-only turn's outcome is drawn on, after its steps. Main: no turn had one. */
+export function toolOnlyTurnAnchor(_rows: readonly Message[]): Message | undefined {
+  return undefined;
+}
 
 function rowOf(conversation: ConversationHistory, id: string): Message | undefined {
   return Object.hasOwn(conversation.messages, id) ? conversation.messages[id] : undefined;
@@ -183,16 +193,25 @@ export function resolveTurnOutcome(
   const stop = facts.running ? undefined : lastTurnStop(conversation);
   const shown = withoutStopLine(conversation, stop);
   const assistantId = lastAssistantId(shown);
+  const rowId = assistantId;
   if (facts.reconnect?.runDropped === true)
     return {
       conversation: shown,
       stop,
       assistantId,
+      rowId,
       state: reconnectingState(facts.reconnect, facts.now),
     };
-  if (stop !== undefined) return { conversation: shown, stop, assistantId, state: stop.state };
+  if (stop !== undefined)
+    return { conversation: shown, stop, assistantId, rowId, state: stop.state };
   const empty = !facts.running && facts.holding !== true && endsWithoutAnswer(shown);
-  return { conversation: shown, stop, assistantId, state: empty ? { kind: 'empty' } : undefined };
+  return {
+    conversation: shown,
+    stop,
+    assistantId,
+    rowId,
+    state: empty ? { kind: 'empty' } : undefined,
+  };
 }
 
 /** The turn state of `message` in `outcome`: only the last assistant message of the last turn has one. */

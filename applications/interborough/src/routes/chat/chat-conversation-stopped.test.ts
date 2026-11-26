@@ -268,17 +268,18 @@ describe('a chat whose run failed on a call', () => {
 
     const link = await findByRole('link', { name: 'Why it failed' });
     expect(link.getAttribute('href')).toBe('/runs/task-1#failure-explanation');
-    // On the status line of the run that failed, beside its Retry.
-    expect(link.closest('.chat-note')?.textContent).toContain(
-      'The reply stopped while Issue refund was running',
-    );
-    expect(link.closest('.chat-note')?.querySelector('button')?.textContent).toContain('Retry');
-    // The link and Retry are one group with a Cinder space between them, never touching.
-    const retryButton = link.closest('.chat-note')?.querySelector('button');
-    const group = link.closest('.cinder-stack');
+    // On the failed turn's one alert (R5, COR-2725: a turn of only tool calls has no stop line of
+    // its own any more), beside its Retry.
+    const alert = link.closest('.chat-turn-outcome');
+    expect(alert?.getAttribute('data-kind')).toBe('failed');
+    expect(alert?.textContent).toContain('The reply stopped while Issue refund was running');
+    expect(alert?.querySelector('button')?.textContent).toContain('Retry');
+    expect(container.querySelector('.chat-note')).toBeNull();
+    // The link and Retry are one group, never touching.
+    const retryButton = alert?.querySelector('button');
+    const group = link.closest('.chat-turn-actions');
     expect(group).not.toBeNull();
     expect(group?.contains(retryButton ?? null)).toBe(true);
-    expect(group?.getAttribute('style') ?? '').toContain('var(--cinder-space-3)');
 
     // Clicked, it navigates inside the app, to the section's fragment: the Run page scrolls to it.
     await fireEvent.click(link);

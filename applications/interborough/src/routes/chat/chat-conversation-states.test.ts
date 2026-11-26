@@ -694,8 +694,10 @@ describe('a chat whose history has not arrived yet (COR-2327 B3)', () => {
   });
 });
 
-describe('a turn that ends on a tool call (20h)', () => {
-  test('closes the rail with the run finished and no reply, and reads Done', async () => {
+// Row 20h closed the rail with "Run finished, no reply". RunStates R6 (COR-2725, decided by the
+// coordinator) supersedes it: the turn says it once, as the empty answer, on a row after its steps.
+describe('a turn that ends on a tool call (20h, now R6)', () => {
+  test('is the empty answer with Try again after its steps, no rail footnote, and reads Done', async () => {
     serve(endedOnToolCallMessages(), {
       answers: {
         'bureau.tasks.list': () => ({
@@ -707,9 +709,13 @@ describe('a turn that ends on a tool call (20h)', () => {
         }),
       },
     });
-    const { container, findByText } = mount();
+    const { container, findByRole } = mount();
 
-    expect(await findByText(CHAT_COPY.tools.runFinishedNoReply)).not.toBeNull();
+    const tryAgain = await findByRole('button', { name: 'Try again' });
+    expect(tryAgain.closest('.chat-turn-outcome')?.getAttribute('data-kind')).toBe('empty');
+    expect(container.textContent).toContain('The agent finished without writing an answer.');
+    expect(container.textContent).not.toContain('Run finished, no reply');
+    expect(container.querySelectorAll('.chat-turn-outcome')).toHaveLength(1);
     await waitFor(() =>
       expect(container.querySelector('[data-testid="chat-header"]')?.textContent).toContain('Done'),
     );
@@ -829,6 +835,82 @@ describe('the last turn’s outcome and its recovery commands (COR-2725)', () =>
     expect(container.textContent).not.toContain('The agent did not answer');
     expect(container.querySelector('[data-testid="chat-alerts"]')?.textContent?.trim()).toBe('');
   });
+
+  const ONLY_TOOLS = (answer: 'finished' | 'errored' | 'refused') => {
+    const [user, call, result] = endedOnToolCallMessages() as [
+      Record<string, unknown>,
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ];
+    const content =
+      answer === 'finished'
+        ? result['content']
+        : answer === 'refused'
+          ? 'Tool call denied: not now'
+          : 'Error: the lookup timed out';
+    return [user, call, { ...result, content }];
+  };
+  const stoppedRun = (status: 'canceled' | 'failed') => (): unknown => ({
+    tasks: tasksOf('ended-on-tool-call').map((task) => ({
+      ...task,
+      contextId: 'session-1',
+      status,
+      finishReason: status === 'canceled' ? 'aborted' : 'error',
+      statusMessage: status === 'failed' ? 'The model provider dropped the connection.' : null,
+    })),
+    nextPageToken: null,
+  });
+
+  test('a turn of only tool calls the person stopped is Stopped with Discard and Continue after its steps, and no status line', async () => {
+    serve(ONLY_TOOLS('finished'), { answers: { 'bureau.tasks.list': stoppedRun('canceled') } });
+    const { container, findByRole } = mount();
+
+    const discard = await findByRole('button', { name: 'Discard' });
+    expect(discard.closest('.chat-turn-outcome')?.getAttribute('data-kind')).toBe('stopped');
+    expect(await findByRole('button', { name: 'Continue' })).not.toBeNull();
+    expect(container.querySelectorAll('.chat-turn-outcome')).toHaveLength(1);
+    expect(container.textContent).not.toContain('The run was stopped.');
+    expect(container.textContent).not.toContain('Run finished, no reply');
+    expect(container.querySelector('.chat-note')).toBeNull();
+  });
+
+  test('a turn of only tool calls that failed is one danger alert with Retry and Why it failed, and no status line beside a second Retry', async () => {
+    serve(ONLY_TOOLS('finished'), { answers: { 'bureau.tasks.list': stoppedRun('failed') } });
+    const { container, findByRole } = mount();
+
+    const retry = await findByRole('button', { name: 'Retry' });
+    expect(retry.closest('.chat-turn-outcome')?.getAttribute('data-kind')).toBe('failed');
+    expect(container.textContent).toContain('Failed before an answer.');
+    expect(await findByRole('link', { name: 'Why it failed' })).not.toBeNull();
+    const retries = [...container.querySelectorAll('button')].filter(
+      (button) => button.textContent?.trim() === 'Retry',
+    );
+    expect(retries).toHaveLength(1);
+    expect(container.querySelector('.chat-note')).toBeNull();
+  });
+
+  test.each(['errored', 'refused'] as const)(
+    'a turn whose last call %s and wrote nothing is the empty answer once, and no rail footnote',
+    async (answer) => {
+      serve(ONLY_TOOLS(answer), {
+        answers: {
+          'bureau.tasks.list': () => ({
+            tasks: tasksOf('ended-on-tool-call').map((task) => ({
+              ...task,
+              contextId: 'session-1',
+            })),
+            nextPageToken: null,
+          }),
+        },
+      });
+      const { container, findByRole } = mount();
+
+      const tryAgain = await findByRole('button', { name: 'Try again' });
+      expect(tryAgain.closest('.chat-turn-outcome')?.getAttribute('data-kind')).toBe('empty');
+      expect(container.querySelectorAll('.chat-turn-outcome')).toHaveLength(1);
+      expect(container.textContent).not.toContain('Run finished, no reply');
+    },
+  );
 
   const NARRATED_THEN_TOOL = [
     { id: 'user-1', role: 'user', content: 'Look up order 4471' },

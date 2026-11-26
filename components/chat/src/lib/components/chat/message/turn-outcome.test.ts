@@ -174,7 +174,7 @@ describe('an answer that was never written (R6)', () => {
     expect(resolveTurnOutcome(parked, IDLE).state).toBeUndefined();
   });
 
-  test('is not an outcome when the last call failed or was refused: its own Retry this step and wording stand', () => {
+  test('is the empty answer when the last call failed or was refused: the run ended with nothing to say (COR-2725 decision)', () => {
     const asked = appendAssistantMessage(
       appendUserMessage(createConversationHistory({ id: 'c' }), 'Look up order 4398'),
       'Let me check the orders.',
@@ -190,7 +190,7 @@ describe('an answer that was never written (R6)', () => {
       content: null,
       error: { code: 'timeout', category: 'timeout', retryable: true, message: 'Timed out.' },
     });
-    expect(resolveTurnOutcome(failed, IDLE).state).toBeUndefined();
+    expect(resolveTurnOutcome(failed, IDLE).state).toEqual({ kind: 'empty' });
   });
 
   test('yields to a stop, a failure and a dropped stream: one outcome per turn', () => {
