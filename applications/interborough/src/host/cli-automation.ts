@@ -1,6 +1,6 @@
 import { open } from 'node:fs/promises';
 
-import { request, type CliTarget } from './cli-client-transport.ts';
+import { catalogRead, request, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 import { cliPreview, isDryRun } from './cli-destructive.ts';
 
@@ -94,7 +94,7 @@ async function schedules(
 ): Promise<CliCommandResult> {
   const action = parsed.arguments[0] ?? 'list';
   if (action === 'list')
-    return rpc(target, parsed, dependencies, 'bureau.schedules.list', {
+    return catalogRead(target, parsed, dependencies, 'bureau.schedules.list', {
       ...(option(parsed, 'limit') === undefined ? {} : { limit: Number(option(parsed, 'limit')) }),
       ...(option(parsed, 'offset') === undefined
         ? {}
@@ -110,7 +110,7 @@ async function schedules(
     );
   const scheduleId = identifier(parsed);
   if (action === 'get')
-    return rpc(target, parsed, dependencies, 'bureau.schedules.get', { scheduleId });
+    return catalogRead(target, parsed, dependencies, 'bureau.schedules.get', { scheduleId });
   if (action === 'update')
     return rpc(
       target,
@@ -121,7 +121,7 @@ async function schedules(
     );
   // Bureau has no dry run for a pause, so the CLI reads the schedule and says what it would send.
   if (action === 'pause' && isDryRun(parsed)) {
-    const current = await rpc(target, parsed, dependencies, 'bureau.schedules.get', {
+    const current = await catalogRead(target, parsed, dependencies, 'bureau.schedules.get', {
       scheduleId,
     });
     return cliPreview({
@@ -165,7 +165,7 @@ async function goals(
 ): Promise<CliCommandResult> {
   const action = parsed.arguments[0] ?? 'list';
   if (action === 'list')
-    return rpc(target, parsed, dependencies, 'bureau.goals.list', {
+    return catalogRead(target, parsed, dependencies, 'bureau.goals.list', {
       ...(option(parsed, 'limit') === undefined ? {} : { limit: Number(option(parsed, 'limit')) }),
       ...(option(parsed, 'offset') === undefined
         ? {}
@@ -180,7 +180,8 @@ async function goals(
       record(await inputFile(parsed, dependencies)),
     );
   const goalRunId = identifier(parsed);
-  if (action === 'get') return rpc(target, parsed, dependencies, 'bureau.goals.get', { goalRunId });
+  if (action === 'get')
+    return catalogRead(target, parsed, dependencies, 'bureau.goals.get', { goalRunId });
   if (action === 'cancel')
     return rpc(
       target,
@@ -198,7 +199,7 @@ async function hooks(
   dependencies: CliClientDependencies,
 ): Promise<CliCommandResult> {
   const action = parsed.arguments[0] ?? 'list';
-  if (action === 'list') return rpc(target, parsed, dependencies, 'bureau.hooks.list', {});
+  if (action === 'list') return catalogRead(target, parsed, dependencies, 'bureau.hooks.list', {});
   if (action === 'create') {
     const response = await rpc(
       target,
@@ -210,7 +211,8 @@ async function hooks(
     return { data: await writeSecret(parsed, response.data) };
   }
   const hookId = identifier(parsed);
-  if (action === 'get') return rpc(target, parsed, dependencies, 'bureau.hooks.get', { hookId });
+  if (action === 'get')
+    return catalogRead(target, parsed, dependencies, 'bureau.hooks.get', { hookId });
   if (action === 'update') {
     const response = await rpc(
       target,
@@ -237,7 +239,7 @@ async function hooks(
       ...(action === 'delete' && isDryRun(parsed) ? { dryRun: true } : {}),
     });
   if (action === 'deliveries')
-    return rpc(target, parsed, dependencies, 'bureau.hooks.deliveries', {
+    return catalogRead(target, parsed, dependencies, 'bureau.hooks.deliveries', {
       hookId,
       ...(option(parsed, 'limit') === undefined ? {} : { limit: Number(option(parsed, 'limit')) }),
     });

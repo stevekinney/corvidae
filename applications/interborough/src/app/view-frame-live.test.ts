@@ -172,7 +172,7 @@ describe('the empty runs of a workflow type, which follow the engine', () => {
     });
     return { empty, ...view };
   }
-  const probes = () => workflowStub?.callsTo('GET /workflows').length ?? 0;
+  const probes = () => workflowStub?.callsTo('weft.workflows.list').length ?? 0;
   const run = {
     id: 'run-1',
     type: 'order-processing',

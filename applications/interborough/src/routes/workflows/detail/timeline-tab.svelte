@@ -43,9 +43,9 @@
     WeftClientActivity,
     HttpClient,
     WorkflowFinalizerStatus,
-    WorkflowState,
     WorkflowTimelineEntry,
   } from '@lostgradient/weft';
+  import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
   import { untrack } from 'svelte';
 
   import { RETRY_LABEL } from '../../../app/copy/views.ts';
@@ -93,11 +93,19 @@
     timelineSelectionFor,
   } from './timeline/timeline-selection-store.svelte.ts';
   import type { WorkflowLiveObservations } from './timeline/workflow-live-observations.svelte.ts';
-  import { workflowTimelineQueryKey } from './workflow-timeline-data.ts';
+  import { fetchWorkflowTimeline, workflowTimelineQueryKey } from './workflow-timeline-data.ts';
+  import {
+    getPrincipalStore,
+    hasPrincipalStore,
+    principalQueryScope,
+  } from '../../../lib/scopes.svelte.ts';
 
   interface TimelineTabProps {
-    readonly client: Pick<HttpClient, 'getTimeline'> & {
-      readonly operations: Pick<HttpClient['operations'], typeof PENDING_ASYNC_ACTIVITY_OPERATION> &
+    readonly client: {
+      readonly operations: Pick<
+        HttpClient['operations'],
+        typeof PENDING_ASYNC_ACTIVITY_OPERATION | 'weft.workflows.timeline.get'
+      > &
         Partial<Pick<HttpClient['operations'], 'weft.tasks.get'>> &
         Partial<StreamChunksClient['operations']> &
         LogsClient['operations'];
@@ -122,9 +130,13 @@
     now,
   }: TimelineTabProps = $props();
 
+  const timelinePrincipal = hasPrincipalStore() ? getPrincipalStore() : undefined;
   const timelineQuery = createQuery(() => ({
-    queryKey: workflowTimelineQueryKey(workflow.id),
-    queryFn: () => client.getTimeline(workflow.id),
+    queryKey: [
+      ...workflowTimelineQueryKey(workflow.id),
+      principalQueryScope(timelinePrincipal?.principal ?? null),
+    ],
+    queryFn: () => fetchWorkflowTimeline(client, workflow.id),
   }));
 
   const queryClient = useQueryClient();

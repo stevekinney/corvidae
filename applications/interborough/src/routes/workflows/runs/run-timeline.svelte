@@ -6,7 +6,7 @@
    * with it. Only a run the engine answered for mounts this, so a caller without engine access
    * never opens them. Stream links need `streams:read`.
    */
-  import type { WorkflowState } from '@lostgradient/weft';
+  import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
   import { useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy, untrack } from 'svelte';
 

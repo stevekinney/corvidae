@@ -52,9 +52,25 @@ afterEach(() => {
 });
 
 function routeEngine(id: string, run: Record<string, unknown>): void {
-  fetchScript.routeUrl(`/workflows/${id}/timeline`, []);
+  fetchScript.routeJsonRpcMethod(
+    'weft.workflows.timeline.get',
+    [],
+    (params) =>
+      typeof params === 'object' &&
+      params !== null &&
+      'workflowId' in params &&
+      params.workflowId === id,
+  );
   fetchScript.routeJsonRpcMethod('weft.workflows.activities.pending.list', { items: [] });
-  fetchScript.routeUrl(`/workflows/${id}`, { id, ...run });
+  fetchScript.routeJsonRpcMethod(
+    'weft.workflows.get',
+    { id, ...run },
+    (params) =>
+      typeof params === 'object' &&
+      params !== null &&
+      'workflowId' in params &&
+      params.workflowId === id,
+  );
 }
 
 function mount(id: string) {
@@ -176,7 +192,7 @@ describe('an instance of a workflow file opened from the Runs list', () => {
 
   test('mounts the run comparison on its Inspector tab when it is a fork, and neither the run inspector nor the schedule editor (owner, 2026-11-22, refined)', async () => {
     routeRunPanels();
-    fetchScript.routeUrl('/workflows/instance-source', engineRun({ id: 'instance-source' }));
+    routeEngine('instance-source', engineRun({ id: 'instance-source' }));
     fetchScript.routeJsonRpcMethod('weft.workflows.scheduleprovenance.get', null);
     routeEngine(
       'instance-panels',
@@ -206,7 +222,7 @@ describe('an instance of a workflow file opened from the Runs list', () => {
 
   test('puts a fork’s lineage, with the comparison’s button, ahead of the operator tabs, not behind Versioning', async () => {
     routeRunPanels();
-    fetchScript.routeUrl('/workflows/instance-source', engineRun({ id: 'instance-source' }));
+    routeEngine('instance-source', engineRun({ id: 'instance-source' }));
     fetchScript.routeJsonRpcMethod('weft.workflows.scheduleprovenance.get', null);
     routeEngine(
       'instance-fork-lineage',
@@ -235,7 +251,8 @@ describe('an instance of a workflow file opened from the Runs list', () => {
     timeline?: readonly unknown[],
     options: { readonly explained?: boolean } = {},
   ): void {
-    if (timeline !== undefined) fetchScript.routeUrl('/workflows/release-run/timeline', timeline);
+    if (timeline !== undefined)
+      fetchScript.routeJsonRpcMethod('weft.workflows.timeline.get', timeline);
     fetchScript.routeJsonRpcMethod('bureau.goals.list', { goals: [], nextOffset: null });
     const step = (kind: string, title?: string) => ({
       kind,
@@ -488,7 +505,7 @@ describe('an instance of a workflow file opened from the Runs list', () => {
 
   test('is not found only when the engine and the Bureau’s record both lack it', async () => {
     fetchScript.routeJsonRpcMethod('bureau.goals.list', { goals: [], nextOffset: null });
-    fetchScript.routeUrlStatus('/workflows/purged-1', 404);
+    fetchScript.routeJsonRpcMethodNotFound('weft.workflows.get', 'No such workflow');
     fetchScript.routeJsonRpcMethodNotFound('bureau.workflows.runs.get', 'No such run');
 
     const view = mount('purged-1');

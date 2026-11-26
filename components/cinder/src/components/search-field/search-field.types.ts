@@ -33,6 +33,8 @@ export type SearchFieldProps = Omit<
    * @default "md"
    */
   size?: 'sm' | 'md' | 'lg';
+  /** Keep the medium face compact while extending its coarse-pointer hit area. */
+  compactTouch?: boolean;
   /**
    * Optional keyboard shortcut hint (e.g. `'⌘K'`). Rendered as a trailing
    * `<kbd aria-hidden="true">` badge. The shortcut itself is not wired by

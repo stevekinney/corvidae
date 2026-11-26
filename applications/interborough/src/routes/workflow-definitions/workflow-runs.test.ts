@@ -51,7 +51,7 @@ describe('the runs of a type', () => {
     const { container } = open('/workflows/order-processing/runs');
     await waitFor(() => expect(container.querySelectorAll('tbody tr').length).toBe(2));
 
-    expect(stub?.callsTo('GET /workflows').at(-1)?.params).toMatchObject({
+    expect(stub?.callsTo('weft.workflows.list').at(-1)?.params).toMatchObject({
       type: 'order-processing',
     });
     const links = [...container.querySelectorAll<HTMLAnchorElement>('tbody a')].map((link) =>
@@ -88,7 +88,7 @@ describe('the runs of a type', () => {
     await waitFor(() => expect(router.pathname).toBe('/workflows/order-processing/runs'));
     expect(router.current.search.get('status')).toBe('failed');
     await waitFor(() =>
-      expect(stub?.callsTo('GET /workflows').at(-1)?.params).toMatchObject({
+      expect(stub?.callsTo('weft.workflows.list').at(-1)?.params).toMatchObject({
         type: 'order-processing',
         status: 'failed',
       }),
@@ -98,7 +98,7 @@ describe('the runs of a type', () => {
   test('ignore a type in the query string, because the address’s type is the one', async () => {
     const { container } = open('/workflows/order-processing/runs?type=other');
     await waitFor(() => expect(container.querySelectorAll('tbody tr').length).toBe(2));
-    expect(stub?.callsTo('GET /workflows').at(-1)?.params).toMatchObject({
+    expect(stub?.callsTo('weft.workflows.list').at(-1)?.params).toMatchObject({
       type: 'order-processing',
     });
   });

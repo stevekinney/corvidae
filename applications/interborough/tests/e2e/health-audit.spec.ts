@@ -14,6 +14,7 @@
 import type { Page } from '@playwright/test';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
+import { chooseAuditFilter } from './audit-support.ts';
 import { answerAuditAsDesigned } from './board-activity-world.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
@@ -131,11 +132,11 @@ test.describe('Health › Audit log on the sample world', () => {
       main.getByPlaceholder('Search by actor, action or target'),
       main.getByTestId('audit-count'),
     ];
-    await expect(controls[0]!).toHaveValue('');
-    await expect(controls[0]!.locator('option:checked')).toHaveText('Anyone');
-    await expect(controls[1]!.locator('option:checked')).toHaveText('Last 7 days');
-    await expect(controls[2]!.locator('option:checked')).toHaveText('Any action');
-    await expect(controls[2]!.locator('option')).toHaveText([
+    await expect(controls[0]!).toHaveText('Anyone');
+    await expect(controls[1]!).toHaveText('Last 7 days');
+    await expect(controls[2]!).toHaveText('Any action');
+    await controls[2]!.click();
+    await expect(page.getByRole('option')).toHaveText([
       'Any action',
       'Approved',
       'Deleted',
@@ -143,6 +144,7 @@ test.describe('Health › Audit log on the sample world', () => {
       'Removed',
       'Started',
     ]);
+    await page.keyboard.press('Escape');
     await expect(controls[4]!).toHaveText(/^[\d,]+ events$/);
     const boxes = await Promise.all(controls.map((control) => control.boundingBox()));
     for (const [index, box] of boxes.entries()) {
@@ -636,7 +638,7 @@ test.describe('Health › Audit log on the sample world', () => {
       await expect(main.getByText('Select an event to see what changed')).toHaveCount(0);
     };
 
-    await main.getByLabel('Who', { exact: true }).selectOption('agents');
+    await chooseAuditFilter(page, 'Who', 'Agents');
     await expect(page).toHaveURL(/actor=agents/);
     await expect(rows(page).first()).toBeVisible();
     for (const cells of await rows(page).evaluateAll((all) =>
@@ -647,15 +649,15 @@ test.describe('Health › Audit log on the sample world', () => {
     }
     await expectFirstOpen();
 
-    await main.getByLabel('Who', { exact: true }).selectOption('');
-    await main.getByLabel('Action', { exact: true }).selectOption('removed');
+    await chooseAuditFilter(page, 'Who', 'Anyone');
+    await chooseAuditFilter(page, 'Action', 'Removed');
     await expect(page).toHaveURL(/action=removed/);
     await expect(rows(page)).toHaveCount(1);
     await expect(rows(page).first()).toContainText('Removed the Anthropic key');
     await expect(main.getByTestId('audit-count')).toHaveText('1 event');
     await expectFirstOpen();
 
-    await main.getByLabel('Action', { exact: true }).selectOption('');
+    await chooseAuditFilter(page, 'Action', 'Any action');
     await main.getByPlaceholder('Search by actor, action or target').fill('4472');
     await expect(rows(page).first()).toBeVisible();
     for (const text of await rows(page).evaluateAll((all) =>

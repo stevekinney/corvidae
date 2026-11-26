@@ -1,3 +1,4 @@
+import { HttpClientError } from '@lostgradient/weft';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
@@ -44,6 +45,11 @@ function baseClient(
     get: overrides.get ?? (async () => null),
     list: overrides.list ?? (async () => emptyChildren()),
     operations: {
+      'weft.workflows.get': async ({ workflowId }: { workflowId: string }) => {
+        const value = await overrides.get?.(workflowId);
+        if (value == null) throw new HttpClientError(404, 'missing');
+        return value;
+      },
       'weft.workflows.active.get': async (_input: { name: string }) => null,
       'weft.workflows.scheduleprovenance.get': overrides.scheduleProvenance ?? noProvenance,
       'weft.workflows.compare': forkOperations({ compare: overrides.compare })[

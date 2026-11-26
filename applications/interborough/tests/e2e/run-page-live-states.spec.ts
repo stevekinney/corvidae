@@ -31,10 +31,13 @@ type JsonRecord = Record<string, unknown>;
 async function rewriteOperation(
   page: Page,
   method: string,
-  rewrite: (result: JsonRecord) => JsonRecord,
+  rewrite: (result: JsonRecord, params: JsonRecord) => JsonRecord,
 ): Promise<void> {
   await page.route(isBureauCall, async (route: Route) => {
-    const body = JSON.parse(route.request().postData() ?? '{}') as { method?: string };
+    const body = JSON.parse(route.request().postData() ?? '{}') as {
+      method?: string;
+      params?: JsonRecord;
+    };
     if (body.method !== method) {
       await route.fallback();
       return;
@@ -43,7 +46,7 @@ async function rewriteOperation(
     const answer = (await response.json()) as { result?: JsonRecord };
     await route.fulfill({
       response,
-      json: { ...answer, result: rewrite(answer.result ?? {}) },
+      json: { ...answer, result: rewrite(answer.result ?? {}, body.params ?? {}) },
     });
   });
 }
@@ -69,9 +72,8 @@ async function answerAsRunningInstance(
   const startedAt = SAMPLE_NOW_MILLISECONDS - startedMilliseconds;
   // One handler for each answer: a second handler's `route.fetch()` would go to the network and
   // undo the first's rewrite, so a further rewrite (`also`) is applied inside these.
-  await page.route(new RegExp(`/workflows/${runId}(\\?.*)?$`), async (route: Route) => {
-    const response = await route.fetch();
-    const state = (await response.json()) as JsonRecord;
+  await rewriteOperation(page, 'weft.workflows.get', (state, params) => {
+    if (params['workflowId'] !== runId) return state;
     delete state['error'];
     delete state['errorStack'];
     delete state['failureCategory'];
@@ -83,7 +85,7 @@ async function answerAsRunningInstance(
       updatedAt: SAMPLE_NOW_MILLISECONDS - 1000,
       ...(waitingForSignals.length === 0 ? {} : { waitingForSignals }),
     };
-    await route.fulfill({ response, json: also.engine?.(running) ?? running });
+    return also.engine?.(running) ?? running;
   });
   await rewriteOperation(page, 'bureau.workflows.runs.get', (record) => {
     const running = {
@@ -312,48 +314,51 @@ for (const width of WIDTHS) {
       // Bureau runs an agent step once, so the sample world's failed run tried step 2 once: the
       // engine's timeline is rewritten to hold three tries of it, 3.4 s from the first to the last.
       const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
-      await page.route(
-        new RegExp(`/workflows/${world.runs.failed}(\\?.*)?$`),
-        async (route: Route) => {
-          const response = await route.fetch();
-          const state = (await response.json()) as JsonRecord;
-          await route.fulfill({
-            response,
-            json: {
+      await rewriteOperation(page, 'weft.workflows.get', (state, params) =>
+        params['workflowId'] !== world.runs.failed
+          ? state
+          : {
               ...state,
               error:
                 'Agent "assistant" failed (finish reason "error"): {"name":"AgentRunError","message":"GitHub did not answer (HTTP 503) while Collect merged changes was reading the pull requests"}',
             },
-          });
-        },
       );
-      await page.route(
-        new RegExp(`/workflows/${world.runs.failed}/timeline(\\?.*)?$`),
-        async (route: Route) => {
-          const response = await route.fetch();
-          const entries = (await response.json()) as JsonRecord[];
-          const tries = entries.filter(
-            (entry) => entry['documentStep'] === 1 && entry['operationType'] === 'activity',
-          );
-          const first = tries[0];
-          if (first === undefined)
-            throw new Error('The failed run’s timeline holds no try of step 2.');
-          const start = Number(first['timestamp']);
-          const retried = [0, 1400, 2800].map((offset, index) => ({
-            ...first,
-            step: Number(first['step']) + index,
-            timestamp: start + offset,
-            duration: 600,
-            status: 'failed',
-          }));
-          await route.fulfill({
-            response,
-            json: [...entries.filter((entry) => !tries.includes(entry)), ...retried].toSorted(
+      await page.route(isBureauCall, async (route: Route) => {
+        const body = route.request().postDataJSON() as { method?: string; params?: JsonRecord };
+        if (
+          body.method !== 'weft.workflows.timeline.get' ||
+          body.params?.['workflowId'] !== world.runs.failed
+        ) {
+          await route.fallback();
+          return;
+        }
+        const response = await route.fetch();
+        const answer = (await response.json()) as { result: JsonRecord[] };
+        const entries = answer.result;
+        const tries = entries.filter(
+          (entry) => entry['documentStep'] === 1 && entry['operationType'] === 'activity',
+        );
+        const first = tries[0];
+        if (first === undefined)
+          throw new Error('The failed run’s timeline holds no try of step 2.');
+        const start = Number(first['timestamp']);
+        const retried = [0, 1400, 2800].map((offset, index) => ({
+          ...first,
+          step: Number(first['step']) + index,
+          timestamp: start + offset,
+          duration: 600,
+          status: 'failed',
+        }));
+        await route.fulfill({
+          response,
+          json: {
+            ...answer,
+            result: [...entries.filter((entry) => !tries.includes(entry)), ...retried].toSorted(
               (left, right) => Number(left['timestamp']) - Number(right['timestamp']),
             ),
-          });
-        },
-      );
+          },
+        });
+      });
       // The Bureau stored one try of the step (it runs an agent step once), so its explanation is
       // rewritten to say the three the engine's timeline above holds.
       await rewriteBureauAnswer(page, 'bureau.tasks.explain', (result) => ({

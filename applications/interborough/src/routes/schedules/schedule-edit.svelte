@@ -21,6 +21,7 @@
   import { getClient } from '../../lib/client.ts';
   import { faultErrorStateAdvice, faultTreatment } from '../../lib/faults.ts';
   import { router, scheduleDetailPath } from '../../lib/router.svelte.ts';
+  import { getPrincipalStore, principalQueryScope } from '../../lib/scopes.svelte.ts';
   import { kindOf } from '../../lib/schedule-kinds.ts';
   import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
   import FaultBanner from './fault-banner.svelte';
@@ -39,9 +40,10 @@
 
   const copy = SCHEDULE_COPY.edit;
   const client = getClient();
+  const principal = getPrincipalStore();
 
   const detail = createQuery(() => ({
-    queryKey: scheduleDetailQueryKey(id),
+    queryKey: [...scheduleDetailQueryKey(id), principalQueryScope(principal.principal)],
     queryFn: () => fetchScheduleDetail(client, id),
   }));
   const overlay = createQuery(() => scheduleOverlayOptions(client));

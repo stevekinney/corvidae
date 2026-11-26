@@ -1,5 +1,7 @@
 import { formatCost } from '../lib/format/cost.ts';
+import type { CatalogOperationTypes } from '../lib/generated/bureau-operation-client.generated.ts';
 import {
+  catalogRead,
   faultRefusedBeforeAnyEffect,
   request,
   stream,
@@ -10,6 +12,51 @@ import { isDryRun } from './cli-destructive.ts';
 
 type RecordValue = Record<string, unknown>;
 type RunKind = 'task' | 'workflow';
+type TaskStatus = NonNullable<CatalogOperationTypes['bureau.tasks.list']['input']['status']>;
+type TaskOrigin = NonNullable<CatalogOperationTypes['bureau.tasks.list']['input']['origin']>;
+type WorkflowStatus = NonNullable<
+  CatalogOperationTypes['bureau.workflows.runs.list']['input']['status']
+>;
+
+const TASK_STATUSES = {
+  submitted: true,
+  working: true,
+  'input-required': true,
+  completed: true,
+  failed: true,
+  canceled: true,
+} satisfies Record<TaskStatus, true>;
+const TASK_ORIGINS = {
+  chat: true,
+  person: true,
+  schedule: true,
+  api: true,
+  agent: true,
+  'agent-run': true,
+  goal: true,
+  parent: true,
+  system: true,
+  trigger: true,
+} satisfies Record<TaskOrigin, true>;
+const WORKFLOW_STATUSES = {
+  pending: true,
+  running: true,
+  completed: true,
+  failed: true,
+  cancelled: true,
+  'timed-out': true,
+  suspended: true,
+} satisfies Record<WorkflowStatus, true>;
+
+function isTaskStatus(value: string): value is TaskStatus {
+  return Object.hasOwn(TASK_STATUSES, value);
+}
+function isTaskOrigin(value: string): value is TaskOrigin {
+  return Object.hasOwn(TASK_ORIGINS, value);
+}
+function isWorkflowStatus(value: string): value is WorkflowStatus {
+  return Object.hasOwn(WORKFLOW_STATUSES, value);
+}
 
 function record(value: unknown): RecordValue | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -307,7 +354,46 @@ async function list(
     throw Object.assign(new Error('Option --kind must be task or workflow.'), { usage: true });
   const kind: RunKind = requestedKind === 'workflow' ? 'workflow' : 'task';
   const method = kind === 'workflow' ? 'bureau.workflows.runs.list' : 'bureau.tasks.list';
-  const response = await rpc(target, parsed, dependencies, method, listParams(parsed, kind));
+  const raw = listParams(parsed, kind);
+  const status = option(parsed, 'status');
+  const origin = option(parsed, 'origin');
+  const limit = numberOption(parsed, 'limit');
+  const cursor = option(parsed, 'cursor') ?? option(parsed, 'page-token');
+  let response: CliCommandResult;
+  if (kind === 'workflow') {
+    if (status !== undefined && !isWorkflowStatus(status)) {
+      response = await rpc(target, parsed, dependencies, method, raw);
+    } else {
+      const workflow = option(parsed, 'workflow');
+      const offset = numberOption(parsed, 'offset');
+      response = await catalogRead(target, parsed, dependencies, 'bureau.workflows.runs.list', {
+        ...(workflow === undefined ? {} : { workflow }),
+        ...(status === undefined ? {} : { status }),
+        ...(limit === undefined ? {} : { limit }),
+        ...(cursor !== undefined
+          ? { offset: Number(cursor) }
+          : offset === undefined
+            ? {}
+            : { offset }),
+      });
+    }
+  } else if (
+    (status !== undefined && !isTaskStatus(status)) ||
+    (origin !== undefined && !isTaskOrigin(origin))
+  ) {
+    response = await rpc(target, parsed, dependencies, method, raw);
+  } else {
+    const contextId = option(parsed, 'context');
+    const agentName = option(parsed, 'agent-name');
+    response = await catalogRead(target, parsed, dependencies, 'bureau.tasks.list', {
+      ...(contextId === undefined ? {} : { contextId }),
+      ...(agentName === undefined ? {} : { agentName }),
+      ...(status === undefined ? {} : { status }),
+      ...(origin === undefined ? {} : { origin }),
+      ...(limit === undefined ? {} : { limit }),
+      ...(cursor === undefined ? {} : { pageToken: cursor }),
+    });
+  }
   const body = record(response.data);
   const candidate = body?.[kind === 'workflow' ? 'runs' : 'tasks'];
   const values = Array.isArray(candidate) ? candidate : [];
@@ -334,19 +420,17 @@ async function getOrInspect(
   const rawId = identifier(parsed);
   if (inspect && kind !== 'task')
     throw Object.assign(new Error('runs inspect supports --kind task only.'), { usage: true });
-  const method = inspect
-    ? 'bureau.tasks.inspect'
+  const step = inspect ? numberOption(parsed, 'step') : undefined;
+  const response = inspect
+    ? await catalogRead(target, parsed, dependencies, 'bureau.tasks.inspect', {
+        taskId: rawId,
+        ...(step === undefined ? {} : { step }),
+      })
     : kind === 'task'
-      ? 'bureau.tasks.get'
-      : 'bureau.workflows.runs.get';
-  const params: RecordValue = inspect
-    ? { taskId: rawId }
-    : kind === 'task'
-      ? { taskId: rawId }
-      : { runId: rawId };
-  if (inspect && option(parsed, 'step') !== undefined)
-    params['step'] = numberOption(parsed, 'step');
-  const response = await rpc(target, parsed, dependencies, method, params);
+      ? await catalogRead(target, parsed, dependencies, 'bureau.tasks.get', { taskId: rawId })
+      : await catalogRead(target, parsed, dependencies, 'bureau.workflows.runs.get', {
+          runId: rawId,
+        });
   const data = withIdentifier(kind, response.data, rawId);
   // A task read as text says how it stands, and what it used and cost (COR-2525); as JSON it is the
   // task as the Bureau answered it, `usage.costUsd` and all.
@@ -503,7 +587,7 @@ async function explain(
       if (written === undefined || parsed.output !== 'text') return response;
       return { ...response, data: modelExplanationText(written) };
     }
-    const response = await rpc(target, parsed, dependencies, 'bureau.tasks.explain', {
+    const response = await catalogRead(target, parsed, dependencies, 'bureau.tasks.explain', {
       runId: rawId,
     });
     const explanation = record(response.data);

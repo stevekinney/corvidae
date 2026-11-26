@@ -100,7 +100,7 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.workflows.events.list` | exposed | `src/routes/workflows/detail/events-tab.svelte` | `getEvents` | `src/routes/workflows/detail/events-tab.test.ts` |  |  |
 | `weft.workflows.finalizer.get` | exposed | `src/routes/workflows/detail/workflow-observability.ts` |  | `src/routes/workflows/detail/workflow-observability.test.ts` |  |  |
 | `weft.workflows.fork` | exposed | `src/routes/workflows/detail/checkpoints/fork-dialog.svelte` | `fork` | `src/routes/workflows/detail/checkpoints/fork-dialog.test.ts` |  |  |
-| `weft.workflows.get` | exposed | `src/routes/workflows/runs/run-engine.svelte.ts` | `get` | `src/routes/workflows/runs/run-detail-engine.test.ts` | COR-164 |  |
+| `weft.workflows.get` | exposed | `src/lib/client.ts` |  | `src/routes/workflows/runs/run-detail-engine.test.ts` | COR-164 |  |
 | `weft.workflows.list` | exposed | `src/routes/workflows/list/workflow-list.svelte` | `list` | `src/routes/workflows/list/workflow-list.test.ts` |  |  |
 | `weft.workflows.logs.list` | exposed | `src/routes/workflows/runs/run-logs-data.ts` |  | `src/routes/workflows/detail/timeline-tab-logs.test.ts` | COR-1811, COR-1860, COR-1988 |  |
 | `weft.workflows.purge` | exposed | `src/routes/workflows/list/bulk-operations-client.ts` |  | `src/routes/workflows/list/bulk-operations-client.test.ts` |  |  |

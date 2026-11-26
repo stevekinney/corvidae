@@ -50,10 +50,12 @@
   import { listChecks, type CheckRow } from '../../lib/bureau-checks.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import { faultErrorStateAdvice } from '../../lib/faults.ts';
+  import { createBureauClient } from '../../lib/generated/bureau-operation-client.generated.ts';
   import { followLinks } from '../../lib/follow-links.ts';
   import { viewerTimeZone } from '../../lib/format/clock.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { getPrincipalStore, principalQueryScope } from '../../lib/scopes.svelte.ts';
   import { HOME_CLOCK_MILLISECONDS } from '../home/home-clock.svelte.ts';
   import { runListFailure } from '../workflows/runs/run-list-states.ts';
   import { filterLabelOf, runDayGroup } from '../workflows/runs/run-rows.ts';
@@ -76,17 +78,25 @@
   const filterKey = $derived(serializeChecksFilter(filter));
   const filtered = $derived(checksAreFiltered(filter));
   const queryClient = useQueryClient();
+  const bureau = createBureauClient({ baseUrl: '' });
+  const principal = getPrincipalStore();
+  const queryScope = () => principalQueryScope(principal.principal);
   const connection = getConnection();
 
   // Fifty rows a read, from the cursor each answer hands back. The time preset reaches back from the
   // moment the read is made, and every page of one read shares it through the cursor.
   const results = createInfiniteQuery(
     () => ({
-      queryKey: queryKeys.checks.list(filterKey),
+      queryKey: [...queryKeys.checks.list(filterKey), queryScope()],
       queryFn: ({ pageParam, signal }: { pageParam: string; signal: AbortSignal }) =>
-        listChecks(checksQuery(filter, Date.now()), pageParam === '' ? undefined : pageParam, {
-          signal,
-        }),
+        listChecks(
+          bureau,
+          checksQuery(filter, Date.now()),
+          pageParam === '' ? undefined : pageParam,
+          {
+            signal,
+          },
+        ),
       initialPageParam: '',
       getNextPageParam: (last: { nextCursor: string | null }) => last.nextCursor ?? undefined,
       retry: false,
@@ -98,8 +108,8 @@
   // can be chosen, and each is named as a person reads it.
   const agents = createQuery(
     () => ({
-      queryKey: queryKeys.checks.agents(),
-      queryFn: () => listAgents(),
+      queryKey: [...queryKeys.checks.agents(), queryScope()],
+      queryFn: ({ signal }) => listAgents({ signal }, bureau),
       retry: false,
     }),
     undefined,
