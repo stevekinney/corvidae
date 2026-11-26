@@ -82,6 +82,11 @@ export interface ComposerFacts {
   readonly newChatHref: string;
   /** The failed reads in a row while the page retries the stream; `0` when it is up. */
   readonly reconnectAttempt: number;
+  /**
+   * The dropped stream is a run's, whose turn says so itself with its retry and countdown (Chat's
+   * reconnecting state), so the composer does not count the attempts a second time.
+   */
+  readonly reconnectOnTurn?: boolean | undefined;
   /** The draft put back in the composer, until it is sent or discarded. */
   readonly restoredDraft?: RestoredDraft | undefined;
   /** Follow-ups the Bureau accepted that the run has not yet taken. */
@@ -147,7 +152,8 @@ export function composerStatusOf(facts: ComposerFacts): ChatComposerStatus | und
         : { link: { label: COPY.useAssistant, onclick: facts.useAssistant } }),
     };
   }
-  if (facts.reconnectAttempt > 0) return { kind: 'reconnecting', attempt: facts.reconnectAttempt };
+  if (facts.reconnectAttempt > 0 && facts.reconnectOnTurn !== true)
+    return { kind: 'reconnecting', attempt: facts.reconnectAttempt };
   if (facts.restoredDraft !== undefined) {
     return {
       kind: 'draft-restored',

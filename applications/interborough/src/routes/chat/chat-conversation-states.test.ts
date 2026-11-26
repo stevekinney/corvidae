@@ -802,7 +802,7 @@ describe('the last turn’s outcome and its recovery commands (COR-2725)', () =>
       id: 'run-1:step:0',
       role: 'assistant',
       content: 'Let me check the order.',
-      metadata: { createdAt: '2026-11-02T16:34:01.000Z' },
+      metadata: { 'conversationalist:createdAt': '2026-11-02T16:34:01.000Z' },
       toolCalls: [
         {
           id: 'call-1',
@@ -828,7 +828,9 @@ describe('the last turn’s outcome and its recovery commands (COR-2725)', () =>
     expect(outcome?.textContent).toContain('The agent finished without writing an answer.');
     expect(outcome?.querySelector('time')).not.toBeNull();
     // The time is in the row, not orphaned under it, and the rail does not say it again.
-    expect(outcome?.closest('.chat-message-wrapper')?.querySelector('.chat-message-line')).toBeNull();
+    expect(
+      outcome?.closest('.chat-message-wrapper')?.querySelector('.chat-message-line'),
+    ).toBeNull();
     expect(container.textContent).not.toContain(CHAT_COPY.tools.runFinishedNoReply);
     expect(container.querySelectorAll('.chat-turn-outcome')).toHaveLength(1);
   });

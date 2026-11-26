@@ -910,7 +910,21 @@ export class ChatSessionState {
    * forgotten, nothing is sent and the failure says so. A last message with files, or one that is
    * not plain text, is not offered again here (`canRetryTurn`).
    */
-  async retryTurn(options: { readonly tools?: ReadonlyMap<string, ToolInfo> } = {}): Promise<void> {
+  retryTurn(options: { readonly tools?: ReadonlyMap<string, ToolInfo> } = {}): Promise<void> {
+    // A second Retry while the first is forgetting grants or sending is the same retry, not a
+    // second turn (COR-2725).
+    if (this.#retryingTurn !== undefined) return this.#retryingTurn;
+    const attempt = this.#retryTurn(options);
+    const settled = attempt.finally(() => {
+      if (this.#retryingTurn === settled) this.#retryingTurn = undefined;
+    });
+    this.#retryingTurn = settled;
+    return settled;
+  }
+
+  #retryingTurn: Promise<void> | undefined;
+
+  async #retryTurn(options: { readonly tools?: ReadonlyMap<string, ToolInfo> }): Promise<void> {
     if (this.#readOnly) return;
     const id = this.#lastUserRowId();
     const row = id === undefined ? undefined : this.conversation.messages[id];

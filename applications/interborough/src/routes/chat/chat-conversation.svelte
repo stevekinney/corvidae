@@ -67,10 +67,14 @@
     ChatQuestion,
     classifyQuestion,
     createConversationHistory,
+    DEFAULT_TURN_LABELS,
     McpApp,
     resolveMessageNotes,
+    resolveTurnOutcome,
+    turnStateOf as turnStateFromOutcome,
     type ChatAvailability,
     type ChatRowContext,
+    type ChatTurnLabels,
     type ChatTurnState,
     type QuestionKind,
     type MessageNoteInfo,
@@ -175,7 +179,6 @@
   import type { DecisionContext } from './approval-decision-words.ts';
   import { editForkPoint, lastBranchPoint } from './edit-fork.ts';
   import { composerStatusOf } from './composer-state.ts';
-  import { lastAssistantId, lastTurnStop, turnStateOf, withoutStopLine } from './turn-states.ts';
   import { draftTime, forgetChatDraft, readChatDraft, writeChatDraft } from './chat-drafts.ts';
   import { changeSetting, type SteerNotices } from './steer-change.ts';
   import ModelPicker from './model-picker.svelte';
@@ -688,6 +691,7 @@
       connectHref: router.href('/settings/models'),
       newChatHref: router.href('/chats/new'),
       reconnectAttempt: session.reconnectAttempt,
+      reconnectOnTurn: outcome.assistantId !== undefined && outcome.state?.kind === 'reconnecting',
       restoredDraft:
         restoredDraftAt === undefined
           ? undefined
@@ -1148,10 +1152,30 @@
       ),
     ),
   );
-  // Chat owns the terminal turn presentation, so its source stop line is removed only for the
-  // last settled turn. Earlier failures keep their recorded note in the transcript.
-  const lastStop = $derived(session.streaming ? undefined : lastTurnStop(lined));
-  const shown = $derived(withoutStopLine(lined, lastStop));
+  let reconnectNow = $state(Date.now());
+  $effect(() => {
+    if (session.reconnectSchedule === undefined) return;
+    reconnectNow = Date.now();
+    // The reconnect countdown is a local display that advances once per second.
+    // poll-reason: clock
+    const timer = setInterval(() => (reconnectNow = Date.now()), 1000);
+    return () => clearInterval(timer);
+  });
+  // Chat owns the last turn's outcome (a dropped stream, a stop, a failure partway, no answer at
+  // all) and removes the stop line it draws as that state. The page supplies only what the Bureau
+  // says: whether a run is going, the retry its stream waits on, and whether something else (an
+  // approval, a question, a failure shown above) holds the turn. Earlier failures keep their
+  // recorded note in the transcript.
+  const outcome = $derived(
+    resolveTurnOutcome(lined, {
+      running: session.streaming,
+      reconnect: session.reconnectSchedule,
+      now: reconnectNow,
+      holding: turnHeld,
+    }),
+  );
+  const lastStop = $derived(outcome.stop);
+  const shown = $derived(outcome.conversation);
   const currentTurnMessageIds = $derived(new Set(shown.ids.slice(lastTurnStart(shown))));
   const failedTurnExplanation = $derived.by(() => {
     if (readOnly || lastStop?.state.kind !== 'failed') return undefined;
@@ -1168,23 +1192,9 @@
   // of an earlier turn keeps its line (row 20b) with nothing beside it, since Retry runs the last
   // turn again.
   const retryNoteId = $derived(readOnly ? undefined : failedStopNoteId(shown));
-  const lastAssistant = $derived(lastAssistantId(shown));
-  let reconnectNow = $state(Date.now());
-  $effect(() => {
-    if (session.reconnectSchedule === undefined) return;
-    reconnectNow = Date.now();
-    // The reconnect countdown is a local display that advances once per second.
-    // poll-reason: clock
-    const timer = setInterval(() => (reconnectNow = Date.now()), 1000);
-    return () => clearInterval(timer);
-  });
+  const lastAssistant = $derived(outcome.assistantId);
   function turnState(message: Message): ChatTurnState | undefined {
-    const state = turnStateOf(message, {
-      reconnect: session.reconnectSchedule,
-      lastAssistantId: lastAssistant,
-      now: reconnectNow,
-      stop: lastStop?.state,
-    });
+    const state = turnStateFromOutcome(outcome, message);
     return state?.kind === 'failed' && failedTurnExplanation !== undefined
       ? { ...state, explanationLink: failedTurnExplanation }
       : state;
@@ -1195,18 +1205,23 @@
       ? replyStepOf(lastAssistant)?.runId
       : undefined,
   );
-  async function discardTurn(): Promise<void> {
-    if (discardableRun === undefined) return;
-    if (!(await session.discardTurn(discardableRun))) {
-      showToast(CHAT_COPY.discardTurn.failed, { variant: 'danger', duration: 0 });
-    }
+  // Discard and Continue answer Chat whether the Bureau took them: Chat holds the turn's controls
+  // while one runs, says a refusal once on the turn in these words, and ignores an answer that
+  // arrives after this chat was left.
+  async function discardTurn(): Promise<boolean> {
+    return discardableRun !== undefined && (await session.discardTurn(discardableRun));
   }
-  async function resumeTurn(): Promise<void> {
-    if (discardableRun === undefined) return;
-    if (!(await session.resumeTurn(discardableRun))) {
-      showToast(CHAT_COPY.resumeTurn.failed, { variant: 'danger', duration: 0 });
-    }
+  async function resumeTurn(): Promise<boolean> {
+    return discardableRun !== undefined && (await session.resumeTurn(discardableRun));
   }
+  const turnLabels: Partial<ChatTurnLabels> = {
+    commandFailed: (command) =>
+      command === 'discard'
+        ? CHAT_COPY.discardTurn.failed
+        : command === 'continue'
+          ? CHAT_COPY.resumeTurn.failed
+          : DEFAULT_TURN_LABELS.commandFailed(command),
+  };
 
   // The messages that offer a branch. A run that is going, or that the page is still reading, has
   // not finished its last message.
@@ -1719,16 +1734,23 @@
       return row?.hidden === false && row.toolResult === undefined;
     }),
   );
-  /** Whether a group of calls is the end of a turn that finished with no reply, so its rail closes with the run's end state. */
+  // Something other than the stream holds the last turn, so it has not finished: a run the Bureau
+  // still reports going, an approval or a question waiting, or a failure shown above the chat.
+  const turnHeld = $derived(
+    runGoing || approvals.length > 0 || shownRequests.length > 0 || session.failure !== undefined,
+  );
+  /**
+   * Whether a group of calls is the end of a turn that finished with no reply and no assistant
+   * message to say so on: its rail closes with the run's end state. A turn with an assistant message
+   * says it as Chat's empty answer instead (R6), so the rail adds no second footnote.
+   */
   function endsTheTurn(group: {
     readonly entries: readonly { readonly state: string }[];
     readonly messageIds: readonly string[];
   }): boolean {
     return (
-      !runGoing &&
-      approvals.length === 0 &&
-      shownRequests.length === 0 &&
-      session.failure === undefined &&
+      !turnHeld &&
+      outcome.state?.kind !== 'empty' &&
       group.messageIds.at(-1) === lastRowId &&
       group.entries.every((entry) => entry.state === 'done' || entry.state === 'denied')
     );
@@ -2643,14 +2665,18 @@
           composerStatus={sharedComposerStatus ?? composerStatus}
           onComposerInput={rememberDraft}
           messageTurnState={turnState}
-          {...!readOnly ? { onRetryConnection: () => void session.reconnect() } : {}}
-          {...!readOnly && session.canRetryTurn ? { onRetryTurn: () => void retryTurn() } : {}}
-          {...!readOnly && discardableRun !== undefined && session.discarding === undefined
-            ? { onDiscardTurn: () => void discardTurn() }
+          {turnLabels}
+          {...!readOnly
+            ? {
+                // A reconnect that finds no run to join has still done what was asked.
+                onRetryConnection: async () => {
+                  await session.reconnect();
+                },
+              }
             : {}}
-          {...!readOnly && discardableRun !== undefined && session.resuming === undefined
-            ? { onContinueTurn: () => void resumeTurn() }
-            : {}}
+          {...!readOnly && session.canRetryTurn ? { onRetryTurn: retryTurn } : {}}
+          {...!readOnly && discardableRun !== undefined ? { onDiscardTurn: discardTurn } : {}}
+          {...!readOnly && discardableRun !== undefined ? { onContinueTurn: resumeTurn } : {}}
           questionDock={dockedRequest === undefined ? undefined : hostQuestionDock}
           composerHeader={choosing && agent !== '' ? newChatHeader : undefined}
           composerLead={choosing && (fromWorkflows || agent === '') ? newChatLead : undefined}

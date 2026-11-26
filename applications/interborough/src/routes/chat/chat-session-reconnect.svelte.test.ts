@@ -561,6 +561,24 @@ test('a manual reconnect starts the count over', async () => {
   expect(session.reconnectAttempt).toBe(1);
 });
 
+test('Retry now pressed twice in a row is one read of the stream, not two (COR-2725)', async () => {
+  jest.useFakeTimers();
+  let reads = 0;
+  const session = open(async () => {
+    reads += 1;
+    throw new TypeError('offline');
+  });
+  await session.attach();
+  expect(reads).toBe(1);
+
+  const answers = await Promise.all([session.reconnect(), session.reconnect()]);
+
+  // The second press takes over from the first before it reads, so the Bureau is asked once.
+  expect(reads).toBe(2);
+  expect(answers).toEqual([false, false]);
+  expect(session.reconnectAttempt).toBe(1);
+});
+
 /**
  * A Bureau whose run's stream drops after it starts, so the page reconnects; `cancelStatus` is how
  * the cancel route answers. Records each request by method and path.
