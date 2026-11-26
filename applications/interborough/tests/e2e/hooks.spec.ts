@@ -797,7 +797,7 @@ for (const width of [1280, 1920] as const) {
       row.locator('.cinder-stacked-list-item__title').boundingBox(),
       row.locator('.cinder-stacked-list-item__time').boundingBox(),
       row.getByRole('switch').boundingBox(),
-      row.locator('.cinder-toggle__label').boundingBox(),
+      row.locator('.cinder-toggle-field__label').boundingBox(),
     ]);
     const centre = (box: { y: number; height: number } | null) =>
       (box?.y ?? Number.NaN) + (box?.height ?? Number.NaN) / 2;
