@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./reviews": "./src/generated/portable-operation-client.generated.ts",
-    "./reviews/svelte": "./src/generated/operation-client.svelte.ts",
+    "./reviews": "./src/reviews/client.ts",
+    "./reviews/svelte": "./src/reviews/svelte.ts",
     "./reviews/ui": "./src/reviews/ui.ts"
   },
   "scripts": {
