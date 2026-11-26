@@ -920,6 +920,8 @@ async function deliverOne(issue) {
       );
     log(`${issue}: default branch moved to ${fetched.base}; the brief's base is its ancestor`);
   }
+  // The native worktree starts at the brief's base or, once the default branch moved, at its tip.
+  const acceptedStarts = fetchedBase === briefBase ? [briefBase] : [briefBase, fetchedBase];
 
   const ownedPaths = [
     ...(args && args.paths && Array.isArray(args.paths[issue]) ? args.paths[issue] : []),
@@ -931,7 +933,7 @@ async function deliverOne(issue) {
   log(`${issue}: dispatching chef-worker (${chosen.model}: ${chosen.rule}) from ${briefPath}`);
   const built = await agent(
     [
-      `Before editing, run \`git rev-parse --verify HEAD\` in your assigned worktree and record the result as startingBase. If it differs from ${briefBase}, make no changes and return status blocked, the observed SHA as both startingBase and head, the assigned branch and worktree path, and a report explaining the mismatch.`,
+      `Before editing, run \`git rev-parse --verify HEAD\` in your assigned worktree and record the result as startingBase. If it is not ${acceptedStarts.join(' or ')}, make no changes and return status blocked, the observed SHA as both startingBase and head, the assigned branch and worktree path, and a report explaining the mismatch.${acceptedStarts.length > 1 ? ` The default branch moved past the brief's \`Starting base:\` line (${briefBase}) to ${fetchedBase}; either start is accepted.` : ''}`,
       `Implement the issue from the brief file ${briefPath} and nothing else. This is the branch path: push your branch, open no pull request, and return startingBase, the pushed head, the branch name and your worktree path. ${NO_MERGE}`,
     ].join('\n'),
     {
@@ -945,10 +947,10 @@ async function deliverOne(issue) {
   );
   if (built === null) return judgment(issue, 'implementation failed', steps);
   steps.implement = built;
-  if (normalizeCommitSha(built.startingBase) !== briefBase)
+  if (!acceptedStarts.includes(normalizeCommitSha(built.startingBase)))
     return judgment(
       issue,
-      `worktree started at ${built.startingBase}; expected fetched base ${briefBase}`,
+      `worktree started at ${built.startingBase}; expected ${acceptedStarts.join(' or ')}`,
       steps,
       {
         head: built.head,

@@ -373,6 +373,37 @@ describe('workflow scripts', () => {
     });
   }
 
+  // The native worktree may start at the fetched tip rather than the brief's base; either is the
+  // accepted base once the moved base passed, and a third commit is still refused.
+  test('a moved base accepts a worker started at the fetched tip, and refuses any other start', async () => {
+    const fetch = {
+      exitCode: 0,
+      base: moved,
+      ancestor: true,
+      briefDigest: 'd1',
+      currentDigest: 'd1',
+    };
+    const atTip = await runDelivery(
+      {},
+      {
+        'fetch base': fetch,
+        implement: { ...(cleanResponses['implement'] as object), startingBase: moved },
+      },
+    );
+    expect(atTip.calls[1]?.prompt).toContain(moved);
+    expect(atTip.calls[1]?.prompt).toContain(dispatchBase);
+    expect(atTip.result[0]?.status).toBe('READY_TO_LAND');
+    expect(atTip.result[0]?.evidenceRequest?.['startingBase']).toBe(moved);
+    const elsewhere = await runDelivery(
+      {},
+      {
+        'fetch base': fetch,
+        implement: { ...(cleanResponses['implement'] as object), startingBase: 'c'.repeat(40) },
+      },
+    );
+    expect(elsewhere.result[0]?.reason).toContain('worktree started');
+  });
+
   test('refuses dispatch when the fetch succeeds without a full commit SHA', async () => {
     for (const fetch of [{ exitCode: 0 }, { exitCode: 0, base: 'main' }]) {
       const delivery = await runDelivery({}, { 'fetch base': fetch });
