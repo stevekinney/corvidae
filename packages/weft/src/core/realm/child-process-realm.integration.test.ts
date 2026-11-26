@@ -9,7 +9,7 @@ import {
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { ChildProcessRealm, prepareChildProcessRealm } from './child-process-realm.ts';
+import { ChildProcessRealm, createChildProcessRealm } from './child-process-realm.ts';
 import type { RevisionRealmActivation } from './revision-realm.ts';
 
 const scriptPath = new URL('./__fixtures__/revision-realm-child-process-entry.ts', import.meta.url);
@@ -29,7 +29,14 @@ const throwingScriptPath = new URL(
  */
 const createdRealms: ChildProcessRealm[] = [];
 
-await prepareChildProcessRealm();
+const nativeBootstrap = await createChildProcessRealm({
+  scriptPath,
+  expectedWorkflowTypes: ['order-workflow'],
+  isReferenced: () => false,
+  maxRestarts: 0,
+});
+nativeBootstrap.discard();
+await nativeBootstrap.whenReclaimed();
 
 function tracked(realm: ChildProcessRealm): ChildProcessRealm {
   createdRealms.push(realm);

@@ -136,7 +136,7 @@ export class ActivityWorkerDispatcher implements Disposable, AsyncDisposable {
           // Terminate the unresponsive worker so it doesn't linger.
           // Mark as terminated so the finally block skips pool release.
           terminated = true;
-          worker.terminate();
+          void worker.terminate();
         }, this.#timeoutMilliseconds);
 
         const cleanup = () => {

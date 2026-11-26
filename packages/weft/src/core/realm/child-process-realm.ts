@@ -1,47 +1,21 @@
-/**
- * Real child-process-IPC-backed revision realm (COR-246).
- *
- * Implements the exact same {@link
- * import('./revision-realm.ts').RevisionRealm} port `WorkerRealm` (COR-249)
- * implements — `activate`, `dispatchTurn`, `beginDrain`, `terminate`,
- * `crash`, `restart` — driven by the identical transport-independent {@link
- * RealmLifecycle} and {@link import('./realm-protocol.ts').RealmTurnEnvelope}
- * modules R1 (COR-117) built and proved against the fake realm, and R2
- * (COR-249) proved again against a real `Worker`. Where `WorkerRealm` settles
- * in response to `postMessage` events crossing a `Worker` thread boundary,
- * `ChildProcessRealm` settles in response to its child process IPC channel —
- * the realm-ready handshake ({@link
- * import('../worker-realm-readiness.ts').WorkerRealmReadyMessage}) and the
- * shared `realm-run` / `realm-result` / `realm-failure` wire messages
- * ({@link import('./worker-realm-messages.ts')}) travel over child IPC
- * / `process.send` instead of `postMessage`.
- *
- * A child process is a stronger crash/resource boundary than a Worker's
- * shared-process heap: a realm that segfaults, leaks native memory, or hangs
- * the event loop cannot corrupt the host's own process the way a Worker
- * thread sharing the host's address space theoretically could, at the cost
- * of a real OS process per realm rather than a thread. Bun's IPC channel
- * (`ipc`) is only compatible with another `bun` instance as the child — see
- * `#spawnProcess` — so `scriptPath` must be a script this same Bun binary can
- * run, exactly like `workerUrl` names a worker entry script.
- *
- * One `ChildProcessRealm` instance serves exactly one execution's entire
- * turn sequence, from `activate()` through completion — the same
- * one-generation, fixed-`executionToken` model `FakeRealm` and `WorkerRealm`
- * both already implement (see `worker-realm.ts`'s own module doc). A
- * `RevisionRealmPool` selects this adapter over `WorkerRealm` per
- * `RevisionRealmConfig.transport === 'child-process'`; the default transport
- * (`'worker'`, or `transport` omitted) is unchanged.
- *
- * `RealmLifecycle`'s transition table has no direct path to `Terminated`
- * except through `Draining`, and no exit at all from `Warming` other than
- * `markReady`. `#forceDown` routes a real process failure, or a pool
- * discarding a realm it never activated, through the nearest legal exit —
- * see `WorkerRealm`'s own doc for the identical reasoning — rather than
- * reopening that transition table.
- *
- * @module core/realm/child-process-realm
- */
+/** Child-process-IPC-backed revision realm selected by `transport: 'child-process'`. */
+import {
+  isWorkerRealmReadyMessage,
+  validateRealmReadyMessage,
+  type RealmReadyOutcome,
+} from '../worker-realm-readiness.ts';
+import {
+  RealmLifecycle,
+  type RealmLifecycleDependencies,
+  type RealmRestartOutcome,
+} from './realm-lifecycle.ts';
+import { validateRealmTurnEnvelope, type RealmTurnEnvelope } from './realm-protocol.ts';
+import type { RevisionRealmActivation } from './revision-realm.ts';
+import {
+  isRealmFailureMessage,
+  isRealmResultMessage,
+  type RealmRunMessage,
+} from './worker-realm-messages.ts';
 type ChildProcess = {
   readonly pid?: number;
   readonly connected: boolean;
@@ -76,29 +50,6 @@ export async function createChildProcessRealm(
 ): Promise<ChildProcessRealm> {
   return new ChildProcessRealm(options, await loadNativeOperations());
 }
-
-/** Preloads the native operations for direct integration-level realm construction. */
-export async function prepareChildProcessRealm(): Promise<void> {
-  await loadNativeOperations();
-}
-
-import {
-  isWorkerRealmReadyMessage,
-  validateRealmReadyMessage,
-  type RealmReadyOutcome,
-} from '../worker-realm-readiness.ts';
-import {
-  RealmLifecycle,
-  type RealmLifecycleDependencies,
-  type RealmRestartOutcome,
-} from './realm-lifecycle.ts';
-import { validateRealmTurnEnvelope, type RealmTurnEnvelope } from './realm-protocol.ts';
-import type { RevisionRealmActivation } from './revision-realm.ts';
-import {
-  isRealmFailureMessage,
-  isRealmResultMessage,
-  type RealmRunMessage,
-} from './worker-realm-messages.ts';
 
 type PendingOutcome = { kind: 'success'; result: unknown } | { kind: 'failure'; error: string };
 
@@ -351,7 +302,7 @@ export class ChildProcessRealm {
    */
   postRawMessageForTesting(message: unknown): void {
     if (!this.#process.connected) throw new Error('Child process IPC channel is closed');
-    this.#process.send?.(message as never, undefined, undefined, () => {});
+    this.#process.send?.(message, undefined, undefined, () => {});
   }
 
   /**
@@ -415,7 +366,7 @@ export class ChildProcessRealm {
     // the paired exit event below owns the realm lifecycle transition.
     child.on('error', () => {});
     child.on('exit', (exitCode) => {
-      resolveExit(exitCode);
+      resolveExit(typeof exitCode === 'number' ? exitCode : null);
       if (spawnEpoch !== this.#spawnEpoch) return;
       this.#handleProcessDown();
     });

@@ -39,5 +39,5 @@ const result = await (async () => {
 test('Weft realm transports run under pinned Node 22+', () => {
   expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
   expect(result.failCount).toBe(0);
-  expect(result.passCount).toBe(3);
+  expect(result.passCount).toBe(4);
 });

@@ -638,8 +638,10 @@ describe('WorkerPool', () => {
       const worker = await pool.acquire();
 
       const response = await new Promise<{ echo: string }>((resolve) => {
-        worker.addEventListener('message', (event: MessageEvent) => {
-          resolve(event.data);
+        worker.addEventListener('message', (event: Event) => {
+          if (event instanceof MessageEvent) {
+            resolve(event.data);
+          }
         });
         worker.postMessage('smol-test');
       });
@@ -665,14 +667,18 @@ describe('WorkerPool', () => {
       // Both workers should process messages independently
       const [response1, response2] = await Promise.all([
         new Promise<{ echo: string }>((resolve) => {
-          worker1.addEventListener('message', (event: MessageEvent) => {
-            resolve(event.data);
+          worker1.addEventListener('message', (event: Event) => {
+            if (event instanceof MessageEvent) {
+              resolve(event.data);
+            }
           });
           worker1.postMessage('first');
         }),
         new Promise<{ echo: string }>((resolve) => {
-          worker2.addEventListener('message', (event: MessageEvent) => {
-            resolve(event.data);
+          worker2.addEventListener('message', (event: Event) => {
+            if (event instanceof MessageEvent) {
+              resolve(event.data);
+            }
           });
           worker2.postMessage('second');
         }),
@@ -715,8 +721,10 @@ describe('WorkerPool', () => {
       const worker = await pool.acquire();
 
       const response = await new Promise<{ echo: string }>((resolve) => {
-        worker.addEventListener('message', (event: MessageEvent) => {
-          resolve(event.data);
+        worker.addEventListener('message', (event: Event) => {
+          if (event instanceof MessageEvent) {
+            resolve(event.data);
+          }
         });
         worker.postMessage('hello');
       });

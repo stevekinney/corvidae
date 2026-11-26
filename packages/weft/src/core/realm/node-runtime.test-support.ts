@@ -8,6 +8,7 @@ import { Engine } from '../engine/index.ts';
 import { workflowSource } from '../source/index.ts';
 import { activity, workflow, type WorkflowDefinition } from '../types.ts';
 import { NODE_RUNTIME_WORKFLOW_NAME } from './__fixtures__/node-runtime-activity-handler.fixture.ts';
+import { readNodeRuntimeRealmTestEnvironment } from './node-runtime-test-environment.ts';
 
 const echo = activity({
   name: 'echo',
@@ -90,20 +91,40 @@ void test('Node Engine executes one in-process activity workflow', async () => {
     });
   using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
   engine.register(definition);
-  assert.deepEqual(await (await engine.start(definition.name, 'native')).result(), {
+  const handle = await engine.start(definition.name, 'native');
+  assert.deepEqual(await handle.result(), {
     activity: 'native',
   });
 });
 
 void test('Node Engine executes one Worker realm activity workflow', async () => {
-  const workerFixture = process.env['WEFT_NODE_WORKER_REALM_FIXTURE'];
+  const { workerFixture } = readNodeRuntimeRealmTestEnvironment();
   assert.ok(workerFixture);
   await runRealm('worker', workerFixture, 'native');
 });
 
 void test('Node Engine executes and fails child-process realm activity workflows', async () => {
-  const childFixture = process.env['WEFT_NODE_CHILD_REALM_FIXTURE'];
+  const { childFixture } = readNodeRuntimeRealmTestEnvironment();
   assert.ok(childFixture);
   await runRealm('child-process', childFixture, 'native');
   await runRealm('child-process', childFixture, 'fail');
+});
+
+void test('Node worker factory reports a crashing module through its error event', async () => {
+  const worker = nodeWorkerFactory(
+    new URL('data:text/javascript,throw%20new%20Error(%22native%20worker%20crash%22)'),
+  );
+  try {
+    const message = await new Promise<string>((resolve) => {
+      worker.addEventListener('error', (event) => {
+        const message = Reflect.get(event, 'message');
+        if (typeof message === 'string') {
+          resolve(message);
+        }
+      });
+    });
+    assert.equal(message, 'native worker crash');
+  } finally {
+    await worker.terminate();
+  }
 });

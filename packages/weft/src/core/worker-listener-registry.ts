@@ -1,17 +1,19 @@
+import type { WorkerLike } from '../workers/pool.ts';
+
 interface WorkerListeners {
-  message: (event: MessageEvent<unknown>) => void;
-  error: (event: ErrorEvent) => void;
-  messageerror: (event: MessageEvent) => void;
+  message: EventListener;
+  error: EventListener;
+  messageerror: EventListener;
 }
 
 export class WorkerListenerRegistry {
-  readonly #workerListeners = new Map<Worker, WorkerListeners>();
+  readonly #workerListeners = new Map<WorkerLike, WorkerListeners>();
 
   attach(
-    worker: Worker,
+    worker: WorkerLike,
     handlers: {
       message: (message: unknown) => void;
-      error: (errorEvent: ErrorEvent) => void;
+      error: (message: string) => void;
       messageerror: () => void;
     },
   ): void {
@@ -20,29 +22,36 @@ export class WorkerListenerRegistry {
     }
 
     const listeners: WorkerListeners = {
-      message: (event: MessageEvent<unknown>) => {
-        handlers.message(event.data);
+      message: (event: Event) => {
+        if (event instanceof MessageEvent) {
+          handlers.message(event.data);
+        }
       },
-      error: handlers.error,
+      error: (event: Event) => {
+        const message = Reflect.get(event, 'message');
+        if (typeof message === 'string') {
+          handlers.error(message);
+        }
+      },
       messageerror: handlers.messageerror,
     };
 
     this.#workerListeners.set(worker, listeners);
-    worker.addEventListener('message', listeners.message as EventListener);
-    worker.addEventListener('error', listeners.error as EventListener);
-    worker.addEventListener('messageerror', listeners.messageerror as EventListener);
+    worker.addEventListener('message', listeners.message);
+    worker.addEventListener('error', listeners.error);
+    worker.addEventListener('messageerror', listeners.messageerror);
   }
 
-  detach(worker: Worker): void {
+  detach(worker: WorkerLike): void {
     const listeners = this.#workerListeners.get(worker);
     if (!listeners) return;
-    worker.removeEventListener('message', listeners.message as EventListener);
-    worker.removeEventListener('error', listeners.error as EventListener);
-    worker.removeEventListener('messageerror', listeners.messageerror as EventListener);
+    worker.removeEventListener('message', listeners.message);
+    worker.removeEventListener('error', listeners.error);
+    worker.removeEventListener('messageerror', listeners.messageerror);
     this.#workerListeners.delete(worker);
   }
 
-  detachIfIdle(worker: Worker, workerIsIdle: (worker: Worker) => boolean): void {
+  detachIfIdle(worker: WorkerLike, workerIsIdle: (worker: WorkerLike) => boolean): void {
     if (workerIsIdle(worker)) {
       this.detach(worker);
     }

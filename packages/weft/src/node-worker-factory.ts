@@ -1,12 +1,12 @@
 import { Worker } from 'node:worker_threads';
 
-import type { CreateWorker, WorkerLike } from './workers/pool.ts';
+import type { CreateWorker } from './workers/pool.ts';
 
-class NodeWorkerAdapter {
+class NodeWorkerAdapter extends EventTarget {
   readonly #worker: Worker;
-  readonly #listeners = new Map<EventListenerOrEventListenerObject, (...args: unknown[]) => void>();
 
   constructor(url: string | URL) {
+    super();
     this.#worker = new Worker(
       `
       const { parentPort, workerData } = require('node:worker_threads');
@@ -16,18 +16,37 @@ class NodeWorkerAdapter {
       globalThis.self = scope;
       scope.postMessage = message => parentPort.postMessage(message);
       globalThis.postMessage = scope.postMessage;
-      parentPort.on('message', data => {
+      const queuedMessages = [];
+      let ready = false;
+      const deliver = data => {
         const event = new MessageEvent('message', { data });
         scope.dispatchEvent(event);
         onmessage?.(event);
+      };
+      parentPort.on('message', data => {
+        if (!ready) queuedMessages.push(data);
+        else deliver(data);
       });
-      import(workerData.entry);
+      import(workerData.entry).then(() => {
+        ready = true;
+        for (const message of queuedMessages) deliver(message);
+      }).catch(error => { throw error; });
     `,
       {
         eval: true,
         workerData: { entry: String(url) },
       },
     );
+    this.#worker.on('message', (data) => {
+      this.dispatchEvent(new MessageEvent('message', { data }));
+    });
+    this.#worker.on('messageerror', (data) => {
+      this.dispatchEvent(new MessageEvent('messageerror', { data }));
+    });
+    this.#worker.on('error', (error) => {
+      this.dispatchEvent(Object.assign(new Event('error'), { error, message: error.message }));
+    });
+    this.#worker.on('exit', () => this.dispatchEvent(new Event('close')));
   }
 
   postMessage(message: unknown): void {
@@ -36,31 +55,7 @@ class NodeWorkerAdapter {
   terminate(): Promise<number> {
     return this.#worker.terminate();
   }
-
-  addEventListener(
-    type: 'message' | 'error' | 'messageerror' | 'close',
-    listener: EventListenerOrEventListenerObject,
-  ): void {
-    const eventType = type === 'close' ? 'exit' : type;
-    const wrapped = (...args: unknown[]) => {
-      const event =
-        type === 'message' ? new MessageEvent('message', { data: args[0] }) : new Event(type);
-      if (typeof listener === 'function') listener(event);
-      else listener.handleEvent(event);
-    };
-    this.#listeners.set(listener, wrapped);
-    this.#worker.on(eventType, wrapped);
-  }
-
-  removeEventListener(
-    _type: 'message' | 'error' | 'messageerror' | 'close',
-    listener: EventListenerOrEventListenerObject,
-  ): void {
-    const wrapped = this.#listeners.get(listener);
-    if (wrapped) this.#worker.off('message', wrapped);
-  }
 }
 
 /** Creates a Node worker-thread behind the Web Worker contract used by Weft. */
-export const nodeWorkerFactory: CreateWorker = (url) =>
-  new NodeWorkerAdapter(url) as unknown as WorkerLike;
+export const nodeWorkerFactory: CreateWorker = (url) => new NodeWorkerAdapter(url);

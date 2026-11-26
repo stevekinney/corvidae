@@ -21,8 +21,21 @@
  * void pool;
  * ```
  */
-/** The Web Worker contract consumed by Weft's portable worker plumbing. */
-export type WorkerLike = Worker;
+/** The Web Worker surface consumed by Weft's portable worker plumbing. */
+export interface WorkerLike {
+  postMessage(message: unknown, transfer?: Transferable[]): void;
+  terminate(): void | Promise<number>;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void;
+}
 
 export type CreateWorker = (
   url: string | URL,
@@ -163,7 +176,7 @@ export class WorkerPool implements Disposable, AsyncDisposable {
       worker,
       new Error('Worker was discarded from this WorkerPool'),
     );
-    worker.terminate();
+    void worker.terminate();
     this.#drainGenericQueue();
     this.#checkAsyncDispose();
   }
@@ -268,7 +281,7 @@ export class WorkerPool implements Disposable, AsyncDisposable {
   #terminateAll(): void {
     this.#rejectAllWaiters(new Error('WorkerPool has been disposed'));
     for (const worker of this.#workers) {
-      worker.terminate();
+      void worker.terminate();
     }
     this.#workers.clear();
     this.#available.length = 0;

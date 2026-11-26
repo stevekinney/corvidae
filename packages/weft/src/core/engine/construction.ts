@@ -326,7 +326,6 @@ export function resolveEngineOptions(
     runConcurrency: resolveRunConcurrency(options),
   };
 }
-
 export function normalizeWorkerExecutionConfiguration(
   options: EngineConstructorOptions | undefined,
 ): NormalizedWorkerExecutionConfiguration {
@@ -345,7 +344,6 @@ export function normalizeWorkerExecutionConfiguration(
   if (!workerExecution) {
     return { mode: 'inline', workerExecution: null };
   }
-
   return normalizeWorkerModeConfiguration(workerExecution);
 }
 

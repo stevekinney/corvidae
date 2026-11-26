@@ -28,6 +28,7 @@ import {
   declaredWorkflowContractsMatch,
 } from '../worker/manifest/internal-realm.ts';
 import type { WorkerManifest } from '../worker/manifest/types.ts';
+import type { WorkerLike } from '../workers/pool.ts';
 import type { FailureCategory } from './types.ts';
 import {
   assertWorkerProtocolMessageWithinLimit,
@@ -192,16 +193,19 @@ export async function validateRealmReadyMessage(
  */
 export class WorkerRealmReadiness {
   readonly #dependencies: WorkerRealmReadinessDependencies;
-  readonly #readyByWorker = new Map<Worker, { realmGeneration: string; manifestDigest: string }>();
+  readonly #readyByWorker = new Map<
+    WorkerLike,
+    { realmGeneration: string; manifestDigest: string }
+  >();
   // At most one pending wait per worker: `WorkerPool` ownership guarantees a
   // worker is acquired by exactly one in-flight `acquireAndSend` at a time.
-  readonly #pendingByWorker = new Map<Worker, (outcome: RealmReadyOutcome) => void>();
+  readonly #pendingByWorker = new Map<WorkerLike, (outcome: RealmReadyOutcome) => void>();
 
   constructor(dependencies: WorkerRealmReadinessDependencies) {
     this.#dependencies = dependencies;
   }
 
-  isReady(worker: Worker): boolean {
+  isReady(worker: WorkerLike): boolean {
     return this.#readyByWorker.has(worker);
   }
 
@@ -212,7 +216,7 @@ export class WorkerRealmReadiness {
    * synchronous continuation — `acquireAndSend` does exactly that, so no
    * `ready` message can arrive before this registers its pending waiter.
    */
-  async waitForReady(worker: Worker): Promise<RealmReadyOutcome> {
+  async waitForReady(worker: WorkerLike): Promise<RealmReadyOutcome> {
     const known = this.#readyByWorker.get(worker);
     if (known) return { ok: true, ...known };
 
@@ -241,7 +245,7 @@ export class WorkerRealmReadiness {
   }
 
   /** Validate an inbound `ready` message and settle any pending {@link waitForReady} call. */
-  async noteReadyMessage(worker: Worker, message: unknown): Promise<void> {
+  async noteReadyMessage(worker: WorkerLike, message: unknown): Promise<void> {
     const outcome = await this.#validate(message);
     if (outcome.ok) {
       this.#readyByWorker.set(worker, {
@@ -258,7 +262,7 @@ export class WorkerRealmReadiness {
   }
 
   /** Drop a discarded worker's state, settling any pending waiter with a failure. */
-  forget(worker: Worker): void {
+  forget(worker: WorkerLike): void {
     this.#readyByWorker.delete(worker);
     const pending = this.#pendingByWorker.get(worker);
     if (pending) {

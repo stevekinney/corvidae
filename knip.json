@@ -124,7 +124,12 @@
         "**/*.playwright.ts",
         "**/*.spec.ts",
         "src/server/node-runtime.test-support.ts",
-        "src/core/realm/node-runtime.test-support.ts"
+        "src/core/realm/node-runtime.test-support.ts",
+        "src/core/realm/node-runtime-test-environment.ts",
+        "src/core/realm/__fixtures__/node-runtime-activity-handler.fixture.ts",
+        "src/core/realm/__fixtures__/node-runtime-activity-worker.fixture.ts",
+        "src/core/realm/__fixtures__/node-runtime-activity-child.fixture.ts",
+        "src/__fixtures__/node-worker-factory-gated.fixture.ts"
       ],
       "project": [
         "src/**/*.ts!",

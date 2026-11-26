@@ -17,7 +17,7 @@
  */
 
 import { bunWorkerFactory } from '@lostgradient/weft/bun';
-import { ChildProcessRealm, prepareChildProcessRealm } from './child-process-realm.ts';
+import { ChildProcessRealm, createChildProcessRealm } from './child-process-realm.ts';
 import { FakeRealm } from './fake-realm.test-support.ts';
 import type {
   ConformanceRealm,
@@ -139,7 +139,14 @@ const childProcessScriptPath = new URL(
   import.meta.url,
 );
 
-await prepareChildProcessRealm();
+const nativeBootstrap = await createChildProcessRealm({
+  scriptPath: childProcessScriptPath,
+  expectedWorkflowTypes: EXPECTED_WORKFLOW_TYPES,
+  isReferenced: () => false,
+  maxRestarts: 0,
+});
+nativeBootstrap.discard();
+await nativeBootstrap.whenReclaimed();
 
 function childProcessRealmConformance(
   options: RealmConformanceCreateOptions = {},

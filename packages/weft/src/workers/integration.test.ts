@@ -308,8 +308,10 @@ describe('workflow runner integration', () => {
       const response = await new Promise<{ echo: string }>((resolve) => {
         worker.addEventListener(
           'message',
-          (event: MessageEvent) => {
-            resolve(event.data);
+          (event: Event) => {
+            if (event instanceof MessageEvent) {
+              resolve(event.data);
+            }
           },
           { once: true },
         );

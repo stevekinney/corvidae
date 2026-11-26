@@ -1,5 +1,7 @@
+import type { WorkerLike } from '../workers/pool.ts';
+
 export interface WorkerTurnState {
-  worker: Worker;
+  worker: WorkerLike;
   workflowId: string;
   turnId: number;
   kind: 'run' | 'resume';
@@ -22,7 +24,7 @@ interface TrackedWorkerTurn extends WorkerTurnState {
 }
 
 export class WorkerTurnWatchdog {
-  readonly #turnsByWorker = new Map<Worker, TrackedWorkerTurn>();
+  readonly #turnsByWorker = new Map<WorkerLike, TrackedWorkerTurn>();
   readonly #timeoutMs: number | undefined;
   readonly #onTimeout: (turn: WorkerTurnState) => void;
   #timeoutResolverForTesting: WorkerTurnTimeoutResolverForTesting | null = null;
@@ -33,7 +35,7 @@ export class WorkerTurnWatchdog {
   }
 
   begin(
-    worker: Worker,
+    worker: WorkerLike,
     workflowId: string,
     turnId: number,
     kind: WorkerTurnState['kind'],
@@ -67,7 +69,7 @@ export class WorkerTurnWatchdog {
     this.#timeoutResolverForTesting = resolver;
   }
 
-  clear(worker: Worker): void {
+  clear(worker: WorkerLike): void {
     const turn = this.#turnsByWorker.get(worker);
     if (!turn) return;
     if (turn.timeout !== null) {
@@ -82,7 +84,7 @@ export class WorkerTurnWatchdog {
     }
   }
 
-  get(worker: Worker): WorkerTurnState | undefined {
+  get(worker: WorkerLike): WorkerTurnState | undefined {
     return this.#turnsByWorker.get(worker);
   }
 }

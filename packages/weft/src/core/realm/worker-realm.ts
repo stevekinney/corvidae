@@ -412,7 +412,7 @@ export class WorkerRealm {
   #terminateWorkerOnce(): void {
     if (this.#workerTerminated) return;
     this.#workerTerminated = true;
-    this.#worker.terminate();
+    void this.#worker.terminate();
   }
 
   async #handleMessage(message: unknown): Promise<void> {
