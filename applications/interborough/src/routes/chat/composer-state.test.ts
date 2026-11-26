@@ -204,6 +204,13 @@ describe('the line under the composer', () => {
     });
   });
 
+  test('leaves a dropped run’s reconnect to the turn’s own warning, so it is said once (COR-2725)', () => {
+    expect(
+      composerStatusOf(facts({ working: true, reconnectAttempt: 3, reconnectOnTurn: true })),
+    ).toEqual({ kind: 'note', text: CHAT_COPY.composer.working });
+    expect(composerStatusOf(facts({ reconnectAttempt: 3, reconnectOnTurn: true }))).toBeUndefined();
+  });
+
   test('says a follow-up is queued, ahead of a setting note and of steering', () => {
     expect(
       composerStatusOf(facts({ working: true, queuedFollowUps: 1, note: 'Effort High applies.' })),

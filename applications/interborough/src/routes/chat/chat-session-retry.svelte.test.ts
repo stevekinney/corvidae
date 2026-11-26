@@ -265,6 +265,18 @@ describe('running the last turn again', () => {
     expect(session.failure).toBeUndefined();
   });
 
+  test('is one turn when it is asked for twice before the first has gone out (COR-2725)', async () => {
+    const { session, state } = open(FAILED_ON_CALL, stoppedOnCall);
+    const tools = REFUND_THEN_LOOKUP;
+
+    // A repeat press, and a late repeat from a stale control, both land while the grant is forgotten.
+    await Promise.all([session.retryTurn({ tools }), session.retryTurn({ tools })]);
+
+    expect(state.forgets).toHaveLength(1);
+    expect(state.bodies).toHaveLength(1);
+    expect(visibleText(session).filter((line) => line.startsWith('user:'))).toHaveLength(2);
+  });
+
   test('keeps the failed attempt when the run ends with the thread the Bureau holds', async () => {
     const { session, state } = open(FAILED_PARTWAY, stopped);
 

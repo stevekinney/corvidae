@@ -7,6 +7,7 @@
  * closes with the run's end state. Every record is the one a capture serves
  * (`fixtures/chat-states.ts`).
  */
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
@@ -25,6 +26,7 @@ import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import type { ProvidersSnapshot } from '../../lib/host-providers.ts';
 import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import ChatConversation from './chat-conversation.svelte';
+import SessionSwitch from './chat-session-switch.test-harness.svelte';
 import ChatToasts from './chat-toasts.test-harness.svelte';
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
@@ -709,5 +711,125 @@ describe('a turn that ends on a tool call (20h)', () => {
       expect(container.querySelector('[data-testid="chat-header"]')?.textContent).toContain('Done'),
     );
     expect(container.querySelector('.chat-note[data-failed]')).toBeNull();
+  });
+});
+
+// COR-2725: Chat owns the outcome of the last turn and what its recovery controls do; the page keeps
+// the Bureau's facts. These rows run on the real conversation page.
+describe('the last turn’s outcome and its recovery commands (COR-2725)', () => {
+  const BILLING = [{ id: 'user-1', role: 'user', content: 'Rename the billing tables' }] as Record<
+    string,
+    unknown
+  >[];
+  const canceled = (): unknown => ({
+    tasks: [
+      {
+        ...tasksOf('failed-partway')[0],
+        id: 'run-billing',
+        contextId: 'session-1',
+        status: 'canceled',
+        finishReason: 'aborted',
+        statusMessage: null,
+      },
+    ],
+    nextPageToken: null,
+  });
+  const refused = (): never => {
+    throw new StubFault('Conflict', 409, 'refused', { reason: 'history-changed' });
+  };
+
+  test('a refused Discard is said once, on its turn, in the page’s own words, and is no toast', async () => {
+    serve(billingThreadWithPartialReply(BILLING), {
+      answers: { 'bureau.tasks.list': canceled, 'bureau.contexts.discardturn': refused },
+    });
+    const { container, findByRole } = render(ChatToasts, {
+      props: {
+        page: ChatConversation,
+        pageProps: { sessionId: 'session-1', title: 'Plan the week', agentName: 'tool-runner' },
+        client: createQueryClient(),
+      },
+    } as never);
+
+    await fireEvent.click(await findByRole('button', { name: 'Discard' }));
+
+    await waitFor(() =>
+      expect(container.querySelector('.chat-turn-command-failure')?.textContent).toContain(
+        CHAT_COPY.discardTurn.failed,
+      ),
+    );
+    expect(container.querySelectorAll('.chat-turn-command-failure')).toHaveLength(1);
+    // Said on the turn, not also in a toast: the text is on the page once.
+    expect(document.body.textContent?.split(CHAT_COPY.discardTurn.failed)).toHaveLength(2);
+  });
+
+  test('a Discard answered after the person moved to another chat says nothing in it', async () => {
+    let refuse: () => void = () => undefined;
+    const served = serve(billingThreadWithPartialReply(BILLING), {
+      answers: {
+        'bureau.tasks.list': canceled,
+        'bureau.contexts.discardturn': () =>
+          new Promise((_resolve, reject) => {
+            refuse = () => reject(new StubFault('Conflict', 409, 'refused', { reason: 'x' }));
+          }),
+      },
+    });
+    const view = render(SessionSwitch, {
+      props: {
+        page: ChatConversation,
+        sessionId: 'session-1',
+        pageProps: { title: 'Plan the week', agentName: 'tool-runner' },
+      },
+    } as never);
+    await fireEvent.click(await view.findByRole('button', { name: 'Discard' }));
+    await waitFor(() =>
+      expect(served.calls.some((call) => call.method === 'bureau.contexts.discardturn')).toBe(true),
+    );
+
+    await view.rerender({ sessionId: 'session-2' } as never);
+    // The other chat's last turn is stopped too, and its Discard is free: nothing is in flight there.
+    const discard = await view.findByRole('button', { name: 'Discard' });
+    refuse();
+    await quietFor(50);
+
+    expect(document.body.textContent).not.toContain(CHAT_COPY.discardTurn.failed);
+    expect(document.querySelector('.chat-turn-command-failure')).toBeNull();
+    expect(discard.hasAttribute('disabled')).toBe(false);
+  });
+
+  const NARRATED_THEN_TOOL = [
+    { id: 'user-1', role: 'user', content: 'Look up order 4471' },
+    {
+      id: 'run-1:step:0',
+      role: 'assistant',
+      content: 'Let me check the order.',
+      metadata: { createdAt: '2026-11-02T16:34:01.000Z' },
+      toolCalls: [
+        {
+          id: 'call-1',
+          type: 'function',
+          function: { name: 'lookup-order', arguments: '{"orderId":"4471"}' },
+        },
+      ],
+    },
+    { id: 'run-1:step:0:result:call-1', role: 'tool', toolCallId: 'call-1', content: 'Shipped' },
+  ];
+  const finishedRun = (): unknown => ({
+    tasks: tasksOf('ended-on-tool-call').map((task) => ({ ...task, contextId: 'session-1' })),
+    nextPageToken: null,
+  });
+
+  test('a turn that narrated and ended on a tool is the empty answer, with Try again, and the rail has no footnote (R6)', async () => {
+    serve(NARRATED_THEN_TOOL, { answers: { 'bureau.tasks.list': finishedRun } });
+    const { container, findByRole } = mount();
+
+    const tryAgain = await findByRole('button', { name: 'Try again' });
+    const outcome = tryAgain.closest('.chat-turn-outcome');
+    expect(outcome?.getAttribute('data-kind')).toBe('empty');
+    expect(outcome?.textContent).toContain('The agent finished without writing an answer.');
+    expect(outcome?.querySelector('time')).not.toBeNull();
+    // The time is in the row, not orphaned under it, and the rail does not say it again.
+    expect(outcome?.closest('.chat-message-wrapper')?.querySelector('.chat-message-line')).toBeNull();
+    expect(container.textContent).not.toContain(CHAT_COPY.tools.runFinishedNoReply);
+    expect(container.querySelectorAll('.chat-turn-outcome')).toHaveLength(1);
   });
 });
