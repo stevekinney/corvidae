@@ -220,7 +220,9 @@ void test('Node worker pool replaces an idle worker that exits through its contr
         if (event instanceof MessageEvent && event.data === 'ready') resolve();
       });
     });
-    const closed = new Promise<void>((resolve) => worker.addEventListener('close', () => resolve()));
+    const closed = new Promise<void>((resolve) =>
+      worker.addEventListener('close', () => resolve()),
+    );
     worker.postMessage({ port: port1 }, [port1]);
     await ready;
     pool.release(worker);
