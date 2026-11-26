@@ -9,7 +9,10 @@ import {
   type ExportRuntimeReachAllowlistEntry,
 } from './check-export-runtime-reach.ts';
 
-function withRepository(files: Record<string, string>, run: (root: string) => Promise<void>): Promise<void> {
+function withRepository(
+  files: Record<string, string>,
+  run: (root: string) => Promise<void>,
+): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'export-runtime-reach-'));
   for (const [path, content] of Object.entries(files)) {
     const target = join(root, path);
