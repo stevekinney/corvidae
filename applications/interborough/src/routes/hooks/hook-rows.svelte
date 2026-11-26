@@ -140,6 +140,7 @@
     items={[...ordered]}
     key={(hook) => hook.id}
     statusColumn
+    trailingAlign="line"
     aria-label={HOOKS_COPY.rowsLabel}
   >
     {#snippet children(hook)}

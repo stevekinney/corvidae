@@ -119,6 +119,7 @@
   bind:this={listElement}
   class={classNames('cinder-data-list', className)}
   role="list"
+  data-cinder-trailing-align={trailingAlign}
   style:--cinder-stacked-list-item-trailing-track={trailingTrack}
   style:--cinder-stacked-list-item-trailing-align={trailingAlign}
 >

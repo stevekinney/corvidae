@@ -314,7 +314,7 @@ export const routes: readonly RouteDefinition[] = [
   // its steps.
   {
     pattern: '/hooks',
-    kind: 'table',
+    kind: 'list',
     crumb: VIEW_COPY.hooks.label,
     view: 'hooks',
     load: () => import('../routes/hooks/index.svelte'),

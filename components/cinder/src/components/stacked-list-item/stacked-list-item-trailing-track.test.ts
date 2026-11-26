@@ -52,12 +52,22 @@ describe('StackedListItem trailing track (COR-2525)', () => {
     );
   });
 
+  test('a control can centre within line one without changing the default trailing alignment', () => {
+    expect(stylesheet).toContain(".cinder-data-list[data-cinder-trailing-align='line']");
+    expect(stylesheet).toContain('min-block-size: var(--_cinder-line-one-height);');
+  });
+
   test('a DataList hands the track and the alignment its props name to its rows, as custom properties on the list', () => {
     const list = listOf({ trailingTrack: '9rem', trailingAlign: 'baseline' });
     expect(list.style.getPropertyValue('--cinder-stacked-list-item-trailing-track')).toBe('9rem');
     expect(list.style.getPropertyValue('--cinder-stacked-list-item-trailing-align')).toBe(
       'baseline',
     );
+  });
+
+  test('a DataList accepts the line-centred control alignment', () => {
+    const list = listOf({ trailingAlign: 'line' });
+    expect(list.style.getPropertyValue('--cinder-stacked-list-item-trailing-align')).toBe('line');
   });
 
   test('a DataList that passes neither sets neither, so each row sizes its own track', () => {

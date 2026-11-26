@@ -58,9 +58,10 @@ export type DataListProps<T> = Omit<
   trailingTrack?: string;
   /**
    * Where a two-line row's trailing region sits against the row's lines: `center` (the default)
-   * centers it on both lines, `baseline` holds it on the first line's baseline.
+   * centers it on both lines, `baseline` holds a figure on the first baseline, and `line` centers
+   * a control within the title's first line.
    */
-  trailingAlign?: 'center' | 'baseline';
+  trailingAlign?: 'center' | 'baseline' | 'line';
   /**
    * Group consecutive items under a header band, newest group first as the items arrive. Each
    * group is a nested list named by its header, so a screen reader announces the day. Items are
