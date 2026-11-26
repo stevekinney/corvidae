@@ -4,6 +4,7 @@ import {
   aliasNameFor,
   assignAliasNames,
   isHoistWorthy,
+  referencedRootAliases,
   selectAliases,
 } from './operation-client-aliases.ts';
 import {
@@ -46,6 +47,22 @@ const object = (...names: string[]): TypeNode => ({
     optional: false,
     value: { kind: 'primitive', text: 'string' },
   })),
+});
+
+it('exports only aliases referenced by operation roots, not nested alias bodies', () => {
+  const inner = object('a', 'b', 'c');
+  const outer: TypeNode = {
+    kind: 'object',
+    fields: [{ name: 'inner', optional: false, value: inner }],
+  };
+  const aliases = new Map([
+    [canonicalKey(inner), 'Inner'],
+    [canonicalKey(outer), 'Outer'],
+  ]);
+  expect([...referencedRootAliases([outer], aliases)]).toEqual(['Outer']);
+  expect([...referencedRootAliases([{ kind: 'array', element: inner }], aliases)]).toEqual([
+    'Inner',
+  ]);
 });
 
 const nestedPair = (): { inner: TypeNode; outer: TypeNode } => {

@@ -7,6 +7,8 @@ export function svelteClientSource(
   subscriptions: readonly CatalogOperationSnapshot[],
   outputFile: string,
   serverName: string,
+  commands = true,
+  providerExports = true,
 ): string {
   const usedNames = new Set<string>();
   const declaredReads = operations
@@ -25,7 +27,7 @@ export function svelteClientSource(
   };
   const bindings = operations.flatMap((operation) => {
     const behavior = operation.behavior;
-    if (!behavior) return [];
+    if (!behavior || (behavior.kind === 'command' && !commands)) return [];
     const name = bindingName(operation);
     const type = `ClientOperationTypes[${JSON.stringify(operation.name)}]`;
     if (behavior.kind === 'read')
@@ -58,11 +60,10 @@ export function svelteClientSource(
   if (!/^[A-Za-z]/u.test(provider))
     throw new Error('Svelte provider name must start with a letter');
   return `${GENERATED_HEADER}
-import { createReactiveRead, createCommand, ${operations.some((operation) => operation.behavior?.kind === 'read' && operation.behavior.pagination) ? 'createPagination, ' : ''}${streams.length ? 'createSubscription, ' : ''}type CatalogHost } from '@lostgradient/backchannel-svelte';
+import { createReactiveRead, ${commands ? 'createCommand, ' : ''}${operations.some((operation) => operation.behavior?.kind === 'read' && operation.behavior.pagination) ? 'createPagination, ' : ''}${streams.length ? 'createSubscription, ' : ''}type CatalogHost } from '@lostgradient/backchannel-svelte';
 import type { ClientOperationTypes } from './${outputFile}';
 ${streams.length ? "import type { SubscriptionOperationTypes } from './subscription-operations.generated.ts';" : ''}
-export { default as ${provider}Provider } from '@lostgradient/backchannel-svelte/provider';
-export { getCatalogHost as get${provider}Host } from '@lostgradient/backchannel-svelte';
+${providerExports ? `export { default as ${provider}Provider } from '@lostgradient/backchannel-svelte/provider';\nexport { getCatalogHost as get${provider}Host } from '@lostgradient/backchannel-svelte';` : ''}
 ${[...bindings, ...streams].join('\n\n')}
 `;
 }

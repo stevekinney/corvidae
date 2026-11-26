@@ -1,9 +1,6 @@
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
-import {
-  createReviewsClientWithTransport,
-  parseReviewsOpeningSnapshot,
-} from '../generated/portable-operation-client.generated.ts';
+import { createReviewsClientWithTransport, parseReviewsOpeningSnapshot } from './client.ts';
 
 const review = {
   source: 'bureau',
@@ -36,12 +33,16 @@ describe('the portable Reviews boundary', () => {
   });
   it('builds without dynamic code evaluation for a sandbox content security policy', async () => {
     const build = await Bun.build({
-      entrypoints: [
-        new URL('../generated/portable-operation-client.generated.ts', import.meta.url).pathname,
-      ],
+      entrypoints: [new URL('./client.ts', import.meta.url).pathname],
       target: 'browser',
+      metafile: true,
     });
     expect(build.success).toBe(true);
+    const inputs = Object.keys(build.metafile?.inputs ?? {});
+    expect(inputs.some((path) => /(?:^|\/)svelte(?:\/|$)|\.svelte(?:\.ts)?$/u.test(path))).toBe(
+      false,
+    );
+    expect(inputs.some((path) => /(?:^|\/)bureau\/src\//u.test(path))).toBe(false);
     const source = await build.outputs[0].text();
     expect(source).not.toMatch(/\b(?:eval|Function)\s*\(/u);
   });

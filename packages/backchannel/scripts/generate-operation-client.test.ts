@@ -298,6 +298,49 @@ describe('createOperationClientSources for a catalog that is not Weft', () => {
   });
 });
 
+it('selects deterministic client entries for the three consumer shapes', async () => {
+  const snapshot = fixtureSnapshot();
+  const operations = snapshot.operations.map((operation) => {
+    if (operation.name === 'probe.jobs.list')
+      return { ...operation, behavior: { kind: 'read' as const, key: ['limit'] } };
+    if (operation.name === 'probe.jobs.cancel')
+      return {
+        ...operation,
+        behavior: { kind: 'command' as const, invalidates: ['probe.jobs.list'] },
+      };
+    return operation;
+  });
+  for (const options of [
+    { serverName: 'ApiKeySettings', entries: ['client', 'svelte'] as const },
+    { serverName: 'ConnectedApps', entries: ['client', 'svelte'] as const },
+    {
+      serverName: 'Reviews',
+      entries: ['client', 'portable', 'svelte'] as const,
+      portableEntries: true,
+      svelteCommands: false,
+      svelteProvider: false,
+    },
+  ]) {
+    const configured = fixtureOptions({ ...options, svelte: true, typeOnlyClient: true });
+    const first = await createOperationClientSources({ ...snapshot, operations }, configured);
+    const second = await createOperationClientSources({ ...snapshot, operations }, configured);
+    expect([...first]).toEqual([...second]);
+    expect(first.get('operation-client.generated.ts')).toContain(
+      'export type ClientOperationTypes',
+    );
+    expect(first.has('operation-behaviors.generated.ts')).toBe(false);
+    expect(first.has('fetch-operation-client.generated.ts')).toBe(false);
+    expect(first.has('portable-operation-client.generated.ts')).toBe(
+      options.serverName === 'Reviews',
+    );
+    if (options.serverName === 'Reviews') {
+      expect(first.get('operation-client.svelte.ts')).not.toContain('useProbeJobsCancel');
+      expect(first.get('operation-client.svelte.ts')).not.toContain('ReviewsProvider');
+      expect(first.get('operation-client.svelte.ts')).not.toContain('getReviewsHost');
+    } else expect(first.get('operation-client.svelte.ts')).toContain('useProbeJobsCancel');
+  }
+});
+
 describe('createOperationClientSources: subscription methods', () => {
   const MAIN = 'operation-client.generated.ts';
   const TYPES = 'subscription-operations.generated.ts';
