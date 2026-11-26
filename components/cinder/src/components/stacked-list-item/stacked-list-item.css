@@ -581,7 +581,7 @@
       .cinder-stacked-list-item--lines
       .cinder-stacked-list-item__trailing {
       align-self: start;
-      min-block-size: var(--_cinder-line-one-height);
+      block-size: var(--_cinder-line-one-height);
     }
   }
 

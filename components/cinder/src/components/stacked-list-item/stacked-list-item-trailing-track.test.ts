@@ -54,7 +54,7 @@ describe('StackedListItem trailing track (COR-2525)', () => {
 
   test('a control can centre within line one without changing the default trailing alignment', () => {
     expect(stylesheet).toContain(".cinder-data-list[data-cinder-trailing-align='line']");
-    expect(stylesheet).toContain('min-block-size: var(--_cinder-line-one-height);');
+    expect(stylesheet).toContain('block-size: var(--_cinder-line-one-height);');
   });
 
   test('a DataList hands the track and the alignment its props name to its rows, as custom properties on the list', () => {
