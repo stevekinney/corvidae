@@ -1,7 +1,7 @@
 {
   "issue": "COR-2704",
   "branch": "codex/cor-2704-workers-npm",
-  "checkedAt": "57c9187e320bc5617af5a7bc1a049bc8e038f1a8",
+  "checkedAt": "607611310c38f5150dad0867bf76df6ddc330cbb",
   "briefVersion": "b7d1597c6e9b",
   "status": "READY",
   "criteria": [
@@ -18,7 +18,7 @@
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "focused checks isolated lane passed Miniflare capability, contention, and failed-expectation untouched-row tests."
+      "evidence": "focused checks isolated lane passed Miniflare capability, contention, 100-bind guard chunking, and later-chunk rollback tests."
     },
     {
       "id": "AC4",
