@@ -784,8 +784,14 @@ for (const width of [1280, 1920] as const) {
     page,
   }) => {
     await page.setViewportSize({ width, height: 720 });
-    await openHooks(page, '/hooks', [DEFAULT_ON]);
-    const row = page.locator('li[data-hook="default-on"]');
+    const onCall = {
+      ...DEFAULT_ON,
+      id: 'page-on-call',
+      name: 'Page on-call when a run fails',
+      declaredBy: null,
+    };
+    await openHooks(page, '/hooks', [onCall]);
+    const row = page.locator('li[data-hook="page-on-call"]');
     const [status, title, time, toggle] = await Promise.all([
       row.locator('.cinder-stacked-list-item__status').boundingBox(),
       row.locator('.cinder-stacked-list-item__title').boundingBox(),

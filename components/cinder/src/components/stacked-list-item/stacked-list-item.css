@@ -576,11 +576,13 @@
   /* A control has no useful text baseline. A list can instead put it in a box exactly as tall as
      line one, which centers the painted control with the status, title and time without changing
      the default two-line-centred trailing region. */
-  .cinder-data-list[data-cinder-trailing-align='line']
-    .cinder-stacked-list-item--lines
-    .cinder-stacked-list-item__trailing {
-    align-self: start;
-    min-block-size: var(--_cinder-line-one-height);
+  @container cinder-stacked-list-item (min-width: 640px) {
+    .cinder-data-list[data-cinder-trailing-align='line']
+      .cinder-stacked-list-item--lines
+      .cinder-stacked-list-item__trailing {
+      align-self: start;
+      min-block-size: var(--_cinder-line-one-height);
+    }
   }
 
   /*
