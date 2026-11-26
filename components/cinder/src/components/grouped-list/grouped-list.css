@@ -14,10 +14,12 @@
     min-inline-size: 0;
   }
 
+  /* The header and footer are outside the surface, so their text shares the page edge, the
+   * surface's own edge, rather than the rows' inset; only text inside a surface takes its inset
+   * (owner rule, COR-2768). */
   .cinder-grouped-list__header,
   .cinder-grouped-list__footer {
     margin: 0;
-    padding-inline: var(--cinder-space-4);
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-muted);
   }
@@ -32,15 +34,14 @@
   }
 
   /* The way to the full set when the group shows only part of it (COR-2765): a `more` link 8px
-   * under the group, or under its footer, on the footer's inset so its text starts where the rows'
-   * text does. The link's own hit area reaches 44px under a coarse pointer without taking layout, so
+   * under the group, or under its footer, on the group's edge like the footer, because it is
+   * outside the surface (COR-2768). The link's own hit area reaches 44px under a coarse pointer without taking layout, so
    * the gap is the same under a mouse and a finger. */
   .cinder-grouped-list__more-row {
     /* A flex row, so the link's box starts at the row's top and no line-box strut pads the gap. */
     display: flex;
     margin: 0;
     margin-block-start: var(--cinder-space-2);
-    padding-inline: var(--cinder-space-4);
   }
 
   .cinder-grouped-list__group {

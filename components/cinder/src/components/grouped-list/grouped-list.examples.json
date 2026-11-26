@@ -6,7 +6,7 @@
     {
       "id": "basic",
       "title": "Rows on one rounded surface",
-      "description": "The header and footer sit outside the group, rows are linked as a whole, and separators start at the text.",
+      "description": "The header and footer sit outside the group, on its edge rather than the rows' inset, rows are linked as a whole, and separators start at the text.",
       "code": "<script lang=\"ts\">\n  import { GroupedList, GroupedListItem } from '@lostgradient/cinder';\n  import Wifi from '@lucide/svelte/icons/wifi';\n</script>\n\n<GroupedList header=\"Wi-Fi\" footer=\"Known networks join automatically.\">\n  <GroupedListItem href=\"/settings/home\" leadingKind=\"icon\">\n    {#snippet leading()}<Wifi size={20} />{/snippet}\n    {#snippet title()}Home{/snippet}\n    {#snippet subtitle()}Connected{/snippet}\n    {#snippet trailing()}Strong{/snippet}\n  </GroupedListItem>\n  <GroupedListItem href=\"/settings/office\" selected>\n    {#snippet leading()}<Wifi size={20} />{/snippet}\n    {#snippet title()}Office{/snippet}\n    {#snippet subtitle()}Known network{/snippet}\n  </GroupedListItem>\n  <GroupedListItem>\n    {#snippet leading()}<Wifi size={20} />{/snippet}\n    {#snippet title()}Cafe{/snippet}\n  </GroupedListItem>\n</GroupedList>\n"
     },
     {
@@ -24,7 +24,7 @@
     {
       "id": "more",
       "title": "A link to the full set",
-      "description": "A group that shows only part of its set ends in a `more` link, 8px under the group and on the rows' text inset, instead of a link placed after the list.",
+      "description": "A group that shows only part of its set ends in a `more` link, 8px under the group and on its edge, instead of a link placed after the list.",
       "code": "<script lang=\"ts\">\n  import { GroupedList, GroupedListItem } from '@lostgradient/cinder';\n</script>\n\n<GroupedList\n  header=\"Recent events\"\n  footer=\"Showing the latest 3 of 128 events.\"\n  more={{ label: 'View the whole History', href: '/history' }}\n>\n  <GroupedListItem href=\"/events/1\">\n    {#snippet title()}Workflow started{/snippet}\n  </GroupedListItem>\n  <GroupedListItem href=\"/events/2\">\n    {#snippet title()}Activity scheduled{/snippet}\n  </GroupedListItem>\n  <GroupedListItem href=\"/events/3\">\n    {#snippet title()}Activity completed{/snippet}\n  </GroupedListItem>\n</GroupedList>\n"
     }
   ]

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { fixtureRoute } from './layout-fixture.ts';
 
 // COR-2765 AC3 and AC4: a GroupedList's `more` link sits 8px under the group (or its footer), its
-// text starts on the rows' text inset, and under touch its hit area reaches at least 20px above and
+// text starts on the group's edge, as the header and footer do (COR-2768), and under touch its hit area reaches at least 20px above and
 // below its centre without moving it.
 
 type Measured = {
@@ -10,7 +10,7 @@ type Measured = {
   footerBottom: number | null;
   linkTop: number;
   linkLeft: number;
-  titleLeft: number;
+  groupLeft: number;
   centerX: number;
   centerY: number;
 };
@@ -42,7 +42,7 @@ async function measure(page: import('@playwright/test').Page, testId: string): P
       footerBottom: footer === null ? null : footer.getBoundingClientRect().bottom,
       linkTop: linkText.top,
       linkLeft: linkText.left,
-      titleLeft: textBox('.cinder-grouped-list-item__title').left,
+      groupLeft: box('.cinder-grouped-list__group').left,
       centerX: link.left + link.width / 2,
       centerY: link.top + link.height / 2,
     };
@@ -50,7 +50,7 @@ async function measure(page: import('@playwright/test').Page, testId: string): P
 }
 
 for (const width of [320, 1280] as const) {
-  test(`the more link sits 8px under the group, on the rows' text inset, at ${width}px`, async ({
+  test(`the more link sits 8px under the group, on the group's edge, at ${width}px`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -59,7 +59,7 @@ for (const width of [320, 1280] as const) {
       const measured = await measure(page, testId);
       const above = measured.footerBottom ?? measured.groupBottom;
       expect(Math.abs(measured.linkTop - above - 8)).toBeLessThanOrEqual(2);
-      expect(Math.abs(measured.linkLeft - measured.titleLeft)).toBeLessThanOrEqual(1);
+      expect(Math.abs(measured.linkLeft - measured.groupLeft)).toBeLessThanOrEqual(1);
     }
   });
 }
@@ -81,7 +81,7 @@ test('under touch at 375px the more link keeps its gap and its hit area reaches 
       const measured = await measure(page, testId);
       const above = measured.footerBottom ?? measured.groupBottom;
       expect(Math.abs(measured.linkTop - above - 8)).toBeLessThanOrEqual(2);
-      expect(Math.abs(measured.linkLeft - measured.titleLeft)).toBeLessThanOrEqual(1);
+      expect(Math.abs(measured.linkLeft - measured.groupLeft)).toBeLessThanOrEqual(1);
       const hits = await page.evaluate(
         ({ x, y }) =>
           [y - 20, y, y + 20].map(

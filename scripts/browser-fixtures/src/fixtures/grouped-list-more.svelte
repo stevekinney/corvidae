@@ -3,7 +3,7 @@
 </script>
 
 <!-- COR-2765: a group that shows part of its set ends in a `more` link, 8px under the group (or
-     under its footer), on the rows' text inset. -->
+     under its footer), on the group's edge like the header and footer (COR-2768). -->
 <div class="example-frame">
   <div data-testid="more-only">
     <GroupedList
@@ -51,6 +51,5 @@
   .example-frame {
     display: grid;
     gap: var(--cinder-space-6);
-    max-inline-size: 28rem;
   }
 </style>

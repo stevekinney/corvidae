@@ -109,11 +109,47 @@ describe('GroupedList', () => {
       expect(footer!.compareDocumentPosition(row!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
-    test('the more row sits 8px under the group, on the footer inline inset', () => {
+    test('the more row sits 8px under the group, on the group edge (COR-2768)', () => {
       const row = declarationsFor(css, '.cinder-grouped-list__more-row');
       expect(row.get('margin-block-start')).toBe('var(--cinder-space-2)');
-      expect(row.get('padding-inline')).toBe('var(--cinder-space-4)');
+      expect(row.get('padding-inline') ?? '0').toBe('0');
       expect(row.get('display')).toBe('flex');
+    });
+  });
+
+  describe('header and footer edge (COR-2768)', () => {
+    const css = readFileSync(new URL('./grouped-list.css', import.meta.url), 'utf8');
+
+    test('no rule gives the header or footer inline padding or margin, so their text sits on the group edge', async () => {
+      const { parse } = await import('postcss');
+      const inline = /^(padding|margin)-inline(-start|-end)?$|^(padding|margin)$/;
+      const offenders: string[] = [];
+      parse(css).walkRules((rule) => {
+        const selectors = rule.selector.split(',').map((entry) => entry.trim());
+        const targets = selectors.some((entry) =>
+          /\.cinder-grouped-list__(header|footer)$/.test(entry),
+        );
+        if (!targets) return;
+        rule.walkDecls((declaration) => {
+          if (!inline.test(declaration.prop)) return;
+          const values = declaration.value.split(/\s+/);
+          // The shorthands `padding` and `margin` carry inline values in their 2nd and 4th places.
+          const inlineValues =
+            declaration.prop === 'padding' || declaration.prop === 'margin'
+              ? [values[1] ?? values[0], values[3] ?? values[1] ?? values[0]]
+              : values;
+          if (inlineValues.some((value) => value !== '0')) {
+            offenders.push(`${rule.selector} { ${declaration.prop}: ${declaration.value} }`);
+          }
+        });
+      });
+      expect(offenders).toEqual([]);
+    });
+
+    test('the quick-add row keeps its 16px inset, because its text is inside the surface', () => {
+      expect(declarationsFor(css, '.cinder-grouped-list__add').get('padding-inline-start')).toBe(
+        'var(--cinder-space-4)',
+      );
     });
   });
 });
