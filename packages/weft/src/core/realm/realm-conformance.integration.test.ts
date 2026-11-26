@@ -17,7 +17,7 @@
  */
 
 import { bunWorkerFactory } from '@lostgradient/weft/bun';
-import { ChildProcessRealm } from './child-process-realm.ts';
+import { ChildProcessRealm, prepareChildProcessRealm } from './child-process-realm.ts';
 import { FakeRealm } from './fake-realm.test-support.ts';
 import type {
   ConformanceRealm,
@@ -138,6 +138,8 @@ const childProcessScriptPath = new URL(
   './__fixtures__/revision-realm-child-process-entry.ts',
   import.meta.url,
 );
+
+await prepareChildProcessRealm();
 
 function childProcessRealmConformance(
   options: RealmConformanceCreateOptions = {},

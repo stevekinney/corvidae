@@ -42,8 +42,45 @@
  *
  * @module core/realm/child-process-realm
  */
-import { fork, type ChildProcess } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+type ChildProcess = {
+  readonly pid?: number;
+  readonly connected: boolean;
+  send?: (...args: unknown[]) => void;
+  kill: () => void;
+  on: (event: string, listener: (...args: unknown[]) => void) => void;
+};
+
+type ChildProcessNativeOperations = {
+  fork: (scriptPath: string, args: string[], options: Record<string, unknown>) => ChildProcess;
+  fileURLToPath: (url: URL) => string;
+};
+
+const CHILD_PROCESS_MODULE_SPECIFIER = 'node:child_process';
+const URL_MODULE_SPECIFIER = 'node:url';
+let loadedNativeOperations: Promise<ChildProcessNativeOperations> | undefined;
+let preparedNativeOperations: ChildProcessNativeOperations | undefined;
+
+async function loadNativeOperations(): Promise<ChildProcessNativeOperations> {
+  loadedNativeOperations ??= Promise.all([
+    import(CHILD_PROCESS_MODULE_SPECIFIER),
+    import(URL_MODULE_SPECIFIER),
+  ]).then(([{ fork }, { fileURLToPath }]) => ({ fork, fileURLToPath }));
+  const operations = await loadedNativeOperations;
+  preparedNativeOperations = operations;
+  return operations;
+}
+
+/** Creates the Node-only operations lazily so the browser root never loads them. */
+export async function createChildProcessRealm(
+  options: ChildProcessRealmOptions,
+): Promise<ChildProcessRealm> {
+  return new ChildProcessRealm(options, await loadNativeOperations());
+}
+
+/** Preloads the native operations for direct integration-level realm construction. */
+export async function prepareChildProcessRealm(): Promise<void> {
+  await loadNativeOperations();
+}
 
 import {
   isWorkerRealmReadyMessage,
@@ -113,6 +150,7 @@ export interface ChildProcessReclamation {
 export class ChildProcessRealm {
   readonly lifecycle: RealmLifecycle;
   readonly #options: ChildProcessRealmOptions;
+  readonly #native: ChildProcessNativeOperations;
   readonly #pendingTurns = new Map<number, PendingChildProcessTurn>();
   #process: ChildProcess;
   /**
@@ -142,8 +180,15 @@ export class ChildProcessRealm {
   #readyTimeout: ReturnType<typeof setTimeout> | null = null;
   #exitPromise!: Promise<number | null>;
 
-  constructor(options: ChildProcessRealmOptions) {
+  constructor(options: ChildProcessRealmOptions, native?: ChildProcessNativeOperations) {
     this.#options = options;
+    native ??= preparedNativeOperations;
+    if (native === undefined) {
+      throw new Error(
+        'ChildProcessRealm direct construction requires prepareChildProcessRealm(); use createChildProcessRealm() in production.',
+      );
+    }
+    this.#native = native;
     this.lifecycle = new RealmLifecycle(options);
     this.#process = this.#spawnProcess();
   }
@@ -357,8 +402,8 @@ export class ChildProcessRealm {
     const scriptPath =
       typeof this.#options.scriptPath === 'string'
         ? this.#options.scriptPath
-        : fileURLToPath(this.#options.scriptPath);
-    const child = fork(scriptPath, [], {
+        : this.#native.fileURLToPath(this.#options.scriptPath);
+    const child = this.#native.fork(scriptPath, [], {
       serialization: 'advanced',
       stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
       ...(this.#options.env === undefined ? {} : { env: this.#options.env }),

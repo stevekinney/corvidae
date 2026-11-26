@@ -34,37 +34,19 @@
  */
 
 import type { CreateWorker } from '../../workers/pool.ts';
-import type { ChildProcessRealm, ChildProcessRealmOptions } from './child-process-realm.ts';
+import { createChildProcessRealm, type ChildProcessRealmOptions } from './child-process-realm.ts';
 import type { RealmLifecycleState } from './realm-lifecycle.ts';
 import type { RevisionRealmDiagnosticsEntry } from './revision-realm-diagnostics.ts';
 import type { RevisionRealm } from './revision-realm.ts';
 import { WorkerRealm, type WorkerRealmOptions } from './worker-realm.ts';
 
 /**
- * `child-process-realm.ts` uses Node child-process IPC and `node:url`, neither of which
- * exists in a browser -- and `RevisionRealmPool` is reachable from this
- * package's root `Engine` export, which the root's own browser-bundle
- * portability gate (`src/root-testing-surface.test.ts`, COR-1192) builds and
- * scans. A STATIC `import` of `child-process-realm.ts` here would bundle
- * that code into the browser build regardless of whether `transport:
- * 'child-process'` is ever actually selected at runtime. Loading it through
- * `import()` with a specifier held in a variable (not a string literal
- * `import()` call, which Bun's bundler still resolves and inlines the same
- * way a static `import` does -- confirmed directly against Bun 1.4.2)
- * is what keeps the bundler from tracing into it at all: the browser build
- * emits an unresolved runtime `import(...)` call instead of inlining the
- * module, so the Node IPC implementation never appears in that bundle's output. Type-only
- * imports above are erased entirely and carry no such risk.
+ * `RevisionRealmPool` is reachable from the package root's `Engine` export,
+ * including its browser bundle. `child-process-realm.ts` therefore keeps its
+ * class portable and defers Node's IPC and URL builtins to its async factory.
+ * This static import is safe: selecting the child-process transport is what
+ * loads those builtin operations, never importing the root itself.
  */
-const CHILD_PROCESS_REALM_MODULE_SPECIFIER = './child-process-realm.ts';
-let cachedChildProcessRealmConstructor: Promise<typeof ChildProcessRealm> | undefined;
-
-function loadChildProcessRealmConstructor(): Promise<typeof ChildProcessRealm> {
-  cachedChildProcessRealmConstructor ??= import(CHILD_PROCESS_REALM_MODULE_SPECIFIER).then(
-    (module_: { ChildProcessRealm: typeof ChildProcessRealm }) => module_.ChildProcessRealm,
-  );
-  return cachedChildProcessRealmConstructor;
-}
 
 /** Which real transport a `RevisionRealmPool` spawns realms over. Omitted (or `'worker'`) is the unchanged default — see the module doc. */
 export type RevisionRealmTransport = 'worker' | 'child-process';
@@ -356,8 +338,7 @@ export class RevisionRealmPool {
     }
     this.#warmingReservations += 1;
     try {
-      const ChildProcessRealmConstructor = await loadChildProcessRealmConstructor();
-      const realm = new ChildProcessRealmConstructor(this.#buildChildProcessRealmOptions());
+      const realm = await createChildProcessRealm(this.#buildChildProcessRealmOptions());
       this.#realms.add(realm);
       this.#reportTransitions(realm);
       return realm;

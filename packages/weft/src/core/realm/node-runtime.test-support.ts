@@ -1,51 +1,44 @@
 import assert from 'node:assert/strict';
-import { basename, join } from 'node:path';
 import test from 'node:test';
-import { pathToFileURL } from 'node:url';
 
 import { MemoryStorage } from '@lostgradient/storage';
 import { nodeWorkerFactory } from '../../node-host.ts';
-import { ActivityWorkerDispatcher } from '../../workers/activity-worker-dispatcher.ts';
-import { WorkerPool } from '../../workers/pool.ts';
-import { ActivityRegistry } from '../activity-registry.ts';
-import { copyWorkflowDefinition } from '../engine/construction.ts';
+import { deriveWorkflowDefinitionRevision } from '../engine/definition-revision.ts';
 import { Engine } from '../engine/index.ts';
-import { buildRegistrationEntry } from '../engine/registration.ts';
-import { buildWorkflowManifestFromDefinition } from '../registry-workflow-manifest.ts';
 import { workflowSource } from '../source/index.ts';
-import { workflow, type WorkflowDefinition } from '../types.ts';
-import { ChildProcessRealm } from './child-process-realm.ts';
+import { activity, workflow, type WorkflowDefinition } from '../types.ts';
+import { NODE_RUNTIME_WORKFLOW_NAME } from './__fixtures__/node-runtime-activity-handler.fixture.ts';
 
-const fixtureUrl = (name: string) =>
-  pathToFileURL(
-    join(
-      process.cwd(),
-      basename(process.cwd()) === 'weft'
-        ? 'src/core/realm/__fixtures__'
-        : 'packages/weft/src/core/realm/__fixtures__',
-      name,
-    ),
-  );
+const echo = activity({
+  name: 'echo',
+  execute: async (input: unknown) => ({ activity: input }),
+});
+const throwActivity = activity({
+  name: 'throw',
+  execute: async () => {
+    throw new Error('node runtime child failure');
+  },
+});
 
-const activityWorkerUrl = fixtureUrl('node-runtime-activity-worker.mjs');
-const SENTINEL_WORKFLOW_NAME = 'r2e-sentinel-workflow';
-
-function placeholderDefinition(): WorkflowDefinition {
-  return workflow({ name: SENTINEL_WORKFLOW_NAME }).execute(async function* () {
-    throw new Error('realm fixture must execute this workflow');
-  });
+function realmDefinition(): WorkflowDefinition {
+  return workflow({ name: NODE_RUNTIME_WORKFLOW_NAME })
+    .activities({ echo, throw: throwActivity })
+    .execute(async function* () {
+      throw new Error('realm fixture must execute this workflow');
+    });
 }
 
 async function revisionFor(definition: WorkflowDefinition): Promise<string> {
-  const entry = buildRegistrationEntry(definition.name, definition);
-  const registered = copyWorkflowDefinition(definition.name, entry);
-  return (
-    await buildWorkflowManifestFromDefinition(registered, new ActivityRegistry().listDefinitions())
-  ).revision;
+  return deriveWorkflowDefinitionRevision(definition);
 }
 
-async function runRealm(transport: 'worker' | 'child-process', workerUrl: string): Promise<void> {
-  const revision = await revisionFor(placeholderDefinition());
+async function runRealm(
+  transport: 'worker' | 'child-process',
+  workerUrl: string,
+  input: 'native' | 'fail',
+): Promise<void> {
+  const definition = realmDefinition();
+  const revision = await revisionFor(definition);
   using engine = new Engine({
     storage: new MemoryStorage(),
     backgroundTasks: 'manual',
@@ -56,75 +49,61 @@ async function runRealm(transport: 'worker' | 'child-process', workerUrl: string
           ? {
               workerUrl,
               createWorker: nodeWorkerFactory,
-              expectedWorkflowTypes: [SENTINEL_WORKFLOW_NAME],
+              expectedWorkflowTypes: [NODE_RUNTIME_WORKFLOW_NAME],
               transport,
               maxRestarts: 0,
             }
           : undefined,
     },
   });
-  const definition = placeholderDefinition();
   engine.registerSource(
     workflowSource(
       {
-        name: SENTINEL_WORKFLOW_NAME,
+        name: NODE_RUNTIME_WORKFLOW_NAME,
         location: './sentinel.ts',
-        exportName: SENTINEL_WORKFLOW_NAME,
+        exportName: NODE_RUNTIME_WORKFLOW_NAME,
         revision,
       },
-      () => Promise.resolve({ [SENTINEL_WORKFLOW_NAME]: definition }),
+      () => Promise.resolve({ [NODE_RUNTIME_WORKFLOW_NAME]: definition }),
     ),
   );
-  await engine.resolveWorkflowSource(SENTINEL_WORKFLOW_NAME, revision);
-  const active = await engine.workflows.getActive(SENTINEL_WORKFLOW_NAME);
-  const activation = await engine.workflows.activate(SENTINEL_WORKFLOW_NAME, revision, {
+  await engine.resolveWorkflowSource(NODE_RUNTIME_WORKFLOW_NAME, revision);
+  const active = await engine.workflows.getActive(NODE_RUNTIME_WORKFLOW_NAME);
+  const activation = await engine.workflows.activate(NODE_RUNTIME_WORKFLOW_NAME, revision, {
     ...(active === null ? {} : { expectedGeneration: active.generation }),
     policy: { requireExactRevision: false },
   });
   assert.equal(activation.applied, true);
-  assert.deepEqual(await (await engine.start(SENTINEL_WORKFLOW_NAME, 'native')).result(), {
-    sawInput: 'native',
-    ranInsideRealm: true,
-  });
+  const handle = await engine.start(NODE_RUNTIME_WORKFLOW_NAME, input);
+  if (input === 'fail') {
+    await assert.rejects(handle.result(), /node runtime child failure/u);
+    return;
+  }
+  assert.deepEqual(await handle.result(), { activity: 'native' });
 }
 
-const childFailure = (async () => {
-  const realm = new ChildProcessRealm({
-    scriptPath: fixtureUrl('node-runtime-throwing-child.mjs'),
-    expectedWorkflowTypes: ['node-runtime'],
-    isReferenced: () => true,
-    maxRestarts: 0,
+void test('Node Engine executes one in-process activity workflow', async () => {
+  const definition = workflow({ name: 'node-runtime-in-process' })
+    .activities({ echo })
+    .execute(async function* (context, input: unknown) {
+      return yield* context.run(echo, input);
+    });
+  using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+  engine.register(definition);
+  assert.deepEqual(await (await engine.start(definition.name, 'native')).result(), {
+    activity: 'native',
   });
-  const readiness = await realm.waitUntilReady();
-  await realm.whenReclaimed();
-  return readiness;
-})();
-
-void test('Node worker adapter and child realm failure use portable transports', async () => {
-  await using pool = new WorkerPool({
-    concurrency: 1,
-    workerUrl: activityWorkerUrl,
-    createWorker: nodeWorkerFactory,
-  });
-  await using dispatcher = new ActivityWorkerDispatcher(pool);
-  const result = await dispatcher.execute({
-    operationId: 'node-runtime-activity',
-    activityName: 'echo',
-    input: { activity: 'ran' },
-    attempt: 1,
-  });
-  assert.deepEqual(result, {
-    operationId: 'node-runtime-activity',
-    status: 'completed',
-    result: { activity: 'ran' },
-  });
-
-  const readiness = await childFailure;
-  assert.equal(readiness.ok, false);
 });
 
-void test('Node Engine executes a real worker realm workflow', async () => {
-  const workerFixture = process.env.WEFT_NODE_WORKER_REALM_FIXTURE;
+void test('Node Engine executes one Worker realm activity workflow', async () => {
+  const workerFixture = process.env['WEFT_NODE_WORKER_REALM_FIXTURE'];
   assert.ok(workerFixture);
-  await runRealm('worker', workerFixture);
+  await runRealm('worker', workerFixture, 'native');
+});
+
+void test('Node Engine executes and fails child-process realm activity workflows', async () => {
+  const childFixture = process.env['WEFT_NODE_CHILD_REALM_FIXTURE'];
+  assert.ok(childFixture);
+  await runRealm('child-process', childFixture, 'native');
+  await runRealm('child-process', childFixture, 'fail');
 });
