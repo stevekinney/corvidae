@@ -4,11 +4,18 @@ import {
   type ServerResponse,
 } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
+import type { Socket as NodeSocket } from 'node:net';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { TlsOptions } from 'node:tls';
 
 import { WebSocketServer, WebSocket as WebSocketSocket } from 'ws';
+
+const requestAbortControllers = new WeakMap<
+  Request,
+  { controller: AbortController; socket: NodeSocket }
+>();
+const socketAbortControllers = new WeakMap<NodeSocket, Set<AbortController>>();
 
 type HostRouteHandler = (
   request: Request & { readonly params: Readonly<Record<string, string>> },
@@ -127,8 +134,17 @@ function requestFromIncoming(
     headers.set(name, Array.isArray(value) ? value.join(', ') : value);
   }
   const controller = new AbortController();
+  let controllers = socketAbortControllers.get(request.socket);
+  if (controllers === undefined) {
+    controllers = new Set();
+    socketAbortControllers.set(request.socket, controllers);
+    request.socket.once('close', () => {
+      for (const active of controllers ?? []) active.abort();
+      socketAbortControllers.delete(request.socket);
+    });
+  }
+  controllers.add(controller);
   request.once('aborted', () => controller.abort());
-  request.socket.once('close', () => controller.abort());
   const init: RequestInit & { duplex?: 'half' } = {
     headers,
     method: request.method ?? 'GET',
@@ -138,7 +154,16 @@ function requestFromIncoming(
     init.body = Readable.toWeb(request) as unknown as ReadableStream;
     init.duplex = 'half';
   }
-  return new Request(requestUrl(request, hostname, port, secure), init);
+  const fetchRequest = new Request(requestUrl(request, hostname, port, secure), init);
+  requestAbortControllers.set(fetchRequest, { controller, socket: request.socket });
+  return fetchRequest;
+}
+
+function releaseRequestAbort(request: Request): void {
+  const entry = requestAbortControllers.get(request);
+  if (entry === undefined) return;
+  socketAbortControllers.get(entry.socket)?.delete(entry.controller);
+  requestAbortControllers.delete(request);
 }
 
 async function sendResponse(response: ServerResponse, source: Response): Promise<void> {
@@ -193,6 +218,7 @@ async function rejectUpgrade(
 function routeFor(
   routes: ServeOptions<unknown>['routes'],
   pathname: string,
+  method: string,
 ): { route: HostRoute; params: Readonly<Record<string, string>> } | undefined {
   if (routes === undefined) return undefined;
   const candidates = Object.entries(routes)
@@ -200,12 +226,13 @@ function routeFor(
       pattern,
       route,
       rank: pattern.includes('*') ? 2 : pattern.includes(':') ? 1 : 0,
-      specificity: pattern
-        .split('/')
-        .filter((segment) => segment !== '' && !segment.startsWith(':') && segment !== '*').length,
     }))
-    .sort((left, right) => left.rank - right.rank || right.specificity - left.specificity);
+    .sort(
+      (left, right) =>
+        left.rank - right.rank || compareRouteSpecificity(left.pattern, right.pattern),
+    );
   for (const { pattern, route } of candidates) {
+    if (!routeHandlesMethod(route, method)) continue;
     const names: string[] = [];
     const expression = pattern
       .split('/')
@@ -228,6 +255,21 @@ function routeFor(
     };
   }
   return undefined;
+}
+
+function compareRouteSpecificity(left: string, right: string): number {
+  const leftSegments = left.split('/').filter(Boolean);
+  const rightSegments = right.split('/').filter(Boolean);
+  const rank = (segment: string): number => (segment === '*' ? 0 : segment.startsWith(':') ? 1 : 2);
+  for (let index = 0; index < Math.min(leftSegments.length, rightSegments.length); index++) {
+    const difference = rank(rightSegments[index]!) - rank(leftSegments[index]!);
+    if (difference !== 0) return difference;
+  }
+  return rightSegments.length - leftSegments.length;
+}
+
+function routeHandlesMethod(route: HostRoute, method: string): boolean {
+  return typeof route !== 'object' || route instanceof Response || Object.hasOwn(route, method);
 }
 
 /**
@@ -299,7 +341,7 @@ export function serve<Data>(options: ServeOptions<Data>): NodeHost<Data> {
     const request = requestFromIncoming(incoming, hostname, requestedPort, secure);
     requests.set(request, incoming);
     try {
-      const matched = routeFor(options.routes, new URL(request.url).pathname);
+      const matched = routeFor(options.routes, new URL(request.url).pathname, request.method);
       const routedRequest = Object.assign(request, { params: matched?.params ?? {} });
       const response = await (routeResponse(
         matched?.route,
@@ -311,6 +353,8 @@ export function serve<Data>(options: ServeOptions<Data>): NodeHost<Data> {
       if (!outgoing.headersSent)
         await sendResponse(outgoing, new Response('Internal server error', { status: 500 }));
       else outgoing.destroy();
+    } finally {
+      releaseRequestAbort(request);
     }
   });
 
@@ -324,6 +368,7 @@ export function serve<Data>(options: ServeOptions<Data>): NodeHost<Data> {
         const fallback = response ?? new Response('Not found', { status: 404 });
         void rejectUpgrade(socket, fallback);
       }
+      releaseRequestAbort(request);
       return undefined;
     });
   });
@@ -407,6 +452,7 @@ export function serve<Data>(options: ServeOptions<Data>): NodeHost<Data> {
       const upgrade = pending.get(request);
       if (upgrade === undefined) return false;
       pending.delete(request);
+      releaseRequestAbort(request);
       webSocketServer.handleUpgrade(upgrade.request, upgrade.socket, upgrade.head, (raw) => {
         webSocketServer.emit('connection', raw, upgrade.request, data);
       });
