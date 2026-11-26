@@ -1,7 +1,7 @@
 {
   "issue": "COR-2763",
   "branch": "steve/composable-peer-signed-approvals",
-  "checkedAt": "56547ac6fe",
+  "checkedAt": "0299ebe900502c7cd10f5953b7d3f24437d64f24",
   "briefVersion": "fe971b199f42",
   "status": "READY",
   "criteria": [
@@ -18,7 +18,7 @@
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "review-peer-visibility.integration.test.ts: simultaneous approvals, one decision and effect, settlement and repeat; multi-instance and Reviews operation tests passed"
+      "evidence": "review-peer-visibility.integration.test.ts: simultaneous approvals, one decision and effect, settlement and repeat; multi-instance and Reviews operation tests passed; review-continuation.test.ts covers stale-round adoption, a peer re-gate and continuation after peer settlement"
     },
     {
       "id": "AC4",
