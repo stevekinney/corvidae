@@ -126,7 +126,14 @@ function requestFromIncoming(
     if (value === undefined) continue;
     headers.set(name, Array.isArray(value) ? value.join(', ') : value);
   }
-  const init: RequestInit & { duplex?: 'half' } = { headers, method: request.method ?? 'GET' };
+  const controller = new AbortController();
+  request.once('aborted', () => controller.abort());
+  request.socket.once('close', () => controller.abort());
+  const init: RequestInit & { duplex?: 'half' } = {
+    headers,
+    method: request.method ?? 'GET',
+    signal: controller.signal,
+  };
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     init.body = Readable.toWeb(request) as unknown as ReadableStream;
     init.duplex = 'half';
@@ -193,8 +200,11 @@ function routeFor(
       pattern,
       route,
       rank: pattern.includes('*') ? 2 : pattern.includes(':') ? 1 : 0,
+      specificity: pattern
+        .split('/')
+        .filter((segment) => segment !== '' && !segment.startsWith(':') && segment !== '*').length,
     }))
-    .sort((left, right) => left.rank - right.rank);
+    .sort((left, right) => left.rank - right.rank || right.specificity - left.specificity);
   for (const { pattern, route } of candidates) {
     const names: string[] = [];
     const expression = pattern

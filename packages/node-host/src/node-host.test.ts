@@ -13,6 +13,7 @@ void test('Node host gives exact and parameter routes precedence over wildcards'
     fetch: () => new Response('fallback'),
     routes: {
       '/reports/*': () => new Response('wildcard'),
+      '/reports/private/*': () => new Response('private wildcard'),
       '/reports/:id': (request) => new Response(`parameter:${request.params['id']}`),
       '/reports/top': new Response('exact'),
       '/uploads': { POST: new Response('created', { status: 201 }) },
@@ -26,10 +27,35 @@ void test('Node host gives exact and parameter routes precedence over wildcards'
     assert.equal(await parameter.text(), 'parameter:Q 1');
     const wildcard = await fetch(new URL('/reports/with/slash', host.url));
     assert.equal(await wildcard.text(), 'wildcard');
+    const privateWildcard = await fetch(new URL('/reports/private/with/slash', host.url));
+    assert.equal(await privateWildcard.text(), 'private wildcard');
     const created = await fetch(new URL('/uploads', host.url), { method: 'POST' });
     assert.equal(created.status, 201);
     const fallback = await fetch(new URL('/uploads', host.url));
     assert.equal(await fallback.text(), 'fallback');
+  } finally {
+    host.stop(true);
+  }
+});
+
+void test('Node host aborts the Fetch request when its client disconnects', async () => {
+  const aborted = Promise.withResolvers<void>();
+  const host = serve({
+    port: 0,
+    fetch: (request) => {
+      request.signal.addEventListener('abort', () => aborted.resolve(), { once: true });
+      return new Response(new ReadableStream(), {
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    },
+  });
+  try {
+    await host.ready;
+    const controller = new AbortController();
+    const response = await fetch(host.url, { signal: controller.signal });
+    assert.equal(response.status, 200);
+    controller.abort();
+    await aborted.promise;
   } finally {
     host.stop(true);
   }
