@@ -4,6 +4,10 @@ export interface UpstreamHttpFailure {
   readonly status: number;
 }
 
+function isHttpFailureStatus(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 400 && value <= 599;
+}
+
 export function isUpstreamHttpFailure(value: unknown): value is UpstreamHttpFailure {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const fact = value as Record<string, unknown>;
@@ -11,10 +15,7 @@ export function isUpstreamHttpFailure(value: unknown): value is UpstreamHttpFail
     Object.hasOwn(fact, 'source') &&
     Object.hasOwn(fact, 'status') &&
     (fact['source'] === 'github' || fact['source'] === 'other') &&
-    typeof fact['status'] === 'number' &&
-    Number.isInteger(fact['status']) &&
-    fact['status'] >= 400 &&
-    fact['status'] <= 599 &&
+    isHttpFailureStatus(fact['status']) &&
     Object.keys(fact).every((key) => key === 'source' || key === 'status')
   );
 }
