@@ -1,0 +1,39 @@
+{
+  "issue": "COR-2676_COR-2757",
+  "branch": "chef/process-lease",
+  "checkedAt": "a9dc2b7650cdb74d8cd0a2e4b37a06df30830eac",
+  "briefVersion": "05fea83645a3",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "COR-2676 AC1",
+      "status": "met-on-branch",
+      "evidence": "packages/process-lease/src/owned-process-lease.integration.test.ts (moved from scripts/, 7 tests pass) reaches both waiter callbacks, reclaims the old owner and releases both leases under the default macOS tmpdir (/var/folders, a symlink to /private/var) and under a deliberately aliased temp parent (a symlink alias inside the scratch root); also green with TMPDIR set to the canonical /private path. On main the same test hangs 120 s at the guard checkpoint and fails (log tmp/chef/scratch/COR-2676-42cf694d/main-default.log)."
+    },
+    {
+      "id": "COR-2676 AC2",
+      "status": "met-on-branch",
+      "evidence": "The same file still refuses an ownerless directory, a live owner, a foreign record that names a live unrelated group (process left alive), and now an owner naming a non-canonical worktree spelling. The synthetic owners carry a real dead process's pid and start time and the canonical cwd, so the foreign-group refusal now comes from the gate-identity check, a stronger test than the old path mismatch."
+    },
+    {
+      "id": "COR-2757 AC1",
+      "status": "met-on-branch",
+      "evidence": "Process identity, owner records, the reclaim guard and removal, the owned lease, group and gate moved verbatim into packages/process-lease (@lostgradient/process-lease). applications/interborough/src/host/supervisor.ts imports it directly and nothing under scripts/. applications/interborough/src/host/process-ownership-boundary.slow.test.ts bundles supervisor.ts and cli.ts and asserts no input under the repository scripts/ or testing/ (red on main: owned-process-group.ts, owned-process-lease.ts, run-exclusively.ts, hang-guard.ts, environment-configuration.ts). Queue, host slots, memory admission, Turborepo defaults and runInProcessGroup stay in scripts/run-exclusively.ts, which imports the package; no re-export layer, every importer repointed."
+    },
+    {
+      "id": "COR-2757 AC2",
+      "status": "met-on-branch",
+      "evidence": "packages/process-lease/src/owned-process-lease.matrix.integration.test.ts: 10 owner states by acquire, retire, cleanup and repeated cleanup, 40 cells, all passing and identical on main before the move. applications/interborough/src/host/supervisor-process-ownership.integration.test.ts (8 tests): checkout startup holds exactly the scoped lease owned by its verified gate group and retires it on a clean stop; cleanup after a killed supervisor retires only the verified group and is a no-op the second time; a reused owner pid and another worktree's owner both fail closed, keep the record and leave the unrelated process alive."
+    },
+    {
+      "id": "COR-2757 AC3",
+      "status": "met-on-branch",
+      "evidence": "The same supervisor test bundles supervisor.ts alone (its only imports are runtime builtins), runs it from a directory outside any git worktree with none of the repository's scripts on disk: it starts, creates no tmp directory or lease, stops with exit 0 and leaves no host process. The extracted release archive built at a9dc2b7650 (bin/interborough start --port 0, cwd outside a checkout, PATH minimal): listening, /host/status 200, SIGTERM exit 0, cwd left empty, no lease; the archive holds no scripts directory. The build's own relocated-host verification also passed."
+    },
+    {
+      "id": "COR-2757 AC4",
+      "status": "met-on-branch",
+      "evidence": "Root scheduler tests preserved: run-exclusively, host-slots, host-sessions, bun-test-pool, host-lock-reclaim, merge-gate and ensure-cinder-owned suites pass in the focused and test:self:slow runs with imports repointed only. Checkout verification: the focused checks and the two slow lanes above. Source-absent verification: the archive probe above and build-release's relocated host. Tested archive revision: sourceSha a9dc2b7650cdb74d8cd0a2e4b37a06df30830eac, tarball sha256 f8c58f1c7c1ef5a67fa1a6bed7f811fd037f7a9429975192a9b59ae2c045c2de. Not run here: bun scripts/test-installed-release.ts --archive, which launches Chromium; its command is in the handoff."
+    }
+  ]
+}
