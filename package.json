@@ -74,6 +74,7 @@
     "@types/pg": "^8.15.5",
     "@types/pngjs": "^6.0.5",
     "@types/qrcode": "^1.5.6",
+    "@types/ws": "^8.18.1",
     "@types/unist": "^3.0.0",
     "@valibot/to-json-schema": "^1.7.0",
     "@xterm/addon-fit": "0.11.0",
@@ -144,6 +145,7 @@
     "unified": "^11.0.5",
     "unist-util-visit": "^5.0.0",
     "valibot": "^1.4.0",
+    "ws": "^8.21.0",
     "zod": "^4.6.6"
   },
   "catalogs": {

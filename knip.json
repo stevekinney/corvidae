@@ -101,6 +101,15 @@
         "!src/**/*.bench.ts!"
       ]
     },
+    "packages/node-host": {
+      "entry": ["**/*.test.ts", "**/*.integration.test.ts"],
+      "project": [
+        "src/**/*.ts!",
+        "!src/**/*.test.ts!",
+        "!src/**/*.test-support.ts!",
+        "!src/host-contract.ts!"
+      ]
+    },
     "packages/credentials": {
       "ignoreDependencies": ["@lostgradient/workerd-testing"],
       "entry": [
