@@ -36,8 +36,8 @@ type HashRuntimeOverride = {
 type ModuleLoader = (specifier: string) => unknown;
 
 type Hasher = {
-  update(data: string): Hasher;
-  digest(format: 'hex'): string;
+  update(data: string | Uint8Array): Hasher;
+  digest(format: 'hex' | 'base64url'): string;
 };
 type NodeCrypto = {
   createHash?: (algorithm: string) => Hasher;
@@ -167,6 +167,30 @@ export function sha256HexSync(text: string): string {
   }
 }
 
+/** Computes the SHA-256 hex digest of raw bytes synchronously. */
+export function sha256BytesHexSync(data: Uint8Array): string {
+  try {
+    const { createHash } = requireNodeCrypto();
+    if (!createHash) throw new Error('createHash is unavailable.');
+    return createHash('sha256').update(data).digest('hex');
+  } catch {
+    throw new Error(
+      'sha256BytesHexSync is not available in this environment. Use the async sha256BytesHex instead, which works everywhere via Web Crypto.',
+    );
+  }
+}
+
+/** Computes a SHA-256 digest in the base64url representation PKCE requires. */
+export function sha256Base64UrlSync(text: string): string {
+  try {
+    const { createHash } = requireNodeCrypto();
+    if (!createHash) throw new Error('createHash is unavailable.');
+    return createHash('sha256').update(text).digest('base64url');
+  } catch {
+    throw new Error('sha256Base64UrlSync is not available in this environment.');
+  }
+}
+
 /**
  * Computes an HMAC-SHA-256 hex signature synchronously.
  * Uses `node:crypto`, which Bun and Node.js both provide.
@@ -208,6 +232,22 @@ export function timingSafeEqualHex(left: string, right: string): boolean {
     return timingSafeEqual(leftBytes, rightBytes);
   } catch {
     throw new Error('timingSafeEqualHex is not available in this environment.');
+  }
+}
+
+/** Compares UTF-8 text with Node's timing-safe equality for equal-size inputs. */
+export function timingSafeEqualText(left: string, right: string): boolean {
+  const encoder = new TextEncoder();
+  const leftBytes = encoder.encode(left);
+  const rightBytes = encoder.encode(right);
+  if (leftBytes.length !== rightBytes.length) return false;
+
+  try {
+    const { timingSafeEqual } = requireNodeCrypto();
+    if (!timingSafeEqual) throw new Error('timingSafeEqual is unavailable.');
+    return timingSafeEqual(leftBytes, rightBytes);
+  } catch {
+    throw new Error('timingSafeEqualText is not available in this environment.');
   }
 }
 

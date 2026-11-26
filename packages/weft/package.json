@@ -44,6 +44,7 @@
     "@lostgradient/environmentalist": "catalog:",
     "@modelcontextprotocol/server": "catalog:",
     "@lostgradient/backchannel": "workspace:*",
+    "@lostgradient/cryptography": "workspace:*",
     "@lostgradient/storage": "workspace:*",
     "@lostgradient/storage-bun-sqlite": "workspace:*",
     "@lostgradient/storage-indexeddb": "workspace:*"
