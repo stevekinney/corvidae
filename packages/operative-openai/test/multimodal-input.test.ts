@@ -1,7 +1,7 @@
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import type { MediaContent, MultiModalContent } from 'conversationalist';
-import { Conversation, UnsupportedContentError } from 'conversationalist';
+import type { MediaContent, MultiModalContent } from 'conversationalist/testing';
+import { Conversation, UnsupportedContentError } from 'conversationalist/testing';
 
 import type { GenerateContext } from '@lostgradient/operative/provider-kit';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';

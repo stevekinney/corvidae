@@ -18,10 +18,10 @@ import {
   createMockEmbedder,
   createMemoryVectorStore,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
-import { WorkerDeploymentCatalog } from '@lostgradient/weft';
+import { WorkerDeploymentCatalog } from '@lostgradient/weft/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';

@@ -4,7 +4,7 @@
  * none of those shows its content. The matrix below drives every view into every state the way
  * the server would, with a stubbed `fetch` answering the view's probe.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { type QueryClient } from '@tanstack/svelte-query';
 import { render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';

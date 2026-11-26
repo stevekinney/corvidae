@@ -1,6 +1,6 @@
 import { createAgentSchedule as seedAgentSchedule } from '@lostgradient/operative';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { createLiveOperationRegistry } from '@lostgradient/weft';
+import { createLiveOperationRegistry } from '@lostgradient/weft/testing';
 import { expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

@@ -10,7 +10,7 @@ import { MemoryStorage } from '@lostgradient/storage';
 import { createRemoteClient } from '@lostgradient/velveteen/remote/client';
 import { defineRemote } from '@lostgradient/velveteen/remote/server';
 import { createApplication } from '@lostgradient/velveteen/server';
-import { createProcessLocalApprovalStateStore, createToolbox } from 'armorer';
+import { createProcessLocalApprovalStateStore, createToolbox } from 'armorer/testing';
 import { expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';

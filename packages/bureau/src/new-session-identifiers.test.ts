@@ -13,8 +13,8 @@ import {
 } from '@lostgradient/operative';
 import { createMockGenerate } from '@lostgradient/operative/testing';
 import { MemoryStorage, textValueStore, type Storage } from '@lostgradient/storage';
-import { createToolbox } from 'armorer';
-import { createConversationHistory } from 'conversationalist';
+import { createToolbox } from 'armorer/testing';
+import { createConversationHistory } from 'conversationalist/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { BureauError } from './bureau-errors';

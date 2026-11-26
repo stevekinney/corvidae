@@ -15,11 +15,11 @@ import * as testing from './testing/index.ts';
  * `@lostgradient/weft/testing`; the bundle check below is the gate the release tripped on.
  */
 describe('the root entry and the testing barrel', () => {
-  test('the root exports the portable testing primitives', () => {
-    expect(typeof root.TestEngine).toBe('function');
-    expect(typeof root.TimeControl).toBe('function');
-    expect(typeof root.ActivityMockRegistry).toBe('function');
-    expect(typeof root.withChaos).toBe('function');
+  test('the testing entry exports the testing primitives', () => {
+    expect(typeof testing.TestEngine).toBe('function');
+    expect(typeof testing.TimeControl).toBe('function');
+    expect(typeof testing.ActivityMockRegistry).toBe('function');
+    expect(typeof testing.withChaos).toBe('function');
     expect(typeof root.flushPortableMicrotasks).toBe('function');
   });
 

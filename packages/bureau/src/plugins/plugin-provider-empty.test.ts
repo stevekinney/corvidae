@@ -3,7 +3,7 @@
  * plugin, which keeps running with its other contributions.
  */
 import { definePlugin, type PluginProvider } from '@lostgradient/interborough-plugin';
-import { createTool } from 'armorer';
+import { createTool } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { composePlugins } from './compose-plugins';

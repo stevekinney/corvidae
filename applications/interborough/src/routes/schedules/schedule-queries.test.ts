@@ -8,7 +8,7 @@
 import { rejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { HttpClientError, isWeftFault, type ScheduleSummary } from '@lostgradient/weft';
+import { HttpClientError, isWeftFault, type ScheduleSummary } from '@lostgradient/weft/testing';
 
 import { classifyFault } from '../../lib/faults.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';

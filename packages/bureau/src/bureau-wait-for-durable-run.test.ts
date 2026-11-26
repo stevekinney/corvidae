@@ -4,8 +4,8 @@
  * the engine that does.
  */
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
-import type { WorkflowState } from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
+import type { WorkflowState } from '@lostgradient/weft/testing';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';

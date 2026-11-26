@@ -9,7 +9,7 @@ import {
   type HumanInputSchema,
 } from '@lostgradient/operative';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { RegistryAgnosticEngine } from '@lostgradient/weft';
+import type { RegistryAgnosticEngine } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { createRunHumanWaits, type RunHumanWaitsDependencies } from './run-human-waits';

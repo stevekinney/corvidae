@@ -6,15 +6,15 @@
  */
 import { HookRegistry } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import type {
   ConversationHistory,
   MediaContent,
   Message,
   MultiModalContent,
-} from 'conversationalist';
-import { Conversation } from 'conversationalist';
+} from 'conversationalist/testing';
+import { Conversation } from 'conversationalist/testing';
 import { z } from 'zod';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createSlidingWindowStrategy } from '../src/context/compaction-strategies';

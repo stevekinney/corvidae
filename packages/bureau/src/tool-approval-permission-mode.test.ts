@@ -5,7 +5,7 @@
  * the rule, and not derived from the code under test. The same table is asserted twice: on the
  * pure decision, and on the outcome of a real toolbox call through the hook.
  */
-import { createTool, createToolbox, createToolCall, type ToolMetadata } from 'armorer';
+import { createTool, createToolbox, createToolCall, type ToolMetadata } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

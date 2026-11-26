@@ -1,8 +1,8 @@
 import { CompletableEventTarget, HookRegistry } from '@lostgradient/lifecycle';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, type ConversationHistory } from 'conversationalist';
+import { Conversation, type ConversationHistory } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import type { AgentRun, SuccessfulRunResult } from './agent-run';

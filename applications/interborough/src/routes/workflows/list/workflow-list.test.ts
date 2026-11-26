@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window, type DetachedWindowAPI } from 'happy-dom';
 
-import type { WorkflowSummary } from '@lostgradient/weft';
+import type { WorkflowSummary } from '@lostgradient/weft/testing';
 import { QueryClient } from '@tanstack/svelte-query';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 

@@ -8,7 +8,7 @@ const app = await createApplication({ generation: { directory: '.', manifest: { 
 try { for (const path of ['/', '/equipment']) { const response = await app.fetch(new Request('http://consumer.test' + path)); if (response.status !== 200 || !(await response.text()).includes('equipment page')) throw new Error('standalone page failed ' + path); } } finally { await app.dispose(); }
 console.log('standalone Velveteen passed');
 `,
-  "probe/standalone-armorer.ts": `import { createTool, createToolbox } from 'armorer';
+  "probe/standalone-armorer.ts": `import { createTool, createToolbox } from 'armorer/testing';
 import { createToolboxMcpHandler } from 'armorer/mcp/http';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { z } from 'zod';
@@ -85,7 +85,7 @@ const result = await client['equipment.lookup']({ assetId: 'CAM-7' });
 if (result.name !== 'Studio camera') throw new Error('generated script client read the wrong name');
 console.log(JSON.stringify(result));
 `,
-  "probe/remote.ts": `import { createInMemoryMcpOAuthTokenStorage, createMCP, createToolbox } from 'armorer';
+  "probe/remote.ts": `import { createInMemoryMcpOAuthTokenStorage, createMCP, createToolbox } from 'armorer/testing';
 import { completeToolSourceAuthorization, loadToolSource } from 'armorer/tool-sources';
 import { equipment, lookup } from '../src/equipment.ts';
 
@@ -147,7 +147,7 @@ console.log('installed OAuth tool source passed');
   "probe/equipment.ts": `import { createOperationHandler, principalFromApiKey } from '@lostgradient/backchannel';
 import { createOperationMcpMount } from '@lostgradient/backchannel-mcp';
 import { createToolboxMcpHandler } from 'armorer/mcp/http';
-import { fromMcpClientTools } from 'armorer';
+import { fromMcpClientTools } from 'armorer/testing';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { equipment, lookup, operations, toolbox } from '../src/equipment.ts';
 
@@ -206,7 +206,7 @@ try {
 } finally { await native.close(); }
 console.log('installed projected catalog MCP: both eras passed');
 `,
-  "src/equipment.ts": `import { createTool, createToolbox } from 'armorer';
+  "src/equipment.ts": `import { createTool, createToolbox } from 'armorer/testing';
 import { operationsFromToolbox } from '@lostgradient/backchannel-armorer';
 import { z } from 'zod';
 

@@ -5,7 +5,7 @@
  * in flight and one when it fails. The plain create, its validation and its start failure are
  * `goals-page.test.ts`; the draft's rules are `goal-form-state.svelte.test.ts`.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 

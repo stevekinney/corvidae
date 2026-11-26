@@ -3,7 +3,7 @@
  * within 256 KiB, newest messages kept when it has to be cut.
  */
 import { describe, expect, it } from 'bun:test';
-import { Conversation, withMessageId } from 'conversationalist';
+import { Conversation, withMessageId } from 'conversationalist/testing';
 
 import { createContextEpochSealer } from './context-epoch.ts';
 import {

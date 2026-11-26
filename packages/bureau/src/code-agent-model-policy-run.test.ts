@@ -14,9 +14,9 @@ import {
   withBackendDescriptors,
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createCatalogDispatcher } from './bureau-catalog-dispatch';

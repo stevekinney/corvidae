@@ -12,7 +12,7 @@ import {
   createToolbox,
   createToolCall,
   type ToolMetadata,
-} from 'armorer';
+} from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

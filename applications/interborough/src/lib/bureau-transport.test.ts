@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 
 import { postBureauCall } from './bureau-transport.ts';
 import { classifyFault } from './faults.ts';

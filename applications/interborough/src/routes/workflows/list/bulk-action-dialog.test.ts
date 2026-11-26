@@ -1,8 +1,8 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import type { BulkOperationDryRunResult } from '@lostgradient/weft';
-import { HttpClientError } from '@lostgradient/weft';
+import type { BulkOperationDryRunResult } from '@lostgradient/weft/testing';
+import { HttpClientError } from '@lostgradient/weft/testing';
 
 import BulkActionDialog from './bulk-action-dialog.svelte';
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { ContentPartLineage } from 'conversationalist';
+import type { ContentPartLineage } from 'conversationalist/testing';
 
 import { lineageToJSON } from './input-lineage';
 

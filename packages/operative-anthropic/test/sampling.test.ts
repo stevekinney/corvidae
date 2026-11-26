@@ -27,9 +27,9 @@
  * marked `synthetic` are not API responses: they recombine only the recorded
  * sentences, or are authored negatives.
  */
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import {
   type GenerateContext,

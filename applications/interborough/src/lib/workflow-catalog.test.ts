@@ -4,7 +4,7 @@
  * type, and what a file's actions are.
  */
 import { rejectionOf } from '@lostgradient/testing';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {

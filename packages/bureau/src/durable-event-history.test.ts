@@ -28,7 +28,7 @@ import {
   SessionDeletedEvent,
   SessionSavedEvent,
 } from '@lostgradient/operative';
-import { createFleetEventFeed, type FleetEventFeed, KEYS } from '@lostgradient/weft';
+import { createFleetEventFeed, type FleetEventFeed, KEYS } from '@lostgradient/weft/testing';
 import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 

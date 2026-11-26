@@ -9,11 +9,11 @@
  */
 import { HookRegistry } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { Engine } from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
+import { Engine } from '@lostgradient/weft/testing';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import type { MediaContent } from 'conversationalist';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import type { MediaContent } from 'conversationalist/testing';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
 
 import type { MediaCostEstimator } from '../src/context/types';
 import { createEarlyStoppingHandler } from '../src/create-early-stopping-handler';

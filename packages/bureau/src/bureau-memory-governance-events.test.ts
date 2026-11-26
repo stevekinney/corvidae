@@ -13,7 +13,7 @@ import {
   type MemoryGovernanceNotification,
   createMemoryVectorStore,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

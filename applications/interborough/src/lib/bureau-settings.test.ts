@@ -1,5 +1,5 @@
 import { SETTING_LOCK_REASONS as BUREAU_LOCK_REASONS } from '@lostgradient/bureau';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {

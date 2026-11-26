@@ -4,7 +4,7 @@
  */
 import { EventType } from '@ag-ui/core';
 import { type Toolbox } from '@lostgradient/operative';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterAll, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

@@ -5,9 +5,9 @@
  * enforced.
  */
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { createTestToolbox, createTool } from 'armorer';
+import { createTestToolbox, createTool } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { HookRegistry } from '@lostgradient/lifecycle';

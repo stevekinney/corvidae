@@ -14,7 +14,7 @@ import {
   withBackendDescriptors,
 } from '@lostgradient/operative';
 import { createMockGenerate } from '@lostgradient/operative/testing';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';

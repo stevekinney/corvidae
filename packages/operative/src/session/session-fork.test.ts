@@ -1,13 +1,13 @@
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import type { ConversationHistory } from 'conversationalist';
+import type { ConversationHistory } from 'conversationalist/testing';
 import {
   createConversationHistory,
   getPendingToolCalls,
   validateConversationHistoryIntegrity,
-} from 'conversationalist';
+} from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { createAgentSession, type AgentSession } from '../agent-session';

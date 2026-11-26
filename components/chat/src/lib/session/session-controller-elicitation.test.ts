@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { ToolAction } from 'conversationalist';
+import type { ToolAction } from 'conversationalist/testing';
 import { createConversationHistory } from '../components/chat/builders.ts';
 import {
   abortedFrame,

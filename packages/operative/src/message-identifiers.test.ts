@@ -1,12 +1,12 @@
 import { HookRegistry } from '@lostgradient/lifecycle';
-import { createTestToolbox, createTool } from 'armorer';
+import { createTestToolbox, createTool } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import {
   Conversation,
   defineMessagePlugin,
   type MessageInput,
   withMessageId,
-} from 'conversationalist';
+} from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { noToolCalls } from './conditions/predicates';

@@ -5,7 +5,7 @@
 import { definePlugin, type PluginDescriptor } from '@lostgradient/interborough-plugin';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { createTool } from 'armorer';
+import { createTool } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

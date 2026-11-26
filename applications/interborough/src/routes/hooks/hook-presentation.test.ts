@@ -2,7 +2,7 @@
  * How the hooks pages say what the Bureau holds (COR-1858): an event in plain words and its area,
  * the events an action may not listen to, a hook as a sentence, and what a delivery came to.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import type {

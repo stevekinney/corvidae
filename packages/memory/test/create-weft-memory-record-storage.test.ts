@@ -5,7 +5,7 @@ import {
   encodeStorageKeyComponent,
   MemoryStorage,
 } from '@lostgradient/storage';
-import { WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
+import { WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft/testing';
 import { beforeEach, describe, expect, it } from 'bun:test';
 
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

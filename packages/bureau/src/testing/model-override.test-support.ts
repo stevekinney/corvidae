@@ -4,7 +4,7 @@
  * told to use and can hold its first step open while a test steers.
  */
 import { type BackendDescriptor, type GenerateFunction } from '@lostgradient/operative';
-import { createTool } from 'armorer';
+import { createTool } from 'armorer/testing';
 import { z } from 'zod';
 
 import type { ModelsOptions } from '../models/create-models.ts';

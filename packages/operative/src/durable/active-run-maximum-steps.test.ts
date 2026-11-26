@@ -1,8 +1,8 @@
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { createActiveRun } from '../create-run';

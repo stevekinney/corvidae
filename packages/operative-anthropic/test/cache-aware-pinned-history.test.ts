@@ -1,6 +1,6 @@
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { createContextAssembler, createTokenBudget } from '@lostgradient/operative';
 import { createAnthropicProvider } from '../src/anthropic.ts';

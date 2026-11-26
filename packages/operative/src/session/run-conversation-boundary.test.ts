@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import type { ConversationHistory } from 'conversationalist';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import type { ConversationHistory } from 'conversationalist/testing';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
 
 import type { RunConversationBoundary, RunRef } from '../agent-session';
 import {

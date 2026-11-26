@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { WorkflowTimelineStatus } from '@lostgradient/weft';
+import type { WorkflowTimelineStatus } from '@lostgradient/weft/testing';
 
 import type { RunStepStatus } from '@lostgradient/cinder';
 

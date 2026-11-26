@@ -9,7 +9,7 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { CLIENT_OPERATION_NAMES, HttpClient } from '@lostgradient/weft';
+import { CLIENT_OPERATION_NAMES, HttpClient } from '@lostgradient/weft/testing';
 
 // Weft does not export its route table, and a console conformance test is not reason enough to
 // publish one: this reaches the table by path, so the check still compares every `Method` against

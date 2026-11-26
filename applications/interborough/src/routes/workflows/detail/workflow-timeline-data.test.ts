@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { WorkflowTimelineEntry } from '@lostgradient/weft';
+import type { WorkflowTimelineEntry } from '@lostgradient/weft/testing';
 
 import { signalHistoryFromTimeline } from './workflow-timeline-data.ts';
 

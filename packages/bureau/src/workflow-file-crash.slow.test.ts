@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent } from '@lostgradient/operative';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { KEYS } from '@lostgradient/weft';
+import { KEYS } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';

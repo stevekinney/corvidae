@@ -1,6 +1,6 @@
-import { createTestToolbox } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, type ConversationEvent, type Message } from 'conversationalist';
+import { Conversation, type ConversationEvent, type Message } from 'conversationalist/testing';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createOverflowMutator } from '../../src/retry/overflow-mutator';

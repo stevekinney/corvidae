@@ -9,7 +9,7 @@ import {
   runEventsSubscriptionOperation,
   StepStartedEvent,
 } from '@lostgradient/operative';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { type BureauEventEnvelope, createBureauEventFeed } from './bureau-event-feed.ts';

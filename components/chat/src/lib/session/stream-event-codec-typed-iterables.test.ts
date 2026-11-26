@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 import { expectRejected, hostileEvent } from './stream-event-codec-test-helpers.ts';
 import type { ChatStreamEvent } from './stream-event-codec.ts';
 import { guardChatStreamEvents } from './stream-event-codec.ts';

@@ -14,8 +14,8 @@ import {
   createLiveOperationRegistry,
   decode,
   KEYS,
-} from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
+} from '@lostgradient/weft/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterEach, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

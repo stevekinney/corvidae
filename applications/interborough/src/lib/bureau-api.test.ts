@@ -4,7 +4,7 @@
  * `HttpClientError` the console treats; and a call's signal and `fetch` reach the request.
  */
 import { rejectionOf } from '@lostgradient/testing';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { bureauClient } from './bureau-api.ts';

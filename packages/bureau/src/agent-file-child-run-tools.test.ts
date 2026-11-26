@@ -10,7 +10,7 @@ import {
   type GenerateFunction,
 } from '@lostgradient/operative';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
-import { createTool, type Tool } from 'armorer';
+import { createTool, type Tool } from 'armorer/testing';
 import { z } from 'zod';
 import { afterEach, describe, expect, it } from 'bun:test';
 

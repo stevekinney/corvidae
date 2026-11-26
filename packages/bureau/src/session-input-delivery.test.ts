@@ -5,9 +5,9 @@ import {
   createAgent,
 } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { type Conversation, CURRENT_SCHEMA_VERSION } from 'conversationalist';
+import { type Conversation, CURRENT_SCHEMA_VERSION } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';

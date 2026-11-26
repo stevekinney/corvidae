@@ -1,5 +1,5 @@
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { AUTHORIZATION_SCOPES, MCP_LEGACY_PROTOCOL_VERSION } from '@lostgradient/weft';
+import { AUTHORIZATION_SCOPES, MCP_LEGACY_PROTOCOL_VERSION } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

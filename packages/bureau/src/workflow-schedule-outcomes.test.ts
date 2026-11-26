@@ -11,7 +11,7 @@ import {
   WorkflowFailedEvent,
   WorkflowTimedOutEvent,
   type WorkflowScheduleProvenance,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import {

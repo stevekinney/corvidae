@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import type { WorkflowTimelineEntry } from '@lostgradient/weft';
+import type { WorkflowTimelineEntry } from '@lostgradient/weft/testing';
 
 import { canonicalStepCount, failedStepIndexOf, isRetryableStep } from './workflow-run-retry';
 

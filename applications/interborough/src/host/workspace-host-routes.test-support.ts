@@ -1,7 +1,7 @@
 /** Six-actor probes for the host's real administrator routes. */
 import type { WorkspaceMembership } from '@lostgradient/bureau';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { createLiveOperationRegistry } from '@lostgradient/weft';
+import { createLiveOperationRegistry } from '@lostgradient/weft/testing';
 import { expect } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { connect } from 'node:net';

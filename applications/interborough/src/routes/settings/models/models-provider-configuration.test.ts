@@ -4,7 +4,7 @@
  * `contributed-configuration-form` and store it through `PUT /host/plugins/<plugin>`, the value
  * Settings › Plugins edits. The Bureau is a stub and both host routes are stand-ins.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 

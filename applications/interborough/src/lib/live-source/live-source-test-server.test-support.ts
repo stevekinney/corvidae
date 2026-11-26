@@ -46,7 +46,7 @@
  * Reuses `src/lib/scopes.svelte.ts`'s `AUTHORIZATION_SCOPES` rather than a
  * second hand-copy of weft's (not-yet-publicly-exported) scope vocabulary.
  */
-import { Engine, serve } from '@lostgradient/weft';
+import { Engine, serve } from '@lostgradient/weft/testing';
 
 import { workflows } from '../../../fixtures/workflows.ts';
 import { AUTHORIZATION_SCOPES } from '../scopes.svelte.ts';

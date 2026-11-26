@@ -4,7 +4,7 @@
  * read is skipped rather than sent and answered with a fault.
  */
 import { rejectionOf } from '@lostgradient/testing';
-import type { HttpClient } from '@lostgradient/weft';
+import type { HttpClient } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import type { AgentSummary, ChatContext } from '../../lib/bureau-client.ts';

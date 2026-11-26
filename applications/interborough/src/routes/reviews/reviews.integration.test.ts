@@ -9,7 +9,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';

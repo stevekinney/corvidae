@@ -4,7 +4,7 @@
  * cards read is here: the reviews waiting, the problems that need attention, the schedules, the
  * agents and their tools, the chats, the runs, and the host's providers.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 
 import type { AttentionItem } from '../../lib/bureau-attention.ts';
 import type { ChatContext } from '../../lib/bureau-client.ts';

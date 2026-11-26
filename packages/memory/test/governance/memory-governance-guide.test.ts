@@ -30,7 +30,7 @@ import {
   type MemoryRecordStorage,
   MemoryRecordVersionConflictError,
   withEmbeddingCache,
-} from '../../src/index';
+} from '../../src/test/index';
 import {
   authority,
   createGovernedFixture,

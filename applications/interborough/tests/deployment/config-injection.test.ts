@@ -18,7 +18,7 @@
  * 'sse'` succeeds and the client is a real `HttpClient`", not a runtime
  * transport probe.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 

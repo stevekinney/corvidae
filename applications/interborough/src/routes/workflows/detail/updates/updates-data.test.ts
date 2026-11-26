@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 
 import {
   describeUpdate,

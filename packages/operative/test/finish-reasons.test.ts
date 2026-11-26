@@ -1,7 +1,7 @@
 import { HookRegistry } from '@lostgradient/lifecycle';
-import { createTestToolbox } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { assertDefined } from './assert-defined';
 
 import { noToolCalls } from '../src/conditions/predicates';

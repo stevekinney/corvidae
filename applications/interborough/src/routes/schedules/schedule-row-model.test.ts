@@ -6,7 +6,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import type { ScheduleSummary } from '@lostgradient/weft';
+import type { ScheduleSummary } from '@lostgradient/weft/testing';
 
 import type { ScheduleAttention } from '../../lib/bureau-attention.ts';
 import type { AgentSummary } from '../../lib/bureau-client.ts';

@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import type { ScheduleSummary, WorkflowSummary } from '@lostgradient/weft';
+import type { ScheduleSummary, WorkflowSummary } from '@lostgradient/weft/testing';
 
 import type { MissedFire } from '../../lib/bureau-schedules.ts';
 import type { RowBlocker } from './schedule-row-model.ts';

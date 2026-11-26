@@ -16,7 +16,7 @@ import {
   type MemoryAuthority,
   createMemoryVectorStore,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { createAgent, type GenerateFunction, type InputDetector } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';

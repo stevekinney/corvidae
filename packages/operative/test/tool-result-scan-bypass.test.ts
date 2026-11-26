@@ -4,10 +4,10 @@
  * answer, and `scanToolResult`, which a host runs over an approved call's result.
  */
 import { HookRegistry } from '@lostgradient/lifecycle';
-import type { ToolExecutionResult } from 'armorer';
-import { createTool, createToolbox } from 'armorer';
+import type { ToolExecutionResult } from 'armorer/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { createActiveRun } from '../src/create-run';

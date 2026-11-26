@@ -6,7 +6,7 @@
  */
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

@@ -3,7 +3,7 @@ import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/cli
 import { callJsonRpc } from '@lostgradient/backchannel/client';
 import { resolve } from 'node:path';
 import { createSqliteStorageFixture } from '../test/storage-fixtures';
-import { WEFT_SCOPE_VOCABULARY, Engine, workflow } from '@lostgradient/weft';
+import { WEFT_SCOPE_VOCABULARY, Engine, workflow } from '@lostgradient/weft/testing';
 import {
   createOperationHandler,
   createOperationHandlerAuthenticator,
@@ -13,7 +13,7 @@ import {
   type WorkspaceIdentity,
 } from '@lostgradient/backchannel';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { createTool, createToolbox, type Toolbox } from 'armorer';
+import { createTool, createToolbox, type Toolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { workspaceConformanceLedger } from './workspace-conformance-ledger.test-support.ts';
 import { z } from 'zod';

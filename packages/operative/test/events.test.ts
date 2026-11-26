@@ -1,8 +1,8 @@
 import { assertDefined } from './assert-defined';
 /* eslint-disable @typescript-eslint/no-deprecated -- exercises the deprecated `BudgetExceededEvent` on purpose for its own construction-payload coverage. */
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it, spyOn } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { noToolCalls } from '../src/conditions/predicates';

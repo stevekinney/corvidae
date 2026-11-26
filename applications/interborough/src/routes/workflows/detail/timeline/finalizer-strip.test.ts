@@ -1,7 +1,7 @@
 import { render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import type { WorkflowFinalizerStatus } from '@lostgradient/weft';
+import type { WorkflowFinalizerStatus } from '@lostgradient/weft/testing';
 
 import FinalizerStrip from './finalizer-strip.svelte';
 

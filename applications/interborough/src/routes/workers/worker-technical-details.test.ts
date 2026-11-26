@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { fireEvent, render, within } from '@testing-library/svelte';
 import { createRawSnippet } from 'svelte';
 
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 
 import type { ScopeGate } from '../../lib/scopes.svelte.ts';
 import type { WorkerSummary } from './worker-catalog-types.ts';

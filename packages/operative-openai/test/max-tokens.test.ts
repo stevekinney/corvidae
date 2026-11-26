@@ -4,9 +4,9 @@
  * Spec: context.maximumTokens takes precedence over the construction-time
  * maximumTokens option when building the provider request params.
  */
-import { type AnyToolbox, createToolbox } from 'armorer';
+import { type AnyToolbox, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { createOpenAIProvider } from '../src/openai.ts';
 import { openAITextResponse } from '../src/test/openai-fixtures.ts';
 import { createMockOpenAIClient } from '../src/test/openai-mock-clients.ts';

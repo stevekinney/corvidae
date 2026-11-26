@@ -103,23 +103,7 @@ export {
   WORKER_CONFLICT_REASONS,
   type WorkerConflictReason,
 } from './server/operations/worker-conflict-reasons.ts';
-export {
-  ChaosNonRetryableError,
-  ChaosTimeoutError,
-  ChaosTransientError,
-  withChaos,
-  type ChaosScenario,
-  type FaultClass,
-} from './testing/chaos.ts';
-export { flushPortableMicrotasks, yieldToPortableEventLoop } from './testing/event-loop.ts';
-export {
-  ActivityMockRegistry,
-  type MockCall,
-  type MockHandle,
-  type MockedActivity,
-} from './testing/mocks.ts';
-export { TestEngine, type RunNOptions, type RunNResult } from './testing/test-engine.ts';
-export { TimeControl } from './testing/time-control.ts';
+export { flushPortableMicrotasks, yieldToPortableEventLoop } from './event-loop.ts';
 export { VERSION } from './version.ts';
 export {
   bindingFromExecution,

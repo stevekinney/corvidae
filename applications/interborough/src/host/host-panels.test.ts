@@ -1,4 +1,4 @@
-import { AUTHORIZATION_SCOPES } from '@lostgradient/weft';
+import { AUTHORIZATION_SCOPES } from '@lostgradient/weft/testing';
 /**
  * COR-1894: a plugin's panel against the real host. The inspectors plugin's run inspector
  * is served, and its tool calls reach the real Bureau handler in process as the local owner, over

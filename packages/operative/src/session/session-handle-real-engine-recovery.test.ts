@@ -1,10 +1,10 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { type WorkflowState } from '@lostgradient/weft';
-import type { Toolbox } from 'armorer';
-import { createToolbox } from 'armorer';
+import { type WorkflowState } from '@lostgradient/weft/testing';
+import type { Toolbox } from 'armorer/testing';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 
 import { createAgentSession } from '../agent-session';
 import { createCheckpointStore } from '../durable/checkpoint-store';

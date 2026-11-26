@@ -23,7 +23,7 @@ import { assertDefined } from './assert-defined';
  * Each test here proves one facet of that contract.
  */
 
-import { workflow, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { workflow, yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

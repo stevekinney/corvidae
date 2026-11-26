@@ -1,3 +1,4 @@
+export * from '../index.ts';
 export type { ConformanceTarget, ConformanceTargets } from '../conformance/targets.ts';
 export {
   ChaosNonRetryableError,

@@ -17,9 +17,9 @@ import {
   waitForCondition,
 } from '@lostgradient/operative/testing';
 import { MemoryStorage } from '@lostgradient/storage';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { toAnthropicMessages } from 'conversationalist';
+import { toAnthropicMessages } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { createMemoryAssetStorage } from '../assets/storage';

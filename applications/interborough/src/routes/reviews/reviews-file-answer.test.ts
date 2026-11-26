@@ -3,7 +3,7 @@
  * uploaded to the Bureau's assets, and the asset's identifier is the answer. A failed upload says
  * so and keeps the review open (COR-1849).
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';

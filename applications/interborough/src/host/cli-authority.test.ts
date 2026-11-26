@@ -3,7 +3,7 @@ import { openBungalow } from '@lostgradient/bungalow';
 import { BUREAU_SCOPES } from '@lostgradient/bureau';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { AUTHORIZATION_SCOPES } from '@lostgradient/weft';
+import { AUTHORIZATION_SCOPES } from '@lostgradient/weft/testing';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

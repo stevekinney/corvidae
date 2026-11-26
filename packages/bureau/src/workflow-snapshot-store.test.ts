@@ -4,7 +4,7 @@
  * only when nothing holds them.
  */
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { type WorkflowDocument } from '@lostgradient/weft';
+import { type WorkflowDocument } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import {

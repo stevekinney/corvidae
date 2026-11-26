@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { GenerateFunction, Toolbox } from '@lostgradient/operative';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { z } from 'zod';
 
 import { discoverSkills, type SkillCatalogRevision } from './skills';

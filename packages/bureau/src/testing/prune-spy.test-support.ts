@@ -1,5 +1,5 @@
 import { stopWhen } from '@lostgradient/operative';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { spyOn } from 'bun:test';
 
 import { createRuntimeComposition } from '../runtime-composition';

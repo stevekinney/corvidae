@@ -13,7 +13,7 @@ import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { PluginTriggerContext } from '@lostgradient/interborough-plugin';
-import { decode, encode, KEYS, Engine, workflow } from '@lostgradient/weft';
+import { decode, encode, KEYS, Engine, workflow } from '@lostgradient/weft/testing';
 import { MemoryStorage, textValueStore, type TextValueStore } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
 
 import { AssetAccessDeniedError, AssetNotFoundError, AssetUnavailableError } from './errors';
 import {

@@ -24,7 +24,7 @@ import {
   removeTemporaryPath,
 } from '@lostgradient/testing/temporary-path';
 import { HumanWaitParkedEvent } from '@lostgradient/operative';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import {

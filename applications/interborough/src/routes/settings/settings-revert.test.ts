@@ -3,7 +3,7 @@
  * what a stale revision and a refusal do, and that leaving the page removes the Undo toast.
  */
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import { SETTINGS_COPY } from '../../app/copy/settings.ts';

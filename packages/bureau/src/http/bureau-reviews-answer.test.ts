@@ -1,4 +1,4 @@
-import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft/testing';
 /**
  * COR-1804 — a question carries its own answer schema. A `requestHumanInput` call parks a review
  * whose projection and AG-UI interrupt carry the schema; `bureau.reviews.resolve` takes an
@@ -17,7 +17,7 @@ import {
   createOperationHandlerAuthenticator,
   principalFromApiKey,
 } from '@lostgradient/backchannel';
-import { createToolbox, type Toolbox } from 'armorer';
+import { createToolbox, type Toolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { generateEncryptionKey } from '@lostgradient/cryptography';

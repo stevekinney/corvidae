@@ -4,7 +4,7 @@
  * and never for the subscriber's own `unsubscribe()` or an abort of its signal.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { createFleetEventFeed, KEYS, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { createFleetEventFeed, KEYS, yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it, jest } from 'bun:test';
 
 import { createDurableEventHistory, type DurableEventHistory } from './durable-event-history';

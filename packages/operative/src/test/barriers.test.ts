@@ -1,8 +1,8 @@
 import { createManualRuntimeServices, HookRegistry } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
 
 import { createAgentSession } from '../agent-session';
 import { createChildRunRegistry, dispatchChildRun } from '../child-run';

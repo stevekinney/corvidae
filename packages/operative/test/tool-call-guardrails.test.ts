@@ -4,9 +4,9 @@
  * conversation keeps, and which events fire.
  */
 import { HookRegistry } from '@lostgradient/lifecycle';
-import { createTestToolbox, createTool } from 'armorer';
+import { createTestToolbox, createTool } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { type Conversation, type Message } from 'conversationalist';
+import { type Conversation, type Message } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import type { GuardrailAdditions } from '../src/agent-policy';

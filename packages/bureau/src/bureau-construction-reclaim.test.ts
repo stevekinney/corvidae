@@ -11,9 +11,9 @@ import { join } from 'node:path';
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, stopWhen } from '@lostgradient/operative';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
-import { getMessages } from 'conversationalist';
+import { getMessages } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import * as agentCatalogModule from './agent-catalog';

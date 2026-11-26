@@ -4,7 +4,7 @@
  * decided under What you can do and nowhere else, What happened lists the run's entries in order,
  * the reply out says why it is not there yet, and the header is drawn at once while the run loads.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';

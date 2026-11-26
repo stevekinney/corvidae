@@ -12,7 +12,7 @@
 import * as pluginPackage from '@lostgradient/interborough-plugin';
 import { createAgent, stopWhen } from '@lostgradient/operative';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { formatToolId } from 'armorer';
+import { formatToolId } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { failingModel } from './testing/decision-harness.test-support.ts';

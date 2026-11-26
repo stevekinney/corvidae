@@ -11,7 +11,7 @@
  */
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
-import { getMessages } from 'conversationalist';
+import { getMessages } from 'conversationalist/testing';
 
 import { createAgentSkills } from './agent-skills';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';

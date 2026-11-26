@@ -3,7 +3,7 @@
  * reserves, and the module that lists them is safe for a browser to read.
  */
 import { MemoryStorage } from '@lostgradient/storage';
-import { Engine, workflow } from '@lostgradient/weft';
+import { Engine, workflow } from '@lostgradient/weft/testing';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { createRunEngine } from './create-run-engine';

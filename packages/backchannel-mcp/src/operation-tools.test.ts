@@ -8,7 +8,7 @@ import {
   StreamableHTTPClientTransport,
   type ClientOptions,
 } from '@modelcontextprotocol/client';
-import { fromMcpClientTools } from 'armorer';
+import { fromMcpClientTools } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

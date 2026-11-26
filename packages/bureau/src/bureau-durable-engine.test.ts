@@ -3,7 +3,7 @@
  * API over those runs through it instead of building a second engine over the same storage.
  */
 import { stopWhen, createAgent } from '@lostgradient/operative';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';

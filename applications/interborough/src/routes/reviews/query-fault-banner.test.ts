@@ -1,7 +1,7 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 
 import { RETRY_LABEL } from '../../app/copy/views.ts';
 import QueryFaultBanner from './query-fault-banner.svelte';

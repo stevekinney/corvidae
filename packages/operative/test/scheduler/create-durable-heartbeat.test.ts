@@ -1,8 +1,8 @@
 import { MemoryStorage } from '@lostgradient/storage';
-import * as weft from '@lostgradient/weft';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import * as weft from '@lostgradient/weft/testing';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { assertDefined } from '../assert-defined';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

@@ -16,8 +16,8 @@ import {
   stopWhen,
 } from '@lostgradient/operative';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { decode, encode } from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
+import { decode, encode } from '@lostgradient/weft/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

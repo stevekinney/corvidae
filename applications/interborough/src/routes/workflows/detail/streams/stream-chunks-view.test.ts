@@ -2,7 +2,7 @@ import { render } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { HttpClientError, type WorkflowStatus } from '@lostgradient/weft';
+import { HttpClientError, type WorkflowStatus } from '@lostgradient/weft/testing';
 
 import { RUN_DETAIL_COPY } from '../../../../app/copy/runs.ts';
 import type { StreamChunksClient } from './stream-chunks-data.ts';

@@ -6,7 +6,7 @@
  * loudly instead of writing history forever.
  */
 
-import { KEYS } from '@lostgradient/weft';
+import { KEYS } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

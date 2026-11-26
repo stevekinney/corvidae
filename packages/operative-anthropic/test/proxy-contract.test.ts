@@ -30,9 +30,9 @@
  * call" branch for all three providers (streaming and non-streaming) is
  * exercised below.
  */
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import type { GenerateContext, StreamingHandle } from '@lostgradient/operative/provider-kit';
 import { createAnthropicProvider, createAnthropicProviderStream } from '../src/anthropic.ts';

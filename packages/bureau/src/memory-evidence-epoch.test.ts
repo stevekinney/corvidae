@@ -14,7 +14,7 @@ import {
   type GovernedMemory,
   createMemoryVectorStore,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import {
   type ContextEpochSealer,
   type ContextSourceRecord,
@@ -24,9 +24,9 @@ import {
   MEMORY_EVIDENCE_METADATA_KEY,
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
-import { createTool, createToolbox, type ToolRequestContext } from 'armorer';
+import { createTool, createToolbox, type ToolRequestContext } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';

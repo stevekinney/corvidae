@@ -3,7 +3,7 @@
  * tools fills in Name after the test. The server's own words are untrusted: its name is one line
  * within the length a saved name may have, and its instructions are cut.
  */
-import { createMCP, createTool, createToolbox } from 'armorer';
+import { createMCP, createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { z } from 'zod';
 

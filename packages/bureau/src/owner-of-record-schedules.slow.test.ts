@@ -10,8 +10,8 @@ import {
   SESSION_OWNER_METADATA_KEY,
   createAgent,
 } from '@lostgradient/operative';
-import { createConversationHistory } from 'conversationalist';
-import { createToolbox } from 'armorer';
+import { createConversationHistory } from 'conversationalist/testing';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';

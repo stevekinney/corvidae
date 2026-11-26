@@ -6,7 +6,7 @@
  * (`settings-fixtures.test-support.ts`, `models/models-host.test-support.ts`); the real ones are
  * exercised by the Playwright suite (`tests/e2e/settings-allowed-models.spec.ts`).
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';

@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { definePlugin } from '@lostgradient/interborough-plugin';
 import { createAgent } from '@lostgradient/operative';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { createTool, type Tool } from 'armorer';
+import { createTool, type Tool } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

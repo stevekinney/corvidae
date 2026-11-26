@@ -13,7 +13,7 @@ import { createMockGenerate } from '@lostgradient/operative/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
-import type { Conversation } from 'conversationalist';
+import type { Conversation } from 'conversationalist/testing';
 
 import type { Bureau } from '../bureau-types/facade.ts';
 import { createBureau } from '../create-bureau.ts';

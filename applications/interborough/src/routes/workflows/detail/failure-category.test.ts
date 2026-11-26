@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import type { FailureCategory } from '@lostgradient/weft';
+import type { FailureCategory } from '@lostgradient/weft/testing';
 
 import * as failureCategory from './failure-category.ts';
 import { failureCategoryLabel, failureCategoryTone } from './failure-category.ts';

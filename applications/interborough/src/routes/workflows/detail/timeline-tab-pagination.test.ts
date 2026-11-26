@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { flushSync } from 'svelte';
 
-import type { WorkflowState, WorkflowTimelineEntry } from '@lostgradient/weft';
+import type { WorkflowState, WorkflowTimelineEntry } from '@lostgradient/weft/testing';
 import { QueryClient } from '@tanstack/svelte-query';
 
 import type { FleetEventFrame } from '../../../lib/live-source/fleet-event-source.svelte.ts';

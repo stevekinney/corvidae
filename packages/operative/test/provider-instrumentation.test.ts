@@ -11,9 +11,9 @@ import { assertDefined } from './assert-defined';
  * (the instrumentation section) for the pinned conventions version.
  */
 import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { instrumentGenerate } from '../src/index.ts';
 import type { GenerateContext, GenerateFunction, TokenUsage } from '../src/types.ts';

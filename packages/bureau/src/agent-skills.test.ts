@@ -10,9 +10,9 @@ import {
   type InputDetector,
   type Toolbox,
 } from '@lostgradient/operative';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { discoverSkills, type SkillCatalogRevision } from './skills';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { afterAll, describe, expect, it } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

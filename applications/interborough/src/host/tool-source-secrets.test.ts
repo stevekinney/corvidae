@@ -6,7 +6,7 @@
  */
 import { createSecretAnswerResolver, type AnswerEncryptionKeys } from '@lostgradient/bureau';
 import { MemoryStorage } from '@lostgradient/storage';
-import { createToolbox, type Tool, type ToolSecretResolver } from 'armorer';
+import { createToolbox, type Tool, type ToolSecretResolver } from 'armorer/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {

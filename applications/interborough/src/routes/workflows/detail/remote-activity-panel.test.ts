@@ -2,7 +2,7 @@
 import { render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 
 import { taskLedgerDetailFixture } from '../../workers/workers-route-test-support.test-support.ts';
 import RemoteActivityPanelHarness from './remote-activity-panel.test-harness.svelte';

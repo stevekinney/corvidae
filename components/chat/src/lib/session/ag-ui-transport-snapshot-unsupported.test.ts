@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { fromAGUIMessages } from 'conversationalist';
+import { fromAGUIMessages } from 'conversationalist/testing';
 import {
   bodies,
   completedConversation,

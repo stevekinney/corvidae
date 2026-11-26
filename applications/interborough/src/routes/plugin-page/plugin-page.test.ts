@@ -6,7 +6,7 @@
  * the page in a browser, with a sidebar and a palette, is `tests/e2e/plugin-page.spec.ts`.
  */
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import type { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import {

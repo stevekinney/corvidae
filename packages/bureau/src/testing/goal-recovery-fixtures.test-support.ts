@@ -12,10 +12,10 @@ import {
   stopWhen,
   type Validator,
 } from '@lostgradient/operative';
-import { decode, encode, KEYS } from '@lostgradient/weft';
+import { decode, encode, KEYS } from '@lostgradient/weft/testing';
 import { type Storage, textValueStore } from '@lostgradient/storage';
-import { createToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
+import { createToolbox } from 'armorer/testing';
+import { Conversation } from 'conversationalist/testing';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';

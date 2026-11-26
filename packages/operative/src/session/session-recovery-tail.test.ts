@@ -1,6 +1,6 @@
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
 
 import { AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION } from '../durable/run-workflow-result';
 import { createSessionEngine } from './session-engine-test-fixture';

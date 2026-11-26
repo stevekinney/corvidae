@@ -7,9 +7,9 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, stopWhen, withBackendDescriptors } from '@lostgradient/operative';
 import { waitForTaskState } from './test';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
-import { appendMessages, createConversationHistory, type Message } from 'conversationalist';
+import { appendMessages, createConversationHistory, type Message } from 'conversationalist/testing';
 
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';

@@ -9,7 +9,7 @@
 import { createAgent, stopWhen, type Toolbox } from '@lostgradient/operative';
 import { createMockGenerate } from '@lostgradient/operative/testing';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -20,7 +20,7 @@ import { type BureauEventMap, ScheduleMissedEvent } from '../events.ts';
 import { waitForCondition } from '../test';
 import { createAudit } from './create-audit.ts';
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 import type { Bureau } from '../bureau-types/facade.ts';
 
 /** A Bureau that is only an event target, for a trail's dedicated listeners. */

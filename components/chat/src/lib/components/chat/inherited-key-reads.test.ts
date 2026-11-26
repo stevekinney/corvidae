@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import type { ConversationHistory } from 'conversationalist';
+import type { ConversationHistory } from 'conversationalist/testing';
 
 import { markMessageDeliveryFailed } from './builders.ts';
 

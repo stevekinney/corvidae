@@ -17,7 +17,7 @@ import {
 } from '@lostgradient/operative';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { type Storage, MemoryStorage } from '@lostgradient/storage';
-import { createTool, createToolbox, type Toolbox } from 'armorer';
+import { createTool, createToolbox, type Toolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';

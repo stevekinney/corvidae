@@ -7,7 +7,7 @@
 import { readFile } from 'node:fs/promises';
 
 import { createAgent } from '@lostgradient/operative';
-import { createTool } from 'armorer';
+import { createTool } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

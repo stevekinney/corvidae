@@ -9,7 +9,7 @@
  */
 import type { Decision, DecisionRequest, RunResult, ValidatorInput } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, conversationToMarkdown } from 'conversationalist';
+import { Conversation, conversationToMarkdown } from 'conversationalist/testing';
 
 import { definePlugin } from './define-plugin.ts';
 import type { PluginHost } from './host-api.ts';

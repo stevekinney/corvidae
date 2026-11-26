@@ -10,12 +10,12 @@ import {
   type MemoryAuthority,
   createMemoryVectorStore,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
-import { createTool, createToolbox, type ToolRequestContext } from 'armorer';
+import { createTool, createToolbox, type ToolRequestContext } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';

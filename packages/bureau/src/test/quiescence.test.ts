@@ -10,7 +10,7 @@ import {
   waitForCondition,
 } from '@lostgradient/operative/testing';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { file } from 'bun';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';

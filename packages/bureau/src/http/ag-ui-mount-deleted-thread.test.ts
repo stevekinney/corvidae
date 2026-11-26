@@ -10,7 +10,7 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { stopWhen, type Toolbox } from '@lostgradient/operative';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 

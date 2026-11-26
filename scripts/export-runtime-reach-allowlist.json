@@ -346,5 +346,53 @@
     "subpath": "./coding",
     "finding": "Bun.Glob",
     "reason": "Local coding tools enumerate files with Bun."
+  },
+  {
+    "package": "@lostgradient/bureau",
+    "subpath": "./testing",
+    "finding": "Bun.env",
+    "reason": "Testing entry reads its fixture environment."
+  },
+  {
+    "package": "@lostgradient/bureau",
+    "subpath": "./testing",
+    "finding": "Bun.spawn",
+    "reason": "Testing entry launches fixture processes."
+  },
+  {
+    "package": "@lostgradient/memory",
+    "subpath": "./testing",
+    "finding": "Bun.serve",
+    "reason": "Testing entry reaches Weft's Bun server host."
+  },
+  {
+    "package": "@lostgradient/memory",
+    "subpath": "./testing",
+    "finding": "Bun.sleep",
+    "reason": "Testing entry reaches Weft's Bun timers."
+  },
+  {
+    "package": "@lostgradient/weft",
+    "subpath": "./testing",
+    "finding": "Bun.env",
+    "reason": "Testing entry reads fixture environment settings."
+  },
+  {
+    "package": "@lostgradient/weft",
+    "subpath": "./testing",
+    "finding": "Bun.serve",
+    "reason": "Testing entry hosts fixture services."
+  },
+  {
+    "package": "@lostgradient/weft",
+    "subpath": "./testing",
+    "finding": "Bun.sleep",
+    "reason": "Testing entry drives controlled timers."
+  },
+  {
+    "package": "@lostgradient/weft",
+    "subpath": "./testing",
+    "finding": "Bun.spawn",
+    "reason": "Testing entry launches fixture processes."
   }
 ]

@@ -10,7 +10,7 @@ import {
   type OperationFault,
   principalFromApiKey,
 } from '@lostgradient/backchannel';
-import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft/testing';
 import { createAgent } from '@lostgradient/operative';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { Glob } from 'bun';

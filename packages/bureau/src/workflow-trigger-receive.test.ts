@@ -29,7 +29,7 @@ import {
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
-import { Engine, workflow } from '@lostgradient/weft';
+import { Engine, workflow } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

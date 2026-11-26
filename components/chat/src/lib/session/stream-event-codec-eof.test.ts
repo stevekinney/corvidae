@@ -1,5 +1,5 @@
 import { describe, test } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 import { expectRejected } from './stream-event-codec-test-helpers.ts';
 import { decodeChatStreamEvents } from './stream-event-codec.ts';
 

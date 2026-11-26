@@ -1,5 +1,5 @@
 import { hasDefinitionResolver, OPERATIVE_RESOLVE_RUN_OPTIONS } from '@lostgradient/operative';
-import { getToolboxApprovalOptions } from 'armorer';
+import { getToolboxApprovalOptions } from 'armorer/testing';
 import { expect, spyOn, test } from 'bun:test';
 
 import {

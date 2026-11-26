@@ -1,5 +1,5 @@
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';

@@ -3,7 +3,7 @@
  * `workflows:read` so, in the words copy.ts holds, instead of sending them to a form the engine
  * would refuse.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 

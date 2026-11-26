@@ -6,9 +6,9 @@ import {
   createAgent,
 } from '@lostgradient/operative';
 import { textValueStore, MemoryStorage } from '@lostgradient/storage';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it, spyOn } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 
 import { createBureau } from './create-bureau';
 import { createRuntimeComposition } from './runtime-composition';

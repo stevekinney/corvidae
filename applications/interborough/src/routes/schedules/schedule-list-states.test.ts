@@ -6,7 +6,7 @@
  * the Bureau, whose schedule list can be made to refuse (`failSchedules`), and the timings the
  * placeholders keep run under fake timers, never a sleep.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import type { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';

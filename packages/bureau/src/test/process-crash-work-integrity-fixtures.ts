@@ -22,7 +22,7 @@ import {
   type GovernedMemory,
   createMemoryVectorStore,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { type Storage, textValueStore } from '@lostgradient/storage';
@@ -34,7 +34,7 @@ import {
   type ToolRequestContext,
   type ToolResultCache,
   withToolboxIdempotency,
-} from 'armorer';
+} from 'armorer/testing';
 import { z } from 'zod';
 
 import { createBureau } from '../create-bureau';

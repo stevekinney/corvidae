@@ -6,7 +6,7 @@
  * the real Bureau is `src/host/host-panels.test.ts`.
  */
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import {
   afterAll,

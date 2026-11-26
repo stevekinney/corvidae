@@ -14,9 +14,9 @@
  */
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { createTool, createToolbox, type SignedPendingToolApproval } from 'armorer';
+import { createTool, createToolbox, type SignedPendingToolApproval } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, isConversation } from 'conversationalist';
+import { Conversation, isConversation } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

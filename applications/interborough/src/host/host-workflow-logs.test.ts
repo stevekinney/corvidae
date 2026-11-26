@@ -3,7 +3,7 @@
  * the engine API per run and per step, they are there after the run ends and after the host restarts,
  * and the Bureau starts with the 7-day window and 500-line cap the Settings page can change.
  */
-import { HttpClient, workflow, type Engine, type WorkflowContext } from '@lostgradient/weft';
+import { HttpClient, workflow, type Engine, type WorkflowContext } from '@lostgradient/weft/testing';
 import { afterEach, beforeEach, describe, expect, spyOn, test, type Mock } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

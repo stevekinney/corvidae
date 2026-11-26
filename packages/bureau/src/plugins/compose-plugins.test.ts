@@ -9,7 +9,7 @@ import {
   type PluginSetupResult,
 } from '@lostgradient/interborough-plugin';
 import { createAgent, guardrailOf } from '@lostgradient/operative';
-import { createTool } from 'armorer';
+import { createTool } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

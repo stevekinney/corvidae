@@ -4,7 +4,7 @@ import {
   WorkflowStartedEvent,
   type WorkflowEvent,
   type WorkflowStatus,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 import { QueryClient } from '@tanstack/svelte-query';
 import { describe, expect, test } from 'bun:test';
 

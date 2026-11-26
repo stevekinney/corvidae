@@ -127,7 +127,7 @@ describe('chat import boundary', () => {
     );
     expect(
       CONVERSATIONALIST_MODULE_SPECIFIER_PATTERN.test(
-        "import { getMessages } from 'conversationalist';",
+        "import { getMessages } from 'conversationalist/testing';",
       ),
     ).toBe(true);
     expect(
@@ -139,10 +139,10 @@ describe('chat import boundary', () => {
     const specifiers = collectModuleSpecifiers(
       'inline.ts',
       `
-        import { type ConversationHistory } from 'conversationalist';
-        import { type Message, createConversationHistory } from 'conversationalist';
-        export { type ToolCallPair } from 'conversationalist';
-        export { type MessageInput, appendMessages } from 'conversationalist';
+        import { type ConversationHistory } from 'conversationalist/testing';
+        import { type Message, createConversationHistory } from 'conversationalist/testing';
+        export { type ToolCallPair } from 'conversationalist/testing';
+        export { type MessageInput, appendMessages } from 'conversationalist/testing';
       `,
     );
 

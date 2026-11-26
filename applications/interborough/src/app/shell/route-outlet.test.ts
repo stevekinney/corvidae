@@ -2,7 +2,7 @@
  * The route outlet mounts the matched route inside its view's frame, and says so when no route
  * owns the path.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { Window } from 'happy-dom';

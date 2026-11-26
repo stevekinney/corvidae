@@ -19,9 +19,9 @@ import {
   stopWhen,
 } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 
 import { createAttemptForwarder } from './goal-forwarder';
 import { attemptSignalId, createGoalState, goalTransitionId } from './goal-state';

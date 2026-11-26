@@ -5,7 +5,7 @@ import {
   type SessionStore,
 } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
 
 import { createSessionPersistence } from './bureau-session-persistence';
 

@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import type { ActivityContext } from '@lostgradient/weft';
+import type { ActivityContext } from '@lostgradient/weft/testing';
 
 import { createGoalWorkflowActivities, toGoalWorkflowView } from './goal-workflow-activities';
 import type { GoalWorkflowPorts, GoalWorkflowRecord } from './goal-workflow-ports';

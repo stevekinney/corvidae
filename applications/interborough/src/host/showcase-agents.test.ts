@@ -13,7 +13,7 @@ import { workflowFileDirectory } from '@lostgradient/bureau/sources';
 import { readGenerationProfile } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { createToolbox, createToolCall, resolveCapabilityTier } from 'armorer';
+import { createToolbox, createToolCall, resolveCapabilityTier } from 'armorer/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {

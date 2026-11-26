@@ -1,5 +1,5 @@
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
-import type { ToolElicitationRequest } from 'armorer';
+import type { ToolElicitationRequest } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

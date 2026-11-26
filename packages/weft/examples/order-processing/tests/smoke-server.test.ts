@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
-import { Engine, serve } from '@lostgradient/weft';
+import { Engine, serve } from '@lostgradient/weft/testing';
 
 import { createOrderProcessingEngine, orderProcessingSchedule } from '../src/registry';
 

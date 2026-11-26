@@ -4,9 +4,9 @@ import {
   type GenerateFunction,
   stopWhen,
 } from '@lostgradient/operative';
-import { createToolbox, type Tool } from 'armorer';
+import { createToolbox, type Tool } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import {
   buildPartialRunReport,

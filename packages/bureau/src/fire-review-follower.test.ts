@@ -7,7 +7,7 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { type DurableEventOwner, type Subscription } from '@lostgradient/operative';
-import { createFleetEventFeed } from '@lostgradient/weft';
+import { createFleetEventFeed } from '@lostgradient/weft/testing';
 import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 

@@ -2,7 +2,7 @@
  * COR-851 — what `ensureController` claims about a goal's controller, driven
  * with a scripted engine.
  */
-import { WorkflowAlreadyExistsError } from '@lostgradient/weft';
+import { WorkflowAlreadyExistsError } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { attemptIndexesToStop, commitCancellation, ensureController } from './goal-controller';

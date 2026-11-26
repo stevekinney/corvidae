@@ -31,10 +31,10 @@ import {
 } from '@lostgradient/operative';
 import { waitForCondition } from '@lostgradient/operative/testing';
 import { waitForTaskState } from './test';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
-import { type MediaContent } from 'conversationalist';
+import { type MediaContent } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';

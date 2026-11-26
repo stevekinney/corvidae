@@ -3,7 +3,7 @@
  * recorded answer (`recorded-goal-refusal.test-support.ts`) goes through the client that reads it
  * (the Bureau client, HTTP 400 as the server sends it), and the fault that comes out names the field.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import { bureauClient } from '../../lib/bureau-api.ts';

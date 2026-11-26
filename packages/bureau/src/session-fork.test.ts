@@ -5,7 +5,7 @@
  * between its steps never forks twice.
  */
 import { createAgent, createAgentSession, stopWhen } from '@lostgradient/operative';
-import { createConversationHistory, Conversation } from 'conversationalist';
+import { createConversationHistory, Conversation } from 'conversationalist/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';

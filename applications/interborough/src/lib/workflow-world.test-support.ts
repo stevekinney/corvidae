@@ -8,7 +8,7 @@
  *
  * The real Bureau and engine are exercised end to end in the Playwright suite.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 
 import {
   STUB_AGENT_DIRECTORY,

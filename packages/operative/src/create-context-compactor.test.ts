@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { createContextCompactor } from './create-context-compactor';
 import type { StepContext } from './types';

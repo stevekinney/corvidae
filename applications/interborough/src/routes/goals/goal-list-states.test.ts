@@ -2,7 +2,7 @@
  * What the Goals list says when a read failed (design rows 68n and 14s): one title, a sentence that
  * names what happened, and the error's own words for the disclosure that holds the details.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import { GOALS_COPY } from '../../app/copy/goals.ts';

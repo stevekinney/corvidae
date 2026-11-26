@@ -3,7 +3,7 @@
  * step, its name, status, error message and guardrail verdicts; the strings in it are data, in one
  * JSON document the question says not to obey.
  */
-import type { WorkflowTimelineEntry } from '@lostgradient/weft';
+import type { WorkflowTimelineEntry } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { explanationRequestSteps, modelExplanationRequest } from './run-model-explanation.ts';

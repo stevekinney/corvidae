@@ -8,7 +8,7 @@ import { openBungalow } from '@lostgradient/bungalow';
 import { resolveProviderGenerate, type ProviderConfiguration } from '@lostgradient/bureau';
 import { createAgent } from '@lostgradient/operative';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
-import { StorageSizeReportedEvent } from '@lostgradient/weft';
+import { StorageSizeReportedEvent } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, statSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';

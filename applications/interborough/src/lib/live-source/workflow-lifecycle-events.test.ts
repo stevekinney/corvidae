@@ -6,7 +6,7 @@ import {
   WorkflowStartedEvent,
   WorkflowSuspendedEvent,
   WorkflowTimedOutEvent,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import {

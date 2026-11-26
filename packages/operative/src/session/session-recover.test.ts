@@ -1,6 +1,6 @@
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { waitUntil } from '@lostgradient/testing/wait-until';

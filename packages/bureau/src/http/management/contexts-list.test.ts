@@ -9,7 +9,7 @@ import {
   withSessionReadGrant,
 } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../../test';

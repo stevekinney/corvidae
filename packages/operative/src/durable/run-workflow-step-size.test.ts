@@ -1,8 +1,8 @@
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { Engine, KEYS, yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
+import { Engine, KEYS, yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { noToolCalls } from '../conditions/predicates';

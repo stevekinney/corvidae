@@ -16,7 +16,7 @@ import {
   createMemoryVectorStore,
   createMockEmbedder,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 
 import { BureauError, UnknownScheduleAgentError } from './bureau-errors';

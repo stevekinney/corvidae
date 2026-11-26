@@ -1,4 +1,4 @@
-import type { ToolRequestContext } from 'armorer';
+import type { ToolRequestContext } from 'armorer/testing';
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

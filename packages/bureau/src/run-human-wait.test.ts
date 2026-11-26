@@ -11,8 +11,8 @@ import {
   type GenerateFunction,
   stopWhen,
 } from '@lostgradient/operative';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';

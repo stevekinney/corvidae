@@ -17,7 +17,7 @@ import { definePlugin, type PluginWorkflow } from '@lostgradient/interborough-pl
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { Engine, workflow } from '@lostgradient/weft';
+import { Engine, workflow } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

@@ -3,7 +3,7 @@
  * a list the filters leave empty, in each combination of filters, and what a list that could not be
  * read says and holds behind its error details.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import { TASK_COPY } from '../../../app/copy/tasks.ts';

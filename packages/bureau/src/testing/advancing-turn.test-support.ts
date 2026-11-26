@@ -5,7 +5,7 @@
  * advances the clock a retry delay at a time between checks.
  */
 import type { ManualRuntimeServices } from '@lostgradient/lifecycle';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 
 /** Advances `runtime` by `stepMilliseconds` (one retry delay by default), then yields one event-loop turn. */
 export function advancingTurn(

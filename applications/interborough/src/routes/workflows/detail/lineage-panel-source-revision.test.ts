@@ -14,7 +14,7 @@ import type {
   WorkflowScheduleProvenance,
   WorkflowState,
   WorkflowSummary,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 
 import { forkOperations } from './checkpoints/fork-comparison.test-support.ts';
 import LineagePanelHarness from './lineage-panel.test-harness.svelte';

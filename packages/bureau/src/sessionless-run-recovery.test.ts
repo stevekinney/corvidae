@@ -14,9 +14,9 @@ import {
   withBackendDescriptors,
 } from '@lostgradient/operative';
 import { waitForCondition } from '@lostgradient/operative/testing';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import type { MediaContent } from 'conversationalist';
+import type { MediaContent } from 'conversationalist/testing';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

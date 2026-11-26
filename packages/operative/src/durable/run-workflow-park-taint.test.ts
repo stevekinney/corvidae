@@ -5,7 +5,7 @@
  */
 import { HookRegistry } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { GUARDRAIL_BLOCKED_CODE } from '../guardrails/tool-result-guardrail';
 import type { SessionTaintedEvent } from '../guardrails/types';

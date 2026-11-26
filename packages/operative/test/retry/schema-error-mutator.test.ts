@@ -1,6 +1,6 @@
-import { createTestToolbox } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { assertDefined } from '../assert-defined';
 
 import { createSchemaErrorMutator } from '../../src/retry/schema-error-mutator';

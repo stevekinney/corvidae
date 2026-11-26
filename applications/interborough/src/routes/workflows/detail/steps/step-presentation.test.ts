@@ -1,4 +1,4 @@
-import type { WorkflowTimelineEntry } from '@lostgradient/weft';
+import type { WorkflowTimelineEntry } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import { humanizeStepName, prettySummary, stepName, stepStatus } from './step-presentation.ts';

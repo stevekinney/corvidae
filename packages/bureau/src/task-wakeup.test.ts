@@ -7,7 +7,7 @@
 import { MemoryStorage } from '@lostgradient/storage';
 import { createAgent, stopWhen, type Toolbox } from '@lostgradient/operative';
 import { createMockGenerate } from '@lostgradient/operative/testing';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';
 

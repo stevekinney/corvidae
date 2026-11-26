@@ -3,7 +3,7 @@
  * registers it with Claude Code and with any other MCP client. The address is the origin the page
  * was served from plus `/bureau/mcp`; the Bureau is a stub, since nothing here is a setting.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 

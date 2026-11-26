@@ -10,7 +10,7 @@ import {
 import { textValueStore } from '@lostgradient/storage';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { expect, it } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -30,7 +30,7 @@ for (const boundary of ['prepared', 'terminal-save', 'review'] as const) {
       import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
       import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
       import { createBureau, createMemoryAssetStorage } from '@lostgradient/bureau';
-      import { createToolbox } from 'armorer';
+      import { createToolbox } from 'armorer/testing';
       import { durableApprovalStore } from './src/host/server-integration/refund.test-support.ts';
       import { createRefundLedger, createFakeProcessor, createAdmittedRefundTool } from '@lostgradient/plugin-demo/refunds';
       import { reviewedRefundContribution } from './src/host/refund-operations.ts';

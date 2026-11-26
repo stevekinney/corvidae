@@ -9,7 +9,7 @@
  */
 import { generateEncryptionKey } from '@lostgradient/cryptography';
 import { quietFor } from '@lostgradient/testing/wait-until';
-import { createTool, createToolbox, type Toolbox } from 'armorer';
+import { createTool, createToolbox, type Toolbox } from 'armorer/testing';
 import {
   createAgent,
   stopWhen,
@@ -25,7 +25,7 @@ import {
   createWeftMemoryRecordStorage,
   createMemoryVectorStore,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { createBureau } from './create-bureau';
 import { notificationOutboxKey } from './notifications/notification-outbox';
 import { createDurableAssetStorage } from './assets/storage';

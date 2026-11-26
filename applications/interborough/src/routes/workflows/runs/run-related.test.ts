@@ -1,4 +1,4 @@
-import type { WorkflowState, WorkflowSummary } from '@lostgradient/weft';
+import type { WorkflowState, WorkflowSummary } from '@lostgradient/weft/testing';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 import type { ComponentProps } from 'svelte';

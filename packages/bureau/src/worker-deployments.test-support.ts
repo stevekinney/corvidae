@@ -3,7 +3,7 @@
  * of one deployment, `billing`.
  */
 import { MemoryStorage } from '@lostgradient/storage';
-import { WorkerDeploymentCatalog } from '@lostgradient/weft';
+import { WorkerDeploymentCatalog } from '@lostgradient/weft/testing';
 
 /** The deployment every fixture build belongs to. */
 export const DEPLOYMENT = 'billing';

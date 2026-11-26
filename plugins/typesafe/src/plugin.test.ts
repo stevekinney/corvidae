@@ -12,7 +12,7 @@ import type { BackendDescriptor, DecisionModel } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { createTool } from 'armorer';
+import { createTool } from 'armorer/testing';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { z } from 'zod';
 

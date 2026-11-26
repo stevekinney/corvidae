@@ -16,7 +16,7 @@ import {
   type MemoryDeletionReceipt,
   createMemoryVectorStore,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { stopWhen, createAgent } from '@lostgradient/operative';
 import { waitForCondition } from '@lostgradient/operative/testing';
 import { MemoryStorage } from '@lostgradient/storage';

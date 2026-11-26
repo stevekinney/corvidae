@@ -1,4 +1,4 @@
-import type { ActivityContext } from '@lostgradient/weft';
+import type { ActivityContext } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { TOOL_CALL_POLICY, WEFT_ACTIVITY_POLICY } from '../liveness/policies';

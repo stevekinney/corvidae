@@ -7,7 +7,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing';
-import { Engine, isWeftFault } from '@lostgradient/weft';
+import { Engine, isWeftFault } from '@lostgradient/weft/testing';
 
 import { FORK_COMPARISON_RUN_ID } from '../fixtures/fork-comparison-ids.ts';
 import {

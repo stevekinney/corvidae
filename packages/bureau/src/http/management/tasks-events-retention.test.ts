@@ -5,7 +5,7 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
-import { createToolbox, type Tool } from 'armorer';
+import { createToolbox, type Tool } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from '../../create-bureau.ts';

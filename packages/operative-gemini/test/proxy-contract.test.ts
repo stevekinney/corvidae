@@ -31,9 +31,9 @@
  * exercised below.
  */
 import type { GenerateContext, StreamingHandle } from '@lostgradient/operative/provider-kit';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { createGeminiProvider, createGeminiProviderStream } from '../src/gemini.ts';
 
 const PLACEHOLDER_TOKEN = 'placeholder-not-a-real-key-0000';

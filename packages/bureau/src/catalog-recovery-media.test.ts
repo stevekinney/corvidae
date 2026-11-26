@@ -1,7 +1,7 @@
 import type { DurableRunDeps } from '@lostgradient/operative';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 
 import { createRuntimeComposition } from './runtime-composition';
 import { MemoryStorage } from '@lostgradient/storage';

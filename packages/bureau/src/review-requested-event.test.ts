@@ -3,7 +3,7 @@
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
-import { createTool, createToolbox, type Toolbox } from 'armorer';
+import { createTool, createToolbox, type Toolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

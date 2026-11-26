@@ -2,7 +2,7 @@
  * COR-1527 — how an `agent` step turns its run into a result or a failure, and the run id a step
  * is known by across a restart.
  */
-import type { WorkflowState } from '@lostgradient/weft';
+import type { WorkflowState } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import {

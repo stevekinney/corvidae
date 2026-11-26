@@ -9,7 +9,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { VERSION } from '@lostgradient/weft';
+import { VERSION } from '@lostgradient/weft/testing';
 
 import { buildBureau } from './bureau-handler-fixtures.test-support.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';

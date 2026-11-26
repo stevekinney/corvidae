@@ -18,7 +18,7 @@ import type {
   ToolCall as ConversationalistToolCall,
   ToolCallPair as ConversationalistToolCallPair,
   ToolResult as ConversationalistToolResult,
-} from 'conversationalist';
+} from 'conversationalist/testing';
 
 import type {
   ConversationHistory,

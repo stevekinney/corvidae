@@ -11,7 +11,7 @@ import {
   TERMINAL_STATUS_BY_REASON,
 } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
+import { WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import {

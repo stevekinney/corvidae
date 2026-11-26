@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { WorkflowRevisionUnavailableError } from '@lostgradient/weft';
+import { WorkflowRevisionUnavailableError } from '@lostgradient/weft/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
 import {

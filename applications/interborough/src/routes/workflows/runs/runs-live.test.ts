@@ -5,7 +5,7 @@
  * stubbed streams, and TanStack Query's refetch interval is the timer, so the clock is faked and
  * moved by hand.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 

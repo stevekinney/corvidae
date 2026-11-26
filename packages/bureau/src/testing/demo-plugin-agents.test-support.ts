@@ -7,7 +7,7 @@
  */
 import { definePlugin, type PluginInterceptor } from '@lostgradient/interborough-plugin';
 import { createAgent, OPERATIVE_RESOLVE_RUN_OPTIONS, stopWhen } from '@lostgradient/operative';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { z } from 'zod';
 
 import type { AnyRunnableAgent } from '../agent-catalog.ts';

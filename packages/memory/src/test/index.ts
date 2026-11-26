@@ -1,5 +1,7 @@
 import { cosineSimilarity, type Embedder, type EmbeddingVectorLike } from 'armorer';
 
+export * from '../index';
+
 import { createEmbedderRegistry, type EmbedderRegistry } from '../embedder-registry';
 
 import {

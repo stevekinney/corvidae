@@ -15,9 +15,9 @@ import {
   withBackendDescriptors,
   type BackendDescriptor,
 } from '@lostgradient/operative';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
-import { Conversation, type MediaContent } from 'conversationalist';
+import { Conversation, type MediaContent } from 'conversationalist/testing';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

@@ -6,7 +6,7 @@
  * needs an operation to answer otherwise replaces its handler with `on`. The real Bureau is
  * exercised end to end in the Playwright suite; this is for the components' own branches.
  */
-import type { ReviewListEntry } from '@lostgradient/weft';
+import type { ReviewListEntry } from '@lostgradient/weft/testing';
 
 import { contextDetailFixture } from './bureau-fixtures.test-support.ts';
 import type { BureauReview, EngineReview } from './bureau-reviews.ts';

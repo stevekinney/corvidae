@@ -3,10 +3,10 @@ import {
   Engine,
   type WorkflowServicesResolution,
   yieldToPortableEventLoop,
-} from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
+} from '@lostgradient/weft/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { noToolCalls } from '../conditions/predicates';

@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./testing": "./src/test/index.ts",
     "./adapters/anthropic/sdk": "./src/adapters/anthropic/sdk.ts"
   },
   "scripts": {

@@ -20,7 +20,7 @@ import {
   removeTemporaryPath,
 } from '@lostgradient/testing/temporary-path';
 import { textValueStore, MemoryStorage } from '@lostgradient/storage';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import type { AgentFileDefinition } from './agent-file';

@@ -20,8 +20,8 @@
  * so the severing test wraps `fetch` to relay the real response through a
  * stream the test can cut.
  */
-import type { WorkflowEvent } from '@lostgradient/weft';
-import { flushPortableMicrotasks, HttpClient } from '@lostgradient/weft';
+import type { WorkflowEvent } from '@lostgradient/weft/testing';
+import { flushPortableMicrotasks, HttpClient } from '@lostgradient/weft/testing';
 import { QueryClient } from '@tanstack/svelte-query';
 import { waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';

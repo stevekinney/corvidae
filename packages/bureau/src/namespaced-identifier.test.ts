@@ -1,7 +1,7 @@
 /**
  * COR-1871 — the `plugin:name` identifier grammar and its mapping to Weft handler and workflow names.
  */
-import { activity } from '@lostgradient/weft';
+import { activity } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { AUDIT_SYNTHETIC_OWNER_PREFIXES } from './audit-trail';

@@ -6,9 +6,9 @@
  * run is not allowed to take.
  */
 import { HookRegistry } from '@lostgradient/lifecycle';
-import { createTestToolbox } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, createCompactionScheduler, type Summarizer } from 'conversationalist';
+import { Conversation, createCompactionScheduler, type Summarizer } from 'conversationalist/testing';
 
 import { createActiveRun } from '../src/create-run';
 import type { OperativeHookMap } from '../src/hooks';

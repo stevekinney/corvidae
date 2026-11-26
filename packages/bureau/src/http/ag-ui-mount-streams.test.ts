@@ -8,10 +8,10 @@ import { EventType } from '@ag-ui/core';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { type Toolbox } from '@lostgradient/operative';
 import { waitForCondition } from '@lostgradient/operative/testing';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { createConversationHistory, appendMessages } from 'conversationalist';
+import { createConversationHistory, appendMessages } from 'conversationalist/testing';
 
 import { snapshotMessages } from './ag-ui-messages.ts';
 import {

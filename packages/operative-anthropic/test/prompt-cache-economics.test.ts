@@ -12,7 +12,7 @@
  * narrative version of these numbers.
  */
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import {
   createContextAssembler,

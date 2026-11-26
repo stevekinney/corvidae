@@ -2,7 +2,7 @@
  * COR-1812 — the input and output schemas of a workflow file: how the file format carries them,
  * what they do to a revision's version, the limits they are held to, and how an input is judged.
  */
-import { workflowDocumentVersion, WorkflowDocumentSchemaError } from '@lostgradient/weft';
+import { workflowDocumentVersion, WorkflowDocumentSchemaError } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { createWorkflowDocumentHost } from './workflow-host';

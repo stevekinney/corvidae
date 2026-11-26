@@ -41,7 +41,7 @@ import {
   workflow,
   type FleetEventFeed,
   type MinimalFetchEvent,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 import { IDBKeyRange, indexedDB } from 'fake-indexeddb';
 

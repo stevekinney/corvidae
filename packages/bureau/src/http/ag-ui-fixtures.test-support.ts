@@ -27,11 +27,11 @@ import {
   type AuthorizationScope,
 } from '@lostgradient/backchannel';
 import { type Storage, MemoryStorage } from '@lostgradient/storage';
-import { createToolbox, type Toolbox } from 'armorer';
+import { createToolbox, type Toolbox } from 'armorer/testing';
 import type { RunAgentInput } from '@ag-ui/core';
 
 import { createMemoryAssetStorage } from '../assets/storage';
-import type { GovernedMemory } from '@lostgradient/memory';
+import type { GovernedMemory } from '@lostgradient/memory/testing';
 
 import { createBureau } from '../create-bureau.ts';
 import { seamStorage, type StorageSeam } from '../test/session-input-fixtures.ts';

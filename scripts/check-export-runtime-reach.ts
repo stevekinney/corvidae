@@ -5,7 +5,7 @@
  * code or a test kit.
  */
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { builtinModules } from 'node:module';
 import { join, relative } from 'node:path';
 import ts from 'typescript';
@@ -199,13 +199,9 @@ async function findingsForExport(
     }
     const path = pathFromInput(root, input);
     if (path === undefined) continue;
-    const relativePath = relative(root, path).replaceAll('\\', '/');
+    const relativePath = relative(realpathSync(root), realpathSync(path)).replaceAll('\\', '/');
     for (const member of bunMembers(path)) findings.add(member);
-    if (
-      !testingExport(subpath) &&
-      path.startsWith(`${workspace.directory}/`) &&
-      TEST_PATH.test(`/${relativePath}`)
-    ) {
+    if (!testingExport(subpath) && TEST_PATH.test(`/${relativePath}`)) {
       findings.add(`test-kit: ${relativePath}`);
     }
   }

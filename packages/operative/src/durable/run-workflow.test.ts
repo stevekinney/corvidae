@@ -6,14 +6,14 @@ import {
   type WorkflowServicesResolution,
   type WorkflowServicesResolverInfo,
   yieldToPortableEventLoop,
-} from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
+} from '@lostgradient/weft/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import {
   Conversation,
   createConversationHistory,
   currentConversationFromSnapshot,
-} from 'conversationalist';
+} from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

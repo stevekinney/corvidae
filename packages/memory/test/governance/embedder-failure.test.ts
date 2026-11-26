@@ -34,7 +34,7 @@
  */
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import type { Embedder } from 'armorer';
+import type { Embedder } from 'armorer/testing';
 import { describe, expect, expectTypeOf, it } from 'bun:test';
 
 import { createEmbedderRegistry, HASHING_EMBEDDER_ID } from '../../src/embedder-registry';

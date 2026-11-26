@@ -11,7 +11,7 @@ import {
  * content, and that a cursor pages across an owner filter that drops rows.
  */
 import type { GenerateContext } from '@lostgradient/operative';
-import { createTool, createToolbox, type Toolbox } from 'armorer';
+import { createTool, createToolbox, type Toolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { workspaceConformanceLedger } from '../workspace-conformance-ledger.test-support.ts';
 import { z } from 'zod';

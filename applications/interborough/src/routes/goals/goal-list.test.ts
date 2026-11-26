@@ -8,7 +8,7 @@
  * view frame and the page are exercised together. The placeholders and their timings are
  * `goal-list-loading.test.ts`; what a row says is `goal-rows.test.ts`.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 

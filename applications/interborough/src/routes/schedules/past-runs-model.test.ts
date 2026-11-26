@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import type { WorkflowSummary } from '@lostgradient/weft';
+import type { WorkflowSummary } from '@lostgradient/weft/testing';
 
 import type { MissedFire } from '../../lib/bureau-schedules.ts';
 import { pastRows } from './past-runs-model.ts';

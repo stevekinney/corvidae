@@ -8,9 +8,9 @@
  * `bureau-run-identity.test.ts`.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 
 import { createAgentRun } from './agent-run';
 import { stopWhen } from './conditions/index';

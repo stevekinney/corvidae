@@ -6,7 +6,7 @@ import {
   appendUserMessage,
   type ConversationHistory,
   createConversationHistory,
-} from 'conversationalist';
+} from 'conversationalist/testing';
 
 import type { CostEstimate } from '../src/cost-estimation';
 import {

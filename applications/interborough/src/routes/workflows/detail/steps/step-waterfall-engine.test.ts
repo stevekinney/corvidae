@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { Engine } from '@lostgradient/weft';
+import { Engine } from '@lostgradient/weft/testing';
 
 import { openStepNumbers, stepWaterfall } from '@lostgradient/interborough-plugin/step-waterfall';
 import { waitUntil } from '@lostgradient/testing/wait-until';

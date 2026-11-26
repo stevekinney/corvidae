@@ -10,7 +10,7 @@
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { type Storage } from '@lostgradient/storage';
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
-import { getMessages } from 'conversationalist';
+import { getMessages } from 'conversationalist/testing';
 
 import type { BureauError } from './bureau-errors';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';

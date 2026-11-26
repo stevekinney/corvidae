@@ -12,10 +12,10 @@ import {
   withBackendDescriptors,
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import type { MediaContent } from 'conversationalist';
+import type { MediaContent } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';

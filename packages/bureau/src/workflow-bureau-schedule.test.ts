@@ -7,7 +7,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { Engine, Scheduler } from '@lostgradient/weft';
+import { Engine, Scheduler } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { BureauError } from './bureau-errors';

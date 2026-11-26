@@ -32,8 +32,8 @@ import {
   type Storage,
   textValueStore,
 } from '@lostgradient/storage';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

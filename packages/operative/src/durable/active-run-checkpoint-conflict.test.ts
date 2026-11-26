@@ -1,8 +1,8 @@
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
-import { WorkflowCheckpointConflictError } from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
+import { WorkflowCheckpointConflictError } from '@lostgradient/weft/testing';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 
 import { stopWhen } from '../conditions/index';
 import {

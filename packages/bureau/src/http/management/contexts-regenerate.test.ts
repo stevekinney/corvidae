@@ -1,4 +1,4 @@
-import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft/testing';
 /**
  * COR-2296 — `bureau.contexts.regenerate` replaces a context's latest answer with a new one from
  * the model, without running a tool, and answers the context, the message and the committed

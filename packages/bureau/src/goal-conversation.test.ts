@@ -5,7 +5,7 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgentSession } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 
 import { foreignSessionReason, goalSessionMetadata } from './goal-conversation';
 import { createGoalState, goalAttemptRunId } from './goal-state';

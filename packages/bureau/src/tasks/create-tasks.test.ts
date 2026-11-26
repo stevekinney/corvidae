@@ -10,7 +10,7 @@ import {
   type RunEvent,
   stopWhen,
 } from '@lostgradient/operative';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';

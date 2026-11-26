@@ -22,7 +22,7 @@ import { createAgent, stopWhen } from '@lostgradient/operative';
 import { textValueStore } from '@lostgradient/storage';
 import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';

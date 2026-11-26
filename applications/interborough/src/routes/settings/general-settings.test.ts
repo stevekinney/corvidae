@@ -6,7 +6,7 @@
  * (`settings-fixtures.test-support.ts`); the real one is exercised by the Playwright suite.
  */
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';

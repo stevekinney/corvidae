@@ -6,7 +6,7 @@
  */
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 
 import { createAgentSession } from '../agent-session';
 import { createSessionStore } from './create-session-store';

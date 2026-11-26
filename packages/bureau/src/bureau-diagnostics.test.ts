@@ -11,8 +11,8 @@ import {
 } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { createToolbox } from 'armorer';
-import { createConversationHistory } from 'conversationalist';
+import { createToolbox } from 'armorer/testing';
+import { createConversationHistory } from 'conversationalist/testing';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';

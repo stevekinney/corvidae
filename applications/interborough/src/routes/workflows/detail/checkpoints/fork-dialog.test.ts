@@ -1,7 +1,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { QueryClient } from '@tanstack/svelte-query';
 
 import { AUTHORIZATION_SCOPES, type Principal } from '../../../../lib/scopes.svelte.ts';

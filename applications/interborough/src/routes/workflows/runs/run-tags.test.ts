@@ -5,7 +5,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import type { WorkflowState } from '@lostgradient/weft';
+import type { WorkflowState } from '@lostgradient/weft/testing';
 
 import { quietFor } from '@lostgradient/testing/wait-until';
 import RunTagsHarness from './run-tags.test-harness.svelte';

@@ -7,7 +7,7 @@ import {
   validateApprovalBinding,
   type ApprovalStateStore,
   type ApprovalBindingPayload,
-} from 'armorer';
+} from 'armorer/testing';
 import { z } from 'zod';
 import { reviewedToolOperations, type ReviewedToolSelection } from './tool-operations.ts';
 import { createBureauCatalogSnapshot } from './http/bureau-catalog-snapshot.ts';

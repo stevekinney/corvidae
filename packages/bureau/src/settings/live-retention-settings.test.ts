@@ -5,7 +5,7 @@
  */
 import { createAgent, stopWhen } from '@lostgradient/operative';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 

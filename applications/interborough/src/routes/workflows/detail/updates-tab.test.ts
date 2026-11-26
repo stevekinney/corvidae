@@ -2,7 +2,7 @@ import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { HttpClientError, type WorkflowState } from '@lostgradient/weft';
+import { HttpClientError, type WorkflowState } from '@lostgradient/weft/testing';
 import { QueryClient } from '@tanstack/svelte-query';
 
 import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';

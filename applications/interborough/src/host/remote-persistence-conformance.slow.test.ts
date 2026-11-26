@@ -9,7 +9,7 @@ import {
 } from '@lostgradient/testing/postgres-server';
 import { createS3TestServer } from '@lostgradient/testing/s3-server';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { AUTHORIZATION_SCOPES } from '@lostgradient/weft';
+import { AUTHORIZATION_SCOPES } from '@lostgradient/weft/testing';
 import { afterAll, expect, test } from 'bun:test';
 import { chmod, mkdir, mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

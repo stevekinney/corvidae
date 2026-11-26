@@ -2,7 +2,7 @@
  * COR-1527 — the workflow file format: one JSON file is COR-1525's document plus `agent` and
  * `paused`, named by its identifier, and anything else makes it invalid.
  */
-import { workflowDocumentVersion } from '@lostgradient/weft';
+import { workflowDocumentVersion } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { createWorkflowDocumentHost } from './workflow-host';

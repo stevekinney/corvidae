@@ -1,6 +1,6 @@
 import type { Message as AGUIMessage } from '@ag-ui/core';
 import { describe, expect, test } from 'bun:test';
-import { toAGUIMessages } from 'conversationalist';
+import { toAGUIMessages } from 'conversationalist/testing';
 import { createConversationHistory } from '../components/chat/builders.ts';
 import type { ConversationHistory } from '../components/chat/conversation-model.ts';
 import { AGUIChatTransportError } from './ag-ui-transport-error.ts';

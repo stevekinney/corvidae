@@ -5,9 +5,9 @@
  * are injected so every assertion names the exact chain it is about.
  */
 import { sha256HexSync } from '@lostgradient/cryptography';
-import { createTestToolbox } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import {
   createContextEpochSealer,

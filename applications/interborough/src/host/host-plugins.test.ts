@@ -17,7 +17,7 @@ import {
   type PluginDescriptor,
   type PluginSecretDeclaration,
 } from '@lostgradient/interborough-plugin';
-import { createMemoryAuthority, type GovernedMemory } from '@lostgradient/memory';
+import { createMemoryAuthority, type GovernedMemory } from '@lostgradient/memory/testing';
 import type { ProviderDefinition } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';

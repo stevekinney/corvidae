@@ -10,7 +10,7 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { GenerateFunction } from '@lostgradient/operative';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { OWNER } from './http/management/management-fixtures.test-support.ts';

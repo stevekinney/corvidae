@@ -1,6 +1,6 @@
-import { createTool, createToolbox, type Toolbox } from 'armorer';
+import { createTool, createToolbox, type Toolbox } from 'armorer/testing';
 import { expect, test } from 'bun:test';
-import type { ConversationHistory } from 'conversationalist';
+import type { ConversationHistory } from 'conversationalist/testing';
 import { z } from 'zod';
 import { workspaceConformanceLedger } from './workspace-conformance-ledger.test-support.ts';
 import { waitForCondition } from '../test';

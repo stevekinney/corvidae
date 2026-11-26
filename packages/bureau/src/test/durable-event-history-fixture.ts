@@ -36,7 +36,7 @@ import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { DurableEventEnvelope, DurableEventOwner } from '@lostgradient/operative';
 import type { Storage } from '@lostgradient/storage';
-import { createFleetEventFeed, type FleetEventFeed } from '@lostgradient/weft';
+import { createFleetEventFeed, type FleetEventFeed } from '@lostgradient/weft/testing';
 
 import { createDurableEventHistory, type DurableEventHistory } from '../durable-event-history';
 import type { PersistentBureauStorageFixture } from './storage-fixtures';

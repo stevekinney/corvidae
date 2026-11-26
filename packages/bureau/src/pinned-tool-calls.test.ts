@@ -7,7 +7,7 @@ import { createAgent, createCheckpointStore, stopWhen } from '@lostgradient/oper
 import { createMockGenerate } from '@lostgradient/operative/testing';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { createTool, createToolbox, type Toolbox } from 'armorer';
+import { createTool, createToolbox, type Toolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

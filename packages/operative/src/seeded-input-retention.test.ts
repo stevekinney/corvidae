@@ -4,9 +4,9 @@
  * paths: the in-process loop and the durable workflow.
  */
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, createConversationHistory, type MultiModalContent } from 'conversationalist';
+import { Conversation, createConversationHistory, type MultiModalContent } from 'conversationalist/testing';
 
 import { stopWhen } from './conditions/index';
 import { startDurableRunResult } from './durable/active-run-result-entrypoints';

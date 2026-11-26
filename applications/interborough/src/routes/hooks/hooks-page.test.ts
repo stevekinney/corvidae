@@ -5,7 +5,7 @@
  * keeps the hooks and their deliveries, so the route, the view frame, and the pages are exercised
  * together.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';

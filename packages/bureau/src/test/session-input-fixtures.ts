@@ -22,7 +22,7 @@ import {
   encodeStorageKeyComponent,
   type Storage,
 } from '@lostgradient/storage';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';

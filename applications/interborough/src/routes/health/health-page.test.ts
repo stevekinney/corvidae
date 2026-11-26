@@ -7,7 +7,7 @@
  * answers nothing here, so its counts read as unavailable, which is also a state worth proving.
  */
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { readFileSync } from 'node:fs';

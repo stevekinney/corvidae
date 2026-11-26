@@ -1,8 +1,8 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createTestToolbox } from 'armorer';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createScheduler } from '../../src/scheduler/create-scheduler';

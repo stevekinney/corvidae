@@ -13,8 +13,8 @@ import {
   stopWhen,
   createAgent,
 } from '@lostgradient/operative';
-import { createToolbox, type Tool } from 'armorer';
-import { createFleetEventFeed } from '@lostgradient/weft';
+import { createToolbox, type Tool } from 'armorer/testing';
+import { createFleetEventFeed } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { BureauError } from './bureau-errors';

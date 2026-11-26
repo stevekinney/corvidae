@@ -4,7 +4,7 @@
  * (`models-host.test-support.ts`); the real ones are exercised by `host-provider-changes.test.ts`
  * and the Playwright suite (`tests/e2e/models.spec.ts`).
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 

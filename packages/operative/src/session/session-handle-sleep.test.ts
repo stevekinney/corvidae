@@ -1,7 +1,7 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import type { Toolbox } from 'armorer';
-import { createToolbox } from 'armorer';
+import type { Toolbox } from 'armorer/testing';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';

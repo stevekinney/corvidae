@@ -3,7 +3,7 @@
  * source, step by step. The fork and then its source are each read with the access reading a workflow
  * run asks, before the engine reads either timeline, and a run that is not a fork says so.
  */
-import { WorkflowNotFoundError } from '@lostgradient/weft';
+import { WorkflowNotFoundError } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { waitForCondition } from '../../test';

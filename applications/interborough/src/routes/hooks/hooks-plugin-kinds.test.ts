@@ -4,7 +4,7 @@
  * hook's deliveries shows its plain words and its raw kind: a delivery holds no payload, so no
  * formatter's sentence is written for it.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';

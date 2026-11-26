@@ -1,8 +1,8 @@
 import { TypedEventTarget } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { workflow, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { workflow, yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 
 import { createAgentSession } from '../agent-session';
 import { createCheckpointStore } from '../durable/checkpoint-store';

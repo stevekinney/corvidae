@@ -5,7 +5,7 @@
  * status counts are of every run and a status or an agent narrows what was read; and a run the
  * Bureau cannot read is told apart from one it does not know, or has removed.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 

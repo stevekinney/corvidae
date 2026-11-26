@@ -3,7 +3,7 @@ import {
   validateApprovalBinding,
   type ApprovalBindingPayload,
   type ApprovalStateStore,
-} from 'armorer';
+} from 'armorer/testing';
 
 export function durableApprovalStore(storage: Storage): ApprovalStateStore {
   const records = textValueStore(storage, { disposeUnderlyingStorage: false });

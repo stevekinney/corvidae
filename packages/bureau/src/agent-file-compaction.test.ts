@@ -6,7 +6,7 @@
  */
 import { type GenerateFunction } from '@lostgradient/operative';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AgentFileError } from './agent-file';

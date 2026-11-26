@@ -29,10 +29,10 @@ import {
   type SessionStore,
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 
 import {
   type AgentContributions,

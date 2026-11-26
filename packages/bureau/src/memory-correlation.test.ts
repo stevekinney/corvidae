@@ -12,7 +12,7 @@ import {
   type MemoryGovernanceNotification,
   createMemoryVectorStore,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import {
   createAgent,
   createContextEpochSealer,
@@ -20,7 +20,7 @@ import {
   type GenerateFunction,
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
-import type { ToolRequestContext } from 'armorer';
+import type { ToolRequestContext } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';

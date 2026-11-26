@@ -4,7 +4,7 @@
 import { createDefaultRuntimeServices, createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { createMockGenerate } from '@lostgradient/operative/testing';
-import { createToolbox, type Toolbox } from 'armorer';
+import { createToolbox, type Toolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { encodeStorageKeyComponent, type Storage, MemoryStorage } from '@lostgradient/storage';

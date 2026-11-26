@@ -6,9 +6,9 @@ import {
   stopWhen,
 } from '@lostgradient/operative';
 import { MemoryStorage, type Storage, textValueStore } from '@lostgradient/storage';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { type Conversation, CURRENT_SCHEMA_VERSION } from 'conversationalist';
+import { type Conversation, CURRENT_SCHEMA_VERSION } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';

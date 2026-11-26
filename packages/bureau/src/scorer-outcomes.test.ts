@@ -13,7 +13,7 @@ import type { PluginScore, PluginScorer } from '@lostgradient/interborough-plugi
 import { type Action, type RunResult, type StallWatchdogClock } from '@lostgradient/operative';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 

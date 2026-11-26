@@ -8,7 +8,7 @@
  * policy, and fail when any of them moves.
  */
 import { builtInSettingDefaults, SETTINGS_WITHOUT_DEFAULT } from '@lostgradient/bureau';
-import { DEFAULT_EPISODIC_RETENTION_MILLISECONDS } from '@lostgradient/memory';
+import { DEFAULT_EPISODIC_RETENTION_MILLISECONDS } from '@lostgradient/memory/testing';
 import { describe, expect, test } from 'bun:test';
 
 import type { SchemaNode } from '../../../lib/bureau-settings.ts';

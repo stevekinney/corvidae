@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { mergeSubagentResult, prepareSubagentContext } from './subagent-context';
 

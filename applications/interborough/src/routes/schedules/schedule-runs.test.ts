@@ -8,7 +8,7 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
-import type { HttpClient, ScheduleSummary, WorkflowSummary } from '@lostgradient/weft';
+import type { HttpClient, ScheduleSummary, WorkflowSummary } from '@lostgradient/weft/testing';
 
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
 

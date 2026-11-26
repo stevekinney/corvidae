@@ -4,7 +4,7 @@
  * `Conflict` and `StaleRevision` share HTTP status 409, so the code, not the status, tells them
  * apart, and the literal envelopes below are what the Bureau handler puts on the wire.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {

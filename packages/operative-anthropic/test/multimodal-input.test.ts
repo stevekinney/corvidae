@@ -1,11 +1,11 @@
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import {
   type MediaContent,
   type MultiModalContent,
   Conversation,
   UnsupportedContentError,
-} from 'conversationalist';
+} from 'conversationalist/testing';
 
 import type { GenerateContext } from '@lostgradient/operative/provider-kit';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';

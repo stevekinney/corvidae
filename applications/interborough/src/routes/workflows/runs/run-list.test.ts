@@ -5,7 +5,7 @@
  * that opens onto its occurrences; and a run opens in place from its row. Through the route outlet,
  * over a Bureau that answers from a table.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { flushSync } from 'svelte';

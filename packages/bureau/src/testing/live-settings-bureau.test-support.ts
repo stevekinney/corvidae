@@ -5,9 +5,9 @@
  */
 import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
-import { createFleetEventFeed } from '@lostgradient/weft';
+import { createFleetEventFeed } from '@lostgradient/weft/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { createToolbox, type Tool } from 'armorer';
+import { createToolbox, type Tool } from 'armorer/testing';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
 import { createBureau } from '../create-bureau.ts';

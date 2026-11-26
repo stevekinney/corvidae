@@ -1,7 +1,7 @@
 import { HookRegistry } from '@lostgradient/lifecycle';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { createActiveRun } from '../src/create-run';
 import type { OperativeHookMap } from '../src/hooks';

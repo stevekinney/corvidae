@@ -5,7 +5,7 @@
  * the tolerant read they use rethrows an older record rather than reporting a zeroed run.
  */
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { Engine } from '@lostgradient/weft';
+import { Engine } from '@lostgradient/weft/testing';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';

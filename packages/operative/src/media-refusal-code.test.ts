@@ -1,7 +1,7 @@
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import type { MediaContent } from 'conversationalist';
-import { Conversation } from 'conversationalist';
+import type { MediaContent } from 'conversationalist/testing';
+import { Conversation } from 'conversationalist/testing';
 
 import type { MediaCostEstimator, MediaCostOutcome } from './context/types';
 import { createActiveRun } from './create-run';

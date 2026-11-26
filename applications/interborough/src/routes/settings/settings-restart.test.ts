@@ -5,7 +5,7 @@
  * the host's restart route is layered over it; the real route is exercised by
  * `src/host/host-plugins.test.ts`.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 

@@ -17,7 +17,7 @@
  */
 
 import { MemoryStorage } from '@lostgradient/storage';
-import { workflow, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { workflow, yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 
 import {
   canTransitionGoalRun,

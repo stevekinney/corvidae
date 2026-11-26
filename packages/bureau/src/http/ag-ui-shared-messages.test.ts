@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { ConversationHistory } from 'conversationalist';
+import type { ConversationHistory } from 'conversationalist/testing';
 
 import { continuationRow } from '../session-resume.ts';
 import { startTaskFrom } from '../test/task-start-request.ts';

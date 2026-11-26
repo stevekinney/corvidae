@@ -2,7 +2,7 @@
  * The run setup page's decisions outside the page: which workflows can be run from it, which
  * schemas become a form, how a refused input becomes field problems, and the footer's summary.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';

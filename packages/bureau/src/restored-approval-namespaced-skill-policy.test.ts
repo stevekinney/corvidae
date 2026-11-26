@@ -4,7 +4,7 @@
  * does not let an approval for the other run.
  */
 import { type Toolbox, stopWhen } from '@lostgradient/operative';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

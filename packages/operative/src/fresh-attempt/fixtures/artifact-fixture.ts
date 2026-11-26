@@ -1,4 +1,4 @@
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import type { ContextSourceRecord, EffectiveContextEpoch } from '../../context-epoch';
 import { sealContextEpoch } from '../../context-epoch';

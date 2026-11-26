@@ -1,4 +1,4 @@
-import { AUTHORIZATION_SCOPES } from '@lostgradient/weft';
+import { AUTHORIZATION_SCOPES } from '@lostgradient/weft/testing';
 import {
   createAgent,
   ScheduleAttemptedEvent,

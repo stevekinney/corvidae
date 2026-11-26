@@ -1,5 +1,5 @@
 import { principalFromApiKey, type AuthConfig } from '@lostgradient/backchannel';
-import { createTool, createToolbox, type Toolbox } from 'armorer';
+import { createTool, createToolbox, type Toolbox } from 'armorer/testing';
 import { z } from 'zod';
 import { waitForCondition } from '../test';
 import { BUREAU_SCOPES } from './bureau-scopes.ts';

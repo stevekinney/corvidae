@@ -1,6 +1,6 @@
 import { CompletableEventTarget, type Subscription } from '@lostgradient/lifecycle';
 import { afterEach } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { createAgentRun, type AgentRun } from '../agent-run';
 import type { ActiveRun } from '../create-run';

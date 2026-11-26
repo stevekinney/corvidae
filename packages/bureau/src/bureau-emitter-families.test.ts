@@ -11,12 +11,12 @@ import {
   type GovernedMemory,
   createMemoryVectorStore,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
-import { ScheduleMissedFireEvent } from '@lostgradient/weft';
+import { ScheduleMissedFireEvent } from '@lostgradient/weft/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it, jest, setSystemTime, spyOn } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';

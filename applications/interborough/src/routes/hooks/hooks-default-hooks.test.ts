@@ -7,7 +7,7 @@
  * never a value, and saves it through update. A new hook chooses "Run an action from a plugin" and
  * then an action from a Select grouped by plugin.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 

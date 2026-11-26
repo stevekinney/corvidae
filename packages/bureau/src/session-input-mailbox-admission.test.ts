@@ -1,5 +1,5 @@
 import type { GenerateFunction, SessionInputAdmissionOutcome } from '@lostgradient/operative';
-import { createToolbox, type Toolbox } from 'armorer';
+import { createToolbox, type Toolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';

@@ -21,7 +21,7 @@ import {
   type Engine,
   registerWorkflowDocuments,
   validateWorkflowDocument,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 
 import type { BureauDiagnostic } from './bureau-types/options';
 import { createWorkflowDocumentHost } from './workflow-host';

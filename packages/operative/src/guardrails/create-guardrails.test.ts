@@ -1,6 +1,6 @@
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it, mock } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { GuardrailTripwireError } from '../errors';
 import type { GuardrailFiring } from '../types';

@@ -20,7 +20,7 @@ import {
   readParentSignals,
   stopWhen,
 } from '@lostgradient/operative';
-import { createTool } from 'armorer';
+import { createTool } from 'armorer/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

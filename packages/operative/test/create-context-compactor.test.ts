@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from 'bun:test';
-import type { Message } from 'conversationalist';
-import { Conversation } from 'conversationalist';
+import type { Message } from 'conversationalist/testing';
+import { Conversation } from 'conversationalist/testing';
 import { assertDefined } from './assert-defined';
 
 import { createContextCompactor } from '../src/create-context-compactor';

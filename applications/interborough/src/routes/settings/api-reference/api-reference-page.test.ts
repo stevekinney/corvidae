@@ -4,7 +4,7 @@
  * sources tabs, each filled from what the running server answers. The Bureau is a stub and the
  * server's OpenAPI description is served by a `fetch` this test installs over it.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 

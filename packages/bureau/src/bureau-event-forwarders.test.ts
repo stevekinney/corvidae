@@ -4,7 +4,7 @@
  */
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { ScheduleMissedFireEvent } from '@lostgradient/weft';
+import { ScheduleMissedFireEvent } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import type { AssetEvent } from './assets/types';

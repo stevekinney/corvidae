@@ -10,7 +10,7 @@
  * Change the example and the documentation together.
  */
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

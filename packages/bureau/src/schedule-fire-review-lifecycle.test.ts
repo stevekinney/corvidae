@@ -8,7 +8,7 @@
  */
 import { MemoryStorage } from '@lostgradient/storage';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { ApprovalOutcomeNotWrittenError, BureauError } from './bureau-errors';

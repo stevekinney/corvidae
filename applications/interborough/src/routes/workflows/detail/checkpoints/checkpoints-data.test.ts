@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { CheckpointState, CheckpointSummary, WorkflowReplay } from '@lostgradient/weft';
+import type { CheckpointState, CheckpointSummary, WorkflowReplay } from '@lostgradient/weft/testing';
 
 import {
   checkpointAtQueryKey,

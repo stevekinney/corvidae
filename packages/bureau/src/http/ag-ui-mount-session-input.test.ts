@@ -5,7 +5,7 @@
  * input, under the id it was sent with, is named, and the thread is in the order the run took it.
  */
 import { EventType } from '@ag-ui/core';
-import { Mailbox } from '@lostgradient/weft';
+import { Mailbox } from '@lostgradient/weft/testing';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { listHeldTasks, waitForCondition } from '../test';

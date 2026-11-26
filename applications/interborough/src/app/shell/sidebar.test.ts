@@ -4,7 +4,7 @@
  * on the person, Health a dot that follows what needs attention; New chat as its primary action; and
  * its desktop column and its smaller-screen drawer.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';

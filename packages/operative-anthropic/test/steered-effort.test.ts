@@ -4,9 +4,9 @@
  * is dropped for a model with no effort support, and never fails a call. The response's
  * `metadata.effectiveEffort` reports what was sent.
  */
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import type { Effort, GenerateContext } from '@lostgradient/operative/provider-kit';
 import { createAnthropicProvider, createAnthropicProviderStream } from '../src/anthropic.ts';

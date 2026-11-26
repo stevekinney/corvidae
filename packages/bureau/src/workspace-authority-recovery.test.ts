@@ -1,14 +1,14 @@
 import { MemoryStorage } from '@lostgradient/storage';
-import { decode, encode, KEYS } from '@lostgradient/weft';
+import { decode, encode, KEYS } from '@lostgradient/weft/testing';
 import type { DurableRunDeps } from '@lostgradient/operative';
 import { readBackendDescriptors, withBackendDescriptors } from '@lostgradient/operative';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import {
   createTool,
   createToolbox,
   readRunWorkspaceAuthority,
   type ToolRequestContext,
-} from 'armorer';
+} from 'armorer/testing';
 import { z } from 'zod';
 import { createRuntimeComposition } from './runtime-composition.ts';
 import { withAddedTools } from './toolbox-additions.ts';

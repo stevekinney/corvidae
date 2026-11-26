@@ -6,7 +6,7 @@
  * The Bureau is a table (`bureau-world.test-support.ts`) whose `bureau.checks.list` filters and
  * pages the way the operation does, so the page's requests are what is asserted.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { flushSync } from 'svelte';

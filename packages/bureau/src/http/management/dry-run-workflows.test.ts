@@ -4,7 +4,7 @@
 import { definePlugin, type PluginWorkflow } from '@lostgradient/interborough-plugin';
 import { createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
-import { workflow } from '@lostgradient/weft';
+import { workflow } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

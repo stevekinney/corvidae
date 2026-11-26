@@ -2,7 +2,7 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, stopWhen, withBackendDescriptors } from '@lostgradient/operative';
 import { waitForCondition } from '@lostgradient/operative/testing';
 import { MemoryStorage } from '@lostgradient/storage';
-import { WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
+import { WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Glob } from 'bun';
 

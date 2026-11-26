@@ -8,10 +8,10 @@
 import { createAgent, stopWhen, type Toolbox } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import type { Message } from 'conversationalist';
+import type { Message } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';

@@ -4,7 +4,7 @@
  * decision form of a workflow review with its sections and feedback, and a list that is asked again
  * after it failed (`reviews-page.test.ts` has the common case).
  */
-import { HttpClient, type PendingReviewEntry } from '@lostgradient/weft';
+import { HttpClient, type PendingReviewEntry } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';

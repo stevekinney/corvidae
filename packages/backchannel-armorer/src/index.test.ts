@@ -1,6 +1,6 @@
 import { createOperationRegistry, principalFromApiKey } from '@lostgradient/backchannel';
 import { executeOperation, snapshotOperationCatalog } from '@lostgradient/backchannel/internals';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { operationsFromToolbox } from './index.ts';

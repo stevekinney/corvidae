@@ -6,7 +6,7 @@
  */
 import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, stopWhen, type GenerateFunction } from '@lostgradient/operative';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 import { jest } from 'bun:test';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 

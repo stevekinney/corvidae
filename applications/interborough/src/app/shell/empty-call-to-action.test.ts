@@ -3,7 +3,7 @@
  * the frame must stop calling the view empty at that location, or the picker and the page never
  * mount and an empty install cannot make its first run or schedule.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';

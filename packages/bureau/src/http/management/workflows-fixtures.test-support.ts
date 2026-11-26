@@ -1,4 +1,4 @@
-import { AUTHORIZATION_SCOPES, WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
+import { AUTHORIZATION_SCOPES, WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft/testing';
 /**
  * A Bureau over a temporary workflow directory, served as the handler serves it to an API-key
  * caller and to the deployment's owner (COR-1527, COR-1528). The tests share it so the owner

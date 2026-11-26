@@ -13,7 +13,7 @@ import {
   createMemoryGovernancePolicy,
   createMemoryVectorStore,
   HASHING_EMBEDDER_ID,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { encodeCursor } from '@lostgradient/backchannel';
 

@@ -8,9 +8,9 @@
  * explicit no-op there — asserted below by confirming the mock never
  * receives a `metadata` key.
  */
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import type { GenerateContext } from '@lostgradient/operative/provider-kit';
 import { createAnthropicProvider } from '../src/anthropic.ts';

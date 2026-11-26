@@ -6,15 +6,15 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent } from '@lostgradient/operative';
 import { listHeldTasks, waitForTaskState } from './test';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createToolbox, type Tool } from 'armorer';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createToolbox, type Tool } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import {
   appendMessages,
   createConversationHistory,
   type Message,
   type MessageInput,
-} from 'conversationalist';
+} from 'conversationalist/testing';
 
 import { BureauLedgerConflictError } from './command-ledger';
 import { BureauError } from './bureau-errors';

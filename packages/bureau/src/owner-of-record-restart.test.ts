@@ -5,7 +5,7 @@ import {
   createAgent,
 } from '@lostgradient/operative';
 import type { Storage } from '@lostgradient/storage';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';

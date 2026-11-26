@@ -10,7 +10,7 @@
  * real crash leaves.
  */
 
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import {

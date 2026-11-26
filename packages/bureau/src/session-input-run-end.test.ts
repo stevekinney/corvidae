@@ -9,10 +9,10 @@ import {
 } from '@lostgradient/operative';
 import { createManualRuntimeServices } from '@lostgradient/operative/testing';
 import { MemoryStorage, type Storage, textValueStore } from '@lostgradient/storage';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { Conversation, createConversationHistory, CURRENT_SCHEMA_VERSION } from 'conversationalist';
+import { Conversation, createConversationHistory, CURRENT_SCHEMA_VERSION } from 'conversationalist/testing';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

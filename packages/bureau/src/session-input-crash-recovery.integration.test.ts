@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import { createSessionInputDeliveryStore, stopWhen, createAgent } from '@lostgradient/operative';
 import { textValueStore } from '@lostgradient/storage';
 import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

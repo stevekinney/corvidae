@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { GenerateFunction } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
-import { Outbox } from '@lostgradient/weft';
+import { Outbox } from '@lostgradient/weft/testing';
 import {
   createEgressPolicy,
   createHttpDeliveryAdapter,

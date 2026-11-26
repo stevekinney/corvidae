@@ -5,7 +5,7 @@
  * for want of knowing which owns it.
  */
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing';
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { installBureauStub, type BureauStub } from '../../lib/bureau-stub.test-support.ts';

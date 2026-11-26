@@ -9,7 +9,7 @@ import {
   workflowDocumentVersion,
   type DocumentWorkflowHost,
   type WorkflowDocument,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 import { awakeTurns } from '@lostgradient/testing/wait-until';

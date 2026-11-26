@@ -1,5 +1,5 @@
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
-import { createTool, createToolbox, createToolCall, readToolTitle } from 'armorer';
+import { createTool, createToolbox, createToolCall, readToolTitle } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import type {

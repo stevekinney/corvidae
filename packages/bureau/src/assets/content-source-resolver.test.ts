@@ -4,7 +4,7 @@
  * carried for the input guardrail.
  */
 import { afterEach, describe, expect, it } from 'bun:test';
-import type { MediaContent } from 'conversationalist';
+import type { MediaContent } from 'conversationalist/testing';
 
 import {
   alice,

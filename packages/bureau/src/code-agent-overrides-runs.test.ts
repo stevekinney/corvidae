@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';

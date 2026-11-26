@@ -7,8 +7,8 @@
  * therefore enforced where every registration converges, `createAgentSchedule`,
  * and not only on the bureau's public wrapper.
  */
-import type { ScheduleOptions, ScheduleSpec, ScheduleSummary } from '@lostgradient/weft';
-import { ScheduleHandle } from '@lostgradient/weft';
+import type { ScheduleOptions, ScheduleSpec, ScheduleSummary } from '@lostgradient/weft/testing';
+import { ScheduleHandle } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { createScheduleSelfTool } from '../create-schedule-self-tool';

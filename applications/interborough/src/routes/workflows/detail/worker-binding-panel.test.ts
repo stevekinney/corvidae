@@ -1,7 +1,7 @@
 import { render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import type { WorkflowState } from '@lostgradient/weft';
+import type { WorkflowState } from '@lostgradient/weft/testing';
 
 import WorkerBindingPanel from './worker-binding-panel.svelte';
 

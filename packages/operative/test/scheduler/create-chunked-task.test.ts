@@ -1,6 +1,6 @@
-import { createTestToolbox } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createChunkedTask } from '../../src/scheduler/create-chunked-task';

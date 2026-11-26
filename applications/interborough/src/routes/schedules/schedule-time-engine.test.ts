@@ -6,7 +6,7 @@
 import { rejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClient, isWeftFault } from '@lostgradient/weft';
+import { HttpClient, isWeftFault } from '@lostgradient/weft/testing';
 
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';
 import { skipNextSchedule, unskipSchedule } from './schedule-queries.ts';

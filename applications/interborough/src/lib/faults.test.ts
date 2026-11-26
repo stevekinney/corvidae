@@ -7,7 +7,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { FaultCode } from '@lostgradient/backchannel';
-import { HttpClientError, type WeftErrorCode } from '@lostgradient/weft';
+import { HttpClientError, type WeftErrorCode } from '@lostgradient/weft/testing';
 
 import {
   canRetryFault,

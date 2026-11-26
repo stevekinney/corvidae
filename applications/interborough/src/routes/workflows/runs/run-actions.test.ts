@@ -2,7 +2,7 @@
  * What a person does on a run's page: cancel it after a confirmation, and decide what it is
  * waiting on, through `/runs/:run` and the route outlet, over a Bureau that answers from a table.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';

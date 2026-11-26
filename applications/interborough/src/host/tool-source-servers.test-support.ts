@@ -12,7 +12,7 @@
  *   mutating MCP tool and a mutating OpenAPI operation that record the calls that ran, whose input
  *   schema a test can change (COR-1950).
  */
-import { createMCP, createTool, createToolbox } from 'armorer';
+import { createMCP, createTool, createToolbox } from 'armorer/testing';
 import { z } from 'zod';
 
 /** A started server: its origin, what it saw, and how to stop it. */

@@ -6,7 +6,7 @@
  * a stand-in (`plugins/plugins-host.test-support.ts`); the real ones are the Playwright suite's
  * (`tests/e2e/settings-general.spec.ts`).
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';

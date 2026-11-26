@@ -1,4 +1,4 @@
-import type { MediaLimits, Modality, ModalityMatrix } from 'conversationalist';
+import type { MediaLimits, Modality, ModalityMatrix } from 'conversationalist/testing';
 
 import type { ModelPricing } from '../cost-estimation.ts';
 import {

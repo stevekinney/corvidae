@@ -4,10 +4,10 @@
  * and the implicit `bureau` agent that used to stand for it is refused rather than run. COR-1667: creating a schedule under a name the catalog lacks is refused too, so a fire only meets a missing agent after the catalog loses one.
  */
 import { createAgent, createAgentSession, type GenerateFunction } from '@lostgradient/operative';
-import { decode, encode } from '@lostgradient/weft';
+import { decode, encode } from '@lostgradient/weft/testing';
 import { encodeStorageKeyComponent, MemoryStorage } from '@lostgradient/storage';
 import { Database } from 'bun:sqlite';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { AgentDefinitions } from './agent-catalog';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';

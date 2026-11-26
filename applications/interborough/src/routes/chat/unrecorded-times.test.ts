@@ -1,6 +1,6 @@
 import { createConversationHistory } from '@lostgradient/chat';
 import { describe, expect, test } from 'bun:test';
-import { mergeAGUIMessages } from 'conversationalist';
+import { mergeAGUIMessages } from 'conversationalist/testing';
 
 import { NO_RECORDED_TIME, withoutImportTimes } from './unrecorded-times.ts';
 

@@ -25,7 +25,7 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import type { GenerateFunction } from '@lostgradient/operative';
 import type { Storage } from '@lostgradient/storage';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

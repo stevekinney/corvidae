@@ -5,7 +5,7 @@ import {
   HttpClientError,
   type WorkerStartOverridePreview,
   type WorkflowState,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 import { QueryClient } from '@tanstack/svelte-query';
 
 import { AUTHORIZATION_SCOPES, type Principal } from '../../../lib/scopes.svelte.ts';

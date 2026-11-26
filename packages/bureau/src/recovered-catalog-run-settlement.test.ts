@@ -13,8 +13,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
-import { decode, encode } from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
+import { decode, encode } from '@lostgradient/weft/testing';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { AGENT_RUN_REFERENCE_KEY_PREFIX } from './agent-snapshot-store';

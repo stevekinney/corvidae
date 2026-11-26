@@ -22,9 +22,9 @@ import {
   recordProcedureOutcome,
   retireProcedure,
   retrieveProcedures,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { MemoryStorage } from '@lostgradient/storage';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

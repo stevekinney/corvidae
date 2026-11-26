@@ -10,9 +10,9 @@ import {
   createToolbox,
   formatGeminiToolResults,
   type ToolExecutionResult,
-} from 'armorer';
+} from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, materializeToolCalls, toGeminiMessages } from 'conversationalist';
+import { Conversation, materializeToolCalls, toGeminiMessages } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { HookRegistry } from '@lostgradient/lifecycle';

@@ -10,7 +10,7 @@
  * The unsupported case is covered by component tests because Weft 0.20
  * refuses to start a remote-task server without conditional batches.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';

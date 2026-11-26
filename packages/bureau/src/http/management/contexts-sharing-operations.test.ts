@@ -10,7 +10,7 @@ import {
   withSessionReadRequestResolution,
   withSessionReadRevocation,
 } from '@lostgradient/operative';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 
 import { startTaskFrom } from '../../test/task-start-request.ts';
 import {

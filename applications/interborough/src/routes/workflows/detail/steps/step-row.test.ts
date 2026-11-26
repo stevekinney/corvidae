@@ -1,4 +1,4 @@
-import type { WorkflowTimelineEntry } from '@lostgradient/weft';
+import type { WorkflowTimelineEntry } from '@lostgradient/weft/testing';
 import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 

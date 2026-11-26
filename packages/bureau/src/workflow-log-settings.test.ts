@@ -11,7 +11,7 @@ import {
   type WorkflowContext,
   type WorkflowLogLine,
   type WorkflowLogsResult,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';
 

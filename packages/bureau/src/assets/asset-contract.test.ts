@@ -11,11 +11,11 @@
  * asset task, timer, or storage call outlived shutdown.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { waitForTaskState } from '../test';
 import type { BatchOperation, Storage } from '@lostgradient/storage';
-import { type ContentSource, type Modality } from 'conversationalist';
+import { type ContentSource, type Modality } from 'conversationalist/testing';
 
 import type { AssetStorageFixture } from '../test/asset-storage-fixtures';
 import { createMemoryStorageFixture } from '../test/storage-fixtures';

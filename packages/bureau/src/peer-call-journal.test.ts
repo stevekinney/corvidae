@@ -6,7 +6,7 @@
  */
 import { createAgent, createPeerCallTool, stopWhen } from '@lostgradient/operative';
 import { createA2APeerClient } from '@lostgradient/weft/a2a';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

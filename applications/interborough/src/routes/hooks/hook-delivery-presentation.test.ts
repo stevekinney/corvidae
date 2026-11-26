@@ -3,7 +3,7 @@
  * 86c): its status word, the cause of a failure, the facts, the tries, the payload, and whether it
  * can be sent again.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import { RETRY_LABEL } from '../../app/copy/views.ts';

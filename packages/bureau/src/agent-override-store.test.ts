@@ -5,7 +5,7 @@
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createAgent, stopWhen } from '@lostgradient/operative';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AgentFileConflictError, AgentFileError } from './agent-file';

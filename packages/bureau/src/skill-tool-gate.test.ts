@@ -13,9 +13,9 @@ import {
   type Toolbox,
   withActiveSkillToolPolicy,
 } from '@lostgradient/operative';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
-import { Conversation, getMessages } from 'conversationalist';
+import { Conversation, getMessages } from 'conversationalist/testing';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

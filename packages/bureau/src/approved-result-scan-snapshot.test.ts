@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 import { GUARDRAIL_BLOCKED_CODE, readSessionTaint } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
-import { createTool } from 'armorer';
+import { createTool } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

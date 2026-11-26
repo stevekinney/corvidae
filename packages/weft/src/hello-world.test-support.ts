@@ -8,7 +8,7 @@
  * load it without the example workspace's `@lostgradient/weft` resolution — which is only
  * present after that workspace is `bun install`ed and is therefore unavailable in
  * the root `tsc`/`bun test` jobs. Re-exporting from the example instead drags
- * `from '@lostgradient/weft'` into the root program and breaks CI. The small duplication is the
+ * `from '@lostgradient/weft/testing'` into the root program and breaks CI. The small duplication is the
  * intentional cost of the in-repo-fixture vs. consumer-example split.
  *
  * The `.test-support.ts` suffix keeps it out of the build (`dist/`).

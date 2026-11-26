@@ -4,8 +4,8 @@
  * Moved here from Operative's multimodal input tests with the rows (COR-2151).
  */
 import { describe, expect, it } from 'bun:test';
-import type { ContentSource, MediaContent } from 'conversationalist';
-import { Conversation, toOpenAIMessages, UnsupportedContentError } from 'conversationalist';
+import type { ContentSource, MediaContent } from 'conversationalist/testing';
+import { Conversation, toOpenAIMessages, UnsupportedContentError } from 'conversationalist/testing';
 
 import { openAIRows } from '../src/openai-catalog.ts';
 

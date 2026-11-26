@@ -3,7 +3,7 @@
  * `failedStep` and error code) and the activity a running one is retrying, and a listing hands the
  * `failedStep` and `retrying` filters to the engine's own list.
  */
-import type { WorkflowState, WorkflowSummary } from '@lostgradient/weft';
+import type { WorkflowState, WorkflowSummary } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { createEngineRunTasks, type EngineRunTaskEngine } from './engine-run-tasks';

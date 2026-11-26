@@ -7,9 +7,9 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { createToolbox, readToolShortDescription, type Tool } from 'armorer';
+import { createToolbox, readToolShortDescription, type Tool } from 'armorer/testing';
 import { definePlugin, type PluginWorkflow } from '@lostgradient/interborough-plugin';
-import { workflow } from '@lostgradient/weft';
+import { workflow } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

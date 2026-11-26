@@ -1,6 +1,6 @@
-import { createMockTool, createTestToolbox } from 'armorer';
+import { createMockTool, createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { createToolRemovalMutator } from '../../src/retry/tool-removal-mutator';
 import type { GenerateContext } from '../../src/types';

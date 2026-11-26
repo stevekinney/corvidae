@@ -17,10 +17,10 @@ import {
 } from '@lostgradient/operative';
 import { createScriptedGenerate, waitForCondition } from '@lostgradient/operative/testing';
 import { listHeldTasks, waitForTaskState } from './test';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it, spyOn } from 'bun:test';
-import type { Message } from 'conversationalist';
+import type { Message } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import {

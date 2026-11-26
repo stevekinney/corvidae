@@ -1,6 +1,6 @@
 import { expect, it } from 'bun:test';
 
-import { MCP_LEGACY_PROTOCOL_VERSION, VERSION } from '@lostgradient/weft';
+import { MCP_LEGACY_PROTOCOL_VERSION, VERSION } from '@lostgradient/weft/testing';
 import { openBureau } from './management/management-fixtures.test-support.ts';
 
 it('pins Bureau’s MCP initialization, tool listing, and call responses', async () => {

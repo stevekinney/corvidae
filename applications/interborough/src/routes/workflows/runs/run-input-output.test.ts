@@ -7,7 +7,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
-import type { WorkflowState } from '@lostgradient/weft';
+import type { WorkflowState } from '@lostgradient/weft/testing';
 
 import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
 import { TASK_COPY } from '../../../app/copy/tasks.ts';

@@ -3,9 +3,9 @@
  * conversation, because a fetched page or an API response is how an indirect prompt injection
  * arrives.
  */
-import type { ToolExecutionResult } from 'armorer';
+import type { ToolExecutionResult } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { GuardrailTripwireError } from '../errors';
 import type { ToolExecutionResultContext } from '../types';

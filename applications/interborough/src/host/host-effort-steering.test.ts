@@ -10,7 +10,7 @@ import { createAnthropicProvider } from '@lostgradient/operative-anthropic';
 import { createGeminiProvider } from '@lostgradient/operative-gemini';
 import { createOpenAIProvider } from '@lostgradient/operative-openai';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { createTool } from 'armorer';
+import { createTool } from 'armorer/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

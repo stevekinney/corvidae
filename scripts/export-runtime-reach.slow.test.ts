@@ -39,6 +39,23 @@ test('reports a public export that reaches Bun.file', async () =>
     },
   ));
 
+test('reports a public export that reaches another workspace test kit', async () =>
+  withRepository(
+    {
+      'packages/demo/package.json': JSON.stringify({ name: '@scope/demo', exports: { '.': './src/index.ts' } }),
+      'packages/demo/src/index.ts': "export { fixture } from '@scope/helper';\n",
+      'packages/helper/package.json': JSON.stringify({ name: '@scope/helper', exports: { '.': './src/index.ts' } }),
+      'packages/helper/src/index.ts': "export { fixture } from './testing/fixture.ts';\n",
+      'packages/helper/src/testing/fixture.ts': 'export const fixture = 1;\n',
+    },
+    async (root) => {
+      const verdict = judgeExportRuntimeReach(await scanExportRuntimeReach(root), []);
+      expect(verdict.unlisted).toContainEqual({
+        package: '@scope/demo', subpath: '.', finding: 'test-kit: packages/helper/src/testing/fixture.ts',
+      });
+    },
+  ));
+
 test('reports a stale allowlist entry', () => {
   const stale: ExportRuntimeReachAllowlistEntry = {
     package: '@scope/demo',

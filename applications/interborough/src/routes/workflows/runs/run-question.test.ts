@@ -4,7 +4,7 @@
  * descriptions. A picked choice is held for five seconds with Undo in one line on the card and in
  * the run's status line, and the run is told the answer when the window ends.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';

@@ -17,7 +17,7 @@ import {
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { formatToolId } from 'armorer';
+import { formatToolId } from 'armorer/testing';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
 import type { Bureau } from '../bureau-types/facade.ts';

@@ -27,9 +27,9 @@ import {
   stopWhen,
   createAgent,
 } from '@lostgradient/operative';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { getMessages } from 'conversationalist';
+import { getMessages } from 'conversationalist/testing';
 import { z } from 'zod';
 import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';

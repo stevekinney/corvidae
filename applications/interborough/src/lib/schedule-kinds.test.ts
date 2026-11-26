@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import type { HttpClient } from '@lostgradient/weft';
+import type { HttpClient } from '@lostgradient/weft/testing';
 
 import { installBureauStub, StubFault, type BureauStub } from './bureau-stub.test-support.ts';
 import { kindOf, loadScheduleOverlay, type ScheduleOverlay } from './schedule-kinds.ts';

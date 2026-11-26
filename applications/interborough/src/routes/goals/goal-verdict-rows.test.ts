@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { GOALS_COPY } from '../../app/copy/goals.ts';
 import { configurationIssuesOf } from './goal-form-failure.ts';
 import { verdictFacts, verdictFailure, verdictWord } from './goal-verdict-rows.ts';

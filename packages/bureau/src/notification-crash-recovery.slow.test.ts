@@ -28,7 +28,7 @@ import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testi
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { stopWhen, createAgent } from '@lostgradient/operative';
 import { type Storage, textValueStore } from '@lostgradient/storage';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';

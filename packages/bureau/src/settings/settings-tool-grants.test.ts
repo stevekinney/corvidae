@@ -11,7 +11,7 @@ import {
   stopWhen,
 } from '@lostgradient/operative';
 import { encodeStorageKeyComponent, MemoryStorage } from '@lostgradient/storage';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../agent-catalog';

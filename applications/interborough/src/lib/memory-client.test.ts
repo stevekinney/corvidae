@@ -3,7 +3,7 @@
  * throw into the few the Memory page tells apart. A fault is told by its wire code and, where one
  * code carries two refusals, by `data.reason`.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import type { Fetcher } from './bureau-client.ts';

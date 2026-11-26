@@ -1,4 +1,4 @@
-import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft/testing';
 /**
  * COR-1828 — `bureau.reviews.list` as one inbox: pending or resolved, Bureau and engine items in one
  * ordered list across pages, a page token bound to its filters, engine items only for a caller who

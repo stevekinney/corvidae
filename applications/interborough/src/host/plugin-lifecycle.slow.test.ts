@@ -108,7 +108,7 @@ const pluginSource = (
   marker: string,
 ): string => `import { definePlugin } from '@lostgradient/interborough-plugin';
 import { anthropicRows } from '@lostgradient/operative-anthropic';
-import { createTool } from 'armorer';
+import { createTool } from 'armorer/testing';
 import { writeFile } from 'node:fs/promises';
 import { z } from 'zod';
 

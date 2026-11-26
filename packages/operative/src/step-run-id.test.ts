@@ -6,9 +6,9 @@
  */
 import { createDefaultRuntimeServices, HookRegistry } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { noToolCalls, stopWhen } from './conditions/index';

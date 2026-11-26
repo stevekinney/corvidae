@@ -20,7 +20,7 @@ import {
   type MemoryGovernanceNotification,
   createMemoryVectorStore,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { createAgent, stopWhen } from '@lostgradient/operative';
 import { createMockGenerate } from '@lostgradient/operative/testing';
 import { waitForTaskState } from './test';

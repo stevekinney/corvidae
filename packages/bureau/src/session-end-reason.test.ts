@@ -1,4 +1,4 @@
-import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft/testing';
 /**
  * COR-2009 — a chat the host stops records why it ended. A run that a Bureau's shutdown aborts
  * leaves `lastRunEndReason: 'host-stopped'` on its session, and `bureau.contexts.get` and
@@ -6,7 +6,7 @@ import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
  * by a restart"). A chat whose run ended on its own, and one that ran again since, has none.
  */
 import { createAgent, stopWhen } from '@lostgradient/operative';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';

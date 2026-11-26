@@ -1,5 +1,5 @@
 import { generateEncryptionKey } from '@lostgradient/cryptography';
-import { withOAuthTokenRequestGate, type McpOAuthTokenRequestAdmission } from 'armorer';
+import { withOAuthTokenRequestGate, type McpOAuthTokenRequestAdmission } from 'armorer/testing';
 import { expect, test } from 'bun:test';
 import { memoryHome } from './tool-source-memory-home.test-support.ts';
 import {

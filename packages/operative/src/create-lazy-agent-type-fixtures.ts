@@ -1,5 +1,5 @@
-import { createToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
+import { createToolbox } from 'armorer/testing';
+import { Conversation } from 'conversationalist/testing';
 
 import type { AgentRun } from './agent-run';
 import { createAgentRun } from './agent-run';

@@ -10,9 +10,9 @@
  * The alias table and the effort resolver themselves are covered by `test/model-aliases.test.ts`
  * and `test/effort-resolver.test.ts`.
  */
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { createGeminiProvider } from '../src/gemini.ts';
 import { geminiTextResponse } from '../src/test/gemini-fixtures.ts';
 import { createMockGeminiModel } from '../src/test/gemini-mock-clients.ts';

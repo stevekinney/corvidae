@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { z } from 'zod';
 
 import { AGENT_EXAMPLE_LIMITS, createAgent } from './create-agent';

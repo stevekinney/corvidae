@@ -13,8 +13,8 @@ import {
   withBackendDescriptors,
 } from '@lostgradient/operative';
 import { closedTask, runTask, waitForTaskState } from './test';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { toolContent } from 'armorer/protocol';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';

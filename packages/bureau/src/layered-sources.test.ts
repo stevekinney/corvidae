@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { createTool, type Tool } from 'armorer';
+import { createTool, type Tool } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

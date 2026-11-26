@@ -1,4 +1,4 @@
-import type { InputDetector } from 'armorer';
+import type { InputDetector } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import type {

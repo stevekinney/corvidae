@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { Conversation } from 'conversationalist';
+import type { Conversation } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { createScriptedGenerate } from '../test/scripted-generate';

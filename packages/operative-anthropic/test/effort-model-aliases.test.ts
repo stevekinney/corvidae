@@ -10,9 +10,9 @@
  * The alias table and the effort resolver themselves are covered by `test/model-aliases.test.ts`
  * and `test/effort-resolver.test.ts`.
  */
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { createAnthropicProvider } from '../src/anthropic.ts';
 import { anthropicTextResponse } from '../src/test/anthropic-fixtures.ts';

@@ -3,7 +3,7 @@ import { OAuthStore, hostedOAuth } from '@lostgradient/mcp/oauth';
 import { PostgresStorage } from '@lostgradient/storage-postgres';
 import { createPostgresTestServer } from '@lostgradient/testing/postgres-server';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { createToolboxMcpHandler } from 'armorer/mcp/http';
 import { afterAll, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';

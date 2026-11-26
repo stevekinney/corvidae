@@ -13,7 +13,7 @@ import {
  */
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { createAgent } from '@lostgradient/operative';
-import { MCP_LEGACY_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION } from '@lostgradient/weft';
+import { MCP_LEGACY_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../test';

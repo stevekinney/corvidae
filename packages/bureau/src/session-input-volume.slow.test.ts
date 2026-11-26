@@ -1,8 +1,8 @@
 import { createSessionInputDeliveryStore } from '@lostgradient/operative';
-import { type Mailbox } from '@lostgradient/weft';
+import { type Mailbox } from '@lostgradient/weft/testing';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
-import { CURRENT_SCHEMA_VERSION } from 'conversationalist';
+import { CURRENT_SCHEMA_VERSION } from 'conversationalist/testing';
 
 import { createSessionInputDeliveryGate } from './session-input-delivery';
 import {

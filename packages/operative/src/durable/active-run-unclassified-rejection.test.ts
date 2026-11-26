@@ -4,10 +4,10 @@ import {
   workflow,
   WorkflowCheckpointConflictError,
   yieldToPortableEventLoop,
-} from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
+} from '@lostgradient/weft/testing';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { stopWhen } from '../conditions/index';

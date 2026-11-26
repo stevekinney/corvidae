@@ -20,9 +20,9 @@ import {
   createAgent,
 } from '@lostgradient/operative';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 import { encodeStorageKeyComponent, MemoryStorage } from '@lostgradient/storage';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

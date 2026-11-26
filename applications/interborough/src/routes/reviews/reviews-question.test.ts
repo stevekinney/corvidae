@@ -4,7 +4,7 @@
  * after a five-second Undo window held inline in the question, and a structured answer is committed
  * by "Send answer" in the footer, beside what the agent does next.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 import { Window } from 'happy-dom';

@@ -12,7 +12,7 @@ import {
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { expect, it } from 'bun:test';
 import { z } from 'zod';
 

@@ -1,7 +1,7 @@
 import { createProtectedHttpHandler } from '@lostgradient/mcp/http';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createApplication } from '@lostgradient/velveteen/server';
-import { createMCP, createToolbox } from 'armorer';
+import { createMCP, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { createApiKeys } from './api-keys.ts';
 

@@ -3,7 +3,7 @@ import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
-import type { WorkflowEvent, WorkflowState, WorkflowTimelineEntry } from '@lostgradient/weft';
+import type { WorkflowEvent, WorkflowState, WorkflowTimelineEntry } from '@lostgradient/weft/testing';
 
 import { workflowEventsKey } from '../../../lib/live-source/cache-integration.ts';
 import { installFetchImplementation } from '../../../lib/live-source/fetch.test-support.ts';

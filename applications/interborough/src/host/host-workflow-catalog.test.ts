@@ -8,7 +8,7 @@ import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
  * definition, the schedules that start a type, a signal that moves a run to completion, the
  * versions that have run, and a deleted file that the engine still holds as a source.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

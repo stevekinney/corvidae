@@ -9,9 +9,9 @@
  * manual mode, so nothing waits on the clock.
  */
 import { createAgent, type StepResult, stopWhen } from '@lostgradient/operative';
-import { type PendingToolApproval, type ToolExecutionResult } from 'armorer';
+import { type PendingToolApproval, type ToolExecutionResult } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 

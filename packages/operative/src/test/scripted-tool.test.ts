@@ -1,7 +1,7 @@
 import { createManualRuntimeServices, HookRegistry } from '@lostgradient/lifecycle';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { noToolCalls } from '../conditions/predicates';

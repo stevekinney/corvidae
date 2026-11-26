@@ -12,7 +12,7 @@ import {
   withEnhancedStreaming,
   withStreaming,
 } from '@lostgradient/operative';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { closedTask, runTask } from './test';

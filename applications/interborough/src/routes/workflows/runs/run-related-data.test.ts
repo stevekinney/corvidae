@@ -1,4 +1,4 @@
-import type { WorkflowState, WorkflowSummary } from '@lostgradient/weft';
+import type { WorkflowState, WorkflowSummary } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import {

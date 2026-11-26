@@ -7,7 +7,7 @@
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { Engine } from '@lostgradient/weft';
+import { Engine } from '@lostgradient/weft/testing';
 
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { UPDATE_DESK_RUN_ID } from './engine-console-ids.ts';

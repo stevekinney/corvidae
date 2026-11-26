@@ -1,4 +1,4 @@
-import type { Embedder } from 'armorer';
+import type { Embedder } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import {

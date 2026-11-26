@@ -4,7 +4,7 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage } from '@lostgradient/storage';
-import type { Embedder } from 'armorer';
+import type { Embedder } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';

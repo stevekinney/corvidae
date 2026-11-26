@@ -19,7 +19,7 @@ import {
   type MemoryRetentionSweep,
   createMemoryVectorStore,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { waitForCondition } from '@lostgradient/operative/testing';
 import { MemoryStorage } from '@lostgradient/storage';

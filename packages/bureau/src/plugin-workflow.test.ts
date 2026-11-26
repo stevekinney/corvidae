@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { Engine, workflow } from '@lostgradient/weft';
+import { Engine, workflow } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { layeredWorkflowSource } from './sources/layered-source';

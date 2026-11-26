@@ -3,7 +3,7 @@
  * at the boundary, and the text of a file turned into what an update sends.
  */
 import { rejectionOf } from '@lostgradient/testing';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {

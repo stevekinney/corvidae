@@ -21,7 +21,7 @@
  * | version 1, the process stops before the write | `init`                                 | the store is as it was: readable; a later `init` adopts |
  * | version 1, a failed switch with the free text main stored | `switchTo`      | the record is read as written, so a new switch starts over it |
  */
-import type { Embedder } from 'armorer';
+import type { Embedder } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';

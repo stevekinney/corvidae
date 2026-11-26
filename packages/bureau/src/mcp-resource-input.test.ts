@@ -5,7 +5,7 @@
  */
 import { createAgent, type GenerateContext, withBackendDescriptors } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
-import type { MediaContent } from 'conversationalist';
+import type { MediaContent } from 'conversationalist/testing';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { BureauError } from './bureau-errors';

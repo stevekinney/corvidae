@@ -7,7 +7,7 @@
 import { GOAL_WORKFLOW_TYPE, type Validator } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { Engine, KEYS, WorkflowClaimUnavailableError, workflow } from '@lostgradient/weft';
+import { Engine, KEYS, WorkflowClaimUnavailableError, workflow } from '@lostgradient/weft/testing';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { commitCancellation, ensureController } from './goal-controller';

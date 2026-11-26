@@ -17,7 +17,7 @@ import {
   SessionDeletedEvent,
 } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 
 import {

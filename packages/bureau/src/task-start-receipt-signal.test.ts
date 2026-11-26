@@ -11,7 +11,7 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { type BatchOperation, type Storage } from '@lostgradient/storage';
-import { createTool, createToolbox, type Tool } from 'armorer';
+import { createTool, createToolbox, type Tool } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

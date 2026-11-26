@@ -40,10 +40,10 @@ import {
 } from '@lostgradient/operative';
 import { waitForCondition } from '@lostgradient/operative/testing';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 import { z } from 'zod';
 const run = (opts: Parameters<typeof createActiveRun>[0]) => createActiveRun(opts).result;
 

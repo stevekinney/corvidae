@@ -3,7 +3,7 @@
  * `plugin__name`, so an activity registered on the engine under the mapped name runs it, and a
  * bare handler name containing `__` is refused.
  */
-import { activity, type Engine } from '@lostgradient/weft';
+import { activity, type Engine } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {

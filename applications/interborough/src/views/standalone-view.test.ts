@@ -3,7 +3,7 @@
  client and a query client). Before COR-1449 each one threw on mount: `getPrincipalStore()` and `getFleetEventSource()`
  * found no provider, because only the dashboard's shell provided them.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { render } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import type { Component } from 'svelte';

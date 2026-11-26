@@ -28,9 +28,9 @@
  * reports the field for its own implicit caching too.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, type Message } from 'conversationalist';
+import { Conversation, type Message } from 'conversationalist/testing';
 
 import { createContextAssembler, createTokenBudget } from '@lostgradient/operative';
 import type { GenerateContext, StreamingHandle } from '@lostgradient/operative/provider-kit';

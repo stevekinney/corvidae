@@ -3,9 +3,9 @@
  * attaches the catalog row a generate was built from, owner edits and a plugin's own row included,
  * therefore decides admission by that row, not by the static row a vendor factory stamped.
  */
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, type MediaContent } from 'conversationalist';
+import { Conversation, type MediaContent } from 'conversationalist/testing';
 
 import { createActiveRun } from './create-run';
 import { MediaAdmissionError } from './errors';

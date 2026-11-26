@@ -14,7 +14,7 @@ import {
   type GovernedMemory,
   createMemoryVectorStore,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { MemoryStorage, textValueStore, type Storage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { EventType } from '@ag-ui/core';

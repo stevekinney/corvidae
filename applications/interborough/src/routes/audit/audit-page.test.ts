@@ -6,7 +6,7 @@
  * looks up for it.
  */
 import { quietFor } from '@lostgradient/testing/wait-until';
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import type { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';

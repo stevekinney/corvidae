@@ -11,7 +11,7 @@ import {
   HttpClientError,
   type WorkflowState,
   type WorkflowTimelineEntry,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 import { QueryClient } from '@tanstack/svelte-query';
 
 import { taskLedgerDetailFixture } from '../../workers/workers-route-test-support.test-support.ts';

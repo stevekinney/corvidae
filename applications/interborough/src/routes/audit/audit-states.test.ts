@@ -2,7 +2,7 @@
  * What the audit log says when it has no event to list (rows 82t, 82w, 83e and 83h): the sentence
  * of a failed read, the sentence of filters that match nothing, and the one of a failed export.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import { AUDIT_COPY } from '../../app/copy/audit.ts';

@@ -1,6 +1,6 @@
 import { createAgent } from '@lostgradient/operative';
-import { decode, KEYS } from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
+import { decode, KEYS } from '@lostgradient/weft/testing';
+import { createToolbox } from 'armorer/testing';
 import { expect, it } from 'bun:test';
 import { createBureau } from './create-bureau.ts';
 import type { WorkspaceMembership } from './http/workspace-principal.ts';

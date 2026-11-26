@@ -9,7 +9,7 @@
  * out: Cinder's own test holds the rule, and the browser spec `list-empty-states.spec.ts` measures
  * it. Here the walk asserts the structure that rule applies to.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';

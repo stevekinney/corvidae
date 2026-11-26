@@ -10,9 +10,9 @@
  * cached count for provider-neutral parity.
  */
 import type { GenerateContext, StreamingHandle } from '@lostgradient/operative/provider-kit';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { createOpenAIProvider, createOpenAIProviderStream } from '../src/openai.ts';
 import {
   createMockOpenAIClient,

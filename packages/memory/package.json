@@ -4,7 +4,8 @@
   "description": "Agent memory: storage contracts, hybrid vector and BM25 recall, ingestion, hooks, identity, and governed memory with principal-aware authorization, admission, retention, legal hold, and receipted deletion.",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/test/index.ts"
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-inherited-key-reads.ts",

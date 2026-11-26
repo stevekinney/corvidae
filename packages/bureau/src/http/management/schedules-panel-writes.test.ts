@@ -7,7 +7,7 @@
  */
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { createAgent } from '@lostgradient/operative';
-import { MCP_PROTOCOL_VERSION } from '@lostgradient/weft';
+import { MCP_PROTOCOL_VERSION } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {

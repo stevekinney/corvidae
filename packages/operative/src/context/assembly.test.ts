@@ -1,7 +1,7 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
-import type { JSONValue, MediaContent, MultiModalContent } from 'conversationalist';
-import { Conversation } from 'conversationalist';
+import type { JSONValue, MediaContent, MultiModalContent } from 'conversationalist/testing';
+import { Conversation } from 'conversationalist/testing';
 
 import { createContextAssembler } from './assembly';
 import { createTokenBudget } from './token-budget';

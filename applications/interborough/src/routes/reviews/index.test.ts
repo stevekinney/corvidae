@@ -8,7 +8,7 @@
 import { render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 
 import ReviewsTestHarness from './reviews-test-harness.test-harness.svelte';
 

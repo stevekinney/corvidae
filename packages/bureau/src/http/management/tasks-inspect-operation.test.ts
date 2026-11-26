@@ -9,7 +9,7 @@ import {
   createSelectionGate,
   stopWhen,
 } from '@lostgradient/operative';
-import { createToolbox, type Toolbox } from 'armorer';
+import { createToolbox, type Toolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {

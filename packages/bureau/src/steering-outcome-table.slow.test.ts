@@ -50,7 +50,7 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { type SteeringRequestedValue, createAgent, stopWhen } from '@lostgradient/operative';
 import type { Storage } from '@lostgradient/storage';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

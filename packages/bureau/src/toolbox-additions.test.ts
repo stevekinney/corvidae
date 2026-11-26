@@ -17,7 +17,7 @@ import {
   createToolResultCache,
   type ToolRequestContext,
   withToolboxIdempotency,
-} from 'armorer';
+} from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

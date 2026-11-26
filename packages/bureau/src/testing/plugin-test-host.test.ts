@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 
 import { definePlugin } from '@lostgradient/interborough-plugin';
 import { checkPluginContract, pluginContract } from '@lostgradient/interborough-plugin/testing';
-import { createTool } from 'armorer';
+import { createTool } from 'armorer/testing';
 import { afterAll, describe, expect, test } from 'bun:test';
 import { z } from 'zod';
 

@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 import { createAgentSession, createSessionStore } from '@lostgradient/operative';
 import { textValueStore, MemoryStorage } from '@lostgradient/storage';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';

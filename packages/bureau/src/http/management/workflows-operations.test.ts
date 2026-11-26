@@ -31,7 +31,7 @@ import { ownerRpc, type Served, serveWorkflows } from './workflows-fixtures.test
 import { bureauWorkflowsOperations } from './workflows-operations.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
 import { MemoryStorage } from '@lostgradient/storage';
-import { WorkflowRevisionUnavailableError } from '@lostgradient/weft';
+import { WorkflowRevisionUnavailableError } from '@lostgradient/weft/testing';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {

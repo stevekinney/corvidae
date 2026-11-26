@@ -4,7 +4,7 @@
  * attempt, which the Bureau holds no task for. Through the route outlet, over a Bureau that
  * answers from a table.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';

@@ -12,7 +12,7 @@ import {
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { LATE_WRITE_GRACE_MILLISECONDS } from './chat-content-purge';

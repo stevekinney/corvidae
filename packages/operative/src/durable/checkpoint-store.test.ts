@@ -1,6 +1,6 @@
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
 
 import { createCheckpointStore } from './checkpoint-store';
 import { UnsupportedCheckpointRecordVersionError } from './checkpoint-version';

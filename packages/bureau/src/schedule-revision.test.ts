@@ -2,7 +2,7 @@
  * COR-1482 — the Bureau's schedule methods pass `expectedRevision` to Weft, which compares it
  * inside its serialized write, and `schedules.update` wraps Weft's `updateSchedule`.
  */
-import { decode, KEYS, ScheduleStaleRevisionError } from '@lostgradient/weft';
+import { decode, KEYS, ScheduleStaleRevisionError } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { BureauError } from './bureau-errors';

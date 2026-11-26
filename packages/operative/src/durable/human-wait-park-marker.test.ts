@@ -2,10 +2,10 @@
 // where it fires, where it must stay silent, and that it never leaks to a user
 // `onLog` or the console.
 import { MemoryStorage, textValueStore, type Storage } from '@lostgradient/storage';
-import { Engine, workflow, type WorkflowLogRecord } from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
+import { Engine, workflow, type WorkflowLogRecord } from '@lostgradient/weft/testing';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
 
 import { HumanWaitParkedEvent } from '../events';
 import { waitForCondition } from '../test/wait';

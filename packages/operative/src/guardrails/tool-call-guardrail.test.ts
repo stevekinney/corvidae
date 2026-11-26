@@ -6,7 +6,7 @@
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import type { ToolCall } from 'armorer/protocol';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { GuardrailTripwireError } from '../errors';
 import type { ToolExecutionHookContext } from '../types';

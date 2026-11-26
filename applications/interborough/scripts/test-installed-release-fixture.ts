@@ -29,7 +29,7 @@ export async function writeFixture(
     'export const dependencyMarker = "fixture-owned-dependency";\n',
   );
   const source = `import { definePlugin } from '@lostgradient/interborough-plugin';
-import { createTool } from 'armorer';
+import { createTool } from 'armorer/testing';
 import { writeFile } from 'node:fs/promises';
 import { dependencyMarker } from 'fixture-dependency';
 import { z } from 'zod';

@@ -9,7 +9,7 @@ import { definePlugin, type PluginWorkflow } from '@lostgradient/interborough-pl
 import type { AgentScheduledEvent } from '@lostgradient/operative';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '@lostgradient/storage';
-import { decode, KEYS, workflow } from '@lostgradient/weft';
+import { decode, KEYS, workflow } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 

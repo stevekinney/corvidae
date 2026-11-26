@@ -1,9 +1,9 @@
 import { HookRegistry } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import type { MediaContent } from 'conversationalist';
-import { Conversation } from 'conversationalist';
+import type { MediaContent } from 'conversationalist/testing';
+import { Conversation } from 'conversationalist/testing';
 
 import type { MediaCostEstimator } from '../src/context/types';
 import { createActiveRun } from '../src/create-run';

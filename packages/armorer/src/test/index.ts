@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+export * from '../index';
+
 import { createTool } from '../create-tool';
 import { createToolbox } from '../create-toolbox';
 import type { ToolboxEventMap } from '../event-types';

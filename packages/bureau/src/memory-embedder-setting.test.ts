@@ -19,11 +19,11 @@ import {
   HASHING_EMBEDDER_ID,
   HASHING_EMBEDDER_MODEL,
   type MemoryEmbeddingProfile,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Embedder } from 'armorer';
+import type { Embedder } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog.ts';

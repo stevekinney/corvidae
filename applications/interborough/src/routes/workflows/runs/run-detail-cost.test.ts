@@ -3,7 +3,7 @@
  * run the Bureau counted, writes an amount under one cent as `< $0.01`, and says neither for a run
  * with nothing to report: a run with no cost shows no Cost fact, never `$0.00`.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 

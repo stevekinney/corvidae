@@ -12,7 +12,7 @@ import {
   createWeftMemoryRecordStorage,
   HASHING_EMBEDDER_ID,
   type GovernedMemory,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';

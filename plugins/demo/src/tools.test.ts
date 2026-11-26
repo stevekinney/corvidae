@@ -1,6 +1,6 @@
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { createTool, createToolbox, createToolCall, type SignedPendingToolApproval } from 'armorer';
+import { createTool, createToolbox, createToolCall, type SignedPendingToolApproval } from 'armorer/testing';
 import { expect, it } from 'bun:test';
 import { z } from 'zod';
 import { createRefundLedger } from './refund-ledger.ts';

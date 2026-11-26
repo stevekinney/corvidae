@@ -1,4 +1,4 @@
-import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft/testing';
 /**
  * COR-1529 — every write to a workflow file is an audit entry under `workflow:<identifier>`,
  * whether an agent's tool or an HTTP caller made it: its actor is `agent-run:<runId>` for the tool

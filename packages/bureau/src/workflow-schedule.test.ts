@@ -10,7 +10,7 @@ import {
   KEYS,
   registerWorkflowDocuments,
   type WorkflowDocument,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 

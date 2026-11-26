@@ -4,7 +4,7 @@
  */
 import { MEMORY_EVIDENCE_METADATA_KEY } from '@lostgradient/operative';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { compactConversation, Conversation, resolvedSourceKey } from 'conversationalist';
+import { compactConversation, Conversation, resolvedSourceKey } from 'conversationalist/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { AssetNotFoundError } from '../assets/errors.ts';

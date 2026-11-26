@@ -8,7 +8,7 @@ import type { QueryClient } from '@tanstack/svelte-query';
 import { render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import type { HttpClient } from '@lostgradient/weft';
+import type { HttpClient } from '@lostgradient/weft/testing';
 
 import { quietFor } from '@lostgradient/testing/wait-until';
 import {

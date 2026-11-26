@@ -1,10 +1,10 @@
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import { MemoryStorage, type Storage, textValueStore } from '@lostgradient/storage';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 import { stopWhen } from '../conditions/index';
 import { createActiveRun } from '../create-run';
 import { type CombinedOperativeEventMap, RunCompletedEvent, RunErrorEvent } from '../events';

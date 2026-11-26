@@ -6,9 +6,9 @@
  * model finished on its own, and an aborted run parked on a stalled stream
  * never resolved.
  */
-import { createTestToolbox, createToolbox } from 'armorer';
+import { createTestToolbox, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import {
   AbortAgentRunError,

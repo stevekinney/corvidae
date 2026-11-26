@@ -3,7 +3,7 @@ import {
   MAX_BATCH_OPERATIONS,
   MemoryStorage,
 } from '@lostgradient/storage';
-import { WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
+import { WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { createWeftEvidenceProjectionStorage } from '../src/create-weft-evidence-projection-storage';

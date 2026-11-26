@@ -6,7 +6,7 @@
  */
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, stopWhen } from '@lostgradient/operative';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';

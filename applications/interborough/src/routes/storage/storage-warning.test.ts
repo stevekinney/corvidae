@@ -3,7 +3,7 @@
  * Bureau's attention list holds a firing storage alert, names what was measured, and sends a plain
  * click to the retention settings while leaving a modified click to the browser.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 

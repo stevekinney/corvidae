@@ -1,6 +1,6 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import type { AgentRun, RunEvent } from './agent-run';
 import { CompletedRunIterationError } from './agent-run';

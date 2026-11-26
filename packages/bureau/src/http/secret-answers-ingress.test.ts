@@ -23,7 +23,7 @@ import {
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, type Storage, textValueStore } from '@lostgradient/storage';
 import { principalFromApiKey } from '@lostgradient/backchannel';
-import { createTool, createToolbox, type Toolbox } from 'armorer';
+import { createTool, createToolbox, type Toolbox } from 'armorer/testing';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';

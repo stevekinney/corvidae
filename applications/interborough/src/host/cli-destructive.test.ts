@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { createBureauCatalogSnapshot } from '@lostgradient/bureau';
-import { createCatalogSnapshot } from '@lostgradient/weft';
+import { createCatalogSnapshot } from '@lostgradient/weft/testing';
 
 import {
   CLI_COMMAND_REGISTRY,

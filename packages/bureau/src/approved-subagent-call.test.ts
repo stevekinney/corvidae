@@ -17,7 +17,7 @@ import {
   type RunnableAgent,
   stopWhen,
 } from '@lostgradient/operative';
-import { createTool, createToolbox, type Toolbox } from 'armorer';
+import { createTool, createToolbox, type Toolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

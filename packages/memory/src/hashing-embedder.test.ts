@@ -1,4 +1,4 @@
-import { cosineSimilarity } from 'armorer';
+import { cosineSimilarity } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { createHashingEmbedder, HASHING_EMBEDDER_DIMENSION } from './hashing-embedder';

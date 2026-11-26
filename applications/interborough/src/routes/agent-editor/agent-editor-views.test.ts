@@ -3,7 +3,7 @@
  * (not found, for an agent that is missing, one defined in code, or one whose file was deleted
  * while the page was open) and the editor's own routes in the route table.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';

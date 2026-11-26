@@ -1,4 +1,4 @@
-import { flushPortableMicrotasks } from '@lostgradient/weft';
+import { flushPortableMicrotasks } from '@lostgradient/weft/testing';
 
 /**
  * How many promise turns one drain awaits. A drain is a count of microtask hops, a property of the

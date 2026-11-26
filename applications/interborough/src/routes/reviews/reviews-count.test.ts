@@ -3,7 +3,7 @@
  * reviews and the engine's, kept current by asking again every five seconds and at once after each
  * decision this application makes. The clocks here are fake, so no case waits five seconds.
  */
-import { HttpClient, type PendingReviewEntry, type ReviewListEntry } from '@lostgradient/weft';
+import { HttpClient, type PendingReviewEntry, type ReviewListEntry } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeAll, beforeEach, describe, expect, jest, test } from 'bun:test';
 import { Window } from 'happy-dom';

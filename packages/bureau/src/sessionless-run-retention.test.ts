@@ -17,9 +17,9 @@ import {
 } from '@lostgradient/operative';
 import { waitForCondition } from '@lostgradient/operative/testing';
 import { waitForTaskState } from './test';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import type { MediaContent } from 'conversationalist';
+import type { MediaContent } from 'conversationalist/testing';
 
 import { runRowHolderId } from './assets/row-asset-claims';
 import { createBureau } from './create-bureau';

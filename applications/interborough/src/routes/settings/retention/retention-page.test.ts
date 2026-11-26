@@ -4,7 +4,7 @@
  * Delete after a number of days, a Storage section with one read-only row, and the saves each row
  * makes through `bureau.settings.update`. The Bureau is a stub.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 

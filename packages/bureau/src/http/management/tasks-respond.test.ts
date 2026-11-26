@@ -1,4 +1,4 @@
-import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft/testing';
 import { workspaceAdministratorDirectory } from '../workspace-privacy-fixtures.test-support.ts';
 import type { GenerateFunction } from '@lostgradient/operative';
 import {

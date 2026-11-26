@@ -10,7 +10,7 @@ import { join } from 'node:path';
 
 import { definePlugin, type PluginWorkflow } from '@lostgradient/interborough-plugin';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { workflow } from '@lostgradient/weft';
+import { workflow } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

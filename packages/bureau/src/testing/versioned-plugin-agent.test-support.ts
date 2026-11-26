@@ -11,7 +11,7 @@ import {
   stopWhen,
   type Toolbox,
 } from '@lostgradient/operative';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { z } from 'zod';
 
 const next = createTool({

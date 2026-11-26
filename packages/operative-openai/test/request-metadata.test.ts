@@ -9,9 +9,9 @@
  * receives a `metadata` key.
  */
 import type { GenerateContext } from '@lostgradient/operative/provider-kit';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { createOpenAIProvider } from '../src/openai.ts';
 import { openAITextResponse } from '../src/test/openai-fixtures.ts';
 import { createMockOpenAIClient } from '../src/test/openai-mock-clients.ts';

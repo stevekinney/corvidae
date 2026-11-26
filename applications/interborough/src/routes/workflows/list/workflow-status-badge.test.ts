@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { WorkflowStatus } from '@lostgradient/weft';
+import type { WorkflowStatus } from '@lostgradient/weft/testing';
 
 import {
   WORKFLOW_STATUS_ORDER,

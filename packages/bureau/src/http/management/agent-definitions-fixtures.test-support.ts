@@ -1,4 +1,4 @@
-import { AUTHORIZATION_SCOPES, WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
+import { AUTHORIZATION_SCOPES, WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft/testing';
 /**
  * Shared setup for the agent definition operation tests (COR-1526): a Bureau over an agent
  * directory, served three ways (API-key callers, the owner with no scope, and the local caller

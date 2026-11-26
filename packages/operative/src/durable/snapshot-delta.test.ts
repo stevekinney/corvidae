@@ -3,7 +3,7 @@ import {
   Conversation,
   type ConversationSnapshot,
   createConversationHistory,
-} from 'conversationalist';
+} from 'conversationalist/testing';
 
 import {
   applyConversationSnapshotDelta,

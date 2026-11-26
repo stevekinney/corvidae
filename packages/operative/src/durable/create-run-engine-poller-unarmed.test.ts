@@ -5,7 +5,7 @@ import {
   yieldToPortableEventLoop,
   type WorkflowLogRecord,
   type WorkflowStatus,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { waitUntil } from '@lostgradient/testing/wait-until';

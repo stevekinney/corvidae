@@ -22,9 +22,9 @@ import {
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { createTool } from 'armorer';
+import { createTool } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from '../agent-catalog';

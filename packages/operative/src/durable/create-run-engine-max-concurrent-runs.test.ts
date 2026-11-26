@@ -5,7 +5,7 @@ import {
   yieldToPortableEventLoop,
   type Engine,
   type WorkflowContext,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createRunEngine } from './create-run-engine';

@@ -1,4 +1,4 @@
-import type { EngineLeaseHealth } from '@lostgradient/weft';
+import type { EngineLeaseHealth } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import {

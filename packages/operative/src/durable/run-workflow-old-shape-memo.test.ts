@@ -5,10 +5,10 @@
  * itself must refuse one, with the typed error rather than a TypeError from reading its parts.
  */
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { activity, Engine, workflow } from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
+import { activity, Engine, workflow } from '@lostgradient/weft/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { appendAgentInput } from '../agent-input';

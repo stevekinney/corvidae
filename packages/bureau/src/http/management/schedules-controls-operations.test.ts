@@ -4,7 +4,7 @@
  * origin of the task a run-now starts. Schedules here are hourly and nothing waits for them.
  */
 import { createAgent } from '@lostgradient/operative';
-import { encode, KEYS } from '@lostgradient/weft';
+import { encode, KEYS } from '@lostgradient/weft/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 

@@ -1,4 +1,4 @@
-import { activityContractHash, HttpClientError } from '@lostgradient/weft';
+import { activityContractHash, HttpClientError } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import { KNOWN_COMPATIBILITY_REASONS } from '../system/compatibility-verdict.ts';

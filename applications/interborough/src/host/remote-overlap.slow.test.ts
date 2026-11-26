@@ -24,8 +24,8 @@ import {
 import { openPostgresTestDatabase } from '@lostgradient/testing/postgres-server';
 import { createS3TestServer, type S3TestServer } from '@lostgradient/testing/s3-server';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
-import { KEYS } from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
+import { KEYS } from '@lostgradient/weft/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from 'bun:test';
 import { z } from 'zod';
 

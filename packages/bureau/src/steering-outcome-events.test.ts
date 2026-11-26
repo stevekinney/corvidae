@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { createAgent, stopWhen } from '@lostgradient/operative';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

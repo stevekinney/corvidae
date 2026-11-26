@@ -10,10 +10,10 @@
  * `runId` and `snapshot().id`.
  */
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { type RecoverAllOptions, workflow } from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
+import { type RecoverAllOptions, workflow } from '@lostgradient/weft/testing';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createAgentRun } from '../agent-run';

@@ -8,7 +8,7 @@ import {
 
 import { describe, expect, test } from 'bun:test';
 
-import { createCatalogSnapshot } from '@lostgradient/weft';
+import { createCatalogSnapshot } from '@lostgradient/weft/testing';
 import {
   CLI_COMMAND_REGISTRY,
   CLI_OPERATION_COVERAGE,

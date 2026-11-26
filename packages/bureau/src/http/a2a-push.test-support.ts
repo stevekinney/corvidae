@@ -5,7 +5,7 @@
  */
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
-import { Outbox } from '@lostgradient/weft';
+import { Outbox } from '@lostgradient/weft/testing';
 import {
   createEgressPolicy,
   createHttpDeliveryAdapter,

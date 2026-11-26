@@ -6,7 +6,7 @@
  */
 import type { Message as AgUiMessage } from '@ag-ui/core';
 import { describe, expect, it } from 'bun:test';
-import { appendMessages, createConversationHistory } from 'conversationalist';
+import { appendMessages, createConversationHistory } from 'conversationalist/testing';
 
 import { assetPartsOf, UNKNOWN_MEDIA_TYPE } from './ag-ui-asset-parts.ts';
 import { rowsAddedBy, snapshotMessages } from './ag-ui-messages.ts';

@@ -1,7 +1,7 @@
 import { MemoryStorage } from '@lostgradient/storage';
 
 import { createWeftMemoryRecordStorage } from '../src/create-weft-memory-record-storage';
-import { createInMemoryMemoryRecordStorage } from '../src/index';
+import { createInMemoryMemoryRecordStorage } from '../src/test/index';
 import { runMemoryRecordStorageContract } from './contract-harness';
 
 /**

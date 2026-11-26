@@ -1,4 +1,4 @@
-import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft/testing';
 /**
  * COR-1559 — `bureau.contexts.steer` switches a context to a model its agent allows, by calling
  * `BureauContexts.steer`, and answers with Bureau's own admission outcome as data. Only a

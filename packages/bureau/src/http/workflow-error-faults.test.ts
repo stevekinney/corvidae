@@ -10,7 +10,7 @@ import {
   WorkflowAlreadyExistsError,
   WorkflowNotFoundError,
   WorkflowNotRegisteredError,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 
 import { buildBureau } from './bureau-handler-fixtures.test-support.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';

@@ -72,7 +72,7 @@ async function exercisePackedConsumer() {
     await writeFile(
       join(directory, 'consumer.ts'),
       `
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { createToolboxMcpHandler } from 'armorer/mcp/http';
 import { createProtectedHttpHandler } from '@lostgradient/mcp/http';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';

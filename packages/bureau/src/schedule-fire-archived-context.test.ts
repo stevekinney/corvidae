@@ -8,7 +8,7 @@ import { MemoryStorage } from '@lostgradient/storage';
 import { createStorageInterleaver } from './http/management/management-fixtures.test-support';
 import { createMemoryStorageFixture } from './test/storage-fixtures';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';

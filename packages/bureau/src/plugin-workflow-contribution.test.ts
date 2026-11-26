@@ -5,7 +5,7 @@
  * `workflow-field-missing`, and skips a plugin whose workflow name a host code workflow holds.
  */
 import { definePlugin, type PluginWorkflow } from '@lostgradient/interborough-plugin';
-import { workflow } from '@lostgradient/weft';
+import { workflow } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

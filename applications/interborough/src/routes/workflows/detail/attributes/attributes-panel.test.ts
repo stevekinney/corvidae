@@ -1,7 +1,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 
 import { RUN_DETAIL_COPY } from '../../../../app/copy/runs.ts';
 import type { AttributesClient } from './attributes-data.ts';

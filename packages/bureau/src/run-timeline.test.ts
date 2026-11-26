@@ -1,4 +1,4 @@
-import { activity, Engine, workflow, type WorkflowTimelineEntry } from '@lostgradient/weft';
+import { activity, Engine, workflow, type WorkflowTimelineEntry } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import {

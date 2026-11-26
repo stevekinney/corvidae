@@ -4,7 +4,7 @@
  * text, the storage details when the host does not say where it keeps its state, and the
  * Settings link that opens from them. Each is a state the page owns and words itself.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 import { flushSync } from 'svelte';

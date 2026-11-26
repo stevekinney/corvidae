@@ -6,7 +6,7 @@
  */
 import { EventType, type ResumeEntry } from '@ag-ui/core';
 import { type AgentSession, type Toolbox } from '@lostgradient/operative';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

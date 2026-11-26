@@ -4,8 +4,8 @@
  * as `session.tainted` without the flagged text.
  */
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { Conversation, createConversationHistory } from 'conversationalist';
-import { createTool, createToolbox } from 'armorer';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { z } from 'zod';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';

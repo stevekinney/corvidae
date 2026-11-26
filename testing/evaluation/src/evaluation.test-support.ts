@@ -6,7 +6,7 @@ import type {
   ToolCall,
 } from '@lostgradient/operative';
 import { deriveParts } from '@lostgradient/operative';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 /**
  * Shared fixtures for this workspace's tests. Every builder returns a fresh

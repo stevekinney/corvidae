@@ -4,11 +4,11 @@
  * tool runs, and the run continues.
  */
 import { HookRegistry } from '@lostgradient/lifecycle';
-import type { AnyToolbox, ToolExecutionResult } from 'armorer';
-import { createTool, createToolbox } from 'armorer';
+import type { AnyToolbox, ToolExecutionResult } from 'armorer/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import type { ToolCall, ToolPolicy } from 'armorer/protocol';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { withActiveSkillToolPolicy, withDelegatedToolCapabilities } from './agent-policy';

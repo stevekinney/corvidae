@@ -14,7 +14,7 @@ import {
   stopWhen,
 } from '@lostgradient/operative';
 import { waitForCondition } from '@lostgradient/operative/testing';
-import { createToolbox, type Tool } from 'armorer';
+import { createToolbox, type Tool } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';

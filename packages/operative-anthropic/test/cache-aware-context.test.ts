@@ -8,9 +8,9 @@
  * built on the conversation-level `cacheBoundary` mechanism, not a parallel one.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { createContextAssembler, createTokenBudget } from '@lostgradient/operative';
 import type { GenerateContext, StreamingHandle } from '@lostgradient/operative/provider-kit';

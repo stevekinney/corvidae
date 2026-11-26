@@ -1,8 +1,8 @@
 import { HookRegistry } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { createTestToolbox, createTool } from 'armorer';
+import { createTestToolbox, createTool } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, type MultiModalContent } from 'conversationalist';
+import { Conversation, type MultiModalContent } from 'conversationalist/testing';
 import { z } from 'zod';
 import { withCache } from '../src/cache/with-cache';
 import { noToolCalls } from '../src/conditions/predicates';

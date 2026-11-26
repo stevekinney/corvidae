@@ -1,4 +1,4 @@
-import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
+import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft/testing';
 /**
  * COR-1546 — `bureau.memory.list`, `search`, `get`, `forget` and `correct`: an agent's governed
  * memory, served to the owner whose chats wrote it. Every request goes through the handler as a
@@ -20,7 +20,7 @@ import {
   createMemoryVectorStore,
   createTestEmbedders,
   MEMORY_RELEASE_REJECTIONS,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import {
   type AuthConfig,

@@ -5,7 +5,7 @@
  * origin, the way the console reaches them.
  */
 import { createAgent, stopWhen } from '@lostgradient/operative';
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

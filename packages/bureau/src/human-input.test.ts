@@ -43,7 +43,7 @@ import {
   createTool,
   createToolbox,
   type Toolbox,
-} from 'armorer';
+} from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { createBureau } from './create-bureau';

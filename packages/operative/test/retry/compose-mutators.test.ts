@@ -1,6 +1,6 @@
-import { createTestToolbox } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { composeMutators } from '../../src/retry/compose-mutators';
 import type { RetryMutator } from '../../src/retry/types';

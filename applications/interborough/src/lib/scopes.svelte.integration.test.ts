@@ -24,7 +24,7 @@
  * the other integration suites without collisions.
  */
 
-import { AUTHORIZATION_SCOPES, Engine, HttpClient, serve } from '@lostgradient/weft';
+import { AUTHORIZATION_SCOPES, Engine, HttpClient, serve } from '@lostgradient/weft/testing';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
 import { workflows } from '../../fixtures/workflows.ts';

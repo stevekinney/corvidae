@@ -7,7 +7,7 @@ import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 
-import type { HttpClient } from '@lostgradient/weft';
+import type { HttpClient } from '@lostgradient/weft/testing';
 
 import { settle, until } from '../lib/fake-timers.test-support.ts';
 import { BureauEventSource } from '../lib/live-source/bureau-event-source.svelte.ts';

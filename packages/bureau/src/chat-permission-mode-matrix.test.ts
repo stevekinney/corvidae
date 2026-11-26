@@ -21,7 +21,7 @@ import {
   createTool,
   createToolbox,
   type ToolRequestContext,
-} from 'armorer';
+} from 'armorer/testing';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

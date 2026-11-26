@@ -8,7 +8,7 @@
  * Driven through the route outlet against a stand-in Bureau that keeps the goals, so the route, the
  * view frame, and the page are exercised together.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 

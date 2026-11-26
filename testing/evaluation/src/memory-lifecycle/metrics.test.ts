@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { RunResultBase } from '@lostgradient/operative';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import type { MemoryBaselineName } from './baselines/adapter';
 import { memoryLifecycleEnvelope } from './envelope';

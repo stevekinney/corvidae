@@ -10,9 +10,9 @@
  * The alias table and the effort resolver themselves are covered by `test/model-aliases.test.ts`
  * and `test/effort-resolver.test.ts`.
  */
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { createOpenAIProvider } from '../src/openai.ts';
 import { openAITextResponse } from '../src/test/openai-fixtures.ts';
 import { createMockOpenAIClient } from '../src/test/openai-mock-clients.ts';

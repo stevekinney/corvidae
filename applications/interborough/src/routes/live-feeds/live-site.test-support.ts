@@ -6,7 +6,7 @@
  * change them. The clock is the test's: the timer is TanStack Query's refetch interval, so the
  * clock is faked and moved by hand (`../lib/live-source/live-feeds.test-support.ts`).
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { QueryClient, type QueryKey } from '@tanstack/svelte-query';
 import { cleanup, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';

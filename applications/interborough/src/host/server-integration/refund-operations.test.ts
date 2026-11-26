@@ -25,13 +25,13 @@ import {
   waitForCondition,
 } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { WorkflowClaimUnavailableError } from '@lostgradient/weft';
+import { WorkflowClaimUnavailableError } from '@lostgradient/weft/testing';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import {
   createProcessLocalApprovalStateStore,
   createToolbox,
   verifyToolboxPendingApproval,
-} from 'armorer';
+} from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

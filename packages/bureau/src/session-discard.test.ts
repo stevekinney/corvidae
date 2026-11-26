@@ -11,13 +11,13 @@ import {
   type GenerateContext,
   type RunRef,
 } from '@lostgradient/operative';
-import { createTool } from 'armorer';
+import { createTool } from 'armorer/testing';
 import {
   Conversation,
   type ConversationHistory,
   createConversationHistory,
   type Message,
-} from 'conversationalist';
+} from 'conversationalist/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { z } from 'zod';

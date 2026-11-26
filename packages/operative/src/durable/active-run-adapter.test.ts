@@ -4,8 +4,8 @@ import {
   HookRegistry,
 } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import type { AnyToolbox } from 'armorer';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import type { AnyToolbox } from 'armorer/testing';
 import {
   createTestToolbox,
   createTool,
@@ -16,9 +16,9 @@ import {
   ToolboxPolicyDeniedEvent,
   ToolboxProgressEvent,
   ToolboxSettledEvent,
-} from 'armorer';
+} from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

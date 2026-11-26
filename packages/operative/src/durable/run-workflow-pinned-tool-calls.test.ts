@@ -1,9 +1,9 @@
 import { HookRegistry } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { Engine, yieldToPortableEventLoop } from '@lostgradient/weft';
-import { type AnyToolbox, createTool, createToolbox } from 'armorer';
+import { Engine, yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { type AnyToolbox, createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { noToolCalls } from '../conditions/predicates';

@@ -20,7 +20,7 @@ import {
   type MemoryAuthority,
   createMemoryVectorStore,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import {
   AbortAgentRunError,
   type ActiveRun,
@@ -72,7 +72,7 @@ import {
   KEYS,
   ScheduleHandle,
   yieldToPortableEventLoop,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 import {
   ApprovalBindingError,
   createProcessLocalApprovalStateStore,
@@ -81,9 +81,9 @@ import {
   type InputDetector,
   type PendingToolApproval,
   type ToolExecutionResult,
-} from 'armorer';
+} from 'armorer/testing';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
-import { Conversation, createConversationHistory, getMessages } from 'conversationalist';
+import { Conversation, createConversationHistory, getMessages } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';

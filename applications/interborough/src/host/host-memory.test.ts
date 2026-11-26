@@ -14,12 +14,12 @@ import {
   HASHING_EMBEDDER_DIMENSION,
   HASHING_EMBEDDER_ID,
   HASHING_EMBEDDER_MODEL,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import { createAgent, stopWhen } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { afterEach, describe, expect, test } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

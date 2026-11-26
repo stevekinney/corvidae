@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClient, REGISTRY_VERSION } from '@lostgradient/weft';
+import { HttpClient, REGISTRY_VERSION } from '@lostgradient/weft/testing';
 
 import { rejectionOf } from '@lostgradient/testing';
 import { registrySnapshot } from './contract-verification.test-support.ts';

@@ -9,14 +9,14 @@ import {
   type MemoryAuthority,
   createMemoryVectorStore,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import {
   createAgent,
   type GenerateFunction,
   MEMORY_EVIDENCE_METADATA_KEY,
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
-import type { InputDetector, ToolRequestContext } from 'armorer';
+import type { InputDetector, ToolRequestContext } from 'armorer/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';

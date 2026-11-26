@@ -4,8 +4,8 @@ import type {
   ScheduleOptions,
   ScheduleSpec,
   ScheduleSummary,
-} from '@lostgradient/weft';
-import { canonicalTimeZone, encode, KEYS, ScheduleHandle } from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
+import { canonicalTimeZone, encode, KEYS, ScheduleHandle } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';

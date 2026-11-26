@@ -1,4 +1,6 @@
 import type { InstructionContext } from '../composition/conditional-section';
+
+export * from '../index';
 import { createConversationHistory } from '../conversation';
 import { type ConversationEnvironment, simpleTokenEstimator } from '../environment';
 import { Conversation, type ConversationEvent } from '../history';

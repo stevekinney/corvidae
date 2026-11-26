@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { MultiModalContent } from 'conversationalist';
+import type { MultiModalContent } from 'conversationalist/testing';
 
 import {
   concatenateTextParts,

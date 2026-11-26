@@ -21,7 +21,7 @@
  */
 import { type CorsOptions } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
-import { Engine, serve, type WeftServer } from '@lostgradient/weft';
+import { Engine, serve, type WeftServer } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 const ALLOWED_ORIGIN = 'https://weft-ui.example.com';

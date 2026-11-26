@@ -1,5 +1,5 @@
 import { type BackendDescriptor, type DecisionKind } from '@lostgradient/operative';
-import { createTool } from 'armorer';
+import { createTool } from 'armorer/testing';
 import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
 

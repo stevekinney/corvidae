@@ -5,7 +5,7 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { stopWhen, createAgent } from '@lostgradient/operative';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

@@ -9,7 +9,7 @@ import type { Task } from '@a2a-js/sdk';
 import { createDefaultRuntimeServices, type RuntimeTimers } from '@lostgradient/lifecycle';
 import type { DurableEventEnvelope } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { Outbox } from '@lostgradient/weft';
+import { Outbox } from '@lostgradient/weft/testing';
 import {
   A2A_PUSH_CONTENT_TYPE,
   A2A_PUSH_DELIVERY_KIND,

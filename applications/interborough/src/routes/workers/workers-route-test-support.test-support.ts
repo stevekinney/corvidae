@@ -8,7 +8,7 @@
  * `src/routes/workflows/list/workflow-test-support.test-support.ts`) rather
  * than importing another track's copy across the owned-paths boundary.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 

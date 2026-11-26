@@ -13,7 +13,7 @@ import {
   StorageSizeReportedEvent,
   type AlertStateSnapshot,
   type ScheduleSummary,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 import { type WorkspaceIdentity } from '@lostgradient/backchannel';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';

@@ -2,7 +2,7 @@
  * What the page that edits a schedule decides outside the page (COR-2018, rows 74r, 74t, 75p, 75q):
  * the form it opens on, the requests a change becomes, and the footer that says what Save does.
  */
-import type { ScheduleSummary } from '@lostgradient/weft';
+import type { ScheduleSummary } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import { footerLineOf, takenNameOf, type NewScheduleDraft } from './new-schedule-model.ts';

@@ -1,5 +1,5 @@
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { DetectorContext, GuardrailProvenance, InputDetector } from 'armorer';
+import type { DetectorContext, GuardrailProvenance, InputDetector } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { getEventListeners } from 'node:events';
 

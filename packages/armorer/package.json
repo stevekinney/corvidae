@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./testing": "./src/test/index.ts",
     "./protocol": "./src/protocol/index.ts",
     "./mcp/http": "./src/integrations/mcp/http.ts",
     "./open-ai/agents": "./src/adapters/open-ai/agents/index.ts",

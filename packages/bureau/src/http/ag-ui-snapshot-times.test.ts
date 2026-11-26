@@ -11,7 +11,7 @@ import {
   createConversationHistory,
   fromAGUIMessages,
   type MessageInput,
-} from 'conversationalist';
+} from 'conversationalist/testing';
 
 import { REPLY_MODEL_METADATA_KEY } from '../file-agent-generate.ts';
 import { snapshotMessages } from './ag-ui-messages.ts';

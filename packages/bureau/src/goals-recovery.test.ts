@@ -11,7 +11,7 @@
  * writes them.
  */
 import { OPERATIVE_RESOLVE_RUN_OPTIONS, readGenerationProfile } from '@lostgradient/operative';
-import { decode, KEYS } from '@lostgradient/weft';
+import { decode, KEYS } from '@lostgradient/weft/testing';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 

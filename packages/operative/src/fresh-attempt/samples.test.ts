@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { sealContextEpoch } from '../context-epoch';
 import { SecretBearingFreshAttemptArtifactError } from './errors';

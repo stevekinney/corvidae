@@ -2,7 +2,7 @@ import {
   WorkflowHandle,
   type Engine,
   type WorkflowHandle as WorkflowHandleType,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 
 const activeRecoveryHandles = new Set<WorkflowHandle>();
 

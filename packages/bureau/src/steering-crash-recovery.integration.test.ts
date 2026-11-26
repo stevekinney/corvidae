@@ -19,7 +19,7 @@ import { dirname, join } from 'node:path';
 
 import { textValueStore } from '@lostgradient/storage';
 import { stopWhen, createAgent } from '@lostgradient/operative';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
 

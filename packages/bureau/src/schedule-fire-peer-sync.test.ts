@@ -14,7 +14,7 @@ import {
   createAgent,
 } from '@lostgradient/operative';
 import type { Storage } from '@lostgradient/storage';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';

@@ -4,7 +4,7 @@
  * refused rather than shown. The notification bell reads the rules that are firing from the same
  * answer.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import { getAttentionCount, listAttentionAlerts, listAttentionItems } from './bureau-attention.ts';

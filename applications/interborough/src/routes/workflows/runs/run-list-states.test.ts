@@ -6,7 +6,7 @@
  * them (`ownsStatesOnPatterns` in `app/views.ts`). Through the route outlet, over a Bureau that
  * answers from a table; the timings the placeholders keep run under fake timers moved by hand.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { flushSync } from 'svelte';

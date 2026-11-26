@@ -5,9 +5,9 @@
  * policy-denied event is re-emitted on the run stream as a curated
  * tool.* event stamped with {agentName, runId, step}.
  */
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { noToolCalls } from '../src/conditions/predicates';

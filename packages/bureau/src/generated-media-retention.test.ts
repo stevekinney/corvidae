@@ -12,14 +12,14 @@ import {
   withBackendDescriptors,
 } from '@lostgradient/operative';
 import { waitForTaskState } from './test';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import {
   appendMessages,
   createConversationHistory,
   type Message,
   type MessageInput,
-} from 'conversationalist';
+} from 'conversationalist/testing';
 
 import { sessionRowHolderId } from './assets/row-asset-claims';
 import { createBureau } from './create-bureau';

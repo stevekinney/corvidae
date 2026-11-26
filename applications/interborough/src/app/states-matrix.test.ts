@@ -7,7 +7,7 @@
  */
 import { rejectionOf } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import type { QueryClient } from '@tanstack/svelte-query';
 import { render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';

@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import { type BackendDescriptor, type GenerateFunction } from '@lostgradient/operative';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
-import { createTool } from 'armorer';
+import { createTool } from 'armorer/testing';
 import { z } from 'zod';
 
 import { createAgentContributions } from '../agent-contributions.ts';

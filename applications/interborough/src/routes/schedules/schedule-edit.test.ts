@@ -8,7 +8,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import type { QueryClient } from '@tanstack/svelte-query';
 
 import { SCHEDULE_COPY } from '../../app/copy/schedules.ts';

@@ -5,9 +5,9 @@
  * construction time. No network call and no credential — the local mocked
  * clients `packages/operative/test/<provider>/*.test.ts` already use.
  */
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import {
   type BackendDescriptor,

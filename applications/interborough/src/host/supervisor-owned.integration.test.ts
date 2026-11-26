@@ -1,6 +1,6 @@
 import { runWithHangGuard, spawnPipedWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { workflow, type Engine, type WorkflowContext } from '@lostgradient/weft';
+import { workflow, type Engine, type WorkflowContext } from '@lostgradient/weft/testing';
 import { afterAll, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';

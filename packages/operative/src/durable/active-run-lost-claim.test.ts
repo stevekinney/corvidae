@@ -1,7 +1,7 @@
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { stopWhen } from '../conditions/index';

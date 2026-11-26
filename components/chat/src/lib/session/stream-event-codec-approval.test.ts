@@ -5,7 +5,7 @@ import {
   appendUserMessage,
   createConversationHistory,
   isConversationHistory,
-} from 'conversationalist';
+} from 'conversationalist/testing';
 import { hostileEvent } from './stream-event-codec-test-helpers.ts';
 import { encodeChatStreamEvent } from './stream-event-codec.ts';
 

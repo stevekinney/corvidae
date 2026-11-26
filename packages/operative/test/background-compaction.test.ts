@@ -15,7 +15,7 @@
  * against whichever compaction commits first.
  */
 import { HookRegistry } from '@lostgradient/lifecycle';
-import { createTestToolbox, createTool } from 'armorer';
+import { createTestToolbox, createTool } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import {
   Conversation,
@@ -26,7 +26,7 @@ import {
   type CompactionSchedulerState,
   type Message,
   type Summarizer,
-} from 'conversationalist';
+} from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { noToolCalls } from '../src/conditions/predicates';

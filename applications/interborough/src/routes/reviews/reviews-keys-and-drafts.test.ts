@@ -4,7 +4,7 @@
  * person had not yet seen (a held key, a second press behind the first, a dialog open over the page).
  */
 import { quietFor } from '@lostgradient/testing/wait-until';
-import { HttpClient, type PendingReviewEntry } from '@lostgradient/weft';
+import { HttpClient, type PendingReviewEntry } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';

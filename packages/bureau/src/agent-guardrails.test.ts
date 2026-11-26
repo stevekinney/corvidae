@@ -20,7 +20,7 @@ import {
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   type RunResult,
 } from '@lostgradient/operative';
-import { createTool, createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer/testing';
 import { z } from 'zod';
 import { discoverSkills, type SkillCatalogRevision } from './skills';
 import { afterAll, describe, expect, it } from 'bun:test';

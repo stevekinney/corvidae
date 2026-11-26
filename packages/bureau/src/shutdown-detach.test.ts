@@ -6,8 +6,8 @@
  */
 import { createAgent, stopWhen } from '@lostgradient/operative';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createTool, createToolbox } from 'armorer';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createTool, createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { z } from 'zod';

@@ -9,7 +9,7 @@ import {
   writeReproductionArtifact,
 } from '@lostgradient/operative/testing';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

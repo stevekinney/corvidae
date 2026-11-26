@@ -6,7 +6,7 @@ import { render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 import { Window, type DetachedWindowAPI } from 'happy-dom';
 
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';

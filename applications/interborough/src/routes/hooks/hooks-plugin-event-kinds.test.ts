@@ -5,7 +5,7 @@
  * the version it will be pinned to (R3, R4); a saved hook whose kind is missing says so in its When
  * step, with "Missing" and one cause line (R5), and on line two of its list row (R6).
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 

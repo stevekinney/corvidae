@@ -20,7 +20,7 @@ import {
   type RunnableAgent,
   withBackendDescriptors,
 } from '@lostgradient/operative';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

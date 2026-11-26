@@ -9,9 +9,9 @@
  * `prompt_tokens` includes them, so `prompt` is normalized to exclude the
  * cached count for provider-neutral parity.
  */
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import type { GenerateContext, StreamingHandle } from '@lostgradient/operative/provider-kit';
 import { createAnthropicProvider, createAnthropicProviderStream } from '../src/anthropic.ts';

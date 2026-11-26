@@ -1,10 +1,10 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createTestToolbox, createTool } from 'armorer';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createTestToolbox, createTool } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { Conversation, type MultiModalContent } from 'conversationalist';
+import { Conversation, type MultiModalContent } from 'conversationalist/testing';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

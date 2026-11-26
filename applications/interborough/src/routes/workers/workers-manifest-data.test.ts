@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 
 import {
   invalidateWorkerSurfaceQueries,

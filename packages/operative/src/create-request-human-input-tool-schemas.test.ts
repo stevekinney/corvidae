@@ -5,7 +5,7 @@
  * `create-request-human-input-tool-answer-schema.test.ts`.
  */
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
-import type { WorkflowLogRecord } from '@lostgradient/weft';
+import type { WorkflowLogRecord } from '@lostgradient/weft/testing';
 import { describe, expect, it } from 'bun:test';
 
 import {

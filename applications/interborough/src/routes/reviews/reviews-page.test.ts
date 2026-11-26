@@ -4,7 +4,7 @@
  * table (`bureau-world.test-support.ts`). The keys that act on the open review are checked through
  * the registry, as the shell reads them (`lib/shortcuts.ts`).
  */
-import { HttpClient, type PendingReviewEntry, type ReviewListEntry } from '@lostgradient/weft';
+import { HttpClient, type PendingReviewEntry, type ReviewListEntry } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';

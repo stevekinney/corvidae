@@ -6,7 +6,7 @@
  * file ready.
  */
 import { type AgentRunError, type GenerateFunction } from '@lostgradient/operative';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AgentFileError, type AgentFileProblem } from './agent-file';

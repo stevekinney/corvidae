@@ -9,7 +9,7 @@ import {
   type SignalDeliveryOptions,
   type UpdateDefinition,
   type WorkflowState,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 import { afterEach } from 'bun:test';
 import {
   createRecoveryHandle,

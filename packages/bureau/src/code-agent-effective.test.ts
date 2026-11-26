@@ -12,7 +12,7 @@ import {
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   type ToolCallValidator,
 } from '@lostgradient/operative';
-import { createTool, createToolbox, getToolboxApprovalOptions } from 'armorer';
+import { createTool, createToolbox, getToolboxApprovalOptions } from 'armorer/testing';
 import { z } from 'zod';
 
 import type { AgentContributions } from './agent-contributions';

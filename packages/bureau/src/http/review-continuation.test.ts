@@ -25,7 +25,7 @@
  *   lease is refused as on `main`; a lease taken over under the continuation starts nothing.
  */
 import { EventType } from '@ag-ui/core';
-import { createToolbox, createTool } from 'armorer';
+import { createToolbox, createTool } from 'armorer/testing';
 import type { Toolbox } from '@lostgradient/operative';
 import { encodeStorageKeyComponent } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';

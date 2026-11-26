@@ -10,7 +10,7 @@
  */
 import { stopWhen, createAgent } from '@lostgradient/operative';
 import { createMockGenerate } from '@lostgradient/operative/testing';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { BureauError } from './bureau-errors';

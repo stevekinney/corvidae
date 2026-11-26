@@ -6,7 +6,7 @@
  * `src/lib/live-source/fleet-event-source.test.ts` (T1.4's own convention for
  * this exact need) rather than inventing a different one.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 

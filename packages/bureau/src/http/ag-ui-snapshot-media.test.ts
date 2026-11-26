@@ -7,7 +7,7 @@
 import { EventType } from '@ag-ui/core';
 import { EventSchemas } from '@ag-ui/core/schemas';
 import { describe, expect, it } from 'bun:test';
-import { appendMessages, createConversationHistory } from 'conversationalist';
+import { appendMessages, createConversationHistory } from 'conversationalist/testing';
 
 import { rowsAddedBy, snapshotMessages } from './ag-ui-messages.ts';
 

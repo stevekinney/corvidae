@@ -1,5 +1,5 @@
 /** Shared fixtures for the COR-162 contract-verification tests. */
-import { activityContractHash, contractHash } from '@lostgradient/weft';
+import { activityContractHash, contractHash } from '@lostgradient/weft/testing';
 
 import type { RegistrySnapshotSource } from '../system/registry-view.ts';
 import { registryActivityContractHashes } from './contract-verification.ts';

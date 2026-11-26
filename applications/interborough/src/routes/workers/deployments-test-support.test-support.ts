@@ -1,5 +1,5 @@
 /** Fixtures for the Deployments tab tests (COR-277). */
-import type { WorkerDeploymentRouting, WorkerDeploymentVersionReport } from '@lostgradient/weft';
+import type { WorkerDeploymentRouting, WorkerDeploymentVersionReport } from '@lostgradient/weft/testing';
 
 export const NOW = 1_700_000_000_000;
 

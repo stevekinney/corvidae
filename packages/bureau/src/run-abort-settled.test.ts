@@ -4,7 +4,7 @@
  * announces the moment `internals.abortingTasks()` empties.
  */
 import { stopWhen, createAgent } from '@lostgradient/operative';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';

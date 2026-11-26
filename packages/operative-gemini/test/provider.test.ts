@@ -16,9 +16,9 @@
  *      is tested at the type-check + build step, and Node integration tests would
  *      cover the runtime path.
  */
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import { ProviderError } from '@lostgradient/operative/provider-kit';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';

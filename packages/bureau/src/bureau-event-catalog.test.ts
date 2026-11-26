@@ -5,7 +5,7 @@
 import type { EncryptionKey } from '@lostgradient/cryptography';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage } from '@lostgradient/storage';
-import { createTool, createToolbox, type Toolbox } from 'armorer';
+import { createTool, createToolbox, type Toolbox } from 'armorer/testing';
 import { afterEach, beforeAll, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

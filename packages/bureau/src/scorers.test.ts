@@ -81,7 +81,7 @@ import {
 } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation } from 'conversationalist/testing';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { type AuditTrail, createAuditTrail } from './audit-trail';

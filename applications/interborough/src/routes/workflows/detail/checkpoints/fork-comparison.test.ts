@@ -2,7 +2,7 @@ import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing';
-import { HttpClient, HttpClientError } from '@lostgradient/weft';
+import { HttpClient, HttpClientError } from '@lostgradient/weft/testing';
 
 import { installFetchImplementation } from '../../../../lib/live-source/fetch.test-support.ts';
 import { fetchForkComparison, fetchForkPreview } from './fork-comparison-data.ts';

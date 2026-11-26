@@ -3,7 +3,7 @@
  * run-options resolver is refused. A child dispatched outside Bureau is untouched.
  */
 import { CompletableEventTarget, HookRegistry } from '@lostgradient/lifecycle';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

@@ -13,7 +13,7 @@ import {
 } from '@lostgradient/operative';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { createConversationHistory } from 'conversationalist/testing';
 
 import {
   BureauShuttingDownError,

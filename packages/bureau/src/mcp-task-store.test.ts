@@ -1,5 +1,5 @@
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import type { MCPTaskStore } from 'armorer';
+import type { MCPTaskStore } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 /**

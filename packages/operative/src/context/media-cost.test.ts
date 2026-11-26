@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { MediaContent } from 'conversationalist';
+import type { MediaContent } from 'conversationalist/testing';
 
 import { createFixtureCatalog } from '../testing/model-catalog.test-support.ts';
 import {

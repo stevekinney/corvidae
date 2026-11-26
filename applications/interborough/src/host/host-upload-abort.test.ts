@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { rejectionOf } from '@lostgradient/testing';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 
 import { bureauClient } from '../lib/bureau-api.ts';
 import { UPLOAD_CHUNK_BYTES, uploadAsset } from '../lib/bureau-assets.ts';

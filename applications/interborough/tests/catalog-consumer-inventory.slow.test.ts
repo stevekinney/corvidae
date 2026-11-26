@@ -7,7 +7,7 @@ import {
   CLIENT_OPERATION_NAMES,
   CLIENT_REST_OPERATION_BINDINGS,
   createCatalogSnapshot,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 import { parse } from 'svelte/compiler';
 import ts from 'typescript';
 

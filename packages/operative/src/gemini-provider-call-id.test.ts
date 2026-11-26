@@ -14,9 +14,9 @@ import {
   type SignedPendingToolApproval,
   type ToolExecutionResult,
   withToolboxIdempotency,
-} from 'armorer';
+} from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, materializeToolCalls } from 'conversationalist';
+import { Conversation, materializeToolCalls } from 'conversationalist/testing';
 import { z } from 'zod';
 import { createGatedExecute } from './active-skill-tool-gate';
 

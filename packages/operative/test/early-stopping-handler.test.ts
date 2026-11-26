@@ -1,6 +1,6 @@
-import { createTestToolbox, createTool } from 'armorer';
+import { createTestToolbox, createTool } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, messageText } from 'conversationalist';
+import { Conversation, messageText } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { createEarlyStoppingHandler } from '../src/create-early-stopping-handler';

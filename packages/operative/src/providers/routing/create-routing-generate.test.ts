@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import type { MultiModalContent } from 'conversationalist';
-import { Conversation } from 'conversationalist';
+import type { MultiModalContent } from 'conversationalist/testing';
+import { Conversation } from 'conversationalist/testing';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { MediaAdmissionError } from '../../errors.ts';

@@ -12,7 +12,7 @@ import {
   type RunFrame,
   createAgent,
 } from '@lostgradient/operative';
-import { createToolbox, type Tool } from 'armorer';
+import { createToolbox, type Tool } from 'armorer/testing';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { createBureau } from './create-bureau';

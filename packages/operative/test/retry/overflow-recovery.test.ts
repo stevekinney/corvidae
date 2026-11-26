@@ -8,9 +8,9 @@
  * tool that already ran is never run again, and a stream that failed
  * leaves no partial output behind.
  */
-import { createTestToolbox, createTool } from 'armorer';
+import { createTestToolbox, createTool } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, type Message } from 'conversationalist';
+import { Conversation, type Message } from 'conversationalist/testing';
 import { z } from 'zod';
 
 import { createActiveRun } from '../../src/create-run';

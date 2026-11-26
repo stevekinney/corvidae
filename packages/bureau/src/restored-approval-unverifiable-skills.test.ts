@@ -11,7 +11,7 @@ import {
   type Toolbox,
   createAgent,
 } from '@lostgradient/operative';
-import { KEYS } from '@lostgradient/weft';
+import { KEYS } from '@lostgradient/weft/testing';
 import { type Storage } from '@lostgradient/storage';
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
 

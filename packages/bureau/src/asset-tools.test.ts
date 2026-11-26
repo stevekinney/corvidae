@@ -1,5 +1,5 @@
 /** COR-2032 — registered managed-asset tools use the persisted run owner and bounded content. */
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterEach, describe, expect, it } from 'bun:test';
 

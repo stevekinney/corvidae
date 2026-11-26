@@ -17,7 +17,7 @@ import {
   createMockEmbedder,
   createMemoryVectorStore,
   createTestEmbedders,
-} from '@lostgradient/memory';
+} from '@lostgradient/memory/testing';
 import {
   createAgentSession,
   createDurableActiveRun,
@@ -59,11 +59,11 @@ import {
   WorkflowCompletedEvent,
   WorkflowFailedEvent,
   yieldToPortableEventLoop,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/testing';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { createTool, createToolbox, type ToolRequestContext } from 'armorer';
+import { createTool, createToolbox, type ToolRequestContext } from 'armorer/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { Conversation, createConversationHistory, getMessages } from 'conversationalist';
+import { Conversation, createConversationHistory, getMessages } from 'conversationalist/testing';
 import { z } from 'zod';
 import { createRuntimeComposition } from './runtime-composition';
 import {

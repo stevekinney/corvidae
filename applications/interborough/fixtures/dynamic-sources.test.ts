@@ -14,7 +14,7 @@
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { Engine, getWorkflowRevisionDiagnostics } from '@lostgradient/weft';
+import { Engine, getWorkflowRevisionDiagnostics } from '@lostgradient/weft/testing';
 
 import { throwingRejectionOf } from '@lostgradient/testing';
 import {

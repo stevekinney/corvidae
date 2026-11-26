@@ -6,8 +6,8 @@ import { readFileSync } from 'node:fs';
 
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
-import type { BulkOperationDryRunResult } from '@lostgradient/weft';
-import { HttpClientError } from '@lostgradient/weft';
+import type { BulkOperationDryRunResult } from '@lostgradient/weft/testing';
+import { HttpClientError } from '@lostgradient/weft/testing';
 
 import BulkPurgeDialog from './bulk-purge-dialog.svelte';
 import type { BulkCommitSummary } from './bulk-result-summary.ts';

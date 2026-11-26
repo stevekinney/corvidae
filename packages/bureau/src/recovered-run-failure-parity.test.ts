@@ -16,7 +16,7 @@ import {
   GuardrailTripwireError,
   createAgent,
 } from '@lostgradient/operative';
-import { createTool, createToolbox, type Tool } from 'armorer';
+import { createTool, createToolbox, type Tool } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

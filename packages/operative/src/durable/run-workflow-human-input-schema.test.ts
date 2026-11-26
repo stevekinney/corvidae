@@ -4,10 +4,10 @@
  * run rebuilds the wait from there).
  */
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { Engine, yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
+import { Engine, yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
 
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { noToolCalls } from '../conditions/predicates';

@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import type { ScheduleSummary } from '@lostgradient/weft';
+import type { ScheduleSummary } from '@lostgradient/weft/testing';
 
 import type { WorkflowFileListing } from '../../lib/workflow-files.ts';
 import {

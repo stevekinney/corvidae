@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { DEFAULT_PII_RULES } from 'conversationalist';
+import { DEFAULT_PII_RULES } from 'conversationalist/testing';
 
 import { createOutputPIIValidator, PII_RULES } from './output-pii';
 

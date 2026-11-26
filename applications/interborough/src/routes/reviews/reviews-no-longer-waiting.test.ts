@@ -4,7 +4,7 @@
  * same polite message as a decision is announced, and nothing is decided. The poll that notices is
  * five seconds, so the clocks here are fake and no case waits for it.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeAll, beforeEach, describe, expect, jest, test } from 'bun:test';
 import { Window } from 'happy-dom';

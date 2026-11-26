@@ -3,7 +3,7 @@
  * place of `createBureau`'s own, so each entry the registration writes and the release ends is
  * asserted by name.
  */
-import type { PendingToolApproval, ToolRequestContext } from 'armorer';
+import type { PendingToolApproval, ToolRequestContext } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import { countCheckpointParks } from './park-ordinals';

@@ -3,7 +3,7 @@
  * with, carries the server's own words for a refusal, and says plainly when the server did not
  * answer or the person stopped the read.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/testing';
 import { describe, expect, test } from 'bun:test';
 
 import { WORKER_COPY } from './worker-copy.ts';

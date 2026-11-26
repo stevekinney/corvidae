@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { MemoryDeletionResult } from '@lostgradient/memory';
+import type { MemoryDeletionResult } from '@lostgradient/memory/testing';
 
 import { baselineOptions, evidence, recalledContents } from './baselines.test-support';
 import { createLifecycleBaseline, deletionStatus } from './lifecycle';

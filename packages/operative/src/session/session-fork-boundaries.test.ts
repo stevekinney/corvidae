@@ -1,8 +1,8 @@
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
-import type { ConversationHistory, ConversationSnapshot } from 'conversationalist';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import type { ConversationHistory, ConversationSnapshot } from 'conversationalist/testing';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
 
 import { createAgentSession } from '../agent-session';
 import { AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION } from '../durable/run-workflow-result';

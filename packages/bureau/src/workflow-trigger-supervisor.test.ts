@@ -22,7 +22,7 @@ import {
 } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { quietFor, waitUntil, yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
-import { Engine } from '@lostgradient/weft';
+import { Engine } from '@lostgradient/weft/testing';
 import { z } from 'zod';
 
 import { weftNameOf } from './namespaced-identifier';

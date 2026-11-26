@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { WorkflowFinalizerStatus, WorkflowStatus } from '@lostgradient/weft';
+import type { WorkflowFinalizerStatus, WorkflowStatus } from '@lostgradient/weft/testing';
 
 import {
   actionConfirmTier,

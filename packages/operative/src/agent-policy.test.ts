@@ -2,7 +2,7 @@
  * COR-1367 — per-agent guardrails and skills on `createAgent`.
  */
 import { HookRegistry } from '@lostgradient/lifecycle';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentSkills, AgentSkillsRun } from './agent-policy';

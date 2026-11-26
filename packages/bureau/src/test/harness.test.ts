@@ -3,7 +3,7 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { GenerateFunction } from '@lostgradient/operative';
 import { createAgent, stopWhen } from '@lostgradient/operative';
 import { waitForTaskState } from '.';
-import { createProcessLocalApprovalStateStore, createTool, createToolbox } from 'armorer';
+import { createProcessLocalApprovalStateStore, createTool, createToolbox } from 'armorer/testing';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 

@@ -1,5 +1,5 @@
 import { rejectionOf } from '@lostgradient/testing';
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient } from '@lostgradient/weft/testing';
 import { QueryClient } from '@tanstack/svelte-query';
 import { afterEach, describe, expect, test } from 'bun:test';
 

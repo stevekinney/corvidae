@@ -11,7 +11,7 @@ import {
   withBackendDescriptors,
 } from '@lostgradient/operative';
 import { waitForTaskState } from './test';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';

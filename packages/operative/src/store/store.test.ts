@@ -8,9 +8,9 @@
  * COR-1614 — `Store.settleRun` ends a run's record that no terminal event will end.
  */
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
-import { createToolbox } from 'armorer';
+import { createToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist/testing';
 
 import { stopWhen } from '../conditions/index';
 import { type ActiveRun, createActiveRun } from '../create-run';

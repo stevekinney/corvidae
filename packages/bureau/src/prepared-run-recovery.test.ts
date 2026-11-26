@@ -13,8 +13,8 @@ import {
   type Storage,
   textValueStore,
 } from '@lostgradient/storage';
-import { Engine, yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
+import { Engine, yieldToPortableEventLoop } from '@lostgradient/weft/testing';
+import { createToolbox } from 'armorer/testing';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
