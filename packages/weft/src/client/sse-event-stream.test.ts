@@ -121,13 +121,16 @@ describe('SseWorkflowEventSubscription', () => {
   });
 
   it('delivers one multiline workflow event when a network chunk divides a CRLF', async () => {
-    globalThis.fetch = (async () =>
-      eventStreamResponse(
-        'id: 7\r\nevent: workflow:completed\r\ndata: {"kind":"workflow:completed",\r',
-        '\ndata: "workflowId":"wf-sse","selector":"events","sequence":7,"cursor":"7",\r\n',
-        'data: "emittedAtMs":123,"payload":{"workflowId":"wf-sse"}}\r\n\r',
-        '\n',
-      )) as typeof fetch;
+    globalThis.fetch = Object.assign(
+      async () =>
+        eventStreamResponse(
+          'id: 7\r\nevent: workflow:completed\r\ndata: {"kind":"workflow:completed",\r',
+          '\ndata: "workflowId":"wf-sse","selector":"events","sequence":7,"cursor":"7",\r\n',
+          'data: "emittedAtMs":123,"payload":{"workflowId":"wf-sse"}}\r\n\r',
+          '\n',
+        ),
+      { preconnect: originalFetch.preconnect },
+    );
     const received: WorkflowEvent[] = [];
     const subscription = new SseWorkflowEventSubscription(
       'http://localhost:7233/v1/workflows/wf-sse/events/sse',
