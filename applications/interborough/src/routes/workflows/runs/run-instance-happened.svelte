@@ -8,6 +8,7 @@
    */
   import { Alert, Button, Section } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
+  import { TriangleAlert } from '@lucide/svelte';
 
   import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
   import { clockTimeWithSeconds } from '../../../lib/format/clock.ts';
@@ -128,12 +129,11 @@
     {/each}
   </ol>
   {#if failed && heading !== undefined}
-    <Alert
-      variant="danger"
-      class="weft-overview-tab__failure"
-      data-testid="run-step-failure"
-      {heading}
-    >
+    <Alert variant="danger" class="weft-overview-tab__failure" data-testid="run-step-failure">
+      <p class="ib-run-happened__failure-heading">
+        <TriangleAlert aria-hidden="true" size={20} />
+        <span>{heading}</span>
+      </p>
       <!-- Why it failed, as the Bureau stored it (COR-2533): the one reason in the block, with the
            stack behind a disclosure (rows 14t, 55b). The page's own words about the failure show
            only while the Bureau has no answer, or holds none. The step is named once, in the

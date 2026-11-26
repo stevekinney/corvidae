@@ -267,18 +267,17 @@
   margin: 0;
 }
 
-@media (max-width: 639.98px) {
-  .ib-run[data-failed-run] .weft-overview-tab__failure {
-    display: block;
-  }
+.ib-run-happened__failure-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cinder-space-3);
+  margin: 0;
+  color: var(--cinder-status-danger-text);
+  font-weight: var(--cinder-font-semibold);
+}
 
-  .ib-run[data-failed-run] .weft-overview-tab__failure > .cinder-alert__icon {
-    position: absolute;
-  }
-
-  .ib-run[data-failed-run] .weft-overview-tab__failure .cinder-alert__heading {
-    padding-inline-start: calc(1.25rem + var(--cinder-space-3));
-  }
+.ib-run-happened__failure-heading > svg {
+  flex: none;
 }
 
 /* An entry still to come reads quieter than what has happened. */
