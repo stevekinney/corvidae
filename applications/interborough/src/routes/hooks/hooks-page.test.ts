@@ -637,6 +637,9 @@ describe('the hooks list', () => {
     const toggle = within(row(view.container, 'alpha')!).getByRole('switch');
     expect(toggle.getAttribute('aria-disabled')).toBe('true');
     expect(toggle.getAttribute('aria-describedby')).not.toBeNull();
+    expect(within(row(view.container, 'alpha')!).getByTestId('hook-held-reason').textContent).toBe(
+      HOOKS_COPY.list.refreshRowReason,
+    );
     expect(
       view
         .getAllByRole('button', { name: HOOKS_COPY.newAction })

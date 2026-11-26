@@ -48,9 +48,11 @@
   interface Props {
     /** The hooks to show, each with its newest delivery. */
     hooks: readonly ListedHook[];
+    /** The visible third row line while StaleRegion holds each row's On switch. */
+    heldReason?: string;
   }
 
-  let { hooks }: Props = $props();
+  let { hooks, heldReason }: Props = $props();
 
   const queryClient = useQueryClient();
 
@@ -122,6 +124,10 @@
   >
 {/snippet}
 
+{#snippet heldReasonDetail()}
+  <span data-testid="hook-held-reason">{heldReason}</span>
+{/snippet}
+
 {#if staleHook !== null}
   <Alert variant="warning" dismissible onDismiss={() => (staleHook = null)}>
     <p class="ib-hooks__alert-title">{STALE_COPY.title(staleHook)}</p>
@@ -150,6 +156,7 @@
         {...delivered === undefined ? {} : { time: delivered }}
         metaTooltip={whole.line}
         wrapMeta
+        {...heldReason === undefined ? {} : { detail: heldReasonDetail }}
         data-hook={hook.id}
         data-enabled={hook.enabled ? 'true' : 'false'}
       >

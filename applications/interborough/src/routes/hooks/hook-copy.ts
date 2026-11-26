@@ -109,6 +109,8 @@ export const HOOKS_COPY = {
     },
     /** Why the switches and New hook are off while the list on screen is old. */
     refreshOff: 'Off until Interborough answers.',
+    /** The visible row line while its On switch is held under retained data. */
+    refreshRowReason: 'The On switch is off until Interborough answers.',
     /** Why the header's "+" does nothing while the list could not be read at all. */
     newActionOffReason: 'New hook is off until Interborough answers.',
   },

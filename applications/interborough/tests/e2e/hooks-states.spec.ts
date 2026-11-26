@@ -370,6 +370,9 @@ test.describe('/hooks: the hooks list states', () => {
         await expect(create).toHaveAttribute('aria-disabled', 'true');
         await expect(firstSwitch).toHaveAttribute('aria-disabled', 'true');
         await expect(firstSwitch).toHaveAccessibleDescription('Off until it’s back');
+        await expect(rows.first().getByTestId('hook-held-reason')).toHaveText(
+          'The On switch is off until Interborough answers.',
+        );
         await create.focus();
         await expect(create).toBeFocused();
         await firstSwitch.focus();

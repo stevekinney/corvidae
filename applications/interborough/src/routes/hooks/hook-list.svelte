@@ -195,6 +195,9 @@
   const heldReason = $derived(
     connection.unreachable ? CONNECTION_COPY.changesOff : copy.refreshOff,
   );
+  const rowHeldReason = $derived(
+    connection.unreachable || refreshFailed ? copy.refreshRowReason : undefined,
+  );
 </script>
 
 {#if unavailable}
@@ -299,7 +302,7 @@
             {#snippet icon()}<Search aria-hidden="true" />{/snippet}
           </EmptyState>
         {:else}
-          <HookRows hooks={visible} />
+          <HookRows hooks={visible} heldReason={rowHeldReason} />
         {/if}
       {/if}
     </StaleRegion>
