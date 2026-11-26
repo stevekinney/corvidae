@@ -57,6 +57,19 @@ test.describe('the sample world', () => {
       await expect(action).toBeInViewport();
       const actionBox = await action.boundingBox();
       expect(actionBox!.y + actionBox!.height).toBeLessThanOrEqual(640);
+      if (width === 375) {
+        await captureForDesignReview(page, {
+          route: '/health',
+          state: 'phone initial viewport 640',
+          source: SOURCE,
+          ready: async (currentPage) => {
+            await currentPage.locator('main.weft-shell-outlet').evaluate((outlet) => {
+              outlet.scrollTop = 0;
+            });
+            await expect(currentPage.getByTestId('needs-attention')).toBeVisible();
+          },
+        });
+      }
       await action.focus();
       await expect(action).toBeFocused();
       await expect(page.getByTestId('health-counts').locator('.cinder-statistic')).toHaveCount(2);
@@ -85,17 +98,40 @@ test.describe('the sample world', () => {
     await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
     await expect(advanced.locator('[data-section="checks"]')).toContainText('3 need attention');
     await expect(page.getByTestId('needs-attention').locator('li')).toHaveCount(3);
+    const showAdvanced = async (currentPage: Page) => {
+      const section = currentPage.getByTestId('advanced-diagnostics');
+      await section.evaluate((element) => {
+        const outlet = element.closest('main.weft-shell-outlet');
+        if (!(outlet instanceof HTMLElement)) throw new Error('Health outlet is missing');
+        outlet.scrollTop +=
+          element.getBoundingClientRect().top - outlet.getBoundingClientRect().top - 12;
+      });
+      for (const name of ['metrics', 'alerts', 'checks']) {
+        await expect(section.locator(`[data-section="${name}"]`)).toBeInViewport();
+      }
+    };
+    await showAdvanced(page);
     await captureForDesignReview(page, {
       route: '/health',
       state: 'advanced expanded',
       source: SOURCE,
+      ready: showAdvanced,
     });
     await page.getByTestId('needs-attention').getByRole('link', { name: 'View storage' }).click();
     await expect(page).toHaveURL(/\/health\/storage/);
+    const storageReady = async (currentPage: Page) => {
+      await currentPage.locator('main.weft-shell-outlet').evaluate((outlet) => {
+        outlet.scrollTop = 0;
+      });
+      await expect(currentPage.getByTestId('storage-warning')).toBeVisible();
+      await expect(currentPage.locator('main tbody tr[data-cinder-row-id]').first()).toBeVisible();
+    };
+    await storageReady(page);
     await captureForDesignReview(page, {
       route: '/health/storage',
       state: 'storage alert destination',
       source: SOURCE,
+      ready: storageReady,
     });
   });
 
