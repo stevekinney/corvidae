@@ -9,9 +9,10 @@
 
 /* Keep the heading, filters, and rows on the same measure as the Workflows records list. */
 .weft-shell-outlet[data-width='list'] {
+  --weft-outlet-list-width: 60rem;
   padding-inline-end: max(
     var(--weft-outlet-gutter),
-    calc(100% - 60rem - var(--weft-outlet-gutter))
+    calc(100% - var(--weft-outlet-list-width) - var(--weft-outlet-gutter))
   );
 }
 
