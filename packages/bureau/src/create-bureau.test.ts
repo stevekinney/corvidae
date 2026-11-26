@@ -10,17 +10,19 @@ import {
 } from '@lostgradient/lifecycle';
 import {
   createGovernedMemory,
-  createInMemoryMemoryRecordStorage,
   createMemoryAuthority,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
-  createMockEmbedder,
   type GovernedMemory,
   type GovernedMemoryRecord,
   type MemoryAuthority,
   createMemoryVectorStore,
-  createTestEmbedders,
 } from '@lostgradient/memory';
+import {
+  createInMemoryMemoryRecordStorage,
+  createMockEmbedder,
+  createTestEmbedders,
+} from '@lostgradient/memory/testing';
 import {
   AbortAgentRunError,
   type ActiveRun,
@@ -29,7 +31,6 @@ import {
   type CombinedOperativeEventMap,
   createAgent,
   createAgentSession,
-  createMockGenerate as createSequentialGenerate,
   createScheduleWakeupTool,
   createSessionStore,
   createStore,
@@ -58,6 +59,7 @@ import {
   stopWhen,
   type Toolbox,
 } from '@lostgradient/operative';
+import { createMockGenerate as createSequentialGenerate } from '@lostgradient/operative/testing';
 import { discoverSkills, type SkillCatalogRevision } from './skills';
 import {
   type ConditionalTextValueStore,

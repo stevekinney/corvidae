@@ -10,13 +10,12 @@
  * adapter.
  */
 import {
-  createScriptedGenerate,
   stopWhen,
   TOOL_TIMING_METADATA_KEY,
   type Toolbox,
-  waitForCondition,
   createAgent,
 } from '@lostgradient/operative';
+import { createScriptedGenerate, waitForCondition } from '@lostgradient/operative/testing';
 import { listHeldTasks, waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';

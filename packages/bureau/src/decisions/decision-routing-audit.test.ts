@@ -7,10 +7,10 @@
 import {
   type AgentRunContext,
   createAgent,
-  createMockGenerate,
   type GenerateFunction,
   type RunnableAgent,
 } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 

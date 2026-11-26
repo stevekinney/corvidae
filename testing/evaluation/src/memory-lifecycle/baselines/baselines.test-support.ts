@@ -1,4 +1,4 @@
-import { createManualRuntimeServices } from '@lostgradient/operative';
+import { createManualRuntimeServices } from '@lostgradient/operative/testing';
 
 import { memoryLifecycleEnvelope } from '../envelope';
 import type { ScenarioEvidence } from '../scenarios';

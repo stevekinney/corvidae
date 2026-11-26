@@ -8,12 +8,12 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import {
   createEmbedderRegistry,
   createGovernedMemory,
-  createInMemoryMemoryRecordStorage,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
   createMemoryVectorStore,
   HASHING_EMBEDDER_ID,
 } from '@lostgradient/memory';
+import { createInMemoryMemoryRecordStorage } from '@lostgradient/memory/testing';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { encodeCursor } from '@lostgradient/backchannel';
 

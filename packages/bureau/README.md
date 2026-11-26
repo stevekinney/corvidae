@@ -1076,12 +1076,8 @@ This is the whole path of an outside consumer: authenticate with an API key, dis
 
 ```typescript
 import { createBureau, createBureauHandler, createMemoryAssetStorage } from '@lostgradient/bureau';
-import {
-  createAgent,
-  stopWhen,
-  waitForCondition,
-  type GenerateFunction,
-} from '@lostgradient/operative';
+import { createAgent, stopWhen, type GenerateFunction } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { principalFromApiKey } from '@lostgradient/backchannel';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
@@ -1260,7 +1256,8 @@ import {
   JsonRpcTransportFactory,
 } from '@a2a-js/sdk/client';
 import { createBureau, createBureauHandler, createMemoryAssetStorage } from '@lostgradient/bureau';
-import { createAgent, waitForCondition, type GenerateFunction } from '@lostgradient/operative';
+import { createAgent, type GenerateFunction } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { principalFromApiKey } from '@lostgradient/backchannel';
 import { MemoryStorage } from '@lostgradient/storage';
 
@@ -2167,7 +2164,7 @@ const discoveryTool = createAgentDiscoveryTool(bureau.agents);
 
 ```typescript
 import { createBureau, createManualRuntimeServices } from '@lostgradient/bureau';
-import { waitForCondition, waitForRunState } from '@lostgradient/operative';
+import { waitForCondition, waitForRunState } from '@lostgradient/operative/testing';
 ```
 
 `createBureau` and `createManualRuntimeServices` come from the package root: pass a `ManualRuntimeServices` as `runtime` to drive a Bureau's clock, timers, and identifiers by hand. `waitForCondition` and `waitForRunState` stay Operative test helpers, because they observe Operative-owned runs and state. Bureau's own test harness, its quiescence report, and its reproduction artifact are support for Bureau's own tests, and the package entry does not export them.

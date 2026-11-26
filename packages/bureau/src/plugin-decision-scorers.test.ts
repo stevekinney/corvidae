@@ -10,12 +10,8 @@
  */
 import * as pluginPackage from '@lostgradient/interborough-plugin';
 import type { PluginHost, PluginScorer } from '@lostgradient/interborough-plugin';
-import {
-  type BackendDescriptor,
-  createAgent,
-  createMockGenerate,
-  stopWhen,
-} from '@lostgradient/operative';
+import { type BackendDescriptor, createAgent, stopWhen } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';

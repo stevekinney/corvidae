@@ -130,7 +130,7 @@ import {
   type LeakedResource,
   QuiescenceError,
   type QuiescenceReport,
-} from '@lostgradient/operative';
+} from '@lostgradient/operative/testing';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import type {

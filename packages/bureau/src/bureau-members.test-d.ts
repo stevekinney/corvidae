@@ -3,7 +3,8 @@
 // compiling, a member that belongs behind `reviews`, `schedules`, `contexts`, `tasks`, or `internals` was declared on
 // `Bureau` again.
 
-import { createAgent, createMockGenerate } from '@lostgradient/operative';
+import { createAgent } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { z } from 'zod';
 
 import type { AgentModels } from './agent-models.ts';

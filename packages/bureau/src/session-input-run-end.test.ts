@@ -1,13 +1,13 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createAgentSession,
-  createManualRuntimeServices,
   createSessionStore,
   type GenerateContext,
   type GenerateFunction,
   stopWhen,
   createAgent,
 } from '@lostgradient/operative';
+import { createManualRuntimeServices } from '@lostgradient/operative/testing';
 import { MemoryStorage, type Storage, textValueStore } from '@lostgradient/storage';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';

@@ -1,10 +1,6 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import {
-  createAgent,
-  stopWhen,
-  waitForCondition,
-  withBackendDescriptors,
-} from '@lostgradient/operative';
+import { createAgent, stopWhen, withBackendDescriptors } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';

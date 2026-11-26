@@ -5,7 +5,8 @@
  * enforced.
  */
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { createTestToolbox, createTool } from 'armorer';
+import { createTool } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
 import { z } from 'zod';

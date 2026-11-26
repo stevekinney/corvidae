@@ -6,9 +6,9 @@
 import {
   type BackendDescriptor,
   type DecisionModel,
-  createMockGenerate,
   type GenerateFunction,
 } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { BureauModelPolicyOptions } from '../../model-policy.ts';

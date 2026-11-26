@@ -8,11 +8,8 @@
  * Every model here is a double, and nothing waits on a clock: a held model settles when the test
  * releases it, and a wait for a call goes through `waitUntil`.
  */
-import {
-  type BackendDescriptor,
-  createMockGenerate,
-  type GenerateFunction,
-} from '@lostgradient/operative';
+import { type BackendDescriptor, type GenerateFunction } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
