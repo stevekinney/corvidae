@@ -7,6 +7,7 @@ import {
   parseOptionalSequenceCursor,
 } from '@lostgradient/backchannel/internals';
 import { WEFT_SCOPE_VOCABULARY } from '../../authorization-scopes.ts';
+import type { ServerHandle } from '../host.ts';
 import type { ServeOptions } from '../index.ts';
 import { finalizeWebSocketUpgrade } from '../json-rpc-transport-helpers.ts';
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
@@ -157,7 +158,7 @@ function upgradeScope(
 }
 
 export function handleWebSocketUpgrade(
-  server: ReturnType<typeof Bun.serve>,
+  server: ServerHandle<WebSocketData>,
   context: ServerContext,
   options: ServeOptions,
   request: Request,

@@ -1,3 +1,4 @@
+import { sleep } from '../../runtime/portable.ts';
 import type { ServerContext } from './context.ts';
 
 export const DEFAULT_SHUTDOWN_TIMEOUT_MS = 30_000;
@@ -48,7 +49,7 @@ export async function shutdownWorker(
     if (Date.now() >= deadline) {
       return true; // We sent the message, but the worker did not disconnect in time.
     }
-    await Bun.sleep(50);
+    await sleep(50);
   }
 
   return true;

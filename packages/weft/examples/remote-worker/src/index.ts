@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * COR-151 "Public Surface and Documentation" — a remote-mode example: an
  * engine configured with `activityExecution: { mode: 'remote' }`, dispatching
@@ -64,7 +65,7 @@ export async function runRemoteWorkerExample(name = 'Ada'): Promise<RemoteWorker
   const engine = new Engine({ activityExecution: { mode: 'remote' } }).register(
     remoteGreetingWorkflow,
   );
-  const server = serve({ engine, port: 0, unauthenticatedAccess: 'allow' });
+  const server = serve({ host: bunServerHost, engine, port: 0, unauthenticatedAccess: 'allow' });
   const workerId = `remote-worker-example-${Date.now()}`;
   const remoteWorker = new RemoteWorker({
     serverUrl: `${server.url.replace(/^http/, 'ws')}/v1/tasks/default/stream`,

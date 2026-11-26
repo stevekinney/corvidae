@@ -1,4 +1,4 @@
-import type { ServerWebSocket } from 'bun';
+import type { Socket } from '@lostgradient/node-host';
 
 import { decode } from '../../core/codec.ts';
 import type { Engine } from '../../core/engine.ts';
@@ -24,7 +24,7 @@ export type WorkflowStreamConnectionLease = {
 };
 
 export function sendStreamMessage(
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   sequence: number,
   message: string,
 ): void {
@@ -37,7 +37,7 @@ export function sendStreamMessage(
 }
 
 export function sendWatchMessage(
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   sequence: number,
   message: string,
 ): void {
@@ -90,7 +90,7 @@ export async function getHighestStoredWatchSequence(
 export function addStreamSocket(
   context: ServerContext,
   workflowId: string,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
 ): boolean {
   if (!addWorkflowStreamConnection(context, workflowId, ws)) {
     return false;
@@ -108,7 +108,7 @@ export function addStreamSocket(
 export function addWatchSocket(
   context: ServerContext,
   workflowId: string,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
 ): boolean {
   if (!addWorkflowStreamConnection(context, workflowId, ws)) {
     return false;
@@ -123,10 +123,7 @@ export function addWatchSocket(
   return true;
 }
 
-export function removeStreamSocket(
-  context: ServerContext,
-  ws: ServerWebSocket<WebSocketData>,
-): void {
+export function removeStreamSocket(context: ServerContext, ws: Socket<WebSocketData>): void {
   const workflowId = ws.data.workflowId;
   if (!workflowId) return;
 
@@ -139,10 +136,7 @@ export function removeStreamSocket(
   }
 }
 
-export function removeWatchSocket(
-  context: ServerContext,
-  ws: ServerWebSocket<WebSocketData>,
-): void {
+export function removeWatchSocket(context: ServerContext, ws: Socket<WebSocketData>): void {
   const workflowId = ws.data.workflowId;
   if (!workflowId) return;
 
@@ -157,7 +151,7 @@ export function removeWatchSocket(
 
 export function removeWorkflowStreamConnection(
   context: ServerContext,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
 ): void {
   const workflowId = ws.data.workflowId;
   if (!workflowId || !ws.data.workflowStreamConnectionAccepted) return;
@@ -200,7 +194,7 @@ function releaseWorkflowStreamConnection(context: ServerContext, workflowId: str
 function addWorkflowStreamConnection(
   context: ServerContext,
   workflowId: string,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
 ): boolean {
   const maxConnections = context.maxStreamConnectionsPerWorkflow;
   const lease = acquireWorkflowStreamConnection(context, workflowId);
@@ -218,7 +212,7 @@ function addWorkflowStreamConnection(
 
 export function flushPendingStreamMessages(
   _context: ServerContext,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
 ): void {
   const pendingMessages = ws.data.pendingStreamMessages ?? [];
   pendingMessages.sort((left, right) => left.sequence - right.sequence);
@@ -232,7 +226,7 @@ export function flushPendingStreamMessages(
 
 export function flushPendingWatchMessages(
   _context: ServerContext,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
 ): void {
   const pendingMessages = ws.data.pendingWatchMessages ?? [];
   pendingMessages.sort((left, right) => left.sequence - right.sequence);
@@ -300,7 +294,7 @@ export function publishWatchMessage(
 export async function replayTokenStream(
   context: ServerContext,
   engine: Engine,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   workflowId: string,
 ): Promise<void> {
   ws.data.streamLastDeliveredSequence = -1;
@@ -352,7 +346,7 @@ export async function replayTokenStream(
 export async function replayWatchEvents(
   context: ServerContext,
   engine: Engine,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   workflowId: string,
 ): Promise<void> {
   ws.data.watchLastDeliveredSequence = -1;
@@ -416,7 +410,7 @@ export async function replayWatchEvents(
 
 function closeWatchSocketForReplayLimit(
   context: ServerContext,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   reason: string,
 ): void {
   ws.data.pendingWatchMessages = [];

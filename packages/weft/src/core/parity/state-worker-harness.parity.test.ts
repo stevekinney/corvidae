@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
@@ -126,6 +127,7 @@ describe('durable state, remote worker, and testing-harness parity', () => {
     // actual value/error into `engine.completeAsyncActivity`/`failAsyncActivity`.
     engine = new Engine({ activityExecution: { mode: 'remote' } });
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       unauthenticatedAccess: 'allow',

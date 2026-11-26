@@ -1,5 +1,6 @@
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { quietFor } from '@lostgradient/testing/wait-until';
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * End-to-end integration — `serve()` WebSocket /jsonrpc endpoint wired to
  * the JSON-RPC WebSocket session adapter.
@@ -33,7 +34,7 @@ const holdWorkflow = workflow({ name: 'hold' }).execute(async function* (
  * wraps) requires the `events:read` scope. Tests that subscribe must
  * authenticate with a key that carries that scope (passed to `openWebSocket`);
  * tests that only call public operations (e.g. `weft.workflows.get`) keep using
- * the no-auth `serve({ engine, port: 0 })` form.
+ * the no-auth `serve({ host: bunServerHost, engine, port: 0 })` form.
  */
 const SUBSCRIBE_TEST_API_KEY = 'weft_test_subscribe_events_read_scope_key_xxxxxxx';
 const subscribeServeOptions = {
@@ -148,7 +149,7 @@ describe('serve() — WebSocket /jsonrpc', () => {
     const handle = await engine.start('hold', {}, {});
     await waitForStatus(engine, handle.id, 'running');
 
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
     const wsUrl = `${server.url.replace('http://', 'ws://')}/jsonrpc`;
     const ws = await openWebSocket(wsUrl);
 
@@ -177,7 +178,7 @@ describe('serve() — WebSocket /jsonrpc', () => {
     const handle = await engine.start('hold', {}, {});
     await waitForStatus(engine, handle.id, 'running');
 
-    server = serve({ engine, ...subscribeServeOptions });
+    server = serve({ host: bunServerHost, engine, ...subscribeServeOptions });
     const { ws, subscriptionId } = await openSubscribedEventsSocket(server, handle.id);
     expect(subscriptionId).toBeTruthy();
 
@@ -210,7 +211,7 @@ describe('serve() — WebSocket /jsonrpc', () => {
     const handle = await engine.start('hold', {}, {});
     await waitForStatus(engine, handle.id, 'running');
 
-    server = serve({ engine, ...subscribeServeOptions });
+    server = serve({ host: bunServerHost, engine, ...subscribeServeOptions });
     const { ws, subscriptionId } = await openSubscribedEventsSocket(server, handle.id);
 
     const unsubscribeResponsePromise = waitForMessage(ws, (parsed: any) => parsed?.id === 2);
@@ -280,7 +281,7 @@ describe('serve() — WebSocket /jsonrpc', () => {
     const handle = await engine.start('hold', {}, {});
     await waitForStatus(engine, handle.id, 'running');
 
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
 
     const response = await fetch(`${server.url}/jsonrpc`, {
       method: 'POST',
@@ -303,6 +304,7 @@ describe('serve() — WebSocket /jsonrpc', () => {
   it('test e: auth failure before upgrade returns 401 on the upgrade request itself', async () => {
     engine = createHoldEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: {
@@ -356,7 +358,7 @@ describe('serve() — WebSocket /jsonrpc', () => {
     const handle = await engine.start('hold', {}, {});
     await waitForStatus(engine, handle.id, 'running');
 
-    server = serve({ engine, ...subscribeServeOptions });
+    server = serve({ host: bunServerHost, engine, ...subscribeServeOptions });
     const { ws } = await openSubscribedEventsSocket(server, handle.id);
 
     let leakedRejection: unknown = null;
@@ -413,6 +415,7 @@ describe('serve() — WebSocket /jsonrpc', () => {
 
     const apiKey = 'weft_key_valid123456789012345678901';
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: {
@@ -458,7 +461,7 @@ describe('serve() — WebSocket /jsonrpc', () => {
     const handle = await engine.start('hold', {}, {});
     await waitForStatus(engine, handle.id, 'running');
 
-    server = serve({ engine, ...subscribeServeOptions });
+    server = serve({ host: bunServerHost, engine, ...subscribeServeOptions });
     const wsUrl = `${server.url.replace('http://', 'ws://')}/jsonrpc`;
 
     const [wsA, wsB] = await Promise.all([
@@ -524,7 +527,7 @@ describe('serve() — WebSocket /jsonrpc', () => {
     await engine.start('hold', null, { id: 'fleet-wf-b' });
     await waitForStatus(engine, 'fleet-wf-a', 'running');
     await waitForStatus(engine, 'fleet-wf-b', 'running');
-    server = serve({ engine, ...subscribeServeOptions });
+    server = serve({ host: bunServerHost, engine, ...subscribeServeOptions });
     const ws = await openWebSocket(jsonRpcWebSocketUrl(server), SUBSCRIBE_TEST_API_KEY);
 
     const subscribeResponsePromise = waitForMessage(
@@ -580,6 +583,7 @@ describe('serve() — WebSocket /jsonrpc', () => {
   it('test j: fleet subscription receives worker lifecycle events through serve wiring', async () => {
     engine = createHoldEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       workerReconnectGracePeriodMs: 0,
@@ -668,7 +672,7 @@ describe('serve() — WebSocket /jsonrpc', () => {
     const handle = await engine.start('hold', {}, {});
     await waitForStatus(engine, handle.id, 'running');
 
-    server = serve({ engine, ...subscribeServeOptions });
+    server = serve({ host: bunServerHost, engine, ...subscribeServeOptions });
     // Open and subscribe, but intentionally leave the client socket open: this
     // test exercises `server.stop()` draining an active subscription.
     await openSubscribedEventsSocket(server, handle.id);

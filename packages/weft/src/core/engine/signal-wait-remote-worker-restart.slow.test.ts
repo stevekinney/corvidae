@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * COR-1472: the RemoteWorker leg of the `waitingForSignals` restart matrix (the
  * inline and durable-child legs are in `signal-wait-restart.test.ts`, the Bun
@@ -59,6 +60,7 @@ describe('waitingForSignals across a restart of an engine whose activities run o
         const firstEvents = recordSignalWaitingEvents(first);
         // `trustedHosts` only keeps the MCP origin-posture warning out of the output.
         const server = serve({
+          host: bunServerHost,
           engine: first,
           port: 0,
           unauthenticatedAccess: 'allow',

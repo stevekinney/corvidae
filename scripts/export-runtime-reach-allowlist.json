@@ -32,12 +32,6 @@
   {
     "package": "@lostgradient/bureau",
     "subpath": "./sources",
-    "finding": "Bun.serve",
-    "reason": "The source package reaches Weft's Bun server host pending its portability work."
-  },
-  {
-    "package": "@lostgradient/bureau",
-    "subpath": "./sources",
     "finding": "Bun.sleep",
     "reason": "The source package reaches Weft's Bun timers pending its portability work."
   },
@@ -50,32 +44,14 @@
   {
     "package": "@lostgradient/bureau",
     "subpath": "./testing",
-    "finding": "Bun.serve",
-    "reason": "Bureau's testing entry reaches Weft's Bun server host."
-  },
-  {
-    "package": "@lostgradient/bureau",
-    "subpath": "./testing",
     "finding": "Bun.sleep",
     "reason": "Bureau's testing entry reaches Weft's Bun timers."
   },
   {
     "package": "@lostgradient/bureau",
     "subpath": "./tool-operations",
-    "finding": "Bun.serve",
-    "reason": "The operation entry reaches Weft's Bun server host pending its portability work."
-  },
-  {
-    "package": "@lostgradient/bureau",
-    "subpath": "./tool-operations",
     "finding": "Bun.sleep",
     "reason": "The operation entry reaches Weft's Bun timers pending its portability work."
-  },
-  {
-    "package": "@lostgradient/bureau",
-    "subpath": ".",
-    "finding": "Bun.serve",
-    "reason": "Bureau reaches Weft's Bun server host pending its portability work."
   },
   {
     "package": "@lostgradient/bureau",
@@ -92,32 +68,14 @@
   {
     "package": "@lostgradient/interborough-plugin",
     "subpath": "./testing",
-    "finding": "Bun.serve",
-    "reason": "Testing entry reaches Weft's Bun server host."
-  },
-  {
-    "package": "@lostgradient/interborough-plugin",
-    "subpath": "./testing",
     "finding": "Bun.sleep",
     "reason": "Testing entry reaches Weft's Bun timers."
   },
   {
     "package": "@lostgradient/memory",
     "subpath": ".",
-    "finding": "Bun.serve",
-    "reason": "Memory reaches Weft's Bun server host pending its portability work."
-  },
-  {
-    "package": "@lostgradient/memory",
-    "subpath": ".",
     "finding": "Bun.sleep",
     "reason": "Memory reaches Weft's Bun timers pending its portability work."
-  },
-  {
-    "package": "@lostgradient/operative-typesafe",
-    "subpath": ".",
-    "finding": "Bun.serve",
-    "reason": "The decision model reaches Weft's Bun server host pending its portability work."
   },
   {
     "package": "@lostgradient/operative-typesafe",
@@ -140,20 +98,8 @@
   {
     "package": "@lostgradient/operative",
     "subpath": "./testing",
-    "finding": "Bun.serve",
-    "reason": "Testing entry reaches Weft's Bun server host."
-  },
-  {
-    "package": "@lostgradient/operative",
-    "subpath": "./testing",
     "finding": "Bun.sleep",
     "reason": "Testing entry reaches Weft's Bun timers."
-  },
-  {
-    "package": "@lostgradient/operative",
-    "subpath": ".",
-    "finding": "Bun.serve",
-    "reason": "Operative reaches Weft's Bun server host pending its portability work."
   },
   {
     "package": "@lostgradient/operative",
@@ -313,9 +259,9 @@
   },
   {
     "package": "@lostgradient/weft",
-    "subpath": ".",
+    "subpath": "./bun",
     "finding": "Bun.serve",
-    "reason": "Weft's current server host runs on Bun."
+    "reason": "The Bun host."
   },
   {
     "package": "@lostgradient/weft",

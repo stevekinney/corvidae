@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * Characterization tests for `serve()` — assert externally observable
  * lifecycle behaviour without reaching into implementation internals.
@@ -26,7 +27,7 @@ async function withEngine(fn: (engine: Engine) => Promise<void>): Promise<void> 
 describe('serve()', () => {
   it('returns a WeftServer with port, hostname, url, registry, and taskQueue', async () => {
     await withEngine(async (engine) => {
-      await using server = serve({ engine, port: 0 });
+      await using server = serve({ host: bunServerHost, engine, port: 0 });
       expect(typeof server.port).toBe('number');
       expect(typeof server.hostname).toBe('string');
       expect(typeof server.url).toBe('string');
@@ -38,7 +39,7 @@ describe('serve()', () => {
 
   it('url reflects the actual bound port', async () => {
     await withEngine(async (engine) => {
-      await using server = serve({ engine, port: 0 });
+      await using server = serve({ host: bunServerHost, engine, port: 0 });
       const urlPort = new URL(server.url).port;
       expect(String(server.port)).toBe(urlPort);
     });
@@ -46,14 +47,14 @@ describe('serve()', () => {
 
   it('exposes stop() which resolves without throwing', async () => {
     await withEngine(async (engine) => {
-      const server = serve({ engine, port: 0 });
+      const server = serve({ host: bunServerHost, engine, port: 0 });
       expect(await server.stop()).toBeUndefined();
     });
   });
 
   it('stop() is idempotent — calling it twice does not throw', async () => {
     await withEngine(async (engine) => {
-      const server = serve({ engine, port: 0 });
+      const server = serve({ host: bunServerHost, engine, port: 0 });
       await server.stop();
       expect(await server.stop()).toBeUndefined();
     });
@@ -61,7 +62,7 @@ describe('serve()', () => {
 
   it('Symbol.asyncDispose() delegates to stop()', async () => {
     await withEngine(async (engine) => {
-      const server = serve({ engine, port: 0 });
+      const server = serve({ host: bunServerHost, engine, port: 0 });
       // Using await using triggers Symbol.asyncDispose().
       // If it throws the test fails.
       await server[Symbol.asyncDispose]();
@@ -70,8 +71,8 @@ describe('serve()', () => {
 
   it('two sequential serve() calls each return independent handles', async () => {
     await withEngine(async (engine) => {
-      const a = serve({ engine, port: 0 });
-      const b = serve({ engine, port: 0 });
+      const a = serve({ host: bunServerHost, engine, port: 0 });
+      const b = serve({ host: bunServerHost, engine, port: 0 });
       // Both must stop independently.
       await a.stop();
       expect(await b.stop()).toBeUndefined();

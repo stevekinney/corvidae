@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { bunServerHost } from '@lostgradient/weft/bun';
 
 import {
   API_HELP_TEXT,
@@ -110,7 +111,7 @@ async function listenOrRollBack(
     } else {
       io.stdout('No --workflows module provided; starting in inspect-only mode.\n');
     }
-    server = serve({ engine, port: Number(parsedArguments.port) });
+    server = serve({ host: bunServerHost, engine, port: Number(parsedArguments.port) });
     await writeRunLockfile(server.url);
     return server;
   } catch (error) {

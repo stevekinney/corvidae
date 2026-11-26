@@ -77,7 +77,7 @@ function resolveCompareFault(error: unknown): never {
 
 /**
  * Decides whether a caller may read one workflow, beyond the `workflows:read` scope the catalog
- * already checks. `serve({ authorizeWorkflowRead })` supplies it; `weft.workflows.compare` asks it
+ * already checks. `serve({ host: bunServerHost, authorizeWorkflowRead })` supplies it; `weft.workflows.compare` asks it
  * for the fork and for its source, so a caller cleared for a fork cannot read the source through it.
  * Return `false` to deny; a throw is an internal error, never a denial.
  */

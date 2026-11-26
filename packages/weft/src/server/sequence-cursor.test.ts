@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { parseOptionalSequenceCursor } from '@lostgradient/backchannel/internals';
@@ -76,6 +77,7 @@ it('All live views share the same sequence and cursor semantics. Replay, resume,
   const backend = createEngineEventFeedBackend(engine);
   const feed = createWorkflowEventFeed(backend);
   const server = serve({
+    host: bunServerHost,
     engine,
     port: 0,
     auth: {

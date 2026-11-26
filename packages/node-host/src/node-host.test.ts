@@ -7,6 +7,60 @@ import { serve } from './index.ts';
 
 hostContract('Node host', serve);
 
+void test('Node host gives exact and parameter routes precedence over wildcards', async () => {
+  const host = serve({
+    port: 0,
+    fetch: () => new Response('fallback'),
+    routes: {
+      '/reports/*': () => new Response('wildcard'),
+      '/reports/:id': (request) => new Response(`parameter:${request.params['id']}`),
+      '/reports/top': new Response('exact'),
+      '/uploads': { POST: new Response('created', { status: 201 }) },
+    },
+  });
+  try {
+    await host.ready;
+    const exact = await fetch(new URL('/reports/top', host.url));
+    assert.equal(await exact.text(), 'exact');
+    const parameter = await fetch(new URL('/reports/Q%201', host.url));
+    assert.equal(await parameter.text(), 'parameter:Q 1');
+    const wildcard = await fetch(new URL('/reports/with/slash', host.url));
+    assert.equal(await wildcard.text(), 'wildcard');
+    const created = await fetch(new URL('/uploads', host.url), { method: 'POST' });
+    assert.equal(created.status, 201);
+    const fallback = await fetch(new URL('/uploads', host.url));
+    assert.equal(await fallback.text(), 'fallback');
+  } finally {
+    host.stop(true);
+  }
+});
+
+void test('Node host cancels a streamed response when its client disconnects', async () => {
+  const cancelled = Promise.withResolvers<unknown>();
+  const host = serve({
+    port: 0,
+    fetch: () =>
+      new Response(
+        new ReadableStream({
+          cancel(reason) {
+            cancelled.resolve(reason);
+          },
+        }),
+        { headers: { 'content-type': 'text/event-stream' } },
+      ),
+  });
+  try {
+    await host.ready;
+    const controller = new AbortController();
+    const response = await fetch(host.url, { signal: controller.signal });
+    assert.equal(response.status, 200);
+    controller.abort();
+    await cancelled.promise;
+  } finally {
+    host.stop(true);
+  }
+});
+
 const certificate = `-----BEGIN CERTIFICATE-----
 MIIDCTCCAfGgAwIBAgIUOeqL3GYucCk2iEe3Fno8/vu093QwDQYJKoZIhvcNAQEL
 BQAwFDESMBAGA1UEAwwJMTI3LjAuMC4xMB4XDTI2MTEyNjEwNTk1MVoXDTI2MTEy

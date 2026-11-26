@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { Engine, serve } from '../index.ts';
@@ -60,7 +61,7 @@ describe('callCatalogOperation version skew', () => {
 
   it('carries the server fault code, retryable and remediation of a failed operation', async () => {
     const engine = new Engine();
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     try {
       const result = await callCatalogOperation({ server: server.url }, 'weft.workflows.get', {
         workflowId: 'missing',
@@ -94,7 +95,7 @@ describe('callCatalogOperation version skew', () => {
 
   it('returns a value when the operation exists on the server', async () => {
     const engine = new Engine();
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     try {
       const result = await callCatalogOperation({ server: server.url }, 'weft.workflows.list', {});
       expect(result.ok).toBe(true);

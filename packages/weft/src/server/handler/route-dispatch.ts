@@ -111,7 +111,7 @@ export interface HandlerOptions {
    *
    * Either `publicOrigin` OR `trustedHosts` must be configured in
    * production deployments — without one, the route returns 503 because
-   * `Bun.serve()` trusts the Host header in `request.url` and an attacker
+   * A server host trusts the Host header in `request.url` and an attacker
    * can otherwise poison the discovery URLs.
    */
   trustedHosts?: ReadonlyArray<string>;
@@ -162,7 +162,7 @@ function resolveDiscoveryOrigin(options: DiscoveryOriginOptions): DiscoveryOrigi
   // Three-tier origin resolution:
   //   1. publicOrigin explicit -> use verbatim (safe, operator-controlled).
   //   2. trustedHosts allowlist -> derive from request, validate Host.
-  //   3. Neither set -> 503 in production-like environments. Bun.serve
+  //   3. Neither set -> 503 in production-like environments. The host
   //      trusts the Host header in request.url, so header poisoning is real.
   //      Development and explicit testbed overrides warn once, then fall back.
   if (serverOptions?.publicOrigin !== undefined) {
@@ -190,8 +190,8 @@ function resolveDiscoveryOrigin(options: DiscoveryOriginOptions): DiscoveryOrigi
     return {
       response: errorResponse(
         `${path} refuses to emit ${absoluteUrlDescription} without one of ` +
-          '`publicOrigin` or `trustedHosts` configured. Set `serve({ publicOrigin: ' +
-          "'https://api.example.com' })` or `serve({ trustedHosts: ['api.example.com'] })`. " +
+          '`publicOrigin` or `trustedHosts` configured. Set `serve({ host: bunServerHost, publicOrigin: ' +
+          "'https://api.example.com' })` or `serve({ host: bunServerHost, trustedHosts: ['api.example.com'] })`. " +
           'For local development, set NODE_ENV=development; for CI/test overrides set ' +
           'WEFT_ALLOW_UNTRUSTED_API_CATALOG_ORIGIN=1.',
         503,
