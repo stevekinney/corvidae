@@ -20,6 +20,7 @@
     fromMilliseconds,
     type SelectOption,
   } from '@lostgradient/cinder';
+  import { DESCRIPTION_INLINE_RUNS_PROFILE, inlineRuns } from '@lostgradient/markdown/inline-runs';
   import { createQuery } from '@tanstack/svelte-query';
   import type { Snippet } from 'svelte';
 
@@ -28,7 +29,6 @@
   import type { SchemaNode, SettingKeyState } from '../../lib/bureau-settings.ts';
   import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { inlineSegments } from './inline-markdown.ts';
   import { modelDisplayName } from './models/format-model.ts';
   import {
     DURATION_SETTINGS,
@@ -131,8 +131,8 @@
   /** The description as plain words: a code span reads as its text. */
   const description = $derived(
     descriptionOverride ??
-      inlineSegments(node.description ?? '')
-        .map((segment) => segment.text)
+      inlineRuns(node.description ?? '', DESCRIPTION_INLINE_RUNS_PROFILE)
+        .map((run) => run.text)
         .join(''),
   );
   const draft = $derived(form.draft(name));

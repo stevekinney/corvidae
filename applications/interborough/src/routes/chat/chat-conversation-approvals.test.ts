@@ -452,4 +452,20 @@ describe('the header title', () => {
     expect(heading?.textContent).toBe('Plan the week with refund <b>x</b>');
     expect(heading?.querySelector('b')).toBeNull();
   });
+
+  test('leaves an empty code span, a mark that never closes and a word-internal underscore as typed', async () => {
+    restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
+      if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });
+      if (url.includes('/threads/')) {
+        return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+      }
+      return undefined;
+    }).restore;
+    landAt('/chats/session-1');
+    const { findByTestId } = mount('Fix `` in snake_case_name and **open');
+
+    const heading = (await findByTestId('chat-header')).querySelector('h1');
+    expect(heading?.textContent).toBe('Fix `` in snake_case_name and **open');
+    expect(heading?.querySelector('strong, em, code')).toBeNull();
+  });
 });
