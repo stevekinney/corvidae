@@ -125,6 +125,41 @@ test("D06: production assets use an exact whitelist and native file serving", as
     expect(unsatisfiable.status).toBe(416);
     expect(await unsatisfiable.text()).toBe("");
 
+    const suffix = await fetch(url("/app/_assets/app.js"), {
+      headers: { range: "bytes=-1" },
+    });
+    expect(suffix.status).toBe(206);
+    expect(await suffix.text()).toBe(browserBody.slice(-1));
+    const zeroSuffix = await fetch(url("/app/_assets/app.js"), {
+      headers: { range: "bytes=-0" },
+    });
+    expect(zeroSuffix.status).toBe(416);
+    const fullSuffix = await fetch(url("/app/_assets/app.js"), {
+      headers: { range: "bytes=-999999" },
+    });
+    expect(fullSuffix.status).toBe(206);
+    expect(await fullSuffix.text()).toBe(browserBody);
+    const ignoredRanges = ["bytes=1-0", "bytes=0-1,3-4", "not-a-range"];
+    for (const value of ignoredRanges) {
+      const response = await fetch(url("/app/_assets/app.js"), {
+        headers: { range: value },
+      });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-range")).toBeNull();
+      expect(await response.text()).toBe(browserBody);
+    }
+    const uppercaseRange = await fetch(url("/app/_assets/app.js"), {
+      headers: { range: " Bytes = 0 - 1 " },
+    });
+    expect(uppercaseRange.status).toBe(206);
+    expect(await uppercaseRange.text()).toBe("co");
+    const headRange = await fetch(url("/app/_assets/app.js"), {
+      method: "HEAD",
+      headers: { range: "bytes=999-1000" },
+    });
+    expect(headRange.status).toBe(200);
+    expect(headRange.headers.get("content-range")).toBeNull();
+
     const notModified = await fetch(url("/app/_assets/app.js"), {
       headers: { "if-none-match": `W/${etag}, "other"` },
     });
@@ -187,7 +222,7 @@ test("D06: production assets use an exact whitelist and native file serving", as
       const compressedRoutes = createProductionAssetRoutes(generation, {
         compression: true,
       });
-      const compressed = compressedRoutes["/app/_assets/app.js"](
+      const compressed = await compressedRoutes["/app/_assets/app.js"](
         new Request("http://localhost/app/_assets/app.js", {
           headers: { "accept-encoding": "gzip;q=0.5, br;q=0.8" },
         }),
@@ -202,7 +237,7 @@ test("D06: production assets use an exact whitelist and native file serving", as
           .pipeThrough(new BunDecompressionStream("brotli")),
       );
       expect(await decoded.text()).toBe(browserBody);
-      const excluded = compressedRoutes["/app/_assets/app.js"](
+      const excluded = await compressedRoutes["/app/_assets/app.js"](
         new Request("http://localhost/app/_assets/app.js", {
           headers: { "accept-encoding": "br;q=0, gzip;q=0, identity;q=0" },
         }),
@@ -218,7 +253,7 @@ test("D06: production assets use an exact whitelist and native file serving", as
         ["br;q=0.8, identity;q=0.9", null, 200],
         ["GZIP;q=0x1", null, 200],
       ] as const) {
-        const negotiated = compressedRoutes["/app/_assets/app.js"](
+        const negotiated = await compressedRoutes["/app/_assets/app.js"](
           new Request("http://localhost/app/_assets/app.js", {
             headers: { "accept-encoding": preference },
           }),

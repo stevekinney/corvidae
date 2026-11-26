@@ -81,7 +81,9 @@ function isWorkspacePackage(specifier: string): boolean {
   return (
     specifier.startsWith('@lostgradient/') ||
     specifier === 'armorer' ||
-    specifier === 'conversationalist'
+    specifier.startsWith('armorer/') ||
+    specifier === 'conversationalist' ||
+    specifier.startsWith('conversationalist/')
   );
 }
 
@@ -102,12 +104,14 @@ async function bundledFiles(
         name: 'external-third-party-packages',
         setup(build) {
           build.onResolve({ filter: /.*/u }, (argument) => {
-            if (
-              argument.path.startsWith('.') ||
-              argument.path.startsWith('/') ||
-              isWorkspacePackage(argument.path)
-            ) {
+            if (argument.path.startsWith('.') || argument.path.startsWith('/')) {
               return undefined;
+            }
+            // Bun otherwise preserves workspace package specifiers as external imports. Resolve
+            // them to their source entry explicitly so the Node smoke bundle also includes their
+            // extensionless internal imports.
+            if (isWorkspacePackage(argument.path)) {
+              return { path: Bun.resolveSync(argument.path, argument.importer) };
             }
             if (argument.path.startsWith('node:')) return { path: argument.path, external: true };
             // Keep npm packages external, but preserve the workspace-local path Bun resolved so

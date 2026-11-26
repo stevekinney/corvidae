@@ -6,6 +6,8 @@ From this directory, run `bun run test` for the workspace tests and `bun run tes
 
 Production builds write `velveteen-manifest.js` and `velveteen-registry.js` alongside `manifest.json`. A host can import both modules and pass their `manifest` and `registry` values to `createApplication`, avoiding a runtime filesystem import of the generation. Supply an `assets` source when the host owns static assets. `fetchAssetSource(env.ASSETS)` adapts a Fetch binding such as a Cloudflare Workers `ASSETS` binding and delegates asset responses without Velveteen compression.
 
+A production build can run on Node through any Fetch host, including `@lostgradient/node-host`. The build, compiler, and development server remain Bun tools.
+
 ## Cloudflare Workers
 
 Build the application before bundling a Worker, then make the Worker entry import the build-output modules. The entry constructs `createApplication` with the generated `manifest` and `registry`, and passes `fetchAssetSource(env.ASSETS)` for the Worker static-assets binding. It can also pass `env` as `platform`, mount Fetch services, and export Durable Object classes normally:

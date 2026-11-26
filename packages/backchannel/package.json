@@ -16,9 +16,9 @@
     "types": "tsc -b tsconfig.source.json",
     "typecheck": "tsc -b tsconfig.json && tsc --noEmit -p tsconfig.browser.json && bun ../../scripts/typecheck-contracts.ts",
     "release:check": "bun ../../scripts/check-documentation-coverage.ts && bun ../../scripts/check-documentation-code-blocks.ts",
-    "test": "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.slow.test.ts'",
+    "test": "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.slow.test.ts' --path-ignore-patterns='**/*.integration.test.ts'",
     "test:durable-api-key": "bun ../../scripts/bun-test.ts src/authentication/durable-api-key.test.ts",
-    "test:slow": "bun ../../scripts/bun-test-selected.ts .slow.test.ts"
+    "test:slow": "bun ../../scripts/bun-test-selected.ts .slow.test.ts .integration.test.ts"
   },
   "dependencies": {
     "@lostgradient/cryptography": "workspace:*",
@@ -27,11 +27,13 @@
   },
   "devDependencies": {
     "@lostgradient/storage": "workspace:*",
+    "@lostgradient/node-host": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@types/bun": "catalog:",
     "oxlint": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "ws": "catalog:"
   },
   "sideEffects": false
 }

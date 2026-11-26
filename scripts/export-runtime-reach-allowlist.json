@@ -193,12 +193,6 @@
   },
   {
     "package": "@lostgradient/velveteen",
-    "subpath": "./build/serving",
-    "finding": "Bun.file",
-    "reason": "Build-time asset serving reads files with Bun."
-  },
-  {
-    "package": "@lostgradient/velveteen",
     "subpath": "./build",
     "finding": "Bun.build",
     "reason": "Velveteen's build tool targets Bun."
@@ -256,12 +250,6 @@
     "subpath": "./routing",
     "finding": "Bun.ModuleGraph",
     "reason": "Velveteen's routing generator analyzes Bun modules."
-  },
-  {
-    "package": "@lostgradient/velveteen",
-    "subpath": "./server",
-    "finding": "Bun.file",
-    "reason": "The current server asset source reads files with Bun."
   },
   {
     "package": "@lostgradient/velveteen",
@@ -346,17 +334,5 @@
     "subpath": "./testing",
     "finding": "Bun.spawn",
     "reason": "The testing entry starts subprocess fixtures through Bun."
-  },
-  {
-    "package": "armorer",
-    "subpath": "./coding",
-    "finding": "Bun.file",
-    "reason": "Local coding tools read files with Bun."
-  },
-  {
-    "package": "armorer",
-    "subpath": "./coding",
-    "finding": "Bun.Glob",
-    "reason": "Local coding tools enumerate files with Bun."
   }
 ]

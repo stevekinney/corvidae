@@ -13,7 +13,8 @@
     "types": "tsc -b tsconfig.source.json",
     "typecheck": "tsc -b tsconfig.json",
     "release:check": "bun ../../scripts/check-documentation-coverage.ts && bun ../../scripts/check-documentation-code-blocks.ts",
-    "test": "bun ../../scripts/bun-test-junit.ts"
+    "test": "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.integration.test.ts'",
+    "test:slow": "bun ../../scripts/bun-test-selected.ts .integration.test.ts"
   },
   "dependencies": {
     "@ag-ui/core": "catalog:",

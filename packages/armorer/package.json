@@ -26,6 +26,7 @@
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@types/bun": "catalog:",
+    "@types/picomatch": "catalog:",
     "openai": "catalog:",
     "oxlint": "catalog:",
     "typescript": "catalog:"
@@ -41,6 +42,7 @@
     "@modelcontextprotocol/server": "catalog:",
     "@openai/agents": "catalog:",
     "@opentelemetry/api": "catalog:",
+    "picomatch": "catalog:",
     "@standard-schema/spec": "catalog:",
     "zod": "catalog:"
   }
