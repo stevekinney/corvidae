@@ -102,6 +102,7 @@
       ]
     },
     "packages/credentials": {
+      "ignoreDependencies": ["@lostgradient/workerd-testing"],
       "entry": [
         "**/*.test.ts",
         "**/*.integration.test.ts",
