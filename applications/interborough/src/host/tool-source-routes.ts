@@ -94,7 +94,8 @@ import { HostMutationError, type HostMutationContext } from './host-mutation-con
  * @module tool-source-routes
  */
 
-import { createHash, randomUUID } from 'node:crypto';
+import { sha256HexSync } from '@lostgradient/cryptography';
+import { randomUUID } from 'node:crypto';
 import { unexpectedJsonRouteFailure } from './json-route-failure.ts';
 import {
   inspectOpenApiAddress,
@@ -321,7 +322,8 @@ function signInCallbackPage(settled: ToolSourcePendingCallback): Response {
   // JSON in a script: `<` is escaped so no value can close the element.
   const json = (value: unknown) => JSON.stringify(value).replaceAll('<', '\\u003c');
   const script = `if (window.opener) { window.opener.postMessage(${json(message)}, ${json(settled.openerOrigin)}); window.close(); }`;
-  const digest = createHash('sha256').update(script).digest('base64');
+  // A CSP source is the standard base64 of the digest, which the shared helper gives as hex.
+  const digest = Buffer.from(sha256HexSync(script), 'hex').toString('base64');
   const words =
     settled.outcome === 'succeeded'
       ? 'Signed in. You can close this window.'

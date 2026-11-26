@@ -119,6 +119,7 @@ import {
   type SettingLockReason,
   type WorkspaceMembershipOptions,
 } from '@lostgradient/bureau';
+import { sha256HexSync } from '@lostgradient/cryptography';
 import {
   readToolShortDescription,
   readToolTitle,
@@ -138,7 +139,6 @@ import {
   type ToolSourceDescription,
   type ToolSourceOAuthOptions,
 } from 'armorer/tool-sources';
-import { createHash } from 'node:crypto';
 
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
 import { hostWriteLocks } from './locations.ts';
@@ -1079,7 +1079,7 @@ async function closeLate(work: Promise<LoadedToolSource>): Promise<void> {
 
 /** A digest of a description, to tell whether the source a sign-in began for is the one that stands. */
 function revisionOf(source: ToolSourceDescription): string {
-  return createHash('sha256').update(JSON.stringify(source)).digest('hex');
+  return sha256HexSync(JSON.stringify(source));
 }
 
 /**

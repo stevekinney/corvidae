@@ -111,7 +111,7 @@ import {
  */
 
 import type { Tool } from 'armorer';
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { join, resolve as resolvePath, sep } from 'node:path';
 import {
   combineHostAuthentication,
@@ -146,6 +146,7 @@ import {
   type WorkspaceMembershipOptions,
 } from '@lostgradient/bureau';
 import type { SkillCatalogChange } from '@lostgradient/bureau/skills';
+import { sha256HexSync } from '@lostgradient/cryptography';
 import {
   type GenerateFunction,
   type PeerCallJournal,
@@ -2259,7 +2260,7 @@ async function failHostStartup(held: Held, error: unknown): Promise<never> {
 
 /** The signing secret for worker start-override previews, derived from the per-process key. */
 export function deriveStartOverrideSigningSecret(key: string): string {
-  return createHash('sha256').update(`interborough:worker-start-override:${key}`).digest('hex');
+  return sha256HexSync(`interborough:worker-start-override:${key}`);
 }
 
 /**

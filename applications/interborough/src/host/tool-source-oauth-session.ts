@@ -1,9 +1,10 @@
+import { sha256HexSync } from '@lostgradient/cryptography';
 import type {
   BeforeMcpOAuthTokenRequest,
   McpOAuthStorageState,
   McpOAuthTokenStorage,
 } from 'armorer';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import type {
   TokenStorageFence,
   TokenStorageTurn,
@@ -238,7 +239,7 @@ export function createToolSourceOAuthSession(options: {
       return run(async () => {
         const current = await read();
         await authorize();
-        const credentialDigest = createHash('sha256').update(request.credential).digest('hex');
+        const credentialDigest = sha256HexSync(request.credential);
         if (
           request.grantType === 'refresh_token' &&
           current.oauth?.tokens?.refresh_token !== request.credential
