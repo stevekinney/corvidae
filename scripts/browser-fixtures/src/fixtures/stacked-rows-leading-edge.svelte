@@ -39,8 +39,8 @@
   ];
 </script>
 
-<main data-testid="page" style="padding: 24px; display: grid; gap: 24px;">
-  <h1 data-testid="heading" style="margin: 0;">Runs</h1>
+<main class="leading-edge-page" data-testid="page">
+  <h1 class="leading-edge-heading" data-testid="heading">Runs</h1>
   <div data-testid="table">
     <Table caption="Runs" fit stackBelow="4000px">
       <TableHeader>
@@ -67,3 +67,15 @@
     <DescriptionList items={facts} />
   </div>
 </main>
+
+<style>
+  .leading-edge-page {
+    display: grid;
+    gap: var(--cinder-space-6);
+    padding: var(--cinder-space-6);
+  }
+
+  .leading-edge-heading {
+    margin: 0;
+  }
+</style>
