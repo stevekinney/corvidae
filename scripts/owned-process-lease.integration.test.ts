@@ -1,5 +1,14 @@
 import { afterAll, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -24,61 +33,115 @@ const collisionWaiter = await acquireOwnedProcessLease(
 );
 await collisionWaiter.release();
 
-const reclaimPath = join(root, 'reclaim-lock');
-mkdirSync(reclaimPath);
-writeFileSync(
-  join(reclaimPath, 'owner.json'),
-  JSON.stringify({
-    pid: 99999999,
-    pidStartedAt: 'dead',
-    cwd: root,
-    command: 'dead owner',
+/**
+ * The identity a real lease publishes for an owner that has since died: the process's own pid and
+ * start time as `ps` reports them, and the canonical (symlink-free) worktree. The synthetic owners
+ * below carry it, so a fixture is judged by the runtime's canonical-path ownership check the way a
+ * lease that a real process left behind would be.
+ */
+async function deadOwnerRecord(worktree: string, command: string) {
+  const owner = spawnWithHangGuard([process.execPath, '-e', 'setInterval(() => {}, 1000)'], {
+    stdout: 'ignore',
+    stderr: 'ignore',
+  });
+  await waitUntil(() => processStartTime(owner.pid) !== undefined, {
+    message: 'dead owner identity',
+  });
+  const pidStartedAt = processStartTime(owner.pid);
+  owner.kill('SIGKILL');
+  await owner.exited;
+  return {
+    pid: owner.pid,
+    pidStartedAt,
+    cwd: realpathSync(worktree),
+    command,
     acquiredAt: new Date().toISOString(),
     token: crypto.randomUUID(),
+  };
+}
+
+/** Two waiters contend while a retirement holds the reclaim guard, then both lease in turn. */
+async function concurrentReclaim(worktree: string, name: string) {
+  const reclaimPath = join(worktree, name);
+  mkdirSync(reclaimPath);
+  writeFileSync(
+    join(reclaimPath, 'owner.json'),
+    JSON.stringify(await deadOwnerRecord(worktree, 'dead owner')),
+  );
+  let releaseGuard!: () => void;
+  let guardHeld!: () => void;
+  const guardReady = new Promise<void>((resolve) => {
+    guardHeld = resolve;
+  });
+  const guardWait = new Promise<void>((resolve) => {
+    releaseGuard = resolve;
+  });
+  const retirement = retireOwnedProcessLease(reclaimPath, worktree, undefined, async () => {
+    guardHeld();
+    await guardWait;
+  });
+  await guardReady;
+  let collisions = 0;
+  let busyGuards = 0;
+  const waiter = () =>
+    acquireOwnedProcessLease(
+      reclaimPath,
+      worktree,
+      'waiter',
+      undefined,
+      () => {
+        collisions += 1;
+      },
+      () => {
+        busyGuards += 1;
+      },
+    );
+  const firstWaiter = waiter();
+  const secondWaiter = waiter();
+  await waitUntil(() => busyGuards >= 2, {
+    message: 'both contenders to encounter the held reclaim guard',
+  });
+  releaseGuard();
+  await retirement;
+  const acquired = await Promise.race([
+    firstWaiter.then((lease) => ({ lease, other: secondWaiter })),
+    secondWaiter.then((lease) => ({ lease, other: firstWaiter })),
+  ]);
+  await acquired.lease.release();
+  const remainingWaiter = await acquired.other;
+  await remainingWaiter.release();
+  return { collisions, busyGuards, remaining: existsSync(reclaimPath) };
+}
+
+// The default spelling of the temporary directory: on macOS `tmpdir()` is under `/var`, a symlink
+// to `/private/var`, so this spelling differs from the canonical one a lease records.
+const reclaim = await concurrentReclaim(root, 'reclaim-lock');
+// A deliberately aliased temporary parent: the worktree is named through a symlink on every
+// platform, so the checkpoint is reached however the operating system spells its temporary folder.
+const aliasedTarget = join(root, 'aliased-target');
+mkdirSync(aliasedTarget);
+const aliasedRoot = join(root, 'alias');
+symlinkSync(aliasedTarget, aliasedRoot);
+const aliasedReclaim = await concurrentReclaim(aliasedRoot, 'reclaim-lock');
+// An owner record that names the worktree by a non-canonical spelling is not this lease's identity:
+// acquisition and retirement both refuse it, and leave it where it is.
+const spelledPath = join(aliasedTarget, 'spelled-lock');
+mkdirSync(spelledPath);
+writeFileSync(
+  join(spelledPath, 'owner.json'),
+  JSON.stringify({
+    ...(await deadOwnerRecord(aliasedTarget, 'spelled owner')),
+    cwd: aliasedRoot,
   }),
 );
-let releaseGuard!: () => void;
-let guardHeld!: () => void;
-const guardReady = new Promise<void>((resolve) => {
-  guardHeld = resolve;
-});
-const guardWait = new Promise<void>((resolve) => {
-  releaseGuard = resolve;
-});
-const retirement = retireOwnedProcessLease(reclaimPath, root, undefined, async () => {
-  guardHeld();
-  await guardWait;
-});
-await guardReady;
-let collisions = 0;
-let busyGuards = 0;
-const waiter = () =>
-  acquireOwnedProcessLease(
-    reclaimPath,
-    root,
-    'waiter',
-    undefined,
-    () => {
-      collisions += 1;
-    },
-    () => {
-      busyGuards += 1;
-    },
-  );
-const firstWaiter = waiter();
-const secondWaiter = waiter();
-await waitUntil(() => busyGuards >= 2, {
-  message: 'both contenders to encounter the held reclaim guard',
-});
-releaseGuard();
-await retirement;
-const acquired = await Promise.race([
-  firstWaiter.then((lease) => ({ lease, other: secondWaiter })),
-  secondWaiter.then((lease) => ({ lease, other: firstWaiter })),
-]);
-await acquired.lease.release();
-const remainingWaiter = await acquired.other;
-await remainingWaiter.release();
+const spelledAcquire = await acquireOwnedProcessLease(spelledPath, aliasedRoot, 'spelled').then(
+  () => undefined,
+  (error: unknown) => error,
+);
+const spelledRetire = await retireOwnedProcessLease(spelledPath, aliasedRoot).then(
+  () => undefined,
+  (error: unknown) => error,
+);
 const livePath = join(root, 'live-lock');
 const live = await acquireOwnedProcessLease(livePath, root, 'live control');
 const liveRefusal = await retireOwnedProcessLease(livePath, root).then(
@@ -117,7 +180,7 @@ try {
       pidStartedAt: 'previous owner',
       processGroup: foreign.pid,
       processGroupStartedAt: processStartTime(foreign.pid),
-      cwd: root,
+      cwd: realpathSync(root),
       command: 'foreign control',
       acquiredAt: new Date().toISOString(),
       token: crypto.randomUUID(),
@@ -178,11 +241,20 @@ test('refuses a live owner and makes repeated cleanup harmless', () => {
   expect(existsSync(livePath)).toBe(false);
 });
 
-test('ordinary waiters survive release and concurrent reclamation', () => {
+test.each([
+  ['the default temporary spelling', reclaim],
+  ['an aliased temporary parent', aliasedReclaim],
+])('ordinary waiters survive release and concurrent reclamation under %s', (_name, result) => {
   expect(collisionObserved).toBe(true);
-  expect(collisions).toBeGreaterThanOrEqual(2);
-  expect(busyGuards).toBeGreaterThanOrEqual(2);
-  expect(existsSync(reclaimPath)).toBe(false);
+  expect(result.collisions).toBeGreaterThanOrEqual(2);
+  expect(result.busyGuards).toBeGreaterThanOrEqual(2);
+  expect(result.remaining).toBe(false);
+});
+
+test('refuses an owner that names the worktree by a non-canonical spelling', () => {
+  expect(spelledAcquire).toBeInstanceOf(Error);
+  expect(spelledRetire).toBeInstanceOf(Error);
+  expect(existsSync(join(spelledPath, 'owner.json'))).toBe(true);
 });
 
 test('does not replace or reclaim an ownerless lock directory', () => {
