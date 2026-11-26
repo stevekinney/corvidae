@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2749",
+  "branch": "codex/cor-2749-workers-npm",
+  "checkedAt": "a125b0aea7dc485f7d5c9958855a3dcf3d821355",
+  "briefVersion": "28d86a8c1c52",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "needs-decision",
+      "evidence": "Removing Ajv makes the untouched Ajv prototype test in AC2 fail."
+    },
+    {
+      "id": "AC2",
+      "status": "needs-decision",
+      "evidence": "validation.test.ts asserts calls to Ajv.prototype.removeSchema, an implementation no longer present under AC1."
+    },
+    {
+      "id": "AC3",
+      "status": "not-met",
+      "evidence": "Implementation not started because AC1 and AC2 conflict."
+    },
+    {
+      "id": "AC4",
+      "status": "not-met",
+      "evidence": "Implementation not started because AC1 and AC2 conflict."
+    },
+    {
+      "id": "AC5",
+      "status": "not-met",
+      "evidence": "Implementation not started because AC1 and AC2 conflict."
+    }
+  ]
+}
