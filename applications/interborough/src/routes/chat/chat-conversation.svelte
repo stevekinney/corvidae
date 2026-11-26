@@ -691,7 +691,7 @@
       connectHref: router.href('/settings/models'),
       newChatHref: router.href('/chats/new'),
       reconnectAttempt: session.reconnectAttempt,
-      reconnectOnTurn,
+      reconnectOnTurn: reconnectOnTurn(),
       restoredDraft:
         restoredDraftAt === undefined
           ? undefined
@@ -1181,16 +1181,16 @@
       running: session.streaming,
       reconnect: session.reconnectSchedule,
       now: reconnectNow,
-      holding: turnHeld,
+      holding: turnHeld(),
     }),
   );
   const lastStop = $derived(outcome.stop);
   const shown = $derived(outcome.conversation);
   // A dropped run says it once, on its turn: with the retry and its countdown. The composer does not
   // count the attempts again and the failure the drop left does not stand above the chat.
-  const reconnectOnTurn = $derived(
-    outcome.assistantId !== undefined && outcome.state?.kind === 'reconnecting',
-  );
+  function reconnectOnTurn(): boolean {
+    return outcome.assistantId !== undefined && outcome.state?.kind === 'reconnecting';
+  }
   const currentTurnMessageIds = $derived(new Set(shown.ids.slice(lastTurnStart(shown))));
   const failedTurnExplanation = $derived.by(() => {
     if (readOnly || lastStop?.state.kind !== 'failed') return undefined;
@@ -1730,7 +1730,7 @@
   // message that never got an answer is marked "Not sent".
   const failureShownInTranscript = $derived(
     retryNoteId !== undefined ||
-      reconnectOnTurn ||
+      reconnectOnTurn() ||
       (session.failureWasTransport &&
         Object.values(session.conversation.messages).some(
           (row) => row.metadata['_deliveryStatus'] === 'failed',
@@ -1746,9 +1746,13 @@
   );
   // Something other than the stream holds the last turn, so it has not finished: a run the Bureau
   // still reports going, an approval or a question waiting, or a failure shown above the chat.
-  const turnHeld = $derived(
-    runGoing || approvals.length > 0 || shownRequests.length > 0 || session.failure !== undefined,
-  );
+  // A function, read inside the derived values that decide the outcome, which come before the
+  // approvals and questions it reads.
+  function turnHeld(): boolean {
+    return (
+      runGoing || approvals.length > 0 || shownRequests.length > 0 || session.failure !== undefined
+    );
+  }
   /**
    * Whether a group of calls is the end of a turn that finished with no reply and no assistant
    * message to say so on: its rail closes with the run's end state. A turn with an assistant message
@@ -1759,7 +1763,7 @@
     readonly messageIds: readonly string[];
   }): boolean {
     return (
-      !turnHeld &&
+      !turnHeld() &&
       outcome.state?.kind !== 'empty' &&
       group.messageIds.at(-1) === lastRowId &&
       group.entries.every((entry) => entry.state === 'done' || entry.state === 'denied')
