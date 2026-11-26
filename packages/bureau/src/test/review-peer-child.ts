@@ -131,6 +131,8 @@ const server = Bun.serve({
           if (input.mode === 'owner') delete session.metadata.lastRunOwningPrincipals[input.runId!];
           if (input.mode === 'authority')
             delete session.metadata.lastRequestAuthorities[input.runId!];
+          if (input.mode === 'capabilities')
+            session.metadata.lastRequestAuthorities[input.runId!].capabilities = [];
           if (input.mode === 'binding') {
             const approval = Object.values(session.metadata.pendingApprovalOverrides)[0] as {
               approvalBinding?: unknown;

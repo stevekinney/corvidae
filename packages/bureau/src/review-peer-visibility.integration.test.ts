@@ -19,7 +19,7 @@ const outcome = await settleScenario(async (scope) => {
       const child = spawnWithHangGuard(
         [
           'bun',
-            join(import.meta.dir, 'test', 'review-peer-child.ts'),
+          join(import.meta.dir, 'test', 'review-peer-child.ts'),
           join(directory, 'database.sqlite'),
           workspace,
         ],
@@ -58,6 +58,7 @@ const outcome = await settleScenario(async (scope) => {
     expect(a.pid).not.toBe(b.pid);
     const admitted = (await a.call({ action: 'start' })) as {
       runId: string;
+      sessionId: string;
       reviews: Array<{ id: string }>;
     };
     expect(admitted.reviews).toHaveLength(1);
@@ -71,13 +72,19 @@ const outcome = await settleScenario(async (scope) => {
       };
       if (!list.result) throw new Error(JSON.stringify(list));
       expect(list.result.reviews.map((review) => review.id)).toEqual([admitted.reviews[0]!.id]);
+      expect(list.result.reviews[0]).toMatchObject({
+        id: admitted.reviews[0]!.id,
+        runId: admitted.runId,
+        sessionId: admitted.sessionId,
+        round: 0,
+      });
       const detail = (await host.rpc('bureau.reviews.get', { id: admitted.reviews[0]!.id })) as {
         result: { id: string; runId: string; round: number; sessionId: string };
       };
       expect(detail.result).toMatchObject({
         id: admitted.reviews[0]!.id,
         runId: admitted.runId,
-        sessionId: (admitted as { sessionId?: string }).sessionId,
+        sessionId: admitted.sessionId,
         round: 0,
       });
       const task = (await host.rpc('bureau.tasks.get', { taskId: admitted.runId })) as {
@@ -94,6 +101,7 @@ const outcome = await settleScenario(async (scope) => {
       id: admitted.reviews[0]!.id,
     })) as { error: { data: { httpStatus: number } } };
     expect(foreignDetail.error.data.httpStatus).toBe(404);
+    expect(await b.call({ action: 'counts' })).toEqual({ decisions: 0, effects: 0 });
     async function expectHidden() {
       const list = (await b.rpc('bureau.reviews.list', {})) as {
         result: { reviews: Array<{ id: string }> };
@@ -105,12 +113,12 @@ const outcome = await settleScenario(async (scope) => {
       expect(detail.error.data.httpStatus).toBe(404);
       expect(await b.call({ action: 'counts' })).toEqual({ decisions: 0, effects: 0 });
     }
-    for (const mode of ['owner', 'authority', 'binding', 'token']) {
+    for (const mode of ['owner', 'authority', 'capabilities', 'binding', 'token']) {
       await a.call({
         action: 'mutate',
         mode,
         runId: admitted.runId,
-        sessionId: (admitted as { sessionId?: string }).sessionId,
+        sessionId: admitted.sessionId,
       });
       await expectHidden();
       await a.call({ action: 'mutate', mode: 'restore' });
@@ -135,7 +143,7 @@ const outcome = await settleScenario(async (scope) => {
       };
       const inspect = (await host.call({
         action: 'inspect',
-        sessionId: (admitted as { sessionId?: string }).sessionId,
+        sessionId: admitted.sessionId,
       })) as { resolved: string[] };
       expect(inspect.resolved.filter((id) => id === admitted.reviews[0]!.id)).toHaveLength(1);
       console.log(

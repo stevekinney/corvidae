@@ -225,6 +225,7 @@ export function createReviewRecords<D extends AgentDefinitions>(
             tenantId: context.authority.tenantId,
             ownerId: context.authority.ownerId,
             authorizationRevision: context.authority.authorizationRevision,
+            capabilitiesRevision: JSON.stringify([...context.authority.capabilities].toSorted()),
             ...(context.audience === undefined ? {} : { audience: context.audience }),
           },
           now,
