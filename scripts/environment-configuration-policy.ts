@@ -45,6 +45,7 @@ export const environmentBoundaries = [
       'packages/weft/examples/environment-configuration.ts',
       'packages/weft/src/cli/__fixtures__/environment-configuration.ts',
       'packages/weft/scripts/benchmarks/environment-configuration.ts',
+      'packages/weft/src/core/realm/node-runtime-test-environment.ts',
       'packages/velveteen/tests/environment-configuration.ts',
     ]),
   },

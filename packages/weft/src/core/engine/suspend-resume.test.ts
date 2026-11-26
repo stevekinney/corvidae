@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 import { TestEngine } from '../../testing/test-engine.ts';
 import { normalizeListFilter } from '../list-filter-validation.ts';
@@ -522,7 +523,12 @@ describe('suspend/resume', () => {
     await using engine = new Engine({
       storage: new MemoryStorage(),
       workflowExecutionMode: 'worker',
-      workerExecution: { workerUrl, poolSize: 1, workflowTurnTimeoutMs: 30_000 },
+      workerExecution: {
+        workerUrl,
+        createWorker: bunWorkerFactory,
+        poolSize: 1,
+        workflowTurnTimeoutMs: 30_000,
+      },
     });
     engine.register(waiter);
 

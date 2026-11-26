@@ -48,12 +48,14 @@ const WorkerPoolClass: new (options: WorkerPoolOptions) => WorkerPoolSurface = W
 
 ```ts
 import { WorkerPool } from '@lostgradient/weft';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 
 declare const data: unknown;
 
 await using pool = new WorkerPool({
   concurrency: 4,
   workerUrl: new URL('./activity-worker.ts', import.meta.url),
+  createWorker: bunWorkerFactory,
 });
 
 const worker = await pool.acquire();

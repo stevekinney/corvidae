@@ -16,6 +16,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { ActivityRegistry } from '../activity-registry.ts';
 import type { RevisionRealmConfig } from '../realm/revision-realm-registry.ts';
 import { buildWorkflowManifestFromDefinition } from '../registry-workflow-manifest.ts';
@@ -135,6 +136,7 @@ describe("RevisionRealmExecutionStrategy (engine integration, COR-246 transport:
         revision,
         {
           workerUrl: sentinelChildProcessScriptPath,
+          createWorker: bunWorkerFactory,
           expectedWorkflowTypes: [SENTINEL_WORKFLOW_NAME],
           transport: 'child-process',
         },
@@ -164,6 +166,7 @@ describe("RevisionRealmExecutionStrategy (engine integration, COR-246 transport:
         revision,
         {
           workerUrl: orderChildProcessScriptPath,
+          createWorker: bunWorkerFactory,
           expectedWorkflowTypes: [ORDER_WORKFLOW_NAME],
           transport: 'child-process',
         },

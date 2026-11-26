@@ -1,4 +1,4 @@
-import type { WorkerPool } from '../workers/pool.ts';
+import type { WorkerLike, WorkerPool } from '../workers/pool.ts';
 import type { OperationOutcome, WorkerInboundMessage, WorkerOutboundMessage } from './types.ts';
 import { WorkerExecutionOwnership } from './worker-execution-ownership.ts';
 import { WORKER_PROTOCOL_VERSION } from './worker-protocol.ts';
@@ -11,10 +11,10 @@ export interface WorkerExecutionDispatcherDependencies {
   validateHostToWorkerMessage: (
     workflowId: string,
     message: WorkerInboundMessage,
-    worker?: Worker,
+    worker?: WorkerLike,
   ) => boolean;
-  attachWorkerListeners: (worker: Worker) => void;
-  detachWorkerListenersIfIdle: (worker: Worker) => void;
+  attachWorkerListeners: (worker: WorkerLike) => void;
+  detachWorkerListenersIfIdle: (worker: WorkerLike) => void;
   /**
    * Resolve once `worker`'s realm-ready handshake has settled (or
    * immediately, if realm-readiness isn't required). `false` means the
@@ -22,11 +22,16 @@ export interface WorkerExecutionDispatcherDependencies {
    * discarding the worker and emitting the workflow failure itself, the same
    * contract `validateHostToWorkerMessage` already uses.
    */
-  ensureRealmReady: (worker: Worker, workflowId: string) => Promise<boolean>;
-  beginTurn: (worker: Worker, workflowId: string, turnId: number, kind: 'run' | 'resume') => void;
-  clearTurn: (worker: Worker) => void;
+  ensureRealmReady: (worker: WorkerLike, workflowId: string) => Promise<boolean>;
+  beginTurn: (
+    worker: WorkerLike,
+    workflowId: string,
+    turnId: number,
+    kind: 'run' | 'resume',
+  ) => void;
+  clearTurn: (worker: WorkerLike) => void;
   discardWorkerAndFailWorkflows: (
-    worker: Worker,
+    worker: WorkerLike,
     options: {
       targetWorkflowId?: string;
       targetCategory?: 'application' | 'timeout' | 'cancellation' | 'resource' | 'system';
@@ -88,7 +93,7 @@ export class WorkerExecutionDispatcher {
   }
 
   postResumeMessage(
-    worker: Worker,
+    worker: WorkerLike,
     parameters: WorkerResumeParameters,
     message: WorkerInboundMessage & { type: 'resume' },
   ): void {
@@ -97,7 +102,7 @@ export class WorkerExecutionDispatcher {
 
   async resumeParkedWorkflow(
     parameters: WorkerResumeParameters,
-    parkedWorker: Worker,
+    parkedWorker: WorkerLike,
     message: WorkerInboundMessage & { type: 'resume' },
   ): Promise<void> {
     try {
@@ -127,7 +132,7 @@ export class WorkerExecutionDispatcher {
     }
   }
 
-  async cancelParkedWorkflow(workflowId: string, parkedWorker: Worker): Promise<void> {
+  async cancelParkedWorkflow(workflowId: string, parkedWorker: WorkerLike): Promise<void> {
     try {
       const worker = await this.#dependencies.pool.acquireSpecificWorker(parkedWorker);
       const message: WorkerInboundMessage = { type: 'cancel', workflowId };
@@ -144,7 +149,7 @@ export class WorkerExecutionDispatcher {
   }
 
   #sendActiveMessage(
-    worker: Worker,
+    worker: WorkerLike,
     workflowId: string,
     message: WorkerInboundMessage & { type: 'run' | 'resume' },
     kind: 'run' | 'resume',
@@ -161,7 +166,7 @@ export class WorkerExecutionDispatcher {
   }
 
   #handlePostMessageFailure(
-    worker: Worker,
+    worker: WorkerLike,
     workflowId: string,
     error: unknown,
     kind: 'run' | 'resume',
