@@ -18,6 +18,11 @@ import {
 const KEY_VALUE_TABLE = 'storage_d1_kv';
 const EXPECTATION_GUARD_TABLE = 'storage_d1_expectation_guard';
 const EXPECTATION_FAILURE = 'CHECK constraint failed: value = 0';
+// D1 accepts at most 100 bound parameters in one statement. A present-value
+// expectation needs a key and a value binding; an absence expectation needs
+// only its key. Keeping every guard under this cap leaves all guards and the
+// mutations in the same D1 batch transaction.
+const MAX_GUARD_PARAMETERS = 100;
 
 type D1Result<Row> = { results: Row[] };
 type ValueRow = { value: ArrayBuffer };
@@ -162,10 +167,10 @@ export class D1Storage implements Storage {
     assertStorageBatchOperationCount('conditionalBatch conditions', conditions.length);
     assertStorageBatchOperationCount('conditionalBatch operations', operations.length);
 
-    const expectation = this.#expectationStatement(conditions);
+    const expectations = this.#expectationStatements(conditions);
     try {
       await this.#database.batch([
-        expectation,
+        ...expectations,
         ...operations.map((operation) => this.#operationStatement(operation)),
       ]);
       return true;
@@ -188,10 +193,26 @@ export class D1Storage implements Storage {
       .bind(operation.key);
   }
 
-  #expectationStatement(conditions: ConditionalBatchCondition[]): D1PreparedStatement {
-    const clauses: string[] = [];
-    const parameters: unknown[] = [];
+  #expectationStatements(conditions: ConditionalBatchCondition[]): D1PreparedStatement[] {
+    const statements: D1PreparedStatement[] = [];
+    let clauses: string[] = [];
+    let parameters: unknown[] = [];
+
+    const append = () => {
+      const matches = clauses.length === 0 ? '1' : clauses.join(' AND ');
+      statements.push(
+        this.#database
+          .prepare(`INSERT INTO ${EXPECTATION_GUARD_TABLE} (value) SELECT 1 WHERE NOT (${matches})`)
+          .bind(...parameters),
+      );
+      clauses = [];
+      parameters = [];
+    };
+
     for (const condition of conditions) {
+      const parameterCount = condition.expectedValue === null ? 1 : 2;
+      if (parameters.length > 0 && parameters.length + parameterCount > MAX_GUARD_PARAMETERS)
+        append();
       if (condition.expectedValue === null) {
         clauses.push(`NOT EXISTS (SELECT 1 FROM ${KEY_VALUE_TABLE} WHERE key = ?)`);
         parameters.push(condition.key);
@@ -200,10 +221,8 @@ export class D1Storage implements Storage {
         parameters.push(condition.key, condition.expectedValue.slice());
       }
     }
-    const matches = clauses.length === 0 ? '1' : clauses.join(' AND ');
-    return this.#database
-      .prepare(`INSERT INTO ${EXPECTATION_GUARD_TABLE} (value) SELECT 1 WHERE NOT (${matches})`)
-      .bind(...parameters);
+    append();
+    return statements;
   }
 
   async #deleteAndCount(sql: string, parameters: (string | number)[]): Promise<number> {

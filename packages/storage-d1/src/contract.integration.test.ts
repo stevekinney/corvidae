@@ -7,7 +7,7 @@ import {
   runStorageCapabilityConformance,
 } from '@lostgradient/storage/testing';
 import { startWorker, type RunningWorker } from '@lostgradient/workerd-testing';
-import { D1Storage, migrate, type D1Database } from './d1.ts';
+import { D1Storage, migrate, type D1Database, type D1PreparedStatement } from './d1.ts';
 
 const entry = new URL('./fixture-worker.ts', import.meta.url).pathname;
 const bytes = (value: string) => new TextEncoder().encode(value);
@@ -30,6 +30,33 @@ async function createStorage(): Promise<D1Storage> {
   const storage = new D1Storage(database);
   await storage.deletePrefix('');
   return storage;
+}
+
+function parameterLimitedDatabase(bindings: number[]): D1Database {
+  const database: D1Database = {
+    async batch() {
+      return [];
+    },
+    async exec() {},
+    prepare(query) {
+      const statement: D1PreparedStatement = {
+        async all() {
+          return { results: [] };
+        },
+        async first() {
+          return null;
+        },
+        bind(...values) {
+          bindings.push(values.length);
+          if (values.length > 100) throw new Error(`D1 parameter limit exceeded: ${values.length}`);
+          return statement;
+        },
+      };
+      void query;
+      return statement;
+    },
+  };
+  return database;
 }
 
 runStorageCapabilityConformance('D1Storage (Miniflare D1)', {
@@ -63,6 +90,73 @@ describe('D1Storage transactions', () => {
     expect(await storage.get('existing')).toEqual(bytes('before'));
     expect(await storage.get('created')).toBeNull();
     expect(await storage.get('removed')).toBeNull();
+  });
+
+  it('commits a 51-present-value conditional batch within D1 parameter limits', async () => {
+    const bindings: number[] = [];
+    const inspectedStorage = new D1Storage(parameterLimitedDatabase(bindings));
+    const storage = await createStorage();
+    const conditions = Array.from({ length: 51 }, (_, index) => ({
+      key: `version:${index}`,
+      expectedValue: bytes(`before:${index}`),
+    }));
+    await storage.batch(
+      conditions.map((condition) => ({
+        type: 'put' as const,
+        key: condition.key,
+        value: condition.expectedValue,
+      })),
+    );
+    await inspectedStorage.conditionalBatch(conditions, [
+      { type: 'put', key: 'committed', value: bytes('yes') },
+    ]);
+
+    expect(
+      await storage.conditionalBatch(conditions, [
+        { type: 'put', key: 'committed', value: bytes('yes') },
+      ]),
+    ).toBe(true);
+    expect(await storage.get('committed')).toEqual(bytes('yes'));
+    expect(bindings.every((count) => count <= 100)).toBe(true);
+    expect(bindings).toContain(100);
+  });
+
+  it('rolls back a later failed expectation chunk without changing any touched key', async () => {
+    const bindings: number[] = [];
+    const inspectedStorage = new D1Storage(parameterLimitedDatabase(bindings));
+    const storage = await createStorage();
+    const conditions = Array.from({ length: 51 }, (_, index) => ({
+      key: `version:${index}`,
+      expectedValue: bytes(`before:${index}`),
+    }));
+    await storage.batch(
+      conditions.map((condition) => ({
+        type: 'put' as const,
+        key: condition.key,
+        value: condition.expectedValue,
+      })),
+    );
+    const failedConditions = conditions.map((condition, index) =>
+      index === 50 ? { ...condition, expectedValue: bytes('stale') } : condition,
+    );
+    await inspectedStorage.conditionalBatch(failedConditions, [
+      { type: 'put', key: 'version:0', value: bytes('after') },
+      { type: 'put', key: 'created', value: bytes('created') },
+    ]);
+
+    expect(
+      await storage.conditionalBatch(failedConditions, [
+        { type: 'put', key: 'version:0', value: bytes('after') },
+        { type: 'put', key: 'created', value: bytes('created') },
+      ]),
+    ).toBe(false);
+    expect(await storage.get('version:0')).toEqual(bytes('before:0'));
+    expect(await storage.get('created')).toBeNull();
+    expect(
+      await Promise.all(conditions.map(async (condition) => storage.get(condition.key))),
+    ).toEqual(conditions.map((condition) => condition.expectedValue));
+    expect(bindings.every((count) => count <= 100)).toBe(true);
+    expect(bindings).toContain(100);
   });
 
   it('rolls back a D1 batch after a SQL failure and immediately reads primary writes', async () => {
