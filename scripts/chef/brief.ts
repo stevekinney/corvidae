@@ -23,8 +23,10 @@
 //     `sharedHeading`) and that links the document holding it keeps its heading and a one-line
 //     pointer, so a programme's preamble is read once, in the document, not in every brief;
 //   - the issue's brief (an "Execution brief" or "Brief" heading) followed by its Current behavior,
-//     Acceptance criteria, Decisions, Out of scope, Constraints and Delivery boundary sections and
-//     every dated revision, or the whole description when it has no brief heading;
+//     Acceptance criteria, Decisions, Out of scope, Constraints, Files, Verification and Delivery
+//     boundary sections, verbatim, and every dated revision, or the whole description when it has
+//     no brief heading. Verification gains a lead naming its commands the worker's to run, and the
+//     Delivery boundary a line naming the chef route that reaches it (`deliveryRoute`);
 //   - when the issue names a design (a claude.ai artifact link or a "Design source" section): the
 //     design rows, the rows its acceptance criteria leave out, and the instruction to build against
 //     the saved boards and return a design-review verdict per row. An issue with design rows is
@@ -38,10 +40,10 @@
 //   - the claim: the issue's newest claim comment (`linear.ts claim`) as one line, or "None". A
 //     live claim by a run other than `--run` (or any live claim, without `--run`) is exit 1 and no
 //     brief is written; `--stdout` still prints it, since a read-only scout takes no claim;
-//   - the files: each `--path`, else the "Files" section, else the path-like code spans in the
-//     description;
-//   - the verification commands: coordinator-approved `--verify` commands, or the focused checks
-//     for what the worker changed; issue Verification prose is never executable authority;
+//   - the owned paths: each `--path`, else the path-like entries of the "Files" section, else the
+//     path-like code spans in the description;
+//   - the checks: coordinator-approved `--verify` commands, or the focused checks for what the
+//     worker changed; only these enter the machine-readable verification plan;
 //   - the charter rules every worker gets (`charterRules` below, their one source; the
 //     `references/execution-record.md` "Worker charter" template points here): cost, checks,
 //     browser suites on CI only, the scratch directory, branch updates, delivery, the review
@@ -113,7 +115,48 @@ export const pushRule =
  * document restates it (`brief.test.ts` checks the agent definition and the Codex protocol).
  */
 export const deliveryRule =
-  'push your branch and report, and open no pull request unless the dispatch asks for one; you do not merge, because the coordinator verifies and merges your branch (or a pull request through `deliver.ts`); on a conflict, merge `main` in, rerun the focused checks, and return the new head; a red `main` is a warning, not a refusal; and this rule outranks any delivery wording in the issue.';
+  'push your branch and report, and open no pull request unless the dispatch asks for one; you do not merge, because the coordinator verifies and merges your branch (or a pull request through `deliver.ts`); on a conflict, merge `main` in, rerun the focused checks, and return the new head; a red `main` is a warning, not a refusal; and the Delivery boundary section of each issue names the route the coordinator takes to reach that boundary.';
+
+/**
+ * The chef route that reaches an issue's delivery boundary, stated under the boundary so the brief
+ * never overrides it silently: a boundary that names a pull request is delivered as one, any other
+ * by a squash merge of the pushed branch.
+ */
+const pullRequestRouteLine =
+  'Chef route: this boundary names a pull request, so the coordinator delivers it as one (`delivery-request.ts prepare --route pull-request`, then `deliver.ts --pr`); you push your branch and report, and open the pull request when the dispatch asks for one.';
+const branchRouteLine =
+  'Chef route: the coordinator reaches this boundary by a squash merge of your pushed branch (`deliver.ts --branch`); you push your branch and report.';
+
+/** Whether a Delivery boundary names a pull request, ignoring a route line the brief added. */
+function namesPullRequest(boundary: string): boolean {
+  const own = boundary
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith('Chef route:'))
+    .join('\n');
+  return /\bpull\s+request\b/i.test(own);
+}
+
+function deliveryRoute(boundary: string): string {
+  return namesPullRequest(boundary) ? pullRequestRouteLine : branchRouteLine;
+}
+
+/**
+ * The route a rendered brief promises, which `--json` reports as `route` and the coordinator passes
+ * to `deliver-issue.js`, so the route the brief names is the one delivery takes: `pull-request` when
+ * any Delivery boundary section in it names one, otherwise `branch`. It reads the boundaries the
+ * brief carries (as a carried section, or inside a headingless description), never the route line.
+ */
+export function briefRoute(text: string): 'pull-request' | 'branch' {
+  return sectionsOf(text).some(
+    (section) => /^delivery\s+boundary\b/i.test(section.heading) && namesPullRequest(section.body),
+  )
+    ? 'pull-request'
+    : 'branch';
+}
+
+/** What precedes the issue's own Verification section: its commands are the worker's to run. */
+export const issueVerificationLead =
+  "The issue's verification: run these, as the charter allows. A command the Browser suites rule keeps off this host goes in your handoff, for the coordinator to run in CI.";
 
 /**
  * The charter rules: the one source of the worker-facing rules. `brief.test.ts` keeps each in step
@@ -121,7 +164,7 @@ export const deliveryRule =
  */
 export const charterRules = [
   '**Cost:** batch independent reads and searches into one message. Edit with Edit or Write, never a shell heredoc (a throwaway codemod for a mechanical multi-file rewrite is the exception).',
-  '**Checks:** local checks run only direct tests (owner decision, 2026-11-16). Run the focused checks on what you changed once, when the change is complete, in the background and never polled, not `bun run check` and never the affected-test graph: `bun scripts/chef/focused-checks.ts`; fix every failed step, and never rerun it until green. It runs prettier on the changed files, `bun run lint:root`, the root type-check when root or `scripts/` files changed, lint and type-check of each changed workspace, and only the test files of what you changed: changed `*.test.ts` files, plus the test files beside each changed source file (same directory, same stem). A test file that starts a process is named `*.integration.test.ts`; it and `*.slow.test.ts` files in that set run the way the isolated lane does. The coordinator owns remote verification on the pushed branch. The full suite applies to a one-way door, the lock or concurrency infrastructure, or `turbo.json` and the root scripts. Delivery runs no gate.',
+  '**Checks:** local checks run only direct tests (owner decision, 2026-11-16). Run the focused checks on what you changed once, when the change is complete, in the background and never polled, not `bun run check` and never the affected-test graph: `bun scripts/chef/focused-checks.ts`; fix every failed step, and never rerun it until green. A step reported pending (the test pool never admitted it) is no failure and no correction: run the command its `run it directly:` line names, once, and report that exit code. It runs prettier on the changed files, `bun run lint:root`, the root type-check when root or `scripts/` files changed, lint and type-check of each changed workspace, and only the test files of what you changed: changed `*.test.ts` files, plus the test files beside each changed source file (same directory, same stem). A test file that starts a process is named `*.integration.test.ts`; it and `*.slow.test.ts` files in that set run the way the isolated lane does. The coordinator owns remote verification on the pushed branch. The full suite applies to a one-way door, the lock or concurrency infrastructure, or `turbo.json` and the root scripts. Delivery runs no gate.',
   "**Browser suites:** never run a Playwright fixture suite, the Interborough end-to-end suite, a design-review capture (the coordinator runs it for your design rows), `validate` or `harden` on this host (owner decision, 2026-11-13). When the change reaches a browser suite, include the dry-run CI plan in the handoff for the coordinator. Use `bun scripts/chef/wait-run.ts <run id>` to read the result when the coordinator assigns it. Before any re-run, read the failing test names and download the failing shard's artifact.",
   '**Processes:** never end a process by name or pattern (`pkill`, `killall`, `kill` of a pid you did not start): a worker ends only a process it started, by pid.',
   '**Scratch:** keep your logs and temporary files only in the scratch directory this brief names under `## Scratch directory`, never in `/tmp` or any path another worker can write.',
@@ -415,7 +458,13 @@ const briefHeading = /execution\s+brief|^brief$/i;
  * The sections a brief carries after the issue's own brief, in this order. Each is the issue's
  * section under a matching heading; Acceptance criteria is the one that is always shown.
  */
-const carriedSections: { title: string; heading: RegExp; missing?: string }[] = [
+const carriedSections: {
+  title: string;
+  heading: RegExp;
+  missing?: string;
+  before?: (body: string) => string;
+  after?: (body: string) => string;
+}[] = [
   { title: 'Current behavior', heading: /^current\s+behaviou?r\b/i },
   {
     title: 'Acceptance criteria',
@@ -425,7 +474,9 @@ const carriedSections: { title: string; heading: RegExp; missing?: string }[] = 
   { title: 'Decisions', heading: /^decisions?\b/i },
   { title: 'Out of scope', heading: /^out\s+of\s+scope\b/i },
   { title: 'Constraints', heading: /^constraints?\b/i },
-  { title: 'Delivery boundary', heading: /^delivery\s+boundary\b/i },
+  { title: 'Files', heading: /^files?\b|files? to (?:change|touch)/i },
+  { title: 'Verification', heading: /^verification\b/i, before: () => issueVerificationLead },
+  { title: 'Delivery boundary', heading: /^delivery\s+boundary\b/i, after: deliveryRoute },
 ];
 const pathLimit = 40;
 
@@ -609,8 +660,24 @@ export function briefVersionOf(issues: readonly IssueSummary[]): string {
   ).slice(0, 12);
 }
 
+/**
+ * A digest of the issues' bodies alone, without `updatedAt`, which a claim or a state move changes.
+ * `deliver-issue.js` compares it with a fresh `--stdout` brief when the default branch has moved
+ * past the brief's base: an unchanged body means the brief still stands (owner decision,
+ * 2026-11-21: a moved base needs no new evidence run).
+ */
+export function issueBodyDigestOf(issues: readonly IssueSummary[]): string {
+  return digest(
+    JSON.stringify(issues.map((issue) => [issue.identifier, issue.description ?? ''])),
+  ).slice(0, 12);
+}
+
 function versionLines(issues: readonly IssueSummary[]): string[] {
-  return ['', `Brief version: ${briefVersionOf(issues)}`];
+  return [
+    '',
+    `Brief version: ${briefVersionOf(issues)}`,
+    `Issue body digest: ${issueBodyDigestOf(issues)}`,
+  ];
 }
 
 /**
@@ -663,23 +730,27 @@ function writeContextSnapshots(options: BriefOptions, scratch: string | undefine
     }
 }
 
-/** The files, verification and charter sections that close every brief. */
+/** The coordinator's owned paths, checks and charter sections that close every brief. */
 function filesAndRules(options: BriefOptions, issues: readonly IssueSummary[]): string[] {
   const paths = [...new Set(issues.flatMap((issue) => pathsOfIssue(issue, options)))];
-  // Issue descriptions are requirement data, not command authority. Only coordinator-provided
-  // commands appear in both the rendered brief and the machine-readable verification plan.
+  // The machine-readable verification plan takes only coordinator-provided commands; the issue's
+  // own Verification section travels verbatim under the issue, as commands the worker runs.
   const verificationBody = verificationCommands(options.verify).map(
     (command) => `- \`${command}\``,
   );
   return [
     ...(options.base === undefined ? [] : [`Starting base: \`${options.base}\``, '']),
-    '## Files',
+    '## Owned paths',
+    '',
+    "The repository paths the coordinator's assignment records (`--path`, else the path-like entries of the issue's Files section).",
     '',
     ...(paths.length > 0
       ? paths.slice(0, pathLimit).map((path) => `- \`${path}\``)
       : ['- (none named; inspect the nearby code first and keep the change inside one workspace)']),
     '',
-    '## Verification',
+    '## Checks',
+    '',
+    "The coordinator's checks for this brief; run them as the Checks rule says.",
     '',
     ...verificationBody,
     '',
@@ -751,10 +822,24 @@ function issueLines(issue: IssueSummary, options: BriefOptions, depth: number): 
     execution ?? (source || '(the issue has no description)'),
     '',
   ];
+  // A headingless description travels whole, so its Delivery boundary gets the route line here; a
+  // boundary the length cut dropped is carried again, so the route still follows it.
+  const boundary = sectionOf(description, /^delivery\s+boundary\b/i);
+  if (execution === undefined && boundary !== undefined) {
+    if (source?.includes(boundary) !== true)
+      lines.push(heading('Delivery boundary'), '', boundary, '');
+    lines.push(deliveryRoute(boundary), '');
+  }
   if (execution !== undefined) {
+    // The issue's sections travel verbatim; a lead or a route line is added around them, never in
+    // place of a line of theirs.
     for (const section of carriedSections) {
       const body = sectionOf(description, section.heading) ?? section.missing;
-      if (body !== undefined) lines.push(heading(section.title), '', body, '');
+      if (body === undefined) continue;
+      lines.push(heading(section.title), '');
+      if (section.before !== undefined) lines.push(section.before(body), '');
+      lines.push(body, '');
+      if (section.after !== undefined) lines.push(section.after(body), '');
     }
     // Dated revisions settle decisions and amend criteria, so they travel whole and in order.
     for (const revision of sectionsOf(description).filter((entry) =>
@@ -1232,7 +1317,9 @@ export async function run(
         : await readBrief(identifier, options, dependencies);
       return {
         code: 0,
-        output: json ? JSON.stringify({ ok: true, ...brief }) : brief.text,
+        output: json
+          ? JSON.stringify({ ok: true, route: briefRoute(brief.text), ...brief })
+          : brief.text,
       };
     }
     // The scratch root is the main checkout's `tmp/chef/scratch`; with `--out-dir`, `scratch` inside it.
@@ -1302,6 +1389,7 @@ export async function run(
       path,
       identifier: brief.identifier,
       bytes: brief.bytes,
+      route: briefRoute(brief.text),
       ...(brief.scratch === undefined ? {} : { scratch: brief.scratch }),
       ...contracts,
     };
