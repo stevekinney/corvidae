@@ -1,4 +1,4 @@
-import { bunServerHost } from '@lostgradient/weft/bun';
+import { bunServerHost } from '../bun-host.ts';
 /**
  * The RemoteWorker protocol conformance check sequence — the single source of
  * pass/fail truth for both the `weft conformance` CLI command
