@@ -7,56 +7,10 @@
 import {
   AppBridge,
   PostMessageTransport,
-  type McpUiHostContext,
   type McpUiResourceCsp,
 } from '@modelcontextprotocol/ext-apps/app-bridge';
 import { pluginToolCaller } from '../../src/lib/host-panels.ts';
-
-type ToolHandler = (args: Record<string, unknown>) => unknown;
-
-/** A tool result exactly as the host answers it, errors and their structured content included. */
-type RawToolResult = {
-  content: { type: 'text'; text: string }[];
-  structuredContent?: Record<string, unknown>;
-  _meta?: Record<string, unknown>;
-  isError?: boolean;
-};
-
-type ReferenceHost = {
-  calls: { name: string; arguments: Record<string, unknown> }[];
-  handlers: Record<string, ToolHandler>;
-  /**
-   * Handlers whose answer is the whole tool result, consulted before `handlers`: a spec that
-   * forwards a call to a running host hands the panel what that host answered, an error and the
-   * fault's structured content included.
-   */
-  rawHandlers: Record<
-    string,
-    (args: Record<string, unknown>) => RawToolResult | Promise<RawToolResult>
-  >;
-  /** Tools whose call the host does not answer: it fails at the transport, never with a result. */
-  unreachable: string[];
-  mount(
-    html: string,
-    csp: McpUiResourceCsp,
-    toolInput: Record<string, unknown>,
-    title?: string,
-    hostContext?: McpUiHostContext,
-  ): Promise<void>;
-  teardown(): Promise<void>;
-  initialized: boolean;
-  usePendingReviewHost(): void;
-  /** Set before `mount` to give the panel no `serverTools` capability, as a host that blocks its calls does. */
-  withoutServerTools?: boolean;
-  /** Sent to the panel as the tool result that opened it, once it has initialized. */
-  toolResult?: Parameters<AppBridge['sendToolResult']>[0];
-};
-
-declare global {
-  interface Window {
-    referenceHost: ReferenceHost;
-  }
-}
+import type { RawToolResult, ReferenceHost } from './reference-host.types.ts';
 
 function policy(csp: McpUiResourceCsp): string {
   const none = (list: readonly string[] | undefined): string =>
