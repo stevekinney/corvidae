@@ -229,22 +229,26 @@ describe('bureau.reviews.list as one inbox (COR-1828)', () => {
       },
     };
     const list = () => call(host, OWNER_KEY, 'bureau.reviews.list', { status: 'resolved' });
-    expect((await list()).result).toMatchObject({
+    const visible = await list();
+    expect(visible.result).toMatchObject({
       total: 1,
       reviews: [{ id: record.review.id, approval: { arguments: { public: true } } }],
     });
-    expect(JSON.stringify(await list())).not.toContain('signed-token');
-    expect(
-      (await call(host, OTHER_KEY, 'bureau.reviews.list', { status: 'resolved' })).result?.total,
-    ).toBe(0);
+    expect(JSON.stringify(visible)).not.toContain('signed-token');
+    const otherOwner = await call(host, OTHER_KEY, 'bureau.reviews.list', { status: 'resolved' });
+    expect(otherOwner.result?.total).toBe(0);
     current = { ...signed, round: 1 };
-    expect((await list()).result?.total).toBe(0);
+    const wrongRound = await list();
+    expect(wrongRound.result?.total).toBe(0);
     current = { ...signed, approval: { ...signed.approval, arguments: { changed: true } } };
-    expect((await list()).result?.total).toBe(0);
+    const changedArguments = await list();
+    expect(changedArguments.result?.total).toBe(0);
     current = { ...signed, approval: { ...signed.approval, approvalToken: 'invalid' } };
-    expect((await list()).result?.total).toBe(0);
+    const invalidToken = await list();
+    expect(invalidToken.result?.total).toBe(0);
     current = undefined;
-    expect((await list()).result?.total).toBe(0);
+    const noSignedEvidence = await list();
+    expect(noSignedEvidence.result?.total).toBe(0);
   });
   it('lists pending Bureau and engine reviews oldest request first, across pages', async () => {
     const host = hostOf({
