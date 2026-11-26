@@ -17,9 +17,10 @@ describeTransportConformance('In-process', ({ operations, host }) => {
   };
 });
 
-it('limits production dependencies to credentials and Zod', () => {
+it('limits production dependencies to cryptography, credentials, and Zod', () => {
   expect(Object.keys(manifest.dependencies).toSorted()).toEqual([
     '@lostgradient/credentials',
+    '@lostgradient/cryptography',
     'zod',
   ]);
 });

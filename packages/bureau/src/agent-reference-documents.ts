@@ -29,8 +29,7 @@
  * @module agent-reference-documents
  */
 
-import { createHash } from 'node:crypto';
-
+import { sha256BytesHexSync, sha256HexSync } from '@lostgradient/cryptography';
 import { z } from 'zod';
 
 import {
@@ -71,7 +70,7 @@ export const agentReferenceDocumentSchema = z.strictObject({
 
 /** The SHA-256 of `bytes`, as lowercase hex. */
 function sha256(bytes: Uint8Array | string): string {
-  return createHash('sha256').update(bytes).digest('hex');
+  return typeof bytes === 'string' ? sha256HexSync(bytes) : sha256BytesHexSync(bytes);
 }
 
 /** The digests of `documents`, in their order. */
