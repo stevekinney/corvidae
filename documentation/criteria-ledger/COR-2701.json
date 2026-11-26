@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2701",
+  "branch": "codex/cor-2701-workers-npm",
+  "checkedAt": "698cdfa1ed3fd712f808a1bf5a4a8cae60563a3c",
+  "briefVersion": "c77ddfead847",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "packages/credentials/src/workerd.integration.test.ts issues, verifies, revokes, then rejects an API key through workerd."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "The workerd integration test uses outboundService for HTTPS discovery, authorization, token exchange, JWKS verification, callback, and later cookie-authenticated request."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "OIDC discovery is lazy and accepts caller-supplied Fetch without runtime detection; credentials test and typecheck pass."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "README documents Cloudflare Workers nodejs_compat and required Fetch, Web Crypto, and atomic storage dependencies."
+    }
+  ]
+}
