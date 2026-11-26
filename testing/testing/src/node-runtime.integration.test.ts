@@ -13,10 +13,11 @@ const fixture = (name: string) =>
   new URL(`./node-runtime-fixtures/${name}`, import.meta.url).pathname;
 
 const nativeVersion = environmentConfiguration().corvidaeNodeBinary;
-const expectedNativeVersion =
-  nativeVersion === undefined || nativeVersion === ''
-    ? undefined
-    : (await runWithHangGuard([nativeVersion, '--version'])).stdout.toString().trim();
+let expectedNativeVersion: string | undefined;
+if (nativeVersion !== undefined && nativeVersion !== '') {
+  const versionResult = await runWithHangGuard([nativeVersion, '--version']);
+  expectedNativeVersion = versionResult.stdout.toString().trim();
+}
 const passing = await runNodeTests([fixture('passing.ts')], { shim: true });
 const failing = await runNodeTests([fixture('failing.ts')], { shim: true });
 const bundled = await runNodeTests([fixture('bundled.ts')], { bundle: true, shim: true });
@@ -64,8 +65,9 @@ describe('runNodeTests', () => {
   });
 
   test('returns the Node version selected by CORVIDAE_NODE_BINARY', () => {
-    if (nativeVersion !== undefined && nativeVersion !== '') {
-      expect(passing.version).toBe(expectedNativeVersion);
+    const expectedVersion = expectedNativeVersion;
+    if (expectedVersion !== undefined) {
+      expect(passing.version).toBe(expectedVersion);
     }
   });
 
