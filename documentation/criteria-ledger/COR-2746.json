@@ -1,14 +1,14 @@
 {
   "issue": "COR-2746",
   "branch": "codex/cor-2746-workers-npm",
-  "checkedAt": "61bf2c37cf10764c78973119cb72786f7dcb1feb",
+  "checkedAt": "c93ed9ad8c3ef784695157f41474f59142c2e97f",
   "briefVersion": "3bb2530884fe",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "Root self, full Weft fast/slow, strict reach, and native Node worker-error receipts passed; node factories and portable child realm are exercised on Node 22."
+      "evidence": "Focused checks, full Weft fast/slow, strict reach, and native Node 22.0.0/22.23.4 factory receipts passed, including generated Blobs, transfer lists, and unexpected exits."
     },
     {
       "id": "AC2",
