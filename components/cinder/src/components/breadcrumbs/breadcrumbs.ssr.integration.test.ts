@@ -6,7 +6,11 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { renderSvelteOnServer, setupHappyDom } from '@lostgradient/testing';
+import {
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+  setupHappyDom,
+} from '@lostgradient/testing';
 
 setupHappyDom();
 
@@ -18,7 +22,9 @@ const items = [
   { label: 'Settings' },
 ];
 
-// Server rendering spawns Bun processes, so it runs once at module scope, off bun's per-test clock.
+// Server rendering spawns Bun processes, so it runs once at module scope, off bun's per-test clock:
+// compile once, then render the three variants of the one compiled source.
+await prepareSvelteServerSource(source);
 const [defaultHtml, customHtml, offHtml] = await Promise.all([
   renderSvelteOnServer(source, { items }),
   renderSvelteOnServer(source, { items, collapseBelow: '48rem' }),
