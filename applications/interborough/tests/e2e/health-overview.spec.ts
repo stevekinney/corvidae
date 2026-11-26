@@ -59,10 +59,7 @@ test.describe('the sample world', () => {
       expect(actionBox!.y + actionBox!.height).toBeLessThanOrEqual(640);
       await action.focus();
       await expect(action).toBeFocused();
-      await expect(page.getByTestId('health-counts')).toHaveAttribute(
-        'data-cinder-variant',
-        'plain',
-      );
+      await expect(page.getByTestId('health-counts').locator('.cinder-statistic')).toHaveCount(2);
     });
   }
 
@@ -126,23 +123,20 @@ test.describe('the sample world', () => {
     await page.goto('/health');
     await settled(page);
     const overview = page.locator('.ib-health-overview');
-    const bounds = await overview.boundingBox();
-    const frame = await page.locator('.ib-health-frame').boundingBox();
-    expect(bounds).not.toBeNull();
-    expect(frame).not.toBeNull();
+    const { bounds, frame, action, time } = await readBoxes(page, {
+      bounds: overview,
+      frame: page.locator('.ib-health-frame'),
+      action: page.getByTestId('needs-attention').getByRole('link', { name: 'Connect a provider' }),
+      time: page.locator('[data-activity] .ib-recent-activity__time').first(),
+    });
     const maximum = await overview.evaluate((element) =>
       Number.parseFloat(getComputedStyle(element).maxInlineSize),
     );
     expect(maximum).toBe(1152);
-    expect(bounds!.width).toBeLessThanOrEqual(maximum);
-    expect(frame!.width).toBeGreaterThan(bounds!.width);
-    for (const item of [
-      page.getByTestId('needs-attention').getByRole('link', { name: 'Connect a provider' }),
-      page.locator('[data-activity] .ib-recent-activity__time').first(),
-    ]) {
-      const box = await item.boundingBox();
-      expect(box).not.toBeNull();
-      expect(box!.x + box!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width + 1);
+    expect(bounds.width).toBeLessThanOrEqual(maximum);
+    expect(frame.width).toBeGreaterThan(bounds.width);
+    for (const box of [action, time]) {
+      expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width + 1);
     }
     await page.goto('/health/storage');
     await expect(page.locator('.ib-health-frame')).toHaveAttribute('data-tab', 'storage');

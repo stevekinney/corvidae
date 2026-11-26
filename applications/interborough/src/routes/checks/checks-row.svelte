@@ -38,16 +38,26 @@
   href={router.href(checkPath(row))}
   tooltip={name}
   metaTooltip={lineTwo}
+  wrapMeta
 >
   {#snippet status()}<StatusDot {word} />{/snippet}
   {#snippet title()}
-    <span class="ib-checks-row__name">{name}</span>
-    <time class="ib-checks-row__time" datetime={row.timestamp}>{clockTime(at, zone)}</time>
+    <span class="ib-checks-row__heading">
+      <span class="ib-checks-row__name">{name}</span>
+      <time class="ib-checks-row__time" datetime={row.timestamp}>{clockTime(at, zone)}</time>
+    </span>
   {/snippet}
   {#snippet meta()}{lineTwo}{/snippet}
 </StackedListItem>
 
 <style>
+  .ib-checks-row__heading {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--cinder-space-3);
+    max-inline-size: 100%;
+  }
+
   .ib-checks-row__name {
     display: -webkit-box;
     -webkit-box-orient: vertical;

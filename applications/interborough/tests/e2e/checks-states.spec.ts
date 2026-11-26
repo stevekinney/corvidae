@@ -21,6 +21,7 @@ import {
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -153,9 +154,8 @@ test.describe('the list (/checks) on a phone, a tablet, with scorers, a menu ope
       .locator('.cinder-filter-bar__segments-select')
       .getByRole('combobox');
     const filter = filterBar(page).getByRole('button', { name: 'Filter' });
-    expect(
-      Math.abs((await kind.boundingBox())!.y - (await filter.boundingBox())!.y),
-    ).toBeLessThanOrEqual(1);
+    const phoneBoxes = await readBoxes(page, { kind, filter });
+    expect(Math.abs(phoneBoxes.kind.y - phoneBoxes.filter.y)).toBeLessThanOrEqual(1);
     await kind.click();
     await captureForDesignReview(page, {
       route: '/checks',
@@ -182,15 +182,15 @@ test.describe('the list (/checks) on a phone, a tablet, with scorers, a menu ope
   test('desktop content width contains checks and their timestamps', async ({ page }) => {
     await openChecks(page, 1920);
     const records = page.locator('.ib-records[data-page="checks"]');
-    const bounds = await records.boundingBox();
-    const timestamp = await rows(page).first().locator('time').boundingBox();
-    expect(bounds).not.toBeNull();
-    expect(timestamp).not.toBeNull();
+    const { bounds, timestamp } = await readBoxes(page, {
+      bounds: records,
+      timestamp: rows(page).first().locator('time'),
+    });
     const maximum = await records.evaluate((element) =>
       Number.parseFloat(getComputedStyle(element).maxInlineSize),
     );
-    expect(bounds!.width).toBeLessThanOrEqual(maximum);
-    expect(timestamp!.x + timestamp!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width + 1);
+    expect(bounds.width).toBeLessThanOrEqual(maximum);
+    expect(timestamp.x + timestamp.width).toBeLessThanOrEqual(bounds.x + bounds.width + 1);
     expect(maximum).toBe(1152);
   });
   test('on a phone is two-line rows under day bands, with a Kind select and a Filter button on one row (C2-04, C2-15)', async ({
@@ -230,15 +230,14 @@ test.describe('the list (/checks) on a phone, a tablet, with scorers, a menu ope
     for (const chip of ['Check', 'Outcome', 'Agent', 'Time']) {
       await expect(bar.getByRole('button', { name: chip, exact: true })).toBeVisible();
     }
-    const controls = [
-      bar.locator('.cinder-filter-bar__segments-select'),
-      ...['Check', 'Outcome', 'Agent', 'Time'].map((name) =>
-        bar.getByRole('button', { name, exact: true }),
-      ),
-    ];
-    const tops = await Promise.all(
-      controls.map(async (control) => (await control.boundingBox())!.y),
-    );
+    const boxes = await readBoxes(page, {
+      kind: bar.locator('.cinder-filter-bar__segments-select'),
+      check: bar.getByRole('button', { name: 'Check', exact: true }),
+      outcome: bar.getByRole('button', { name: 'Outcome', exact: true }),
+      agent: bar.getByRole('button', { name: 'Agent', exact: true }),
+      time: bar.getByRole('button', { name: 'Time', exact: true }),
+    });
+    const tops = Object.values(boxes).map((box) => box.y);
     expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
     await captureForDesignReview(page, { route: '/checks', state: 'ready', source: SOURCE });
     await checkA11y('checks on a tablet');
