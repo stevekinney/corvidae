@@ -1,9 +1,9 @@
 {
   "issue": "COR-2762",
   "branch": "steve/composable-browser-import-boundary",
-  "checkedAt": "3ede504192",
-  "briefVersion": "4153611a51e8",
-  "status": "READY",
+  "checkedAt": "1bfed57049",
+  "briefVersion": "8d4096d0d269",
+  "status": "BLOCKED",
   "criteria": [
     {
       "id": "AC1",
@@ -24,6 +24,11 @@
       "id": "AC4",
       "status": "met-on-branch",
       "evidence": "velveteen-browser-imports.integration.test.ts passed positive production build and real server-only negative control."
+    },
+    {
+      "id": "AC5",
+      "status": "not-met",
+      "evidence": "Layout and geometry regression implemented; coordinator browser verification and four-width themed captures remain outstanding."
     }
   ]
 }
