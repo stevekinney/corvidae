@@ -726,6 +726,7 @@
       "devDependencies": {
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
+        "@lostgradient/workerd-testing": "workspace:*",
         "@modelcontextprotocol/client": "catalog:",
         "@types/bun": "catalog:",
         "@types/pg": "catalog:",

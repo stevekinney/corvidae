@@ -131,6 +131,7 @@
         "**/*.fixture.svelte",
         "**/*.playwright.ts",
         "**/*.spec.ts",
+        "src/oauth/workerd-fixture.ts",
         "src/connector-smoke-inspector.ts!",
         "src/deployed-oauth.ts!",
         "src/deployed-smoke.ts!"
