@@ -9,7 +9,52 @@ import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { PluginProblem } from '../../../lib/host-plugins.ts';
 import Harness from './plugin-problem-card.test-harness.svelte';
 
-afterEach(() => cleanup());
+const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+const originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
+
+afterEach(() => {
+  cleanup();
+  if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+  else Reflect.deleteProperty(navigator, 'clipboard');
+  if (originalExecCommand) Object.defineProperty(document, 'execCommand', originalExecCommand);
+  else Reflect.deleteProperty(document, 'execCommand');
+});
+
+/**
+ * Stands in for the two places Cinder's `copyToClipboard` writes: the native Async Clipboard API
+ * (`native`) and the `document.execCommand('copy')` fallback (`legacy`, which records the text of
+ * the textarea it selects). The helper's own cases are tested in Cinder.
+ */
+function stubClipboard(behavior: {
+  native: 'accepts' | 'rejects' | 'unavailable';
+  legacy: 'unused' | 'succeeds' | 'returns-false' | 'throws';
+}) {
+  const nativeWrites: string[] = [];
+  const legacyCopies: string[] = [];
+  if (behavior.native === 'unavailable') {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+  } else {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          nativeWrites.push(text);
+          if (behavior.native === 'rejects') throw new Error('denied');
+        },
+      },
+    });
+  }
+  Object.defineProperty(document, 'execCommand', {
+    configurable: true,
+    value: (command: string) => {
+      expect(command).toBe('copy');
+      legacyCopies.push(document.querySelector('textarea')?.value ?? '');
+      if (behavior.legacy === 'throws') throw new Error('not allowed');
+      return behavior.legacy === 'succeeds';
+    },
+  });
+  return { nativeWrites, legacyCopies };
+}
 
 function card(problem: PluginProblem, extra: Record<string, unknown> = {}) {
   const view = render(Harness, { props: { problem, ...extra } } as never);
@@ -156,8 +201,7 @@ describe('the six cards of the table', () => {
   });
 
   test('development-source copies the folder’s path, because a browser cannot open a folder', async () => {
-    const writeText = mock(async (_text: string) => undefined);
-    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const clipboard = stubClipboard({ native: 'accepts', legacy: 'unused' });
     const { root, getByRole, findByText } = card({
       code: 'development-source',
       path: '~/code/linear-plugin',
@@ -169,19 +213,63 @@ describe('the six cards of the table', () => {
       'Started with --plugin ~/code/linear-plugin. Interborough restarts when its code changes; its agents and workflows reload without one.',
     );
     await fireEvent.click(getByRole('button', { name: 'Open the folder' }));
-    expect(writeText).toHaveBeenCalledWith('~/code/linear-plugin');
+    expect(clipboard.nativeWrites).toEqual(['~/code/linear-plugin']);
+    expect(clipboard.legacyCopies).toEqual([]);
     expect(await findByText('The folder’s path is copied.')).not.toBeNull();
   });
 
-  test('development-source says so when the path cannot be copied', async () => {
-    const writeText = mock(async (_text: string) => {
-      throw new Error('denied');
-    });
-    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
-    const { getByRole, findByText } = card({ code: 'development-source', path: '/code/x' });
+  describe('the folder’s path, through the Cinder clipboard helper', () => {
+    test('is copied by the fallback when the native write rejects, with the original text', async () => {
+      const clipboard = stubClipboard({ native: 'rejects', legacy: 'succeeds' });
+      const { getByRole, findByText, queryByText } = card({
+        code: 'development-source',
+        path: '/code/x y',
+      });
 
-    await fireEvent.click(getByRole('button', { name: 'Open the folder' }));
-    expect(await findByText('The folder’s path could not be copied.')).not.toBeNull();
+      await fireEvent.click(getByRole('button', { name: 'Open the folder' }));
+      expect(clipboard.nativeWrites).toEqual(['/code/x y']);
+      expect(clipboard.legacyCopies).toEqual(['/code/x y']);
+      expect(await findByText('The folder’s path is copied.')).not.toBeNull();
+      expect(queryByText('The folder’s path could not be copied.')).toBeNull();
+    });
+
+    test('is copied by the fallback when the clipboard API is unavailable', async () => {
+      const clipboard = stubClipboard({ native: 'unavailable', legacy: 'succeeds' });
+      const { getByRole, findByText } = card({ code: 'development-source', path: '/code/x' });
+
+      await fireEvent.click(getByRole('button', { name: 'Open the folder' }));
+      expect(clipboard.nativeWrites).toEqual([]);
+      expect(clipboard.legacyCopies).toEqual(['/code/x']);
+      expect(await findByText('The folder’s path is copied.')).not.toBeNull();
+    });
+
+    test.each([
+      ['the fallback reports failure', 'returns-false'],
+      ['the fallback throws', 'throws'],
+    ] as const)('says so when the native write rejects and %s', async (_name, legacy) => {
+      const clipboard = stubClipboard({ native: 'rejects', legacy });
+      const { getByRole, findByText, queryByText } = card({
+        code: 'development-source',
+        path: '/code/x',
+      });
+
+      await fireEvent.click(getByRole('button', { name: 'Open the folder' }));
+      expect(await findByText('The folder’s path could not be copied.')).not.toBeNull();
+      expect(clipboard.legacyCopies).toEqual(['/code/x']);
+      expect(queryByText('The folder’s path is copied.')).toBeNull();
+    });
+
+    test('says so when the clipboard API is unavailable and the fallback fails', async () => {
+      stubClipboard({ native: 'unavailable', legacy: 'returns-false' });
+      const { getByRole, findByText, queryByText } = card({
+        code: 'development-source',
+        path: '/code/x',
+      });
+
+      await fireEvent.click(getByRole('button', { name: 'Open the folder' }));
+      expect(await findByText('The folder’s path could not be copied.')).not.toBeNull();
+      expect(queryByText('The folder’s path is copied.')).toBeNull();
+    });
   });
 });
 
