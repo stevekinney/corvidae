@@ -156,6 +156,7 @@ export type BureauAgentDefinitionsOperationHost = BureauOwnershipHost & {
       | 'disable'
       | 'canDisable'
       | 'enable'
+      | 'rename'
     >;
     /** Whether the `a2a` allowlist of `createBureauHandler` names the code-defined agent `id`. */
     readonly optsCodeAgentIntoA2A: (id: string) => boolean;
@@ -795,6 +796,45 @@ const updateInput = z.object({
   expectedHash: hash,
   definition: definitionInputSchema,
   referenceDocuments: referenceDocumentsInput,
+});
+
+const renameInput = z.object({ id: agentIdentifier, to: agentIdentifier, expectedHash: hash });
+const renameResultSchema = z.object({
+  from: z.string(),
+  to: z.string(),
+  sourceHash: z.string(),
+  phase: z.literal('cutover'),
+});
+
+/** Change the durable identifier of an owner's saved agent, including its live references. */
+export const agentDefinitionsRenameOperation = defineOperation<
+  typeof renameInput,
+  typeof renameResultSchema,
+  BureauAgentDefinitionsOperationHost
+>({
+  name: 'bureau.agents.definitions.rename',
+  authorize: authorizeWorkspaceOperation('bureau.agents.definitions.rename'),
+  mcpExposable: false,
+  summary: 'Change a saved agent identifier',
+  description:
+    'Changes a saved file agent identifier if it still has expectedHash. Schedules, workflow agent references and agent-scoped hooks move to the new identifier atomically from the caller perspective; retained schedule chats keep their existing chat. Code and plugin agents cannot be changed this way.',
+  destructive: true,
+  tags: ['Agents'],
+  inputSchema: renameInput,
+  outputSchema: renameResultSchema,
+  producibleFaults: ['InvalidParams', 'NotFound', 'StaleRevision', 'Conflict', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const definitions = requireWritableAgent(host, principal, input.id);
+    try {
+      return await definitions.agents.rename(input.id, input.to, { expectedHash: input.expectedHash });
+    } catch (error) {
+      return faultOf(error, input.id, input.expectedHash);
+    }
+  },
 });
 
 export const agentDefinitionsUpdateOperation = defineOperation<
@@ -1456,6 +1496,7 @@ export const agentsTryOperation = defineOperation<
 export const bureauAgentDefinitionsOperations = [
   agentDefinitionsCreateOperation,
   agentDefinitionsUpdateOperation,
+  agentDefinitionsRenameOperation,
   agentDefinitionsDeleteOperation,
   agentDefinitionsDuplicateOperation,
   agentDefinitionsGetOperation,

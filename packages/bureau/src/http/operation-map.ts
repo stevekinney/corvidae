@@ -345,6 +345,10 @@ export const OPERATION_MAP = {
     workspaceClass: 'administrator-shared',
     member: 'agents.update',
   },
+  'bureau.agents.definitions.rename': {
+    workspaceClass: 'administrator-shared',
+    member: 'agents.rename',
+  },
   'bureau.agents.definitions.delete': {
     workspaceClass: 'administrator-shared',
     member: 'agents.delete',

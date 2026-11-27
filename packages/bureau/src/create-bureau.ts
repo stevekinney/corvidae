@@ -2749,6 +2749,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   /** COR-1911 — the agents being tried, held in memory for the contexts that started them. */
   const tryAgents = createTryAgents();
   let agentCatalog: ReturnType<typeof createAgentCatalog<D>>;
+  let agentIdRenames: ReturnType<typeof createAgentIdRenameStore>;
   let renameSavedAgent:
     | ((from: string, to: string, expectedHash: string) => Promise<import('./agent-id-rename-store').AgentIdRenameRecord>)
     | undefined;
@@ -3159,7 +3160,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         );
       },
     });
-    const agentIdRenames = createAgentIdRenameStore(
+    agentIdRenames = createAgentIdRenameStore(
       runtime.kv ?? textValueStore(new MemoryStorage()),
     );
     fileAgents =

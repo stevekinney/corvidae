@@ -120,6 +120,7 @@ const CROSS_PRODUCER_NAMES: ReadonlySet<string> = new Set([
   'bureau.agents.try',
   'bureau.agents.definitions.create',
   'bureau.agents.definitions.update',
+  'bureau.agents.definitions.rename',
   'bureau.agents.definitions.delete',
   'bureau.agents.definitions.get',
   'bureau.agents.definitions.list',
