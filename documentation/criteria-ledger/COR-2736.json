@@ -1,7 +1,7 @@
 {
   "issue": "COR-2736",
   "branch": "steve/composable-portable-bureau-client",
-  "checkedAt": "ca254e27a9f9fd637c0474de741087a1a31437a7",
+  "checkedAt": "610fac7d159f2d19c8952b150d1ffb87809c4a8b",
   "briefVersion": "8d15159fe2bc",
   "status": "BLOCKED",
   "criteria": [
@@ -83,7 +83,7 @@
     {
       "id": "AC16",
       "status": "not-met",
-      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+      "evidence": "Coordinator reports frozen tree 173e941e light supplement passed four stock Chromium cases and six viewport captures; dark startup failed before any case at the existing 120s fixture limit. Dark capture and complete cold review remain pending. Both test files match 173e941e and product matches parent 0bc9f938."
     }
   ]
 }
