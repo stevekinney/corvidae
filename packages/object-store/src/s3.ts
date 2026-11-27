@@ -17,10 +17,6 @@ async function drain(response: Response): Promise<number> {
   return response.status;
 }
 
-function textElement(xml: string, name: string): string | undefined {
-  const match = new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(xml);
-  return match?.[1];
-}
 const ENTITIES: Readonly<Record<string, string>> = {
   amp: '&',
   lt: '<',
@@ -35,35 +31,84 @@ function unescapeXml(text: string): string {
     return Object.hasOwn(ENTITIES, entity) ? (ENTITIES[entity] ?? whole) : whole;
   });
 }
+
+type XmlNode = { readonly name: string; readonly children: XmlNode[]; text: string };
+
+/** Parse the small S3 listing grammar into a tree so nested extension fields cannot impersonate root fields. */
+function parseXml(xml: string): XmlNode {
+  const tokens = xml.match(/<[^>]*>|[^<]+/g);
+  if (tokens === null) throw new Error('MalformedListing');
+  const stack: XmlNode[] = [];
+  let root: XmlNode | undefined;
+  for (const token of tokens) {
+    if (token.startsWith('<?') || token.startsWith('<!--')) continue;
+    if (token.startsWith('</')) {
+      const name = /^<\/([A-Za-z][A-Za-z0-9:._-]*)\s*>$/.exec(token)?.[1];
+      const node = stack.pop();
+      if (name === undefined || node === undefined || node.name !== name)
+        throw new Error('MalformedListing');
+      continue;
+    }
+    if (token.startsWith('<')) {
+      const opening = /^<([A-Za-z][A-Za-z0-9:._-]*)(?:\s[^<>]*)?\s*(\/?)>$/.exec(token);
+      if (opening === null) throw new Error('MalformedListing');
+      const node: XmlNode = { name: opening[1] ?? '', children: [], text: '' };
+      if (stack.length === 0) {
+        if (root !== undefined) throw new Error('MalformedListing');
+        root = node;
+      } else {
+        const parent = stack.at(-1);
+        if (parent === undefined) throw new Error('MalformedListing');
+        parent.children.push(node);
+      }
+      if (opening[2] !== '/') stack.push(node);
+      continue;
+    }
+    if (stack.length === 0) {
+      if (token.trim() !== '') throw new Error('MalformedListing');
+    } else {
+      const current = stack.at(-1);
+      if (current === undefined) throw new Error('MalformedListing');
+      current.text += token;
+    }
+  }
+  if (root === undefined || stack.length !== 0) throw new Error('MalformedListing');
+  return root;
+}
+
+function direct(node: XmlNode, name: string): readonly XmlNode[] {
+  return node.children.filter((child) => child.name === name);
+}
+
+function field(node: XmlNode, name: string, required = false): string | undefined {
+  const fields = direct(node, name);
+  if (fields.length > 1 || (required && fields.length !== 1)) throw new Error('MalformedListing');
+  const found = fields[0];
+  if (found === undefined) return undefined;
+  if (found.children.length !== 0) throw new Error('MalformedListing');
+  return unescapeXml(found.text);
+}
+
 function parseListing(xml: string): ListedPage {
-  const body = xml.trim();
-  const openings = (name: string) => body.match(new RegExp(`<${name}[\\s>]`, 'g'))?.length ?? 0;
-  if (
-    openings('ListBucketResult') !== 1 ||
-    !/<ListBucketResult[\s>]/.test(body) ||
-    !body.endsWith('</ListBucketResult>')
-  )
-    throw new Error('MalformedListing');
-  const truncated = textElement(body, 'IsTruncated');
+  const root = parseXml(xml);
+  if (root.name !== 'ListBucketResult') throw new Error('MalformedListing');
+  const truncated = field(root, 'IsTruncated', true);
   if (truncated !== 'true' && truncated !== 'false') throw new Error('MalformedListing');
   const objects: ListedObject[] = [];
-  const blocks = [...body.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)];
-  if (blocks.length !== openings('Contents')) throw new Error('MalformedListing');
-  for (const match of blocks) {
-    const body = match[1] ?? '';
-    const key = textElement(body, 'Key');
+  for (const contents of direct(root, 'Contents')) {
+    const key = field(contents, 'Key', true);
     if (key === undefined || key === '') throw new Error('MalformedListing');
-    const size = textElement(body, 'Size');
+    const size = field(contents, 'Size');
     objects.push({
-      key: unescapeXml(key),
-      etag: unescapeXml(textElement(body, 'ETag') ?? ''),
+      key,
+      etag: field(contents, 'ETag') ?? '',
       size: size !== undefined && /^\d+$/.test(size) ? Number(size) : 0,
     });
   }
-  const token = textElement(body, 'NextContinuationToken');
+  const token = field(root, 'NextContinuationToken');
   if (truncated === 'true' && (token === undefined || token === ''))
     throw new Error('MalformedListing');
-  const keyCount = textElement(body, 'KeyCount');
+  const keyCount = field(root, 'KeyCount');
   if (keyCount !== undefined && (!/^\d+$/.test(keyCount) || Number(keyCount) !== objects.length))
     throw new Error('MalformedListing');
   return { objects, ...(token === undefined ? {} : { nextContinuationToken: unescapeXml(token) }) };
@@ -153,8 +198,12 @@ export function createS3ObjectOperations(
 }
 
 function errorCodeFromBody(text: string, status: number): string {
-  const code = textElement(text, 'Code');
-  return code !== undefined && /^[A-Za-z0-9_.-]{1,64}$/.test(code) ? code : `HTTP${status}`;
+  try {
+    const code = field(parseXml(text), 'Code');
+    return code !== undefined && /^[A-Za-z0-9_.-]{1,64}$/.test(code) ? code : `HTTP${status}`;
+  } catch {
+    return `HTTP${status}`;
+  }
 }
 
 export type { ObjectStoreOperations, ObjectWriteCondition };

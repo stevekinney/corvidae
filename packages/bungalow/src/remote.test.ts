@@ -335,6 +335,10 @@ describe('remote mode: an injected presigner', () => {
     ],
     ['no IsTruncated', '<ListBucketResult><KeyCount>0</KeyCount></ListBucketResult>'],
     [
+      'a nested IsTruncated that impersonates root metadata',
+      '<ListBucketResult><Extension><IsTruncated>false</IsTruncated></Extension></ListBucketResult>',
+    ],
+    [
       'a truncated page with no token',
       '<ListBucketResult><IsTruncated>true</IsTruncated></ListBucketResult>',
     ],
