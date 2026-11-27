@@ -7,7 +7,10 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { join } from 'node:path';
 import { buildCheckoutApplication } from '../../scripts/build.ts';
 import { designReviewColorScheme } from '../../scripts/environment-configuration.ts';
-import { captureForDesignReviewWithPhone } from './design-review-capture.ts';
+import {
+  captureForDesignReview,
+  captureForDesignReviewWithPhone,
+} from './design-review-capture.ts';
 import { startRefundRace } from './refund-race.test-support.ts';
 import { approveReview } from './task-support.ts';
 
@@ -159,6 +162,74 @@ test('hydrates private Reviews without repeating its opening reads', async ({ br
   }
   if (cleanupFailure) throw cleanupFailure;
   if (primaryFailure !== undefined) throw primaryFailure;
+});
+
+test('private Reviews uses the phone viewport and reaches Status at 320px and 375px', async ({
+  browser,
+}) => {
+  const fixture = await startRefundRace(buildDirectory);
+  try {
+    const refund = await fixture.requestRefund();
+    const session = await fixture.signIn(fixture.hosts[0], 'alice');
+    const [name, ...value] = session.split('=');
+    const context = await browser.newContext({
+      ignoreHTTPSErrors: true,
+      extraHTTPHeaders: { 'x-refund-fixture-host': '0' },
+      hasTouch: true,
+      isMobile: true,
+      colorScheme: designReviewColorScheme() ?? 'light',
+    });
+    try {
+      await context.addCookies([
+        {
+          name: name!,
+          value: value.join('='),
+          url: fixture.origin,
+          secure: true,
+          httpOnly: true,
+          sameSite: 'Lax',
+        },
+      ]);
+      const page = await context.newPage();
+      for (const width of [320, 375]) {
+        await page.setViewportSize({ width, height: width === 320 ? 640 : 812 });
+        const response = await page.goto(`${fixture.origin}/reviews`);
+        expect(response?.status()).toBe(200);
+        expect(await page.evaluate(() => window.innerWidth)).toBe(width);
+        const status = page.getByRole('combobox', { name: 'Status' });
+        await expect(status).toBeVisible();
+        const box = await status.boundingBox();
+        if (box === null) throw new Error('Status must have a painted box');
+        const hit = await status.evaluate((element) => {
+          const style = getComputedStyle(element, '::before');
+          return { top: parseFloat(style.top), bottom: parseFloat(style.bottom) };
+        });
+        expect(Math.round(box.height)).toBe(32);
+        expect(box.width).toBeGreaterThanOrEqual(44);
+        expect(box.height - hit.top - hit.bottom).toBeGreaterThanOrEqual(44);
+        if (width === 375)
+          await captureForDesignReview(page, {
+            route: '/reviews',
+            state: 'native Status on a phone',
+            source: 'refund-approval-race.spec.ts',
+          });
+        await page.touchscreen.tap(box.x + box.width / 2, box.y - 3);
+        await page.getByRole('option', { name: /^Done/ }).tap();
+        await expect(page).toHaveURL(/tab=done/);
+        await status.focus();
+        await status.press('Enter');
+        await status.press('Home');
+        await status.press('Enter');
+        await expect(page).not.toHaveURL(/tab=done/);
+        await page.locator(`[data-review-row="bureau:${refund.reviewId}"]`).tap();
+        await expect(page.locator('.ib-reviews__detail')).toContainText('$42.00');
+      }
+    } finally {
+      await context.close();
+    }
+  } finally {
+    await fixture.close();
+  }
 });
 
 for (const distinctOwners of [false, true]) {
