@@ -2674,7 +2674,7 @@
   .chat-message-wrapper[data-presentation='transcript'][data-turn-anchor] {
     padding-block-end: calc(
       var(--_cinder-chat-line-gap, var(--cinder-space-1)) +
-        var(--_cinder-chat-line-block-size, 1.5rem)
+        var(--_cinder-chat-line-block-size, var(--cinder-space-6))
     );
   }
 
