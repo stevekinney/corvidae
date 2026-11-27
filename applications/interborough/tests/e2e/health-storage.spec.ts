@@ -250,13 +250,16 @@ test.describe('Health › Storage on the sample world', () => {
 
   test('opens the storage details from the line, with its chevron turned up, and lists five facts', async ({
     page,
+    context,
     checkA11y,
   }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await openStorage(page);
     const main = page.locator('main');
     const trigger = main.getByRole('button', { name: 'Storage details' });
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-    await trigger.click();
+    await trigger.focus();
+    await page.keyboard.press('Enter');
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
     const details = page.getByTestId('storage-details');
     // The popover is named for the button that opened it; the body does not say it again.
@@ -285,6 +288,10 @@ test.describe('Health › Storage on the sample world', () => {
     await expect(details.locator('dd').nth(2)).toHaveText('1.6 GB');
     await expect(details.locator('dd').nth(3)).toHaveText(/^[\d,]+\s*$/);
     await expect(details.locator('dd').nth(4)).toHaveText('Per key; managed keys are locked');
+    const location = details.getByTestId('storage-location');
+    await expect(location).toContainText('/home/me/.interborough');
+    await location.getByRole('button', { name: 'Copy location' }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('/home/me/.interborough');
     await expect(details).toContainText('Storage is set up in Settings › Data and retention.');
     await expect(
       details.getByRole('link', { name: 'Settings › Data and retention' }),
