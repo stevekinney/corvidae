@@ -1,24 +1,24 @@
 {
   "issue": "COR-2731_COR-2735_COR-2729_COR-2734",
   "branch": "chef/ownership-moves",
-  "checkedAt": "3d9d28fe9ea79c99f8577841a1c5e492051a9fb2",
+  "checkedAt": "706d182056",
   "briefVersion": "32738a65d084",
-  "status": "BLOCKED",
+  "status": "READY",
   "criteria": [
     {
       "id": "COR-2731 AC1",
-      "status": "needs-decision",
-      "evidence": "Five guards, five tests, four allowlists and the startup qualification test (now applications/interborough/scripts/qualify-startup.slow.test.ts) moved as renames (commit d1b374c464). The private-helper clause is open: owner-rule-guard-support.ts is shared with three root guards and stays at the root."
+      "status": "met-on-branch",
+      "evidence": "Five guards, five tests, four allowlists and the startup qualification test (now applications/interborough/scripts/qualify-startup.slow.test.ts) moved as renames (commit d1b374c464); readTag moved with check-empty-state-layout. No private helper exists to move: scripts/owner-rule-guard-support.ts is imported by check-spacing-tokens, check-destructive-danger-variant and check-cinder-term-value-lists, which stay at the root, and moving it would make root tooling import from an application (coordinator decision, 2026-11-27)."
     },
     {
       "id": "COR-2731 AC2",
       "status": "met-on-branch",
-      "evidence": "lint:guards chains bun applications/interborough/scripts/check-<name>.ts for all five; Interborough's lint runs them through its lint:guards script. bun run lint:root exit 0 and bun run --cwd applications/interborough lint exit 0 at 3d9d28fe9e; workspace-contract pins both."
+      "evidence": "lint:guards chains bun applications/interborough/scripts/check-<name>.ts for all five; Interborough's lint runs them through its lint:guards script. bun run lint:root and bun run --cwd applications/interborough lint exit 0; workspace-contract pins both."
     },
     {
       "id": "COR-2731 AC3",
       "status": "met-on-branch",
-      "evidence": "An explained delta, not an identical one (tmp/chef/ownership-moves/round-1/COR-2731/guards-compare.txt): empty-state, sidebar, visible-text and separate-box scans and violations are identical; the hidden-label scan grows by exactly the 11 moved files (it scans applications/interborough) and its own two files are excluded from the findings, with a test; 62 collected test names are identical, plus one new test; the slow lane picks up qualify-startup.slow.test.ts (3 tests pass) and Interborough's UI lane collects all five guard tests (118 tests across 8 files); test:slow's only failure is the base one named in checks."
+      "evidence": "An explained delta (tmp/chef/ownership-moves/round-1/COR-2731/guards-compare.txt): empty-state, sidebar, visible-text and separate-box scans and violations are identical; the hidden-label scan grows by exactly the 11 moved files and its own two files are excluded from the findings, with a test; 62 collected test names are identical plus one new test; the slow lane collects qualify-startup.slow.test.ts and Interborough's UI lane collects all five guard tests; interborough test:slow now passes inside focused-checks (8 passed, 0 failed)."
     },
     {
       "id": "COR-2735 AC1",
@@ -58,7 +58,7 @@
     {
       "id": "COR-2734 AC2",
       "status": "met-on-branch",
-      "evidence": "The schema's $id is unchanged; Ventriloquist's conformance, benchmark and evidence callers import it through the package and their 356 integration tests pass; the Turbo inputs name the new paths (turbo.diff); documentation updated. All nine files exist and are collected: 15 tests in testing/terminal, 1 in components/terminal (the classifyBrowserFailure test split out of evidence-schema.test.ts, a tenth file), the same 16 test names as before; the probes and test:terminal-browser were not executed."
+      "evidence": "The schema's $id is unchanged; Ventriloquist's conformance, benchmark and evidence callers import it through the package and their 356 integration tests pass; the Turbo inputs name the new paths; documentation updated. All nine files exist and are collected: 15 tests in testing/terminal, 1 in components/terminal (the classifyBrowserFailure test split out of evidence-schema.test.ts, a tenth file), the same 16 test names as before; the probes and test:terminal-browser were not executed."
     }
   ]
 }
