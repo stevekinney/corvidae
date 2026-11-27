@@ -8,7 +8,7 @@
    */
   import { untrack } from 'svelte';
 
-  import { EmptyState } from '@lostgradient/cinder';
+  import { Container, EmptyState } from '@lostgradient/cinder';
   import { Lock } from '@lucide/svelte';
 
   import { createQuery } from '@tanstack/svelte-query';
@@ -46,7 +46,7 @@
 </script>
 
 <HealthFrame active="storage">
-  <div class="weft-storage-route">
+  <Container centered={false} padded={false} class="weft-storage-route">
     {#if !hasStorageAdmin}
       <EmptyState
         kind="first-use"
@@ -59,11 +59,11 @@
       <StorageWarning />
       <StorageExplorer {client} conditionalBatch={capabilitiesQuery.data?.conditionalBatch} />
     {/if}
-  </div>
+  </Container>
 </HealthFrame>
 
 <style>
-  .weft-storage-route {
+  :global(.weft-storage-route) {
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-4);
