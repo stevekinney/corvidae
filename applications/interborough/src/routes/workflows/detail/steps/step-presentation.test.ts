@@ -1,7 +1,13 @@
 import type { WorkflowTimelineEntry } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
-import { humanizeStepName, parseStepSummary, stepName, stepStatus } from './step-presentation.ts';
+import {
+  humanizeStepName,
+  parseStepSummary,
+  prettySummary,
+  stepName,
+  stepStatus,
+} from './step-presentation.ts';
 
 function entry(overrides: Partial<WorkflowTimelineEntry>): WorkflowTimelineEntry {
   return {
@@ -72,5 +78,13 @@ describe('parseStepSummary', () => {
     expect(parseStepSummary('42')).toBe(42);
     expect(parseStepSummary('boom')).toBe('boom');
     expect(parseStepSummary('{"partial"')).toBe('{"partial"');
+  });
+});
+
+describe('prettySummary', () => {
+  test('indents an ordinary successful step’s JSON object and leaves other text as kept', () => {
+    expect(prettySummary('{"a":1}')).toBe('{\n  "a": 1\n}');
+    expect(prettySummary('boom')).toBe('boom');
+    expect(prettySummary('42')).toBe('42');
   });
 });

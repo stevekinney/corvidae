@@ -78,3 +78,9 @@ export function parseStepSummary(summary: string): unknown {
     return summary;
   }
 }
+
+/** A summary the engine kept, laid out for reading on an ordinary successful step. */
+export function prettySummary(summary: string): string {
+  const parsed = parseStepSummary(summary);
+  return typeof parsed === 'object' && parsed !== null ? JSON.stringify(parsed, null, 2) : summary;
+}

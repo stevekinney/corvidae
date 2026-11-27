@@ -39,36 +39,44 @@ describe('StepDetail', () => {
     expect(status).toContain('chargeCard');
   });
 
-  test('shows the stored payloads and keeps masked values through independent view changes', async () => {
-    const { getByRole } = render(StepDetail, {
+  test('keeps a successful entry on the ordinary Input and Output grid', () => {
+    const { container } = render(StepDetail, { props: { entry: entry(), bar, open: true } });
+    const fields = container.querySelectorAll('.ib-step-detail__fields > section');
+    expect(fields).toHaveLength(2);
+    expect(fields[0]?.textContent).toContain('Input');
+    expect(fields[0]?.querySelector('pre')?.textContent).toBe('{\n  "orderId": "ord_1"\n}');
+    expect(fields[1]?.textContent).toContain('Output');
+    expect(fields[1]?.querySelector('pre')?.textContent).toContain('"chargeId": "ch_1"');
+    expect(container.querySelector('.ib-step-detail__fields--failed')).toBeNull();
+    expect(container.querySelector('[data-section="step-logs"] button')).toBeNull();
+  });
+
+  test('uses independent payload views and a disclosure for a failed step', async () => {
+    const { getByRole, container } = render(StepDetail, {
       props: {
-        entry: entry({ inputSummary: '{"orderId":"ord_1","token":"[REDACTED]"}' }),
+        entry: entry({
+          status: 'failed',
+          inputSummary: '{"orderId":"ord_1","token":"[REDACTED]"}',
+          outputSummary: 'card declined',
+        }),
         bar,
         open: true,
+        logs: [logLine(0, 1, 'declined')],
       },
     });
     const input = within(getByRole('group', { name: /^Input$/ }));
-    const output = within(getByRole('group', { name: /^Output$/ }));
+    const error = within(getByRole('group', { name: /^Error$/ }));
     expect(input.getByText('ord_1')).not.toBeNull();
     expect(input.getByText('[REDACTED]')).not.toBeNull();
-    expect(output.getByText('ch_1')).not.toBeNull();
+    expect(error.getByText('card declined')).not.toBeNull();
     await fireEvent.click(input.getByRole('radio', { name: 'JSON' }));
     expect(input.getByRole('radio', { name: 'JSON' }).getAttribute('aria-checked')).toBe('true');
     expect(input.getByText(/\[REDACTED\]/)).not.toBeNull();
-    expect(output.getByRole('radio', { name: 'Fields' }).getAttribute('aria-checked')).toBe('true');
-  });
-
-  test('labels the output Error for a failed step', () => {
-    const { container } = render(StepDetail, {
-      props: {
-        entry: entry({ status: 'failed', outputSummary: 'card declined' }),
-        bar,
-        open: true,
-      },
-    });
-    const field = container.querySelector('.ib-step-detail__fields [aria-label="Error"]');
-    expect(field?.textContent).toContain('Error');
-    expect(field?.textContent).toContain('card declined');
+    expect(error.getByRole('radio', { name: 'Fields' }).getAttribute('aria-checked')).toBe('true');
+    const logs = container.querySelector('[data-section="step-logs"] button');
+    expect(logs?.textContent?.trim()).toBe('Logs');
+    expect(logs?.getAttribute('aria-expanded')).toBe('true');
+    expect(container.querySelector('.ib-step-detail__fields--failed')).not.toBeNull();
   });
 
   test('says nothing was kept for a step with no output yet', () => {
@@ -175,8 +183,8 @@ describe('StepDetail', () => {
       },
     });
     const section = container.querySelector('[data-section="step-logs"]');
-    expect(section?.querySelector('button')?.textContent?.trim()).toBe('Logs');
-    expect(section?.querySelector('button')?.getAttribute('aria-expanded')).toBe('true');
+    expect(section?.querySelector('h4')?.textContent).toBe('Logs');
+    expect(section?.querySelector('button')).toBeNull();
     expect([...(section?.querySelectorAll('li') ?? [])].map((item) => item.textContent)).toEqual([
       expect.stringContaining('charging'),
       expect.stringContaining('charged'),
