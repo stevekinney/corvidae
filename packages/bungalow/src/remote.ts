@@ -1,4 +1,8 @@
-import { createSigV4Presigner, type ObjectPresigner } from '@lostgradient/object-store';
+import {
+  createSigV4Presigner,
+  ObjectStoreError,
+  type ObjectPresigner,
+} from '@lostgradient/object-store';
 import type {
   Bungalow,
   DatabaseWorkspaceClaim,
@@ -55,6 +59,13 @@ function codeOf(error: unknown): string {
     : 'unknown';
 }
 
+function storeCause(error: unknown): S3FailureCause {
+  if (error instanceof ObjectStoreError) {
+    return error.status === undefined ? { code: error.code } : { status: error.status };
+  }
+  return { code: codeOf(error) };
+}
+
 /** The object's text, or `undefined` when the store answers 404. */
 async function readObject(
   client: BungalowObjectStore,
@@ -65,7 +76,7 @@ async function readObject(
     const object = await client.read(key);
     return object === undefined ? undefined : new TextDecoder().decode(object.bytes);
   } catch (error) {
-    throw s3Failure(operation, { code: codeOf(error) });
+    throw s3Failure(operation, storeCause(error));
   }
 }
 
@@ -80,7 +91,7 @@ async function readConfigurationObject(
     if (object.etag === '') throw s3Failure('read configuration', { code: 'missing-revision' });
     return { text: new TextDecoder().decode(object.bytes), revision: object.etag };
   } catch (error) {
-    throw s3Failure('read configuration', { code: codeOf(error) });
+    throw s3Failure('read configuration', storeCause(error));
   }
 }
 
@@ -104,7 +115,7 @@ async function createDeploymentId(client: BungalowObjectStore, key: string): Pro
   try {
     await client.put(key, new TextEncoder().encode(`${generateUlid()}\n`), { kind: 'absent' });
   } catch (error) {
-    throw s3Failure('write deployment ID', { code: codeOf(error) });
+    throw s3Failure('write deployment ID', storeCause(error));
   }
 }
 
@@ -129,7 +140,7 @@ async function bindWorkspaceId(
     try {
       await client.put(workspaceKey, new TextEncoder().encode(`${expected}\n`), { kind: 'absent' });
     } catch (error) {
-      throw s3Failure('write workspace identity', { code: codeOf(error) });
+      throw s3Failure('write workspace identity', storeCause(error));
     }
     marker = await readObject(client, workspaceKey, 'read workspace identity');
   }
@@ -335,7 +346,7 @@ export async function openValidatedRemoteBungalow(
     // An unmarked remote home may bootstrap only when neither backend already holds state.
     const entries = await client.list(prefix).catch((error: unknown) => {
       // An answered listing keeps its status, as every other S3 failure does.
-      throw s3Failure('read workspace identity', { code: codeOf(error) });
+      throw s3Failure('read workspace identity', storeCause(error));
     });
     const racedDeployment = await readObject(client, deploymentKey, 'read deployment ID');
     if (racedDeployment === undefined) {
@@ -462,7 +473,12 @@ export async function openValidatedRemoteBungalow(
         );
         if (written.outcome === 'written') return { outcome: 'committed' };
         return { outcome: 'conflict' };
-      } catch {
+      } catch (error) {
+        if (error instanceof ObjectStoreError && error.status === 501)
+          return { outcome: 'unsupported' };
+        if (error instanceof ObjectStoreError && error.status !== undefined && error.status < 500) {
+          return { outcome: 'unavailable' };
+        }
         // The request may have reached durable storage. Read current standing, but never retry.
         return reconcileConfiguration(client, configurationKey);
       }

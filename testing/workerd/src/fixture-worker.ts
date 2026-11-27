@@ -54,7 +54,8 @@ export default {
     }
     if (url.pathname === '/r2') {
       await environment.BUCKET.put('fixture', 'stored');
-      return new Response(await (await environment.BUCKET.get('fixture'))?.text());
+      const object = await environment.BUCKET.get('fixture');
+      return new Response(await object?.text());
     }
     if (url.pathname === '/async-local-storage') {
       return context.run('carried', async () => {

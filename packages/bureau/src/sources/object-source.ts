@@ -27,7 +27,7 @@ import {
   SourceConflictError,
 } from './definition-source';
 import { type ObjectLocation } from './object-operations';
-import type { S3ObjectStoreOperations } from '@lostgradient/object-store';
+import type { ObjectWriteCondition, S3ObjectStoreOperations } from '@lostgradient/object-store';
 import { OBJECT_POLL_INTERVAL_MILLISECONDS, createPolledObjects } from './polled-objects';
 import { assertSafeIdentifier } from './safe-identifier';
 
@@ -72,7 +72,7 @@ function requireString(value: unknown, name: string): string {
 function validate(
   location: ObjectLocation,
   options: ObjectSourceOptions,
-): { readonly bucket: string; readonly prefix: string; readonly pollInterval: number } {
+): { readonly prefix: string; readonly pollInterval: number } {
   if (typeof location !== 'object' || location === null) {
     throw new TypeError('"location" must be { bucket, prefix }.');
   }
@@ -99,7 +99,6 @@ function validate(
     throw new TypeError('"options.pollIntervalMilliseconds" must be a positive number.');
   }
   return {
-    bucket,
     // A prefix is a folder: `agents` and `agents/` both mean the objects directly under `agents/`.
     prefix: prefix === '' || prefix.endsWith('/') ? prefix : `${prefix}/`,
     pollInterval,
@@ -125,7 +124,7 @@ export function createObjectSource(
   options: ObjectSourceOptions,
 ): ObjectSource {
   // Everything the source reads from the caller's objects is taken now, before any await.
-  const { bucket, prefix, pollInterval } = validate(shape.location, options);
+  const { prefix, pollInterval } = validate(shape.location, options);
   const { operations } = options;
   const { extension } = shape;
   const keyOf = (id: string): string => `${prefix}${id}${extension}`;

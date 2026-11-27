@@ -864,9 +864,7 @@ describe('remote mode: the handle', () => {
     ]);
     expect(listing?.objects?.[0]?.etag).toBe(object?.etag);
     expect(listing?.objects?.[0]?.size).toBe(5);
-    const missing = await rejectionOf(client?.read('missing'));
-    expect(missing).toBeUndefined();
-    expect((missing as Error).message).not.toContain(ACCESS_KEY_ID);
+    expect(await client?.read('missing')).toBeUndefined();
   });
 
   test('reads the configuration from the bucket, or undefined when absent', async () => {
@@ -966,7 +964,7 @@ describe('remote mode: the handle', () => {
     expect(reject).toThrow(BungalowStateError);
   });
 
-  test('the package limits its runtime dependency to cryptography', async () => {
+  test('the package limits its runtime dependencies to cryptography and object-store', async () => {
     const manifest: unknown = await Bun.file(new URL('../package.json', import.meta.url)).json();
     expect(manifest).toBeObject();
     expect(
@@ -976,6 +974,7 @@ describe('remote mode: the handle', () => {
     ).toEqual(['dependencies', 'devDependencies']);
     expect(Object(manifest)['dependencies']).toEqual({
       '@lostgradient/cryptography': 'workspace:*',
+      '@lostgradient/object-store': 'workspace:*',
     });
   });
 

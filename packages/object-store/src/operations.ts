@@ -33,10 +33,17 @@ export interface S3ObjectStoreOperations extends ObjectStoreOperations {
 /** A redacted error from an object-store request. It contains no request URL or credentials. */
 export class ObjectStoreError extends Error {
   override readonly name = 'ObjectStoreError';
+  readonly code: string;
+  readonly status: number | undefined;
+  constructor(code: string, status: number | undefined) {
+    super(`The object store request failed (${code}).`);
+    this.code = code;
+    this.status = status;
+  }
 }
 
-export function failure(operation: string, key: string, status: number): ObjectStoreError {
-  return new ObjectStoreError(`The object store answered ${status} to ${operation} ${key}.`);
+export function failure(status: number, code = `HTTP${status}`): ObjectStoreError {
+  return new ObjectStoreError(code, status);
 }
 
 export function errorCode(error: unknown): string {
@@ -51,16 +58,14 @@ export function errorCode(error: unknown): string {
 }
 
 export async function guarded<T>(
-  operation: string,
-  key: string,
+  _operation: string,
+  _key: string,
   run: () => Promise<T>,
 ): Promise<T> {
   try {
     return await run();
   } catch (error) {
     if (error instanceof ObjectStoreError) throw error;
-    throw new ObjectStoreError(
-      `The object store request ${operation} ${key} failed (${errorCode(error)}).`,
-    );
+    throw new ObjectStoreError(errorCode(error), undefined);
   }
 }

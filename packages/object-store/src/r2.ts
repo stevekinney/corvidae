@@ -31,8 +31,7 @@ export function createR2ObjectOperations(bucket: R2Bucket): ObjectStoreOperation
           prefix,
           ...(continuationToken === undefined ? {} : { cursor: continuationToken }),
         });
-        if (page.truncated && (page.cursor === undefined || page.cursor === ''))
-          throw failure('LIST', prefix, 502);
+        if (page.truncated && (page.cursor === undefined || page.cursor === '')) throw failure(502);
         return {
           objects: page.objects.map(({ key, size, httpEtag }) => ({ key, size, etag: httpEtag })),
           ...(page.cursor === undefined ? {} : { nextContinuationToken: page.cursor }),

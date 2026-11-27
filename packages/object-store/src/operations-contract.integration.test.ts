@@ -16,7 +16,6 @@ describe('object-store operations contract', () => {
     await using server = createS3TestServer();
     server.put('a', 'a');
     server.put('b', 'b');
-    for (let index = 0; index < 1_001; index += 1) server.put(`page/${index}`, String(index));
     const operations = createS3ObjectOperations({
       bucket: server.bucket,
       contentType: 'text/plain',
@@ -24,6 +23,9 @@ describe('object-store operations contract', () => {
     });
     const page = await operations.list('');
     expect(page.objects.map(({ key }) => key)).toEqual(['a', 'b']);
+    for (let index = 0; index < 1_001; index += 1) {
+      server.put(`page/${String(index).padStart(4, '0')}`, String(index));
+    }
     const firstPage = await operations.list('page/');
     expect(firstPage.objects).toHaveLength(1_000);
     const nextPage = await operations.list('page/', firstPage.nextContinuationToken);
