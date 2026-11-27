@@ -30,7 +30,9 @@ export type BreadcrumbsProps = Omit<HTMLAttributes<HTMLElement>, 'class'> & {
    * Viewport width below which the trail collapses to its phone form: a back link labelled with
    * the parent ("Runs") followed by the current page, which truncates first. A trail with a
    * single entry shows just that entry. A simple CSS length such as `'640px'`, or `false` to
-   * always show the whole trail. Default `'640px'`.
+   * always show the whole trail. Default `'640px'`. The form is chosen in CSS, so it is already on
+   * the first paint: the server HTML holds both forms and a viewport query exposes one at a time.
+   * A length other than the default brings its rules in a small inline `<style>`.
    */
   collapseBelow?: string | false;
   /**
@@ -80,7 +82,8 @@ export interface BreadcrumbsSchemaProps {
   label?: string;
   /**
    * Viewport width below which the trail collapses to a back link and the current page. A simple
-   * CSS length such as `'640px'`, or `false` to always show the whole trail.
+   * CSS length such as `'640px'`, or `false` to always show the whole trail. Chosen in CSS, so the
+   * first paint is already that form: the server HTML holds both forms, one exposed at a time.
    * @default "640px"
    */
   collapseBelow?: string | false;

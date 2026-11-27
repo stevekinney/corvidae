@@ -1,5 +1,6 @@
 import { describe, expect, it, mock } from 'bun:test';
 
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { Engine } from '../engine.ts';
 import { workflowSource } from '../source/index.ts';
 import { workflow } from '../types.ts';
@@ -258,6 +259,7 @@ describe('engine.registerSource() structural validation', () => {
       workflowExecutionMode: 'worker',
       workerExecution: {
         workerUrl: new URL('https://example.invalid/worker.js'),
+        createWorker: bunWorkerFactory,
         poolSize: 1,
       },
     });

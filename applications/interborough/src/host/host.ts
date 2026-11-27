@@ -162,6 +162,7 @@ import {
   type WeftServer,
 } from '@lostgradient/weft';
 import { createEgressPolicy, type A2APeerUpdate, type EgressPolicy } from '@lostgradient/weft/a2a';
+import { bunServerHost } from '@lostgradient/weft/bun';
 
 import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
@@ -441,6 +442,8 @@ export type HostOptions = {
    * `kind`. Replaces the default entries for `sqlite` and `postgres`.
    */
   readonly databaseKinds?: DatabaseKinds;
+  /** Test-only interception of storage operations after the host has claimed its backing store. */
+  readonly decorateStorageForTesting?: (storage: Storage) => Storage;
   /**
    * How each kind of content location is read and described, keyed by the location's `kind`.
    * Replaces the default entries for `directory` and `s3`.
@@ -1097,6 +1100,13 @@ function snapshotHostOptions(options: HostOptions): HostOptions {
   };
 }
 
+function decorateOwnedStorage(
+  storage: Storage,
+  decorator: HostOptions['decorateStorageForTesting'],
+): Storage {
+  return decorator?.(storage) ?? storage;
+}
+
 /** Start the host. The caller owns it and must `close()` it. */
 export async function startHost(options: HostOptions = {}): Promise<Host> {
   options = snapshotHostOptions(options);
@@ -1137,6 +1147,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   const databaseKinds: DatabaseKinds = { ...(options.databaseKinds ?? DEFAULT_DATABASE_KINDS) };
   const contentKinds: ContentKinds = { ...(options.contentKinds ?? DEFAULT_CONTENT_KINDS) };
   const openHome = options.openHome ?? openBungalow;
+  const decorateStorageForTesting = options.decorateStorageForTesting;
   let claimedRemoteStorage: Storage | undefined;
   let bungalow: Bungalow;
   try {
@@ -1193,9 +1204,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     );
     // The key secret answers are sealed with (COR-1920), read or created the same way and as early.
     const answerKeys = await answerEncryptionKeys(bungalow);
-    const storage =
+    const actualStorage =
       claimedRemoteStorage ?? createHostStorage(bungalow.database, clock.now, databaseKinds);
-    held.storage = storage;
+    held.storage = actualStorage;
+    const storage = decorateOwnedStorage(actualStorage, decorateStorageForTesting);
     // Each tool source's and plugin's last tool listing, kept across restarts (COR-2435), so a
     // source that fails or a plugin that is off still shows the tools it offered.
     const toolListings = createToolListingMemory(storage, clock.now);
@@ -2134,6 +2146,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // HostOptions exposes timing options only; this listener serves the built-in registry.
     const engineInventory = inventoryEngineRelay();
     const server = serve({
+      host: bunServerHost,
       engine,
       hostname: LOOPBACK,
       port: 0,

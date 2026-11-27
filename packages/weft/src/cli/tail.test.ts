@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { describe, expect, it, mock } from 'bun:test';
 
 import { Engine, serve, workflow, type WorkflowContext } from '../index.ts';
@@ -175,7 +176,7 @@ describe('weft tail', () => {
   it('streams a live workflow SSE endpoint and exits 0', async () => {
     const engine = new Engine();
     engine.register(holdWorkflow);
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     try {
       const handle = await engine.start('hold', null, { id: 'wf-tail-live' });
       const result = await executeTail({

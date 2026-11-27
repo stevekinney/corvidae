@@ -1,4 +1,4 @@
-import type { ServerWebSocket } from 'bun';
+import type { Socket } from '@lostgradient/node-host';
 
 import { buildCurrentAttemptDispositionWrites } from '../../core/task-ledger/task-attempt-runtime.ts';
 import { commitTaskLedgerTransition } from '../../core/task-ledger/task-ledger-runtime.ts';
@@ -153,7 +153,7 @@ function recordWebSocketDelivery(
  */
 async function rejectTaskResult(
   options: ServeOptions,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   workerId: string | undefined,
   message: TaskResultMessage,
   rejectionCode: Extract<TaskResultDeliveryAnswer, { outcome: 'rejected' }>['rejectionCode'],
@@ -183,7 +183,7 @@ async function rejectTaskResult(
 async function commitAndAcknowledgeTaskResult(
   context: ServerContext,
   options: ServeOptions,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   workerId: string | undefined,
   message: TaskResultMessage,
 ): Promise<void> {
@@ -290,7 +290,7 @@ async function commitAndAcknowledgeTaskResult(
 async function applyTaskResultFallback(
   context: ServerContext,
   options: ServeOptions,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   workerId: string | undefined,
   message: TaskResultMessage,
 ): Promise<void> {
@@ -347,7 +347,7 @@ async function applyTaskResultFallback(
 function onTaskResultMessage(
   context: ServerContext,
   options: ServeOptions,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   message: TaskResultMessage,
   cleanupWorkflowIndex: (operationId: string) => void,
 ): void {
@@ -434,7 +434,7 @@ function onTaskResultMessage(
  * see `commitAndAcknowledgeTaskResult`'s `else` branch).
  */
 function sendTaskResultAck(
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   operationId: string,
   attemptToken: string,
   disposition: 'applied' | 'duplicate' | 'dead-lettered',
@@ -458,7 +458,7 @@ function sendTaskResultAck(
 function onHeartbeatMessage(
   context: ServerContext,
   _options: ServeOptions,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   _message: HeartbeatMessage,
 ): void {
   const workerId = ws.data.workerId;
@@ -486,7 +486,7 @@ function onHeartbeatMessage(
 function onActivityHeartbeatMessage(
   context: ServerContext,
   options: ServeOptions,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   message: ActivityHeartbeatMessage,
 ): void {
   const workerId = ws.data.workerId;
@@ -653,7 +653,7 @@ function extractOptionalWorkerId(parsed: unknown): string | undefined {
  */
 function recordAndRejectRegistrationFrame(
   context: ServerContext,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   parsed: unknown,
   code: RegisterErrorMessage['code'],
   message: string,
@@ -676,8 +676,8 @@ function recordAndRejectRegistrationFrame(
  */
 function parseAndValidateWorkerFrame(
   context: ServerContext,
-  ws: ServerWebSocket<WebSocketData>,
-  rawMessage: string | Buffer,
+  ws: Socket<WebSocketData>,
+  rawMessage: string | Uint8Array,
 ): ParseResult {
   const text = typeof rawMessage === 'string' ? rawMessage : new TextDecoder().decode(rawMessage);
 
@@ -735,8 +735,8 @@ function parseAndValidateWorkerFrame(
 export function handleWorkerWebSocketMessage(
   context: ServerContext,
   options: ServeOptions,
-  ws: ServerWebSocket<WebSocketData>,
-  rawMessage: string | Buffer,
+  ws: Socket<WebSocketData>,
+  rawMessage: string | Uint8Array,
   cleanupWorkflowIndex: (operationId: string) => void,
 ): void {
   if (!isWorkerConnection(ws.data.pathname)) return;

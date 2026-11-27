@@ -1,4 +1,4 @@
-import type { ServerWebSocket } from 'bun';
+import type { Socket } from '@lostgradient/node-host';
 
 import { anonymousPrincipal } from '@lostgradient/backchannel';
 import {
@@ -35,7 +35,7 @@ export interface WebSocketData extends JsonRpcSocketData {
 }
 
 export function openJsonRpcWebSocketSession(options: {
-  ws: Pick<ServerWebSocket<WebSocketData>, 'data' | 'send' | 'close'>;
+  ws: Pick<Socket<WebSocketData>, 'data' | 'send' | 'close'>;
   registry: OperationRegistry;
   engine: unknown;
   feed: WorkflowEventFeed;

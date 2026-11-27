@@ -476,7 +476,7 @@
           "system:admin"
         ]
       },
-      "description": "Run the `weft conformance` check sequence (register, task completion, heartbeat, cancellation, reconnect, revision echo, graceful shutdown) against one target registered with `serve({ conformanceTargets })`, inside a private sandbox server, and return every check with its verdict and message plus protocol version metadata. The request names a target only; it cannot supply a command. Concurrent requests for one target share a single run.",
+      "description": "Run the `weft conformance` check sequence (register, task completion, heartbeat, cancellation, reconnect, revision echo, graceful shutdown) against one target registered with `serve({ host: bunServerHost, conformanceTargets })`, inside a private sandbox server, and return every check with its verdict and message plus protocol version metadata. The request names a target only; it cannot supply a command. Concurrent requests for one target share a single run.",
       "destructive": false,
       "inputSchema": {
         "additionalProperties": false,
@@ -579,7 +579,7 @@
           "system:read"
         ]
       },
-      "description": "Names and per-wait timeouts of the worker commands registered with `serve({ conformanceTargets })`, which `weft.conformance.report` can run. Commands are never returned. Empty when the server registers no targets.",
+      "description": "Names and per-wait timeouts of the worker commands registered with `serve({ host: bunServerHost, conformanceTargets })`, which `weft.conformance.report` can run. Commands are never returned. Empty when the server registers no targets.",
       "destructive": false,
       "inputSchema": {
         "additionalProperties": false,

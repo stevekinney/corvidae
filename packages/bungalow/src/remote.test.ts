@@ -979,12 +979,17 @@ describe('remote mode: the handle', () => {
     expect(reject).toThrow(BungalowStateError);
   });
 
-  test('the package still has no runtime dependencies', async () => {
+  test('the package limits its runtime dependency to cryptography', async () => {
     const manifest: unknown = await Bun.file(new URL('../package.json', import.meta.url)).json();
     expect(manifest).toBeObject();
-    expect(Object.keys(Object(manifest)).filter((field) => /dependencies$/i.test(field))).toEqual([
-      'devDependencies',
-    ]);
+    expect(
+      Object.keys(Object(manifest))
+        .filter((field) => /dependencies$/i.test(field))
+        .toSorted(),
+    ).toEqual(['dependencies', 'devDependencies']);
+    expect(Object(manifest)['dependencies']).toEqual({
+      '@lostgradient/cryptography': 'workspace:*',
+    });
   });
 
   test('a local Bungalow has no object store', async () => {

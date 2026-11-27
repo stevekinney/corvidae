@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
@@ -39,7 +40,7 @@ const echoWorkflow = workflow({ name: 'echo' }).execute(async function* (
 function createServedEngine(): { engine: Engine; url: string; stop: () => Promise<void> } {
   const engine = new Engine();
   engine.register(echoWorkflow);
-  const server = serve({ engine, port: 0 });
+  const server = serve({ host: bunServerHost, engine, port: 0 });
   return {
     engine,
     url: server.url,

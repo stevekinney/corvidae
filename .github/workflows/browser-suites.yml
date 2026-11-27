@@ -259,6 +259,18 @@ jobs:
     # The image ships the Chromium the lockfile's Playwright launches, so there is no browser install.
     container:
       image: mcr.microsoft.com/playwright:v1.63.0-jammy
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: corvidae
+          POSTGRES_PASSWORD: corvidae
+          POSTGRES_DB: corvidae
+        options: >-
+          --health-cmd "pg_isready -U corvidae -d corvidae"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     strategy:
       fail-fast: false
       matrix:
@@ -279,6 +291,7 @@ jobs:
       # The task's hash holds the shard and the image (`//#ci:browser-interborough` in `turbo.json`).
       PLAYWRIGHT_BASE_IMAGE: mcr.microsoft.com/playwright:v1.63.0-jammy
       PLAYWRIGHT_SHARD: ${{ matrix.shard }}/6
+      WEFT_TEST_POSTGRES_URL: postgresql://corvidae:corvidae@postgres:5432/corvidae
     steps:
       # The image has neither Git (which `actions/checkout` needs for a repository rather than a
       # tarball) nor `unzip` (which `setup-bun` needs).

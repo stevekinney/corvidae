@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * A spec-compliant MCP client against `/mcp` on a `serve()` with a static API
  * key, in its default 2025-era mode. The endpoint keeps no session, so every
@@ -29,6 +30,7 @@ describe('the official MCP SDK client over a static API key', () => {
     try {
       engine = new Engine({ storage: new MemoryStorage() });
       server = serve({
+        host: bunServerHost,
         engine,
         port: 0,
         hostname: '127.0.0.1',

@@ -204,6 +204,76 @@ const ids = (body: Awaited<ReturnType<typeof call>>) =>
   body.result?.reviews.map((review) => `${review.source}:${review.id}`);
 
 describe('bureau.reviews.list as one inbox (COR-1828)', () => {
+  it('admits another owner only for an explicitly authorized verified reviewed operation', async () => {
+    const review = pendingApproval('approval:protected', 1000);
+    let provenance: 'verified' | 'unresolved' | 'ordinary' = 'verified';
+    let entitled = true;
+    const base = hostOf({ pending: [review] });
+    const host: BureauReviewsOperationHost = {
+      ...base,
+      reviews: { ...base.reviews, get: async () => review },
+      reviewedProvenance: async () => provenance,
+      reviewPolicy: {
+        matches: () => true,
+        mayRead: () => entitled,
+        mayDecide: () => entitled,
+        mayAccessOtherOwner: () => true,
+        effect: async () => undefined,
+      },
+    };
+    const list = () => call(host, OTHER_KEY, 'bureau.reviews.list', { status: 'pending' });
+    const get = () => call(host, OTHER_KEY, 'bureau.reviews.get', { id: review.id });
+    const resolve = () =>
+      call(host, OTHER_KEY, 'bureau.reviews.resolve', {
+        id: review.id,
+        round: 0,
+        decision: 'approve',
+      });
+    const visibleList = await list();
+    const visibleReview = await get();
+    expect(visibleList.result?.total).toBe(1);
+    expect(visibleReview.result).toMatchObject({ id: review.id });
+    entitled = false;
+    const unentitledList = await list();
+    const unentitledReview = await get();
+    const unentitledDecision = await resolve();
+    expect(unentitledList.result?.total).toBe(0);
+    expect(unentitledReview.result).toBeUndefined();
+    expect(unentitledDecision.result).toBeUndefined();
+    entitled = true;
+    provenance = 'unresolved';
+    const unresolvedList = await list();
+    expect(unresolvedList.result?.total).toBe(0);
+    provenance = 'ordinary';
+    const ordinaryList = await list();
+    const ordinaryReview = await get();
+    const ordinaryDecision = await resolve();
+    expect(ordinaryList.result?.total).toBe(0);
+    expect(ordinaryReview.result).toBeUndefined();
+    expect(ordinaryDecision.result).toBeUndefined();
+  });
+  it('never projects another owner’s ordinary resolved review or effect', async () => {
+    const review = resolvedRecord('approval:ordinary', 1000, 'api-key:tester');
+    let effects = 0;
+    const base = hostOf({ resolved: [review] });
+    const host: BureauReviewsOperationHost = {
+      ...base,
+      reviewedProvenance: async () => 'ordinary',
+      reviewPolicy: {
+        matches: () => true,
+        mayRead: () => true,
+        mayDecide: () => true,
+        mayAccessOtherOwner: () => true,
+        effect: async () => {
+          effects += 1;
+          return undefined;
+        },
+      },
+    };
+    const answer = await call(host, OTHER_KEY, 'bureau.reviews.list', { status: 'resolved' });
+    expect(answer.result?.total).toBe(0);
+    expect(effects).toBe(0);
+  });
   it('verifies retained protected reviews against matching signed evidence without exposing it', async () => {
     const initial = resolvedRecord('approval:protected', 1000, 'api-key:tester');
     if (initial.review.kind !== 'tool-approval') throw new Error('Expected approval');
@@ -214,6 +284,7 @@ describe('bureau.reviews.list as one inbox (COR-1828)', () => {
       review: { ...initial.review, approval: withoutToken as typeof initial.review.approval },
     };
     let current: PendingReview | undefined = signed;
+    let allowOtherOwner = false;
     const base = hostOf({ resolved: [record] });
     const host: BureauReviewsOperationHost = {
       ...base,
@@ -224,6 +295,7 @@ describe('bureau.reviews.list as one inbox (COR-1828)', () => {
         matches: (review) => review.kind === 'tool-approval' && !!review.approval.approvalToken,
         mayRead: () => true,
         mayDecide: () => false,
+        mayAccessOtherOwner: () => allowOtherOwner,
         publicArguments: () => ({ public: true }),
         effect: async () => undefined,
       },
@@ -237,6 +309,9 @@ describe('bureau.reviews.list as one inbox (COR-1828)', () => {
     expect(JSON.stringify(visible)).not.toContain('signed-token');
     const otherOwner = await call(host, OTHER_KEY, 'bureau.reviews.list', { status: 'resolved' });
     expect(otherOwner.result?.total).toBe(0);
+    allowOtherOwner = true;
+    const sharedOwner = await call(host, OTHER_KEY, 'bureau.reviews.list', { status: 'resolved' });
+    expect(sharedOwner.result?.total).toBe(1);
     current = { ...signed, round: 1 };
     const wrongRound = await list();
     expect(wrongRound.result?.total).toBe(0);

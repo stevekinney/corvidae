@@ -9,7 +9,7 @@ import {
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { ChildProcessRealm } from './child-process-realm.ts';
+import { ChildProcessRealm, createChildProcessRealm } from './child-process-realm.ts';
 import type { RevisionRealmActivation } from './revision-realm.ts';
 
 const scriptPath = new URL('./__fixtures__/revision-realm-child-process-entry.ts', import.meta.url);
@@ -28,6 +28,15 @@ const throwingScriptPath = new URL(
  * idempotent for the realms scenarios already settled.
  */
 const createdRealms: ChildProcessRealm[] = [];
+
+const nativeBootstrap = await createChildProcessRealm({
+  scriptPath,
+  expectedWorkflowTypes: ['order-workflow'],
+  isReferenced: () => false,
+  maxRestarts: 0,
+});
+nativeBootstrap.discard();
+await nativeBootstrap.whenReclaimed();
 
 function tracked(realm: ChildProcessRealm): ChildProcessRealm {
   createdRealms.push(realm);
@@ -487,6 +496,28 @@ const scenario21 = await realmScenario(async () => {
   }
 });
 
+const scenario22 = await realmScenario(async () => {
+  try {
+    const realm = makeRealm({ workerName: 'digest-a' });
+    await readyAndActive(realm);
+    realm.crash();
+    expect(realm.restart()).toEqual({ ok: true });
+
+    let currentProcessReclaimed = false;
+    void realm.whenReclaimed().then(() => {
+      currentProcessReclaimed = true;
+    });
+    const readiness = await realm.waitUntilReady();
+    expect(readiness.ok).toBe(true);
+    expect(currentProcessReclaimed).toBe(false);
+
+    realm.discard();
+    await realm.whenReclaimed();
+  } finally {
+    restoreRealTimers();
+  }
+});
+
 describe('ChildProcessRealm', () => {
   it('spawns a real child process, completes the ready handshake, and reaches Active on activate()', () =>
     rethrow(scenario1));
@@ -549,6 +580,9 @@ describe('ChildProcessRealm', () => {
 
   it('spawns its child process from a script given as a file path, not only as a URL', () =>
     rethrow(scenario21));
+
+  it('does not let an exited pre-restart child reclaim the replacement process', () =>
+    rethrow(scenario22));
 
   // COR-246's own coordinator decision: prove reclamation via observed
   // events -- an actually-dead OS process and an actually-closed IPC

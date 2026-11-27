@@ -3,7 +3,7 @@
  *
  * The exact shape `WorkerRealm` (COR-249, a real Bun `Worker`) and {@link
  * import('./child-process-realm.ts').ChildProcessRealm} (COR-246, a real
- * `Bun.spawn` IPC child process) both already implement —
+ * child-process IPC child process) both already implement —
  * `RevisionRealmPool`, `RevisionRealmRegistry`, and
  * `RevisionRealmExecutionStrategy` hold and route to this interface instead
  * of a concrete adapter class, so a pool can warm either transport behind

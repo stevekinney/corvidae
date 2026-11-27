@@ -49,7 +49,7 @@ import { sha256Hex } from '../../worker/manifest/content-digest.ts';
  * import { MemoryStorage } from '@lostgradient/storage';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
- * await using server = serve({ engine, port: 0 });
+ * await using server = serve({ host: bunServerHost, engine, port: 0 });
  *
  * const view: TaskResultView | null = await server.getTaskResult('op-1');
  * if (view?.status === 'terminal' && view.disposition === 'resolved' && !view.adopted) {

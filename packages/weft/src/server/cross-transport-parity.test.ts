@@ -1,4 +1,5 @@
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { WEFT_SCOPE_VOCABULARY } from '../authorization-scopes.ts';
 import { createWeftDiscoverDocument } from './weft-documents.ts';
@@ -458,7 +459,7 @@ async function invokeSignalTransport(
   const handle = await engine.start('hold', null, { id: `parity-signal-${transport}` });
   await waitForStatus(engine, handle.id, 'running');
 
-  const server = serve({ engine, port: 0 });
+  const server = serve({ host: bunServerHost, engine, port: 0 });
   servers.push(server);
 
   let result: unknown;
@@ -538,7 +539,7 @@ async function invokeStartTransport(
     return originalStart(...args);
   };
 
-  const server = serve({ engine, port: 0 });
+  const server = serve({ host: bunServerHost, engine, port: 0 });
   servers.push(server);
 
   let result: unknown;
@@ -644,7 +645,7 @@ async function invokeBulkCancelTransport(
     waitForStatus(engine, `parity-bulk-other-${transport}`, 'running'),
   ]);
 
-  const server = serve({ engine, ...bulkServeOptions });
+  const server = serve({ host: bunServerHost, engine, ...bulkServeOptions });
   servers.push(server);
 
   const requestId = `parity-bulk-cancel-${transport}`;
@@ -790,7 +791,7 @@ async function invokeBulkRetryFailedTransport(
     waitForStatus(engine, `parity-bulk-retry-other-${transport}`, 'failed'),
   ]);
 
-  const server = serve({ engine, ...bulkServeOptions });
+  const server = serve({ host: bunServerHost, engine, ...bulkServeOptions });
   servers.push(server);
 
   const requestId = `parity-bulk-retry-failed-${transport}`;
@@ -1087,7 +1088,7 @@ async function invokeBulkSignalTransport(
     waitForStatus(engine, otherHandle.id, 'running'),
   ]);
 
-  const server = serve({ engine, ...bulkServeOptions });
+  const server = serve({ host: bunServerHost, engine, ...bulkServeOptions });
   servers.push(server);
 
   const requestId = `parity-bulk-signal-${transport}`;
@@ -1222,7 +1223,7 @@ async function invokeBulkDeleteTransport(
   await firstHandle.result();
   await secondHandle.result();
 
-  const server = serve({ engine, ...bulkServeOptions });
+  const server = serve({ host: bunServerHost, engine, ...bulkServeOptions });
   servers.push(server);
 
   const requestId = `parity-bulk-delete-${transport}`;
@@ -1330,7 +1331,7 @@ async function invokeBulkTagsTransport(
   await firstHandle.result();
   await secondHandle.result();
 
-  const server = serve({ engine, ...bulkServeOptions });
+  const server = serve({ host: bunServerHost, engine, ...bulkServeOptions });
   servers.push(server);
 
   const requestId = `parity-bulk-tags-${transport}`;
@@ -1430,7 +1431,7 @@ describe('cross-transport parity', () => {
     const handle = await engine.start('hold', null, { id: 'parity-parity-get' });
     await waitForStatus(engine, handle.id, 'running');
 
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     servers.push(server);
 
     const results = await invokeGetAcrossTransports(engine, server, handle.id);
@@ -1441,7 +1442,7 @@ describe('cross-transport parity', () => {
     const engine = createHoldEngine();
     engines.push(engine);
 
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     servers.push(server);
 
     const workflowId = 'nonexistent-workflow-id';

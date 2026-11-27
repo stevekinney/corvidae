@@ -1,3 +1,4 @@
+import { bunServerHost } from '../bun-host.ts';
 /**
  * The RemoteWorker protocol conformance check sequence — the single source of
  * pass/fail truth for both the `weft conformance` CLI command
@@ -5,7 +6,7 @@
  * (`server/operations/conformance.ts`, through `targets.ts`).
  *
  * Every run is sandboxed: it builds its own `MemoryStorage`, `Engine`, and a
- * loopback `serve({ port: 0 })`, spawns the worker command against that
+ * loopback `serve({ host: bunServerHost, port: 0 })`, spawns the worker command against that
  * private server, and tears all three down before returning. The reconnect
  * check kills a worker process and the graceful-shutdown check disconnects
  * one, so a run must never point at a live fleet or a production engine.
@@ -172,6 +173,7 @@ async function runConformanceChecks(
   let server: WeftServer;
   try {
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       hostname: '127.0.0.1',

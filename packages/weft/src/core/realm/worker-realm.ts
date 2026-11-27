@@ -32,6 +32,7 @@
  * @module core/realm/worker-realm
  */
 
+import type { CreateWorker, WorkerLike } from '../../workers/pool.ts';
 import {
   isWorkerRealmReadyMessage,
   validateRealmReadyMessage,
@@ -65,6 +66,7 @@ interface PendingWorkerTurn {
 
 export interface WorkerRealmOptions extends RealmLifecycleDependencies {
   readonly workerUrl: string | URL;
+  readonly createWorker: CreateWorker;
   readonly expectedWorkflowTypes: readonly string[];
   /** Opt-in revision digest check (COR-117's `getExpectedArtifactDigest`) — a revision realm always supplies this, so two revisions of the same workflow TYPE name cannot be confused for one another. */
   readonly expectedArtifactDigest?: string;
@@ -92,7 +94,7 @@ export class WorkerRealm {
   readonly lifecycle: RealmLifecycle;
   readonly #options: WorkerRealmOptions;
   readonly #pendingTurns = new Map<number, PendingWorkerTurn>();
-  #worker: Worker;
+  #worker: WorkerLike;
   /**
    * True once `.terminate()` has been sent to the CURRENT `#worker` instance
    * (COR-113). Deliberately independent of `lifecycle.state`: a rejected
@@ -340,16 +342,16 @@ export class WorkerRealm {
     this.#settlePendingTurns();
   }
 
-  #spawnWorker(): Worker {
+  #spawnWorker(): WorkerLike {
     const workerOptions: WorkerOptions & { smol?: boolean } = {};
     if (this.#options.smol) workerOptions.smol = true;
-    const worker = new Worker(this.#options.workerUrl, workerOptions);
+    const worker = this.#options.createWorker(this.#options.workerUrl, workerOptions);
     this.#closePromise = new Promise((resolve) => {
       worker.addEventListener('close', () => resolve(), { once: true });
     });
-    worker.addEventListener('message', (event: MessageEvent) => {
+    worker.addEventListener('message', ((event: MessageEvent) => {
       void this.#handleMessage(event.data).catch(() => {});
-    });
+    }) as EventListener);
     worker.addEventListener('error', () => {
       this.#handleWorkerFailure();
     });
@@ -410,7 +412,7 @@ export class WorkerRealm {
   #terminateWorkerOnce(): void {
     if (this.#workerTerminated) return;
     this.#workerTerminated = true;
-    this.#worker.terminate();
+    void this.#worker.terminate();
   }
 
   async #handleMessage(message: unknown): Promise<void> {

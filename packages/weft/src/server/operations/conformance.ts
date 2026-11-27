@@ -11,7 +11,7 @@
  *
  * Security model (COR-1365). A request names a target; it never supplies a
  * command, arguments, environment, or timeout. Targets are fixed at boot by
- * `serve({ conformanceTargets })`, so the set of processes a request can
+ * `serve({ host: bunServerHost, conformanceTargets })`, so the set of processes a request can
  * start is exactly the set the host process chose to allow — the operation is
  * not a remote-execution primitive. A run never touches the live server it
  * was requested from: it builds its own private `MemoryStorage`, `Engine`,
@@ -117,7 +117,7 @@ export function createListConformanceTargetsOperation(options: ConformanceOperat
     summary: 'List the worker conformance targets this server can run',
     description:
       'Names and per-wait timeouts of the worker commands registered with ' +
-      '`serve({ conformanceTargets })`, which `weft.conformance.report` can run. ' +
+      '`serve({ host: bunServerHost, conformanceTargets })`, which `weft.conformance.report` can run. ' +
       'Commands are never returned. Empty when the server registers no targets.',
     destructive: false,
     tags: ['Observability'],
@@ -147,7 +147,7 @@ export function createRunConformanceReportOperation(options: ConformanceOperatio
     description:
       'Run the `weft conformance` check sequence (register, task completion, heartbeat, ' +
       'cancellation, reconnect, revision echo, graceful shutdown) against one target ' +
-      'registered with `serve({ conformanceTargets })`, inside a private sandbox server, and ' +
+      'registered with `serve({ host: bunServerHost, conformanceTargets })`, inside a private sandbox server, and ' +
       'return every check with its verdict and message plus protocol version metadata. ' +
       'The request names a target only; it cannot supply a command. Concurrent requests for ' +
       'one target share a single run.',

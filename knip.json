@@ -113,6 +113,34 @@
         "!src/host-contract.ts!"
       ]
     },
+    "packages/weft": {
+      "ignoreDependencies": ["ws"],
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts",
+        "src/server/node-runtime.test-support.ts",
+        "src/core/realm/node-runtime.test-support.ts",
+        "src/core/realm/node-runtime-test-environment.ts",
+        "src/core/realm/__fixtures__/node-runtime-activity-handler.fixture.ts",
+        "src/core/realm/__fixtures__/node-runtime-activity-worker.fixture.ts",
+        "src/core/realm/__fixtures__/node-runtime-activity-child.fixture.ts",
+        "src/__fixtures__/node-worker-factory-gated.fixture.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.test-support.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
+      ]
+    },
     "packages/credentials": {
       "ignoreDependencies": ["@lostgradient/workerd-testing"],
       "entry": [
@@ -133,6 +161,27 @@
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!",
         "!src/workerd-fixture.ts!"
+      ]
+    },
+    "packages/cryptography": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts",
+        "src/node-runtime.test-support.ts",
+        "src/workerd-fixture.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
       ]
     },
     "packages/mcp": {

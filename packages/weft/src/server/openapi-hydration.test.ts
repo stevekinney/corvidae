@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -22,7 +23,7 @@ describe('OpenAPI hydration', () => {
   it('requestBody for weft.workflows.start has real schema instead of the old stub', async () => {
     const engine = new Engine({ storage: new MemoryStorage() });
     engines.push(engine);
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     servers.push(server);
 
     const response = await fetch(`${server.url}/openapi.json`);
@@ -44,7 +45,7 @@ describe('OpenAPI hydration', () => {
   it('responses include universal-default error codes for every cataloged operation', async () => {
     const engine = new Engine({ storage: new MemoryStorage() });
     engines.push(engine);
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     servers.push(server);
 
     const response = await fetch(`${server.url}/openapi.json`);
@@ -72,7 +73,7 @@ describe('OpenAPI hydration', () => {
   it('components.schemas has Error schema', async () => {
     const engine = new Engine({ storage: new MemoryStorage() });
     engines.push(engine);
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     servers.push(server);
 
     const response = await fetch(`${server.url}/openapi.json`);
@@ -92,7 +93,7 @@ describe('OpenAPI hydration', () => {
     // generated clients don't try to parse the SSE stream as JSON.
     const engine = new Engine({ storage: new MemoryStorage() });
     engines.push(engine);
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     servers.push(server);
 
     const response = await fetch(`${server.url}/openapi.json`);
@@ -117,7 +118,7 @@ describe('OpenAPI hydration', () => {
   it('documents live SSE reconnect cursors as query and header parameters', async () => {
     const engine = new Engine({ storage: new MemoryStorage() });
     engines.push(engine);
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     servers.push(server);
 
     const response = await fetch(`${server.url}/openapi.json`);
@@ -141,7 +142,7 @@ describe('OpenAPI hydration', () => {
   it('document is deterministic across two generations', async () => {
     const engine = new Engine({ storage: new MemoryStorage() });
     engines.push(engine);
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     servers.push(server);
 
     const firstResponse = await fetch(`${server.url}/openapi.json`);
@@ -153,7 +154,7 @@ describe('OpenAPI hydration', () => {
   it('weft.workflows.start POST body matches a hand-authored expected fragment', async () => {
     const engine = new Engine({ storage: new MemoryStorage() });
     engines.push(engine);
-    const server = serve({ engine, port: 0 });
+    const server = serve({ host: bunServerHost, engine, port: 0 });
     servers.push(server);
 
     const response = await fetch(`${server.url}/openapi.json`);

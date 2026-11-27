@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * COR-152 "Broker Boundary and Configuration" — acceptance criteria 1, 2, 3,
  * 4, and 9.
@@ -50,7 +51,7 @@ describe('remote activity execution (COR-152)', () => {
 
   it('executes ctx.run() through a connected RemoteWorker and returns its real value (criterion 1)', async () => {
     engine = new Engine({ activityExecution: { mode: 'remote' } });
-    server = serve({ engine, port: 0, unauthenticatedAccess: 'allow' });
+    server = serve({ host: bunServerHost, engine, port: 0, unauthenticatedAccess: 'allow' });
 
     const executedInputs: unknown[] = [];
     remoteWorker = new RemoteWorker({
@@ -112,7 +113,7 @@ describe('remote activity execution (COR-152)', () => {
 
   it('reports one activity:started and one activity:completed under the ledger operation id (COR-1720)', async () => {
     engine = new Engine({ activityExecution: { mode: 'remote' } });
-    server = serve({ engine, port: 0, unauthenticatedAccess: 'allow' });
+    server = serve({ host: bunServerHost, engine, port: 0, unauthenticatedAccess: 'allow' });
     remoteWorker = new RemoteWorker({
       serverUrl: `${server.url.replace(/^http/, 'ws')}/v1/tasks/default/stream`,
       workerId: 'lifecycle-worker',
@@ -335,7 +336,7 @@ describe('remote activity execution (COR-152)', () => {
         },
       },
     });
-    server = serve({ engine, port: 0, unauthenticatedAccess: 'allow' });
+    server = serve({ host: bunServerHost, engine, port: 0, unauthenticatedAccess: 'allow' });
 
     const traceHeaderInterceptor: WorkflowInterceptor = {
       *activity(interception, next) {

@@ -19,6 +19,7 @@ import { describe, expect, it, spyOn } from 'bun:test';
 import { MemoryStorage, type BatchOperation } from '@lostgradient/storage';
 import { createDeferred, waitForCondition } from '@lostgradient/testing/fake-timers';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { KEYS } from '../../storage/keys.ts';
 import { workflow, type EngineOptions, type WorkflowServicesResolution } from '../types.ts';
 import { Engine } from './index.ts';
@@ -196,7 +197,12 @@ function createWorkerEngine(storage: RacingStorage, clock: Clock) {
     storage,
     workflows: { simple: simpleWorkflow },
     workflowExecutionMode: 'worker',
-    workerExecution: { workerUrl: WORKER_URL, poolSize: 1, workflowTurnTimeoutMs: 30_000 },
+    workerExecution: {
+      workerUrl: WORKER_URL,
+      createWorker: bunWorkerFactory,
+      poolSize: 1,
+      workflowTurnTimeoutMs: 30_000,
+    },
     ownership: 'workflow-lease',
     backgroundTasks: 'manual',
     startScheduler: false,

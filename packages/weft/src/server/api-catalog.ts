@@ -76,7 +76,7 @@ const PUBLIC_ORIGIN_WARNING_TEXT =
   '`publicOrigin` is not configured. Absolute discovery URLs will be derived from ' +
   'the incoming request, which is ' +
   'safe for direct connections but vulnerable to Host-header poisoning ' +
-  'when running behind a reverse proxy. Set `serve({ publicOrigin: ' +
+  'when running behind a reverse proxy. Set `serve({ host: bunServerHost, publicOrigin: ' +
   "'https://api.example.com' })` in production.";
 
 /**
@@ -134,7 +134,7 @@ export function warnIfPublicOriginUnset(): void {
  * non-network protocol (`X-Forwarded-Proto: javascript`).
  *
  * Operators in production are strongly encouraged to set
- * `serve({ publicOrigin: 'https://api.example.com' })` so this header path
+ * `serve({ host: bunServerHost, publicOrigin: 'https://api.example.com' })` so this header path
  * is never used. When `publicOrigin` is unset, this function falls back to
  * the request URL's origin (which is the actual incoming connection's
  * scheme/host pair as Bun resolved them, not header-derived) and only
@@ -155,7 +155,7 @@ export function originFromRequest(request: Request): string {
   try {
     const requestUrl = new URL(request.url);
     if (requestUrl.protocol === 'https:' || requestUrl.protocol === 'http:') {
-      // request.url for a Bun.serve() request always includes the bound
+      // request.url for a hosted request always includes the bound
       // scheme/host pair, so prefer it over header-derived values.
       return `${requestUrl.protocol}//${requestUrl.host}`;
     }

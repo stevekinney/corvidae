@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * COR-152 server-restart recovery for a remote activity: a queued task survives a crash and a
  * fresh engine over the same storage completes it through a real `RemoteWorker`.
@@ -55,7 +56,7 @@ describe('remote activity server restart recovery (COR-152)', () => {
 
     engine = new Engine({ storage, activityExecution: { mode: 'remote' } });
     engine.register(restartWorkflow);
-    server = serve({ engine, port: 0, unauthenticatedAccess: 'allow' });
+    server = serve({ host: bunServerHost, engine, port: 0, unauthenticatedAccess: 'allow' });
 
     const handle = await engine.start('e2e-restart-workflow', null, { id: 'e2e-restart-1' });
 
@@ -123,7 +124,7 @@ describe('remote activity server restart recovery (COR-152)', () => {
     await recoveredEngine.recoverAll();
     engine = recoveredEngine;
 
-    server = serve({ engine, port: 0, unauthenticatedAccess: 'allow' });
+    server = serve({ host: bunServerHost, engine, port: 0, unauthenticatedAccess: 'allow' });
     remoteWorker = new RemoteWorker({
       serverUrl: `${server.url.replace(/^http/, 'ws')}/v1/tasks/default/stream`,
       workerId: 'recovery-worker',

@@ -1,4 +1,5 @@
 import { MemoryStorage } from '@lostgradient/storage';
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { z } from 'zod';
 import { Engine } from '../core/engine.ts';
 import { workflow } from '../core/types.ts';
@@ -27,10 +28,11 @@ import {
 const engine = new Engine({ storage: new MemoryStorage() });
 const prometheusExporter = createMetricsCollectorExporter(new MetricsCollector());
 
-const serveOptions: ServeOptions = { engine, prometheusExporter };
+const serveOptions: ServeOptions = { host: bunServerHost, engine, prometheusExporter };
 void serveOptions;
 
 const lockedDownServeOptions: ServeOptions = {
+  host: bunServerHost,
   engine,
   auth: { apiKeys: ['test-key'] },
   unauthenticatedAccess: 'reject',
@@ -49,18 +51,27 @@ const handlerRoutes: ServeRoutes = {
 };
 void handlerRoutes;
 
-const routesServeOptions: ServeOptions = { engine, routes: { ...staticRoutes, ...handlerRoutes } };
+const routesServeOptions: ServeOptions = {
+  host: bunServerHost,
+  engine,
+  routes: { ...staticRoutes, ...handlerRoutes },
+};
 void routesServeOptions;
 
 const invalidRoutesServeOptions: ServeOptions = {
+  host: bunServerHost,
   engine,
   // @ts-expect-error each route must be a Bun route value.
   routes: { '/status': { shell: true } },
 };
 void invalidRoutesServeOptions;
 
-// @ts-expect-error `metricsCollector` is no longer a public server option.
-const rejectedServeOptions: ServeOptions = { engine, metricsCollector: new MetricsCollector() };
+const rejectedServeOptions: ServeOptions = {
+  host: bunServerHost,
+  engine,
+  // @ts-expect-error `metricsCollector` is no longer a public server option.
+  metricsCollector: new MetricsCollector(),
+};
 void rejectedServeOptions;
 
 const handlerOptions: HandlerOptions = { prometheusExporter };
@@ -93,6 +104,7 @@ const workerAdmissionPolicy: WorkerAdmissionPolicy = (request: WorkerAdmissionRe
 };
 
 const fullyTypedServeOptions: ServeOptions = {
+  host: bunServerHost,
   engine,
   auth,
   maxRequestBodyBytes: 1_048_576,
@@ -170,7 +182,7 @@ void constructedTaskQueue;
 // [defaultWorkflowRegistry] brand and therefore could not satisfy ServeOptions.
 async function verifyEmptyWorkflowsEngineAcceptedByServe(): Promise<void> {
   const emptyMapEngine = await Engine.create({ storage: new MemoryStorage(), workflows: {} });
-  const options: ServeOptions = { engine: emptyMapEngine };
+  const options: ServeOptions = { host: bunServerHost, engine: emptyMapEngine };
   void options;
 }
 void verifyEmptyWorkflowsEngineAcceptedByServe;
@@ -181,7 +193,7 @@ void verifyEmptyWorkflowsEngineAcceptedByServe;
 // `serveOptions` above) and `Engine.create({ workflows })` (a concretely
 // narrowed, non-empty registry — the README "Hello, World" pattern, which
 // used to fail with TS2322 before the fix). `serve()` itself is called, not
-// just `ServeOptions`, so this also pins that `serve({ engine, port })`
+// just `ServeOptions`, so this also pins that `serve({ host: bunServerHost, engine, port })`
 // type-checks end to end.
 async function verifyConcreteWorkflowRegistryEngineAcceptedByServe(): Promise<void> {
   const greet = workflow({ name: 'greet' }).execute(async function* (_ctx, input: { a: number }) {
@@ -191,10 +203,14 @@ async function verifyConcreteWorkflowRegistryEngineAcceptedByServe(): Promise<vo
     storage: new MemoryStorage(),
     workflows: { greet },
   });
-  const options: ServeOptions = { engine: concreteEngine };
+  const options: ServeOptions = { host: bunServerHost, engine: concreteEngine };
   void options;
 
-  await using concreteEngineServer = serve({ engine: concreteEngine, port: 0 });
+  await using concreteEngineServer = serve({
+    host: bunServerHost,
+    engine: concreteEngine,
+    port: 0,
+  });
   void concreteEngineServer;
 }
 void verifyConcreteWorkflowRegistryEngineAcceptedByServe;
@@ -233,8 +249,12 @@ const needsNothing = defineOperation({
   unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
   invoke: async () => ({}),
 });
-const acceptedOperations: ServeOptions = { engine, operations: [needsNothing] };
+const acceptedOperations: ServeOptions = {
+  host: bunServerHost,
+  engine,
+  operations: [needsNothing],
+};
 void acceptedOperations;
 // @ts-expect-error — an engine has no `bureauFeeds`, so serve() cannot host this operation.
-const rejectedOperations: ServeOptions = { engine, operations: [needsFeeds] };
+const rejectedOperations: ServeOptions = { host: bunServerHost, engine, operations: [needsFeeds] };
 void rejectedOperations;

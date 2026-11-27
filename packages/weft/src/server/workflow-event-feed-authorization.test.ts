@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * Selector-specific authorization of the two workflow event feeds (COR-1466).
  *
@@ -64,6 +65,7 @@ describe('workflow event feeds authorize by selector', () => {
     const warningSpy = spyOn(console, 'warn').mockImplementation(() => {});
     try {
       server = serve({
+        host: bunServerHost,
         engine,
         port: 0,
         publicOrigin: 'http://localhost',

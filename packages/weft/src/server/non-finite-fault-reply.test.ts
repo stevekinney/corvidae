@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * A fault whose data holds a non-finite number is a programming error. The
  * wire projections must still answer the request (with the masked internal
@@ -43,6 +44,7 @@ afterEach(async () => {
 function start(): WeftServer {
   engine = new Engine({ storage: new MemoryStorage() });
   server = serve({
+    host: bunServerHost,
     engine,
     port: 0,
     hostname: '127.0.0.1',
