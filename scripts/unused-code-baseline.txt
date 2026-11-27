@@ -831,6 +831,7 @@
 ["exports","components/terminal/src/lib/components/terminal/terminal-corpus-test-support.ts","ORACLE_GEOMETRY"]
 ["exports","components/terminal/src/lib/components/terminal/terminal-corpus-test-support.ts","REQUIRED_CORPUS_FIXTURE_IDS"]
 ["exports","components/terminal/scripts/engine-probe.ts","probeCandidate"]
+["exports","components/terminal/scripts/engine-probe.ts","probeHiddenPageLiveness"]
 ["exports","components/terminal/src/lib/components/terminal/terminal-corpus-test-support.ts","captureScreen"]
 ["exports","components/terminal/src/lib/inspection/export.ts","DEFAULT_EXPORT_LIMITS"]
 ["exports","components/terminal/src/lib/transport/transport-test-support.ts","URL_WITH_PROFILE"]

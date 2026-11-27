@@ -363,6 +363,31 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
   }
 }
 
+/**
+ * Freezes a Chromium page through CDP and reports whether a page timer still ran: the hidden-page
+ * liveness measurement of the resource probe, which lives with the other browser-engine probes. The
+ * race against a timer is the measurement, not a test deadline.
+ */
+export async function probeHiddenPageLiveness(): Promise<{ liveness: string; duration: number }> {
+  const { chromium } = await import('@playwright/test');
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    const client = await page.context().newCDPSession(page);
+    await client.send('Page.setWebLifecycleState', { state: 'frozen' });
+    const startedAt = performance.now();
+    const liveness = await Promise.race([
+      page.evaluate(() => new Promise((resolve) => setTimeout(() => resolve('ran'), 25))),
+      new Promise<string>((resolve) => setTimeout(() => resolve('suspended'), 100)),
+    ]);
+    const duration = performance.now() - startedAt;
+    await client.send('Page.setWebLifecycleState', { state: 'active' });
+    return { liveness: String(liveness), duration };
+  } finally {
+    await browser.close();
+  }
+}
+
 export async function probeCandidate(
   candidate: Candidate,
   directory: string,

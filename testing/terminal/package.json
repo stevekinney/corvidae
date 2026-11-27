@@ -21,7 +21,6 @@
   },
   "devDependencies": {
     "@lostgradient/typescript": "workspace:*",
-    "@playwright/test": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "ajv": "catalog:",
