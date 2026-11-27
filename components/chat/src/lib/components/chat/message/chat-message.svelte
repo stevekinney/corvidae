@@ -1176,6 +1176,7 @@
   data-turn-state={turn.kind === 'complete' ? undefined : turn.kind}
   data-role={turnAnchor ? undefined : message.role}
   data-turn-anchor={turnAnchor ? '' : undefined}
+  data-command-failed={failedCommand === undefined ? undefined : ''}
   data-message-direction={messageDirection}
   data-hidden={message.hidden || undefined}
   data-failed={isFailed || undefined}
@@ -2625,6 +2626,14 @@
     min-inline-size: 0;
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
     text-align: start;
+  }
+
+  /* A reconnecting turn's anchor draws nothing of its own (the connection notice stands by the
+   * composer): it takes no room until a command on it did not go through. */
+  .chat-message-wrapper[data-turn-anchor][data-turn-state='reconnecting']:not(
+      [data-command-failed]
+    ) {
+    display: none;
   }
 
   /* One line under the turn when a command did not go through: danger text, no box of its own. */

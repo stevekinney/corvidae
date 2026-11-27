@@ -126,7 +126,9 @@ describe('the stop line the run left', () => {
     expect(outcome.stop).toBeUndefined();
     expect(outcome.conversation).toBe(conversation);
     expect(outcome.state).toBeUndefined();
-    expect(outcome.assistantId).toBe(conversation.ids[1]);
+    // The earlier reply is another turn's: nothing of this turn carries an outcome (COR-2725 attempt 2).
+    expect(outcome.assistantId).toBeUndefined();
+    expect(outcome.rowId).toBeUndefined();
   });
 
   test('leaves the notice that a restarted server ended the chat where it is', () => {

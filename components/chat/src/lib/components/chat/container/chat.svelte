@@ -718,7 +718,9 @@
     getTurnEndOutcome: () =>
       variant === 'transcript'
         ? (anchor) =>
-            ['stopped', 'failed', 'empty'].includes(
+            // A reconnecting anchor draws no notice of its own (the connection notice stands by the
+            // composer), but is mounted so a Retry now that did not go through is said on it.
+            ['stopped', 'failed', 'empty', 'reconnecting'].includes(
               resolveMessageTurnState(anchor, messageTurnState)?.kind ?? '',
             )
         : undefined,

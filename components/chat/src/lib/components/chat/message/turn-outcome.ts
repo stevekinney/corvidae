@@ -85,18 +85,27 @@ function lastTurnRows(rows: readonly Message[]): Message[] {
 }
 
 /**
+ * What the turn wrote: its rows without the follow-ups the person typed after them, which join the
+ * turn but are no part of how it ended.
+ */
+function bodyOf(turn: readonly Message[]): Message[] {
+  return turn.slice(0, turn.findLastIndex((row) => !isFollowUpMessage(row)) + 1);
+}
+
+/**
  * The message a turn's outcome is drawn on when the turn ends on its steps (RunStates R3 to R6
  * supersede the rail footnote and the stop note that stood there): the run only called tools, or
  * narrated and then called them, and wrote nothing after. It is no row of the conversation: it
- * stands after the turn's last row, with that row's time, so the turn reads as its text, its
- * steps, then how it ended. `undefined` for a turn that ends on text, or has no tool call.
+ * stands after the turn's last step, with that row's time, so the turn reads as its text, its
+ * steps, then how it ended, whatever the person typed after them. `undefined` for a turn that ends
+ * on text, or has no tool call.
  */
-export function toolEndedTurnAnchor(rows: readonly Message[]): Message | undefined {
-  const turn = lastTurnRows(rows);
-  const last = turn.at(-1);
+function anchorOf(turn: readonly Message[]): Message | undefined {
+  const body = bodyOf(turn);
+  const last = body.at(-1);
   if (last === undefined) return undefined;
   if (last.role !== 'tool-call' && last.role !== 'tool-result') return undefined;
-  if (!turn.some((row) => row.role === 'tool-call')) return undefined;
+  if (!body.some((row) => row.role === 'tool-call')) return undefined;
   return {
     id: `${last.id}:outcome`,
     role: 'assistant',
@@ -107,6 +116,25 @@ export function toolEndedTurnAnchor(rows: readonly Message[]): Message | undefin
     metadata: { [TURN_OUTCOME_ANCHOR_KEY]: last.id },
   };
 }
+
+/** The anchor of the last turn of `rows`, which is how the transcript finds the row to draw. */
+export function toolEndedTurnAnchor(rows: readonly Message[]): Message | undefined {
+  return anchorOf(lastTurnRows(rows));
+}
+
+/**
+ * The last turn, segmented once: everything that says where its outcome is drawn (its assistant
+ * message, its anchor) and which rows its stop line may sit on comes from here, so no outcome is
+ * ever drawn on, or bound to the run of, a row of another turn.
+ */
+type LastTurn = {
+  /** The ids of every row of the turn, hidden ones too. */
+  readonly ids: readonly string[];
+  /** What the turn wrote, without hidden rows or trailing follow-ups. */
+  readonly body: readonly Message[];
+  readonly assistantId: string | undefined;
+  readonly anchor: Message | undefined;
+};
 
 /** The row of the conversation a tool-only turn's anchor stands after. */
 function anchoredRowId(anchor: Message): string | undefined {
@@ -131,29 +159,22 @@ function lastTurnStart(conversation: ConversationHistory): number {
   return 0;
 }
 
-/** The id of the last assistant message of the conversation. */
-function lastAssistantId(conversation: ConversationHistory): string | undefined {
-  for (let index = conversation.ids.length - 1; index >= 0; index -= 1) {
-    const id = conversation.ids[index];
-    if (id !== undefined && rowOf(conversation, id)?.role === 'assistant') return id;
-  }
-  return undefined;
+function lastTurn(conversation: ConversationHistory): LastTurn {
+  const ids = conversation.ids.slice(lastTurnStart(conversation));
+  const turn = ids.flatMap((id) => rowOf(conversation, id) ?? []).filter((row) => !row.hidden);
+  return {
+    ids,
+    body: bodyOf(turn),
+    assistantId: bodyOf(turn).findLast((row) => row.role === 'assistant')?.id,
+    anchor: anchorOf(turn),
+  };
 }
 
 /** Reads the last turn's stop line, excluding the notice that a restarted server ended the chat. */
-function lastTurnStop(conversation: ConversationHistory): TurnStop | undefined {
-  const currentTurn = conversation.ids.slice(lastTurnStart(conversation));
-  // A stop note may belong to the new person's message when a run ends before producing a reply.
-  // Keep it there. Replacing the previous turn's assistant would falsely mark a completed reply
-  // failed and would bind recovery controls to its run.
-  // A turn of only tool calls has no assistant message, and the anchor after its steps carries it.
-  if (
-    !currentTurn.some((id) => {
-      const role = rowOf(conversation, id)?.role;
-      return role === 'assistant' || role === 'tool-call';
-    })
-  )
-    return undefined;
+function lastTurnStop(
+  conversation: ConversationHistory,
+  currentTurn: readonly string[],
+): TurnStop | undefined {
   for (const id of currentTurn) {
     const row = rowOf(conversation, id);
     if (row === undefined) continue;
@@ -207,11 +228,7 @@ function reconnectingState(
  * nothing said about its stop: the run finished and wrote no answer. A call with no answer was
  * interrupted, and one that waits on an approval is not finished, so neither is an empty answer.
  */
-function endsWithoutAnswer(conversation: ConversationHistory): boolean {
-  const rows = conversation.ids
-    .slice(lastTurnStart(conversation))
-    .flatMap((id) => rowOf(conversation, id) ?? [])
-    .filter((row) => !row.hidden);
+function endsWithoutAnswer(rows: readonly Message[]): boolean {
   if (!rows.some((row) => row.role === 'assistant' || row.role === 'tool-call')) return false;
   if (rows.some((row) => (resolveMessageNotes(row) ?? []).some((note) => note.kind === 'stopped')))
     return false;
@@ -235,28 +252,34 @@ export function resolveTurnOutcome(
   conversation: ConversationHistory,
   facts: TurnOutcomeFacts,
 ): TurnOutcome {
-  const stop = facts.running ? undefined : lastTurnStop(conversation);
+  const turn = lastTurn(conversation);
+  // What carries the outcome, found in the last turn and nowhere else: its anchor after its steps,
+  // else its own assistant message. A turn with neither (the person's message alone) has nowhere to
+  // draw one, so its stop line stays where the run left it.
+  const assistantId = turn.anchor?.id ?? turn.assistantId;
+  const rowId = turn.anchor === undefined ? turn.assistantId : anchoredRowId(turn.anchor);
+  const stop =
+    facts.running || assistantId === undefined ? undefined : lastTurnStop(conversation, turn.ids);
   const shown = withoutStopLine(conversation, stop);
-  const rows = shown.ids.flatMap((id) => rowOf(shown, id) ?? []);
-  const anchor = toolEndedTurnAnchor(rows);
-  const assistantId = anchor?.id ?? lastAssistantId(shown);
-  const rowId = anchor === undefined ? assistantId : anchoredRowId(anchor);
   if (facts.reconnect?.runDropped === true) {
     // A dropped stream mutes the partial text of the turn's own assistant message; only a turn with
     // none draws it on the anchor.
-    const own = lastTurnRows(rows).some((row) => row.role === 'assistant');
-    const reconnecting = anchor !== undefined && !own;
+    const own = turn.assistantId !== undefined || turn.anchor === undefined;
     return {
       conversation: shown,
       stop,
-      assistantId: reconnecting ? anchor.id : lastAssistantId(shown),
-      rowId: reconnecting ? anchoredRowId(anchor) : lastAssistantId(shown),
+      assistantId: own ? turn.assistantId : turn.anchor?.id,
+      rowId: own ? turn.assistantId : rowId,
       state: reconnectingState(facts.reconnect, facts.now),
     };
   }
   if (stop !== undefined)
     return { conversation: shown, stop, assistantId, rowId, state: stop.state };
-  const empty = !facts.running && facts.holding !== true && endsWithoutAnswer(shown);
+  const empty =
+    assistantId !== undefined &&
+    !facts.running &&
+    facts.holding !== true &&
+    endsWithoutAnswer(turn.body);
   return {
     conversation: shown,
     stop,
