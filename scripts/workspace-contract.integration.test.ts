@@ -401,6 +401,25 @@ describe('internal workspace architecture', () => {
     expect(scripts['lint:guards']).toContain('bun scripts/check-plugin-identities.ts');
   });
 
+  test("Interborough's own guards run from both the root lint:guards and Interborough's lint", async () => {
+    const guards = [
+      'check-hidden-labels',
+      'check-separate-box-reads',
+      'check-sidebar-no-headings',
+      'check-visible-text-leaks',
+      'check-empty-state-layout',
+    ];
+    const { scripts: root = {} } = await readManifest('.');
+    const { scripts: interborough = {} } = await readManifest('applications/interborough');
+    expect(interborough['lint']).toEndWith(' && bun run lint:guards');
+    for (const guard of guards) {
+      expect(root['lint:guards'], guard).toContain(
+        `bun applications/interborough/scripts/${guard}.ts`,
+      );
+      expect(interborough['lint:guards'], guard).toContain(`bun scripts/${guard}.ts`);
+    }
+  });
+
   test('compiler configuration has a dedicated internal owner and two public presets', async () => {
     const configuration = await readManifest('internal/typescript');
     expect(configuration.name).toBe('@lostgradient/typescript');
@@ -599,6 +618,11 @@ describe('internal workspace architecture', () => {
         '$TURBO_ROOT$/scripts/check-documentation-coverage.ts',
       );
     }
+    // Interborough's own guards (`lint:guards`) read the shared owner-rule helper at the root, so a
+    // change to it must not replay a cached lint.
+    expect(configuration.tasks['lint']?.inputs).toContain(
+      '$TURBO_ROOT$/scripts/owner-rule-guard-support.ts',
+    );
     // No type-check task reads the documentation checkers or the published surface any more.
     const typecheckTasks = Object.entries(configuration.tasks).filter(
       ([task]) => task === 'typecheck' || (task.endsWith('#typecheck') && !task.startsWith('//')),

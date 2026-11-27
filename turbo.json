@@ -51,7 +51,11 @@
     "lint": {
       "outputs": [],
       "dependsOn": ["transit", "metadata"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/check-inherited-key-reads.ts"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/check-inherited-key-reads.ts",
+        "$TURBO_ROOT$/scripts/owner-rule-guard-support.ts"
+      ]
     },
     "lint:fix": {
       "cache": false
@@ -104,6 +108,7 @@
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/host-slots.ts",
+        "$TURBO_ROOT$/scripts/owner-rule-guard-support.ts",
         "$TURBO_ROOT$/scripts/workspace-directories.ts"
       ]
     },

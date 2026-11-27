@@ -42,7 +42,7 @@ import { readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import ts from 'typescript';
 
-const root = join(import.meta.dir, '..');
+const root = join(import.meta.dir, '../../..');
 const SCANNED_DIRECTORY = 'applications/interborough/tests/e2e';
 
 export type SeparateBoxReadViolation = { line: number; text: string };

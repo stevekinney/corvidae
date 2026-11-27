@@ -5,6 +5,7 @@ import { dirname, join, relative } from 'node:path';
 import {
   collectScannedFiles,
   findHiddenLabels,
+  findInFiles,
   judgeHiddenLabels,
   type HiddenLabelAllowlistEntry,
 } from './check-hidden-labels';
@@ -87,6 +88,21 @@ describe('the allowlist of pages that hid a label before the guard', () => {
 });
 
 describe('scanned file discovery', () => {
+  test("the guard's own source and test are not scanned, though they spell the banned patterns", async () => {
+    const own = [import.meta.path, join(import.meta.dir, 'check-hidden-labels.ts')];
+    expect(findHiddenLabels(await Bun.file(own[0]!).text()).length).toBeGreaterThan(0);
+    expect((await findInFiles(own)).size).toBe(0);
+    const directory = mkdtempSync(join(tmpdir(), 'hidden-label-own-'));
+    try {
+      const page = join(directory, 'page.svelte');
+      writeFileSync(page, '<Input labelVisible={false} />\n');
+      const found = [...(await findInFiles([...own, page])).values()];
+      expect(found).toEqual([[{ line: 1, text: '<Input labelVisible={false} />' }]]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test('collects source files, skips other files, dependencies and dot directories', () => {
     const directory = mkdtempSync(join(tmpdir(), 'hidden-label-scan-'));
     try {

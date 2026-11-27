@@ -34,7 +34,7 @@
 import { readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
-import { readTag } from './check-empty-state-layout';
+import { readTag } from '../applications/interborough/scripts/check-empty-state-layout';
 import { lineOf, repositoryRoot, runCountGuard } from './owner-rule-guard-support';
 
 export const SCANNED_DIRECTORIES = [
