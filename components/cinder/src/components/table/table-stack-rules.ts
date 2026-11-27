@@ -200,6 +200,15 @@ const CARD_RULES: readonly StackRule[] = [
     ],
     declarations: 'flex: 0 1 auto; text-align: start;',
   },
+  // A field's value is in the default ink and only its label is muted: the control layout's muted
+  // trailing word does not carry over to a card's fields. A placed part (`stack`) keeps its own
+  // colour, which this selector would outrank.
+  {
+    selectors: [
+      '& .cinder-table__body .cinder-table__cell:not([data-cinder-controls]) ~ .cinder-table__cell:not([data-cinder-controls], [data-cinder-stack])',
+    ],
+    declarations: 'color: var(--cinder-text-default);',
+  },
   // A labelled field: the column's label, muted, in a column of its own, then the value.
   {
     selectors: ['& .cinder-table__body .cinder-table__cell[data-cinder-stack-label]::before'],

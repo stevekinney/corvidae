@@ -1319,6 +1319,16 @@
         )
       )
       .cinder-table__body
+      .cinder-table__cell:not([data-cinder-controls])
+      ~ .cinder-table__cell:not([data-cinder-controls], [data-cinder-stack]) {
+      color: var(--cinder-text-default);
+    }
+    .cinder-table[data-cinder-fit]:not([data-cinder-stack-below]):not(
+        :has(
+          > .cinder-table__body > .cinder-table__row > .cinder-table__cell[data-cinder-controls='']
+        )
+      )
+      .cinder-table__body
       .cinder-table__cell[data-cinder-stack-label]::before {
       content: attr(data-cinder-stack-label);
       flex: 0 0 var(--_cinder-table-stack-label-size);
@@ -2369,6 +2379,16 @@
       ~ .cinder-table__cell:not([data-cinder-controls]) {
       flex: 0 1 auto;
       text-align: start;
+    }
+    .cinder-table[data-cinder-fit][data-cinder-stack-below='640px']:not(
+        :has(
+          > .cinder-table__body > .cinder-table__row > .cinder-table__cell[data-cinder-controls='']
+        )
+      )
+      .cinder-table__body
+      .cinder-table__cell:not([data-cinder-controls])
+      ~ .cinder-table__cell:not([data-cinder-controls], [data-cinder-stack]) {
+      color: var(--cinder-text-default);
     }
     .cinder-table[data-cinder-fit][data-cinder-stack-below='640px']:not(
         :has(

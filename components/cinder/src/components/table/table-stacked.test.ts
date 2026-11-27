@@ -663,6 +663,12 @@ describe('Table fit stacks into cards', () => {
         query === DEFAULT_QUERIES.card && selector.endsWith(siblingSuffix.trim()),
     );
     expect(siblings.at(-1)?.[3]).toBe('flex: 0 1 auto; text-align: start');
+    // A field's value is in the default ink, by a rule that leaves the placed parts to theirs.
+    expect(
+      card(
+        ' .cinder-table__body .cinder-table__cell:not([data-cinder-controls]) ~ .cinder-table__cell:not([data-cinder-controls], [data-cinder-stack])',
+      ).get('color'),
+    ).toBe('var(--cinder-text-default)');
     expect(
       card(" .cinder-table__body .cinder-table__cell[data-cinder-stack='plain']").get('color'),
     ).toBe('var(--cinder-text-muted)');
