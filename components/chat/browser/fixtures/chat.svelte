@@ -104,6 +104,47 @@
         : { running: false, now: 0 },
     );
   }
+  // COR-2725: a transcript pinned to its end whose box then shrinks with no message arriving. The
+  // run only called tools; a button drops its stream, and the reconnect notice appears in the
+  // composer, which takes room from the transcript. Behind a query param like the others.
+  const pinnedResizeEnabled =
+    new URLSearchParams(globalThis.location.search).get('pinnedResize') === '1';
+  let pinnedStreamDropped = $state(false);
+  const pinnedResizeHistory = (() => {
+    let history = createConversation({ id: 'pinned-resize' });
+    for (const order of ['4398', '4399', '4400', '4401']) {
+      history = appendAssistantMessage(
+        appendUserMessage(history, `Look up order ${order}`),
+        `Order ${order} is $42.00, delivered Monday, and nothing else about it needs saying.`,
+      );
+    }
+    return appendToolResult(
+      appendToolCall(appendUserMessage(history, 'Look up order 4471'), {
+        id: 'pinned-lookup',
+        name: 'lookup_order',
+        arguments: { order: '4471' },
+      }),
+      { callId: 'pinned-lookup', outcome: 'success', content: '$42.00, delivered Monday' },
+    );
+  })();
+  const pinnedResizeOutcome = $derived(
+    resolveTurnOutcome(
+      pinnedResizeHistory,
+      pinnedStreamDropped
+        ? {
+            running: true,
+            now: 0,
+            reconnect: {
+              attempt: 2,
+              attempts: 5,
+              wait: 10_000,
+              nextTryAt: 8_000,
+              runDropped: true,
+            },
+          }
+        : { running: false, now: 0 },
+    ),
+  );
   const turnOutcome = turnOutcomeFixture(turnOutcomeKind, 'steps');
   const turnOutcomeReply = turnOutcomeFixture(turnOutcomeKind, 'reply');
   const citedClaims: readonly ChatCitationClaim[] = [
@@ -655,6 +696,25 @@
         onContinueTurn={() => false}
         onDiscardTurn={() => false}
         onRetryTurn={() => false}
+        onRetryConnection={() => false}
+      />
+    </div>
+  {/if}
+
+  {#if pinnedResizeEnabled}
+    <Button data-testid="pinned-resize-drop" onclick={() => (pinnedStreamDropped = true)}>
+      Drop the stream
+    </Button>
+    <div style="height: 26rem;" data-testid="pinned-resize-chat">
+      <Chat
+        id="fixture-pinned-resize-chat"
+        variant="transcript"
+        surfaceMode="transparent"
+        scrollFadeVisible
+        conversation={pinnedResizeOutcome.conversation}
+        capabilities={{ attachments: false }}
+        messageTurnState={(message) => turnStateOf(pinnedResizeOutcome, message)}
+        onSubmit={handleSubmit}
         onRetryConnection={() => false}
       />
     </div>

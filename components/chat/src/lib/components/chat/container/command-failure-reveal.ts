@@ -7,6 +7,10 @@
  * box or the line changes size (a smaller window, a phone's keyboard, a font that loads). A scroll
  * made once, when the line mounts, is not enough: the page is often made smaller afterwards.
  *
+ * A transcript that rests at its end and whose box shrinks is kept there by its own pin
+ * (`keepPinnedThroughResize`); this placement is for the line when the transcript is not at its end
+ * (a person pressed a control above the last message), which that pin never moves.
+ *
  * The placement only ever moves the transcript toward its end, so it cannot pull against the pin
  * to the last message, and it gives the transcript up for good the moment the person scrolls,
  * wheels, touches or presses a key there, or anything moves the transcript back toward its start.

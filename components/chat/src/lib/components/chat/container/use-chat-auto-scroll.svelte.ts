@@ -1,5 +1,6 @@
 import { tick, untrack } from 'svelte';
 import type { Message } from '../conversation-model.ts';
+import { keepPinnedThroughResize } from './keep-pinned-through-resize.ts';
 import { isAtBottom as checkIsAtBottom } from './scroll-utilities.ts';
 import type { useChatHistoryLifecycle } from './use-chat-history-lifecycle.svelte.ts';
 import type { useChatHistoryRestoration } from './use-chat-history-restoration.svelte.ts';
@@ -188,6 +189,14 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions): UseChatAut
       return scheduleBottomCorrection(growth.isTranscriptAppend);
 
     return undefined;
+  });
+
+  // A transcript at its end stays there when its own box changes size with no message arriving: a
+  // notice that grows the composer, a keyboard, a smaller window. Only a new message pinned it before.
+  $effect(() => {
+    const viewport = options.getViewport();
+    if (!viewport) return undefined;
+    return keepPinnedThroughResize(viewport, applyBottomCorrection);
   });
 
   return { resetPrependSuppression };
