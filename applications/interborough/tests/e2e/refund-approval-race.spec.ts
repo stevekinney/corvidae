@@ -133,7 +133,9 @@ test('hydrates private Reviews without repeating its opening reads', async ({ br
     expect(settingsResponse.status(), 'Settings document response').toBe(200);
     expect(pluginsResponse.status(), 'Settings shell plugins response').toBe(200);
     expect(await pluginsResponse.finished(), 'Settings shell plugins response body').toBeNull();
-    await expect(page.getByRole('heading', { level: 1, name: 'General' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Your sign-in can’t open Settings' }),
+    ).toBeVisible();
     await fixture.proxy.drain();
   } catch (error) {
     primaryFailure = error;

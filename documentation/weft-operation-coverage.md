@@ -2,7 +2,7 @@
 
 Interborough's Engine console exposes everything Weft offers. This matrix records, for every operation in Weft's generated operation client (`CLIENT_OPERATION_NAMES`) and for every surface Weft offers outside that catalog, whether the dashboard reaches it, which Linear issue will make it reach it, or why it never will.
 
-`src/coverage-matrix.test.ts` keeps the matrix honest and runs in this application's `test` task. It fails when an operation is added to Weft without a row here, and when a row says something the source does not back up.
+`applications/interborough/tests/coverage-matrix.test.ts` keeps the matrix honest and runs in Interborough's `test` task. It fails when an operation is added to Weft without a row here, and when a row says something the source does not back up.
 
 ## Reading and updating a row
 

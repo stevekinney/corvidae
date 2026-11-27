@@ -14,8 +14,6 @@
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
         "@types/pngjs": "catalog:",
-        "ajv": "catalog:",
-        "ajv-formats": "catalog:",
         "fflate": "catalog:",
         "knip": "6.47.0",
         "oxlint": "catalog:",
@@ -308,6 +306,7 @@
         "svelte": "catalog:",
       },
       "devDependencies": {
+        "@lostgradient/terminal-testing": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@playwright/test": "catalog:",
@@ -1110,6 +1109,7 @@
     "packages/ventriloquist": {
       "name": "@lostgradient/ventriloquist",
       "devDependencies": {
+        "@lostgradient/terminal-testing": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
@@ -1405,6 +1405,20 @@
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "testing/terminal": {
+      "name": "@lostgradient/terminal-testing",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "ajv": "catalog:",
+        "ajv-formats": "catalog:",
         "oxlint": "catalog:",
         "typescript": "catalog:",
       },
@@ -1935,6 +1949,8 @@
     "@lostgradient/terminal": ["@lostgradient/terminal@workspace:components/terminal"],
 
     "@lostgradient/terminal-example": ["@lostgradient/terminal-example@workspace:applications/terminal-example"],
+
+    "@lostgradient/terminal-testing": ["@lostgradient/terminal-testing@workspace:testing/terminal"],
 
     "@lostgradient/testing": ["@lostgradient/testing@workspace:testing/testing"],
 

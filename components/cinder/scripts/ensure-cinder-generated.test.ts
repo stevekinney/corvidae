@@ -4,7 +4,12 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { CINDER_GENERATED_OUTPUTS, cinderGeneratedStaleness } from './ensure-cinder-generated.ts';
+import {
+  CINDER_GENERATED_OUTPUTS,
+  CINDER_PACKAGE_NAME,
+  cinderGeneratedStaleness,
+  findCinderDirectory,
+} from './ensure-cinder-generated.ts';
 
 const directories: string[] = [];
 afterEach(() => {
@@ -83,4 +88,25 @@ test('a temporary input removed after listing does not abort the freshness check
   } finally {
     read.mockRestore();
   }
+});
+
+test('finds the workspace named @lostgradient/cinder wherever it lives, skipping every other manifest', () => {
+  const root = mkdtempSync(join(tmpdir(), 'corvidae-find-cinder-'));
+  directories.push(root);
+  const manifest = (directory: string, contents: string) => {
+    mkdirSync(join(root, directory), { recursive: true });
+    writeFileSync(join(root, directory, 'package.json'), contents);
+  };
+  manifest('.', JSON.stringify({ workspaces: ['applications/*', 'components/*'] }));
+  manifest('applications/shell', JSON.stringify({ name: '@lostgradient/shell' }));
+  manifest('components/broken', '{');
+  manifest('components/unnamed', JSON.stringify({ private: true }));
+  // A workspace the root does not list is not searched.
+  manifest('libraries/cinder-copy', JSON.stringify({ name: CINDER_PACKAGE_NAME }));
+  mkdirSync(join(root, 'components/no-manifest'), { recursive: true });
+  expect(() => findCinderDirectory(root)).toThrow(CINDER_PACKAGE_NAME);
+  manifest('components/design-system', JSON.stringify({ name: CINDER_PACKAGE_NAME }));
+  expect(findCinderDirectory(root)).toBe(join(root, 'components/design-system'));
+  manifest('.', '{');
+  expect(() => findCinderDirectory(root)).toThrow(CINDER_PACKAGE_NAME);
 });

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type { ObservedWorkload } from '../../../../scripts/terminal/evidence-schema.ts';
+import type { ObservedWorkload } from '@lostgradient/terminal-testing/evidence-schema';
 import { hostFor } from '../../src/bun/bun-process.test-support.ts';
 import { ENDLESS_OUTPUT, outputProfile } from '../../src/bun/fixtures/terminal-output.ts';
 import {

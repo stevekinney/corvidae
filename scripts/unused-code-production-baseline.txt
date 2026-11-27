@@ -2992,7 +2992,6 @@
 ["files","applications/interborough/src/app/theme-reader.test-harness.svelte","applications/interborough/src/app/theme-reader.test-harness.svelte"]
 ["files","applications/interborough/src/app/view-frame.svelte","applications/interborough/src/app/view-frame.svelte"]
 ["files","applications/interborough/src/app/view-frame.test-harness.svelte","applications/interborough/src/app/view-frame.test-harness.svelte"]
-["files","applications/interborough/src/coverage-matrix.test-support.ts","applications/interborough/src/coverage-matrix.test-support.ts"]
 ["files","applications/interborough/src/host/a2a-peer-recovery-caller.ts","applications/interborough/src/host/a2a-peer-recovery-caller.ts"]
 ["files","applications/interborough/src/host/cli-dispatch.test-support.ts","applications/interborough/src/host/cli-dispatch.test-support.ts"]
 ["files","applications/interborough/src/host/cli-jsonl.test-support.ts","applications/interborough/src/host/cli-jsonl.test-support.ts"]

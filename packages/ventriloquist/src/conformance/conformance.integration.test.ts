@@ -10,7 +10,7 @@ import {
   validateEvidence,
   type EvidenceCell,
   type EvidenceReport,
-} from '../../../../scripts/terminal/evidence-schema.ts';
+} from '@lostgradient/terminal-testing/evidence-schema';
 import { REQUIRED_CELL_NAMES } from '../../scripts/check-conformance-hosts.ts';
 import { scenarioTest, settleScenarios } from '../bun/bun-process.test-support.ts';
 import {
@@ -44,7 +44,7 @@ import {
 const packageRoot = join(import.meta.dir, '../..');
 const repositoryRoot = join(packageRoot, '../..');
 const reportPath = join(packageRoot, 'test-results/conformance.json');
-const schemaPath = join(repositoryRoot, 'scripts/terminal/evidence.schema.json');
+const schemaPath = join(repositoryRoot, 'testing/terminal/src/evidence.schema.json');
 
 /**
  * The matrix owner key is `conformance`. Controls come first in the matrix, and their cells are

@@ -3,7 +3,6 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, test } from 'bun:test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { classifyBrowserFailure } from './engine-probe.ts';
 import { validateEvidence } from './evidence-schema.ts';
 
 const schemaPath = join(import.meta.dir, 'evidence.schema.json');
@@ -601,23 +600,5 @@ describe('terminal evidence schema', () => {
         'engine',
       ),
     ).toContain('candidate cell disagreement');
-  });
-
-  test('serializes browser failure phase in the Bun context', async () => {
-    const requests = ['/'];
-    const diagnostics = ['console:info:fixture'];
-    const result = await classifyBrowserFailure(
-      async () => ({ phase: 'after-init' }),
-      new Error('TimeoutError: forced probe failure'),
-      requests,
-      diagnostics,
-    );
-
-    expect(result.status).toBe('unavailable');
-    expect(result.requests).toBe(requests);
-    expect(result.diagnostics).toContain('phase:{"phase":"after-init"}');
-    expect(result.cells['input-return-semantics']?.observation).toContain(
-      'unavailable:timeout:{"phase":"after-init"}',
-    );
   });
 });

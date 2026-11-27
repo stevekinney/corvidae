@@ -5,7 +5,7 @@ import type {
   EvidenceReport,
   ObservedWorkload,
   WorkloadDefinition,
-} from '../../../../scripts/terminal/evidence-schema.ts';
+} from '@lostgradient/terminal-testing/evidence-schema';
 
 /** The targets COR-483 froze in `documentation/terminal/security-and-budgets.md`; a miss reopens a limit, never a comparator. */
 export const TARGETS = {

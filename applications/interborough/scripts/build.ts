@@ -26,7 +26,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildProduction } from '@lostgradient/velveteen/build';
-import { ensureCinderGenerated } from '../../../scripts/ensure-cinder-generated.ts';
+import { ensureCinderGenerated } from '../../../components/cinder/scripts/ensure-cinder-generated.ts';
 import {
   BUILD_INFO_FILE,
   displayedCommit,

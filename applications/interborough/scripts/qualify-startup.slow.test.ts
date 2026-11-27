@@ -1,10 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import {
-  classifyStartupReceipt,
-  isSettingsRequest,
-  panelOutcomes,
-} from '../applications/interborough/scripts/qualify-startup.ts';
+import { classifyStartupReceipt, isSettingsRequest, panelOutcomes } from './qualify-startup.ts';
 
 function receipt() {
   return {

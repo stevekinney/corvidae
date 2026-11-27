@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ensureCinderGenerated } from './ensure-cinder-generated.ts';
+import { ensureCinderGenerated } from '../components/cinder/scripts/ensure-cinder-generated.ts';
 
 const root = process.argv[2];
 if (root === undefined) throw new Error('The scenario needs a fixture root.');

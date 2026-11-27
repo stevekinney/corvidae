@@ -14,16 +14,16 @@
  *   `{...}` expression that names `empty`;
  * - a variant of the component: an `<EmptyState>` tag that passes `layout`, `size` or `align`.
  *
- * Offenders from before the guard are listed in `scripts/empty-state-layout-allowlist.json`, which
- * only shrinks (`owner-rule-guard-support.ts`).
+ * Offenders from before the guard are listed in `empty-state-layout-allowlist.json` beside this
+ * file, which only shrinks (`scripts/owner-rule-guard-support.ts`).
  *
- * Runs from the root `lint:guards` script.
+ * Runs from the root `lint:guards` script and from Interborough's `lint`.
  */
 
-import { lineOf, runCountGuard, shorten } from './owner-rule-guard-support';
+import { lineOf, runCountGuard, shorten } from '../../../scripts/owner-rule-guard-support';
 
 export const SCANNED_DIRECTORIES = ['applications/interborough/src'];
-export const ALLOWLIST_PATH = 'scripts/empty-state-layout-allowlist.json';
+export const ALLOWLIST_PATH = 'applications/interborough/scripts/empty-state-layout-allowlist.json';
 
 /** The text of the opening tag that starts at `start`, closed by the first `>` outside braces and quotes. */
 export function readTag(source: string, start: number): string {
