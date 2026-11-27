@@ -308,6 +308,7 @@ import type {
   ApprovalDecisionSurface,
   PendingReview,
   ResolvedReview,
+  ResolveReviewInput,
 } from './bureau-types/reviews';
 import { admitsRunOnDisabledAgent } from './disabled-agent-admission';
 import type { ContextDeletionReport } from './bureau-types/contexts';
@@ -1267,6 +1268,7 @@ async function constructBureau<const D extends AgentDefinitions>(
        * the retry came from.
        */
       decisionSurface?: ApprovalDecisionSurface | undefined;
+      reviewerProvenance?: ResolveReviewInput['reviewerProvenance'];
     }
   >();
   const pendingApprovalOverrides = new Map<
@@ -2635,6 +2637,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     restorableBootApprovals,
     restorePendingApprovalOverrides,
     recoverPeerApproval,
+    recoverReviewedApproval,
     persistedApprovalRunIds,
     restorePendingApprovalStates,
   } = createFireApprovalRestore<D>(core, peers);
@@ -5792,6 +5795,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             await restoreTerminalReviewSession(session, restoredRunId, committed);
           }
           await recoverPeerApproval(session.id, restoredRunId, metadata);
+          await recoverReviewedApproval(session.id, restoredRunId);
         }
         if (!requestAuthorityValidator && hasRecoverableTransportAuthority(session.metadata)) {
           hasDeferredGatewayAuthority = true;

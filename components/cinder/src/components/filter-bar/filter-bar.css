@@ -293,6 +293,10 @@
    * Choice popover: a titled list of rows with counts
    * ---------------------------------------- */
 
+  .cinder-_floating-surface.cinder-filter-bar__choice-popover {
+    overflow: auto;
+  }
+
   .cinder-filter-bar__options {
     display: flex;
     flex-direction: column;

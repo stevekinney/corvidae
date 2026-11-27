@@ -194,10 +194,10 @@ export function panelRoutes(
       }),
       signal: request.signal,
     });
-    // A host-only call names the panel it came through to the Bureau, for the audit trail
+    // A host-only or Reviews panel call names its panel to the Bureau for the audit trail
     // (COR-2545). The URI is the host's own, read from the panel it served; it travels in the
     // call's in-process scope and never in the request, so no client can name another panel's.
-    const answer = await (hostOnly
+    const answer = await (hostOnly || reviewsPanel
       ? runAsHostPanel(app.uri, () => callBureau(toBureau))
       : callBureau(toBureau));
     let result: Record<string, unknown> | undefined;

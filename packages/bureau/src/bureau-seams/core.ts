@@ -27,7 +27,11 @@ import type {
 import type { AgentDefinitions, createAgentCatalog } from '../agent-catalog';
 import type { AssetService } from '../assets/types';
 import type { AuditTrail } from '../audit-trail';
-import type { ApprovalDecisionSurface, PendingReview } from '../bureau-types/reviews';
+import type {
+  ApprovalDecisionSurface,
+  PendingReview,
+  ResolveReviewInput,
+} from '../bureau-types/reviews';
 import type { Bureau, BureauShutdownReport } from '../bureau-types/facade';
 import type { ContextDeletionReport } from '../bureau-types/contexts';
 import type { ServerFrame } from '../bureau-types/frames';
@@ -393,6 +397,7 @@ export interface BureauCore<D extends AgentDefinitions> {
        * the retry came from.
        */
       decisionSurface?: ApprovalDecisionSurface | undefined;
+      reviewerProvenance?: ResolveReviewInput['reviewerProvenance'];
       terminalRelease?: ReviewAuditAttachment['terminalRelease'];
     }
   >;

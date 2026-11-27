@@ -344,6 +344,18 @@ describe('the decision surface helpers (COR-2292)', () => {
       decisionSurface: 'reviews',
     });
     expect(resolvedReviewOfAudit(payload({}), 1)).not.toHaveProperty('decisionSurface');
+    const reviewerProvenance = {
+      actorId: 'alice',
+      workspaceId: 'merchant-workspace',
+      transport: 'jsonRpcHttp',
+    };
+    expect(resolvedReviewOfAudit(payload({ reviewerProvenance }), 1)).toMatchObject({
+      decidedBy: 'alice',
+      reviewerProvenance,
+    });
+    expect(
+      resolvedReviewOfAudit(payload({ reviewerProvenance: { actorId: 'alice' } }), 1),
+    ).not.toHaveProperty('reviewerProvenance');
     expect(resolvedReviewOfAudit(payload({ decisionSurface: 'elsewhere' }), 1)).not.toHaveProperty(
       'decisionSurface',
     );

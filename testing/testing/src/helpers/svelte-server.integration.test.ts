@@ -51,6 +51,21 @@ const renders = await outcomeOf(async () => {
   expect(await scratchFiles()).toEqual(before);
 });
 
+// A Playwright worker runs with no NODE_ENV. The compiler still builds development code, so the
+// render child must load the runtime's development build too, or the first element throws
+// (COR-2770). The fixture is already compiled; only the render child sees the missing variable.
+const withoutNodeEnvironment = await outcomeOf(async () => {
+  const saved = process.env['NODE_ENV'];
+  delete process.env['NODE_ENV'];
+  try {
+    expect(await renderSvelteOnServer(sourcePath, { name: 'worker' })).toContain(
+      '<p>Hello worker</p>',
+    );
+  } finally {
+    if (saved !== undefined) process.env['NODE_ENV'] = saved;
+  }
+});
+
 const imports = await outcomeOf(async () => {
   await importSvelteOnServer(sourcePath);
 });
@@ -106,6 +121,9 @@ const preparedTogether = await outcomeOf(async () => {
 
 describe('isolated Svelte server execution', () => {
   test('renders source with the real Svelte server runtime', () => rethrow(renders));
+
+  test('renders with no NODE_ENV, as a Playwright worker runs', () =>
+    rethrow(withoutNodeEnvironment));
 
   test('evaluates server components without mounting them', () => rethrow(imports));
 

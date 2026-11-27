@@ -649,6 +649,7 @@
           {#if resizable}
             <TableHeaderCell
               {...column.sortable ? { column: column.key } : {}}
+              {...column.sizing ? { sizing: column.sizing } : {}}
               sortable={column.sortable ?? false}
               align={mapAlign(column.align) ?? 'left'}
               style={cellStyle(column)}
@@ -674,6 +675,7 @@
           {:else}
             <TableHeaderCell
               {...column.sortable ? { column: column.key } : {}}
+              {...column.sizing ? { sizing: column.sizing } : {}}
               sortable={column.sortable ?? false}
               align={mapAlign(column.align) ?? 'left'}
               style={cellStyle(column)}

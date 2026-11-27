@@ -39,11 +39,14 @@ test('fit DataTable can select and sort without horizontal overflow', async ({ p
     const sort = wrapper.querySelector('.cinder-table__stack-sort')!.getBoundingClientRect();
     const table = wrapper.querySelector('[data-cinder-stack-card]')!.getBoundingClientRect();
     const bounds = wrapper.getBoundingClientRect();
+    // The scroll box pads its start by the gutter the row tint reaches into (COR-2760), so the
+    // table is flush with its content box, not its border box.
+    const style = getComputedStyle(wrapper);
     return {
       sortBottom: sort.bottom,
       tableTop: table.top,
-      left: table.left - bounds.left,
-      right: bounds.right - table.right,
+      left: table.left - (bounds.left + Number.parseFloat(style.paddingLeft)),
+      right: bounds.right - Number.parseFloat(style.paddingRight) - table.right,
     };
   });
   expect(layout.tableTop).toBeGreaterThanOrEqual(layout.sortBottom - 1);
