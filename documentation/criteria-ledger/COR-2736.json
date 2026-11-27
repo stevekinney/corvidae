@@ -1,39 +1,89 @@
 {
   "issue": "COR-2736",
   "branch": "steve/composable-portable-bureau-client",
-  "checkedAt": "33972f7133",
-  "briefVersion": "41d23e1393c6",
-  "status": "READY",
+  "checkedAt": "ca254e27a9f9fd637c0474de741087a1a31437a7",
+  "briefVersion": "8d15159fe2bc",
+  "status": "BLOCKED",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "SDK generation inventory tests 3/3 and Backchannel generator/schema tests 54/54; served catalog parity, Svelte bindings, and all four exported types."
+      "evidence": "Prior SDK evidence; focused SDK and consumer checks retained."
     },
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "Backchannel, SDK and Interborough typechecks passed; public generated factory tests cover omitted, false, true, runtime boolean, and unflagged control."
+      "evidence": "Prior SDK evidence; focused SDK and consumer checks retained."
     },
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "Clean isolated production installs: baseline 207, required binding 209, optional UI peers 392; SDK split leaves Bureau unchanged. Browser and Node bundles pass and contain no server/UI modules."
+      "evidence": "Prior SDK evidence; focused SDK and consumer checks retained."
     },
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "SDK generation tests compare both outputs and byte sets twice; Reviews and both Settings consumer generations pass. No post-emission rewrite or generated-module deletion in producer."
+      "evidence": "Prior SDK evidence; focused SDK and consumer checks retained."
     },
     {
       "id": "AC5",
       "status": "met-on-branch",
-      "evidence": "Interborough typecheck and build passed; 74 direct transport/Reviews/panel route tests and 34 inspector tests passed, including abort, disposal, guards and undeclared tools."
+      "evidence": "Prior SDK evidence; focused SDK and consumer checks retained."
     },
     {
       "id": "AC6",
       "status": "met-on-branch",
-      "evidence": "Existing page and panel projections retain their constructors; direct Reviews and inspector tests pass including missing round and optional review fields."
+      "evidence": "Prior SDK evidence; focused SDK and consumer checks retained."
+    },
+    {
+      "id": "AC7",
+      "status": "not-met",
+      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+    },
+    {
+      "id": "AC8",
+      "status": "not-met",
+      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+    },
+    {
+      "id": "AC9",
+      "status": "not-met",
+      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+    },
+    {
+      "id": "AC10",
+      "status": "not-met",
+      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+    },
+    {
+      "id": "AC11",
+      "status": "not-met",
+      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+    },
+    {
+      "id": "AC12",
+      "status": "not-met",
+      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+    },
+    {
+      "id": "AC13",
+      "status": "not-met",
+      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+    },
+    {
+      "id": "AC14",
+      "status": "not-met",
+      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+    },
+    {
+      "id": "AC15",
+      "status": "not-met",
+      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+    },
+    {
+      "id": "AC16",
+      "status": "not-met",
+      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
     }
   ]
 }
