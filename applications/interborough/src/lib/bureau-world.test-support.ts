@@ -289,18 +289,6 @@ export function installBureauWorld(world: BureauWorld): BureauWorldStub {
       streams.push(stream);
       return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
     }
-    const decision = /\/v1\/reviews\/([^/]+)\/decision$/.exec(url.pathname);
-    if (decision !== null && init?.method === 'POST') {
-      const reviewId = decodeURIComponent(decision[1] ?? '');
-      weftDecisions.push({
-        reviewId,
-        body: JSON.parse(typeof init.body === 'string' ? init.body : '{}'),
-      });
-      world.weftReviews = world.weftReviews.filter(
-        (entry) => !(entry.status === 'pending' && entry.reviewId === reviewId),
-      );
-      return new Response(null, { status: 204 });
-    }
     if (url.pathname.endsWith('/v1/reviews') && init?.method !== 'POST') {
       weftRequests.push(url);
       const status = url.searchParams.get('status');
@@ -308,13 +296,25 @@ export function installBureauWorld(world: BureauWorld): BureauWorldStub {
         items: world.weftReviews.filter((entry) => status === null || entry.status === status),
       });
     }
-    if (!isBureauCall(url.pathname, init?.body) || typeof init?.body !== 'string') {
+    if (typeof init?.body !== 'string') return new Response('Not found', { status: 404 });
+    const bureauCall = isBureauCall(url.pathname, init.body);
+    if (!bureauCall && url.pathname !== '/api/jsonrpc') {
       return new Response('Not found', { status: 404 });
     }
     const parsed: unknown = JSON.parse(init.body);
     const body = isRecord(parsed) ? parsed : {};
     const method = String(body['method']);
     const params = isRecord(body['params']) ? body['params'] : {};
+    if (url.pathname === '/api/jsonrpc' && method === 'weft.reviews.decision.submit') {
+      const { reviewId, ...decision } = params;
+      if (typeof reviewId !== 'string') return new Response('Missing review ID', { status: 400 });
+      weftDecisions.push({ reviewId, body: decision });
+      world.weftReviews = world.weftReviews.filter(
+        (entry) => !(entry.status === 'pending' && entry.reviewId === reviewId),
+      );
+      return Response.json({ jsonrpc: '2.0', id: body['id'], result: { ok: true } });
+    }
+    if (!bureauCall) return new Response('Not found', { status: 404 });
     calls.push({ method, params });
     const handler = table.get(method);
     if (handler === undefined) {

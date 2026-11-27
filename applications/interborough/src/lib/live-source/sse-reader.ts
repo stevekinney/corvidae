@@ -22,76 +22,10 @@
  * browser and in `bun test`.
  */
 
-/** One parsed SSE frame — the `event:`/`data:`/`id:` fields of one message block. */
-export interface ServerSentEventFrame {
-  readonly id?: string;
-  readonly event?: string;
-  readonly data: string;
-}
-
-interface ParsedServerSentEventChunk {
-  readonly frames: readonly ServerSentEventFrame[];
-  readonly remainder: string;
-}
-
-interface ServerSentEventFrameFields {
-  id: string | undefined;
-  event: string | undefined;
-  dataLines: string[];
-}
-
-function splitFieldLine(rawLine: string): { field: string; value: string } {
-  const separator = rawLine.indexOf(':');
-  if (separator === -1) return { field: rawLine, value: '' };
-  const field = rawLine.slice(0, separator);
-  const rawValue = rawLine.slice(separator + 1);
-  return { field, value: rawValue.startsWith(' ') ? rawValue.slice(1) : rawValue };
-}
-
-function applyFieldLine(fields: ServerSentEventFrameFields, rawLine: string): void {
-  // A comment line (`:…`) or blank line inside a block carries no field.
-  if (rawLine === '' || rawLine.startsWith(':')) return;
-  const { field, value } = splitFieldLine(rawLine);
-  if (field === 'id') fields.id = value;
-  else if (field === 'event') fields.event = value;
-  else if (field === 'data') fields.dataLines.push(value);
-}
-
-function frameFromFields(fields: ServerSentEventFrameFields): ServerSentEventFrame | null {
-  if (fields.id === undefined && fields.event === undefined && fields.dataLines.length === 0) {
-    return null;
-  }
-  return {
-    ...(fields.id === undefined ? {} : { id: fields.id }),
-    ...(fields.event === undefined ? {} : { event: fields.event }),
-    data: fields.dataLines.join('\n'),
-  };
-}
-
-function parseFrameBlock(block: string): ServerSentEventFrame | null {
-  const fields: ServerSentEventFrameFields = { id: undefined, event: undefined, dataLines: [] };
-  for (const rawLine of block.split('\n')) applyFieldLine(fields, rawLine);
-  return frameFromFields(fields);
-}
-
-/**
- * Splits decoded SSE text into complete `\n\n`-terminated frame blocks plus
- * whatever trailing partial block hasn't arrived yet. Pass the previous
- * call's `remainder` back in on the next chunk — the wire can split a frame
- * across arbitrary chunk boundaries.
- */
-export function parseServerSentEventChunk(
-  text: string,
-  previousRemainder = '',
-): ParsedServerSentEventChunk {
-  const combined = `${previousRemainder}${text}`.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
-  const blocks = combined.split('\n\n');
-  const remainder = blocks.pop() ?? '';
-  const frames = blocks
-    .map(parseFrameBlock)
-    .filter((frame): frame is ServerSentEventFrame => frame !== null);
-  return { frames, remainder };
-}
+import {
+  parseServerSentEventChunk,
+  type ServerSentEventFrame,
+} from '@lostgradient/backchannel/client';
 
 /**
  * Reads a `text/event-stream` `Response` body as a sequence of parsed

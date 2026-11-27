@@ -97,10 +97,6 @@ function fakeClient(
   const fakes: Fakes = { previewCalls: [], spendCalls: [], plainCalls: 0 };
   const queue = [...(options.previews ?? [async () => ({ preview: preview() })])];
   const client = {
-    startOrSignal: async () => {
-      fakes.plainCalls += 1;
-      return { id: 'reconcile:installation-42', outcome: 'started' as const };
-    },
     operations: {
       'weft.workflows.active.get': async () => null,
       'weft.worker.startoverrides.preview': async (input: { workflowId: string }) => {
@@ -110,6 +106,10 @@ function fakeClient(
         return next();
       },
       'weft.workflows.startorsignal': async (input: Record<string, unknown>) => {
+        if (input['workerStartOverridePreview'] === undefined) {
+          fakes.plainCalls += 1;
+          return { id: 'reconcile:installation-42', outcome: 'started' as const };
+        }
         fakes.spendCalls.push(input);
         return (
           options.spend ??

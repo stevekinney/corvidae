@@ -1,11 +1,8 @@
 import type { FaultCode } from '@lostgradient/backchannel';
 import { createCatalogClient } from '@lostgradient/backchannel/client';
 
-import {
-  CATALOG_OPERATION_NAMES,
-  type CatalogOperationName,
-  type CatalogOperationTypes,
-} from '@lostgradient/bureau-sdk';
+import type { CatalogOperationTypes } from '@lostgradient/bureau-sdk';
+import type { ClientOperationTypes } from '@lostgradient/weft';
 
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 
@@ -227,16 +224,37 @@ export async function request(
   }
 }
 
-/** Run a typed catalog read over the CLI's authenticated management transport. */
-export async function catalogRead<Name extends CatalogOperationName>(
+/** Run a typed catalog operation over the CLI's authenticated management transport. */
+export function catalogCall<Name extends keyof ManagedOperations>(
   target: CliTarget,
   parsed: Parsed,
   dependencies: CliClientDependencies,
   name: Name,
-  input: CatalogOperationTypes[Name]['input'],
+  input: ManagedOperations[Name]['input'],
 ): Promise<CliCommandResult> {
-  const client = createCatalogClient<CatalogOperationTypes>(
-    CATALOG_OPERATION_NAMES,
+  return catalogFileCall(target, parsed, dependencies, name, input);
+}
+
+type ManagedOperations = CatalogOperationTypes & ClientOperationTypes;
+
+type ServerValidatedOperations<Name extends keyof ManagedOperations> = {
+  [Operation in Name]: {
+    input: unknown;
+    output: ManagedOperations[Operation]['output'];
+    faults: ManagedOperations[Operation]['faults'];
+  };
+};
+
+/** Send parsed JSON file input to its declared catalog operation for server-side validation. */
+export async function catalogFileCall<Name extends keyof ManagedOperations>(
+  target: CliTarget,
+  parsed: Parsed,
+  dependencies: CliClientDependencies,
+  name: Name,
+  input: unknown,
+): Promise<CliCommandResult> {
+  const client = createCatalogClient<ServerValidatedOperations<Name>>(
+    [name],
     async (method, params) => {
       const response = await request(target, '/bureau/jsonrpc', parsed, dependencies, {
         method: 'POST',

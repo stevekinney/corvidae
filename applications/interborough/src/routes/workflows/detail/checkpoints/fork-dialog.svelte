@@ -42,7 +42,7 @@
    * `sourceRevision` is a prop threaded down from the detail page's own
    * `WorkflowState` fetch — as of whenever that page last loaded or
    * refetched, not as of the moment `Create fork` is actually clicked.
-   * `client.fork(workflowId)` (the default, no explicit `revision`) asks
+   * A fork with no explicit `revision` asks
    * the server to resolve and persist whichever generation CURRENTLY
    * occupies `workflowId` at submission time. If the displayed terminal run
    * was replaced by a `start-new` restart after the page loaded — most
@@ -86,7 +86,7 @@
   import WorkerInheritanceNote from '../../../../lib/worker-inheritance-note.svelte';
   import { EAGER_REVISION_HEDGE } from '../../../../lib/workflow-revision.ts';
   import { router, workflowDetailPath } from '../../../../lib/router.svelte.ts';
-  import type { ForkClient, ForkSourceClient } from './checkpoints-data.ts';
+  import type { ForkSourceClient } from './checkpoints-data.ts';
   import {
     fetchForkPreview,
     forkPreviewQueryKey,
@@ -103,7 +103,7 @@
   } from './fork-revision-picker.ts';
 
   interface ForkDialogProps {
-    readonly client: ForkClient & ForkSourceClient & ForkPreviewClient & WorkflowRevisionListClient;
+    readonly client: ForkSourceClient & ForkPreviewClient & WorkflowRevisionListClient;
     readonly workflowId: string;
     /** Pre-fills the target step from whichever checkpoint the operator selected. */
     readonly initialStep: number;
@@ -328,9 +328,16 @@
    * prevent.
    */
   const forkMutation = createMutation(() => ({
-    mutationFn: async (input: { fromStep: number; selection: ForkRevisionSelection }) =>
-      client.fork(workflowId, resolveForkOptions(input.selection, input.fromStep)),
-    onSuccess: (handle) => onForked?.(handle.id),
+    mutationFn: async (input: { fromStep: number; selection: ForkRevisionSelection }) => {
+      const answer = await client.operations['weft.workflows.fork']({
+        workflowId,
+        ...resolveForkOptions(input.selection, input.fromStep),
+      });
+      if (!('id' in answer))
+        throw new TypeError('The fork command returned a preview without a fork ID.');
+      return answer;
+    },
+    onSuccess: (answer) => onForked?.(answer.id),
   }));
 
   function submit(): void {

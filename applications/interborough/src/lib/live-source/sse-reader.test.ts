@@ -1,46 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { parseServerSentEventChunk, readServerSentEventStream } from './sse-reader.ts';
-
-describe('parseServerSentEventChunk', () => {
-  test('parses a single complete frame with id/event/data', () => {
-    const { frames, remainder } = parseServerSentEventChunk(
-      'id: 5\nevent: workflow:completed\ndata: {"ok":true}\n\n',
-    );
-    expect(frames).toEqual([{ id: '5', event: 'workflow:completed', data: '{"ok":true}' }]);
-    expect(remainder).toBe('');
-  });
-
-  test('joins multi-line data fields with \\n', () => {
-    const { frames } = parseServerSentEventChunk('data: line one\ndata: line two\n\n');
-    expect(frames).toEqual([{ data: 'line one\nline two' }]);
-  });
-
-  test('carries an incomplete trailing block forward as the remainder', () => {
-    const first = parseServerSentEventChunk('event: ping\ndata: {"a":1');
-    expect(first.frames).toEqual([]);
-    expect(first.remainder).toBe('event: ping\ndata: {"a":1');
-
-    const second = parseServerSentEventChunk('}\n\n', first.remainder);
-    expect(second.frames).toEqual([{ event: 'ping', data: '{"a":1}' }]);
-    expect(second.remainder).toBe('');
-  });
-
-  test('ignores comment lines and normalizes CRLF', () => {
-    const { frames } = parseServerSentEventChunk(':heartbeat\r\ndata: hi\r\n\r\n');
-    expect(frames).toEqual([{ data: 'hi' }]);
-  });
-
-  test('parses multiple frames in one chunk', () => {
-    const { frames } = parseServerSentEventChunk('data: one\n\ndata: two\n\n');
-    expect(frames).toEqual([{ data: 'one' }, { data: 'two' }]);
-  });
-
-  test('skips an empty block (no id/event/data)', () => {
-    const { frames } = parseServerSentEventChunk('\n\ndata: real\n\n');
-    expect(frames).toEqual([{ data: 'real' }]);
-  });
-});
+import { readServerSentEventStream } from './sse-reader.ts';
 
 function streamResponse(chunks: readonly string[]): Response {
   const encoder = new TextEncoder();
@@ -54,6 +14,19 @@ function streamResponse(chunks: readonly string[]): Response {
 }
 
 describe('readServerSentEventStream', () => {
+  test('delivers the same multiline event when a network chunk ends on CR', async () => {
+    const chunks = [
+      'id: 5\r\nevent: workflow:completed\r\ndata: first\r',
+      '\ndata: second\r\n\r\n',
+    ];
+    const split = await Array.fromAsync(readServerSentEventStream(streamResponse(chunks)));
+    const whole = await Array.fromAsync(
+      readServerSentEventStream(streamResponse([chunks.join('')])),
+    );
+    expect(split).toEqual(whole);
+    expect(whole).toEqual([{ id: '5', event: 'workflow:completed', data: 'first\nsecond' }]);
+  });
+
   test('yields frames split arbitrarily across chunk boundaries', async () => {
     const response = streamResponse(['event: a\ndata: 1\n\nev', 'ent: b\ndata: 2\n\n']);
     const frames = [];

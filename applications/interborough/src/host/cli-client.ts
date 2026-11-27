@@ -4,7 +4,8 @@ import { createCatalogSnapshot } from '@lostgradient/weft';
 
 import { executeAssets } from './cli-assets.ts';
 import { executeAutomation } from './cli-automation.ts';
-import { executeChat, executeReviewsOrRuns } from './cli-chat.ts';
+import { executeChats, executeReviewsOrRuns } from './cli-chat-management.ts';
+import { executeChat } from './cli-chat.ts';
 import { executeConnection } from './cli-client-connections.ts';
 import { readPreferences } from './cli-client-preferences.ts';
 import { request, type CliTarget } from './cli-client-transport.ts';
@@ -190,6 +191,7 @@ export const CLI_OPERATION_MAPPINGS = Object.freeze({
     'bureau.tasks.get',
     'bureau.tasks.inspect',
     'bureau.tasks.cancel',
+    'bureau.tasks.respond',
     'bureau.tasks.explain',
     'bureau.tasks.explanation.get',
     'bureau.tasks.explanation.generate',
@@ -723,7 +725,7 @@ const helpText: Record<string, string> = {
   chat: 'Usage: interborough chat --agent <name> [message]\n\n  --message-file <path>  Read one message from a file',
   chats: 'Usage: interborough chats <list|get|send|fork|rename|delete|configure> [options]',
   reviews: 'Usage: interborough reviews <list|get|approve|reject> [options]',
-  runs: 'Usage: interborough runs <list|get|inspect|explain|retry|watch|cancel> [options]\n\n  --kind task|workflow  Required for get, inspect, watch and cancel; list defaults to task\n  explain <id>         Why a failed run failed, from what Bureau stored (either kind of run)\n  explain <id> --model  Ask a model to explain a failed agent run at more length; it spends tokens and is stored on the run\n  retry <id>           Run a failed workflow run again from the step it failed at; --step N names it\n  --output jsonl       Emit one typed watch record per line',
+  runs: 'Usage: interborough runs <list|get|inspect|explain|retry|watch|cancel|respond> [options]\n\n  --kind task|workflow  Required for get, inspect, watch and cancel; list defaults to task\n  explain <id>         Why a failed run failed, from what Bureau stored (either kind of run)\n  explain <id> --model  Ask a model to explain a failed agent run at more length; it spends tokens and is stored on the run\n  retry <id>           Run a failed workflow run again from the step it failed at; --step N names it\n  respond <id>         Answer a task waiting for human input or give a decision\n  --output jsonl       Emit one typed watch record per line',
   events:
     'Usage: interborough events watch [options]\n\n  --kind task|workflow  Required for watch',
   audit: 'Usage: interborough audit list [options]',
@@ -1226,12 +1228,15 @@ async function execute(
     return { data: { url: resolved.url } };
   }
   if (parsed.command === 'mcp') return executeMcp(resolved, parsed);
-  if (parsed.command === 'chat' || parsed.command === 'chats')
-    return executeChat(resolved, parsed, dependencies);
-  if (parsed.command === 'reviews' || parsed.command === 'runs' || parsed.command === 'events')
-    return parsed.command === 'runs' || parsed.command === 'events'
-      ? executeRuns(resolved, parsed, dependencies)
-      : executeReviewsOrRuns(resolved, parsed, dependencies);
+  if (parsed.command === 'chat') return executeChat(resolved, parsed, dependencies);
+  if (parsed.command === 'chats') return executeChats(resolved, parsed, dependencies);
+  if (
+    parsed.command === 'reviews' ||
+    (parsed.command === 'runs' && parsed.arguments[0] === 'respond')
+  )
+    return executeReviewsOrRuns(resolved, parsed, dependencies);
+  if (parsed.command === 'runs' || parsed.command === 'events')
+    return executeRuns(resolved, parsed, dependencies);
   if (parsed.command === 'audit') return executeAudit(resolved, parsed, dependencies);
   if (parsed.command === 'agents' || parsed.command === 'workflows')
     return executeDefinitions(resolved, parsed, dependencies);

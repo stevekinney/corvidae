@@ -1,7 +1,7 @@
 import type { CatalogOperationTypes } from '@lostgradient/bureau-sdk';
 import { formatCost } from '../lib/format/cost.ts';
 import {
-  catalogRead,
+  catalogCall,
   faultRefusedBeforeAnyEffect,
   request,
   stream,
@@ -366,7 +366,7 @@ async function list(
     } else {
       const workflow = option(parsed, 'workflow');
       const offset = numberOption(parsed, 'offset');
-      response = await catalogRead(target, parsed, dependencies, 'bureau.workflows.runs.list', {
+      response = await catalogCall(target, parsed, dependencies, 'bureau.workflows.runs.list', {
         ...(workflow === undefined ? {} : { workflow }),
         ...(status === undefined ? {} : { status }),
         ...(limit === undefined ? {} : { limit }),
@@ -385,7 +385,7 @@ async function list(
   } else {
     const contextId = option(parsed, 'context');
     const agentName = option(parsed, 'agent-name');
-    response = await catalogRead(target, parsed, dependencies, 'bureau.tasks.list', {
+    response = await catalogCall(target, parsed, dependencies, 'bureau.tasks.list', {
       ...(contextId === undefined ? {} : { contextId }),
       ...(agentName === undefined ? {} : { agentName }),
       ...(status === undefined ? {} : { status }),
@@ -422,13 +422,13 @@ async function getOrInspect(
     throw Object.assign(new Error('runs inspect supports --kind task only.'), { usage: true });
   const step = inspect ? numberOption(parsed, 'step') : undefined;
   const response = inspect
-    ? await catalogRead(target, parsed, dependencies, 'bureau.tasks.inspect', {
+    ? await catalogCall(target, parsed, dependencies, 'bureau.tasks.inspect', {
         taskId: rawId,
         ...(step === undefined ? {} : { step }),
       })
     : kind === 'task'
-      ? await catalogRead(target, parsed, dependencies, 'bureau.tasks.get', { taskId: rawId })
-      : await catalogRead(target, parsed, dependencies, 'bureau.workflows.runs.get', {
+      ? await catalogCall(target, parsed, dependencies, 'bureau.tasks.get', { taskId: rawId })
+      : await catalogCall(target, parsed, dependencies, 'bureau.workflows.runs.get', {
           runId: rawId,
         });
   const data = withIdentifier(kind, response.data, rawId);
@@ -482,18 +482,23 @@ async function cancel(
   // The operation's own answer to `dryRun: true`, printed as the server sent it.
   if (isDryRun(parsed))
     return kind === 'task'
-      ? rpc(target, parsed, dependencies, 'bureau.tasks.cancel', { taskId: rawId, dryRun: true })
-      : rpc(target, parsed, dependencies, 'weft.workflows.cancel', {
+      ? catalogCall(target, parsed, dependencies, 'bureau.tasks.cancel', {
+          taskId: rawId,
+          dryRun: true,
+        })
+      : catalogCall(target, parsed, dependencies, 'weft.workflows.cancel', {
           workflowId: rawId,
           dryRun: true,
         });
   const response =
     kind === 'task'
-      ? await rpc(target, parsed, dependencies, 'bureau.tasks.cancel', {
+      ? await catalogCall(target, parsed, dependencies, 'bureau.tasks.cancel', {
           taskId: rawId,
           waitMilliseconds: numberOption(parsed, 'wait') ?? 0,
         })
-      : await rpc(target, parsed, dependencies, 'weft.workflows.cancel', { workflowId: rawId });
+      : await catalogCall(target, parsed, dependencies, 'weft.workflows.cancel', {
+          workflowId: rawId,
+        });
   const body = record(response.data) ?? {};
   if (body['status'] === 'already-terminal')
     return { ...response, data: { kind, id: qualified(kind, rawId), ...body, terminal: true } };
@@ -574,7 +579,7 @@ async function explain(
   const rawId = identifier(parsed);
   try {
     if (parsed.options.get('model') === true) {
-      const response = await rpc(
+      const response = await catalogCall(
         target,
         parsed,
         dependencies,
@@ -587,7 +592,7 @@ async function explain(
       if (written === undefined || parsed.output !== 'text') return response;
       return { ...response, data: modelExplanationText(written) };
     }
-    const response = await catalogRead(target, parsed, dependencies, 'bureau.tasks.explain', {
+    const response = await catalogCall(target, parsed, dependencies, 'bureau.tasks.explain', {
       runId: rawId,
     });
     const explanation = record(response.data);
@@ -631,7 +636,7 @@ async function retry(
   if (step === 0) throw Object.assign(new Error('Option --step counts from 1.'), { usage: true });
   let response: CliCommandResult;
   try {
-    response = await rpc(target, parsed, dependencies, 'bureau.workflows.runs.retry', {
+    response = await catalogCall(target, parsed, dependencies, 'bureau.workflows.runs.retry', {
       runId: rawId,
       ...(step === undefined ? {} : { step }),
     });
@@ -672,7 +677,7 @@ export async function executeRuns(
   if (action === 'explain') return explain(target, parsed, dependencies);
   if (action === 'retry') return retry(target, parsed, dependencies);
   throw Object.assign(
-    new Error('Usage: runs list|get|inspect|explain|retry|watch|cancel [options].'),
+    new Error('Usage: runs list|get|inspect|explain|retry|watch|cancel|respond [options].'),
     {
       usage: true,
     },
@@ -687,23 +692,27 @@ export async function executeAudit(
 ): Promise<CliCommandResult> {
   if ((parsed.arguments[0] ?? 'list') !== 'list')
     throw Object.assign(new Error('Usage: audit list [options].'), { usage: true });
-  const params: RecordValue = {
-    ...(option(parsed, 'run-id') === undefined ? {} : { runId: option(parsed, 'run-id') }),
-    ...(option(parsed, 'type') === undefined ? {} : { type: option(parsed, 'type') }),
-    ...(option(parsed, 'principal') === undefined
-      ? {}
-      : { principal: option(parsed, 'principal') }),
-    ...(numberOption(parsed, 'since') === undefined
-      ? {}
-      : { since: numberOption(parsed, 'since') }),
-    ...(numberOption(parsed, 'until') === undefined
-      ? {}
-      : { until: numberOption(parsed, 'until') }),
-    ...(option(parsed, 'format') === undefined ? {} : { format: option(parsed, 'format') }),
-    ...(option(parsed, 'cursor') === undefined ? {} : { cursor: option(parsed, 'cursor') }),
-    ...(numberOption(parsed, 'limit') === undefined
-      ? {}
-      : { limit: numberOption(parsed, 'limit') }),
+  const runId = option(parsed, 'run-id');
+  const type = option(parsed, 'type');
+  const principal = option(parsed, 'principal');
+  const since = numberOption(parsed, 'since');
+  const until = numberOption(parsed, 'until');
+  const format = option(parsed, 'format');
+  const cursor = option(parsed, 'cursor');
+  const limit = numberOption(parsed, 'limit');
+  const params = {
+    ...(runId === undefined ? {} : { runId }),
+    ...(type === undefined ? {} : { type }),
+    ...(principal === undefined ? {} : { principal }),
+    ...(since === undefined ? {} : { since }),
+    ...(until === undefined ? {} : { until }),
+    ...(cursor === undefined ? {} : { cursor }),
+    ...(limit === undefined ? {} : { limit }),
   };
-  return rpc(target, parsed, dependencies, 'bureau.audit.query', params);
+  if (format !== undefined && format !== 'json' && format !== 'jsonl')
+    return rpc(target, parsed, dependencies, 'bureau.audit.query', { ...params, format });
+  return catalogCall(target, parsed, dependencies, 'bureau.audit.query', {
+    ...params,
+    ...(format === undefined ? {} : { format }),
+  });
 }

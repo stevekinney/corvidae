@@ -493,8 +493,16 @@ test('compiled memory export and deletion preserve pagination and denial', async
 
 // spawn-free: compiled subprocesses are the behavior under test and use the hang guard.
 test('compiled upload and download preserve bytes and refuse implicit overwrite', async () => {
+  const start = requests.length;
   const uploaded = await invoke(['assets', 'upload', '--file', inputFile, '--url', url]);
   expect(uploaded.exitCode).toBe(0);
+  expect(requests.slice(start).map(({ method }) => method)).toEqual([
+    'bureau.assets.uploads.create',
+    'bureau.assets.uploads.append',
+    'bureau.assets.uploads.append',
+    'bureau.assets.uploads.append',
+    'bureau.assets.uploads.complete',
+  ]);
   expect(requests.some((request) => request.method === 'bureau.assets.uploads.create')).toBe(true);
   expect(requests.some((request) => request.method === 'bureau.assets.uploads.complete')).toBe(
     true,

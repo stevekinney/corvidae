@@ -1,27 +1,11 @@
 import { readFile } from 'node:fs/promises';
 
-import { request, type CliTarget } from './cli-client-transport.ts';
+import { catalogCall, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, Parsed } from './cli-client.ts';
 
 function resultOf(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
   return Object.fromEntries(Object.entries(value));
-}
-
-async function call(
-  target: CliTarget,
-  parsed: Parsed,
-  dependencies: CliClientDependencies,
-  method: string,
-  params: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  const response = await request(target, '/bureau/jsonrpc', parsed, dependencies, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: crypto.randomUUID(), method, params }),
-  });
-  const body = resultOf(response.data);
-  return resultOf(body['result']);
 }
 
 /** Uploads an attachment as raw bytes through Bureau's managed asset lifecycle. */
@@ -32,25 +16,33 @@ export async function uploadAttachment(
   path: string,
 ): Promise<Record<string, unknown>> {
   const bytes = await readFile(path);
-  const created = await call(target, parsed, dependencies, 'bureau.assets.uploads.create', {
+  const created = await catalogCall(target, parsed, dependencies, 'bureau.assets.uploads.create', {
     declaredByteLength: bytes.byteLength,
   });
-  const uploadId = typeof created['uploadId'] === 'string' ? created['uploadId'] : undefined;
-  if (uploadId === undefined) throw new Error('The host returned no asset upload identifier.');
+  const uploadId = resultOf(created.data)['uploadId'];
+  if (typeof uploadId !== 'string')
+    throw new Error('The host returned no asset upload identifier.');
   try {
     const chunkSize = 256 * 1024;
     for (let offset = 0; offset < bytes.byteLength; offset += chunkSize) {
-      await call(target, parsed, dependencies, 'bureau.assets.uploads.append', {
+      await catalogCall(target, parsed, dependencies, 'bureau.assets.uploads.append', {
         uploadId,
         chunk: Buffer.from(
           bytes.subarray(offset, Math.min(offset + chunkSize, bytes.byteLength)),
         ).toString('base64'),
       });
     }
-    return await call(target, parsed, dependencies, 'bureau.assets.uploads.complete', { uploadId });
+    const completed = await catalogCall(
+      target,
+      parsed,
+      dependencies,
+      'bureau.assets.uploads.complete',
+      { uploadId },
+    );
+    return resultOf(completed.data);
   } catch (error) {
     try {
-      await call(target, parsed, dependencies, 'bureau.assets.uploads.abort', { uploadId });
+      await catalogCall(target, parsed, dependencies, 'bureau.assets.uploads.abort', { uploadId });
     } catch {
       // The original mutation error is the actionable result; abort is best-effort cleanup.
     }

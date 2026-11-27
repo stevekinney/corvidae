@@ -1,9 +1,8 @@
 <script lang="ts">
   /**
    * Replay read-only view (plan T3.3): one notice, a Cinder Alert inside the frame, says this is a
-   * replay and changes nothing; the frame has no colored edge. Reconstructs historical state via
-   * `client.replayTo` — a side-effecting READ (`weft.workflows.replay`, `workflows:read` scope),
-   * never mutates the live workflow.
+   * replay and changes nothing. The `weft.workflows.replay` operation reconstructs historical
+   * state and requires the `workflows:read` scope.
    */
   import {
     Alert,
@@ -13,17 +12,16 @@
     Skeleton,
   } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
-  import type { HttpClient } from '@lostgradient/weft';
   import { Rewind } from '@lucide/svelte';
 
   import { RUN_CHECKPOINTS_COPY } from '../../../../app/copy/runs.ts';
   import { getPrincipalStore, scopeGate } from '../../../../lib/scopes.svelte.ts';
   import { formatBytes } from '../../../../lib/format/index.ts';
   import { EAGER_REVISION_HEDGE } from '../../../../lib/workflow-revision.ts';
-  import { replayQueryKey, replayWorkflow } from './checkpoints-data.ts';
+  import { replayQueryKey, replayWorkflow, type ReplayClient } from './checkpoints-data.ts';
 
   interface ReplayViewProps {
-    readonly client: Pick<HttpClient, 'replayTo'>;
+    readonly client: ReplayClient;
     readonly workflowId: string;
     readonly step: number;
   }

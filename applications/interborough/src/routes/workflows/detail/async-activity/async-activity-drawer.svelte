@@ -21,7 +21,7 @@
     Textarea,
   } from '@lostgradient/cinder';
   import { createMutation } from '@tanstack/svelte-query';
-  import type { HttpClient, WeftClientActivity } from '@lostgradient/weft';
+  import type { HttpClient } from '@lostgradient/weft';
   import { Clock } from '@lucide/svelte';
 
   import { faultTreatment } from '../../../../lib/faults.ts';
@@ -30,9 +30,12 @@
 
   interface AsyncActivityDrawerProps {
     readonly client: {
-      readonly activity: Pick<WeftClientActivity, 'complete' | 'completeExceptionally'>;
-      /** When it carries `weft.tasks.get`, the drawer also shows the activity's worker provenance. */
-      readonly operations?: Partial<Pick<HttpClient['operations'], 'weft.tasks.get'>>;
+      /** `weft.tasks.get` is optional and adds the activity's worker provenance. */
+      readonly operations: Pick<
+        HttpClient['operations'],
+        'weft.activities.complete' | 'weft.activities.fail'
+      > &
+        Partial<Pick<HttpClient['operations'], 'weft.tasks.get'>>;
     };
     readonly open: boolean;
     readonly activity: AttachedPendingActivity;
@@ -84,7 +87,7 @@
   }
 
   const resolveMutation = createMutation(() => ({
-    mutationFn: async () => {
+    mutationFn: async (token: string) => {
       const parsed = parsePayload(payloadText);
       if (!parsed.ok) {
         payloadError = parsed.error;
@@ -92,12 +95,18 @@
       }
       payloadError = null;
       if (mode === 'complete') {
-        await client.activity.complete(activity.token, parsed.value);
+        await client.operations['weft.activities.complete']({
+          token,
+          ...(parsed.value === undefined ? {} : { result: parsed.value }),
+        });
       } else {
-        await client.activity.completeExceptionally(activity.token, parsed.value);
+        await client.operations['weft.activities.fail']({
+          token,
+          error: { message: String(parsed.value) },
+        });
       }
     },
-    onSuccess: () => onResolved(activity.token),
+    onSuccess: (_answer, token) => onResolved(token),
   }));
 
   const spentToken = $derived(
@@ -105,10 +114,10 @@
   );
 
   function submit(): void {
-    resolveMutation.mutate();
+    resolveMutation.mutate(activity.token);
   }
 
-  const readTask = $derived(client.operations?.['weft.tasks.get']);
+  const readTask = $derived(client.operations['weft.tasks.get']);
 </script>
 
 <Drawer bind:open={localOpen} title="Complete async activity">

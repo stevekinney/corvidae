@@ -1,18 +1,11 @@
 /**
  * Checkpoints tab data access (plan T3.3): `GET …/checkpoints` (list),
  * `GET …/checkpoints/:step` (one checkpoint's raw state), `GET
- * …/replay/:step` (`client.replayTo`, read-only reconstruction), and
- * `POST …/fork` (`client.fork`).
+ * …/replay/:step` (read-only reconstruction), and
+ * `POST …/fork` (fork preview and creation).
  *
- * `weft.workflows.checkpoints.list`/`.get` have no ergonomic `WeftClient`
- * method (verified against `weft/src/client/interface.ts` — only
- * `replayTo`/`fork` are ergonomic) — called via `client.operations[...]`
- * per plan §4 ("ergonomic methods first, `client.operations['weft.<name>']`
- * for the rest"). Both require `workflows:read`
- * (`weft/src/server/operations/{list-checkpoints,get-checkpoint-at}.ts`).
- * `client.replayTo` (`weft.workflows.replay`) also requires
- * `workflows:read`; `client.fork` (`weft.workflows.fork`) requires
- * `workflows:write` — all verified against their operation definitions.
+ * The generated checkpoint reads and replay require `workflows:read`.
+ * Forking requires `workflows:write`.
  *
  * Query keys are local to this module (matching `workflow-timeline-data.ts`'s
  * precedent) rather than added to the frozen `src/lib/query.ts` — that file
@@ -20,7 +13,7 @@
  *
  * ## Why the results are runtime-validated, not just typed
  *
- * Both operations declare `outputSchema: z.unknown()` server-side (weft
+ * The reads declare `outputSchema: z.unknown()` server-side (Weft
  * intentionally loosens the wire contract for these — see the operation
  * definitions), and the GENERATED client catalog
  * (`weft/src/cli/generated/operation-client.generated.ts`, the actual
@@ -33,27 +26,8 @@
  * — this module validates that structurally at the boundary rather than
  * asserting it blindly, per this repo's `as`-cast policy.
  */
-import type {
-  CheckpointState,
-  CheckpointSummary,
-  ForkOptions,
-  HttpClient,
-  WorkflowReplay,
-} from '@lostgradient/weft';
+import type { CheckpointState, CheckpointSummary, WorkflowReplay } from '@lostgradient/weft';
 import type { QueryKey } from '@tanstack/svelte-query';
-
-/**
- * Narrowed alternative to `Pick<HttpClient, 'fork'>` — this track only ever
- * reads `.id` off the returned handle (`fork-dialog.svelte`). `HttpClient`'s
- * real `fork()` resolves a full `ClientHandle` (`TypedEventTarget` +
- * `Disposable` + many methods), which is a heavier interface to construct
- * test doubles for than the data this UI actually consumes; a function
- * returning `Promise<ClientHandle>` is still structurally assignable here
- * (return types are covariant), so the real client works unchanged.
- */
-export interface ForkClient {
-  fork(workflowId: string, options?: ForkOptions): Promise<{ readonly id: string }>;
-}
 
 /**
  * The one read the fork dialog's open-time refetch needs (COR-15): the
@@ -148,10 +122,45 @@ export async function getCheckpointAt(
   );
 }
 
-export function replayWorkflow(
-  client: Pick<HttpClient, 'replayTo'>,
+/** The portion of the opaque replay response that the inspector displays. */
+type WorkflowReplayInspection = Pick<WorkflowReplay, 'compactedBefore' | 'revision'> & {
+  readonly checkpoint: CheckpointState;
+  readonly accumulatedResults: readonly unknown[];
+  readonly events: readonly unknown[];
+};
+
+export interface ReplayClient {
+  readonly operations: {
+    readonly 'weft.workflows.replay': (input: {
+      workflowId: string;
+      step: number;
+    }) => Promise<unknown>;
+  };
+}
+
+export async function replayWorkflow(
+  client: ReplayClient,
   workflowId: string,
   step: number,
-): Promise<WorkflowReplay | null> {
-  return client.replayTo(workflowId, step);
+): Promise<WorkflowReplayInspection | null> {
+  const response = await client.operations['weft.workflows.replay']({ workflowId, step });
+  if (response === null) return null;
+  if (!isRecord(response))
+    throw new TypeError('weft.workflows.replay returned an unexpected shape');
+  const { checkpoint, accumulatedResults, events, compactedBefore, revision } = response;
+  if (
+    !isCheckpointState(checkpoint) ||
+    !Array.isArray(accumulatedResults) ||
+    !Array.isArray(events) ||
+    (compactedBefore !== undefined && typeof compactedBefore !== 'number') ||
+    (revision !== undefined && typeof revision !== 'string')
+  )
+    throw new TypeError('weft.workflows.replay returned an unexpected shape');
+  return {
+    checkpoint,
+    accumulatedResults,
+    events,
+    ...(compactedBefore === undefined ? {} : { compactedBefore }),
+    ...(revision === undefined ? {} : { revision }),
+  };
 }

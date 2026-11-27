@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing';
 import type { CheckpointState, CheckpointSummary, WorkflowReplay } from '@lostgradient/weft';
 
 import {
@@ -75,24 +76,42 @@ describe('getCheckpointAt', () => {
 });
 
 describe('replayWorkflow', () => {
-  test('delegates to client.replayTo', async () => {
+  test('preserves the replay fields returned by the generated operation', async () => {
     const replay: WorkflowReplay = {
       checkpoint: { step: 2, locals: {}, searchAttributes: {}, version: '1', createdAt: 1_000 },
       accumulatedResults: [],
       events: [],
     };
-    const received: { id: string | null; step: number | null } = { id: null, step: null };
+    const received: unknown[] = [];
     const client = {
-      replayTo: async (id: string, step: number) => {
-        received.id = id;
-        received.step = step;
-        return replay;
+      operations: {
+        'weft.workflows.replay': async (input: { workflowId: string; step: number }) => {
+          received.push(input);
+          return { ...replay, compactedBefore: 3, revision: 'revision-a' };
+        },
       },
     };
 
     const result = await replayWorkflow(client, 'wf-1', 2);
 
-    expect(received).toEqual({ id: 'wf-1', step: 2 });
-    expect(result).toBe(replay);
+    expect(received).toEqual([{ workflowId: 'wf-1', step: 2 }]);
+    expect(result).toEqual({ ...replay, compactedBefore: 3, revision: 'revision-a' });
+  });
+
+  test('rejects malformed replay data and preserves the legitimate empty answer', async () => {
+    const empty = await replayWorkflow(
+      { operations: { 'weft.workflows.replay': async () => null } },
+      'wf-1',
+      2,
+    );
+    expect(empty).toBeNull();
+    const problem = await throwingRejectionOf(
+      replayWorkflow(
+        { operations: { 'weft.workflows.replay': async () => ({ events: [] }) } },
+        'wf-1',
+        2,
+      ),
+    );
+    expect(problem).toThrow('weft.workflows.replay returned an unexpected shape');
   });
 });

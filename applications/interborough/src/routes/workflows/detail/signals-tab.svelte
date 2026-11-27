@@ -27,8 +27,11 @@
   } from './workflow-timeline-data.ts';
 
   interface SignalsTabProps {
-    readonly client: Pick<HttpClient, 'signal'> & {
-      readonly operations: Pick<HttpClient['operations'], 'weft.workflows.timeline.get'>;
+    readonly client: {
+      readonly operations: Pick<
+        HttpClient['operations'],
+        'weft.workflows.timeline.get' | 'weft.workflows.signal'
+      >;
     };
     readonly workflow: WorkflowState;
     /** Whether the principal holds `signals:write`, which `weft.workflows.signal` requires; open when omitted. */
@@ -60,7 +63,11 @@
 
   const sendSignalMutation = createMutation(() => ({
     mutationFn: async ({ name, payload }: { name: string; payload: unknown }) =>
-      client.signal(workflow.id, name, payload),
+      client.operations['weft.workflows.signal']({
+        workflowId: workflow.id,
+        signalName: name,
+        ...(payload === undefined ? {} : { payload }),
+      }),
     onSuccess: () => {
       signalName = '';
       payloadText = '';

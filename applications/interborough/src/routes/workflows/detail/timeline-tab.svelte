@@ -40,7 +40,6 @@
   } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import type {
-    WeftClientActivity,
     HttpClient,
     WorkflowFinalizerStatus,
     WorkflowTimelineEntry,
@@ -104,12 +103,14 @@
     readonly client: {
       readonly operations: Pick<
         HttpClient['operations'],
-        typeof PENDING_ASYNC_ACTIVITY_OPERATION | 'weft.workflows.timeline.get'
+        | typeof PENDING_ASYNC_ACTIVITY_OPERATION
+        | 'weft.workflows.timeline.get'
+        | 'weft.activities.complete'
+        | 'weft.activities.fail'
       > &
         Partial<Pick<HttpClient['operations'], 'weft.tasks.get'>> &
         Partial<StreamChunksClient['operations']> &
         LogsClient['operations'];
-      readonly activity: Pick<WeftClientActivity, 'complete' | 'completeExceptionally'>;
     };
     readonly workflow: WorkflowState;
     readonly documentWorkflow?: boolean | undefined;

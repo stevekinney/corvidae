@@ -139,7 +139,8 @@ test('catalog consumers remain classified against the served catalogs', async ()
             const generated =
               ts.isCallExpression(node.parent) &&
               ts.isIdentifier(node.parent.expression) &&
-              node.parent.expression.text === 'catalogRead';
+              (node.parent.expression.text === 'catalogCall' ||
+                node.parent.expression.text === 'catalogFileCall');
             (generated ? discoveredGeneratedCli : discoveredCli).push(
               `${path} ${callerOf(node, tree)} ${node.text}`,
             );
@@ -307,13 +308,18 @@ test('catalog consumers remain classified against the served catalogs', async ()
         entry.operation,
       ),
     ).toBe(true);
-    expect(entry.classification).toBe('eligible');
+    expect(['eligible', 'exceptional']).toContain(entry.classification);
     expect(entry.transport).toBe('Bureau JSON-RPC');
     expect(entry.issue).toMatch(/^COR-262[35]$/u);
+    if (entry.classification === 'exceptional') expect(entry.condition).toBeString();
   }
   for (const entry of inventory.cliGenerated) {
     expect(names.has(entry.operation)).toBe(true);
-    expect((BUREAU_CLIENT_NAMES as readonly string[]).includes(entry.operation)).toBe(true);
+    expect(
+      ([...CLIENT_OPERATION_NAMES, ...BUREAU_CLIENT_NAMES] as readonly string[]).includes(
+        entry.operation,
+      ),
+    ).toBe(true);
     expect(entry.classification).toBe('generated');
     expect(entry.transport).toBe('Bureau JSON-RPC');
   }
@@ -331,26 +337,10 @@ test('catalog consumers remain classified against the served catalogs', async ()
       )
       .toSorted(),
   );
-  expect(discoveredCliTemplates.toSorted()).toEqual(
-    inventory.cliTemplates
-      .flatMap((entry) =>
-        Array<string>(entry.count).fill(`${entry.path} ${entry.caller} ${entry.expression}`),
-      )
-      .toSorted(),
-  );
-  for (const entry of inventory.cliTemplates) {
-    const source = await readFile(join(sourceRoot, entry.path), 'utf8');
-    expect(source.includes(entry.guard)).toBe(true);
-    expect(entry.operations.length).toBeGreaterThan(0);
-    for (const operation of entry.operations) expect(names.has(operation)).toBe(true);
-    expect(entry.classification).toBe('eligible');
-    expect(entry.transport).toBe('Bureau JSON-RPC');
-    expect(entry.issue).toBe('COR-2625');
-  }
+  expect(discoveredCliTemplates).toEqual([]);
   const cliOperations = new Set([
     ...inventory.cli.map((entry) => entry.operation),
     ...inventory.cliGenerated.map((entry) => entry.operation),
-    ...inventory.cliTemplates.flatMap((entry) => entry.operations),
   ]);
   for (const operations of Object.values(CLI_OPERATION_MAPPINGS))
     for (const operation of operations)

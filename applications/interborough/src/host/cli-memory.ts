@@ -1,4 +1,4 @@
-import { catalogRead, request, type CliTarget } from './cli-client-transport.ts';
+import { catalogCall, request, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 import { isDryRun } from './cli-destructive.ts';
 
@@ -76,7 +76,7 @@ async function memory(
   if (action === 'list') {
     const limit = integerOption(parsed, 'limit');
     const offset = integerOption(parsed, 'offset');
-    return catalogRead(target, parsed, dependencies, 'bureau.memory.list', {
+    return catalogCall(target, parsed, dependencies, 'bureau.memory.list', {
       agentId,
       ...(limit === undefined ? {} : { limit }),
       ...(offset === undefined ? {} : { offset }),
@@ -84,14 +84,14 @@ async function memory(
   }
   if (action === 'search') {
     const limit = integerOption(parsed, 'limit');
-    return catalogRead(target, parsed, dependencies, 'bureau.memory.search', {
+    return catalogCall(target, parsed, dependencies, 'bureau.memory.search', {
       agentId,
       query: option(parsed, 'query') ?? parsed.arguments[1] ?? '',
       ...(limit === undefined ? {} : { limit }),
     });
   }
   if (action === 'export') {
-    const response = await catalogRead(target, parsed, dependencies, 'bureau.memory.export', {
+    const response = await catalogCall(target, parsed, dependencies, 'bureau.memory.export', {
       agentId,
     });
     const value = record(response.data);
@@ -108,25 +108,34 @@ async function memory(
     };
   }
   if (action === 'get')
-    return catalogRead(target, parsed, dependencies, 'bureau.memory.get', {
+    return catalogCall(target, parsed, dependencies, 'bureau.memory.get', {
       agentId,
       id: identifier(parsed),
     });
-  if (action === 'remember')
-    return rpc(target, parsed, dependencies, 'bureau.memory.remember', {
+  if (action === 'remember') {
+    const content = memoryInput(parsed);
+    const kind = option(parsed, 'kind');
+    if (kind !== undefined && kind !== 'fact' && kind !== 'how-to')
+      return rpc(target, parsed, dependencies, 'bureau.memory.remember', {
+        agentId,
+        content,
+        kind,
+      });
+    return catalogCall(target, parsed, dependencies, 'bureau.memory.remember', {
       agentId,
-      content: memoryInput(parsed),
-      ...(option(parsed, 'kind') === undefined ? {} : { kind: option(parsed, 'kind') }),
+      content,
+      ...(kind === undefined ? {} : { kind }),
     });
+  }
   if (action === 'correct')
-    return rpc(target, parsed, dependencies, 'bureau.memory.correct', {
+    return catalogCall(target, parsed, dependencies, 'bureau.memory.correct', {
       agentId,
       id: identifier(parsed),
       content: memoryInput(parsed),
     });
   // `memory forget` cannot be undone: `gateDestructiveAction` asks before this runs.
   if (action === 'forget')
-    return rpc(target, parsed, dependencies, 'bureau.memory.forget', {
+    return catalogCall(target, parsed, dependencies, 'bureau.memory.forget', {
       agentId,
       id: identifier(parsed),
       ...(isDryRun(parsed) ? { dryRun: true } : {}),

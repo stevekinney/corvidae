@@ -164,7 +164,7 @@ export interface SubmitReviewDecisionVariables {
 }
 
 /**
- * Mutation for `POST /v1/reviews/:reviewId/decision` of the engine. On success it asks every review
+ * Mutation for `weft.reviews.decision.submit`. On success it asks every review
  * list again: a decision moves a review from the `pending` list to the `completed` one, so both are
  * stale whichever state the decision was submitted from.
  *
@@ -179,8 +179,9 @@ export function submitReviewDecisionMutation(
   const queryClient = useQueryClient();
 
   return createMutation(() => ({
-    mutationFn: ({ reviewId, options }: SubmitReviewDecisionVariables) =>
-      client.submitReview(reviewId, options),
+    mutationFn: async ({ reviewId, options }: SubmitReviewDecisionVariables) => {
+      await client.operations['weft.reviews.decision.submit']({ ...options, reviewId });
+    },
     onSuccess: () => {
       void invalidateReviewQueries(queryClient);
     },

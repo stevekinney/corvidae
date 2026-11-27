@@ -63,6 +63,7 @@ export function forkOperations(overrides: ForkOperationOverrides = {}): {
         forkPoint: 2,
         steps: [],
       })),
-    'weft.workflows.fork': overrides.fork ?? (async () => previewAnswer()),
+    'weft.workflows.fork':
+      overrides.fork ?? (async ({ dryRun }) => (dryRun ? previewAnswer() : { id: 'wf-forked-1' })),
   };
 }

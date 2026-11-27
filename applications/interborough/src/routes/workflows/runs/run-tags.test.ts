@@ -23,10 +23,40 @@ function workflow(overrides: Partial<WorkflowState> = {}): WorkflowState {
   };
 }
 
-function baseClient() {
+function baseClient(
+  callbacks: {
+    addTags?: (workflowId: string, tag: string) => Promise<void>;
+    removeTags?: (workflowId: string, tag: string) => Promise<void>;
+  } = {},
+) {
+  function firstTag(tags: unknown): string {
+    if (!Array.isArray(tags) || tags.length !== 1 || typeof tags[0] !== 'string')
+      throw new Error('Expected a one-tag operation');
+    return tags[0];
+  }
   return {
-    addTags: async () => {},
-    removeTags: async () => {},
+    operations: {
+      'weft.workflows.tags.add': async ({
+        workflowId,
+        tags,
+      }: {
+        workflowId: string;
+        tags?: unknown;
+      }) => {
+        await callbacks.addTags?.(workflowId, firstTag(tags));
+        return { ok: true as const };
+      },
+      'weft.workflows.tags.remove': async ({
+        workflowId,
+        tags,
+      }: {
+        workflowId: string;
+        tags?: unknown;
+      }) => {
+        await callbacks.removeTags?.(workflowId, firstTag(tags));
+        return { ok: true as const };
+      },
+    },
   };
 }
 
@@ -43,14 +73,14 @@ describe('the run’s tags', () => {
   test('Escape closes a draft without changing existing tags', async () => {
     const calls: string[] = [];
     let closed = false;
-    const client = {
+    const client = baseClient({
       addTags: async () => {
         calls.push('add');
       },
       removeTags: async () => {
         calls.push('remove');
       },
-    };
+    });
     const { getByPlaceholderText, getByText } = render(RunTagsHarness, {
       props: {
         client,
@@ -95,14 +125,13 @@ describe('the run’s tags', () => {
     expect(tagged.container.querySelector('[data-run-tags-none]')).toBeNull();
   });
 
-  test('adding a tag calls client.addTags with the trimmed value', async () => {
-    const added: { tag: string | null } = { tag: null };
-    const client = {
-      ...baseClient(),
-      addTags: async (_id: string, tag: string) => {
-        added.tag = tag;
+  test('submits the current workflow and trimmed tag with the add operation', async () => {
+    const added: Array<{ workflowId: string; tag: string }> = [];
+    const client = baseClient({
+      addTags: async (workflowId: string, tag: string) => {
+        added.push({ workflowId, tag });
       },
-    };
+    });
 
     const { getByPlaceholderText } = render(RunTagsHarness, {
       props: { client, workflow: workflow() },
@@ -112,20 +141,19 @@ describe('the run’s tags', () => {
     await fireEvent.input(input, { target: { value: '  urgent  ' } });
     await fireEvent.keyDown(input, { key: 'Enter' });
 
-    expect(added.tag).toBe('urgent');
+    await waitFor(() => expect(added).toEqual([{ workflowId: 'wf_1', tag: 'urgent' }]));
   });
 
   test('two edits before the engine answers each send their own write, and a tag added then removed is removed', async () => {
     const writes: string[] = [];
-    const client = {
-      ...baseClient(),
+    const client = baseClient({
       addTags: async (_id: string, tag: string) => {
         writes.push(`add ${tag}`);
       },
       removeTags: async (_id: string, tag: string) => {
         writes.push(`remove ${tag}`);
       },
-    };
+    });
     const { getByPlaceholderText, getByRole } = render(RunTagsHarness, {
       props: { client, workflow: workflow() },
     });
@@ -149,8 +177,7 @@ describe('the run’s tags', () => {
       releaseAdd = resolve;
     });
     const calls: string[] = [];
-    const client = {
-      ...baseClient(),
+    const client = baseClient({
       addTags: async (_id: string, tag: string) => {
         calls.push(`add ${tag}`);
         await addLanded;
@@ -160,7 +187,7 @@ describe('the run’s tags', () => {
         calls.push(`remove ${tag}`);
         stored.delete(tag);
       },
-    };
+    });
     const { getByPlaceholderText, getByRole } = render(RunTagsHarness, {
       props: { client, workflow: workflow() },
     });
@@ -181,15 +208,14 @@ describe('the run’s tags', () => {
 
   test('a failed tag write does not hold back the writes behind it', async () => {
     const stored = new Set<string>(['old']);
-    const client = {
-      ...baseClient(),
+    const client = baseClient({
       addTags: async () => {
         throw new Error('refused');
       },
       removeTags: async (_id: string, tag: string) => {
         stored.delete(tag);
       },
-    };
+    });
     const { getByPlaceholderText, getByRole } = render(RunTagsHarness, {
       props: { client, workflow: workflow({ tags: ['old'] }) },
     });
@@ -202,14 +228,13 @@ describe('the run’s tags', () => {
     await waitFor(() => expect([...stored]).toEqual([]));
   });
 
-  test('removing a tag calls client.removeTags', async () => {
+  test('submits the remove operation for an existing tag', async () => {
     const removed: { tag: string | null } = { tag: null };
-    const client = {
-      ...baseClient(),
+    const client = baseClient({
       removeTags: async (_id: string, tag: string) => {
         removed.tag = tag;
       },
-    };
+    });
 
     const { getByRole } = render(RunTagsHarness, {
       props: { client, workflow: workflow({ tags: ['prod'] }) },
@@ -222,12 +247,11 @@ describe('the run’s tags', () => {
 
   test('pressing Enter in the Add tag input submits it, and a blank tag is a no-op', async () => {
     const added: string[] = [];
-    const client = {
-      ...baseClient(),
+    const client = baseClient({
       addTags: async (_id: string, tag: string) => {
         added.push(tag);
       },
-    };
+    });
 
     const { getByPlaceholderText } = render(RunTagsHarness, {
       props: { client, workflow: workflow() },

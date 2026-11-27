@@ -7,7 +7,7 @@ import { QueryClient } from '@tanstack/svelte-query';
 
 import { AUTHORIZATION_SCOPES, type Principal } from '../../../../lib/scopes.svelte.ts';
 import CheckpointsTabHarness from './checkpoints-tab.test-harness.svelte';
-import { confirmFork } from './fork-comparison.test-support.ts';
+import { confirmFork, forkOperations, previewAnswer } from './fork-comparison.test-support.ts';
 
 function allScopesPrincipal(): Principal {
   return { scopes: AUTHORIZATION_SCOPES, unauthenticatedAccess: null };
@@ -34,9 +34,8 @@ function baseClient(
         createdAt: 0,
       }),
       'weft.workflows.revisions.list': async () => [],
+      'weft.workflows.replay': async (): Promise<WorkflowReplay | null> => null,
     },
-    replayTo: async (): Promise<WorkflowReplay | null> => null,
-    fork: async () => ({ id: 'wf-forked-1' }),
   };
 }
 
@@ -169,13 +168,19 @@ describe('CheckpointsTab', () => {
     await waitFor(() => expect(compared).toEqual(['wf-forked-1']));
   });
 
-  test('the default fork path sends only {fromStep} — no revision — to client.fork (WFT-117)', async () => {
+  test('the default generated fork sends only the workflow ID and step (WFT-117)', async () => {
     const forkCalls: unknown[] = [];
     const client = {
       ...baseClient(),
-      fork: async (_id: string, options?: unknown) => {
-        forkCalls.push(options);
-        return { id: 'wf-forked-1' };
+      operations: {
+        ...baseClient().operations,
+        ...forkOperations({
+          fork: async (input) => {
+            if (input.dryRun === true) return previewAnswer();
+            forkCalls.push(input);
+            return { id: 'wf-forked-1' };
+          },
+        }),
       },
     };
 
@@ -197,7 +202,7 @@ describe('CheckpointsTab', () => {
     await confirmFork(getByRole);
 
     await waitFor(() => {
-      expect(forkCalls).toEqual([{ fromStep: 3 }]);
+      expect(forkCalls).toEqual([{ workflowId: 'wf-1', fromStep: 3 }]);
     });
   });
 
@@ -225,12 +230,15 @@ describe('CheckpointsTab', () => {
   test('ReplayView renders replay.revision when present', async () => {
     const client = {
       ...baseClient(),
-      replayTo: async () => ({
-        checkpoint: { step: 3, locals: {}, searchAttributes: {}, version: '1', createdAt: 0 },
-        accumulatedResults: [],
-        events: [],
-        revision: 'order-processing-rev-a',
-      }),
+      operations: {
+        ...baseClient().operations,
+        'weft.workflows.replay': async () => ({
+          checkpoint: { step: 3, locals: {}, searchAttributes: {}, version: '1', createdAt: 0 },
+          accumulatedResults: [],
+          events: [],
+          revision: 'order-processing-rev-a',
+        }),
+      },
     };
 
     const { getByText } = render(CheckpointsTabHarness, {
@@ -262,11 +270,14 @@ describe('CheckpointsTab', () => {
   test('ReplayView says nothing was stored for an empty state, instead of an empty inspector', async () => {
     const client = {
       ...baseClient(),
-      replayTo: async () => ({
-        checkpoint: { step: 3, locals: {}, searchAttributes: {}, version: '1', createdAt: 0 },
-        accumulatedResults: [],
-        events: [],
-      }),
+      operations: {
+        ...baseClient().operations,
+        'weft.workflows.replay': async () => ({
+          checkpoint: { step: 3, locals: {}, searchAttributes: {}, version: '1', createdAt: 0 },
+          accumulatedResults: [],
+          events: [],
+        }),
+      },
     };
     const { getByText, getAllByText, container } = render(CheckpointsTabHarness, {
       props: {
@@ -287,11 +298,14 @@ describe('CheckpointsTab', () => {
   test('ReplayView explains an unknown revision when replay.revision is absent', async () => {
     const client = {
       ...baseClient(),
-      replayTo: async () => ({
-        checkpoint: { step: 3, locals: {}, searchAttributes: {}, version: '1', createdAt: 0 },
-        accumulatedResults: [],
-        events: [],
-      }),
+      operations: {
+        ...baseClient().operations,
+        'weft.workflows.replay': async () => ({
+          checkpoint: { step: 3, locals: {}, searchAttributes: {}, version: '1', createdAt: 0 },
+          accumulatedResults: [],
+          events: [],
+        }),
+      },
     };
 
     const { getByText } = render(CheckpointsTabHarness, {

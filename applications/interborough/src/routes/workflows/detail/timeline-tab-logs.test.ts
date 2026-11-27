@@ -53,8 +53,9 @@ function renderTimeline(entries: WorkflowTimelineEntry[], lines: RunLogLine[] | 
                   return { lines, dropped: 0 };
                 },
               }),
+          'weft.activities.complete': async () => ({ ok: true as const }),
+          'weft.activities.fail': async () => ({ ok: true as const }),
         },
-        activity: { complete: async () => {}, completeExceptionally: async () => {} },
       },
       workflow,
       liveObservations: new WorkflowLiveObservations(

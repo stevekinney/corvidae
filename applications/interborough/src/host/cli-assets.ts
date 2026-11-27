@@ -2,7 +2,7 @@ import { sha256BytesHexSync } from '@lostgradient/cryptography';
 import { link, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
-import { request, requestBytes, type CliTarget } from './cli-client-transport.ts';
+import { catalogCall, requestBytes, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 
 type RecordValue = Record<string, unknown>;
@@ -18,22 +18,6 @@ function option(parsed: Parsed, name: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-async function rpc(
-  target: CliTarget,
-  parsed: Parsed,
-  dependencies: CliClientDependencies,
-  method: string,
-  params: RecordValue,
-) {
-  const response = await request(target, '/bureau/jsonrpc', parsed, dependencies, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: `cli-${crypto.randomUUID()}`, method, params }),
-  });
-  const body = record(response.data);
-  return Object.hasOwn(body, 'result') ? { ...response, data: body['result'] } : response;
-}
-
 function inputPath(parsed: Parsed): string {
   const path = option(parsed, 'file') ?? parsed.arguments[1];
   if (path === undefined || path === '')
@@ -47,28 +31,35 @@ async function upload(
   dependencies: CliClientDependencies,
 ): Promise<CliCommandResult> {
   const bytes = await readFile(inputPath(parsed));
-  const createdResponse = await rpc(target, parsed, dependencies, 'bureau.assets.uploads.create', {
-    declaredByteLength: bytes.byteLength,
-    ...(option(parsed, 'media-type') === undefined
-      ? {}
-      : { declaredMediaType: option(parsed, 'media-type') }),
-  });
+  const mediaType = option(parsed, 'media-type');
+  const createdResponse = await catalogCall(
+    target,
+    parsed,
+    dependencies,
+    'bureau.assets.uploads.create',
+    {
+      declaredByteLength: bytes.byteLength,
+      ...(mediaType === undefined ? {} : { declaredMediaType: mediaType }),
+    },
+  );
   const created = record(createdResponse.data);
   const uploadId = typeof created['uploadId'] === 'string' ? created['uploadId'] : undefined;
   if (uploadId === undefined) throw new Error('The host returned no asset upload identifier.');
   try {
     const chunkSize = 256 * 1024;
     for (let offset = 0; offset < bytes.byteLength; offset += chunkSize)
-      await rpc(target, parsed, dependencies, 'bureau.assets.uploads.append', {
+      await catalogCall(target, parsed, dependencies, 'bureau.assets.uploads.append', {
         uploadId,
         chunk: Buffer.from(
           bytes.subarray(offset, Math.min(offset + chunkSize, bytes.byteLength)),
         ).toString('base64'),
       });
-    return await rpc(target, parsed, dependencies, 'bureau.assets.uploads.complete', { uploadId });
+    return await catalogCall(target, parsed, dependencies, 'bureau.assets.uploads.complete', {
+      uploadId,
+    });
   } catch (error) {
     try {
-      await rpc(target, parsed, dependencies, 'bureau.assets.uploads.abort', { uploadId });
+      await catalogCall(target, parsed, dependencies, 'bureau.assets.uploads.abort', { uploadId });
     } catch {
       /* preserve original mutation result */
     }
@@ -93,7 +84,7 @@ async function download(
     throw Object.assign(new Error('--output-file - cannot be combined with --output json.'), {
       usage: true,
     });
-  const descriptorResponse = await rpc(target, parsed, dependencies, 'bureau.assets.get', {
+  const descriptorResponse = await catalogCall(target, parsed, dependencies, 'bureau.assets.get', {
     assetId,
   });
   const descriptor = record(descriptorResponse.data);
