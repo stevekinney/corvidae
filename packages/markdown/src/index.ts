@@ -7,5 +7,6 @@ export {
   terminateMarkdownWorker,
 } from './rendering/render-async.js';
 export * from './templates/index.js';
+export * from './utilities/inline-runs.js';
 export * from './utilities/safe-url.js';
 export * from './utilities/sort-keys.js';

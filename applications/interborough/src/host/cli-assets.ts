@@ -1,3 +1,4 @@
+import { sha256BytesHexSync } from '@lostgradient/cryptography';
 import { link, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
@@ -108,7 +109,7 @@ async function download(
   if (typeof descriptor['byteLength'] === 'number' && descriptor['byteLength'] !== bytes.byteLength)
     throw new Error('The downloaded asset length does not match its descriptor.');
   if (typeof descriptor['digest'] === 'string') {
-    const digest = `sha256:${new Bun.CryptoHasher('sha256').update(bytes).digest('hex')}`;
+    const digest = `sha256:${sha256BytesHexSync(bytes)}`;
     if (digest !== descriptor['digest'])
       throw new Error('The downloaded asset digest does not match its descriptor.');
   }

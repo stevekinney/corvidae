@@ -29,7 +29,7 @@ import { secretPublicationDigest } from './secret-publication-digest.ts';
  * @module plugin-manager
  */
 
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 import { SecretProviderError, type Bungalow } from '@lostgradient/bungalow';
 import {
@@ -45,6 +45,7 @@ import {
   type PluginStatus,
   type SettingLockReason,
 } from '@lostgradient/bureau';
+import { sha256HexSync } from '@lostgradient/cryptography';
 import { z } from 'zod';
 
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
@@ -977,7 +978,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
             detail: {
               outcome: 'committed',
               changedKeys,
-              hash: createHash('sha256').update(committedText).digest('hex'),
+              hash: sha256HexSync(committedText),
               previousRevision,
             },
           })

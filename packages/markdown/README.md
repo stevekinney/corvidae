@@ -58,6 +58,17 @@ console.log(diff, html);
 
 Use `resolveTemplatePlaceholders` when you need the substituted source and placeholder diagnostics before rendering. Inside this workspace, import parsing, serialization, syntax-tree utilities, diffing, rendering, highlighting, templates, and URL utilities from the package root. The public package also declares the subpaths listed in `corvidae-mirror/src/package-surface.json`: `./pipeline`, `./diff`, `./diff/line-diff`, `./diff/types`, `./rendering`, `./rendering/async`, `./rendering/types`, `./rendering/highlighter`, `./rendering/mermaid-cache`, `./utilities/safe-url`, `./utilities/sort-keys`, `./templates/sanitize-html`, `./templates/template-placeholders`, `./templates/template-render`, `./templates/placeholder-security`, and `./templates/types`.
 
+## Inline runs
+
+`inlineRuns(source, profile)` splits one line of text into runs (`text`, `code`, `strong` and `emphasis`) that a component draws as elements, never as injected markup. A profile names the marks it reads: `TITLE_INLINE_RUNS_PROFILE` reads code, strong and emphasis, with an empty code span kept as typed, and `DESCRIPTION_INLINE_RUNS_PROFILE` reads code only and drops an empty code span. A link, an image, a heading marker, HTML and a mark that never closes stay the characters they were typed as. The tokenizer imports nothing, so browser code takes it from `@lostgradient/markdown/inline-runs`, the one subpath this workspace declares, and its bundle does not load the rendering pipeline that the package root brings.
+
+```ts
+import { inlineRuns, TITLE_INLINE_RUNS_PROFILE } from '@lostgradient/markdown/inline-runs';
+
+inlineRuns('Plan **the week** with `refund`', TITLE_INLINE_RUNS_PROFILE);
+// [{ kind: 'text', text: 'Plan ' }, { kind: 'strong', text: 'the week' }, ...]
+```
+
 ## Placeholder catalogs
 
 `normalizePlaceholderDefinitions(definitions)` turns placeholder definitions into the allowlist every placeholder feature shares. Definitions contain exactly one of `schema` (a JSON Schema object, the recommended path) or `candidates` (explicit `{ path, types?, title?, description? }` metadata). It returns sorted `candidates`, ordered `issues`, and `enabled`. Any issue sets `enabled` to `false`, which disables completion and fill until the definitions are fixed; `candidates` still lists the valid partial entries. A valid empty catalog is enabled and permits no paths.

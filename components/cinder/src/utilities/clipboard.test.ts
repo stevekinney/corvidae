@@ -51,6 +51,60 @@ describe('copyToClipboard', () => {
     expect(writeText).toHaveBeenCalledWith('Fallback');
   });
 
+  test('copies plain text natively and does not reach the legacy path', async () => {
+    const writeText = mock(async (_text: string) => undefined);
+    const execCommand = mock(() => true);
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    document.execCommand = execCommand;
+
+    expect(await copyToClipboard('run-1')).toBe(true);
+    expect(writeText).toHaveBeenCalledWith('run-1');
+    expect(execCommand).not.toHaveBeenCalled();
+  });
+
+  test('copies plain text through the legacy path when the clipboard API is unavailable', async () => {
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      configurable: true,
+      value: undefined,
+    });
+    const selected: string[] = [];
+    document.execCommand = mock(() => {
+      selected.push(document.querySelector('textarea')?.value ?? '');
+      return true;
+    });
+
+    expect(await copyToClipboard('~/code/plugin')).toBe(true);
+    expect(selected).toEqual(['~/code/plugin']);
+    expect(document.querySelector('textarea')).toBeNull();
+  });
+
+  test('returns false when the native write rejects and the legacy path reports failure', async () => {
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: mock(async () => Promise.reject(new Error('denied'))) },
+    });
+    document.execCommand = mock(() => false);
+
+    expect(await copyToClipboard('nope')).toBe(false);
+    expect(document.querySelector('textarea')).toBeNull();
+  });
+
+  test('returns false when the native write rejects and the legacy path throws', async () => {
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: mock(async () => Promise.reject(new Error('denied'))) },
+    });
+    document.execCommand = mock(() => {
+      throw new Error('not allowed');
+    });
+
+    expect(await copyToClipboard('nope')).toBe(false);
+    expect(document.querySelector('textarea')).toBeNull();
+  });
+
   test('marks the legacy fallback textarea as hidden from assistive technology', async () => {
     const appendedTextareas: HTMLTextAreaElement[] = [];
     const appendChild = document.body.appendChild.bind(document.body);

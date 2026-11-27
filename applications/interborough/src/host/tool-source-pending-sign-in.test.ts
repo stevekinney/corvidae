@@ -7,6 +7,7 @@
  * before the save, and no token reaches an answer.
  */
 import { afterEach, describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 
 import { createHostMutationContext } from './host-mutation-context.ts';
 import {
@@ -232,6 +233,12 @@ describe('the callback page', () => {
     expect(html).not.toContain(code);
     for (const token of server.issuedAccessTokens) expect(html).not.toContain(token);
     expect(page.headers.get('content-security-policy')).toMatch(/script-src 'sha256-/);
+    // The policy names the digest, in standard base64, of the exact text of the page's one script.
+    const script = /<script>([\s\S]*)<\/script>/.exec(html)?.[1] ?? '';
+    expect(script).toContain('postMessage');
+    expect(page.headers.get('content-security-policy')).toBe(
+      `default-src 'none'; script-src 'sha256-${createHash('sha256').update(script).digest('base64')}'; frame-ancestors 'none'`,
+    );
     expect(page.headers.get('cache-control')).toBe('no-store');
   });
 
