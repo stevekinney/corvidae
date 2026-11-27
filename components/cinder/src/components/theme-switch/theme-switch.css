@@ -16,6 +16,7 @@
     --_cinder-theme-switch-segment-block: 1.625rem;
     --_cinder-theme-switch-inset: 0.125rem;
     --_cinder-theme-switch-position: 1;
+    --_cinder-theme-switch-track-border: var(--cinder-border);
 
     /* The sky and night tracks keep their own lightness in both themes: a sky is pale and a
      * night is dark whichever theme the page is in, so the icons and the thumb on them use fixed
@@ -35,7 +36,7 @@
     box-sizing: border-box;
     padding: var(--_cinder-theme-switch-inset);
     vertical-align: middle;
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--_cinder-theme-switch-track-border);
     border-radius: var(--cinder-radius-full);
     background-color: var(--_cinder-theme-switch-track);
     transition:
@@ -46,7 +47,7 @@
   .cinder-theme-switch[data-cinder-value='light'] {
     --_cinder-theme-switch-position: 0;
     --_cinder-theme-switch-track: var(--cinder-theme-switch-sky-track);
-    border-color: var(--cinder-theme-switch-sky-border);
+    --_cinder-theme-switch-track-border: var(--cinder-theme-switch-sky-border);
     --_cinder-theme-switch-icon: var(--cinder-theme-switch-sky-icon);
     --_cinder-theme-switch-icon-hover: var(--cinder-theme-switch-sky-icon-hover);
     --_cinder-theme-switch-icon-selected: var(--cinder-theme-switch-sky-icon-selected);
@@ -60,7 +61,7 @@
   .cinder-theme-switch[data-cinder-value='dark'] {
     --_cinder-theme-switch-position: 2;
     --_cinder-theme-switch-track: var(--cinder-theme-switch-night-track);
-    border-color: var(--cinder-theme-switch-night-border);
+    --_cinder-theme-switch-track-border: var(--cinder-theme-switch-night-border);
     --_cinder-theme-switch-icon: var(--cinder-theme-switch-night-icon);
     --_cinder-theme-switch-icon-hover: var(--cinder-theme-switch-night-icon-hover);
     --_cinder-theme-switch-icon-selected: var(--cinder-theme-switch-night-icon-selected);
@@ -153,8 +154,8 @@
 
   @media (forced-colors: active) {
     .cinder-theme-switch {
-      border-color: ButtonText;
-      background-color: Canvas;
+      --_cinder-theme-switch-track-border: ButtonText;
+      --_cinder-theme-switch-track: Canvas;
     }
 
     .cinder-theme-switch__thumb {
@@ -178,13 +179,64 @@
   }
 
   /* ----------------------------------------
- * Coarse pointer: the 34px by 26px positions grow to a 44px hit area
+ * Coarse pointer: keep three separate touch columns and paint the smaller switch within them.
  * ---------------------------------------- */
 
   @media (any-pointer: coarse) {
     .cinder-theme-switch {
-      --_cinder-theme-switch-segment-inline: 2.75rem;
-      --_cinder-theme-switch-segment-block: 2.75rem;
+      --_cinder-theme-switch-hit-inline: max(
+        var(--cinder-touch-target-min),
+        var(--_cinder-theme-switch-segment-inline)
+      );
+      --_cinder-theme-switch-hit-extra: calc(
+        var(--_cinder-theme-switch-hit-inline) - var(--_cinder-theme-switch-segment-inline)
+      );
+      --_cinder-theme-switch-track-offset: calc(1.5 * var(--_cinder-theme-switch-hit-extra));
+      grid-auto-columns: var(--_cinder-theme-switch-hit-inline);
+      border-color: transparent;
+      background-color: transparent;
+    }
+
+    .cinder-theme-switch::before {
+      content: '';
+      position: absolute;
+      inset-block: -1px;
+      inset-inline: calc(var(--_cinder-theme-switch-track-offset) - 1px);
+      border: 1px solid var(--_cinder-theme-switch-track-border);
+      border-radius: inherit;
+      background-color: var(--_cinder-theme-switch-track);
+      pointer-events: none;
+      transition:
+        background-color var(--cinder-duration-fast, 150ms) var(--cinder-ease-standard, ease),
+        border-color var(--cinder-duration-fast, 150ms) var(--cinder-ease-standard, ease);
+    }
+
+    .cinder-theme-switch__thumb {
+      inset-inline-start: calc(
+        var(--_cinder-theme-switch-inset) + var(--_cinder-theme-switch-track-offset) +
+          var(--_cinder-theme-switch-position) * var(--_cinder-theme-switch-segment-inline)
+      );
+    }
+
+    .cinder-theme-switch__option {
+      inline-size: var(--_cinder-theme-switch-hit-inline);
+    }
+
+    .cinder-theme-switch__option[data-cinder-position='light'] .cinder-theme-switch__icon {
+      position: relative;
+      inset-inline-start: var(--_cinder-theme-switch-hit-extra);
+    }
+
+    .cinder-theme-switch__option[data-cinder-position='dark'] .cinder-theme-switch__icon {
+      position: relative;
+      inset-inline-end: var(--_cinder-theme-switch-hit-extra);
+    }
+
+    .cinder-theme-switch__option::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: 0;
     }
   }
 
@@ -195,6 +247,8 @@
   @media (prefers-reduced-motion: reduce) {
     :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
       .cinder-theme-switch,
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-theme-switch::before,
     :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
       .cinder-theme-switch__thumb,
     :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
