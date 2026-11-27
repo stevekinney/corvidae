@@ -2,10 +2,11 @@
 
 Component-owned responsive behavior should use container queries. If a component changes because its own inline size is constrained, the stylesheet should set `container-type: inline-size` on the component root and query that container.
 
+Table's `stackBelow` follows this rule (COR-2771). Its stacked forms are size container queries on `.cinder-table-container`, named `cinder-table`, which reads the table's server HTML (`data-cinder-fit`, and each cell's `data-cinder-controls`) to choose the form, so the first paint is already the stacked form on a phone. A size container query cannot read a length from a prop, so `table.css` holds the rules for the default lengths (26rem for flat rows, 640px for the control layout) and for an explicit 640px, generated from `table-stack-rules.ts`. Any other `stackBelow` brings the same rules in an inline `<style>`, keyed to the table's `data-cinder-stack-below`, whose only value is that validated length.
+
 Viewport queries are reserved for viewport-owned behavior: app shells, drawers, and modality switches where the viewport itself is the constraint. The documented exceptions share one set of breakpoints: phones are narrower than 640px, tablets run from 640px to 1023px, and desktops start at 1024px.
 
 - Sidebar's mobile Drawer switch (`SIDEBAR_MOBILE_BREAKPOINT`, `639.98px`), so tablets keep the inline column and its icon rail.
-- Table's `stackBelow`, which stacks the rows of a table with controls into cards. It is not viewport-owned: the length is compared in script against the table's own container width (a `ResizeObserver` on the scroll box), because a size container query cannot read a length from a prop. The viewport stands in only until the container has a measurable width.
 - Modal's and ConfirmDialog's `sheetBelow`, which dock every dialog as a bottom sheet on a narrow screen. Both default to 760px (`DIALOG_SHEET_BREAKPOINT`, wider than the phone breakpoint: a 32rem card on a 640px to 759px screen leaves too little either side), so a form modal and a confirmation share one presentation. The rule reads the viewport, not a container, because a dialog opens in the top layer and has no sized ancestor.
 - Popover's, Dropdown's, Combobox's, and MultiSelect's `sheetBelow`, which open them as bottom sheets on a phone.
 - Tabs' optional `collapseBelow` (off by default), which turns a horizontal tab bar into one select. It is a phone-form choice made in script (`useViewportBelow`), so what is not shown is not in the page.

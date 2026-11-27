@@ -191,14 +191,18 @@ export type TableProps = Omit<HTMLTableAttributes, 'class'> & {
    * table, stacks. With controls, each body row becomes a card: the name and its muted detail on
    * the first line, the controls full width at 44px beneath. A `fit` table stacks into flat rows
    * (see `fit`). A table that is neither `fit` nor holds a `controls` cell never stacks; it
-   * scrolls. The width
-   * is the container's (the scroll box, or the parent when `scrollable` is false), not the
-   * window's, so a table in a narrow column stacks in a wide window. A simple CSS length such as
-   * `'640px'`; only `px`, `rem` and `em` are measured against the container, and any other unit
-   * falls back to the viewport. `false` keeps the table layout at every width. A `fit` table that
-   * stacks as flat rows (no cell holds a control that fills it) stacks only below `'26rem'`
-   * (416px) by default, because flat rows read well in a narrow column; the control layout keeps
-   * 640px.
+   * scrolls. The width is the table's own container's (`.cinder-table-container`, around the
+   * scroll box), not the window's, so a table in a narrow column stacks in a wide window.
+   *
+   * CSS chooses the form, by a size container query, so the server's HTML is already the stacked
+   * form on a phone: each body cell carries its column's label (`Table.HeaderCell`'s `label`), and a
+   * `fit` table's card marks and table roles are in that HTML too. A simple CSS length such as
+   * `'640px'`; the default lengths and `'640px'` are in Cinder's stylesheet, and any other length
+   * brings the same rules in a small `<style>` beside the table, keyed to that length, so a page's
+   * content security policy must allow inline styles for it. `false` keeps the table layout at
+   * every width. A `fit` table that stacks as flat rows (no cell holds a control that fills it)
+   * stacks only below `'26rem'` (416px) by default, because flat rows read well in a narrow column;
+   * the control layout keeps 640px.
    * @default "640px"
    */
   stackBelow?: string | false;
