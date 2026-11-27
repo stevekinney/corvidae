@@ -20,7 +20,7 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { restoreRealTimers, waitForever } from '@lostgradient/testing/fake-timers';
-import { flushPortableMicrotasks, yieldToPortableEventLoop } from '../../testing/event-loop.ts';
+import { flushPortableMicrotasks, yieldToPortableEventLoop } from '../../portable-event-loop.ts';
 import { TestEngine } from '../../testing/test-engine.ts';
 import type { WorkflowContext } from '../types.ts';
 import { workflow } from '../types.ts';

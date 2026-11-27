@@ -1,7 +1,8 @@
 /**
  * COR-1709 — `createDecisionRouting`: a supervisor asks a `choice` over the catalog's agents.
  */
-import { createAgent, createMockGenerate, DecisionSchemaError } from '@lostgradient/operative';
+import { createAgent, DecisionSchemaError } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import type { DecisionRequest } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 

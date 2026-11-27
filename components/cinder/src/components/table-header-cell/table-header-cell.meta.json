@@ -6,7 +6,8 @@
   "tags": ["table", "header"],
   "useWhen": [
     "Labeling a column inside a table-header row.",
-    "Making a column user-sortable by setting the sortable prop and supplying a column identifier."
+    "Making a column user-sortable by setting the sortable prop and supplying a column identifier.",
+    "Sizing a fit table's column: sizing=\"content\" for a short value such as a badge, sizing=\"fill\" for prose."
   ],
   "avoidWhen": [{ "reason": "Rendering a body data cell — use table-cell instead." }],
   "related": ["table-header", "table-cell"],

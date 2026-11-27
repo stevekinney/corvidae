@@ -1,3 +1,7 @@
+import type { Dirent } from 'node:fs';
+import { readdir } from 'node:fs/promises';
+import { join, relative, sep } from 'node:path';
+import picomatch from 'picomatch';
 import { z } from 'zod';
 
 import { createTool } from '../create-tool';
@@ -27,8 +31,8 @@ export interface GlobResult {
  * Creates a read-only `glob` tool jailed to `options.jail`'s root.
  *
  * Patterns are repository-relative only — absolute paths and `..`
- * traversal are rejected up front, and `Bun.Glob` is scanned with
- * `followSymlinks: false`. Every match is additionally re-validated
+ * traversal are rejected up front, and the tree scan skips symbolic links.
+ * Every match is additionally re-validated
  * through the root jail before being returned, so a symlink planted
  * inside the root cannot be used to enumerate paths outside it.
  */
@@ -61,15 +65,7 @@ export function createGlobTool(options: CreateGlobToolOptions): Tool {
       const paths: string[] = [];
       let truncated = false;
 
-      const glob = new Bun.Glob(pattern);
-      const scan = glob.scan({
-        cwd: jail.root,
-        onlyFiles: false,
-        dot: false,
-        followSymlinks: false,
-      });
-
-      for await (const relativeCandidate of scan) {
+      for await (const relativeCandidate of scanPaths(jail.root, pattern, false)) {
         try {
           await jail.resolve(relativeCandidate);
         } catch {
@@ -87,6 +83,39 @@ export function createGlobTool(options: CreateGlobToolOptions): Tool {
       return { paths, truncated };
     },
   });
+}
+
+/** Enumerates jail-relative paths without following symlinks, using Node's portable filesystem API. */
+export async function* scanPaths(
+  root: string,
+  pattern: string,
+  onlyFiles: boolean,
+): AsyncGenerator<string> {
+  const matches = picomatch(pattern);
+  const queue = [root];
+  const paths: string[] = [];
+  while (queue.length > 0) {
+    const directory = queue.shift();
+    if (directory === undefined) continue;
+    let entries: Dirent[];
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+      const absolutePath = join(directory, entry.name);
+      const relativePath = relative(root, absolutePath).split(sep).join('/');
+      if (entry.isDirectory()) {
+        if (!onlyFiles && matches(relativePath)) paths.push(relativePath);
+        queue.push(absolutePath);
+      } else if ((!onlyFiles || entry.isFile()) && matches(relativePath)) {
+        paths.push(relativePath);
+      }
+    }
+  }
+  for (const path of paths.toSorted()) yield path;
 }
 
 function assertRepositoryRelativePattern(pattern: string): void {

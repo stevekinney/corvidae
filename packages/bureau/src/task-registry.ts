@@ -543,6 +543,8 @@ export interface TaskRegistryHost {
     readonly { readonly taskId: string; readonly phase: LiveTask['phase'] }[]
   >;
   readonly pendingReviews: () => readonly PendingReview[];
+  readonly pendingPeerReviews?: (taskId: string) => Promise<readonly PendingReview[]>;
+  readonly filterSettledApprovals?: (reviews: readonly PendingReview[]) => Promise<PendingReview[]>;
   /** The incarnation of the context's live session, or `undefined` when it has none. */
   readonly currentIncarnation: (contextId: string) => Promise<string | undefined>;
   /**
@@ -996,7 +998,10 @@ export interface TaskRegistry {
     tasks: readonly { readonly taskId: string; readonly closed: Promise<CleanupAcknowledgement> }[],
     waitMilliseconds: number,
   ): Promise<readonly { readonly taskId: string; readonly cleanup: TaskCleanupState }[]>;
-  get(taskId: string): Promise<TaskView | undefined>;
+  get(
+    taskId: string,
+    readOptions?: { readonly refreshReviews?: boolean },
+  ): Promise<TaskView | undefined>;
   /** A task's own message history; `undefined` for a task this registry does not hold. */
   history(taskId: string): Promise<readonly TaskMessage[] | undefined>;
   /** The owner of record of a task, or `undefined` when no record exists. */
@@ -1962,10 +1967,20 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     return watcher;
   }
 
-  async function getView(taskId: string): Promise<TaskView | undefined> {
-    const record = await read(taskId);
+  async function getView(
+    taskId: string,
+    readOptions?: { readonly refreshReviews?: boolean },
+  ): Promise<TaskView | undefined> {
+    let record = await read(taskId);
     if (record === undefined) return undefined;
-    const grouped = reviewsByRun(host.pendingReviews().filter((review) => review.runId === taskId));
+    const listed = host.pendingReviews().filter((review) => review.runId === taskId);
+    if (readOptions?.refreshReviews !== true) return viewOf(record, listed);
+    const local = (await host.filterSettledApprovals?.(listed)) ?? listed;
+    const peer = (await host.pendingPeerReviews?.(taskId)) ?? [];
+    record = await read(taskId);
+    if (record === undefined) return undefined;
+    const seen = new Set(local.map((review) => review.id));
+    const grouped = reviewsByRun([...local, ...peer.filter((review) => !seen.has(review.id))]);
     return viewOf(record, grouped.get(taskId));
   }
 

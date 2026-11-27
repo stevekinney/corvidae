@@ -75,7 +75,7 @@ A table whose cells hold controls (a select, a switch, a checkbox, a button) sta
 
 ### Tables that fit
 
-A records table whose values can be very long (a storage key, a URL, a model identifier) sets `fit`. The table fills its container with a fixed layout, so a value never widens it: a `truncate` cell ends its text with an ellipsis at its column's width and keeps the whole value in a tooltip a focus or a hover opens, and every other cell wraps. Size the columns with `<col>` widths: a column whose content never wraps (a status badge, a date, a short identifier with its copy button) gets a fixed `rem` width that holds it, and the others take a percentage or what is left. When the columns need more room than a phone has, set a `min-inline-size` on the table: below that floor the table scrolls inside its frame because of its column count, never because of a value.
+A records table whose values can be very long (a storage key, a URL, a model identifier) sets `fit`. The table fills its container with a fixed layout, so a value never widens it: a `truncate` cell ends its text with an ellipsis at its column's width and keeps the whole value in a tooltip a focus or a hover opens, and every other cell wraps. To size a column whose content never wraps (a status badge, a date, a short identifier with its copy button) by that content, set `sizing` on its header cell, as the next section shows; `<col>` widths still set an exact share where one is known. When the columns need more room than a phone has, set a `min-inline-size` on the table: below that floor the table scrolls inside its frame because of its column count, never because of a value.
 
 ```svelte
 <Table caption="Stored values" fit style="min-inline-size: 24rem">
@@ -100,6 +100,33 @@ A records table whose values can be very long (a storage key, a URL, a model ide
 </Table>
 ```
 
+Below `stackBelow` a `fit` table stacks into flat rows. They draw no fill and no frame, so each row starts on the content's leading edge, the same edge as the heading above it, and keeps a small gap at its trailing edge for a control. The hover, open and current tint and a linked row's focus ring reach 12px past the row's start, so the tint never starts at the title's first glyph. The scroll box makes room for that 12px outside the content edge, so nothing clips it.
+
+### Short columns sized to their content
+
+By default the columns of a `fit` table share its width equally, so a one-word status column is as wide as a sentence beside it. Set `sizing` on each header cell to size the columns by what they hold. A `sizing="content"` column, for a status word, a badge, an identifier or a count, is as wide as its widest header or cell, never wider than half the table, and its cells never wrap: a value longer than half the table ends in an ellipsis, with the whole value in a tooltip. A `sizing="fill"` column, for prose, takes the width the content columns leave and wraps there. Its text runs the full width of the column: a cell holds one finding, not running text, so the prose measure doesn't apply. No width is guessed in advance, so the layout stays right when a badge or a sentence changes length, and the table still never scrolls sideways. DataTable takes the same `sizing` on a column definition.
+
+```svelte
+<Table caption="Connection checks" fit>
+  <Table.Header>
+    <Table.Row>
+      <Table.HeaderCell sizing="content">Check</Table.HeaderCell>
+      <Table.HeaderCell sizing="content">Result</Table.HeaderCell>
+      <Table.HeaderCell sizing="fill">What it found</Table.HeaderCell>
+    </Table.Row>
+  </Table.Header>
+  <Table.Body>
+    {#each checks as check (check.check)}
+      <Table.Row>
+        <Table.Cell as="th">{check.check}</Table.Cell>
+        <Table.Cell><Badge>{check.result}</Badge></Table.Cell>
+        <Table.Cell>{check.found}</Table.Cell>
+      </Table.Row>
+    {/each}
+  </Table.Body>
+</Table>
+```
+
 The leaves are also named exports of `@lostgradient/cinder`.
 
 ## Props
@@ -111,7 +138,7 @@ The leaves are also named exports of `@lostgradient/cinder`.
 | `caption` | `string` | no | — | Accessible caption rendered as a `<caption>` element. It names the table for assistive technology but is visually hidden: the heading above the table already says what it is, and the table draws no title row of its own. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-table`. |
 | `density` | `"comfortable"` \| `"condensed"` \| `"spacious"` | no | `"comfortable"` | Vertical padding density for header and body cells. Defaults to `'comfortable'`. |
-| `fit` | `boolean` | no | `false` | Fits the table to its container's width so a long value never makes it scroll sideways. The columns share the width (a fixed table layout: set a column's width on its header cell or a `<col>`), a `truncate` cell ends its text with an ellipsis at its column's width with the full text in a tooltip, and any other cell wraps its text. Leave it off for a table whose columns should keep their natural widths and scroll when they do not fit. A `fit` table also stacks below `stackBelow`, as a list of flat rows: the `as="th"` cell (or the first cell with text) is the title, a cell with `stack="end"` sits at its inline end, a cell with `stack="status"` starts the second line, and every other cell is a line of its column's header text and its value. A table with a `controls` cell that fills its cell keeps the control layout instead. |
+| `fit` | `boolean` | no | `false` | Fits the table to its container's width so a long value never makes it scroll sideways. The columns share the width equally (a fixed table layout) unless a header cell sets `sizing`: a `sizing="content"` column (a status word, a badge, an identifier, a count) is as wide as its widest value, at most half the table, and does not wrap, and a `sizing="fill"` column (prose) takes the width the content columns leave. A `truncate` cell ends its text with an ellipsis at its column's width with the full text in a tooltip, and any other cell wraps its text. Leave it off for a table whose columns should keep their natural widths and scroll when they do not fit. A `fit` table also stacks below `stackBelow`, as a list of flat rows: the `as="th"` cell (or the first cell with text) is the title, a cell with `stack="end"` sits at its inline end, a cell with `stack="status"` starts the second line, and every other cell is a line of its column's header text and its value. A table with a `controls` cell that fills its cell keeps the control layout instead. |
 | `framed` | `boolean` | no | `false` | Keeps the table's own frame inside a Card. Inside a Card a table is frameless by default (the card is the frame; a box inside a box reads as clutter); set this to draw the frame anyway. It changes nothing for a table outside a Card. |
 | `frameless` | `boolean` | no | `false` | Draw no outline, radius or fill around the table, for a queue or list that sits on the page. Rows keep their hairlines. |
 | `scrollable` | `boolean` | no | `true` | Wraps the table in a `.cinder-table-scroll` box that owns the frame (the border, the radius and the clip) and scrolls sideways when the columns do not fit, with a visible scrollbar and a fade at the inline end. The page never scrolls sideways. Pass `false` for a table that must lay out as a bare `<table>`. When combined with `stickyHeader`, the generated wrapper is the sticky header's scroll container. Set a bounded block size on `scrollContainerProps` when the table should scroll vertically inside that wrapper. |

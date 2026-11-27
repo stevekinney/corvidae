@@ -40,13 +40,15 @@ import {
   type AgentInput,
   type ChildRunHandle,
   createChildRunRegistry,
-  createResourceScope,
   dispatchChildRun,
   type DispatchChildRunOptions,
   type MutableChildRunRegistry,
+} from '@lostgradient/operative';
+import {
+  createResourceScope,
   type ResourceScope,
   waitForCondition,
-} from '@lostgradient/operative';
+} from '@lostgradient/operative/testing';
 import type { ScheduleSummary, WorkflowState } from '@lostgradient/weft';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 

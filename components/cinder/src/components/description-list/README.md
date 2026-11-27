@@ -21,6 +21,8 @@ Semantic dl/dt/dd list for term–description pairs such as metadata or attribut
 <DescriptionList {items} />
 ```
 
+The default variant draws only a hairline between rows, with no fill or frame, so its rows start on the content's leading edge, the same edge as the heading above the list. A row with an `href` still draws its hover tint and focus ring from 12px before the term, so the tint never starts at the first glyph. The `striped`, `narrow`, `grid`, `facts` and `fields` variants keep their own insets.
+
 The `two-column` variant sets a muted term on the left and the value on the right, with no row dividers and no inset at the start of a row, so the term sits on the text edge of what surrounds the list. The term column is at most about 10rem wide; below 28rem of the list's own width each term stacks above its value, close to it.
 
 ### Metadata for a record

@@ -1,5 +1,5 @@
 import { MemoryStorage, type TextValueStore, textValueStore } from '@lostgradient/storage';
-import { createTestToolbox } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 

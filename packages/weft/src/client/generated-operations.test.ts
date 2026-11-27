@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * Regression coverage for the catalog-generated operation layer that both
  * {@link LocalClient} and {@link HttpClient} expose through `client.operations`
@@ -318,6 +319,7 @@ describe('HttpClient catalog operations', () => {
     // client speaks; the bare handleRequest REST table does not. The api-key
     // auth grants the scopes the uncurated system operations require.
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: {

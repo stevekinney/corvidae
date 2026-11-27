@@ -37,8 +37,8 @@ import {
   createRunWorkflow,
   MaximumStepsExceededError,
   stopWhen,
-  waitForCondition,
 } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';

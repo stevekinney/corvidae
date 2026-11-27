@@ -42,6 +42,14 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  isAbsentOrPartial,
+  readTicket,
+  reclaimAbandonedAs,
+  removeLock,
+  type LivenessJudge,
+  type OwnerRecord,
+} from '../packages/process-lease/src/index.ts';
+import {
   isHolderAlive,
   readProcessTable,
   type ProcessEntry,
@@ -64,18 +72,7 @@ import {
   type SessionEvent,
   type SessionState,
 } from './host-sessions-model.ts';
-import {
-  ancestorsOf,
-  enqueue,
-  gitCommonDirectory,
-  isAbsentOrPartial,
-  readTicket,
-  reclaimAbandonedAs,
-  removeLock,
-  tryInstall,
-  type LivenessJudge,
-  type OwnerRecord,
-} from './run-exclusively.ts';
+import { ancestorsOf, enqueue, gitCommonDirectory, tryInstall } from './run-exclusively.ts';
 
 /**
  * How many places the host has: implementation workers and their coordinators together. There is
@@ -1161,7 +1158,7 @@ async function denyLeasedStartSession(
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: 'deny',
-      permissionDecisionReason: `This session holds the coordinator lease for ${marker.project} (run ${marker.run}, since ${marker.leasedAt}), and a leased coordinator starts no child session: it dispatches Agent subagents (chef-worker, chef-reviewer) from this one, so that one coordinator takes the owner's instructions. End the lease with \`bun scripts/chef/linear.ts lease ${marker.project} --run ${marker.run} --release\` first if this session should hand work to another.`,
+      permissionDecisionReason: `This session holds the coordinator lease for ${marker.project} (run ${marker.run}, since ${marker.leasedAt}), and a leased coordinator starts no child session: it dispatches Agent subagents (chef-worker, stickler) from this one, so that one coordinator takes the owner's instructions. End the lease with \`bun scripts/chef/linear.ts lease ${marker.project} --run ${marker.run} --release\` first if this session should hand work to another.`,
     },
   };
 }

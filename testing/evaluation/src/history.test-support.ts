@@ -1,9 +1,5 @@
-import {
-  type AgentRun,
-  createManualRuntimeServices,
-  type RunnableAgent,
-  type RunResultBase,
-} from '@lostgradient/operative';
+import { type AgentRun, type RunnableAgent, type RunResultBase } from '@lostgradient/operative';
+import { createManualRuntimeServices } from '@lostgradient/operative/testing';
 
 import type { CriterionScorers } from './criteria';
 import type { EvaluationRunRecord } from './evaluation-run';

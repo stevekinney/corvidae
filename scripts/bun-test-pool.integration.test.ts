@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { ownerFileName, type HostLockHolder } from '../packages/process-lease/src/index.ts';
 import { spawnWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { rejectionOf } from '../testing/testing/src/helpers/promise-outcome.ts';
 import { waitUntil } from '../testing/testing/src/wait-until.ts';
@@ -35,7 +36,7 @@ import {
 } from './bun-test-pool.ts';
 import { rootScriptEnvironment } from './environment-configuration.ts';
 import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
-import { acquireHostLock, ownerFileName, type HostLockHolder } from './run-exclusively.ts';
+import { acquireHostLock } from './run-exclusively.ts';
 
 /**
  * The pool's scenarios. Each owns a scratch pool directory, never the real Git common directory.

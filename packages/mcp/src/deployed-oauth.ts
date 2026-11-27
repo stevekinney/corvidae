@@ -1,5 +1,6 @@
+import { sha256Base64UrlSync } from '@lostgradient/cryptography';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import {
   parseProbeConfiguration,
   type ProbeConfiguration,
@@ -65,7 +66,7 @@ export async function prepareOAuth(
   if (typeof body.client_id !== 'string' || !body.client_id)
     throw new Error('Registration did not return a client ID');
   const verifier = randomBytes(32).toString('base64url');
-  const challenge = createHash('sha256').update(verifier).digest('base64url');
+  const challenge = sha256Base64UrlSync(verifier);
   const state = randomBytes(32).toString('base64url');
   const parameters = new URLSearchParams({
     grant_type: 'authorization_code',

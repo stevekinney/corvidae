@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2704",
+  "branch": "codex/cor-2704-workers-npm",
+  "checkedAt": "6a4ef5e966202dfd17efc99b47489a8117805e37",
+  "briefVersion": "b7d1597c6e9b",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "packages/storage-d1 exports D1Storage and idempotent migrate; test ignores integration files and test:slow selects them."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "contract.integration.test.ts runs shared Storage contract over getD1Database from @lostgradient/workerd-testing."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "focused checks isolated lane passed Miniflare capability, contention, 100-bind guard chunking, and later-chunk rollback tests."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "focused checks isolated lane passed the bundled workerd conditional-batch and OAuthStore fixture test."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "focused checks isolated lane passed repeated migration schema/data test; README documents persisted tables and primary-read semantics."
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import { createTestToolbox } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, type ConversationEvent, type Message } from 'conversationalist';
 

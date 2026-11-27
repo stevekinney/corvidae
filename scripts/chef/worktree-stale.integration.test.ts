@@ -796,4 +796,55 @@ scenarios.describe('stale --remove: a lock that only names a finished Agent sess
   });
 });
 
+scenarios.describe('stale: a delivery whose closeout is unfinished', () => {
+  /** A delivered (fast-forwarded) worktree named by a delivery request for `operationId`. */
+  function requestedWorktree(name: string, operationId: string): string {
+    const path = addWorktree(name);
+    git(checkout, 'merge', '-q', '--ff-only', `work/${name}`);
+    git(checkout, 'push', '-q', 'origin', 'main');
+    const requests = join(checkout, 'tmp', 'chef', 'requests');
+    mkdirSync(requests, { recursive: true });
+    writeFileSync(
+      join(requests, `${operationId.replaceAll(':', '-')}-abc.json`),
+      JSON.stringify({ operationId, worktree: path }),
+    );
+    return path;
+  }
+
+  function writeOperations(operations: Record<string, unknown>) {
+    const state = join(checkout, 'tmp', 'chef', 'execution-state');
+    mkdirSync(state, { recursive: true });
+    writeFileSync(
+      join(state, 'execution-state.json'),
+      JSON.stringify({ version: 2, hostId: 'h', ownership: {}, operations, pendingCloseout: [] }),
+    );
+  }
+
+  scenarios.scenario('a request with no recorded closeout keeps its worktree', () => {
+    const path = requestedWorktree('in-flight', 'delivery:in-flight:1');
+    writeOperations({});
+    expect(entryFor(path).keep).toContain('a delivery request still owns it');
+    expect(entryFor(path, true).keep).toContain('a delivery request still owns it');
+    expect(existsSync(path)).toBe(true);
+  });
+
+  scenarios.scenario('a request whose closeout is incomplete keeps its worktree', () => {
+    const path = requestedWorktree('gated', 'delivery:gated:1');
+    writeOperations({
+      'delivery:gated:1': { operationId: 'delivery:gated:1', closeout: { complete: false } },
+    });
+    expect(entryFor(path).keep).toContain('a delivery request still owns it');
+  });
+
+  scenarios.scenario('a request whose closeout completed no longer keeps its worktree', () => {
+    const path = requestedWorktree('closed', 'delivery:closed:1');
+    writeOperations({
+      'delivery:closed:1': { operationId: 'delivery:closed:1', closeout: { complete: true } },
+    });
+    expect(entryFor(path).keep).toEqual([]);
+    entryFor(path, true);
+    expect(existsSync(path)).toBe(false);
+  });
+});
+
 await scenarios.settled();

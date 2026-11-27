@@ -11,12 +11,8 @@
  * No sleeps, no timers, no network — every timestamp and plan id is
  * injected.
  */
-import {
-  createAgent,
-  createMockGenerate,
-  type ProviderName,
-  withBackendDescriptors,
-} from '@lostgradient/operative';
+import { createAgent, type ProviderName, withBackendDescriptors } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';

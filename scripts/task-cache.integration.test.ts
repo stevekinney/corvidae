@@ -445,9 +445,9 @@ const scenario8 = await outcomeOf(async () => {
       ['components/cinder/src/index.ts', 'export const value = 1;\n'],
       ['scripts/browser-fixtures/scripts/fixture.test.ts', 'export const fixture = 1;\n'],
       ['scripts/bun-test-junit.ts', 'export const runner = 1;\n'],
-      ['scripts/owned-process-gate.ts', 'export const gate = 1;\n'],
-      ['scripts/owned-process-group.ts', 'export const group = 1;\n'],
-      ['scripts/owned-process-lease.ts', 'export const lease = 1;\n'],
+      ['packages/process-lease/src/owned-process-gate.ts', 'export const gate = 1;\n'],
+      ['packages/process-lease/src/owned-process-group.ts', 'export const group = 1;\n'],
+      ['packages/process-lease/src/owned-process-lease.ts', 'export const lease = 1;\n'],
       ['scripts/tool.ts', 'export const tool = 1;\n'],
       ['AGENTS.md', '# Agents\n'],
     ] as const) {
@@ -495,9 +495,9 @@ const scenario8 = await outcomeOf(async () => {
       ['components/cinder/src/index.ts', 'export const value = 2;\n'],
       ['scripts/browser-fixtures/scripts/fixture.test.ts', 'export const fixture = 2;\n'],
       ['scripts/bun-test-junit.ts', 'export const runner = 2;\n'],
-      ['scripts/owned-process-gate.ts', 'export const gate = 2;\n'],
-      ['scripts/owned-process-group.ts', 'export const group = 2;\n'],
-      ['scripts/owned-process-lease.ts', 'export const lease = 2;\n'],
+      ['packages/process-lease/src/owned-process-gate.ts', 'export const gate = 2;\n'],
+      ['packages/process-lease/src/owned-process-group.ts', 'export const group = 2;\n'],
+      ['packages/process-lease/src/owned-process-lease.ts', 'export const lease = 2;\n'],
     ];
     let previous = before;
     for (const [path, text] of changes) {
@@ -565,11 +565,18 @@ test('the browser-fixtures task declares every root file its commands read, and 
     '$TURBO_DEFAULT$',
   );
   const covers = (path: string) =>
-    inputs.some((input) => input === `$TURBO_ROOT$/${path}` || input === path);
+    inputs.some(
+      (input) =>
+        input === `$TURBO_ROOT$/${path}` ||
+        input === path ||
+        (!input.startsWith('!') && new Bun.Glob(input.replace('$TURBO_ROOT$/', '')).match(path)),
+    );
   const required = [
     ...reached,
-    // The owned group starts its fixed gate by path rather than importing it.
-    'scripts/owned-process-gate.ts',
+    // The root scripts import the process ownership library, and its owned group starts its fixed
+    // gate by path rather than importing it.
+    'packages/process-lease/src/index.ts',
+    'packages/process-lease/src/owned-process-gate.ts',
     // Read by `bun-test-junit.ts` through `check-test-durations.ts`.
     'scripts/test-duration-allowlist.json',
     // Bun's own configuration for a run from the repository root. `tsconfig.json` is a global
@@ -849,6 +856,11 @@ test('the tasks the selector narrows declare the selection variable, so no resul
   }
 });
 
+test('the native Node test lane keys on its pinned binary', async () => {
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  expect(configuration.tasks['test:slow'].env).toContain('CORVIDAE_NODE_BINARY');
+});
+
 test('a package task keys on every root script it runs and every root script those import', async () => {
   // A task that runs `bun ../../scripts/x.ts` replays a cached result unless x.ts, and what x.ts
   // imports, are among its inputs: the package's own files do not change when a root script does.
@@ -864,8 +876,25 @@ test('a package task keys on every root script it runs and every root script tho
   const isScript = (path: string) =>
     /(?:^|\/)scripts\/.+\.ts$/.test(path) && !/\.test\./.test(path);
 
-  // Every script file a script file imports, through `scripts/` directories only: library source
-  // an entrypoint imports is hashed as the package's own files.
+  // Library source a root script imports: the runner reaches it, but a workspace that does not
+  // depend on that library hashes none of it (`dependsOn: transit` follows only dependencies).
+  const isLibrarySource = (path: string) =>
+    /^(?:packages|testing)\/[^/]+\/src\/.+\.ts$/.test(path) &&
+    !/\.test(?:-support)?\.ts$/.test(path);
+  // The workspace names `name` depends on, directly or through other workspaces, and itself.
+  const withDependencies = (name: string): Set<string> => {
+    const found = new Set<string>();
+    const pending = [name];
+    for (let current = pending.pop(); current !== undefined; current = pending.pop()) {
+      if (found.has(current)) continue;
+      found.add(current);
+      pending.push(...(workspaces.find((entry) => entry.name === current)?.dependencies ?? []));
+    }
+    return found;
+  };
+
+  // Every script file a script file imports, through `scripts/` directories, and the library source
+  // those scripts import, which only a dependent workspace hashes as its own files.
   const closure = (entrypoint: string): string[] => {
     const seen = new Set<string>();
     const pending = [entrypoint];
@@ -876,7 +905,7 @@ test('a package task keys on every root script it runs and every root script tho
       const analysis = analyzeSource(current, source);
       for (const specifier of analysis.specifiers) {
         const target = resolveSpecifier(current, specifier, paths, workspaces);
-        if (target !== null && isScript(target)) pending.push(target);
+        if (target !== null && (isScript(target) || isLibrarySource(target))) pending.push(target);
       }
       // Literal Bun subprocess command arrays name entrypoints outside the import graph.
       // Other path strings may only be comparisons, so they are not execution edges.
@@ -892,7 +921,7 @@ test('a package task keys on every root script it runs and every root script tho
         }
       }
     }
-    return [...seen].filter(isRootScript);
+    return [...seen].filter((path) => isRootScript(path) || isLibrarySource(path));
   };
 
   const missing: string[] = [];
@@ -911,11 +940,17 @@ test('a package task keys on every root script it runs and every root script tho
       for (const token of command.split(/[\s&|;'"]+/)) {
         const resolved = posix.normalize(posix.join(workspace.directory, token));
         if (!isScript(resolved) || !paths.has(resolved)) continue;
+        const dependencies = withDependencies(manifest.name);
         for (const file of closure(resolved)) {
           reached.add(file);
+          // The workspace's own files and its dependencies' are hashed already.
+          if (isLibrarySource(file) && dependencies.has(owningWorkspace(file, workspaces).name))
+            continue;
           const covered = (task.inputs ?? []).some(
             (input) =>
-              input === `$TURBO_ROOT$/${file}` || new Bun.Glob(input).match(`$TURBO_ROOT$/${file}`),
+              !input.startsWith('!') &&
+              (input === `$TURBO_ROOT$/${file}` ||
+                new Bun.Glob(input).match(`$TURBO_ROOT$/${file}`)),
           );
           if (!covered)
             missing.push(`${manifest.name}#${script} runs ${resolved}: add $TURBO_ROOT$/${file}`);
@@ -925,9 +960,10 @@ test('a package task keys on every root script it runs and every root script tho
   }
   expect(missing.toSorted()).toEqual([]);
 
-  // The metadata helper spawns this fixed entrypoint through the owned process gate.
+  // The metadata helper spawns this fixed entrypoint through the owned process gate, which the
+  // process ownership library holds beside the group that starts it.
   expect(tasks['@lostgradient/interborough#build']?.inputs).toContain(
-    '$TURBO_ROOT$/scripts/owned-process-gate.ts',
+    '$TURBO_ROOT$/packages/process-lease/src/*.ts',
   );
 
   // The other direction: a root script listed as an input that no workspace running the task can

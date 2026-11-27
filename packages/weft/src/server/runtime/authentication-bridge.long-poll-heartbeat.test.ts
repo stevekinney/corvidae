@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * COR-1283: `handleServerFetchRequest`'s long-poll `/v1/tasks/<queue>/heartbeat`
  * branch (`authentication-bridge.ts`) is otherwise only exercised through
@@ -24,7 +25,7 @@ describe('long-poll activity heartbeat through the real HTTP dispatcher', () => 
 
   it('renews a long-poll-claimed attempt lease via POST /v1/tasks/<queue>/heartbeat', async () => {
     engine = new Engine({ activityExecution: { mode: 'remote' } });
-    server = serve({ engine, port: 0, unauthenticatedAccess: 'allow' });
+    server = serve({ host: bunServerHost, engine, port: 0, unauthenticatedAccess: 'allow' });
 
     const formatGreeting = activity({
       name: 'formatGreeting',

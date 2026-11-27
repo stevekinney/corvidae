@@ -16,6 +16,9 @@
     "test": "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.integration.test.ts'",
     "test:slow": "bun ../../scripts/bun-test-selected.ts --parallel=1 .slow.test.ts .integration.test.ts"
   },
+  "dependencies": {
+    "@lostgradient/cryptography": "workspace:*"
+  },
   "devDependencies": {
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",

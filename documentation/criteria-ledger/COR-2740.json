@@ -1,0 +1,29 @@
+{
+  "issue": "COR-2740",
+  "branch": "codex/cor-2740-workers-npm",
+  "checkedAt": "a70dbb7573930afa0aa8ba4c4a5ec850dcbf0d4b",
+  "briefVersion": "aea3f191f75a",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "packages/node-host exports a private explicit Node http/https/ws host with the requested server and socket subset."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Pinned Node 22.23.4 test:slow passes the same streamed Fetch, repeated static routes, complete rejected upgrades, WebSocket, pub/sub, requestIP, oversize, and stop contract as Bun.serve."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "The COR-2738 cross-worktree scanner found zero Node Host violations; its informational Bun alias issue is tracked separately under COR-2738."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "README documents every supported host option and enumerates unsupported Bun.serve options."
+    }
+  ]
+}

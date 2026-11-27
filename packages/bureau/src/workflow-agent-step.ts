@@ -6,8 +6,7 @@
  * @module workflow-agent-step
  */
 
-import { createHash } from 'node:crypto';
-
+import { sha256HexSync } from '@lostgradient/cryptography';
 import {
   isFailureFinishReason,
   type RunResult,
@@ -34,13 +33,11 @@ export function workflowStepRunId(
   stepAddress: number | string,
   generation = 0,
 ): string {
-  const digest = createHash('sha256')
-    .update(
-      generation === 0
-        ? `${workflowId}:${String(stepAddress)}`
-        : `${workflowId}:${String(stepAddress)}:retry-${String(generation)}`,
-    )
-    .digest('hex');
+  const digest = sha256HexSync(
+    generation === 0
+      ? `${workflowId}:${String(stepAddress)}`
+      : `${workflowId}:${String(stepAddress)}:retry-${String(generation)}`,
+  );
   return `workflow-agent-${digest.slice(0, 32)}`;
 }
 

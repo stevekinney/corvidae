@@ -15,6 +15,9 @@
   ],
   "exports": {
     ".": "./src/index.ts",
+    "./bun": "./src/bun-host.ts",
+    "./node": "./src/node-host.ts",
+    "./testing": "./src/testing/index.ts",
     "./worker": "./src/worker/index.ts",
     "./worker/authoring": "./src/worker/authoring.ts",
     "./worker/generated-authoring": "./src/worker/generated-authoring.ts",
@@ -44,6 +47,8 @@
     "@lostgradient/environmentalist": "catalog:",
     "@modelcontextprotocol/server": "catalog:",
     "@lostgradient/backchannel": "workspace:*",
+    "@lostgradient/cryptography": "workspace:*",
+    "@lostgradient/node-host": "workspace:*",
     "@lostgradient/storage": "workspace:*",
     "@lostgradient/storage-bun-sqlite": "workspace:*",
     "@lostgradient/storage-indexeddb": "workspace:*"
@@ -68,7 +73,8 @@
     "playwright": "catalog:",
     "prettier": "catalog:",
     "standardwebhooks": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "ws": "catalog:"
   },
   "sideEffects": false
 }

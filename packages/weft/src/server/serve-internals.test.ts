@@ -12,9 +12,9 @@ import {
 import { MAX_POLL_TIMEOUT } from './runtime/task-polling.ts';
 import {
   assertAuthenticationPosture,
-  buildBunServeConfig,
   buildFetchHandler,
   buildServerContext,
+  buildServerHostConfig,
   clampCancellationGracePeriod,
   clampWorkerReconnectGracePeriod,
   registerStackDisposers,
@@ -268,7 +268,7 @@ describe('registerStackDisposers', () => {
   });
 
   it('keeps a connection open longer than the longest silence it has to survive', () => {
-    const config = buildBunServeConfig(
+    const config = buildServerHostConfig(
       7233,
       '127.0.0.1',
       false,
@@ -297,13 +297,13 @@ describe('registerStackDisposers', () => {
   });
 
   it('adds tls to the Bun serve config only when tls options exist', () => {
-    const websocketCallbacks: Parameters<typeof buildBunServeConfig>[6] = {
+    const websocketCallbacks: Parameters<typeof buildServerHostConfig>[6] = {
       open() {},
       message() {},
       close() {},
     };
 
-    const baseConfig = buildBunServeConfig(
+    const baseConfig = buildServerHostConfig(
       7233,
       '127.0.0.1',
       true,
@@ -318,7 +318,7 @@ describe('registerStackDisposers', () => {
     const tlsOptions = { key: 'key', cert: 'cert' } as unknown as ReturnType<
       typeof resolveNetworkConfig
     >['tlsOptions'];
-    const tlsConfig = buildBunServeConfig(
+    const tlsConfig = buildServerHostConfig(
       7233,
       '127.0.0.1',
       false,
@@ -330,8 +330,8 @@ describe('registerStackDisposers', () => {
     expect(tlsConfig.tls).toBe(tlsOptions);
   });
 
-  describe('buildBunServeConfig websocket frame size', () => {
-    const websocketCallbacks: Parameters<typeof buildBunServeConfig>[6] = {
+  describe('buildServerHostConfig websocket frame size', () => {
+    const websocketCallbacks: Parameters<typeof buildServerHostConfig>[6] = {
       open() {},
       message() {},
       close() {},
@@ -343,7 +343,7 @@ describe('registerStackDisposers', () => {
       // different unit). A bounded 4 MiB parse is not a CPU-burn, so the
       // constant ceiling closes the DoS without risking false rejections of
       // legitimate frames whose value is within the admission cap.
-      const config = buildBunServeConfig(
+      const config = buildServerHostConfig(
         7233,
         '127.0.0.1',
         false,

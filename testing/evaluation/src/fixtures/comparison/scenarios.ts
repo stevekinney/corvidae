@@ -22,13 +22,15 @@
  */
 import {
   createAgent,
-  createManualRuntimeServices,
-  createScriptedGenerate,
   estimateCost,
   type RunResultBase,
   type TokenUsage,
 } from '@lostgradient/operative';
 import { anthropicPricingTable } from '@lostgradient/operative-anthropic';
+import {
+  createManualRuntimeServices,
+  createScriptedGenerate,
+} from '@lostgradient/operative/testing';
 
 import type { CollaborationRun, ComparisonSubjects, RunComparisonOptions } from '../../comparison';
 import { parseComparisonDataset, toEvaluationDataset } from '../../comparison-datasets';

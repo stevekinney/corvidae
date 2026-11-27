@@ -1,15 +1,17 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createGovernedMemory,
-  createInMemoryMemoryRecordStorage,
   createMemoryAuthority,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
   type GovernedMemory,
   type MemoryAuthority,
   createMemoryVectorStore,
-  createTestEmbedders,
 } from '@lostgradient/memory';
+import {
+  createInMemoryMemoryRecordStorage,
+  createTestEmbedders,
+} from '@lostgradient/memory/testing';
 import {
   createAgent,
   type GenerateFunction,

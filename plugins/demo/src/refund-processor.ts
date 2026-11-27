@@ -115,7 +115,27 @@ export async function recoverRefund(
   id: string,
   now: number,
   lookupAvailable = true,
+  allowResubmit = true,
 ) {
+  const beforeClaim = !allowResubmit ? await ledger.get(id) : undefined;
+  const accepted =
+    beforeClaim && lookupAvailable ? await processor.lookup(beforeClaim.providerKey) : undefined;
+  if (!allowResubmit && !accepted) return false;
+  if (
+    accepted &&
+    beforeClaim &&
+    (accepted.providerAccount !== beforeClaim.providerAccount ||
+      accepted.paymentReference !== beforeClaim.paymentReference ||
+      accepted.currency !== beforeClaim.currency ||
+      accepted.amount !== beforeClaim.amount)
+  )
+    throw new Error('Processor receipt does not match refund');
+  if (
+    accepted &&
+    beforeClaim?.receipt === accepted.receipt &&
+    beforeClaim.status === accepted.status
+  )
+    return true;
   let refund: Refund;
   try {
     refund = await ledger.claim(id);
@@ -124,14 +144,17 @@ export async function recoverRefund(
     if (current?.status === 'succeeded' || current?.status === 'failed') return false;
     throw error;
   }
+  // The first lookup permits claiming. Only evidence read under this fence can settle it.
   let result = lookupAvailable ? await processor.lookup(refund.providerKey) : undefined;
   if (
     !result &&
+    allowResubmit &&
     refund.status === 'submitting' &&
     refund.retryUntil !== undefined &&
     now < refund.retryUntil
   )
     result = await processor.submit(refund);
+  if (!result && !allowResubmit) return false;
   if (!result) return ledger.apply(id, refund.fence, 'needs-reconciliation');
   if (
     result.providerAccount !== refund.providerAccount ||

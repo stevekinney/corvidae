@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * COR-152 "Broker Boundary and Configuration" — the end-to-end fixture the
  * issue requires: a real engine, a real `serve()` server, and a real
@@ -41,7 +42,7 @@ describe('remote activity end-to-end integration (COR-152)', () => {
 
   it('executes success through ctx.run(), propagating headers and the workflow execution token', async () => {
     engine = new Engine({ activityExecution: { mode: 'remote' } });
-    server = serve({ engine, port: 0, unauthenticatedAccess: 'allow' });
+    server = serve({ host: bunServerHost, engine, port: 0, unauthenticatedAccess: 'allow' });
 
     const executedInputs: unknown[] = [];
     remoteWorker = new RemoteWorker({
@@ -112,7 +113,7 @@ describe('remote activity end-to-end integration (COR-152)', () => {
 
   it('returns the real remote failure to ctx.run()', async () => {
     engine = new Engine({ activityExecution: { mode: 'remote' } });
-    server = serve({ engine, port: 0, unauthenticatedAccess: 'allow' });
+    server = serve({ host: bunServerHost, engine, port: 0, unauthenticatedAccess: 'allow' });
 
     remoteWorker = new RemoteWorker({
       serverUrl: `${server.url.replace(/^http/, 'ws')}/v1/tasks/default/stream`,
@@ -166,7 +167,7 @@ describe('remote activity end-to-end integration (COR-152)', () => {
 
   it('resumes ordinary workflow-level retry: a failed attempt is followed by a second dispatch that succeeds', async () => {
     engine = new Engine({ activityExecution: { mode: 'remote' } });
-    server = serve({ engine, port: 0, unauthenticatedAccess: 'allow' });
+    server = serve({ host: bunServerHost, engine, port: 0, unauthenticatedAccess: 'allow' });
 
     let callCount = 0;
     remoteWorker = new RemoteWorker({
@@ -225,6 +226,7 @@ describe('remote activity end-to-end integration (COR-152)', () => {
   it('cancellation targets the current durable attempt and settles the local waiter', async () => {
     engine = new Engine({ activityExecution: { mode: 'remote' } });
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       unauthenticatedAccess: 'allow',

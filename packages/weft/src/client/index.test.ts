@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { AUTHORIZATION_SCOPES } from '../authorization-scopes.ts';
 
 import { MemoryStorage } from '@lostgradient/storage';
@@ -527,6 +528,7 @@ beforeAll(() => {
   // JSON-RPC WebSocket subscription handler is wired and `HttpClient` streaming
   // works end-to-end against a real server.
   server = serve({
+    host: bunServerHost,
     engine,
     port: 0, // random available port
     // Keep the transport body guard above the engine payload cap so the shared

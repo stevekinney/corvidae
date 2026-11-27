@@ -55,6 +55,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { KEYS } from '../../storage/keys.ts';
 import type {
   ActivityExecutionRequest,
@@ -146,7 +147,12 @@ function createWorkerModeEngine(storage: MemoryStorage, getNow: () => number): E
     storage,
     getNow,
     workflowExecutionMode: 'worker',
-    workerExecution: { workerUrl, poolSize: 1, workflowTurnTimeoutMs: 30_000 },
+    workerExecution: {
+      workerUrl,
+      createWorker: bunWorkerFactory,
+      poolSize: 1,
+      workflowTurnTimeoutMs: 30_000,
+    },
   });
 }
 
@@ -308,8 +314,13 @@ describe('worker-mode finalizer teardown (#564 WS2)', () => {
       storage,
       getNow: () => now,
       workflowExecutionMode: 'worker',
-      workerExecution: { workerUrl, poolSize: 1, workflowTurnTimeoutMs: 30_000 },
-      activityExecution: { mode: 'worker', workerUrl, poolSize: 1 },
+      workerExecution: {
+        workerUrl,
+        createWorker: bunWorkerFactory,
+        poolSize: 1,
+        workflowTurnTimeoutMs: 30_000,
+      },
+      activityExecution: { mode: 'worker', workerUrl, createWorker: bunWorkerFactory, poolSize: 1 },
     });
     engine.register(engineSideWorkflow);
 

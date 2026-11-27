@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * COR-152 "Broker Boundary and Configuration" — acceptance criterion 10:
  * workflow cancellation targets the current durable attempt and settles the
@@ -86,7 +87,7 @@ describe('remote activity cancellation (COR-152, criterion 10)', () => {
 
   it('targets the current durable attempt: a queued task resolves to a cancelled terminal record once a server is attached', async () => {
     engine = new Engine({ activityExecution: { mode: 'remote' } });
-    server = serve({ engine, port: 0, unauthenticatedAccess: 'allow' });
+    server = serve({ host: bunServerHost, engine, port: 0, unauthenticatedAccess: 'allow' });
 
     const localChargeCard = mock(async (_input: { orderId: string }): Promise<never> => {
       throw new Error('local execution must never run in remote mode');
@@ -129,6 +130,7 @@ describe('remote activity cancellation (COR-152, criterion 10)', () => {
   it('targets the current durable attempt: a leased task moves through cancelling to a cancelled terminal record', async () => {
     engine = new Engine({ activityExecution: { mode: 'remote' } });
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       unauthenticatedAccess: 'allow',

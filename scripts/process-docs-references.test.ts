@@ -294,3 +294,19 @@ describe('the process documents', () => {
     for (const entry of notPaths.keys()) expect(all, entry).toContain(entry);
   });
 });
+
+// Two P-COR-128 trial rules are documentation only, with no code to test: keep them in their
+// references, so a later edit cannot drop them unnoticed.
+describe('the P-COR-128 documentation-only rules', () => {
+  const references = '.agents/skills/chef/references';
+  for (const [document, rule] of [
+    [`${references}/review-and-deliver.md`, 'When a control shows `main` lost the same job'],
+    [
+      `${references}/coordination.md`,
+      'A correction outside the workflow is dispatched with `isolation: "worktree"`',
+    ],
+  ] as const)
+    test(`${document} keeps its rule`, () => {
+      expect(readFileSync(join(root, document), 'utf8')).toContain(rule);
+    });
+});

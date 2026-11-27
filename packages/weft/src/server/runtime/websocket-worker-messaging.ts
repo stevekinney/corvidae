@@ -8,7 +8,7 @@
  * @module server/runtime/websocket-worker-messaging
  */
 
-import type { ServerWebSocket } from 'bun';
+import type { Socket } from '@lostgradient/node-host';
 
 import {
   REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS,
@@ -21,17 +21,13 @@ const WORKER_PROTOCOL_CLOSE_CODE = 1002;
 const WORKER_REGISTRATION_CLOSE_CODE = 1008;
 
 export function sendWorkerProtocolMessage(
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   message: ProtocolErrorMessage | RegisterErrorMessage | Record<string, unknown>,
 ): void {
   ws.send(JSON.stringify(message));
 }
 
-export function closeWorkerSocket(
-  ws: ServerWebSocket<WebSocketData>,
-  code: number,
-  reason: string,
-): void {
+export function closeWorkerSocket(ws: Socket<WebSocketData>, code: number, reason: string): void {
   try {
     ws.unsubscribe(ws.data.pathname);
   } catch {
@@ -48,7 +44,7 @@ export function closeWorkerSocket(
 }
 
 export function rejectRegistration(
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   code: RegisterErrorMessage['code'],
   message: string,
   requestedProtocolVersion?: number,
@@ -64,7 +60,7 @@ export function rejectRegistration(
 }
 
 export function rejectProtocolMessage(
-  ws: ServerWebSocket<WebSocketData>,
+  ws: Socket<WebSocketData>,
   code: ProtocolErrorMessage['code'],
   message: string,
 ): void {

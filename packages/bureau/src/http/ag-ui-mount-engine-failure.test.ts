@@ -13,7 +13,8 @@
  */
 import { EventType } from '@ag-ui/core';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { createScriptedGenerate, type GenerateFunction } from '@lostgradient/operative';
+import { type GenerateFunction } from '@lostgradient/operative';
+import { createScriptedGenerate } from '@lostgradient/operative/testing';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { createTool, createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';

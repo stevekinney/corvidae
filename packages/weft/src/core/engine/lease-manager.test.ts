@@ -3,8 +3,8 @@ import { describe, expect, it } from 'bun:test';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
+import { yieldToPortableEventLoop } from '../../portable-event-loop.ts';
 import { KEYS } from '../../storage/keys.ts';
-import { yieldToPortableEventLoop } from '../../testing/event-loop.ts';
 import { EngineLeaseAcquisitionTimeoutError, EngineLeaseCorruptedError } from './lease-errors.ts';
 import {
   createLeaseManager,

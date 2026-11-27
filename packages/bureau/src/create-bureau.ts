@@ -308,6 +308,7 @@ import type {
   ApprovalDecisionSurface,
   PendingReview,
   ResolvedReview,
+  ResolveReviewInput,
 } from './bureau-types/reviews';
 import { admitsRunOnDisabledAgent } from './disabled-agent-admission';
 import type { ContextDeletionReport } from './bureau-types/contexts';
@@ -1266,6 +1267,7 @@ async function constructBureau<const D extends AgentDefinitions>(
        * the retry came from.
        */
       decisionSurface?: ApprovalDecisionSurface | undefined;
+      reviewerProvenance?: ResolveReviewInput['reviewerProvenance'];
     }
   >();
   const pendingApprovalOverrides = new Map<
@@ -2634,6 +2636,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     restorableBootApprovals,
     restorePendingApprovalOverrides,
     recoverPeerApproval,
+    recoverReviewedApproval,
     persistedApprovalRunIds,
     restorePendingApprovalStates,
   } = createFireApprovalRestore<D>(core, peers);
@@ -2685,6 +2688,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     chatOfParentRun,
     recordReviewStatusTransition,
     pendingHumanWaitsOfRun,
+    pendingReviewsOfRun,
+    filterSettledApprovals,
     sealHumanWaitAnswer,
     refuseUnsealedSecrets,
     prepareHumanWaitDelivery,
@@ -3822,6 +3827,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       // The public list: a `bureau.run()` run's human wait (COR-1577) is a review of its
       // task too, so it holds the task at `input-required` and `respond` can answer it.
       pendingReviews: () => [...listPendingReviews(), ...runHumanWaits.list()],
+      pendingPeerReviews: (taskId) => pendingReviewsOfRun(taskId),
+      filterSettledApprovals: (reviews) => filterSettledApprovals(reviews),
       releaseClosedReview: async (taskId, reviewId, eventKind) => {
         // A review this process closed itself is finished by its own release, which prunes the
         // session before it drops the override: this event is that close read back.
@@ -4903,7 +4910,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     mayRemember: grantLoosensReview,
     listRunHumanWaits: () => [...runHumanWaits.list(), ...workflowReviewWaits.list()],
     get: getReview,
-    pendingOf: pendingHumanWaitsOfRun,
+    pendingOf: pendingReviewsOfRun,
     resolve: resolveAnyReview,
   });
 
@@ -5787,6 +5794,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             await restoreTerminalReviewSession(session, restoredRunId, committed);
           }
           await recoverPeerApproval(session.id, restoredRunId, metadata);
+          await recoverReviewedApproval(session.id, restoredRunId);
         }
         if (!requestAuthorityValidator && hasRecoverableTransportAuthority(session.metadata)) {
           hasDeferredGatewayAuthority = true;

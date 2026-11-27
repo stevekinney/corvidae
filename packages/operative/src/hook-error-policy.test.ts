@@ -14,7 +14,8 @@
  * run's own outcome standing either way.
  */
 import { HookRegistry } from '@lostgradient/lifecycle';
-import { createTestToolbox, createTool } from 'armorer';
+import { createTool } from 'armorer';
+import { createTestToolbox } from 'armorer/testing';
 import { describe, expect, it } from 'bun:test';
 import { type CompactionScheduler, Conversation } from 'conversationalist';
 import { z } from 'zod';

@@ -20,6 +20,19 @@ import { expect, test } from './fixtures.ts';
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
 const SOURCE = 'goals-list-states.spec.ts';
+test('Cinder choice facet control on Goals /goals', async ({ page }) => {
+  await page.clock.setFixedTime(SAMPLE_NOW);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/goals');
+  await expect(page.locator('main [data-goal]').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Agent', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Agent' })).toBeVisible();
+  await captureForDesignReview(page, {
+    route: '/goals',
+    state: 'choice facet open',
+    source: SOURCE,
+  });
+});
 const WIDTHS = [1280, 375] as const;
 
 /** Holds every `bureau.goals.list` call until the returned function is called. */

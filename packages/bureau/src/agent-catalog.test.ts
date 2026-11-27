@@ -1,10 +1,10 @@
 import {
   createAgent,
   createDefaultRuntimeServices,
-  createMockGenerate,
   stopWhen,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { createMockGenerate } from '@lostgradient/operative/testing';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';

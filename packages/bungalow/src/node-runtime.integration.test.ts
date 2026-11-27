@@ -4,16 +4,17 @@
  * server hosted here (the server is built on `Bun.serve`), and checks how the portable lock and
  * the default `flock(2)` lock meet across a Bun and a Node process on one root.
  *
- * The Node binary is `BUNGALOW_NODE_BINARY` when set, so a run can pin a version
- * (`BUNGALOW_NODE_BINARY=$(mise which node@22) bun run test:slow`), and otherwise the first native
+ * The Node binary is `CORVIDAE_NODE_BINARY` when set, so a run can pin a version
+ * (`CORVIDAE_NODE_BINARY=$(mise which node@22) bun run test:slow`), and otherwise the first native
  * `node` on `PATH`, skipping Bun's own `node` shims.
  */
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { join } from 'node:path';
 
 import { runWithHangGuard, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
+import { resolveNativeNode, runNodeTests } from '@lostgradient/testing/node-runtime';
 import { createS3TestServer } from '@lostgradient/testing/s3-server';
 import { describe, expect, test } from 'bun:test';
 
@@ -23,31 +24,7 @@ import { BungalowLockedError } from './errors.ts';
 
 const HERE = import.meta.dir;
 
-/** Whether `candidate` is Node itself, not Bun answering to the name `node`. */
-async function isNativeNode(candidate: string): Promise<boolean> {
-  const identity = await runWithHangGuard([
-    candidate,
-    '--eval',
-    'process.stdout.write(process.versions.bun ? "bun" : process.release.name)',
-  ]);
-  return identity.exitCode === 0 && identity.stdout.toString() === 'node';
-}
-
-async function resolveNode(): Promise<string> {
-  const pinned = processEnvironment()['BUNGALOW_NODE_BINARY'];
-  if (pinned !== undefined && pinned !== '') {
-    if (await isNativeNode(pinned)) return pinned;
-    throw new Error('BUNGALOW_NODE_BINARY does not name a native Node binary.');
-  }
-  const searchPath = processEnvironment()['PATH'] ?? '';
-  for (const directory of searchPath.split(delimiter).filter(existsSync)) {
-    const candidate = Bun.which('node', { PATH: directory });
-    if (candidate !== null && (await isNativeNode(candidate))) return candidate;
-  }
-  throw new Error('The Node runtime tests need a native Node 22 or later on PATH.');
-}
-
-const node = await resolveNode();
+const node = await resolveNativeNode();
 const versionResult = await runWithHangGuard([node, '--version']);
 const nodeVersion = versionResult.stdout.toString().trim();
 
@@ -67,22 +44,18 @@ const suite = await outcomeOf(async () => {
     const holder = await startHolder(node, heldRoot, 'portable');
     holderAnswer = holder.answer;
     try {
-      const result = await runWithHangGuard(
-        [node, '--test', '--test-reporter=tap', join(HERE, 'node-runtime.test-support.ts')],
-        {
-          env: {
-            ...processEnvironment(),
-            BUNGALOW_NODE_S3_ENDPOINT: server.endpoint,
-            BUNGALOW_NODE_S3_BUCKET: server.bucket,
-            BUNGALOW_NODE_HELD_ROOT: heldRoot,
-            BUNGALOW_NODE_HOLDER_PID: String(holder.pid),
-          },
+      const result = await runNodeTests([join(HERE, 'node-runtime.test-support.ts')], {
+        env: {
+          ...processEnvironment(),
+          BUNGALOW_NODE_S3_ENDPOINT: server.endpoint,
+          BUNGALOW_NODE_S3_BUCKET: server.bucket,
+          BUNGALOW_NODE_HELD_ROOT: heldRoot,
+          BUNGALOW_NODE_HOLDER_PID: String(holder.pid),
         },
-      );
-      const output = result.stdout.toString();
-      if (result.exitCode !== 0 || !/^# fail 0$/m.test(output) || /^# pass 0$/m.test(output)) {
+      });
+      if (result.exitCode !== 0 || result.failCount !== 0 || result.passCount === 0) {
         throw new Error(
-          `node --test failed under ${nodeVersion}:\n${output}\n${result.stderr.toString()}`,
+          `node --test failed under ${nodeVersion}:\n${result.stdout}\n${result.stderr}`,
         );
       }
     } finally {

@@ -218,13 +218,10 @@ These classes are exported from the package root and extend `WeftError`, but the
 
 ### Root-exported errors outside the WeftError family
 
-These classes are exported from the package root but extend plain `Error`, so `isWeftError`, `isWeftErrorLike`, `isWeftErrorCode`, and `isWeftFault` all reject them. Catch them with `instanceof`. The storage protocol's `StorageBatchOperationLimitExceededError` is exported by `@lostgradient/storage`, not by Weft; it too extends plain `Error`, with its own `code` property. `CatalogClientError`, which the typed catalog client throws, is exported by `@lostgradient/backchannel/client`, not by Weft. The three `Weft…Warning` classes are reported as process warnings rather than thrown, and the three `Chaos…Error` classes are produced only by the `withChaos` testing combinator.
+These classes are exported from the package root but extend plain `Error`, so `isWeftError`, `isWeftErrorLike`, `isWeftErrorCode`, and `isWeftFault` all reject them. Catch them with `instanceof`. The storage protocol's `StorageBatchOperationLimitExceededError` is exported by `@lostgradient/storage`, not by Weft; it too extends plain `Error`, with its own `code` property. `CatalogClientError`, which the typed catalog client throws, is exported by `@lostgradient/backchannel/client`, not by Weft. The three `Weft…Warning` classes are reported as process warnings rather than thrown.
 
 | Class                                   | Defined in                                 |
 | --------------------------------------- | ------------------------------------------ |
-| `ChaosNonRetryableError`                | `testing/chaos.ts`                         |
-| `ChaosTimeoutError`                     | `testing/chaos.ts`                         |
-| `ChaosTransientError`                   | `testing/chaos.ts`                         |
 | `ConnectionConfigurationError`          | `connection.ts`                            |
 | `WeftWorkflowCheckpointConflictWarning` | `core/engine/checkpoint-conflict-error.ts` |
 | `WeftWorkflowClaimLostWarning`          | `core/engine/lease-deposition.ts`          |
@@ -234,3 +231,7 @@ These classes are exported from the package root but extend plain `Error`, so `i
 | `WorkflowDocumentReviewRejectedError`   | `document-workflow/document-errors.ts`     |
 | `WorkflowDocumentSchemaError`           | `document-workflow/document-errors.ts`     |
 | `WorkflowDocumentValidationError`       | `document-workflow/document.ts`            |
+
+### Testing-only chaos errors
+
+`ChaosTransientError`, `ChaosNonRetryableError`, and `ChaosTimeoutError` are produced by the `withChaos` testing combinator and are exported from `@lostgradient/weft/testing`, not the package root.

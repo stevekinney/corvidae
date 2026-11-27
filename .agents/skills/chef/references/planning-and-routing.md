@@ -40,7 +40,7 @@ On Claude Code, Sonnet 5.5 implements (effort `high`), Opus 5.5 coordinates and 
 | Broader investigation or integration | `gpt-6.1-terra` or `gpt-6.1-sol` where available, medium effort |
 | Architecture, concurrency, security, final high-risk review | a relevant specialist or stronger model, high effort |
 
-Fable is for a one-way door (a persisted format, wire protocol, authorization rule, or published surface), irreducible ambiguity, or a defect that survived two corrections. An implementer on Opus or Fable records its reason in the note at dispatch. On Claude Code pass `model` and `effort` on every dispatch, because defaults differ by model; on Codex pass `model` and `reasoning_effort`. A fixed role definition overrides both, and a dispatch result is not proof of what ran. Review by tier: a script for a pure move, the `chef-reviewer` for infrastructure, one-way doors, and anything that sets a template, and a second reviewer for the lock and concurrency infrastructure.
+Fable is for a one-way door (a persisted format, wire protocol, authorization rule, or published surface), irreducible ambiguity, or a defect that survived two corrections. An implementer on Opus or Fable records its reason in the note at dispatch. On Claude Code pass `model` and `effort` on every dispatch, because defaults differ by model; on Codex pass `model` and `reasoning_effort`. A fixed role definition overrides both, and a dispatch result is not proof of what ran. Every candidate gets the `stickler` contract check; the lock and concurrency infrastructure and one-way doors also get Codex on a pull request.
 
 ## Escalation
 

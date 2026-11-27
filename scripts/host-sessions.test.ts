@@ -279,7 +279,8 @@ describe('admitWorker', () => {
     const directory = await scratch();
     const time = clock();
     await mkdir(directory, { recursive: true });
-    const { tryInstall, removeLock } = await import('./run-exclusively.ts');
+    const { tryInstall } = await import('./run-exclusively.ts');
+    const { removeLock } = await import('../packages/process-lease/src/index.ts');
     const dead = { pid: 999_997, command: 'dead hook', cwd: '/', acquiredAt: '', token: 'dead' };
     expect(await tryInstall(join(directory, 'admission'), dead)).toBe(true);
     const admitted = await admitWorker({ ...options(directory, time), request: request('A', '1') });
@@ -337,12 +338,12 @@ describe('the hook', () => {
     // A type is read-only when its definition lists neither Edit nor Write; with no definition,
     // only the built-in read-only types (Explore) are.
     const tools: Record<string, string> = {
-      'chef-reviewer': 'Read, Grep, Glob, Bash',
+      stickler: 'Read, Grep, Glob, Bash',
       'design-reviewer': 'Read, Grep, Glob, Bash',
       reenactor: 'Read, Grep, Glob, Bash, Edit, Write',
     };
     const readAgentTools = (type: string) => tools[type];
-    for (const type of ['chef-reviewer', 'design-reviewer', 'Explore']) {
+    for (const type of ['stickler', 'design-reviewer', 'Explore']) {
       expect(
         await handleHookEvent(dispatch(type, `t-${type}`), context(directory, { readAgentTools })),
       ).toBeUndefined();
@@ -527,7 +528,7 @@ describe('every session and every agent counts', () => {
     directory,
   });
   const readOnlyTools = (type: string) =>
-    type === 'chef-reviewer' ? 'Read, Grep, Glob, Bash' : undefined;
+    type === 'stickler' ? 'Read, Grep, Glob, Bash' : undefined;
 
   async function registerAll(directory: string): Promise<void> {
     for (const session of ['A', 'B', 'C'] as const) {
@@ -560,7 +561,7 @@ describe('every session and every agent counts', () => {
       withDirectory(directory, asSession('A', options)),
     );
     const reviewer = await handleHookEvent(
-      inSession('A', dispatch('chef-reviewer', 'tool-2')),
+      inSession('A', dispatch('stickler', 'tool-2')),
       withDirectory(directory, asSession('A', options)),
     );
     expect([worker, reviewer]).toEqual([undefined, undefined]);

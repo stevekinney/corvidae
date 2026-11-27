@@ -11,6 +11,7 @@ import { principalFromApiKey, type AuthorizationScope } from '@lostgradient/back
 import { createOperationRegistry, executeOperation } from '@lostgradient/backchannel/internals';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { encode } from '../core/codec.ts';
 import type { Engine } from '../core/engine.ts';
 import { TaskResultDeliveryEvent } from '../core/events.ts';
@@ -50,7 +51,7 @@ const WORKER_PRINCIPAL = principalFromApiKey({ subject: 'worker', scopes: ['work
 const NOOP_CLEANUP = (_operationId: string) => {};
 
 function serveOptions(engine: Engine): ServeOptions {
-  return { engine, port: 0 };
+  return { host: bunServerHost, engine, port: 0 };
 }
 
 function leased(operationId: string, overrides: Partial<RemoteTaskLeased> = {}): RemoteTaskLeased {

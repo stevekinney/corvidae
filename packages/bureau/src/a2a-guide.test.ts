@@ -16,7 +16,8 @@ import {
   DefaultAgentCardResolver,
   JsonRpcTransportFactory,
 } from '@a2a-js/sdk/client';
-import { createAgent, waitForCondition, type GenerateFunction } from '@lostgradient/operative';
+import { createAgent, type GenerateFunction } from '@lostgradient/operative';
+import { waitForCondition } from '@lostgradient/operative/testing';
 import { principalFromApiKey } from '@lostgradient/backchannel';
 import { describe, expect, it } from 'bun:test';
 

@@ -1,11 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 
+import { createAgent, type RunResultBase } from '@lostgradient/operative';
 import {
-  createAgent,
   createManualRuntimeServices,
   createScriptedGenerate,
-  type RunResultBase,
-} from '@lostgradient/operative';
+} from '@lostgradient/operative/testing';
 
 import type { CriterionScorers } from './criteria';
 import { toolCallNames } from './criteria';

@@ -66,6 +66,18 @@
       "scans": ["applications/interborough/src"]
     },
     {
+      "id": "spacing-from-the-scale",
+      "rule": "Margin, padding, gap and inset values come from Cinder's spacing tokens, never a raw px, rem or em length.",
+      "date": "2026-11-25",
+      "source": "Owner review of the live app: spacing off the scale, such as a caption 4px under its table, was noticed only by the review's geometry audit after the page was built (COR-2692)",
+      "guard": {
+        "script": "scripts/check-spacing-tokens.ts",
+        "test": "scripts/check-spacing-tokens.test.ts",
+        "allowlist": "scripts/spacing-tokens-allowlist.json"
+      },
+      "scans": ["components/cinder/src", "components/chat/src", "applications/interborough/src"]
+    },
+    {
       "id": "cinder-term-value-lists",
       "rule": "A term and value list is Cinder's DescriptionList, Inspector or KeyFacts, which put each pair on one line: no raw dl element.",
       "date": "2026-11-25",

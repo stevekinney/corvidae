@@ -21,11 +21,10 @@ import {
   createGovernedMemory,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
-  createMockEmbedder,
   createWeftMemoryRecordStorage,
   createMemoryVectorStore,
-  createTestEmbedders,
 } from '@lostgradient/memory';
+import { createMockEmbedder, createTestEmbedders } from '@lostgradient/memory/testing';
 import { createBureau } from './create-bureau';
 import { notificationOutboxKey } from './notifications/notification-outbox';
 import { createDurableAssetStorage } from './assets/storage';

@@ -21,7 +21,6 @@ import {
 } from '@lostgradient/bureau';
 import {
   createAgent,
-  createScriptedGenerate,
   stopWhen,
   withBackendDescriptors,
   type GenerateFunction,
@@ -30,6 +29,7 @@ import {
   type ValidatorOutcome,
 } from '@lostgradient/operative';
 import { anthropicRows } from '@lostgradient/operative-anthropic';
+import { createScriptedGenerate } from '@lostgradient/operative/testing';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 

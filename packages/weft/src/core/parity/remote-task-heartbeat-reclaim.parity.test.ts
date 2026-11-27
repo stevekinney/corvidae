@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import type { Storage } from '@lostgradient/storage';
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { serve, type ServeOptions, type WeftServer } from '../../server/index.ts';
 import { useManualTaskReconciliationForTesting } from '../../server/runtime/task-reconciliation.ts';
 import { REMOTE_WORKER_PROTOCOL_VERSION } from '../../worker/protocol.ts';
@@ -35,6 +36,7 @@ describe('Temporal failure-handling parity (remote-task heartbeat reclaim)', () 
   it('rejects manual scans before the test server registers its options', () => {
     const engine = new Engine();
     const manualReconciliation = useManualTaskReconciliationForTesting({
+      host: bunServerHost,
       engine,
       port: 0,
       unauthenticatedAccess: 'allow',
@@ -59,6 +61,7 @@ describe('Temporal failure-handling parity (remote-task heartbeat reclaim)', () 
 
     try {
       const manualReconciliation = useManualTaskReconciliationForTesting({
+        host: bunServerHost,
         engine,
         port: 0,
         unauthenticatedAccess: 'allow',

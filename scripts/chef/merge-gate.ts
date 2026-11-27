@@ -65,12 +65,8 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import {
-  acquireHostLock,
-  processStartTime,
-  type AcquireHostLockOptions,
-  type HostLockHolder,
-} from '../run-exclusively.ts';
+import { processStartTime, type HostLockHolder } from '../../packages/process-lease/src/index.ts';
+import { acquireHostLock, type AcquireHostLockOptions } from '../run-exclusively.ts';
 import {
   isDeliveryMergeObservation,
   loadDeliveryVerification,

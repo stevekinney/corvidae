@@ -374,7 +374,7 @@ export function serializeMetricsSnapshotForPrometheus(snapshot: MetricsSnapshot)
  *
  * const exporter = createMetricsCollectorExporter(undefined);
  * // Pass to serve() to expose /v1/metrics
- * // serve({ engine, prometheusExporter: exporter });
+ * // serve({ host: bunServerHost, engine, prometheusExporter: exporter });
  * console.log(typeof exporter.serialize); // 'function'
  * ```
  */

@@ -1,7 +1,9 @@
+import type { WorkerLike } from '../workers/pool.ts';
+
 export class WorkerExecutionOwnership {
-  readonly #activeWorkersByWorkflowId = new Map<string, Worker>();
-  readonly #parkedWorkersByWorkflowId = new Map<string, Worker>();
-  readonly #activeWorkflowIdByWorker = new Map<Worker, string>();
+  readonly #activeWorkersByWorkflowId = new Map<string, WorkerLike>();
+  readonly #parkedWorkersByWorkflowId = new Map<string, WorkerLike>();
+  readonly #activeWorkflowIdByWorker = new Map<WorkerLike, string>();
   readonly #cancelledWorkflowIds = new Set<string>();
 
   resetWorkflow(workflowId: string): void {
@@ -16,24 +18,24 @@ export class WorkerExecutionOwnership {
     return this.#cancelledWorkflowIds.delete(workflowId);
   }
 
-  getActiveWorker(workflowId: string): Worker | undefined {
+  getActiveWorker(workflowId: string): WorkerLike | undefined {
     return this.#activeWorkersByWorkflowId.get(workflowId);
   }
 
-  getParkedWorker(workflowId: string): Worker | undefined {
+  getParkedWorker(workflowId: string): WorkerLike | undefined {
     return this.#parkedWorkersByWorkflowId.get(workflowId);
   }
 
-  getTargetWorker(workflowId: string): Worker | undefined {
+  getTargetWorker(workflowId: string): WorkerLike | undefined {
     return this.getActiveWorker(workflowId) ?? this.getParkedWorker(workflowId);
   }
 
-  setActive(workflowId: string, worker: Worker): void {
+  setActive(workflowId: string, worker: WorkerLike): void {
     this.#activeWorkersByWorkflowId.set(workflowId, worker);
     this.#activeWorkflowIdByWorker.set(worker, workflowId);
   }
 
-  releaseActive(workflowId: string): Worker | undefined {
+  releaseActive(workflowId: string): WorkerLike | undefined {
     const worker = this.#activeWorkersByWorkflowId.get(workflowId);
     if (!worker) return undefined;
     this.#activeWorkersByWorkflowId.delete(workflowId);
@@ -41,7 +43,7 @@ export class WorkerExecutionOwnership {
     return worker;
   }
 
-  parkActive(workflowId: string, worker: Worker): boolean {
+  parkActive(workflowId: string, worker: WorkerLike): boolean {
     if (this.#activeWorkersByWorkflowId.get(workflowId) !== worker) {
       return false;
     }
@@ -51,7 +53,7 @@ export class WorkerExecutionOwnership {
     return true;
   }
 
-  activateParked(workflowId: string, worker: Worker): boolean {
+  activateParked(workflowId: string, worker: WorkerLike): boolean {
     if (this.#parkedWorkersByWorkflowId.get(workflowId) !== worker) {
       return false;
     }
@@ -75,7 +77,7 @@ export class WorkerExecutionOwnership {
     return [...this.#activeWorkersByWorkflowId.keys()];
   }
 
-  workflowIdsForWorker(worker: Worker): string[] {
+  workflowIdsForWorker(worker: WorkerLike): string[] {
     const workflowIds: string[] = [];
     const activeWorkflowId = this.#activeWorkflowIdByWorker.get(worker);
     if (activeWorkflowId) {
@@ -106,7 +108,7 @@ export class WorkerExecutionOwnership {
     this.#cancelledWorkflowIds.clear();
   }
 
-  workerIsIdle(worker: Worker): boolean {
+  workerIsIdle(worker: WorkerLike): boolean {
     if (this.#activeWorkflowIdByWorker.has(worker)) {
       return false;
     }

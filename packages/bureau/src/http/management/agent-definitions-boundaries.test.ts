@@ -5,7 +5,8 @@
  * rewrites a file, and how long an identifier may be.
  */
 import { EventType } from '@ag-ui/core';
-import { createAgent, createScriptedGenerate } from '@lostgradient/operative';
+import { createAgent } from '@lostgradient/operative';
+import { createScriptedGenerate } from '@lostgradient/operative/testing';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AGENT_IDENTIFIER_MAX_LENGTH, parseAgentFile } from '../../agent-file.ts';

@@ -326,7 +326,6 @@ export function resolveEngineOptions(
     runConcurrency: resolveRunConcurrency(options),
   };
 }
-
 export function normalizeWorkerExecutionConfiguration(
   options: EngineConstructorOptions | undefined,
 ): NormalizedWorkerExecutionConfiguration {
@@ -345,7 +344,6 @@ export function normalizeWorkerExecutionConfiguration(
   if (!workerExecution) {
     return { mode: 'inline', workerExecution: null };
   }
-
   return normalizeWorkerModeConfiguration(workerExecution);
 }
 
@@ -502,6 +500,7 @@ export function createExecutionStrategyBundle(parameters: {
   if (workerExecutionConfiguration.mode === 'worker') {
     const pool = new WorkerPool({
       workerUrl: workerExecutionConfiguration.workerExecution.workerUrl,
+      createWorker: workerExecutionConfiguration.workerExecution.createWorker,
       concurrency: workerExecutionConfiguration.workerExecution.poolSize ?? 4,
       smol: workerExecutionConfiguration.workerExecution.smol ?? false,
     });
@@ -554,6 +553,7 @@ export function createActivityWorkerDispatcher(
   return new ActivityWorkerDispatcher(
     new WorkerPool({
       workerUrl: activityExecution.workerUrl,
+      createWorker: activityExecution.createWorker,
       concurrency: activityExecution.poolSize ?? 4,
       smol: activityExecution.smol ?? false,
     }),

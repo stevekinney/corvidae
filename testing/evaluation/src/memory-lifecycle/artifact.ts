@@ -19,7 +19,8 @@
  * field that differs.
  */
 import { sha256Hex } from '@lostgradient/cryptography';
-import { createScriptedGenerate, type RunResultBase } from '@lostgradient/operative';
+import { type RunResultBase } from '@lostgradient/operative';
+import { createScriptedGenerate } from '@lostgradient/operative/testing';
 import { z } from 'zod';
 
 import { identifier } from '../configuration';
