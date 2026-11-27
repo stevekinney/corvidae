@@ -209,6 +209,7 @@ test('keeps pinned, failed, incomplete, and wrong-tree evidence blocking', async
   ).toContain('has not finished');
 });
 
+// spawn-free: an in-process Runner and CI provider supply all Git and GitHub observations.
 test('recorded exclusions bind individual adverse findings to the landing base and evidence', async () => {
   const loaded = loadDeliveryVerification(fixture.verification, fixture.dependencies);
   const { request } = loaded;
