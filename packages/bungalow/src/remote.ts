@@ -1,3 +1,4 @@
+import type { S3ObjectStoreOperations } from '@lostgradient/object-store';
 import {
   createSigV4Presigner,
   ObjectStoreError,
@@ -14,7 +15,7 @@ import { assertConfigurationWrite } from './configuration.ts';
 import { injectedDeploymentSecrets, type DeploymentSecrets } from './deployment-secrets.ts';
 import { createEnvironmentSecretProvider } from './environment-secret-provider.ts';
 import { BungalowFilesystemError, BungalowInputError, BungalowStateError } from './errors.ts';
-import { createObjectStore, type BungalowObjectStore } from './object-store.ts';
+import { createObjectStore } from './object-store.ts';
 import {
   secretVariable,
   validateRemoteDescriptor,
@@ -22,6 +23,10 @@ import {
 } from './remote-configuration.ts';
 import { generateUlid, isUlid } from './ulid.ts';
 import { assertBungalowName, assertDirectoryName, assertSecretKey } from './validation.ts';
+
+type RemoteObjectStore = S3ObjectStoreOperations & {
+  readonly presign: import('@lostgradient/object-store').ObjectPresigner;
+};
 
 /** How long a presigned request stays valid. Each request is signed just before it is sent. */
 const PRESIGN_SECONDS = 60;
@@ -68,7 +73,7 @@ function storeCause(error: unknown): S3FailureCause {
 
 /** The object's text, or `undefined` when the store answers 404. */
 async function readObject(
-  client: BungalowObjectStore,
+  client: RemoteObjectStore,
   key: string,
   operation: S3Operation,
 ): Promise<string | undefined> {
@@ -82,7 +87,7 @@ async function readObject(
 
 /** Read bytes and revision from one HTTP response, never separate GET and HEAD requests. */
 async function readConfigurationObject(
-  client: BungalowObjectStore,
+  client: RemoteObjectStore,
   key: string,
 ): Promise<ConfigurationSnapshot> {
   try {
@@ -97,7 +102,7 @@ async function readConfigurationObject(
 
 /** An uncertain response is observed once; equal content alone cannot prove which writer committed. */
 async function reconcileConfiguration(
-  client: BungalowObjectStore,
+  client: RemoteObjectStore,
   key: string,
 ): Promise<ConfigurationWriteResult> {
   try {
@@ -111,7 +116,7 @@ async function reconcileConfiguration(
  * Write a new deployment ID only if none exists. A 412 means another instance wrote first, which
  * is as good as success: the caller reads back whichever value the store kept.
  */
-async function createDeploymentId(client: BungalowObjectStore, key: string): Promise<void> {
+async function createDeploymentId(client: RemoteObjectStore, key: string): Promise<void> {
   try {
     await client.put(key, new TextEncoder().encode(`${generateUlid()}\n`), { kind: 'absent' });
   } catch (error) {
@@ -120,7 +125,7 @@ async function createDeploymentId(client: BungalowObjectStore, key: string): Pro
 }
 
 async function bindWorkspaceId(
-  client: BungalowObjectStore,
+  client: RemoteObjectStore,
   workspaceKey: string,
   deploymentId: string,
   configured?: string,
@@ -155,7 +160,7 @@ async function bindWorkspaceId(
  * a conditional create and then all read the one value the store kept, so they agree. An object
  * that is absent again after the write is a failed read, not a reason to write again.
  */
-async function loadDeploymentId(client: BungalowObjectStore, key: string): Promise<string> {
+async function loadDeploymentId(client: RemoteObjectStore, key: string): Promise<string> {
   let stored = await readObject(client, key, 'read deployment ID');
   if (stored === undefined) {
     await createDeploymentId(client, key);
@@ -194,7 +199,7 @@ export const defaultPresigner: PresignerFactory = (descriptor) =>
 function objectStoreFor(
   descriptor: RemoteBungalowDescriptor,
   presignerFactory: PresignerFactory,
-): BungalowObjectStore {
+): RemoteObjectStore {
   if (typeof presignerFactory !== 'function') {
     throw new BungalowInputError('The presigner must be a function.');
   }
@@ -218,7 +223,7 @@ function objectStoreFor(
  * different object than the location Bungalow hands out, and two prefixes would share one home.
  * `normalizeBucketPrefix` refuses the known cases; this checks the URL itself, before any request.
  */
-function assertExactlyAddressed(client: BungalowObjectStore, bucket: string, key: string): void {
+function assertExactlyAddressed(client: RemoteObjectStore, bucket: string, key: string): void {
   let path: string;
   try {
     path = decodeURIComponent(
@@ -246,7 +251,7 @@ function assertExactlyAddressed(client: BungalowObjectStore, bucket: string, key
  * A token the given environment supplies is the intended one. Names only, never a value.
  */
 function assertNoAmbientSessionToken(
-  client: BungalowObjectStore,
+  client: RemoteObjectStore,
   descriptor: RemoteBungalowDescriptor,
   key: string,
 ): void {

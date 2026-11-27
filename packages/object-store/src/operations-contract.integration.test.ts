@@ -53,7 +53,7 @@ describe('object-store operations contract', () => {
     expect(await operations.remove('new', currentForRemove?.etag ?? '')).toBe('removed');
   });
 
-  test('R2 conditionally writes and exposes no delete operation', async () => {
+  test('R2 paginates, reads, conditionally writes and exposes no delete operation', async () => {
     await withWorker(
       {
         entry: new URL('./r2-fixture.test-support.ts', import.meta.url).pathname,
@@ -63,6 +63,23 @@ describe('object-store operations contract', () => {
         const operations = createR2ObjectOperations(
           (await getR2Bucket('BUCKET')) as unknown as R2Bucket,
         );
+        for (let index = 0; index < 1_001; index += 1) {
+          await operations.put(
+            `page/${String(index).padStart(4, '0')}`,
+            encoder.encode(String(index)),
+            {
+              kind: 'absent',
+            },
+          );
+        }
+        const firstPage = await operations.list('page/');
+        expect(firstPage.objects).toHaveLength(1_000);
+        expect(firstPage.objects.every(({ key }) => key.startsWith('page/'))).toBe(true);
+        const secondPage = await operations.list('page/', firstPage.nextContinuationToken);
+        expect(secondPage.objects).toHaveLength(1);
+        const listed = await operations.read('page/0000');
+        expect(decoder.decode(listed?.bytes)).toBe('0');
+        expect(listed?.etag).not.toBe('');
         expect('remove' in operations).toBe(false);
         expect(await operations.put('key', encoder.encode('first'), { kind: 'absent' })).toEqual({
           outcome: 'written',
