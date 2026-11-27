@@ -1334,7 +1334,14 @@
         )
       )
       .cinder-table__body
-      .cinder-table__cell[data-cinder-stack-empty] {
+      .cinder-table__cell[data-cinder-stack-empty],
+    .cinder-table[data-cinder-fit]:not([data-cinder-stack-below]):not(
+        :has(
+          > .cinder-table__body > .cinder-table__row > .cinder-table__cell[data-cinder-controls='']
+        )
+      )
+      .cinder-table__body
+      .cinder-table__cell:empty:not([data-cinder-stack-title]) {
       display: none;
     }
     .cinder-table[data-cinder-fit]:not([data-cinder-stack-below]):not(
@@ -2307,7 +2314,14 @@
         )
       )
       .cinder-table__body
-      .cinder-table__cell[data-cinder-stack-empty] {
+      .cinder-table__cell[data-cinder-stack-empty],
+    .cinder-table[data-cinder-fit][data-cinder-stack-below='640px']:not(
+        :has(
+          > .cinder-table__body > .cinder-table__row > .cinder-table__cell[data-cinder-controls='']
+        )
+      )
+      .cinder-table__body
+      .cinder-table__cell:empty:not([data-cinder-stack-title]) {
       display: none;
     }
     .cinder-table[data-cinder-fit][data-cinder-stack-below='640px']:not(

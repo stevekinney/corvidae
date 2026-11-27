@@ -206,9 +206,14 @@ export const CARD_RULES: readonly StackRule[] = [
     selectors: ['& .cinder-table__body .cinder-table__cell > *'],
     declarations: 'min-inline-size: 0;',
   },
-  // A cell with nothing in it, and its label, are not drawn.
+  // A cell with nothing in it, and its label, are not drawn. The server marks a cell with no content
+  // at all; a cell whose content rendered nothing (an `{#if}` that is false) holds only comments, so
+  // `:empty` hides it from the first paint too, before script marks it.
   {
-    selectors: ['& .cinder-table__body .cinder-table__cell[data-cinder-stack-empty]'],
+    selectors: [
+      '& .cinder-table__body .cinder-table__cell[data-cinder-stack-empty]',
+      '& .cinder-table__body .cinder-table__cell:empty:not([data-cinder-stack-title])',
+    ],
     declarations: 'display: none;',
   },
   // The title: line one, at the leading edge.
