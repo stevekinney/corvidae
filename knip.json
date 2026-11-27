@@ -323,6 +323,7 @@
         "**/*.fixture.svelte",
         "**/*.playwright.ts",
         "**/*.spec.ts",
+        "src/node-runtime.test-support.ts",
         "src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts",
         "src/test/review-peer-child.ts",
         "src/hooks/recipient-recovery-child.ts"
@@ -334,6 +335,7 @@
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!",
+        "!src/node-runtime.test-support.ts!",
         "!src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts!",
         "!src/test/review-peer-child.ts!",
         "!src/hooks/recipient-recovery-child.ts!"
