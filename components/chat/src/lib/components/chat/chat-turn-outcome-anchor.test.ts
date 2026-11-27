@@ -236,13 +236,16 @@ describe('Chat — the outcome of a turn with no assistant message', () => {
   });
 });
 
-describe('Chat — the anchor takes the whole transcript column', () => {
-  test('the transcript presentation gives the anchor the reply’s full-width rule, since it carries no role', async () => {
-    const css = await Bun.file(new URL('./chat.css', import.meta.url)).text();
-    const rule = /([^{}]*\[data-turn-anchor\][^{}]*)\{([^}]*)\}/u.exec(css);
-    expect(rule?.[1]).toContain(".chat-message-wrapper[data-presentation='transcript']");
-    expect(rule?.[2]).toMatch(/inline-size:\s*100%;/u);
-    expect(rule?.[2]).toMatch(/max-width:\s*100%;/u);
+describe('Chat — the anchor is sized as a reply is', () => {
+  test('the message styles give the anchor the reply’s own width rule, in the same unlayered cascade', async () => {
+    const source = await Bun.file(new URL('./message/chat-message.svelte', import.meta.url)).text();
+    // One rule, so the two can never drift: a layered rule in chat.css cannot size it, because the
+    // component's own unlayered `width: fit-content` outranks any layered rule.
+    const rule =
+      /\.chat-message-wrapper\[data-role='assistant'\],\s*\.chat-message-wrapper\[data-turn-anchor\]\s*\{([^}]*)\}/u.exec(
+        source,
+      );
+    expect(rule?.[1]).toMatch(/inline-size:\s*min\(100%,/u);
   });
 });
 

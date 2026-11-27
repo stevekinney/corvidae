@@ -43,16 +43,26 @@
   // `reconnecting`) drawn on Chat's anchor after its steps. Behind a query param, so the default
   // fixture, its baselines and its axe sweep stay as they were.
   const turnOutcomeKind = new URLSearchParams(globalThis.location.search).get('turnOutcome');
-  function turnOutcomeFixture(kind: string | null) {
+  // `steps` is a turn the run only called tools in, whose outcome stands on Chat's anchor; `reply`
+  // is the same outcome carried by the assistant's own message, which the anchor must size as.
+  function turnOutcomeFixture(kind: string | null, shape: 'steps' | 'reply') {
     if (kind !== 'stopped' && kind !== 'failed' && kind !== 'empty' && kind !== 'reconnecting')
       return undefined;
-    let history = appendToolResult(
-      appendToolCall(
-        appendUserMessage(createConversation({ id: 'turn-outcome-chat' }), 'Look up order 4471'),
-        { id: 'lookup', name: 'lookup_order', arguments: { order: '4471' } },
-      ),
-      { callId: 'lookup', outcome: 'success', content: '$42.00, delivered Monday' },
+    const asked = appendUserMessage(
+      createConversation({ id: `turn-outcome-${shape}` }),
+      'Look up order 4471',
     );
+    let history =
+      shape === 'steps'
+        ? appendToolResult(
+            appendToolCall(asked, {
+              id: 'lookup',
+              name: 'lookup_order',
+              arguments: { order: '4471' },
+            }),
+            { callId: 'lookup', outcome: 'success', content: '$42.00, delivered Monday' },
+          )
+        : appendAssistantMessage(asked, kind === 'empty' ? '' : 'Order 4471 is $42.00, delivered');
     if (kind === 'stopped' || kind === 'failed') {
       const lastId = history.ids.at(-1)!;
       const last = history.messages[lastId]!;
@@ -94,7 +104,8 @@
         : { running: false, now: 0 },
     );
   }
-  const turnOutcome = turnOutcomeFixture(turnOutcomeKind);
+  const turnOutcome = turnOutcomeFixture(turnOutcomeKind, 'steps');
+  const turnOutcomeReply = turnOutcomeFixture(turnOutcomeKind, 'reply');
   const citedClaims: readonly ChatCitationClaim[] = [
     {
       id: 'revenue',
@@ -603,7 +614,7 @@
     </div>
   {/if}
 
-  {#if turnOutcome}
+  {#if turnOutcome && turnOutcomeReply}
     <div style="height: 34rem;" data-testid="chat-turn-outcome-anchor">
       <Chat
         id="fixture-turn-outcome-chat"
@@ -611,6 +622,19 @@
         conversation={turnOutcome.conversation}
         capabilities={{ attachments: false }}
         messageTurnState={(message) => turnStateOf(turnOutcome, message)}
+        onContinueTurn={() => undefined}
+        onDiscardTurn={() => undefined}
+        onRetryTurn={() => undefined}
+        onRetryConnection={() => false}
+      />
+    </div>
+    <div style="height: 34rem;" data-testid="chat-turn-outcome-reply">
+      <Chat
+        id="fixture-turn-outcome-reply-chat"
+        variant="transcript"
+        conversation={turnOutcomeReply.conversation}
+        capabilities={{ attachments: false }}
+        messageTurnState={(message) => turnStateOf(turnOutcomeReply, message)}
         onContinueTurn={() => undefined}
         onDiscardTurn={() => undefined}
         onRetryTurn={() => undefined}

@@ -1562,7 +1562,11 @@
       var(--cinder-radius-lg);
   }
 
-  .chat-message-wrapper[data-role='assistant'] {
+  /* The anchor of a turn that ends on its steps carries no role (so no reply rule reached it, and it
+   * sized to its content), but its outcome is a reply's to the eye: the same width as a reply's, from
+   * the same rule. These styles are unlayered, which outranks the layered rules of chat.css. */
+  .chat-message-wrapper[data-role='assistant'],
+  .chat-message-wrapper[data-turn-anchor] {
     margin-inline-end: auto;
     inline-size: min(100%, var(--cinder-chat-message-max-width, 48rem));
   }
