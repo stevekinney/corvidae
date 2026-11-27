@@ -8,6 +8,7 @@ import { rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -15,6 +16,7 @@ import { type BackendDescriptor } from '@lostgradient/operative';
 
 import { AgentFileError, AgentSnapshotError } from './agent-file';
 import { readFileAgentBinding } from './agent-file-catalog';
+import { createAgentIdRenameStore } from './agent-id-rename-store';
 import { createFileAgentRuntime } from './agent-file-runtime';
 import { createAgentSnapshotStore } from './agent-snapshot-store';
 import { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './sources/watched-directory';
@@ -95,6 +97,51 @@ describe('close()', () => {
     expect(opened.length).toBeGreaterThan(0);
     await fixture.catalog.close();
     expect(opened.filter((record) => !record.closed)).toEqual([]);
+  });
+});
+
+describe('a saved identifier change in progress', () => {
+  it('keeps one catalog identity while the source temporarily holds both files', async () => {
+    const intents = createAgentIdRenameStore(textValueStore(new MemoryStorage()));
+    const fixture = await start({ renameStore: intents });
+    const old = await fixture.catalog.create('old-id', {
+      model: KNOWN_MODEL,
+      instructions: 'Original identity.\n',
+    });
+    // Witness the crash window: a legacy executor wrote the target after
+    // reserving it but before it persisted its next phase. `prepared` is
+    // already authoritative for discovery, so no scan may publish two IDs.
+    await intents.reserve({ from: 'old-id', to: 'new-id', sourceHash: old.hash });
+    await fixture.catalog.create('new-id', {
+      model: KNOWN_MODEL,
+      instructions: 'Original identity.\n',
+    });
+
+    expect(fixture.catalog.list().map((agent) => agent.id)).toContain('old-id');
+    expect(fixture.catalog.list().map((agent) => agent.id)).not.toContain('new-id');
+    expect(fixture.catalog.find('new-id')).toBe(fixture.catalog.find('old-id'));
+    // Replay after the target write and its revision scan is the same intent,
+    // not an attempt to claim a historically used identifier.
+    await expect(
+      fixture.catalog.publishRenameTarget('old-id', 'new-id', { expectedHash: old.hash }),
+    ).resolves.toEqual({ id: 'new-id', hash: old.hash });
+  });
+
+  it('refuses a target whose deleted file still owns a revision history', async () => {
+    const fixture = await start();
+    const old = await fixture.catalog.create('old-id', {
+      model: KNOWN_MODEL,
+      instructions: 'Original identity.\n',
+    });
+    const retired = await fixture.catalog.create('retired-id', {
+      model: KNOWN_MODEL,
+      instructions: 'Previous identity.\n',
+    });
+    await fixture.catalog.delete('retired-id', { expectedHash: retired.hash });
+
+    await expect(
+      fixture.catalog.publishRenameTarget('old-id', 'retired-id', { expectedHash: old.hash }),
+    ).rejects.toMatchObject({ code: 'agent-file-exists' });
   });
 });
 

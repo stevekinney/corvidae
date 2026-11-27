@@ -116,6 +116,8 @@ export interface AgentFileFixtureOptions {
   readonly directory?: string;
   /** Where the revision records live. Share one between fixtures to model one store. */
   readonly revisionStore?: ConditionalTextValueStore;
+  /** The durable saved-ID change intents that one catalog resolves while it scans. */
+  readonly renameStore?: AgentFileCatalogOptions['renameStore'];
   /** The revisions of an agent that a retained run references, which saved versions keep. */
   readonly retainedRevisions?: AgentFileCatalogOptions['retainedRevisions'];
   /** Where scan, watcher, and record failures are reported. Defaults to throwing. */
@@ -203,6 +205,7 @@ export async function createAgentFileFixture(
     ...(options.ownerGuardrails === undefined ? {} : { ownerGuardrails: options.ownerGuardrails }),
     ...(options.modelPolicy === undefined ? {} : { modelPolicy: options.modelPolicy }),
     ...(options.revisionStore === undefined ? {} : { revisionStore: options.revisionStore }),
+    ...(options.renameStore === undefined ? {} : { renameStore: options.renameStore }),
     ...(options.retainedRevisions === undefined
       ? {}
       : { retainedRevisions: options.retainedRevisions }),

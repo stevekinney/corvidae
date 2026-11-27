@@ -80,6 +80,7 @@ import {
 } from 'armorer';
 
 import type { AnyRunnableAgent, DroppedCodeAgentBehavior } from './agent-catalog';
+import type { AgentIdRenameRecord, AgentIdRenameStore } from './agent-id-rename-store';
 import { createAgentSkills } from './agent-skills';
 import {
   AGENT_COMPACTION_DEFAULT_THRESHOLD_PERCENT,
@@ -606,6 +607,12 @@ export interface AgentFileCatalogOptions {
    */
   readonly revisionStore?: ConditionalTextValueStore | undefined;
   /**
+   * The durable saved-identifier change intents. A scan reads these before it
+   * becomes visible, so a source that has temporarily published both names
+   * still presents exactly one editable identity (COR-2428).
+   */
+  readonly renameStore?: AgentIdRenameStore | undefined;
+  /**
    * The definition revisions of an agent that a retained run references (COR-1815), which the
    * pruning of saved versions must keep. Omitted, no revision is protected.
    */
@@ -898,6 +905,15 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
    * deferrals, not one per alternation.
    */
   const deferredAgainst = new Map<string, Set<string>>();
+  /**
+   * Names that are temporarily resolved through a durable saved-ID change.
+   * This is replaced as one scan settles, never while callers are reading the
+   * catalog, so `find` stays synchronous like every other catalog lookup.
+   */
+  let publishedRenameView: {
+    readonly entries: ReadonlyMap<string, FileEntry>;
+    readonly aliases: ReadonlyMap<string, string>;
+  } = { entries: new Map(), aliases: new Map() };
 
   function toListing(entry: FileEntry): AgentListing {
     const ready = entry.problem === undefined;
@@ -1790,6 +1806,36 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         settled.set(id, { ...withoutAgent, problem });
       }
     }
+    // The intent is read in the same asynchronous settle pass as revisions.
+    // A second Bureau therefore sees the reservation before this scan publishes
+    // an object which a source write made visible between the two processes.
+    const aliases = new Map<string, string>();
+    const hidden = new Set<string>();
+    if (options.renameStore !== undefined) {
+      const intents = new Map<string, AgentIdRenameRecord>();
+      for (const id of settled.keys()) {
+        const intent = await options.renameStore.get(id);
+        if (intent !== undefined) intents.set(intent.from, intent);
+      }
+      for (const intent of intents.values()) {
+        // `prepared` already reserves the target's visible identity. The
+        // executor normally advances before the source write, but this also
+        // fences a crash after an older executor's write and before its phase
+        // receipt: a subsequent scan must not briefly list both identifiers.
+        if (intent.phase === 'prepared' || intent.phase === 'target-published') {
+          aliases.set(intent.to, intent.from);
+          hidden.add(intent.to);
+        } else if (intent.phase === 'cutover') {
+          aliases.set(intent.from, intent.to);
+          hidden.add(intent.from);
+        }
+      }
+    }
+    for (const id of hidden) settled.delete(id);
+    // Publish the resolution table and the exact entry generation it applies
+    // to together. A caller never combines a just-cut-over alias with the
+    // previous generation of entries (or vice versa).
+    publishedRenameView = { entries: settled, aliases };
     return settled;
   }
 
@@ -1920,8 +1966,34 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     ...writer,
     versions,
 
+    async publishRenameTarget(from, to, renameOptions) {
+      // A deleted target can still own retained versions and pinned runs. It
+      // is not an absent identity, so never reuse its revision namespace.
+      const historical = await revisions.read(to);
+      const intent = await options.renameStore?.get(from);
+      const target = await readFresh(to);
+      const ownPublishedTarget =
+        intent !== undefined &&
+        intent.from === from &&
+        intent.to === to &&
+        intent.sourceHash === renameOptions.expectedHash &&
+        target?.hash === renameOptions.expectedHash;
+      // Recovery may arrive after our conditional target write committed and
+      // its scan advanced this target's revision, but before the executor
+      // persisted its next receipt. Only the exact durable intent plus exact
+      // target bytes proves that this is our own publication.
+      if (ownPublishedTarget) return { id: to, hash: renameOptions.expectedHash };
+      if (historical !== undefined) {
+        throw new AgentFileError(
+          'agent-file-exists',
+          `The identifier "${to}" was used before and cannot be reused by an identifier change.`,
+        );
+      }
+      return writer.publishRenameTarget(from, to, renameOptions);
+    },
+
     list() {
-      return [...directoryWatcher.entries().values()]
+      return [...publishedRenameView.entries.values()]
         .toSorted((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
         .map(toListing);
     },
@@ -1932,7 +2004,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       // revision would pair a revision with content it does not name. A file that keeps changing
       // under the reads is served as evaluated now, as an unsettled read.
       for (let attempt = 0; ; attempt += 1) {
-        const known = directoryWatcher.entries().get(id);
+        const known = publishedRenameView.entries.get(id);
         if (known === undefined) return undefined;
         const raw = await readFresh(id);
         if (raw === undefined) return undefined;
@@ -1981,7 +2053,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     tools() {
       const users = new Map<string, string[]>();
       const userApprovals = new Map<string, Record<string, ToolApprovalMode>>();
-      for (const entry of directoryWatcher.entries().values()) {
+      for (const entry of publishedRenameView.entries.values()) {
         if (entry.agent === undefined || entry.definition === undefined) continue;
         const stated = entry.definition.approvals;
         for (const name of entry.definition.tools) {
@@ -2008,7 +2080,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     },
 
     find(id) {
-      return directoryWatcher.entries().get(id)?.agent;
+      return publishedRenameView.entries.get(publishedRenameView.aliases.get(id) ?? id)?.agent;
     },
 
     ephemeral(id, definition) {

@@ -356,6 +356,9 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
   update: AgentFileWriter['update'];
   /** Delete an agent file. */
   delete: AgentFileWriter['delete'];
+  /** Publish and retire the two conditional source steps of a saved-ID change. */
+  publishRenameTarget: AgentFileWriter['publishRenameTarget'];
+  retireRenameSource: AgentFileWriter['retireRenameSource'];
   /**
    * COR-1873 — copy a plugin's read-only agent (`plugin:name`) into the owner's source as
    * `name.md`, with its tools unversioned. Fails with `AgentFileConflictError` when that file exists.
@@ -866,6 +869,10 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     update: async (id, definition, writeOptions) =>
       requireFiles().update(id, definition, writeOptions),
     delete: async (id, writeOptions) => requireFiles().delete(id, writeOptions),
+    publishRenameTarget: async (from, to, renameOptions) =>
+      requireFiles().publishRenameTarget(from, to, renameOptions),
+    retireRenameSource: async (id, renameOptions) =>
+      requireFiles().retireRenameSource(id, renameOptions),
     duplicate: async (id, writeOptions) => {
       const agent = pluginCodeAgent(id);
       if (agent === undefined) {

@@ -121,6 +121,22 @@ export interface AgentFileWriter {
     options: { readonly expectedHash: string; readonly dryRun?: boolean | undefined },
   ): Promise<AgentFileWriteResult>;
   /**
+   * Publish the unchanged bytes of `from` at a previously absent `to`, fenced
+   * on `from` and on absence of `to`.  A saved-ID executor calls this only
+   * after its durable intent has hidden `to` from discovery; this primitive
+   * never uses the filesystem rename operation, which overwrites a target.
+   */
+  publishRenameTarget(
+    from: string,
+    to: string,
+    options: { readonly expectedHash: string; readonly savedBy?: string | undefined },
+  ): Promise<AgentFileWriteResult>;
+  /** Retire the old source after every dependent reference has cut over. */
+  retireRenameSource(
+    id: string,
+    options: { readonly expectedHash: string },
+  ): Promise<AgentFileWriteResult>;
+  /**
    * COR-1873 — copy the plugin agent `id` (`plugin:name`) into the owner's source as `name.md`,
    * an agent the owner can edit. A tool the file names with a pinned version (`plugin:tool@1.2.0`)
    * is written unversioned (`plugin:tool`), so the copy uses whichever version is loaded. Refuses
@@ -523,6 +539,25 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
           }
           return { id, hash: expectedHash };
         }
+        await throughSource(() => source.delete(id, { expectedHash }));
+        await dependencies.refresh();
+        return { id, hash: expectedHash };
+      });
+    },
+
+    publishRenameTarget(from, to, { expectedHash, savedBy }) {
+      return exclusive(async () => {
+        checkIdentifier(from);
+        checkIdentifier(to);
+        const bytes = await readExisting(from, expectedHash);
+        await checkWritable(to, bytes);
+        return replace(to, bytes, null, savedBy);
+      });
+    },
+
+    retireRenameSource(id, { expectedHash }) {
+      return exclusive(async () => {
+        checkIdentifier(id);
         await throughSource(() => source.delete(id, { expectedHash }));
         await dependencies.refresh();
         return { id, hash: expectedHash };

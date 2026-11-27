@@ -96,6 +96,7 @@ import {
   readFileAgentBinding,
 } from './agent-file-catalog';
 import { createFileAgentRuntime, type FileAgentRuntime } from './agent-file-runtime';
+import { createAgentIdRenameStore } from './agent-id-rename-store';
 import { createAgentSnapshotStore } from './agent-snapshot-store';
 import { createAssetService } from './assets/asset-service';
 import {
@@ -3152,6 +3153,9 @@ async function constructBureau<const D extends AgentDefinitions>(
         );
       },
     });
+    const agentIdRenames = createAgentIdRenameStore(
+      runtime.kv ?? textValueStore(new MemoryStorage()),
+    );
     fileAgents =
       options.agentSource === undefined || options.models?.generate === undefined
         ? undefined
@@ -3201,6 +3205,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               // COR-1584: the revision records share the Bureau's store, so a revision survives a
               // restart and two Bureaus on one store agree on it.
               revisionStore: runtime.kv,
+              renameStore: agentIdRenames,
               retainedRevisions: (id) => agentSnapshots.referencedRevisions(id),
               diagnose: (message, cause) =>
                 diagnose({
