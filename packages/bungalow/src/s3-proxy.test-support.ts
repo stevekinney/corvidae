@@ -2,11 +2,7 @@ import type { S3TestServer } from '@lostgradient/testing/s3-server';
 import { afterEach } from 'bun:test';
 
 /** One request the proxy received: its method and the object key it addressed. */
-export type ProxiedRequest = {
-  readonly method: string;
-  readonly key: string;
-  readonly sessionToken?: string | undefined;
-};
+export type ProxiedRequest = { readonly method: string; readonly key: string };
 
 /**
  * Decide what one request gets: a `Response` answers it without reaching the S3 test server, and
@@ -23,6 +19,8 @@ export type S3Proxy = {
   readonly endpoint: string;
   /** Every request in the order it arrived, intercepted or not. */
   readonly requests: readonly ProxiedRequest[];
+  /** The corresponding request session token, or `null` when the request carried none. */
+  readonly sessionTokens: readonly (string | null)[];
   /** Replace the interception hook; `undefined` forwards everything. */
   intercept(hook: S3Interception | undefined): void;
 };
@@ -44,6 +42,7 @@ export function useS3Proxy(): (upstream: S3TestServer) => S3Proxy {
   });
   return (upstream) => {
     const requests: ProxiedRequest[] = [];
+    const sessionTokens: Array<string | null> = [];
     let hook: S3Interception | undefined;
     const server = Bun.serve({
       hostname: '127.0.0.1',
@@ -51,13 +50,11 @@ export function useS3Proxy(): (upstream: S3TestServer) => S3Proxy {
       async fetch(request) {
         const url = new URL(request.url);
         const sessionToken =
-          request.headers.get('x-amz-security-token') ?? url.searchParams.get('X-Amz-Security-Token');
-        const proxied = {
-          method: request.method,
-          key: keyOf(url),
-          ...(sessionToken === null ? {} : { sessionToken }),
-        };
+          request.headers.get('x-amz-security-token') ??
+          url.searchParams.get('X-Amz-Security-Token');
+        const proxied = { method: request.method, key: keyOf(url) };
         requests.push(proxied);
+        sessionTokens.push(sessionToken);
         const answer = await hook?.(proxied);
         if (answer !== undefined) return answer;
         const headers = new Headers(request.headers);
@@ -73,6 +70,7 @@ export function useS3Proxy(): (upstream: S3TestServer) => S3Proxy {
     return {
       endpoint: `http://127.0.0.1:${server.port}`,
       requests,
+      sessionTokens,
       intercept(next) {
         hook = next;
       },

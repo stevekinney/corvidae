@@ -82,12 +82,16 @@ async function runCase(
   presigner: Presigner,
   processEnvironment: Record<string, string>,
   given: Record<string, string> = {},
-): Promise<{ readonly outcome: Outcome; readonly requests: readonly ProxiedRequest[] }> {
+): Promise<{
+  readonly outcome: Outcome;
+  readonly requests: readonly ProxiedRequest[];
+  readonly sessionTokens: readonly (string | null)[];
+}> {
   const server = createS3TestServer({ bucket: BUCKET });
   try {
     const proxy = startProxy(server);
     const outcome = await openInChild(proxy.endpoint, processEnvironment, given, presigner);
-    return { outcome, requests: [...proxy.requests] };
+    return { outcome, requests: [...proxy.requests], sessionTokens: [...proxy.sessionTokens] };
   } finally {
     await server.stop();
   }
@@ -130,7 +134,7 @@ describe('remote mode: the default presigner ignores a session token the process
       expect(result.outcome.outcome).toBe('opened');
       if (result.outcome.outcome !== 'opened') return;
       expect(result.requests.length).toBeGreaterThan(0);
-      expect(result.requests.filter(({ sessionToken }) => sessionToken !== undefined)).toEqual([]);
+      expect(result.sessionTokens).toEqual(Array(result.requests.length).fill(null));
     });
   }
 });
@@ -152,15 +156,13 @@ describe('remote mode: a Bun.S3Client presigner and a session token the process 
     expect(supplied.outcome.outcome).toBe('opened');
     if (supplied.outcome.outcome !== 'opened') return;
     expect(supplied.requests.length).toBeGreaterThan(0);
-    expect(supplied.requests.map(({ sessionToken }) => sessionToken)).toEqual(
-      Array(supplied.requests.length).fill(GIVEN_TOKEN),
-    );
+    expect(supplied.sessionTokens).toEqual(Array(supplied.requests.length).fill(GIVEN_TOKEN));
   });
 
   test('no session token anywhere: static keys open and sign without one', () => {
     expect(unset.outcome.outcome).toBe('opened');
     if (unset.outcome.outcome !== 'opened') return;
     expect(unset.requests.length).toBeGreaterThan(0);
-    expect(unset.requests.filter(({ sessionToken }) => sessionToken !== undefined)).toEqual([]);
+    expect(unset.sessionTokens).toEqual(Array(unset.requests.length).fill(null));
   });
 });
