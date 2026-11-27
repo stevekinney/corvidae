@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2804",
+  "branch": "codex/cor-2804-storage-popover",
+  "checkedAt": "f6fbcf857063465c7a098f72ccff930a0a1f45ec",
+  "briefVersion": "84374c8f2a3e",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "CopyableValue reserves the Copy control inside its final value stretch; the unchanged scrollWidth and popover-frame geometry assertions remain in health-storage.spec.ts."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "The desktop case opens Storage details by keyboard and reads /host/paths to assert both the rendered and copied exact location."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Coarse-pointer styling reserves the full touch target within the same control; the existing phone browser case is unchanged."
+    }
+  ]
+}
