@@ -300,7 +300,7 @@ test.describe('workflow builder design states for /workflows/new and /workflows/
     // The shell docks the durable recovery action beside, rather than over, the outlet. This is a
     // paint and hit-test check, not a DOM-presence check: the Output action stays directly usable.
     const outputAddField = root
-      .getByTestId('workflow-builder-output-empty')
+      .getByTestId('workflow-builder-outputSchema-empty')
       .getByRole('button', { name: BUILDER.addField, exact: true });
     await outputAddField.scrollIntoViewIfNeeded();
     const clearOutputAction = await outputAddField.evaluate((button) => {
@@ -364,15 +364,19 @@ test.describe('workflow builder design states for /workflows/new and /workflows/
     await openTab(tabs(root), BUILDER.builderTab);
 
     const rows = root.locator('[data-step-address]');
+    const undos = page.locator('[data-cinder-undo]');
     for (let index = 1; index <= 6; index += 1) {
       await root.getByRole('button', { name: 'Remove step 1', exact: true }).click();
-      await expect(
-        page.locator('[data-cinder-undo]').filter({ hasText: `Deleted "Named step ${index}"` }),
-      ).toBeVisible();
+      await expect(rows).toHaveCount(7 - index);
+      if (index === 1) {
+        await expect(undos.filter({ hasText: 'Deleted "Named step 1"' })).toBeVisible();
+      } else {
+        await expect(
+          page.getByRole('button', { name: `${index} Undo actions available`, exact: true }),
+        ).toBeVisible();
+      }
     }
-    await expect(rows).toHaveCount(1);
 
-    const undos = page.locator('[data-cinder-undo]');
     await page.setViewportSize({ width: 375, height: 320 });
     const undoActions = page.getByRole('button', { name: '6 Undo actions available', exact: true });
     await expect(undoActions).toBeVisible();
@@ -386,6 +390,7 @@ test.describe('workflow builder design states for /workflows/new and /workflows/
 
     await page.setViewportSize({ width: 320, height: 640 });
     const workflowTitle = root.locator('#workflow-builder-title');
+    await workflowTitle.scrollIntoViewIfNeeded();
     const compactRecovery = await workflowTitle.evaluate((field) => {
       const recovery = document.querySelector('.cinder-toast-undo-actions');
       const fieldBox = field.getBoundingClientRect();
@@ -424,6 +429,9 @@ test.describe('workflow builder design states for /workflows/new and /workflows/
     await page.setViewportSize({ width: 1280, height: 320 });
     await undoActions.click();
     await expect(undos).toHaveCount(6);
+    await expect(undos).toContainText(
+      Array.from({ length: 6 }, (_, index) => `Deleted "Named step ${index + 1}"`),
+    );
     const firstUndo = undos.filter({ hasText: 'Deleted "Named step 1"' });
     await firstUndo.scrollIntoViewIfNeeded();
     await captureForDesignReview(page, {
