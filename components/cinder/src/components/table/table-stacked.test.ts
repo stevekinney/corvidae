@@ -9,7 +9,7 @@ import {
 } from '@lostgradient/component-tooling/test/viewport.ts';
 import { setupHappyDom } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { containerRules, DEFAULT_QUERIES, stackDeclarations } from './table-stack-fixtures.ts';
+import { containerRules, DEFAULT_QUERIES, stackDeclarations } from './table-stack.test-support.ts';
 
 setupHappyDom();
 

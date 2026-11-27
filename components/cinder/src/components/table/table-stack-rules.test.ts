@@ -8,13 +8,13 @@ import { describe, expect, test } from 'bun:test';
 import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 import { parse } from 'postcss';
 
+import { stackStyle, stylesheetCoversLength } from './table-stack-rules.ts';
 import {
   containerRules,
   DEFAULT_QUERIES,
   stackDeclarations,
   stylesheetStackRules,
-} from './table-stack-fixtures.ts';
-import { stackStyle, stylesheetCoversLength } from './table-stack-rules.ts';
+} from './table-stack.test-support.ts';
 
 const tableCss = await Bun.file(new URL('./table.css', import.meta.url)).text();
 const dataTableCss = await Bun.file(

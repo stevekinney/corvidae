@@ -8,7 +8,7 @@
  *   bun scripts/generate-table-stack-css.ts && bunx prettier --write src/components/table/table.css
  */
 
-import { stylesheetStackRules } from '../src/components/table/table-stack-fixtures.ts';
+import { stylesheetStackRules } from '../src/components/table/table-stack.test-support.ts';
 
 const BEGIN = '/* BEGIN GENERATED STACK RULES */';
 const END = '/* END GENERATED STACK RULES */';
