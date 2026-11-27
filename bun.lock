@@ -1394,6 +1394,7 @@
       "name": "@lostgradient/terminal-testing",
       "version": "0.0.0",
       "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
         "@types/node": "catalog:",

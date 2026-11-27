@@ -298,27 +298,30 @@ function boundedQueue(capacity: number): {
   };
 }
 
-async function sourceSha(): Promise<string> {
-  const status = Bun.spawnSync(
-    [
-      'git',
-      'status',
-      '--porcelain',
-      '--',
-      'testing/terminal',
-      'documentation/terminal',
-      'package.json',
-      'scripts/workspace-contract.integration.test.ts',
-      'bun.lock',
-    ],
-    { cwd: root, stdout: 'pipe', stderr: 'pipe' },
-  );
+/** The paths whose uncommitted change makes the resource probe refuse to write evidence. */
+const PROBE_SOURCE_PATHS = [
+  'testing/terminal',
+  // `loadBrowserEngineProbe` loads the engine probe from here, so its source is the probe's.
+  'components/terminal/scripts',
+  'documentation/terminal',
+  'package.json',
+  'scripts/workspace-contract.integration.test.ts',
+  'bun.lock',
+];
+
+/** The commit of `directory`, or an error when the probe source in it has an uncommitted change. */
+export async function sourceSha(directory = root): Promise<string> {
+  const status = Bun.spawnSync(['git', 'status', '--porcelain', '--', ...PROBE_SOURCE_PATHS], {
+    cwd: directory,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
   if (status.exitCode !== 0 || status.stdout.toString().length > 0)
     throw new Error(
       'resource probe source is dirty; commit the exact source before collecting evidence',
     );
   const child = Bun.spawn(['git', 'rev-parse', 'HEAD'], {
-    cwd: root,
+    cwd: directory,
     stdout: 'pipe',
     stderr: 'ignore',
   });
