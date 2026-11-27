@@ -33,11 +33,11 @@
       "suiteExitCode": 0
     },
     "data-table": {
-      "renderedSourceSha": "988852ec548b6e664c0f5babb556e64495fca8b9",
+      "renderedSourceSha": "1bf0b0d58a1957ba80a0c0a89924301d35368c13",
       "suiteExitCode": 0
     },
     "description-list": {
-      "renderedSourceSha": "988852ec548b6e664c0f5babb556e64495fca8b9",
+      "renderedSourceSha": "1bf0b0d58a1957ba80a0c0a89924301d35368c13",
       "suiteExitCode": 0
     },
     "markdown-editor": {
@@ -81,11 +81,15 @@
       "suiteExitCode": 0
     },
     "stacked-rows-leading-edge": {
-      "renderedSourceSha": "6f51e3e39d8d0795dedcff787b9a324129c902b2",
+      "renderedSourceSha": "1bf0b0d58a1957ba80a0c0a89924301d35368c13",
       "suiteExitCode": 0
     },
     "table": {
-      "renderedSourceSha": "988852ec548b6e664c0f5babb556e64495fca8b9",
+      "renderedSourceSha": "1bf0b0d58a1957ba80a0c0a89924301d35368c13",
+      "suiteExitCode": 0
+    },
+    "table-first-paint": {
+      "renderedSourceSha": "1bf0b0d58a1957ba80a0c0a89924301d35368c13",
       "suiteExitCode": 0
     },
     "token-computation": {
