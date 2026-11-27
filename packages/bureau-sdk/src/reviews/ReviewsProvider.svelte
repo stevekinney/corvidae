@@ -15,6 +15,7 @@
     authorized,
     decisionSurface,
     onOutcome,
+    seed,
     children,
   }: {
     scope: string;
@@ -22,9 +23,19 @@
     transport: CatalogTransport;
     subscription?: SubscriptionTransport | undefined;
     children: Snippet;
+    seed?: { scope: string; entries: readonly { input: unknown; data: unknown }[] } | undefined;
   } & Omit<ApprovalHost, 'catalog'> = $props();
+
+  let seedConsumed = false;
+  function takeSeed(currentScope: string) {
+    if (seedConsumed) return [];
+    seedConsumed = true;
+    return seed?.scope === currentScope ? seed.entries : [];
+  }
 </script>
 
 <Provider {scope} {cache} transport={validatedReviewsTransport(transport)} {subscription}>
-  <ReviewsScope {authorized} {decisionSurface} {onOutcome}>{@render children()}</ReviewsScope>
+  <ReviewsScope {authorized} {decisionSurface} {onOutcome} {takeSeed}
+    >{@render children()}</ReviewsScope
+  >
 </Provider>

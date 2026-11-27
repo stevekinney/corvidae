@@ -31,7 +31,7 @@
     TriangleAlert,
   } from '@lucide/svelte';
 
-  import { router } from '../../lib/router.svelte.ts';
+  import { reviewsNavigation } from '../../lib/reviews-navigation.ts';
   import { NOTIFICATION_COPY } from '../copy/shell.ts';
   import { RETRY_LABEL } from '../copy/views.ts';
   import type { NotificationItem, NotificationStore } from '../notifications.svelte.ts';
@@ -41,6 +41,7 @@
   }
 
   let { store }: NotificationBellProps = $props();
+  const router = reviewsNavigation();
 
   let open = $state(false);
 

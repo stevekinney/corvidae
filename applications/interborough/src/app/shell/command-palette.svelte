@@ -42,7 +42,8 @@
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import IdentifierText from '../../lib/identifier-text.svelte';
   import { agentPath } from '../../lib/agent-paths.ts';
-  import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
+  import { reviewsNavigation } from '../../lib/reviews-navigation.ts';
+  import { workflowDetailPath } from '../../lib/router.svelte.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
   import { shortcuts, type ShortcutAction, type ShortcutRegistry } from '../../lib/shortcuts.ts';
   import { CATALOG_STALE_TIME_MS, loadCatalog } from '../../lib/workflow-catalog.ts';
@@ -96,6 +97,7 @@
   }
 
   const OPEN_GATE: ScopeGate = { disabled: false, title: undefined };
+  const router = reviewsNavigation();
 
   let {
     open = $bindable(false),

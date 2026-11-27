@@ -108,12 +108,17 @@ function withoutUnknownEffects(value: unknown): unknown {
 /** Validate the declared Reviews outputs without changing the caller's transport or input. */
 export function validatedReviewsTransport(transport: CatalogTransport): CatalogTransport {
   return async (name, input, options) => {
-    if (!Object.hasOwn(schemas, name) || name === 'opening')
-      throw new TypeError(`Unsupported Reviews operation: ${name}`);
-    const value = withoutUnknownEffects(await transport(name, input, options));
-    if (!matches(schemas[name]!, value)) throw new TypeError(`Invalid ${name} response`);
-    return value;
+    return parseReviewsOutput(name, await transport(name, input, options));
   };
+}
+
+/** Validate and sanitize a Reviews response before rendering or placing it in a cache. */
+export function parseReviewsOutput(name: string, input: unknown): unknown {
+  if (!Object.hasOwn(schemas, name) || name === 'opening')
+    throw new TypeError(`Unsupported Reviews operation: ${name}`);
+  const value = withoutUnknownEffects(input);
+  if (!matches(schemas[name]!, value)) throw new TypeError(`Invalid ${name} response`);
+  return value;
 }
 
 // Opening data is not correlated with a caller. Its schema differs only in permitting a missing

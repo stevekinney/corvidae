@@ -19,6 +19,7 @@
     "${configDir}/src/**/__tests__/**",
     "${configDir}/src/**/__fixtures__/**",
     "${configDir}/src/**/__test-helpers__/**",
-    "${configDir}/src/host/**"
+    "${configDir}/src/host/**",
+    "${configDir}/src/private-routes/**/*.server.ts"
   ]
 }

@@ -33,8 +33,8 @@ import {
 } from './browser-build.ts';
 import {
   assertSafeOutputDirectory,
-  buildApplication,
   buildInputPaths,
+  buildApplication as buildRealApplication,
   DEFAULT_BUILD_DIRECTORY,
   ENTRY_HTML_PATH,
   exitWhenStandardInputCloses,
@@ -49,6 +49,12 @@ import {
 } from './build.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'interborough-build-'));
+
+const buildApplication: typeof buildRealApplication = (options) =>
+  buildRealApplication({
+    ...options,
+    buildPrivate: options?.buildPrivate ?? (async () => ({}) as never),
+  });
 
 afterAll(() => {
   rmSync(scratch, { recursive: true, force: true });
@@ -414,6 +420,33 @@ describe('buildApplication', () => {
     expect(calls).toHaveLength(1);
   });
 
+  it('captures the private builder before waiting for generated inputs', async () => {
+    const ready = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const builders: string[] = [];
+    const options = {
+      outdir: outputDirectory(),
+      bundle: fakeBundle({ 'index.html': 'page' }).bundle,
+      ensureGenerated: async () => {
+        ready.resolve();
+        await release.promise;
+      },
+      buildPrivate: async () => {
+        builders.push('original');
+        return {} as never;
+      },
+    };
+    const build = buildRealApplication(options);
+    await ready.promise;
+    options.buildPrivate = async () => {
+      builders.push('replacement');
+      return {} as never;
+    };
+    release.resolve();
+    await build;
+    expect(builders).toEqual(['original']);
+  });
+
   it('builds the production application into the output directory and lists its files', async () => {
     const outdir = outputDirectory();
     const { bundle, calls } = fakeBundle({
@@ -511,6 +544,34 @@ describe('buildApplication', () => {
     expect(rejection).toBeInstanceOf(AggregateError);
     expect(await Bun.file(join(outdir, 'index.html')).text()).toBe('old');
     expect(readdirSync(join(outdir, '..'))).toEqual(['build']);
+  });
+
+  it('publishes the private generation with the browser build and preserves the old build on failure', async () => {
+    const outdir = outputDirectory();
+    const bundle = fakeBundle({ 'index.html': 'page' }).bundle;
+    const built = await buildApplication({
+      outdir,
+      bundle,
+      buildPrivate: async ({ outputDirectory, browserPlugins }) => {
+        expect(browserPlugins).toEqual([curatedShikiPlugin]);
+        await Bun.write(join(outputDirectory, 'current.json'), 'generation');
+        return {} as never;
+      },
+    });
+    expect(await Bun.file(join(outdir, 'private/current.json')).text()).toBe('generation');
+    expect(built.files).toContain('private/current.json');
+    const failure = await rejectionOf(
+      buildApplication({
+        outdir,
+        bundle,
+        buildPrivate: async () => {
+          throw new Error('private build failed');
+        },
+      }),
+    );
+    expect(failure).toBeInstanceOf(Error);
+    expect(String(failure)).toContain('private build failed');
+    expect(await Bun.file(join(outdir, 'private/current.json')).text()).toBe('generation');
   });
 });
 

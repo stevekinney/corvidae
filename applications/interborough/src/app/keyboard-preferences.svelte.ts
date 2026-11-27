@@ -32,9 +32,15 @@ export class KeyboardPreferences {
   /** Whether the shortcuts pressed without a modifier answer. On by default. */
   singleKeyShortcuts: boolean = $state(true);
 
-  readonly #storage: Storage;
+  #storage: Storage | null;
 
-  constructor(storage: Storage = window.localStorage) {
+  constructor(storage: Storage | null = window.localStorage) {
+    this.#storage = storage;
+    if (storage) this.singleKeyShortcuts = read(storage, SINGLE_KEY_STORAGE_KEY) !== 'false';
+  }
+
+  /** Restore this browser's preference after server rendering. */
+  activate(storage: Storage): void {
     this.#storage = storage;
     this.singleKeyShortcuts = read(storage, SINGLE_KEY_STORAGE_KEY) !== 'false';
   }
@@ -42,7 +48,7 @@ export class KeyboardPreferences {
   /** Sets and stores whether the shortcuts pressed without a modifier answer. */
   setSingleKeyShortcuts(enabled: boolean): void {
     this.singleKeyShortcuts = enabled;
-    write(this.#storage, SINGLE_KEY_STORAGE_KEY, String(enabled));
+    if (this.#storage) write(this.#storage, SINGLE_KEY_STORAGE_KEY, String(enabled));
   }
 }
 

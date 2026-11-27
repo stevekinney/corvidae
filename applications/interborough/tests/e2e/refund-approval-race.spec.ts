@@ -6,6 +6,8 @@ import type { McpUiResourceCsp } from '@modelcontextprotocol/ext-apps/app-bridge
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { join } from 'node:path';
 import { buildCheckoutApplication } from '../../scripts/build.ts';
+import { designReviewColorScheme } from '../../scripts/environment-configuration.ts';
+import { captureForDesignReviewWithPhone } from './design-review-capture.ts';
 import { startRefundRace } from './refund-race.test-support.ts';
 import { approveReview } from './task-support.ts';
 
@@ -27,6 +29,122 @@ test.beforeAll(async () => {
 });
 test.afterAll(() => {
   if (directory) removeTemporaryPath(directory);
+});
+
+test('hydrates private Reviews without repeating its opening reads', async ({ browser }) => {
+  const fixture = await startRefundRace(buildDirectory);
+  let context: BrowserContext | undefined;
+  let primaryFailure: unknown;
+  let cleanupFailure: AggregateError | undefined;
+  try {
+    const refund = await fixture.requestRefund();
+    const cookie = await fixture.signIn(fixture.hosts[0], 'alice');
+    context = await browser.newContext({
+      ignoreHTTPSErrors: true,
+      extraHTTPHeaders: { 'x-refund-fixture-host': '0' },
+      viewport: { width: 1280, height: 900 },
+      colorScheme: designReviewColorScheme() ?? 'light',
+    });
+    const [name, ...value] = cookie.split('=');
+    await context.addCookies([
+      {
+        name: name!,
+        value: value.join('='),
+        url: fixture.origin,
+        secure: true,
+        httpOnly: true,
+        sameSite: 'Lax',
+      },
+    ]);
+    const page = await context.newPage();
+    const reads: string[] = [];
+    page.on('request', (request) => {
+      if (request.method() !== 'POST' || new URL(request.url()).pathname !== '/jsonrpc') return;
+      const method = request.postDataJSON()?.method;
+      if (method === 'bureau.reviews.list') reads.push(method);
+    });
+    const response = await page.goto(
+      `${fixture.origin}/reviews?review=${encodeURIComponent(`bureau:${refund.reviewId}`)}`,
+    );
+    expect(response?.headers()['cache-control']).toBe('private, no-store');
+    expect(await response?.text()).toContain(refund.reviewId);
+    await page.getByRole('radio', { name: /^Done/ }).click();
+    await captureForDesignReviewWithPhone(page, {
+      route: '/reviews',
+      state: 'private-done',
+      source: 'refund-approval-race.spec.ts',
+    });
+    await page.getByRole('radio', { name: /^Waiting/ }).click();
+    const pane = page.locator('.ib-reviews__detail');
+    await expect(pane).toContainText('$42.00');
+    expect(reads).toEqual([]);
+    await captureForDesignReviewWithPhone(page, {
+      route: '/reviews',
+      state: 'private-waiting-detail',
+      source: 'refund-approval-race.spec.ts',
+    });
+    const refreshed = ['pending', 'resolved'].map((status) =>
+      page.waitForResponse((candidate) => {
+        const request = candidate.request();
+        if (request.method() !== 'POST' || new URL(candidate.url()).pathname !== '/jsonrpc')
+          return false;
+        const body = request.postDataJSON();
+        return body?.method === 'bureau.reviews.list' && body.params?.status === status;
+      }),
+    );
+    const [responses] = await Promise.all([Promise.all(refreshed), approveReview(pane)]);
+    await expect.poll(() => fixture.proxy.calls.length).toBe(1);
+    await expect.poll(() => fixture.proxy.calls[0]?.finished).toBeDefined();
+    expect(fixture.proxy.calls[0]?.input).toMatchObject({
+      id: refund.reviewId,
+      round: 0,
+      decision: 'approve',
+    });
+    expect(fixture.proxy.calls[0]?.status).toBe(200);
+    expect(fixture.proxy.calls[0]?.response).toMatchObject({
+      result: { id: refund.reviewId, decision: 'approve', receipt: 'applied' },
+    });
+    for (const response of responses) {
+      expect(response.status()).toBe(200);
+      expect(await response.finished()).toBeNull();
+    }
+    await fixture.proxy.drain();
+    await page.getByRole('button', { name: 'Quick settings' }).click();
+    await captureForDesignReviewWithPhone(page, {
+      route: '/reviews',
+      state: 'private-quick-settings',
+      source: 'refund-approval-race.spec.ts',
+    });
+    const navigation = page.waitForResponse(
+      (candidate) =>
+        candidate.request().isNavigationRequest() &&
+        new URL(candidate.url()).pathname === '/settings',
+    );
+    await page.getByRole('link', { name: 'All settings' }).click();
+    const settingsResponse = await navigation;
+    expect(settingsResponse.status()).toBe(200);
+  } catch (error) {
+    primaryFailure = error;
+  } finally {
+    const cleanup: unknown[] = [];
+    try {
+      await context?.close();
+    } catch (error) {
+      cleanup.push(error);
+    }
+    try {
+      await fixture.close();
+    } catch (error) {
+      cleanup.push(error);
+    }
+    if (cleanup.length)
+      cleanupFailure = new AggregateError(
+        primaryFailure === undefined ? cleanup : [primaryFailure, ...cleanup],
+        'Reviews hydration fixture cleanup failed',
+      );
+  }
+  if (cleanupFailure) throw cleanupFailure;
+  if (primaryFailure !== undefined) throw primaryFailure;
 });
 
 for (const distinctOwners of [false, true]) {

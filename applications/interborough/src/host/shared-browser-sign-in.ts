@@ -86,8 +86,27 @@ export function sharedBrowserServerHooks(
     },
     async handleFetch({ event, request, fetch: next }) {
       if (new URL(request.url).origin !== origin) return next(request);
-      if (!['GET', 'HEAD'].includes(request.method))
+      let body: string | undefined;
+      if (request.method === 'POST' && new URL(request.url).pathname === '/jsonrpc') {
+        body = await request.clone().text();
+        let call: unknown;
+        try {
+          call = JSON.parse(body);
+        } catch {
+          return new Response('Forbidden', { status: 403 });
+        }
+        if (
+          typeof call !== 'object' ||
+          call === null ||
+          Array.isArray(call) ||
+          !Object.hasOwn(call, 'method') ||
+          typeof Reflect.get(call, 'method') !== 'string' ||
+          !['bureau.reviews.list', 'bureau.reviews.get'].includes(Reflect.get(call, 'method'))
+        )
+          return new Response('Forbidden', { status: 403 });
+      } else if (!['GET', 'HEAD'].includes(request.method)) {
         return new Response('Forbidden', { status: 403 });
+      }
       const context = await authority.authenticate(event.request);
       if (context instanceof Response) return context;
       const workspace = context.principal?.workspace;
@@ -101,6 +120,7 @@ export function sharedBrowserServerHooks(
       headers.delete('x-api-key');
       headers.set('host', new URL(origin).host);
       headers.set('cookie', event.request.headers.get('cookie') ?? '');
+      if (body !== undefined) headers.set('origin', origin);
       headers.set(
         'x-interborough-expected-identity',
         encodeURIComponent(
@@ -110,6 +130,7 @@ export function sharedBrowserServerHooks(
       const response = await fetch(target, {
         method: request.method,
         headers,
+        ...(body === undefined ? {} : { body }),
         redirect: 'manual',
         signal: event.signal,
       });
@@ -399,6 +420,7 @@ export function sharedBrowserRoutes(
   shared: ReturnType<typeof createSharedBrowserSignIn> | undefined,
   authority: HostAuthority,
   privateServer: { fetch(request: Request): Promise<Response> } | undefined,
+  shell: () => Promise<Response>,
 ) {
   if (!shared) return {};
   const onOrigin =
@@ -434,12 +456,21 @@ export function sharedBrowserRoutes(
     '/oauth/token': { POST: oauth },
     '/oauth/revoke': { POST: oauth },
   };
-  if (!privateServer) return routes;
+  if (!privateServer) {
+    return {
+      ...routes,
+      '/reviews': {
+        GET: (request: Request) =>
+          shared.matches(request) ? new Response('Reviews unavailable', { status: 503 }) : shell(),
+      },
+    };
+  }
   const page = onOrigin((request) => privateServer.fetch(shared.publicRequest(request)));
   return {
     ...routes,
     '/settings/api-keys': { GET: page, HEAD: page, POST: page },
     '/settings/connected-apps': { GET: page, HEAD: page, POST: page },
+    '/reviews': { GET: (request: Request) => (shared.matches(request) ? page(request) : shell()) },
     '/_assets/*': { GET: page, HEAD: page },
     '/_remote/*': { POST: page },
   };
