@@ -18,6 +18,9 @@
     max-inline-size: 100%;
     font-family: var(--cinder-font-mono);
     overflow-wrap: anywhere;
+    /* A CopyableValue can live inside a compact control that keeps its own label unbroken. Its
+     * value still owns punctuation-aware line breaking, so it must reset that inherited policy. */
+    white-space: normal;
   }
 
   /* A part (the text between two slashes, say) and a piece of a part (the text between two dots) is
@@ -46,9 +49,31 @@
     white-space: nowrap;
   }
 
-  /* The control sits beside the value's last character, centred on the line. */
+  /* The control reserves its complete mouse target on the value's final line. This keeps
+   * CopyButton's own target pseudo-element inside the CopyableValue, so an inline value at the
+   * end of a description-list row does not increase its ancestor's scroll width. */
   .cinder-copyable-value__control {
     display: inline-flex;
+    inline-size: 1.5rem;
+    min-block-size: 1.5rem;
     vertical-align: middle;
+  }
+
+  .cinder-copyable-value__control .cinder-copy-button {
+    inline-size: 100%;
+    block-size: 100%;
+    min-inline-size: 100%;
+    min-block-size: 100%;
+    justify-content: center;
+    padding: 0;
+  }
+
+  /* A phone reserves the complete target in the final value stretch, rather than letting a
+   * target pseudo-element hang into the width owned by a surrounding popover or sheet. */
+  @media (any-pointer: coarse) {
+    .cinder-copyable-value__control {
+      inline-size: var(--cinder-touch-target-min);
+      min-block-size: var(--cinder-touch-target-min);
+    }
   }
 }

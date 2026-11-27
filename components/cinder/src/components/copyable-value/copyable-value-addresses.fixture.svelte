@@ -28,6 +28,15 @@
       label="Copy the address"
     />
   </p>
+  <!-- A long slash-delimited storage path is wider than a phone sheet. Its Copy target must stay
+       reachable after the full value has wrapped, rather than hanging past the sheet's inline end. -->
+  <p class="copyable-value-addresses__nowrap" data-testid="storage-location">
+    <CopyableValue
+      data-testid="storage-location-value"
+      value="/var/lib/interborough/storage/sample-world/long-slash-delimited-location/showcase-home"
+      label="Copy storage location"
+    />
+  </p>
 </div>
 
 <style>
@@ -39,5 +48,9 @@
 
   .copyable-value-addresses p {
     margin: 0;
+  }
+
+  .copyable-value-addresses__nowrap {
+    white-space: nowrap;
   }
 </style>
