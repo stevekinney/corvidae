@@ -5,8 +5,6 @@ import {
   ObjectStoreError,
   type ListedObject,
   type ListedPage,
-  type ObjectStoreOperations,
-  type ObjectWriteCondition,
   type S3ObjectStoreOperations,
 } from './operations.ts';
 import type { ObjectPresigner } from './presign.ts';
@@ -137,11 +135,13 @@ export function createS3ObjectOperations(
           }),
         );
         const text = await response.text();
-        if (!response.ok) throw failure(response.status, errorCodeFromBody(text, response.status));
+        if (!response.ok) {
+          throw failure(response.status, errorCodeFromBody(text, response.status), 'LIST', prefix);
+        }
         try {
           return parseListing(text);
         } catch {
-          throw new ObjectStoreError('MalformedListing', undefined);
+          throw new ObjectStoreError('MalformedListing', undefined, 'LIST', prefix);
         }
       });
     },
@@ -152,7 +152,7 @@ export function createS3ObjectOperations(
           await drain(response);
           return undefined;
         }
-        if (!response.ok) throw failure(await drain(response));
+        if (!response.ok) throw failure(await drain(response), undefined, 'GET', key);
         return {
           bytes: new Uint8Array(await response.arrayBuffer()),
           etag: response.headers.get('etag') ?? '',
@@ -174,7 +174,7 @@ export function createS3ObjectOperations(
         if (response.ok) return { outcome: 'written' } as const;
         if (status === 412 || (status === 404 && condition.kind === 'etag'))
           return { outcome: 'refused' } as const;
-        throw failure(status);
+        throw failure(status, undefined, 'PUT', key);
       }),
     remove: (key, etag) =>
       guarded('DELETE', key, async () => {
@@ -185,7 +185,7 @@ export function createS3ObjectOperations(
         const status = await drain(response);
         if (response.ok) return 'removed' as const;
         if (status === 412 || status === 404) return 'refused' as const;
-        throw failure(status);
+        throw failure(status, undefined, 'DELETE', key);
       }),
   };
 }
@@ -198,5 +198,3 @@ function errorCodeFromBody(text: string, status: number): string {
     return `HTTP${status}`;
   }
 }
-
-export type { ObjectStoreOperations, ObjectWriteCondition };

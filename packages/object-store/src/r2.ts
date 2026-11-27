@@ -19,7 +19,7 @@ export interface R2Bucket {
     key: string,
     value: Uint8Array,
     options: { readonly onlyIf: Headers },
-  ): Promise<unknown | null>;
+  ): Promise<{ readonly httpEtag: string } | null>;
 }
 
 /** Create operations over an R2 binding. R2 exposes no conditional delete operation here. */
@@ -31,7 +31,9 @@ export function createR2ObjectOperations(bucket: R2Bucket): ObjectStoreOperation
           prefix,
           ...(continuationToken === undefined ? {} : { cursor: continuationToken }),
         });
-        if (page.truncated && (page.cursor === undefined || page.cursor === '')) throw failure(502);
+        if (page.truncated && (page.cursor === undefined || page.cursor === '')) {
+          throw failure(502, undefined, 'LIST', prefix);
+        }
         return {
           objects: page.objects.map(({ key, size, httpEtag }) => ({ key, size, etag: httpEtag })),
           ...(page.cursor === undefined ? {} : { nextContinuationToken: page.cursor }),

@@ -49,9 +49,8 @@ describe('object-store operations contract', () => {
       }),
     ).toEqual({ outcome: 'written' });
     expect(await operations.remove('new', '"stale"')).toBe('refused');
-    expect(await operations.remove('new', (await operations.read('new'))?.etag ?? '')).toBe(
-      'removed',
-    );
+    const currentForRemove = await operations.read('new');
+    expect(await operations.remove('new', currentForRemove?.etag ?? '')).toBe('removed');
   });
 
   test('R2 conditionally writes and exposes no delete operation', async () => {
@@ -78,7 +77,8 @@ describe('object-store operations contract', () => {
             etag: first?.etag ?? '',
           }),
         ).toEqual({ outcome: 'written' });
-        expect(decoder.decode((await operations.read('key'))?.bytes)).toBe('current');
+        const current = await operations.read('key');
+        expect(decoder.decode(current?.bytes)).toBe('current');
       },
     );
   });

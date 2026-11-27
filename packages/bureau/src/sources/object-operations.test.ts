@@ -55,6 +55,7 @@ describe('a failed object-store request', () => {
         secretAccessKey: SECRET_ACCESS_KEY,
         bucket: 'bucket',
         endpoint,
+        region: 'us-east-1',
       };
       const thrown = await request(
         createS3ObjectOperations({
