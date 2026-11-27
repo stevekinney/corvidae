@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
+import { environmentConfiguration } from '../environment-configuration.ts';
 import { spawnWithHangGuard } from '../hang-guard.ts';
 
 const compileProgram = `
@@ -101,6 +102,16 @@ function serializeServerInput(payload: Record<string, unknown>): string {
   });
 }
 
+/**
+ * The `NODE_ENV` both children run under. The Svelte plugin compiles development code unless
+ * `NODE_ENV` is `production`, but the runtime's `esm-env` picks its production build when `NODE_ENV`
+ * is unset, as in a Playwright worker, and that build's server renderer crashes on the first
+ * element of development code. Naming the mode keeps the compiler and the runtime in step.
+ */
+function serverNodeEnvironment(): 'development' | 'production' {
+  return environmentConfiguration().nodeEnv === 'production' ? 'production' : 'development';
+}
+
 async function runServerProgram(
   program: string,
   payload: Record<string, unknown>,
@@ -109,6 +120,7 @@ async function runServerProgram(
   // starts Bun with `--no-install`.
   const child = spawnWithHangGuard([process.execPath, '--eval', program], {
     cwd: packageRoot,
+    env: { ...process.env, NODE_ENV: serverNodeEnvironment() },
     stdin: new TextEncoder().encode(serializeServerInput(payload)),
     stdout: 'pipe',
     stderr: 'pipe',

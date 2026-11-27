@@ -2,11 +2,12 @@
   "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
   "category": "navigation",
   "status": "stable",
-  "purpose": "Hierarchical wayfinding trail showing the ancestor path of the current page with the final entry marked as aria-current.",
+  "purpose": "Hierarchical wayfinding trail showing the ancestor path of the current page with the final entry marked as aria-current; on a phone, a back link chosen in CSS on the first paint.",
   "tags": ["navigation", "wayfinding"],
   "useWhen": [
     "Surfacing where the user sits inside a deep, nested hierarchy.",
-    "Letting the user jump back to any ancestor view in one click."
+    "Letting the user jump back to any ancestor view in one click.",
+    "A server-rendered page that must paint its phone form before script runs: both forms are in the server HTML, and CSS exposes one at a time."
   ],
   "avoidWhen": [
     {
