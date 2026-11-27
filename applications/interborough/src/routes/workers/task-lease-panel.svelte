@@ -123,5 +123,5 @@
       >{cancellation.statusLabel}</Badge
     >
   </div>
-  <DescriptionList items={cancellationItems} />
+  <DescriptionList class="weft-workers-panel__list" items={cancellationItems} />
 </section>
