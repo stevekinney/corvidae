@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import ts from 'typescript';
 
+import { CINDER_GENERATED_OUTPUTS } from '../components/cinder/scripts/ensure-cinder-generated.ts';
 import { runWithHangGuard } from '../testing/testing/src/hang-guard.ts';
-import { CINDER_GENERATED_OUTPUTS } from './ensure-cinder-generated.ts';
 import { type PluginManifest, pluginDependencyViolations } from './plugin-dependency-rules.ts';
 import {
   directoryGlob,

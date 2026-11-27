@@ -2,7 +2,7 @@ import { plugin } from 'bun';
 import { afterEach } from 'bun:test';
 import { resolve } from 'node:path';
 
-import { ensureCinderGenerated } from '../../../scripts/ensure-cinder-generated.ts';
+import { ensureCinderGenerated } from '../../../components/cinder/scripts/ensure-cinder-generated.ts';
 
 import {
   configureAsyncUtilityDeadline,

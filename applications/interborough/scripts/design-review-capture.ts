@@ -66,8 +66,8 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { ensureCinderGenerated } from '../../../components/cinder/scripts/ensure-cinder-generated.ts';
 import { WITNESS_APPLICATION_DIRECTORY } from '../../../scripts/chef/design-rows-resolved.ts';
-import { ensureCinderGenerated } from '../../../scripts/ensure-cinder-generated.ts';
 import { withHostSlots, withMemoryAdmission, type HostSlots } from '../../../scripts/host-slots.ts';
 import { runInProcessGroup } from '../../../scripts/run-exclusively.ts';
 import { auditGeometry } from './design-review-geometry.ts';

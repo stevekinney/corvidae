@@ -25,7 +25,7 @@ import { cp, mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { ensureCinderGenerated } from '../../../scripts/ensure-cinder-generated.ts';
+import { ensureCinderGenerated } from '../../../components/cinder/scripts/ensure-cinder-generated.ts';
 import {
   BUILD_INFO_FILE,
   displayedCommit,

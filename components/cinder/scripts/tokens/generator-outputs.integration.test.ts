@@ -4,7 +4,7 @@
  * deleted them (CS:20). There is no `prepare` or install step, because
  * `workspace-contract.integration.test.ts` forbids install lifecycle scripts in every workspace.
  * The `metadata` task generates them (Turborepo runs it before every consumer), and
- * `scripts/ensure-cinder-generated.ts` does the same for paths that bypass Turbo. The outputs that
+ * `scripts/ensure-cinder-generated.ts` (in this package) does the same for paths that bypass Turbo. The outputs that
  * stay tracked are named by `isVersionControlledOutput`: the token sources the generator normalizes
  * and `documentation/tokens.md`, whose authored sections it reads back.
  *
@@ -18,7 +18,7 @@ import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { expect, test } from 'bun:test';
 import { join } from 'node:path';
 
-import { CINDER_GENERATED_OUTPUTS } from '../../../../scripts/ensure-cinder-generated.ts';
+import { CINDER_GENERATED_OUTPUTS } from '../ensure-cinder-generated.ts';
 import {
   isVersionControlledOutput,
   packageRoot,
@@ -62,7 +62,7 @@ test('git ls-files lists none of the token generator outputs that are not versio
 test('ensureCinderGenerated watches every output the generator writes', () => {
   expect(
     ignoredOutputs.filter((path) => !CINDER_GENERATED_OUTPUTS.includes(path)),
-    'add the output to CINDER_GENERATED_OUTPUTS in scripts/ensure-cinder-generated.ts',
+    'add the output to CINDER_GENERATED_OUTPUTS in components/cinder/scripts/ensure-cinder-generated.ts',
   ).toEqual([]);
 });
 

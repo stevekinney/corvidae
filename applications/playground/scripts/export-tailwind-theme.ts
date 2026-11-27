@@ -3,7 +3,7 @@ import { mkdtemp, rename, rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { ensureCinderGenerated } from '../../../scripts/ensure-cinder-generated.ts';
+import { ensureCinderGenerated } from '../../../components/cinder/scripts/ensure-cinder-generated.ts';
 import { THEME_DATA_LIMITS } from '../src/shell-app/theme-draft-limits.ts';
 import { createDraft } from '../src/shell-app/theme-draft.ts';
 import { parseThemeEnvelope } from '../src/shell-app/theme-envelope.ts';

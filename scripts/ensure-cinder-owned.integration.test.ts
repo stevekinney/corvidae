@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { workflow, type Engine, type WorkflowContext } from '../packages/weft/src/index.ts';
 
 import { startHost } from '../applications/interborough/src/host/host.ts';
+import { CINDER_PACKAGE_NAME } from '../components/cinder/scripts/ensure-cinder-generated.ts';
 import { spawnPipedWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { waitUntil } from '../testing/testing/src/wait-until.ts';
 import { processIsAlive } from './owned-process-group.test-support.ts';
@@ -57,12 +58,15 @@ async function verifySibling(id: string) {
     digest: createHash('sha256').update(asset.content.bytes).digest('hex'),
   });
 }
+/** A fixture root lists its workspaces, which is how the helper finds the one named for Cinder. */
+const workspaces = JSON.stringify({ workspaces: ['components/*'] });
 const cinder = join(root, 'components/cinder');
+writeFileSync(join(root, 'package.json'), workspaces);
 mkdirSync(join(cinder, 'src'), { recursive: true });
 mkdirSync(join(cinder, 'scripts'), { recursive: true });
 writeFileSync(
   join(cinder, 'package.json'),
-  JSON.stringify({ scripts: { metadata: 'bun metadata.ts' } }),
+  JSON.stringify({ name: CINDER_PACKAGE_NAME, scripts: { metadata: 'bun metadata.ts' } }),
 );
 writeFileSync(
   join(cinder, 'metadata.ts'),
@@ -103,11 +107,12 @@ try {
 }
 const preRoot = mkdtempSync(join(tmpdir(), 'cinder-owned-pre-registration-'));
 const preCinder = join(preRoot, 'components/cinder');
+writeFileSync(join(preRoot, 'package.json'), workspaces);
 mkdirSync(join(preCinder, 'src'), { recursive: true });
 mkdirSync(join(preCinder, 'scripts'), { recursive: true });
 writeFileSync(
   join(preCinder, 'package.json'),
-  JSON.stringify({ scripts: { metadata: 'bun metadata.ts' } }),
+  JSON.stringify({ name: CINDER_PACKAGE_NAME, scripts: { metadata: 'bun metadata.ts' } }),
 );
 writeFileSync(join(preCinder, 'metadata.ts'), 'await Bun.write("should-not-run", "bad")');
 const preOwner = spawnPipedWithHangGuard([
@@ -141,11 +146,12 @@ try {
 }
 const unpublishedRoot = mkdtempSync(join(tmpdir(), 'cinder-owned-unpublished-'));
 const unpublishedCinder = join(unpublishedRoot, 'components/cinder');
+writeFileSync(join(unpublishedRoot, 'package.json'), workspaces);
 mkdirSync(join(unpublishedCinder, 'src'), { recursive: true });
 mkdirSync(join(unpublishedCinder, 'scripts'), { recursive: true });
 writeFileSync(
   join(unpublishedCinder, 'package.json'),
-  JSON.stringify({ scripts: { metadata: 'bun metadata.ts' } }),
+  JSON.stringify({ name: CINDER_PACKAGE_NAME, scripts: { metadata: 'bun metadata.ts' } }),
 );
 writeFileSync(join(unpublishedCinder, 'metadata.ts'), 'await Bun.write("should-not-run", "bad")');
 const unpublishedOwner = spawnPipedWithHangGuard([
