@@ -60,6 +60,8 @@
 
   .cinder-drawer[data-cinder-modal='false'] .cinder-drawer__body {
     --_cinder-scroll-fade-color: var(--cinder-surface-inset);
+    /* The panel is inset here, so a GroupedList's raised group shows and its labels keep its edge. */
+    --_cinder-grouped-list-label-inset: 0;
 
     background: transparent;
   }
@@ -319,6 +321,10 @@
 
   .cinder-drawer__body {
     --_cinder-scroll-fade-color: var(--cinder-surface-raised);
+    /* The body is the same raised surface as a GroupedList's group, so the group's edge is
+     * invisible: its header, footer and more link take the rows' inset and line up with the row
+     * text (COR-2768). */
+    --_cinder-grouped-list-label-inset: var(--cinder-space-4);
 
     flex: 1;
     min-block-size: 0;
