@@ -811,7 +811,8 @@ describe('the last turn’s outcome and its recovery commands (COR-2725)', () =>
     );
     // A thrown error, not a failed `expect` of an element, which prints the page on every try.
     await waitFor(() => {
-      if (chat.container.querySelector('.chat-turn-outcome') !== null) throw new Error('Still drawn.');
+      if (chat.container.querySelector('.chat-turn-outcome') !== null)
+        throw new Error('Still drawn.');
     });
     // The run stays stopped when its rows are gone, and the title keeps saying so.
     titleSays('Stopped');

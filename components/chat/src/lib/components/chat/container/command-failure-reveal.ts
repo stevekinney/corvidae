@@ -13,7 +13,7 @@
  */
 
 /** A box's block edges, in CSS pixels. */
-export type BlockEdges = { readonly top: number; readonly bottom: number };
+type BlockEdges = { readonly top: number; readonly bottom: number };
 
 /** The line a turn says when a command on it did not go through. */
 const COMMAND_FAILURE_SELECTOR = '.chat-turn-command-failure';
@@ -29,7 +29,7 @@ const PERSON_INPUTS = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const
  * unit's top: the end is where the pin to the last message rests, so the two agree on one position
  * whichever runs last. A unit above the box has been scrolled past and is left alone.
  */
-export function commandFailureShift(unit: BlockEdges, box: BlockEdges, toEnd: number): number {
+function commandFailureShift(unit: BlockEdges, box: BlockEdges, toEnd: number): number {
   if (box.bottom - box.top <= 0) return 0;
   const hidden = unit.bottom - box.bottom;
   // Half a pixel of rounding is not hidden.
@@ -40,12 +40,12 @@ export function commandFailureShift(unit: BlockEdges, box: BlockEdges, toEnd: nu
 }
 
 /** The last refusal line drawn under `root`, or `null` when none is. */
-export function findCommandFailureLine(root: ParentNode): HTMLElement | null {
+function findCommandFailureLine(root: ParentNode): HTMLElement | null {
   return [...root.querySelectorAll<HTMLElement>(COMMAND_FAILURE_SELECTOR)].at(-1) ?? null;
 }
 
 /** The refusal line and, when the turn draws its outcome directly above it, that outcome's controls. */
-export function commandFailureUnit(line: HTMLElement): BlockEdges {
+function commandFailureUnit(line: HTMLElement): BlockEdges {
   const lineBox = line.getBoundingClientRect();
   const outcome = line.previousElementSibling;
   const top =
@@ -60,7 +60,7 @@ export function commandFailureUnit(line: HTMLElement): BlockEdges {
  * Chat's stylesheet already says what the edges hide (a header the host lays over the start, the
  * fade at the end).
  */
-export function transcriptReadingBox(transcript: HTMLElement): BlockEdges {
+function transcriptReadingBox(transcript: HTMLElement): BlockEdges {
   const box = transcript.getBoundingClientRect();
   const style = getComputedStyle(transcript);
   const start = Number.parseFloat(style.scrollPaddingTop);
