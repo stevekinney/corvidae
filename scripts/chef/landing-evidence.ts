@@ -51,6 +51,8 @@ export interface LandingRoute {
   defaultBranch: string;
   /** The tree the caller just derived for the candidate against its current base. */
   integrationTree?: string;
+  /** The actual incoming base, which can differ from the verification request's base. */
+  incomingBase?: string;
 }
 
 const FULL_WORKFLOW = '.github/workflows/main.yml';
@@ -381,7 +383,13 @@ export async function validateLandingEvidence(
         failing =
           rows === undefined || ledger === undefined
             ? ['missing design exclusion evidence']
-            : exclusionResult(record.attestation, request.revision, request.base, rows, ledger);
+            : exclusionResult(
+                record.attestation,
+                request.revision,
+                route.incomingBase ?? '',
+                rows,
+                ledger,
+              );
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT')

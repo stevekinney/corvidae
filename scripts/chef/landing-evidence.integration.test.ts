@@ -48,7 +48,6 @@ async function evidence(
 ): Promise<string | undefined> {
   const loaded = loadDeliveryVerification(fixture.verification, fixture.dependencies);
   const { request } = loaded;
-  if (actualBase !== undefined) request.base = actualBase;
   const listed = [
     { id: 4242, head_sha: request.revision },
     ...(duplicate === undefined
@@ -111,6 +110,7 @@ async function evidence(
       route: 'pull-request',
       defaultBranch: 'main',
       integrationTree: actualIntegrationTree ?? request.integrationTree,
+      incomingBase: actualBase ?? request.base,
     },
     {
       runner,
@@ -274,6 +274,22 @@ test('recorded exclusions bind individual adverse findings to the landing base a
       'd'.repeat(40),
     ),
   ).toContain('invalid or mismatched');
+  const movedBase = 'd'.repeat(40);
+  const movedFlags = flags.map((flag) => (flag === request.base ? movedBase : flag));
+  writeFileSync(exclusionsPath, JSON.stringify({ ...attestation, base: movedBase }));
+  expect(recordVerdict(movedFlags).code).toBe(0);
+  expect(
+    await evidence(
+      ['components/cinder/src/button.ts'],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      movedBase,
+    ),
+  ).toBeUndefined();
+  writeFileSync(exclusionsPath, JSON.stringify(attestation));
+  expect(recordVerdict(flags).code).toBe(0);
   const recordedLedger = join(
     loaded.state.stateDirectory,
     'design-verdicts',
@@ -351,4 +367,37 @@ test('recorded exclusions bind individual adverse findings to the landing base a
   expect(await evidence(['components/cinder/src/button.ts'], undefined)).toContain(
     'sweep proximity: found',
   );
+  writeFileSync(rowsPath, 'row | matches |\n');
+  writeFileSync(
+    ledgerPath,
+    [
+      screen.replace('| wrong |', '| good |'),
+      ...SWEEP_CATEGORIES.map((category) => `sweep | ${category} | clear | checked`),
+    ].join('\n'),
+  );
+  expect(
+    recordVerdict([
+      'record',
+      '--head',
+      request.revision,
+      '--file',
+      rowsPath,
+      '--ledger',
+      ledgerPath,
+      '--capture',
+      capture,
+      '--state-directory',
+      loaded.state.stateDirectory,
+    ]).code,
+  ).toBe(0);
+  expect(
+    await evidence(
+      ['components/cinder/src/button.ts'],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      movedBase,
+    ),
+  ).toBeUndefined();
 });

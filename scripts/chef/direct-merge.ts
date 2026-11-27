@@ -313,7 +313,7 @@ async function directMergeCore(
   if (ciEvidenceProblem !== undefined) return fail('verification', ciEvidenceProblem);
   const landingProblem = await validateLandingEvidence(
     verification,
-    { route: 'branch', defaultBranch, integrationTree: tree },
+    { route: 'branch', defaultBranch, integrationTree: tree, incomingBase: base },
     {
       runner,
       ...(partial.verification?.ciProvider === undefined
