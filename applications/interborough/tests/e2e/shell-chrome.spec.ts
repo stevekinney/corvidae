@@ -33,7 +33,7 @@ for (const scheme of ['light', 'dark'] as const) {
 
     for (const width of [320, 375]) {
       test(`keeps the theme switch compact and usable at ${width}px`, async ({ page }) => {
-        await open(page, '/reviews', width, 812, false);
+        await open(page, '/reviews', width, width === 320 ? 640 : 812, false);
         expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
         await page.getByRole('banner').getByRole('button', { name: 'Quick settings' }).click();
         const panel = page.getByRole('dialog', { name: 'Quick settings' });
@@ -51,12 +51,21 @@ for (const scheme of ['light', 'dark'] as const) {
         const boxes = await readBoxes(page, {
           track: group,
           thumb: group.locator('.cinder-theme-switch__thumb'),
+          lightTarget: options[0]!,
+          systemTarget: options[1]!,
+          darkTarget: options[2]!,
           light: group.getByRole('radio', { name: 'Light' }).locator('svg'),
           system: group.getByRole('radio', { name: 'System' }).locator('svg'),
           dark: group.getByRole('radio', { name: 'Dark' }).locator('svg'),
         });
         expect(boxes.track.height).toBeCloseTo(32, 0);
         expect(boxes.thumb.height).toBeCloseTo(26, 0);
+        const paintInsets = await group.evaluate((element) => {
+          const styles = getComputedStyle(element, '::before');
+          return [styles.left, styles.right, styles.top, styles.bottom].map(Number.parseFloat);
+        });
+        expect(paintInsets).toEqual([14, 14, -1, -1]);
+        expect(boxes.track.width - paintInsets[0]! - paintInsets[1]! - 2).toBeCloseTo(108, 0);
         expect(boxes.system.x - boxes.light.x).toBeLessThanOrEqual(2.5 * boxes.light.width);
         expect(boxes.dark.x - boxes.system.x).toBeLessThanOrEqual(2.5 * boxes.system.width);
         await captureForDesignReview(page, {
@@ -64,11 +73,19 @@ for (const scheme of ['light', 'dark'] as const) {
           state: 'quick settings touch open',
           source: SOURCE,
         });
+        const hits = [boxes.lightTarget, boxes.systemTarget, boxes.darkTarget];
         for (const [index, option] of options.entries()) {
-          for (const offset of [-18, 0, 18]) {
+          const hit = hits[index]!;
+          expect(hit.width).toBeCloseTo(44, 0);
+          for (const [x, y] of [
+            [0, 0],
+            [-21, -21],
+            [-21, 21],
+            [21, -21],
+            [21, 21],
+          ] as const) {
             await options[(index + 1) % options.length]!.click();
-            const icon = await boxOf(option.locator('svg'));
-            await page.touchscreen.tap(icon.x + icon.width / 2, icon.y + icon.height / 2 + offset);
+            await page.touchscreen.tap(hit.x + hit.width / 2 + x, hit.y + hit.height / 2 + y);
             await expect(option).toBeChecked();
             for (const other of options.filter((item) => item !== option))
               await expect(other).not.toBeChecked();

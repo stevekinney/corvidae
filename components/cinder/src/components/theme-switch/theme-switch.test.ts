@@ -214,14 +214,15 @@ describe('ThemeSwitch — quiet sky and night track', () => {
 
   test('each position paints the agreed track and border: pale sky, neutral, deep night', () => {
     const track = '--_cinder-theme-switch-track';
-    const border = 'border-color';
+    const border = '--_cinder-theme-switch-track-border';
     expect(painted('light', track)).toBe('oklch(93% 0.04 235)');
     expect(painted('light', border)).toBe('oklch(84% 0.05 235)');
     expect(painted('dark', track)).toBe('oklch(25% 0.05 265)');
     expect(painted('dark', border)).toBe('oklch(38% 0.05 265)');
     expect(declaration('system', track)).toBeUndefined();
     expect(themeSwitchCss).toContain('--_cinder-theme-switch-track: var(--cinder-surface-inset);');
-    expect(themeSwitchCss).toContain('border: 1px solid var(--cinder-border);');
+    expect(themeSwitchCss).toContain('--_cinder-theme-switch-track-border: var(--cinder-border);');
+    expect(themeSwitchCss).toContain('border: 1px solid var(--_cinder-theme-switch-track-border);');
   });
 
   test('the raised thumb is white behind Light and a lifted night blue behind Dark', () => {
@@ -245,10 +246,12 @@ describe('ThemeSwitch — quiet sky and night track', () => {
     expect(themeSwitchCss).toMatch(/\.cinder-theme-switch__icon\s*\{[^}]*inline-size: 0\.9375rem/);
   });
 
-  test('coarse pointers extend each position vertically without changing its painted geometry', () => {
+  test('coarse pointers have separate touch columns and an independently painted track', () => {
     const coarse =
       themeSwitchCss.match(/@media \(any-pointer: coarse\)\s*\{([\s\S]*?)\n  \}/)?.[1] ?? '';
     expect(coarse).toContain('.cinder-theme-switch__option::before');
+    expect(coarse).toContain('grid-auto-columns: var(--_cinder-theme-switch-hit-inline);');
+    expect(coarse).toContain('.cinder-theme-switch::before');
     expect(coarse).toContain(
       'inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));',
     );
