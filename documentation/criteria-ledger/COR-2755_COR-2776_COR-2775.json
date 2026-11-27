@@ -1,7 +1,7 @@
 {
   "issue": "COR-2755_COR-2776_COR-2775",
   "branch": "chef/interborough-small",
-  "checkedAt": "5cbe8c8ae5dfd3a05ab63f64b4ff0518cb0b2365",
+  "checkedAt": "642ff74772046aa5de7a874f34106919f867c4c3",
   "briefVersion": "eba169a7e2de",
   "status": "READY",
   "criteria": [
