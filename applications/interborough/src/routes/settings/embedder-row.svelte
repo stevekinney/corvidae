@@ -27,6 +27,7 @@
     StatusDot,
     Text,
   } from '@lostgradient/cinder';
+  import { DESCRIPTION_INLINE_RUNS_PROFILE, inlineRuns } from '@lostgradient/markdown/inline-runs';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
@@ -49,7 +50,6 @@
   import { getHostSession } from '../../lib/host-session.ts';
   import { getPlugins } from '../../lib/host-plugins.ts';
   import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
-  import { inlineSegments } from './inline-markdown.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import {
@@ -168,8 +168,8 @@
           }
       }
     }
-    return inlineSegments(node.description ?? '')
-      .map((segment) => segment.text)
+    return inlineRuns(node.description ?? '', DESCRIPTION_INLINE_RUNS_PROFILE)
+      .map((run) => run.text)
       .join('');
   });
 

@@ -1,6 +1,7 @@
 import { generateEncryptionKey } from '@lostgradient/cryptography';
 import { withOAuthTokenRequestGate, type McpOAuthTokenRequestAdmission } from 'armorer';
 import { expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { memoryHome } from './tool-source-memory-home.test-support.ts';
 import {
   createToolSourceOAuthSession,
@@ -91,6 +92,50 @@ for (const outcome of ['unknown', 'crash'] as const) {
     expect(current.oauthClaim?.state).toBe(outcome === 'unknown' ? 'unknown' : 'claimed');
   });
 }
+
+test('refuses a refresh credential that is not the stored one, whatever its length', async () => {
+  for (const credential of [
+    '',
+    'refresh',
+    'refresh-on',
+    'refresh-ons',
+    'refresh-one ',
+    'refresh-one-and-more',
+    'REFRESH-ONE',
+  ]) {
+    const { session } = await fixture();
+    await refused(Promise.resolve(session().beforeTokenRequest({ ...request, credential })));
+  }
+});
+
+test('refuses a refresh credential when no refresh token is stored', async () => {
+  const { home } = await fixture();
+  const keys = { current: await generateEncryptionKey() };
+  const bare = createToolSourceVault({ bungalow: home.bungalow, keys });
+  await bare.write('bare', {
+    credentials: new Map(),
+    oauth: { tokens: { access_token: 'access', token_type: 'Bearer' }, state: 's' },
+    oauthBinding: binding,
+  });
+  const claimant = createToolSourceOAuthSession({
+    vault: bare,
+    sourceId: 'bare',
+    binding,
+    authorize: async () => {},
+  });
+  await refused(Promise.resolve(claimant.beforeTokenRequest(request)));
+});
+
+test('records the claim by the SHA-256 digest of the credential, in hex', async () => {
+  const { session, vault } = await fixture();
+  await admission(session().beforeTokenRequest(request));
+  const stored = await vault.read('source');
+  const claim = stored.oauthClaim;
+  expect(claim?.credentialDigest).toBe(createHash('sha256').update('refresh-one').digest('hex'));
+  expect(claim?.credentialDigest).toBe(
+    '083a57c20884c1571d411d227f461a0bf4d96a580c13e6af06b79021247f76ff',
+  );
+});
 
 test('only the same live claimant gets one nonce retry', async () => {
   const { session } = await fixture();

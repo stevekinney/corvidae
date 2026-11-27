@@ -29,6 +29,7 @@
  */
 
 import { resolveBungalowDescriptor, resolveBungalowRoot } from '@lostgradient/bungalow';
+import { sha256HexSync } from '@lostgradient/cryptography';
 import {
   acquireOwnedProcessLease,
   OwnedProcessGroupUnverifiedError,
@@ -36,7 +37,6 @@ import {
   runOwnedProcessGroup,
   type HeldHostLock,
 } from '@lostgradient/process-lease';
-import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { constants, homedir } from 'node:os';
@@ -79,9 +79,7 @@ export function supervisorLeaseIdentity(
   const descriptor = showcase
     ? { kind: 'local' as const, root: resolveBungalowRoot(options) }
     : resolveBungalowDescriptor(options);
-  return createHash('sha256')
-    .update('root' in descriptor ? descriptor.root : nonce)
-    .digest('hex');
+  return sha256HexSync('root' in descriptor ? descriptor.root : nonce);
 }
 
 /**

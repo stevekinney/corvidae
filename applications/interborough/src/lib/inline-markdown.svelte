@@ -3,14 +3,14 @@
    * A line of text with its inline Markdown (`code`, **bold**, *emphasis*) drawn as elements. The
    * text stays the heading's accessible name, minus the marks.
    */
-  import { inlineRuns } from './inline-markdown.ts';
+  import { inlineRuns, TITLE_INLINE_RUNS_PROFILE } from '@lostgradient/markdown/inline-runs';
 
   interface InlineMarkdownProps {
     text: string;
   }
 
   let { text }: InlineMarkdownProps = $props();
-  const runs = $derived(inlineRuns(text));
+  const runs = $derived(inlineRuns(text, TITLE_INLINE_RUNS_PROFILE));
 </script>
 
 {#each runs as run, index (index)}

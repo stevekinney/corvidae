@@ -162,6 +162,7 @@ describe('parseArguments', () => {
       'tests/panels/run-comparison-states.spec.ts',
       'tests/panels/failure-explanation-states.spec.ts',
       'tests/panels/run-timeline-states.spec.ts',
+      'tests/e2e/copy-and-inline-markdown-states.spec.ts',
       'tests/e2e/responsive.spec.ts',
     ]);
     expect(options.grep).toBeUndefined();
@@ -267,6 +268,7 @@ describe('parseArguments', () => {
       'tests/panels/run-comparison-states.spec.ts',
       'tests/panels/failure-explanation-states.spec.ts',
       'tests/panels/run-timeline-states.spec.ts',
+      'tests/e2e/copy-and-inline-markdown-states.spec.ts',
     ]);
     expect(specificationsOf(['--data', 'stress'])).toEqual([
       'tests/e2e/responsive.spec.ts',
@@ -357,6 +359,7 @@ describe('parseArguments', () => {
       'tests/panels/run-comparison-states.spec.ts',
       'tests/panels/failure-explanation-states.spec.ts',
       'tests/panels/run-timeline-states.spec.ts',
+      'tests/e2e/copy-and-inline-markdown-states.spec.ts',
       'tests/e2e/responsive.spec.ts',
     ]);
     // `--specs` alone keeps meaning what it always meant: one of the stress specifications.
