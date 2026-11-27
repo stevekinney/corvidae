@@ -833,10 +833,8 @@ test.describe('A chat turn of only tool calls and how it ended (COR-2725)', () =
     await expect(stopped).toBeVisible();
     const typed = transcript(page).locator(`[data-message-id="${FOLLOW_UP_ROW.id}"]`);
     await expect(typed).toBeVisible();
-    const [outcomeBox, typedBox] = [await stopped.boundingBox(), await typed.boundingBox()];
-    expect(outcomeBox).not.toBeNull();
-    expect(typedBox).not.toBeNull();
-    expect(outcomeBox!.y).toBeLessThan(typedBox!.y);
+    const { outcome, after } = await readBoxes(page, { outcome: stopped, after: typed });
+    expect(outcome.y).toBeLessThan(after.y);
     await captureForDesignReviewWithPhone(page, {
       route: '/chats/:chat',
       state: 'outcome before a trailing follow-up',
