@@ -1,5 +1,5 @@
 import type { WorkflowTimelineEntry } from '@lostgradient/weft';
-import { render } from '@testing-library/svelte';
+import { fireEvent, render, within } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
@@ -39,14 +39,23 @@ describe('StepDetail', () => {
     expect(status).toContain('chargeCard');
   });
 
-  test('shows input and output side by side, indented', () => {
-    const { container } = render(StepDetail, { props: { entry: entry(), bar, open: true } });
-    const fields = container.querySelectorAll('.ib-step-detail__fields > section');
-    expect(fields).toHaveLength(2);
-    expect(fields[0]?.textContent).toContain('Input');
-    expect(fields[0]?.querySelector('pre')?.textContent).toBe('{\n  "orderId": "ord_1"\n}');
-    expect(fields[1]?.textContent).toContain('Output');
-    expect(fields[1]?.querySelector('pre')?.textContent).toContain('"chargeId": "ch_1"');
+  test('shows the stored payloads and keeps masked values through independent view changes', async () => {
+    const { getByRole } = render(StepDetail, {
+      props: {
+        entry: entry({ inputSummary: '{"orderId":"ord_1","token":"[REDACTED]"}' }),
+        bar,
+        open: true,
+      },
+    });
+    const input = within(getByRole('group', { name: /^Input$/ }));
+    const output = within(getByRole('group', { name: /^Output$/ }));
+    expect(input.getByText('ord_1')).not.toBeNull();
+    expect(input.getByText('[REDACTED]')).not.toBeNull();
+    expect(output.getByText('ch_1')).not.toBeNull();
+    await fireEvent.click(input.getByRole('radio', { name: 'JSON' }));
+    expect(input.getByRole('radio', { name: 'JSON' }).getAttribute('aria-checked')).toBe('true');
+    expect(input.getByText(/\[REDACTED\]/)).not.toBeNull();
+    expect(output.getByRole('radio', { name: 'Fields' }).getAttribute('aria-checked')).toBe('true');
   });
 
   test('labels the output Error for a failed step', () => {
@@ -57,7 +66,7 @@ describe('StepDetail', () => {
         open: true,
       },
     });
-    const field = container.querySelectorAll('.ib-step-detail__fields > section')[1];
+    const field = container.querySelector('.ib-step-detail__fields [aria-label="Error"]');
     expect(field?.textContent).toContain('Error');
     expect(field?.textContent).toContain('card declined');
   });
@@ -166,7 +175,8 @@ describe('StepDetail', () => {
       },
     });
     const section = container.querySelector('[data-section="step-logs"]');
-    expect(section?.querySelector('h4')?.textContent).toBe('Logs');
+    expect(section?.querySelector('button')?.textContent?.trim()).toBe('Logs');
+    expect(section?.querySelector('button')?.getAttribute('aria-expanded')).toBe('true');
     expect([...(section?.querySelectorAll('li') ?? [])].map((item) => item.textContent)).toEqual([
       expect.stringContaining('charging'),
       expect.stringContaining('charged'),

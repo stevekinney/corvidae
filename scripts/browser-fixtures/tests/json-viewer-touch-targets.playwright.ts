@@ -97,3 +97,34 @@ test('coarse JsonViewer disclosures are disjoint targets and activate only their
     await close();
   }
 });
+
+test('a mouse can activate the outer edge of a 24px JsonViewer disclosure target', async ({
+  page,
+}) => {
+  await page.goto(fixtureRoute('json-viewer', { fixtureName: 'touch-targets' }), {
+    waitUntil: 'load',
+  });
+  const fixture = page.getByTestId('json-viewer-touch-targets');
+  const alpha = fixture.getByRole('treeitem', { name: 'alpha: object, 1 item', exact: true });
+  const nested = alpha.getByRole('treeitem', { name: 'nested: object, 1 item', exact: true });
+  const toggle = nested.getByRole('button', { name: 'nested: object, 1 item', exact: true });
+  await expect(nested).toHaveAttribute('aria-expanded', 'false');
+  const edge = await toggle.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const x = box.left + box.width / 2;
+    const y = box.bottom - 1;
+    return {
+      x,
+      y,
+      height: box.height,
+      width: box.width,
+      hit: element.contains(document.elementFromPoint(x, y)),
+    };
+  });
+  expect(edge.height).toBeGreaterThanOrEqual(24);
+  expect(edge.width).toBeGreaterThanOrEqual(24);
+  expect(edge.hit).toBe(true);
+  await page.mouse.click(edge.x, edge.y);
+  await expect(nested).toHaveAttribute('aria-expanded', 'true');
+  await expect(alpha).toHaveAttribute('aria-expanded', 'true');
+});
