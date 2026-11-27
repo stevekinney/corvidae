@@ -71,28 +71,22 @@ describe('Table column sizing', () => {
         '.cinder-table[data-cinder-fit]:has(> .cinder-table__header [data-cinder-sizing])',
       ).get('table-layout'),
     ).toBe('auto');
-    // The scroll box is a size container so a content column can be capped at half its width.
-    expect(
-      declarationsFor(
-        css,
-        '.cinder-table-scroll:has( > .cinder-table[data-cinder-fit] > .cinder-table__header [data-cinder-sizing] )',
-      ).get('container-type'),
-    ).toBe('inline-size');
   });
 
   test('a content column takes its content width, at most half the table, and never wraps', () => {
     const content = declarationsFor(
       css,
-      ".cinder-table[data-cinder-fit]:not([data-cinder-stacked]) :is(.cinder-table__cell, .cinder-table__header-cell)[data-cinder-sizing='content']",
+      ".cinder-table[data-cinder-fit] :is(.cinder-table__cell, .cinder-table__header-cell)[data-cinder-sizing='content']",
     );
     expect(content.get('inline-size')).toBe('0');
     expect(content.get('white-space')).toBe('nowrap');
-    // Half the table where the scroll box is a size container; the truncate width where there is none.
+    // Half the table's container (COR-2771: `.cinder-table-container` is the size container of a
+    // fit table); the truncate width for a table that never stacks and so has none.
     expect(content.get('max-inline-size')).toBe('var(--_cinder-table-truncate-size)');
     expect(
       declarationsFor(
         css,
-        ".cinder-table-scroll > .cinder-table[data-cinder-fit]:not([data-cinder-stacked]) :is(.cinder-table__cell, .cinder-table__header-cell)[data-cinder-sizing='content']",
+        ".cinder-table-container:not([data-cinder-stack-below='false']) .cinder-table[data-cinder-fit] :is(.cinder-table__cell, .cinder-table__header-cell)[data-cinder-sizing='content']",
       ).get('max-inline-size'),
     ).toBe('50cqi');
   });
@@ -100,13 +94,13 @@ describe('Table column sizing', () => {
   test('a fill column, and an unsized one beside content columns, breaks anywhere', () => {
     const fill = declarationsFor(
       css,
-      ".cinder-table[data-cinder-fit]:not([data-cinder-stacked]):has( > .cinder-table__header [data-cinder-sizing] ) :is(.cinder-table__cell, .cinder-table__header-cell):not([data-cinder-sizing='content'])",
+      ".cinder-table[data-cinder-fit]:has(> .cinder-table__header [data-cinder-sizing]) :is(.cinder-table__cell, .cinder-table__header-cell):not([data-cinder-sizing='content'])",
     );
     expect(fill.get('overflow-wrap')).toBe('anywhere');
     // A truncating cell asks for no width, then fills its column and ends in an ellipsis.
     const truncated = declarationsFor(
       css,
-      ".cinder-table[data-cinder-fit]:not([data-cinder-stacked]):has( > .cinder-table__header [data-cinder-sizing] ) .cinder-table__cell:not([data-cinder-sizing='content']) .cinder-table__cell-text",
+      ".cinder-table[data-cinder-fit]:has(> .cinder-table__header [data-cinder-sizing]) .cinder-table__cell:not([data-cinder-sizing='content']) .cinder-table__cell-text",
     );
     expect(truncated.get('inline-size')).toBe('0');
     expect(truncated.get('min-inline-size')).toBe('100%');
