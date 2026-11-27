@@ -1045,6 +1045,7 @@
         "@electric-sql/pglite": "catalog:",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
+        "@lostgradient/workerd-testing": "workspace:*",
         "@types/bun": "catalog:",
         "@types/pg": "catalog:",
         "oxlint": "catalog:",

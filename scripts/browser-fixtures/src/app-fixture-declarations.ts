@@ -42,6 +42,8 @@ export const appFixtureDeclarations = {
   'section-heading': ['assertion'],
   section: ['assertion'],
   'grouped-list': ['assertion'],
+  'grouped-list-more': ['assertion'],
+  'grouped-list-header-edge': ['assertion'],
   'color-picker': ['assertion'],
   'area-chart': ['assertion'],
   'line-chart': ['assertion'],

@@ -24,6 +24,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "catalog:",
     "@lostgradient/testing": "workspace:*",
+    "@lostgradient/workerd-testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@types/bun": "catalog:",
     "@types/pg": "catalog:",

@@ -118,6 +118,93 @@ const everythingDecided = {
 
 const needsYou = (page: Page) => page.locator('[data-home-card="Needs you"]');
 
+test('wide Home keeps attention actions in the content bound', async ({ page }) => {
+  await openHome(page);
+  const home = page.locator('[data-page="home"][data-mode="overview"]');
+  const outlet = page.locator('main.weft-shell-outlet');
+  const rows = home.getByRole('list', { name: 'System problems' }).getByRole('listitem');
+  const destinations = [
+    ['Review storage', '/health/storage'],
+    ['View schedule', /^\/schedules\/[^/?]+$/],
+    ['Connect a provider', '/settings/models'],
+  ] as const;
+
+  const checkAttention = async () => {
+    await expect(rows).toHaveCount(destinations.length);
+    for (const [index, [label, destination]] of destinations.entries()) {
+      const row = rows.nth(index);
+      const action = row.getByRole('link', { name: label, exact: true });
+      await expect(row.getByRole('link')).toHaveCount(1);
+      await expect(action).toHaveAttribute('href', destination);
+      const boxes = await readBoxes(page, { home, row, action });
+      expect(boxes.row.x).toBeGreaterThanOrEqual(boxes.home.x);
+      expect(boxes.row.x + boxes.row.width).toBeLessThanOrEqual(boxes.home.x + boxes.home.width);
+      expect(boxes.action.x).toBeGreaterThanOrEqual(boxes.row.x);
+      expect(boxes.action.x + boxes.action.width).toBeLessThanOrEqual(
+        boxes.row.x + boxes.row.width,
+      );
+      expect(boxes.action.y).toBeGreaterThanOrEqual(boxes.row.y);
+      expect(boxes.action.y + boxes.action.height).toBeLessThanOrEqual(
+        boxes.row.y + boxes.row.height,
+      );
+    }
+  };
+
+  await checkAttention();
+  const available = await outlet.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  });
+  const at1280 = await readBoxes(page, { home });
+  expect(at1280.home.width).toBe(available);
+
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await checkAttention();
+  const at1920 = await readBoxes(page, { home });
+  expect(at1920.home.x).toBe(at1280.home.x);
+  expect(at1920.home.width).toBe(1152);
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await captureForDesignReview(page, {
+    route: '/',
+    state: 'bounded-attention',
+    source: SOURCE,
+    ready: checkAttention,
+  });
+
+  for (const [index, [label, destination]] of destinations.entries()) {
+    await rows.nth(index).getByRole('link', { name: label, exact: true }).click();
+    await expect(page).toHaveURL((url) =>
+      typeof destination === 'string'
+        ? url.pathname === destination
+        : destination.test(url.pathname),
+    );
+    await page.goBack();
+    await expect(page).toHaveURL((url) => url.pathname === '/');
+  }
+});
+
+test.describe('Home attention on a touch phone', () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  for (const width of [320, 375] as const) {
+    test(`wide Home keeps attention actions in the content bound at ${width}px`, async ({
+      page,
+    }) => {
+      await openHome(page, width);
+      const outlet = page.locator('main.weft-shell-outlet');
+      const rows = outlet.getByRole('list', { name: 'System problems' }).getByRole('listitem');
+      await expect(rows.getByRole('link')).toHaveCount(3);
+      const overflow = await outlet.evaluate((element) => ({
+        page: document.documentElement.scrollWidth - innerWidth,
+        outlet: element.scrollWidth - element.clientWidth,
+      }));
+      expect(overflow.page).toBeLessThanOrEqual(0);
+      expect(overflow.outlet).toBeLessThanOrEqual(0);
+    });
+  }
+});
+
 test.describe('Home on the sample world, with something waiting on you', () => {
   test('is the page at /, with no visible heading and the date line leading (01a, 01b, 01c)', async ({
     page,

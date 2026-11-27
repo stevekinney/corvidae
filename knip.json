@@ -207,6 +207,7 @@
         "**/*.playwright.ts",
         "**/*.spec.ts",
         "src/oauth/workerd-fixture.ts",
+        "src/oauth/postgres.workerd-fixture.ts",
         "src/connector-smoke-inspector.ts!",
         "src/deployed-oauth.ts!",
         "src/deployed-smoke.ts!"
@@ -218,6 +219,18 @@
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!"
+      ]
+    },
+    "packages/storage-postgres": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts",
+        "src/workerd-fixture.ts"
       ]
     },
     "packages/storage-d1": {
@@ -323,6 +336,7 @@
         "**/*.fixture.svelte",
         "**/*.playwright.ts",
         "**/*.spec.ts",
+        "src/node-runtime.test-support.ts",
         "src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts",
         "src/test/review-peer-child.ts",
         "src/hooks/recipient-recovery-child.ts"
@@ -334,6 +348,7 @@
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!",
+        "!src/node-runtime.test-support.ts!",
         "!src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts!",
         "!src/test/review-peer-child.ts!",
         "!src/hooks/recipient-recovery-child.ts!"
@@ -450,6 +465,8 @@
         "scripts/**/*.slow.test.ts",
         "src/fixtures/tool-call-rail.svelte",
         "src/fixtures/backchannel-svelte.svelte",
+        "src/fixtures/grouped-list-more.svelte",
+        "src/fixtures/grouped-list-header-edge.svelte",
         "src/fixtures/stacked-rows-leading-edge.svelte",
         "fixtures/workspace-web-components.ts"
       ],

@@ -1,4 +1,5 @@
 import { Miniflare } from 'miniflare';
+import { builtinModules } from 'node:module';
 
 /** The shared compatibility date for every Corvidae workerd integration suite. */
 export const WORKERD_COMPATIBILITY_DATE = '2026-08-06';
@@ -11,6 +12,7 @@ export type WorkerOptions = {
   durableObjects?: Record<string, string>;
   d1Databases?: readonly string[];
   r2Buckets?: readonly string[];
+  hyperdrives?: Record<string, string>;
   outboundService?: OutboundService;
 };
 
@@ -34,7 +36,12 @@ export async function startWorker(options: WorkerOptions): Promise<RunningWorker
     target: 'browser',
     conditions: ['workerd', 'worker', 'browser'],
     format: 'esm',
-    external: ['node:*'],
+    external: ['node:*', ...builtinModules],
+    // Bun emits dynamic CommonJS requires for pg. workerd's nodejs_compat loader
+    // supplies those builtins through createRequire; a fixed filename is necessary
+    // because this runtime does not populate import.meta.url for bundled modules.
+    banner:
+      'import { createRequire as __workerdCreateRequire } from "node:module"; const require = __workerdCreateRequire("/worker.js");',
   });
   if (!build.success) {
     throw new AggregateError(build.logs, `Unable to bundle Worker entry ${options.entry}`);
@@ -58,6 +65,7 @@ export async function startWorker(options: WorkerOptions): Promise<RunningWorker
     ...(options.durableObjects === undefined ? {} : { durableObjects: options.durableObjects }),
     ...(options.d1Databases === undefined ? {} : { d1Databases: [...options.d1Databases] }),
     ...(options.r2Buckets === undefined ? {} : { r2Buckets: [...options.r2Buckets] }),
+    ...(options.hyperdrives === undefined ? {} : { hyperdrives: options.hyperdrives }),
     ...(options.outboundService === undefined ? {} : { outboundService: options.outboundService }),
   });
   return {

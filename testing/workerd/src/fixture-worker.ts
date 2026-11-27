@@ -24,6 +24,7 @@ type Environment = {
     put(key: string, value: string): Promise<unknown>;
     get(key: string): Promise<{ text(): Promise<string> } | null>;
   };
+  HYPERDRIVE: { connectionString: string };
 };
 
 const context = new AsyncLocalStorage<string>();
@@ -64,6 +65,8 @@ export default {
       });
     }
     if (url.pathname === '/outbound') return fetch('https://upstream.test/fixture');
+    if (url.pathname === '/hyperdrive')
+      return new Response(environment.HYPERDRIVE.connectionString);
     if (url.pathname === '/asset')
       return environment.ASSETS.fetch(new Request('https://assets.test/fixture.txt'));
     return new Response('round trip');

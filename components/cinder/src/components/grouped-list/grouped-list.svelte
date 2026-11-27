@@ -5,11 +5,13 @@
 <script lang="ts">
   import { Plus } from '@lucide/svelte';
   import { classNames } from '../../utilities/class-names.ts';
+  import Link from '../link/link.svelte';
   import type { GroupedListProps } from './grouped-list.types.ts';
 
   let {
     header,
     footer,
+    more,
     children,
     onItemAdd,
     addLabel = 'Add an item',
@@ -56,5 +58,10 @@
   </ul>
   {#if footer}
     <p class="cinder-grouped-list__footer">{footer}</p>
+  {/if}
+  {#if more}
+    <p class="cinder-grouped-list__more-row">
+      <Link class="cinder-grouped-list__more" href={more.href} variant="more">{more.label}</Link>
+    </p>
   {/if}
 </div>
