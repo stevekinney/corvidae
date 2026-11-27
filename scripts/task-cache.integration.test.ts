@@ -876,8 +876,25 @@ test('a package task keys on every root script it runs and every root script tho
   const isScript = (path: string) =>
     /(?:^|\/)scripts\/.+\.ts$/.test(path) && !/\.test\./.test(path);
 
-  // Every script file a script file imports, through `scripts/` directories only: library source
-  // an entrypoint imports is hashed as the package's own files.
+  // Library source a root script imports: the runner reaches it, but a workspace that does not
+  // depend on that library hashes none of it (`dependsOn: transit` follows only dependencies).
+  const isLibrarySource = (path: string) =>
+    /^(?:packages|testing)\/[^/]+\/src\/.+\.ts$/.test(path) &&
+    !/\.test(?:-support)?\.ts$/.test(path);
+  // The workspace names `name` depends on, directly or through other workspaces, and itself.
+  const withDependencies = (name: string): Set<string> => {
+    const found = new Set<string>();
+    const pending = [name];
+    for (let current = pending.pop(); current !== undefined; current = pending.pop()) {
+      if (found.has(current)) continue;
+      found.add(current);
+      pending.push(...(workspaces.find((entry) => entry.name === current)?.dependencies ?? []));
+    }
+    return found;
+  };
+
+  // Every script file a script file imports, through `scripts/` directories, and the library source
+  // those scripts import, which only a dependent workspace hashes as its own files.
   const closure = (entrypoint: string): string[] => {
     const seen = new Set<string>();
     const pending = [entrypoint];
@@ -888,7 +905,7 @@ test('a package task keys on every root script it runs and every root script tho
       const analysis = analyzeSource(current, source);
       for (const specifier of analysis.specifiers) {
         const target = resolveSpecifier(current, specifier, paths, workspaces);
-        if (target !== null && isScript(target)) pending.push(target);
+        if (target !== null && (isScript(target) || isLibrarySource(target))) pending.push(target);
       }
       // Literal Bun subprocess command arrays name entrypoints outside the import graph.
       // Other path strings may only be comparisons, so they are not execution edges.
@@ -904,7 +921,7 @@ test('a package task keys on every root script it runs and every root script tho
         }
       }
     }
-    return [...seen].filter(isRootScript);
+    return [...seen].filter((path) => isRootScript(path) || isLibrarySource(path));
   };
 
   const missing: string[] = [];
@@ -923,11 +940,17 @@ test('a package task keys on every root script it runs and every root script tho
       for (const token of command.split(/[\s&|;'"]+/)) {
         const resolved = posix.normalize(posix.join(workspace.directory, token));
         if (!isScript(resolved) || !paths.has(resolved)) continue;
+        const dependencies = withDependencies(manifest.name);
         for (const file of closure(resolved)) {
           reached.add(file);
+          // The workspace's own files and its dependencies' are hashed already.
+          if (isLibrarySource(file) && dependencies.has(owningWorkspace(file, workspaces).name))
+            continue;
           const covered = (task.inputs ?? []).some(
             (input) =>
-              input === `$TURBO_ROOT$/${file}` || new Bun.Glob(input).match(`$TURBO_ROOT$/${file}`),
+              !input.startsWith('!') &&
+              (input === `$TURBO_ROOT$/${file}` ||
+                new Bun.Glob(input).match(`$TURBO_ROOT$/${file}`)),
           );
           if (!covered)
             missing.push(`${manifest.name}#${script} runs ${resolved}: add $TURBO_ROOT$/${file}`);
