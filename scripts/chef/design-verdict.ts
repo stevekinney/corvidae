@@ -27,6 +27,9 @@
 // coordinator must verify the owner comment, issue and baseline evidence before attesting. Only
 // individual drifted, wrong or found rows can be excluded; all other blockers still block. Landing
 // rechecks the base and the full evidence bindings, and the original review remains in the state.
+// An exclusion covers its whole row: attest it only when every defect in that row has the same
+// exact approval and linked issue. A mixed row with an unapproved or differently tracked defect
+// must remain unexcluded and blocking.
 
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';

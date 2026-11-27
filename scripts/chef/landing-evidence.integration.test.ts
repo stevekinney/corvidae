@@ -329,4 +329,25 @@ test('recorded exclusions bind individual adverse findings to the landing base a
   expect(recordVerdict(flags).code).toBe(1);
   writeFileSync(exclusionsPath, JSON.stringify({ ...mixed, head: 'd'.repeat(40) }));
   expect(recordVerdict(flags).code).toBe(1);
+  const foundFirst = 'sweep | proximity | found | Existing heading is distant from its content';
+  const foundSecond = 'sweep | proximity | found | A separate action is distant from its group';
+  const sweepLedger = [
+    screen.replace('| wrong |', '| good |'),
+    foundFirst,
+    foundSecond,
+    ...SWEEP_CATEGORIES.map((category) => `sweep | ${category} | clear | checked`),
+  ].join('\n');
+  writeFileSync(ledgerPath, sweepLedger);
+  writeFileSync(
+    exclusionsPath,
+    JSON.stringify({
+      ...attestation,
+      ledgerDigest: designDigest(sweepLedger),
+      exclusions: [entry(designFingerprint('ledger', foundFirst)), attestation.exclusions[0]],
+    }),
+  );
+  expect(recordVerdict(flags).code).toBe(0);
+  expect(await evidence(['components/cinder/src/button.ts'], undefined)).toContain(
+    'sweep proximity: found',
+  );
 });
