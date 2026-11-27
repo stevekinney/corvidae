@@ -243,23 +243,25 @@
         { value: `descending:${column}`, label: `${label} descending` },
       ]),
   );
-  let chosenSort = $state<{ value: string; column: string; direction: string } | undefined>();
-  const selectedSort = $derived(
-    chosenSort && sort?.column === chosenSort.column && sort.direction === chosenSort.direction
-      ? chosenSort.value
-      : '',
-  );
+  // The control shows the sort that is applied, however it was set (the `sort` prop, a header
+  // button while wide, or the control itself), and "Sort by" while none of its options is.
+  const selectedSort = $derived.by(() => {
+    if (!sort) return '';
+    const applied = `${sort.direction}:${sort.column}`;
+    return sortOptions.some((option) => option.value === applied) ? applied : '';
+  });
   const instanceId = $props.id();
   const sortSelectId = `cinder-table-sort-${instanceId}`;
   // Sorting by a column, as its header button does, once or twice to reach the chosen direction.
+  // The sort already applied is left as it is: one more press would turn it around.
   function chooseSort(value: string): void {
     const split = value.indexOf(':');
     const direction = value.slice(0, split);
     const column = value.slice(split + 1);
     if (![...sortColumns.values()].some((entry) => entry.column === column)) return;
+    if (sort?.column === column && sort.direction === direction) return;
     onSortChange(column);
     if (sort?.direction !== direction) onSortChange(column);
-    if (sort) chosenSort = { value, column: sort.column, direction: sort.direction };
   }
 
   // A press on the sort control's hit area, outside the drawn select, opens the select.

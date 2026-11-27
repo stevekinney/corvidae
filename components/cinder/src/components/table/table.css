@@ -571,11 +571,27 @@
     ) {
     min-block-size: 2.25rem;
     max-block-size: 2.25rem;
-    /* A width of its own, not its widest option's: the server's HTML holds the select with no
-       options, which hydration fills in (COR-2771), and the control must not widen when they
-       arrive. A longer option ends in an ellipsis. */
+    /* A width that does not come from its widest option: the server's HTML holds the select
+       with only "Sort by", and hydration fills in the rest (COR-2771), so the control must not
+       widen when they arrive. Where the select can size to its content it is as wide as its
+       selected option, which is "Sort by" in both paints. Elsewhere it keeps a fixed width
+       with its text set against the chevron, so the two read as one control. */
     inline-size: calc(var(--cinder-space-4) * 15);
     max-inline-size: 100%;
+    text-align-last: end;
+  }
+
+  @supports (field-sizing: content) {
+    .cinder-table__stack-sort-hit
+      .cinder-select.select-variant-ghost:is(
+        .select-size-small,
+        .select-size-medium,
+        .select-size-large
+      ) {
+      field-sizing: content;
+      inline-size: auto;
+      text-align-last: auto;
+    }
   }
 
   /* The row header's name holds to two lines in any `fit` table, stacked or not, and ends with an

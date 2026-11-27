@@ -1,4 +1,6 @@
 <script lang="ts" module>
+  import type { TableSort } from './table.types.ts';
+
   /** Test-only fixture: a table of models that stacks into cards when it is `fit`. */
   export type TableCardFixtureProps = {
     fit?: boolean;
@@ -8,17 +10,20 @@
     sortable?: boolean;
     /** Table's own `sortable`; defaults to `sortable`, and is set apart to test its warning. */
     tableSortable?: boolean;
+    /** The sort applied from the start. */
+    initialSort?: TableSort;
   };
 </script>
 
 <script lang="ts">
+  import { untrack } from 'svelte';
+
   import TableBody from '../table-body/table-body.svelte';
   import TableCell from '../table-cell/table-cell.svelte';
   import TableHeaderCell from '../table-header-cell/table-header-cell.svelte';
   import TableHeader from '../table-header/table-header.svelte';
   import TableRow from '../table-row/table-row.svelte';
   import Table from './table.svelte';
-  import type { TableSort } from './table.types.ts';
 
   let {
     fit = true,
@@ -26,9 +31,10 @@
     controls,
     sortable = false,
     tableSortable = sortable,
+    initialSort,
   }: TableCardFixtureProps = $props();
 
-  let sort = $state<TableSort | undefined>(undefined);
+  let sort = $state<TableSort | undefined>(untrack(() => initialSort));
   const models = [
     {
       name: 'Claude Opus',

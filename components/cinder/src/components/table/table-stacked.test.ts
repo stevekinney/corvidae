@@ -615,6 +615,24 @@ describe('Table fit stacks into cards', () => {
     );
   });
 
+  test('the stacked control shows a sort applied from the start, and choosing it keeps it', async () => {
+    setTestViewportWidth(375);
+    const { container } = render(CardFixture, {
+      sortable: true,
+      initialSort: { column: 'model', direction: 'descending' },
+    });
+    flushSync();
+    const select = container.querySelector('.cinder-table__stack-sort select') as HTMLSelectElement;
+    const header = container.querySelector('th[data-cinder-sortable]') as HTMLElement;
+    // The applied sort is named, not "Sort by" (design review, round 3).
+    expect(select.value).toBe('descending:model');
+    expect(header.getAttribute('aria-sort')).toBe('descending');
+    // Choosing the sort already applied leaves it: one more press would turn it around.
+    await fireEvent.change(select);
+    flushSync();
+    expect(header.getAttribute('aria-sort')).toBe('descending');
+  });
+
   test('a sortable header cell in a fit table without Table sortable warns', () => {
     const warn = spyOn(console, 'warn').mockImplementation(() => {});
     try {
