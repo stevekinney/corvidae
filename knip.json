@@ -176,6 +176,27 @@
         "!src/workerd-fixture.ts!"
       ]
     },
+    "packages/operative": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "src/runtime-smoke.ts",
+        "src/node-runtime.test-support.ts",
+        "src/human-input-schema.workerd-fixture.test-support.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.test-support.ts!",
+        "!src/human-input-schema.workerd-fixture.test-support.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!"
+      ]
+    },
     "packages/cryptography": {
       "entry": [
         "**/*.test.ts",

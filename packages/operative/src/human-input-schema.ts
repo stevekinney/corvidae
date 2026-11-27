@@ -1,4 +1,4 @@
-import Ajv2020 from 'ajv/dist/2020.js';
+import { compileInterpretedSchema } from './schema-interpreter';
 
 import { humanInputSchemaExtensionIssues } from './human-input-schema-extensions';
 
@@ -43,8 +43,6 @@ export class HumanInputSchemaError extends Error {
     this.issues = issues ?? [{ path: [], message }];
   }
 }
-
-class RegularExpressionRefused extends Error {}
 
 function depthOf(value: unknown, level: number): number {
   if (typeof value !== 'object' || value === null) return level - 1;
@@ -92,43 +90,9 @@ export function checkHumanInputSchema(signalName: string, schema: unknown): Huma
   if (Object.hasOwn(copy, '$id')) {
     throw new HumanInputSchemaError(signalName, 'a schema must not declare $id.');
   }
-  // Bureau checks every answer with the interactive-surface rules, which refuse a regular
-  // expression (an answer is untrusted input and could make one backtrack), a nested `$id`, and an
-  // asynchronous schema. A schema it would refuse at answer time is refused here, at creation.
-  let refusing = false;
-  const ajv = new Ajv2020({
-    strict: false,
-    validateFormats: false,
-    logger: false,
-    code: {
-      regExp: Object.assign(
-        (pattern: string, flags: string): RegExp => {
-          if (refusing) throw new RegularExpressionRefused();
-          return new RegExp(pattern, flags);
-        },
-        { code: 'new RegExp' },
-      ),
-    },
-  });
   try {
-    ajv.compile({});
-    refusing = true;
-    const known = new Set(Object.keys(ajv.refs));
-    const validate = ajv.compile(copy);
-    if (Object.keys(ajv.refs).some((reference) => !known.has(reference))) {
-      throw new HumanInputSchemaError(signalName, 'a schema must not declare $id.');
-    }
-    if (Reflect.get(validate, '$async') === true) {
-      throw new HumanInputSchemaError(signalName, 'a schema must not be asynchronous ($async).');
-    }
+    compileInterpretedSchema(copy);
   } catch (error) {
-    if (error instanceof HumanInputSchemaError) throw error;
-    if (error instanceof RegularExpressionRefused) {
-      throw new HumanInputSchemaError(
-        signalName,
-        'a schema must not use "pattern" or "patternProperties".',
-      );
-    }
     throw new HumanInputSchemaError(
       signalName,
       `not a valid JSON Schema 2020-12: ${error instanceof Error ? error.message : String(error)}`,

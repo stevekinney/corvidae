@@ -15,8 +15,6 @@
  * effective inherited types, including `$extends` group references, so valid
  * lossless source documents do not need authored discriminator properties.
  */
-import type { ErrorObject } from 'ajv';
-
 import validateFormat from './format-validator.generated.js';
 import { mergeAndExpandExtends } from './resolve.ts';
 import validateResolver from './resolver-validator.generated.js';
@@ -33,7 +31,14 @@ import {
  * filesystem access and no runtime code generation. They are CSP-safe and run
  * in the browser unchanged.
  */
-type SchemaValidator = ((data: unknown) => boolean) & { errors?: ErrorObject[] | null };
+type SchemaError = {
+  readonly instancePath: string;
+  readonly keyword: string;
+  readonly message?: string;
+  readonly params: SchemaErrorParams;
+};
+
+type SchemaValidator = ((data: unknown) => boolean) & { errors?: SchemaError[] | null };
 
 function isJsonSchemaDocument(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -53,22 +58,29 @@ function instancePathToTokenPath(source: string, instancePath: string): string {
   return [source, ...segments].join('.');
 }
 
-function describeAjvError(error: ErrorObject): string {
+type SchemaErrorParams = {
+  readonly additionalProperty?: string;
+  readonly missingProperty?: string;
+  readonly allowedValues?: unknown[];
+  readonly allowedValue?: unknown;
+};
+
+function describeAjvError(error: SchemaError): string {
   switch (error.keyword) {
     case 'additionalProperties': {
-      const propertyName = (error.params as { additionalProperty?: string }).additionalProperty;
+      const propertyName = error.params.additionalProperty;
       return `must NOT have additional property '${propertyName}'`;
     }
     case 'required': {
-      const propertyName = (error.params as { missingProperty?: string }).missingProperty;
+      const propertyName = error.params.missingProperty;
       return `must have required property '${propertyName}'`;
     }
     case 'enum': {
-      const allowedValues = (error.params as { allowedValues?: unknown[] }).allowedValues ?? [];
+      const allowedValues = error.params.allowedValues ?? [];
       return `must be one of ${JSON.stringify(allowedValues)}`;
     }
     case 'const': {
-      const allowedValue = (error.params as { allowedValue?: unknown }).allowedValue;
+      const allowedValue = error.params.allowedValue;
       return `must equal ${JSON.stringify(allowedValue)}`;
     }
     default:
@@ -77,7 +89,7 @@ function describeAjvError(error: ErrorObject): string {
 }
 
 /** Longer JSON Pointers are more specific; surfacing those first keeps sibling `oneOf` noise last. */
-function bySpecificity(left: ErrorObject, right: ErrorObject): number {
+function bySpecificity(left: SchemaError, right: SchemaError): number {
   return right.instancePath.length - left.instancePath.length;
 }
 

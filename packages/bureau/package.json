@@ -35,7 +35,7 @@
     "@lostgradient/operative": "workspace:*",
     "@lostgradient/storage": "workspace:*",
     "@lostgradient/weft": "workspace:*",
-    "ajv": "catalog:",
+    "json-schema-library": "catalog:",
     "armorer": "workspace:*",
     "conversationalist": "workspace:*",
     "gray-matter": "catalog:",
@@ -52,6 +52,7 @@
     "@lostgradient/testing": "workspace:*",
     "@types/bun": "catalog:",
     "@types/js-yaml": "catalog:",
+    "ajv": "catalog:",
     "oxlint": "catalog:",
     "typescript": "catalog:"
   }

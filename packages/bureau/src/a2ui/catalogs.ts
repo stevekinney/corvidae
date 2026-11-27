@@ -10,7 +10,8 @@
  * @module catalogs
  */
 
-import Ajv2020, { type ValidateFunction } from 'ajv/dist/2020.js';
+import type { SchemaError, SchemaValidator } from '@lostgradient/operative';
+import { compileSchema, draft2020, type JsonSchema, type SchemaNode } from 'json-schema-library';
 
 import basicCatalog from './basic-catalog.schema.json' with { type: 'json' };
 import cinderCatalog from './cinder-catalog.schema.json' with { type: 'json' };
@@ -37,10 +38,6 @@ export const A2UI_SPECIFICATION_VERSION = 'v0.9.1';
  */
 export const A2UI_SUPPORT_STATUS = 'experimental';
 
-/** The id server-to-client messages use to reach a catalog (`catalog.json#/$defs/...`). */
-const CATALOG_ALIAS = 'https://a2ui.org/specification/v0_9/catalog.json';
-const SERVER_TO_CLIENT_ID = 'https://a2ui.org/specification/v0_9/server_to_client.json';
-
 /** One known catalog, with the validators that hold a surface's content to it. */
 export interface A2uiCatalog {
   readonly id: string;
@@ -54,17 +51,129 @@ export interface A2uiCatalog {
    */
   readonly referenceKeys: ReadonlySet<string>;
   /** A validator for one component, by component name. */
-  componentValidator(name: string): ValidateFunction | undefined;
+  componentValidator(name: string): A2uiSchemaValidator | undefined;
   /** A validator for one server-to-client message definition, such as `CreateSurfaceMessage`. */
-  messageValidator(definition: string): ValidateFunction;
+  messageValidator(definition: string): A2uiSchemaValidator;
   /** A validator for `createSurface`'s `theme`. */
-  readonly themeValidator: ValidateFunction;
+  readonly themeValidator: A2uiSchemaValidator;
 }
 
 type Schema = Record<string, unknown>;
+type A2uiSchemaValidator = SchemaValidator & ((value: unknown) => boolean);
 
 function isRecord(value: unknown): value is Schema {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function schemaDefinition(definitions: Schema, name: string): JsonSchema {
+  if (!Object.hasOwn(definitions, name)) throw new Error(`Missing A2UI schema definition: ${name}`);
+  return definitions[name] as JsonSchema;
+}
+
+/**
+ * The A2UI catalog puts schemas below extension keys (`components` and `functions`) rather than
+ * JSON Schema's schema-bearing keywords. Give the interpreter conventional locations, and rewrite
+ * the catalog's internal pointers to match, without changing the vendored documents themselves.
+ */
+function normalizedCatalog(schema: Schema): Schema {
+  const copy = structuredClone(schema);
+  const componentKey = (name: string) => `a2uiComponent${name}`;
+  const functionKey = (name: string) => `a2uiFunction${name}`;
+  const rewrite = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      value.forEach(rewrite);
+      return;
+    }
+    if (!isRecord(value)) return;
+    const reference = value['$ref'];
+    if (typeof reference === 'string') {
+      value['$ref'] = reference
+        .replace(
+          /#\/components\/([^/]+)$/u,
+          (_match, name: string) => `#/$defs/${componentKey(name)}`,
+        )
+        .replace(
+          /#\/functions\/([^/]+)$/u,
+          (_match, name: string) => `#/$defs/${functionKey(name)}`,
+        )
+        .replace(
+          /^https:\/\/a2ui\.org\/specification\/v0_9\/common_types\.json#\/\$defs\/([^/]+)$/u,
+          (_match, name: string) => `#/$defs/a2uiCommon${name}`,
+        );
+    }
+    Object.values(value).forEach(rewrite);
+  };
+  rewrite(copy);
+  const definitions = isRecord(copy['$defs']) ? copy['$defs'] : {};
+  const components = isRecord(copy['components']) ? copy['components'] : {};
+  const functions = isRecord(copy['functions']) ? copy['functions'] : {};
+  copy['$defs'] = {
+    ...definitions,
+    // `$defs` only traverses direct schema entries, so extension containers cannot be registered
+    // beneath an extra `components` or `functions` object.
+    ...Object.fromEntries(
+      Object.entries(components).map(([name, definition]) => [componentKey(name), definition]),
+    ),
+    ...Object.fromEntries(
+      Object.entries(functions).map(([name, definition]) => [functionKey(name), definition]),
+    ),
+  };
+  return copy;
+}
+
+function normalizedCommonTypes(): Schema {
+  const copy = structuredClone(commonTypes) as Schema;
+  const rewrite = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      value.forEach(rewrite);
+      return;
+    }
+    if (!isRecord(value)) return;
+    const reference = value['$ref'];
+    if (typeof reference === 'string') {
+      value['$ref'] = reference
+        .replace(/^#\/\$defs\/([^/]+)$/u, (_match, name: string) => `#/$defs/a2uiCommon${name}`)
+        .replace(/^catalog\.json#\/\$defs\//u, '#/$defs/');
+    }
+    Object.values(value).forEach(rewrite);
+  };
+  rewrite(copy);
+  return copy;
+}
+
+/** Embed the selected trusted catalog under the server schema's normal `$defs` namespace. */
+function serverSchemaWithCatalog(catalog: Schema): Schema {
+  const server = structuredClone(serverToClient) as Schema;
+  const rewrite = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      value.forEach(rewrite);
+      return;
+    }
+    if (!isRecord(value)) return;
+    const reference = value['$ref'];
+    if (typeof reference === 'string') {
+      value['$ref'] = reference
+        .replace(/^catalog\.json#\/\$defs\//u, '#/$defs/')
+        .replace(
+          /^https:\/\/a2ui\.org\/specification\/v0_9\/common_types\.json#\/\$defs\/([^/]+)$/u,
+          (_match, name: string) => `#/$defs/a2uiCommon${name}`,
+        );
+    }
+    Object.values(value).forEach(rewrite);
+  };
+  rewrite(server);
+  const commonDefinitions = normalizedCommonTypes()['$defs'] as Schema;
+  server['$defs'] = {
+    ...Object.fromEntries(
+      Object.entries(commonDefinitions).map(([name, definition]) => [
+        `a2uiCommon${name}`,
+        definition,
+      ]),
+    ),
+    ...(catalog['$defs'] as Schema),
+    ...(server['$defs'] as Schema),
+  };
+  return server;
 }
 
 /** Collects the property names whose subschema reaches a component id or a child list. */
@@ -100,25 +209,41 @@ function build(schema: Schema): A2uiCatalog {
   if (typeof id !== 'string') throw new Error('A catalog must declare a catalogId.');
   const components = schema['components'] as Schema;
   const functions = (schema['functions'] ?? {}) as Schema;
-  // Trusted, vendored schemas: unlike an author's, they may use `pattern` and `$id`.
-  const ajv = new Ajv2020({ strict: false, allErrors: true, validateFormats: false });
-  ajv.addSchema(commonTypes);
-  ajv.addSchema({ ...schema, $id: CATALOG_ALIAS });
-  ajv.addSchema(serverToClient);
-  const get = (reference: string): ValidateFunction => {
-    const validate = ajv.getSchema(reference);
-    if (validate === undefined) throw new Error(`Missing A2UI schema ${reference}.`);
+  const catalog = normalizedCatalog(schema);
+  const server = serverSchemaWithCatalog(catalog);
+  const serverRoot = compileSchema(server, { drafts: [draft2020] });
+  const wrap = (node: SchemaNode): A2uiSchemaValidator => {
+    let errors: readonly SchemaError[] = [];
+    const validate = ((value: unknown): boolean => {
+      const result = node.validate(value);
+      errors = result.errors.map((error) => {
+        const data = error.data as Record<string, unknown>;
+        return {
+          instancePath: typeof data['pointer'] === 'string' ? data['pointer'].slice(1) : '',
+          keyword: (typeof error.code === 'string' ? error.code : 'schema').replace(/-error$/u, ''),
+          message: error.message,
+          params: data,
+        };
+      });
+      return result.valid;
+    }) as A2uiSchemaValidator;
+    Object.defineProperty(validate, 'errors', { get: () => errors });
+    validate.validate = validate;
     return validate;
   };
+  const definitions = server['$defs'] as Schema;
   return {
     id,
     componentNames: new Set(Object.keys(components)),
     functionNames: new Set(Object.keys(functions)),
     referenceKeys: referenceKeysOf(components),
     componentValidator: (name) =>
-      Object.hasOwn(components, name) ? get(`${CATALOG_ALIAS}#/components/${name}`) : undefined,
-    messageValidator: (definition) => get(`${SERVER_TO_CLIENT_ID}#/$defs/${definition}`),
-    themeValidator: get(`${CATALOG_ALIAS}#/$defs/theme`),
+      Object.hasOwn(components, name)
+        ? wrap(serverRoot.compileSchema(schemaDefinition(definitions, `a2uiComponent${name}`)))
+        : undefined,
+    messageValidator: (definition) =>
+      wrap(serverRoot.compileSchema(schemaDefinition(definitions, definition))),
+    themeValidator: wrap(serverRoot.compileSchema(schemaDefinition(definitions, 'theme'))),
   };
 }
 

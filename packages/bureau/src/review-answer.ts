@@ -16,8 +16,7 @@
  * @module review-answer
  */
 
-import type { HumanInputSchema } from '@lostgradient/operative';
-import type { ErrorObject } from 'ajv/dist/2020.js';
+import type { HumanInputSchema, SchemaError } from '@lostgradient/operative';
 
 import { takesPlainText } from './a2ui/input-form.ts';
 import type { InteractiveSurfaceJsonObject } from './interactive-surface/types.ts';
@@ -98,7 +97,7 @@ function unescapePointerSegment(segment: string): string {
 }
 
 /** The path Ajv's error points at: its instance path, plus the property a `required` or `additionalProperties` error names. */
-function pathOf(error: ErrorObject): Array<string | number> {
+function pathOf(error: SchemaError): Array<string | number> {
   const segments: Array<string | number> =
     error.instancePath === ''
       ? []
@@ -121,7 +120,7 @@ function pathOf(error: ErrorObject): Array<string | number> {
   return segments;
 }
 
-function messageOf(error: ErrorObject): string {
+function messageOf(error: SchemaError): string {
   const params = error.params as Record<string, unknown>;
   if (error.keyword === 'format' && typeof params['format'] === 'string') {
     const expected = Object.hasOwn(FORMAT_EXPECTATIONS, params['format'])
@@ -140,7 +139,7 @@ function messageOf(error: ErrorObject): string {
 
 /** The issues for one answer, with the summary errors (`anyOf`, `oneOf`, `if`) dropped wherever a more specific error shares their path. */
 function issuesOf(
-  errors: readonly ErrorObject[],
+  errors: readonly SchemaError[],
   subjectName: string = 'The answer',
 ): ReviewAnswerIssue[] {
   const issues: ReviewAnswerIssue[] = [];

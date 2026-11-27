@@ -27,7 +27,7 @@
     "conversationalist": "workspace:*",
     "@lostgradient/cryptography": "workspace:*",
     "@lostgradient/lifecycle": "workspace:*",
-    "ajv": "catalog:",
+    "json-schema-library": "catalog:",
     "zod": "catalog:",
     "@opentelemetry/api": "catalog:",
     "@lostgradient/environmentalist": "catalog:",
@@ -40,7 +40,8 @@
     "typescript": "catalog:",
     "@lostgradient/storage-bun-sqlite": "workspace:*",
     "@lostgradient/storage-lmdb": "workspace:*",
-    "@lostgradient/testing": "workspace:*"
+    "@lostgradient/testing": "workspace:*",
+    "@lostgradient/workerd-testing": "workspace:*"
   },
   "private": true
 }
