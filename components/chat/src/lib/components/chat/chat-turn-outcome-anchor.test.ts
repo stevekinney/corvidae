@@ -178,10 +178,11 @@ describe('Chat — the outcome of a turn with no assistant message', () => {
     }
   }
 
-  test.each([
+  const refusals: [string, () => boolean | Promise<boolean>][] = [
     ['returns false', () => false],
     ['throws', () => Promise.reject(new Error('offline'))],
-  ] as const)(
+  ];
+  test.each(refusals)(
     'Retry now on a dropped stream of a tool-only turn says once under the turn that it did not go through when the host %s',
     async (_name, answer) => {
       const outcome = resolveTurnOutcome(turnOf('finished'), {
