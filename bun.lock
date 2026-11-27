@@ -55,8 +55,10 @@
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/environmentalist": "catalog:",
         "@lostgradient/interborough-plugin": "workspace:*",
+        "@lostgradient/markdown": "workspace:*",
         "@lostgradient/mcp": "workspace:*",
         "@lostgradient/memory": "workspace:*",
+        "@lostgradient/object-store": "workspace:*",
         "@lostgradient/operative": "workspace:*",
         "@lostgradient/operative-anthropic": "workspace:*",
         "@lostgradient/operative-gemini": "workspace:*",
@@ -491,6 +493,7 @@
       "name": "@lostgradient/bungalow",
       "dependencies": {
         "@lostgradient/cryptography": "workspace:*",
+        "@lostgradient/object-store": "workspace:*",
       },
       "devDependencies": {
         "@lostgradient/testing": "workspace:*",
@@ -512,6 +515,7 @@
         "@lostgradient/interborough-plugin": "workspace:*",
         "@lostgradient/lifecycle": "workspace:*",
         "@lostgradient/memory": "workspace:*",
+        "@lostgradient/object-store": "workspace:*",
         "@lostgradient/operative": "workspace:*",
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/weft": "workspace:*",
@@ -780,6 +784,21 @@
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
         "@types/ws": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/object-store": {
+      "name": "@lostgradient/object-store",
+      "dependencies": {
+        "@lostgradient/cryptography": "workspace:*",
+        "saxes": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@lostgradient/workerd-testing": "workspace:*",
+        "@types/bun": "catalog:",
         "oxlint": "catalog:",
         "typescript": "catalog:",
       },
@@ -1853,6 +1872,8 @@
     "@lostgradient/memory": ["@lostgradient/memory@workspace:packages/memory"],
 
     "@lostgradient/node-host": ["@lostgradient/node-host@workspace:packages/node-host"],
+
+    "@lostgradient/object-store": ["@lostgradient/object-store@workspace:packages/object-store"],
 
     "@lostgradient/operative": ["@lostgradient/operative@workspace:packages/operative"],
 

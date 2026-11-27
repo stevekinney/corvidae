@@ -1,5 +1,5 @@
 import { SecretProviderError } from '@lostgradient/bungalow';
-import { createHash } from 'node:crypto';
+import { sha256HexSync } from '@lostgradient/cryptography';
 
 function invalid(): never {
   throw new SecretProviderError('rejected', 'The logical publication request is invalid.');
@@ -51,7 +51,5 @@ export function secretPublicationDigest(input: {
     (input.expectedRevision !== null && typeof input.expectedRevision !== 'string')
   )
     return invalid();
-  return createHash('sha256')
-    .update(canonical({ version: 1, ...input }, new Set()))
-    .digest('hex');
+  return sha256HexSync(canonical({ version: 1, ...input }, new Set()));
 }

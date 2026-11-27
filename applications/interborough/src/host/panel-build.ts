@@ -16,6 +16,7 @@
  * into every release. A release stages `svelte` beside the plugin runtime for the same reason
  * (COR-2217).
  */
+import { createIncrementalHash, sha256HexSync } from '@lostgradient/cryptography';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -57,7 +58,7 @@ function escapeText(text: string): string {
 
 /** Compute the contract's digest of `html`. */
 export function digestOf(html: string): string {
-  return `sha256:${new Bun.CryptoHasher('sha256').update(html).digest('hex')}`;
+  return `sha256:${sha256HexSync(html)}`;
 }
 
 /** The target an `exports` entry names under `conditions`, or `undefined` when none applies. */
@@ -363,9 +364,9 @@ function hostPackageIdentity(dependencies: string, name: string): string {
   if (!existsSync(manifestPath)) return 'absent';
   const { version } = readPackageManifest(manifestPath);
   if (version !== undefined) return version;
-  const digest = new Bun.CryptoHasher('sha256')
-    .update(`${realPathOrAbsolute(directory)}\0${readFileSync(manifestPath, 'utf8')}`)
-    .digest('hex');
+  const digest = sha256HexSync(
+    `${realPathOrAbsolute(directory)}\0${readFileSync(manifestPath, 'utf8')}`,
+  );
   return `unversioned:${digest}`;
 }
 
@@ -460,7 +461,7 @@ export async function buildPanelPage(
  * file to read; the text is what runs in either.
  */
 export function panelBuildCodeDigest(): string {
-  const hasher = new Bun.CryptoHasher('sha256');
+  const hasher = createIncrementalHash();
   const parts: readonly unknown[] = [
     PANEL_CONDITIONS,
     HOST_PANEL_PACKAGES,
@@ -480,5 +481,5 @@ export function panelBuildCodeDigest(): string {
   for (const part of parts) {
     hasher.update(`${typeof part === 'function' ? part.toString() : JSON.stringify(part)}\0`);
   }
-  return hasher.digest('hex');
+  return hasher.digest();
 }

@@ -24,10 +24,9 @@
  * @module a2a-authentication
  */
 
-import { createHash, timingSafeEqual } from 'node:crypto';
-
 import { principalFromApiKey, type AuthConfig } from '@lostgradient/backchannel';
 import { type Bungalow } from '@lostgradient/bungalow';
+import { sha256HexSync, timingSafeEqualHex } from '@lostgradient/cryptography';
 
 import { PUBLIC_ORIGIN_VARIABLE } from './environment-configuration.ts';
 
@@ -83,8 +82,8 @@ export async function resolveA2aExposure(
 }
 
 /** A fixed-length digest, so the comparison takes the same time whatever the presented key's length. */
-function digestOf(value: string): Buffer {
-  return createHash('sha256').update(value).digest();
+function digestOf(value: string): string {
+  return sha256HexSync(value);
 }
 
 /**
@@ -103,7 +102,7 @@ export function createA2aAuthentication(key: string, warn: (message: string) => 
       );
     },
     resolveApiKeyPrincipal: async (presented) =>
-      timingSafeEqual(digestOf(presented), expected)
+      timingSafeEqualHex(digestOf(presented), expected)
         ? principalFromApiKey({ subject: A2A_SUBJECT, scopes: [...A2A_SCOPES] })
         : null,
   };

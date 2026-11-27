@@ -16,7 +16,7 @@ export type GuardrailObjectSourceOptions = ObjectSourceOptions;
 /**
  * The S3 counterpart of `guardrailFileDirectory`. Every `*.json` object directly under
  * `location.prefix` is a guardrail whose name is the key's name without the extension. Bureau reads
- * and polls the prefix through the caller's `Bun.S3Client`. Bun only.
+ * and polls the prefix through the caller's S3 object-store operations.
  */
 export function guardrailObjectSource(
   location: ObjectLocation,

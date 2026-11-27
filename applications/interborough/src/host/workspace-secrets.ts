@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { secretPublicationDigest } from './secret-publication-digest.ts';
 
 import {
@@ -9,6 +9,7 @@ import {
   type ConfigurationWriteResult,
   type SecretOperationMetadata,
 } from '@lostgradient/bungalow';
+import { sha256HexSync } from '@lostgradient/cryptography';
 
 /** Reserved host configuration field: only committed references activate managed secrets. */
 export const SECRET_BINDINGS_FIELD = 'secretBindings';
@@ -260,7 +261,7 @@ export function createWorkspaceSecrets(home: SecretHome): WorkspaceSecrets {
       }
       document[SECRET_BINDINGS_FIELD] = { ...bindings, [key]: operation.reference.serialized };
       const committedText = `${JSON.stringify(document, null, 2)}\n`;
-      const configurationHash = createHash('sha256').update(committedText).digest('hex');
+      const configurationHash = sha256HexSync(committedText);
       try {
         await authorize?.();
       } catch (error) {

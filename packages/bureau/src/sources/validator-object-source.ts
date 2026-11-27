@@ -16,7 +16,7 @@ export type ValidatorObjectSourceOptions = ObjectSourceOptions;
 /**
  * The S3 counterpart of `validatorFileDirectory`. Every `*.json` object directly under
  * `location.prefix` is a validator whose name is the key's name without the extension. Bureau reads
- * and polls the prefix through the caller's `Bun.S3Client`; a prefix with no objects is an empty
+ * and polls the prefix through the caller's S3 object-store operations; a prefix with no objects is an empty
  * one. Bun only.
  */
 export function validatorObjectSource(

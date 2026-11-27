@@ -27,8 +27,9 @@
  * @module tool-source-pending-sign-ins
  */
 
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 
+import { sha256HexSync, timingSafeEqualHex } from '@lostgradient/cryptography';
 import type { McpOAuthStorageState, McpOAuthTokenStorage } from 'armorer';
 import type { ToolSourceDescription } from 'armorer/tool-sources';
 
@@ -121,8 +122,7 @@ export function randomToken(): string {
 
 /** Whether `given` is `expected`, compared in constant time whatever their lengths. */
 export function sameSecret(given: string, expected: string): boolean {
-  const digest = (value: string) => createHash('sha256').update(value).digest();
-  return timingSafeEqual(digest(given), digest(expected));
+  return timingSafeEqualHex(sha256HexSync(given), sha256HexSync(expected));
 }
 
 /** Whether `binding` names the same administrator as `identity`. */

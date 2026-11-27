@@ -19,9 +19,9 @@
  */
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
+import type { ObjectStoreOperations } from '@lostgradient/object-store';
 
 import { type DefinitionEntry, hashDefinitionBytes } from './definition-source';
-import type { ObjectStoreOperations } from './object-operations';
 
 /**
  * How often an object prefix rescans on its own, in milliseconds, unless the source is given its
