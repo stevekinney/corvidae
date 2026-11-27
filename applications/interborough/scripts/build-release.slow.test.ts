@@ -31,11 +31,23 @@ describe('the signed release archive', () => {
           'utf8',
         ),
       ).exports as Record<string, string>;
-      expect(exportsMap).toEqual({
-        '.': './index.js',
-        './step-waterfall': './step-waterfall.js',
-        './testing': './testing/index.js',
-      });
+      // The staged package exposes what the plugin SDK manifest declares, as built JavaScript.
+      const declared = (
+        JSON.parse(
+          await readFile(
+            join(import.meta.dir, '../../../packages/interborough-plugin/package.json'),
+            'utf8',
+          ),
+        ) as { exports: Record<string, string> }
+      ).exports;
+      expect(exportsMap).toEqual(
+        Object.fromEntries(
+          Object.entries(declared).map(([subpath, source]) => [
+            subpath,
+            source.replace(/^\.\/src\//, './').replace(/\.ts$/, '.js'),
+          ]),
+        ),
+      );
       // `buildRelease` has already started the relocated executable with `PATH` empty and had it
       // build a folder plugin's Cinder panel (a Svelte component through `@lostgradient/cinder/panel`)
       // from the staged runtime, and refused the release otherwise (COR-2217). What it built from is

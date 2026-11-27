@@ -1,6 +1,6 @@
 /**
  * The checker behind `coverage-matrix.test.ts`: it parses
- * `documentation/ui/coverage-matrix.md` and reports every way the table has
+ * `documentation/weft-operation-coverage.md` and reports every way the table has
  * drifted from Weft's operation catalog or from the dashboard source.
  *
  * It is pure — file reads and `HttpClient` route recording come in through

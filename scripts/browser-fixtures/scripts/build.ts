@@ -9,7 +9,7 @@ import {
   buildWebComponents,
   type ElementOptions,
 } from '../../../components/cinder/scripts/build-web-components.ts';
-import { ensureCinderGenerated } from '../../ensure-cinder-generated.ts';
+import { ensureCinderGenerated } from '../../../components/cinder/scripts/ensure-cinder-generated.ts';
 import { defaultManifestLayout } from './prepare-manifest.ts';
 
 const root = resolve(import.meta.dirname, '..');

@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import ts from 'typescript';
 
+import { CINDER_GENERATED_OUTPUTS } from '../components/cinder/scripts/ensure-cinder-generated.ts';
 import { runWithHangGuard } from '../testing/testing/src/hang-guard.ts';
-import { CINDER_GENERATED_OUTPUTS } from './ensure-cinder-generated.ts';
 import { type PluginManifest, pluginDependencyViolations } from './plugin-dependency-rules.ts';
 import {
   directoryGlob,
@@ -145,6 +145,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/playground',
   '@lostgradient/terminal',
   '@lostgradient/terminal-example',
+  '@lostgradient/terminal-testing',
   '@lostgradient/ventriloquist',
   'armorer',
   'conversationalist',
@@ -368,7 +369,7 @@ describe('internal workspace architecture', () => {
     // ignores them and `test:self:slow` runs them, serially after the parallel phase, through
     // `test:slow` (COR-1499).
     expect(scripts['test:self']).toBe(
-      "bun scripts/bun-test-junit.ts --report-name=self --parallel=4 --path-ignore-patterns='**/*.slow.test.ts' --path-ignore-patterns='**/*.integration.test.ts' ./scripts/*.test.ts ./scripts/terminal/*.test.ts ./scripts/chef/*.test.ts ./scripts/groom/*.test.ts",
+      "bun scripts/bun-test-junit.ts --report-name=self --parallel=4 --path-ignore-patterns='**/*.slow.test.ts' --path-ignore-patterns='**/*.integration.test.ts' ./scripts/*.test.ts ./scripts/chef/*.test.ts ./scripts/groom/*.test.ts",
     );
     expect(scripts['test:self:slow']).toBe(
       'bun scripts/bun-test-selected.ts ./scripts/*.slow.test.ts ./scripts/chef/*.slow.test.ts ./scripts/*.integration.test.ts ./scripts/chef/*.integration.test.ts ./scripts/browser-fixtures/scripts/*.slow.test.ts ./scripts/browser-fixtures/scripts/*.integration.test.ts',
@@ -401,6 +402,55 @@ describe('internal workspace architecture', () => {
     const { scripts = {} } = await readManifest('.');
     expect(scripts['lint:root']).toContain('bun run lint:guards');
     expect(scripts['lint:guards']).toContain('bun scripts/check-plugin-identities.ts');
+  });
+
+  test("Interborough's own guards run from both the root lint:guards and Interborough's lint", async () => {
+    const guards = [
+      'check-hidden-labels',
+      'check-separate-box-reads',
+      'check-sidebar-no-headings',
+      'check-visible-text-leaks',
+      'check-empty-state-layout',
+    ];
+    const { scripts: root = {} } = await readManifest('.');
+    const { scripts: interborough = {} } = await readManifest('applications/interborough');
+    expect(interborough['lint']).toEndWith(' && bun run lint:guards');
+    for (const guard of guards) {
+      expect(root['lint:guards'], guard).toContain(
+        `bun applications/interborough/scripts/${guard}.ts`,
+      );
+      expect(interborough['lint:guards'], guard).toContain(`bun scripts/${guard}.ts`);
+      // Each guard's test scans all of Interborough's source and needs no DOM, so it runs in the
+      // host segment of `test` and stays out of the memory-bound UI shards.
+      const test = `scripts/${guard}.test.ts`;
+      expect(interborough['test:host']!.split(/\s+/), guard).toContain(test);
+      expect(interborough['test:ui'], guard).toContain(`--path-ignore-patterns='${test}'`);
+      expect(interborough['test:host'], guard).not.toContain(`--path-ignore-patterns='${test}'`);
+    }
+  });
+
+  test("Interborough's cached lint and test tasks read the root files its guards and matrix read", async () => {
+    const configuration: { tasks: Record<string, { inputs?: string[] }> } = await Bun.file(
+      join(root, 'turbo.json'),
+    ).json();
+    // The guards (`lint:guards`) and their tests read the shared owner-rule helper at the root, and
+    // `tests/coverage-matrix.test.ts` reads the Weft operation coverage matrix there. A change to
+    // either must not replay a cached result.
+    expect(configuration.tasks['@lostgradient/interborough#lint']?.inputs).toContain(
+      '$TURBO_ROOT$/scripts/owner-rule-guard-support.ts',
+    );
+    for (const task of [
+      '@lostgradient/interborough#test',
+      '@lostgradient/interborough#test:coverage',
+    ]) {
+      expect(configuration.tasks[task]?.inputs, task).toEqual(
+        expect.arrayContaining([
+          '$TURBO_DEFAULT$',
+          '$TURBO_ROOT$/documentation/weft-operation-coverage.md',
+          '$TURBO_ROOT$/scripts/owner-rule-guard-support.ts',
+        ]),
+      );
+    }
   });
 
   test('compiler configuration has a dedicated internal owner and two public presets', async () => {

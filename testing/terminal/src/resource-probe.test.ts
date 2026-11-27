@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { validateBrowserAssetEvidence } from './engine-probe.ts';
+import { validateBrowserAssetEvidence } from './browser-asset-evidence.ts';
 import {
   boundedQueue,
   createCleanupQueue,

@@ -24,9 +24,9 @@
       "date": "2026-11-19",
       "source": "Owner review of the live app, 2026-11-19 (chef-sdlc-architecture-review-2026-11-19-corrections.md, section 2)",
       "guard": {
-        "script": "scripts/check-sidebar-no-headings.ts",
-        "test": "scripts/check-sidebar-no-headings.test.ts",
-        "allowlist": "scripts/sidebar-no-headings-allowlist.json"
+        "script": "applications/interborough/scripts/check-sidebar-no-headings.ts",
+        "test": "applications/interborough/scripts/check-sidebar-no-headings.test.ts",
+        "allowlist": "applications/interborough/scripts/sidebar-no-headings-allowlist.json"
       },
       "scans": ["applications/interborough/src"]
     },
@@ -47,9 +47,9 @@
       "date": "2026-11-19",
       "source": "Owner review of the live app, 2026-11-19 (chef-sdlc-architecture-review-2026-11-19-corrections.md, sections 1 and 2)",
       "guard": {
-        "script": "scripts/check-visible-text-leaks.ts",
-        "test": "scripts/check-visible-text-leaks.test.ts",
-        "allowlist": "scripts/visible-text-leaks-allowlist.json"
+        "script": "applications/interborough/scripts/check-visible-text-leaks.ts",
+        "test": "applications/interborough/scripts/check-visible-text-leaks.test.ts",
+        "allowlist": "applications/interborough/scripts/visible-text-leaks-allowlist.json"
       },
       "scans": ["applications/interborough/src"]
     },
@@ -59,9 +59,9 @@
       "date": "2026-11-19",
       "source": "Owner review of the live app, 2026-11-19, six different empty-state patterns (chef-sdlc-architecture-review-2026-11-19-corrections.md, sections 1 and 2)",
       "guard": {
-        "script": "scripts/check-empty-state-layout.ts",
-        "test": "scripts/check-empty-state-layout.test.ts",
-        "allowlist": "scripts/empty-state-layout-allowlist.json"
+        "script": "applications/interborough/scripts/check-empty-state-layout.ts",
+        "test": "applications/interborough/scripts/check-empty-state-layout.test.ts",
+        "allowlist": "applications/interborough/scripts/empty-state-layout-allowlist.json"
       },
       "scans": ["applications/interborough/src"]
     },

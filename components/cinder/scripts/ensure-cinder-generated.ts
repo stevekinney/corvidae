@@ -7,17 +7,58 @@
 // It does nothing while every output exists and none is older than an input, and otherwise runs
 // Cinder's own `metadata` script (the token seed, the token generator and the component
 // artifacts) once, under a lock, so parallel test workers do not each regenerate.
+//
+// Cinder owns this file: it lives beside the generators it watches. The repository-wide pieces it
+// uses (the process lease, the process group and the environment) stay at the repository root.
+// The workspace is found by its package name, `@lostgradient/cinder`, never by its directory.
 
-import { existsSync, readdirSync, statSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import {
   acquireOwnedProcessLease,
   OwnedProcessGroupUnverifiedError,
   runOwnedProcessGroup,
-} from '../packages/process-lease/src/index.ts';
-import { rootScriptEnvironment } from './environment-configuration.ts';
+} from '../../../packages/process-lease/src/index.ts';
+import { rootScriptEnvironment } from '../../../scripts/environment-configuration.ts';
 
-const REPOSITORY_ROOT = resolve(import.meta.dirname, '..');
+/** A workspace sits two directories below the repository root, and this file sits in its `scripts`. */
+const REPOSITORY_ROOT = resolve(import.meta.dirname, '../../..');
+
+/** The name that identifies the Cinder workspace, whatever directory it lives in. */
+export const CINDER_PACKAGE_NAME = '@lostgradient/cinder';
+
+/** A manifest as an object, or `undefined` when the file is missing, unreadable or not an object. */
+function readManifest(path: string): Record<string, unknown> | undefined {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined;
+  } catch {
+    // A directory without a readable manifest is not a workspace.
+    return undefined;
+  }
+}
+
+/**
+ * The directory of the workspace named `@lostgradient/cinder` below `root`: the workspaces are the
+ * ones the root `package.json` lists, and the one with Cinder's package name is Cinder.
+ */
+export function findCinderDirectory(root: string): string {
+  const listed = readManifest(join(root, 'package.json'))?.['workspaces'];
+  const patterns = Array.isArray(listed)
+    ? listed.filter((pattern): pattern is string => typeof pattern === 'string')
+    : [];
+  for (const pattern of patterns) {
+    for (const manifest of new Bun.Glob(`${pattern}/package.json`).scanSync({ cwd: root })) {
+      const name = readManifest(join(root, manifest))?.['name'];
+      if (name === CINDER_PACKAGE_NAME) return dirname(join(root, manifest));
+    }
+  }
+  throw new Error(
+    `No workspace named ${CINDER_PACKAGE_NAME} is listed in the workspaces of ${join(root, 'package.json')}.`,
+  );
+}
 
 /** The generated outputs, relative to the Cinder package. The generator's own `--list` covers the same. */
 export const CINDER_GENERATED_OUTPUTS = [
@@ -99,7 +140,7 @@ export async function ensureCinderGenerated(options: EnsureOptions = {}): Promis
   const { generate, stdout, beforeRegistration, beforeLeasePublication } = options;
   const root = options.root ?? REPOSITORY_ROOT;
   const environment = { ...rootScriptEnvironment() };
-  const cinder = join(root, 'components/cinder');
+  const cinder = findCinderDirectory(root);
   if (cinderGeneratedStaleness(cinder) === undefined) return false;
   const lease = await acquireOwnedProcessLease(
     join(cinder, '.generate-lock'),
