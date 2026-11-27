@@ -10,10 +10,13 @@ import { tick } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import {
+  appendAssistantMessage,
+  appendMessages,
   appendToolCall,
   appendToolResult,
   appendUserMessage,
   createConversationHistory,
+  FOLLOW_UP_METADATA_KEY,
 } from './builders.ts';
 import type { ConversationHistory } from './conversation-model.ts';
 import {
@@ -231,4 +234,172 @@ describe('Chat — the outcome of a turn with no assistant message', () => {
     expect(container.textContent).toContain('Reconnecting, attempt 1 of 7');
     expect(container.querySelector('.chat-turn-outcome')).toBeNull();
   });
+});
+
+const DROP = { attempt: 1, attempts: 7, wait: 5_000, nextTryAt: 4_000, runDropped: true };
+
+function statesOf(conversation: ConversationHistory, facts: TurnOutcomeFacts) {
+  const outcome = resolveTurnOutcome(conversation, facts);
+  return {
+    conversation: outcome.conversation,
+    messageTurnState: (message: Parameters<typeof turnStateOf>[1]) => turnStateOf(outcome, message),
+  };
+}
+
+function withStopNote(conversation: ConversationHistory, failed: boolean): ConversationHistory {
+  return noted(conversation, {
+    kind: 'stopped',
+    id: 'stopped:run-1',
+    reason: 'The provider dropped.',
+    ...(failed ? { failed: true } : {}),
+  });
+}
+
+describe('Chat — a refused Retry now is said only while the drop it was pressed on lasts', () => {
+  const refuse = () => false;
+  const shapes: [string, () => ConversationHistory][] = [
+    ['tool-only turn', () => turnOf('finished')],
+    [
+      'turn with its own reply',
+      () =>
+        appendAssistantMessage(
+          appendUserMessage(createConversationHistory({ id: 'only-tools' }), 'Hi'),
+          'Partial',
+        ),
+    ],
+  ];
+
+  for (const [name, make] of shapes) {
+    test(`${name}: the stream comes back, then drops again with nothing pressed`, async () => {
+      const conversation = make();
+      const { container, rerender } = render(Chat, {
+        id: 'only-tools',
+        variant: 'transcript',
+        onRetryConnection: refuse,
+        ...statesOf(conversation, { ...IDLE, running: true, reconnect: DROP }),
+      });
+      await tick();
+      await fireEvent.click(getByRole(container, 'button', { name: 'Retry now' }));
+      await tick();
+      await tick();
+      const lines = () => container.querySelectorAll('.chat-turn-command-failure').length;
+      expect(lines()).toBe(1);
+
+      await rerender(statesOf(conversation, { ...IDLE, running: true }));
+      await tick();
+      await tick();
+      await rerender(statesOf(conversation, { ...IDLE, running: true, reconnect: DROP }));
+      await tick();
+      await tick();
+      expect(lines()).toBe(0);
+    });
+  }
+
+  for (const [outcome, failed] of [
+    ['stopped', false],
+    ['failed', true],
+    ['empty', undefined],
+  ] as const) {
+    test(`the drop ends as ${outcome} on the same anchor: the line never renders again, not even for a frame`, async () => {
+      const dropped = turnOf('finished');
+      const { container, rerender } = render(Chat, {
+        id: 'only-tools',
+        variant: 'transcript',
+        onRetryConnection: refuse,
+        onRetryTurn: () => undefined,
+        onContinueTurn: () => undefined,
+        onDiscardTurn: () => undefined,
+        ...statesOf(dropped, { ...IDLE, running: true, reconnect: DROP }),
+      });
+      await tick();
+      await fireEvent.click(getByRole(container, 'button', { name: 'Retry now' }));
+      await tick();
+      await tick();
+      expect(container.querySelectorAll('.chat-turn-command-failure')).toHaveLength(1);
+
+      let drawn = false;
+      const watcher = new MutationObserver((records) => {
+        for (const record of records)
+          for (const node of record.addedNodes)
+            if (
+              node instanceof Element &&
+              (node.matches('.chat-turn-command-failure') ||
+                node.querySelector('.chat-turn-command-failure') !== null)
+            )
+              drawn = true;
+      });
+      watcher.observe(container, { childList: true, subtree: true });
+      const ended =
+        failed === undefined ? turnOf('finished') : withStopNote(turnOf('finished'), failed);
+      await rerender(statesOf(ended, IDLE));
+      expect(container.querySelector('.chat-turn-command-failure')).toBeNull();
+      await tick();
+      await tick();
+      watcher.disconnect();
+      expect(container.querySelector('.chat-turn-outcome')?.getAttribute('data-kind')).toBe(
+        outcome,
+      );
+      expect(container.querySelector('.chat-turn-command-failure')).toBeNull();
+      expect(drawn).toBe(false);
+    });
+  }
+});
+
+describe('Chat — the outcome of a turn that ends on its steps stands before what the person typed after them', () => {
+  const followUp = {
+    id: 'u3',
+    role: 'user' as const,
+    content: 'And this too',
+    metadata: { [FOLLOW_UP_METADATA_KEY]: true },
+  };
+  const shapes: [string, () => ConversationHistory][] = [
+    ['tool calls only', () => turnOf('finished')],
+    [
+      'narrated then tool calls',
+      () => {
+        const asked = appendUserMessage(createConversationHistory({ id: 'only-tools' }), 'Look up');
+        const narrated = appendAssistantMessage(asked, 'Checking.');
+        const called = appendToolCall(narrated, { id: 'c1', name: 'lookup-order', arguments: {} });
+        return appendToolResult(called, { callId: 'c1', outcome: 'success', content: 'ok' });
+      },
+    ],
+  ];
+  for (const [name, make] of shapes) {
+    test(`${name}: the stopped row follows the steps and comes before the follow-up`, async () => {
+      const base = appendMessages(make(), followUp);
+      const stopRowId = base.ids.at(-2)!;
+      const row = base.messages[stopRowId]!;
+      const conversation = {
+        ...base,
+        messages: {
+          ...base.messages,
+          [stopRowId]: {
+            ...row,
+            metadata: {
+              ...row.metadata,
+              [CINDER_NOTES_METADATA_KEY]: [
+                { kind: 'stopped', id: 'stopped:run-1', reason: 'Stopped.' },
+              ],
+            },
+          },
+        },
+      };
+      const outcome = resolveTurnOutcome(conversation, IDLE);
+      const { container } = render(Chat, {
+        id: 'order',
+        variant: 'transcript',
+        conversation: outcome.conversation,
+        messageTurnState: (message: Parameters<typeof turnStateOf>[1]) =>
+          turnStateOf(outcome, message),
+        onContinueTurn: () => undefined,
+        onDiscardTurn: () => undefined,
+      });
+      await tick();
+      const drawn = container.querySelector('.chat-turn-outcome')!;
+      const steps = container.querySelector('.chat-tool-call-timeline')!;
+      const typed = container.querySelector('[data-message-id="u3"]')!;
+      expect(follows(steps, drawn)).toBe(true);
+      expect(follows(drawn, typed)).toBe(true);
+    });
+  }
 });
