@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -24,7 +24,10 @@ test("external production output renders a context-using route", async () => {
     const outputDirectory = join(outside, "output");
     for (let directory = outside; ; directory = dirname(directory)) {
       expect(
-        await Bun.file(join(directory, "node_modules/svelte/package.json")).exists(),
+        await access(join(directory, "node_modules")).then(
+          () => true,
+          () => false,
+        ),
       ).toBe(false);
       if (dirname(directory) === directory) break;
     }
@@ -118,6 +121,14 @@ test("D02/D04: emitted role graphs preserve route CSS, lazy modules and the brow
       manifest.outputs.every((output) => !output.file.endsWith(".map")),
     ).toBe(true);
     for (const target of ["browser", "server"] as const) {
+      const inputs = Object.keys(metadata[target].inputs);
+      expect(
+        inputs.some((input) =>
+          input.includes(
+            `svelte/src/index-${target === "browser" ? "client" : "server"}.js`,
+          ),
+        ),
+      ).toBe(true);
       const outputs = manifest.outputs.filter(
         (output) => output.target === target,
       );
