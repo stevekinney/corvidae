@@ -33,7 +33,7 @@
   <p data-testid="storage-location">
     <CopyableValue
       data-testid="storage-location-value"
-      value="/var/folders/ys/8qylcrld5lxcm3bj6nznfh900000gn/T/interborough-storage-showcase-Uo0Fa2/showcase-home"
+      value="/var/lib/interborough/storage/sample-world/long-slash-delimited-location/showcase-home"
       label="Copy storage location"
     />
   </p>

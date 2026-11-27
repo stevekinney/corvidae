@@ -583,9 +583,9 @@ test.describe('Health › Storage on the sample world', () => {
   });
 
   test.describe('on a touch phone', () => {
-    for (const width of [320, 375]) {
-      test.use({ viewport: { width, height: 900 }, hasTouch: true, isMobile: true });
+    test.use({ hasTouch: true, isMobile: true });
 
+    for (const width of [320, 375]) {
       test(`Range stacks its two fields at 44 pixels and the details content fits at ${width}px`, async ({
         page,
         context,
@@ -598,6 +598,7 @@ test.describe('Health › Storage on the sample world', () => {
         const { database } = (await paths.json()) as HostPaths;
         if (database.kind !== 'sqlite') throw new Error('The Storage showcase must use SQLite.');
         const expectedLocation = dirname(database.path);
+        await page.setViewportSize({ width, height: 900 });
         await page.goto('/health/storage');
         const main = page.locator('main');
         await expect(main.locator('tbody tr[data-cinder-row-id]').first()).toBeVisible();
@@ -646,15 +647,15 @@ test.describe('Health › Storage on the sample world', () => {
         expect(fit.right).toBeLessThanOrEqual(Math.ceil(fit.frameRight));
         expect(fit.controlLeft).toBeGreaterThanOrEqual(Math.floor(fit.frameLeft));
         expect(fit.controlRight).toBeLessThanOrEqual(Math.ceil(fit.frameRight));
-        await copy.tap();
-        await expect
-          .poll(() => page.evaluate(() => navigator.clipboard.readText()))
-          .toBe(expectedLocation);
         await captureForDesignReview(page, {
           route: '/health/storage',
           state: `popover-phone-${width}`,
           source: SOURCE,
         });
+        await copy.tap();
+        await expect
+          .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+          .toBe(expectedLocation);
       });
     }
   });

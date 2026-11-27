@@ -167,3 +167,54 @@ test('an address that fits a row moves below the words before it whole, never en
   expect(reading.belowTheWords).toBe(true);
   expect(reading.fits).toBe(true);
 });
+
+for (const width of [320, 375]) {
+  test(`a long storage location and its Copy target fit a ${width}px touch viewport`, async ({
+    componentPage,
+  }) => {
+    if (entry === undefined || fixture === undefined) throw new Error('No addresses fixture.');
+    const page = await componentPage.open({
+      entry,
+      theme: 'light',
+      viewport: { name: 'mobile', width, height: 700 },
+      fixtureName: 'addresses',
+      fixtureContentHash: fixture.fixtureContentHash,
+      hasTouch: true,
+    });
+    await open(page);
+    const location = page.getByTestId('storage-location');
+    const control = location.getByRole('button', { name: 'Copy storage location', exact: true });
+    const fit = await location.evaluate((paragraph) => {
+      const root = paragraph.querySelector<HTMLElement>('.cinder-copyable-value');
+      const end = paragraph.querySelector<HTMLElement>('.cinder-copyable-value__end');
+      const button = paragraph.querySelector<HTMLElement>('button');
+      if (root === null || end === null || button === null)
+        throw new Error('No storage copy control.');
+      const range = document.createRange();
+      range.selectNodeContents(root);
+      const text = [...range.getClientRects()].filter((rect) => rect.width > 0);
+      const frame = paragraph.getBoundingClientRect();
+      const control = button.getBoundingClientRect();
+      const finalCharacter = end.getBoundingClientRect();
+      return {
+        left: Math.min(...text.map((rect) => rect.left)),
+        right: Math.max(...text.map((rect) => rect.right)),
+        frameLeft: frame.left,
+        frameRight: frame.right,
+        controlLeft: control.left,
+        controlRight: control.right,
+        controlTop: control.top,
+        controlBottom: control.bottom,
+        finalTop: finalCharacter.top,
+        finalBottom: finalCharacter.bottom,
+      };
+    });
+    expect(fit.left).toBeGreaterThanOrEqual(Math.floor(fit.frameLeft));
+    expect(fit.right).toBeLessThanOrEqual(Math.ceil(fit.frameRight));
+    expect(fit.controlLeft).toBeGreaterThanOrEqual(Math.floor(fit.frameLeft));
+    expect(fit.controlRight).toBeLessThanOrEqual(Math.ceil(fit.frameRight));
+    expect(fit.controlTop).toBeLessThan(fit.finalBottom);
+    expect(fit.controlBottom).toBeGreaterThan(fit.finalTop);
+    await control.tap();
+  });
+}
