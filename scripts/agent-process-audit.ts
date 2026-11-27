@@ -23,8 +23,9 @@
 import { readlinkSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 
+import { processTableEnvironment } from '../packages/process-lease/src/index.ts';
 import { readProcessTable, type ProcessTable } from './bun-test-pool.ts';
-import { ancestorsOf, processTableEnvironment } from './run-exclusively.ts';
+import { ancestorsOf } from './run-exclusively.ts';
 import { footprintReader, type FootprintReader } from './test-watchdog.ts';
 
 /** A process older than this is listed even while its parent lives. */

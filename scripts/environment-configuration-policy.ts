@@ -24,6 +24,7 @@ export const environmentBoundaries = [
       'packages/operative/src/environment-configuration.ts',
       'packages/operative-gemini/src/environment-configuration.ts',
       'packages/bureau/src/skills/environment-configuration.ts',
+      'packages/process-lease/src/environment-configuration.ts',
       'testing/testing/src/environment-configuration.ts',
       'packages/weft/src/runtime/environment-configuration.ts',
       'packages/storage/src/environment-configuration.ts',

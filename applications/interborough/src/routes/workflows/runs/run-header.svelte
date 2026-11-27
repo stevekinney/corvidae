@@ -14,6 +14,7 @@
   import {
     Button,
     ConfirmDialog,
+    copyToClipboard,
     Dropdown,
     PageHeader,
     VisuallyHidden,
@@ -200,15 +201,10 @@
   }
 
   async function copyRunId(): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(runId);
+    if (await copyToClipboard(runId)) {
       showToast(RUN_PAGE_COPY.runIdCopied);
-    } catch (error) {
-      showFault({
-        kind: 'not-supported',
-        message:
-          `${RUN_PAGE_COPY.runIdCopyFailed}. ${error instanceof Error ? error.message : ''}`.trim(),
-      });
+    } else {
+      showFault({ kind: 'not-supported', message: `${RUN_PAGE_COPY.runIdCopyFailed}.` });
     }
   }
 

@@ -1,9 +1,4 @@
-import type {
-  Bungalow,
-  BungalowObjectStore,
-  ContentLocation,
-  DatabaseLocation,
-} from '@lostgradient/bungalow';
+import type { Bungalow, ContentLocation, DatabaseLocation } from '@lostgradient/bungalow';
 import type { SettingLockReason } from '@lostgradient/bureau';
 import type { SkillSource } from '@lostgradient/bureau/skills';
 import { DEFAULT_SOURCE_PRECEDENCE } from '@lostgradient/bureau/skills';
@@ -24,6 +19,7 @@ import {
   workflowFileDirectory,
   workflowObjectSource,
 } from '@lostgradient/bureau/sources';
+import type { S3ObjectStoreOperations } from '@lostgradient/object-store';
 import { storageConditionalBatch, type Storage } from '@lostgradient/storage';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { PostgresStorage } from '@lostgradient/storage-postgres';
@@ -158,9 +154,17 @@ export type ContentKind = {
 export type ContentKinds = Readonly<Record<string, ContentKind>>;
 
 /** The object store remote mode holds, or an error: a bucket location with no client is a bug. */
-function requireClient(bungalow: Bungalow): BungalowObjectStore {
+function hasConditionalRemove(
+  client: ReturnType<Bungalow['objectStore']>,
+): client is S3ObjectStoreOperations {
+  return client !== undefined && 'remove' in client && typeof client.remove === 'function';
+}
+
+function requireClient(bungalow: Bungalow): S3ObjectStoreOperations {
   const client = bungalow.objectStore();
-  if (client === undefined) throw new Error('The home names a bucket but has no S3 client.');
+  if (!hasConditionalRemove(client)) {
+    throw new Error('The home names a bucket but has no S3 client with conditional remove.');
+  }
   return client;
 }
 
@@ -245,23 +249,23 @@ export const DEFAULT_CONTENT_KINDS: ContentKinds = {
   s3: {
     createAgentSource: (bungalow, content, tools) =>
       agentObjectSource(bucketOf(content), {
-        client: requireClient(bungalow),
+        operations: requireClient(bungalow),
         tools,
         pollIntervalMilliseconds: REMOTE_POLL_INTERVAL_MILLISECONDS,
       }),
     createWorkflowSource: (bungalow, content) =>
       workflowObjectSource(bucketOf(content), {
-        client: requireClient(bungalow),
+        operations: requireClient(bungalow),
         pollIntervalMilliseconds: REMOTE_POLL_INTERVAL_MILLISECONDS,
       }),
     createValidatorSource: (bungalow, content) =>
       validatorObjectSource(bucketOf(content), {
-        client: requireClient(bungalow),
+        operations: requireClient(bungalow),
         pollIntervalMilliseconds: REMOTE_POLL_INTERVAL_MILLISECONDS,
       }),
     createGuardrailSource: (bungalow, content) =>
       guardrailObjectSource(bucketOf(content), {
-        client: requireClient(bungalow),
+        operations: requireClient(bungalow),
         pollIntervalMilliseconds: REMOTE_POLL_INTERVAL_MILLISECONDS,
       }),
     describe: (content) => {

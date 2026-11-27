@@ -1,5 +1,6 @@
 import type { WorkspaceIdentity } from '@lostgradient/backchannel';
-import { createHash, randomUUID } from 'node:crypto';
+import { sha256HexSync } from '@lostgradient/cryptography';
+import { randomUUID } from 'node:crypto';
 import { localWorkspaceMembership } from './workspace-principal.ts';
 import type { SecretHome } from './workspace-secrets.ts';
 
@@ -72,9 +73,9 @@ export function createHostMutationContext(
     actorId,
     owner,
     operationIdFor: (scope: string, target: string) =>
-      createHash('sha256')
-        .update(JSON.stringify([workspaceId, actorId, owner, scope, target, request.operationId]))
-        .digest('hex'),
+      sha256HexSync(
+        JSON.stringify([workspaceId, actorId, owner, scope, target, request.operationId]),
+      ),
     async revalidate() {
       const current = await resolve();
       if (

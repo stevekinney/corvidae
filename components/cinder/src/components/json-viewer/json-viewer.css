@@ -46,6 +46,8 @@
     color: inherit;
     cursor: pointer;
     display: inline-flex;
+    min-block-size: 1.5rem;
+    min-inline-size: 1.5rem;
     align-items: center;
     gap: var(--cinder-space-1);
     border-radius: var(--cinder-radius-sm);
@@ -137,6 +139,10 @@
 
   /* Two-tone text: every value reads in the default ink, and only a null is
    * set back. There are no per-type syntax colours. */
+  .cinder-json-viewer__value {
+    overflow-wrap: anywhere;
+  }
+
   .cinder-json-viewer__value[data-cinder-type='null'] {
     color: var(--cinder-text-muted);
     font-style: italic;

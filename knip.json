@@ -13,9 +13,7 @@
         "scripts/chef/evaluate-outcomes.ts",
         "scripts/chef/staged-check.ts",
         "scripts/cinder-release-consumer.ts",
-        "scripts/owned-process-gate.ts",
-        "scripts/ensure-cinder-owned.test-support.ts",
-        "scripts/owned-process-lease.test-support.ts"
+        "scripts/ensure-cinder-owned.test-support.ts"
       ],
       "project": ["scripts/**/*.ts"]
     },
@@ -111,6 +109,21 @@
         "!src/**/*.test.ts!",
         "!src/**/*.test-support.ts!",
         "!src/host-contract.ts!"
+      ]
+    },
+    "packages/process-lease": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "src/owned-process-gate.ts",
+        "src/owned-process-group.test-support.ts",
+        "src/owned-process-lease.test-support.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "!src/**/*.test.ts!",
+        "!src/**/*.test-support.ts!",
+        "!src/owned-process-gate.ts!"
       ]
     },
     "packages/weft": {
@@ -223,6 +236,24 @@
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!",
         "!src/fixture-worker.ts!"
+      ]
+    },
+    "packages/object-store": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "src/r2-fixture.test-support.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!",
+        "!src/r2-fixture.test-support.ts!"
       ]
     },
     "packages/backchannel-mcp": {
@@ -412,6 +443,7 @@
     "scripts/browser-fixtures": {
       "entry": [
         "tests/**/*.playwright.ts",
+        "scripts/**/*.slow.test.ts",
         "src/fixtures/tool-call-rail.svelte",
         "src/fixtures/backchannel-svelte.svelte",
         "src/fixtures/grouped-list-more.svelte",

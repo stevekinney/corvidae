@@ -8,7 +8,7 @@
    * buttons that act on it (`onSecret`, `onFixSetting`, `onShowBoth`), and the card carries out the
    * ones that go elsewhere.
    */
-  import { Button, Card, StatusDot } from '@lostgradient/cinder';
+  import { Button, Card, copyToClipboard, StatusDot } from '@lostgradient/cinder';
 
   import { PLUGINS_COPY } from '../../../app/copy/plugins.ts';
   import { showToast } from '../../../app/toast-host.svelte';
@@ -78,10 +78,9 @@
   }
 
   async function copy(value: string): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(value);
+    if (await copyToClipboard(value)) {
       showToast(PLUGINS_COPY.problems.developmentSource.copied, { variant: 'success' });
-    } catch {
+    } else {
       showToast(PLUGINS_COPY.problems.developmentSource.copyFailed, { variant: 'danger' });
     }
   }

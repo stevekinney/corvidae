@@ -400,7 +400,7 @@
             {maxBytes}
             largeArrayAbove={LARGE_ARRAY_ABOVE}
             maxKeyLength={40}
-            maxStringLength={200}
+            {...isStructured ? { maxStringLength: 200 } : {}}
           />
         {/if}
       {:else if receivingOnly}

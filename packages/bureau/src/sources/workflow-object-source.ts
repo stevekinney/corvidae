@@ -16,7 +16,7 @@ export type WorkflowObjectSourceOptions = ObjectSourceOptions;
 /**
  * The S3 counterpart of `workflowFileDirectory`. Every `*.json` object directly under
  * `location.prefix` is a workflow whose identifier is the key's name without the extension. Bureau
- * reads, polls, and writes the prefix through the caller's `Bun.S3Client`; a prefix with no
+ * reads, polls, and writes the prefix through the caller's S3 object-store operations; a prefix with no
  * objects is an empty one. Writes and deletes are conditional on the ETag of the object just read.
  * Bun only. See `documentation/workflow-files.md`.
  */

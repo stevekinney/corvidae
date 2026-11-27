@@ -32,6 +32,7 @@ import {
 import { landAt } from '../chat/pages.test-support.ts';
 import {
   installSettingsBureau,
+  PUBLISHED_SCHEMA,
   servedSettings,
   settingsSnapshot,
   settingsStream,
@@ -202,6 +203,39 @@ describe('the page', () => {
     expect(renew?.textContent).toContain(
       'How often a worker renews its claim on a running workflow. Shorter intervals recover from a crashed worker sooner.',
     );
+  });
+
+  test('words a description with its code spans as their text, and every other mark as typed', async () => {
+    const node = PUBLISHED_SCHEMA.properties['engine.maxConcurrentRuns'];
+    if (node === undefined) throw new Error('the schema has no engine.maxConcurrentRuns');
+    const description =
+      'Runs `a` and `` then `b`, `open **bold** *emphasis* _this_ [a](b) <b>x</b>';
+    const view = open(servedSettings(), {
+      extra: {
+        'bureau.settings.schema': () => ({
+          schema: {
+            ...PUBLISHED_SCHEMA,
+            properties: {
+              ...PUBLISHED_SCHEMA.properties,
+              'engine.maxConcurrentRuns': { ...node, description },
+            },
+          },
+        }),
+      },
+    });
+    await view.findByRole('group', READY);
+    const cap = await waitFor(() => {
+      const found = row(view.container, 'engine.maxConcurrentRuns');
+      expect(found?.textContent).toContain('Runs a and  then b,');
+      return found;
+    });
+    // The empty span is dropped, the backtick that never closes stays, and nothing else is a mark.
+    expect(cap?.textContent).toContain(
+      'Runs a and  then b, `open **bold** *emphasis* _this_ [a](b) <b>x</b>',
+    );
+    expect(
+      cap?.querySelector('strong, em, a, b, code:not(.cinder-setting-row__identifier)'),
+    ).toBeNull();
   });
 
   test('keeps every General label while omitting configuration identifiers on a phone', async () => {

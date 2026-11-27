@@ -71,11 +71,12 @@ export const GUARD_SETUP = 'lint:guards';
 /** The pseudo-guard that names a temporary worktree that could not be removed. */
 export const GUARD_CLEANUP = 'worktree';
 
-const GUARD_SEGMENT = /^bun (scripts\/check-[a-z0-9-]+\.ts)$/;
+const GUARD_SEGMENT = /^bun ((?:applications\/[a-z0-9-]+\/)?scripts\/check-[a-z0-9-]+\.ts)$/;
 
 /**
  * The guards in `lint:guards` of a root `package.json`, or the reason the script cannot be read.
- * A segment that is not `bun scripts/check-*.ts` is an error, never skipped, so a guard cannot drop
+ * A segment that is not `bun scripts/check-*.ts` (or the same under an application's `scripts/`,
+ * where a guard that is the application's own lives) is an error, never skipped, so a guard cannot drop
  * out of the gate unnoticed.
  */
 export function parseGuardList(packageJson: string): GuardCommand[] | string {
@@ -93,7 +94,7 @@ export function parseGuardList(packageJson: string): GuardCommand[] | string {
   for (const segment of script.split('&&').map((part) => part.trim())) {
     const matched = GUARD_SEGMENT.exec(segment);
     if (matched?.[1] === undefined)
-      return `"lint:guards" holds "${segment}", which is not "bun scripts/check-<name>.ts"`;
+      return `"lint:guards" holds "${segment}", which is not "bun [applications/<name>/]scripts/check-<name>.ts"`;
     commands.push({ name: basename(matched[1], '.ts'), command: ['bun', matched[1]] });
   }
   return commands;

@@ -1,17 +1,8 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { rootScriptEnvironment } from './environment-configuration.ts';
+import { processEnvironment } from './environment-configuration.ts';
 import { runOwnedProcessGroup } from './owned-process-group.ts';
-
-export function processIsAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code !== 'ESRCH';
-  }
-}
 
 if (import.meta.main) {
   const root = process.argv[2];
@@ -24,7 +15,7 @@ if (import.meta.main) {
       join(root, 'after-owner-death'),
     ],
     cwd: root,
-    environment: rootScriptEnvironment(),
+    environment: processEnvironment(),
     register: async (pid) => {
       await writeFile(join(root, 'gate-pid'), String(pid));
       await new Promise(() => {});

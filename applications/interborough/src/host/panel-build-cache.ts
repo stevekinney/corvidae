@@ -19,6 +19,11 @@
  * the same process then serves a panel whose inputs are unchanged from what the first one built,
  * checking the same digest, without reading an entry. Each host of a test run starts that way.
  */
+import {
+  createIncrementalHash,
+  sha256BytesHexSync,
+  sha256HexSync,
+} from '@lostgradient/cryptography';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -157,7 +162,7 @@ const MODIFICATION_TIME_SLACK = 1000;
 /** The sha256 of a file's bytes, or `absent` when it cannot be read. */
 async function fileDigest(path: string, readBytes: ReadBytes): Promise<string> {
   try {
-    return new Bun.CryptoHasher('sha256').update(await readBytes(path)).digest('hex');
+    return sha256BytesHexSync(await readBytes(path));
   } catch {
     return 'absent';
   }
@@ -169,7 +174,7 @@ async function inputsDigest(
   files: readonly string[],
   readBytes: ReadBytes,
 ): Promise<string> {
-  const hasher = new Bun.CryptoHasher('sha256');
+  const hasher = createIncrementalHash();
   hasher.update(
     JSON.stringify([
       PANEL_BUILD_FORMAT,
@@ -189,7 +194,7 @@ async function inputsDigest(
     const digests = await Promise.all(batch.map((file) => fileDigest(file, readBytes)));
     for (const [index, file] of batch.entries()) hasher.update(`\0${file}\0${digests[index]}`);
   }
-  return hasher.digest('hex');
+  return hasher.digest();
 }
 
 /** The cache of built panel pages over `options.directory`. */
@@ -204,7 +209,7 @@ export function createPanelBuildCache(options: PanelBuildCacheOptions = {}): Pan
   /** The file an entry lives in: named by a digest of the panel, so no panel name is a path. */
   function entryPath(panel: string): string | undefined {
     if (directory === undefined) return undefined;
-    const name = new Bun.CryptoHasher('sha256').update(panel).digest('hex').slice(0, 32);
+    const name = sha256HexSync(panel).slice(0, 32);
     return join(directory, `${name}.json`);
   }
 

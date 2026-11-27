@@ -29,20 +29,18 @@
  */
 
 import { resolveBungalowDescriptor, resolveBungalowRoot } from '@lostgradient/bungalow';
-import { createHash } from 'node:crypto';
+import { sha256HexSync } from '@lostgradient/cryptography';
+import {
+  acquireOwnedProcessLease,
+  OwnedProcessGroupUnverifiedError,
+  retireOwnedProcessLease,
+  runOwnedProcessGroup,
+  type HeldHostLock,
+} from '@lostgradient/process-lease';
 import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { constants, homedir } from 'node:os';
 import { join, resolve as resolvePath } from 'node:path';
-import {
-  OwnedProcessGroupUnverifiedError,
-  runOwnedProcessGroup,
-} from '../../../../scripts/owned-process-group.ts';
-import {
-  acquireOwnedProcessLease,
-  retireOwnedProcessLease,
-} from '../../../../scripts/owned-process-lease.ts';
-import type { HeldHostLock } from '../../../../scripts/run-exclusively.ts';
 
 import { runGit, staleBuildProblem, type GitRunner } from './build-info.ts';
 import { DEVELOPMENT_PLUGIN_FLAG } from './development-plugin-flag.ts';
@@ -55,8 +53,8 @@ import {
 import { RESTART_EXIT_CODE } from './restart.ts';
 import { SHOWCASE_FLAG, showcaseEnvironment } from './showcase.ts';
 import {
-  deriveInstanceEnvironment,
   derivedInstanceMessage,
+  deriveInstanceEnvironment,
   linkedWorktreeRoot,
   operatingSystemFreePort,
   readGitDirectories,
@@ -81,9 +79,7 @@ export function supervisorLeaseIdentity(
   const descriptor = showcase
     ? { kind: 'local' as const, root: resolveBungalowRoot(options) }
     : resolveBungalowDescriptor(options);
-  return createHash('sha256')
-    .update('root' in descriptor ? descriptor.root : nonce)
-    .digest('hex');
+  return sha256HexSync('root' in descriptor ? descriptor.root : nonce);
 }
 
 /**

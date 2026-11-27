@@ -1,3 +1,9 @@
+import {
+  createSigV4Presigner,
+  ObjectStoreError,
+  type ObjectPresigner,
+  type S3ObjectStoreOperations,
+} from '@lostgradient/object-store';
 import type {
   Bungalow,
   DatabaseWorkspaceClaim,
@@ -9,12 +15,7 @@ import { assertConfigurationWrite } from './configuration.ts';
 import { injectedDeploymentSecrets, type DeploymentSecrets } from './deployment-secrets.ts';
 import { createEnvironmentSecretProvider } from './environment-secret-provider.ts';
 import { BungalowFilesystemError, BungalowInputError, BungalowStateError } from './errors.ts';
-import {
-  createObjectStore,
-  ObjectStoreRequestError,
-  type BungalowObjectStore,
-} from './object-store.ts';
-import { createSigV4Presigner, type ObjectPresigner } from './presign.ts';
+import { createObjectStore } from './object-store.ts';
 import {
   secretVariable,
   validateRemoteDescriptor,
@@ -22,6 +23,10 @@ import {
 } from './remote-configuration.ts';
 import { generateUlid, isUlid } from './ulid.ts';
 import { assertBungalowName, assertDirectoryName, assertSecretKey } from './validation.ts';
+
+type RemoteObjectStore = S3ObjectStoreOperations & {
+  readonly presign: import('@lostgradient/object-store').ObjectPresigner;
+};
 
 /** How long a presigned request stays valid. Each request is signed just before it is sent. */
 const PRESIGN_SECONDS = 60;
@@ -59,79 +64,45 @@ function codeOf(error: unknown): string {
     : 'unknown';
 }
 
-/** Release a response's connection without reading what it says. */
-async function discard(response: Response): Promise<void> {
-  try {
-    await response.body?.cancel();
-  } catch {
-    // The body is already consumed or closed; nothing is left to release.
+function storeCause(error: unknown): S3FailureCause {
+  if (error instanceof ObjectStoreError) {
+    return error.status === undefined ? { code: error.code } : { status: error.status };
   }
-}
-
-/**
- * Send one request to `key`, signed with `client.presign` and sent with `fetch`, the mechanism
- * COR-1759 proved: `Bun.S3Client.write` silently drops a conditional header.
- */
-async function send(
-  client: BungalowObjectStore,
-  key: string,
-  operation: S3Operation,
-  method: 'GET' | 'PUT',
-  init: { readonly headers?: Record<string, string>; readonly body?: string } = {},
-): Promise<Response> {
-  try {
-    const url = client.presign(key, { method, expiresIn: PRESIGN_SECONDS });
-    return await fetch(url, { method, ...init });
-  } catch (error) {
-    throw s3Failure(operation, { code: codeOf(error) });
-  }
+  return { code: codeOf(error) };
 }
 
 /** The object's text, or `undefined` when the store answers 404. */
 async function readObject(
-  client: BungalowObjectStore,
+  client: RemoteObjectStore,
   key: string,
   operation: S3Operation,
 ): Promise<string | undefined> {
-  const response = await send(client, key, operation, 'GET');
-  if (!response.ok) {
-    await discard(response);
-    if (response.status === 404) return undefined;
-    throw s3Failure(operation, { status: response.status });
-  }
   try {
-    return await response.text();
+    const object = await client.read(key);
+    return object === undefined ? undefined : new TextDecoder().decode(object.bytes);
   } catch (error) {
-    throw s3Failure(operation, { code: codeOf(error) });
+    throw s3Failure(operation, storeCause(error));
   }
 }
 
 /** Read bytes and revision from one HTTP response, never separate GET and HEAD requests. */
 async function readConfigurationObject(
-  client: BungalowObjectStore,
+  client: RemoteObjectStore,
   key: string,
 ): Promise<ConfigurationSnapshot> {
-  const response = await send(client, key, 'read configuration', 'GET');
-  if (!response.ok) {
-    await discard(response);
-    if (response.status === 404) return { text: undefined, revision: null };
-    throw s3Failure('read configuration', { status: response.status });
-  }
-  const revision = response.headers.get('etag');
-  if (revision === null || revision === '') {
-    await discard(response);
-    throw s3Failure('read configuration', { code: 'missing-revision' });
-  }
   try {
-    return { text: await response.text(), revision };
-  } catch {
-    throw s3Failure('read configuration', { code: 'read-failed' });
+    const object = await client.read(key);
+    if (object === undefined) return { text: undefined, revision: null };
+    if (object.etag === '') throw s3Failure('read configuration', { code: 'missing-revision' });
+    return { text: new TextDecoder().decode(object.bytes), revision: object.etag };
+  } catch (error) {
+    throw s3Failure('read configuration', storeCause(error));
   }
 }
 
 /** An uncertain response is observed once; equal content alone cannot prove which writer committed. */
 async function reconcileConfiguration(
-  client: BungalowObjectStore,
+  client: RemoteObjectStore,
   key: string,
 ): Promise<ConfigurationWriteResult> {
   try {
@@ -145,18 +116,16 @@ async function reconcileConfiguration(
  * Write a new deployment ID only if none exists. A 412 means another instance wrote first, which
  * is as good as success: the caller reads back whichever value the store kept.
  */
-async function createDeploymentId(client: BungalowObjectStore, key: string): Promise<void> {
-  const response = await send(client, key, 'write deployment ID', 'PUT', {
-    headers: { 'If-None-Match': '*' },
-    body: `${generateUlid()}\n`,
-  });
-  await discard(response);
-  if (response.ok || response.status === 412) return;
-  throw s3Failure('write deployment ID', { status: response.status });
+async function createDeploymentId(client: RemoteObjectStore, key: string): Promise<void> {
+  try {
+    await client.put(key, new TextEncoder().encode(`${generateUlid()}\n`), { kind: 'absent' });
+  } catch (error) {
+    throw s3Failure('write deployment ID', storeCause(error));
+  }
 }
 
 async function bindWorkspaceId(
-  client: BungalowObjectStore,
+  client: RemoteObjectStore,
   workspaceKey: string,
   deploymentId: string,
   configured?: string,
@@ -173,13 +142,10 @@ async function bindWorkspaceId(
     throw new BungalowStateError('The backing store belongs to a different workspace.');
   }
   if (marker === undefined) {
-    const response = await send(client, workspaceKey, 'write workspace identity', 'PUT', {
-      headers: { 'If-None-Match': '*' },
-      body: `${expected}\n`,
-    });
-    await discard(response);
-    if (!response.ok && response.status !== 412) {
-      throw s3Failure('write workspace identity', { status: response.status });
+    try {
+      await client.put(workspaceKey, new TextEncoder().encode(`${expected}\n`), { kind: 'absent' });
+    } catch (error) {
+      throw s3Failure('write workspace identity', storeCause(error));
     }
     marker = await readObject(client, workspaceKey, 'read workspace identity');
   }
@@ -194,7 +160,7 @@ async function bindWorkspaceId(
  * a conditional create and then all read the one value the store kept, so they agree. An object
  * that is absent again after the write is a failed read, not a reason to write again.
  */
-async function loadDeploymentId(client: BungalowObjectStore, key: string): Promise<string> {
+async function loadDeploymentId(client: RemoteObjectStore, key: string): Promise<string> {
   let stored = await readObject(client, key, 'read deployment ID');
   if (stored === undefined) {
     await createDeploymentId(client, key);
@@ -233,7 +199,7 @@ export const defaultPresigner: PresignerFactory = (descriptor) =>
 function objectStoreFor(
   descriptor: RemoteBungalowDescriptor,
   presignerFactory: PresignerFactory,
-): BungalowObjectStore {
+): RemoteObjectStore {
   if (typeof presignerFactory !== 'function') {
     throw new BungalowInputError('The presigner must be a function.');
   }
@@ -248,7 +214,7 @@ function objectStoreFor(
   if (typeof presign !== 'function') {
     throw new BungalowInputError('The presigner factory must return a function.');
   }
-  return createObjectStore(presign);
+  return createObjectStore(presign, descriptor.bucket);
 }
 
 /**
@@ -257,7 +223,7 @@ function objectStoreFor(
  * different object than the location Bungalow hands out, and two prefixes would share one home.
  * `normalizeBucketPrefix` refuses the known cases; this checks the URL itself, before any request.
  */
-function assertExactlyAddressed(client: BungalowObjectStore, bucket: string, key: string): void {
+function assertExactlyAddressed(client: RemoteObjectStore, bucket: string, key: string): void {
   let path: string;
   try {
     path = decodeURIComponent(
@@ -278,14 +244,14 @@ function assertExactlyAddressed(client: BungalowObjectStore, bucket: string, key
 /**
  * Refuse a presigner that would sign with a session token nobody gave Bungalow. The decision is
  * that remote credentials come only from the environment Bungalow is given. The default presigner
- * reads no environment, but an injected one may: `Bun.S3Client` falls back to the
+ * reads no environment, but an injected SDK signer may fall back to the
  * `AWS_SESSION_TOKEN` or `S3_SESSION_TOKEN` the process had when it started whenever no
  * `sessionToken` option is set, or it is `''`, and no option turns that off. The probe is a
  * presigned URL, so nothing is sent, and its query shows exactly what every request would carry.
  * A token the given environment supplies is the intended one. Names only, never a value.
  */
 function assertNoAmbientSessionToken(
-  client: BungalowObjectStore,
+  client: RemoteObjectStore,
   descriptor: RemoteBungalowDescriptor,
   key: string,
 ): void {
@@ -383,18 +349,13 @@ export async function openValidatedRemoteBungalow(
   }
   if (existingDeployment === undefined && existingWorkspace === undefined) {
     // An unmarked remote home may bootstrap only when neither backend already holds state.
-    const entries = await client.list({ prefix, maxKeys: 1 }).catch((error: unknown) => {
+    const entries = await client.list(prefix).catch((error: unknown) => {
       // An answered listing keeps its status, as every other S3 failure does.
-      throw s3Failure(
-        'read workspace identity',
-        error instanceof ObjectStoreRequestError && error.status !== undefined
-          ? { status: error.status }
-          : { code: codeOf(error) },
-      );
+      throw s3Failure('read workspace identity', storeCause(error));
     });
     const racedDeployment = await readObject(client, deploymentKey, 'read deployment ID');
     if (racedDeployment === undefined) {
-      if ((entries.contents?.length ?? 0) > 0) {
+      if (entries.objects.length > 0) {
         throw new BungalowStateError(
           'Existing remote state has no persisted deployment identity. Restore it from a backup.',
         );
@@ -507,40 +468,25 @@ export async function openValidatedRemoteBungalow(
       assertOpen();
       assertConfigurationWrite(text, condition);
       if (!writableConfiguration) return { outcome: 'read-only' };
-      const expectedRevision = condition.expectedRevision;
-      let url: string;
       try {
-        url = client.presign(configurationKey, { method: 'PUT', expiresIn: PRESIGN_SECONDS });
-      } catch {
-        // No request has been sent, so failure here is definitely not a commit.
-        return { outcome: 'unavailable' };
-      }
-      try {
-        const response = await fetch(url, {
-          method: 'PUT',
-          headers: {
-            'content-type': 'application/json',
-            ...(expectedRevision === null
-              ? { 'if-none-match': '*' }
-              : { 'if-match': expectedRevision }),
-          },
-          body: text,
-        });
-        await discard(response);
-        if (response.ok) return { outcome: 'committed' };
-        if (
-          response.status === 412 ||
-          response.status === 409 ||
-          (response.status === 404 && expectedRevision !== null)
-        ) {
-          return { outcome: 'conflict' };
+        const written = await client.put(
+          configurationKey,
+          new TextEncoder().encode(text),
+          condition.expectedRevision === null
+            ? { kind: 'absent' }
+            : { kind: 'etag', etag: condition.expectedRevision },
+        );
+        if (written.outcome === 'written') return { outcome: 'committed' };
+        return { outcome: 'conflict' };
+      } catch (error) {
+        if (error instanceof ObjectStoreError && error.status === 501)
+          return { outcome: 'unsupported' };
+        if (error instanceof ObjectStoreError && error.status !== undefined && error.status < 500) {
+          return { outcome: 'unavailable' };
         }
-        if (response.status === 501) return { outcome: 'unsupported' };
-        if (response.status < 500) return { outcome: 'unavailable' };
-      } catch {
         // The request may have reached durable storage. Read current standing, but never retry.
+        return reconcileConfiguration(client, configurationKey);
       }
-      return reconcileConfiguration(client, configurationKey);
     },
     secretProvider,
     deploymentSecrets,

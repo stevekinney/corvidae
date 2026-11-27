@@ -45,6 +45,7 @@
   // ── DOM refs ─────────────────────────────────────────────────────────────
   let dialogElement: HTMLDialogElement | undefined = $state();
   let panelElement: HTMLDivElement | undefined = $state();
+  let listboxElement: HTMLUListElement | undefined = $state();
   let inputElement: HTMLInputElement | undefined = $state();
 
   const reducedMotion = useReducedMotion();
@@ -146,11 +147,16 @@
 
   // ── Keyboard routing ──────────────────────────────────────────────────────
   function handleKeydown(event: KeyboardEvent) {
-    commandList.handleKeydown({
+    const handled = commandList.handleKeydown({
       event,
       onEnter: (id) => commandList.activateItemById(id),
       preventDefaultOnEmptyEnter: true,
     });
+    if (!handled || listboxElement === undefined) return;
+
+    // Bring the group heading and end padding into view along with the boundary option.
+    if (event.key === 'Home') listboxElement.scrollTop = 0;
+    if (event.key === 'End') listboxElement.scrollTop = listboxElement.scrollHeight;
   }
 
   function handleInput(event: Event) {
@@ -242,7 +248,12 @@
           {/if}
         </div>
 
-        <ul id={listboxId} role="listbox" class="cinder-command-palette__listbox">
+        <ul
+          bind:this={listboxElement}
+          id={listboxId}
+          role="listbox"
+          class="cinder-command-palette__listbox"
+        >
           {@render items({ query })}
         </ul>
 

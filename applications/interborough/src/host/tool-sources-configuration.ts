@@ -77,8 +77,7 @@
  * @module tool-sources-configuration
  */
 
-import { createHash } from 'node:crypto';
-
+import { sha256HexSync } from '@lostgradient/cryptography';
 import { parseToolSourceDescription, type ToolSourceDescription } from 'armorer/tool-sources';
 
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
@@ -233,7 +232,7 @@ export function qualifiedToolName(
   ) {
     return { name: `${prefix}${toolName}` };
   }
-  const digest = createHash('sha256').update(toolName).digest('hex').slice(0, DIGEST_LENGTH);
+  const digest = sha256HexSync(toolName).slice(0, DIGEST_LENGTH);
   // The readable part is cut, never the digest: a cut name must still be told from its siblings.
   const room = MAXIMUM_TOOL_NAME_LENGTH - prefix.length - 1 - DIGEST_LENGTH;
   return { name: `${prefix}${readable.slice(0, room)}-${digest}` };
