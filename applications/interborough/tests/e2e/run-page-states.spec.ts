@@ -59,7 +59,7 @@ async function tapDisclosureEdge(page: Page, disclosure: Locator): Promise<void>
 
 for (const width of [1280, 1920, 375, 320] as const) {
   const phone = width < 400;
-  test.describe(`step inspector at ${width}px`, () => {
+  test.describe(`/runs/:run step inspector at ${width}px`, () => {
     test.use({ hasTouch: phone });
     test(`failed-run inspector keeps selected-step payloads readable at ${width}px`, async ({
       page,
