@@ -11,7 +11,7 @@ it('builds public browser imports and rejects a server-only import', async () =>
       timeZone: 'America/Los_Angeles',
     }),
   ).toBe(Date.parse('2026-03-09T09:30:00Z'));
-  const parent = process.env['COR_2762_SCRATCH'] ?? resolve(import.meta.dir, '../../../tmp');
+  const parent = resolve(import.meta.dir, '../../../tmp');
   await mkdir(parent, { recursive: true });
   const project = await mkdtemp(join(parent, 'velveteen-browser-imports-'));
   const routes = join(project, 'routes');
