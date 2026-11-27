@@ -1,0 +1,154 @@
+{
+  "issue": "COR-2736_COR-2762",
+  "branch": "steve/composable-desktop-delivery",
+  "checkedAt": "9ede2c014d4809b7c14bc3b813a35a2da4a54c89",
+  "briefVersion": "0d1b4d135b58",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "COR-2736-AC1",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2736-AC2",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2736-AC3",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2736-AC4",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2736-AC5",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2736-AC6",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2736-AC7",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2736-AC8",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2736-AC9",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2736-AC10",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2736-AC11",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2736-AC12",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2736-AC13",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2736-AC14",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2736-AC15",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2736-AC16",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2762-AC1",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2762-AC2",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2762-AC3",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2762-AC4",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2762-AC5",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2762-AC6",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2762-AC7",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2762-AC8",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2762-AC9",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2762-AC10",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2762-AC11",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2762-AC12",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    },
+    {
+      "id": "COR-2762-AC13",
+      "status": "not-met",
+      "evidence": "Prior candidate evidence exists; integrated exact-candidate checks and coordinator-owned design/CI evidence remain pending."
+    }
+  ]
+}
