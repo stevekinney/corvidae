@@ -15,6 +15,8 @@
    * count and Copy at the end), a divider, and the body. With nothing to show there is no card,
    * only one muted line. */
   .cinder-payload-inspector {
+    --_cinder-payload-disclosure-target: 1.5rem;
+
     display: flex;
     flex-direction: column;
     min-inline-size: 0;
@@ -87,6 +89,22 @@
     align-items: center;
     gap: var(--cinder-space-2);
     margin-inline-start: auto;
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-payload-inspector {
+      --_cinder-payload-disclosure-target: var(--cinder-touch-target-min);
+    }
+
+    /* The trailing Copy icon extends past its painted box. Keep that extension out of
+     * the JSON option and give each mode a whole touch target of its own. */
+    .cinder-payload-inspector__header-actions {
+      gap: var(--cinder-space-3);
+    }
+
+    .cinder-payload-inspector__header-actions .cinder-segmented-control-option {
+      min-inline-size: var(--cinder-touch-target-min);
+    }
   }
 
   .cinder-payload-inspector__size {
@@ -314,11 +332,19 @@
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
+  /* Adjacent branch and text disclosures need disjoint targets within the scroll panel.
+   * Keep the target in the control's own row so the next disclosure cannot intercept it. */
+  .cinder-payload-inspector__toggle,
+  .cinder-payload-inspector__show-all {
+    min-block-size: var(--_cinder-payload-disclosure-target);
+    min-inline-size: var(--_cinder-payload-disclosure-target);
+  }
+
   /* A nested row's label opens or closes what is under it. */
   .cinder-payload-inspector__toggle {
     appearance: none;
     display: inline-flex;
-    align-items: baseline;
+    align-items: center;
     gap: var(--cinder-space-1);
     padding: 0;
     border: 0;
