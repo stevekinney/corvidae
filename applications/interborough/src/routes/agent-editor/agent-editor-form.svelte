@@ -16,10 +16,11 @@
    * here: the host has no operation that renames a saved agent, so the Change of row 41s, and the
    * dialog it opens (rows 42z, 43a), wait for one.
    *
-   * A sticky bar at the foot holds what acts on the agent as a whole: the A2A switch, the save's
-   * status ("Saving…" while it is in flight, rows 43j and 14w; "Not saved yet" on a new agent
-   * otherwise, rows 43w and 44b; "Saved, Version 4" with a green check on a saved agent, row 41y),
-   * and Cancel then Save (row 42n). Save stays enabled whatever the form holds (W35): a submit marks
+   * The identity section holds the A2A switch and its help, where the label can use the form's full
+   * width. A sticky bar at the foot holds the save's status ("Saving…" while it is in flight, rows
+   * 43j and 14w; "Not saved yet" on a new agent otherwise, rows 43w and 44b; "Saved, Version 4"
+   * with a green check on a saved agent, row 41y), and Cancel then Save (row 42n). Save stays enabled
+   * whatever the form holds (W35): a submit marks
    * the fields that stop it, and the page focuses the first. While a save is in flight Save is in
    * Cinder's loading state, which ignores a second press, Cancel stays available, and the text
    * fields are read-only until the server answers (row 43k). ⌘Enter submits the form from the
@@ -248,6 +249,17 @@
         bind:value={editor.description}
       />
     </div>
+
+    <div class="weft-agent-form__wide">
+      <Toggle
+        id="agent-a2a"
+        label={copy.a2aLabel}
+        description={copy.a2aDescription}
+        descriptionPlacement="below"
+        bind:checked={editor.a2a}
+        disabled={busy}
+      />
+    </div>
   </FormSection>
 
   <!-- The section's title names each control below, so the control's own label is not shown twice. -->
@@ -401,12 +413,6 @@
         {/if}
       </p>
     {/snippet}
-    {#snippet start()}
-      <div class="weft-agent-form__a2a">
-        <Toggle id="agent-a2a" label={copy.a2aLabel} bind:checked={editor.a2a} disabled={busy} />
-        <p class="weft-agent-form__note">{copy.a2aDescription}</p>
-      </div>
-    {/snippet}
     {#snippet end()}
       <Button type="button" variant="ghost" onclick={onCancel} label={copy.cancelAction} />
       <Button data-changes type="submit" variant="primary" loading={saving}>
@@ -522,13 +528,6 @@
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-secondary);
-  }
-
-  .weft-agent-form__a2a {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-1) var(--cinder-space-3);
-    align-items: center;
   }
 
   /* On a short screen the bar ends the form instead of covering its fields with the shell chrome. */

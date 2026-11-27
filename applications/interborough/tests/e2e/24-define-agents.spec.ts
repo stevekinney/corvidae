@@ -5,7 +5,7 @@
  * offers, so a save really writes. Every view meets axe at the two widths the application is
  * built for.
  */
-import type { APIRequestContext, Page, Route } from '@playwright/test';
+import type { APIRequestContext, Locator, Page, Route } from '@playwright/test';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -38,6 +38,10 @@ import { expect, test } from './fixtures.ts';
 import { readBoxes } from './read-boxes.ts';
 
 const WIDTHS = [375, 1280] as const;
+const PHONE_VIEWPORTS = [
+  { width: 320, height: 640 },
+  { width: 375, height: 812 },
+] as const;
 const LONG_PATH_AGENT_ID = 'source-path-preserves-separators-and-truncates-one-long-segment';
 
 /** Identifiers this file's specs create, removed after each spec. */
@@ -59,6 +63,119 @@ async function makeAgent(
 
 function editor(page: Page) {
   return page.locator('[data-view="agent-editor"]');
+}
+
+function editorFooter(page: Page) {
+  return page.locator('.weft-agent-form__footer');
+}
+
+/** The coarse target extends beyond the painted face, so verify and use that real hit region. */
+async function touchFooterAction(page: Page, name: string): Promise<void> {
+  const action = editorFooter(page).getByRole('button', { name, exact: true });
+  await expect(action).toBeInViewport();
+  const target = await action.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const x = box.left + box.width / 2;
+    const middle = box.top + box.height / 2;
+    return {
+      x,
+      y: middle + 21,
+      reachesAction: [-21, 21].map((offset) =>
+        element.contains(document.elementFromPoint(x, middle + offset)),
+      ),
+    };
+  });
+  expect(target.reachesAction).toEqual([true, true]);
+  await page.touchscreen.tap(target.x, target.y);
+}
+
+/** Scroll only the shell outlet until the end of a field clears its sticky form footer. */
+async function frameInOutlet(subject: Locator): Promise<void> {
+  await subject.evaluate((element) => {
+    const outlet = element.closest<HTMLElement>('main.weft-shell-outlet');
+    const footer = document.querySelector<HTMLElement>('.weft-agent-form__footer');
+    if (outlet === null || footer === null)
+      throw new Error('expected the editor in its shell outlet');
+    const subjectBox = element.getBoundingClientRect();
+    const footerBox = footer.getBoundingClientRect();
+    outlet.scrollBy({ top: subjectBox.bottom - footerBox.top + 8 });
+  });
+}
+
+/** A switch is really reachable only when its hit point belongs to it, then responds to a touch. */
+async function touchA2aSwitch(page: Page, a2a: Locator): Promise<void> {
+  const target = await a2a.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const x = box.left + box.width / 2;
+    const y = box.top + box.height / 2;
+    return { x, y, reachesSwitch: element.contains(document.elementFromPoint(x, y)) };
+  });
+  expect(target.reachesSwitch).toBe(true);
+  await page.touchscreen.tap(target.x, target.y);
+}
+
+/** The phone footer stays compact while the first field and the A2A setting remain reachable. */
+async function expectCompactPhoneFooter(
+  page: Page,
+  route: '/agents/new' | '/agents/:agent/edit',
+  viewport: (typeof PHONE_VIEWPORTS)[number],
+  status: string,
+): Promise<void> {
+  const footer = editorFooter(page);
+  const name = page.getByRole('textbox', { name: /^Name/ });
+  const a2a = page.getByRole('switch', { name: copy.a2aLabel });
+  const help = page.getByText(copy.a2aDescription, { exact: true });
+  const cancel = page.getByRole('button', { name: copy.cancelAction });
+  const save = page.getByRole('button', {
+    name: route === '/agents/new' ? copy.createAction : copy.saveAction,
+  });
+  await expect(footer).toHaveAttribute('data-cinder-sticky', '');
+  await expect(footer.getByTestId('agent-save-status')).toHaveText(status);
+  await expect(footer.getByRole('switch')).toHaveCount(0);
+  await expect(name).toBeInViewport();
+  const nameAtRest = await name.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const footer = document.querySelector<HTMLElement>('.weft-agent-form__footer');
+    if (footer === null) throw new Error('expected the agent editor footer');
+    const footerBox = footer.getBoundingClientRect();
+    const x = box.left + box.width / 2;
+    const y = box.top + box.height / 2;
+    return {
+      fullyVisible: box.top >= 0 && box.bottom <= footerBox.top,
+      reachesName: element === document.elementFromPoint(x, y),
+    };
+  });
+  expect(nameAtRest.fullyVisible).toBe(true);
+  expect(nameAtRest.reachesName).toBe(true);
+  if (viewport.width === 375) {
+    await captureForDesignReview(page, {
+      route,
+      state: 'compact footer at phone widths',
+      source: '24-define-agents.spec.ts',
+    });
+  }
+
+  await frameInOutlet(help);
+  await expect(a2a).toHaveAccessibleDescription(copy.a2aDescription);
+  await expect(help).toBeVisible();
+  const boxes = await readBoxes(page, { footer, a2a, help, cancel, save });
+  expect(boxes.footer.y + boxes.footer.height).toBeLessThanOrEqual(viewport.height);
+  expect(boxes.a2a.y + boxes.a2a.height).toBeLessThanOrEqual(boxes.footer.y);
+  expect(boxes.help.y + boxes.help.height).toBeLessThanOrEqual(boxes.footer.y);
+  expect(boxes.cancel.y + boxes.cancel.height).toBeLessThanOrEqual(viewport.height);
+  expect(boxes.save.y + boxes.save.height).toBeLessThanOrEqual(viewport.height);
+  await touchA2aSwitch(page, a2a);
+  await expect(a2a).toHaveAttribute('aria-checked', 'true');
+  await touchA2aSwitch(page, a2a);
+  await expect(a2a).toHaveAttribute('aria-checked', 'false');
+  if (viewport.width === 375) {
+    await captureForDesignReview(page, {
+      route,
+      state: 'A2A help above sticky footer at phone widths',
+      source: '24-define-agents.spec.ts',
+      ready: () => frameInOutlet(help),
+    });
+  }
 }
 
 /**
@@ -496,6 +613,40 @@ test.describe('a new agent', () => {
 // second host's home names a provider (the chat-proof agents on it need a model), so it no longer
 // shows this state. These cases only read the host, and they run
 // before `first-run.spec.ts`, which connects a provider there.
+test.describe('/agents/new and /agents/:agent/edit phone footer', () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  for (const viewport of PHONE_VIEWPORTS) {
+    test(`keeps Create and Edit compact, visible, and tappable at ${viewport.width}×${viewport.height}`, async ({
+      page,
+      request,
+    }) => {
+      await page.setViewportSize(viewport);
+
+      await page.goto('/agents/new');
+      await expect(editor(page)).toHaveAttribute('data-state', 'ready');
+      await expectCompactPhoneFooter(page, '/agents/new', viewport, copy.try.notSavedYet);
+      await touchFooterAction(page, copy.createAction);
+      await expect(page.getByText(copy.newAgent.nameRequired)).toBeVisible();
+      await page.goto('/agents/new');
+      await expect(editor(page)).toHaveAttribute('data-state', 'ready');
+      await touchFooterAction(page, copy.cancelAction);
+      await expect(page).toHaveURL(/\/agents$/);
+
+      await makeAgent(request, `e2e-phone-footer-${viewport.width}`);
+      await page.goto(`/agents/e2e-phone-footer-${viewport.width}/edit`);
+      await expect(editor(page)).toHaveAttribute('data-state', 'ready');
+      await expectCompactPhoneFooter(page, '/agents/:agent/edit', viewport, copy.edit.saved(1));
+      await touchFooterAction(page, copy.saveAction);
+      await expect(page).toHaveURL(new RegExp(`/agents/e2e-phone-footer-${viewport.width}$`));
+      await page.goto(`/agents/e2e-phone-footer-${viewport.width}/edit`);
+      await expect(editor(page)).toHaveAttribute('data-state', 'ready');
+      await touchFooterAction(page, copy.cancelAction);
+      await expect(page).toHaveURL(new RegExp(`/agents/e2e-phone-footer-${viewport.width}$`));
+    });
+  }
+});
+
 test.describe('a new agent on a host with no model provider', () => {
   test.use({ baseURL: E2E_FIRST_RUN_URL });
 
