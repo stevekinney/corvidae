@@ -860,6 +860,85 @@ for (const width of [1280, 1920] as const) {
   });
 }
 
+// A wide touchscreen keeps the Toggle's 44px hit box, but its painted 32 × 18 track still belongs
+// on the row's first-line optical centre. The line-aligned trailing box is only a text-line tall;
+// its flex centring deliberately lets the larger hit box overhang equally above and below it.
+test.describe('the Hooks list on a wide coarse pointer', () => {
+  test.use({ hasTouch: true, isMobile: false });
+
+  for (const width of [1024, 1280] as const) {
+    test(`[hook-row-wide-touch-alignment] /hooks: line-one facts and the painted On switch share a centre at ${width} pixels`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 720 });
+      const onCall = hookRecord('page-on-call', {
+        name: 'Page on-call when a run fails',
+        declaredBy: null,
+      });
+      const next = hookRecord('next-record', { name: 'Next record', declaredBy: null });
+      await openHooks(page, '/hooks', [onCall, next]);
+      expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
+
+      const row = page.locator('li[data-hook="page-on-call"]');
+      const geometry = await row.evaluate((element) => {
+        const rectOf = (selector: string) => {
+          const target = element.querySelector(selector);
+          if (target === null) throw new Error(`Missing ${selector}`);
+          const { y, height } = target.getBoundingClientRect();
+          return { y, height };
+        };
+        const textRectOf = (selector: string) => {
+          const target = element.querySelector(selector);
+          if (target === null) throw new Error(`Missing ${selector}`);
+          const range = document.createRange();
+          range.selectNodeContents(target);
+          const { y, height } = range.getBoundingClientRect();
+          return { y, height };
+        };
+        const toggle = element.querySelector<HTMLElement>('[role="switch"]');
+        if (toggle === null) throw new Error('Missing switch');
+        const hit = toggle.getBoundingClientRect();
+        const style = getComputedStyle(toggle);
+        const paddingStart = Number.parseFloat(style.paddingTop);
+        const paddingEnd = Number.parseFloat(style.paddingBottom);
+        const nextRow = document.querySelector<HTMLElement>('li[data-hook="next-record"]');
+        if (nextRow === null) throw new Error('Missing adjacent record');
+
+        return {
+          rowWidth: element.getBoundingClientRect().width,
+          status: rectOf('.cinder-stacked-list-item__status'),
+          title: textRectOf('.cinder-stacked-list-item__title'),
+          time: textRectOf('.cinder-stacked-list-item__time'),
+          paintedTrack: { y: hit.y + paddingStart, height: hit.height - paddingStart - paddingEnd },
+          label: textRectOf('.cinder-toggle-field__label'),
+          hit: { y: hit.y, width: hit.width, height: hit.height },
+          nextRowTop: nextRow.getBoundingClientRect().top,
+        };
+      });
+      const centre = ({ y, height }: { y: number; height: number }) => y + height / 2;
+      const titleCentre = centre(geometry.title);
+      for (const [name, box] of [
+        ['status', geometry.status],
+        ['timestamp', geometry.time],
+        ['painted track', geometry.paintedTrack],
+        ['On label', geometry.label],
+      ] as const) {
+        expect(
+          Math.abs(centre(box) - titleCentre),
+          `${name} centre at ${width}`,
+        ).toBeLessThanOrEqual(2);
+      }
+      expect(geometry.rowWidth, `Hooks row width at ${width}`).toBeGreaterThanOrEqual(640);
+      expect(geometry.hit.width, `switch hit width at ${width}`).toBeGreaterThanOrEqual(44);
+      expect(geometry.hit.height, `switch hit height at ${width}`).toBeGreaterThanOrEqual(44);
+      expect(
+        geometry.nextRowTop,
+        `next record after the hit area at ${width}`,
+      ).toBeGreaterThanOrEqual(geometry.hit.y + geometry.hit.height);
+    });
+  }
+});
+
 test.describe('the Hooks list on a coarse-pointer phone', () => {
   test.use({ hasTouch: true, isMobile: true });
 
