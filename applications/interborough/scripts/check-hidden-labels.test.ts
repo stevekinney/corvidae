@@ -91,12 +91,14 @@ describe('scanned file discovery', () => {
   test("the guard's own source and test are not scanned, though they spell the banned patterns", async () => {
     const own = [import.meta.path, join(import.meta.dir, 'check-hidden-labels.ts')];
     expect(findHiddenLabels(await Bun.file(own[0]!).text()).length).toBeGreaterThan(0);
-    expect((await findInFiles(own)).size).toBe(0);
+    const ownFindings = await findInFiles(own);
+    expect(ownFindings.size).toBe(0);
     const directory = mkdtempSync(join(tmpdir(), 'hidden-label-own-'));
     try {
       const page = join(directory, 'page.svelte');
       writeFileSync(page, '<Input labelVisible={false} />\n');
-      const found = [...(await findInFiles([...own, page])).values()];
+      const scanned = await findInFiles([...own, page]);
+      const found = [...scanned.values()];
       expect(found).toEqual([[{ line: 1, text: '<Input labelVisible={false} />' }]]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
