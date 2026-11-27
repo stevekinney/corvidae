@@ -139,16 +139,21 @@ export async function buildProductionGraph(
   const stagedFiles = await readdir(staging);
   if (stagedFiles.length)
     throw new Error("Production staging directory must be empty");
-  const wrappers = await mkdtemp(join(dirname(staging), ".velveteen-graph-"));
+  const svelteDirectory = dirname(
+    Bun.resolveSync("svelte/package.json", options.projectDirectory),
+  );
+  const wrappers = await mkdtemp(
+    join(resolve(options.projectDirectory), ".velveteen-graph-"),
+  );
   const browserDirectory = join(staging, "browser"),
     serverDirectory = join(staging, "server");
-  await mkdir(browserDirectory, { recursive: true });
-  await mkdir(serverDirectory, { recursive: true });
   const browserMap = new Map<string, string>(),
     serverMap = new Map<string, string>();
   const browserEntries: Array<Partial<Record<Role, string>>> = [],
     serverEntries: Array<Partial<Record<Role, string>>> = [];
   try {
+    await mkdir(browserDirectory, { recursive: true });
+    await mkdir(serverDirectory, { recursive: true });
     for (const [index, node] of options.manifest.nodes.entries()) {
       const browser: Partial<Record<Role, string>> = {},
         server: Partial<Record<Role, string>> = {};
@@ -204,6 +209,7 @@ export async function buildProductionGraph(
       ],
       outdir: browserDirectory,
       target: "browser",
+      alias: { svelte: svelteDirectory },
       splitting: true,
       minify: options.mode !== "development",
       naming: {
@@ -240,6 +246,7 @@ export async function buildProductionGraph(
       ],
       outdir: serverDirectory,
       target: "bun",
+      alias: { svelte: svelteDirectory },
       splitting: true,
       minify: options.mode !== "development",
       naming: {
