@@ -245,6 +245,18 @@ describe('ThemeSwitch — quiet sky and night track', () => {
     expect(themeSwitchCss).toMatch(/\.cinder-theme-switch__icon\s*\{[^}]*inline-size: 0\.9375rem/);
   });
 
+  test('coarse pointers extend each position vertically without changing its painted geometry', () => {
+    const coarse =
+      themeSwitchCss.match(/@media \(any-pointer: coarse\)\s*\{([\s\S]*?)\n  \}/)?.[1] ?? '';
+    expect(coarse).toContain('.cinder-theme-switch__option::before');
+    expect(coarse).toContain(
+      'inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));',
+    );
+    expect(coarse).toContain('inset-inline: 0;');
+    expect(coarse).not.toContain('--_cinder-theme-switch-segment-inline:');
+    expect(coarse).not.toContain('--_cinder-theme-switch-segment-block:');
+  });
+
   test('the thumb slides by a logical offset and honours reduced motion and forced colors', () => {
     expect(themeSwitchCss).toContain('inset-inline-start: calc(');
     expect(themeSwitchCss).toContain('@media (prefers-reduced-motion: reduce)');

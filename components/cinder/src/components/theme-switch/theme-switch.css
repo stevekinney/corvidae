@@ -178,13 +178,15 @@
   }
 
   /* ----------------------------------------
- * Coarse pointer: the 34px by 26px positions grow to a 44px hit area
+ * Coarse pointer: extend each position vertically without overlapping its neighbours.
  * ---------------------------------------- */
 
   @media (any-pointer: coarse) {
-    .cinder-theme-switch {
-      --_cinder-theme-switch-segment-inline: 2.75rem;
-      --_cinder-theme-switch-segment-block: 2.75rem;
+    .cinder-theme-switch__option::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: 0;
     }
   }
 
