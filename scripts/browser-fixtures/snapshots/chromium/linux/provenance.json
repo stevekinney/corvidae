@@ -40,6 +40,10 @@
       "renderedSourceSha": "988852ec548b6e664c0f5babb556e64495fca8b9",
       "suiteExitCode": 0
     },
+    "json-viewer": {
+      "renderedSourceSha": "e01f5724ce38dd5a0b00deec9846384bdcbfcdf3",
+      "suiteExitCode": 0
+    },
     "markdown-editor": {
       "renderedSourceSha": "2a0143ee0a04a6dc0d5a2b1777e3b4db5e2260f1",
       "suiteExitCode": 0
@@ -50,6 +54,10 @@
     },
     "page-header": {
       "renderedSourceSha": "8c7f3c034f3337ff916453bcd12a80bf4fdb9b9b",
+      "suiteExitCode": 0
+    },
+    "payload-inspector": {
+      "renderedSourceSha": "e01f5724ce38dd5a0b00deec9846384bdcbfcdf3",
       "suiteExitCode": 0
     },
     "review-editor": {
