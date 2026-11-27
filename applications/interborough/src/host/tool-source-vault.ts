@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { parseDocument } from './providers.ts';
 import { secretPublicationDigest } from './secret-publication-digest.ts';
 import {
@@ -42,6 +41,7 @@ import {
   CryptographyError,
   decrypt,
   encrypt,
+  sha256HexSync,
   type EncryptedValue,
   type EncryptionKey,
 } from '@lostgradient/cryptography';
@@ -392,16 +392,9 @@ export function createToolSourceVault(options: ToolSourceVaultOptions): ToolSour
     const result = await workspaceSecrets.publish({
       operationId:
         publicationReceipt?.operationId ??
-        createHash('sha256')
-          .update(
-            JSON.stringify([
-              'tool-source-vault',
-              bungalow.workspaceId,
-              sourceId,
-              snapshot.revision,
-            ]),
-          )
-          .digest('hex'),
+        sha256HexSync(
+          JSON.stringify(['tool-source-vault', bungalow.workspaceId, sourceId, snapshot.revision]),
+        ),
       requestDigest: publicationReceipt?.requestDigest ?? requestDigest,
       ...(authorize === undefined ? {} : { authorize }),
       key: toolSourceSecretKey(sourceId),

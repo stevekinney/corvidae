@@ -25,7 +25,6 @@ import { secretPublicationDigest } from './secret-publication-digest.ts';
  * @module provider-manager
  */
 
-import { createHash } from 'node:crypto';
 import {
   createLocalHostMutationContext,
   HostMutationError,
@@ -39,6 +38,7 @@ import {
   type resolveProviderGenerate,
   type SettingLockReason,
 } from '@lostgradient/bureau';
+import { sha256HexSync } from '@lostgradient/cryptography';
 import {
   decideBatch,
   readBackendDescriptors,
@@ -953,7 +953,7 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
                     provider,
                     outcome: 'committed',
                     changedKeys: ['catalog'],
-                    hash: createHash('sha256').update(text).digest('hex'),
+                    hash: sha256HexSync(text),
                     previousRevision: authority.expectedRevision,
                     actorId: identity.actorId,
                     workspaceId: identity.workspaceId,

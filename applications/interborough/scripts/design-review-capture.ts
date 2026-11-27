@@ -263,6 +263,11 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/panels/failure-explanation-states.spec.ts',
   // The run timeline panel in each state it draws, likewise a frame no page capture sees (COR-2542).
   'tests/panels/run-timeline-states.spec.ts',
+  // The states one step from the copy controls and inline Markdown of COR-2755 and COR-2776: the
+  // Run page's More menu on Copy run ID and its toasts, the plugin problem card's Open the folder
+  // and its toast, a chat title with Markdown, and a setting description with a code span.
+  // `--grep copy-and-inline-markdown-states` selects it.
+  'tests/e2e/copy-and-inline-markdown-states.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';

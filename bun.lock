@@ -53,6 +53,7 @@
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/environmentalist": "catalog:",
         "@lostgradient/interborough-plugin": "workspace:*",
+        "@lostgradient/markdown": "workspace:*",
         "@lostgradient/mcp": "workspace:*",
         "@lostgradient/memory": "workspace:*",
         "@lostgradient/operative": "workspace:*",
