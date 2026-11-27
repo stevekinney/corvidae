@@ -98,8 +98,11 @@ test.describe('the list (/checks) on a phone, a tablet, with scorers, a menu ope
           const title = element.querySelector('.ib-checks-row__name')!;
           const time = element.querySelector('.ib-checks-row__time')!;
           const meta = element.querySelector('.cinder-stacked-list-item__meta')!;
+          const status = element.querySelector('.cinder-status-dot')!;
           const titleBox = title.getBoundingClientRect();
           const timeBox = time.getBoundingClientRect();
+          const statusBox = status.getBoundingClientRect();
+          const metaBox = meta.getBoundingClientRect();
           const style = getComputedStyle(meta);
           const measure = document.createElement('div');
           measure.style.width = 'var(--cinder-space-6)';
@@ -113,12 +116,20 @@ test.describe('the list (/checks) on a phone, a tablet, with scorers, a menu ope
             metaWhiteSpace: style.whiteSpace,
             timeOverflow: time.scrollWidth - time.clientWidth,
             sameLine: Math.abs(titleBox.top - timeBox.top),
+            statusBeforeTitle: statusBox.right <= titleBox.left,
+            statusOnFirstLine: statusBox.top < titleBox.bottom && statusBox.bottom > titleBox.top,
+            metaLeadingEdge: Math.abs(metaBox.left - statusBox.left),
           };
         });
         expect(geometry.metaWhiteSpace).toBe('normal');
         expect(geometry.metaOverflow).toBeLessThanOrEqual(1);
         expect(geometry.timeOverflow).toBeLessThanOrEqual(1);
         expect(geometry.sameLine).toBeLessThan(4);
+        if (width <= 375) {
+          expect(geometry.statusBeforeTitle).toBe(true);
+          expect(geometry.statusOnFirstLine).toBe(true);
+          expect(geometry.metaLeadingEdge).toBeLessThanOrEqual(1);
+        }
         if (width >= 768) expect(geometry.gap).toBeLessThanOrEqual(geometry.maxGap);
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
