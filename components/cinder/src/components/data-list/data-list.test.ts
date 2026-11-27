@@ -112,6 +112,17 @@ describe('DataList', () => {
     expect(list?.getAttribute('class')).toContain('my-custom-class');
   });
 
+  test('passes an opted-in status track to every status-first row in the list', () => {
+    const { container } = render(DataList, {
+      items: ['one'],
+      key: stringKey,
+      children: itemSnippet((item) => String(item)),
+      statusTrack: '12rem',
+    });
+    const list = container.querySelector<HTMLUListElement>('.cinder-data-list');
+    expect(list?.style.getPropertyValue('--cinder-stacked-list-item-status-track')).toBe('12rem');
+  });
+
   test('forwards rest attributes (aria-label) onto the <ul> without overriding role', () => {
     const { container } = render(DataList, {
       items: ['one'],

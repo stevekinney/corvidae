@@ -180,6 +180,7 @@ describe('StackedListItem status-first row', () => {
 
   test('the stylesheet fixes the status column at 128px and centres it on the title line', () => {
     expect(stylesheet).toContain('var(--_cinder-status-width, 8rem)');
+    expect(stylesheet).toContain('--cinder-stacked-list-item-status-track');
     expect(stylesheet).toMatch(
       /--lines \.cinder-stacked-list-item__status\s*\{[^}]*min-block-size:\s*var\(--_cinder-line-one-height\)/,
     );

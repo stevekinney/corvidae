@@ -291,7 +291,10 @@
   /* Reserved when the row has a status or the list keeps the column for rows with none. */
   .cinder-stacked-list-item--lines.cinder-stacked-list-item--status-column
     > .cinder-stacked-list-item__layout {
-    --_cinder-status-track: calc(var(--_cinder-status-width, 8rem) + var(--cinder-space-3));
+    --_cinder-status-track: calc(
+      var(--cinder-stacked-list-item-status-track, var(--_cinder-status-width, 8rem)) +
+        var(--cinder-space-3)
+    );
   }
 
   .cinder-stacked-list-item--lines

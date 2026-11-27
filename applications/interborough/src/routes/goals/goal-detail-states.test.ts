@@ -149,6 +149,14 @@ describe('a goal’s page while Interborough does not answer (row 68w)', () => {
     expect(view.getByTestId('goal-attempts-heading').textContent).toContain('2 of 5');
   });
 
+  test('gives qualified attempt statuses a shared track, so they do not run into Attempt N', async () => {
+    const { container, findByRole } = openWith(working);
+    await findByRole('heading', { level: 1, name: 'Summarize open refunds' });
+
+    const list = container.querySelector<HTMLUListElement>('.ib-goal-attempts .cinder-data-list');
+    expect(list?.style.getPropertyValue('--cinder-stacked-list-item-status-track')).toBe('12rem');
+  });
+
   test('leaves Start again live, since it only opens New goal', async () => {
     const stopped = goalFixture('goal-2', {
       identity: { name: 'Summarize open refunds', version: '1' },

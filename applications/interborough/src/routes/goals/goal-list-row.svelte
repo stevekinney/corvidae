@@ -52,13 +52,13 @@
     title={row.cost?.partial === true ? COST_COPY.partialNote : COST_COPY.label}>{cost}</span
   >
 {/snippet}
-<!-- A phone's third and fourth lines: what the goal cost, which does not wrap onto line two at 320
-     pixels, then the check, which ends in an ellipsis. -->
+<!-- A phone's third and fourth lines: the check must stay on the specified third line, followed by
+     the optional cost so it cannot displace the check at 320 pixels. -->
 {#snippet phoneCheck()}
+  <span class="ib-goal-row__check" data-testid="goal-check">{check}</span>
   {#if cost !== undefined}
     <span class="ib-goal-row__cost">{@render costText()}</span>
   {/if}
-  <span class="ib-goal-row__check" data-testid="goal-check">{check}</span>
 {/snippet}
 
 <StackedListItem

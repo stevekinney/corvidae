@@ -55,6 +55,8 @@ Pass `groupBy` to put consecutive rows under a header band: it returns `{ key, l
 
 `statusColumn` keeps the 128px status column for rows that have no status, so titles line up down the whole list.
 
+`statusTrack` widens that status column for every two-line row in a list when its status words carry a qualifier. For example, a goal's "Running, checking the result" uses `statusTrack="10rem"` so it remains separate from the row title; omit it to retain Cinder's 128px default.
+
 `trailingTrack` does the same for the trailing column of two-line rows: a list whose rows carry a figure in `trailing` (a cost, a count) passes the width of its widest figure (`trailingTrack="9rem"`), so the track is one width in every row, with a trailing region or without, and the times before it end at one edge. `trailingAlign="baseline"` holds the figure on the first line's baseline instead of centering it on both lines. Pass them only at the widths where rows keep their trailing column; omitted, each row sizes the column by its own content.
 
 ## Rows that change while you watch
@@ -78,6 +80,7 @@ The list wraps unbroken values (an identifier) anywhere by default, and `Stacked
 | `class` | `string` | no | — | Additional class merged onto the `.cinder-data-list` root element. |
 | `density` | `"comfortable"` \| `"condensed"` | no | — | List-level density inherited by StackedListItem rows that do not set their own `density` prop. Omit to let each row use its own default. A per-row `density` always overrides this list-level value. Note: when passing a variable that may be `undefined`, spread conditionally because `exactOptionalPropertyTypes` is enabled: `{...(density ? { density } : {})}` |
 | `statusColumn` | `boolean` | no | — | Keep the status column's width for every row that has no `status` (a workflow, an agent with nothing to report), so titles line up down the whole list. A row's own `statusColumn` wins. |
+| `statusTrack` | `string` | no | — | The width of the leading status column in every two-line StackedListItem row in the list (a CSS length, such as `10rem`). Use this only when a list's status words carry qualifiers that need more room than Cinder's normal status column; titles remain aligned across the list. |
 | `trailingAlign` | `"center"` \| `"baseline"` | no | — | Where a two-line row's trailing region sits against the row's lines: `center` (the default) centers it on both lines, `baseline` holds it on the first line's baseline. |
 | `trailingTrack` | `string` | no | — | The width of the trailing column of every two-line StackedListItem row in the list (a CSS length, such as `9rem`): the width of the widest figure a row carries in `trailing` (a cost, a count). The track is then one width in every row, with a trailing region or without, so the times before it end at one edge. Omit it and each row sizes the track by its own content. Pass it only at the widths where rows keep their trailing column. |
 | `children` | `(opaque)` | yes | — | Row renderer. MUST render an `<li>` (the list root is a `<ul role="list">`). StackedListItem is the recommended row — it renders an `<li>` with leading/title/description/meta/trailing slots. Not expressible in JSON Schema; see the component types for the signature. |
