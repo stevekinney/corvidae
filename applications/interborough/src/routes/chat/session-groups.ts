@@ -3,11 +3,42 @@ import type { DataListGroup } from '@lostgradient/cinder';
 import { CHAT_COPY } from '../../app/copy/chat.ts';
 import type { ChatContext } from '../../lib/bureau-client.ts';
 import type { BureauReview } from '../../lib/bureau-reviews.ts';
+import type { TaskView } from '../../lib/bureau-tasks.ts';
 import { calendarDay, dateLine, zoneLabel } from '../../lib/format/clock.ts';
+import { latestRunByChat } from '../../lib/recent-tasks.ts';
+import { stopReasonOf } from './event-notes.ts';
 import { lapsedChats } from './lapsed-chats.svelte.ts';
 
 /** The status words of a chat, in the one table every status word comes from (`StatusDot`'s). */
-export type ChatStatusWord = 'Waiting on you' | 'Running' | 'Failed' | 'Ended' | 'Done';
+export type ChatStatusWord = 'Waiting on you' | 'Running' | 'Failed' | 'Stopped' | 'Ended' | 'Done';
+
+/**
+ * The word of a chat nothing is going on in, from how its latest run ended: failed, stopped (a run
+ * that stopped without failing, the person's Stop or a limit), ended by the host, or done. The
+ * list's row and the chat's own title both say it from here, so they cannot disagree.
+ */
+export function settledStatusWord(facts: {
+  readonly failed: boolean;
+  readonly ended: boolean;
+  readonly stopped: boolean;
+}): 'Failed' | 'Stopped' | 'Ended' | 'Done' {
+  if (facts.failed) return 'Failed';
+  if (facts.ended) return 'Ended';
+  if (facts.stopped) return 'Stopped';
+  return 'Done';
+}
+
+/**
+ * The chats whose latest run stopped without failing, by session: a run the person stopped, or one
+ * that reached a limit. It is the run the chat's own page draws as a Stopped turn (`stopReasonOf`).
+ */
+export function chatsWithStoppedRun(tasks: readonly TaskView[]): ReadonlySet<string> {
+  const stopped = new Set<string>();
+  for (const [contextId, task] of latestRunByChat(tasks)) {
+    if (task.status !== 'failed' && stopReasonOf(task) !== undefined) stopped.add(contextId);
+  }
+  return stopped;
+}
 
 /** One chat as a row of the list: everything the row shows, and nothing it does not. */
 export type SessionRow = {
@@ -40,15 +71,18 @@ export function chatStatusWord(
   failedChats: ReadonlySet<string>,
   waitingChats: ReadonlySet<string> = new Set(),
   lapsed: ReadonlySet<string> = lapsedChats,
+  stoppedChats: ReadonlySet<string> = new Set(),
 ): ChatStatusWord {
   const stopped = lapsed.has(context.id);
   if (!stopped && (context.activity === 'awaiting-input' || waitingChats.has(context.id))) {
     return 'Waiting on you';
   }
   if (context.activity === 'running') return 'Running';
-  if (failedChats.has(context.id)) return 'Failed';
-  if (context.endReason === 'host-stopped') return 'Ended';
-  return 'Done';
+  return settledStatusWord({
+    failed: failedChats.has(context.id),
+    ended: context.endReason === 'host-stopped',
+    stopped: stoppedChats.has(context.id),
+  });
 }
 
 /**
@@ -105,8 +139,9 @@ export function sessionRow(
   questions: ReadonlyMap<string, string>,
   failedChats: ReadonlySet<string> = new Set(),
   waitingChats: ReadonlySet<string> = new Set(),
+  stoppedChats: ReadonlySet<string> = new Set(),
 ): SessionRow {
-  const status = chatStatusWord(context, failedChats, waitingChats);
+  const status = chatStatusWord(context, failedChats, waitingChats, undefined, stoppedChats);
   const preview = context.lastMessagePreview?.trim();
   const snippet =
     (status === 'Waiting on you' ? questions.get(context.id) : undefined) ??
@@ -149,7 +184,7 @@ export function isArchivedChat(context: Pick<ChatContext, 'archivedAt'>): boolea
 
 /**
  * Whether a row is in a segment: `waiting` holds the chats that wait on the person and `done` the
- * ones that finished. A chat that ended, failed or is running is only in `all`.
+ * ones that finished. A chat that ended, failed, stopped or is running is only in `all`.
  */
 export function inSegment(row: Pick<SessionRow, 'status'>, segment: ChatSegment): boolean {
   if (segment === 'waiting') return row.status === 'Waiting on you';

@@ -372,6 +372,33 @@ describe('Button loading state', () => {
     await rerender({ label: 'Save', fullWidth: true, loading: true });
     expect(container.querySelector('button')!.style.inlineSize).toBe('');
   });
+
+  test('a button that grows while it loads holds no width, and says so for its styles', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+      configurable: true,
+      get: () => 96,
+    });
+    try {
+      const { container, rerender } = render(Button, {
+        props: { label: 'Continue', loadingWidth: 'grow' },
+      });
+      await rerender({ label: 'Continue', loadingWidth: 'grow', loading: true });
+      const button = container.querySelector('button')!;
+      expect(button.style.inlineSize).toBe('');
+      expect(button.hasAttribute('data-cinder-loading-grows')).toBe(true);
+      expect(button.getAttribute('aria-busy')).toBe('true');
+      await rerender({ label: 'Continue', loadingWidth: 'grow', loading: false });
+      expect(button.hasAttribute('data-cinder-loading-grows')).toBe(false);
+      // The default still holds the width it had at rest.
+      await rerender({ label: 'Continue', loadingWidth: 'hold', loading: true });
+      expect(button.style.inlineSize).toBe('96px');
+      expect(button.hasAttribute('data-cinder-loading-grows')).toBe(false);
+    } finally {
+      if (descriptor) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', descriptor);
+      else delete (HTMLElement.prototype as { offsetWidth?: number }).offsetWidth;
+    }
+  });
 });
 
 describe('Button inert (aria-disabled) state', () => {

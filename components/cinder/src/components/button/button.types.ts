@@ -147,6 +147,13 @@ export type ButtonProps = SharedHtmlAttributes &
      */
     loading?: boolean;
     /**
+     * What the button's width does while `loading`. `hold` (default) keeps the width it had at rest
+     * and fits the spinner into its padding, so nothing around it moves. `grow` lets the box take
+     * the spinner and its words at their normal padding, for a button in a row with room to spare
+     * (an action beside a line of text), where the squeezed padding would read as cramped.
+     */
+    loadingWidth?: 'hold' | 'grow';
+    /**
      * Text a polite, visually hidden status announces while `loading` (for example `Saving…`).
      * The status node is rendered beside the button, so it never joins the button's accessible
      * name, and it is mounted from the start so the announcement is not lost. Omit it and no
@@ -222,6 +229,12 @@ export interface ButtonSchemaProps {
    * @default false
    */
   loading?: boolean;
+  /**
+   * What the width does while `loading`: `hold` (default) keeps the resting width, `grow` takes the
+   * spinner at the normal padding.
+   * @default 'hold'
+   */
+  loadingWidth?: 'hold' | 'grow';
   /**
    * Text a polite, visually hidden status announces while `loading`, rendered beside the button.
    */

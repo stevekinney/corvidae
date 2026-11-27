@@ -201,6 +201,7 @@
   } from './tool-activity.ts';
   import { stoppedRunIdOf } from './event-notes.ts';
   import { failedStopNoteId, withEndedLine, withStopLine } from './stop-line.ts';
+  import { settledStatusWord } from './session-groups.ts';
   import ToolCalls from './tool-calls.svelte';
   import { lapsedChats } from './lapsed-chats.svelte.ts';
   import SessionTasks from './session-tasks.svelte';
@@ -1851,11 +1852,13 @@
     if (runGoing && !parkedOnLapsed) return CHAT_COPY.status.running;
     // `shown` intentionally removes the canonical stopped/failed line once its richer outcome
     // row owns it. Keep the title state attached to that durable stop, not that filtered view.
-    if (lastStop?.state.kind === 'failed' || retryNoteId !== undefined)
-      return CHAT_COPY.status.failed;
-    // A turn the person stopped says so on its own row, and the title says the same.
-    if (lastStop?.state.kind === 'stopped') return CHAT_COPY.status.stopped;
-    return CHAT_COPY.status.done;
+    // The same word the chat list says for the same run (`settledStatusWord`), from what this page
+    // draws of it: a failed turn, a stopped one, or neither.
+    return settledStatusWord({
+      failed: lastStop?.state.kind === 'failed' || retryNoteId !== undefined,
+      ended: false,
+      stopped: lastStop?.state.kind === 'stopped',
+    });
   });
   /** The Badge tone of each status word beside the title. */
   function chatStatusTone(word: string): 'warning' | 'info' | 'danger' | 'neutral' | 'success' {

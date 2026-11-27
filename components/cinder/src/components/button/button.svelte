@@ -37,6 +37,7 @@
     fullWidth = false,
     loading = false,
     loadingStatus,
+    loadingWidth = 'hold',
     mutating = false,
     iconOnly = false,
     quiet = false,
@@ -87,6 +88,7 @@
     'data-cinder-compact': actionEmphasis?.compact === true ? '' : undefined,
     'data-cinder-full-width': fullWidth ? '' : undefined,
     'data-cinder-loading': loading ? '' : undefined,
+    'data-cinder-loading-grows': loading && loadingWidth === 'grow' ? '' : undefined,
     'data-cinder-icon-only': iconOnly ? '' : undefined,
     'data-cinder-quiet': quiet && iconOnly && resolvedVariant === 'ghost' ? '' : undefined,
     'data-cinder-flush':
@@ -150,7 +152,8 @@
       pinReleased = false;
       return;
     }
-    if (restingWidth === undefined && element && !fullWidth) {
+    // A button that grows while it loads holds no width: it takes the spinner and its words.
+    if (restingWidth === undefined && element && !fullWidth && loadingWidth === 'hold') {
       const measured = layoutWidth(element);
       if (measured > 0) {
         restingWidth = measured;

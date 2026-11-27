@@ -3383,6 +3383,8 @@
     flex: 1;
     overflow-y: auto;
     scroll-padding-block: var(--cinder-space-2);
+    /* What is scrolled to rests clear of the fading end edge too. */
+    scroll-padding-block-end: calc(var(--cinder-space-2) + var(--_chat-timeline-clear-end, 0px));
     padding: var(--cinder-chat-timeline-padding) var(--cinder-chat-reading-inline-padding);
     /* Where the end edge fades (`.chat-timeline-mask-fade`), the last row rests that far above the
      * transcript's end too, so its actions are never dimmed at rest; 0 where nothing fades. */

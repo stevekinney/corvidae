@@ -241,8 +241,11 @@ export const CHAT_COPY = {
    */
   stopLine: {
     partway: (cause: string): string => `The reply stopped partway: ${cause}.`,
-    /** For a turn that made its steps and wrote no reply at all. */
-    beforeAnswer: (cause: string): string => `The run stopped before it wrote an answer: ${cause}.`,
+    /**
+     * For a turn that made its steps and wrote no reply at all: the cause alone, since the alert's
+     * heading ("Failed before an answer.") already says where the run was.
+     */
+    beforeAnswer: (cause: string): string => `${cause.charAt(0).toUpperCase()}${cause.slice(1)}.`,
     whileRunning: (tool: string, cause: string): string =>
       `The reply stopped while ${tool} was running: ${cause}.`,
     /** Added for an interrupted tool that only reads. */

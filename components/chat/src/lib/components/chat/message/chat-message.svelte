@@ -396,6 +396,16 @@
   $effect(() => {
     turnCommands?.reconcile(message.id, turn);
   });
+  // A command that did not go through is said where the person pressed it, so it is kept in view:
+  // the transcript scrolls to it as it does to new content, clear of the composer and the fade at
+  // its end (`scroll-padding-block-end` of the timeline), or the person sees no change.
+  let failureLine = $state<HTMLElement | null | undefined>();
+  $effect(() => {
+    const line = failureLine;
+    if (line !== null && line !== undefined && typeof line.scrollIntoView === 'function') {
+      line.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+    }
+  });
   function pressTurn(
     command: TurnCommandKind,
     host: ((messageId: string) => TurnCommandAnswer) | undefined,
@@ -1067,6 +1077,7 @@
         variant="secondary"
         aria-describedby={`${messageId}-discard-description`}
         loading={pendingCommand === 'discard'}
+        loadingWidth="grow"
         disabled={pendingCommand !== undefined && pendingCommand !== 'discard'}
         onclick={() => pressTurn('discard', onDiscardTurn)}>{turnWords.discard}</Button
       >
@@ -1082,6 +1093,7 @@
         variant="primary"
         aria-describedby={`${messageId}-continue-description`}
         loading={pendingCommand === 'continue'}
+        loadingWidth="grow"
         disabled={pendingCommand !== undefined && pendingCommand !== 'continue'}
         onclick={() => pressTurn('continue', onContinueTurn)}>{turnWords.continue}</Button
       >
@@ -1154,7 +1166,7 @@
 <!-- A command that did not go through says so once, under the turn it was pressed on. -->
 {#snippet commandFailure()}
   {#if failedCommand !== undefined}
-    <p class="chat-turn-command-failure" role="alert" dir="auto">
+    <p class="chat-turn-command-failure" role="alert" dir="auto" bind:this={failureLine}>
       {turnWords.commandFailed(failedCommand, withoutAnswer)}
     </p>
   {/if}

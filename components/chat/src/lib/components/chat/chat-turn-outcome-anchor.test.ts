@@ -446,6 +446,39 @@ describe('Chat — a command under way on an outcome anchor', () => {
   });
 });
 
+describe('Chat — a refusal is kept in view', () => {
+  test('the transcript scrolls to the line when it appears, as it does to new content', async () => {
+    const scrolled: Element[] = [];
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = function scrollIntoView(this: HTMLElement) {
+      scrolled.push(this);
+    };
+    try {
+      const stopped = noted(turnOf('finished'), {
+        kind: 'stopped',
+        id: 'stopped:r',
+        reason: 'Stopped.',
+      });
+      const { container } = render(Chat, {
+        id: 'only-tools',
+        variant: 'transcript',
+        onDiscardTurn: () => false,
+        ...statesOf(stopped, IDLE),
+      });
+      await tick();
+      expect(scrolled.some((element) => element.matches('.chat-turn-command-failure'))).toBe(false);
+      await fireEvent.click(getByRole(container, 'button', { name: 'Discard' }));
+      await tick();
+      await tick();
+      const line = container.querySelector('.chat-turn-command-failure');
+      expect(line).not.toBeNull();
+      expect(scrolled).toContain(line!);
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
+  });
+});
+
 describe('Chat — a command under way survives the Chat being made again', () => {
   test('a ledger the host keeps shows the busy control and the refusal on the Chat that replaces it', async () => {
     const stopped = noted(turnOf('finished'), {

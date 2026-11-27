@@ -82,9 +82,10 @@
  * lets the content overflow evenly into that padding. An icon-only button shows the spinner
  * in place of its icon.
  */
-  .cinder-button[data-cinder-loading] {
+  .cinder-button[data-cinder-loading]:not([data-cinder-loading-grows]) {
     /* A tighter gap, so the spinner and an unchanged label fit the padding the pinned width
-       leaves: 10px at md, 8px at sm. */
+       leaves: 10px at md, 8px at sm. A button that grows while it loads (`loadingWidth="grow"`)
+       keeps its normal gap and padding: it takes the width the spinner needs. */
     gap: var(--cinder-space-1);
   }
 

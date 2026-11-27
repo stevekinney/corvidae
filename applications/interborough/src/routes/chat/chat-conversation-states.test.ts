@@ -28,6 +28,7 @@ import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import ChatConversation from './chat-conversation.svelte';
 import SessionSwitch from './chat-session-switch.test-harness.svelte';
 import ChatToasts from './chat-toasts.test-harness.svelte';
+import Chats from './chats.svelte';
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
@@ -771,6 +772,62 @@ describe('the last turn’s outcome and its recovery commands (COR-2725)', () =>
     expect(document.body.textContent?.split(CHAT_COPY.discardTurn.failed)).toHaveLength(2);
   });
 
+  test.each([
+    ['finished', 'Done'],
+    ['canceled', 'Stopped'],
+    ['failed', 'Failed'],
+  ] as const)(
+    'the chat list and the chat’s own title say the same word for a %s run (%s)',
+    async (run, word) => {
+      const tasks = (): unknown =>
+        run === 'finished'
+          ? {
+              tasks: tasksOf('ended-on-tool-call').map((task) => ({
+                ...task,
+                contextId: 'session-1',
+              })),
+              nextPageToken: null,
+            }
+          : stoppedRun(run)();
+      const answers = {
+        'bureau.tasks.list': tasks,
+        'bureau.contexts.list': () => ({
+          contexts: [
+            {
+              ...CONTEXT,
+              id: 'session-1',
+              title: 'Plan the week',
+              agentName: 'tool-runner',
+              lastMessagePreview: 'Look up order 4471',
+            },
+          ],
+          nextOffset: null,
+        }),
+      };
+      serve(ONLY_TOOLS('finished'), { answers });
+
+      const chat = mount();
+      const header = await waitFor(() => {
+        const found = chat.container.querySelector('[data-testid="chat-header"]');
+        if (found === null || !found.textContent?.includes(word)) throw new Error('No title yet.');
+        return found;
+      });
+      expect(header.textContent).toContain(word);
+      cleanup();
+
+      const list = render(QueryPage, { props: { page: Chats } } as never);
+      const row = await waitFor(() => {
+        const found = list.container.querySelector('[data-chat="session-1"]');
+        if (found === null) throw new Error('No row yet.');
+        return found;
+      });
+      await waitFor(() => expect(row.textContent).toContain(word));
+      for (const other of ['Done', 'Stopped', 'Failed'].filter((entry) => entry !== word)) {
+        expect(row.textContent).not.toContain(other);
+      }
+    },
+  );
+
   test('a Continue the Bureau has not answered yet reads busy on its own control, with Discard held', async () => {
     let answer: (value: unknown) => void = () => undefined;
     const served = serve(ONLY_TOOLS('finished'), {
@@ -944,7 +1001,10 @@ describe('the last turn’s outcome and its recovery commands (COR-2725)', () =>
     expect(retry.closest('.chat-turn-outcome')?.getAttribute('data-kind')).toBe('failed');
     expect(container.textContent).toContain('Failed before an answer.');
     // No reply was written, so nothing here names one.
-    expect(container.textContent).toContain('The run stopped before it wrote an answer:');
+    // The cause alone: the heading already says where the run was, and "stopped" is another outcome.
+    expect(container.textContent).toContain('The model provider dropped the connection.');
+    expect(container.textContent).not.toContain('before it wrote an answer');
+    expect(container.textContent).not.toContain('The run stopped');
     expect(container.textContent).toContain('Retry keeps the steps that finished.');
     expect(container.textContent).not.toContain('The reply stopped partway');
     expect(container.textContent).not.toContain('what was written so far');

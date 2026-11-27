@@ -185,6 +185,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       fullWidth: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       loading: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       loadingStatus: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      loadingWidth: { optional: true, type_kind: 'TSUnionType', default: L('hold') },
       mutating: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       quiet: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       flush: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },

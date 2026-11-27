@@ -23,7 +23,7 @@ import { clockTime, rowTime, viewerTimeZone } from '../../lib/format/clock.ts';
 import { formatBytes, formatDuration } from '../../lib/format/index.ts';
 import { hookPath } from '../../lib/identifier-paths.ts';
 import { scheduleDetailPath, workflowDetailPath } from '../../lib/router.svelte.ts';
-import { chatStatusWord, sessionRow, type ChatStatusWord } from '../chat/session-groups.ts';
+import { sessionRow, type ChatStatusWord } from '../chat/session-groups.ts';
 import { reviewTitle, waitingItems } from '../reviews/review-items.ts';
 import { describeCadence } from '../schedules/cadence.ts';
 import { providerDisplayName } from '../settings/models/format-model.ts';
@@ -371,14 +371,15 @@ export function recentChatRows(
   now: number,
   zone: string = viewerTimeZone(),
   waitingChats: ReadonlySet<string> = new Set(),
+  stoppedChats: ReadonlySet<string> = new Set(),
 ): RecentChatRow[] {
   return contexts.slice(0, RECENT_CHAT_LIMIT).map((context): RecentChatRow => {
-    const row = sessionRow(context, questions, failedChats, waitingChats);
+    const row = sessionRow(context, questions, failedChats, waitingChats, stoppedChats);
     return {
       id: context.id,
       title: row.title,
       latest: sameWords(row.snippet, row.title) ? undefined : row.snippet,
-      status: chatStatusWord(context, failedChats, waitingChats),
+      status: row.status,
       time: row.updatedAt === null ? '' : rowTime(row.updatedAt, now, zone),
       timestamp: row.updatedAt,
     };

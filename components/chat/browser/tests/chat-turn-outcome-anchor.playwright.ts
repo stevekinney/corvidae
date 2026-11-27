@@ -436,6 +436,30 @@ for (const width of [1280, 768, 375, 320]) {
         // The end edge fades over 1.5rem; the last row's controls end above it.
         expect(m.timeline.bottom - m.control.bottom).toBeGreaterThanOrEqual(24 - TOLERANCE);
       });
+
+      test(`a refusal of the ${kind} outcome's control is scrolled into view, above the fade`, async ({
+        page,
+      }) => {
+        await open(page, kind);
+        const chat = page.getByTestId('chat-turn-outcome-end');
+        const timeline = chat.locator('.chat-timeline');
+        // The person sees the outcome from the top of a transcript too short for it.
+        await timeline.evaluate((element) => {
+          element.scrollTop = 0;
+        });
+        await chat.getByRole('button', { name: CONTROL_OF[kind] }).click();
+        const line = chat.locator('.chat-turn-command-failure');
+        await expect(line).toHaveCount(1);
+        await expect
+          .poll(async () => {
+            const { box, edge } = await measure(page, { box: line, edge: timeline });
+            return edge.bottom - box.bottom;
+          })
+          .toBeGreaterThanOrEqual(24 - TOLERANCE);
+        // And the line is not above the transcript's start either: it is in view.
+        const seen = await measure(page, { box: line, edge: timeline });
+        expect(seen.box.top).toBeGreaterThanOrEqual(seen.edge.top - TOLERANCE);
+      });
     }
   });
 }

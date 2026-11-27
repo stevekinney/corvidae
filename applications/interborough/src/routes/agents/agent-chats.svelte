@@ -42,6 +42,7 @@
   import { router } from '../../lib/router.svelte.ts';
   import {
     chatDayGroup,
+    chatsWithStoppedRun,
     pendingQuestions,
     sessionRow,
     waitingChatIds,
@@ -148,6 +149,7 @@
   // Waiting on you as the chat list and the chat itself say it (COR-2438).
   const waitingChats = $derived(new Set(waitingChatIds(reviews.data ?? [])));
   const failedChats = $derived(chatsWithFailedRun(tasks.data?.tasks ?? []));
+  const stoppedChats = $derived(chatsWithStoppedRun(tasks.data?.tasks ?? []));
   /**
    * The rows in the order the Bureau cut them, which is the order the person picked. A row's time
    * is the one the order is by (when it last changed, or when it was started), so the day bands,
@@ -157,7 +159,7 @@
     contexts.map((context): SessionRow => {
       const stamp = Date.parse(filters.sort === 'updated' ? context.updatedAt : context.createdAt);
       return {
-        ...sessionRow(context, questions, failedChats, waitingChats),
+        ...sessionRow(context, questions, failedChats, waitingChats, stoppedChats),
         updatedAt: Number.isNaN(stamp) ? null : stamp,
       };
     }),
