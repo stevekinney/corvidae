@@ -1,0 +1,64 @@
+{
+  "issue": "COR-2731_COR-2735_COR-2729_COR-2734",
+  "branch": "chef/ownership-moves",
+  "checkedAt": "3d9d28fe9ea79c99f8577841a1c5e492051a9fb2",
+  "briefVersion": "32738a65d084",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "COR-2731 AC1",
+      "status": "needs-decision",
+      "evidence": "Five guards, five tests, four allowlists and the startup qualification test (now applications/interborough/scripts/qualify-startup.slow.test.ts) moved as renames (commit d1b374c464). The private-helper clause is open: owner-rule-guard-support.ts is shared with three root guards and stays at the root."
+    },
+    {
+      "id": "COR-2731 AC2",
+      "status": "met-on-branch",
+      "evidence": "lint:guards chains bun applications/interborough/scripts/check-<name>.ts for all five; Interborough's lint runs them through its lint:guards script. bun run lint:root exit 0 and bun run --cwd applications/interborough lint exit 0 at 3d9d28fe9e; workspace-contract pins both."
+    },
+    {
+      "id": "COR-2731 AC3",
+      "status": "met-on-branch",
+      "evidence": "An explained delta, not an identical one (tmp/chef/ownership-moves/round-1/COR-2731/guards-compare.txt): empty-state, sidebar, visible-text and separate-box scans and violations are identical; the hidden-label scan grows by exactly the 11 moved files (it scans applications/interborough) and its own two files are excluded from the findings, with a test; 62 collected test names are identical, plus one new test; the slow lane picks up qualify-startup.slow.test.ts (3 tests pass) and Interborough's UI lane collects all five guard tests (118 tests across 8 files); test:slow's only failure is the base one named in checks."
+    },
+    {
+      "id": "COR-2735 AC1",
+      "status": "met-on-branch",
+      "evidence": "ensure-cinder-generated.ts, CINDER_GENERATED_OUTPUTS and the unit and integration tests moved to components/cinder/scripts (0ae46be732). ensure-cinder-owned, cinder-generated-recovery, cinder-generated-consumers and the Turbo/cache-input tests stay at the root and pass."
+    },
+    {
+      "id": "COR-2735 AC2",
+      "status": "met-on-branch",
+      "evidence": "scripts/cinder-generated-recovery.integration.test.ts now runs bun components/cinder/scripts/build-web-components.ts in an isolated copy of HEAD: the first build generates every missing output and builds, the second build over unchanged inputs leaves every output's modification time alone. 6 of 6 pass."
+    },
+    {
+      "id": "COR-2735 AC3",
+      "status": "met-on-branch",
+      "evidence": "findCinderDirectory reads the root workspaces list and picks the manifest named @lostgradient/cinder; tests rename the directory and expect the generator to run there, and a root with no such workspace is an error. Import specifiers and Turbo globs still name components/cinder, as the directory has not been renamed (COR-2082)."
+    },
+    {
+      "id": "COR-2729 AC1",
+      "status": "met-on-branch",
+      "evidence": "Matrix at documentation/weft-operation-coverage.md (repository root); checker and support at applications/interborough/tests/coverage-matrix.test.ts and coverage-matrix.test-support.ts (26f059b2ed); README, imports, package-root resolution, the two unused-code baselines and Interborough's test and test:coverage Turbo inputs updated."
+    },
+    {
+      "id": "COR-2729 AC2",
+      "status": "met-on-branch",
+      "evidence": "21 tests pass (20 before, plus one that reads Interborough's test:ui lane and shows tests/coverage-matrix.test.ts is collected and ignored by no pattern). tmp/chef/ownership-moves/round-1/COR-2729/mutation.txt: deleting a row and breaking a Method's REST binding each make the checker fail."
+    },
+    {
+      "id": "COR-2729 AC3",
+      "status": "met-on-branch",
+      "evidence": "MIGRATION.md and every other historical reference to the retired weft-console workspace were left alone; only live path references changed."
+    },
+    {
+      "id": "COR-2734 AC1",
+      "status": "met-on-branch",
+      "evidence": "runtime-probe to packages/ventriloquist/scripts; engine-probe and browser-failure-regression to components/terminal/scripts; evidence schema, browser asset evidence and the resource probe to the new testing/terminal workspace (@lostgradient/terminal-testing). Pool, workflow and release checks untouched at the root. Commits c580c57c99 and bbfdd6bc08."
+    },
+    {
+      "id": "COR-2734 AC2",
+      "status": "met-on-branch",
+      "evidence": "The schema's $id is unchanged; Ventriloquist's conformance, benchmark and evidence callers import it through the package and their 356 integration tests pass; the Turbo inputs name the new paths (turbo.diff); documentation updated. All nine files exist and are collected: 15 tests in testing/terminal, 1 in components/terminal (the classifyBrowserFailure test split out of evidence-schema.test.ts, a tenth file), the same 16 test names as before; the probes and test:terminal-browser were not executed."
+    }
+  ]
+}
