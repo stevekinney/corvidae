@@ -2,7 +2,7 @@
 
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
-import { ensureCinderGenerated } from './ensure-cinder-generated.ts';
+import { ensureCinderGenerated } from '../components/cinder/scripts/ensure-cinder-generated.ts';
 
 const flags = Bun.argv.slice(2);
 const productionOnly = flags.length === 1 && flags[0] === '--production';

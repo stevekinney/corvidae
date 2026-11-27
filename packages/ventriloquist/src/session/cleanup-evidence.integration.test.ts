@@ -9,7 +9,7 @@ import {
   validateEvidence,
   type EvidenceCell,
   type EvidenceReport,
-} from '../../../../scripts/terminal/evidence-schema.ts';
+} from '@lostgradient/terminal-testing/evidence-schema';
 import type { CleanupOutcome } from '../protocol/messages.ts';
 import {
   createScriptedIterable,
@@ -23,7 +23,7 @@ import { createHarness, flush, startAndAttach } from './session.test-support.ts'
 const packageRoot = join(import.meta.dir, '../..');
 const repositoryRoot = join(packageRoot, '../..');
 const reportPath = join(packageRoot, 'test-results/cleanup.json');
-const schemaPath = join(repositoryRoot, 'scripts/terminal/evidence.schema.json');
+const schemaPath = join(repositoryRoot, 'testing/terminal/src/evidence.schema.json');
 const CLEANUP_DEADLINE_MILLISECONDS = 5_000;
 
 /**

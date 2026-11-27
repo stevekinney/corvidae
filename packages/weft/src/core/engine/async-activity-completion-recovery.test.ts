@@ -9,6 +9,7 @@ import { encode } from '../codec.ts';
 import { Engine } from '../engine.ts';
 import type { ActivityContext, WorkflowContext } from '../types.ts';
 import { activity, workflow } from '../types.ts';
+import { UpstreamHttpError } from '../upstream-http-failure.ts';
 import {
   AsyncActivityDeferral,
   AsyncActivityTokenNotFoundError,
@@ -99,6 +100,40 @@ describe('async activity completion recovery buffering', () => {
     expect(await handle.result()).toBe('caught:arrived-before-adoption');
 
     recoveredEngine[Symbol.dispose]();
+  });
+
+  it('retains typed upstream facts after an acknowledged failure and a second restart', async () => {
+    await using storage = new MemoryStorage();
+    const deferredWorkflow = workflow({ name: 'upstream-deferred-failure' })
+      .activities({ awaitCallback })
+      .execute(async function* (ctx: WorkflowContext) {
+        yield* ctx.run(awaitCallback);
+      });
+    const first = new Engine({ storage });
+    first.register(deferredWorkflow);
+    const tokenPromise = nextAsyncPendingToken(first);
+    const handle = await first.start('upstream-deferred-failure', null);
+    const token = await tokenPromise;
+    first[Symbol.dispose]();
+
+    const acknowledging = new Engine({ storage });
+    acknowledging.register(deferredWorkflow);
+    await recoverPendingAsyncActivities(getInternals(acknowledging));
+    const failure = new UpstreamHttpError({ source: 'github', status: 503 }, 'GitHub unavailable');
+    await acknowledging.failAsyncActivity(token, failure);
+    Object.assign(failure.upstreamFailure, { status: 500 });
+    acknowledging[Symbol.dispose]();
+
+    using recovered = new Engine({ storage });
+    recovered.register(deferredWorkflow);
+    await recovered.recoverAll();
+    expect(await throwingRejectionOf(recovered.getHandle(handle.id).result())).toThrow(
+      'GitHub unavailable',
+    );
+    expect(await recovered.get(handle.id)).toMatchObject({
+      status: 'failed',
+      upstreamFailure: { source: 'github', status: 503 },
+    });
   });
 
   it('fails closed on legacy persisted resolutions without run identity', async () => {
@@ -200,6 +235,41 @@ describe('async activity completion recovery buffering', () => {
     await recoverPendingAsyncActivities(internals);
     expect(internals.pendingAsyncActivities.size).toBe(0);
     engine[Symbol.dispose]();
+  });
+
+  it('recovers ordinary failures and drops malformed upstream facts without dropping the failure', async () => {
+    await using storage = new MemoryStorage();
+    for (const [token, outcome] of [
+      ['plain', { status: 'failed', error: 'GitHub HTTP 503' }],
+      [
+        'invalid',
+        {
+          status: 'failed',
+          error: 'failed',
+          upstreamFailure: { source: 'github', status: 503, private: 'secret' },
+        },
+      ],
+    ] as const) {
+      await storage.put(
+        KEYS.asyncActivityResolution('workflow', token),
+        encode({
+          version: 2,
+          kind: 'resolution',
+          token,
+          workflowId: 'workflow',
+          operationId: token,
+          outcome,
+        }),
+      );
+    }
+    using engine = new Engine({ storage });
+    const internals = getInternals(engine);
+    await recoverPendingAsyncActivities(internals);
+    for (const token of ['plain', 'invalid']) {
+      const resolution = takePendingAsyncActivityResolution(internals, 'workflow', token);
+      expect(resolution?.outcome.status).toBe('failed');
+      expect(resolution?.outcome).not.toHaveProperty('upstreamFailure');
+    }
   });
 
   it('drops a recovered acknowledgement whose persisted token belongs to a stale run', async () => {

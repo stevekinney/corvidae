@@ -1,8 +1,8 @@
 import { sveltePlugin } from '@lostgradient/testing';
 import { relative, resolve } from 'node:path';
 import { compile, parse } from 'svelte/compiler';
-import { ensureCinderGenerated } from '../../../scripts/ensure-cinder-generated.ts';
 import { inlineImports } from './design-system/css.ts';
+import { ensureCinderGenerated } from './ensure-cinder-generated.ts';
 import { observeBrowserBindings } from './web-component-bindings.ts';
 import { readWebComponentCatalog, type PropertyOptions } from './web-component-catalog.ts';
 

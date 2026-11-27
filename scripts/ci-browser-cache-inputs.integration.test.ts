@@ -7,6 +7,7 @@ import { analyzeSource, isCodeFile, resolveSpecifier } from './affected-tests-gr
 import { discoverWorkspaces } from './affected-tests.ts';
 
 const root = resolve(import.meta.dir, '..');
+const ENSURE_CINDER_GENERATED = 'components/cinder/scripts/ensure-cinder-generated.ts';
 const listing = await runWithHangGuard([
   'git',
   '-C',
@@ -72,10 +73,13 @@ describe.each([
     // Workspace source follows its `transit` dependency; the root has no workspace dependency on
     // its runner helpers, so those are the files this task must declare itself. `hang-guard.ts`
     // is the one non-root helper imported by the root process wrapper, and the process ownership
-    // library is the other: the root scripts import its lease, group and lock primitives.
+    // library is another: the root scripts import its lease, group and lock primitives. Cinder's
+    // `ensure-cinder-generated.ts` is owned by Cinder, but the browser tasks reach it and through it
+    // the root process helpers, so the walk treats it like a root helper.
     const isRootHelper = (path: string) =>
       (path.startsWith('scripts/') ||
         path === 'testing/testing/src/hang-guard.ts' ||
+        path === ENSURE_CINDER_GENERATED ||
         (path.startsWith('packages/process-lease/src/') &&
           !/\.test(?:-support)?\.ts$/u.test(path))) &&
       isCodeFile(path);
@@ -142,9 +146,11 @@ describe.each([
     const reachableRootHelpers = [...seen].filter(isRootHelper);
     const dynamicDomains = new Map([
       [
-        'scripts/ensure-cinder-generated.ts',
+        ENSURE_CINDER_GENERATED,
         {
-          fingerprint: '5a58844f32f653558d4b1260534c446f6cc8284b6d72e5f2ccdcb6c818ee27b1',
+          // The helper walks Cinder's `src` and `scripts`, and reads the root `workspaces` and the
+          // workspace manifests they list only to find the one named `@lostgradient/cinder`.
+          fingerprint: '717730156d1ee877d2e21febd9340b24f6784aea8419b23eee78358bd352cf4f',
           inputs: [
             '$TURBO_ROOT$/components/cinder/{src,scripts}/**',
             '$TURBO_ROOT$/package.json',
@@ -203,7 +209,7 @@ describe.each([
       );
       for (const input of classification.inputs) expect(inputs).toContain(input);
     }
-    if (dynamicRootHelpers.has('scripts/ensure-cinder-generated.ts')) {
+    if (dynamicRootHelpers.has(ENSURE_CINDER_GENERATED)) {
       // The Cinder metadata task keys tooling sources and its own manifest. Its transit dependency
       // keys the tooling manifest. Verify the effective Turbo graph for both suite entrypoints.
       const workspace = job === 'fixtures' ? 'browser-fixtures' : 'interborough';
@@ -242,7 +248,7 @@ describe.each([
       expect(metadataInputs).toContain('$TURBO_ROOT$/internal/component-tooling/scripts/**');
       expect(metadataInputs).toContain('$TURBO_ROOT$/internal/component-tooling/src/**');
     }
-    expect(reachableRootHelpers).toContain('scripts/ensure-cinder-generated.ts');
+    expect(reachableRootHelpers).toContain(ENSURE_CINDER_GENERATED);
     // The group starts this fixed executable by path, which the static import graph cannot see.
     if (reachableRootHelpers.includes('packages/process-lease/src/owned-process-group.ts')) {
       const group = readFileSync(

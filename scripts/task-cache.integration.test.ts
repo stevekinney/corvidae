@@ -985,6 +985,11 @@ test('a package task keys on every root script it runs and every root script tho
   // Over-declarations that predate this guard; the list can only shrink, so a fixed entry must be
   // deleted here and a new one cannot be added without review.
   const knownOverDeclarations = [
+    // Interborough's `lint` and `test` overrides keep every input the generic task declares (the
+    // guard above), though its scripts run neither `check-inherited-key-reads.ts` (which every
+    // `#lint` override must still list) nor, themselves, `host-slots.ts`, which its tests import.
+    '@lostgradient/interborough#lint declares scripts/check-inherited-key-reads.ts, which no script it runs reaches',
+    '@lostgradient/interborough#test declares scripts/host-slots.ts, which no script it runs reaches',
     '@lostgradient/ventriloquist#typecheck declares scripts/typecheck-contracts.ts, which no script it runs reaches',
     // Interborough's `test` runs the tests of `run-gated-browser-suite.ts` and the design-review
     // scripts, which import it (COR-2398); this scan does not follow test files. It shows here only
@@ -993,6 +998,90 @@ test('a package task keys on every root script it runs and every root script tho
     'test:slow declares scripts/bun-test.ts, which no script it runs reaches',
   ];
   expect(unreachable.toSorted()).toEqual(knownOverDeclarations);
+});
+
+type TaskInputs = Record<string, { inputs?: string[] }>;
+
+/**
+ * Every `<workspace>#<task>` override of `turbo.json` with the inputs the generic `<task>` declares
+ * that it leaves out. An override replaces the generic task, so each input it omits is a file whose
+ * change replays a cached result.
+ */
+function droppedGenericInputs(tasks: TaskInputs): Record<string, string[]> {
+  const dropped: Record<string, string[]> = {};
+  for (const [key, override] of Object.entries(tasks)) {
+    const task = /^[^/#][^#]*#(.+)$/.exec(key)?.[1];
+    const generic = task === undefined ? undefined : tasks[task]?.inputs;
+    if (generic === undefined) continue;
+    const kept = new Set(override.inputs ?? []);
+    const missing = generic.filter((input) => !kept.has(input));
+    if (missing.length > 0) dropped[key] = missing;
+  }
+  return dropped;
+}
+
+test('a workspace override of a task keeps every input the generic task declares', async () => {
+  // An override that drops one is reported, so the check below cannot pass by finding nothing.
+  expect(
+    droppedGenericInputs({
+      test: { inputs: ['$TURBO_DEFAULT$', '$TURBO_ROOT$/scripts/host-slots.ts'] },
+      '@x/y#test': { inputs: ['$TURBO_DEFAULT$'] },
+      '@x/z#test': { inputs: ['$TURBO_DEFAULT$', '$TURBO_ROOT$/scripts/host-slots.ts', 'extra'] },
+      '//#build': { inputs: [] },
+    }),
+  ).toEqual({ '@x/y#test': ['$TURBO_ROOT$/scripts/host-slots.ts'] });
+
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  const hostSlots = '$TURBO_ROOT$/scripts/host-slots.ts';
+  const staleSlowInputs = [
+    '$TURBO_ROOT$/scripts/bun-test-junit.ts',
+    '$TURBO_ROOT$/scripts/bun-test.ts',
+    '$TURBO_ROOT$/scripts/check-test-durations.ts',
+    '$TURBO_ROOT$/scripts/worker-crash-report.ts',
+    '$TURBO_ROOT$/scripts/workspace-directories.ts',
+  ];
+  // Drops that predate this guard; the list can only shrink, so a fixed entry must be deleted here
+  // and a new drop cannot be added without review.
+  const knownDrops: Record<string, string[]> = {
+    '@lostgradient/cinder#typecheck': ['$TURBO_ROOT$/scripts/typecheck-contracts.ts'],
+    ...Object.fromEntries(
+      [
+        'bureau',
+        'weft',
+        'storage',
+        'storage-bun-sqlite',
+        'storage-indexeddb',
+        'storage-neon',
+        'storage-node-sqlite',
+        'storage-postgres',
+        'storage-turso',
+        'storage-web-extension',
+        'storage-cloudflare',
+        'storage-lmdb',
+        'ventriloquist',
+        'component-tooling',
+        'cinder',
+        'playground',
+      ].map((name) => [`@lostgradient/${name}#test`, [hostSlots]]),
+    ),
+    ...Object.fromEntries(
+      [
+        'weft',
+        'storage-bun-sqlite',
+        'storage-neon',
+        'storage-node-sqlite',
+        'storage-postgres',
+        'storage-turso',
+        'cinder',
+      ].map((name) => [`@lostgradient/${name}#test:slow`, staleSlowInputs]),
+    ),
+    '@lostgradient/component-tooling#test:slow': [
+      ...staleSlowInputs.slice(0, 3),
+      '$TURBO_ROOT$/testing/testing/src/hang-guard.ts',
+      ...staleSlowInputs.slice(3),
+    ],
+  };
+  expect(droppedGenericInputs(configuration.tasks)).toEqual(knownDrops);
 });
 
 test('every test lane that bypasses the JUnit wrapper goes through a runner that honours the selection', async () => {

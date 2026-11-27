@@ -15,18 +15,18 @@
  * `hidden-label-allowed: <reason>` marker whose reason is at least twenty characters.
  *
  * Pages that hid a label before the guard existed are listed in
- * `scripts/hidden-label-allowlist.json` with the file, how many sites it holds and a reason. The
+ * `hidden-label-allowlist.json` beside this file, with the file, how many sites it holds and a reason. The
  * list only shrinks: a file that holds more sites than its entry (or any with no entry) fails, and
  * an entry that names more sites than remain is reported so it can be lowered or removed. Adding
  * or raising an entry is a reviewed edit that needs a reason.
  *
- * Runs from the root `lint:root` script.
+ * Runs from the root `lint:guards` script and from Interborough's `lint`.
  */
 
 import { readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-const root = join(import.meta.dir, '..');
+const root = join(import.meta.dir, '../../..');
 export const ALLOWLIST_FILE = join(import.meta.dir, 'hidden-label-allowlist.json');
 
 /** Directories scanned, relative to the repository root. */
@@ -46,6 +46,12 @@ const SKIPPED_DIRECTORIES = new Set([
   'playwright-report',
   'test-results',
   'test-output',
+]);
+
+/** This guard's own source and test, which live under the directory it scans. */
+const GUARD_OWN_FILES: ReadonlySet<string> = new Set([
+  join(import.meta.dir, 'check-hidden-labels.ts'),
+  join(import.meta.dir, 'check-hidden-labels.test.ts'),
 ]);
 
 const HIDDEN_LABEL_PATTERN =
@@ -118,15 +124,26 @@ export function judgeHiddenLabels(
   return { problems, stale };
 }
 
-async function scan(): Promise<HiddenLabelVerdict> {
-  const paths: string[] = [];
-  for (const directory of SCANNED_DIRECTORIES) collectScannedFiles(join(root, directory), paths);
-
+/**
+ * The violations in each of `paths` (keyed by path relative to the repository root), except this
+ * guard's own source and test, which spell the banned patterns as fixtures and are not controls.
+ */
+export async function findInFiles(
+  paths: readonly string[],
+): Promise<Map<string, HiddenLabelViolation[]>> {
   const found = new Map<string, HiddenLabelViolation[]>();
   for (const path of paths.toSorted()) {
+    if (GUARD_OWN_FILES.has(path)) continue;
     const violations = findHiddenLabels(await Bun.file(path).text());
     if (violations.length > 0) found.set(relative(root, path), violations);
   }
+  return found;
+}
+
+async function scan(): Promise<HiddenLabelVerdict> {
+  const paths: string[] = [];
+  for (const directory of SCANNED_DIRECTORIES) collectScannedFiles(join(root, directory), paths);
+  const found = await findInFiles(paths);
 
   const allowlist = (await Bun.file(ALLOWLIST_FILE).json()) as HiddenLabelAllowlistEntry[];
   return judgeHiddenLabels(found, allowlist);

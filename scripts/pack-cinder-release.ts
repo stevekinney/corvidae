@@ -8,10 +8,10 @@ import ts from 'typescript';
 import { z } from 'zod';
 import chatManifest from '../components/chat/package.json';
 import cinderManifest from '../components/cinder/package.json';
+import { ensureCinderGenerated } from '../components/cinder/scripts/ensure-cinder-generated.ts';
 import editorManifest from '../components/editor/package.json';
 import repositoryManifest from '../package.json';
 import { sveltePlugin } from '../testing/testing/src/svelte-plugin.ts';
-import { ensureCinderGenerated } from './ensure-cinder-generated.ts';
 import publishedSurfaces from './published-exports.json';
 
 const repositoryRoot = resolve(import.meta.dir, '..');

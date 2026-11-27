@@ -10,7 +10,7 @@ import {
   validateEvidence,
   type EvidenceCell,
   type EvidenceReport,
-} from '../../../../scripts/terminal/evidence-schema.ts';
+} from '@lostgradient/terminal-testing/evidence-schema';
 import { createDeferred } from '../session/fixtures/deferred.ts';
 import type { Authorization } from './websocket-types.ts';
 import {
@@ -31,7 +31,7 @@ import {
 const packageRoot = join(import.meta.dir, '../..');
 const repositoryRoot = join(packageRoot, '../..');
 const reportPath = join(packageRoot, 'test-results/websocket.json');
-const schemaPath = join(repositoryRoot, 'scripts/terminal/evidence.schema.json');
+const schemaPath = join(repositoryRoot, 'testing/terminal/src/evidence.schema.json');
 
 /**
  * Every cell of the WebSocket fault-injection matrix. Each is driven over a real loopback socket

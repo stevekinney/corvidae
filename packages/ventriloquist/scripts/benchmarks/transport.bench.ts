@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import {
   validateEvidence,
   type EvidenceReport,
-} from '../../../../scripts/terminal/evidence-schema.ts';
+} from '@lostgradient/terminal-testing/evidence-schema';
 import {
   cleanupControl,
   latencyControl,
@@ -59,7 +59,7 @@ import {
 const packageRoot = join(import.meta.dir, '../..');
 const repositoryRoot = join(packageRoot, '../..');
 const reportPath = join(packageRoot, 'test-results/benchmarks.json');
-const schemaPath = join(repositoryRoot, 'scripts/terminal/evidence.schema.json');
+const schemaPath = join(repositoryRoot, 'testing/terminal/src/evidence.schema.json');
 
 const throughputTarget: Target = {
   metric: 'throughput',

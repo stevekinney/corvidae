@@ -24,6 +24,7 @@
     "test:coverage": "bun ../../scripts/bun-test.ts --coverage --coverage-reporter=text --coverage-reporter=lcov"
   },
   "devDependencies": {
+    "@lostgradient/terminal-testing": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@types/bun": "catalog:",

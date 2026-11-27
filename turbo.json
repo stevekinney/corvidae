@@ -53,6 +53,15 @@
       "dependsOn": ["transit", "metadata"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/check-inherited-key-reads.ts"]
     },
+    "@lostgradient/interborough#lint": {
+      "outputs": [],
+      "dependsOn": ["transit", "metadata"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/check-inherited-key-reads.ts",
+        "$TURBO_ROOT$/scripts/owner-rule-guard-support.ts"
+      ]
+    },
     "lint:fix": {
       "cache": false
     },
@@ -187,7 +196,7 @@
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
-        "$TURBO_ROOT$/scripts/ensure-cinder-generated.ts",
+        "$TURBO_ROOT$/components/cinder/scripts/ensure-cinder-generated.ts",
         "$TURBO_ROOT$/packages/process-lease/src/*.ts",
         "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "!$TURBO_ROOT$/packages/process-lease/src/*.{integration,slow}.test.ts",
@@ -250,7 +259,7 @@
         "$TURBO_ROOT$/scripts/host-slots.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
-        "$TURBO_ROOT$/scripts/ensure-cinder-generated.ts",
+        "$TURBO_ROOT$/components/cinder/scripts/ensure-cinder-generated.ts",
         "$TURBO_ROOT$/packages/process-lease/src/*.ts",
         "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "!$TURBO_ROOT$/packages/process-lease/src/*.{integration,slow}.test.ts",
@@ -310,7 +319,7 @@
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/chef/design-rows-resolved.ts",
-        "$TURBO_ROOT$/scripts/ensure-cinder-generated.ts",
+        "$TURBO_ROOT$/components/cinder/scripts/ensure-cinder-generated.ts",
         "$TURBO_ROOT$/packages/process-lease/src/*.ts",
         "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "!$TURBO_ROOT$/packages/process-lease/src/*.{integration,slow}.test.ts",
@@ -409,7 +418,7 @@
       "dependsOn": ["transit", "^metadata"],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/scripts/ensure-cinder-generated.ts",
+        "$TURBO_ROOT$/components/cinder/scripts/ensure-cinder-generated.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/packages/process-lease/src/*.ts",
         "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
@@ -458,6 +467,32 @@
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/workspace-directories.ts"
+      ]
+    },
+    "@lostgradient/interborough#test": {
+      "outputs": ["test-output/junit/**"],
+      "dependsOn": ["transit", "metadata", "^metadata"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/documentation/weft-operation-coverage.md",
+        "$TURBO_ROOT$/scripts/owner-rule-guard-support.ts",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
+        "$TURBO_ROOT$/scripts/worker-crash-report.ts",
+        "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/host-slots.ts",
         "$TURBO_ROOT$/scripts/workspace-directories.ts"
       ]
     },
@@ -1124,6 +1159,8 @@
       "dependsOn": ["transit", "^metadata"],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/documentation/weft-operation-coverage.md",
+        "$TURBO_ROOT$/scripts/owner-rule-guard-support.ts",
         "$TURBO_ROOT$/scripts/test-watchdog.ts",
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
@@ -1161,9 +1198,9 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/check-inherited-key-reads.ts",
-        "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
-        "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
-        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"
+        "$TURBO_ROOT$/testing/terminal/src/evidence.schema.json",
+        "$TURBO_ROOT$/testing/terminal/src/evidence-schema.ts",
+        "$TURBO_ROOT$/testing/terminal/src/browser-asset-evidence.ts"
       ]
     },
     "@lostgradient/ventriloquist#typecheck": {
@@ -1172,9 +1209,9 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/typecheck-contracts.ts",
-        "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
-        "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
-        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"
+        "$TURBO_ROOT$/testing/terminal/src/evidence.schema.json",
+        "$TURBO_ROOT$/testing/terminal/src/evidence-schema.ts",
+        "$TURBO_ROOT$/testing/terminal/src/browser-asset-evidence.ts"
       ]
     },
     "@lostgradient/ventriloquist#test": {
@@ -1183,9 +1220,9 @@
       "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
-        "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
-        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts",
+        "$TURBO_ROOT$/testing/terminal/src/evidence.schema.json",
+        "$TURBO_ROOT$/testing/terminal/src/evidence-schema.ts",
+        "$TURBO_ROOT$/testing/terminal/src/browser-asset-evidence.ts",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
@@ -1208,9 +1245,9 @@
       "outputs": ["coverage/**", "test-results/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
-        "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
-        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts",
+        "$TURBO_ROOT$/testing/terminal/src/evidence.schema.json",
+        "$TURBO_ROOT$/testing/terminal/src/evidence-schema.ts",
+        "$TURBO_ROOT$/testing/terminal/src/browser-asset-evidence.ts",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",

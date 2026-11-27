@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { validateBrowserAssetEvidence } from './browser-asset-evidence.ts';
 import {
   assertEvidence,
   type EvidenceCell,
@@ -9,7 +10,7 @@ import {
   type WorkloadDefinition,
 } from './evidence-schema.ts';
 
-const root = join(import.meta.dir, '../..');
+const root = join(import.meta.dir, '../../..');
 const reportPath = join(root, 'tmp/terminal-probes/resources.json');
 const pinnedBunVersion = '1.4.4';
 const expectedCellIds = [
@@ -297,27 +298,30 @@ function boundedQueue(capacity: number): {
   };
 }
 
-async function sourceSha(): Promise<string> {
-  const status = Bun.spawnSync(
-    [
-      'git',
-      'status',
-      '--porcelain',
-      '--',
-      'scripts/terminal',
-      'documentation/terminal',
-      'package.json',
-      'scripts/workspace-contract.integration.test.ts',
-      'bun.lock',
-    ],
-    { cwd: root, stdout: 'pipe', stderr: 'pipe' },
-  );
+/** The paths whose uncommitted change makes the resource probe refuse to write evidence. */
+const PROBE_SOURCE_PATHS = [
+  'testing/terminal',
+  // `loadBrowserEngineProbe` loads the engine probe from here, so its source is the probe's.
+  'components/terminal/scripts',
+  'documentation/terminal',
+  'package.json',
+  'scripts/workspace-contract.integration.test.ts',
+  'bun.lock',
+];
+
+/** The commit of `directory`, or an error when the probe source in it has an uncommitted change. */
+export async function sourceSha(directory = root): Promise<string> {
+  const status = Bun.spawnSync(['git', 'status', '--porcelain', '--', ...PROBE_SOURCE_PATHS], {
+    cwd: directory,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
   if (status.exitCode !== 0 || status.stdout.toString().length > 0)
     throw new Error(
       'resource probe source is dirty; commit the exact source before collecting evidence',
     );
   const child = Bun.spawn(['git', 'rev-parse', 'HEAD'], {
-    cwd: root,
+    cwd: directory,
     stdout: 'pipe',
     stderr: 'ignore',
   });
@@ -631,6 +635,33 @@ function unavailable(fixture: string, reason: string): ProbeResult {
   };
 }
 
+/** What the resource probe uses of Terminal's browser engine probe. */
+type BrowserEngineProbe = {
+  probeHiddenPageLiveness: () => Promise<{ liveness: string; duration: number }>;
+  probeCandidate: (
+    candidate: { name: string; version: string; preferred: boolean },
+    directory: string,
+  ) => Promise<{
+    cells: EvidenceCell[];
+    status: 'ready' | 'unavailable';
+    origin?: string;
+    csp?: string;
+    requests?: string[];
+    responses?: Array<{ url: string; status: number; contentType: string }>;
+    failures?: string[];
+  }>;
+};
+
+/**
+ * Terminal owns the browser engine probe, and Terminal depends on this workspace for the evidence
+ * schema, so a package dependency back would be a cycle. The probe is loaded by its path when the
+ * resource probe runs its browser cells, which only a run from this repository does.
+ */
+async function loadBrowserEngineProbe(): Promise<BrowserEngineProbe> {
+  const path = join(root, 'components/terminal/scripts/engine-probe.ts');
+  return (await import(path)) as BrowserEngineProbe;
+}
+
 async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, ProbeResult]> {
   const directory = await mkdtemp(join(tmpdir(), 'corvidae-terminal-resource-'));
   let candidateDirectory: string | undefined;
@@ -639,7 +670,7 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
       join(directory, 'package.json'),
       JSON.stringify({ name: 'terminal-resource-probe', private: true, type: 'module' }),
     );
-    const { probeCandidate, validateBrowserAssetEvidence } = await import('./engine-probe.ts');
+    const { probeCandidate } = await loadBrowserEngineProbe();
     const controlStartedAt = performance.now();
     const controlBrowser = await probeCandidate(
       { name: '@xterm/xterm', version: '6.0.0', preferred: false },
@@ -745,49 +776,35 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
     let hiddenControlObserved: ObservedWorkload | undefined;
     const runHiddenPageLiveness = async (): Promise<ProbeResult> => {
       try {
-        const { chromium } = await import('@playwright/test');
-        const chromiumBrowser = await chromium.launch({ headless: true });
-        try {
-          const page = await chromiumBrowser.newPage();
-          const client = await page.context().newCDPSession(page);
-          await client.send('Page.setWebLifecycleState', { state: 'frozen' });
-          const startedAt = performance.now();
-          const liveness = await Promise.race([
-            page.evaluate(() => new Promise((resolve) => setTimeout(() => resolve('ran'), 25))),
-            new Promise<string>((resolve) => setTimeout(() => resolve('suspended'), 100)),
-          ]);
-          const duration = performance.now() - startedAt;
-          await client.send('Page.setWebLifecycleState', { state: 'active' });
-          return {
-            passed: liveness === 'ran',
-            observations: [`cdpState=frozen;timer=${String(liveness)};stateRestored=active`],
-            metrics: {
+        const { probeHiddenPageLiveness } = await loadBrowserEngineProbe();
+        const { liveness, duration } = await probeHiddenPageLiveness();
+        return {
+          passed: liveness === 'ran',
+          observations: [`cdpState=frozen;timer=${liveness};stateRestored=active`],
+          metrics: {
+            liveness: { value: liveness === 'ran' ? 1 : 0, unit: 'boolean' },
+            duration: { value: duration, unit: 'milliseconds' },
+          },
+          workload: workload(
+            'hidden-page-liveness',
+            'Chromium CDP Page.setWebLifecycleState frozen plus timer observation',
+            'timer remained live while frozen',
+            hiddenControlObserved ??
+              observed(
+                { liveness: { value: 1, unit: 'boolean' } },
+                { cdpState: 'frozen', timer: 'ran', assertion: true, duration: 1 },
+                controlDuration,
+              ),
+          ),
+          observed: observed(
+            {
               liveness: { value: liveness === 'ran' ? 1 : 0, unit: 'boolean' },
               duration: { value: duration, unit: 'milliseconds' },
             },
-            workload: workload(
-              'hidden-page-liveness',
-              'Chromium CDP Page.setWebLifecycleState frozen plus timer observation',
-              'timer remained live while frozen',
-              hiddenControlObserved ??
-                observed(
-                  { liveness: { value: 1, unit: 'boolean' } },
-                  { cdpState: 'frozen', timer: 'ran', assertion: true, duration: 1 },
-                  controlDuration,
-                ),
-            ),
-            observed: observed(
-              {
-                liveness: { value: liveness === 'ran' ? 1 : 0, unit: 'boolean' },
-                duration: { value: duration, unit: 'milliseconds' },
-              },
-              { cdpState: 'frozen', timer: liveness, assertion: liveness === 'ran', duration },
-              duration,
-            ),
-          };
-        } finally {
-          await chromiumBrowser.close();
-        }
+            { cdpState: 'frozen', timer: liveness, assertion: liveness === 'ran', duration },
+            duration,
+          ),
+        };
       } catch (error) {
         return unavailableResult(
           'hidden-page-liveness',
@@ -906,7 +923,7 @@ async function main(): Promise<void> {
   assertEvidence(report, 'resource');
   await mkdir(join(root, 'tmp/terminal-probes'), { recursive: true });
   await Bun.write(reportPath, `${JSON.stringify(report, null, 2)}\n`);
-  console.log(reportPath);
+  process.stdout.write(`${reportPath}\n`);
   if (!report.passed) throw new Error(`resource probe failed; see ${reportPath}`);
 }
 
@@ -914,7 +931,9 @@ if (import.meta.main) {
   try {
     await main();
   } catch (error) {
-    console.error(error);
+    process.stderr.write(
+      `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+    );
     process.exitCode = 1;
   }
 }

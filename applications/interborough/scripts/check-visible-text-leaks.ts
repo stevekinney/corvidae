@@ -18,15 +18,15 @@
  * `/usr/...`, `~/...`), a relative path to a file (`./x`, `../x`, or `dir/name.ext` with a source,
  * data or configuration extension), a Crockford ULID (26 characters, the first 0 to 7), a `secret:`
  * reference, a `${{ secrets` expression, and a `workspace:` reference. Offenders from before the
- * guard are listed in `scripts/visible-text-leaks-allowlist.json`, which only shrinks.
+ * guard are listed in `visible-text-leaks-allowlist.json` beside this file, which only shrinks.
  *
- * Runs from the root `lint:guards` script.
+ * Runs from the root `lint:guards` script and from Interborough's `lint`.
  */
 
-import { lineOf, runCountGuard, shorten } from './owner-rule-guard-support';
+import { lineOf, runCountGuard, shorten } from '../../../scripts/owner-rule-guard-support';
 
 export const SCANNED_DIRECTORIES = ['applications/interborough/src'];
-export const ALLOWLIST_PATH = 'scripts/visible-text-leaks-allowlist.json';
+export const ALLOWLIST_PATH = 'applications/interborough/scripts/visible-text-leaks-allowlist.json';
 const COPY_DIRECTORY = 'applications/interborough/src/app/copy/';
 
 const EXTENSIONS =

@@ -12,15 +12,17 @@
  * `labelVisibility="hidden"`. A tag whose `collapsible` is not literally `{false}` is reported too,
  * because a collapsible group needs its visible trigger. Test harnesses (`*.test-harness.svelte`)
  * are not scanned. The sidebar written before the guard is listed in
- * `scripts/sidebar-no-headings-allowlist.json`, which only shrinks (`owner-rule-guard-support.ts`).
+ * `sidebar-no-headings-allowlist.json` beside this file, which only shrinks
+ * (`scripts/owner-rule-guard-support.ts`).
  *
- * Runs from the root `lint:guards` script.
+ * Runs from the root `lint:guards` script and from Interborough's `lint`.
  */
 
-import { lineOf, runCountGuard, shorten } from './owner-rule-guard-support';
+import { lineOf, runCountGuard, shorten } from '../../../scripts/owner-rule-guard-support';
 
 export const SCANNED_DIRECTORIES = ['applications/interborough/src'];
-export const ALLOWLIST_PATH = 'scripts/sidebar-no-headings-allowlist.json';
+export const ALLOWLIST_PATH =
+  'applications/interborough/scripts/sidebar-no-headings-allowlist.json';
 
 const GROUP_TAG = /<SideNavigationGroup(?=[\s/>])(?:[^>"'{]|"[^"]*"|'[^']*'|\{[^}]*\})*>/g;
 const HIDDEN_LABEL = /\blabelVisibility\s*=\s*(?:"hidden"|'hidden'|\{\s*['"]hidden['"]\s*\})/;

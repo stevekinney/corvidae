@@ -1,8 +1,12 @@
+import {
+  assertEvidence,
+  type EvidenceCell,
+  type EvidenceReport,
+} from '@lostgradient/terminal-testing/evidence-schema';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { assertEvidence, type EvidenceCell, type EvidenceReport } from './evidence-schema.ts';
 
-const root = join(import.meta.dir, '../..');
+const root = join(import.meta.dir, '../../..');
 const reportPath = join(root, 'tmp/terminal-probes/runtime.json');
 const pinnedBunVersion = '1.4.4';
 const expectedCellIds = [
@@ -21,7 +25,8 @@ async function sourceSha(): Promise<string> {
       'status',
       '--porcelain',
       '--',
-      'scripts/terminal',
+      'packages/ventriloquist/scripts/runtime-probe.ts',
+      'testing/terminal',
       'documentation/terminal',
       'package.json',
       'scripts/workspace-contract.integration.test.ts',

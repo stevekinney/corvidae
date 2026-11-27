@@ -29,7 +29,7 @@ import { unwatchFile, watchFile, type Stats } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
-import { ensureCinderGenerated } from '../../../../scripts/ensure-cinder-generated.ts';
+import { ensureCinderGenerated } from '../../../../components/cinder/scripts/ensure-cinder-generated.ts';
 import { seedSampleWorld } from '../../fixtures/sample-world-seed.ts';
 import {
   buildBrowserApplication,

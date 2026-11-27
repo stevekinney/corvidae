@@ -1,4 +1,4 @@
-import type { ObservedWorkload } from '../../../../scripts/terminal/evidence-schema.ts';
+import type { ObservedWorkload } from '@lostgradient/terminal-testing/evidence-schema';
 import { hostFor } from '../../src/bun/bun-process.test-support.ts';
 import { shellProfile } from '../../src/bun/fixtures/bun-pipe-stdin.ts';
 import { STUBBORN_DESCENDANT, pidsIn } from '../../src/bun/fixtures/terminal-output.ts';

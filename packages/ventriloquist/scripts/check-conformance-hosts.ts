@@ -21,7 +21,7 @@ import { join } from 'node:path';
 import {
   validateEvidence,
   type EvidenceReport,
-} from '../../../scripts/terminal/evidence-schema.ts';
+} from '@lostgradient/terminal-testing/evidence-schema';
 
 /** The host cells the delivery is held to: macOS and Linux, both on the architecture the team develops on. */
 export const REQUIRED_HOST_CELLS = ['darwin-arm64', 'linux-arm64'] as const;

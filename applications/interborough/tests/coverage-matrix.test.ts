@@ -1,5 +1,5 @@
 /**
- * Keeps `documentation/weft-console/coverage-matrix.md` honest: every operation in
+ * Keeps `documentation/weft-operation-coverage.md` (at the repository root) honest: every operation in
  * `CLIENT_OPERATION_NAMES` and every non-catalog surface has exactly one row,
  * every `exposed` row points at a file that really reaches its operation,
  * every `Method` sends the request Weft's REST binding for that operation
@@ -7,7 +7,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 import { CLIENT_OPERATION_NAMES, HttpClient } from '@lostgradient/weft';
 
@@ -15,6 +15,7 @@ import { CLIENT_OPERATION_NAMES, HttpClient } from '@lostgradient/weft';
 // publish one: this reaches the table by path, so the check still compares every `Method` against
 // the bindings the server really serves. Nothing else in this application imports Weft's source.
 import { createLiveRestBindings } from '../../../packages/weft/src/server/rest-bindings.ts';
+import { installFetchImplementation } from '../src/lib/live-source/fetch.test-support.ts';
 import {
   checkCoverageMatrix,
   parseCoverageMatrix,
@@ -22,10 +23,11 @@ import {
   type CoverageMatrixContext,
   type RecordedRoute,
 } from './coverage-matrix.test-support.ts';
-import { installFetchImplementation } from './lib/live-source/fetch.test-support.ts';
 
 const PACKAGE_ROOT = join(import.meta.dir, '..');
-const MATRIX_PATH = 'documentation/weft-console/coverage-matrix.md';
+const REPOSITORY_ROOT = join(PACKAGE_ROOT, '../..');
+/** The matrix lives at the repository root; every path a row names is relative to the package. */
+const MATRIX_PATH = 'documentation/weft-operation-coverage.md';
 /** The external URL prefix under which Weft serves its API, the one the console's client uses. */
 const API_PREFIX = '/api';
 
@@ -136,9 +138,9 @@ const context: CoverageMatrixContext = {
 };
 
 function readMatrix(): string {
-  const matrix = readPackageFile(MATRIX_PATH);
-  if (matrix === undefined) throw new Error(`${MATRIX_PATH} is missing.`);
-  return matrix;
+  const absolute = join(REPOSITORY_ROOT, MATRIX_PATH);
+  if (!existsSync(absolute)) throw new Error(`${MATRIX_PATH} is missing.`);
+  return readFileSync(absolute, 'utf8');
 }
 
 /** Replace the one table row for `operation` in `markdown` with `replacement`. */
@@ -355,5 +357,29 @@ describe('dashboard coverage matrix checker', () => {
     expect(routePathMatches('/v1/workflows/:id', '/v1/workflows/')).toBe(false);
     expect(routePathMatches('/v1/workflows/:id', '/v1/workflows/abc/events')).toBe(false);
     expect(routePathMatches('/v1/workflows', '/v1/schedules')).toBe(false);
+  });
+});
+
+describe('dashboard coverage matrix discovery', () => {
+  test("Interborough's host test segment collects this checker, and the UI shards leave it out", async () => {
+    const manifest = (await Bun.file(join(PACKAGE_ROOT, 'package.json')).json()) as {
+      scripts: Record<string, string>;
+    };
+    const checker = `tests/${basename(import.meta.path)}`;
+    expect(checker).toBe('tests/coverage-matrix.test.ts');
+    expect(existsSync(join(PACKAGE_ROOT, checker))).toBe(true);
+    const ignoredBy = (lane: string) =>
+      [...lane.matchAll(/--path-ignore-patterns='([^']+)'/g)]
+        .map((match) => match[1]!)
+        .filter((pattern) => new Bun.Glob(pattern).match(checker));
+    // It reads the repository's documentation and no DOM, so it runs with the host tests, not in
+    // the memory-bound UI shards. `test` runs both segments.
+    const host = manifest.scripts['test:host']!;
+    const ui = manifest.scripts['test:ui']!;
+    expect(manifest.scripts['test']).toContain(host.replace(/^bun /, ''));
+    expect(manifest.scripts['test']).toContain(ui.replace(/^bun /, ''));
+    expect(host.split(/\s+/)).toContain(checker);
+    expect(ignoredBy(host)).toEqual([]);
+    expect(ignoredBy(ui)).toEqual([checker]);
   });
 });
