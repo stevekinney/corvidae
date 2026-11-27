@@ -341,12 +341,12 @@ describe('Table scroll and stack by container', () => {
       new Proxy(original.call(window, element), {
         get: (style, key) => (key === 'fontSize' ? size : Reflect.get(style, key)),
       });
-    window.getComputedStyle = ((element: Element, pseudo?: string | null) =>
+    window.getComputedStyle = (element: Element, pseudo?: string | null) =>
       element.classList.contains('cinder-table-container')
         ? fontSized(element, '16px')
         : element.tagName === 'TABLE'
           ? fontSized(element, '14px')
-          : original.call(window, element, pseudo)) as typeof window.getComputedStyle;
+          : original.call(window, element, pseudo);
     try {
       const { container } = render(Wrapper, {
         columns,

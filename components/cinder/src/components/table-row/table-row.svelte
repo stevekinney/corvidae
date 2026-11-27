@@ -44,8 +44,8 @@
   let titleClaim: { kind: 'header' | 'cell'; owner: object } | undefined = $state.raw();
   setTableRowColumnsContext({
     claimTitle: (kind, owner) => {
-      const current = untrack(() => titleClaim);
-      if (kind === 'header' ? current?.kind === 'header' : current !== undefined) return false;
+      const held = untrack(() => titleClaim);
+      if (kind === 'header' ? held?.kind === 'header' : held !== undefined) return false;
       titleClaim = { kind, owner };
       return true;
     },
