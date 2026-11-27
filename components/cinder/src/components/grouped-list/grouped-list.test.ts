@@ -133,10 +133,11 @@ describe('GroupedList', () => {
         rule.walkDecls((declaration) => {
           if (!inline.test(declaration.prop)) return;
           const values = declaration.value.split(/\s+/);
+          const first = values[0] ?? '';
           // The shorthands `padding` and `margin` carry inline values in their 2nd and 4th places.
           const inlineValues =
             declaration.prop === 'padding' || declaration.prop === 'margin'
-              ? [values[1] ?? values[0], values[3] ?? values[1] ?? values[0]]
+              ? [values[1] ?? first, values[3] ?? values[1] ?? first]
               : [declaration.value];
           // The one inset allowed is the private label inset, which is 0 unless a container whose
           // surface hides the group's sets it (a modal drawer).
