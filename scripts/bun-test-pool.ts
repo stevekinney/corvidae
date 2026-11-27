@@ -72,6 +72,16 @@ import { mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from 'node:fs/pr
 import { cpus, tmpdir, totalmem } from 'node:os';
 import { basename, join } from 'node:path';
 
+import {
+  ownerFileName,
+  processStartTime,
+  processTableEnvironment,
+  readOwner,
+  readTicket,
+  removeLock,
+  type HostLockHolder,
+  type OwnerRecord,
+} from '../packages/process-lease/src/index.ts';
 import { rootScriptEnvironment } from './environment-configuration.ts';
 import {
   describeMemory,
@@ -79,21 +89,13 @@ import {
   gitCommonDirectory,
   liveFront,
   memoryShortfall,
-  ownerFileName,
   pidStartedAtField,
-  processStartTime,
-  processTableEnvironment,
   readMemory,
-  readOwner,
-  readTicket,
   reclaimAbandoned,
-  removeLock,
   runInProcessGroup,
   snapshotParents,
   tryInstall,
-  type HostLockHolder,
   type MemoryReading,
-  type OwnerRecord,
 } from './run-exclusively.ts';
 import { TEST_TIMEOUT_ARGUMENT } from './test-deadlines.ts';
 import {

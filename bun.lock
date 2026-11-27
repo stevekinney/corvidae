@@ -70,6 +70,7 @@
         "@lostgradient/plugin-typesafe": "workspace:*",
         "@lostgradient/plugin-voyage": "workspace:*",
         "@lostgradient/plugin-workspace": "workspace:*",
+        "@lostgradient/process-lease": "workspace:*",
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/storage-bun-sqlite": "workspace:*",
         "@lostgradient/storage-indexeddb": "workspace:*",
@@ -888,6 +889,17 @@
         "@tanstack/ai",
         "@tanstack/ai-typesafe",
       ],
+    },
+    "packages/process-lease": {
+      "name": "@lostgradient/process-lease",
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
     },
     "packages/storage": {
       "name": "@lostgradient/storage",
@@ -1887,6 +1899,8 @@
     "@lostgradient/plugin-voyage": ["@lostgradient/plugin-voyage@workspace:plugins/voyage"],
 
     "@lostgradient/plugin-workspace": ["@lostgradient/plugin-workspace@workspace:plugins/workspace"],
+
+    "@lostgradient/process-lease": ["@lostgradient/process-lease@workspace:packages/process-lease"],
 
     "@lostgradient/storage": ["@lostgradient/storage@workspace:packages/storage"],
 

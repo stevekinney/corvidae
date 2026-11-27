@@ -14,12 +14,12 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
-import { rootScriptEnvironment } from '../../../scripts/environment-configuration.ts';
 import {
+  acquireOwnedProcessLease,
   OwnedProcessGroupUnverifiedError,
   runOwnedProcessGroup,
-} from '../../../scripts/owned-process-group.ts';
-import { acquireOwnedProcessLease } from '../../../scripts/owned-process-lease.ts';
+} from '../../../packages/process-lease/src/index.ts';
+import { rootScriptEnvironment } from '../../../scripts/environment-configuration.ts';
 
 /** A workspace sits two directories below the repository root, and this file sits in its `scripts`. */
 const REPOSITORY_ROOT = resolve(import.meta.dirname, '../../..');

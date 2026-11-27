@@ -15,10 +15,9 @@ import { workflow, type Engine, type WorkflowContext } from '../packages/weft/sr
 
 import { startHost } from '../applications/interborough/src/host/host.ts';
 import { CINDER_PACKAGE_NAME } from '../components/cinder/scripts/ensure-cinder-generated.ts';
+import { isProcessAlive, retireOwnedProcessLease } from '../packages/process-lease/src/index.ts';
 import { spawnPipedWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { waitUntil } from '../testing/testing/src/wait-until.ts';
-import { processIsAlive } from './owned-process-group.test-support.ts';
-import { retireOwnedProcessLease } from './owned-process-lease.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'cinder-owned-'));
 const sibling = await startHost({
@@ -133,7 +132,7 @@ try {
   preOwner.kill('SIGKILL');
   await preOwner.exited;
   preStopped = true;
-  await waitUntil(() => !processIsAlive(gatePid), {
+  await waitUntil(() => !isProcessAlive(gatePid), {
     message: 'the unregistered generator gate to exit',
   });
   const cleanupStart = performance.now();
@@ -216,7 +215,7 @@ test('a killed generator owner can retire its verified build group twice', () =>
 
 test('a killed owner before group registration never starts the generator', () => {
   expect(gatePid).toBeGreaterThan(0);
-  expect(processIsAlive(gatePid)).toBe(false);
+  expect(isProcessAlive(gatePid)).toBe(false);
   expect(existsSync(join(preCinder, 'should-not-run'))).toBe(false);
   expect(existsSync(join(preCinder, '.generate-lock'))).toBe(false);
 });

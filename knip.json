@@ -13,9 +13,7 @@
         "scripts/chef/evaluate-outcomes.ts",
         "scripts/chef/staged-check.ts",
         "scripts/cinder-release-consumer.ts",
-        "scripts/owned-process-gate.ts",
-        "scripts/ensure-cinder-owned.test-support.ts",
-        "scripts/owned-process-lease.test-support.ts"
+        "scripts/ensure-cinder-owned.test-support.ts"
       ],
       "project": ["scripts/**/*.ts"]
     },
@@ -111,6 +109,21 @@
         "!src/**/*.test.ts!",
         "!src/**/*.test-support.ts!",
         "!src/host-contract.ts!"
+      ]
+    },
+    "packages/process-lease": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "src/owned-process-gate.ts",
+        "src/owned-process-group.test-support.ts",
+        "src/owned-process-lease.test-support.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "!src/**/*.test.ts!",
+        "!src/**/*.test-support.ts!",
+        "!src/owned-process-gate.ts!"
       ]
     },
     "packages/weft": {
