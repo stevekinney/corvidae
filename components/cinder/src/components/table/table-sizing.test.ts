@@ -48,12 +48,11 @@ describe('Table column sizing', () => {
     expect(sizings(row!, ':scope > *')).toEqual([null, 'fill']);
   });
 
-  test('outside a fit table, sizing marks the cells but cuts nothing and wraps no prose', () => {
+  test('outside a fit table, sizing marks the cells but cuts nothing', () => {
     const { container } = render(SizingFixture, { fit: false });
     flushSync();
     expect(sizings(container, 'tbody tr:first-child > *')).toEqual(['content', 'content', 'fill']);
     expect(container.querySelector('.cinder-table__cell-text')).toBeNull();
-    expect(container.querySelector('.cinder-table__cell-prose')).toBeNull();
   });
 
   test('a table with no sizing marks no cell', () => {
@@ -111,16 +110,9 @@ describe('Table column sizing', () => {
     );
     expect(truncated.get('inline-size')).toBe('0');
     expect(truncated.get('min-inline-size')).toBe('100%');
-    // Prose in a fill column keeps the readable measure.
-    expect(
-      declarationsFor(
-        css,
-        '.cinder-table[data-cinder-fit]:not([data-cinder-stacked]) .cinder-table__cell-prose',
-      ).get('max-inline-size'),
-    ).toBe('var(--cinder-content-width-prose)');
   });
 
-  test('a content cell cuts a long value with an ellipsis, and a fill cell holds its prose to a measure', () => {
+  test('a content cell cuts a long value with an ellipsis, and a fill cell runs its text the full width', () => {
     const { container } = render(SizingFixture, {});
     flushSync();
     const firstRow = container.querySelector('tbody tr');
@@ -130,8 +122,9 @@ describe('Table column sizing', () => {
     expect(result?.querySelector(':scope > .cinder-table__cell-text')).not.toBeNull();
     // A content cell is not marked `truncate`: that is the caller's prop, not the column's.
     expect(result?.hasAttribute('data-cinder-truncate')).toBe(false);
-    expect(found?.querySelector(':scope > .cinder-table__cell-prose')?.textContent).toContain(
-      'port 7233',
-    );
+    // A fill cell holds its text directly, with no measure wrapper (decided 2026-11-26: the prose
+    // measure is for running text, not table cells).
+    expect(found?.firstElementChild).toBeNull();
+    expect(found?.textContent).toContain('port 7233');
   });
 });

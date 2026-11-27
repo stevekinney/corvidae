@@ -129,21 +129,13 @@ for (const width of [1280, 1024]) {
     expect(layout.key).toEqual(ended);
   });
 
-  test(`at ${width}px prose in the fill column keeps a readable measure`, async ({ page }) => {
+  // Decided 2026-11-26: a cell holds one finding, not running text, so the fill column's text is not
+  // held to a measure. A finding that wraps has used the whole width of its cell first.
+  test(`at ${width}px a wrapping finding uses its whole cell before it wraps`, async ({ page }) => {
     await open(page, width);
-    const measures = await page.evaluate(() =>
-      Array.from(
-        document.querySelectorAll('[data-testid="fit-columns"] .cinder-table__cell-prose'),
-        (prose) => ({
-          width: prose.getBoundingClientRect().width,
-          cap: Number.parseFloat(getComputedStyle(prose).maxInlineSize),
-        }),
-      ),
-    );
-    expect(measures).toHaveLength(3);
-    for (const prose of measures) {
-      expect(Number.isFinite(prose.cap)).toBe(true);
-      expect(prose.width).toBeLessThanOrEqual(prose.cap + 0.5);
+    for (const row of await measureRows(page, 'fit-columns')) {
+      const finding = row[2]!;
+      if (finding.lines > 1) expect(finding.unused).toBeLessThan(80);
     }
   });
 }

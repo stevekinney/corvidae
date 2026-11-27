@@ -43,8 +43,6 @@
   // A `content` cell never wraps, so a value longer than its column's cap (half the table) is cut
   // the way a `truncate` cell is: an ellipsis, and the whole value in a tooltip.
   const cutsAtCap = $derived(sized && sizing === 'content');
-  // A `fill` cell holds prose, held to a readable measure.
-  const holdsProse = $derived(sized && sizing === 'fill');
   const placeColumn: Attachment<HTMLElement> = (cell) => {
     void rowColumns?.version;
     columnPosition = columnOf(cell);
@@ -139,8 +137,6 @@
         text={title ?? titleText ?? ''}
         triggerRef={titleCut.trigger}
       />{/if}
-  {:else if holdsProse}
-    <span class="cinder-table__cell-prose">{@render children?.()}</span>
   {:else}
     {@render children?.()}
   {/if}{#if detail}<span class="cinder-table__cell-detail">{@render detail()}</span>{/if}

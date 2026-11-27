@@ -32,7 +32,7 @@ export type TableHeaderCellProps = Omit<
    * never wider than half the table (28rem for a table drawn with `scrollable={false}`, which has
    * no scroll box to measure), and its cells do not wrap; a longer value ends in an ellipsis
    * with the whole value in a tooltip. `'fill'` is for prose: the column takes the width the
-   * `content` columns leave and wraps, held to the prose measure. Left out, a column shares the width
+   * `content` columns leave and wraps, its text running the full width of the column. Left out, a column shares the width
    * equally with the others, as every column of a `fit` table with no `sizing` does. It has no
    * effect outside a `fit` table, or while the table is stacked.
    */

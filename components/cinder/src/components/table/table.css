@@ -479,12 +479,8 @@
     min-inline-size: 100%;
   }
 
-  /* Prose in a fill column keeps a readable measure; the rest of the column is the ragged end of its
-   * lines, inside the fill cell, never width taken from another column. */
-  .cinder-table[data-cinder-fit]:not([data-cinder-stacked]) .cinder-table__cell-prose {
-    display: block;
-    max-inline-size: var(--cinder-content-width-prose);
-  }
+  /* A fill cell's text runs the full width the content columns leave: a cell holds one finding, not
+   * running text, so the prose measure does not apply (COR-2769, decided 2026-11-26). */
 
   /* ----------------------------------------
  * Controls — every control in a `controls` column fills the cell, so the
