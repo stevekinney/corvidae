@@ -1,7 +1,7 @@
 {
   "issue": "COR-2736",
   "branch": "steve/composable-portable-bureau-client",
-  "checkedAt": "90ae839344c29f449f7cea404910c1f76ec41e77",
+  "checkedAt": "01883ca1f5889379f5b3f5f1f8d9971d82aeb54b",
   "briefVersion": "8d15159fe2bc",
   "status": "BLOCKED",
   "criteria": [
@@ -73,7 +73,7 @@
     {
       "id": "AC14",
       "status": "not-met",
-      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+      "evidence": "Health page owning test passed 22/22, including actual non-storage attention action navigation to /health?advanced=alerts and expansion of Alerts detail. Exact-candidate design capture and review remain coordinator-owned and pending."
     },
     {
       "id": "AC15",
