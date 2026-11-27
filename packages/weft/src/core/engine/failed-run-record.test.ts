@@ -38,6 +38,7 @@ import {
 } from '../persisted-data-incompatible-error.ts';
 import type { WorkflowContext, WorkflowState, WorkflowSummary } from '../types.ts';
 import { activity, workflow } from '../types.ts';
+import { UpstreamHttpError } from '../upstream-http-failure.ts';
 import { WorkflowNotFoundError } from './errors.ts';
 import { Engine } from './index.ts';
 
@@ -275,6 +276,31 @@ const rows: MatrixRow[] = [
         summaryAbsent: ['retrying'],
       },
     },
+  },
+  {
+    name: 'typed-upstream-error-from-activity',
+    criterion: 'COR-2762 AC12',
+    run: async () => {
+      await using engine = new Engine();
+      const lookup = activity({
+        name: 'lookup',
+        execute: async () => {
+          throw new UpstreamHttpError({ source: 'github', status: 503 }, 'private diagnostic');
+        },
+      } as never);
+      engine.register(
+        workflow({ name: 'row-upstream' })
+          .activities({ lookup })
+          .execute(async function* (ctx: WorkflowContext) {
+            return yield* ctx.run(lookup);
+          }),
+      );
+      const handle = await engine.start('row-upstream', null, { id: 'row-upstream-1' });
+      await throwingRejectionOf(handle.result());
+      await waitForStatus(engine, 'row-upstream-1', 'failed');
+      return { failed: await snapshotOf(engine, 'row-upstream', 'row-upstream-1') };
+    },
+    expected: { failed: { state: { upstreamFailure: { source: 'github', status: 503 } } } },
   },
   {
     name: 'weft-error-from-activity',

@@ -9,7 +9,7 @@ import {
   type ConversationHistory,
   type ToolCallPair,
 } from '@lostgradient/chat';
-import { parseStepRowIdentifier } from '@lostgradient/operative';
+import { parseStepRowIdentifier } from '@lostgradient/operative/message-identifiers';
 
 import { humanizeIdentifier, type ToolCallRailCall } from '@lostgradient/cinder';
 

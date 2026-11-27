@@ -39,7 +39,7 @@
  * a `Conflict` fault carrying `compatibilityReasons`
  * (`compatibility-verdict.ts`).
  */
-import { activityContractHash, HttpClientError } from '@lostgradient/weft';
+import { activityContractHash, HttpClientError } from '@lostgradient/weft/client';
 
 import { compareCodepoint } from '../../lib/compare-codepoint.ts';
 import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../lib/faults.ts';

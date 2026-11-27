@@ -15,9 +15,9 @@ import { z } from 'zod';
 
 import { type OperationFault, defineOperation } from '@lostgradient/backchannel';
 import type { AccessPolicy, UnknownRestBinding } from '@lostgradient/backchannel/internals';
+import { WORKER_CONFLICT_REASONS } from '../../core/worker-conflict-reasons.ts';
 import type { WorkerRegistry } from '../../worker/registry.ts';
 import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
-import { WORKER_CONFLICT_REASONS } from './worker-conflict-reasons.ts';
 
 const forgetWorkerInput = z.object({
   workerId: z.string().min(1).describe('Id of the listed worker to stop listing.'),

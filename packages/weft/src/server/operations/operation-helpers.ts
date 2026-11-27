@@ -8,9 +8,9 @@ import {
 } from '@lostgradient/backchannel/internals';
 import type { Storage } from '@lostgradient/storage';
 import { UndeclaredWorkflowMessageError, type Engine } from '../../core/engine.ts';
+import { WORKER_CONFLICT_REASONS } from '../../core/worker-conflict-reasons.ts';
 import { WorkerDeploymentVersionRemovedError } from '../../worker/deployment-version-removed-error.ts';
 import { shapeWeftRestFaultAsJson } from '../weft-operation-fault.ts';
-import { WORKER_CONFLICT_REASONS } from './worker-conflict-reasons.ts';
 
 /**
  * The `Conflict` a start answers when its worker start-override token cannot

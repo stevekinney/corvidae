@@ -10,7 +10,7 @@ import type {
   CatalogTransport,
 } from '@lostgradient/backchannel/client';
 import { jsonRpcHttpEndpoint } from '@lostgradient/backchannel/client';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 import { faultAdviceOf, withoutInternalNames } from './faults.ts';
 import { refuseWrite } from './write-guard.ts';

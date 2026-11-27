@@ -375,7 +375,7 @@ async function mergeGateCore(
   if (ciEvidenceProblem !== undefined) return fail('verification', ciEvidenceProblem);
   const landingProblem = await validateLandingEvidence(
     verification,
-    { route: 'pull-request', defaultBranch, integrationTree },
+    { route: 'pull-request', defaultBranch, integrationTree, incomingBase: report.base ?? '' },
     {
       runner,
       ...(partial.verification?.ciProvider === undefined

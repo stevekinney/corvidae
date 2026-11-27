@@ -5,7 +5,7 @@ import {
   CATALOG_OPERATION_NAMES,
   type CatalogOperationName,
   type CatalogOperationTypes,
-} from '../lib/generated/bureau-operation-client.generated.ts';
+} from '@lostgradient/bureau-sdk';
 
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 

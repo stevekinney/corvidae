@@ -1,6 +1,7 @@
 import type { ContextOperationRequest } from '../context.ts';
 import { classifyErrorAsFailureCategory } from '../failure-categories.ts';
 import type { OperationOutcome } from '../types.ts';
+import { upstreamFailureOf } from '../upstream-http-failure.ts';
 import type { EngineInternals } from './internals.ts';
 import {
   isCurrentOperation,
@@ -255,11 +256,13 @@ export function failOperation(
   // rethrows it as-is, matching Promise.all's rethrow contract even
   // when the original reason is `undefined`.
   const errorMessage = error instanceof Error ? error.message : String(error);
+  const upstreamFailure = upstreamFailureOf(error);
   callbacks.finalizePendingTimelineEntry(workflowId, 'failed', errorMessage);
   const outcome = {
     status: 'failed' as const,
     error: errorMessage,
     ...(error instanceof Error ? { errorName: error.name } : {}),
+    ...(upstreamFailure === undefined ? {} : { upstreamFailure }),
     failureCategory: classifyErrorAsFailureCategory(error, {
       defaultErrorCategory: 'application',
     }),

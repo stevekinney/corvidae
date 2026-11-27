@@ -21,6 +21,7 @@ import type {
   WorkflowState,
   WorkflowTimelineEntry,
 } from '../../types.ts';
+import { upstreamFailureOf } from '../../upstream-http-failure.ts';
 import {
   buildRetainedTerminalSearchAttributes,
   buildTerminalWorkflowIndexOperations,
@@ -635,6 +636,8 @@ export async function failWorkflow(
   // timeline entry this write finalizes as `failed` below, so the two always agree.
   const errorCode = errorCodeOf(error);
   if (errorCode !== undefined) stateUpdate.errorCode = errorCode;
+  const upstreamFailure = upstreamFailureOf(error);
+  if (upstreamFailure !== undefined) stateUpdate.upstreamFailure = upstreamFailure;
   const failedStep = failedStepOf(internals.pendingTimelineEntries.get(workflowId)?.entry);
   if (failedStep !== undefined) stateUpdate.failedStep = failedStep;
   if (terminalCleanupToken !== undefined) {

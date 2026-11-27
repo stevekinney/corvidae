@@ -17,7 +17,8 @@
  * The console edits the value of a key the run already has, in the type it has. It adds no key and
  * removes none, and it never edits an engine-owned key (`weft:` prefix), which the engine rewrites.
  */
-import { HttpClientError, type HttpClient } from '@lostgradient/weft';
+import type { HttpClient } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 export const ATTRIBUTES_GET_OPERATION = 'weft.workflows.attributes.get';
 export const ATTRIBUTES_SET_OPERATION = 'weft.workflows.attributes.set';

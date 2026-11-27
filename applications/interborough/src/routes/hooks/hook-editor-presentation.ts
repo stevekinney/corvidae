@@ -6,7 +6,7 @@
  * reading. The list's own sentence is `hookRowSentence` in `hook-presentation.ts`.
  */
 import type { StatusDotWord } from '@lostgradient/cinder';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 import { formatDateTime } from '@lostgradient/cinder';
 import { agentLabel } from '../../lib/agent-label.ts';

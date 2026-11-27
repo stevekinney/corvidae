@@ -85,6 +85,38 @@ function statusImages(row: Element): HTMLElement[] {
 }
 
 describe('wrapMeta on a phone', () => {
+  test('leading-always uses the selected phone width for the same first-line layout', () => {
+    const stylesheet = readFileSync(new URL('./stacked-list-item.css', import.meta.url), 'utf8');
+    const containerRule =
+      /@container cinder-stacked-list-item \(max-width: 639\.98px\)\s*\{\s*\.cinder-stacked-list-item--lines\.cinder-stacked-list-item--status-leading-always:not\(\s*\[data-cinder-phone-width='viewport'\]\s*\)\s*>\s*\.cinder-stacked-list-item__layout\s*\{([^}]+)\}/u.exec(
+        stylesheet,
+      );
+    const viewportRule =
+      /\.cinder-stacked-list-item--lines\[data-cinder-phone-width='viewport'\]\[data-cinder-phone\]\.cinder-stacked-list-item--status-leading-always\s*>\s*\.cinder-stacked-list-item__layout\s*\{([^}]+)\}/u.exec(
+        stylesheet,
+      );
+    expect(containerRule?.[1]?.replace(/\s+/gu, ' ').trim()).toBe(
+      viewportRule?.[1]?.replace(/\s+/gu, ' ').trim(),
+    );
+    expect(containerRule?.[1]).toContain("'status leading title time trailing'");
+    expect(containerRule?.[1]).toContain("'line line line line trailing'");
+    expect(containerRule?.[1]).toContain('--_cinder-status-track: max-content');
+  });
+  test('leading-always retains one status in its leading column on phones and wide rows', () => {
+    const { container } = render(Fixture, { props: { leadingAlways: true } });
+    for (const width of [320, 375, 1024]) {
+      for (const row of resizeRows(container, width)) {
+        expect(statusImages(row)).toHaveLength(1);
+        expect(row.querySelector('.cinder-stacked-list-item__status-inline')).toBeNull();
+        expect(row.querySelector('.cinder-stacked-list-item__status')?.textContent).toContain(
+          'Check not met',
+        );
+        expect(row.classList.contains('cinder-stacked-list-item--status-leading-always')).toBe(
+          true,
+        );
+      }
+    }
+  });
   test('draws the status at the start of line two, before the meta, and not in the column', () => {
     const { container } = render(Fixture);
     for (const row of resizeRows(container, 320)) {

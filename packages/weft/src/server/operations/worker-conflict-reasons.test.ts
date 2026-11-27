@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'bun:test';
 
-import * as weft from '../../index.ts';
+import * as client from '../../client/index.ts';
 import {
   UPGRADE_REFUSAL_REASON_PREFIX,
   WORKER_CONFLICT_REASONS,
-} from './worker-conflict-reasons.ts';
+} from '../../core/worker-conflict-reasons.ts';
+import * as weft from '../../index.ts';
 
 describe('worker Conflict reasons', () => {
+  it('shares the public client and root values', () => {
+    expect(client.WORKER_CONFLICT_REASONS).toBe(weft.WORKER_CONFLICT_REASONS);
+    expect(client.UPGRADE_REFUSAL_REASON_PREFIX).toBe(weft.UPGRADE_REFUSAL_REASON_PREFIX);
+  });
   it('pins the strings a client branches on', () => {
     expect(WORKER_CONFLICT_REASONS).toEqual({
       staleGeneration: 'stale-generation',

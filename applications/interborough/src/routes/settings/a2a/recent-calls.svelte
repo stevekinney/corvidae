@@ -20,7 +20,7 @@
   import { getRecentCalls } from '../../../lib/a2a-calls.ts';
   import { agentLabel } from '../../../lib/agent-label.ts';
   import { faultErrorStateAdvice } from '../../../lib/faults.ts';
-  import { createBureauClient } from '../../../lib/generated/bureau-operation-client.generated.ts';
+  import { createBureauClient } from '../../../lib/bureau-api.ts';
   import type { AgentSummary } from '../../../lib/bureau-client.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { getPrincipalStore, principalQueryScope } from '../../../lib/scopes.svelte.ts';

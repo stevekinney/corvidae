@@ -10,7 +10,7 @@
  * the key does not take. {@link settingsFaultOf} sorts them for the page.
  */
 import type { SettingLockReason } from '@lostgradient/bureau';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 import { z } from 'zod';
 
 import { bureauClient, type BureauEvent, type BureauOutput } from './bureau-api.ts';

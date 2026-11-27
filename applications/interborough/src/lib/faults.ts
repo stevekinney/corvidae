@@ -48,7 +48,8 @@
 // re-exports server-only code reaching `node:crypto`), is what actually
 // keeps this module's dependency graph browser-only end to end.
 import { type FaultCode } from '@lostgradient/backchannel';
-import { HttpClientError, isWeftFault, type WeftErrorCode } from '@lostgradient/weft';
+import type { WeftErrorCode } from '@lostgradient/weft';
+import { HttpClientError, isWeftFault } from '@lostgradient/weft/client';
 
 /** The six `FaultDisplay` UI treatment buckets (plan §10.4). */
 export type FaultTreatmentKind =

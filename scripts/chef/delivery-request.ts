@@ -1000,7 +1000,7 @@ export async function check(
     () =>
       validateLandingEvidence(
         loaded,
-        { route, defaultBranch, integrationTree },
+        { route, defaultBranch, integrationTree, incomingBase: base },
         {
           runner,
           ...(dependencies.verification.ciProvider === undefined

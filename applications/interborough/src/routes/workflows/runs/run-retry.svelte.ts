@@ -7,7 +7,7 @@
  * Each press is one request with an identifier of its own, so the Bureau answers a repeat of it as
  * the first and never runs the step twice; the button is held while the request is out.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 
 import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';

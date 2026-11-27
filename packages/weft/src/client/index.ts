@@ -8,6 +8,8 @@
  * @module client/index
  */
 
+export { activityContractHash } from '../core/contract/hash.ts';
+export { parseWorkflowRevisionManifest } from '../core/contract/manifest-parse.ts';
 export {
   WorkflowCancelledEvent,
   WorkflowCompletedEvent,
@@ -18,6 +20,8 @@ export {
   WorkflowTeardownEvent,
   WorkflowTimedOutEvent,
 } from '../core/events/workflow-events.ts';
+export { REGISTRY_VERSION } from '../core/registry-snapshot.ts';
+export { getNextCronOccurrence } from '../core/schedule/cron-occurrence.ts';
 export type {
   PendingAsyncActivityInfo,
   PendingAsyncActivityListOptions,
@@ -31,6 +35,12 @@ export {
   isWeftFault,
   type WeftErrorCode,
 } from '../core/weft-error.ts';
+export {
+  UPGRADE_REFUSAL_REASON_PREFIX,
+  WORKER_CONFLICT_REASONS,
+} from '../core/worker-conflict-reasons.ts';
+export { WEFT_RESERVED_KEY_PREFIXES } from '../storage/keys.ts';
+export { selectWorkerDeployment } from '../worker/deployment-routing.ts';
 export type { WeftClientStorage } from './client-storage.ts';
 export type { WorkflowEventStreamOptions, WorkflowEventTransport } from './event-stream-options.ts';
 export type { WorkflowEventTail } from './event-tail.ts';

@@ -65,6 +65,26 @@ function assertSupportedSchema(schema: Record<string, unknown>): void {
 }
 
 export const outputDirectory = join(dirname(fileURLToPath(import.meta.url)), '../src/generated');
+export const bureauOutputDirectory = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '../src/bureau-generated',
+);
+
+export function createBureauClientSources(): Promise<ReadonlyMap<string, string>> {
+  return createOperationClientSources(createBureauCatalogSnapshot(), {
+    packageName: '@lostgradient/bureau-sdk',
+    serverName: 'Bureau',
+    factoryName: 'createBureauClient',
+    outputDirectory: bureauOutputDirectory,
+    portableEntries: true,
+    referencedSharedTypesOnly: true,
+    subscriptions: 'generic',
+    subscriptionRoutes: { pathPrefix: '/bureau/v1/subscriptions' },
+    svelte: true,
+    format: async (contents, filePath) =>
+      format(contents, { ...(await resolveConfig(filePath)), filepath: filePath }),
+  });
+}
 export async function createReviewsClientSources(): Promise<ReadonlyMap<string, string>> {
   const snapshot = createBureauCatalogSnapshot();
   const schemas = Object.fromEntries(
@@ -80,7 +100,7 @@ export async function createReviewsClientSources(): Promise<ReadonlyMap<string, 
       ),
     },
     {
-      packageName: '@lostgradient/bureau-client/reviews',
+      packageName: '@lostgradient/bureau-sdk/reviews',
       serverName: 'Reviews',
       factoryName: 'createReviewsClient',
       outputDirectory,
@@ -114,4 +134,7 @@ if (import.meta.main) {
   await mkdir(outputDirectory, { recursive: true });
   for (const [name, source] of await createReviewsClientSources())
     await Bun.write(join(outputDirectory, name), source);
+  await mkdir(bureauOutputDirectory, { recursive: true });
+  for (const [name, source] of await createBureauClientSources())
+    await Bun.write(join(bureauOutputDirectory, name), source);
 }

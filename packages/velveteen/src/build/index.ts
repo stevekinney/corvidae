@@ -36,6 +36,8 @@ export async function buildProduction(options: {
   staticDirectory?: string;
   basePath?: string;
   mode?: "development" | "production";
+  /** Trusted application build plugins, applied only to browser inputs. */
+  browserPlugins?: readonly Bun.BunPlugin[];
 }): Promise<ProductionGeneration> {
   const projectDirectory = await realpath(options.projectDirectory);
   const routesDirectory = await realpath(options.routesDirectory);
@@ -81,6 +83,7 @@ export async function buildProduction(options: {
       staticDirectory,
       basePath,
       transportModule,
+      browserPlugins: options.browserPlugins,
     });
     return await publishProductionGeneration({
       stagingDirectory,

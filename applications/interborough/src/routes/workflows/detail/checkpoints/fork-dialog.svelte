@@ -78,7 +78,7 @@
   import { ChevronDown, ChevronRight, GitFork } from '@lucide/svelte';
 
   import { RUN_FORK_PREVIEW_COPY } from '../../../../app/copy/runs.ts';
-  import { HttpClientError } from '@lostgradient/weft';
+  import { HttpClientError } from '@lostgradient/weft/client';
   import { faultTreatment } from '../../../../lib/faults.ts';
   import { formatRelativeTime } from '../../../../lib/format/index.ts';
   import { queryKeys } from '../../../../lib/query.ts';

@@ -24,7 +24,8 @@
  *
  */
 import { isFaultCode, type FaultCode } from '@lostgradient/backchannel';
-import { HttpClientError, type HttpClient } from '@lostgradient/weft';
+import type { HttpClient } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 import { faultAdviceOf, type FaultAdvice } from '../../lib/faults.ts';
 

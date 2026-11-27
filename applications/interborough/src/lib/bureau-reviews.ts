@@ -4,11 +4,10 @@
  * either a tool approval or a question (a human wait). Their wire shapes are in
  * `packages/bureau/src/http/bureau-reviews-operations.ts`.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
+import type { CATALOG_OPERATION_BEHAVIORS, CatalogOperations } from '@lostgradient/bureau-sdk';
 import { bureauClient, type BureauOutput, type WithUndefined } from './bureau-api.ts';
-import type { CatalogOperations } from './generated/bureau-operation-client.generated.ts';
-import type { CATALOG_OPERATION_BEHAVIORS } from './generated/operation-behaviors.generated.ts';
 
 type ReviewConflictReason =
   (typeof CATALOG_OPERATION_BEHAVIORS)['bureau.reviews.resolve']['behavior']['conflictReasons'][number];

@@ -14,7 +14,7 @@
   import type { Snippet } from 'svelte';
 
   import { Banner, ErrorState, Skeleton } from '@lostgradient/cinder';
-  import { HttpClientError } from '@lostgradient/weft';
+  import { HttpClientError } from '@lostgradient/weft/client';
 
   import { AGENT_PAGE_COPY } from '../../app/copy/agents.ts';
   import { RETRY_LABEL } from '../../app/copy/views.ts';

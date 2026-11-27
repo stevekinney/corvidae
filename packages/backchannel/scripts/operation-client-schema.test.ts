@@ -11,6 +11,13 @@ function renderInline(schema: Record<string, unknown>): string {
 }
 
 describe('schemaToNode + renderNode — emitted text contract', () => {
+  it('removes string literals subsumed by an unconstrained string while retaining other branches', () => {
+    expect(
+      renderInline({
+        anyOf: [{ enum: ['known', 'other'] }, { type: 'string' }, { type: 'number' }],
+      }),
+    ).toBe('string | number');
+  });
   it('keeps unknown references and unguarded cycles unknown', () => {
     expect(renderInline({ $ref: 'https://example.com/schema' })).toBe('unknown');
     expect(renderInline({ $ref: '#/$defs/missing', $defs: {} })).toBe('unknown');

@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import type { ReviewsOperationTypes } from '@lostgradient/bureau-client/reviews';
+import type { ReviewsOperationTypes } from '@lostgradient/bureau-sdk/reviews';
 import { render, waitFor } from '@testing-library/svelte';
 import { expect, it } from 'bun:test';
 import { viewReview } from './model.ts';

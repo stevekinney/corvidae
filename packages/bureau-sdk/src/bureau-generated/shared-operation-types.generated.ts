@@ -440,8 +440,8 @@ export type SharedAgentNameKindParentConte_3eb629fc = {
   readonly parentRunId: string;
   readonly toolCallId?: string;
 };
-export type SharedAgentVersion_4e552886 = { readonly agent: string; readonly version: string };
-export type SharedAnswerDigestDecidedAtDec_655ece59 = {
+type SharedAgentVersion_4e552886 = { readonly agent: string; readonly version: string };
+type SharedAnswerDigestDecidedAtDec_655ece59 = {
   readonly answerDigest?: string;
   readonly decidedAt: number;
   readonly decidedBy: string;
@@ -489,7 +489,7 @@ export type SharedAttemptsCostUsdDurationM_9b91e38e = {
   readonly steps: number;
   readonly tokens: number;
 };
-export type SharedAttemptsDelayMillisecond_2e376a75 = {
+type SharedAttemptsDelayMillisecond_2e376a75 = {
   readonly attempts: number;
   readonly delayMilliseconds?: number;
   readonly jitter?: boolean;
@@ -570,7 +570,7 @@ export type SharedBreakingKindStep_f7c54476 = {
   readonly kind: 'step-reworded';
   readonly step: number;
 };
-export type SharedCallsSeconds_35295711 = { readonly calls?: number; readonly seconds?: number };
+type SharedCallsSeconds_35295711 = { readonly calls?: number; readonly seconds?: number };
 export type SharedChangedContextIdGranteeO_3863cba0 = {
   readonly changed: boolean;
   readonly contextId: string;
@@ -587,7 +587,7 @@ export type SharedChangedIdLegalHold_d1fe44b0 = {
   readonly id: string;
   readonly legalHold: 'held' | 'released';
 };
-export type SharedChatRunWarn_cfc87b81 = {
+type SharedChatRunWarn_cfc87b81 = {
   readonly chat?: number;
   readonly run: number;
   readonly warn?: ReadonlyArray<number>;
@@ -627,7 +627,7 @@ export type SharedCommandOutcome_69ccd5e0 = {
   readonly command: SharedConfigVersionFailureId_72126ec5;
   readonly outcome: 'replayed';
 };
-export type SharedConfigVersionFailureId_72126ec5 = {
+type SharedConfigVersionFailureId_72126ec5 = {
   readonly configVersion: number;
   readonly failure?: SharedFailedAtReasonSuperseded_bfabdc72;
   readonly id: string;
@@ -786,11 +786,11 @@ export type SharedDryRunExpectedHashId_50848f66 = {
   readonly expectedHash: string;
   readonly id: string;
 };
-export type SharedEnabledThresholdPercent_0fce5636 = {
+type SharedEnabledThresholdPercent_0fce5636 = {
   readonly enabled: boolean;
   readonly thresholdPercent?: number;
 };
-export type SharedFailedAtReasonSuperseded_bfabdc72 = {
+type SharedFailedAtReasonSuperseded_bfabdc72 = {
   readonly failedAt: string;
   readonly reason:
     | 'session-terminal'

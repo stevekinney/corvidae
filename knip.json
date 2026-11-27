@@ -308,7 +308,7 @@
         "!src/**/*.bench.ts!"
       ]
     },
-    "packages/bureau-client": {
+    "packages/bureau-sdk": {
       "entry": [
         "**/*.test.ts",
         "**/*.integration.test.ts",

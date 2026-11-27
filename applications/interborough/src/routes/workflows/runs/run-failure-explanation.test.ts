@@ -145,13 +145,18 @@ describe('a failed run’s explanation', () => {
 
   test('AC1: puts the stack behind a disclosure, and leaves it out when there is none', async () => {
     restore = bureau(explainAnswers()).restore;
-    const stack = 'Error: boom\n    at doThing (file.ts:1:1)';
+    const stack = 'Error: boom\n    at doThing (/Users/alice/project/file.ts:1:1)';
     const withStack = show({ runId: 'run-1', errorStack: stack });
     await withStack.findByText(FAILED_RUN_EXPLANATION.summary);
     // Cinder's Collapsible toggles through a transition happy-dom cannot drive: the trigger is the
     // disclosure, and the stack is never in the open text of the section.
     const trigger = withStack.getByRole('button', { name: 'Show the error details' });
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    await fireEvent.click(trigger);
+    expect(part(withStack.container, 'stack')?.textContent).toContain(
+      'doThing ([path]/file.ts:1:1)',
+    );
+    expect(part(withStack.container, 'stack')?.textContent).not.toContain('/Users/alice');
     expect(part(withStack.container, 'summary')?.textContent).not.toContain('doThing');
     expect(part(withStack.container, 'remediation')?.textContent).not.toContain('doThing');
     withStack.unmount();

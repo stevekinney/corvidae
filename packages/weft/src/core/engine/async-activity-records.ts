@@ -27,6 +27,7 @@ import type {
   PendingAsyncActivityListOptions,
   PendingAsyncActivityPage,
 } from '../types.ts';
+import { isUpstreamHttpFailure } from '../upstream-http-failure.ts';
 import { commitFencedEngineWrite } from './fenced-write.ts';
 import type { EngineInternals } from './internals.ts';
 
@@ -281,6 +282,17 @@ function isPersistedOperationOutcome(value: unknown): value is OperationOutcome 
   return false;
 }
 
+function sanitizeRecoveredOutcome(outcome: OperationOutcome): OperationOutcome {
+  if (
+    outcome.status === 'failed' &&
+    outcome.upstreamFailure !== undefined &&
+    !isUpstreamHttpFailure(outcome.upstreamFailure)
+  ) {
+    delete outcome.upstreamFailure;
+  }
+  return outcome;
+}
+
 function isPersistedAsyncActivityResolution(
   value: unknown,
 ): value is PersistedAsyncActivityResolution {
@@ -488,17 +500,17 @@ export async function recoverPendingAsyncActivities(
       // committed before the crash. Queue it so replay re-parking on the same
       // deterministic token adopts it instead of waiting for a delivery that
       // already happened. The raw thrown reason is not persisted; failed
-      // outcomes are reconstructed from the recorded message/name/category.
+      // outcomes are reconstructed from the recorded message/name/category and validated facts.
+      const outcome = sanitizeRecoveredOutcome(decoded.outcome);
       queuePendingAsyncActivityResolution(internals, decoded.workflowId, {
         token: decoded.token,
         operationId: decoded.operationId,
         ...(decoded.workflowExecutionToken === undefined
           ? {}
           : { workflowExecutionToken: decoded.workflowExecutionToken }),
-        outcome: decoded.outcome,
-        timelineStatus: decoded.outcome.status,
-        timelineOutput:
-          decoded.outcome.status === 'completed' ? decoded.outcome.value : decoded.outcome.error,
+        outcome,
+        timelineStatus: outcome.status,
+        timelineOutput: outcome.status === 'completed' ? outcome.value : outcome.error,
       });
       continue;
     }

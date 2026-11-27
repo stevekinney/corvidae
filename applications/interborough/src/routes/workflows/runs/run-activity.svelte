@@ -31,6 +31,7 @@
     engine?: RunEngine | undefined;
     /** The run, as the engine holds it. */
     workflow?: WorkflowState | undefined;
+    documentWorkflow?: boolean | undefined;
     /** Whether a tool approval is decided under its call; off where the page decides it above. */
     decideApprovals?: boolean;
     /**
@@ -47,6 +48,7 @@
     note,
     engine,
     workflow,
+    documentWorkflow = false,
     decideApprovals = true,
     history = true,
   }: RunActivityProps = $props();
@@ -72,7 +74,7 @@
     {/if}
 
     {#if engine !== undefined && workflow !== undefined}
-      <RunTimeline {engine} {workflow} />
+      <RunTimeline {engine} {workflow} {documentWorkflow} />
     {/if}
 
     {#if engine !== undefined && workflow !== undefined && history}

@@ -8,7 +8,12 @@
  * @module run-failure-read
  */
 
-import type { FailureCategory, WorkflowTimelineEntry } from '@lostgradient/weft';
+import {
+  isUpstreamHttpFailure,
+  type FailureCategory,
+  type UpstreamHttpFailure,
+  type WorkflowTimelineEntry,
+} from '@lostgradient/weft';
 
 import {
   classifyAgentRunFailure,
@@ -25,6 +30,7 @@ interface RunFailureState {
   readonly status: string;
   readonly failureCategory?: FailureCategory | null | undefined;
   readonly errorCode?: string | undefined;
+  readonly upstreamFailure?: UpstreamHttpFailure | undefined;
   readonly failedStep?: RunFailureStep | undefined;
 }
 
@@ -121,6 +127,10 @@ export async function readRunFailure(
     tries: entries === undefined ? null : failedStepTries(entries),
     verdicts: await reads.runVerdicts(runId, run.kind),
     retryable: run.kind === 'workflow' && (await retryable()),
+    upstreamFailure:
+      run.kind === 'workflow' && isUpstreamHttpFailure(state?.upstreamFailure)
+        ? state.upstreamFailure
+        : undefined,
   });
   // The answer is plain, mutable data: nothing of the stored facts is shared with the caller.
   return {

@@ -3,6 +3,8 @@
   import { StatusDot } from '../status-dot/index.ts';
   import { StackedListItem } from './index.ts';
 
+  let { leadingAlways = false }: { leadingAlways?: boolean } = $props();
+
   const rows = [
     {
       id: 'attempt-5',
@@ -18,7 +20,12 @@
 <div class="stacked-list-item-wrap-meta-fixture" data-testid="wrap-meta">
   <DataList items={rows} key={(row) => row.id}>
     {#snippet children(row)}
-      <StackedListItem href="#attempt" wrapMeta metaTooltip={row.line}>
+      <StackedListItem
+        href="#attempt"
+        wrapMeta
+        metaTooltip={row.line}
+        statusPlacement={leadingAlways ? 'leading-always' : 'leading'}
+      >
         {#snippet status()}<StatusDot word="Check not met" size="sm" />{/snippet}
         {#snippet title()}{row.title}{/snippet}
         {#snippet time()}8:21 AM{/snippet}
@@ -36,6 +43,7 @@
       <StackedListItem
         href="#attempt"
         wrapMeta
+        statusPlacement={leadingAlways ? 'leading-always' : 'leading'}
         metaTooltip={row.line}
         actions={[{ label: 'Verdict', onclick: () => undefined }]}
         actionsLabel="Attempt 5 actions"

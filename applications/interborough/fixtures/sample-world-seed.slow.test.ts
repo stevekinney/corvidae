@@ -844,6 +844,16 @@ describe('the sample world, part B', () => {
     expect(stepTasks.find((task) => task.status === 'failed')?.statusMessage).toContain(
       RELEASE_NOTES_FAILURE,
     );
+    const explanation = await call<{ summary: string; remediation: string }>(
+      'bureau.tasks.explain',
+      {
+        runId: runs[0]?.id,
+      },
+    );
+    expect(explanation.summary).toContain('GitHub returned HTTP 503');
+    expect(explanation.remediation).toContain('check GitHub');
+    expect(explanation.remediation).not.toContain('code');
+    expect(JSON.stringify(explanation)).not.toContain(RELEASE_NOTES_FAILURE);
   });
 
   test('keeps the four schedules with their cadences: Active 3, Paused 1', async () => {

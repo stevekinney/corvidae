@@ -128,6 +128,12 @@
   {
     "package": "@lostgradient/velveteen",
     "subpath": "./build",
+    "finding": "Bun.resolveSync",
+    "reason": "Velveteen's Bun build tool resolves Svelte from the application project, keeping out-of-root builds on that project's runtime."
+  },
+  {
+    "package": "@lostgradient/velveteen",
+    "subpath": "./build",
     "finding": "Bun.write",
     "reason": "Velveteen's build tool writes output with Bun."
   },

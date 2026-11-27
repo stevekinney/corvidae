@@ -40,6 +40,35 @@ describe('the run’s tags', () => {
     expect(getByText('tier-1')).not.toBeNull();
   });
 
+  test('Escape closes a draft without changing existing tags', async () => {
+    const calls: string[] = [];
+    let closed = false;
+    const client = {
+      addTags: async () => {
+        calls.push('add');
+      },
+      removeTags: async () => {
+        calls.push('remove');
+      },
+    };
+    const { getByPlaceholderText, getByText } = render(RunTagsHarness, {
+      props: {
+        client,
+        workflow: workflow({ tags: ['prod'] }),
+        onClose: () => {
+          closed = true;
+        },
+      },
+    });
+    const input = getByPlaceholderText('Add a tag');
+    await fireEvent.input(input, { target: { value: 'draft' } });
+    await fireEvent.keyDown(input, { key: 'Escape' });
+
+    expect(closed).toBe(true);
+    expect(calls).toEqual([]);
+    expect(getByText('prod')).not.toBeNull();
+  });
+
   test('does not expose the system provenance tag in the editable list', () => {
     const { getByText, queryByText } = render(RunTagsHarness, {
       props: {

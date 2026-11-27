@@ -53,7 +53,7 @@
   import { TriangleAlert } from '@lucide/svelte';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { HttpClientError } from '@lostgradient/weft';
+  import { HttpClientError } from '@lostgradient/weft/client';
 
   import { getClient } from '../../lib/client.ts';
   import { truncateId } from '../../lib/format/index.ts';

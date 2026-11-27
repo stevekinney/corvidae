@@ -1,4 +1,5 @@
 import type { FailureCategory, OperationOutcome } from './types.ts';
+import { attachUpstreamFailure } from './upstream-http-failure.ts';
 
 export const FAILURE_CATEGORIES = [
   'application',
@@ -77,6 +78,7 @@ export function errorFromFailedOperationOutcome(
   outcome: Extract<OperationOutcome, { status: 'failed' }>,
 ): Error {
   const error = new Error(outcome.error);
+  attachUpstreamFailure(error, outcome.upstreamFailure);
   if (outcome.errorName !== undefined) {
     error.name = outcome.errorName;
   }

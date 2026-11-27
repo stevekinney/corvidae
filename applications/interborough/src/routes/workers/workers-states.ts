@@ -3,7 +3,7 @@
  * of a failed read, which names the status the server answered with, and says plainly when the
  * server did not answer at all or the person stopped the read.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 import { classifyFault, isNetworkFailure } from '../../lib/faults.ts';
 import { WORKER_COPY } from './worker-copy.ts';

@@ -8,7 +8,10 @@ import { writeProductionFixture } from "./production-fixture.ts";
 export async function packProductionFixture(
   basePath: string,
   name: string,
-  options: { compression?: boolean } = {},
+  options: {
+    compression?: boolean;
+    browserPlugins?: readonly Bun.BunPlugin[];
+  } = {},
 ) {
   const buildRoot = join(process.cwd(), ".velveteen/build");
   const evidenceDirectory = join(process.cwd(), ".velveteen/evidence", name);
@@ -24,6 +27,9 @@ export async function packProductionFixture(
       ...source,
       outputDirectory,
       basePath,
+      ...(options.browserPlugins === undefined
+        ? {}
+        : { browserPlugins: options.browserPlugins }),
     });
     const host = await Bun.build({
       entrypoints: [join(import.meta.dir, "fixture-host.ts")],

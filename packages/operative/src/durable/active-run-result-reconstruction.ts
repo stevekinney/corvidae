@@ -1,5 +1,9 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import { HISTORY_CIRCUIT_BREAKER_REASON, type WorkflowClaimHandle } from '@lostgradient/weft';
+import {
+  attachUpstreamFailure,
+  HISTORY_CIRCUIT_BREAKER_REASON,
+  type WorkflowClaimHandle,
+} from '@lostgradient/weft';
 import { Conversation } from 'conversationalist';
 
 import type { ActiveRun } from '../create-run';
@@ -125,6 +129,7 @@ export async function reconstructRunResult(
     errorMessage: summary.errorMessage,
     errorKind: summary.errorKind,
     errorCode: summary.errorCode,
+    upstreamFailure: summary.upstreamFailure,
     abortReason: summary.abortReason,
     schemaValidation: summary.schemaValidation,
     tripwire: summary.tripwire,
@@ -156,6 +161,7 @@ interface ReconstructTerminalRunErrorArgs {
   errorMessage?: string | undefined;
   errorKind?: AgentRunError['kind'] | undefined;
   errorCode?: AgentRunError['code'] | undefined;
+  upstreamFailure?: import('@lostgradient/weft').UpstreamHttpFailure | undefined;
   abortReason?: string | undefined;
   schemaValidation?: { success: boolean; error?: string | undefined } | undefined;
   tripwire?: AgentRunWorkflowResult['tripwire'] | undefined;
@@ -195,7 +201,9 @@ export function reconstructTerminalRunError(
       args.errorKind ?? (args.schemaValidation?.success === false ? 'output' : 'generate');
     const code =
       args.errorCode ?? (args.schemaValidation?.success === false ? 'INVALID_OUTPUT' : 'UNKNOWN');
-    return new AgentRunError(message, { kind, code });
+    const error = new AgentRunError(message, { kind, code });
+    attachUpstreamFailure(error, args.upstreamFailure);
+    return error;
   }
   return undefined;
 }

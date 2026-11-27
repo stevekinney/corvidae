@@ -24,7 +24,7 @@
   import { showToast } from '../../app/toast-host.svelte';
   import { listAgentVersions } from '../../lib/agent-definitions.ts';
   import { followLinks } from '../../lib/follow-links.ts';
-  import type { CatalogOperations } from '../../lib/generated/bureau-operation-client.generated.ts';
+  import type { CatalogOperations } from '@lostgradient/bureau-sdk';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { instructionPatch } from './audit-diff.ts';

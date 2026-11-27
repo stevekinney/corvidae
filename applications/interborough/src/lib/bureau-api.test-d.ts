@@ -3,7 +3,27 @@
  * the answer it always had, a call with `dryRun: true` answers the preview, and a `dryRun` the
  * compiler cannot decide answers either.
  */
+import {
+  createBureauClientWithTransport,
+  type BureauDryRunOutput,
+  type BureauOutput,
+} from '@lostgradient/bureau-sdk';
 import { bureauClient } from './bureau-api.ts';
+
+const portable = createBureauClientWithTransport(async () => null, { baseUrl: '' });
+export const portableNormal: Promise<BureauOutput<'bureau.tasks.cancel'>> = portable[
+  'bureau.tasks.cancel'
+]({ taskId: 'task' });
+export const portableFalse: Promise<BureauOutput<'bureau.tasks.cancel'>> = portable[
+  'bureau.tasks.cancel'
+]({ taskId: 'task', dryRun: false });
+export const portablePreview: Promise<BureauDryRunOutput<'bureau.tasks.cancel'>> = portable[
+  'bureau.tasks.cancel'
+]({ taskId: 'task', dryRun: true });
+declare const runtimeDryRun: boolean;
+export const portableDynamic: Promise<
+  BureauOutput<'bureau.tasks.cancel'> | BureauDryRunOutput<'bureau.tasks.cancel'>
+> = portable['bureau.tasks.cancel']({ taskId: 'task', dryRun: runtimeDryRun });
 
 const ordinary = () => bureauClient['bureau.tasks.cancel']({ taskId: 'task-1' });
 export const ordinaryReceipt: Awaited<ReturnType<typeof ordinary>>['receipt'] = 'canceled';

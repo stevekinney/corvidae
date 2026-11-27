@@ -12,7 +12,7 @@
    * deployment the worker belongs to; without one it lists every deployment (the Deployments tab).
    */
   import { Alert, ConfirmDialog, Skeleton } from '@lostgradient/cinder';
-  import { WORKER_CONFLICT_REASONS } from '@lostgradient/weft';
+  import { WORKER_CONFLICT_REASONS } from '@lostgradient/weft/client';
   import { useQueryClient } from '@tanstack/svelte-query';
 
   import { getClient } from '../../lib/client.ts';

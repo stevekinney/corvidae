@@ -5,6 +5,7 @@
  */
 import type { AgentRunErrorKind } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
+import { readRunFailure } from './run-failure-read.ts';
 
 import {
   classifyAgentRunFailure,
@@ -120,6 +121,45 @@ describe('classifyAgentRunFailure', () => {
 });
 
 describe('explainRunFailure', () => {
+  it('uses only valid stored upstream facts and leaves old or invalid records generic', async () => {
+    for (const upstreamFailure of [
+      undefined,
+      { source: 'github', status: 999 },
+      { source: 'github', status: 503, message: '/secret' },
+    ]) {
+      const result = await readRunFailure(
+        {
+          runState: async () =>
+            ({ status: 'failed', failureCategory: 'application', upstreamFailure }) as never,
+          runTimeline: async () => [],
+          runVerdicts: async () => [],
+        },
+        { kind: 'workflow' },
+        'run-1',
+        async () => false,
+      );
+      expect(result.outcome).toBe('explained');
+      if (result.outcome !== 'explained') throw new Error('expected explanation');
+      expect(result.explanation.summary).toContain('code it ran');
+      expect(JSON.stringify(result.explanation)).not.toContain('/secret');
+    }
+  });
+  it('explains explicitly stored upstream facts without including raw diagnostic text', () => {
+    const answer = explainRunFailure(
+      factsOf({ kind: 'workflow', upstreamFailure: { source: 'github', status: 503 } }),
+    );
+    expect(answer.summary).toContain('GitHub returned HTTP 503');
+    expect(answer.summary).toContain('The step "charge-card"');
+    expect(answer.remediation).toContain('check GitHub');
+    expect(answer.remediation).not.toContain('code');
+    expect(answer.summary).not.toContain('/Users/');
+    expect(explainRunFailure(factsOf({ kind: 'workflow' })).summary).toContain('code it ran');
+    const unauthorized = explainRunFailure(
+      factsOf({ kind: 'workflow', upstreamFailure: { source: 'github', status: 401 } }),
+    );
+    expect(unauthorized.remediation).toContain('authorization');
+    expect(unauthorized.remediation).not.toContain('Wait');
+  });
   it('answers the same for the same facts (AC2)', () => {
     expect(explainRunFailure(factsOf())).toEqual(explainRunFailure(factsOf()));
   });

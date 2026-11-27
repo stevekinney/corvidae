@@ -7,7 +7,7 @@
  */
 
 import { humanizeIdentifier } from '@lostgradient/cinder';
-import { parkedHumanWait } from '@lostgradient/operative';
+import { parkedHumanWait } from '@lostgradient/operative/human-wait-parks';
 
 const LONGEST_SUMMARY = 80;
 

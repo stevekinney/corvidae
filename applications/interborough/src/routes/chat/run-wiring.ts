@@ -62,7 +62,7 @@ import {
   type ToolResult,
 } from '@lostgradient/chat';
 import type { ApprovalResolution } from '@lostgradient/cinder';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 import { agUiConversationAdapter, mergeAGUIMessages } from 'conversationalist';
 
 import {

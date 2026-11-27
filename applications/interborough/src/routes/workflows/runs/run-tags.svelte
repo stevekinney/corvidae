@@ -29,12 +29,14 @@
     readonly workflow: Pick<WorkflowState, 'id' | 'tags'>;
     /** Whether the principal holds `tags:write`; open when omitted. */
     readonly tagGate?: ScopeGate | undefined;
+    readonly onClose?: (() => void) | undefined;
   }
 
   let {
     client,
     workflow,
     tagGate = { disabled: false, title: undefined },
+    onClose = undefined,
   }: RunTagsProps = $props();
 
   // The system's own tags are counted in the rail, never edited by hand.
@@ -97,6 +99,9 @@
     aria-labelledby={`workflow-detail-tags-label-${workflow.id}`}
     placeholder={RUN_PAGE_COPY.addTag}
     disabled={tagGate.disabled}
+    onkeydown={(event) => {
+      if (event.key === 'Escape') onClose?.();
+    }}
     bind:value={tags}
     onValueChange={changeTags}
   />

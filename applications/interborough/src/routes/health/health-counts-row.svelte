@@ -8,7 +8,7 @@
    * that could not be read shows a dash and says so, and never a zero. An amber dot comes before a
    * label only when its count is a non-zero bad one. No label carries a parenthesised qualifier.
    */
-  import { Statistic, StatisticGroup } from '@lostgradient/cinder';
+  import { Statistic } from '@lostgradient/cinder';
 
   import { countsWorthShowing } from '../../lib/worth-showing.ts';
   import { HEALTH_COUNTS_COPY as copy } from './health-copy.ts';
@@ -34,7 +34,7 @@
 </script>
 
 {#if cards.length > 0}
-  <StatisticGroup variant="cards" columns={4} label={copy.label} data-testid="health-counts">
+  <div role="group" aria-label={copy.label} class="ib-health-counts" data-testid="health-counts">
     {#each cards as card (card.key)}
       <Statistic
         label={card.label}
@@ -44,5 +44,19 @@
         data-count={card.key}
       />
     {/each}
-  </StatisticGroup>
+  </div>
 {/if}
+
+<style>
+  .ib-health-counts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--cinder-space-4);
+  }
+
+  @media (min-width: 30rem) {
+    .ib-health-counts {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+</style>

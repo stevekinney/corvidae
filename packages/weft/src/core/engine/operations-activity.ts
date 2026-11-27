@@ -5,6 +5,7 @@ import { tagWorkflowEventGeneration } from '../events/workflow-event-generation.
 import type { ComposedActivityInterceptor, ComposedWorkflowInterceptor } from '../interceptor.ts';
 import { assertPayloadWithinLimit } from '../payload-size.ts';
 import type { ActivityContext, ActivityVerificationResult, OperationOutcome } from '../types.ts';
+import { attachUpstreamFailure } from '../upstream-http-failure.ts';
 import {
   buildActivityContext,
   clearLastHeartbeatForStep,
@@ -172,6 +173,7 @@ export async function invokeWorkerActivity(
   });
   if (result.status === 'failed') {
     const error = new Error(result.error);
+    attachUpstreamFailure(error, result.upstreamFailure);
     if (result.errorName !== undefined) {
       error.name = result.errorName;
     }

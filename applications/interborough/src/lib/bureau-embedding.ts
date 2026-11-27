@@ -7,7 +7,7 @@
  * A Bureau newer than the browser may report a cause or a failure code this client does not know,
  * and the row words that case.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 import { bureauClient, type BureauOutput } from './bureau-api.ts';
 import type { Fetcher } from './bureau-client.ts';

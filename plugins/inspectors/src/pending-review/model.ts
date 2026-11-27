@@ -4,7 +4,7 @@
  * out, so the rules that matter are tested without a browser: only pending, unexpired reviews offer
  * a decision, and the page never offers a decision the operation would refuse.
  */
-import type { ReviewsOperationTypes } from '@lostgradient/bureau-client/reviews';
+import type { ReviewsOperationTypes } from '@lostgradient/bureau-sdk/reviews';
 
 /** One review as `bureau.reviews.list` answers it. Unknown fields are ignored. */
 export type Review = {

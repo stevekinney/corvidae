@@ -12,13 +12,13 @@
  */
 import { createQueries, createQuery } from '@tanstack/svelte-query';
 
+import type { CatalogOperations } from '@lostgradient/bureau-sdk';
 import { getAgentCatalog } from '../../lib/agent-definitions.ts';
 import { agentLabel } from '../../lib/agent-label.ts';
 import type { AuditRecord } from '../../lib/bureau-audit.ts';
 import { getContext, listAgents } from '../../lib/bureau-client.ts';
 import { getBureauReview, type BureauToolApproval } from '../../lib/bureau-reviews.ts';
 import { listBureauSchedules } from '../../lib/bureau-schedules.ts';
-import type { CatalogOperations } from '../../lib/generated/bureau-operation-client.generated.ts';
 import { getMemory } from '../../lib/memory-client.ts';
 import { queryKeys } from '../../lib/query.ts';
 import { lookupRequestsFor, type AuditLookups, type AuditTool } from './audit-events.ts';

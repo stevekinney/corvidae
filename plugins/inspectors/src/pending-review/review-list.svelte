@@ -9,7 +9,7 @@
   import {
     ReviewApprovalButtons,
     type ToolApprovalActions,
-  } from '@lostgradient/bureau-client/reviews/ui';
+  } from '@lostgradient/bureau-sdk/reviews/ui';
   import type { ActionableReview } from './model.ts';
 
   import { IDLE_ROW, type ReviewsView } from './view.svelte.ts';

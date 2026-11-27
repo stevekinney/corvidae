@@ -38,6 +38,228 @@ async function openRun(page: Page, path: string, width: number): Promise<void> {
   await expect(page.locator('[data-run-header] [data-status-word]')).toBeVisible();
 }
 
+/** Keep the named content in the frame after each capture viewport change. */
+async function reveal(target: Locator): Promise<void> {
+  await expect(target).toBeVisible();
+  await target.scrollIntoViewIfNeeded();
+  await expect(target).toBeInViewport();
+}
+
+test('/runs/:run desktop content width keeps the failed alert and Details together', async ({
+  page,
+}) => {
+  const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+  await openRun(page, `/runs/${encodeURIComponent(world.runs.failed)}`, 1920);
+  const layout = page.locator('.ib-run__layout');
+  await expect(page.locator('.ib-run[data-failed-run] > .ib-run__layout')).toHaveCount(1);
+  const alert = page.getByTestId('run-step-failure');
+  const rail = page.getByRole('complementary', { name: 'Details' });
+  await expect(alert.locator('[data-explanation="summary"]')).toBeVisible();
+  const { layoutBox, alertBox, railBox } = await readBoxes(page, {
+    layoutBox: layout,
+    alertBox: alert,
+    railBox: rail,
+  });
+  const contentWidth = await layout.evaluate((element) =>
+    parseFloat(getComputedStyle(element).maxInlineSize),
+  );
+  expect(layoutBox.width).toBeLessThanOrEqual(contentWidth + 1);
+  expect(alertBox.x + alertBox.width).toBeLessThanOrEqual(railBox.x);
+  expect(railBox.width).toBeCloseTo(320, 0);
+  expect(railBox.x + railBox.width).toBeLessThanOrEqual(layoutBox.x + layoutBox.width + 1);
+  const header = page.locator('[data-run-header]');
+  const { headerBox } = await readBoxes(page, { headerBox: header });
+  expect(headerBox.width).toBeLessThanOrEqual(contentWidth + 1);
+  expect(headerBox.x + headerBox.width).toBeLessThanOrEqual(layoutBox.x + layoutBox.width + 1);
+  const disclosure = alert.getByRole('button', { name: 'Show the error details' });
+  await disclosure.click();
+  await expect(alert.locator('[data-explanation="stack"]')).toBeVisible();
+});
+
+test('/runs/:run desktop content width preserves completed runs', async ({ page }) => {
+  const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+  await openRun(page, `/runs/${encodeURIComponent(world.runs.done)}`, 1920);
+  const layout = page.locator('.ib-run:not([data-failed-run]) > .ib-run__layout');
+  const main = layout.locator('.ib-run__main');
+  const rail = page.getByRole('complementary', { name: 'Details' });
+  await expect(layout).toHaveCount(1);
+  expect(await layout.evaluate((element) => getComputedStyle(element).maxInlineSize)).toBe('none');
+  const { mainBox, railBox } = await readBoxes(page, { mainBox: main, railBox: rail });
+  expect(mainBox.x + mainBox.width).toBeLessThanOrEqual(railBox.x);
+  expect(railBox.width).toBeCloseTo(320, 0);
+});
+
+for (const width of WIDTHS) {
+  test(`/runs/:run COR-2762 Run again destination at ${String(width)} pixels`, async ({ page }) => {
+    const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+    await openRun(page, `/runs/${encodeURIComponent(world.runs.failed)}`, width);
+    const again = page.locator('[data-run-header]').getByRole('link', { name: 'Run again' });
+    await expect(again).toHaveAttribute('href', /\/workflows\/.*\/run/);
+    await again.click();
+    await expect(page).toHaveURL(/\/workflows\/.*\/run/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Run Release notes' })).toBeVisible();
+    await expect(page.getByLabel(/^Branch/)).toBeVisible();
+    await expect(page.getByLabel(/^Since/)).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/runs/:run',
+      state: 'COR-2762 run again destination',
+      source: SOURCE,
+      ready: async () => {
+        await expect(
+          page.getByRole('heading', { level: 1, name: 'Run Release notes' }),
+        ).toBeVisible();
+        await expect(page.getByLabel(/^Branch/)).toBeVisible();
+        await expect(page.getByLabel(/^Since/)).toBeVisible();
+        await reveal(page.getByLabel(/^Branch/));
+      },
+    });
+  });
+
+  test(`/runs/:run COR-2762 failed run open controls at ${String(width)} pixels`, async ({
+    page,
+  }) => {
+    const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+    await openRun(page, `/runs/${encodeURIComponent(world.runs.failed)}`, width);
+    const alert = page.getByTestId('run-step-failure');
+    const header = page.locator('[data-run-header]');
+    await expect(alert.locator('[data-explanation="summary"]')).toBeVisible();
+    await expect(header.getByRole('button', { name: 'Retry from this step' })).toHaveCount(1);
+    await expect(header.getByRole('link', { name: 'Run again' })).toHaveCount(1);
+    await expect(header.locator('[data-run-beside]')).toContainText('Retry from this step runs on');
+    await expect(header.locator('[data-run-beside]')).toContainText('Run again runs on');
+    await expect(alert.getByRole('button', { name: /Retry from step/ })).toHaveCount(0);
+    await expect(alert.getByRole('link', { name: 'Run again' })).toHaveCount(0);
+    const details = alert.getByRole('button', { name: 'Show the error details' });
+    await details.focus();
+    await details.press('Enter');
+    await expect(alert.locator('[data-explanation="stack"]')).toBeVisible();
+    await expect(alert.locator('[data-explanation="stack"]')).not.toContainText('/Users/');
+    await expect(alert.locator('[data-explanation="stack"]')).not.toContainText('file:///');
+    expect(await alert.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true,
+    );
+    await captureForDesignReview(page, {
+      route: '/runs/:run',
+      state: 'COR-2762 open error details',
+      source: SOURCE,
+      ready: async () => {
+        await expect(details).toHaveAttribute('aria-expanded', 'true');
+        await reveal(alert.locator('[data-explanation="stack"]'));
+      },
+    });
+    await details.click();
+    await expect(alert.locator('[data-explanation="stack"]')).not.toBeVisible();
+
+    const payload = page.locator('[data-section="input-output"]');
+    await expect(payload).toContainText('No output. The run failed');
+    await expect(payload).toContainText('Branch');
+    const fields = payload.getByRole('radio', { name: 'Fields' }).first();
+    await expect(fields).toHaveAttribute('aria-checked', 'true');
+    await captureForDesignReview(page, {
+      route: '/runs/:run',
+      state: 'COR-2762 input output fields',
+      source: SOURCE,
+      ready: async () => {
+        await expect(fields).toHaveAttribute('aria-checked', 'true');
+        await reveal(fields);
+        await expect(payload).toContainText(/branch/i);
+      },
+    });
+    await fields.focus();
+    await fields.press('ArrowRight');
+    await expect(payload.getByRole('radio', { name: 'JSON' }).first()).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await captureForDesignReview(page, {
+      route: '/runs/:run',
+      state: 'COR-2762 input output JSON',
+      source: SOURCE,
+      ready: async () => {
+        const json = payload.getByRole('radio', { name: 'JSON' }).first();
+        await expect(json).toHaveAttribute('aria-checked', 'true');
+        const input = payload.getByRole('treeitem', { name: /^input: object,/ });
+        await expect(input).toBeVisible();
+        if ((await input.getAttribute('aria-expanded')) !== 'true') {
+          await input.getByRole('button', { name: /^input: object,/ }).click();
+        }
+        await expect(input).toHaveAttribute('aria-expanded', 'true');
+        await reveal(input.getByRole('treeitem', { name: /^branch:/i }));
+      },
+    });
+
+    const rail = page.getByRole('complementary', { name: 'Details' });
+    const addTag = rail.getByRole('button', { name: 'Add a tag' });
+    await addTag.click();
+    const tagInput = rail.getByRole('textbox', { name: 'Tags' });
+    await tagInput.focus();
+    await expect(tagInput).toBeFocused();
+    await captureForDesignReview(page, {
+      route: '/runs/:run',
+      state: 'COR-2762 add tag focused',
+      source: SOURCE,
+      ready: async () => {
+        await reveal(tagInput);
+        await tagInput.focus();
+        await expect(tagInput).toBeFocused();
+      },
+    });
+    await tagInput.press('Escape');
+    await expect(addTag).toBeFocused();
+
+    const how = await openHowItRan(page);
+    await captureForDesignReview(page, {
+      route: '/runs/:run',
+      state: 'COR-2762 how it ran',
+      source: SOURCE,
+      ready: async () => {
+        await expect(how.getByRole('button', { name: /^How it ran/ }).first()).toHaveAttribute(
+          'aria-expanded',
+          'true',
+        );
+        await reveal(how.locator('[data-step-row]').first());
+      },
+    });
+    await how.locator('[data-step-row]').first().click();
+    await expect(how.locator('article[data-step]')).toBeVisible();
+    const stepInput = how.locator('article[data-step] [aria-label="Input"]');
+    await expect(stepInput).toBeVisible();
+    await expect(stepInput).not.toContainText(world.runs.failed);
+    await captureForDesignReview(page, {
+      route: '/runs/:run',
+      state: 'COR-2762 selected step',
+      source: SOURCE,
+      ready: () => reveal(how.locator('article[data-step]')),
+    });
+    await rail.locator('[data-section="logs"]').getByRole('button', { name: /^Logs/ }).click();
+    await captureForDesignReview(page, {
+      route: '/runs/:run',
+      state: 'COR-2762 logs open',
+      source: SOURCE,
+      ready: async () => {
+        const logs = rail.locator('[data-section="logs"]');
+        await expect(logs.getByRole('button', { name: /^Logs/ })).toHaveAttribute(
+          'aria-expanded',
+          'true',
+        );
+        await reveal(logs);
+      },
+    });
+    await header.getByRole('button', { name: 'More actions' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Copy run ID' })).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/runs/:run',
+      state: 'COR-2762 more actions open',
+      source: SOURCE,
+      ready: async () => {
+        const trigger = header.getByRole('button', { name: 'More actions' });
+        if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
+        await reveal(page.getByRole('menu'));
+      },
+    });
+  });
+}
+
 const FAILED_STEP_VIEWS = [
   ['Input', 'Fields'],
   ['Input', 'JSON'],
@@ -230,7 +452,7 @@ for (const width of WIDTHS) {
       // next follows. The page words neither.
       await expect(
         page.getByTestId('run-step-failure').locator('[data-explanation="summary"]'),
-      ).toContainText(/failed (because|for) /);
+      ).toContainText('GitHub returned HTTP 503');
       await expect(page.getByTestId('run-step-failure')).toContainText('What to do next');
       // The words on which version each button runs on are the header's caption, under the
       // buttons, and the title keeps its line (54z).
@@ -249,6 +471,10 @@ for (const width of WIDTHS) {
         route: '/runs/:run',
         state: 'failed instance',
         source: SOURCE,
+        ready: async () => {
+          await expect(page.locator('.ib-run__layout')).toHaveCount(1);
+          await expect(page.locator('.ib-run[data-failed-run] > .ib-run__layout')).toHaveCount(1);
+        },
       });
     });
 

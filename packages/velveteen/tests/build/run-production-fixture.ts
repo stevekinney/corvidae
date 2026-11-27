@@ -8,7 +8,11 @@ import { startProductionFixture } from "./production-process.ts";
 export async function verifyProductionFixture(
   basePath: string,
   name: string,
-  options: { compression?: boolean } = {},
+  options: {
+    compression?: boolean;
+    browserPlugins?: readonly Bun.BunPlugin[];
+    incrementedLabel?: string;
+  } = {},
 ) {
   const packed = await packProductionFixture(basePath, name, options);
   let server: Awaited<ReturnType<typeof startProductionFixture>> | undefined;
@@ -55,6 +59,23 @@ export async function verifyProductionFixture(
     expect(firstResponse.status).toBe(200);
     const html = await firstResponse.text();
     expect(html).toContain("First: 0");
+    if (options.incrementedLabel !== undefined) {
+      const label = options.incrementedLabel;
+      const scripts = packed.evidence.files.filter(({ file }) =>
+        /\/(?:browser|server)\/.*\.js$/.test(file),
+      );
+      const matches = (
+        await Promise.all(
+          scripts.map(async ({ file }) =>
+            (await Bun.file(join(packed.runtime, file)).text()).includes(label)
+              ? file
+              : undefined,
+          ),
+        )
+      ).filter((file) => file !== undefined);
+      expect(matches.length).toBeGreaterThan(0);
+      expect(matches.every((file) => file.includes("/browser/"))).toBe(true);
+    }
     expect(html).not.toContain("PRODUCTION_PRIVATE_SENTINEL");
     expect(html).not.toContain("PRODUCTION_DEV_SENTINEL");
     if (manifest.basePath) expect((await fetch(root)).status).toBe(200);
@@ -253,7 +274,12 @@ export async function verifyProductionFixture(
     ).toBe(1);
     await page.getByRole("button", { name: "First: 0", exact: true }).click();
     expect(
-      await page.getByRole("button", { name: "First: 1", exact: true }).count(),
+      await page
+        .getByRole("button", {
+          name: `${options.incrementedLabel ?? "First"}: 1`,
+          exact: true,
+        })
+        .count(),
     ).toBe(1);
     expect(
       await page

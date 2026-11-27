@@ -9,7 +9,7 @@
  * never as the raw message, which can name an asset or an upload.
  */
 import type { ChatAttachmentFailureKind } from '@lostgradient/chat';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 import { bureauClient } from './bureau-api.ts';
 import { BUREAU_PATH, type Fetcher } from './bureau-client.ts';

@@ -4,6 +4,7 @@
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 
+import { WORKER_CONFLICT_REASONS } from '../../core/worker-conflict-reasons.ts';
 import {
   TEST_ACCEPTED_MANIFEST_DIGEST,
   testWorkerManifest,
@@ -14,7 +15,6 @@ import {
   createForgetWorkerRestBinding,
   forgetWorkerOperation,
 } from './forget-worker.ts';
-import { WORKER_CONFLICT_REASONS } from './worker-conflict-reasons.ts';
 
 function invoke(operation: { invoke: (context: never) => Promise<unknown> }, input: unknown) {
   return operation.invoke({ input } as never);

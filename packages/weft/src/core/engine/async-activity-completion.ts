@@ -44,7 +44,7 @@
  * One caveat survives a crash: the failure path's raw thrown reason
  * (`originalReason`) is delivered as-is only within the acknowledging process.
  * A redelivery after recovery reconstructs the error from the persisted outcome
- * (message, name, failure category) — the same fidelity the worker resume path
+ * (message, name, failure category and validated upstream facts) — the same fidelity the worker resume path
  * has always had.
  *
  * The persisted record shapes, decode guards, key derivations, and the queued
@@ -54,6 +54,7 @@
 import { KEYS } from '../../storage/keys.ts';
 import { assertPayloadWithinLimit } from '../payload-size.ts';
 import type { OperationOutcome } from '../types.ts';
+import { upstreamFailureOf } from '../upstream-http-failure.ts';
 import { WeftError } from '../weft-error.ts';
 import {
   buildAsyncActivityAcknowledgementOperations,
@@ -460,10 +461,8 @@ export async function driveWorkflowInterceptorGenerator(
 }
 
 /**
- * Fail a deferred activity out-of-band with `error`. The error is thrown into
- * the workflow generator at the parked step — identical to an inline activity
- * that threw — so the workflow's own try/catch and any configured retry policy
- * apply unchanged.
+ * Fail a deferred activity by throwing `error` into the parked generator, so the workflow's own
+ * try/catch and configured retry policy apply just as for an inline activity.
  */
 export async function failAsyncActivity(
   internals: EngineInternals,
@@ -473,13 +472,14 @@ export async function failAsyncActivity(
 ): Promise<void> {
   const message = error instanceof Error ? error.message : String(error);
   const errorName = error instanceof Error ? error.name : undefined;
+  const upstreamFailure = upstreamFailureOf(error);
   // Both the failure message AND name are caller-supplied over the public
   // completion endpoint and get persisted (timeline + fed outcome). Cap the full
   // persisted shape — not just the message — for the same reason the complete
   // path caps its result. Checked BEFORE consuming the single-use token so an
   // oversized failure is rejectable and retryable rather than stranding it.
   assertPayloadWithinLimit(
-    { message, name: errorName },
+    { message, name: errorName, ...(upstreamFailure === undefined ? {} : { upstreamFailure }) },
     internals.options.payloadSizePolicy.maxBytes,
     'activity result',
   );
@@ -489,8 +489,9 @@ export async function failAsyncActivity(
     {
       status: 'failed',
       error: message,
-      ...(error instanceof Error ? { errorName: error.name } : {}),
+      ...(errorName === undefined ? {} : { errorName }),
       failureCategory: 'application',
+      ...(upstreamFailure === undefined ? {} : { upstreamFailure }),
     },
     callbacks,
     { value: error },

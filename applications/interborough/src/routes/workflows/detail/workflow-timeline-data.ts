@@ -33,13 +33,13 @@
  * query `client.list({ parentWorkflowId })` directly instead — real ids,
  * real links, no timeline coupling.
  */
-import {
-  HttpClientError,
-  type HttpClient,
-  type WorkflowTimelineEntry,
-  type WorkflowTimelineOperationDetail,
-  type WorkflowTimelineStatus,
+import type {
+  HttpClient,
+  WorkflowTimelineEntry,
+  WorkflowTimelineOperationDetail,
+  WorkflowTimelineStatus,
 } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 import type { QueryKey } from '@tanstack/svelte-query';
 
 type TimelineEntry = Awaited<

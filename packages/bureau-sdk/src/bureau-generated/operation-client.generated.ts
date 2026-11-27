@@ -25,12 +25,13 @@ import type { WorkflowsOperationTypes } from './workflows-operations.generated.t
 import {
   createCatalogClient,
   createSubscriptionClient,
+  httpJsonRpcTransport,
   sseSubscriptionTransport,
   type CatalogClient,
   type ClientRestOperationBinding,
+  type JsonRpcHttpConnection,
   type SubscriptionClient,
 } from '@lostgradient/backchannel/client';
-import { bureauTransport, type BureauClientConnection } from '../bureau-transport.ts';
 
 /**
  * Every unary operation this server exposes over JSON-RPC, sorted by name.
@@ -42,9 +43,9 @@ import { bureauTransport, type BureauClientConnection } from '../bureau-transpor
  *
  * @example
  * ```ts
- * import { CATALOG_OPERATION_NAMES } from '@lostgradient/bureau';
+ * import { CATALOG_OPERATION_NAMES } from '@lostgradient/bureau-sdk';
  *
- * const requested = 'bureau.tasks.get';
+ * const requested = 'bureau.agents.catalog';
  * const callable = CATALOG_OPERATION_NAMES.some((name) => name === requested);
  * console.log(callable); // true
  * ```
@@ -209,9 +210,9 @@ export const CATALOG_OPERATION_NAMES = [
  *
  * @example
  * ```ts
- * import type { CatalogOperationName } from '@lostgradient/bureau';
+ * import type { CatalogOperationName } from '@lostgradient/bureau-sdk';
  *
- * const operation: CatalogOperationName = 'bureau.tasks.list';
+ * const operation: CatalogOperationName = 'bureau.agents.catalog';
  * console.log(operation);
  * ```
  */
@@ -228,7 +229,7 @@ export type CatalogOperationName = (typeof CATALOG_OPERATION_NAMES)[number];
  *
  * @example
  * ```ts
- * import { CATALOG_OPERATION_NAMES, CLIENT_OPERATION_NAMES } from '@lostgradient/bureau';
+ * import { CATALOG_OPERATION_NAMES, CLIENT_OPERATION_NAMES } from '@lostgradient/bureau-sdk';
  *
  * const restOnly = CLIENT_OPERATION_NAMES.filter(
  *   (name) => !CATALOG_OPERATION_NAMES.some((catalogName) => catalogName === name),
@@ -395,9 +396,9 @@ export const CLIENT_OPERATION_NAMES = [
  *
  * @example
  * ```ts
- * import type { ClientOperationName } from '@lostgradient/bureau';
+ * import type { ClientOperationName } from '@lostgradient/bureau-sdk';
  *
- * const operation: ClientOperationName = 'bureau.tasks.list';
+ * const operation: ClientOperationName = 'bureau.agents.catalog';
  * console.log(operation);
  * ```
  */
@@ -414,7 +415,7 @@ export type ClientOperationName = (typeof CLIENT_OPERATION_NAMES)[number];
  *
  * @example
  * ```ts
- * import { CLIENT_REST_OPERATION_BINDINGS } from '@lostgradient/bureau';
+ * import { CLIENT_REST_OPERATION_BINDINGS } from '@lostgradient/bureau-sdk';
  *
  * for (const [operation, binding] of Object.entries(CLIENT_REST_OPERATION_BINDINGS)) {
  *   console.log(binding.method + ' ' + binding.path + '  ' + operation);
@@ -436,9 +437,9 @@ export const CLIENT_REST_OPERATION_BINDINGS = {} as const satisfies Readonly<
  *
  * @example
  * ```ts
- * import type { ClientOperationTypes } from '@lostgradient/bureau';
+ * import type { ClientOperationTypes } from '@lostgradient/bureau-sdk';
  *
- * type CancelInput = ClientOperationTypes['bureau.tasks.get']['input'];
+ * type CancelInput = ClientOperationTypes['bureau.agents.catalog']['input'];
  *
  * declare const input: CancelInput;
  * console.log(input);
@@ -476,9 +477,9 @@ export type ClientOperationTypes = AgentsOperationTypes &
  *
  * @example
  * ```ts
- * import type { CatalogOperationTypes } from '@lostgradient/bureau';
+ * import type { CatalogOperationTypes } from '@lostgradient/bureau-sdk';
  *
- * type AlertsOutput = CatalogOperationTypes['bureau.tasks.list']['output'];
+ * type AlertsOutput = CatalogOperationTypes['bureau.agents.catalog']['output'];
  *
  * declare const alerts: AlertsOutput;
  * console.log(alerts);
@@ -492,14 +493,28 @@ export type CatalogOperationTypes = Pick<ClientOperationTypes, CatalogOperationN
  *
  * @example
  * ```ts
- * import type { CatalogOperations } from '@lostgradient/bureau';
+ * import type { CatalogOperations } from '@lostgradient/bureau-sdk';
  *
  * declare const client: CatalogOperations;
- * const listAlerts = client['bureau.tasks.list'];
+ * const listAlerts = client['bureau.agents.catalog'];
  * console.log(typeof listAlerts);
  * ```
  */
-export type CatalogOperations = CatalogClient<CatalogOperationTypes>;
+export type CatalogOperations = CatalogClient<
+  CatalogOperationTypes,
+  | 'bureau.agents.definitions.delete'
+  | 'bureau.agents.disable'
+  | 'bureau.contexts.delete'
+  | 'bureau.contexts.forgetgrants'
+  | 'bureau.goals.cancel'
+  | 'bureau.hooks.delete'
+  | 'bureau.memory.embedding.cancel'
+  | 'bureau.memory.forget'
+  | 'bureau.schedules.cancel'
+  | 'bureau.tasks.cancel'
+  | 'bureau.workflows.delete'
+  | 'bureau.workflows.runs.cancel'
+>;
 
 /**
  * A client shaped over every operation, REST included: each operation name is
@@ -511,7 +526,7 @@ export type CatalogOperations = CatalogClient<CatalogOperationTypes>;
  *
  * @example
  * ```ts
- * import type { ClientOperations } from '@lostgradient/bureau';
+ * import type { ClientOperations } from '@lostgradient/bureau-sdk';
  *
  * declare const client: ClientOperations;
  * const diagnostics = client['bureau.agents.catalog'];
@@ -527,7 +542,7 @@ export type ClientOperations = CatalogClient<ClientOperationTypes>;
  *
  * @example
  * ```ts
- * import { SUBSCRIPTION_OPERATION_NAMES } from '@lostgradient/bureau';
+ * import { SUBSCRIPTION_OPERATION_NAMES } from '@lostgradient/bureau-sdk';
  *
  * console.log(SUBSCRIPTION_OPERATION_NAMES.length);
  * ```
@@ -545,7 +560,7 @@ export const SUBSCRIPTION_OPERATION_NAMES = [
  *
  * @example
  * ```ts
- * import type { SubscriptionOperationName } from '@lostgradient/bureau';
+ * import type { SubscriptionOperationName } from '@lostgradient/bureau-sdk';
  *
  * const operation: SubscriptionOperationName = 'bureau.events';
  * console.log(operation);
@@ -560,7 +575,7 @@ export type SubscriptionOperationName = (typeof SUBSCRIPTION_OPERATION_NAMES)[nu
  *
  * @example
  * ```ts
- * import type { SubscriptionOperations } from '@lostgradient/bureau';
+ * import type { SubscriptionOperations } from '@lostgradient/bureau-sdk';
  *
  * declare const client: SubscriptionOperations;
  * const controller = new AbortController();
@@ -576,28 +591,39 @@ export type SubscriptionOperations = SubscriptionClient<SubscriptionOperationTyp
  * Build a typed client for a remote Bureau server, with one method per operation
  * in {@link CATALOG_OPERATION_NAMES} and one per subscription in {@link SUBSCRIPTION_OPERATION_NAMES}.
  *
- * Calls travel as JSON-RPC over HTTP. Pass the base URL of the host, which is empty for the origin of the page. Every call is
- * posted to its `/jsonrpc` endpoint after the write guard has been asked.
+ * Calls travel as JSON-RPC over HTTP. Pass the base URL of the handler, absolute or a path the browser resolves, and any
+ * headers every call needs.
  *
  * @example
  * ```ts
- * import { createBureauClient, type ClientOperationTypes } from '@lostgradient/bureau';
+ * import { createBureauClient, type ClientOperationTypes } from '@lostgradient/bureau-sdk';
  *
- * const client = createBureauClient({ baseUrl: '' });
+ * const client = createBureauClient({ baseUrl: 'https://api.example.test' });
  *
- * declare const input: ClientOperationTypes['bureau.tasks.list']['input'];
- * const alerts = await client['bureau.tasks.list'](input);
+ * declare const input: ClientOperationTypes['bureau.agents.catalog']['input'];
+ * const alerts = await client['bureau.agents.catalog'](input);
  * console.log(alerts);
  * ```
  */
 export function createBureauClient(
-  connection: BureauClientConnection,
+  connection: JsonRpcHttpConnection,
 ): CatalogOperations & SubscriptionOperations {
   return {
-    ...createCatalogClient<CatalogOperationTypes>(
-      CATALOG_OPERATION_NAMES,
-      bureauTransport(connection),
-    ),
+    ...createCatalogClient<
+      CatalogOperationTypes,
+      | 'bureau.agents.definitions.delete'
+      | 'bureau.agents.disable'
+      | 'bureau.contexts.delete'
+      | 'bureau.contexts.forgetgrants'
+      | 'bureau.goals.cancel'
+      | 'bureau.hooks.delete'
+      | 'bureau.memory.embedding.cancel'
+      | 'bureau.memory.forget'
+      | 'bureau.schedules.cancel'
+      | 'bureau.tasks.cancel'
+      | 'bureau.workflows.delete'
+      | 'bureau.workflows.runs.cancel'
+    >(CATALOG_OPERATION_NAMES, httpJsonRpcTransport(connection)),
     ...createSubscriptionClient<SubscriptionOperationTypes>(
       SUBSCRIPTION_OPERATION_NAMES,
       sseSubscriptionTransport({ ...connection, routePrefix: '/bureau/v1/subscriptions' }),

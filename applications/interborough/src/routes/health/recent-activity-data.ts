@@ -5,13 +5,13 @@
  * {@link MAXIMUM_PAGES} pages, newest first, until the lines it can make from them fill the
  * section; it never reads the whole trail for lines. The total is asked for once, on the first page.
  */
+import type { CatalogOperations } from '@lostgradient/bureau-sdk';
 import type { AttentionItem } from '../../lib/bureau-attention.ts';
 import type { AuditRecord } from '../../lib/bureau-audit.ts';
 import { queryAudit } from '../../lib/bureau-audit.ts';
 import { getContext } from '../../lib/bureau-client.ts';
 import { getBureauReview } from '../../lib/bureau-reviews.ts';
 import { listBureauSchedules } from '../../lib/bureau-schedules.ts';
-import type { CatalogOperations } from '../../lib/generated/bureau-operation-client.generated.ts';
 import { reviewIdOf, summaryOf, withoutAmount } from '../audit/audit-events.ts';
 import type { WaitKind } from './health-overview-data.ts';
 import {

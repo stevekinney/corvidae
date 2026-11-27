@@ -7,7 +7,8 @@
  * look like it started by itself. Each side is read up to {@link RELATED_LIMIT} runs, with the
  * total, so a parent with hundreds of children is shown as a count and a few of them.
  */
-import { HttpClientError, type HttpClient, type WorkflowSummary } from '@lostgradient/weft';
+import type { HttpClient, WorkflowSummary } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 import type { QueryKey } from '@tanstack/svelte-query';
 
 import type { WorkflowActiveRevisionClient } from '../../../lib/workflow-revision.ts';

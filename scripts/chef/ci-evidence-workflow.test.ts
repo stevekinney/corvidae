@@ -218,7 +218,21 @@ describe('createCiEvidenceWorkflowReceipt', () => {
 
   test('aggregates run-scoped JUnit bundles on a later attempt without new uploads from every job', () => {
     const directory = artifactFixture();
-    const jobs = ['junit-root', ...Array.from({ length: 9 }, (_, index) => `junit-tests-${index}`)];
+    const names = [
+      'cinder',
+      'components',
+      'packages',
+      'applications, plugins, testing',
+      'interborough host',
+      'interborough ui 1',
+      'interborough ui 2',
+      'interborough ui 3',
+      'interborough ui 4',
+      'bureau',
+      'weft',
+      'everything else',
+    ];
+    const jobs = ['junit-root', ...names.map((_, index) => `junit-tests-${index}`)];
     for (const job of jobs) {
       const bundle = join(directory, job);
       mkdirSync(bundle);
@@ -236,7 +250,10 @@ describe('createCiEvidenceWorkflowReceipt', () => {
     const matrix = readFileSync(join(import.meta.dir, '../../.github/workflows/main.yml'), 'utf8')
       .split('  tests:\n')[1]
       ?.split('    env:\n')[0];
-    expect(matrix?.match(/^          - name:/gm)).toHaveLength(jobs.length - 1);
+    expect(
+      [...(matrix ?? '').matchAll(/^          - name: (.+)$/gm)].map((match) => match[1]),
+    ).toEqual(names);
+    expect(new Set(jobs).size).toBe(jobs.length);
     const lastReport = join(directory, jobs.at(-1)!, 'fast.xml');
     for (const content of [
       null,
@@ -344,7 +361,7 @@ describe('CI evidence workflow producers', () => {
 describe('validateJUnitArtifacts', () => {
   const expected = [
     'junit-root-2',
-    ...Array.from({ length: 9 }, (_, index) => `junit-tests-${index}-2`),
+    ...Array.from({ length: 12 }, (_, index) => `junit-tests-${index}-2`),
   ];
   const report = (body = '<testcase name="passes"/>') =>
     new TextEncoder().encode(`<testsuite>${body}</testsuite>`);

@@ -6,8 +6,8 @@ import {
   createReviewsClientWithTransport,
   parseReviewsOpeningSnapshot,
   type ReviewsOperationTypes,
-} from '@lostgradient/bureau-client/reviews';
-import type { ApprovalHost, ApprovalOutcome } from '@lostgradient/bureau-client/reviews/ui';
+} from '@lostgradient/bureau-sdk/reviews';
+import type { ApprovalHost, ApprovalOutcome } from '@lostgradient/bureau-sdk/reviews/ui';
 import { mountPanel } from '@lostgradient/cinder/panel';
 import { App } from '@modelcontextprotocol/ext-apps';
 import { tick, unmount } from 'svelte';

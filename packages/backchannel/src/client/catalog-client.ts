@@ -152,6 +152,14 @@ type CatalogOperationTypes = Record<
   }
 >;
 
+type DryRunAnswer<Output, Input> = Input extends { readonly dryRun: true }
+  ? Extract<Output, { readonly dryRun: true }>
+  : 'dryRun' extends keyof Input
+    ? Input extends { readonly dryRun: false }
+      ? Exclude<Output, { readonly dryRun: true }>
+      : Output
+    : Exclude<Output, { readonly dryRun: true }>;
+
 /**
  * The shape a catalog client takes: one method per operation name, each
  * accepting that operation's input and an optional {@link CatalogCallOptions},
@@ -178,12 +186,27 @@ type CatalogOperationTypes = Record<
  * console.log(echo.message);
  * ```
  */
-export type CatalogClient<Operations extends CatalogOperationTypes> = {
-  readonly [Name in keyof Operations]: (
-    input: Operations[Name]['input'],
-    options?: CatalogCallOptions,
-  ) => Promise<Operations[Name]['output']>;
-};
+export type CatalogClient<
+  Operations extends CatalogOperationTypes,
+  DryRunNames extends keyof Operations = never,
+> = [DryRunNames] extends [never]
+  ? {
+      readonly [Name in keyof Operations]: (
+        input: Operations[Name]['input'],
+        options?: CatalogCallOptions,
+      ) => Promise<Operations[Name]['output']>;
+    }
+  : {
+      readonly [Name in keyof Operations]: Name extends DryRunNames
+        ? <Input extends Operations[Name]['input']>(
+            input: Input,
+            options?: CatalogCallOptions,
+          ) => Promise<DryRunAnswer<Operations[Name]['output'], Input>>
+        : (
+            input: Operations[Name]['input'],
+            options?: CatalogCallOptions,
+          ) => Promise<Operations[Name]['output']>;
+    };
 
 /**
  * Transport seam for a catalog client. Every generated operation method
@@ -285,10 +308,13 @@ export type ClientRestOperationBinding = {
  * console.log(typeof client['probe.echo']);
  * ```
  */
-export function createCatalogClient<Operations extends CatalogOperationTypes>(
+export function createCatalogClient<
+  Operations extends CatalogOperationTypes,
+  DryRunNames extends keyof Operations = never,
+>(
   operationNames: readonly (keyof Operations & string)[],
   transport: CatalogTransport,
-): CatalogClient<Operations> {
+): CatalogClient<Operations, DryRunNames> {
   const methods: Partial<
     Record<keyof Operations, (input: unknown, options?: CatalogCallOptions) => unknown>
   > = {};
@@ -296,5 +322,5 @@ export function createCatalogClient<Operations extends CatalogOperationTypes>(
     methods[operationName] = (input: unknown, options?: CatalogCallOptions) =>
       transport(operationName, input, options);
   }
-  return methods as CatalogClient<Operations>;
+  return methods as CatalogClient<Operations, DryRunNames>;
 }
