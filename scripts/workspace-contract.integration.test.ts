@@ -431,13 +431,18 @@ describe('internal workspace architecture', () => {
     expect(configuration.tasks['lint']?.inputs).toContain(
       '$TURBO_ROOT$/scripts/owner-rule-guard-support.ts',
     );
-    expect(configuration.tasks['@lostgradient/interborough#test']?.inputs).toEqual(
-      expect.arrayContaining([
-        '$TURBO_DEFAULT$',
-        '$TURBO_ROOT$/documentation/weft-operation-coverage.md',
-        '$TURBO_ROOT$/scripts/owner-rule-guard-support.ts',
-      ]),
-    );
+    for (const task of [
+      '@lostgradient/interborough#test',
+      '@lostgradient/interborough#test:coverage',
+    ]) {
+      expect(configuration.tasks[task]?.inputs, task).toEqual(
+        expect.arrayContaining([
+          '$TURBO_DEFAULT$',
+          '$TURBO_ROOT$/documentation/weft-operation-coverage.md',
+          '$TURBO_ROOT$/scripts/owner-rule-guard-support.ts',
+        ]),
+      );
+    }
   });
 
   test('compiler configuration has a dedicated internal owner and two public presets', async () => {

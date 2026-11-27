@@ -1072,6 +1072,8 @@
       "dependsOn": ["transit", "^metadata"],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/documentation/weft-operation-coverage.md",
+        "$TURBO_ROOT$/scripts/owner-rule-guard-support.ts",
         "$TURBO_ROOT$/scripts/test-watchdog.ts",
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
