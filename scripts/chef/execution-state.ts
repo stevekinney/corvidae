@@ -7,7 +7,8 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { acquireHostLock, processStartTime } from '../run-exclusively.ts';
+import { processStartTime } from '../../packages/process-lease/src/index.ts';
+import { acquireHostLock } from '../run-exclusively.ts';
 
 // P04 binds persisted operations to provider identities; prior snapshots cannot prove that tuple.
 export const executionStateVersion = 2 as const;

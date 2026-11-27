@@ -42,6 +42,14 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  isAbsentOrPartial,
+  readTicket,
+  reclaimAbandonedAs,
+  removeLock,
+  type LivenessJudge,
+  type OwnerRecord,
+} from '../packages/process-lease/src/index.ts';
+import {
   isHolderAlive,
   readProcessTable,
   type ProcessEntry,
@@ -64,18 +72,7 @@ import {
   type SessionEvent,
   type SessionState,
 } from './host-sessions-model.ts';
-import {
-  ancestorsOf,
-  enqueue,
-  gitCommonDirectory,
-  isAbsentOrPartial,
-  readTicket,
-  reclaimAbandonedAs,
-  removeLock,
-  tryInstall,
-  type LivenessJudge,
-  type OwnerRecord,
-} from './run-exclusively.ts';
+import { ancestorsOf, enqueue, gitCommonDirectory, tryInstall } from './run-exclusively.ts';
 
 /**
  * How many places the host has: implementation workers and their coordinators together. There is
