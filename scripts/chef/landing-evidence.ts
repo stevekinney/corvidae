@@ -33,6 +33,7 @@ import { createGitHubCiEvidenceProvider } from './ci-evidence-github.ts';
 import { ciEvidenceRequestKey, type CiEvidenceProvider } from './ci-evidence.ts';
 import { batchVerificationPlanDigest } from './delivery-completion.ts';
 import type { LoadedDeliveryVerification } from './delivery-verification.ts';
+import { designDigest, exclusionResult } from './design-exclusions.ts';
 import { designVerdictPath, failingVerdictRows } from './design-verdict.ts';
 import { changedPaths, landingPlan, type LandingPlan } from './landing-plan.ts';
 import { defaultRunner, type Runner } from './process-runner.ts';
@@ -360,7 +361,32 @@ export async function validateLandingEvidence(
     }
     if (text === undefined)
       return `${interfaces[0]} is an interface path and ${path} records no design verdict for the head`;
-    const failing = failingVerdictRows(text);
+    let failing = failingVerdictRows(text);
+    const read = dependencies.readVerdicts ?? ((file: string) => readFileSync(file, 'utf8'));
+    try {
+      const exclusions = read(path.replace(/\.verdicts$/, '.exclusions.json'));
+      if (exclusions !== undefined) {
+        const binding: unknown = JSON.parse(exclusions);
+        if (!binding || typeof binding !== 'object' || Array.isArray(binding))
+          return 'invalid design exclusion binding';
+        const record = binding as Record<string, unknown>;
+        if (
+          Object.keys(record).sort().join(',') !== 'attestation,recordedDigest' ||
+          typeof record.attestation !== 'string' ||
+          record.recordedDigest !== designDigest(text)
+        )
+          return 'invalid design exclusion binding';
+        const rows = read(path.replace(/\.verdicts$/, '.rows'));
+        const ledger = read(path.replace(/\.verdicts$/, '.ledger'));
+        failing =
+          rows === undefined || ledger === undefined
+            ? ['missing design exclusion evidence']
+            : exclusionResult(record.attestation, request.revision, request.base, rows, ledger);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+        return 'design exclusion evidence could not be read';
+    }
     if (failing.length > 0) return `the design verdict has failing rows: ${failing.join('; ')}`;
   }
   return undefined;
