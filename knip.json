@@ -412,6 +412,7 @@
     "scripts/browser-fixtures": {
       "entry": [
         "tests/**/*.playwright.ts",
+        "scripts/**/*.slow.test.ts",
         "src/fixtures/tool-call-rail.svelte",
         "src/fixtures/backchannel-svelte.svelte",
         "src/fixtures/stacked-rows-leading-edge.svelte",

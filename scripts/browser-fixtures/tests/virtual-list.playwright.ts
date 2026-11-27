@@ -275,6 +275,15 @@ test.describe('Virtual list - adaptive overscan under scroll velocity', () => {
   const ADAPTIVE_STATUS = `${ADAPTIVE_MOUNT} [data-testid="adaptive-overscan-status"]`;
   const ADAPTIVE_ROW_COUNT = 5_000;
   const ADAPTIVE_CONFIGURED_OVERSCAN = 5;
+  // The `adaptive-overscan-dynamic-size` fixture: 400 rows of 90px under `itemHeight={5}` and
+  // `overscan={3}`.
+  const DYNAMIC_ROW_COUNT = 400;
+  const MEASURED_ROW_HEIGHT = 90;
+  const DYNAMIC_BASE_OVERSCAN = 3;
+  // The controlled drive: 500px per sample at one 60Hz frame apart.
+  const DRIVE_STEP_PIXELS = 500;
+  const FRAME_MILLISECONDS = 1000 / 60;
+  const DRIVE_STEPS = 15;
 
   type ScrollDriveSample = {
     scrollTop: number;
@@ -471,11 +480,9 @@ test.describe('Virtual list - adaptive overscan under scroll velocity', () => {
     // apart) — dividing a given pixel distance by 5 instead of 90 asks for
     // roughly 18x as many rows. Primed first (a full, slow top-to-bottom
     // traversal) so every row's real 90px size is already cached before the
-    // timed drive below: the conversion is supposed to use that measured
-    // average once one exists, not the estimate, and the timed drive needs a
-    // clean read on THAT, not on corrections still settling from first-time
-    // measurements.
-    const peakRenderedCount = await list.evaluate(async (element) => {
+    // drive below: the conversion is supposed to use that measured average once
+    // one exists, not the estimate.
+    await list.evaluate(async (element) => {
       let top = 0;
       for (;;) {
         element.scrollTop = top;
@@ -484,29 +491,101 @@ test.describe('Virtual list - adaptive overscan under scroll velocity', () => {
         if (top >= currentMax) break;
         top = Math.min(currentMax, top + 200);
       }
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      let peak = 0;
-      for (let frame = 0; frame < 15; frame += 1) {
-        element.scrollTop = Math.max(0, element.scrollTop - 500);
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-        peak = Math.max(peak, element.querySelectorAll('[data-cinder-virtual-index]').length);
-      }
-      return peak;
     });
+    const rowHeight = await list.evaluate(
+      (element) =>
+        element.querySelector('[data-cinder-virtual-index]')?.getBoundingClientRect().height ?? 0,
+    );
+    expect(rowHeight, 'the fixture rows measure 90px').toBe(MEASURED_ROW_HEIGHT);
+    // Every row is measured once the list is as tall as its rows. Until then the unseen rows
+    // count as the 5px estimate, which would inflate the window whatever the velocity.
+    await expect
+      .poll(() => list.evaluate((element) => element.scrollHeight), {
+        message: 'every row has been measured',
+      })
+      .toBeGreaterThanOrEqual(DYNAMIC_ROW_COUNT * MEASURED_ROW_HEIGHT);
 
-    // Grew past the configured floor (resolvedOverscan=3 on each side of a
-    // ~300px/90px viewport) — adaptive overscan actually engaged during the
-    // primed backward drive.
-    expect(peakRenderedCount).toBeGreaterThan(20);
-    // ...but nowhere near what dividing by the 5px itemHeight ESTIMATE would
-    // give at this same velocity: roughly 18x more rows of overscan than
-    // dividing by the row's real 90px measured size, which saturates the
-    // default 50-row ceiling on each side (~104 rendered rows total) well
-    // before the correct conversion does. 60 sits with wide margin below that
-    // and above every peak this correct conversion produced across repeated
-    // manual runs (27-53).
-    expect(peakRenderedCount).toBeLessThan(60);
+    // The drive feeds the list its own scroll samples. Each step writes `scrollTop` and then
+    // dispatches a `scroll` event whose `timeStamp` sits one 60Hz frame after the last, so the
+    // velocity the list sees (500px per 16.67ms, 30px/ms) cannot depend on this host's frame rate
+    // or load. The scroll events the browser itself queues for those writes carry real time
+    // stamps, so a capture listener drops them. The idle reset is a real 200ms timer, and the
+    // whole drive and the read of the window stay in one task, so it cannot fire in between.
+    const drive = await list.evaluate(
+      async (element, { stepPixels, frameMilliseconds, steps }) => {
+        const dropBrowserScrollEvents = (event: Event): void => {
+          if (event.isTrusted) event.stopImmediatePropagation();
+        };
+        const renderedCount = (): number =>
+          element.querySelectorAll('[data-cinder-virtual-index]').length;
+        document.addEventListener('scroll', dropBrowserScrollEvents, true);
+        try {
+          const startTop = element.scrollTop;
+          // Far enough past the last real scroll event that the list starts a fresh gesture.
+          const origin = performance.now() + 1_000;
+          for (let step = 0; step < steps; step += 1) {
+            element.scrollTop = startTop - step * stepPixels;
+            const sample = new Event('scroll');
+            Object.defineProperty(sample, 'timeStamp', {
+              value: origin + step * frameMilliseconds,
+            });
+            element.dispatchEvent(sample);
+          }
+          // The list renders from a microtask after the last sample; wait until the window stops
+          // changing, with no timer in between.
+          let count = -1;
+          while (count !== renderedCount()) {
+            count = renderedCount();
+            await Promise.resolve();
+          }
+          const rows = [...element.querySelectorAll('[data-cinder-virtual-index]')];
+          return {
+            startTop,
+            scrollTop: element.scrollTop,
+            viewportHeight: element.clientHeight,
+            indices: rows.map((row) => Number(row.getAttribute('data-cinder-virtual-index'))),
+            heights: rows.map((row) => row.getBoundingClientRect().height),
+          };
+        } finally {
+          document.removeEventListener('scroll', dropBrowserScrollEvents, true);
+        }
+      },
+      { stepPixels: DRIVE_STEP_PIXELS, frameMilliseconds: FRAME_MILLISECONDS, steps: DRIVE_STEPS },
+    );
+
+    // The witness, read from the rendered rows rather than from the list's own arithmetic: the
+    // rows are the measured 90px, the window is contiguous, and it holds every row the reader can
+    // see at the scroll position the drive ended on.
+    const trace = JSON.stringify({
+      scrollTop: drive.scrollTop,
+      count: drive.indices.length,
+      first: drive.indices[0],
+      last: drive.indices.at(-1),
+    });
+    expect(drive.scrollTop, trace).toBe(drive.startTop - (DRIVE_STEPS - 1) * DRIVE_STEP_PIXELS);
+    expect(new Set(drive.heights), trace).toEqual(new Set([MEASURED_ROW_HEIGHT]));
+    expect(drive.indices, trace).toEqual(
+      Array.from({ length: drive.indices.length }, (_, offset) => drive.indices[0]! + offset),
+    );
+    const firstVisible = Math.floor(drive.scrollTop / MEASURED_ROW_HEIGHT);
+    const lastVisible = Math.floor(
+      (drive.scrollTop + drive.viewportHeight - 1) / MEASURED_ROW_HEIGHT,
+    );
+    expect(drive.indices[0]!, trace).toBeLessThanOrEqual(firstVisible);
+    expect(drive.indices.at(-1)!, trace).toBeGreaterThanOrEqual(lastVisible);
+
+    // At a steady 30px/ms the list asks for ceil(500 / 90) = 6 rows of travel per frame, so an
+    // overscan of 3 + 6 = 9 rows on each side (the velocity average is 29.8px/ms after the
+    // drive). Dividing by the 5px estimate asks for ceil(500 / 5) = 100 rows, which the
+    // 50-row ceiling clamps to 3 + 50 on each side: 5 visible rows plus 100 is 105 rows, and
+    // adaptation that never engaged would leave the floor, 5 plus 6 is 11.
+    const visibleRows = lastVisible - firstVisible + 1;
+    const measuredOverscan =
+      DYNAMIC_BASE_OVERSCAN + Math.ceil(DRIVE_STEP_PIXELS / MEASURED_ROW_HEIGHT);
+    expect(drive.indices.length, trace).toBeLessThanOrEqual(visibleRows + 2 * measuredOverscan + 4);
+    expect(drive.indices.length, trace).toBeGreaterThanOrEqual(
+      visibleRows + 2 * (measuredOverscan - 2),
+    );
   });
 });
 

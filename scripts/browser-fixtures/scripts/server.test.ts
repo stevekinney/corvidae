@@ -3,13 +3,15 @@ import { assertUniqueFixtureNames, readManifest } from '@lostgradient/testing/br
 import { manifestOutputPaths } from '@lostgradient/testing/browser/prepare-manifest';
 import { createFixtureServer, handleFixtureRequest } from '@lostgradient/testing/browser/server';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { expect, test } from 'bun:test';
+import { waitUntil } from '@lostgradient/testing/wait-until';
+import { expect, spyOn, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
 import type { Component } from 'svelte';
 import { appFixtureDeclarations } from '../src/app-fixture-declarations.ts';
 import { defaultManifestLayout } from './prepare-manifest.ts';
+import { controlledBuild, developmentHost } from './server.test-support.ts';
 
 const manifestPath = manifestOutputPaths(defaultManifestLayout).manifest;
 const noDeclarations = { appFixtureDeclarations: {} };
@@ -61,6 +63,55 @@ test('native fixture routes preserve hash, snapshot, asset, and readiness contra
   } finally {
     await server.stop(true);
     await rm(outputDirectory, { recursive: true, force: true });
+  }
+});
+
+test('a request that arrives during a rebuild is answered once the build resolves', async () => {
+  const build = controlledBuild();
+  let waiting = 0;
+  const host = await developmentHost(() => {
+    waiting += 1;
+    return build.promise;
+  });
+  try {
+    const response = host.request();
+    await waitUntil(() => waiting === 1, { message: 'the request reached the rebuild wait' });
+    build.release();
+    const answered = await response;
+    expect(answered.status).toBe(200);
+    expect(await answered.text()).toContain('.fixture');
+  } finally {
+    await host.close();
+  }
+});
+
+test('a failed rebuild answers requests with an error until the next build succeeds', async () => {
+  const stderr = spyOn(process.stderr, 'write').mockImplementation(() => true);
+  const failed = controlledBuild();
+  let build = failed.promise;
+  let waiting = 0;
+  const host = await developmentHost(() => {
+    waiting += 1;
+    return build;
+  });
+  try {
+    const pending = host.request();
+    await waitUntil(() => waiting === 1, { message: 'the request reached the rebuild wait' });
+    failed.fail(new Error('the rebuild failed'));
+    const answered = await pending;
+    expect(answered.status).toBe(500);
+    expect(await answered.text()).toBe('the rebuild failed');
+
+    // `serve.ts` queues the next build behind the failed one, and requests wait for that one.
+    const recovered = controlledBuild();
+    build = recovered.promise;
+    const next = host.request();
+    recovered.release();
+    const recoveredResponse = await next;
+    expect(recoveredResponse.status).toBe(200);
+  } finally {
+    stderr.mockRestore();
+    await host.close();
   }
 });
 
