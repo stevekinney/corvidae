@@ -344,7 +344,7 @@ function cardTable(scope: StackScope): string {
 
 /** The scroll box around a table that takes the card form (`:has` cannot nest, so two of them). */
 function cardScroll(scope: StackScope): string {
-  return `.cinder-table-scroll:has(> .cinder-table[data-cinder-fit]${scopeAttribute(scope)}):not(:has(> .cinder-table${bodyHas(FILL_CONTROL)}))`;
+  return `.cinder-table-scroll:has(> .cinder-table[data-cinder-fit]${scopeAttribute(scope)}):not(:has(> .cinder-table > .cinder-table__body > .cinder-table__row > ${FILL_CONTROL}))`;
 }
 
 /** The tables that take the control layout: a filling control in a `fit` table, any control otherwise. */

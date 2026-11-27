@@ -1,0 +1,22 @@
+/* COR-2771: the table-first-paint fixture's layout. The fixture imports it on the client, and
+ * `table-first-paint.playwright.ts` adds the same file to the server-rendered page, so both paints
+ * lay out the page the same way. */
+
+.first-paint-page {
+  display: grid;
+  gap: var(--cinder-space-6);
+}
+
+.first-paint-columns {
+  display: flex;
+  gap: var(--cinder-space-6);
+  align-items: flex-start;
+}
+
+.first-paint-narrow {
+  flex: 0 0 20rem;
+}
+
+.first-paint-wide {
+  flex: 0 0 56.25rem;
+}

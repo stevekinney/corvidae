@@ -1204,11 +1204,10 @@
     }
     .cinder-table-scroll:has(> .cinder-table[data-cinder-fit]:not([data-cinder-stack-below])):not(
         :has(
-          > .cinder-table:has(
-              > .cinder-table__body
-                > .cinder-table__row
-                > .cinder-table__cell[data-cinder-controls='']
-            )
+          > .cinder-table
+            > .cinder-table__body
+            > .cinder-table__row
+            > .cinder-table__cell[data-cinder-controls='']
         )
       ) {
       border: 0;
@@ -1224,11 +1223,10 @@
         > .cinder-table[data-cinder-fit]:not([data-cinder-stack-below])
       ):not(
         :has(
-          > .cinder-table:has(
-              > .cinder-table__body
-                > .cinder-table__row
-                > .cinder-table__cell[data-cinder-controls='']
-            )
+          > .cinder-table
+            > .cinder-table__body
+            > .cinder-table__row
+            > .cinder-table__cell[data-cinder-controls='']
         )
       ) {
       display: block;
@@ -2184,11 +2182,10 @@
     }
     .cinder-table-scroll:has(> .cinder-table[data-cinder-fit][data-cinder-stack-below='640px']):not(
         :has(
-          > .cinder-table:has(
-              > .cinder-table__body
-                > .cinder-table__row
-                > .cinder-table__cell[data-cinder-controls='']
-            )
+          > .cinder-table
+            > .cinder-table__body
+            > .cinder-table__row
+            > .cinder-table__cell[data-cinder-controls='']
         )
       ) {
       border: 0;
@@ -2204,11 +2201,10 @@
         > .cinder-table[data-cinder-fit][data-cinder-stack-below='640px']
       ):not(
         :has(
-          > .cinder-table:has(
-              > .cinder-table__body
-                > .cinder-table__row
-                > .cinder-table__cell[data-cinder-controls='']
-            )
+          > .cinder-table
+            > .cinder-table__body
+            > .cinder-table__row
+            > .cinder-table__cell[data-cinder-controls='']
         )
       ) {
       display: block;

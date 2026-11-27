@@ -24,7 +24,17 @@ const TABLES = ['namespaces', 'loading', 'controls'] as const;
 let rendered: ServerRenderedPage;
 
 test.beforeAll(async () => {
-  rendered = await renderServerPage(SOURCE);
+  const page = await renderServerPage(SOURCE);
+  // The server render returns the body only, so the fixture's layout stylesheet, which the client
+  // imports, joins the served page's head here.
+  const layout = await Bun.file(
+    new URL('../src/fixtures/table-first-paint.css', import.meta.url),
+  ).text();
+  rendered = {
+    ...page,
+    document: (theme) =>
+      page.document(theme).replace('</head>', () => `<style>${layout}</style></head>`),
+  };
 });
 
 test.use({ javaScriptEnabled: false });

@@ -20,6 +20,8 @@
     TableRow,
   } from '@lostgradient/cinder';
 
+  import './table-first-paint.css';
+
   const namespaces = [
     { name: 'default', state: 'Registered', retention: '3 days', owner: 'Platform team' },
     { name: 'orders', state: 'Registered', retention: '30 days', owner: 'Checkout' },
@@ -112,24 +114,3 @@
     </section>
   </div>
 </main>
-
-<style>
-  .first-paint-page {
-    display: grid;
-    gap: var(--cinder-space-6);
-  }
-
-  .first-paint-columns {
-    display: flex;
-    gap: var(--cinder-space-6);
-    align-items: flex-start;
-  }
-
-  .first-paint-narrow {
-    flex: 0 0 20rem;
-  }
-
-  .first-paint-wide {
-    flex: 0 0 56.25rem;
-  }
-</style>
