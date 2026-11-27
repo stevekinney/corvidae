@@ -963,6 +963,59 @@ describe('the last turn’s outcome and its recovery commands (COR-2725)', () =>
     ).toBe(true);
   });
 
+  // An earlier turn's finished reply is run A's; the stopped turn after it is run B's, and a message
+  // the person typed after its steps joins it as a follow-up.
+  const AFTER_A_REPLY = (followUp: boolean) => {
+    const [user, call, result] = endedOnToolCallMessages() as [
+      Record<string, unknown>,
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ];
+    const rename = (row: Record<string, unknown>, from: string, to: string) => ({
+      ...row,
+      id: String(row['id']).replace(from, to),
+    });
+    return [
+      { id: 'user-a', role: 'user', content: 'First question' },
+      { id: 'run-a:step:0', role: 'assistant', content: 'A finished reply.' },
+      rename(user, 'user-states-ended-on-tool', 'user-b'),
+      rename(call, 'run-states-ended-on-tool', 'run-b'),
+      rename(result, 'run-states-ended-on-tool', 'run-b'),
+      ...(followUp
+        ? [
+            {
+              id: 'user-c',
+              role: 'user',
+              content: 'And this too',
+              metadata: { _followUp: true },
+            },
+          ]
+        : []),
+    ];
+  };
+
+  test.each([
+    ['Discard', 'bureau.contexts.discardturn'],
+    ['Continue', 'bureau.contexts.resumeturn'],
+  ] as const)(
+    '%s on a stopped turn of steps after an earlier finished reply acts on that turn’s run, with a follow-up after its steps too',
+    async (button, method) => {
+      const served = serve(AFTER_A_REPLY(true), {
+        answers: {
+          'bureau.tasks.list': stoppedRun('canceled'),
+          [method]: (params) => ({ contextId: 'session-1', runId: params['runId'], removed: 1 }),
+        },
+      });
+      const { findByRole } = mount();
+
+      await fireEvent.click(await findByRole('button', { name: button }));
+
+      await waitFor(() => expect(served.calls.some((call) => call.method === method)).toBe(true));
+      const call = served.calls.find((entry) => entry.method === method);
+      expect(call?.params['runId']).toBe('run-b');
+    },
+  );
+
   test('Discard on a turn of only tool calls the person stopped asks the Bureau to discard that run', async () => {
     const served = serve(ONLY_TOOLS('finished'), {
       answers: {

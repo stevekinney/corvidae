@@ -178,6 +178,39 @@ describe('Chat — the outcome of a turn with no assistant message', () => {
     }
   }
 
+  test.each([
+    ['returns false', () => false],
+    ['throws', () => Promise.reject(new Error('offline'))],
+  ] as const)(
+    'Retry now on a dropped stream of a tool-only turn says once under the turn that it did not go through when the host %s',
+    async (_name, answer) => {
+      const outcome = resolveTurnOutcome(turnOf('finished'), {
+        ...IDLE,
+        running: true,
+        reconnect: { attempt: 1, attempts: 7, wait: 5_000, nextTryAt: 4_000, runDropped: true },
+      });
+      const { container } = render(Chat, {
+        id: 'only-tools',
+        conversation: outcome.conversation,
+        variant: 'transcript',
+        messageTurnState: (message: Parameters<typeof turnStateOf>[1]) =>
+          turnStateOf(outcome, message),
+        onRetryConnection: answer,
+      });
+      await tick();
+
+      await fireEvent.click(getByRole(container, 'button', { name: 'Retry now' }));
+      await tick();
+      await tick();
+
+      const lines = [...container.querySelectorAll('.chat-turn-command-failure')];
+      expect(lines.map((line) => line.textContent?.trim())).toEqual([
+        'That did not go through. Try again.',
+      ]);
+      expect(container.querySelector('.chat-turn-outcome')).toBeNull();
+    },
+  );
+
   test('a dropped stream is the connection notice by the composer, once, and no outcome row', async () => {
     const outcome = resolveTurnOutcome(turnOf('finished'), {
       ...IDLE,
