@@ -10,9 +10,12 @@
 
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import {
+  acquireOwnedProcessLease,
+  OwnedProcessGroupUnverifiedError,
+  runOwnedProcessGroup,
+} from '../packages/process-lease/src/index.ts';
 import { rootScriptEnvironment } from './environment-configuration.ts';
-import { OwnedProcessGroupUnverifiedError, runOwnedProcessGroup } from './owned-process-group.ts';
-import { acquireOwnedProcessLease } from './owned-process-lease.ts';
 
 const REPOSITORY_ROOT = resolve(import.meta.dirname, '..');
 

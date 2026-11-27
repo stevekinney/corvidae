@@ -279,7 +279,8 @@ describe('admitWorker', () => {
     const directory = await scratch();
     const time = clock();
     await mkdir(directory, { recursive: true });
-    const { tryInstall, removeLock } = await import('./run-exclusively.ts');
+    const { tryInstall } = await import('./run-exclusively.ts');
+    const { removeLock } = await import('../packages/process-lease/src/index.ts');
     const dead = { pid: 999_997, command: 'dead hook', cwd: '/', acquiredAt: '', token: 'dead' };
     expect(await tryInstall(join(directory, 'admission'), dead)).toBe(true);
     const admitted = await admitWorker({ ...options(directory, time), request: request('A', '1') });

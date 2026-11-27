@@ -29,20 +29,18 @@
  */
 
 import { resolveBungalowDescriptor, resolveBungalowRoot } from '@lostgradient/bungalow';
+import {
+  acquireOwnedProcessLease,
+  OwnedProcessGroupUnverifiedError,
+  retireOwnedProcessLease,
+  runOwnedProcessGroup,
+  type HeldHostLock,
+} from '@lostgradient/process-lease';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { constants, homedir } from 'node:os';
 import { join, resolve as resolvePath } from 'node:path';
-import {
-  OwnedProcessGroupUnverifiedError,
-  runOwnedProcessGroup,
-} from '../../../../scripts/owned-process-group.ts';
-import {
-  acquireOwnedProcessLease,
-  retireOwnedProcessLease,
-} from '../../../../scripts/owned-process-lease.ts';
-import type { HeldHostLock } from '../../../../scripts/run-exclusively.ts';
 
 import { runGit, staleBuildProblem, type GitRunner } from './build-info.ts';
 import { DEVELOPMENT_PLUGIN_FLAG } from './development-plugin-flag.ts';
@@ -55,8 +53,8 @@ import {
 import { RESTART_EXIT_CODE } from './restart.ts';
 import { SHOWCASE_FLAG, showcaseEnvironment } from './showcase.ts';
 import {
-  deriveInstanceEnvironment,
   derivedInstanceMessage,
+  deriveInstanceEnvironment,
   linkedWorktreeRoot,
   operatingSystemFreePort,
   readGitDirectories,

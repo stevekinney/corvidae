@@ -5,6 +5,11 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from '
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import {
+  ownerFileName,
+  type HostLockHolder,
+  type OwnerRecord,
+} from '../packages/process-lease/src/index.ts';
 import { spawnWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { rejectionOf } from '../testing/testing/src/helpers/promise-outcome.ts';
 import { waitUntil } from '../testing/testing/src/wait-until.ts';
@@ -13,15 +18,12 @@ import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
 import {
   acquireHostLock,
   heldLockTokenVariable,
-  ownerFileName,
   queueDirectoryFor,
   reclaimAbandoned,
   runExclusively,
   runInProcessGroup,
   withPreflight,
   withTurborepoDefaults,
-  type HostLockHolder,
-  type OwnerRecord,
 } from './run-exclusively';
 
 /**

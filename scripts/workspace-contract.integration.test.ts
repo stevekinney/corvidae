@@ -124,6 +124,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/memory',
   '@lostgradient/mcp',
   '@lostgradient/node-host',
+  '@lostgradient/process-lease',
   '@lostgradient/storage',
   '@lostgradient/storage-bun-sqlite',
   '@lostgradient/storage-cloudflare',

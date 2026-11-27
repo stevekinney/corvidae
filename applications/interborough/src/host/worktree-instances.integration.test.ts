@@ -14,6 +14,7 @@
  * Each scenario runs at module scope, under the hang guard, so it is not on Bun's per-test clock;
  * the tests assert on what it recorded. Nothing asserts on how long anything takes.
  */
+import { processStartTime, readOwner, verifiedGate } from '@lostgradient/process-lease';
 import {
   HangGuardProgress,
   runWithHangGuard,
@@ -25,8 +26,6 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { verifiedGate } from '../../../../scripts/owned-process-lease.ts';
-import { processStartTime, readOwner } from '../../../../scripts/run-exclusively.ts';
 
 import { executeCli } from './cli-client.ts';
 import { processEnvironment } from './environment-configuration.ts';
