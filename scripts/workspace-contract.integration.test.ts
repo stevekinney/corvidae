@@ -420,6 +420,12 @@ describe('internal workspace architecture', () => {
         `bun applications/interborough/scripts/${guard}.ts`,
       );
       expect(interborough['lint:guards'], guard).toContain(`bun scripts/${guard}.ts`);
+      // Each guard's test scans all of Interborough's source and needs no DOM, so it runs in the
+      // host segment of `test` and stays out of the memory-bound UI shards.
+      const test = `scripts/${guard}.test.ts`;
+      expect(interborough['test:host']!.split(/\s+/), guard).toContain(test);
+      expect(interborough['test:ui'], guard).toContain(`--path-ignore-patterns='${test}'`);
+      expect(interborough['test:host'], guard).not.toContain(`--path-ignore-patterns='${test}'`);
     }
   });
 

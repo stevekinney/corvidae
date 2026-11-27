@@ -361,20 +361,25 @@ describe('dashboard coverage matrix checker', () => {
 });
 
 describe('dashboard coverage matrix discovery', () => {
-  test("Interborough's default test lane collects this checker", async () => {
+  test("Interborough's host test segment collects this checker, and the UI shards leave it out", async () => {
     const manifest = (await Bun.file(join(PACKAGE_ROOT, 'package.json')).json()) as {
       scripts: Record<string, string>;
     };
-    const lane = manifest.scripts['test:ui']!;
-    expect(manifest.scripts['test']).toContain(lane.replace(/^bun /, ''));
-    // The lane's roots are the last arguments; its ignore patterns are quoted globs.
-    expect(lane).toMatch(/ src scripts tests$/);
-    const ignored = [...lane.matchAll(/--path-ignore-patterns='([^']+)'/g)].map(
-      (match) => match[1]!,
-    );
     const checker = `tests/${basename(import.meta.path)}`;
     expect(checker).toBe('tests/coverage-matrix.test.ts');
-    expect(ignored.filter((pattern) => new Bun.Glob(pattern).match(checker))).toEqual([]);
     expect(existsSync(join(PACKAGE_ROOT, checker))).toBe(true);
+    const ignoredBy = (lane: string) =>
+      [...lane.matchAll(/--path-ignore-patterns='([^']+)'/g)]
+        .map((match) => match[1]!)
+        .filter((pattern) => new Bun.Glob(pattern).match(checker));
+    // It reads the repository's documentation and no DOM, so it runs with the host tests, not in
+    // the memory-bound UI shards. `test` runs both segments.
+    const host = manifest.scripts['test:host']!;
+    const ui = manifest.scripts['test:ui']!;
+    expect(manifest.scripts['test']).toContain(host.replace(/^bun /, ''));
+    expect(manifest.scripts['test']).toContain(ui.replace(/^bun /, ''));
+    expect(host.split(/\s+/)).toContain(checker);
+    expect(ignoredBy(host)).toEqual([]);
+    expect(ignoredBy(ui)).toEqual([checker]);
   });
 });
