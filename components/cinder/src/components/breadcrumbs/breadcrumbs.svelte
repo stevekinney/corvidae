@@ -73,6 +73,20 @@
   let overflowOpen = $state(false);
   let overflowTrigger = $state<HTMLButtonElement | null>(null);
 
+  // The phone form hides the "…" item in CSS, and the menu it opens is portaled outside the trail,
+  // so a menu left open when the viewport narrows would float over a trigger that is no longer
+  // drawn. It closes once its trigger has no box. A trigger that turns `display: none` resizes to
+  // nothing, which is what the observer reports.
+  $effect(() => {
+    const trigger = overflowTrigger;
+    if (!overflowOpen || trigger === null || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (trigger.getClientRects().length === 0) overflowOpen = false;
+    });
+    observer.observe(trigger);
+    return () => observer.disconnect();
+  });
+
   // The current entry opens a popover when it asks for one, such as a long title's full text.
   let popoverOpen = $state(false);
   let triggerElement = $state<HTMLButtonElement | null>(null);
