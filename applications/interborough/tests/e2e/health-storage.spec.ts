@@ -54,6 +54,119 @@ async function openStorage(page: Page): Promise<void> {
 }
 
 test.describe('Health › Storage on the sample world', () => {
+  test('wide Health Storage keeps the selected key within the content bound', async ({
+    context,
+    page,
+  }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await openStorage(page);
+
+    const main = page.locator('main');
+    const layout = main.locator('.cinder-list-detail');
+    const rows = layout.locator('tbody tr[data-cinder-row-id]');
+    const selectedRow = rows.nth(1);
+    const pane = main.getByTestId('storage-key');
+    const keyName = pane.getByTestId('storage-key-name');
+    const copyKey = pane.getByRole('button', { name: 'Copy key', exact: true });
+
+    await expect(layout).toHaveAttribute('data-cinder-layout', 'split');
+    await expect(selectedRow).not.toHaveAttribute('aria-current', 'true');
+    await rows.first().focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(selectedRow).toBeFocused();
+    await page.keyboard.press('Enter');
+
+    const key = (await selectedRow.getAttribute('data-cinder-row-id')) ?? '';
+    expect(key).not.toBe('');
+    await expect(selectedRow).toHaveAttribute('aria-current', 'true');
+    await expect(keyName).toHaveText(key);
+
+    for (const width of [1280, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(layout).toHaveAttribute('data-cinder-layout', 'split');
+      await expect(keyName).toBeVisible();
+      await expect(copyKey).toBeEnabled();
+      const geometry = await layout.evaluate((element) => {
+        const list = element.querySelector('.cinder-list-detail__list');
+        const detail = element.querySelector('.cinder-list-detail__detail');
+        const key = element.querySelector('[data-testid="storage-key-name"]');
+        if (list === null || detail === null || key === null) {
+          throw new Error('Expected the Storage list, detail pane, and key name');
+        }
+        const bounds = (node: Element) => {
+          const { left, right, top, width } = node.getBoundingClientRect();
+          return { left, right, top, width };
+        };
+        return {
+          layout: bounds(element),
+          list: bounds(list),
+          detail: bounds(detail),
+          key: bounds(key),
+          keyOverflow: key.scrollWidth - key.clientWidth,
+          actions: [...detail.querySelectorAll('button')].map(bounds),
+        };
+      });
+      expect(geometry.layout.width).toBeLessThanOrEqual(1152);
+      expect(geometry.list.right).toBeLessThanOrEqual(geometry.detail.left);
+      expect(Math.abs(geometry.list.top - geometry.detail.top)).toBeLessThanOrEqual(1);
+      expect(geometry.key.left).toBeGreaterThanOrEqual(geometry.detail.left);
+      expect(geometry.key.right).toBeLessThanOrEqual(geometry.detail.right);
+      expect(geometry.keyOverflow).toBeLessThanOrEqual(0);
+      expect(geometry.actions.length).toBeGreaterThan(0);
+      for (const box of [geometry.list, geometry.detail, ...geometry.actions]) {
+        expect(box.left).toBeGreaterThanOrEqual(geometry.layout.left);
+        expect(box.right).toBeLessThanOrEqual(geometry.layout.right);
+      }
+    }
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'storage-bounded-selected-key',
+      source: SOURCE,
+      ready: async () => {
+        await expect(keyName).toHaveText(key);
+        await expect(layout).toHaveAttribute('data-cinder-layout', 'split');
+      },
+    });
+
+    await copyKey.press('Enter');
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(key);
+  });
+
+  test.describe('Storage at phone widths', () => {
+    test.use({ hasTouch: true, isMobile: true });
+
+    for (const width of [320, 375]) {
+      test(`wide Health Storage keeps the selected key within the content bound at ${width}px`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width, height: 812 });
+        await page.goto('/health/storage');
+        const main = page.locator('main');
+        const layout = main.locator('.cinder-list-detail');
+        const row = layout.locator('tbody tr[data-cinder-row-id]').first();
+        const pane = main.getByTestId('storage-key');
+
+        await expect(layout).toHaveAttribute('data-cinder-layout', 'stacked');
+        await expect(row).toBeVisible();
+        await expect(pane).toHaveCount(0);
+        const key = (await row.getAttribute('data-cinder-row-id')) ?? '';
+        expect(key).not.toBe('');
+        await row.tap();
+        await expect(pane.getByTestId('storage-key-name')).toHaveText(key);
+        await expect(row).toHaveCount(0);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+          width,
+        );
+
+        await main.getByRole('button', { name: 'Back', exact: true }).tap();
+        await expect(row).toBeVisible();
+        await expect(pane).toHaveCount(0);
+      });
+    }
+  });
+
   test('is the Health frame, the warning, one row of controls, the key table with its footer, and the pane of a locked key', async ({
     page,
     checkA11y,
@@ -261,19 +374,6 @@ test.describe('Health › Storage on the sample world', () => {
     const details = page.getByTestId('storage-details');
     // The popover is named for the button that opened it; the body does not say it again.
     await expect(details.getByRole('heading')).toHaveCount(0);
-    // Nothing sticks out past the popover's right edge, and no path is cut off.
-    const fit = await details.evaluate((element) => {
-      const popover = element.closest('.cinder-popover');
-      const own = element.getBoundingClientRect();
-      const frame = popover?.getBoundingClientRect();
-      return {
-        overflow: element.scrollWidth - element.clientWidth,
-        right: own.right,
-        frame: frame?.right ?? 0,
-      };
-    });
-    expect(fit.overflow).toBeLessThanOrEqual(0);
-    expect(fit.right).toBeLessThanOrEqual(Math.ceil(fit.frame));
     await expect(details.locator('dt')).toHaveText([
       'Backend',
       'Location',
@@ -281,6 +381,23 @@ test.describe('Health › Storage on the sample world', () => {
       'Keys',
       'Writes',
     ]);
+    // Measure the rendered boxes and text. Copy's invisible click target intentionally extends
+    // past its glyph and can count toward scrollWidth when the path ends at the content edge.
+    const fit = await details.evaluate((element) => {
+      const popover = element.closest('.cinder-popover');
+      const own = element.getBoundingClientRect();
+      const frame = popover?.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const rects = [...range.getClientRects()].filter((rect) => rect.width > 1 && rect.height > 1);
+      return {
+        room: own.right,
+        painted: Math.max(...rects.map((rect) => rect.right)),
+        frame: frame?.right ?? 0,
+      };
+    });
+    expect(fit.painted).toBeLessThanOrEqual(Math.ceil(fit.room));
+    expect(fit.room).toBeLessThanOrEqual(Math.ceil(fit.frame));
     await expect(details.locator('dd').nth(0)).toHaveText('SQLite');
     await expect(details.locator('dd').nth(2)).toHaveText('1.6 GB');
     await expect(details.locator('dd').nth(3)).toHaveText(/^[\d,]+\s*$/);
