@@ -225,7 +225,10 @@ export class InteractiveSurfaceSchemaCompiler {
     }
     if (Object.hasOwn(schema, '$id')) fail(`${where} must not declare $id`);
     try {
-      const validate = compileInterpretedSchema(schema, { formats: this.#formats });
+      const validate =
+        this.#formats === undefined
+          ? compileInterpretedSchema(schema)
+          : compileInterpretedSchema(schema, { formats: this.#formats });
       this.#cache.set(key, validate);
       if (this.#cache.size > this.#capacity)
         this.#cache.delete(this.#cache.keys().next().value as string);

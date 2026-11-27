@@ -16,8 +16,7 @@
  * @module review-answer
  */
 
-import type { HumanInputSchema } from '@lostgradient/operative';
-import type { SchemaError } from '@lostgradient/operative';
+import type { HumanInputSchema, SchemaError } from '@lostgradient/operative';
 
 import { takesPlainText } from './a2ui/input-form.ts';
 import type { InteractiveSurfaceJsonObject } from './interactive-surface/types.ts';

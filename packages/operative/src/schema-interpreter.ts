@@ -19,6 +19,23 @@ type RawError = {
   readonly data?: Readonly<Record<string, unknown>>;
 };
 
+type FormatValidator = NonNullable<Parameters<typeof extendDraft>[1]['formats']>[string];
+
+const BUILT_IN_FORMATS = [
+  'date',
+  'date-time',
+  'duration',
+  'email',
+  'json-pointer',
+  'relative-json-pointer',
+  'regex',
+  'time',
+  'url',
+  'uuid',
+] as const;
+
+const annotationFormat: FormatValidator = () => undefined;
+
 function isNode(value: unknown): value is SchemaNode {
   return typeof value === 'object' && value !== null && 'schema' in value;
 }
@@ -37,14 +54,17 @@ function childNodes(node: SchemaNode): SchemaNode[] {
     'unevaluatedItems',
     'unevaluatedProperties',
   ]) {
+    if (!Object.hasOwn(node, key)) continue;
     const value = node[key];
     if (isNode(value)) children.push(value);
   }
   for (const key of ['allOf', 'anyOf', 'oneOf', 'prefixItems']) {
+    if (!Object.hasOwn(node, key)) continue;
     const value = node[key];
     if (Array.isArray(value)) children.push(...value.filter(isNode));
   }
   for (const key of ['properties', '$defs', 'dependentSchemas', 'propertyDependencies']) {
+    if (!Object.hasOwn(node, key)) continue;
     const value = node[key];
     if (typeof value !== 'object' || value === null) continue;
     for (const entry of Object.values(value)) {
@@ -89,6 +109,10 @@ function rejectUnresolvedReferences(root: SchemaNode): void {
         const error = result.errors.find((candidate) => candidate.code === 'ref-error');
         if (error !== undefined) throw new Error(error.message);
       }
+      const dynamicReference = schema['$dynamicRef'];
+      if (typeof dynamicReference === 'string' && !dynamicReference.startsWith('#')) {
+        throw new Error('"$dynamicRef" only supports hash fragment reference');
+      }
     }
     for (const child of childNodes(node)) visit(child);
   };
@@ -118,7 +142,7 @@ function pathForSchema(root: unknown, target: unknown, path = ''): string | unde
   if (root === target) return path;
   if (typeof root !== 'object' || root === null || Array.isArray(root)) return undefined;
   const record = root as Record<string, unknown>;
-  const properties = record['properties'];
+  const properties = Object.hasOwn(record, 'properties') ? record['properties'] : undefined;
   if (typeof properties === 'object' && properties !== null && !Array.isArray(properties)) {
     for (const [name, child] of Object.entries(properties)) {
       const found = pathForSchema(
@@ -130,18 +154,28 @@ function pathForSchema(root: unknown, target: unknown, path = ''): string | unde
     }
   }
   for (const key of ['items', 'allOf', 'anyOf', 'oneOf', '$defs']) {
+    if (!Object.hasOwn(record, key)) continue;
     const child = record[key];
-    if (Array.isArray(child))
+    if (Array.isArray(child)) {
       for (const entry of child) {
         const found = pathForSchema(entry, target, path);
         if (found !== undefined) return found;
       }
-    else {
+    } else {
       const found = pathForSchema(child, target, path);
       if (found !== undefined) return found;
     }
   }
   return undefined;
+}
+
+/** Restores JSON Pointer escaping without replacing the array indexes in an instance location. */
+function pointerOf(rawPointer: string, schemaPointer: string | undefined): string {
+  if (schemaPointer === undefined || schemaPointer === '') return rawPointer;
+  const decoded = schemaPointer.replaceAll('~1', '/').replaceAll('~0', '~');
+  return rawPointer.endsWith(decoded)
+    ? `${rawPointer.slice(0, rawPointer.length - decoded.length)}${schemaPointer}`
+    : rawPointer;
 }
 
 function errorOf(error: RawError, rootSchema: Readonly<Record<string, unknown>>): SchemaError {
@@ -158,8 +192,7 @@ function errorOf(error: RawError, rootSchema: Readonly<Record<string, unknown>>)
     params['format'] = (data['schema'] as Record<string, unknown>)['format'];
   }
   const rawPointer = typeof data['pointer'] === 'string' ? data['pointer'].slice(1) : '';
-  const schemaPointer = pathForSchema(rootSchema, data['schema']);
-  const pointer = schemaPointer?.includes('~') ? schemaPointer : rawPointer;
+  const pointer = pointerOf(rawPointer, pathForSchema(rootSchema, data['schema']));
   const instancePath =
     keyword === 'additionalProperties'
       ? pointer.slice(0, Math.max(0, pointer.lastIndexOf('/')))
@@ -191,23 +224,25 @@ export function compileInterpretedSchema(
   } = {},
 ): SchemaValidator {
   const formats = options.formats;
+  const customFormats = Object.entries(formats ?? {}).map(([name, predicate]) => {
+    const validator: FormatValidator = ({ node, pointer, data }) => {
+      if (typeof data !== 'string' || predicate(data)) return undefined;
+      return node.createError(
+        'format-error',
+        { pointer, format: name, schema: node.schema, value: data },
+        'must match its format',
+      );
+    };
+    return [name, validator] as const;
+  });
   const draft =
     formats === undefined
       ? draft2020
       : extendDraft(draft2020, {
-          formats: Object.fromEntries(
-            Object.entries(formats).map(([name, predicate]) => [
-              name,
-              ({ node, pointer, data }) => {
-                if (typeof data !== 'string' || predicate(data)) return undefined;
-                return node.createError(
-                  'format-error',
-                  { pointer, format: name, schema: node.schema, value: data },
-                  'must match its format',
-                );
-              },
-            ]),
-          ),
+          formats: Object.fromEntries([
+            ...BUILT_IN_FORMATS.map((name) => [name, annotationFormat]),
+            ...customFormats,
+          ]),
         });
   const compileOptions = {
     drafts: [draft],

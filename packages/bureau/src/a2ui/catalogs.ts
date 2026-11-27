@@ -65,13 +65,18 @@ function isRecord(value: unknown): value is Schema {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function schemaDefinition(definitions: Schema, name: string): JsonSchema {
+  if (!Object.hasOwn(definitions, name)) throw new Error(`Missing A2UI schema definition: ${name}`);
+  return definitions[name] as JsonSchema;
+}
+
 /**
  * The A2UI catalog puts schemas below extension keys (`components` and `functions`) rather than
  * JSON Schema's schema-bearing keywords. Give the interpreter conventional locations, and rewrite
  * the catalog's internal pointers to match, without changing the vendored documents themselves.
  */
 function normalizedCatalog(schema: Schema): Schema {
-  const copy = structuredClone(schema) as Schema;
+  const copy = structuredClone(schema);
   const componentKey = (name: string) => `a2uiComponent${name}`;
   const functionKey = (name: string) => `a2uiFunction${name}`;
   const rewrite = (value: unknown): void => {
@@ -206,7 +211,7 @@ function build(schema: Schema): A2uiCatalog {
   const functions = (schema['functions'] ?? {}) as Schema;
   const catalog = normalizedCatalog(schema);
   const server = serverSchemaWithCatalog(catalog);
-  const serverRoot = compileSchema(server as JsonSchema, { drafts: [draft2020] });
+  const serverRoot = compileSchema(server, { drafts: [draft2020] });
   const wrap = (node: SchemaNode): A2uiSchemaValidator => {
     let errors: readonly SchemaError[] = [];
     const validate = ((value: unknown): boolean => {
@@ -215,7 +220,7 @@ function build(schema: Schema): A2uiCatalog {
         const data = error.data as Record<string, unknown>;
         return {
           instancePath: typeof data['pointer'] === 'string' ? data['pointer'].slice(1) : '',
-          keyword: String(error.code).replace(/-error$/u, ''),
+          keyword: (typeof error.code === 'string' ? error.code : 'schema').replace(/-error$/u, ''),
           message: error.message,
           params: data,
         };
@@ -234,11 +239,11 @@ function build(schema: Schema): A2uiCatalog {
     referenceKeys: referenceKeysOf(components),
     componentValidator: (name) =>
       Object.hasOwn(components, name)
-        ? wrap(serverRoot.compileSchema(definitions[`a2uiComponent${name}`] as JsonSchema))
+        ? wrap(serverRoot.compileSchema(schemaDefinition(definitions, `a2uiComponent${name}`)))
         : undefined,
     messageValidator: (definition) =>
-      wrap(serverRoot.compileSchema(definitions[definition] as JsonSchema)),
-    themeValidator: wrap(serverRoot.compileSchema(definitions['theme'] as JsonSchema)),
+      wrap(serverRoot.compileSchema(schemaDefinition(definitions, definition))),
+    themeValidator: wrap(serverRoot.compileSchema(schemaDefinition(definitions, 'theme'))),
   };
 }
 

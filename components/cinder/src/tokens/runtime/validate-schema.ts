@@ -35,7 +35,7 @@ type SchemaError = {
   readonly instancePath: string;
   readonly keyword: string;
   readonly message?: string;
-  readonly params: unknown;
+  readonly params: SchemaErrorParams;
 };
 
 type SchemaValidator = ((data: unknown) => boolean) & { errors?: SchemaError[] | null };
@@ -58,22 +58,29 @@ function instancePathToTokenPath(source: string, instancePath: string): string {
   return [source, ...segments].join('.');
 }
 
+type SchemaErrorParams = {
+  readonly additionalProperty?: string;
+  readonly missingProperty?: string;
+  readonly allowedValues?: unknown[];
+  readonly allowedValue?: unknown;
+};
+
 function describeAjvError(error: SchemaError): string {
   switch (error.keyword) {
     case 'additionalProperties': {
-      const propertyName = (error.params as { additionalProperty?: string }).additionalProperty;
+      const propertyName = error.params.additionalProperty;
       return `must NOT have additional property '${propertyName}'`;
     }
     case 'required': {
-      const propertyName = (error.params as { missingProperty?: string }).missingProperty;
+      const propertyName = error.params.missingProperty;
       return `must have required property '${propertyName}'`;
     }
     case 'enum': {
-      const allowedValues = (error.params as { allowedValues?: unknown[] }).allowedValues ?? [];
+      const allowedValues = error.params.allowedValues ?? [];
       return `must be one of ${JSON.stringify(allowedValues)}`;
     }
     case 'const': {
-      const allowedValue = (error.params as { allowedValue?: unknown }).allowedValue;
+      const allowedValue = error.params.allowedValue;
       return `must equal ${JSON.stringify(allowedValue)}`;
     }
     default:
