@@ -403,3 +403,97 @@ describe('Chat — the outcome of a turn that ends on its steps stands before wh
     });
   }
 });
+
+describe('Chat — a turn that wrote no answer never names a reply', () => {
+  const failedReply = () =>
+    withStopNote(
+      appendAssistantMessage(
+        appendUserMessage(createConversationHistory({ id: 'only-tools' }), 'Hi'),
+        'Order 4471 is $42.00, delivered',
+      ),
+      true,
+    );
+
+  test('Retry keeps the steps on an anchored failure, and the written text on a reply-carried one', async () => {
+    const steps = resolveTurnOutcome(withStopNote(turnOf('finished'), true), IDLE);
+    const anchored = render(Chat, {
+      id: 'only-tools',
+      variant: 'transcript',
+      conversation: steps.conversation,
+      messageTurnState: (message: Parameters<typeof turnStateOf>[1]) => turnStateOf(steps, message),
+      onRetryTurn: () => undefined,
+    });
+    await tick();
+    expect(anchored.container.querySelector('.chat-turn-outcome')?.textContent).toContain(
+      'Retry keeps the steps that finished.',
+    );
+    expect(anchored.container.textContent).not.toContain('what was written so far');
+    cleanup();
+    const reply = resolveTurnOutcome(failedReply(), IDLE);
+    const carried = render(Chat, {
+      id: 'reply',
+      variant: 'transcript',
+      conversation: reply.conversation,
+      messageTurnState: (message: Parameters<typeof turnStateOf>[1]) => turnStateOf(reply, message),
+      onRetryTurn: () => undefined,
+    });
+    await tick();
+    expect(carried.container.querySelector('.chat-turn-outcome')?.textContent).toContain(
+      'Retry keeps what was written so far.',
+    );
+  });
+
+  test('a command that did not go through is worded for a turn with no answer', async () => {
+    const asked: [string, boolean][] = [];
+    const steps = resolveTurnOutcome(
+      noted(turnOf('finished'), { kind: 'stopped', id: 'stopped:r', reason: 'Stopped.' }),
+      IDLE,
+    );
+    const { container } = render(Chat, {
+      id: 'only-tools',
+      variant: 'transcript',
+      conversation: steps.conversation,
+      messageTurnState: (message: Parameters<typeof turnStateOf>[1]) => turnStateOf(steps, message),
+      onDiscardTurn: () => false,
+      turnLabels: {
+        commandFailed: (command: string, beforeAnswer: boolean) => {
+          asked.push([command, beforeAnswer]);
+          return beforeAnswer
+            ? `The turn’s ${command} was refused.`
+            : `The reply’s ${command} was refused.`;
+        },
+      },
+    });
+    await tick();
+    await fireEvent.click(getByRole(container, 'button', { name: 'Discard' }));
+    await tick();
+    await tick();
+    expect(container.querySelector('.chat-turn-command-failure')?.textContent?.trim()).toBe(
+      'The turn’s discard was refused.',
+    );
+    expect(asked.every(([, beforeAnswer]) => beforeAnswer)).toBe(true);
+  });
+
+  test('a refusal stays said when the transcript is drawn again, as a resize does', async () => {
+    const stopped = noted(turnOf('finished'), {
+      kind: 'stopped',
+      id: 'stopped:r',
+      reason: 'Stopped.',
+    });
+    const { container, rerender } = render(Chat, {
+      id: 'only-tools',
+      variant: 'transcript',
+      onDiscardTurn: () => false,
+      ...statesOf(stopped, IDLE),
+    });
+    await tick();
+    await fireEvent.click(getByRole(container, 'button', { name: 'Discard' }));
+    await tick();
+    await tick();
+    expect(container.querySelectorAll('.chat-turn-command-failure')).toHaveLength(1);
+    await rerender({ variant: 'transcript', ...statesOf(stopped, IDLE) });
+    await tick();
+    await tick();
+    expect(container.querySelectorAll('.chat-turn-command-failure')).toHaveLength(1);
+  });
+});

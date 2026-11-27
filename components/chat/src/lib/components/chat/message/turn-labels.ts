@@ -48,6 +48,11 @@ export type ChatTurnLabels = {
   failedBeforeAnswer: string;
   /** What Retry keeps, when the failed state names nothing itself. Default `Retry keeps what was written so far.`. */
   retryKeeps: string;
+  /**
+   * What Retry keeps on a turn that wrote no answer, so it does not mention a reply. Default
+   * `Retry keeps the steps that finished.`.
+   */
+  retryKeepsBeforeAnswer: string;
   /** The button that runs a failed turn again. Default `Retry`. */
   retry: string;
   /** The row on a turn that finished without an answer. */
@@ -56,9 +61,10 @@ export type ChatTurnLabels = {
   tryAgain: string;
   /**
    * The line under a turn when a command its controls ran (`reconnect`, `retry`, `discard`,
-   * `continue` or `regenerate`) was refused or failed. Default `That did not go through. Try again.`
+   * `continue` or `regenerate`) was refused or failed; `beforeAnswer` is true on a turn that wrote
+   * no answer, which a reply it never wrote cannot be named in. Default `That did not go through. Try again.`
    */
-  commandFailed: (command: TurnCommandKind) => string;
+  commandFailed: (command: TurnCommandKind, beforeAnswer: boolean) => string;
   /** Where the step under way falls among the steps so far. Default `Step 2 of 3`. */
   stepPosition: (position: number, total: number) => string;
   /**
@@ -112,6 +118,7 @@ export const DEFAULT_TURN_LABELS: ChatTurnLabels = {
   incomplete: 'This answer is incomplete.',
   failedBeforeAnswer: 'Failed before an answer.',
   retryKeeps: 'Retry keeps what was written so far.',
+  retryKeepsBeforeAnswer: 'Retry keeps the steps that finished.',
   retry: 'Retry',
   empty: 'The agent finished without writing an answer.',
   tryAgain: 'Try again',

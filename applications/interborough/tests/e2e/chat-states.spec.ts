@@ -692,17 +692,50 @@ async function openToolOnlyTurn(
       id?: unknown;
       params?: { contextId?: string; runId?: string };
     };
+    const tasks = tasksOf('ended-on-tool-call').map((task) => ({
+      ...task,
+      status: turn.run ?? task['status'],
+      finishReason:
+        turn.run === undefined
+          ? task['finishReason']
+          : turn.run === 'canceled'
+            ? 'aborted'
+            : 'error',
+      statusMessage:
+        turn.run === 'failed'
+          ? 'The model provider dropped the connection.'
+          : task['statusMessage'],
+    }));
+    // The chat list and the bell read every chat's recent runs: they say what the header says.
+    if (
+      body.method === 'bureau.tasks.list' &&
+      body.params?.contextId === undefined &&
+      turn.run !== undefined
+    ) {
+      const response = await route.fetch();
+      const listed = (await response.json()) as { result?: { tasks?: Record<string, unknown>[] } };
+      await route.fulfill({
+        response,
+        json: {
+          ...listed,
+          result: {
+            ...listed.result,
+            tasks: [
+              ...tasks,
+              ...(listed.result?.tasks ?? []).filter(
+                (task) => task['contextId'] !== ENDED_ON_TOOL_CALL_THREAD,
+              ),
+            ],
+          },
+        },
+      });
+      return;
+    }
     if (body.params?.contextId !== ENDED_ON_TOOL_CALL_THREAD) {
       await route.fallback();
       return;
     }
     if (body.method === 'bureau.tasks.list' && turn.run !== undefined) {
-      const tasks = tasksOf('ended-on-tool-call').map((task) => ({
-        ...task,
-        status: turn.run,
-        finishReason: turn.run === 'canceled' ? 'aborted' : 'error',
-        statusMessage: turn.run === 'failed' ? 'The model provider dropped the connection.' : null,
-      }));
       await route.fulfill({
         json: { jsonrpc: '2.0', id: body.id, result: { tasks, nextPageToken: null } },
       });
@@ -909,10 +942,24 @@ test.describe('A chat turn of only tool calls and how it ended (COR-2725)', () =
       'true',
     );
     await expect(stopped.getByRole('button', { name: 'Discard' })).toBeDisabled();
+    // At every width the busy control rests fully above the composer, so the capture shows it.
+    const busyAboveComposer = async (shown: Page): Promise<void> => {
+      const busy = toolOnlyOutcome(shown, 'stopped').getByRole('button', { name: 'Continue' });
+      await busy.scrollIntoViewIfNeeded();
+      await expect(busy).toHaveAttribute('aria-busy', 'true');
+      await expect(busy).toBeInViewport({ ratio: 1 });
+      const { control, composer } = await readBoxes(shown, {
+        control: busy,
+        composer: shown.locator('.chat-input-area'),
+      });
+      expect(control.y + control.height).toBeLessThanOrEqual(composer.y + 1);
+    };
+    await busyAboveComposer(page);
     await captureForDesignReviewWithPhone(page, {
       route: '/chats/:chat',
       state: 'command under way with the turn held',
       source: SOURCE,
+      ready: busyAboveComposer,
     });
     release();
   });

@@ -187,6 +187,15 @@ async function expectCell(page: Page, kind: Kind, width: number): Promise<void> 
   );
   near(box.replyOutcome.left, box.replyWrapper.left, 'the reply’s outcome starts at its wrapper');
   near(box.replyOutcome.right, box.replyWrapper.right, 'the reply’s outcome ends at its wrapper');
+  // What follows the outcome stands as far from it as a reply-carried outcome's time row puts it,
+  // so a message typed after the steps does not read as part of the row (the line's own height may
+  // differ by a pixel or two from the anchor's padding).
+  const anchorBelow = box.anchorWrapper.bottom - box.anchorOutcome.bottom;
+  const replyBelow = box.replyWrapper.bottom - box.replyOutcome.bottom;
+  expect(
+    Math.abs(anchorBelow - replyBelow),
+    `the block-end gap under the outcome: ${String(anchorBelow)} vs ${String(replyBelow)}`,
+  ).toBeLessThanOrEqual(4);
 
   if (kind === 'empty') {
     for (const [name, scope] of [
@@ -357,6 +366,75 @@ for (const width of [1280, 375]) {
           document.documentElement.dir = 'rtl';
         });
         await expectCell(page, kind, width);
+      });
+    }
+  });
+}
+
+/** The control each outcome offers, which the fixture's host refuses. */
+const CONTROL_OF = { stopped: 'Discard', failed: 'Retry', empty: 'Try again' } as const;
+
+for (const width of [1280, 768, 375, 320]) {
+  test.describe(`turn outcome anchor, a refused command, at ${String(width)}px`, () => {
+    test.use({ viewport: { width, height: 900 } });
+
+    for (const kind of ['stopped', 'failed', 'empty'] as const) {
+      test(`the ${kind} outcome says it once, under its controls`, async ({ page }) => {
+        await open(page, kind);
+        const steps = page.getByTestId('chat-turn-outcome-anchor');
+        await steps.getByRole('button', { name: CONTROL_OF[kind] }).click();
+        const line = steps.locator('.chat-turn-command-failure');
+        // It renders at every width, once.
+        await expect(line).toHaveCount(1);
+        await expect(line).toBeVisible();
+        const m = await measure(page, {
+          line,
+          outcome: steps.locator(`.chat-turn-outcome[data-kind="${kind}"]`),
+          wrapper: steps.locator('.chat-message-wrapper[data-turn-anchor]'),
+        });
+        // Within the block the controls end: directly under the outcome, never far from them.
+        expect(m.line.top).toBeGreaterThanOrEqual(m.outcome.bottom - TOLERANCE);
+        expect(m.line.top - m.outcome.bottom).toBeLessThanOrEqual(16);
+        // At the inline end of a wide row, and the full width under wrapped controls on a phone.
+        near(m.line.right, m.wrapper.right, 'the line ends at the wrapper');
+        near(m.line.left, m.wrapper.left, 'the line starts at the wrapper');
+        const align = await line.evaluate((element) => getComputedStyle(element).textAlign);
+        expect(align).toBe(width > 480 ? 'end' : 'start');
+      });
+    }
+
+    test('the line is still there after the page is resized', async ({ page }) => {
+      await open(page, 'stopped');
+      const steps = page.getByTestId('chat-turn-outcome-anchor');
+      await steps.getByRole('button', { name: 'Discard' }).click();
+      await expect(steps.locator('.chat-turn-command-failure')).toHaveCount(1);
+      await page.setViewportSize({ width: width === 375 ? 1280 : 375, height: 900 });
+      await expect(steps.locator('.chat-turn-command-failure')).toHaveCount(1);
+    });
+  });
+}
+
+for (const width of [1280, 768, 375, 320]) {
+  test.describe(`turn outcome anchor, at the end of a short transcript, at ${String(width)}px`, () => {
+    test.use({ viewport: { width, height: 900 } });
+
+    for (const kind of ['stopped', 'failed', 'empty'] as const) {
+      test(`the ${kind} outcome's controls rest clear of the fading end edge`, async ({ page }) => {
+        await open(page, kind);
+        const chat = page.getByTestId('chat-turn-outcome-end');
+        const timeline = chat.locator('.chat-timeline');
+        await timeline.evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+        });
+        await page.evaluate(
+          () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+        );
+        const m = await measure(page, {
+          timeline,
+          control: chat.getByRole('button', { name: CONTROL_OF[kind] }),
+        });
+        // The end edge fades over 1.5rem; the last row's controls end above it.
+        expect(m.timeline.bottom - m.control.bottom).toBeGreaterThanOrEqual(24 - TOLERANCE);
       });
     }
   });

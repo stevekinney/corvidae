@@ -102,9 +102,14 @@ export function interruptedTool(
 }
 
 /** What the line says: why the reply stopped, and what that means for the call it stopped on. */
-export function stopSentence(reason: string, interrupted?: InterruptedTool): string {
+export function stopSentence(
+  reason: string,
+  interrupted?: InterruptedTool,
+  /** Whether the turn wrote a reply: one that only made its steps has none to say stopped partway. */
+  wroteReply = true,
+): string {
   const cause = causeOf(reason);
-  if (interrupted === undefined) return COPY.partway(cause);
+  if (interrupted === undefined) return wroteReply ? COPY.partway(cause) : COPY.beforeAnswer(cause);
   const outcome = mayChange(interrupted.tier)
     ? COPY.mayHaveRun(interrupted.name, interrupted.subject)
     : COPY.didNotFinish(interrupted.name);
@@ -134,9 +139,12 @@ export function withStopLine(
     const notes = notesOf(row);
     if (!notes.some((note) => note.kind === 'stopped' && note.failed === true)) continue;
     const interrupted = interruptedTool(conversation, options.tools, index);
+    const wroteReply = conversation.ids
+      .slice(turnStart(conversation, index), turnEnd(conversation, index))
+      .some((turnRowId) => conversation.messages[turnRowId]?.role === 'assistant');
     const reworded = notes.map((note) =>
       note.kind === 'stopped' && note.failed === true
-        ? { ...note, reason: stopSentence(note.reason, interrupted) }
+        ? { ...note, reason: stopSentence(note.reason, interrupted, wroteReply) }
         : note,
     );
     current = {

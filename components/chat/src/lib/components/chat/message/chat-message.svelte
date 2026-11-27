@@ -396,18 +396,6 @@
   $effect(() => {
     turnCommands?.reconcile(message.id, turn);
   });
-  // An anchor is mounted only while its outcome lasts: when it goes, what was said on it goes too,
-  // so the next outcome on the same anchor starts clean.
-  // The id is read through a derived so the anchor object Chat remakes on every change of the
-  // conversation does not read as a new row.
-  const anchorIdentity = $derived(turnAnchor ? message.id : undefined);
-  $effect(() => {
-    const commands = turnCommands;
-    const id = anchorIdentity;
-    return () => {
-      if (id !== undefined) commands?.release(id);
-    };
-  });
   function pressTurn(
     command: TurnCommandKind,
     host: ((messageId: string) => TurnCommandAnswer) | undefined,
@@ -1133,7 +1121,7 @@
         {#snippet icon()}<CircleAlert aria-hidden="true" />{/snippet}
         <p class="chat-turn-text chat-turn-failure-body" dir="auto">
           {turn.cause}
-          {turn.keeps ?? turnWords.retryKeeps}
+          {turn.keeps ?? (withoutAnswer ? turnWords.retryKeepsBeforeAnswer : turnWords.retryKeeps)}
         </p>
       </Callout>
     </div>
@@ -1167,7 +1155,7 @@
 {#snippet commandFailure()}
   {#if failedCommand !== undefined}
     <p class="chat-turn-command-failure" role="alert" dir="auto">
-      {turnWords.commandFailed(failedCommand)}
+      {turnWords.commandFailed(failedCommand, withoutAnswer)}
     </p>
   {/if}
 {/snippet}
@@ -2663,13 +2651,31 @@
     display: none;
   }
 
-  /* One line under the turn when a command did not go through: danger text, no box of its own. */
+  /* One line under the turn when a command did not go through: danger text, no box of its own. It
+   * stands under the actions it reports on, at their inline end; on a phone, where the actions wrap
+   * under the pill, it takes the full width under them. */
   .chat-turn-command-failure {
     margin: var(--cinder-space-2) 0 0;
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
     color: var(--cinder-status-danger-text);
-    text-align: start;
+    text-align: end;
     overflow-wrap: anywhere;
+  }
+
+  @media (max-width: 480px) {
+    .chat-turn-command-failure {
+      text-align: start;
+    }
+  }
+
+  /* An anchor has no line of time under its outcome, which a reply-carried outcome's line gives it
+   * (the row gap and the line's own height): the anchor keeps the same distance from what follows,
+   * so a message the person typed after the steps does not read as part of the row. */
+  .chat-message-wrapper[data-presentation='transcript'][data-turn-anchor] {
+    padding-block-end: calc(
+      var(--_cinder-chat-line-gap, var(--cinder-space-1)) +
+        var(--_cinder-chat-line-block-size, 1.5rem)
+    );
   }
 
   /* Keep the stopped notice's text and controls off the card border while preserving the compact

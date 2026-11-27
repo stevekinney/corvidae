@@ -771,6 +771,35 @@ describe('the last turn’s outcome and its recovery commands (COR-2725)', () =>
     expect(document.body.textContent?.split(CHAT_COPY.discardTurn.failed)).toHaveLength(2);
   });
 
+  test('a refused Discard of a turn that wrote no reply does not name one', async () => {
+    const [user, call, result] = endedOnToolCallMessages();
+    serve([user!, call!, result!], {
+      answers: {
+        'bureau.tasks.list': () => ({
+          tasks: tasksOf('ended-on-tool-call').map((task) => ({
+            ...task,
+            contextId: 'session-1',
+            status: 'canceled',
+            finishReason: 'aborted',
+            statusMessage: null,
+          })),
+          nextPageToken: null,
+        }),
+        'bureau.contexts.discardturn': refused,
+      },
+    });
+    const { container, findByRole } = mount();
+
+    await fireEvent.click(await findByRole('button', { name: 'Discard' }));
+
+    await waitFor(() =>
+      expect(container.querySelector('.chat-turn-command-failure')?.textContent).toContain(
+        CHAT_COPY.discardTurn.failedBeforeAnswer,
+      ),
+    );
+    expect(container.textContent).not.toContain(CHAT_COPY.discardTurn.failed);
+  });
+
   test('a Discard answered after the person moved to another chat says nothing in it', async () => {
     let refuse: () => void = () => undefined;
     const served = serve(billingThreadWithPartialReply(BILLING), {
@@ -872,6 +901,11 @@ describe('the last turn’s outcome and its recovery commands (COR-2725)', () =>
     expect(container.textContent).not.toContain('The run was stopped.');
     expect(container.textContent).not.toContain('Run finished, no reply');
     expect(container.querySelector('.chat-note')).toBeNull();
+    // One fact, said once: the title says Stopped, and the session strip does not repeat it.
+    const header = container.querySelector('[data-testid="chat-header"]');
+    await waitFor(() => expect(header?.textContent).toContain('Stopped'));
+    expect(header?.textContent).not.toContain('Done');
+    expect(container.textContent).not.toContain('Run canceled');
   });
 
   test('a turn of only tool calls that failed is one danger alert with Retry and Why it failed, and no status line beside a second Retry', async () => {
@@ -881,6 +915,11 @@ describe('the last turn’s outcome and its recovery commands (COR-2725)', () =>
     const retry = await findByRole('button', { name: 'Retry' });
     expect(retry.closest('.chat-turn-outcome')?.getAttribute('data-kind')).toBe('failed');
     expect(container.textContent).toContain('Failed before an answer.');
+    // No reply was written, so nothing here names one.
+    expect(container.textContent).toContain('The run stopped before it wrote an answer:');
+    expect(container.textContent).toContain('Retry keeps the steps that finished.');
+    expect(container.textContent).not.toContain('The reply stopped partway');
+    expect(container.textContent).not.toContain('what was written so far');
     expect(await findByRole('link', { name: 'Why it failed' })).not.toBeNull();
     const retries = [...container.querySelectorAll('button')].filter(
       (button) => button.textContent?.trim() === 'Retry',

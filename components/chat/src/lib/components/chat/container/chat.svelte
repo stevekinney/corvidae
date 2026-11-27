@@ -1645,6 +1645,25 @@
     turnCommands.setScope(id);
   });
   $effect(() => () => turnCommands.dispose());
+  // What was said or held on an outcome anchor ends with its outcome: when the anchor's outcome
+  // goes (not when its row is merely drawn again, as a resize does), the next outcome on the same
+  // anchor starts clean.
+  const outcomeAnchorId = $derived.by(() => {
+    const anchor = toolEndedTurnAnchor(messages);
+    if (anchor === undefined) return undefined;
+    const kind = resolveMessageTurnState(anchor, messageTurnState)?.kind;
+    return kind === 'stopped' || kind === 'failed' || kind === 'empty' || kind === 'reconnecting'
+      ? anchor.id
+      : undefined;
+  });
+  let drawnOutcomeAnchorId: string | undefined;
+  $effect(() => {
+    const current = outcomeAnchorId;
+    if (drawnOutcomeAnchorId !== undefined && drawnOutcomeAnchorId !== current) {
+      turnCommands.release(drawnOutcomeAnchorId);
+    }
+    drawnOutcomeAnchorId = current;
+  });
   const reconnectingTurn = $derived.by(() => {
     const anchor = toolEndedTurnAnchor(messages);
     const anchorState =
@@ -3358,6 +3377,11 @@
     overflow-y: auto;
     scroll-padding-block: var(--cinder-space-2);
     padding: var(--cinder-chat-timeline-padding) var(--cinder-chat-reading-inline-padding);
+    /* Where the end edge fades (`.chat-timeline-mask-fade`), the last row rests that far above the
+     * transcript's end too, so its actions are never dimmed at rest; 0 where nothing fades. */
+    padding-block-end: calc(
+      var(--cinder-chat-timeline-padding) + var(--_chat-timeline-clear-end, 0px)
+    );
     /* A header the host lays over the top of the transcript (so the transcript scrolls under it)
      * names its height here: the first row starts clear of it, and a row scrolled to rests
      * under it, never behind it. 0 when nothing is laid over. */
@@ -3519,6 +3543,7 @@
    * dims its last message (COR-2327). */
   .chat-timeline-mask-fade {
     --_chat-timeline-fade-size: var(--cinder-space-6);
+    --_chat-timeline-clear-end: var(--_chat-timeline-fade-size);
     /* The start edge is the transcript's top edge as the person sees it: with a header laid over the
      * transcript (`--cinder-chat-overlay-inset-start`) that is the header's bottom edge, where a
      * scrolled message would otherwise meet the header in a flat line, and the fade begins there.
@@ -4034,6 +4059,9 @@
       padding: var(--cinder-chat-narrow-padding);
       padding-block-start: calc(
         var(--cinder-chat-narrow-padding) + var(--_cinder-chat-overlay-inset-start)
+      );
+      padding-block-end: calc(
+        var(--cinder-chat-narrow-padding) + var(--_chat-timeline-clear-end, 0px)
       );
       --_cinder-chat-row-gap: var(--cinder-chat-narrow-gap);
     }

@@ -622,9 +622,9 @@
         conversation={turnOutcome.conversation}
         capabilities={{ attachments: false }}
         messageTurnState={(message) => turnStateOf(turnOutcome, message)}
-        onContinueTurn={() => undefined}
-        onDiscardTurn={() => undefined}
-        onRetryTurn={() => undefined}
+        onContinueTurn={() => false}
+        onDiscardTurn={() => false}
+        onRetryTurn={() => false}
         onRetryConnection={() => false}
       />
     </div>
@@ -635,9 +635,26 @@
         conversation={turnOutcomeReply.conversation}
         capabilities={{ attachments: false }}
         messageTurnState={(message) => turnStateOf(turnOutcomeReply, message)}
-        onContinueTurn={() => undefined}
-        onDiscardTurn={() => undefined}
-        onRetryTurn={() => undefined}
+        onContinueTurn={() => false}
+        onDiscardTurn={() => false}
+        onRetryTurn={() => false}
+        onRetryConnection={() => false}
+      />
+    </div>
+    <!-- The same anchored turn in a transcript too short for it, with the end edge fading as a host
+         that lays its composer over the transcript draws it: the last row rests above the fade. -->
+    <div style="height: 11rem;" data-testid="chat-turn-outcome-end">
+      <Chat
+        id="fixture-turn-outcome-end-chat"
+        variant="transcript"
+        surfaceMode="transparent"
+        scrollFadeVisible
+        conversation={turnOutcome.conversation}
+        capabilities={{ attachments: false }}
+        messageTurnState={(message) => turnStateOf(turnOutcome, message)}
+        onContinueTurn={() => false}
+        onDiscardTurn={() => false}
+        onRetryTurn={() => false}
         onRetryConnection={() => false}
       />
     </div>

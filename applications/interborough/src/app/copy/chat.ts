@@ -241,6 +241,8 @@ export const CHAT_COPY = {
    */
   stopLine: {
     partway: (cause: string): string => `The reply stopped partway: ${cause}.`,
+    /** For a turn that made its steps and wrote no reply at all. */
+    beforeAnswer: (cause: string): string => `The run stopped before it wrote an answer: ${cause}.`,
     whileRunning: (tool: string, cause: string): string =>
       `The reply stopped while ${tool} was running: ${cause}.`,
     /** Added for an interrupted tool that only reads. */
@@ -276,9 +278,13 @@ export const CHAT_COPY = {
   /** Actions on a terminal stopped turn (COR-2437). */
   discardTurn: {
     failed: 'The stopped reply wasn’t discarded. Try again.',
+    /** For a turn that wrote no reply, only steps. */
+    failedBeforeAnswer: 'The stopped turn wasn’t discarded. Try again.',
   },
   resumeTurn: {
     failed: 'The stopped reply couldn’t continue. Try again.',
+    /** For a turn that wrote no reply, only steps. */
+    failedBeforeAnswer: 'The stopped turn couldn’t continue. Try again.',
   },
   /** The host-owned answer replacement action. */
   regeneration: {
@@ -597,6 +603,8 @@ export const CHAT_COPY = {
     waiting: 'Waiting on you',
     running: 'Running',
     failed: 'Failed',
+    /** The last turn is one the person stopped, which says so on its own row. */
+    stopped: 'Stopped',
     ended: 'Ended',
     done: 'Done',
   },

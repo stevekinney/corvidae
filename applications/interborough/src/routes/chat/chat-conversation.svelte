@@ -1230,12 +1230,16 @@
     return discardableRun !== undefined && (await session.resumeTurn(discardableRun));
   }
   const turnLabels: Partial<ChatTurnLabels> = {
-    commandFailed: (command) =>
+    commandFailed: (command, beforeAnswer) =>
       command === 'discard'
-        ? CHAT_COPY.discardTurn.failed
+        ? beforeAnswer
+          ? CHAT_COPY.discardTurn.failedBeforeAnswer
+          : CHAT_COPY.discardTurn.failed
         : command === 'continue'
-          ? CHAT_COPY.resumeTurn.failed
-          : DEFAULT_TURN_LABELS.commandFailed(command),
+          ? beforeAnswer
+            ? CHAT_COPY.resumeTurn.failedBeforeAnswer
+            : CHAT_COPY.resumeTurn.failed
+          : DEFAULT_TURN_LABELS.commandFailed(command, beforeAnswer),
   };
 
   // The messages that offer a branch. A run that is going, or that the page is still reading, has
@@ -1849,6 +1853,8 @@
     // row owns it. Keep the title state attached to that durable stop, not that filtered view.
     if (lastStop?.state.kind === 'failed' || retryNoteId !== undefined)
       return CHAT_COPY.status.failed;
+    // A turn the person stopped says so on its own row, and the title says the same.
+    if (lastStop?.state.kind === 'stopped') return CHAT_COPY.status.stopped;
     return CHAT_COPY.status.done;
   });
   /** The Badge tone of each status word beside the title. */
@@ -1856,7 +1862,7 @@
     if (word === CHAT_COPY.status.waiting) return 'warning';
     if (word === CHAT_COPY.status.running) return 'info';
     if (word === CHAT_COPY.status.failed) return 'danger';
-    if (word === CHAT_COPY.status.ended) return 'neutral';
+    if (word === CHAT_COPY.status.ended || word === CHAT_COPY.status.stopped) return 'neutral';
     return 'success';
   }
   // What holds Archive back in the More menu, in the order and the words of the status: the
@@ -2504,7 +2510,7 @@
       {/if}
       <!-- The transcript already explains the current failed reply; older failed notes remain
            ordinary history, so their run summaries can still appear here. -->
-      {#if !choosing && !endedByRestart && retryNoteId === undefined && lastStop?.state.kind !== 'failed'}
+      {#if !choosing && !endedByRestart && retryNoteId === undefined && lastStop === undefined}
         <SessionTasks
           {sessionId}
           streaming={session.streaming}
