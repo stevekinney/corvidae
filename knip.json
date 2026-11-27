@@ -207,6 +207,7 @@
         "**/*.playwright.ts",
         "**/*.spec.ts",
         "src/oauth/workerd-fixture.ts",
+        "src/oauth/postgres.workerd-fixture.ts",
         "src/connector-smoke-inspector.ts!",
         "src/deployed-oauth.ts!",
         "src/deployed-smoke.ts!"
@@ -218,6 +219,18 @@
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!"
+      ]
+    },
+    "packages/storage-postgres": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts",
+        "src/workerd-fixture.ts"
       ]
     },
     "packages/storage-d1": {

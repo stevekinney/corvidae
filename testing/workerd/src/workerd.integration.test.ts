@@ -21,6 +21,7 @@ test('runs a bundled Worker with platform bindings', async () => {
       durableObjects: { COUNTER: 'Counter' },
       d1Databases: ['DB'],
       r2Buckets: ['BUCKET'],
+      hyperdrives: { HYPERDRIVE: 'postgresql://user:password@localhost:5432/database' },
       outboundService,
     },
     async ({
@@ -40,6 +41,9 @@ test('runs a bundled Worker with platform bindings', async () => {
       );
       expect(await responseText(dispatchFetch('https://fixture.test/outbound'))).toBe(
         'stubbed /fixture',
+      );
+      expect(await responseText(dispatchFetch('https://fixture.test/hyperdrive'))).toStartWith(
+        'postgresql://',
       );
       expect(await responseText(dispatchFetch('https://fixture.test/asset'))).toBe(
         'asset response\n',

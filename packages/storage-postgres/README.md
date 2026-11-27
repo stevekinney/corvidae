@@ -54,3 +54,13 @@ Weft and Bureau take a `Storage` you construct. Pass this one to `new Engine({ s
 ## Test it
 
 The package runs the shared contract from `@lostgradient/storage/testing` against `PostgresStorage` over PGlite, and a live suite against a real server through `@lostgradient/testing/postgres-server`. The live suite uses the server that `WEFT_TEST_POSTGRES_URL` names, or starts a disposable cluster when `initdb` and `pg_ctl` are on `PATH`, and skips only when neither exists. `bun run test:coverage` fails below full line and function coverage of its own files. `bun run test:benchmarks` measures how the deployment binding stamp behaves under Postgres `SERIALIZABLE` and needs the same server.
+
+## Cloudflare Workers
+
+Bind the primary PostgreSQL endpoint through Hyperdrive and pass its Worker-provided connection string to `PostgresStorage`:
+
+```ts
+await using storage = new PostgresStorage({ url: env.HYPERDRIVE.connectionString });
+```
+
+The Worker needs the `nodejs_compat` compatibility flag for `pg`. Hyperdrive provides the Worker-safe connection string; the Worker should not read a direct database URL from its environment.
