@@ -151,7 +151,9 @@ describe('Undo toasts (rows 04w, 06x, 48s, 66g, 78v)', () => {
     api.show('Deleted second.', { undo: () => {} });
     await waitFor(() => {
       expect(container.querySelectorAll('[data-cinder-undo]')).toHaveLength(2);
-      expect(container.querySelector('.cinder-toast-undo-actions__toggle')).toBeNull();
+      expect(
+        container.querySelector('.cinder-toast-undo-actions__toggle')?.outerHTML ?? null,
+      ).toBeNull();
     });
   });
 
@@ -181,7 +183,9 @@ describe('Undo toasts (rows 04w, 06x, 48s, 66g, 78v)', () => {
     for (const action of polite.querySelectorAll<HTMLButtonElement>('.cinder-toast__action')) {
       await fireEvent.click(action);
     }
-    await waitFor(() => expect(polite.querySelector('[data-cinder-undo]')).toBeNull());
+    await waitFor(() =>
+      expect(polite.querySelector('[data-cinder-undo]')?.outerHTML ?? null).toBeNull(),
+    );
 
     api.show('Deleted third.', { undo: () => {} });
     api.show('Deleted fourth.', { undo: () => {} });
