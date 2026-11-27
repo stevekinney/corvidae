@@ -42,6 +42,19 @@ async function settled(page: Page): Promise<void> {
   ).toBeVisible();
 }
 
+async function showAdvanced(page: Page): Promise<void> {
+  const section = page.getByTestId('advanced-diagnostics');
+  await section.evaluate((element) => {
+    const outlet = element.closest('main.weft-shell-outlet');
+    if (!(outlet instanceof HTMLElement)) throw new Error('Health outlet is missing');
+    outlet.scrollTop +=
+      element.getBoundingClientRect().top - outlet.getBoundingClientRect().top - 12;
+  });
+  for (const name of ['metrics', 'alerts', 'checks']) {
+    await expect(section.locator(`[data-section="${name}"]`)).toBeInViewport();
+  }
+}
+
 test.describe('the sample world', () => {
   test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -98,18 +111,6 @@ test.describe('the sample world', () => {
     await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
     await expect(advanced.locator('[data-section="checks"]')).toContainText('3 need attention');
     await expect(page.getByTestId('needs-attention').locator('li')).toHaveCount(3);
-    const showAdvanced = async (currentPage: Page) => {
-      const section = currentPage.getByTestId('advanced-diagnostics');
-      await section.evaluate((element) => {
-        const outlet = element.closest('main.weft-shell-outlet');
-        if (!(outlet instanceof HTMLElement)) throw new Error('Health outlet is missing');
-        outlet.scrollTop +=
-          element.getBoundingClientRect().top - outlet.getBoundingClientRect().top - 12;
-      });
-      for (const name of ['metrics', 'alerts', 'checks']) {
-        await expect(section.locator(`[data-section="${name}"]`)).toBeInViewport();
-      }
-    };
     await showAdvanced(page);
     await captureForDesignReview(page, {
       route: '/health',
@@ -467,6 +468,7 @@ test.describe('the sample world', () => {
       route: '/health',
       state: 'advanced from diagnostics link',
       source: SOURCE,
+      ready: showAdvanced,
     });
     await checkA11y('health, Advanced expanded');
 
