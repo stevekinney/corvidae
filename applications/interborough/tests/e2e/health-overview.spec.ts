@@ -465,7 +465,7 @@ test.describe('the sample world', () => {
     await expect(advanced.getByText('Open system checks ›')).toBeVisible();
     await captureForDesignReview(page, {
       route: '/health',
-      state: 'advanced-expanded',
+      state: 'advanced from diagnostics link',
       source: SOURCE,
     });
     await checkA11y('health, Advanced expanded');
