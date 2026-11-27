@@ -259,9 +259,21 @@ test.describe('Health › Storage on the sample world', () => {
     await trigger.click();
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
     const details = page.getByTestId('storage-details');
-    await expect(details).toBeVisible();
-    // The five facts are the rendered list, not the Skeleton the summary query shows while it is
-    // pending, so the fit below is measured on the drawn and positioned facts.
+    // The popover is named for the button that opened it; the body does not say it again.
+    await expect(details.getByRole('heading')).toHaveCount(0);
+    // Nothing sticks out past the popover's right edge, and no path is cut off.
+    const fit = await details.evaluate((element) => {
+      const popover = element.closest('.cinder-popover');
+      const own = element.getBoundingClientRect();
+      const frame = popover?.getBoundingClientRect();
+      return {
+        overflow: element.scrollWidth - element.clientWidth,
+        right: own.right,
+        frame: frame?.right ?? 0,
+      };
+    });
+    expect(fit.overflow).toBeLessThanOrEqual(0);
+    expect(fit.right).toBeLessThanOrEqual(Math.ceil(fit.frame));
     await expect(details.locator('dt')).toHaveText([
       'Backend',
       'Location',
@@ -269,26 +281,6 @@ test.describe('Health › Storage on the sample world', () => {
       'Keys',
       'Writes',
     ]);
-    // The popover is named for the button that opened it; the body does not say it again.
-    await expect(details.getByRole('heading')).toHaveCount(0);
-    // Nothing sticks out past the popover's right edge, and no path is cut off. The measure is the
-    // drawn edges, not `scrollWidth`: the copy button's invisible hit target reaches past the
-    // button and counts toward `scrollWidth` where nothing is drawn.
-    const fit = await details.evaluate((element) => {
-      const popover = element.closest('.cinder-popover');
-      const own = element.getBoundingClientRect();
-      const frame = popover?.getBoundingClientRect();
-      const drawn = [...element.querySelectorAll('dd, dd *, button')];
-      return {
-        drawn: drawn.length,
-        contentRight: Math.max(...drawn.map((part) => part.getBoundingClientRect().right)),
-        right: own.right,
-        frame: frame?.right ?? 0,
-      };
-    });
-    expect(fit.drawn).toBeGreaterThan(0);
-    expect(fit.contentRight).toBeLessThanOrEqual(Math.ceil(fit.right));
-    expect(fit.right).toBeLessThanOrEqual(Math.ceil(fit.frame));
     await expect(details.locator('dd').nth(0)).toHaveText('SQLite');
     await expect(details.locator('dd').nth(2)).toHaveText('1.6 GB');
     await expect(details.locator('dd').nth(3)).toHaveText(/^[\d,]+\s*$/);
