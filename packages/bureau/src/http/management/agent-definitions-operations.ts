@@ -48,6 +48,7 @@ import { defineOperation, type OperationFault, type Principal } from '@lostgradi
 import { z } from 'zod';
 
 import { DROPPED_CODE_AGENT_BEHAVIORS, type AgentDefinitions } from '../../agent-catalog.ts';
+import { agentIdRenamePhases } from '../../agent-id-rename-store.ts';
 import type { BureauAgents } from '../../bureau-types/tasks.ts';
 import { TOOL_APPROVAL_MODES } from '../../tool-approval.ts';
 import {
@@ -803,11 +804,11 @@ const renameResultSchema = z.object({
   from: z.string(),
   to: z.string(),
   sourceHash: z.string(),
-  phase: z.literal('cutover'),
+  phase: z.enum(agentIdRenamePhases),
 });
 
 /** Change the durable identifier of an owner's saved agent, including its live references. */
-export const agentDefinitionsRenameOperation = defineOperation<
+const agentDefinitionsRenameOperation = defineOperation<
   typeof renameInput,
   typeof renameResultSchema,
   BureauAgentDefinitionsOperationHost

@@ -96,7 +96,7 @@ import {
   readFileAgentBinding,
 } from './agent-file-catalog';
 import { createFileAgentRuntime, type FileAgentRuntime } from './agent-file-runtime';
-import { createAgentIdRenameStore } from './agent-id-rename-store';
+import { createAgentIdRenameStore, type AgentIdRenameRecord } from './agent-id-rename-store';
 import { createAgentIdRenameExecutor } from './agent-id-rename-executor';
 import { renameHookScope, renameWorkflowAgent } from './agent-id-rename-dependencies';
 import { createAgentSnapshotStore } from './agent-snapshot-store';
@@ -501,6 +501,85 @@ export function createBureau<const D extends AgentDefinitions = Record<never, ne
     )
     .catch(result.reject);
   return result.promise;
+}
+
+async function retireSavedAgentRenameSource(
+  files: FileAgentRuntime['files'] | undefined,
+  record: AgentIdRenameRecord,
+): Promise<void> {
+  const source = await files?.read(record.from);
+  if (source === undefined) return;
+  if (source.hash !== record.sourceHash)
+    throw new BureauError(
+      `Saved agent "${record.from}" changed while its identifier change was completing.`,
+      'CONFLICT',
+    );
+  await files?.retireRenameSource(record.from, { expectedHash: record.sourceHash });
+}
+
+function createSavedAgentRenamer(
+  files: FileAgentRuntime['files'] | undefined,
+  store: ReturnType<typeof createAgentIdRenameStore>,
+  rewriteDependents: (record: AgentIdRenameRecord) => Promise<void>,
+): (from: string, to: string, expectedHash: string) => Promise<AgentIdRenameRecord> {
+  return (from, to, expectedHash) =>
+    createAgentIdRenameExecutor(store, {
+      capture: async (id, hash) => {
+        const source = await files?.read(id);
+        if (source === undefined || source.hash !== hash)
+          throw new BureauError(
+            `Saved agent "${id}" has changed. Reload it before changing its ID.`,
+            'CONFLICT',
+          );
+      },
+      publishTarget: async (record) => {
+        await files?.publishRenameTarget(record.from, record.to, {
+          expectedHash: record.sourceHash,
+        });
+      },
+      rewriteDependents,
+      retireSource: async (record) => retireSavedAgentRenameSource(files, record),
+    }).rename(from, to, expectedHash);
+}
+
+async function rewriteSavedAgentRenameDependents(
+  record: AgentIdRenameRecord,
+  renameSchedules: (from: string, to: string) => Promise<void>,
+  workflowRuntime: () => WorkflowRuntime | undefined,
+  hooksInstance: () => CreatedHooks | undefined,
+): Promise<void> {
+  await renameSchedules(record.from, record.to);
+  const workflows = workflowRuntime()?.workflows;
+  if (workflows !== undefined) {
+    for (const listed of workflows.list()) {
+      if (listed.state !== 'ready' || listed.hash === undefined) continue;
+      const detail = await workflows.get(listed.id);
+      if (detail?.text === undefined) continue;
+      const definition = JSON.parse(
+        detail.text,
+      ) as import('./workflow-file').WorkflowFileDefinition;
+      const renamed = renameWorkflowAgent(definition, record.from, record.to);
+      if (JSON.stringify(renamed) !== JSON.stringify(definition))
+        await workflows.update(listed.id, renamed, { expectedHash: listed.hash });
+    }
+  }
+  const hooks = hooksInstance()?.hooks;
+  if (hooks !== undefined) {
+    for (const hook of await hooks.list()) {
+      const scope = renameHookScope(hook.scope, record.from, record.to);
+      if (scope !== hook.scope && scope?.kind === 'agent')
+        await hooks.update(hook.id, {
+          scope: { kind: 'agent', id: scope.id },
+          expectedRevision: hook.revision,
+        });
+    }
+  }
+}
+
+function fileAgentRuntimeConfigured<D extends AgentDefinitions>(
+  options: BureauOptions<D>,
+): boolean {
+  return options.agentSource !== undefined && options.models?.generate !== undefined;
 }
 
 async function constructBureau<const D extends AgentDefinitions>(
@@ -2750,13 +2829,16 @@ async function constructBureau<const D extends AgentDefinitions>(
   const tryAgents = createTryAgents();
   let agentCatalog: ReturnType<typeof createAgentCatalog<D>>;
   let agentIdRenames: ReturnType<typeof createAgentIdRenameStore>;
-  let renameSavedAgent:
-    | ((
-        from: string,
-        to: string,
-        expectedHash: string,
-      ) => Promise<import('./agent-id-rename-store').AgentIdRenameRecord>)
-    | undefined;
+  let renameSavedAgent: (
+    from: string,
+    to: string,
+    expectedHash: string,
+  ) => Promise<AgentIdRenameRecord> = async () => {
+    throw new BureauError(
+      'Saved-agent identifier changes are unavailable during startup.',
+      'CONFLICT',
+    );
+  };
   /** COR-2429 — which agents a person disabled: the gate `agentCatalog.find` consults. */
   let agentDisabled: AgentDisabledStore;
   let workflowRuntime: WorkflowRuntime | undefined;
@@ -3164,67 +3246,59 @@ async function constructBureau<const D extends AgentDefinitions>(
         );
       },
     });
-    agentIdRenames = createAgentIdRenameStore(runtime.kv ?? textValueStore(new MemoryStorage()));
-    fileAgents =
-      options.agentSource === undefined || options.models?.generate === undefined
-        ? undefined
-        : createFileAgentRuntime({
-            files: createAgentFileCatalog({
-              source: options.agentSource,
-              reservedIdentifiers: new Set(Object.keys(agentsSnapshot)),
-              tools: agentToolCatalog,
-              bureauToolNames,
-              pluginToolNames,
-              unavailableTools: new Set(composedPlugins.unavailableTools),
-              models,
-              resolveGenerate: (row) => models.generate(row),
-              // COR-1980: the settings are live, so a write is judged by the policy as it is now.
-              modelPolicy: () => modelPolicyOf(currentSettings()),
-              effortFallbackMode: effortFallbackModeOfRun,
-              ...(options.agentApprovalSecret === undefined
-                ? {}
-                : { approvalSecret: options.agentApprovalSecret }),
-              // COR-1828: a tool a person allowed for the rest of the chat skips its `on-changes` ask.
-              rememberedTools: approvalGrantsOfRun,
-              contributions: options.agentContributions,
-              // COR-2120: the owner's guardrails, which a file lists by their stems.
-              ownerGuardrails: () =>
-                (guardrailFiles?.ready() ?? []).map((file) => ({
-                  id: file.name,
-                  digest: file.digest,
-                  definition: file.definition,
-                })),
-              // COR-1975: the skills a file's `skills` draws on, read through the host.
-              ...(options.agentSkillCatalog === undefined
-                ? {}
-                : {
-                    skills: {
-                      catalog: options.agentSkillCatalog,
-                      loadArtifact: createSkillArtifactLoader(
-                        runtime.kv === undefined ? {} : { storage: runtime.kv },
-                      ),
-                      events: runtime.skillEvents,
-                    },
-                  }),
-              // COR-1920: a file agent's per-run toolbox resolves secret answers as the Bureau's does.
-              ...(runtime.secretAnswers === undefined
-                ? {}
-                : { secretResolver: secretResolverOf(runtime.secretAnswers) }),
-              runtime: runtimeServices,
-              // COR-1584: the revision records share the Bureau's store, so a revision survives a
-              // restart and two Bureaus on one store agree on it.
-              revisionStore: runtime.kv,
-              renameStore: agentIdRenames,
-              retainedRevisions: (id) => agentSnapshots.referencedRevisions(id),
-              diagnose: (message, cause) =>
-                diagnose({
-                  level: 'error',
-                  scope: 'agent-files',
-                  message: `[bureau] ${message}`,
-                  cause,
+    const idRenameStore = createAgentIdRenameStore(
+      runtime.kv ?? textValueStore(new MemoryStorage()),
+    );
+    agentIdRenames = idRenameStore;
+    fileAgents = fileAgentRuntimeConfigured(options)
+      ? createFileAgentRuntime({
+          files: createAgentFileCatalog({
+            source: options.agentSource as NonNullable<typeof options.agentSource>,
+            reservedIdentifiers: new Set(Object.keys(agentsSnapshot)),
+            tools: agentToolCatalog,
+            bureauToolNames,
+            pluginToolNames,
+            unavailableTools: new Set(composedPlugins.unavailableTools),
+            models,
+            resolveGenerate: (row) => models.generate(row),
+            // COR-1980: the settings are live, so a write is judged by the policy as it is now.
+            modelPolicy: () => modelPolicyOf(currentSettings()),
+            effortFallbackMode: effortFallbackModeOfRun,
+            ...(options.agentApprovalSecret === undefined
+              ? {}
+              : { approvalSecret: options.agentApprovalSecret }),
+            // COR-1828: a tool a person allowed for the rest of the chat skips its `on-changes` ask.
+            rememberedTools: approvalGrantsOfRun,
+            contributions: options.agentContributions,
+            // COR-2120: the owner's guardrails, which a file lists by their stems.
+            ownerGuardrails: () =>
+              (guardrailFiles?.ready() ?? []).map((file) => ({
+                id: file.name,
+                digest: file.digest,
+                definition: file.definition,
+              })),
+            // COR-1975: the skills a file's `skills` draws on, read through the host.
+            ...(options.agentSkillCatalog === undefined
+              ? {}
+              : {
+                  skills: {
+                    catalog: options.agentSkillCatalog,
+                    loadArtifact: createSkillArtifactLoader(
+                      runtime.kv === undefined ? {} : { storage: runtime.kv },
+                    ),
+                    events: runtime.skillEvents,
+                  },
                 }),
-            }),
-            snapshots: agentSnapshots,
+            // COR-1920: a file agent's per-run toolbox resolves secret answers as the Bureau's does.
+            ...(runtime.secretAnswers === undefined
+              ? {}
+              : { secretResolver: secretResolverOf(runtime.secretAnswers) }),
+            runtime: runtimeServices,
+            // COR-1584: the revision records share the Bureau's store, so a revision survives a
+            // restart and two Bureaus on one store agree on it.
+            revisionStore: runtime.kv,
+            renameStore: agentIdRenames,
+            retainedRevisions: (id) => agentSnapshots.referencedRevisions(id),
             diagnose: (message, cause) =>
               diagnose({
                 level: 'error',
@@ -3232,8 +3306,18 @@ async function constructBureau<const D extends AgentDefinitions>(
                 message: `[bureau] ${message}`,
                 cause,
               }),
-            track: (promise, label) => runtimeServices.deferred.track(promise, label),
-          });
+          }),
+          snapshots: agentSnapshots,
+          diagnose: (message, cause) =>
+            diagnose({
+              level: 'error',
+              scope: 'agent-files',
+              message: `[bureau] ${message}`,
+              cause,
+            }),
+          track: (promise, label) => runtimeServices.deferred.track(promise, label),
+        })
+      : undefined;
     await fileAgents?.files.refresh();
     /**
      * COR-2009 — adds a tool source the host connected while the Bureau runs: the tools join the
@@ -3270,14 +3354,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       selectorAvailable: true,
       addTools: addHostTools,
       files: fileAgents?.files,
-      rename: async (from, to, expectedHash) => {
-        if (renameSavedAgent === undefined)
-          throw new BureauError(
-            'Saved-agent identifier changes are unavailable during startup.',
-            'CONFLICT',
-          );
-        return renameSavedAgent(from, to, expectedHash);
-      },
+      rename: (from, to, expectedHash) => renameSavedAgent(from, to, expectedHash),
       snapshots: fileAgents?.snapshots,
       descriptors: () => models.catalog().descriptors,
       modelPolicy: () => modelPolicyOf(currentSettings()),
@@ -4965,52 +5042,14 @@ async function constructBureau<const D extends AgentDefinitions>(
   // A file source and the durable stores have different commit boundaries.  The executor's journal
   // makes every retry resume these idempotent, revision-fenced steps instead of exposing a half
   // rename as success.
-  renameSavedAgent = (from, to, expectedHash) =>
-    createAgentIdRenameExecutor(agentIdRenames, {
-      capture: async (id, hash) => {
-        const source = await fileAgents?.files.read(id);
-        if (source === undefined || source.hash !== hash)
-          throw new BureauError(
-            `Saved agent "${id}" has changed. Reload it before changing its ID.`,
-            'CONFLICT',
-          );
-      },
-      publishTarget: async (record) => {
-        await fileAgents?.files.publishRenameTarget(record.from, record.to, {
-          expectedHash: record.sourceHash,
-        });
-      },
-      rewriteDependents: async (record) => {
-        await renameScheduledAgentReferences(record.from, record.to);
-        const workflows = workflowRuntime?.workflows;
-        if (workflows !== undefined) {
-          for (const listed of workflows.list()) {
-            if (listed.state !== 'ready' || listed.hash === undefined) continue;
-            const detail = await workflows.get(listed.id);
-            if (detail?.text === undefined) continue;
-            const definition = JSON.parse(
-              detail.text,
-            ) as import('./workflow-file').WorkflowFileDefinition;
-            const renamed = renameWorkflowAgent(definition, record.from, record.to);
-            if (JSON.stringify(renamed) !== JSON.stringify(definition))
-              await workflows.update(listed.id, renamed, { expectedHash: listed.hash });
-          }
-        }
-        const hooks = hooksInstance?.hooks;
-        if (hooks !== undefined) {
-          for (const hook of await hooks.list()) {
-            const scope = renameHookScope(hook.scope, record.from, record.to);
-            if (scope !== hook.scope)
-              await hooks.update(hook.id, { scope, expectedRevision: hook.revision });
-          }
-        }
-      },
-      retireSource: async (record) => {
-        await fileAgents?.files.retireRenameSource(record.from, {
-          expectedHash: record.sourceHash,
-        });
-      },
-    }).rename(from, to, expectedHash);
+  renameSavedAgent = createSavedAgentRenamer(fileAgents?.files, agentIdRenames, (record) =>
+    rewriteSavedAgentRenameDependents(
+      record,
+      renameScheduledAgentReferences,
+      () => workflowRuntime,
+      () => hooksInstance,
+    ),
+  );
 
   // COR-1706: the context operations stay private implementations that share the session store,
   // the live runs, the steering gates, and the durable mailbox; `events` reads the `session` owner of

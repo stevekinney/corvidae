@@ -794,6 +794,7 @@
               confirmingDelete = true;
             }}
             onChangeId={() => {
+              if (editor === undefined) return;
               renameTo = editor.identifier;
               confirmingRename = true;
             }}

@@ -459,6 +459,7 @@ export type BureauHandlerSource = Pick<
     | 'disable'
     | 'canDisable'
     | 'enable'
+    | 'rename'
   >;
 };
 

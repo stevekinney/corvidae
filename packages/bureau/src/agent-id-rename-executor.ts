@@ -45,8 +45,24 @@ export function createAgentIdRenameExecutor(
         return completed;
       }
 
-      await adapter.capture(from, expectedHash);
-      let record = await store.reserve({ from, to, sourceHash: expectedHash });
+      const requested = { from, to, sourceHash: expectedHash };
+      const [fromIntent, toIntent] = await Promise.all([store.get(from), store.get(to)]);
+      const sameIntent = (record: AgentIdRenameRecord) =>
+        record.from === requested.from &&
+        record.to === requested.to &&
+        record.sourceHash === requested.sourceHash;
+      // A journaled operation is its own recovery authority. Once the source was retired, capture
+      // cannot re-read it; recognizing this exact intent first lets its completion receipt recover.
+      if (
+        (fromIntent !== undefined && !sameIntent(fromIntent)) ||
+        (toIntent !== undefined && !sameIntent(toIntent))
+      ) {
+        throw new Error(`An identifier change already reserves "${from}" or "${to}".`);
+      }
+      if (fromIntent === undefined && toIntent === undefined) {
+        await adapter.capture(from, expectedHash);
+      }
+      let record = await store.reserve(requested);
       if (record.phase === 'prepared') {
         await adapter.publishTarget(record);
         record = await store.advance(record, 'target-published');

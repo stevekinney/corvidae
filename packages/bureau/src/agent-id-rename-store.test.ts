@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 
-import { agentIdRenameKey, createAgentIdRenameStore } from './agent-id-rename-store.ts';
+import { createAgentIdRenameStore } from './agent-id-rename-store.ts';
 
 const HASH = 'a'.repeat(64);
 
@@ -14,10 +15,9 @@ describe('the saved-agent identifier rename fence', () => {
 
     expect(await second.get('old-id')).toEqual(reserved);
     expect(await second.get('new-id')).toEqual(reserved);
-    await expect(second.reserve({ from: 'other', to: 'new-id', sourceHash: HASH })).rejects.toThrow(
-      'already reserves',
-    );
-    expect(agentIdRenameKey('new-id')).toBe('bureau-agent-id-rename:v1:new-id');
+    expect(
+      await rejectionOf(second.reserve({ from: 'other', to: 'new-id', sourceHash: HASH })),
+    ).toMatchObject({ message: expect.stringContaining('already reserves') });
   });
 
   it('advances and clears only the exact durable intent', async () => {

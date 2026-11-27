@@ -11,11 +11,11 @@
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import { z } from 'zod';
 
-export const AGENT_ID_RENAME_KEY_PREFIX = 'bureau-agent-id-rename:v1:';
-export const AGENT_ID_RENAME_COMPLETION_KEY_PREFIX = 'bureau-agent-id-rename-complete:v1:';
+const AGENT_ID_RENAME_KEY_PREFIX = 'bureau-agent-id-rename:v1:';
+const AGENT_ID_RENAME_COMPLETION_KEY_PREFIX = 'bureau-agent-id-rename-complete:v1:';
 
 export const agentIdRenamePhases = ['prepared', 'target-published', 'cutover'] as const;
-export type AgentIdRenamePhase = (typeof agentIdRenamePhases)[number];
+type AgentIdRenamePhase = (typeof agentIdRenamePhases)[number];
 
 export interface AgentIdRenameRecord {
   readonly from: string;
@@ -31,12 +31,12 @@ const recordSchema = z.object({
   phase: z.enum(agentIdRenamePhases),
 });
 
-export function agentIdRenameKey(id: string): string {
+function agentIdRenameKey(id: string): string {
   return `${AGENT_ID_RENAME_KEY_PREFIX}${encodeURIComponent(id)}`;
 }
 
 /** A completed rename is keyed by its immutable source/target pair, not either live name. */
-export function agentIdRenameCompletionKey(from: string, to: string): string {
+function agentIdRenameCompletionKey(from: string, to: string): string {
   return `${AGENT_ID_RENAME_COMPLETION_KEY_PREFIX}${encodeURIComponent(from)}:${encodeURIComponent(to)}`;
 }
 

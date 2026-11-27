@@ -42,10 +42,11 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 afterEach(disposeServed);
 
 describe('the operations list', () => {
-  it('serves the eleven agent definition operations, with their scopes registered', () => {
+  it('serves the twelve agent definition operations, with their scopes registered', () => {
     expect(bureauAgentDefinitionsOperations.map((operation) => operation.name)).toEqual([
       'bureau.agents.definitions.create',
       'bureau.agents.definitions.update',
+      'bureau.agents.definitions.rename',
       'bureau.agents.definitions.delete',
       'bureau.agents.definitions.duplicate',
       'bureau.agents.definitions.get',
@@ -123,6 +124,12 @@ const CALLS: readonly Call[] = [
       expectedHash: hash,
       definition: { ...DEFINITION, name: 'Renamed' },
     }),
+    scope: 'write',
+    denial: 'not-found',
+  },
+  {
+    method: 'bureau.agents.definitions.rename',
+    params: (hash) => ({ id: 'researcher', to: 'investigator', expectedHash: hash }),
     scope: 'write',
     denial: 'not-found',
   },

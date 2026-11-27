@@ -685,6 +685,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.agents.definitions.duplicate',
         'bureau.agents.definitions.get',
         'bureau.agents.definitions.list',
+        'bureau.agents.definitions.rename',
         'bureau.agents.definitions.revisions',
         'bureau.agents.definitions.update',
         'bureau.agents.disable',

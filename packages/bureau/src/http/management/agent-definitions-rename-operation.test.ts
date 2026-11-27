@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { generateEncryptionKey } from '@lostgradient/cryptography';
+import type { Storage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createSqliteStorageFixture } from '../../test/storage-fixtures.ts';
@@ -17,6 +18,33 @@ import { lookupTool } from '../../testing/agent-file-fixtures.test-support.ts';
 import { callAs, disposeServed, seed, serve } from './agent-definitions-fixtures.test-support.ts';
 
 afterEach(disposeServed);
+
+function interruptCompletionOnce(storage: Storage): Storage {
+  let interrupted = false;
+  return new Proxy(storage, {
+    get(target, property) {
+      const value = Reflect.get(target, property, target);
+      if (property !== 'conditionalBatch' || typeof value !== 'function') {
+        return typeof value === 'function' ? value.bind(target) : value;
+      }
+      return async (...args: Parameters<NonNullable<Storage['conditionalBatch']>>) => {
+        const [, operations] = args;
+        if (
+          !interrupted &&
+          operations.some(
+            (operation: { readonly type: string; readonly key: string }) =>
+              operation.type === 'put' &&
+              operation.key.startsWith('bureau-agent-id-rename-complete:v1:'),
+          )
+        ) {
+          interrupted = true;
+          throw new Error('simulated completion receipt interruption');
+        }
+        return value.call(target, ...args);
+      };
+    },
+  });
+}
 
 describe('bureau.agents.definitions.rename', () => {
   it('changes a saved agent through the normal authorized endpoint', async () => {
@@ -35,12 +63,14 @@ describe('bureau.agents.definitions.rename', () => {
       to: 'investigator',
       phase: 'cutover',
     });
-    expect(
-      (await callAs(served.local, 'bureau.agents.definitions.get', { id: 'researcher' })).error,
-    ).toMatchObject({ data: { weftCode: 'NotFound' } });
-    expect(
-      (await callAs(served.local, 'bureau.agents.definitions.get', { id: 'investigator' })).result,
-    ).toMatchObject({ id: 'investigator' });
+    const source = await callAs(served.local, 'bureau.agents.definitions.get', {
+      id: 'researcher',
+    });
+    const target = await callAs(served.local, 'bureau.agents.definitions.get', {
+      id: 'investigator',
+    });
+    expect(source.error).toMatchObject({ data: { weftCode: 'NotFound' } });
+    expect(target.result).toMatchObject({ id: 'investigator' });
   });
 
   it('resumes one durable rename after restart without duplicating its agent or losing its live references', async () => {
@@ -153,6 +183,67 @@ describe('bureau.agents.definitions.rename', () => {
       expect(await second.bureau.hooks?.get(hook!.id)).toMatchObject({
         scope: { kind: 'agent', id: 'investigator' },
       });
+      await second.dispose();
+    } finally {
+      await disposeServed();
+      await storage.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('replays a retired source through the normal endpoint before its completion receipt', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bureau-retired-rename-replay-'));
+    const storage = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
+    const directory = join(root, 'agents');
+    await mkdir(directory, { recursive: true });
+    const open = async (store: Storage) =>
+      serve({
+        directory,
+        overrides: {
+          storage: store,
+          durableOwnership: { ownership: 'none' },
+        },
+      });
+
+    try {
+      const first = await open(interruptCompletionOnce(storage.storage));
+      await seed(first);
+      const expectedHash = first.hashOf('researcher');
+      const interrupted = await callAs(first.local, 'bureau.agents.definitions.rename', {
+        id: 'researcher',
+        to: 'investigator',
+        expectedHash,
+      });
+      expect(interrupted.error?.message).toBe('internal error');
+      const source = await callAs(first.local, 'bureau.agents.definitions.get', {
+        id: 'researcher',
+      });
+      expect(source.error).toMatchObject({ data: { weftCode: 'NotFound' } });
+      await first.dispose();
+
+      const second = await open(await storage.reopen());
+      const replay = await callAs(second.local, 'bureau.agents.definitions.rename', {
+        id: 'researcher',
+        to: 'investigator',
+        expectedHash,
+      });
+      expect(replay.error).toBeUndefined();
+      expect(replay.result).toMatchObject({
+        from: 'researcher',
+        to: 'investigator',
+        phase: 'cutover',
+      });
+      const duplicate = await callAs(second.local, 'bureau.agents.definitions.rename', {
+        id: 'researcher',
+        to: 'investigator',
+        expectedHash,
+      });
+      expect(duplicate).toEqual(replay);
+      expect(
+        second.bureau.agents
+          .list()
+          .filter(({ id }) => id === 'researcher' || id === 'investigator'),
+      ).toEqual([expect.objectContaining({ id: 'investigator' })]);
       await second.dispose();
     } finally {
       await disposeServed();

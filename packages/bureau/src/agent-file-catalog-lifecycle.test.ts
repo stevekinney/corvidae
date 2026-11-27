@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { type BackendDescriptor } from '@lostgradient/operative';
@@ -122,9 +123,9 @@ describe('a saved identifier change in progress', () => {
     expect(fixture.catalog.find('new-id')).toBe(fixture.catalog.find('old-id'));
     // Replay after the target write and its revision scan is the same intent,
     // not an attempt to claim a historically used identifier.
-    await expect(
-      fixture.catalog.publishRenameTarget('old-id', 'new-id', { expectedHash: old.hash }),
-    ).resolves.toEqual({ id: 'new-id', hash: old.hash });
+    expect(
+      await fixture.catalog.publishRenameTarget('old-id', 'new-id', { expectedHash: old.hash }),
+    ).toEqual({ id: 'new-id', hash: old.hash });
   });
 
   it('refuses a target whose deleted file still owns a revision history', async () => {
@@ -139,9 +140,11 @@ describe('a saved identifier change in progress', () => {
     });
     await fixture.catalog.delete('retired-id', { expectedHash: retired.hash });
 
-    await expect(
-      fixture.catalog.publishRenameTarget('old-id', 'retired-id', { expectedHash: old.hash }),
-    ).rejects.toMatchObject({ code: 'agent-file-exists' });
+    expect(
+      await rejectionOf(
+        fixture.catalog.publishRenameTarget('old-id', 'retired-id', { expectedHash: old.hash }),
+      ),
+    ).toMatchObject({ code: 'agent-file-exists' });
   });
 });
 
