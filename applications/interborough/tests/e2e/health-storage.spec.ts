@@ -395,9 +395,8 @@ test.describe('Health › Storage on the sample world', () => {
     ]);
     // The popover is named for the button that opened it; the body does not say it again.
     await expect(details.getByRole('heading')).toHaveCount(0);
-    // Nothing sticks out past the popover's right edge, and no path is cut off. The measure is the
-    // drawn edges, not `scrollWidth`: the copy button's invisible hit target reaches past the
-    // button and counts toward `scrollWidth` where nothing is drawn.
+    // Check the painted facts against their container and the popover. The Location also reserves
+    // its complete Copy hit target, so it must not add horizontal scroll overflow to the body.
     const fit = await details.evaluate((element) => {
       const popover = element.closest('.cinder-popover');
       const own = element.getBoundingClientRect();
@@ -406,12 +405,14 @@ test.describe('Health › Storage on the sample world', () => {
       return {
         drawn: drawn.length,
         contentRight: Math.max(...drawn.map((part) => part.getBoundingClientRect().right)),
+        overflow: element.scrollWidth - element.clientWidth,
         right: own.right,
         frame: frame?.right ?? 0,
       };
     });
     expect(fit.drawn).toBeGreaterThan(0);
     expect(fit.contentRight).toBeLessThanOrEqual(Math.ceil(fit.right));
+    expect(fit.overflow).toBeLessThanOrEqual(0);
     expect(fit.right).toBeLessThanOrEqual(Math.ceil(fit.frame));
     await expect(details.locator('dd').nth(0)).toHaveText('SQLite');
     await expect(details.locator('dd').nth(2)).toHaveText('1.6 GB');
