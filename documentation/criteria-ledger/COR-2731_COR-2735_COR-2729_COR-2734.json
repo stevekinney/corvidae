@@ -1,7 +1,7 @@
 {
   "issue": "COR-2731_COR-2735_COR-2729_COR-2734",
   "branch": "chef/ownership-moves",
-  "checkedAt": "706d182056",
+  "checkedAt": "d4448fde6c",
   "briefVersion": "32738a65d084",
   "status": "READY",
   "criteria": [
@@ -38,7 +38,7 @@
     {
       "id": "COR-2729 AC1",
       "status": "met-on-branch",
-      "evidence": "Matrix at documentation/weft-operation-coverage.md (repository root); checker and support at applications/interborough/tests/coverage-matrix.test.ts and coverage-matrix.test-support.ts (26f059b2ed); README, imports, package-root resolution, the two unused-code baselines and Interborough's test and test:coverage Turbo inputs updated."
+      "evidence": "Matrix at documentation/weft-operation-coverage.md (repository root); checker and support at applications/interborough/tests/coverage-matrix.test.ts and coverage-matrix.test-support.ts (26f059b2ed); README, imports, package-root resolution, the two unused-code baselines and Interborough's test and test:coverage Turbo inputs updated. Interborough test and lint now have Turbo overrides that keep every generic input; task-cache.integration.test.ts fails when any workspace override drops one (red against the previous turbo.json, green now; pre-existing drops are listed and can only shrink)."
     },
     {
       "id": "COR-2729 AC2",
@@ -53,7 +53,7 @@
     {
       "id": "COR-2734 AC1",
       "status": "met-on-branch",
-      "evidence": "runtime-probe to packages/ventriloquist/scripts; engine-probe and browser-failure-regression to components/terminal/scripts; evidence schema, browser asset evidence and the resource probe to the new testing/terminal workspace (@lostgradient/terminal-testing). Pool, workflow and release checks untouched at the root. Commits c580c57c99 and bbfdd6bc08."
+      "evidence": "runtime-probe to packages/ventriloquist/scripts; engine-probe and browser-failure-regression to components/terminal/scripts; evidence schema, browser asset evidence and the resource probe to the new testing/terminal workspace (@lostgradient/terminal-testing). Pool, workflow and release checks untouched at the root. Commits c580c57c99 and bbfdd6bc08. The resource probe refuses an uncommitted change to the engine probe it loads (resource-probe-source.integration.test.ts, red before the fix, green after)."
     },
     {
       "id": "COR-2734 AC2",
