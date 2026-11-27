@@ -553,6 +553,37 @@ test.describe('at the limits', () => {
     await captureForDesignReview(page, { route: '/', state: 'drawer open at 320', source: SOURCE });
   });
 
+  for (const width of [320, 375]) {
+    test(`the phone drawer reaches its last navigation item at ${width}px (05h)`, async ({
+      page,
+    }) => {
+      await open(page, '/', width, 640, false);
+      await page.getByRole('button', { name: 'Open navigation' }).click();
+      const panel = drawer(page);
+      await expect(panel).toBeVisible();
+      const links = panel.locator('a.cinder-side-navigation-item');
+      const last = links.last();
+      await expect(links).toHaveCount(13);
+      for (
+        let index = 0;
+        index < 16 && !(await last.evaluate((element) => element === document.activeElement));
+        index += 1
+      ) {
+        await page.keyboard.press('Tab');
+      }
+      await expect(last).toBeFocused();
+      await expect(last).toBeInViewport({ ratio: 1 });
+      await captureForDesignReview(page, {
+        route: '/',
+        state: 'phone drawer last navigation item',
+        source: SOURCE,
+        ready: async () => {
+          await last.scrollIntoViewIfNeeded();
+        },
+      });
+    });
+  }
+
   test('at 200% text nothing clips: the bar grows, its controls stay Button faces, the title keeps room (05i)', async ({
     page,
   }) => {

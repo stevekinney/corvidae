@@ -251,6 +251,66 @@ test.describe('the search palette on the sample world', () => {
     await expect(page.locator('textarea').first()).toHaveValue('refund');
   });
 
+  for (const width of [320, 375]) {
+    test(`a populated phone search reaches its final action at ${width}px (05d)`, async ({
+      page,
+    }) => {
+      await page.clock.setFixedTime(SAMPLE_NOW);
+      await page.setViewportSize({ width, height: 640 });
+      await page.goto('/');
+      await page
+        .getByRole('banner')
+        .getByRole('button', { name: /^Search everything/ })
+        .click();
+      await expect(palette(page)).toBeVisible();
+      await expectWaitingListed(page);
+      await search(page).fill('refund');
+      const action = palette(page).getByRole('option', { name: 'New chat about refund' });
+      await expect(action).toBeAttached();
+      await expect(palette(page).getByRole('group', { name: 'Runs', exact: true })).toBeVisible();
+      const list = palette(page).getByRole('listbox');
+      await list.evaluate((element) => {
+        element.scrollTop = 0;
+      });
+      await captureForDesignReview(page, {
+        route: '/',
+        state: 'phone search refund',
+        source: SOURCE,
+        ready: async () => {
+          await list.evaluate((element) => {
+            element.scrollTop = 0;
+          });
+        },
+      });
+
+      await search(page).focus();
+      await search(page).press('End');
+      await expect(action).toHaveAttribute('aria-selected', 'true');
+      await expect(search(page)).toHaveAttribute(
+        'aria-activedescendant',
+        (await action.getAttribute('id')) ?? '',
+      );
+      await expect(action).toBeInViewport({ ratio: 1 });
+      expect(
+        await action.evaluate((element) => {
+          const item = element.getBoundingClientRect();
+          const container = element.closest('[role="listbox"]')!.getBoundingClientRect();
+          return item.top >= container.top && item.bottom <= container.bottom;
+        }),
+      ).toBe(true);
+      await captureForDesignReview(page, {
+        route: '/',
+        state: 'phone search refund end of list',
+        source: SOURCE,
+        ready: async () => {
+          await list.evaluate((element) => {
+            element.scrollTop = element.scrollHeight;
+          });
+        },
+      });
+    });
+  }
+
   test('a phone gets the same rows as a bottom sheet with no esc hint (05d)', async ({ page }) => {
     await page.clock.setFixedTime(SAMPLE_NOW);
     await page.setViewportSize({ width: 375, height: 812 });
