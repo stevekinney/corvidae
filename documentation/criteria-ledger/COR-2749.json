@@ -1,34 +1,34 @@
 {
   "issue": "COR-2749",
   "branch": "codex/cor-2749-workers-npm",
-  "checkedAt": "a125b0aea7dc485f7d5c9958855a3dcf3d821355",
-  "briefVersion": "28d86a8c1c52",
-  "status": "BLOCKED",
+  "checkedAt": "44484207cbb531a3930ae95369a77800fea4712e",
+  "briefVersion": "c57374b70e9f",
+  "status": "READY",
   "criteria": [
     {
       "id": "AC1",
-      "status": "needs-decision",
-      "evidence": "Removing Ajv makes the untouched Ajv prototype test in AC2 fail."
+      "status": "met-on-branch",
+      "evidence": "The prescribed production-source Ajv import grep returns no matches; Bureau and Operative manifests use json-schema-library."
     },
     {
       "id": "AC2",
-      "status": "needs-decision",
-      "evidence": "validation.test.ts asserts calls to Ajv.prototype.removeSchema, an implementation no longer present under AC1."
+      "status": "met-on-branch",
+      "evidence": "Focused validation, review-answer, decision-schema, catalog, and behavior-level interactive-surface tests pass."
     },
     {
       "id": "AC3",
-      "status": "not-met",
-      "evidence": "Implementation not started because AC1 and AC2 conflict."
+      "status": "met-on-branch",
+      "evidence": "Existing human-input tests retain remote-reference and unsafe-pattern refusal coverage."
     },
     {
       "id": "AC4",
-      "status": "not-met",
-      "evidence": "Implementation not started because AC1 and AC2 conflict."
+      "status": "met-on-branch",
+      "evidence": "human-input-schema.workerd.integration.test.ts passes through @lostgradient/workerd-testing."
     },
     {
       "id": "AC5",
-      "status": "not-met",
-      "evidence": "Implementation not started because AC1 and AC2 conflict."
+      "status": "met-on-branch",
+      "evidence": "Bureau and Operative both declare json-schema-library from the root catalog."
     }
   ]
 }
