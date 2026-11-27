@@ -24,6 +24,7 @@ import {
   installBureauWorld,
   type BureauWorldStub,
 } from '../../lib/bureau-world.test-support.ts';
+import { clockTime } from '../../lib/format/clock.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import { landAt } from '../chat/pages.test-support.ts';
@@ -141,8 +142,8 @@ const rowKinds = (container: HTMLElement) =>
     row.getAttribute('data-check-kind'),
   );
 const rowTitles = (container: HTMLElement) =>
-  [...container.querySelectorAll('[data-check-kind] .cinder-stacked-list-item__title')].map(
-    (title) => title.textContent?.trim(),
+  [...container.querySelectorAll('[data-check-kind] .ib-checks-row__name')].map((title) =>
+    title.textContent?.trim(),
   );
 /** What the page asked for, leaving out the frame's own one-row probe. */
 const sentList = () =>
@@ -214,6 +215,16 @@ describe('the page', () => {
       'Prompt injection',
       'Pii input',
     ]);
+    const times = [
+      ...view.container.querySelectorAll('[data-check-kind] time.ib-checks-row__time'),
+    ];
+    expect(times).toHaveLength(ROWS.length);
+    for (const [index, time] of times.entries()) {
+      const row = ROWS[index];
+      if (row === undefined) throw new Error(`Missing check at index ${index}`);
+      expect(time.getAttribute('datetime')).toBe(row.timestamp);
+      expect(time.textContent?.trim()).toBe(clockTime(Date.parse(row.timestamp)));
+    }
     const text = view.container.textContent ?? '';
     for (const raw of [
       'goal.attempt.validated',
