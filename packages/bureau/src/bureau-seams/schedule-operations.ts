@@ -1088,6 +1088,36 @@ export function createScheduleOperations<D extends AgentDefinitions>(
   }
 
   /**
+   * Repoint saved-agent schedules as one fenced maintenance operation.  This is deliberately not
+   * expressed through `updateSchedule`: that public operation quite correctly rejects moving a
+   * continuing chat to another agent.  A saved-ID change is the one exception because the rename
+   * journal makes the two names one durable identity while this operation is in progress.
+   */
+  async function renameScheduledAgentReferences(from: string, to: string): Promise<void> {
+    if (!runtime.durable) return;
+    const engine = runtime.durable.engine;
+    let offset = 0;
+    for (;;) {
+      const page = await engine.listSchedules({ offset });
+      for (const summary of page.items) {
+        if (parseWorkflowScheduleId(summary.id) !== undefined) continue;
+        const input = await storedScheduleInput(engine, summary.id);
+        if (!isScheduledAgentRunInput(input) || input.agentName !== from) continue;
+        const spec =
+          summary.intervalMs === undefined
+            ? { cron: summary.cronExpression ?? '' }
+            : { every: `${summary.intervalMs}ms` };
+        await engine.updateSchedule(summary.id, spec, {
+          input: { ...input, agentName: to },
+          expectedRevision: summary.revision,
+        });
+      }
+      offset += page.items.length;
+      if (page.items.length === 0 || offset >= page.total) return;
+    }
+  }
+
+  /**
    * COR-2545 — the audit entry of a committed update: which schedule, which fields the caller named,
    * who asked, and the panel they asked through. Weft's update takes no additional write, so this
    * follows the commit, and a failure to record is diagnosed and never a failure of the update,
@@ -1191,5 +1221,6 @@ export function createScheduleOperations<D extends AgentDefinitions>(
     runScheduleNow,
     listScheduleMissed,
     updateSchedule,
+    renameScheduledAgentReferences,
   };
 }

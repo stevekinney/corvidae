@@ -40,6 +40,7 @@ import type {
   AgentUnavailability,
 } from './agent-file-catalog';
 import type { AgentFileWriter, AgentFileWriteResult } from './agent-file-writer';
+import type { AgentIdRenameRecord } from './agent-id-rename-store';
 import { isOfferedCatalogRow } from './models/create-models';
 import type { AgentVersionRecord } from './agent-version-store';
 import type { AgentDefinitionPin } from './agent-definition-pin';
@@ -359,6 +360,12 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
   /** Publish and retire the two conditional source steps of a saved-ID change. */
   publishRenameTarget: AgentFileWriter['publishRenameTarget'];
   retireRenameSource: AgentFileWriter['retireRenameSource'];
+  /** Change a saved file agent's identifier, including durable references to it. */
+  rename(
+    from: string,
+    to: string,
+    options: { readonly expectedHash: string },
+  ): Promise<AgentIdRenameRecord>;
   /**
    * COR-1873 — copy a plugin's read-only agent (`plugin:name`) into the owner's source as
    * `name.md`, with its tools unversioned. Fails with `AgentFileConflictError` when that file exists.
@@ -447,6 +454,10 @@ export interface CreateAgentCatalogOptions {
   readonly selectorAvailable?: boolean;
   /** The agents loaded from `BureauOptions.agentSource` (COR-1524). */
   readonly files?: AgentFileCatalog | undefined;
+  /** The Bureau-owned coordinator for a saved file-agent identifier change. */
+  readonly rename?:
+    | ((from: string, to: string, expectedHash: string) => Promise<AgentIdRenameRecord>)
+    | undefined;
   /** Where file agents' run snapshots live. */
   readonly snapshots?: AgentSnapshotStore | undefined;
   /**
@@ -873,6 +884,16 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       requireFiles().publishRenameTarget(from, to, renameOptions),
     retireRenameSource: async (id, renameOptions) =>
       requireFiles().retireRenameSource(id, renameOptions),
+    rename: async (from, to, renameOptions) => {
+      const rename = options?.rename;
+      if (rename === undefined) {
+        throw new AgentFileError(
+          'agent-directory-not-configured',
+          'This Bureau has no saved-agent identifier change coordinator.',
+        );
+      }
+      return rename(from, to, renameOptions.expectedHash);
+    },
     duplicate: async (id, writeOptions) => {
       const agent = pluginCodeAgent(id);
       if (agent === undefined) {
