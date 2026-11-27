@@ -1,0 +1,32 @@
+{
+  "name": "@lostgradient/terminal-testing",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The terminal evidence schema and the resource probes that every terminal verification run shares.",
+  "type": "module",
+  "exports": {
+    "./browser-asset-evidence": "./src/browser-asset-evidence.ts",
+    "./evidence-schema": "./src/evidence-schema.ts",
+    "./evidence.schema.json": "./src/evidence.schema.json",
+    "./resource-probe": "./src/resource-probe.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src",
+    "probe:resources": "bun src/resource-probe.ts",
+    "types": "tsc -b tsconfig.source.json",
+    "typecheck": "tsc --noEmit -p ./tsconfig.json",
+    "test": "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.slow.test.ts' --path-ignore-patterns='**/*.integration.test.ts' src",
+    "test:slow": "bun ../../scripts/bun-test-selected.ts .slow.test.ts .integration.test.ts"
+  },
+  "devDependencies": {
+    "@lostgradient/typescript": "workspace:*",
+    "@playwright/test": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "ajv": "catalog:",
+    "ajv-formats": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
+  }
+}

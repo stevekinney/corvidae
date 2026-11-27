@@ -1105,9 +1105,9 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/check-inherited-key-reads.ts",
-        "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
-        "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
-        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"
+        "$TURBO_ROOT$/testing/terminal/src/evidence.schema.json",
+        "$TURBO_ROOT$/testing/terminal/src/evidence-schema.ts",
+        "$TURBO_ROOT$/testing/terminal/src/browser-asset-evidence.ts"
       ]
     },
     "@lostgradient/ventriloquist#typecheck": {
@@ -1116,9 +1116,9 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/typecheck-contracts.ts",
-        "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
-        "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
-        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"
+        "$TURBO_ROOT$/testing/terminal/src/evidence.schema.json",
+        "$TURBO_ROOT$/testing/terminal/src/evidence-schema.ts",
+        "$TURBO_ROOT$/testing/terminal/src/browser-asset-evidence.ts"
       ]
     },
     "@lostgradient/ventriloquist#test": {
@@ -1127,9 +1127,9 @@
       "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
-        "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
-        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts",
+        "$TURBO_ROOT$/testing/terminal/src/evidence.schema.json",
+        "$TURBO_ROOT$/testing/terminal/src/evidence-schema.ts",
+        "$TURBO_ROOT$/testing/terminal/src/browser-asset-evidence.ts",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
@@ -1150,9 +1150,9 @@
       "outputs": ["coverage/**", "test-results/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
-        "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
-        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts",
+        "$TURBO_ROOT$/testing/terminal/src/evidence.schema.json",
+        "$TURBO_ROOT$/testing/terminal/src/evidence-schema.ts",
+        "$TURBO_ROOT$/testing/terminal/src/browser-asset-evidence.ts",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",

@@ -41,6 +41,7 @@
     "svelte": "catalog:"
   },
   "devDependencies": {
+    "@lostgradient/terminal-testing": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@playwright/test": "catalog:",

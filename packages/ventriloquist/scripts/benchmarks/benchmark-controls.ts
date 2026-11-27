@@ -1,4 +1,4 @@
-import type { ObservedWorkload } from '../../../../scripts/terminal/evidence-schema.ts';
+import type { ObservedWorkload } from '@lostgradient/terminal-testing/evidence-schema';
 import { SAMPLES } from './benchmark-report.ts';
 import {
   cleanupObservation,

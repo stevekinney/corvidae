@@ -1,6 +1,6 @@
 # Terminal security and resource budgets
 
-Status: accepted COR-483 candidate. This document defines the fail-closed security and resource policy for the COR-436 terminal contract. Measurements are collected by `scripts/terminal/resource-probe.ts` into the ignored `tmp/terminal-probes/resources.json`; the committed evidence schema and semantic validator are authoritative.
+Status: accepted COR-483 candidate. This document defines the fail-closed security and resource policy for the COR-436 terminal contract. Measurements are collected by `testing/terminal/src/resource-probe.ts` into the ignored `tmp/terminal-probes/resources.json`; the committed evidence schema and semantic validator are authoritative.
 
 ## Ownership and threat model
 

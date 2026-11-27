@@ -1,15 +1,19 @@
-import { chromium } from '@playwright/test';
+import {
+  validateBrowserAssetEvidence,
+  type BrowserAssetEvidence,
+} from '@lostgradient/terminal-testing/browser-asset-evidence';
+import {
+  assertEvidence,
+  type EvidenceCell,
+  type EvidenceReport,
+} from '@lostgradient/terminal-testing/evidence-schema';
+import type { Browser } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import {
-  validateBrowserAssetEvidence,
-  type BrowserAssetEvidence,
-} from './browser-asset-evidence.ts';
-import { assertEvidence, type EvidenceCell, type EvidenceReport } from './evidence-schema.ts';
 
-const root = join(import.meta.dir, '../..');
+const root = join(import.meta.dir, '../../..');
 const reportPath = join(root, 'tmp/terminal-probes/engines.json');
 const candidates = [
   { name: 'ghostty-web', version: '0.4.0', preferred: true },
@@ -36,7 +40,6 @@ const cspFor = (candidate: Candidate): string => {
     : `${baseCsp}; script-src 'self'; connect-src 'self'`;
 };
 type Candidate = (typeof candidates)[number];
-type Browser = Awaited<ReturnType<typeof chromium.launch>>;
 type BrowserCell = { passed: boolean; observation: string };
 type BrowserResult = {
   cells: Record<string, BrowserCell>;
@@ -52,8 +55,6 @@ type BrowserResult = {
 const acceptedXtermCsp =
   "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; worker-src 'self' blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; script-src 'self'; connect-src 'self'";
 
-export { validateBrowserAssetEvidence } from './browser-asset-evidence.ts';
-export type { BrowserAssetEvidence } from './browser-asset-evidence.ts';
 type RawBrowserResult = Record<string, unknown>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -84,7 +85,8 @@ async function sourceSha(): Promise<string> {
       'status',
       '--porcelain',
       '--',
-      'scripts/terminal',
+      'components/terminal/scripts',
+      'testing/terminal',
       'documentation/terminal',
       'package.json',
       'scripts/workspace-contract.integration.test.ts',
@@ -209,6 +211,9 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
   let browser: Browser | undefined;
   let page: Awaited<ReturnType<Browser['newPage']>> | undefined;
   try {
+    // Playwright is loaded here and not at the top: it opens a network connection when a DOM
+    // test environment is installed, and this module's unit tests run in one.
+    const { chromium } = await import('@playwright/test');
     browser = await chromium.launch({ headless: true });
     page = await browser.newPage();
     page.on('request', (request) => requests.push(`request:${request.method()}:${request.url()}`));

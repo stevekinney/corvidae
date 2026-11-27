@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { validateBrowserAssetEvidence } from './browser-asset-evidence.ts';
 import {
   assertEvidence,
   type EvidenceCell,
@@ -9,7 +10,7 @@ import {
   type WorkloadDefinition,
 } from './evidence-schema.ts';
 
-const root = join(import.meta.dir, '../..');
+const root = join(import.meta.dir, '../../..');
 const reportPath = join(root, 'tmp/terminal-probes/resources.json');
 const pinnedBunVersion = '1.4.4';
 const expectedCellIds = [
@@ -304,7 +305,7 @@ async function sourceSha(): Promise<string> {
       'status',
       '--porcelain',
       '--',
-      'scripts/terminal',
+      'testing/terminal',
       'documentation/terminal',
       'package.json',
       'scripts/workspace-contract.integration.test.ts',
@@ -631,6 +632,32 @@ function unavailable(fixture: string, reason: string): ProbeResult {
   };
 }
 
+/** What the resource probe uses of Terminal's browser engine probe. */
+type BrowserEngineProbe = {
+  probeCandidate: (
+    candidate: { name: string; version: string; preferred: boolean },
+    directory: string,
+  ) => Promise<{
+    cells: EvidenceCell[];
+    status: 'ready' | 'unavailable';
+    origin?: string;
+    csp?: string;
+    requests?: string[];
+    responses?: Array<{ url: string; status: number; contentType: string }>;
+    failures?: string[];
+  }>;
+};
+
+/**
+ * Terminal owns the browser engine probe, and Terminal depends on this workspace for the evidence
+ * schema, so a package dependency back would be a cycle. The probe is loaded by its path when the
+ * resource probe runs its browser cells, which only a run from this repository does.
+ */
+async function loadBrowserEngineProbe(): Promise<BrowserEngineProbe> {
+  const path = join(root, 'components/terminal/scripts/engine-probe.ts');
+  return (await import(path)) as BrowserEngineProbe;
+}
+
 async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, ProbeResult]> {
   const directory = await mkdtemp(join(tmpdir(), 'corvidae-terminal-resource-'));
   let candidateDirectory: string | undefined;
@@ -639,7 +666,7 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
       join(directory, 'package.json'),
       JSON.stringify({ name: 'terminal-resource-probe', private: true, type: 'module' }),
     );
-    const { probeCandidate, validateBrowserAssetEvidence } = await import('./engine-probe.ts');
+    const { probeCandidate } = await loadBrowserEngineProbe();
     const controlStartedAt = performance.now();
     const controlBrowser = await probeCandidate(
       { name: '@xterm/xterm', version: '6.0.0', preferred: false },
@@ -906,7 +933,7 @@ async function main(): Promise<void> {
   assertEvidence(report, 'resource');
   await mkdir(join(root, 'tmp/terminal-probes'), { recursive: true });
   await Bun.write(reportPath, `${JSON.stringify(report, null, 2)}\n`);
-  console.log(reportPath);
+  process.stdout.write(`${reportPath}\n`);
   if (!report.passed) throw new Error(`resource probe failed; see ${reportPath}`);
 }
 
@@ -914,7 +941,9 @@ if (import.meta.main) {
   try {
     await main();
   } catch (error) {
-    console.error(error);
+    process.stderr.write(
+      `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+    );
     process.exitCode = 1;
   }
 }
