@@ -65,8 +65,8 @@
     <Table caption={`Contributors (${density})`} {density} stickyHeader>
       <TableHeader>
         <TableRow>
-          <TableHeaderCell column="name" sortable>Name</TableHeaderCell>
-          <TableHeaderCell>Role</TableHeaderCell>
+          <TableHeaderCell label="Name" column="name" sortable>Name</TableHeaderCell>
+          <TableHeaderCell label="Role">Role</TableHeaderCell>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -89,10 +89,12 @@
   <Table caption="Recent contributors">
     <TableHeader>
       <TableRow>
-        <TableHeaderCell>Name</TableHeaderCell>
-        <TableHeaderCell>Role</TableHeaderCell>
-        <TableHeaderCell align="right">Commits</TableHeaderCell>
-        <TableHeaderCell><span class="cinder-sr-only">Actions</span></TableHeaderCell>
+        <TableHeaderCell label="Name">Name</TableHeaderCell>
+        <TableHeaderCell label="Role">Role</TableHeaderCell>
+        <TableHeaderCell label="Commits" align="right">Commits</TableHeaderCell>
+        <TableHeaderCell label="Actions"
+          ><span class="cinder-sr-only">Actions</span></TableHeaderCell
+        >
       </TableRow>
     </TableHeader>
     <TableBody>
@@ -112,9 +114,9 @@
   <Table caption="Build history" class="table-fixture-table">
     <TableHeader>
       <TableRow>
-        <TableHeaderCell>Name</TableHeaderCell>
-        <TableHeaderCell>Role</TableHeaderCell>
-        <TableHeaderCell align="right">Commits</TableHeaderCell>
+        <TableHeaderCell label="Name">Name</TableHeaderCell>
+        <TableHeaderCell label="Role">Role</TableHeaderCell>
+        <TableHeaderCell label="Commits" align="right">Commits</TableHeaderCell>
       </TableRow>
     </TableHeader>
     <TableBody>
@@ -131,8 +133,8 @@
   <Table caption="Stored values" fit>
     <TableHeader>
       <TableRow>
-        <TableHeaderCell>Key</TableHeaderCell>
-        <TableHeaderCell align="right">Size</TableHeaderCell>
+        <TableHeaderCell label="Key">Key</TableHeaderCell>
+        <TableHeaderCell label="Size" align="right">Size</TableHeaderCell>
       </TableRow>
     </TableHeader>
     <TableBody>
@@ -153,8 +155,8 @@
         <Table caption="Contributors in a card">
           <TableHeader>
             <TableRow>
-              <TableHeaderCell>Name</TableHeaderCell>
-              <TableHeaderCell align="right">Commits</TableHeaderCell>
+              <TableHeaderCell label="Name">Name</TableHeaderCell>
+              <TableHeaderCell label="Commits" align="right">Commits</TableHeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -173,8 +175,8 @@
         <Table caption="Contributors in a card, framed" framed>
           <TableHeader>
             <TableRow>
-              <TableHeaderCell>Name</TableHeaderCell>
-              <TableHeaderCell align="right">Commits</TableHeaderCell>
+              <TableHeaderCell label="Name">Name</TableHeaderCell>
+              <TableHeaderCell label="Commits" align="right">Commits</TableHeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -194,7 +196,9 @@
 {#if showCurrent}
   <div data-testid="plain-current">
     <Table aria-label="Current contributor">
-      <TableHeader><TableRow><TableHeaderCell>Name</TableHeaderCell></TableRow></TableHeader>
+      <TableHeader
+        ><TableRow><TableHeaderCell label="Name">Name</TableHeaderCell></TableRow></TableHeader
+      >
       <TableBody>
         <TableRow current><TableCell>Ada Lovelace</TableCell></TableRow>
         <TableRow><TableCell>Grace Hopper</TableCell></TableRow>
@@ -211,7 +215,9 @@
   </div>
   <div data-testid="stacked-current">
     <Table aria-label="Current contributor at narrow width" fit>
-      <TableHeader><TableRow><TableHeaderCell>Name</TableHeaderCell></TableRow></TableHeader>
+      <TableHeader
+        ><TableRow><TableHeaderCell label="Name">Name</TableHeaderCell></TableRow></TableHeader
+      >
       <TableBody><TableRow current><TableCell>Ada Lovelace</TableCell></TableRow></TableBody>
     </Table>
   </div>
@@ -224,9 +230,9 @@
     <Table caption="Connection checks" fit>
       <TableHeader>
         <TableRow>
-          <TableHeaderCell sizing="content">Check</TableHeaderCell>
-          <TableHeaderCell sizing="content">Result</TableHeaderCell>
-          <TableHeaderCell sizing="fill">What it found</TableHeaderCell>
+          <TableHeaderCell label="Check" sizing="content">Check</TableHeaderCell>
+          <TableHeaderCell label="Result" sizing="content">Result</TableHeaderCell>
+          <TableHeaderCell label="What it found" sizing="fill">What it found</TableHeaderCell>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -245,8 +251,8 @@
     <Table caption="Long values" fit>
       <TableHeader>
         <TableRow>
-          <TableHeaderCell sizing="content">Name</TableHeaderCell>
-          <TableHeaderCell sizing="fill">Key</TableHeaderCell>
+          <TableHeaderCell label="Name" sizing="content">Name</TableHeaderCell>
+          <TableHeaderCell label="Key" sizing="fill">Key</TableHeaderCell>
         </TableRow>
       </TableHeader>
       <TableBody>

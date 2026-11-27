@@ -111,16 +111,18 @@
     <TableRow>
       {#each columns as column (column.key)}
         {#if column.sortable}
-          <TableHeaderCell column={column.key} sortable>{column.label}</TableHeaderCell>
+          <TableHeaderCell label={column.label} column={column.key} sortable
+            >{column.label}</TableHeaderCell
+          >
         {:else}
-          <TableHeaderCell>{column.label}</TableHeaderCell>
+          <TableHeaderCell label={column.label}>{column.label}</TableHeaderCell>
         {/if}
       {/each}
     </TableRow>
     {#if renderSecondHeaderRow}
       <TableRow>
         {#each columns as column (column.key)}
-          <TableHeaderCell>{column.label}</TableHeaderCell>
+          <TableHeaderCell label={column.label}>{column.label}</TableHeaderCell>
         {/each}
       </TableRow>
     {/if}

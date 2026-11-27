@@ -28,7 +28,7 @@
   <TableHeader>
     <TableRow>
       {#each headers as header, index (index)}
-        <TableHeaderCell>{header}</TableHeaderCell>
+        <TableHeaderCell label={header}>{header}</TableHeaderCell>
       {/each}
     </TableRow>
   </TableHeader>

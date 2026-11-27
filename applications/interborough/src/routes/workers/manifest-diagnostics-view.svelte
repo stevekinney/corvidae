@@ -99,11 +99,11 @@
       <Table caption="Recent worker admission rejections" scrollable>
         <Table.Header>
           <Table.Row>
-            <Table.HeaderCell>Reason</Table.HeaderCell>
-            <Table.HeaderCell>Worker</Table.HeaderCell>
-            <Table.HeaderCell>Queue</Table.HeaderCell>
-            <Table.HeaderCell>Deployment / build</Table.HeaderCell>
-            <Table.HeaderCell>Rejected</Table.HeaderCell>
+            <Table.HeaderCell label="Reason">Reason</Table.HeaderCell>
+            <Table.HeaderCell label="Worker">Worker</Table.HeaderCell>
+            <Table.HeaderCell label="Queue">Queue</Table.HeaderCell>
+            <Table.HeaderCell label="Deployment / build">Deployment / build</Table.HeaderCell>
+            <Table.HeaderCell label="Rejected">Rejected</Table.HeaderCell>
           </Table.Row>
         </Table.Header>
         <Table.Body>

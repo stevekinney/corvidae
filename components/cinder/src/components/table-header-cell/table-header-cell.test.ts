@@ -27,6 +27,21 @@ describe('TableHeaderCell', () => {
     expect(container.querySelector('th')?.getAttribute('data-cinder-sizing')).toBe(sizing);
   });
 
+  // COR-2771: the label is required, so an untyped caller that leaves it out fails at once.
+  test('a header cell without a label throws', () => {
+    expect(() =>
+      render(Fixture, { headerCellProps: { label: undefined as unknown as string } }),
+    ).toThrow('Table.HeaderCell requires a label');
+  });
+
+  test('a header cell carries its label for the stacked cells under it', () => {
+    const { container } = render(Fixture, {});
+    expect(container.querySelector('th')?.getAttribute('data-cinder-label')).toBe('Commits');
+    expect(container.querySelector('tbody td')?.getAttribute('data-cinder-stack-label')).toBe(
+      'Commits',
+    );
+  });
+
   test('a header cell without sizing carries no sizing attribute', () => {
     const { container } = render(Fixture, {});
     expect(container.querySelector('th')?.hasAttribute('data-cinder-sizing')).toBe(false);

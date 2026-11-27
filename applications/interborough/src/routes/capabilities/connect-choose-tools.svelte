@@ -216,10 +216,10 @@
         <Table caption={copy.caption(sourceName)} density="comfortable">
           <Table.Header>
             <Table.Row>
-              <Table.HeaderCell>{copy.columns.on}</Table.HeaderCell>
-              <Table.HeaderCell>{copy.columns.tool}</Table.HeaderCell>
-              <Table.HeaderCell>{copy.columns.risk}</Table.HeaderCell>
-              <Table.HeaderCell>{copy.columns.asks}</Table.HeaderCell>
+              <Table.HeaderCell label={copy.columns.on}>{copy.columns.on}</Table.HeaderCell>
+              <Table.HeaderCell label={copy.columns.tool}>{copy.columns.tool}</Table.HeaderCell>
+              <Table.HeaderCell label={copy.columns.risk}>{copy.columns.risk}</Table.HeaderCell>
+              <Table.HeaderCell label={copy.columns.asks}>{copy.columns.asks}</Table.HeaderCell>
             </Table.Row>
           </Table.Header>
           <Table.Body>

@@ -36,9 +36,13 @@
 <Table caption="Connection checks" {fit} stackBelow={false}>
   <TableHeader>
     <TableRow>
-      <TableHeaderCell {...unsized ? {} : { sizing: 'content' as const }}>Check</TableHeaderCell>
-      <TableHeaderCell {...unsized ? {} : { sizing: 'content' as const }}>Result</TableHeaderCell>
-      <TableHeaderCell {...unsized ? {} : { sizing: 'fill' as const }}
+      <TableHeaderCell label="Check" {...unsized ? {} : { sizing: 'content' as const }}
+        >Check</TableHeaderCell
+      >
+      <TableHeaderCell label="Result" {...unsized ? {} : { sizing: 'content' as const }}
+        >Result</TableHeaderCell
+      >
+      <TableHeaderCell label="What it found" {...unsized ? {} : { sizing: 'fill' as const }}
         >What it found</TableHeaderCell
       >
     </TableRow>

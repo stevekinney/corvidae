@@ -26,8 +26,10 @@
 
   let { shape = 'fit', stackBelow }: TableServerFixtureProps = $props();
 
-  const fit = shape.startsWith('fit');
-  const control = shape === 'fit-switch' || shape === 'controls' ? 'fit' : shape === 'fit-select';
+  const fit = $derived(shape.startsWith('fit'));
+  const control = $derived(
+    shape === 'fit-switch' || shape === 'controls' ? 'fit' : shape === 'fit-select',
+  );
 </script>
 
 <Table caption="Namespaces" {fit} {...stackBelow === undefined ? {} : { stackBelow }}>

@@ -121,14 +121,15 @@
       <Table caption={copy.caption} scrollable={false}>
         <Table.Header>
           <Table.Row>
-            <Table.HeaderCell>{copy.columns.method}</Table.HeaderCell>
-            <Table.HeaderCell>{copy.columns.path}</Table.HeaderCell>
-            <Table.HeaderCell class="ib-api-operations__wide"
+            <Table.HeaderCell label={copy.columns.method}>{copy.columns.method}</Table.HeaderCell>
+            <Table.HeaderCell label={copy.columns.path}>{copy.columns.path}</Table.HeaderCell>
+            <Table.HeaderCell label={copy.columns.summary} class="ib-api-operations__wide"
               >{copy.columns.summary}</Table.HeaderCell
             >
-            <Table.HeaderCell class="ib-api-operations__wide">{copy.columns.scope}</Table.HeaderCell
+            <Table.HeaderCell label={copy.columns.scope} class="ib-api-operations__wide"
+              >{copy.columns.scope}</Table.HeaderCell
             >
-            <Table.HeaderCell
+            <Table.HeaderCell label={copy.columns.details}
               ><VisuallyHidden>{copy.columns.details}</VisuallyHidden></Table.HeaderCell
             >
           </Table.Row>

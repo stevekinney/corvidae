@@ -14,7 +14,7 @@
 <Table>
   <TableHeader>
     <TableRow>
-      <TableHeaderCell>Column</TableHeaderCell>
+      <TableHeaderCell label="Column">Column</TableHeaderCell>
     </TableRow>
   </TableHeader>
   <TableBody>

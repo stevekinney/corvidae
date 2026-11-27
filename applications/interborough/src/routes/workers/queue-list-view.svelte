@@ -51,11 +51,11 @@
     </colgroup>
     <Table.Header>
       <Table.Row>
-        <Table.HeaderCell>Queue</Table.HeaderCell>
-        <Table.HeaderCell align="right">Workers</Table.HeaderCell>
-        <Table.HeaderCell align="right">In-flight</Table.HeaderCell>
-        <Table.HeaderCell align="right">Queued</Table.HeaderCell>
-        <Table.HeaderCell>Diagnostics</Table.HeaderCell>
+        <Table.HeaderCell label="Queue">Queue</Table.HeaderCell>
+        <Table.HeaderCell label="Workers" align="right">Workers</Table.HeaderCell>
+        <Table.HeaderCell label="In-flight" align="right">In-flight</Table.HeaderCell>
+        <Table.HeaderCell label="Queued" align="right">Queued</Table.HeaderCell>
+        <Table.HeaderCell label="Diagnostics">Diagnostics</Table.HeaderCell>
       </Table.Row>
     </Table.Header>
     <Table.Body>

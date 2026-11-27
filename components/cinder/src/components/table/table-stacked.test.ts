@@ -57,7 +57,8 @@ describe('Table stackBelow', () => {
     flushSync();
 
     expect(container.querySelector('table')?.hasAttribute('data-cinder-stacked')).toBe(false);
-    expect(container.querySelector('[data-cinder-stack-label]')).toBeNull();
+    // COR-2771: the labels are in the markup at every width; only the stacked rules print them.
+    expect(bodyCells(container)[1]?.getAttribute('data-cinder-stack-label')).toBe('Status');
   });
 
   test('follows the viewport across the breakpoint', async () => {
@@ -287,7 +288,11 @@ describe('Table scroll and stack by container', () => {
     flushSync();
 
     expect(container.querySelector('table')?.hasAttribute('data-cinder-stacked')).toBe(false);
-    expect(container.querySelector('[data-cinder-stack-label]')).toBeNull();
+    // Its wrapper is no size container, so no stacked rule can ever apply (COR-2771).
+    expect(
+      container.querySelector('.cinder-table-container')?.hasAttribute('data-cinder-fit'),
+    ).toBe(false);
+    expect(container.querySelector('tbody [data-cinder-controls]')).toBeNull();
   });
 
   test('stacks by its own container width, not the window width', async () => {

@@ -48,7 +48,7 @@
     <Table.Header>
       <Table.Row>
         {#each columns as column (column.key)}
-          <Table.HeaderCell align={column.numeric ? 'right' : 'left'}
+          <Table.HeaderCell label={column.label} align={column.numeric ? 'right' : 'left'}
             >{column.label}</Table.HeaderCell
           >
         {/each}

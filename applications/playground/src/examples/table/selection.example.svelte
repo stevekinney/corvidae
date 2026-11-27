@@ -59,9 +59,9 @@
     selectAllLabel="Select all selectable rows"
   >
     <Table.Row>
-      <Table.HeaderCell>Name</Table.HeaderCell>
-      <Table.HeaderCell>Role</Table.HeaderCell>
-      <Table.HeaderCell align="right">Commits</Table.HeaderCell>
+      <Table.HeaderCell label="Name">Name</Table.HeaderCell>
+      <Table.HeaderCell label="Role">Role</Table.HeaderCell>
+      <Table.HeaderCell label="Commits" align="right">Commits</Table.HeaderCell>
     </Table.Row>
   </Table.Header>
   <Table.Body>

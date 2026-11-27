@@ -502,13 +502,17 @@
   >
     <Table.Header>
       <Table.Row>
-        <Table.HeaderCell class="ib-access-table__allow"
+        <Table.HeaderCell class="ib-access-table__allow" label={copy.columns.allow}
           ><VisuallyHidden>{copy.columns.allow}</VisuallyHidden></Table.HeaderCell
         >
-        <Table.HeaderCell>{copy.columns.tool}</Table.HeaderCell>
-        <Table.HeaderCell>{copy.columns.does}</Table.HeaderCell>
-        <Table.HeaderCell class="ib-access-table__risk">{copy.columns.risk}</Table.HeaderCell>
-        <Table.HeaderCell class="ib-access-table__asks">{copy.columns.asks}</Table.HeaderCell>
+        <Table.HeaderCell label={copy.columns.tool}>{copy.columns.tool}</Table.HeaderCell>
+        <Table.HeaderCell label={copy.columns.does}>{copy.columns.does}</Table.HeaderCell>
+        <Table.HeaderCell label={copy.columns.risk} class="ib-access-table__risk"
+          >{copy.columns.risk}</Table.HeaderCell
+        >
+        <Table.HeaderCell label={copy.columns.asks} class="ib-access-table__asks"
+          >{copy.columns.asks}</Table.HeaderCell
+        >
       </Table.Row>
     </Table.Header>
     {#each shown as group (group.key)}

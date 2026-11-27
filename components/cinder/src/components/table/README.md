@@ -21,9 +21,9 @@ See the [tabular family boundaries](https://github.com/stevekinney/cinder/blob/m
 <Table caption="Recent contributors">
   <Table.Header>
     <Table.Row>
-      <Table.HeaderCell>Name</Table.HeaderCell>
-      <Table.HeaderCell>Role</Table.HeaderCell>
-      <Table.HeaderCell align="right">Commits</Table.HeaderCell>
+      <Table.HeaderCell label="Name">Name</Table.HeaderCell>
+      <Table.HeaderCell label="Role">Role</Table.HeaderCell>
+      <Table.HeaderCell label="Commits" align="right">Commits</Table.HeaderCell>
     </Table.Row>
   </Table.Header>
   <Table.Body>
@@ -52,10 +52,10 @@ A table whose cells hold controls (a select, a switch, a checkbox, a button) sta
 <Table caption="Tool access">
   <Table.Header>
     <Table.Row>
-      <Table.HeaderCell>Tool</Table.HeaderCell>
-      <Table.HeaderCell>Risk</Table.HeaderCell>
-      <Table.HeaderCell>On</Table.HeaderCell>
-      <Table.HeaderCell>Asks</Table.HeaderCell>
+      <Table.HeaderCell label="Tool">Tool</Table.HeaderCell>
+      <Table.HeaderCell label="Risk">Risk</Table.HeaderCell>
+      <Table.HeaderCell label="On">On</Table.HeaderCell>
+      <Table.HeaderCell label="Asks">Asks</Table.HeaderCell>
     </Table.Row>
   </Table.Header>
   <Table.Body>
@@ -89,8 +89,8 @@ A records table whose values can be very long (a storage key, a URL, a model ide
   </colgroup>
   <Table.Header>
     <Table.Row>
-      <Table.HeaderCell>Key</Table.HeaderCell>
-      <Table.HeaderCell align="right">Size</Table.HeaderCell>
+      <Table.HeaderCell label="Key">Key</Table.HeaderCell>
+      <Table.HeaderCell label="Size" align="right">Size</Table.HeaderCell>
     </Table.Row>
   </Table.Header>
   <Table.Body>
@@ -114,9 +114,9 @@ By default the columns of a `fit` table share its width equally, so a one-word s
 <Table caption="Connection checks" fit>
   <Table.Header>
     <Table.Row>
-      <Table.HeaderCell sizing="content">Check</Table.HeaderCell>
-      <Table.HeaderCell sizing="content">Result</Table.HeaderCell>
-      <Table.HeaderCell sizing="fill">What it found</Table.HeaderCell>
+      <Table.HeaderCell label="Check" sizing="content">Check</Table.HeaderCell>
+      <Table.HeaderCell label="Result" sizing="content">Result</Table.HeaderCell>
+      <Table.HeaderCell label="What it found" sizing="fill">What it found</Table.HeaderCell>
     </Table.Row>
   </Table.Header>
   <Table.Body>

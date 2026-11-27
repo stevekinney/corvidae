@@ -652,6 +652,7 @@
         {#each columns as column (column.key)}
           {#if resizable}
             <TableHeaderCell
+              label={column.label}
               {...column.sortable ? { column: column.key } : {}}
               {...column.sizing ? { sizing: column.sizing } : {}}
               sortable={column.sortable ?? false}
@@ -678,6 +679,7 @@
             </TableHeaderCell>
           {:else}
             <TableHeaderCell
+              label={column.label}
               {...column.sortable ? { column: column.key } : {}}
               {...column.sizing ? { sizing: column.sizing } : {}}
               sortable={column.sortable ?? false}

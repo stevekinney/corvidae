@@ -1808,7 +1808,9 @@
                         <Table.Header>
                           <Table.Row>
                             {#each PROP_COLUMNS as column (column.key)}
-                              <Table.HeaderCell scope="col">{column.label}</Table.HeaderCell>
+                              <Table.HeaderCell label={column.label} scope="col"
+                                >{column.label}</Table.HeaderCell
+                              >
                             {/each}
                           </Table.Row>
                         </Table.Header>

@@ -76,10 +76,10 @@
     <Table caption={`${captionPrefix}${verification.workflow} activity verification`} scrollable>
       <Table.Header>
         <Table.Row>
-          <Table.HeaderCell>Activity</Table.HeaderCell>
-          <Table.HeaderCell>Status</Table.HeaderCell>
-          <Table.HeaderCell>Worker contract hash</Table.HeaderCell>
-          <Table.HeaderCell>Registry contract hash</Table.HeaderCell>
+          <Table.HeaderCell label="Activity">Activity</Table.HeaderCell>
+          <Table.HeaderCell label="Status">Status</Table.HeaderCell>
+          <Table.HeaderCell label="Worker contract hash">Worker contract hash</Table.HeaderCell>
+          <Table.HeaderCell label="Registry contract hash">Registry contract hash</Table.HeaderCell>
         </Table.Row>
       </Table.Header>
       <Table.Body>

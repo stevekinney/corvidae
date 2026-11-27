@@ -43,14 +43,14 @@
   <TableHeader>
     <TableRow>
       {#if sortable}
-        <TableHeaderCell column="model" sortable>Model</TableHeaderCell>
+        <TableHeaderCell label="Model" column="model" sortable>Model</TableHeaderCell>
       {:else}
-        <TableHeaderCell>Model</TableHeaderCell>
+        <TableHeaderCell label="Model">Model</TableHeaderCell>
       {/if}
-      <TableHeaderCell>Allowed</TableHeaderCell>
-      <TableHeaderCell>Abilities</TableHeaderCell>
-      <TableHeaderCell>Last run</TableHeaderCell>
-      {#if controls}<TableHeaderCell>On</TableHeaderCell>{/if}
+      <TableHeaderCell label="Allowed">Allowed</TableHeaderCell>
+      <TableHeaderCell label="Abilities">Abilities</TableHeaderCell>
+      <TableHeaderCell label="Last run">Last run</TableHeaderCell>
+      {#if controls}<TableHeaderCell label="On">On</TableHeaderCell>{/if}
     </TableRow>
   </TableHeader>
   <TableBody>

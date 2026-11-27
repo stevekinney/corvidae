@@ -39,10 +39,11 @@ export type TableHeaderCellProps = Omit<
   sizing?: TableColumnSizing;
   /**
    * The column's name as text, printed beside each value while the table is stacked. It is in the
-   * server's HTML, so the first paint of a stacked table already carries every label. Usually the
-   * header's own text; `''` for a column with no name (a selection column).
+   * server's HTML, so the first paint of a stacked table already carries every label (COR-2771).
+   * Usually the header's own text; `''` for a column with no name (a selection column). Required:
+   * a header cell cannot tell whether its table can stack, and a table may gain `fit` later.
    */
-  label?: string;
+  label: string;
   /** Additional class names merged with `.cinder-table__header-cell`. */
   class?: string;
   /** Cell content (column label). */

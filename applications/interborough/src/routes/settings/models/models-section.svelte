@@ -93,10 +93,16 @@
       </colgroup>
       <Table.Header>
         <Table.Row>
-          <Table.HeaderCell column="model" sortable>{copy.columns.model}</Table.HeaderCell>
-          <Table.HeaderCell>{copy.columns.abilities}</Table.HeaderCell>
-          <Table.HeaderCell column="context" sortable>{copy.columns.context}</Table.HeaderCell>
-          <Table.HeaderCell>{copy.columns.allowed}</Table.HeaderCell>
+          <Table.HeaderCell label={copy.columns.model} column="model" sortable
+            >{copy.columns.model}</Table.HeaderCell
+          >
+          <Table.HeaderCell label={copy.columns.abilities}
+            >{copy.columns.abilities}</Table.HeaderCell
+          >
+          <Table.HeaderCell label={copy.columns.context} column="context" sortable
+            >{copy.columns.context}</Table.HeaderCell
+          >
+          <Table.HeaderCell label={copy.columns.allowed}>{copy.columns.allowed}</Table.HeaderCell>
         </Table.Row>
       </Table.Header>
       <Table.Body>

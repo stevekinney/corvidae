@@ -27,6 +27,14 @@
 
   const table = getTableContext();
 
+  // The label reaches the server's HTML of every stacked cell under this header, so an untyped
+  // caller that leaves it out fails here rather than shipping a stacked table with no labels.
+  if (typeof untrack(() => label) !== 'string') {
+    throw new Error(
+      'Table.HeaderCell requires a label: the column name as text, or "" for a column with no name.',
+    );
+  }
+
   // The column's `sizing` reaches the body cells under this header through the table. It is
   // declared as the cell is created, before the body cells are, so the server's HTML carries it;
   // after mount the cell keeps it current at its DOM position.

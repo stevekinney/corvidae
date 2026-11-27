@@ -105,10 +105,12 @@
       </colgroup>
       <Table.Header>
         <Table.Row>
-          <Table.HeaderCell>{copy.columns.workflow}</Table.HeaderCell>
-          <Table.HeaderCell>{copy.columns.description}</Table.HeaderCell>
-          <Table.HeaderCell>{copy.columns.runs}</Table.HeaderCell>
-          <Table.HeaderCell>{copy.columns.lastRun}</Table.HeaderCell>
+          <Table.HeaderCell label={copy.columns.workflow}>{copy.columns.workflow}</Table.HeaderCell>
+          <Table.HeaderCell label={copy.columns.description}
+            >{copy.columns.description}</Table.HeaderCell
+          >
+          <Table.HeaderCell label={copy.columns.runs}>{copy.columns.runs}</Table.HeaderCell>
+          <Table.HeaderCell label={copy.columns.lastRun}>{copy.columns.lastRun}</Table.HeaderCell>
         </Table.Row>
       </Table.Header>
       <Table.Body>

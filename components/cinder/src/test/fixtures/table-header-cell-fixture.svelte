@@ -5,7 +5,7 @@
     align?: TableHeaderCellProps['align'];
     sortable?: TableHeaderCellProps['sortable'];
     /** Optional extra native attributes forwarded to the TableHeaderCell (for passthrough tests). */
-    headerCellProps?: Omit<TableHeaderCellProps, 'children'>;
+    headerCellProps?: Partial<Omit<TableHeaderCellProps, 'children'>>;
   };
 </script>
 
@@ -24,6 +24,7 @@
   <TableHeader>
     <TableRow>
       <TableHeaderCell
+        label="Commits"
         {...headerCellProps}
         {...align === undefined ? {} : { align }}
         {sortable}

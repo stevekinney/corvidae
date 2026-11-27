@@ -31,8 +31,8 @@
   <Table caption="Theme table">
     <TableHeader>
       <TableRow>
-        <TableHeaderCell>Name</TableHeaderCell>
-        <TableHeaderCell>Value</TableHeaderCell>
+        <TableHeaderCell label="Name">Name</TableHeaderCell>
+        <TableHeaderCell label="Value">Value</TableHeaderCell>
       </TableRow>
     </TableHeader>
     <TableBody>
