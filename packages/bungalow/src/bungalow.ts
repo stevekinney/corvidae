@@ -66,12 +66,17 @@ const SECRET_TEMPORARY_FILE = new RegExp(`^[a-z0-9][a-z0-9-]*${TEMPORARY_SUFFIX}
 /** Where the application database lives: a SQLite file in local mode, a server in remote mode. */
 export type DatabaseLocation =
   | { readonly kind: 'sqlite'; readonly path: string }
-  | { readonly kind: 'postgres'; readonly url: string };
+  | { readonly kind: 'postgres'; readonly url: string }
+  | { readonly kind: 'd1'; readonly binding: D1DatabaseBinding };
+
+/** The D1 surface Bungalow carries without taking a dependency on Worker runtime declarations. */
+export type D1DatabaseBinding = { readonly prepare: (query: string) => unknown };
 
 /** Where a named body of content lives: a directory in local mode, an object-store prefix remotely. */
 export type ContentLocation =
   | { readonly kind: 'directory'; readonly path: string }
-  | { readonly kind: 's3'; readonly bucket: string; readonly prefix: string };
+  | { readonly kind: 's3'; readonly bucket: string; readonly prefix: string }
+  | { readonly kind: 'object-store'; readonly prefix: string };
 
 /**
  * An open application home. Holding a local read-write one holds the root's single-instance lock;
@@ -148,7 +153,7 @@ export type SecretProviderFactory = (workspaceId: string) => SecretProvider;
 /** Trusted composition hook: undefined identity checks an empty database before bootstrap;
  * a persisted identity atomically binds the raw store before workspace publication. */
 export type DatabaseWorkspaceClaim = (
-  databaseUrl: string,
+  database: DatabaseLocation,
   resourceLocation: string,
   workspaceId: string | undefined,
 ) => Promise<void>;
@@ -252,6 +257,17 @@ export type OpenRemoteBungalowOptions = {
    * every request is still sent with `fetch`, so conditional headers reach the store.
    */
   readonly presigner?: PresignerFactory;
+};
+
+/** What `openBindingBungalow` takes: Worker bindings and no process environment. */
+export type OpenBindingBungalowOptions = {
+  readonly name: string;
+  readonly descriptor: import('./remote-configuration.ts').BindingBungalowDescriptor;
+  readonly databaseWorkspaceClaim: DatabaseWorkspaceClaim;
+  readonly workspaceId?: string;
+  readonly writableConfiguration?: boolean;
+  readonly secretProvider?: SecretProviderFactory;
+  readonly deploymentSecrets?: DeploymentSecretsFactory;
 };
 
 export type OpenTemporaryBungalowOptions = {

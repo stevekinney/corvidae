@@ -111,6 +111,23 @@
         "!src/host-contract.ts!"
       ]
     },
+    "packages/bungalow": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "src/node-runtime.test-support.ts",
+        "src/workerd-fixture.test-support.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.test-support.ts!",
+        "!src/**/*.bench.ts!"
+      ]
+    },
     "packages/process-lease": {
       "entry": [
         "**/*.test.ts",

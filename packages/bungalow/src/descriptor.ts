@@ -1,4 +1,9 @@
-import { resolveRemoteDescriptor, type RemoteBungalowDescriptor } from './remote-configuration.ts';
+import {
+  resolveRemoteDescriptor,
+  resolveWorkerDescriptor,
+  type RemoteBungalowDescriptor,
+  type WorkerBungalowEnvironment,
+} from './remote-configuration.ts';
 import { resolveBungalowRoot, type BungalowEnvironment } from './resolve-root.ts';
 import { assertBungalowName } from './validation.ts';
 
@@ -46,4 +51,12 @@ export function resolveBungalowDescriptor(
       root: resolveBungalowRoot(options),
     }
   );
+}
+
+/** Resolve the explicit bindings that a Cloudflare Worker provides to a Bungalow home. */
+export function resolveWorkerBungalowDescriptor(options: {
+  readonly name: string;
+  readonly env: WorkerBungalowEnvironment;
+}) {
+  return resolveWorkerDescriptor(options.name, options.env);
 }

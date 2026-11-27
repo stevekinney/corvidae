@@ -7,13 +7,16 @@ export type {
   S3ObjectStoreOperations,
   SigV4PresignerOptions,
 } from '@lostgradient/object-store';
+export { openBindingBungalow } from './binding.ts';
 export { openBungalow, openLocalBungalow, openTemporaryBungalow } from './bungalow.ts';
 export type {
   AcquireLock,
   Bungalow,
   ContentLocation,
+  D1DatabaseBinding,
   DatabaseLocation,
   DatabaseWorkspaceClaim,
+  OpenBindingBungalowOptions,
   OpenBungalowOptions,
   OpenLocalBungalowOptions,
   OpenRemoteBungalowOptions,
@@ -26,7 +29,7 @@ export type {
   DeploymentSecretsContext,
   DeploymentSecretsFactory,
 } from './deployment-secrets.ts';
-export { resolveBungalowDescriptor } from './descriptor.ts';
+export { resolveBungalowDescriptor, resolveWorkerBungalowDescriptor } from './descriptor.ts';
 export type {
   BungalowDescriptor,
   LocalBungalowDescriptor,
@@ -43,7 +46,11 @@ export {
 export { acquireLocalRootLockDescriptor, acquirePortableLock } from './lock.ts';
 export type { RootLock } from './lock.ts';
 export type { BungalowObjectStore } from './object-store.ts';
-export type { RemoteBungalowDescriptor } from './remote-configuration.ts';
+export type {
+  BindingBungalowDescriptor,
+  RemoteBungalowDescriptor,
+  WorkerBungalowEnvironment,
+} from './remote-configuration.ts';
 export { defaultPresigner, openRemoteBungalow } from './remote.ts';
 export { bungalowHomeVariable, resolveBungalowRoot } from './resolve-root.ts';
 export type { BungalowEnvironment, ResolveBungalowRootOptions } from './resolve-root.ts';

@@ -54,6 +54,10 @@ An override is normalized, so a trailing slash or a dot segment does not change 
 
 `openLocalBungalow({ name, root })` and `openRemoteBungalow({ name, descriptor, databaseWorkspaceClaim })` are the second half. Neither reads an environment. A local root must be absolute. A remote descriptor goes through the same validation whether `resolveBungalowDescriptor` returned it or the caller built it by hand: required fields, a path-safe bucket, and the prefix's normalization and segment rules, so a hand-built descriptor cannot alias two prefixes or skip a check. Its failures name the field (`descriptor.prefix`), never the value. `openBungalow` is these pieces composed: the descriptor, then the `NODE_ENV=test` refusal for a local home, then the matching open.
 
+### Cloudflare Workers
+
+`resolveWorkerBungalowDescriptor({ name, env })` and `openBindingBungalow(...)` open the same shared remote home from Worker bindings. Set exactly one of `<NAME>_D1` (a D1 binding) or `<NAME>_HYPERDRIVE` (a Hyperdrive binding), plus `<NAME>_BUCKET` (an R2 binding). `<NAME>_BUCKET_PREFIX` and `<NAME>_SECRET_<KEY>` string bindings are optional. The resulting database location is `{ kind: 'd1', binding }` or `{ kind: 'postgres', url }`; content is `{ kind: 'object-store', prefix }`. The claim receives that `DatabaseLocation`, the R2 resource location, and the workspace identity. R2 exposes shared object-store operations only: it has no conditional delete.
+
 ```typescript
 import { homedir } from 'node:os';
 

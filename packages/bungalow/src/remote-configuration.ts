@@ -1,6 +1,8 @@
+import type { R2Bucket } from '@lostgradient/object-store';
+import type { D1DatabaseBinding } from './bungalow.ts';
 import { BungalowInputError } from './errors.ts';
 import { bungalowVariable, type BungalowEnvironment } from './resolve-root.ts';
-import { assertSecretKey } from './validation.ts';
+import { assertBungalowName, assertSecretKey } from './validation.ts';
 
 /**
  * Everything a remote home needs, validated before any request: where the database, the bucket,
@@ -37,6 +39,135 @@ export type RemoteBungalowDescriptor = {
    */
   readonly secrets?: ReadonlyMap<string, string>;
 };
+
+/** A Worker home: bindings are explicit because their runtime objects do not carry stable tags. */
+export type BindingBungalowDescriptor = {
+  readonly kind: 'binding';
+  readonly database:
+    | { readonly kind: 'd1'; readonly binding: D1DatabaseBinding }
+    | { readonly kind: 'postgres'; readonly url: string };
+  readonly bucket: R2Bucket;
+  readonly prefix: string;
+  readonly secrets: ReadonlyMap<string, string>;
+};
+
+export type WorkerBungalowEnvironment = Readonly<Record<string, unknown>>;
+
+function workerBindingVariable(name: string, suffix: string): string {
+  return bungalowVariable(name, suffix);
+}
+
+function requireBinding(value: unknown, label: string): object {
+  if (typeof value !== 'object' || value === null) {
+    throw new BungalowInputError(`Worker mode needs ${label}.`);
+  }
+  return value;
+}
+
+/** Resolve Worker bindings without inferring a database kind from an object shape. */
+export function resolveWorkerDescriptor(
+  name: string,
+  env: WorkerBungalowEnvironment,
+): BindingBungalowDescriptor {
+  assertBungalowName(name);
+  const d1Name = workerBindingVariable(name, 'D1');
+  const hyperdriveName = workerBindingVariable(name, 'HYPERDRIVE');
+  const bucketName = workerBindingVariable(name, 'BUCKET');
+  const prefixName = workerBindingVariable(name, 'BUCKET_PREFIX');
+  const d1 = Object.hasOwn(env, d1Name) ? env[d1Name] : undefined;
+  const hyperdrive = Object.hasOwn(env, hyperdriveName) ? env[hyperdriveName] : undefined;
+  if (d1 !== undefined && hyperdrive !== undefined) {
+    throw new BungalowInputError(`Worker mode cannot set both ${d1Name} and ${hyperdriveName}.`);
+  }
+  if (d1 === undefined && hyperdrive === undefined) {
+    throw new BungalowInputError(`Worker mode needs ${d1Name} or ${hyperdriveName}.`);
+  }
+  const database =
+    d1 !== undefined
+      ? (() => {
+          const binding = requireBinding(d1, d1Name);
+          if (typeof (binding as D1DatabaseBinding).prepare !== 'function')
+            throw new BungalowInputError(`Worker mode needs ${d1Name}.`);
+          return { kind: 'd1' as const, binding: binding as D1DatabaseBinding };
+        })()
+      : (() => {
+          const binding = requireBinding(hyperdrive, hyperdriveName) as {
+            connectionString?: unknown;
+          };
+          if (typeof binding.connectionString !== 'string' || binding.connectionString === '')
+            throw new BungalowInputError(`Worker mode needs ${hyperdriveName}.`);
+          return { kind: 'postgres' as const, url: binding.connectionString };
+        })();
+  const bucket = requireBinding(
+    Object.hasOwn(env, bucketName) ? env[bucketName] : undefined,
+    bucketName,
+  );
+  if (
+    typeof (bucket as R2Bucket).list !== 'function' ||
+    typeof (bucket as R2Bucket).get !== 'function' ||
+    typeof (bucket as R2Bucket).put !== 'function'
+  ) {
+    throw new BungalowInputError(`Worker mode needs ${bucketName}.`);
+  }
+  const rawPrefix = Object.hasOwn(env, prefixName) ? env[prefixName] : undefined;
+  if (rawPrefix !== undefined && typeof rawPrefix !== 'string')
+    throw new BungalowInputError(`${prefixName} must be text.`);
+  const secretPrefix = workerBindingVariable(name, 'SECRET_');
+  const secrets = new Map<string, string>();
+  for (const [key, value] of Object.entries(env)) {
+    if (key.startsWith(secretPrefix) && typeof value === 'string' && value !== '')
+      secrets.set(key, value);
+  }
+  return {
+    kind: 'binding',
+    database,
+    bucket: bucket as R2Bucket,
+    prefix: normalizeBucketPrefix(rawPrefix, prefixName),
+    secrets,
+  };
+}
+
+/** Validate and copy a hand-built Worker descriptor before it can access a binding. */
+export function validateBindingDescriptor(
+  descriptor: BindingBungalowDescriptor,
+): BindingBungalowDescriptor {
+  if (typeof descriptor !== 'object' || descriptor === null || descriptor.kind !== 'binding') {
+    throw new BungalowInputError('A binding descriptor needs kind "binding".');
+  }
+  const database = descriptor.database;
+  if (database?.kind === 'd1') {
+    if (typeof database.binding?.prepare !== 'function')
+      throw new BungalowInputError('descriptor.database.binding must be a D1 binding.');
+  } else if (database?.kind === 'postgres') {
+    if (typeof database.url !== 'string' || database.url === '')
+      throw new BungalowInputError('descriptor.database.url must be text.');
+  } else {
+    throw new BungalowInputError('descriptor.database must be a D1 or Hyperdrive location.');
+  }
+  const bucket = descriptor.bucket;
+  if (
+    typeof bucket !== 'object' ||
+    bucket === null ||
+    typeof bucket.list !== 'function' ||
+    typeof bucket.get !== 'function' ||
+    typeof bucket.put !== 'function'
+  )
+    throw new BungalowInputError('descriptor.bucket must be an R2 binding.');
+  const prefix = normalizeBucketPrefix(
+    typeof descriptor.prefix === 'string' ? descriptor.prefix : undefined,
+    'descriptor.prefix',
+  );
+  if (typeof descriptor.prefix !== 'string')
+    throw new BungalowInputError('descriptor.prefix must be text.');
+  if (!(descriptor.secrets instanceof Map))
+    throw new BungalowInputError('The deployment secrets of a binding descriptor must be a Map.');
+  const secrets = new Map<string, string>();
+  for (const [key, value] of descriptor.secrets) {
+    if (typeof key === 'string' && typeof value === 'string' && value !== '')
+      secrets.set(key, value);
+  }
+  return { kind: 'binding', database, bucket, prefix, secrets };
+}
 
 /** What a validation failure names for each field: a variable, or a descriptor field. */
 type RemoteDescriptorLabels = {

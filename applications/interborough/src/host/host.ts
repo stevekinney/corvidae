@@ -1160,7 +1160,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         ? {}
         : { writableConfiguration: options.writableConfiguration }),
       ...(options.workspaceId === undefined ? {} : { workspaceId: options.workspaceId }),
-      databaseWorkspaceClaim: async (databaseUrl, prefix, workspaceId) => {
+      databaseWorkspaceClaim: async (database, prefix, workspaceId) => {
         // Required deployment secrets must be present before opening its database. The
         // normal secret readers below still validate their values before starting engines.
         for (const variable of [
@@ -1172,9 +1172,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
             throw new Error(`${variable} is not set. Remote mode needs it on every host.`);
           }
         }
-        const storage =
-          claimedRemoteStorage ??
-          createHostStorage({ kind: 'postgres', url: databaseUrl }, clock.now);
+        const storage = claimedRemoteStorage ?? createHostStorage(database, clock.now);
         claimedRemoteStorage = storage;
         await claimWorkspaceBinding(storage, prefix, workspaceId);
       },

@@ -2,6 +2,7 @@ import {
   createSigV4Presigner,
   ObjectStoreError,
   type ObjectPresigner,
+  type ObjectStoreOperations,
   type S3ObjectStoreOperations,
 } from '@lostgradient/object-store';
 import type {
@@ -72,8 +73,8 @@ function storeCause(error: unknown): S3FailureCause {
 }
 
 /** The object's text, or `undefined` when the store answers 404. */
-async function readObject(
-  client: RemoteObjectStore,
+export async function readObject(
+  client: ObjectStoreOperations,
   key: string,
   operation: S3Operation,
 ): Promise<string | undefined> {
@@ -86,8 +87,8 @@ async function readObject(
 }
 
 /** Read bytes and revision from one HTTP response, never separate GET and HEAD requests. */
-async function readConfigurationObject(
-  client: RemoteObjectStore,
+export async function readConfigurationObject(
+  client: ObjectStoreOperations,
   key: string,
 ): Promise<ConfigurationSnapshot> {
   try {
@@ -101,8 +102,8 @@ async function readConfigurationObject(
 }
 
 /** An uncertain response is observed once; equal content alone cannot prove which writer committed. */
-async function reconcileConfiguration(
-  client: RemoteObjectStore,
+export async function reconcileConfiguration(
+  client: ObjectStoreOperations,
   key: string,
 ): Promise<ConfigurationWriteResult> {
   try {
@@ -116,7 +117,7 @@ async function reconcileConfiguration(
  * Write a new deployment ID only if none exists. A 412 means another instance wrote first, which
  * is as good as success: the caller reads back whichever value the store kept.
  */
-async function createDeploymentId(client: RemoteObjectStore, key: string): Promise<void> {
+async function createDeploymentId(client: ObjectStoreOperations, key: string): Promise<void> {
   try {
     await client.put(key, new TextEncoder().encode(`${generateUlid()}\n`), { kind: 'absent' });
   } catch (error) {
@@ -124,8 +125,8 @@ async function createDeploymentId(client: RemoteObjectStore, key: string): Promi
   }
 }
 
-async function bindWorkspaceId(
-  client: RemoteObjectStore,
+export async function bindWorkspaceId(
+  client: ObjectStoreOperations,
   workspaceKey: string,
   deploymentId: string,
   configured?: string,
@@ -160,7 +161,10 @@ async function bindWorkspaceId(
  * a conditional create and then all read the one value the store kept, so they agree. An object
  * that is absent again after the write is a failed read, not a reason to write again.
  */
-async function loadDeploymentId(client: RemoteObjectStore, key: string): Promise<string> {
+export async function loadDeploymentId(
+  client: ObjectStoreOperations,
+  key: string,
+): Promise<string> {
   let stored = await readObject(client, key, 'read deployment ID');
   if (stored === undefined) {
     await createDeploymentId(client, key);
@@ -362,7 +366,7 @@ export async function openValidatedRemoteBungalow(
       }
       try {
         await databaseWorkspaceClaim(
-          configuration.databaseUrl,
+          { kind: 'postgres', url: configuration.databaseUrl },
           `s3://${bucket}/${prefix}`,
           undefined,
         );
@@ -385,7 +389,7 @@ export async function openValidatedRemoteBungalow(
   // Claim the raw database before publishing the S3 workspace marker. A fresh prefix may have
   // written only its permitted deployment-id bootstrap; a losing claim performs no other write.
   await databaseWorkspaceClaim(
-    configuration.databaseUrl,
+    { kind: 'postgres', url: configuration.databaseUrl },
     `s3://${bucket}/${prefix}`,
     expectedWorkspaceId,
   );
