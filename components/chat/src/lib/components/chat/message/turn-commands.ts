@@ -44,9 +44,12 @@ const TURN_COMMAND_STATES: Readonly<Record<TurnCommandKind, readonly ChatTurnSta
   regenerate: ['complete'],
 };
 
-function applies(command: TurnCommandKind, state: ChatTurnState['kind']): boolean {
+/** Whether `command` can act on a turn in `state`. */
+export function commandApplies(command: TurnCommandKind, state: ChatTurnState['kind']): boolean {
   return TURN_COMMAND_STATES[command].includes(state);
 }
+
+const applies = commandApplies;
 
 type TurnEntry = {
   pending: TurnCommandToken | undefined;
@@ -137,6 +140,14 @@ export class TurnCommands {
     }
     this.#prune(turnId, entry);
     if (changed) this.#changed();
+  }
+
+  /**
+   * A turn's row is gone, which for an outcome anchor means its outcome ended: what was in flight
+   * or said on it belongs to the outcome that went, and an answer for it is stale.
+   */
+  release(turnId: string): void {
+    if (this.#entries.delete(turnId)) this.#changed();
   }
 
   /** The command in flight on a turn. */

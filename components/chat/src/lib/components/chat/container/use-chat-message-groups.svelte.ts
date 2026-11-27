@@ -6,6 +6,7 @@
  * - Tool call pairs indexed by call ID for O(1) lookup
  */
 
+import { isFollowUpMessage } from '../builders.ts';
 import type { Message, ToolCallPair } from '../conversation-model.ts';
 import { toolEndedTurnAnchor } from '../message/turn-outcome.ts';
 import {
@@ -419,7 +420,16 @@ export function buildChatRenderRows(
 
   const anchor = options?.turnEndAnchor;
   if (anchor !== undefined && options?.turnEndOutcome?.(anchor) === true) {
-    rows.push({ type: 'turn-outcome', message: anchor });
+    // After the turn's last step, before what the person typed after it (and the date or unread
+    // divider that goes with that), which joined the turn but is no part of how it ended.
+    let at = rows.length;
+    for (let index = rows.length - 1; index >= 0; index -= 1) {
+      const row = rows[index]!;
+      if (row.type === 'message' && isFollowUpMessage(row.message)) at = index;
+      else if (row.type !== 'date' && row.type !== 'unread-divider') break;
+      else if (at === index + 1) at = index;
+    }
+    rows.splice(at, 0, { type: 'turn-outcome', message: anchor });
   }
 
   if (options?.showTypingIndicator) {

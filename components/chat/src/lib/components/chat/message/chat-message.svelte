@@ -18,6 +18,7 @@
   } from '../utilities/types.ts';
   import type { ChatTurnLabels } from './turn-labels.ts';
   import type { TurnCommandAnswer, TurnCommandKind, TurnCommands } from './turn-commands.ts';
+  import { commandApplies } from './turn-commands.ts';
   import type { ChatTurnState } from './turn-state.ts';
   import type { ChatLabels } from '../chat-labels.ts';
 
@@ -382,10 +383,30 @@
   // The commands of this turn (COR-2725): one at a time, its controls busy while it runs, and a
   // command that did not go through said once under the turn. A turn that moves to a state the
   // command no longer fits drops it.
-  const pendingCommand = $derived(turnCommands?.pending(message.id));
-  const failedCommand = $derived(turnCommands?.failure(message.id));
+  // What is drawn is read against the state the turn is in now, so a command the turn has left
+  // is never drawn, not even for the frame before the ledger catches up.
+  const pendingCommand = $derived.by(() => {
+    const command = turnCommands?.pending(message.id);
+    return command !== undefined && commandApplies(command, turn.kind) ? command : undefined;
+  });
+  const failedCommand = $derived.by(() => {
+    const command = turnCommands?.failure(message.id);
+    return command !== undefined && commandApplies(command, turn.kind) ? command : undefined;
+  });
   $effect(() => {
     turnCommands?.reconcile(message.id, turn);
+  });
+  // An anchor is mounted only while its outcome lasts: when it goes, what was said on it goes too,
+  // so the next outcome on the same anchor starts clean.
+  // The id is read through a derived so the anchor object Chat remakes on every change of the
+  // conversation does not read as a new row.
+  const anchorIdentity = $derived(turnAnchor ? message.id : undefined);
+  $effect(() => {
+    const commands = turnCommands;
+    const id = anchorIdentity;
+    return () => {
+      if (id !== undefined) commands?.release(id);
+    };
   });
   function pressTurn(
     command: TurnCommandKind,
