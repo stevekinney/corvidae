@@ -23,7 +23,7 @@ import { clockTime, rowTime, viewerTimeZone } from '../../lib/format/clock.ts';
 import { formatBytes, formatDuration } from '../../lib/format/index.ts';
 import { hookPath } from '../../lib/identifier-paths.ts';
 import { scheduleDetailPath, workflowDetailPath } from '../../lib/router.svelte.ts';
-import { sessionRow, type ChatStatusWord } from '../chat/session-groups.ts';
+import { chatStatusWord, sessionRow, type ChatStatusWord } from '../chat/session-groups.ts';
 import { reviewTitle, waitingItems } from '../reviews/review-items.ts';
 import { describeCadence } from '../schedules/cadence.ts';
 import { providerDisplayName } from '../settings/models/format-model.ts';
@@ -379,7 +379,7 @@ export function recentChatRows(
       id: context.id,
       title: row.title,
       latest: sameWords(row.snippet, row.title) ? undefined : row.snippet,
-      status: row.status,
+      status: chatStatusWord(context, failedChats, waitingChats, undefined, stoppedChats),
       time: row.updatedAt === null ? '' : rowTime(row.updatedAt, now, zone),
       timestamp: row.updatedAt,
     };

@@ -52,6 +52,7 @@ A disabled button looks the same in every variant: a neutral surface (or none, f
 | `label` | `string` | no | — | Visible text label. Must be non-empty if provided. |
 | `loading` | `boolean` | no | `false` | Show a spinner and make the button inert (`aria-disabled`, still focusable) while work is in flight; the label stays and the width holds. |
 | `loadingStatus` | `string` | no | — | Text a polite, visually hidden status announces while `loading`, rendered beside the button. |
+| `loadingWidth` | `"hold"` \| `"grow"` | no | `"hold"` | What the width does while `loading`: `hold` (default) keeps the resting width, `grow` takes the spinner at the normal padding. |
 | `mutating` | `boolean` | no | `false` | Marks a button that changes something. Inside a stale `<StaleRegion>` it goes inert (`aria-disabled`, still focusable) and is described by the region's reason. |
 | `quiet` | `boolean` | no | `false` | Rests as the bare glyph: drops the resting fill and rule an icon-only `ghost` button otherwise paints, for a toolbar such as the shell's top bar. Hover, pressed and focus still paint. It has no effect unless the button is `iconOnly` with `variant="ghost"`. |
 | `shortcut` | `string` \| `string`[] | no | — | Keyboard shortcut hint rendered after the label, `aria-hidden`; a key or an array of keys. |
