@@ -55,7 +55,10 @@ describe('object-store operations contract', () => {
 
   test('R2 conditionally writes and exposes no delete operation', async () => {
     await withWorker(
-      { entry: new URL('./r2-fixture.ts', import.meta.url).pathname, r2Buckets: ['BUCKET'] },
+      {
+        entry: new URL('./r2-fixture.test-support.ts', import.meta.url).pathname,
+        r2Buckets: ['BUCKET'],
+      },
       async ({ getR2Bucket }) => {
         const operations = createR2ObjectOperations(
           (await getR2Bucket('BUCKET')) as unknown as R2Bucket,
