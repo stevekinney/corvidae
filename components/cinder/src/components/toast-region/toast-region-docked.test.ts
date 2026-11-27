@@ -106,7 +106,10 @@ describe('Undo toasts (rows 04w, 06x, 48s, 66g, 78v)', () => {
     api.show('Reverted 1 change.', { undo: () => {} });
     api.show('Sticky note', { duration: 0 });
     await tick();
-    expect(container.querySelectorAll('.cinder-toast')).toHaveLength(3);
+    expect(container.querySelectorAll('.cinder-toast')).toHaveLength(1);
+    expect(container.querySelector('.cinder-toast-undo-actions__toggle')?.textContent).toContain(
+      '2 Undo actions available',
+    );
     api.dismissUndo();
     await tick();
     jest.advanceTimersByTime(500);
@@ -114,6 +117,29 @@ describe('Undo toasts (rows 04w, 06x, 48s, 66g, 78v)', () => {
     const left = [...container.querySelectorAll('.cinder-toast')].map((toast) => toast.textContent);
     expect(left).toHaveLength(1);
     expect(left[0]).toContain('Sticky note');
+  });
+
+  test('many Undo actions collapse to one reachable recovery control until opened', async () => {
+    const { api, container } = await mountRegion();
+    const restored: string[] = [];
+    for (const label of ['first', 'second', 'third']) {
+      api.show(`Deleted ${label}.`, { undo: () => restored.push(label) });
+    }
+    const toggle = await waitFor(() => {
+      const button = container.querySelector<HTMLButtonElement>(
+        '.cinder-toast-undo-actions__toggle',
+      );
+      expect(button?.textContent).toContain('3 Undo actions available');
+      return button as HTMLButtonElement;
+    });
+    expect(container.querySelectorAll('[data-cinder-undo]')).toHaveLength(0);
+    await fireEvent.click(toggle);
+    await waitFor(() => expect(container.querySelectorAll('[data-cinder-undo]')).toHaveLength(3));
+    const first = [...container.querySelectorAll<HTMLButtonElement>('.cinder-toast__action')].find(
+      (button) => button.closest('.cinder-toast')?.textContent?.includes('Deleted first.'),
+    );
+    await fireEvent.click(first as HTMLButtonElement);
+    expect(restored).toEqual(['first']);
   });
 
   test('onClose is called once, after the action, however the toast closes', async () => {
@@ -139,6 +165,11 @@ describe('Undo toasts (rows 04w, 06x, 48s, 66g, 78v)', () => {
     await tick();
     expect(closed).toEqual(['timer']);
 
+    await fireEvent.click(
+      container.querySelector<HTMLButtonElement>(
+        '.cinder-toast-undo-actions__toggle',
+      ) as HTMLButtonElement,
+    );
     const undo = [...container.querySelectorAll<HTMLButtonElement>('.cinder-toast__action')].find(
       (button) => button.closest('.cinder-toast')?.textContent?.includes('Undone.'),
     );

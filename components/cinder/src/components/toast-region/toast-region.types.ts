@@ -16,7 +16,10 @@ export type ToastRegionProps = {
   maxStack?: number;
   /** Default auto-dismiss duration in ms. Default 5000. Set to 0 for sticky. */
   defaultDuration?: number;
-  /** Viewport anchor for both live-region channels. Default `bottom-right`. */
+  /**
+   * Viewport anchor for both live-region channels. `docked-bottom-right` reserves room in a
+   * shell-owned layout rather than covering its scrollable content. Default `bottom-right`.
+   */
   position?: ToastPosition;
   /** Additional class names merged with `.cinder-toast-region`. */
   class?: string;

@@ -25,7 +25,7 @@ Wrapped children render normally on the server, and the toast context is availab
 
 ## Stack policy
 
-Each region holds at most `maxStack` ordinary non-leaving toasts (default 5). Overflow dismisses the oldest ordinary toast through the same exit path as a user dismissal. Active Undo toasts remain until their action runs or `dismissUndo()` is called, and a long channel scrolls within the viewport so every recovery action remains reachable. Auto-dismiss timers expire after `defaultDuration` ms (default 5000); pass `duration: 0` to make a toast sticky.
+Each region holds at most `maxStack` ordinary non-leaving toasts (default 5). Overflow dismisses the oldest ordinary toast through the same exit path as a user dismissal. Active Undo toasts remain until their action runs or `dismissUndo()` is called. More than one active Undo is condensed into an `N Undo actions available` button; opening it exposes every named recovery action in order without discarding one. Auto-dismiss timers expire after `defaultDuration` ms (default 5000); pass `duration: 0` to make a toast sticky.
 
 Hovering or focusing the region pauses active auto-dismiss timers for the whole stack. This matters for keyboard users: once focus enters a toast action or dismiss button, the notification will not disappear while the user is reading or acting on it.
 
@@ -57,6 +57,6 @@ When the region unmounts, all auto-dismiss timers are cleared (`onDestroy`). Tes
 
 ## Undo, failure and phone placement
 
-- An Undo toast (`undo`) has no timer and no close button, so a person who has not reached it yet never loses the Undo to a timeout or a stray click. It is announced politely like any other `info` toast, and its action is a real button reachable by Tab. `dismissUndo()` removes it when the page changes.
+- An Undo toast (`undo`) has no timer and no close button, so a person who has not reached it yet never loses the Undo to a timeout or a stray click. It is announced politely like any other `info` toast, and its action is a real button reachable by Tab. With multiple active Undos, the summary button is likewise focusable and exposes the individual actions. `dismissUndo()` removes them when the page changes.
 - A `danger` toast has no timer, keeps its dismiss button, and is announced assertively; the warning triangle is decorative (`aria-hidden`) and the message carries the meaning.
 - On a phone, and with a coarse pointer, the action is a 44px target. The region sits inside the bottom safe area and above a docked action bar, so a toast never covers the controls it describes.

@@ -355,13 +355,16 @@ describe('useToast api', () => {
     api!.show('Ordinary B', { duration: 0 });
     await waitFor(() => {
       const politeText = container.querySelector('[role="status"]')?.textContent ?? '';
-      expect(politeText).toContain('Undo A');
-      expect(politeText).toContain('Undo B');
-      expect(politeText).toContain('Undo C');
+      expect(politeText).toContain('3 Undo actions available');
       expect(politeText).toContain('Ordinary A');
       expect(politeText).toContain('Ordinary B');
-      expect(container.querySelectorAll('[data-cinder-undo]').length).toBe(3);
     });
+    await fireEvent.click(
+      container.querySelector<HTMLButtonElement>(
+        '.cinder-toast-undo-actions__toggle',
+      ) as HTMLButtonElement,
+    );
+    await waitFor(() => expect(container.querySelectorAll('[data-cinder-undo]').length).toBe(3));
     api!.show('Ordinary C', { duration: 0 });
     await waitFor(() => {
       const politeText = container.querySelector('[role="status"]')?.textContent ?? '';
@@ -386,6 +389,15 @@ describe('useToast api', () => {
     for (const label of ['Undo A', 'Undo B', 'Undo C']) {
       api!.show(label, { undo: () => {} });
     }
+    await waitFor(() => {
+      const politeText = container.querySelector('[role="status"]')?.textContent ?? '';
+      expect(politeText).toContain('3 Undo actions available');
+    });
+    await fireEvent.click(
+      container.querySelector<HTMLButtonElement>(
+        '.cinder-toast-undo-actions__toggle',
+      ) as HTMLButtonElement,
+    );
     await waitFor(() => {
       const politeText = container.querySelector('[role="status"]')?.textContent ?? '';
       expect(politeText).toContain('Undo A');

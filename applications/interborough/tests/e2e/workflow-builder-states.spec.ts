@@ -297,6 +297,38 @@ test.describe('workflow builder design states for /workflows/new and /workflows/
     await expect(toast).toBeVisible();
     await capture(page, '/workflows/new', 'deleted step with undo', 'builder');
 
+    // The shell docks the durable recovery action beside, rather than over, the outlet. This is a
+    // paint and hit-test check, not a DOM-presence check: the Output action stays directly usable.
+    const outputAddField = root
+      .getByTestId('workflow-builder-output-empty')
+      .getByRole('button', { name: BUILDER.addField, exact: true });
+    await outputAddField.scrollIntoViewIfNeeded();
+    const clearOutputAction = await outputAddField.evaluate((button) => {
+      const toast = document.querySelector('.cinder-toast');
+      const box = button.getBoundingClientRect();
+      const toastBox = toast?.getBoundingClientRect();
+      const overlaps =
+        toastBox !== undefined &&
+        toastBox.left < box.right &&
+        toastBox.right > box.left &&
+        toastBox.top < box.bottom &&
+        toastBox.bottom > box.top;
+      return {
+        painted: box.width > 0 && box.height > 0,
+        overlaps,
+        reachesAction: button.contains(
+          document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2),
+        ),
+      };
+    });
+    expect(clearOutputAction).toEqual({ painted: true, overlaps: false, reachesAction: true });
+    await capture(
+      page,
+      '/workflows/new',
+      'deleted step with undo and clear output action',
+      'builder',
+    );
+
     await description.fill('Kept after Undo.');
     await toast.getByRole('button', { name: 'Undo', exact: true }).click();
     await expect(rows).toHaveCount(4);
@@ -340,32 +372,63 @@ test.describe('workflow builder design states for /workflows/new and /workflows/
     }
     await expect(rows).toHaveCount(1);
 
-    const channel = page.locator('.cinder-toast-region [role="status"]');
     const undos = page.locator('[data-cinder-undo]');
     await page.setViewportSize({ width: 375, height: 320 });
-    await expect
-      .poll(() => channel.evaluate((element) => element.scrollHeight > element.clientHeight))
-      .toBe(true);
-    await expect(undos).toHaveCount(6);
-    const firstUndo = undos.filter({ hasText: 'Deleted "Named step 1"' });
-    await expect(firstUndo).toBeVisible();
+    const undoActions = page.getByRole('button', { name: '6 Undo actions available', exact: true });
+    await expect(undoActions).toBeVisible();
+    await expect(undos).toHaveCount(0);
     await captureForDesignReview(page, {
       route: '/workflows/new',
-      state: 'six outstanding Undo actions at short phone height',
+      state: 'six compact Undo actions at short phone height',
       source: SOURCE,
       tab: 'builder',
     });
-    const lastUndo = undos.filter({ hasText: 'Deleted "Named step 6"' });
-    await lastUndo.scrollIntoViewIfNeeded();
-    await expect(lastUndo).toBeVisible();
+
+    await page.setViewportSize({ width: 320, height: 640 });
+    const workflowTitle = root.locator('#workflow-builder-title');
+    const compactRecovery = await workflowTitle.evaluate((field) => {
+      const recovery = document.querySelector('.cinder-toast-undo-actions');
+      const fieldBox = field.getBoundingClientRect();
+      const recoveryBox = recovery?.getBoundingClientRect();
+      const overlaps =
+        recoveryBox !== undefined &&
+        recoveryBox.left < fieldBox.right &&
+        recoveryBox.right > fieldBox.left &&
+        recoveryBox.top < fieldBox.bottom &&
+        recoveryBox.bottom > fieldBox.top;
+      return {
+        fieldPainted: fieldBox.width > 0 && fieldBox.height > 0,
+        fieldReceivesHit: field.contains(
+          document.elementFromPoint(
+            fieldBox.x + fieldBox.width / 2,
+            fieldBox.y + fieldBox.height / 2,
+          ),
+        ),
+        overlaps,
+      };
+    });
+    expect(compactRecovery).toEqual({
+      fieldPainted: true,
+      fieldReceivesHit: true,
+      overlaps: false,
+    });
+    await captureForDesignReview(page, {
+      route: '/workflows/new',
+      state: 'six compact Undo actions at 320 by 640',
+      source: SOURCE,
+      tab: 'builder',
+    });
 
     // The builder is read-only below 640px, so the phone witness does not invoke a mutation.
-    // Return to desktop to prove the oldest recovery action remains executable.
+    // Return to desktop to prove the named recovery actions remain executable.
     await page.setViewportSize({ width: 1280, height: 320 });
+    await undoActions.click();
+    await expect(undos).toHaveCount(6);
+    const firstUndo = undos.filter({ hasText: 'Deleted "Named step 1"' });
     await firstUndo.scrollIntoViewIfNeeded();
     await captureForDesignReview(page, {
       route: '/workflows/new',
-      state: 'six outstanding Undo actions at short desktop height',
+      state: 'six expanded Undo actions at short desktop height',
       source: SOURCE,
       tab: 'builder',
     });

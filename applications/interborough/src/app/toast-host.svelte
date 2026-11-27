@@ -18,7 +18,7 @@
    * fork or a restyle — PROJECT-BRIEF), needed only because this one caller
    * genuinely has no component context to call `useToast()` from.
    */
-  import type { ToastApi, ToastOptions, ToastVariant } from '@lostgradient/cinder';
+  import type { ToastApi, ToastOptions, ToastPosition, ToastVariant } from '@lostgradient/cinder';
   import { hasContext, setContext } from 'svelte';
 
   import {
@@ -133,9 +133,15 @@
 
 <script lang="ts">
   import { ToastRegion, useToast } from '@lostgradient/cinder';
+
+  interface ToastHostProps {
+    position?: ToastPosition;
+  }
+
+  let { position = 'bottom-right' }: ToastHostProps = $props();
 </script>
 
-<ToastRegion position="bottom-right">
+<ToastRegion {position}>
   {#snippet children()}
     {@const toast = useToast()}
     <span hidden {@attach () => registerToastApi(toast)}></span>

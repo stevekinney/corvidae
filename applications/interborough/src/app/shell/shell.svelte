@@ -70,6 +70,7 @@
   import { provideShellNavigation, ShellNavigation } from './shell-navigation.svelte.ts';
   import Sidebar from './sidebar.svelte';
   import TabBar from './tab-bar.svelte';
+  import ToastHost from '../toast-host.svelte';
   import Topbar from './topbar.svelte';
 
   interface ShellProps {
@@ -384,6 +385,7 @@
     <PluginProblemsBanner unreachable={connection.unreachable} />
     <CriticalAlertStrip store={notifications} />
     <RouteOutlet />
+    <ToastHost position="docked-bottom-right" />
     <TabBar />
   </div>
 </div>

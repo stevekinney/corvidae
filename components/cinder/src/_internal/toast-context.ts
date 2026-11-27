@@ -15,9 +15,15 @@ import { createContext } from 'svelte';
 /** Toast variant — drives both visual treatment and live-region routing. */
 export type ToastVariant = 'info' | 'success' | 'warning' | 'danger';
 
-/** Toast viewport anchor. */
+/** Toast viewport anchor, or a shell-owned region that reserves content space. */
 export type ToastPosition =
-  'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right'
+  | 'docked-bottom-right';
 
 /** Options for {@link ToastApi.show}. */
 export type ToastOptions = {

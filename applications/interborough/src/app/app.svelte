@@ -25,11 +25,11 @@
   import { resolveHostPrincipal, type Principal } from '../lib/scopes.svelte.ts';
   import BootFailure from './boot-failure.svelte';
   import Shell from './shell/shell.svelte';
-  import ToastHost, { provideToastHost } from './toast-host.svelte';
+  import { provideToastHost } from './toast-host.svelte';
   import { WorkspaceLifetime } from './workspace-lifetime.ts';
   import { chatSessions } from '../routes/chat/chat-session-registry.svelte.ts';
 
-  // The `<ToastHost>` below serves every view in the shell, so a view never
+  // The shell's `<ToastHost>` serves every view, so a view never
   // mounts a second one of its own.
   provideToastHost();
   const config: WeftUiRuntimeConfig = readRuntimeConfig();
@@ -116,4 +116,3 @@
     <Skeleton height="100vh" radius="0" />
   </div>
 {/if}
-<ToastHost />
