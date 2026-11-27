@@ -237,6 +237,32 @@ describe('a command that did not go through', () => {
     expect(visible(commands)).toBe('idle');
   });
 
+  test('failed() names every turn that says one, and none once it is cleared or the turn moves on', () => {
+    const commands = new TurnCommands('session-a');
+    commands.reconcile('turn-a', STATES.stopped);
+    commands.reconcile('turn-b', STATES.failed);
+    commands.reconcile('turn-c', STATES.stopped);
+    expect(commands.failed()).toEqual([]);
+
+    const a = commands.begin('continue', 'turn-a', STATES.stopped);
+    const b = commands.begin('retry', 'turn-b', STATES.failed);
+    const c = commands.begin('discard', 'turn-c', STATES.stopped);
+    if (a.status !== 'started' || b.status !== 'started' || c.status !== 'started') {
+      throw new Error('A press was ignored.');
+    }
+    // A command in flight is not a refusal.
+    expect(commands.failed()).toEqual([]);
+    commands.settle(a.token, 'refused');
+    commands.settle(b.token, 'failed');
+    commands.settle(c.token, 'applied');
+    expect(commands.failed()).toEqual(['turn-a', 'turn-b']);
+
+    commands.reconcile('turn-a', STATES.streaming);
+    expect(commands.failed()).toEqual(['turn-b']);
+    commands.release('turn-b');
+    expect(commands.failed()).toEqual([]);
+  });
+
   test('one command in flight keeps the other controls of its turn from starting another', () => {
     const commands = commandsFor('stopped');
     expect(commands.begin('continue', TURN, STATES.stopped).status).toBe('started');

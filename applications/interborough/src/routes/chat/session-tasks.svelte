@@ -12,6 +12,7 @@
   import { listTasks } from '../../lib/bureau-tasks.ts';
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
+  import { chatsWithStoppedRun } from './session-groups.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
 
@@ -24,9 +25,26 @@
      * the header, and the line stays out, so a phone keeps the room for the transcript (COR-2327 B1).
      */
     headerSaysWaiting?: boolean;
+    /**
+     * Whether the chat already says how its latest run ended: a turn the transcript draws as
+     * stopped or failed, or the header's Stopped. That is said once, there, so the strip stays out;
+     * the runs are still read, for `latestRunStopped`.
+     */
+    hidden?: boolean;
+    /**
+     * Whether the latest run of this chat stopped without failing, the same fact the chat list
+     * reads (`chatsWithStoppedRun`); `undefined` until the runs are read, or when they cannot be.
+     */
+    latestRunStopped?: boolean | undefined;
   }
 
-  let { sessionId, streaming, headerSaysWaiting = false }: SessionTasksProps = $props();
+  let {
+    sessionId,
+    streaming,
+    headerSaysWaiting = false,
+    hidden = false,
+    latestRunStopped = $bindable(),
+  }: SessionTasksProps = $props();
 
   const PAGE_SIZE = 50;
 
@@ -57,6 +75,14 @@
       (task) => task.id,
     ),
   );
+
+  $effect.pre(() => {
+    // Runs being read again may hold a newer run than the one in hand: nothing is said of them yet.
+    latestRunStopped =
+      tasks.data === undefined || tasks.isFetching
+        ? undefined
+        : chatsWithStoppedRun(rows).has(sessionId);
+  });
 
   let wasStreaming = untrack(() => streaming);
   $effect(() => {
@@ -112,7 +138,7 @@
   }
 </script>
 
-{#if strip !== undefined}
+{#if strip !== undefined && !hidden}
   <p class="weft-chat-strip" data-tone={strip.tone}>
     <a
       class="weft-chat-tasks__link"

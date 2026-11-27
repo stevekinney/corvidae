@@ -53,6 +53,7 @@
     focusIsInside,
     revealTopShift,
   } from './attention-reveal.ts';
+  import { keepCommandFailureInView } from './command-failure-reveal.ts';
   import { useChatScrollState } from './use-chat-scroll-state.svelte.ts';
   import { useChatUnreadState } from './use-chat-unread-state.svelte.ts';
   import { useChatKeyboardNav } from './use-chat-keyboard-nav.svelte.ts';
@@ -2050,6 +2051,15 @@
       releaseAttention = () => {};
       attentionLifted = false;
     };
+  });
+
+  // A command that did not go through is said once, under the controls it was pressed on, and the
+  // transcript keeps that line in view while it is said, however the page is resized meanwhile.
+  const refusalsSaid = $derived(turnCommands.failed().join('\n'));
+  $effect(() => {
+    const scroller = viewport;
+    if (scroller === null || refusalsSaid === '') return undefined;
+    return keepCommandFailureInView(scroller);
   });
 
   // Follow-ups typed while a run works wait in the Up next drawer, on this page, until the run

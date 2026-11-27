@@ -805,6 +805,28 @@ const toolOnlyOutcome = (page: Page, kind: string): Locator =>
   transcript(page).locator(`.chat-turn-outcome[data-kind="${kind}"]`);
 
 test.describe('A chat turn of only tool calls and how it ended (COR-2725)', () => {
+  /**
+   * A refusal is news only if it can be read: its line ends above the composer and the fade at the
+   * transcript's end (24 pixels of it), the controls it was pressed on start under the header, and
+   * those controls stand above their line. Read from one layout, and polled while the transcript
+   * settles after a resize.
+   */
+  const expectRefusalInView = async (shown: Page): Promise<void> => {
+    await expect(async () => {
+      const { timeline, composer, header, controls, line } = await readBoxes(shown, {
+        timeline: shown.locator('.chat-timeline'),
+        composer: shown.locator('.chat-input-area'),
+        header: shown.locator('[data-testid="chat-header"]'),
+        controls: toolOnlyOutcome(shown, 'stopped'),
+        line: transcript(shown).locator('.chat-turn-command-failure'),
+      });
+      const readableEnd = Math.min(timeline.y + timeline.height - 24, composer.y);
+      expect(line.y + line.height).toBeLessThanOrEqual(readableEnd + 1);
+      expect(controls.y).toBeGreaterThanOrEqual(header.y + header.height - 1);
+      expect(controls.y + controls.height).toBeLessThanOrEqual(line.y + 1);
+    }).toPass();
+  };
+
   test('stopped by the person: one pill after the steps with Continue and Discard, and no status line', async ({
     page,
     request,
@@ -900,6 +922,9 @@ test.describe('A chat turn of only tool calls and how it ended (COR-2725)', () =
     await toolOnlyOutcome(page, 'stopped').getByRole('button', { name: 'Discard' }).click();
     await expect(page.locator('.chat-turn-outcome')).toHaveCount(0);
     await expect(transcript(page).getByText('The run was stopped.')).toBeVisible();
+    // The run stays stopped, so the title says Stopped as the list does, and the strip stays out.
+    await expect(page.locator('[data-testid="chat-header"]')).toContainText('Stopped');
+    await expect(page.locator('.weft-chat-strip')).toHaveCount(0);
     expect(commands).toEqual(['bureau.contexts.discardturn']);
     await captureForDesignReviewWithPhone(page, {
       route: '/chats/:chat',
@@ -925,6 +950,26 @@ test.describe('A chat turn of only tool calls and how it ended (COR-2725)', () =
       route: '/chats/:chat',
       state: 'refused command said once on the turn',
       source: SOURCE,
+      ready: expectRefusalInView,
+    });
+  });
+
+  test.describe('on a phone', () => {
+    test.use({ hasTouch: true, viewport: { width: 375, height: 812 } });
+
+    test('a refused Discard stays in view, and still does when the window shrinks to 320 by 640', async ({
+      page,
+      request,
+    }) => {
+      await openToolOnlyTurn(page, request, { run: 'canceled', command: 'refuses' });
+      const stopped = toolOnlyOutcome(page, 'stopped');
+      // The tool row is 44 pixels tall under a coarse pointer.
+      await expect(stopped.getByRole('button', { name: 'Discard' })).toBeVisible();
+      await stopped.getByRole('button', { name: 'Discard' }).click();
+      await expect(transcript(page).locator('.chat-turn-command-failure')).toHaveCount(1);
+      await expectRefusalInView(page);
+      await page.setViewportSize({ width: 320, height: 640 });
+      await expectRefusalInView(page);
     });
   });
 

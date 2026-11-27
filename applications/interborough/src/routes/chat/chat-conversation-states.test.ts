@@ -772,6 +772,64 @@ describe('the last turn’s outcome and its recovery commands (COR-2725)', () =>
     expect(document.body.textContent?.split(CHAT_COPY.discardTurn.failed)).toHaveLength(2);
   });
 
+  test('after Discard the title and the chat list both say Stopped, and no Run canceled strip says it again', async () => {
+    const thread = ONLY_TOOLS('finished');
+    const served = serve(thread, {
+      answers: {
+        'bureau.tasks.list': stoppedRun('canceled'),
+        'bureau.contexts.discardturn': (params) => {
+          // The Bureau removed the run's rows: the thread read again holds the person's message.
+          thread.splice(1);
+          return { contextId: 'session-1', runId: params['runId'], removed: 2, revision: 4 };
+        },
+        'bureau.contexts.list': () => ({
+          contexts: [
+            {
+              ...CONTEXT,
+              id: 'session-1',
+              title: 'Plan the week',
+              agentName: 'tool-runner',
+              lastMessagePreview: 'Look up order 4471',
+            },
+          ],
+          nextOffset: null,
+        }),
+      },
+    });
+    const chat = mount();
+    const titleSays = (word: string): HTMLElement => {
+      const header = chat.container.querySelector<HTMLElement>('[data-testid="chat-header"]');
+      if (header === null || !header.textContent?.includes(word)) throw new Error(`Not ${word}.`);
+      return header;
+    };
+    await waitFor(() => titleSays('Stopped'));
+
+    await fireEvent.click(await chat.findByRole('button', { name: 'Discard' }));
+
+    await waitFor(() =>
+      expect(served.calls.some((call) => call.method === 'bureau.contexts.discardturn')).toBe(true),
+    );
+    // A thrown error, not a failed `expect` of an element, which prints the page on every try.
+    await waitFor(() => {
+      if (chat.container.querySelector('.chat-turn-outcome') !== null) throw new Error('Still drawn.');
+    });
+    // The run stays stopped when its rows are gone, and the title keeps saying so.
+    titleSays('Stopped');
+    expect(titleSays('Stopped').textContent).not.toContain('Done');
+    expect(chat.container.querySelector('.weft-chat-strip')).toBeNull();
+    expect(chat.container.textContent).not.toContain(CHAT_COPY.strip.canceledOne);
+    cleanup();
+
+    const list = render(QueryPage, { props: { page: Chats } } as never);
+    const row = await waitFor(() => {
+      const found = list.container.querySelector('[data-chat="session-1"]');
+      if (found === null) throw new Error('No row yet.');
+      return found;
+    });
+    await waitFor(() => expect(row.textContent).toContain('Stopped'));
+    expect(row.textContent).not.toContain('Done');
+  });
+
   test.each([
     ['finished', 'Done'],
     ['canceled', 'Stopped'],

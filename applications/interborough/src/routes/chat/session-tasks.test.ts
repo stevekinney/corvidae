@@ -131,6 +131,20 @@ describe('the runs of a chat session', () => {
     expect(sentence(container)?.getAttribute('href')).toBe('/runs/run-1');
   });
 
+  test('say nothing of a canceled run the chat already says is stopped, and still read the runs', async () => {
+    stub = installBureauWorld(
+      emptyBureauWorld({ tasks: [taskFixture({ id: 'run-1', status: 'canceled' })] }),
+    );
+    const { container } = render(QueryPage, {
+      props: {
+        page: SessionTasks,
+        pageProps: { sessionId: 'session-1', streaming: false, hidden: true },
+      },
+    } as never);
+    await waitFor(() => expect(stub?.callsTo('bureau.tasks.list').length).toBe(1));
+    expect(container.querySelector('.weft-chat-strip')).toBeNull();
+  });
+
   test('say nothing when the only run finished well', async () => {
     const { container } = mount('session-1', [taskFixture({ id: 'run-1', status: 'completed' })]);
     await waitFor(() => expect(stub?.callsTo('bureau.tasks.list').length).toBe(1));

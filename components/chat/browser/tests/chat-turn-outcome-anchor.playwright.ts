@@ -443,13 +443,20 @@ for (const width of [1280, 768, 375, 320]) {
         await open(page, kind);
         const chat = page.getByTestId('chat-turn-outcome-end');
         const timeline = chat.locator('.chat-timeline');
-        // The person sees the outcome from the top of a transcript too short for it.
+        // The control is pressed in a transcript tall enough to hold the line, and the page is made
+        // smaller afterwards (a phone turned, a keyboard raised): the line is placed again.
+        await chat.evaluate((element) => {
+          element.style.height = '34rem';
+        });
         await timeline.evaluate((element) => {
           element.scrollTop = 0;
         });
         await chat.getByRole('button', { name: CONTROL_OF[kind] }).click();
         const line = chat.locator('.chat-turn-command-failure');
         await expect(line).toHaveCount(1);
+        await chat.evaluate((element) => {
+          element.style.height = '11rem';
+        });
         await expect
           .poll(async () => {
             const { box, edge } = await measure(page, { box: line, edge: timeline });

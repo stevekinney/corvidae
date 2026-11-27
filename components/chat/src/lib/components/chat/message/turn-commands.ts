@@ -162,6 +162,16 @@ export class TurnCommands {
     return this.#entries.get(turnId)?.failure;
   }
 
+  /** The turns that say a command did not go through. */
+  failed(): readonly string[] {
+    this.#track();
+    const turns: string[] = [];
+    for (const [turnId, entry] of this.#entries) {
+      if (entry.failure !== undefined) turns.push(turnId);
+    }
+    return turns;
+  }
+
   /**
    * Presses `command` on a turn: starts it, asks the host, and settles it with what the host
    * answered. Resolves what became of the press; a press that was ignored never reaches the host.

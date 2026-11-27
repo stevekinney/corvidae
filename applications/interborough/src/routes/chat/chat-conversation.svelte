@@ -1845,6 +1845,8 @@
       untrack(() => lapsedChats.delete(sessionId));
     }
   });
+  /** Whether the chat's latest run stopped without failing, as the runs say; `undefined` until read. */
+  let latestRunStopped = $state<boolean | undefined>();
   const chatStatus = $derived.by(() => {
     if (choosing || Object.keys(session.conversation.messages).length === 0) return undefined;
     if (endedByRestart) return CHAT_COPY.status.ended;
@@ -1852,12 +1854,14 @@
     if (runGoing && !parkedOnLapsed) return CHAT_COPY.status.running;
     // `shown` intentionally removes the canonical stopped/failed line once its richer outcome
     // row owns it. Keep the title state attached to that durable stop, not that filtered view.
-    // The same word the chat list says for the same run (`settledStatusWord`), from what this page
-    // draws of it: a failed turn, a stopped one, or neither.
+    // The same word the chat list says for the same run (`settledStatusWord`), from the same fact:
+    // whether the latest run stopped (`chatsWithStoppedRun`), not whether this page still draws an
+    // outcome row for it: Discard removes the row and the run stays stopped. Until the runs are
+    // read, the stopped turn the page draws stands in.
     return settledStatusWord({
       failed: lastStop?.state.kind === 'failed' || retryNoteId !== undefined,
       ended: false,
-      stopped: lastStop?.state.kind === 'stopped',
+      stopped: latestRunStopped ?? lastStop?.state.kind === 'stopped',
     });
   });
   /** The Badge tone of each status word beside the title. */
@@ -2513,11 +2517,15 @@
       {/if}
       <!-- The transcript already explains the current failed reply; older failed notes remain
            ordinary history, so their run summaries can still appear here. -->
-      {#if !choosing && !endedByRestart && retryNoteId === undefined && lastStop === undefined}
+      {#if !choosing && !endedByRestart}
         <SessionTasks
           {sessionId}
           streaming={session.streaming}
           headerSaysWaiting={chatStatus === CHAT_COPY.status.waiting}
+          hidden={retryNoteId !== undefined ||
+            lastStop !== undefined ||
+            chatStatus === CHAT_COPY.status.stopped}
+          bind:latestRunStopped
         />
       {/if}
     </div>
