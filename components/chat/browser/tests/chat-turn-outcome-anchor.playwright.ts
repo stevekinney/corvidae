@@ -258,11 +258,10 @@ async function expectCell(page: Page, kind: Kind, width: number): Promise<void> 
   }
 
   if (kind === 'stopped') {
-    // R4: the neutral pill, then Discard and Continue (the primary choice, trailing-most), in one
-    // row that starts at the wrapper's inline start. The pill's words differ on purpose: a turn the
-    // run only called tools in has no partial answer ("Stopped before an answer."), so the actions,
-    // which follow the pill in both rows, start where each pill ends. Everything that does not
-    // depend on the pill's width is the same in both.
+    // R4: the neutral pill at the wrapper's inline start, and Discard then Continue (the primary
+    // choice, trailing-most) at its inline end. The pill's words differ on purpose: a turn the run
+    // only called tools in has no partial answer ("Stopped before an answer."). The actions are the
+    // same in both rows, wherever the pill ends.
     const stopped = await measure(page, {
       anchorBadge: steps.locator('.chat-turn-outcome[data-kind="stopped"] .cinder-badge'),
       replyBadge: reply.locator('.chat-turn-outcome[data-kind="stopped"] .cinder-badge'),
@@ -296,11 +295,16 @@ async function expectCell(page: Page, kind: Kind, width: number): Promise<void> 
       ],
     ] as const) {
       near(badge.left, wrapper.left, `the ${name} pill starts at the wrapper`);
-      // Discard first, Continue last, and both inside the wrapper.
+      // Discard first, Continue last, and Continue ends where the wrapper's content ends.
       expect(discard.right, `${name}: Discard comes before Continue`).toBeLessThanOrEqual(
         resume.left + TOLERANCE,
       );
-      expect(resume.right).toBeLessThanOrEqual(wrapper.right + TOLERANCE);
+      const rtl = wrapper.direction === 'rtl';
+      near(
+        rtl ? resume.left : resume.right,
+        rtl ? wrapper.contentLeft : wrapper.contentRight,
+        `${name}: Continue is at the wrapper's inline end`,
+      );
       if (width >= 768) {
         // One row: the pill, then Discard, then Continue, centred on one line.
         expect(badge.right).toBeLessThanOrEqual(discard.left + TOLERANCE);
@@ -316,28 +320,13 @@ async function expectCell(page: Page, kind: Kind, width: number): Promise<void> 
         );
       }
     }
-    // The same buttons, the same size, the same gaps, whatever the pill says.
-    near(
-      stopped.anchorContinue.right - stopped.anchorContinue.left,
-      stopped.replyContinue.right - stopped.replyContinue.left,
-      'Continue is as wide in both Chats',
-    );
-    near(
-      stopped.anchorDiscard.right - stopped.anchorDiscard.left,
-      stopped.replyDiscard.right - stopped.replyDiscard.left,
-      'Discard is as wide in both Chats',
-    );
-    if (width >= 768) {
-      near(
-        stopped.anchorContinue.left - stopped.anchorDiscard.right,
-        stopped.replyContinue.left - stopped.replyDiscard.right,
-        'the gap between the actions is the same in both Chats',
-      );
-      near(
-        stopped.anchorDiscard.left - stopped.anchorBadge.right,
-        stopped.replyDiscard.left - stopped.replyBadge.right,
-        'the gap between the pill and the actions is the same in both Chats',
-      );
+    // The same buttons in the same places in both Chats, whatever the pill says.
+    for (const [label, anchorButton, replyButton] of [
+      ['Continue', stopped.anchorContinue, stopped.replyContinue],
+      ['Discard', stopped.anchorDiscard, stopped.replyDiscard],
+    ] as const) {
+      near(anchorButton.left, replyButton.left, `${label} has the same left edge in both Chats`);
+      near(anchorButton.right, replyButton.right, `${label} has the same right edge in both Chats`);
     }
   }
 }
@@ -361,7 +350,7 @@ for (const width of [1280, 375]) {
   test.describe(`turn outcome anchor, right to left, at ${String(width)}px`, () => {
     test.use({ viewport: { width, height: 900 } });
 
-    for (const kind of ['empty', 'failed'] as const) {
+    for (const kind of ['empty', 'failed', 'stopped'] as const) {
       test(`the ${kind} outcome spans the transcript column right to left`, async ({ page }) => {
         await open(page, kind);
         await page.evaluate(() => {

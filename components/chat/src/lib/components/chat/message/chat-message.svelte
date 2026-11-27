@@ -2681,11 +2681,17 @@
     gap: var(--cinder-space-2) var(--cinder-space-3);
   }
 
+  /* The pill stays at the inline start and Discard and Continue sit at the inline end; where the
+   * row wraps, the actions wrap below the pill and stay at the inline end. */
   .chat-turn-stopped-row {
-    display: inline-flex;
+    display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--cinder-space-2);
+  }
+
+  .chat-turn-stopped-row .chat-turn-actions {
+    margin-inline-start: auto;
   }
 
   .chat-turn-text {
