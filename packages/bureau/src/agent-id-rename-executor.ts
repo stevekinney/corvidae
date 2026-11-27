@@ -39,7 +39,9 @@ export function createAgentIdRenameExecutor(
       const completed = await store.completed(from, to);
       if (completed !== undefined) {
         if (completed.sourceHash !== expectedHash)
-          throw new Error(`The completed identifier change from "${from}" has another source hash.`);
+          throw new Error(
+            `The completed identifier change from "${from}" has another source hash.`,
+          );
         return completed;
       }
 

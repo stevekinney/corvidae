@@ -2751,7 +2751,11 @@ async function constructBureau<const D extends AgentDefinitions>(
   let agentCatalog: ReturnType<typeof createAgentCatalog<D>>;
   let agentIdRenames: ReturnType<typeof createAgentIdRenameStore>;
   let renameSavedAgent:
-    | ((from: string, to: string, expectedHash: string) => Promise<import('./agent-id-rename-store').AgentIdRenameRecord>)
+    | ((
+        from: string,
+        to: string,
+        expectedHash: string,
+      ) => Promise<import('./agent-id-rename-store').AgentIdRenameRecord>)
     | undefined;
   /** COR-2429 — which agents a person disabled: the gate `agentCatalog.find` consults. */
   let agentDisabled: AgentDisabledStore;
@@ -3160,9 +3164,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         );
       },
     });
-    agentIdRenames = createAgentIdRenameStore(
-      runtime.kv ?? textValueStore(new MemoryStorage()),
-    );
+    agentIdRenames = createAgentIdRenameStore(runtime.kv ?? textValueStore(new MemoryStorage()));
     fileAgents =
       options.agentSource === undefined || options.models?.generate === undefined
         ? undefined
@@ -3270,7 +3272,10 @@ async function constructBureau<const D extends AgentDefinitions>(
       files: fileAgents?.files,
       rename: async (from, to, expectedHash) => {
         if (renameSavedAgent === undefined)
-          throw new BureauError('Saved-agent identifier changes are unavailable during startup.', 'CONFLICT');
+          throw new BureauError(
+            'Saved-agent identifier changes are unavailable during startup.',
+            'CONFLICT',
+          );
         return renameSavedAgent(from, to, expectedHash);
       },
       snapshots: fileAgents?.snapshots,
@@ -4965,7 +4970,10 @@ async function constructBureau<const D extends AgentDefinitions>(
       capture: async (id, hash) => {
         const source = await fileAgents?.files.read(id);
         if (source === undefined || source.hash !== hash)
-          throw new BureauError(`Saved agent "${id}" has changed. Reload it before changing its ID.`, 'CONFLICT');
+          throw new BureauError(
+            `Saved agent "${id}" has changed. Reload it before changing its ID.`,
+            'CONFLICT',
+          );
       },
       publishTarget: async (record) => {
         await fileAgents?.files.publishRenameTarget(record.from, record.to, {
@@ -4980,7 +4988,9 @@ async function constructBureau<const D extends AgentDefinitions>(
             if (listed.state !== 'ready' || listed.hash === undefined) continue;
             const detail = await workflows.get(listed.id);
             if (detail?.text === undefined) continue;
-            const definition = JSON.parse(detail.text) as import('./workflow-file').WorkflowFileDefinition;
+            const definition = JSON.parse(
+              detail.text,
+            ) as import('./workflow-file').WorkflowFileDefinition;
             const renamed = renameWorkflowAgent(definition, record.from, record.to);
             if (JSON.stringify(renamed) !== JSON.stringify(definition))
               await workflows.update(listed.id, renamed, { expectedHash: listed.hash });
@@ -4996,7 +5006,9 @@ async function constructBureau<const D extends AgentDefinitions>(
         }
       },
       retireSource: async (record) => {
-        await fileAgents?.files.retireRenameSource(record.from, { expectedHash: record.sourceHash });
+        await fileAgents?.files.retireRenameSource(record.from, {
+          expectedHash: record.sourceHash,
+        });
       },
     }).rename(from, to, expectedHash);
 

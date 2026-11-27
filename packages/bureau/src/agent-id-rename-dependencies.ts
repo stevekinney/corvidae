@@ -49,7 +49,11 @@ export function renameHookScope(scope: HookScope, from: string, to: string): Hoo
 }
 
 /** Whether the hook still carries exactly the source scope a captured mutation may replace. */
-export function hookStillNames(snapshot: AgentRenameHookSnapshot, hook: Hook, from: string): boolean {
+export function hookStillNames(
+  snapshot: AgentRenameHookSnapshot,
+  hook: Hook,
+  from: string,
+): boolean {
   return (
     hook.id === snapshot.id &&
     hook.revision === snapshot.revision &&

@@ -456,8 +456,7 @@ export interface CreateAgentCatalogOptions {
   readonly files?: AgentFileCatalog | undefined;
   /** The Bureau-owned coordinator for a saved file-agent identifier change. */
   readonly rename?:
-    | ((from: string, to: string, expectedHash: string) => Promise<AgentIdRenameRecord>)
-    | undefined;
+    ((from: string, to: string, expectedHash: string) => Promise<AgentIdRenameRecord>) | undefined;
   /** Where file agents' run snapshots live. */
   readonly snapshots?: AgentSnapshotStore | undefined;
   /**

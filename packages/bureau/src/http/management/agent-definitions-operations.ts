@@ -822,7 +822,13 @@ export const agentDefinitionsRenameOperation = defineOperation<
   tags: ['Agents'],
   inputSchema: renameInput,
   outputSchema: renameResultSchema,
-  producibleFaults: ['InvalidParams', 'NotFound', 'StaleRevision', 'Conflict', 'UnsupportedCapability'],
+  producibleFaults: [
+    'InvalidParams',
+    'NotFound',
+    'StaleRevision',
+    'Conflict',
+    'UnsupportedCapability',
+  ],
   access: { kind: 'authenticated' },
   discoverable: true,
   transports,
@@ -830,7 +836,9 @@ export const agentDefinitionsRenameOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     const definitions = requireWritableAgent(host, principal, input.id);
     try {
-      return await definitions.agents.rename(input.id, input.to, { expectedHash: input.expectedHash });
+      return await definitions.agents.rename(input.id, input.to, {
+        expectedHash: input.expectedHash,
+      });
     } catch (error) {
       return faultOf(error, input.id, input.expectedHash);
     }
