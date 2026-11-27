@@ -6,7 +6,8 @@
   "tags": ["table", "grid"],
   "useWhen": [
     "Comparing rows of structured records across consistent columns.",
-    "Coordinating column sort state across header cells via the sort prop."
+    "Coordinating column sort state across header cells via the sort prop.",
+    "Fitting a records table to its container, with short columns sized to their content by sizing on their header cells."
   ],
   "avoidWhen": [
     { "reason": "Rendering a responsive card grid — use grid-list instead." },

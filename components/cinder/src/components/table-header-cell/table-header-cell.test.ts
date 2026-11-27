@@ -21,6 +21,17 @@ describe('TableHeaderCell', () => {
     expect(sortButtonRule).toContain('min-width: 0;');
   });
 
+  // COR-2769: `sizing` reaches the header cell as an attribute only when it is set.
+  test.each(['content', 'fill'] as const)('sizing="%s" marks the header cell', (sizing) => {
+    const { container } = render(Fixture, { headerCellProps: { sizing } });
+    expect(container.querySelector('th')?.getAttribute('data-cinder-sizing')).toBe(sizing);
+  });
+
+  test('a header cell without sizing carries no sizing attribute', () => {
+    const { container } = render(Fixture, {});
+    expect(container.querySelector('th')?.hasAttribute('data-cinder-sizing')).toBe(false);
+  });
+
   test('align defaults to left', () => {
     const { container } = render(Fixture, {});
     expect(container.querySelector('th')?.getAttribute('data-cinder-align')).toBe('left');

@@ -414,6 +414,7 @@ export function createReviewRecords<D extends AgentDefinitions>(
     owner?: string,
     // COR-2292: where the person decided, which the resolved-review record keeps when given.
     decisionSurface?: ApprovalDecisionSurface,
+    reviewerProvenance?: ResolveReviewInput['reviewerProvenance'],
   ): ReviewAuditAttachment {
     const secretFields = review.kind === 'human-wait' ? secretFieldsOfReview(review) : [];
     const decisionSuffix =
@@ -449,6 +450,7 @@ export function createReviewRecords<D extends AgentDefinitions>(
         ...(answerDigest !== undefined ? { answerDigest } : {}),
         ...(owner !== undefined ? { owner } : {}),
         ...(decisionSurface !== undefined ? { decisionSurface } : {}),
+        ...(reviewerProvenance !== undefined ? { reviewerProvenance } : {}),
       },
       principal,
     };
@@ -530,6 +532,7 @@ export function createReviewRecords<D extends AgentDefinitions>(
       owner?: string | undefined;
       /** COR-2292: where the person decided, for the audit entry written here. */
       decisionSurface?: ApprovalDecisionSurface | undefined;
+      reviewerProvenance?: ResolveReviewInput['reviewerProvenance'];
       /**
        * COR-1828: `false` for a decision that left the review pending (a re-gated approval), whose
        * resolved-review record would name a decision nothing acted on and, being written once,
@@ -551,6 +554,7 @@ export function createReviewRecords<D extends AgentDefinitions>(
         requestOptions?.answerDigest,
         requestOptions?.owner ?? (await ownerForRecord(review.runId)),
         requestOptions?.decisionSurface,
+        requestOptions?.reviewerProvenance,
       );
       await core.auditTrailInstance?.record(directAudit);
       // COR-1828: this entry rode no session commit, so no replay will keep the record.

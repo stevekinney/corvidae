@@ -30,7 +30,7 @@ When Breadcrumbs accepts snippets or arbitrary children, the caller owns the sem
 
 ## Phone form and popover
 
-- Below `collapseBelow` the trail is a link named "Back to {parent}" followed by the current page; the current page keeps `aria-current="page"`, and the ancestors that are not shown are removed from the page, not hidden.
+- Below `collapseBelow` the trail is a link named "Back to {parent}" followed by the current page; the current page keeps `aria-current="page"`. Both forms are in the server HTML and CSS chooses one on the first paint. The form that is not shown is `display: none`, not visually hidden, so assistive technology meets one form at a time: one navigation landmark, one back link or one list of ancestors, and one current page.
 - A current page with a `popover` is a `button` that keeps `aria-current="page"`, and Popover gives it `aria-expanded` and `aria-haspopup="dialog"`. Its label truncates visually, but the full text is its accessible name and the popover's content.
 - That button paints a medium Button's height (32px), so it matches a search field or an icon button beside it in a bar. Under a coarse pointer it answers a press 44px tall: a positioned pseudo-element that takes no layout space extends its hit area, and the trail makes room for it inside its own clip. A fine pointer draws and hits it at 32px.
 

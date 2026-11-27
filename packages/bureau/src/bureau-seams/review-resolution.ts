@@ -80,6 +80,7 @@ export interface ReviewResolutionPeers {
     sessionId: string,
     reviewId: string,
     peerRecovery?: ApprovalPeerRecovery,
+    reviewedRecovery?: import('../bureau-types/reviews').ReviewedApprovalRecovery,
   ) => Promise<void>;
   /** Records the pending approval override of a review, retrying the write. */
   readonly persistPendingApprovalOverrideWithRetry: (
@@ -152,6 +153,7 @@ export interface ReviewResolutionPeers {
     answerDigest?: string,
     owner?: string,
     decisionSurface?: ApprovalDecisionSurface,
+    reviewerProvenance?: ResolveReviewInput['reviewerProvenance'],
   ) => ReviewAuditAttachment;
   /** Reads the grant fields of an approval. */
   readonly grantFieldsOf: (
@@ -183,6 +185,7 @@ export interface ReviewResolutionPeers {
       owner?: string | undefined;
       /** COR-2292: where the person decided, for the audit entry written here. */
       decisionSurface?: ApprovalDecisionSurface | undefined;
+      reviewerProvenance?: ResolveReviewInput['reviewerProvenance'];
       /**
        * COR-1828: `false` for a decision that left the review pending (a re-gated approval), whose
        * resolved-review record would name a decision nothing acted on and, being written once,
@@ -1072,6 +1075,21 @@ export function createReviewResolution<D extends AgentDefinitions>(
     }
   }
 
+  function reviewedRecoveryForDecision(
+    review: Extract<PendingReview, { kind: 'tool-approval' }>,
+    reviewed: boolean,
+    policy: ReviewPolicy | undefined,
+    input: ResolveReviewInput,
+    request: ReviewDecisionRequest,
+  ): import('../bureau-types/reviews').ReviewedApprovalRecovery | undefined {
+    if (!reviewed || !policy?.mayRecover?.(review) || !input.reviewerProvenance) return undefined;
+    return {
+      request,
+      reviewerProvenance: input.reviewerProvenance,
+      ...(input.decisionSurface === undefined ? {} : { decisionSurface: input.decisionSurface }),
+    };
+  }
+
   async function assertReviewProvenance(review: PendingReview): Promise<boolean> {
     if (review.kind !== 'tool-approval') return false;
     const provenance = await reviewedProvenanceOf(review, {
@@ -1133,6 +1151,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
             cleanup.answerDigest,
             cleanup.owner,
             cleanup.decisionSurface,
+            cleanup.reviewerProvenance,
           );
           Object.assign(cleanupAuditAttachment, terminalReleaseField(cleanup.terminalRelease));
           const cleanupAuditAppended = await peers.persistReviewResolutionWithRetry(
@@ -1204,6 +1223,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
               answerDigest: cleanup.answerDigest,
               owner: cleanup.owner,
               decisionSurface: cleanup.decisionSurface,
+              reviewerProvenance: cleanup.reviewerProvenance,
             },
           );
           const cleanupResolution: ResolveReviewResult = {
@@ -1441,6 +1461,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
             review.sessionId,
             review.id,
             peerRecovery,
+            reviewedRecoveryForDecision(review, reviewed, policy, input, claimRequest),
           );
           actionStarted = true;
           const approvedCallStartedAt = runtimeServices.clock.nowISO();
@@ -1610,6 +1631,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
         answerDigest,
         decisionOwner,
         decisionSurfaceOf(review, input),
+        input.reviewerProvenance,
       );
       attachTerminalRelease(auditAttachment, review, verifiedTerminalApproval, input.decision);
       try {
@@ -1654,6 +1676,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
             rememberTool,
             owner: decisionOwner,
             decisionSurface: decisionSurfaceOf(review, input),
+            reviewerProvenance: input.reviewerProvenance,
             ...terminalReleaseField(auditAttachment.terminalRelease),
           });
         }
@@ -1698,6 +1721,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
       answerDigest,
       owner: decisionOwner,
       decisionSurface: decisionSurfaceOf(review, input),
+      reviewerProvenance: input.reviewerProvenance,
       // COR-1828: a superseded call decided nothing, so it keeps no resolved-review record.
       decisionIsFinal: !keepPending,
     });

@@ -30,7 +30,11 @@ export const productOracles: Record<string, ProductOracle> = {
   avatar: { selector: `[class*="cinder-avatar"]`, descendant: 'img' },
   backdrop: { selector: 'button', text: 'Show dimmed backdrop', behavior: 'backdrop' },
   badge: { selector: `[class*="cinder-badge"]`, text: 'Extra small' },
-  breadcrumbs: { selector: `[class*="cinder-breadcrumbs"]`, descendant: ':scope > *' },
+  // The list holds the current page at every width; the back link before it shows only on a phone.
+  breadcrumbs: {
+    selector: `[class*="cinder-breadcrumbs"]`,
+    descendant: ':scope > .cinder-breadcrumbs__list',
+  },
   'button-group': {
     selector: `[class*="cinder-button-group"]`,
     attribute: { name: 'aria-label', value: 'Document actions' },
