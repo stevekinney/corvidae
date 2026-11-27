@@ -810,7 +810,21 @@ test.describe('A chat turn of only tool calls and how it ended (COR-2725)', () =
   test('reconnecting: the connection notice by the composer says so once, with Retry now', async ({
     page,
     request,
+    pageErrors,
   }) => {
+    // The test drops the run's stream on purpose, and the page's retries of it are reset: the reports
+    // are the cause the test made, for this chat's run URL alone.
+    const runUrl = `/ag-ui/threads/${ENDED_ON_TOOL_CALL_THREAD}/run`;
+    pageErrors.expectEvery({
+      pattern: new RegExp(`^request failed: GET .*${runUrl} \\(net::ERR_CONNECTION_RESET\\)$`),
+      reason: 'the test drops the run stream, so the page’s retries of it are reset',
+    });
+    pageErrors.expectEvery({
+      pattern: new RegExp(
+        `^console error: Failed to load resource: net::ERR_CONNECTION_RESET \\(.*${runUrl}`,
+      ),
+      reason: 'the test drops the run stream, so Chromium logs each reset retry',
+    });
     await openToolOnlyTurn(page, request, { dropped: true });
     const notice = page.locator('.chat-connection-notice');
     await expect(notice).toHaveCount(1);

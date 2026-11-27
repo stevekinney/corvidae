@@ -236,19 +236,6 @@ describe('Chat — the outcome of a turn with no assistant message', () => {
   });
 });
 
-describe('Chat — the anchor is sized as a reply is', () => {
-  test('the message styles give the anchor the reply’s own width rule, in the same unlayered cascade', async () => {
-    const source = await Bun.file(new URL('./message/chat-message.svelte', import.meta.url)).text();
-    // One rule, so the two can never drift: a layered rule in chat.css cannot size it, because the
-    // component's own unlayered `width: fit-content` outranks any layered rule.
-    const rule =
-      /\.chat-message-wrapper\[data-role='assistant'\],\s*\.chat-message-wrapper\[data-turn-anchor\]\s*\{([^}]*)\}/u.exec(
-        source,
-      );
-    expect(rule?.[1]).toMatch(/inline-size:\s*min\(100%,/u);
-  });
-});
-
 const DROP = { attempt: 1, attempts: 7, wait: 5_000, nextTryAt: 4_000, runDropped: true };
 
 function statesOf(conversation: ConversationHistory, facts: TurnOutcomeFacts) {

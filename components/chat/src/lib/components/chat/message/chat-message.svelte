@@ -1562,9 +1562,10 @@
       var(--cinder-radius-lg);
   }
 
-  /* The anchor of a turn that ends on its steps carries no role (so no reply rule reached it, and it
-   * sized to its content), but its outcome is a reply's to the eye: the same width as a reply's, from
-   * the same rule. These styles are unlayered, which outranks the layered rules of chat.css. */
+  /* The anchor of a turn that ends on its steps carries no role, so no reply rule reached it. In the
+   * bubble presentation (ChatMessage is exported) it is sized as a reply is, from this rule. In the
+   * transcript presentation its width comes from the rule below that lifts the base `max-width`
+   * caps (`.chat-message-wrapper[data-presentation='transcript'][data-role='assistant'], …`). */
   .chat-message-wrapper[data-role='assistant'],
   .chat-message-wrapper[data-turn-anchor] {
     margin-inline-end: auto;
@@ -2241,7 +2242,8 @@
     gap: var(--_cinder-chat-line-gap, var(--cinder-space-1));
   }
 
-  .chat-message-wrapper[data-presentation='transcript'][data-role='assistant'] {
+  .chat-message-wrapper[data-presentation='transcript'][data-role='assistant'],
+  .chat-message-wrapper[data-presentation='transcript'][data-turn-anchor] {
     inline-size: 100%;
     max-inline-size: 100%;
   }
@@ -2748,6 +2750,11 @@
 
   .chat-turn-empty-row .chat-turn-text {
     flex: 1 1 12rem;
+  }
+
+  /* Try again stays at the row's inline end when the row wraps. */
+  .chat-turn-empty-row :global(.chat-turn-action) {
+    margin-inline-start: auto;
   }
 
   .chat-turn-failure-body {
