@@ -38,6 +38,12 @@
       "title": "Mark the current row",
       "code": "<script lang=\"ts\">\n  import { Table } from '@lostgradient/cinder';\n</script>\n\n<Table aria-label=\"Deployments\">\n  <Table.Header><Table.Row><Table.HeaderCell>Version</Table.HeaderCell></Table.Row></Table.Header>\n  <Table.Body>\n    <Table.Row current><Table.Cell>2026.11.21</Table.Cell></Table.Row>\n    <Table.Row><Table.Cell>2026.11.13</Table.Cell></Table.Row>\n  </Table.Body>\n</Table>\n",
       "description": "The current deployment is identified and visually highlighted."
+    },
+    {
+      "id": "fit-columns",
+      "title": "Size short columns to their content",
+      "description": "A fit table gives a short column (a status word, a badge, an identifier, a count) the width of its content with sizing=\"content\", and the rest of the width to its prose column with sizing=\"fill\", so the prose does not wrap while the short columns sit half empty.",
+      "code": "<script lang=\"ts\">\n  import { Badge, Table } from '@lostgradient/cinder';\n  const checks = [\n    { check: 'Frontend', result: 'Passed', found: 'The frontend answered on port 7233 within a second.' },\n    { check: 'Namespace', result: 'Not reached', found: 'The namespace list call timed out after thirty seconds.' },\n  ];\n</script>\n\n<Table caption=\"Connection checks\" fit>\n  <Table.Header>\n    <Table.Row>\n      <Table.HeaderCell sizing=\"content\">Check</Table.HeaderCell>\n      <Table.HeaderCell sizing=\"content\">Result</Table.HeaderCell>\n      <Table.HeaderCell sizing=\"fill\">What it found</Table.HeaderCell>\n    </Table.Row>\n  </Table.Header>\n  <Table.Body>\n    {#each checks as check (check.check)}\n      <Table.Row>\n        <Table.Cell as=\"th\">{check.check}</Table.Cell>\n        <Table.Cell><Badge>{check.result}</Badge></Table.Cell>\n        <Table.Cell>{check.found}</Table.Cell>\n      </Table.Row>\n    {/each}\n  </Table.Body>\n</Table>\n"
     }
   ]
 }

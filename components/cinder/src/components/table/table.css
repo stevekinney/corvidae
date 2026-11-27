@@ -423,6 +423,66 @@
   }
 
   /* ----------------------------------------
+   * Column sizing (COR-2769) — a `fit` table whose header cells set `sizing` lays out its columns
+   * by their content instead of sharing the width equally. A `content` column (a status word, a
+   * badge, an identifier, a count) is as wide as its widest header or cell, never wider than half
+   * the table, and does not wrap; a `fill` column takes what the content columns leave and wraps.
+   * The automatic layout keeps the fit guarantee because nothing in it asks for more than the
+   * table has: a fill cell breaks anywhere, a content cell is capped at half the scroll box (a size
+   * container, so `cqi` reads its width), and a truncating cell's text asks for no width at all and
+   * then fills its column. A table with no `sizing` keeps the fixed layout above.
+   * ---------------------------------------- */
+
+  .cinder-table[data-cinder-fit]:has(> .cinder-table__header [data-cinder-sizing]) {
+    table-layout: auto;
+  }
+
+  .cinder-table-scroll:has(
+    > .cinder-table[data-cinder-fit] > .cinder-table__header [data-cinder-sizing]
+  ) {
+    container-type: inline-size;
+  }
+
+  .cinder-table[data-cinder-fit]:not([data-cinder-stacked])
+    :is(.cinder-table__cell, .cinder-table__header-cell)[data-cinder-sizing='content'] {
+    inline-size: 0;
+    /* With no scroll box (`scrollable={false}`) there is no size container to halve, so the cap is
+     * the longest a truncating cell's text grows. */
+    max-inline-size: var(--_cinder-table-truncate-size);
+    white-space: nowrap;
+  }
+
+  .cinder-table-scroll
+    > .cinder-table[data-cinder-fit]:not([data-cinder-stacked])
+    :is(.cinder-table__cell, .cinder-table__header-cell)[data-cinder-sizing='content'] {
+    max-inline-size: 50cqi;
+  }
+
+  /* A `fill` column, and any column a sized table leaves without `sizing`, breaks anywhere, so one
+   * long word never asks for more than the content columns leave. */
+  .cinder-table[data-cinder-fit]:not([data-cinder-stacked]):has(
+      > .cinder-table__header [data-cinder-sizing]
+    )
+    :is(.cinder-table__cell, .cinder-table__header-cell):not([data-cinder-sizing='content']) {
+    overflow-wrap: anywhere;
+  }
+
+  /* A truncating cell outside a content column asks for no width, then fills its column. A content
+   * cell's text keeps its width, so the column is as wide as its value up to the cap, where the
+   * fit rule above (`max-inline-size: 100%`) ends it in an ellipsis. */
+  .cinder-table[data-cinder-fit]:not([data-cinder-stacked]):has(
+      > .cinder-table__header [data-cinder-sizing]
+    )
+    .cinder-table__cell:not([data-cinder-sizing='content'])
+    .cinder-table__cell-text {
+    inline-size: 0;
+    min-inline-size: 100%;
+  }
+
+  /* A fill cell's text runs the full width the content columns leave: a cell holds one finding, not
+   * running text, so the prose measure does not apply (COR-2769, decided 2026-11-26). */
+
+  /* ----------------------------------------
  * Controls — every control in a `controls` column fills the cell, so the
  * controls share the one width the column has and a longer value in one row
  * cannot make its control wider than its neighbours.
@@ -638,15 +698,25 @@
  * at the same specificity, so it replaces what that layout set for the same cells.
  * ---------------------------------------- */
 
+  /* The rows start on the content's leading edge (COR-2760): the scroll box reaches one gutter past
+   * that edge and pads it back, so its content edge stays on the page's and the row tint, which
+   * reaches into that gutter, stays inside the box's clip. `inline-size: auto` lets the negative
+   * margin widen the box instead of leaving its trailing edge a gutter short. */
   .cinder-table-scroll:has(> .cinder-table[data-cinder-stack-card]) {
     border: 0;
     border-radius: 0;
     background: transparent;
     --_cinder-scroll-fade-color: var(--cinder-surface-canvas);
+    inline-size: auto;
+    max-inline-size: none;
+    padding-inline-start: var(--cinder-space-3);
+    margin-inline-start: calc(var(--cinder-space-3) * -1);
   }
 
+  /* The table draws no frame here, so it does not clip: the row tint reaches past its start. */
   .cinder-table[data-cinder-stack-card] {
     background: transparent;
+    overflow: visible;
     --_cinder-table-fill: transparent;
   }
 
@@ -685,9 +755,11 @@
     row-gap: var(--cinder-space-1);
     align-items: baseline;
     padding-block: var(--cinder-space-3);
-    padding-inline: var(--cinder-space-4);
+    /* The title starts on the content's edge; a trailing control keeps a gap from the end. */
+    padding-inline: 0 var(--cinder-space-2);
     border-radius: 0;
     box-shadow: none;
+    isolation: isolate;
   }
 
   /* No break line: there is no control line to separate. */
@@ -883,13 +955,6 @@
     box-shadow: none;
   }
 
-  .cinder-table[data-cinder-stack-card]
-    .cinder-table__body
-    .cinder-table__row:has(.cinder-table__cell[data-cinder-stack-title] a:focus-visible) {
-    outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
-  }
-
   /* The row itself carries the tint in either the table or its stacked cards. */
   .cinder-table .cinder-table__row:is([data-cinder-open], [data-cinder-current]),
   .cinder-table .cinder-table__row:is([data-cinder-open], [data-cinder-current]):hover {
@@ -898,6 +963,67 @@
 
   @media (forced-colors: active) {
     .cinder-table .cinder-table__row:is([data-cinder-open], [data-cinder-current]) {
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+    }
+  }
+
+  /* ----------------------------------------
+   * Card tint (COR-2760) — a card row sits on the content's edge, so its hover, open and current
+   * tint and its focus ring are drawn on the row's `::after`, which reaches one gutter past the
+   * row's start: the tint never starts at the title's first glyph, the same 12px a flat
+   * DescriptionList's linked row gets. It lies behind the row's text (the row isolates). Declared
+   * after the row tint above, so the row itself paints nothing.
+   * ---------------------------------------- */
+
+  .cinder-table[data-cinder-stack-card] .cinder-table__body .cinder-table__row,
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__row:is(:hover, [data-cinder-open], [data-cinder-current]) {
+    background: transparent;
+  }
+
+  .cinder-table[data-cinder-stack-card] .cinder-table__body .cinder-table__row::after {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline: calc(var(--cinder-space-3) * -1) 0;
+    z-index: -1;
+    border-radius: var(--cinder-radius-control);
+    transition: background var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  @media (hover: hover) {
+    .cinder-table[data-cinder-stack-card] .cinder-table__body .cinder-table__row:hover::after {
+      background: var(--_cinder-table-row-hover);
+    }
+  }
+
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__row:is([data-cinder-open], [data-cinder-current])::after {
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
+  }
+
+  .cinder-table[data-cinder-stack-card]
+    .cinder-table__body
+    .cinder-table__row:has(.cinder-table__cell[data-cinder-stack-title] a:focus-visible)::after {
+    /* Inset, inside the tint's shape: the scroll box clips at the tint's edges, so an outset ring
+     * would lose its sides. */
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-table[data-cinder-stack-card]
+      .cinder-table__body
+      .cinder-table__row:is([data-cinder-open], [data-cinder-current]) {
+      outline: none;
+    }
+
+    .cinder-table[data-cinder-stack-card]
+      .cinder-table__body
+      .cinder-table__row:is([data-cinder-open], [data-cinder-current])::after {
       outline: 1px solid Highlight;
       outline-offset: -1px;
     }

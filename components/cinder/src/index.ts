@@ -1195,6 +1195,7 @@ export type { TabPanelProps } from './components/tab-panel/index.ts';
 export { default as Table } from './components/table/index.ts';
 export type {
   SortDirection,
+  TableColumnSizing,
   TableContext,
   TableDensity,
   TableHeaderSelectionContext,

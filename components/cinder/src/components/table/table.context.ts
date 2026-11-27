@@ -4,6 +4,7 @@ import { optionalContext } from '../../_internal/optional-context.ts';
 import type {
   TableContext,
   TableHeaderSelectionContext,
+  TableRowColumnsContext,
   TableSectionContext,
 } from './table.types.ts';
 
@@ -47,6 +48,22 @@ export { setTableSectionContext };
 export const tryGetTableSectionContext: () => TableSectionContext | undefined = optionalContext(
   getTableSectionContextStrict,
 );
+
+// ---------------------------------------------------------------------------
+// TableRowColumnsContext — set by <TableRow>. Each Cinder cell claims the next
+// column position as it is created, so a header cell and the body cells under
+// it agree on a column during server rendering, before any DOM exists. Cells a
+// row renders itself (a selection cell) claim nothing on both sides, so the
+// positions still line up. After mount a cell moves to its DOM `cellIndex`.
+// ---------------------------------------------------------------------------
+const [getTableRowColumnsContextStrict, setTableRowColumnsContext] =
+  createContext<TableRowColumnsContext>();
+
+export { setTableRowColumnsContext };
+
+/** Optional read — returns `undefined` for a cell outside a TableRow. */
+export const tryGetTableRowColumnsContext: () => TableRowColumnsContext | undefined =
+  optionalContext(getTableRowColumnsContextStrict);
 
 // ---------------------------------------------------------------------------
 // TableHeaderSelectionContext — set by <TableHeader>.
