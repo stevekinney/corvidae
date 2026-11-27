@@ -391,32 +391,21 @@ test.describe('workflow builder design states for /workflows/new and /workflows/
     await page.setViewportSize({ width: 320, height: 640 });
     const workflowTitle = root.locator('#workflow-builder-title');
     await workflowTitle.scrollIntoViewIfNeeded();
-    const compactRecovery = await workflowTitle.evaluate((field) => {
-      const recovery = document.querySelector('.cinder-toast-undo-actions');
-      const fieldBox = field.getBoundingClientRect();
-      const recoveryBox = recovery?.getBoundingClientRect();
-      const overlaps =
-        recoveryBox !== undefined &&
-        recoveryBox.left < fieldBox.right &&
-        recoveryBox.right > fieldBox.left &&
-        recoveryBox.top < fieldBox.bottom &&
-        recoveryBox.bottom > fieldBox.top;
-      return {
-        fieldPainted: fieldBox.width > 0 && fieldBox.height > 0,
-        fieldReceivesHit: field.contains(
-          document.elementFromPoint(
-            fieldBox.x + fieldBox.width / 2,
-            fieldBox.y + fieldBox.height / 2,
-          ),
-        ),
-        overlaps,
-      };
-    });
-    expect(compactRecovery).toEqual({
-      fieldPainted: true,
-      fieldReceivesHit: true,
-      overlaps: false,
-    });
+    await expect(workflowTitle).toBeVisible();
+    expect(
+      await workflowTitle.evaluate((field) =>
+        field.closest('[data-read-only]')?.hasAttribute('inert'),
+      ),
+    ).toBe(true);
+    const fieldBox = await workflowTitle.boundingBox();
+    const recoveryBox = await undoActions.boundingBox();
+    expect(fieldBox).not.toBeNull();
+    expect(recoveryBox).not.toBeNull();
+    if (fieldBox !== null && recoveryBox !== null) {
+      expect(fieldBox.y).toBeGreaterThanOrEqual(0);
+      expect(fieldBox.y + fieldBox.height).toBeLessThanOrEqual(recoveryBox.y);
+    }
+    await undoActions.click({ trial: true });
     await captureForDesignReview(page, {
       route: '/workflows/new',
       state: 'six compact Undo actions at 320 by 640',
