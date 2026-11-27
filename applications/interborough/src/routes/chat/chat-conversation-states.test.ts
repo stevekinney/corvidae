@@ -10,6 +10,7 @@
 import { quietFor } from '@lostgradient/testing/wait-until';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { tick } from 'svelte';
 
 import type { QueryClient } from '@tanstack/svelte-query';
 import {
@@ -829,6 +830,68 @@ describe('the last turn’s outcome and its recovery commands (COR-2725)', () =>
     });
     await waitFor(() => expect(row.textContent).toContain('Stopped'));
     expect(row.textContent).not.toContain('Done');
+  });
+
+  test('while the runs are read again after a Discard, the title keeps saying Stopped and no strip appears', async () => {
+    const thread = ONLY_TOOLS('finished');
+    let held: Promise<void> | undefined;
+    let release = (): void => {};
+    const tasksListed = (): number =>
+      served.calls.filter((call) => call.method === 'bureau.tasks.list').length;
+    const served = serve(thread, {
+      answers: {
+        // A Bureau that has not answered yet, once a test holds it.
+        'bureau.tasks.list': async () => {
+          if (held !== undefined) await held;
+          return stoppedRun('canceled')();
+        },
+        'bureau.contexts.discardturn': (params) => {
+          thread.splice(1);
+          return { contextId: 'session-1', runId: params['runId'], removed: 2, revision: 4 };
+        },
+      },
+    });
+    const client = createQueryClient();
+    const chat = render(QueryPage, {
+      props: {
+        page: ChatConversation,
+        pageProps: { sessionId: 'session-1', title: 'Plan the week', agentName: 'tool-runner' },
+        client,
+      },
+    } as never);
+    const header = (): string =>
+      chat.container.querySelector('[data-testid="chat-header"]')?.textContent ?? '';
+    await waitFor(() => {
+      if (!header().includes('Stopped')) throw new Error('Not Stopped.');
+    });
+    await fireEvent.click(await chat.findByRole('button', { name: 'Discard' }));
+    await waitFor(() => {
+      if (chat.container.querySelector('.chat-turn-outcome') !== null)
+        throw new Error('Still drawn.');
+    });
+    expect(header()).toContain('Stopped');
+
+    // The runs are read again, and the Bureau has not answered.
+    held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const listed = tasksListed();
+    void client.invalidateQueries({ queryKey: ['bureau-tasks'] });
+    await waitFor(() => {
+      if (tasksListed() <= listed) throw new Error('Not asked yet.');
+    });
+    await tick();
+    // One fact does not flicker between two statements while it is read again.
+    expect(header()).toContain('Stopped');
+    expect(header()).not.toContain('Done');
+    expect(chat.container.querySelector('.weft-chat-strip')).toBeNull();
+
+    release();
+    await tick();
+    await waitFor(() => {
+      if (!header().includes('Stopped')) throw new Error('Not Stopped.');
+    });
+    expect(chat.container.querySelector('.weft-chat-strip')).toBeNull();
   });
 
   test.each([

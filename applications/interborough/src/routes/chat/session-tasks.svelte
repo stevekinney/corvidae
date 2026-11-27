@@ -76,12 +76,28 @@
     ),
   );
 
+  // Not state: nothing renders from them.
+  let afterARun = false;
+  let readSinceRun = false;
   $effect.pre(() => {
-    // Runs being read again may hold a newer run than the one in hand: nothing is said of them yet.
-    latestRunStopped =
-      tasks.data === undefined || tasks.isFetching
-        ? undefined
-        : chatsWithStoppedRun(rows).has(sessionId);
+    if (streaming) {
+      // A run going is a newer run than the one read: nothing is said of it until it ends and the
+      // runs are read again, so the page falls back to the turn it draws.
+      latestRunStopped = undefined;
+      afterARun = true;
+      readSinceRun = false;
+    } else if (afterARun) {
+      // The read that follows the run's end is the first one that may say how it ended.
+      if (tasks.isFetching) readSinceRun = true;
+      else if (readSinceRun && tasks.data !== undefined) {
+        afterARun = false;
+        latestRunStopped = chatsWithStoppedRun(rows).has(sessionId);
+      }
+    } else if (tasks.data !== undefined && !tasks.isFetching) {
+      latestRunStopped = chatsWithStoppedRun(rows).has(sessionId);
+    }
+    // While runs are read again (a Discard's refresh, a run's event) the last fact stands until the
+    // new read settles, so one fact never flickers between two statements.
   });
 
   let wasStreaming = untrack(() => streaming);
