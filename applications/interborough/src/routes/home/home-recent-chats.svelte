@@ -45,6 +45,7 @@
     'Waiting on you': 'warning',
     Running: 'info',
     Failed: 'danger',
+    Stopped: 'neutral',
     Ended: 'neutral',
     Done: 'success',
   };
