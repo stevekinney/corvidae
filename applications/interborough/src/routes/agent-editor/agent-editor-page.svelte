@@ -56,6 +56,7 @@
     CodeLocation,
     ConfirmDialog,
     CopyButton,
+    Input,
     PageHeader,
     Skeleton,
     Tooltip,
@@ -78,6 +79,7 @@
     getAgentDefinition,
     hasAvailableModel,
     listAgentVersions,
+    renameAgent,
     updateAgent,
     type AgentCatalog,
     type AgentFault,
@@ -217,6 +219,8 @@
   /** A save had no answer within {@link SAVE_TIMEOUT_MS}, so the page stopped waiting (row 14x). */
   let timedOut = $state(false);
   let confirmingDelete = $state(false);
+  let confirmingRename = $state(false);
+  let renameTo = $state('');
   let deleteError = $state<string | undefined>();
   let trying = $state(false);
   // Where Try it is drawn: beside the form at desktop width, else a sheet the header opens.
@@ -425,6 +429,17 @@
       confirmingDelete = false;
       failWith(fault, copy.deleteFailed);
     },
+  }));
+
+  const rename = createMutation(() => ({
+    mutationFn: () => renameAgent(agentId ?? '', renameTo.trim(), currentHash ?? ''),
+    onSuccess: (result) => {
+      confirmingRename = false;
+      wasWritten();
+      leaveGuard.release();
+      router.navigate(agentPath(result.to));
+    },
+    onError: (error) => failWith(agentFaultOf(error), 'Could not change ID'),
   }));
 
   /** A save is in flight and the page is still waiting for it: Save shows its loading state. */
@@ -778,6 +793,10 @@
               deleteError = undefined;
               confirmingDelete = true;
             }}
+            onChangeId={() => {
+              renameTo = editor.identifier;
+              confirmingRename = true;
+            }}
             retryingModels={catalog.isFetching}
             onRetryModels={() => void catalog.refetch()}
             savedRevision={latestVersion?.revision}
@@ -805,6 +824,21 @@
   error={deleteError}
   onConfirm={confirmDelete}
 />
+
+<ConfirmDialog
+  bind:open={confirmingRename}
+  title="Change saved agent ID"
+  description="This changes the saved identifier and updates its schedules, workflows, and hooks."
+  confirmLabel="Change ID"
+  busy={rename.isPending}
+  closeOnConfirm={false}
+  destructive
+  onConfirm={() => rename.mutate()}
+>
+  {#snippet options()}
+    <Input id="agent-new-identifier" label="New ID" bind:value={renameTo} />
+  {/snippet}
+</ConfirmDialog>
 
 <!-- Asked before a form that differs from what was saved is left (rows 42o, 42p). -->
 <ConfirmDialog

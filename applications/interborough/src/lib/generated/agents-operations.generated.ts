@@ -172,6 +172,17 @@ export type AgentsOperationTypes = {
     };
     readonly faults: 'InvalidParams';
   };
+  'bureau.agents.definitions.rename': {
+    readonly input: { readonly expectedHash: string; readonly id: string; readonly to: string };
+    readonly output: {
+      readonly from: string;
+      readonly phase: 'cutover';
+      readonly sourceHash: string;
+      readonly to: string;
+    };
+    readonly faults:
+      'Conflict' | 'InvalidParams' | 'NotFound' | 'StaleRevision' | 'UnsupportedCapability';
+  };
   'bureau.agents.definitions.revisions': {
     readonly input: { readonly id: string };
     readonly output: {

@@ -17,6 +17,9 @@ export const CATALOG_OPERATION_BEHAVIORS = {
   'bureau.agents.definitions.list': {
     mcpExposable: false,
   },
+  'bureau.agents.definitions.rename': {
+    mcpExposable: false,
+  },
   'bureau.agents.definitions.revisions': {
     mcpExposable: false,
   },

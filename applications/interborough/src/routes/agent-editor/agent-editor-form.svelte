@@ -71,6 +71,8 @@
     onCancel: () => void;
     /** Asks to delete the agent. Only an agent that exists has the control. */
     onDelete: () => void;
+    /** Opens the saved identifier change confirmation. */
+    onChangeId: () => void;
     /** The catalog is being read again after the model field's Try again (row 42v). */
     retryingModels?: boolean;
     /** Reads the catalog again, from the model field's Try again (row 42v). */
@@ -90,6 +92,7 @@
     onSave,
     onCancel,
     onDelete,
+    onChangeId,
     retryingModels = false,
     onRetryModels,
     savedRevision,
@@ -194,10 +197,13 @@
     />
 
     {#if !creating}
-      <!-- A saved agent's identifier, once, small and monospaced (row 41s); it cannot be changed here. -->
+      <!-- A saved agent's identifier is immutable except through the explicit durable rename flow. -->
       <p class="weft-agent-form__identifier" data-testid="agent-identifier">
         <span>{copy.edit.idLabel}</span>
         <code class="weft-agent-form__identifier-value">{editor.identifier}</code>
+        <Button type="button" variant="ghost-accent" size="sm" disabled={busy} onclick={onChangeId}
+          >Change ID</Button
+        >
       </p>
     {:else if editor.identifierFollowsName}
       <p class="weft-agent-form__identifier" data-testid="agent-identifier">

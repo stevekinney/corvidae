@@ -746,6 +746,16 @@ export async function updateAgent(
   );
 }
 
+/** Changes a saved agent identifier without losing its durable references. */
+export async function renameAgent(
+  id: string,
+  to: string,
+  expectedHash: string,
+  options?: Options,
+): Promise<BureauOutput<'bureau.agents.definitions.rename'>> {
+  return bureauClient['bureau.agents.definitions.rename']({ id, to, expectedHash }, options);
+}
+
 /**
  * Copies a plugin's read-only agent (`plugin:name`) into the owner's agents as `name`, with its
  * tools unversioned. A name the owner already uses is a `Conflict` (`agent-file-exists`).
