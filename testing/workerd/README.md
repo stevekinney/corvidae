@@ -11,4 +11,4 @@ await withWorker(
 );
 ```
 
-Pass `durableObjects` to name Durable Object classes, `assets` to bind a static-assets directory as `ASSETS`, and `outboundService` to stub outbound fetches. The callback also receives D1 and Durable Object binding accessors. A library adds a `*.integration.test.ts` suite that imports its Worker-facing export, exercises it through `withWorker`, and runs it from its `test:slow` script.
+Pass `durableObjects` to name Durable Object classes, `assets` to bind a static-assets directory as `ASSETS`, `r2Buckets` to bind named R2 buckets, `hyperdrives` to bind each Hyperdrive name to a PostgreSQL connection string, and `outboundService` to stub outbound fetches. The callback also receives D1, R2, and Durable Object binding accessors. A library adds a `*.integration.test.ts` suite that imports its Worker-facing export, exercises it through `withWorker`, and runs it from its `test:slow` script.

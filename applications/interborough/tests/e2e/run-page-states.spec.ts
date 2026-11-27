@@ -13,10 +13,12 @@
  * (`readSampleWorldRecords`). A state the sample world does not hold, a live run and a run waiting
  * on a signal, is covered where the page is built from a table (`run-detail-engine.test.ts`).
  */
+import type { WorkflowTimelineEntry } from '@lostgradient/weft';
 import type { Locator, Page } from '@playwright/test';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
+import { logLine } from '../../src/routes/workflows/runs/run-log-cases.test-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -220,7 +222,7 @@ for (const width of WIDTHS) {
     });
     await how.locator('[data-step-row]').first().click();
     await expect(how.locator('article[data-step]')).toBeVisible();
-    await expect(how.locator('article[data-step] section[aria-label="Input"]')).not.toContainText(
+    await expect(how.locator('article[data-step]').getByRole('group', { name: 'Input' })).not.toContainText(
       world.runs.failed,
     );
     await captureForDesignReview(page, {
@@ -254,6 +256,177 @@ for (const width of WIDTHS) {
         if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
         await reveal(page.getByRole('menu'));
       },
+    });
+  });
+}
+
+const FAILED_STEP_VIEWS = [
+  ['Input', 'Fields'],
+  ['Input', 'JSON'],
+  ['Error', 'Fields'],
+  ['Error', 'JSON'],
+] as const;
+
+async function tapDisclosureEdge(page: Page, disclosure: Locator): Promise<void> {
+  await disclosure.scrollIntoViewIfNeeded();
+  const point = await disclosure.evaluate((button) => {
+    const { left, top, width, height } = button.getBoundingClientRect();
+    const x = left + width / 2;
+    const y = top + height / 2 + 21;
+    return { x, y, owned: button.contains(document.elementFromPoint(x, y)) };
+  });
+  expect(point.owned).toBe(true);
+  await page.touchscreen.tap(point.x, point.y);
+}
+
+for (const width of [1280, 1920, 375, 320] as const) {
+  const phone = width < 400;
+  test.describe(`/runs/:run step inspector at ${width}px`, () => {
+    test.use({ hasTouch: phone });
+    test(`failed-run inspector keeps selected-step payloads readable at ${width}px`, async ({
+      page,
+      request,
+    }) => {
+      const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+      const runId = encodeURIComponent(world.runs.failed);
+      const workflowPath = `/v1/workflows/${runId}`;
+      const timeline = await request.get(`${E2E_SHOWCASE_URL}${workflowPath}/timeline`);
+      expect(timeline.ok()).toBe(true);
+      const entries = (await timeline.json()) as WorkflowTimelineEntry[];
+      const failed = entries.find((entry) => entry.status === 'failed');
+      if (failed?.stepIndex === undefined) throw new Error('The failed step has no log index');
+      const stepIndex = failed.stepIndex;
+      const message = 'Finished reading the merged pull requests';
+      type WorkflowCall = {
+        readonly id?: string | number;
+        readonly method?: string;
+        readonly params?: { readonly workflowId?: string };
+      };
+      const calls: string[] = [];
+      await page.route('**/jsonrpc', async (route) => {
+        const call = route.request().postDataJSON() as WorkflowCall | null;
+        if (call?.params?.workflowId !== world.runs.failed || call.method === undefined) {
+          await route.fallback();
+          return;
+        }
+        calls.push(call.method);
+        if (call.method !== 'weft.workflows.logs.list') {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          json: {
+            jsonrpc: '2.0',
+            id: call.id,
+            result: { lines: [logLine(0, stepIndex, message)], dropped: 0 },
+          },
+        });
+      });
+
+      await openRun(page, `/runs/${runId}`, width);
+      await page.setViewportSize({
+        width,
+        height: width < 400 ? (width === 320 ? 640 : 812) : 900,
+      });
+      const how = await openHowItRan(page);
+      const steps = how.getByTestId('run-steps');
+      await steps.locator(`[data-step-row="${failed.step}"]`).click();
+      const detail = steps.locator(`article[data-step="${failed.step}"]`);
+      const fields = detail.locator('.ib-step-detail__fields');
+      const input = detail.getByRole('group', { name: 'Input', exact: true });
+      const error = detail.getByRole('group', { name: 'Error', exact: true });
+      const log = detail.getByRole('list', { name: 'Log lines' });
+      const logs = detail.getByRole('button', { name: 'Logs', exact: true });
+      await expect(log).toContainText(message);
+      const loadedReads = calls.length;
+      expect(calls).toContain('weft.workflows.timeline.get');
+      expect(calls).toContain('weft.workflows.logs.list');
+
+      const boxes = await readBoxes(page, { fields, input, error });
+      for (const payload of [boxes.input, boxes.error]) {
+        expect(Math.abs(payload.x - boxes.fields.x)).toBeLessThanOrEqual(1);
+        expect(Math.abs(payload.width - boxes.fields.width)).toBeLessThanOrEqual(1);
+      }
+
+      if (phone) {
+        expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
+        const nested = input.getByRole('button', { name: 'Input, 2 fields', exact: true });
+        const expanded = await nested.getAttribute('aria-expanded');
+        await tapDisclosureEdge(page, nested);
+        await expect(nested).toHaveAttribute(
+          'aria-expanded',
+          expanded === 'true' ? 'false' : 'true',
+        );
+        await tapDisclosureEdge(page, nested);
+        await expect(nested).toHaveAttribute('aria-expanded', expanded ?? '');
+
+        const showAll = error.getByRole('button', { name: 'Show all', exact: true });
+        await tapDisclosureEdge(page, showAll);
+        const showLess = error.getByRole('button', { name: 'Show less', exact: true });
+        await expect(showLess).toHaveAttribute('aria-expanded', 'true');
+        await showLess.tap();
+        await expect(showAll).toHaveAttribute('aria-expanded', 'false');
+      }
+
+      for (const [label, view] of FAILED_STEP_VIEWS) {
+        const payload = detail.getByRole('group', { name: label, exact: true });
+        const option = payload.getByRole('radio', { name: view, exact: true });
+        await option.click();
+        await expect(option).toBeChecked();
+        if (label === 'Input' && view === 'JSON') {
+          await payload.getByRole('button', { name: /^input: object/ }).click();
+          await payload.getByRole('button', { name: /^trigger: object/ }).click();
+        }
+        await expect(payload).toContainText(
+          label === 'Input' ? 'assistant' : 'GitHub didn’t answer',
+        );
+        if (label === 'Input') await expect(payload).toContainText('[REDACTED]');
+        if (label === 'Error' && view === 'JSON') {
+          await expect(payload.locator('.cinder-json-viewer__value')).toHaveText(
+            failed.outputSummary ?? '',
+            { useInnerText: true },
+          );
+          const sideways = await payload
+            .getByRole('tree')
+            .evaluate((element) => element.scrollWidth - element.clientWidth);
+          expect(sideways).toBeLessThanOrEqual(0);
+        }
+        if (label === 'Input' && view === 'Fields' && width >= 1280) {
+          const value = payload.getByText('assistant', { exact: true });
+          await expect(value).toBeVisible();
+          const lineCount = await value.evaluate((element) => {
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            return range.getClientRects().length;
+          });
+          expect(lineCount).toBe(1);
+        }
+
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+          width,
+        );
+        if (width === 1280 || width === 375) {
+          await captureForDesignReview(page, {
+            route: '/runs/:run',
+            state: `selected failed step ${label} ${view}`,
+            source: SOURCE,
+            ready: async () => {
+              await expect(option).toBeChecked();
+              await option.scrollIntoViewIfNeeded();
+            },
+          });
+        }
+      }
+
+      await logs.click();
+      await expect(logs).toHaveAttribute('aria-expanded', 'false');
+      await expect(log).toBeHidden();
+      await logs.click();
+      await expect(logs).toHaveAttribute('aria-expanded', 'true');
+      await expect(log).toContainText(message);
+      await error.getByRole('radio', { name: 'Fields', exact: true }).click();
+      await expect(error.getByRole('radio', { name: 'Fields', exact: true })).toBeChecked();
+      expect(calls.slice(loadedReads)).toEqual([]);
     });
   });
 }

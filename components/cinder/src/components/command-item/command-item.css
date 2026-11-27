@@ -111,7 +111,7 @@
   }
 
   /* The label's line with a meta: the label's own text truncates first, so what kind of row it is
-     ("Approval, waiting") stays readable on a phone, and a long meta truncates before it takes
+     ("Approval, waiting") stays readable, and a long meta truncates before it takes
      more than 60% of the line. */
   .cinder-command-item__label[data-cinder-meta] {
     display: flex;
@@ -135,6 +135,18 @@
     white-space: nowrap;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-xs);
+  }
+
+  /* In the docked palette, reserve the full first line for the title's identifying text. */
+  .cinder-command-palette[data-cinder-sheet='docked']
+    .cinder-command-item__label[data-cinder-meta] {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cinder-command-palette[data-cinder-sheet='docked'] .cinder-command-item__meta {
+    max-inline-size: none;
+    margin-inline-start: 0;
   }
 
   /* A row whose meta has nothing to say has no gap to hang from the label. */

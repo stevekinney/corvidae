@@ -4,8 +4,11 @@
  * access key ID and a signature valid for 300 seconds.
  */
 import { describe, expect, it } from 'bun:test';
-
-import { createS3ObjectOperations, type ObjectStoreOperations } from './object-operations';
+import {
+  createS3ObjectOperations,
+  createSigV4Presigner,
+  type S3ObjectStoreOperations,
+} from '@lostgradient/object-store';
 
 const ACCESS_KEY_ID = 'AKIACORVIDAEEXAMPLE';
 const SECRET_ACCESS_KEY = 'secret-access-key-for-the-test-only';
@@ -31,7 +34,7 @@ async function closedPort(): Promise<number> {
   return port;
 }
 
-const requests: Array<[string, (operations: ObjectStoreOperations) => Promise<unknown>]> = [
+const requests: Array<[string, (operations: S3ObjectStoreOperations) => Promise<unknown>]> = [
   ['list', (operations) => operations.list('definitions/')],
   ['read', (operations) => operations.read('definitions/helper.md')],
   [
@@ -47,13 +50,20 @@ describe('a failed object-store request', () => {
     '%s throws an error with no URL, query string, or credential',
     async (_name, request) => {
       const endpoint = `http://127.0.0.1:${await closedPort()}`;
-      const client = new Bun.S3Client({
+      const options = {
         accessKeyId: ACCESS_KEY_ID,
         secretAccessKey: SECRET_ACCESS_KEY,
         bucket: 'bucket',
         endpoint,
-      });
-      const thrown = await request(createS3ObjectOperations(client, 'bucket', 'text/plain')).then(
+        region: 'us-east-1',
+      };
+      const thrown = await request(
+        createS3ObjectOperations({
+          presigner: createSigV4Presigner(options),
+          bucket: 'bucket',
+          contentType: 'text/plain',
+        }),
+      ).then(
         () => undefined,
         (error: unknown) => error,
       );

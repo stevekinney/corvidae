@@ -5,6 +5,11 @@
  * the in-process S3 server in `@lostgradient/testing`.
  */
 import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
+import {
+  createS3ObjectOperations,
+  createSigV4Presigner,
+  type S3ObjectStoreOperations,
+} from '@lostgradient/object-store';
 import { createS3TestServer, type S3TestServer } from '@lostgradient/testing/s3-server';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
@@ -20,7 +25,6 @@ import {
   SourceConflictError,
 } from './definition-source';
 import * as sources from './index';
-import { createS3ObjectOperations, type ObjectStoreOperations } from './object-operations';
 import { workflowObjectSource } from './workflow-object-source';
 
 const encoder = new TextEncoder();
@@ -37,6 +41,7 @@ interface Calls {
 
 interface Setup {
   readonly server: S3TestServer;
+  /** Used only to simulate an external delete in the contract tests. */
   readonly client: Bun.S3Client;
   readonly runtime: ManualRuntimeServices;
   readonly calls: Calls;
@@ -48,9 +53,9 @@ interface Setup {
     remove?: ((key: string) => void | Promise<void>) | undefined;
   };
   /** The unrecorded operations over the same server. */
-  readonly real: ObjectStoreOperations;
+  readonly real: S3ObjectStoreOperations;
   /** Make the operations a source built from `overrides` uses. */
-  make(overrides?: Partial<ObjectStoreOperations>): DefinitionSource;
+  make(overrides?: Partial<S3ObjectStoreOperations>): DefinitionSource;
 }
 
 const stops: Array<() => void | Promise<void>> = [];
@@ -65,9 +70,13 @@ function setup(options: { watch?: boolean; pollIntervalMilliseconds?: number } =
   const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
   const calls: Calls = { lists: 0, reads: [], puts: 0, removes: 0 };
   const diagnostics: string[] = [];
-  const real = createS3ObjectOperations(client, server.bucket, 'text/plain');
+  const real = createS3ObjectOperations({
+    presigner: createSigV4Presigner(server.clientOptions()),
+    bucket: server.bucket,
+    contentType: 'text/plain',
+  });
   const before: Setup['before'] = {};
-  const recorded: ObjectStoreOperations = {
+  const recorded: S3ObjectStoreOperations = {
     list: (prefix, token) => {
       calls.lists += 1;
       return real.list(prefix, token);
@@ -87,11 +96,10 @@ function setup(options: { watch?: boolean; pollIntervalMilliseconds?: number } =
       return real.remove(key, etag);
     },
   };
-  function make(overrides: Partial<ObjectStoreOperations> = {}): DefinitionSource {
+  function make(overrides: Partial<S3ObjectStoreOperations> = {}): DefinitionSource {
     return agentObjectSource(
       { bucket: server.bucket, prefix: PREFIX },
       {
-        client,
         operations: { ...recorded, ...overrides },
         runtime,
         pollIntervalMilliseconds: options.pollIntervalMilliseconds ?? POLL,
@@ -137,9 +145,12 @@ describe('what a listing counts as a definition', () => {
   });
 
   it('treats a prefix without its trailing slash as the same folder', async () => {
-    const { server, client } = setup();
+    const { server, real } = setup();
     server.put(`${PREFIX}helper.md`, 'one');
-    const source = agentObjectSource({ bucket: server.bucket, prefix: 'definitions' }, { client });
+    const source = agentObjectSource(
+      { bucket: server.bucket, prefix: 'definitions' },
+      { operations: real },
+    );
     expect(await idsOf(source)).toEqual(['helper']);
   });
 
@@ -388,13 +399,13 @@ describe('watch', () => {
   });
 
   it('uses the runtime and diagnostics the Bureau lends when it was given none', async () => {
-    const { server, client } = setup();
+    const { server, real } = setup();
     const lent = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
     const diagnostics: string[] = [];
     server.put(`${PREFIX}helper.md`, 'one');
     const source = agentObjectSource(
       { bucket: server.bucket, prefix: PREFIX },
-      { client, pollIntervalMilliseconds: POLL },
+      { operations: real, pollIntervalMilliseconds: POLL },
     );
     source.attach?.({
       runtime: lent,
@@ -518,16 +529,15 @@ describe('conditional writes and deletes', () => {
 
 describe('the constructors validate their arguments', () => {
   // No request is made, so no server runs.
-  const client = new Bun.S3Client({
-    endpoint: 'http://127.0.0.1:1',
-    bucket: 'test-bucket',
-    region: 'us-east-1',
-    accessKeyId: 'id',
-    secretAccessKey: 'secret',
-  });
+  const operations: S3ObjectStoreOperations = {
+    list: async () => ({ objects: [] }),
+    read: async () => undefined,
+    put: async () => ({ outcome: 'written' }),
+    remove: async () => 'removed',
+  };
   const location = { bucket: 'test-bucket', prefix: PREFIX };
 
-  it('refuses a missing client, a bad location, and a bad interval', () => {
+  it('refuses missing operations, a bad location, and a bad interval', () => {
     const bad = (call: () => unknown): void => {
       expect(call).toThrow(TypeError);
     };
@@ -535,18 +545,18 @@ describe('the constructors validate their arguments', () => {
     const looseWorkflow = workflowObjectSource as (location: unknown, options: unknown) => unknown;
     bad(() => loose(location, {}));
     bad(() => loose(location, undefined));
-    bad(() => loose(undefined, { client }));
-    bad(() => loose({ bucket: '', prefix: PREFIX }, { client }));
-    bad(() => loose({ bucket: 3, prefix: PREFIX }, { client }));
-    bad(() => loose({ bucket: 'test-bucket' }, { client }));
-    bad(() => loose({ bucket: 'test-bucket', prefix: '/leading' }, { client }));
-    bad(() => loose(location, { client, pollIntervalMilliseconds: 0 }));
-    bad(() => looseWorkflow(location, { client, pollIntervalMilliseconds: Number.NaN }));
+    bad(() => loose(undefined, { operations }));
+    bad(() => loose({ bucket: '', prefix: PREFIX }, { operations }));
+    bad(() => loose({ bucket: 3, prefix: PREFIX }, { operations }));
+    bad(() => loose({ bucket: 'test-bucket' }, { operations }));
+    bad(() => loose({ bucket: 'test-bucket', prefix: '/leading' }, { operations }));
+    bad(() => loose(location, { operations, pollIntervalMilliseconds: 0 }));
+    bad(() => looseWorkflow(location, { operations, pollIntervalMilliseconds: Number.NaN }));
   });
 
   it('tags the source with its kind and the agent source with its tools', () => {
-    const agent = agentObjectSource(location, { client, tools: {} });
-    const workflow = workflowObjectSource(location, { client });
+    const agent = agentObjectSource(location, { operations, tools: {} });
+    const workflow = workflowObjectSource(location, { operations });
     expect(agent.kind).toBe('agent');
     expect(agent.tools).toEqual({});
     expect(workflow.kind).toBe('workflow');

@@ -16,14 +16,13 @@ import { AUTHORIZATION_SCOPES } from '@lostgradient/weft';
  * @module engine-proxy
  */
 
-import { timingSafeEqual } from 'node:crypto';
-
 import {
   defaultAuthAuditSink,
   principalFromApiKey,
   type AuthConfig,
   type AuthenticatedPrincipal,
 } from '@lostgradient/backchannel';
+import { timingSafeEqualText } from '@lostgradient/cryptography';
 
 /** The caller every request acts as. Bureau owns what an uncredentialed local caller creates as this. */
 export const LOCAL_SUBJECT = 'anonymous:local';
@@ -78,19 +77,14 @@ export function isEngineRequestPath(pathname: string): boolean {
  * private port without the key.
  */
 export function createLocalAuthentication(key: string): AuthConfig {
-  const expected = Buffer.from(key);
   const principal = (): AuthenticatedPrincipal =>
     principalFromApiKey({ subject: LOCAL_SUBJECT, scopes: [...AUTHORIZATION_SCOPES] });
   return {
     auditSink: (event) => {
       if (event.outcome === 'failure') defaultAuthAuditSink(event);
     },
-    resolveApiKeyPrincipal: async (presented) => {
-      const candidate = Buffer.from(presented);
-      return candidate.length === expected.length && timingSafeEqual(candidate, expected)
-        ? principal()
-        : null;
-    },
+    resolveApiKeyPrincipal: async (presented) =>
+      timingSafeEqualText(presented, key) ? principal() : null,
   };
 }
 

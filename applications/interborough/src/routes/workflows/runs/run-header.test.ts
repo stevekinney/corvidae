@@ -14,7 +14,52 @@ import type { WorkflowContextualAction } from '../detail/workflow-status.ts';
 import RunHeaderHarness from './run-header.test-harness.svelte';
 import { durationWords } from './run-rows.ts';
 
-afterEach(() => cleanup());
+const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+const originalExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
+
+afterEach(() => {
+  cleanup();
+  if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+  else Reflect.deleteProperty(navigator, 'clipboard');
+  if (originalExecCommand) Object.defineProperty(document, 'execCommand', originalExecCommand);
+  else Reflect.deleteProperty(document, 'execCommand');
+});
+
+/**
+ * Stands in for the two places Cinder's `copyToClipboard` writes: the native Async Clipboard API
+ * (`native`) and the `document.execCommand('copy')` fallback (`legacy`, which records the text of
+ * the textarea it selects). The helper's own cases are tested in Cinder.
+ */
+function stubClipboard(behavior: {
+  native: 'accepts' | 'rejects' | 'unavailable';
+  legacy: 'unused' | 'succeeds' | 'returns-false' | 'throws';
+}) {
+  const nativeWrites: string[] = [];
+  const legacyCopies: string[] = [];
+  if (behavior.native === 'unavailable') {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+  } else {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          nativeWrites.push(text);
+          if (behavior.native === 'rejects') throw new Error('denied');
+        },
+      },
+    });
+  }
+  Object.defineProperty(document, 'execCommand', {
+    configurable: true,
+    value: (command: string) => {
+      expect(command).toBe('copy');
+      legacyCopies.push(document.querySelector('textarea')?.value ?? '');
+      if (behavior.legacy === 'throws') throw new Error('not allowed');
+      return behavior.legacy === 'succeeds';
+    },
+  });
+  return { nativeWrites, legacyCopies };
+}
 
 function renderHeader(props: Record<string, unknown> = {}) {
   return render(RunHeaderHarness, {
@@ -393,12 +438,61 @@ describe('the run page header', () => {
     expect(unwired.queryByRole('menuitem', { name: 'Restart' })).toBeNull();
   });
 
-  test('names the workflow as the heading and keeps its run identifier in Copy run ID', async () => {
-    const written: string[] = [];
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText: async (text: string) => void written.push(text) },
+  describe('Copy run ID, through the Cinder clipboard helper', () => {
+    async function copyRunId() {
+      const toasts = render(ToastHost);
+      const view = renderHeader();
+      await openMenu(view);
+      await fireEvent.click(view.getByRole('menuitem', { name: 'Copy run ID' }));
+      return toasts;
+    }
+
+    test('says the ID is copied when the native write succeeds, without the fallback', async () => {
+      const clipboard = stubClipboard({ native: 'accepts', legacy: 'unused' });
+      const toasts = await copyRunId();
+
+      expect(clipboard.nativeWrites).toEqual(['run-1']);
+      expect(clipboard.legacyCopies).toEqual([]);
+      expect(await toasts.findByText('Run ID copied')).not.toBeNull();
     });
+
+    test('says the ID is copied when the native write rejects and the fallback succeeds', async () => {
+      const clipboard = stubClipboard({ native: 'rejects', legacy: 'succeeds' });
+      const toasts = await copyRunId();
+
+      expect(clipboard.nativeWrites).toEqual(['run-1']);
+      expect(clipboard.legacyCopies).toEqual(['run-1']);
+      expect(await toasts.findByText('Run ID copied')).not.toBeNull();
+      expect(toasts.queryByText(/The run ID was not copied/)).toBeNull();
+    });
+
+    test('says the ID is copied when the clipboard API is unavailable and the fallback succeeds', async () => {
+      const clipboard = stubClipboard({ native: 'unavailable', legacy: 'succeeds' });
+      const toasts = await copyRunId();
+
+      expect(clipboard.legacyCopies).toEqual(['run-1']);
+      expect(await toasts.findByText('Run ID copied')).not.toBeNull();
+    });
+
+    test.each([
+      ['rejects', 'returns-false'],
+      ['rejects', 'throws'],
+      ['unavailable', 'returns-false'],
+    ] as const)(
+      'says the ID was not copied when the native write %s and the fallback %s',
+      async (native, legacy) => {
+        const clipboard = stubClipboard({ native, legacy });
+        const toasts = await copyRunId();
+
+        expect(await toasts.findByText(/The run ID was not copied\.$/)).not.toBeNull();
+        expect(clipboard.legacyCopies).toEqual(['run-1']);
+        expect(toasts.queryByText('Run ID copied')).toBeNull();
+      },
+    );
+  });
+
+  test('names the workflow as the heading and keeps its run identifier in Copy run ID', async () => {
+    const clipboard = stubClipboard({ native: 'accepts', legacy: 'unused' });
     const toasts = render(ToastHost);
     const view = renderHeader({ title: 'Release notes', titleIsIdentifier: false });
     const heading = view.getByRole('heading', { level: 1, name: 'Release notes' });
@@ -408,7 +502,7 @@ describe('the run page header', () => {
     await openMenu(view);
     await fireEvent.click(view.getByRole('menuitem', { name: 'Copy run ID' }));
 
-    expect(written).toEqual(['run-1']);
+    expect(clipboard.nativeWrites).toEqual(['run-1']);
     expect(await toasts.findByText('Run ID copied')).not.toBeNull();
   });
 });

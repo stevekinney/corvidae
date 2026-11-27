@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2747",
+  "branch": "codex/cor-2747-node22-bureau",
+  "checkedAt": "fa19d0e23c17f2db5f5f202163ec477dd4d0fc0b",
+  "briefVersion": "53a9c0a9a1f6",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Bundled native Node 22.23.4 smoke imports Bureau's root and public non-testing subpaths, completes an inline-agent task, and loads directory and S3 agent definitions; 4 Node cases passed."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Bureau's ordinary suite passed; native Node 22.23.4 isolated lane passed 235 tests after rebuilding the isolated worktree's better-sqlite3 ABI."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "bun scripts/check-export-runtime-reach.ts completed successfully with no Bureau Bun runtime reaches."
+    }
+  ]
+}

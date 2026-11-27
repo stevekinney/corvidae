@@ -6,7 +6,11 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { createSigV4Presigner, type PresignMethod, type SigV4PresignerOptions } from './presign.ts';
+import {
+  createSigV4Presigner,
+  type PresignMethod,
+  type SigV4PresignerOptions,
+} from '@lostgradient/object-store';
 
 type Credentials = Omit<SigV4PresignerOptions, 'now'>;
 

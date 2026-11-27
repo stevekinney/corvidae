@@ -1,12 +1,12 @@
 <script lang="ts">
   /**
    * One step, read from the top: its name, one line of status (the dot, the word, when it started,
-   * how long it took, and its name in code), then what went in and what came out side by side, the
-   * branches of a step that ran several things at once, the lines the run logged under it, whatever
-   * the step offers to do (complete an activity, open a stream, read a worker's record). Everything is
-   * open and nothing sits in a box.
+   * how long it took, and its name in code), then its ordinary side-by-side input and output or a
+   * failed step's full-width inspectable payloads, the branches of a step that ran several things
+   * at once, the lines the run logged under it, whatever the step offers to do (complete an
+   * activity, open a stream, read a worker's record).
    */
-  import { StatusDot } from '@lostgradient/cinder';
+  import { Collapsible, PayloadInspector, StatusDot } from '@lostgradient/cinder';
   import type { WorkflowTimelineEntry } from '@lostgradient/weft';
   import type { Snippet } from 'svelte';
 
@@ -16,7 +16,7 @@
   import LogLines from '../../runs/log-lines.svelte';
   import type { RunLogLine } from '../../runs/run-logs-data.ts';
   import { isDegradedCoordinationEntry } from '../timeline/timeline-mapping.ts';
-  import { prettySummary, stepName, stepStatus } from './step-presentation.ts';
+  import { parseStepSummary, prettySummary, stepName, stepStatus } from './step-presentation.ts';
   import type { WaterfallBar } from '@lostgradient/interborough-plugin/step-waterfall';
 
   interface StepDetailProps {
@@ -33,6 +33,11 @@
 
   let { entry, documentWorkflowId, bar, open, logs, actions }: StepDetailProps = $props();
 
+  const displayInput = $derived(
+    documentWorkflowId === undefined || entry.operationType !== 'activity'
+      ? entry.inputSummary
+      : displayDocumentActivityInput(entry.inputSummary, documentWorkflowId),
+  );
   const name = $derived(stepName(entry));
   const status = $derived(stepStatus(entry.status, open));
   const failed = $derived(entry.status === 'failed' || entry.status === 'timed-out');
@@ -66,28 +71,43 @@
     </p>
   </header>
 
-  <div class="ib-step-detail__fields">
-    <section class="ib-step-detail__field" aria-label={RUN_STEPS_COPY.input}>
-      <h4 class="ib-step-detail__label">{RUN_STEPS_COPY.input}</h4>
-      <pre class="ib-step-detail__value">{prettySummary(
-          documentWorkflowId === undefined || entry.operationType !== 'activity'
-            ? entry.inputSummary
-            : displayDocumentActivityInput(entry.inputSummary, documentWorkflowId),
-        )}</pre>
-    </section>
-    <section
-      class="ib-step-detail__field"
-      aria-label={failed ? RUN_STEPS_COPY.error : RUN_STEPS_COPY.output}
-    >
-      <h4 class="ib-step-detail__label">
-        {failed ? RUN_STEPS_COPY.error : RUN_STEPS_COPY.output}
-      </h4>
+  <div class={['ib-step-detail__fields', { 'ib-step-detail__fields--failed': failed }]}>
+    {#if failed}
+      <PayloadInspector
+        bare
+        label={RUN_STEPS_COPY.input}
+        value={displayInput}
+        parse={parseStepSummary}
+        redact={[]}
+      />
       {#if entry.outputSummary === undefined}
-        <p class="ib-step-detail__none">{RUN_STEPS_COPY.nothingKept}</p>
+        <section class="ib-step-detail__field" aria-label={RUN_STEPS_COPY.error}>
+          <h4 class="ib-step-detail__label">{RUN_STEPS_COPY.error}</h4>
+          <p class="ib-step-detail__none">{RUN_STEPS_COPY.nothingKept}</p>
+        </section>
       {:else}
-        <pre class="ib-step-detail__value">{prettySummary(entry.outputSummary)}</pre>
+        <PayloadInspector
+          bare
+          label={RUN_STEPS_COPY.error}
+          value={entry.outputSummary}
+          parse={parseStepSummary}
+          redact={[]}
+        />
       {/if}
-    </section>
+    {:else}
+      <section class="ib-step-detail__field" aria-label={RUN_STEPS_COPY.input}>
+        <h4 class="ib-step-detail__label">{RUN_STEPS_COPY.input}</h4>
+        <pre class="ib-step-detail__value">{prettySummary(displayInput)}</pre>
+      </section>
+      <section class="ib-step-detail__field" aria-label={RUN_STEPS_COPY.output}>
+        <h4 class="ib-step-detail__label">{RUN_STEPS_COPY.output}</h4>
+        {#if entry.outputSummary === undefined}
+          <p class="ib-step-detail__none">{RUN_STEPS_COPY.nothingKept}</p>
+        {:else}
+          <pre class="ib-step-detail__value">{prettySummary(entry.outputSummary)}</pre>
+        {/if}
+      </section>
+    {/if}
   </div>
 
   {#if degradedGroup}
@@ -124,8 +144,14 @@
       aria-label={RUN_STEPS_COPY.logs}
       data-section="step-logs"
     >
-      <h4 class="ib-step-detail__label">{RUN_STEPS_COPY.logs}</h4>
-      <LogLines lines={logs} label={RUN_STEPS_COPY.logsListLabel} />
+      {#if failed}
+        <Collapsible open animated={false} variant="flat" trigger={RUN_STEPS_COPY.logs}>
+          <LogLines lines={logs} label={RUN_STEPS_COPY.logsListLabel} />
+        </Collapsible>
+      {:else}
+        <h4 class="ib-step-detail__label">{RUN_STEPS_COPY.logs}</h4>
+        <LogLines lines={logs} label={RUN_STEPS_COPY.logsListLabel} />
+      {/if}
     </section>
   {/if}
 
@@ -179,6 +205,11 @@
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
     gap: var(--cinder-space-4);
     min-width: 0;
+  }
+
+  .ib-step-detail__fields--failed {
+    display: flex;
+    flex-direction: column;
   }
 
   .ib-step-detail__field {

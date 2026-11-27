@@ -2,6 +2,7 @@ import { mkdtempSync, readdirSync, rmSync, unlinkSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import type { ObjectPresigner } from '@lostgradient/object-store';
 import type {
   ConfigurationSnapshot,
   ConfigurationWriteCapability,
@@ -35,7 +36,6 @@ import {
 } from './errors.ts';
 import { defaultAcquireLock, type RootLock } from './lock.ts';
 import type { BungalowObjectStore } from './object-store.ts';
-import type { ObjectPresigner } from './presign.ts';
 import { resolveRemoteDescriptor, type RemoteBungalowDescriptor } from './remote-configuration.ts';
 import { openRemoteBungalow, requireDatabaseWorkspaceClaim } from './remote.ts';
 import {
@@ -117,9 +117,8 @@ export type Bungalow = {
    */
   content(name: string): ContentLocation;
   /**
-   * The object-store client remote mode signs its requests with, or `undefined` locally: presigned
-   * URLs and `ListObjectsV2` for the home's bucket, over `fetch`. It has the `presign` and `list`
-   * members of `Bun.S3Client`, so code written against those accepts it.
+   * The shared object-store operations in remote mode, or `undefined` locally. They list, read,
+   * and conditionally put objects; S3-specific conditional removal is intentionally not public.
    */
   objectStore(): BungalowObjectStore | undefined;
   /** The backend's write capability, independent of mode and caller permissions. */
@@ -185,7 +184,8 @@ export type AcquireLock = (root: string) => RootLock | Promise<RootLock>;
  * per open, before any request. The default is `createSigV4Presigner` over the descriptor's
  * credentials; a host injects another to sign some other way. The presigner must also sign a
  * bucket-level request, an empty key with `options.query`, which is how a listing is made:
- * `Bun.S3Client.presign` cannot, so a presigner over it hands those to another signer.
+ * Some injected SDK signers cannot sign that request, so a presigner over one hands listings to
+ * another signer.
  */
 export type PresignerFactory = (descriptor: RemoteBungalowDescriptor) => ObjectPresigner;
 

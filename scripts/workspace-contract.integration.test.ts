@@ -102,6 +102,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/operative-gemini',
   '@lostgradient/operative-openai',
   '@lostgradient/operative-typesafe',
+  '@lostgradient/object-store',
   '@lostgradient/cryptography',
   '@lostgradient/credentials',
   '@lostgradient/evaluation',

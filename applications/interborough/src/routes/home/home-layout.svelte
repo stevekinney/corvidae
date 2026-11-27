@@ -111,6 +111,7 @@
     flex-direction: column;
     gap: var(--ib-home-gap);
     min-inline-size: 0;
+    max-inline-size: var(--cinder-content-width);
   }
 
   .ib-home__date {

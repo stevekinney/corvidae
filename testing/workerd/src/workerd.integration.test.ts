@@ -15,28 +15,42 @@ test('runs a bundled Worker with platform bindings', async () => {
   const outboundService = (request: Request) =>
     new Response(`stubbed ${new URL(request.url).pathname}`);
   await withWorker(
-    { entry, assets, durableObjects: { COUNTER: 'Counter' }, d1Databases: ['DB'], outboundService },
+    {
+      entry,
+      assets,
+      durableObjects: { COUNTER: 'Counter' },
+      d1Databases: ['DB'],
+      r2Buckets: ['BUCKET'],
+      hyperdrives: { HYPERDRIVE: 'postgresql://user:password@localhost:5432/database' },
+      outboundService,
+    },
     async ({
       dispatchFetch,
       getD1Database,
       getDurableObjectNamespace,
+      getR2Bucket,
       outboundService: boundService,
     }) => {
       expect(await responseText(dispatchFetch('https://fixture.test/'))).toBe('round trip');
       expect(await responseText(dispatchFetch('https://fixture.test/durable'))).toBe('1');
       expect(await responseText(dispatchFetch('https://fixture.test/durable'))).toBe('2');
       expect(await responseText(dispatchFetch('https://fixture.test/d1'))).toBe('stored');
+      expect(await responseText(dispatchFetch('https://fixture.test/r2'))).toBe('stored');
       expect(await responseText(dispatchFetch('https://fixture.test/async-local-storage'))).toBe(
         'carried',
       );
       expect(await responseText(dispatchFetch('https://fixture.test/outbound'))).toBe(
         'stubbed /fixture',
       );
+      expect(await responseText(dispatchFetch('https://fixture.test/hyperdrive'))).toStartWith(
+        'postgresql://',
+      );
       expect(await responseText(dispatchFetch('https://fixture.test/asset'))).toBe(
         'asset response\n',
       );
       expect(await getD1Database('DB')).toBeDefined();
       expect(await getDurableObjectNamespace('COUNTER')).toBeDefined();
+      expect(await getR2Bucket('BUCKET')).toBeDefined();
       expect(boundService).toBe(outboundService);
     },
   );

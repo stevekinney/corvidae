@@ -1,0 +1,34 @@
+{
+  "issue": "COR-2751",
+  "branch": "codex/cor-2751-hyperdrive-local",
+  "checkedAt": "155a831fa0bfadff6cbd9758e2d3748f18f1c354",
+  "briefVersion": "eff101c7d19d",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "testing/workerd/src/workerd.integration.test.ts passes with a named Hyperdrive binding."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Focused workerd integration exited 0 with 23 passing tests, including actual concurrent conditional-batch success/failure through Worker requests and streamed scan semantics."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "The disposable supplied-service control passes two consecutive MCP Worker runs (both exit 0), and the focused registration/readback integration and MCP lint exit 0."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "The workerd test harness binds native createRequire for Bun's generated CommonJS requires; storage fast test exited 0 and production code has no runtime detection or driver change."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "packages/storage-postgres/README.md documents Hyperdrive and nodejs_compat."
+    }
+  ]
+}

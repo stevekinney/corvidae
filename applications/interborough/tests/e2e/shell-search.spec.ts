@@ -100,6 +100,171 @@ async function openPalette(page: Page): Promise<void> {
   await expectWaitingListed(page);
 }
 
+/** Compares painted list content with the scrollport between the palette's fixed rows. */
+async function searchRowGeometry(target: Locator) {
+  return target.evaluate((node) => {
+    const listbox = node.closest('[role="listbox"]');
+    const panel = listbox?.parentElement;
+    const header = panel?.querySelector('.cinder-command-palette__search');
+    const footer = panel?.querySelector('.cinder-command-palette__footer');
+    if (listbox === null || listbox === undefined || header == null || footer == null) {
+      throw new Error('Search palette is missing its listbox, search row, or footer');
+    }
+    const row = node.getBoundingClientRect();
+    const scrollport = listbox.getBoundingClientRect();
+    return {
+      above: Math.max(scrollport.top, header.getBoundingClientRect().bottom, 0) - row.top,
+      below:
+        row.bottom - Math.min(scrollport.bottom, footer.getBoundingClientRect().top, innerHeight),
+    };
+  });
+}
+
+async function refundTitleOverflow(row: Locator): Promise<number> {
+  return row
+    .locator('.cinder-command-item__text')
+    .evaluate((title) => title.scrollWidth - title.clientWidth);
+}
+
+for (const width of [320, 375, 1280, 1920] as const) {
+  test(`global search keeps titles and end actions readable at ${width}px`, async ({ page }) => {
+    const phone = width < 640;
+    await open(page, '/');
+    await page.setViewportSize({ width, height: phone ? 640 : width === 1280 ? 900 : 1080 });
+    if (phone) {
+      await page
+        .getByRole('banner')
+        .getByRole('button', { name: /^Search everything/ })
+        .click();
+      await expectWaitingListed(page);
+    } else {
+      await openPalette(page);
+    }
+
+    const dialog = palette(page);
+    const input = search(page);
+    const listbox = dialog.getByRole('listbox');
+    const options = listbox.getByRole('option');
+    const heading = listbox.locator('.cinder-command-group__label').first();
+    const capture = async (state: string, ready: () => Promise<void>) => {
+      if (width === 1280 || width === 375) {
+        await captureForDesignReview(page, { route: '/', state, source: SOURCE, ready });
+      }
+    };
+    const check = async (label: string, target: Locator) => {
+      await expect
+        .poll(
+          async () => {
+            const { above, below } = await searchRowGeometry(target);
+            return Math.max(above, below);
+          },
+          { message: `${label} is fully inside the search scrollport` },
+        )
+        .toBeLessThanOrEqual(1);
+    };
+    const goToEnd = async (last: Locator) => {
+      await input.press('End');
+      await expect(last).toHaveAttribute('aria-selected', 'true');
+      await expect
+        .poll(() =>
+          listbox.evaluate(
+            (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+          ),
+        )
+        .toBeLessThanOrEqual(1);
+    };
+    const goToStart = async () => {
+      await input.press('Home');
+      await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+      await expect.poll(() => listbox.evaluate((element) => element.scrollTop)).toBe(0);
+    };
+
+    if (!phone) {
+      const finalAction = options.last();
+      await expect(finalAction).toHaveAccessibleName('Show keyboard shortcuts');
+      await capture('search layout empty start', async () => {
+        await listbox.evaluate((element) => {
+          element.scrollTop = 0;
+        });
+      });
+      await check('empty initial heading', heading);
+      await goToEnd(finalAction);
+      await check('empty End action', finalAction);
+      await capture('search layout empty end', async () => {
+        await listbox.evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+        });
+      });
+      await goToStart();
+      await check('empty Home heading', heading);
+      await check('empty Home first option', options.first());
+    }
+
+    await input.fill('refund');
+    const runs = listbox.getByRole('group', { name: 'Runs', exact: true }).getByRole('option');
+    await expect(runs).toHaveCount(2);
+    const first = runs.filter({ hasText: 'Refund order 4471' });
+    const second = runs.filter({ hasText: 'Refund order 4472' });
+    const last = listbox.getByRole('option', { name: 'New chat about refund', exact: true });
+    await expect(options.last()).toHaveAccessibleName('New chat about refund');
+
+    await goToStart();
+    await check('refund initial heading', heading);
+    await capture('search layout refund start', async () => {
+      await listbox.evaluate((element) => {
+        element.scrollTop = 0;
+      });
+    });
+
+    if (phone) {
+      const firstRunIndex = await options.evaluateAll(
+        (elements, id) => elements.findIndex((element) => element.id === id),
+        await first.getAttribute('id'),
+      );
+      expect(firstRunIndex).toBeGreaterThan(0);
+      for (let index = 0; index < firstRunIndex; index++) {
+        await input.press('ArrowDown');
+      }
+      await expect(first).toHaveAttribute('aria-selected', 'true');
+      await check('keyboard-selected run row', first);
+
+      const scrollToRuns = async () => {
+        await first.evaluate((node) => node.scrollIntoView({ block: 'center' }));
+      };
+      await scrollToRuns();
+      await check('first refund row', first);
+      await check('second refund row', second);
+      expect(await refundTitleOverflow(first)).toBeLessThanOrEqual(0);
+      expect(await refundTitleOverflow(second)).toBeLessThanOrEqual(0);
+      await capture('search layout refund titles', scrollToRuns);
+    }
+
+    await goToEnd(last);
+    await check('refund End action', last);
+    await capture('search layout refund end', async () => {
+      await listbox.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+    });
+    // Pressing End again restores the visible final action after the user scrolls away.
+    await listbox.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await goToEnd(last);
+    await check('repeated End action', last);
+    await goToStart();
+    await check('refund Home heading', heading);
+    await check('refund Home first option', options.first());
+    await input.press('ArrowDown');
+    await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true');
+    await check('ArrowDown option', options.nth(1));
+    await goToEnd(last);
+    await input.press('Enter');
+    await expect(page).toHaveURL(/\/chats\/new\?about=refund$/);
+    await expect(page.locator('textarea').first()).toHaveValue('refund');
+  });
+}
+
 test.describe('the search palette on the sample world', () => {
   test('with nothing typed it lists what waits on you, then Go to rows and New chat (03c)', async ({
     page,

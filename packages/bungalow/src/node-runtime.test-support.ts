@@ -197,24 +197,22 @@ describe('a remote home', () => {
     }
   });
 
-  test('lists and presigns through its object store', async () => {
+  test('lists, reads, and conditionally writes through its object store', async () => {
     const home = await open();
     try {
       const store = home.objectStore();
       assert.ok(store !== undefined);
-      const put = await fetch(store.presign('node-tenant/agents/a.md', { method: 'PUT' }), {
-        method: 'PUT',
-        headers: { 'if-none-match': '*' },
-        body: 'agent',
+      const put = await store.put('node-tenant/agents/a.md', new TextEncoder().encode('agent'), {
+        kind: 'absent',
       });
-      assert.equal(put.status, 200);
-      const listing = await store.list({ prefix: 'node-tenant/agents/' });
+      assert.equal(put.outcome, 'written');
+      const listing = await store.list('node-tenant/agents/');
       assert.deepEqual(
-        listing.contents?.map((entry) => entry.key),
+        listing.objects.map((entry) => entry.key),
         ['node-tenant/agents/a.md'],
       );
-      const read = await fetch(store.presign('node-tenant/agents/a.md'));
-      assert.equal(await read.text(), 'agent');
+      const read = await store.read('node-tenant/agents/a.md');
+      assert.equal(new TextDecoder().decode(read?.bytes), 'agent');
     } finally {
       home.close();
     }
