@@ -118,6 +118,30 @@ test.describe('/hooks: the hooks list states', () => {
   });
 
   for (const width of WIDTHS) {
+    test(`keeps the full ready-list subtitle and labelled primary New hook at ${width} pixels`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/hooks');
+      const main = page.locator('main');
+
+      await expect(main.getByRole('heading', { level: 1, name: 'Hooks' })).toBeVisible();
+      await expect(main).toContainText(
+        'Run something when something happens: send a webhook, start a workflow, or notify you.',
+      );
+      await expect(headerCreate(page)).toHaveAccessibleName('New hook');
+      await expect(headerCreate(page)).toHaveText('New hook');
+      await expect(headerCreate(page)).toContainClass('button-variant-primary');
+
+      await captureForDesignReview(page, {
+        route: '/hooks',
+        state: `ready header ${width}px`,
+        source: SOURCE,
+      });
+    });
+  }
+
+  for (const width of WIDTHS) {
     test(`nothing yet is the page, with no filter row and one primary New hook, at ${width} pixels`, async ({
       page,
       checkA11y,
@@ -309,6 +333,11 @@ test.describe('/hooks: the hooks list states', () => {
         'aria-disabled',
         'true',
       );
+      const firstHeldReason = main.locator('li[data-hook]').first().getByTestId('hook-held-reason');
+      await expect(firstHeldReason).toHaveText('The On switch is off until Interborough answers.');
+      await firstHeldReason.evaluate((reason) => {
+        reason.setAttribute('data-testid', 'first-hook-held-reason');
+      });
       await expect(headerCreate(page)).toHaveAttribute('aria-disabled', 'true');
       await expect(main.getByRole('searchbox', { name: 'Search hooks' })).toBeEnabled();
 
@@ -346,8 +375,27 @@ test.describe('/hooks: the hooks list states', () => {
         await expect(create).toHaveAttribute('aria-disabled', 'true');
         await expect(firstSwitch).toHaveAttribute('aria-disabled', 'true');
         await expect(firstSwitch).toHaveAccessibleDescription('Off until it’s back');
+        const firstHeldReason = rows.first().getByTestId('hook-held-reason');
+        await expect(firstHeldReason).toHaveText(
+          'The On switch is off until Interborough answers.',
+        );
+        await firstHeldReason.evaluate((reason) => {
+          reason.setAttribute('data-testid', 'first-hook-held-reason');
+        });
         await create.focus();
         await expect(create).toBeFocused();
+        await firstSwitch.focus();
+        await expect(firstSwitch).toBeFocused();
+        const writes: string[] = [];
+        page.on('request', (request) => {
+          if ((request.postData() ?? '').includes('"bureau.hooks.update"')) {
+            writes.push(request.postData() ?? '');
+          }
+        });
+        await firstSwitch.press('Enter');
+        await firstSwitch.press('Space');
+        expect(writes).toEqual([]);
+        await expect(firstSwitch).toHaveAttribute('aria-checked', 'true');
         await expect(rows).toHaveCount(5);
         await expect(rows.first().getByRole('link').first()).toHaveAttribute('href', /^\/hooks\//);
         await expect(main.getByRole('searchbox', { name: 'Search hooks' })).toBeEnabled();

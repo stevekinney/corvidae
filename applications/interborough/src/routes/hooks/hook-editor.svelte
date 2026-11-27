@@ -54,12 +54,12 @@
   } from '@lostgradient/cinder';
   import { Play, Trash2 } from '@lucide/svelte';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import { tick, untrack } from 'svelte';
+  import { onDestroy, tick, untrack } from 'svelte';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { RETRY_LABEL, STALE_COPY } from '../../app/copy/views.ts';
   import NotFoundState from '../../app/not-found-state.svelte';
-  import { showFault, showToast } from '../../app/toast-host.svelte';
+  import { dismissToast, showFault, showToast } from '../../app/toast-host.svelte';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
   import {
     createHook,
@@ -681,6 +681,11 @@
    */
   function adopt(before: Hook, saved: Hook): void {
     if (loadedRevision === before.revision) loadedRevision = saved.revision;
+    reconcileSavedHook(saved);
+  }
+
+  /** Reconciles a durable write even when the editor that started it has since been left. */
+  function reconcileSavedHook(saved: Hook): void {
     queryClient.setQueryData(queryKeys.hooks.detail(hookId), saved);
     void queryClient.invalidateQueries({ queryKey: ['hooks'] });
   }
@@ -691,10 +696,28 @@
     void queryClient.invalidateQueries({ queryKey: queryKeys.hooks.detail(hookId) });
   }
 
+  /** Every Undo this editor showed, rather than a toast another page showed. */
+  let toggleUndoToasts: string[] = [];
+  let editorActive = true;
+  function dismissToggleUndos(): void {
+    for (const toast of toggleUndoToasts) dismissToast(toast);
+    toggleUndoToasts = [];
+  }
+  // The outlet keys hook pages by their address, so destruction is leaving or changing this hook.
+  onDestroy(() => {
+    editorActive = false;
+    dismissToggleUndos();
+  });
+
   const switching = createMutation(() => ({
     mutationFn: (input: { hook: Hook; enabled: boolean; undoing: boolean }) =>
       updateHook(input.hook.id, input.hook.revision, { enabled: input.enabled }),
     onSuccess: (saved, input) => {
+      // A write can answer after this editor's route was left. Its old Undo belongs nowhere then.
+      if (!editorActive) {
+        void queryClient.invalidateQueries({ queryKey: ['hooks'] });
+        return;
+      }
       adopt(input.hook, saved);
       if (input.undoing) return;
       const name = editorTitle(
@@ -702,11 +725,21 @@
         anyScopeOf(scopeKindsFor(saved.events, kinds.data ?? [])),
         titleOfPlugin,
       );
-      showToast(saved.enabled ? copy.toggled.on(name) : copy.toggled.off(name), {
+      let toast: string | undefined;
+      toast = showToast(saved.enabled ? copy.toggled.on(name) : copy.toggled.off(name), {
         undo: () => switching.mutate({ hook: saved, enabled: input.hook.enabled, undoing: true }),
+        onClose: () => {
+          if (toast !== undefined)
+            toggleUndoToasts = toggleUndoToasts.filter((candidate) => candidate !== toast);
+        },
       });
+      if (toast !== undefined) toggleUndoToasts = [...toggleUndoToasts, toast];
     },
-    onError: (error: unknown) => {
+    onError: (error: unknown, input) => {
+      if (!editorActive) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.hooks.detail(input.hook.id) });
+        return;
+      }
       if (agentFaultOf(error).kind === 'stale') {
         refuseStale();
         return;

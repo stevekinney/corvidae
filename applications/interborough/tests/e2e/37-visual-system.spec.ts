@@ -83,14 +83,16 @@ test.describe('the outlet pads a page and nothing else does', () => {
     page,
   }) => {
     await page.setViewportSize(DESKTOP);
-    await page.goto('/runs');
+    await page.goto('/health/workers');
     const outlet = page.locator('main.weft-shell-outlet');
+    await expect(outlet).toHaveAttribute('data-width', 'full');
     await expect(outlet).toHaveCSS('padding-top', '16px');
     await expect(outlet).toHaveCSS('padding-left', '24px');
     await expect(outlet).toHaveCSS('padding-right', '24px');
     await page.setViewportSize({ width: 375, height: 812 });
     await expect(outlet).toHaveCSS('padding-top', '12px');
     await expect(outlet).toHaveCSS('padding-left', '16px');
+    await expect(outlet).toHaveCSS('padding-right', '16px');
   });
 });
 
@@ -138,7 +140,7 @@ test.describe('each route says what kind of page it is, and every page has one d
     }
   });
 
-  test('a reading page is the 720px column, centred; a table page takes the whole width', async ({
+  test('the outlet uses the reading, full, and list widths for the corresponding page kinds', async ({
     page,
   }) => {
     await page.setViewportSize(DESKTOP);
@@ -169,16 +171,15 @@ test.describe('each route says what kind of page it is, and every page has one d
     expect(settingsColumn).toBeLessThanOrEqual(46 * 16);
     expect(settingsColumn).toBeGreaterThanOrEqual(700);
     await page.goto('/runs');
-    // The loading skeleton is already wider than 900px, so a width read before the frame has swapped
-    // it for the page measures nothing about the page. Wait for the page, then read its width.
-    await expect(page.locator('[data-view="runs"]')).toHaveAttribute('data-state', 'ready');
-    const runsPage = page.locator('[data-view="runs"]').locator('> *').first();
-    await expect
-      .poll(async () => {
-        const box = await runsPage.boundingBox();
-        return box?.width ?? 0;
-      })
-      .toBeGreaterThan(900);
+    await expect(outlet).toHaveAttribute('data-width', 'list');
+    const runsList = page.locator('[data-page="runs"]');
+    await expect(runsList).toBeVisible();
+    for (const width of [1280, 1920]) {
+      await page.setViewportSize({ ...DESKTOP, width });
+      const listWidth = await runsList.evaluate((element) => element.getBoundingClientRect().width);
+      expect(listWidth).toBeGreaterThan(900);
+      expect(listWidth).toBeLessThanOrEqual(960);
+    }
   });
 
   test('every page reads the same row height, the comfortable one', async ({ page }) => {

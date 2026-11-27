@@ -7,9 +7,13 @@
   min-width: 0;
 }
 
-/* Keep names and right-aligned row facts within the view’s readable measure. */
-.ib-records__bounded-list {
-  max-inline-size: 60rem;
+/* Keep the heading, filters, and rows on the same measure as the Workflows records list. */
+.weft-shell-outlet[data-width='list'] {
+  --weft-outlet-list-width: 60rem;
+  padding-inline-end: max(
+    var(--weft-outlet-gutter),
+    calc(100% - var(--weft-outlet-list-width) - var(--weft-outlet-gutter))
+  );
 }
 
 /* Count, filters, primary action: one row that wraps instead of widening the page. */

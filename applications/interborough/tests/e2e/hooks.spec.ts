@@ -275,8 +275,24 @@ test('limits a hook to one agent with Only for: it fires for that agent, and its
   try {
     await runToEnd(request, TEXT_ECHO_AGENT_NAME, thread, 'Say something');
     await page.goto(`/agents/${TEXT_ECHO_AGENT_NAME}/hooks`);
-    const row = page.getByTestId('agent-hooks').locator('li[data-hook]', { hasText: name });
+    const agentHooks = page.getByTestId('agent-hooks');
+    const row = agentHooks.locator('li[data-hook]', { hasText: name });
     await expect(row.locator('[data-status-word="Delivered"]')).toBeVisible();
+    await expect(agentHooks.locator(`li[data-hook="${(other as { id: string }).id}"]`)).toHaveCount(
+      0,
+    );
+    const newHook = agentHooks.getByRole('link', { name: 'New hook' });
+    await expect(newHook).toHaveAttribute(
+      'href',
+      `/hooks/new?agent=${encodeURIComponent(TEXT_ECHO_AGENT_NAME)}`,
+    );
+    await newHook.click();
+    await expect(page).toHaveURL(`/hooks/new?agent=${encodeURIComponent(TEXT_ECHO_AGENT_NAME)}`);
+    await chooseEvent(page, 'review', 'A review is waiting');
+    await expect(page.getByLabel(copy.onlyFor.label)).toHaveValue('agent');
+    await expect(page.getByLabel(copy.onlyFor.subject.agent, { exact: true })).toHaveValue(
+      TEXT_ECHO_AGENT_NAME,
+    );
 
     const { deliveries } = (await bureauCall(request, 'bureau.hooks.deliveries', {
       hookId: (other as { id: string }).id,
@@ -422,6 +438,17 @@ type Fault = { readonly status: number; readonly message: string; readonly data?
 type Answer = (params: Record<string, unknown>) => unknown;
 type Call = { readonly method: string; readonly params: Record<string, unknown> };
 
+function isFault(answer: unknown): answer is Fault {
+  return (
+    typeof answer === 'object' &&
+    answer !== null &&
+    'status' in answer &&
+    'message' in answer &&
+    typeof answer.status === 'number' &&
+    typeof answer.message === 'string'
+  );
+}
+
 /** Answers each Bureau method named, records the calls, and sends every other method on to the host. */
 async function serveBureau(
   page: Page,
@@ -457,6 +484,21 @@ async function serveBureau(
     }
     // An answer may be held (a promise), so a test can show the page while a read is in flight.
     const result: unknown = await answer(body.params ?? {});
+    if (isFault(result)) {
+      await route.fulfill({
+        status: result.status,
+        json: {
+          jsonrpc: '2.0',
+          id: body.id,
+          error: {
+            code: -32000,
+            message: result.message,
+            data: { weftCode: 'InvalidParams', httpStatus: result.status, ...result.data },
+          },
+        },
+      });
+      return;
+    }
     await route.fulfill({ json: { jsonrpc: '2.0', id: body.id, result } });
   });
   return calls;
@@ -760,6 +802,166 @@ for (const width of WIDTHS) {
   });
 }
 
+// The desktop hook row keeps its line-one facts on one optical centreline even when its sentence
+// grows beneath them. This deliberately failed before `trailingAlign="baseline"`: the Toggle was
+// centred across both row lines while the title, status and time stayed on line one.
+for (const width of [1280, 1920] as const) {
+  test(`[hook-row-first-line-alignment] /hooks: status, title, timestamp and switch share line one at ${width} pixels`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 720 });
+    const onCall = hookRecord('page-on-call', {
+      name: 'Page on-call when a run fails',
+      declaredBy: null,
+    });
+    await openHooks(page, '/hooks', [onCall]);
+    const row = page.locator('li[data-hook="page-on-call"]');
+    const [status, title, time, toggle, label] = await Promise.all([
+      row.locator('.cinder-stacked-list-item__status').boundingBox(),
+      row.locator('.cinder-stacked-list-item__title').boundingBox(),
+      row.locator('.cinder-stacked-list-item__time').evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return range.getBoundingClientRect().toJSON();
+      }),
+      row.getByRole('switch').boundingBox(),
+      row.locator('.cinder-toggle-field__label').evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return range.getBoundingClientRect().toJSON();
+      }),
+    ]);
+    const centre = (box: { y: number; height: number } | null) =>
+      (box?.y ?? Number.NaN) + (box?.height ?? Number.NaN) / 2;
+    const titleCentre = centre(title);
+    for (const [name, box] of [
+      ['status', status],
+      ['timestamp', time],
+      ['switch', toggle],
+      ['On label', label],
+    ] as const) {
+      expect(Math.abs(centre(box) - titleCentre), `${name} centre at ${width}`).toBeLessThanOrEqual(
+        2,
+      );
+    }
+    const outlet = page.locator('main.weft-shell-outlet');
+    const measure = await outlet.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    });
+    expect(measure, `Hooks list measure at ${width}`).toBeLessThanOrEqual(960);
+    if (width === 1280) {
+      await captureForDesignReview(page, {
+        route: '/hooks',
+        state: 'owner-row-alignment',
+        source: SOURCE,
+      });
+    }
+  });
+}
+
+// A wide touchscreen keeps the Toggle's 44px hit box, but its painted 32 × 18 track still belongs
+// on the row's first-line optical centre. The line-aligned trailing box is only a text-line tall;
+// its flex centring deliberately lets the larger hit box overhang equally above and below it.
+test.describe('the Hooks list on a wide coarse pointer', () => {
+  test.use({ hasTouch: true, isMobile: false });
+
+  for (const width of [1024, 1280] as const) {
+    test(`[hook-row-wide-touch-alignment] /hooks: line-one facts and the painted On switch share a centre at ${width} pixels`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 720 });
+      const onCall = hookRecord('page-on-call', {
+        name: 'Page on-call when a run fails',
+        declaredBy: null,
+      });
+      const next = hookRecord('next-record', { name: 'Next record', declaredBy: null });
+      await openHooks(page, '/hooks', [onCall, next]);
+      expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
+
+      const row = page.locator('li[data-hook="page-on-call"]');
+      const geometry = await row.evaluate((element) => {
+        const rectOf = (selector: string) => {
+          const target = element.querySelector(selector);
+          if (target === null) throw new Error(`Missing ${selector}`);
+          const { y, height } = target.getBoundingClientRect();
+          return { y, height };
+        };
+        const textRectOf = (selector: string) => {
+          const target = element.querySelector(selector);
+          if (target === null) throw new Error(`Missing ${selector}`);
+          const range = document.createRange();
+          range.selectNodeContents(target);
+          const { y, height } = range.getBoundingClientRect();
+          return { y, height };
+        };
+        const toggle = element.querySelector<HTMLElement>('[role="switch"]');
+        if (toggle === null) throw new Error('Missing switch');
+        const hit = toggle.getBoundingClientRect();
+        const style = getComputedStyle(toggle);
+        const paddingStart = Number.parseFloat(style.paddingTop);
+        const paddingEnd = Number.parseFloat(style.paddingBottom);
+        const nextRow = document.querySelector<HTMLElement>('li[data-hook="next-record"]');
+        if (nextRow === null) throw new Error('Missing adjacent record');
+
+        return {
+          rowWidth: element.getBoundingClientRect().width,
+          status: rectOf('.cinder-stacked-list-item__status'),
+          title: textRectOf('.cinder-stacked-list-item__title'),
+          time: textRectOf('.cinder-stacked-list-item__time'),
+          paintedTrack: { y: hit.y + paddingStart, height: hit.height - paddingStart - paddingEnd },
+          label: textRectOf('.cinder-toggle-field__label'),
+          hit: { y: hit.y, width: hit.width, height: hit.height },
+          nextRowTop: nextRow.getBoundingClientRect().top,
+        };
+      });
+      const centre = ({ y, height }: { y: number; height: number }) => y + height / 2;
+      const titleCentre = centre(geometry.title);
+      for (const [name, box] of [
+        ['status', geometry.status],
+        ['timestamp', geometry.time],
+        ['painted track', geometry.paintedTrack],
+        ['On label', geometry.label],
+      ] as const) {
+        expect(
+          Math.abs(centre(box) - titleCentre),
+          `${name} centre at ${width}`,
+        ).toBeLessThanOrEqual(2);
+      }
+      expect(geometry.rowWidth, `Hooks row width at ${width}`).toBeGreaterThanOrEqual(640);
+      expect(geometry.hit.width, `switch hit width at ${width}`).toBeGreaterThanOrEqual(44);
+      expect(geometry.hit.height, `switch hit height at ${width}`).toBeGreaterThanOrEqual(44);
+      expect(
+        geometry.nextRowTop,
+        `next record after the hit area at ${width}`,
+      ).toBeGreaterThanOrEqual(geometry.hit.y + geometry.hit.height);
+    });
+  }
+});
+
+test.describe('the Hooks list on a coarse-pointer phone', () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  for (const width of [320, 375] as const) {
+    test(`[hook-row-phone-target] /hooks: the On switch has a 44px target without page overflow at ${width} pixels`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 720 });
+      await openHooks(page, '/hooks', [DEFAULT_ON, DEFAULT_OFF]);
+      expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
+      const box = await page
+        .locator('li[data-hook="default-on"]')
+        .getByRole('switch')
+        .boundingBox();
+      expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      ).toBe(true);
+    });
+  }
+});
+
 // R10-01 and R10-02 on the narrowest phones, measured: the status word whole, the Plugin badge just
 // after the name it marks, and the time broken only between its day and its clock.
 for (const width of [320, 375] as const) {
@@ -884,6 +1086,247 @@ test('[default-hook-toggle-failed] /hooks: a switch the Bureau refuses says so i
     state: 'default-hook-toggle-failed',
     source: SOURCE,
   });
+});
+
+// PageHooks 85j: this write is deliberately separate from the form's Save hook.
+test('[hook-editor-switch-undo] /hooks/:hook: the On switch saves immediately, keeps an Undo toast on the page, and does not save a draft', async ({
+  page,
+}) => {
+  const now = Date.UTC(2026, 10, 2, 12);
+  await page.clock.install({ time: now - 1_000 });
+  await page.clock.pauseAt(now);
+  const hook = hookRecord('on-call', {
+    name: 'Page on-call when a run fails',
+    declaredBy: null,
+  });
+  const hooks = [hook];
+  let saved = hook;
+  const calls = await openHooks(page, '/hooks/on-call', hooks, {
+    'bureau.hooks.get': () => saved,
+    'bureau.hooks.update': (params) => {
+      const enabled = params['enabled'];
+      if (typeof enabled !== 'boolean') throw new Error('The switch write must carry enabled.');
+      saved = { ...saved, enabled, revision: Number(params['expectedRevision']) + 1 };
+      hooks[0] = saved;
+      return saved;
+    },
+  });
+  const name = page.getByLabel(copy.check.nameLabel);
+  await name.fill('A draft that must stay unsaved');
+  const toggle = page.getByTestId('hook-header').getByRole('switch');
+  await toggle.click();
+
+  const toast = page.locator('.cinder-toast', { hasText: copy.toggled.off(hook.name) });
+  await expect(toast).toBeVisible();
+  await expect(toast.getByRole('button', { name: 'Undo' })).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  // Undo is an action, not a short-lived notification: ordinary toast time must not remove it.
+  await page.clock.runFor(60_000);
+  await expect(toast).toBeVisible();
+  expect(calls.filter((call) => call.method === 'bureau.hooks.update')).toHaveLength(1);
+  expect(calls.find((call) => call.method === 'bureau.hooks.update')?.params).toEqual({
+    hookId: hook.id,
+    expectedRevision: 1,
+    enabled: false,
+  });
+  await page.clock.resume();
+  await captureForDesignReview(page, {
+    route: '/hooks/:hook',
+    state: 'hook-editor-switch-undo',
+    source: SOURCE,
+  });
+
+  await toast.getByRole('button', { name: 'Undo' }).click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect(name).toHaveValue('A draft that must stay unsaved');
+  expect(calls.filter((call) => call.method === 'bureau.hooks.update')).toHaveLength(2);
+  expect(calls.filter((call) => call.method === 'bureau.hooks.update')[1]?.params).toEqual({
+    hookId: hook.id,
+    expectedRevision: 2,
+    enabled: true,
+  });
+
+  // Clear the draft before leaving, so a form-level leave guard cannot hide the toast behavior.
+  await name.fill(hook.name);
+  await toggle.click();
+  await expect(toast).toBeVisible();
+  await page
+    .getByRole('navigation', { name: 'Breadcrumb' })
+    .getByRole('link', { name: 'Hooks', exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/hooks$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Hooks' })).toBeVisible();
+  await expect(toast).toHaveCount(0);
+  await expect(page.locator('li[data-hook="on-call"]').getByRole('switch')).toHaveAttribute(
+    'aria-checked',
+    'false',
+  );
+  await captureForDesignReview(page, {
+    route: '/hooks',
+    state: 'hook-editor-switch-undo',
+    source: SOURCE,
+  });
+});
+
+// PageHooks 85j: a switch response is durable after navigation, but its page-local Undo is not.
+test('[hook-editor-switch-leave-late-success] /hooks/:hook: a switch write that answers after the editor is left refreshes the list without an old Undo', async ({
+  page,
+}) => {
+  const hook = hookRecord('late-switch', {
+    name: 'Page on-call when a run fails',
+    declaredBy: null,
+  });
+  const hooks = [hook];
+  let saved = hook;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const calls = await openHooks(page, '/hooks/late-switch', hooks, {
+    'bureau.hooks.get': () => saved,
+    'bureau.hooks.update': async (params) => {
+      await held;
+      const enabled = params['enabled'];
+      if (typeof enabled !== 'boolean') throw new Error('The switch write must carry enabled.');
+      saved = { ...saved, enabled, revision: Number(params['expectedRevision']) + 1 };
+      hooks[0] = saved;
+      return saved;
+    },
+  });
+  await page.getByTestId('hook-header').getByRole('switch').click();
+  await expect
+    .poll(() => calls.filter((call) => call.method === 'bureau.hooks.update'))
+    .toHaveLength(1);
+
+  await page
+    .getByRole('navigation', { name: 'Breadcrumb' })
+    .getByRole('link', { name: 'Hooks', exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/hooks$/);
+  const listSwitch = page.locator('li[data-hook="late-switch"]').getByRole('switch');
+  await expect(listSwitch).toHaveAttribute('aria-checked', 'true');
+  release();
+  await expect(listSwitch).toHaveAttribute('aria-checked', 'false');
+  await expect(page.locator('.cinder-toast')).toHaveCount(0);
+});
+
+// PageHooks 86b: the slow delivery-log state is timed from its own request, while the form is ready.
+test('[hook-editor-delivery-log-slow] /hooks/:hook: delivery placeholders start after 300 ms and add Still loading with Cancel after 10 s', async ({
+  page,
+}) => {
+  const now = Date.UTC(2026, 10, 2, 12);
+  await page.clock.install({ time: now - 1_000 });
+  await page.clock.pauseAt(now);
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const hook = hookRecord('slow-log', { declaredBy: null });
+  let deliveryRequests = 0;
+  await openHooks(page, '/hooks/slow-log', [hook], {
+    'bureau.hooks.deliveries': async () => {
+      deliveryRequests += 1;
+      await held;
+      return { deliveries: [] };
+    },
+  });
+  const deliveries = page.getByTestId('hook-deliveries');
+  await expect(page.getByLabel(copy.check.nameLabel)).toBeVisible();
+  await expect.poll(() => deliveryRequests).toBe(1);
+  await expect(deliveries.locator('.cinder-skeleton').first()).not.toBeVisible();
+  await page.clock.runFor(299);
+  await expect(deliveries.locator('.cinder-skeleton').first()).not.toBeVisible();
+  await page.clock.runFor(1);
+  await expect(deliveries.locator('.cinder-skeleton').first()).toBeVisible();
+  await expect(deliveries).not.toContainText(HOOKS_COPY.editor.deliveries.stillLoading);
+  await page.clock.runFor(9_699);
+  await expect(deliveries).not.toContainText(HOOKS_COPY.editor.deliveries.stillLoading);
+  await page.clock.runFor(1);
+  await expect(deliveries.getByText(HOOKS_COPY.editor.deliveries.stillLoading)).toBeVisible();
+  await expect(deliveries.getByRole('button', { name: 'Cancel' })).toBeVisible();
+  await page.clock.resume();
+  await captureForDesignReview(page, {
+    route: '/hooks/:hook',
+    state: 'hook-editor-delivery-log-slow',
+    source: SOURCE,
+  });
+
+  await deliveries.getByRole('button', { name: 'Cancel' }).click();
+  release();
+});
+
+// PageHooks 86c: a retry may read the log again, but must not reread or change the adjacent hook.
+test('[hook-editor-delivery-log-retry] /hooks/:hook: a classified log failure retries only the log and preserves the visible draft', async ({
+  page,
+  pageErrors,
+}) => {
+  pageErrors.expectEvery({
+    pattern: loggedFailedResponse(500, /\/jsonrpc/),
+    reason: 'the first delivery-log read answers with the classified server failure',
+  });
+  const hook = hookRecord('retry-log', { declaredBy: null });
+  let fail = true;
+  const calls = await openHooks(page, '/hooks/retry-log', [hook], {
+    'bureau.hooks.deliveries': () => {
+      if (fail) {
+        fail = false;
+        return { status: 500, message: 'The log server broke.' };
+      }
+      return { deliveries: [] };
+    },
+  });
+  const name = page.getByLabel(copy.check.nameLabel);
+  await name.fill('A draft that retry must leave alone');
+  const deliveries = page.getByTestId('hook-deliveries');
+  await expect(deliveries).toContainText(HOOKS_COPY.editor.deliveries.loadFailed.title);
+  await expect(deliveries).toContainText(HOOKS_COPY.editor.deliveries.loadFailed.answered(500));
+  const hookReads = calls.filter((call) => call.method === 'bureau.hooks.get').length;
+  const logReads = calls.filter((call) => call.method === 'bureau.hooks.deliveries').length;
+  await captureForDesignReview(page, {
+    route: '/hooks/:hook',
+    state: 'hook-editor-delivery-log-retry',
+    source: SOURCE,
+  });
+
+  await deliveries.getByRole('button', { name: 'Try again' }).click();
+  await expect(
+    deliveries.getByRole('heading', { name: HOOKS_COPY.editor.deliveries.none.title }),
+  ).toBeVisible();
+  await expect(name).toHaveValue('A draft that retry must leave alone');
+  expect(calls.filter((call) => call.method === 'bureau.hooks.deliveries')).toHaveLength(
+    logReads + 1,
+  );
+  expect(calls.filter((call) => call.method === 'bureau.hooks.get')).toHaveLength(hookReads);
+  expect(calls.filter((call) => call.method === 'bureau.hooks.update')).toEqual([]);
+});
+
+// PageHooks 86d: the current visible fallback is the durable ID, not the human-readable former name.
+test('[hook-editor-deleted-workflow-id-fallback] /hooks/:hook: a deleted workflow stays marked, explains the remedy, and Save returns focus without a write', async ({
+  page,
+}) => {
+  const hook = hookRecord('deleted-workflow', {
+    declaredBy: null,
+    action: { type: 'start-workflow', workflowId: 'weekly-cleanup', input: 'payload' },
+  });
+  const calls = await openHooks(page, '/hooks/deleted-workflow', [hook], {
+    'bureau.workflows.list': () => ({ workflows: [], nextOffset: null }),
+  });
+  const workflow = page.getByLabel(copy.workflow.label, { exact: true });
+  await expect(workflow).toHaveValue('weekly-cleanup');
+  await expect(workflow.locator('option').nth(1)).toHaveText(
+    copy.workflow.deletedName('weekly-cleanup'),
+  );
+  await expect(page.getByText(copy.workflow.deleted, { exact: true })).toBeVisible();
+  await expect(workflow).toHaveAttribute('aria-invalid', 'true');
+  await captureForDesignReview(page, {
+    route: '/hooks/:hook',
+    state: 'hook-editor-deleted-workflow-id-fallback',
+    source: SOURCE,
+  });
+
+  await page.getByRole('button', { name: copy.check.save }).click();
+  await expect(workflow).toBeFocused();
+  expect(calls.filter((call) => call.method === 'bureau.hooks.update')).toEqual([]);
 });
 
 // R10-25: a default hook appears in each list state like any other hook.
