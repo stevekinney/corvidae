@@ -27,7 +27,8 @@ import { hostname } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { wideCaptureHint } from '../../applications/interborough/scripts/design-review-rows.ts';
-import { acquireHostLock, processStartTime } from '../run-exclusively.ts';
+import { processStartTime } from '../../packages/process-lease/src/index.ts';
+import { acquireHostLock } from '../run-exclusively.ts';
 import { emitResult, parseOptions, requireOption, UsageError } from './process-runner.ts';
 import { resolveMainCheckout } from './repository-locations.ts';
 

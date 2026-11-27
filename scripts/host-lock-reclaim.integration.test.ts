@@ -15,6 +15,12 @@ import * as fileSystem from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 
+import {
+  ownerFileName,
+  readOwner,
+  removeLock,
+  type OwnerRecord,
+} from '../packages/process-lease/src/index.ts';
 import type { ProcessEntry } from './bun-test-pool.ts';
 import {
   dispatchKinds,
@@ -35,14 +41,7 @@ import {
   type PlaceRequest,
 } from './host-sessions.ts';
 import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
-import {
-  ownerFileName,
-  readOwner,
-  reclaimAbandoned,
-  removeLock,
-  tryInstall,
-  type OwnerRecord,
-} from './run-exclusively.ts';
+import { reclaimAbandoned, tryInstall } from './run-exclusively.ts';
 
 /** The real file system, for the scenario's own steps while a spy is in place. */
 const real = {

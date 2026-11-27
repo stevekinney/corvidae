@@ -54,6 +54,24 @@
     "reason": "Provider testing uses Bun's test API."
   },
   {
+    "package": "@lostgradient/process-lease",
+    "subpath": ".",
+    "finding": "bun:ffi",
+    "reason": "Leases publish their owner by an atomic rename that only the macOS and Linux system libraries provide."
+  },
+  {
+    "package": "@lostgradient/process-lease",
+    "subpath": ".",
+    "finding": "Bun.sleep",
+    "reason": "Lease waiters poll under Bun, which runs the supervisor and the repository tooling."
+  },
+  {
+    "package": "@lostgradient/process-lease",
+    "subpath": ".",
+    "finding": "Bun.spawnSync",
+    "reason": "A process's identity is its pid and the start time that `ps` reports, read through Bun."
+  },
+  {
     "package": "@lostgradient/storage-bun-sqlite",
     "subpath": ".",
     "finding": "bun:sqlite",

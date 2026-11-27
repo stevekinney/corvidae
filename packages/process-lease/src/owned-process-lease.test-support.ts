@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 
-import { rootScriptEnvironment } from './environment-configuration.ts';
+import { processEnvironment } from './environment-configuration.ts';
 import { runOwnedProcessGroup } from './owned-process-group.ts';
 import { acquireOwnedProcessLease } from './owned-process-lease.ts';
 
@@ -16,7 +16,7 @@ try {
       join(root, 'listener-url'),
     ],
     cwd: root,
-    environment: rootScriptEnvironment(),
+    environment: processEnvironment(),
     token: lease.token,
     register: async (pid) => lease.recordProcessGroup(pid),
   });
