@@ -2,7 +2,11 @@ import type { S3TestServer } from '@lostgradient/testing/s3-server';
 import { afterEach } from 'bun:test';
 
 /** One request the proxy received: its method and the object key it addressed. */
-export type ProxiedRequest = { readonly method: string; readonly key: string };
+export type ProxiedRequest = {
+  readonly method: string;
+  readonly key: string;
+  readonly sessionToken?: string | undefined;
+};
 
 /**
  * Decide what one request gets: a `Response` answers it without reaching the S3 test server, and
@@ -46,7 +50,13 @@ export function useS3Proxy(): (upstream: S3TestServer) => S3Proxy {
       port: 0,
       async fetch(request) {
         const url = new URL(request.url);
-        const proxied = { method: request.method, key: keyOf(url) };
+        const sessionToken =
+          request.headers.get('x-amz-security-token') ?? url.searchParams.get('X-Amz-Security-Token');
+        const proxied = {
+          method: request.method,
+          key: keyOf(url),
+          ...(sessionToken === null ? {} : { sessionToken }),
+        };
         requests.push(proxied);
         const answer = await hook?.(proxied);
         if (answer !== undefined) return answer;

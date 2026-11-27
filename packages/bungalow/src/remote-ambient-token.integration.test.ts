@@ -26,7 +26,6 @@ type Outcome =
   | {
       readonly outcome: 'opened';
       readonly deploymentId: string;
-      readonly sessionToken: string | null;
     }
   | { readonly outcome: 'failed'; readonly name: string; readonly message: string };
 
@@ -130,8 +129,8 @@ describe('remote mode: the default presigner ignores a session token the process
     test(`${name}: opens, and no request carries the ambient token`, () => {
       expect(result.outcome.outcome).toBe('opened');
       if (result.outcome.outcome !== 'opened') return;
-      expect(result.outcome.sessionToken).toBeNull();
       expect(result.requests.length).toBeGreaterThan(0);
+      expect(result.requests.filter(({ sessionToken }) => sessionToken !== undefined)).toEqual([]);
     });
   }
 });
@@ -152,13 +151,16 @@ describe('remote mode: a Bun.S3Client presigner and a session token the process 
   test('a session token the given environment supplies is the one every request carries', () => {
     expect(supplied.outcome.outcome).toBe('opened');
     if (supplied.outcome.outcome !== 'opened') return;
-    expect(supplied.outcome.sessionToken).toBe(GIVEN_TOKEN);
     expect(supplied.requests.length).toBeGreaterThan(0);
+    expect(supplied.requests.map(({ sessionToken }) => sessionToken)).toEqual(
+      Array(supplied.requests.length).fill(GIVEN_TOKEN),
+    );
   });
 
   test('no session token anywhere: static keys open and sign without one', () => {
     expect(unset.outcome.outcome).toBe('opened');
     if (unset.outcome.outcome !== 'opened') return;
-    expect(unset.outcome.sessionToken).toBeNull();
+    expect(unset.requests.length).toBeGreaterThan(0);
+    expect(unset.requests.filter(({ sessionToken }) => sessionToken !== undefined)).toEqual([]);
   });
 });
