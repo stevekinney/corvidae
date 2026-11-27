@@ -1,4 +1,4 @@
-import type { WorkerPool } from '../workers/pool.ts';
+import type { WorkerLike, WorkerPool } from '../workers/pool.ts';
 import type { ExecutionStrategy } from './execution-strategy.ts';
 import type { OperationOutcome, WorkerInboundMessage, WorkerOutboundMessage } from './types.ts';
 import { WorkerCheckpointResumeState } from './worker-checkpoint-resume-state.ts';
@@ -235,7 +235,7 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
     }
   }
 
-  async #ensureRealmReady(worker: Worker, workflowId: string): Promise<boolean> {
+  async #ensureRealmReady(worker: WorkerLike, workflowId: string): Promise<boolean> {
     if (!this.#realmReadiness) return true;
     if (this.#realmReadiness.isReady(worker)) return true;
 
@@ -356,7 +356,7 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
     this.#messageHandler = null;
   }
 
-  async #handleWorkerMessage(worker: Worker, message: unknown): Promise<void> {
+  async #handleWorkerMessage(worker: WorkerLike, message: unknown): Promise<void> {
     // Every worker realm sends `ready` at boot regardless of whether this
     // strategy requires the handshake (WFT-28), so it must be intercepted
     // unconditionally — `ready` has no `workflowId` and would otherwise fail
@@ -410,7 +410,7 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
     }
   }
 
-  #settleTerminalWorkerMessage(worker: Worker, message: WorkerOutboundMessage): boolean {
+  #settleTerminalWorkerMessage(worker: WorkerLike, message: WorkerOutboundMessage): boolean {
     if (message.type !== 'completed' && message.type !== 'failed') {
       return false;
     }
@@ -428,7 +428,7 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
   }
 
   #parkCheckpointIfStillWaiting(
-    worker: Worker,
+    worker: WorkerLike,
     message: WorkerOutboundMessage,
     resumeVersionBeforeCheckpointHandling: number | null,
   ): void {
@@ -458,7 +458,7 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
     }
   }
 
-  #attachWorkerListeners(worker: Worker): void {
+  #attachWorkerListeners(worker: WorkerLike): void {
     this.#workerListeners.attach(worker, {
       message: (message) => {
         void this.#handleWorkerMessage(worker, message).catch(() => {});
@@ -477,7 +477,7 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
     });
   }
 
-  #detachWorkerListenersIfIdle(worker: Worker): void {
+  #detachWorkerListenersIfIdle(worker: WorkerLike): void {
     this.#workerListeners.detachIfIdle(worker, (candidate) =>
       this.#ownership.workerIsIdle(candidate),
     );

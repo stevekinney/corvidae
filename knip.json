@@ -13,9 +13,7 @@
         "scripts/chef/evaluate-outcomes.ts",
         "scripts/chef/staged-check.ts",
         "scripts/cinder-release-consumer.ts",
-        "scripts/owned-process-gate.ts",
-        "scripts/ensure-cinder-owned.test-support.ts",
-        "scripts/owned-process-lease.test-support.ts"
+        "scripts/ensure-cinder-owned.test-support.ts"
       ],
       "project": ["scripts/**/*.ts"]
     },
@@ -113,6 +111,21 @@
         "!src/host-contract.ts!"
       ]
     },
+    "packages/process-lease": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "src/owned-process-gate.ts",
+        "src/owned-process-group.test-support.ts",
+        "src/owned-process-lease.test-support.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "!src/**/*.test.ts!",
+        "!src/**/*.test-support.ts!",
+        "!src/owned-process-gate.ts!"
+      ]
+    },
     "packages/weft": {
       "ignoreDependencies": ["ws"],
       "entry": [
@@ -123,7 +136,13 @@
         "**/*.fixture.svelte",
         "**/*.playwright.ts",
         "**/*.spec.ts",
-        "src/server/node-runtime.test-support.ts"
+        "src/server/node-runtime.test-support.ts",
+        "src/core/realm/node-runtime.test-support.ts",
+        "src/core/realm/node-runtime-test-environment.ts",
+        "src/core/realm/__fixtures__/node-runtime-activity-handler.fixture.ts",
+        "src/core/realm/__fixtures__/node-runtime-activity-worker.fixture.ts",
+        "src/core/realm/__fixtures__/node-runtime-activity-child.fixture.ts",
+        "src/__fixtures__/node-worker-factory-gated.fixture.ts"
       ],
       "project": [
         "src/**/*.ts!",
@@ -406,8 +425,10 @@
     "scripts/browser-fixtures": {
       "entry": [
         "tests/**/*.playwright.ts",
+        "scripts/**/*.slow.test.ts",
         "src/fixtures/tool-call-rail.svelte",
         "src/fixtures/backchannel-svelte.svelte",
+        "src/fixtures/stacked-rows-leading-edge.svelte",
         "fixtures/workspace-web-components.ts"
       ],
       "project": ["src/**/*.{ts,svelte}", "scripts/**/*.ts", "tests/**/*.playwright.ts"]

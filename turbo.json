@@ -100,6 +100,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -125,6 +127,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/workspace-directories.ts"
       ]
@@ -184,9 +188,9 @@
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
         "$TURBO_ROOT$/scripts/ensure-cinder-generated.ts",
-        "$TURBO_ROOT$/scripts/owned-process-gate.ts",
-        "$TURBO_ROOT$/scripts/owned-process-group.ts",
-        "$TURBO_ROOT$/scripts/owned-process-lease.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{integration,slow}.test.ts",
         "$TURBO_ROOT$/components/cinder/{src,scripts}/**",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/module-scope-scenario.test-support.ts",
@@ -195,6 +199,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/workspace-directories.ts"
@@ -245,12 +251,14 @@
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/ensure-cinder-generated.ts",
-        "$TURBO_ROOT$/scripts/owned-process-gate.ts",
-        "$TURBO_ROOT$/scripts/owned-process-group.ts",
-        "$TURBO_ROOT$/scripts/owned-process-lease.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{integration,slow}.test.ts",
         "$TURBO_ROOT$/components/cinder/{src,scripts}/**",
         "$TURBO_ROOT$/scripts/module-scope-scenario.test-support.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
         "$TURBO_ROOT$/scripts/test-watchdog.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
@@ -267,6 +275,7 @@
     "//#ci:browser-interborough": {
       "dependsOn": ["@lostgradient/interborough#transit", "@lostgradient/interborough#metadata"],
       "env": [
+        "WEFT_TEST_POSTGRES_URL",
         "PLAYWRIGHT_SHARD",
         "PLAYWRIGHT_BASE_IMAGE",
         "CORVIDAE_EXPECTED_RELEASE_SHA",
@@ -302,11 +311,13 @@
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/chef/design-rows-resolved.ts",
         "$TURBO_ROOT$/scripts/ensure-cinder-generated.ts",
-        "$TURBO_ROOT$/scripts/owned-process-gate.ts",
-        "$TURBO_ROOT$/scripts/owned-process-group.ts",
-        "$TURBO_ROOT$/scripts/owned-process-lease.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{integration,slow}.test.ts",
         "$TURBO_ROOT$/components/cinder/{src,scripts}/**",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
         "$TURBO_ROOT$/scripts/test-watchdog.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
@@ -336,6 +347,8 @@
         "$TURBO_ROOT$/scripts/host-slots.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
         "$TURBO_ROOT$/scripts/test-watchdog.ts"
@@ -359,6 +372,8 @@
         "$TURBO_ROOT$/scripts/host-slots.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
         "$TURBO_ROOT$/scripts/test-watchdog.ts"
@@ -382,6 +397,8 @@
         "$TURBO_ROOT$/scripts/host-slots.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
         "$TURBO_ROOT$/scripts/test-watchdog.ts"
@@ -394,10 +411,9 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/ensure-cinder-generated.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
-        "$TURBO_ROOT$/scripts/owned-process-gate.ts",
-        "$TURBO_ROOT$/scripts/owned-process-group.ts",
-        "$TURBO_ROOT$/scripts/owned-process-lease.ts",
-        "$TURBO_ROOT$/scripts/run-exclusively.ts"
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{integration,slow}.test.ts"
       ],
       "outputs": ["build/**"],
       "env": ["NODE_ENV"]
@@ -437,6 +453,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -456,6 +474,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -506,7 +526,9 @@
         "$TURBO_ROOT$/scripts/test-watchdog.ts",
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
-        "$TURBO_ROOT$/scripts/run-exclusively.ts"
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts"
       ]
     },
     "@lostgradient/weft#test:coverage": {
@@ -535,6 +557,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
@@ -553,6 +577,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -572,6 +598,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
@@ -590,6 +618,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -610,7 +640,9 @@
         "$TURBO_ROOT$/scripts/test-watchdog.ts",
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
-        "$TURBO_ROOT$/scripts/run-exclusively.ts"
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts"
       ]
     },
     "@lostgradient/storage-bun-sqlite#test:coverage": {
@@ -626,6 +658,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
@@ -644,6 +678,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -663,6 +699,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
@@ -681,6 +719,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -701,7 +741,9 @@
         "$TURBO_ROOT$/scripts/test-watchdog.ts",
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
-        "$TURBO_ROOT$/scripts/run-exclusively.ts"
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts"
       ]
     },
     "@lostgradient/storage-neon#test:coverage": {
@@ -717,6 +759,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
@@ -735,6 +779,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -755,7 +801,9 @@
         "$TURBO_ROOT$/scripts/test-watchdog.ts",
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
-        "$TURBO_ROOT$/scripts/run-exclusively.ts"
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts"
       ]
     },
     "@lostgradient/storage-node-sqlite#test:coverage": {
@@ -771,6 +819,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
@@ -789,6 +839,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -809,7 +861,9 @@
         "$TURBO_ROOT$/scripts/test-watchdog.ts",
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
-        "$TURBO_ROOT$/scripts/run-exclusively.ts"
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts"
       ]
     },
     "@lostgradient/storage-postgres#test:coverage": {
@@ -825,6 +879,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
@@ -843,6 +899,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -863,7 +921,9 @@
         "$TURBO_ROOT$/scripts/test-watchdog.ts",
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
-        "$TURBO_ROOT$/scripts/run-exclusively.ts"
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts"
       ]
     },
     "@lostgradient/storage-turso#test:coverage": {
@@ -879,6 +939,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
@@ -897,6 +959,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -916,6 +980,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
@@ -934,6 +1000,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -953,6 +1021,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
@@ -969,6 +1039,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
@@ -987,6 +1059,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -1006,6 +1080,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
@@ -1021,6 +1097,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
@@ -1037,6 +1115,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
@@ -1048,6 +1128,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts"
@@ -1068,6 +1150,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
@@ -1111,6 +1195,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -1132,6 +1218,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
@@ -1157,6 +1245,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -1183,7 +1273,9 @@
         "$TURBO_ROOT$/scripts/test-watchdog.ts",
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
-        "$TURBO_ROOT$/scripts/run-exclusively.ts"
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts"
       ]
     },
     "@lostgradient/cinder#lint": {
@@ -1210,6 +1302,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
@@ -1229,6 +1323,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -1250,6 +1346,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/components/editor/src/**"
       ]
     },
@@ -1273,6 +1371,8 @@
         "$TURBO_ROOT$/scripts/test-heartbeat.ts",
         "$TURBO_ROOT$/scripts/bun-test-pool.ts",
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/packages/process-lease/src/*.ts",
+        "!$TURBO_ROOT$/packages/process-lease/src/*.{test,test-support}.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",

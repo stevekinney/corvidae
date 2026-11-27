@@ -1,4 +1,4 @@
-import type { WorkerPool } from '../workers/pool.ts';
+import type { WorkerLike, WorkerPool } from '../workers/pool.ts';
 import type { FailureCategory, WorkerInboundMessage, WorkerOutboundMessage } from './types.ts';
 import type { WorkerCheckpointResumeState } from './worker-checkpoint-resume-state.ts';
 import type { WorkerExecutionOwnership } from './worker-execution-ownership.ts';
@@ -57,7 +57,7 @@ export class WorkerFaultHandler {
   assertHostToWorkerMessageWithinLimit(
     workflowId: string,
     message: WorkerInboundMessage,
-    worker?: Worker,
+    worker?: WorkerLike,
   ): boolean {
     const failure = this.#dependencies.protocolGuard.validateHostToWorkerMessage(message);
     if (!failure) return true;
@@ -81,7 +81,7 @@ export class WorkerFaultHandler {
     return false;
   }
 
-  acceptWorkerMessage(worker: Worker, message: unknown): message is WorkerOutboundMessage {
+  acceptWorkerMessage(worker: WorkerLike, message: unknown): message is WorkerOutboundMessage {
     const result = this.#dependencies.protocolGuard.acceptWorkerMessage(worker, message);
     if (result.accepted) return true;
     this.discardWorkerAndFailWorkflows(worker, {
@@ -116,7 +116,7 @@ export class WorkerFaultHandler {
    * `true` when it handled the message.
    */
   rejectUncommittedTerminalMessage(
-    worker: Worker,
+    worker: WorkerLike,
     message: WorkerOutboundMessage,
     handlerFailed: boolean,
   ): boolean {
@@ -133,16 +133,16 @@ export class WorkerFaultHandler {
     return true;
   }
 
-  handleWorkerError(worker: Worker, errorEvent: ErrorEvent): void {
+  handleWorkerError(worker: WorkerLike, message: string): void {
     this.discardWorkerAndFailWorkflows(worker, {
       targetCategory: 'system',
-      targetError: `Worker crashed: ${errorEvent.message ?? 'unknown error'}`,
+      targetError: `Worker crashed: ${message}`,
       otherCategory: 'system',
-      otherError: `Worker crashed: ${errorEvent.message ?? 'unknown error'}`,
+      otherError: `Worker crashed: ${message}`,
     });
   }
 
-  discardWorkerAndFailWorkflows(worker: Worker, options: WorkerDiscardOptions): void {
+  discardWorkerAndFailWorkflows(worker: WorkerLike, options: WorkerDiscardOptions): void {
     const { ownership } = this.#dependencies;
     const workflowIds = ownership.workflowIdsForWorker(worker);
     if (workflowIds.length === 0) {
@@ -180,7 +180,7 @@ export class WorkerFaultHandler {
     });
   }
 
-  #clearWorkerState(worker: Worker): void {
+  #clearWorkerState(worker: WorkerLike): void {
     this.#dependencies.turnWatchdog.clear(worker);
     this.#dependencies.forwardedLogGate.forget(worker);
     this.#dependencies.realmReadiness?.forget(worker);

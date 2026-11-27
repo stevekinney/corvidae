@@ -1,0 +1,24 @@
+{
+  "issue": "COR-2777",
+  "branch": "steve/cinder-long-choice-facets",
+  "checkedAt": "ab07efe971",
+  "briefVersion": "fb33e06e5e5e",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Unchanged-base fixture run 2344 failed the overflow predicate; Linux fixture proof on the ab07efe971 tree passed 14 tests, including containment, scrolling, selection and six unchanged snapshots (tmp/chef/2026-11-26-cor-2777-linux-fixture-scoped/results.json)."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Linux fixture proof on the ab07efe971 tree passed Escape, focus restoration and short facet selection without scrolling (tmp/chef/2026-11-26-cor-2777-linux-fixture-scoped/results.json)."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Hosted capture 45899375212 at 44432 passed Checks, Runs and Goals in both themes with 16 states; reviewer approved C2-05 containment. The only subsequent change at 08971 corrects standalone fixture locators."
+    }
+  ]
+}

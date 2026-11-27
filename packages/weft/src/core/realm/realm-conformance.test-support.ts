@@ -5,7 +5,7 @@
  * (COR-246) each implement the same host/realm protocol — `RealmLifecycle`
  * transitions and `RealmTurnEnvelope` fencing — over three different wires
  * (a direct synchronous method call, a real `Worker`'s `postMessage`, and a
- * real `Bun.spawn` IPC channel). Before this suite, that protocol was proved
+ * real child-process IPC channel). Before this suite, that protocol was proved
  * three times, once per adapter's own `*.test.ts` file, each writing its own
  * version of "wrong envelope field is rejected," "crash settles every
  * pending turn," and so on — this module extracts that shared assertion set

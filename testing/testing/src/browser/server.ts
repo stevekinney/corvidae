@@ -72,12 +72,24 @@ async function staticResponse(request: Request, outputDirectory: string): Promis
   return new Response(file);
 }
 
+/**
+ * How long Bun may hold a request that has produced no bytes, in seconds: its maximum.
+ *
+ * A request waits here for an in-flight development rebuild (`waitForBuild`), and Bun's default of
+ * ten seconds closed the socket under it, so the browser saw `net::ERR_EMPTY_RESPONSE` before the
+ * page loaded (COR-2682). A rebuild on a loaded host outlasts that. The wait stays bounded by the
+ * client: Playwright's navigation and test timeouts come from the shared hang guard (120 and 240
+ * seconds), both under this.
+ */
+const REQUEST_IDLE_TIMEOUT_SECONDS = 255;
+
 export function createFixtureServer(options: FixtureServerOptions) {
   const renderPage = () => readFile(resolve(options.outputDirectory, 'index.html'), 'utf8');
   return Bun.serve({
     port: options.port,
     hostname: '127.0.0.1',
     development: options.development,
+    idleTimeout: REQUEST_IDLE_TIMEOUT_SECONDS,
     async fetch(request) {
       await options.waitForBuild?.();
       return (

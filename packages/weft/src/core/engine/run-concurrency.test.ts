@@ -7,6 +7,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { Engine } from './index.ts';
 
@@ -191,7 +192,10 @@ describe('engine runConcurrency', () => {
         new Engine({
           runConcurrency: { max: 1 },
           workflowExecutionMode: 'worker',
-          workerExecution: { workerUrl: new URL('file:///worker.ts') },
+          workerExecution: {
+            workerUrl: new URL('file:///worker.ts'),
+            createWorker: bunWorkerFactory,
+          },
         }),
     ).toThrow('options.runConcurrency is only supported in inline execution mode, not "worker"');
   });

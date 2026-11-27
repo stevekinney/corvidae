@@ -1,5 +1,8 @@
 {
   "extends": "@lostgradient/typescript/browser.json",
+  "compilerOptions": {
+    "types": ["bun"]
+  },
   "include": ["src"],
   "exclude": [
     "${configDir}/node_modules",

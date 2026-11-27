@@ -1,0 +1,54 @@
+{
+  "issue": "COR-2764_COR-2686_COR-2682",
+  "branch": "chef/fixture-flakes",
+  "checkedAt": "8b9b3487bd97c82b821e0b333d792bbdefa2f1e3",
+  "briefVersion": "f97df4c125a9",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "COR-2764 AC1",
+      "status": "met-on-branch",
+      "evidence": "inline-confirm-two-press.playwright.ts polls the computed box-shadow until it contains the danger colour (observable settled state); no sleep, deadline, retry or allowlist."
+    },
+    {
+      "id": "COR-2764 AC2",
+      "status": "met-on-branch",
+      "evidence": "Focus, danger variant at rest and armed, danger colour, 2px gap and contrast >= 3 assertions are unchanged for both themes."
+    },
+    {
+      "id": "COR-2764 AC3",
+      "status": "met-on-branch",
+      "evidence": "Implemented, not run here: the 16-execution Chromium run and the base control run are the coordinator's (browser suites are barred on this host); commands in the handoff."
+    },
+    {
+      "id": "COR-2686 AC1",
+      "status": "met-on-branch",
+      "evidence": "virtual-list.playwright.ts dispatches 15 synthetic scroll events with pinned timeStamp 16.67ms apart, drops trusted scroll events with a capture listener, and reads the window in the same task."
+    },
+    {
+      "id": "COR-2686 AC2",
+      "status": "met-on-branch",
+      "evidence": "The assertion bounds the window by overscan 3 + ceil(500/90) = 9 per side (about 23 rows); the 5px estimate would give 105 rows. adaptive-overscan.ts run over the same samples gives 9 versus 50 per side. Browser run is the coordinator's."
+    },
+    {
+      "id": "COR-2686 AC3",
+      "status": "met-on-branch",
+      "evidence": "The rendered rows are read in the page: every row measures 90px, indices are contiguous and cover the visible rows at the final scrollTop."
+    },
+    {
+      "id": "COR-2682 AC1",
+      "status": "met-on-branch",
+      "evidence": "createFixtureServer sets idleTimeout 255; server.slow.test.ts holds a build past Bun's 10s timeout and gets 200, red with the fix reverted (ECONNRESET); server.test.ts covers a held build released."
+    },
+    {
+      "id": "COR-2682 AC2",
+      "status": "met-on-branch",
+      "evidence": "server.test.ts covers a rejected build answering 500 then recovering, and the existing preview/static test (no waitForBuild) passes."
+    },
+    {
+      "id": "COR-2682 AC3",
+      "status": "met-on-branch",
+      "evidence": "server.test.ts and server.slow.test.ts use a controlled build promise and waitUntil from the shared testing package."
+    }
+  ]
+}

@@ -74,6 +74,7 @@ import {
 import { snapshotOf } from '../resolved-review-record.ts';
 import type { ReviewContinuation } from './review-continuation.ts';
 import { authorizeWorkspaceOperation } from './workspace-authorization.ts';
+import { hostPanelUriOfCall } from './host-panel-operations.ts';
 
 /** What the reviews operations read from the handler's `host`. */
 export type BureauReviewsOperationHost = {
@@ -693,6 +694,19 @@ async function mayReadPolicy(
   );
 }
 
+async function mayAccessReviewedOtherOwner(
+  host: BureauReviewsOperationHost,
+  review: PendingReview,
+): Promise<boolean> {
+  return (
+    review.kind === 'tool-approval' &&
+    host.reviewPolicy?.matches(review) === true &&
+    host.reviewPolicy.mayAccessOtherOwner?.(review) === true &&
+    host.reviewedProvenance !== undefined &&
+    (await host.reviewedProvenance(review)) === 'verified'
+  );
+}
+
 async function projectAuthorizedReview(
   host: BureauReviewsOperationHost,
   review: PendingReview & ReviewResolutionFields,
@@ -977,7 +991,8 @@ export const reviewsListOperation = defineOperation<
       const pending = await pendingReviewsOfEveryProcess(host.reviews);
       const visible = await Promise.all(
         pending.map(async (review) =>
-          (await mayAccessReview(host, principal, review.runId, 'bureau.reviews:read')) &&
+          ((await mayAccessReview(host, principal, review.runId, 'bureau.reviews:read')) ||
+            (await mayAccessReviewedOtherOwner(host, review))) &&
           (await mayReadPolicy(host, principal, review))
             ? review
             : undefined,
@@ -1004,9 +1019,9 @@ export const reviewsListOperation = defineOperation<
           resourceOwner: record.owner,
           operatorScope: 'bureau.reviews:read',
         });
-        if (!allowed) continue;
         const authorized = await authorizedResolvedReview(host, principal, record);
-        if (!authorized) continue;
+        if (!authorized || (!allowed && !(await mayAccessReviewedOtherOwner(host, authorized))))
+          continue;
         include({
           at: record.decidedAt,
           source: 'bureau',
@@ -1104,7 +1119,8 @@ export const reviewsGetOperation = defineOperation<
     const review = await host.reviews.get(input.id);
     if (
       review === undefined ||
-      !(await mayAccessReview(host, principal, review.runId, 'bureau.reviews:read')) ||
+      (!(await mayAccessReview(host, principal, review.runId, 'bureau.reviews:read')) &&
+        !(await mayAccessReviewedOtherOwner(host, review))) ||
       !(await mayReadPolicy(host, principal, review))
     ) {
       throw reviewNotFound(input.id);
@@ -1223,14 +1239,15 @@ export const reviewsResolveOperation = defineOperation<
   discoverable: true,
   transports,
   unknownKeyPolicy,
-  invoke: async ({ input, host, principal }) => {
+  invoke: async ({ input, host, principal, transport }) => {
     // The decision is checked before anything is resolved, and a caller who may
     // not resolve this review is told exactly what a caller naming a missing id
     // is told. Resolving writes the audit entry, so a denial writes none.
     const review = await host.reviews.get(input.id);
     if (
       review === undefined ||
-      !(await mayAccessReview(host, principal, review.runId, 'bureau.reviews:resolve'))
+      (!(await mayAccessReview(host, principal, review.runId, 'bureau.reviews:resolve')) &&
+        !(await mayAccessReviewedOtherOwner(host, review)))
     ) {
       throw reviewNotFound(input.id);
     }
@@ -1277,12 +1294,27 @@ export const reviewsResolveOperation = defineOperation<
       };
       throw fault;
     }
+    const panelUri = hostPanelUriOfCall();
     try {
       const result = await host.reviews.resolve({
         id: input.id,
         decision: input.decision,
         principal: actor,
-        ...(host.reviewPolicy?.matches(review) ? { reviewer: principal } : {}),
+        ...(host.reviewPolicy?.matches(review)
+          ? {
+              reviewer: principal,
+              ...(principal.method !== 'unauthenticated' && principal.workspace !== undefined
+                ? {
+                    reviewerProvenance: {
+                      actorId: principal.workspace.actorId,
+                      workspaceId: principal.workspace.workspaceId,
+                      transport,
+                      ...(panelUri === undefined ? {} : { panelUri }),
+                    },
+                  }
+                : {}),
+            }
+          : {}),
         ...(input.reason === undefined ? {} : { reason: input.reason }),
         ...(input.round === undefined ? {} : { round: input.round }),
         ...(input.answer === undefined ? {} : { payload: input.answer }),

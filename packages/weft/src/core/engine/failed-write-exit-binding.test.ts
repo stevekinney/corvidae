@@ -19,6 +19,7 @@ import { describe, expect, it } from 'bun:test';
 import { MemoryStorage, type BatchOperation } from '@lostgradient/storage';
 import { drainMicrotasks } from '@lostgradient/testing/fake-timers';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { flushPortableMicrotasks } from '../../portable-event-loop.ts';
 import { KEYS } from '../../storage/keys.ts';
 import { deserializeCheckpoint, serializeCheckpoint } from '../checkpoint.ts';
@@ -121,7 +122,12 @@ async function openParked(
       ? new Engine({
           storage: refusing.storage,
           workflowExecutionMode: 'worker',
-          workerExecution: { workerUrl, poolSize: 1, workflowTurnTimeoutMs: 30_000 },
+          workerExecution: {
+            workerUrl,
+            createWorker: bunWorkerFactory,
+            poolSize: 1,
+            workflowTurnTimeoutMs: 30_000,
+          },
         })
       : new Engine({ storage: refusing.storage });
   engine.register(definition);

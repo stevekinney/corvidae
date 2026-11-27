@@ -9,10 +9,10 @@
   import {
     PHONE_VIEWPORT_BREAKPOINT,
     readViewportBreakpoint,
-    useViewportBelow,
   } from '../../_internal/viewport-below.svelte.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import Popover from '../popover/popover.svelte';
+  import { phoneFormStyle } from './breadcrumbs-phone-form.ts';
   import type { BreadcrumbsProps } from './breadcrumbs.types.ts';
 
   // 24rem at the default 16px root: the container width under which only one ancestor shows.
@@ -31,18 +31,21 @@
     ...rest
   }: BreadcrumbsProps = $props();
 
-  // Below `collapseBelow` the trail is a back link to the parent plus the current page. The
-  // choice is made in script, not in CSS, so the ancestors that are not shown are not in the
-  // page at all; server markup is always the whole trail.
-  const collapseBreakpoint = $derived(
+  // Below `collapseBelow` the trail is a back link to the parent plus the current page. Both forms
+  // are in the markup, server HTML included, and a viewport query in CSS shows one of them, so the
+  // first paint is already the right form and nothing moves at hydration. The hidden form is
+  // `display: none`, so the accessibility tree holds one form at a time. The default length's rules
+  // are in `breadcrumbs.css`; any other length brings the same rules in a `<style>` of its own.
+  const phoneBelow = $derived(
     readViewportBreakpoint(collapseBelow, 'Breadcrumbs', 'collapseBelow'),
   );
-  const viewport = useViewportBelow(() => collapseBreakpoint);
-  const collapsed = $derived(viewport.current);
+  const phoneFormCss = $derived(
+    phoneBelow === undefined || phoneBelow === PHONE_VIEWPORT_BREAKPOINT
+      ? undefined
+      : phoneFormStyle(phoneBelow),
+  );
 
-  const current = $derived(items.at(-1));
   const parent = $derived(items.length > 1 ? items[items.length - 2] : undefined);
-  const shownItems = $derived(collapsed && current !== undefined ? [current] : items);
   const backName = $derived(
     parent === undefined ? undefined : backLabel.replaceAll('{label}', parent.label),
   );
@@ -63,12 +66,41 @@
   });
   // The ancestors that fold away are the earliest ones: the nearest keep their place.
   const hiddenCount = $derived(
-    Math.max(0, shownItems.length - 1 - Math.min(visibleAncestors, shownItems.length - 1)),
+    Math.max(0, items.length - 1 - Math.min(visibleAncestors, items.length - 1)),
   );
-  const hiddenItems = $derived(shownItems.slice(0, hiddenCount));
-  const visibleItems = $derived(shownItems.slice(hiddenCount));
+  const hiddenItems = $derived(items.slice(0, hiddenCount));
+  const visibleItems = $derived(items.slice(hiddenCount));
   let overflowOpen = $state(false);
   let overflowTrigger = $state<HTMLButtonElement | null>(null);
+  let backLink = $state<HTMLAnchorElement | null>(null);
+  let overflowList = $state<HTMLUListElement | null>(null);
+
+  // The phone form hides the "…" item in CSS, and the menu it opens is portaled outside the trail,
+  // so a menu left open when the viewport narrows would float over a trigger that is no longer
+  // drawn. It closes once its trigger has no box. A trigger that turns `display: none` resizes to
+  // nothing, which is what the observer reports.
+  $effect(() => {
+    const trigger = overflowTrigger;
+    if (!overflowOpen || trigger === null || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (trigger.getClientRects().length > 0) return;
+      // Popover hands focus back to its trigger as it closes, but a trigger that is not drawn
+      // cannot take it, so focus would fall to the page. While focus is in the menu or on the
+      // trigger, the phone form's back link takes it first; Popover's later attempt to focus the
+      // hidden trigger then does nothing.
+      const active = document.activeElement;
+      const focusInMenu =
+        active !== null &&
+        overflowList !== null &&
+        (overflowList.contains(active) || active.contains(overflowList));
+      if (active === null || active === document.body || active === trigger || focusInMenu) {
+        backLink?.focus();
+      }
+      overflowOpen = false;
+    });
+    observer.observe(trigger);
+    return () => observer.disconnect();
+  });
 
   // The current entry opens a popover when it asks for one, such as a long title's full text.
   let popoverOpen = $state(false);
@@ -79,11 +111,19 @@
   {...rest}
   class={classNames('cinder-breadcrumbs', className)}
   aria-label={label}
-  data-cinder-collapsed={collapsed ? '' : undefined}
+  data-cinder-phone-below={phoneBelow}
   bind:clientWidth={trailWidth}
 >
-  {#if collapsed && parent?.href !== undefined}
-    <a class="cinder-breadcrumbs__back" href={parent.href} aria-label={backName}>
+  {#if phoneFormCss !== undefined}
+    <svelte:element this={"style"}>{phoneFormCss}</svelte:element>
+  {/if}
+  {#if phoneBelow !== undefined && parent?.href !== undefined}
+    <a
+      bind:this={backLink}
+      class="cinder-breadcrumbs__back"
+      href={parent.href}
+      aria-label={backName}
+    >
       <ChevronLeft class="cinder-breadcrumbs__back-icon" aria-hidden="true" />
       <span class="cinder-breadcrumbs__back-label">{parent.label}</span>
     </a>
@@ -111,7 +151,7 @@
           <span aria-hidden="true">…</span>
         </button>
         <Popover bind:open={overflowOpen} triggerRef={overflowTrigger} label={overflowLabel}>
-          <ul class="cinder-breadcrumbs__overflow-list">
+          <ul bind:this={overflowList} class="cinder-breadcrumbs__overflow-list">
             {#each hiddenItems as hidden (`${hidden.href ?? hidden.label}`)}
               <li>
                 <a

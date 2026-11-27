@@ -46,6 +46,23 @@ describe('the browser suites workflow', () => {
     expect(jobText('interborough')).toContain(`image: ${playwrightBaseImage(playwrightVersion)}\n`);
   });
 
+  test('supplies a PostgreSQL service to Interborough browser fixtures through Turbo', () => {
+    const interborough = jobText('interborough');
+    expect(interborough).toContain('services:\n      postgres:\n');
+    expect(interborough).toContain('image: postgres:17\n');
+    expect(interborough).toContain('POSTGRES_USER: corvidae\n');
+    expect(interborough).toContain('POSTGRES_PASSWORD: corvidae\n');
+    expect(interborough).toContain('POSTGRES_DB: corvidae\n');
+    expect(interborough).toContain('--health-cmd');
+    expect(interborough).toContain(
+      'WEFT_TEST_POSTGRES_URL: postgresql://corvidae:corvidae@postgres:5432/corvidae\n',
+    );
+    const configuration = JSON.parse(readFileSync(resolve(REPOSITORY_ROOT, 'turbo.json'), 'utf8'));
+    expect(configuration.tasks['//#ci:browser-interborough'].env).toContain(
+      'WEFT_TEST_POSTGRES_URL',
+    );
+  });
+
   test('records the image that actually runs each browser replay', () => {
     const { playwrightVersion } = readRepositoryPins();
     const targeted = readFileSync(

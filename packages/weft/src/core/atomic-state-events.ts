@@ -7,7 +7,7 @@
  * import type { SleepFunction } from '@lostgradient/weft';
  *
  * const sleep: SleepFunction = async (milliseconds) => {
- *   await Bun.sleep(milliseconds);
+ *   await sleep(milliseconds);
  * };
  * void sleep;
  * ```

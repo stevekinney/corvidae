@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { Engine } from './engine.ts';
 import type { WorkflowContext } from './types.ts';
 import { activity, workflow } from './types.ts';
@@ -27,6 +28,7 @@ describe('Engine with activity worker execution', () => {
         activityExecution: {
           mode: 'worker',
           workerUrl: activityWorkerUrl,
+          createWorker: bunWorkerFactory,
           poolSize: 2,
         },
       });
@@ -57,6 +59,7 @@ describe('Engine with activity worker execution', () => {
         activityExecution: {
           mode: 'worker',
           workerUrl: activityWorkerUrl,
+          createWorker: bunWorkerFactory,
           poolSize: 2,
         },
       });
@@ -87,6 +90,7 @@ describe('Engine with activity worker execution', () => {
         activityExecution: {
           mode: 'worker',
           workerUrl: activityWorkerUrl,
+          createWorker: bunWorkerFactory,
           poolSize: 2,
         },
       });
@@ -120,6 +124,7 @@ describe('Engine with activity worker execution', () => {
         activityExecution: {
           mode: 'worker',
           workerUrl: activityWorkerUrl,
+          createWorker: bunWorkerFactory,
           poolSize: 2,
         },
       });
@@ -163,6 +168,7 @@ describe('Engine with activity worker execution', () => {
         activityExecution: {
           mode: 'worker',
           workerUrl: activityWorkerUrl,
+          createWorker: bunWorkerFactory,
           poolSize: 2,
         },
       });
@@ -194,6 +200,7 @@ describe('Engine with activity worker execution', () => {
         activityExecution: {
           mode: 'worker',
           workerUrl: activityWorkerUrl,
+          createWorker: bunWorkerFactory,
           poolSize: 2,
         },
       });
@@ -229,6 +236,7 @@ describe('Engine with activity worker execution', () => {
         activityExecution: {
           mode: 'worker',
           workerUrl: activityWorkerUrl,
+          createWorker: bunWorkerFactory,
         },
       });
 
@@ -258,6 +266,7 @@ describe('Engine with activity worker execution', () => {
         activityExecution: {
           mode: 'worker',
           workerUrl: activityWorkerUrl,
+          createWorker: bunWorkerFactory,
           poolSize: 1,
         },
       });
@@ -288,6 +297,7 @@ describe('Engine with activity worker execution', () => {
         activityExecution: {
           mode: 'worker',
           workerUrl: activityWorkerUrl,
+          createWorker: bunWorkerFactory,
           poolSize: 4,
         },
       });
