@@ -54,7 +54,8 @@ export function exclusionResult(
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error();
     const record = value as Record<string, unknown>;
     if (
-      Object.keys(record).sort().join(',') !== 'base,exclusions,head,ledgerDigest,verdictDigest' ||
+      Object.keys(record).toSorted().join(',') !==
+        'base,exclusions,head,ledgerDigest,verdictDigest' ||
       record.head !== head ||
       record.base !== base ||
       !/^[0-9a-f]{40}$/.test(base) ||
@@ -70,7 +71,7 @@ export function exclusionResult(
       if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error();
       const entry = item as Record<string, unknown>;
       if (
-        Object.keys(entry).sort().join(',') !==
+        Object.keys(entry).toSorted().join(',') !==
           'baselineEvidence,fingerprint,issue,ownerApproval' ||
         typeof entry.fingerprint !== 'string' ||
         typeof entry.baselineEvidence !== 'string' ||

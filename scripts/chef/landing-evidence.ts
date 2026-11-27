@@ -371,7 +371,7 @@ export async function validateLandingEvidence(
           return 'invalid design exclusion binding';
         const record = binding as Record<string, unknown>;
         if (
-          Object.keys(record).sort().join(',') !== 'attestation,recordedDigest' ||
+          Object.keys(record).toSorted().join(',') !== 'attestation,recordedDigest' ||
           typeof record.attestation !== 'string' ||
           record.recordedDigest !== designDigest(text)
         )
