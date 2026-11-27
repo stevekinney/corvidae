@@ -135,7 +135,7 @@
     background: var(--cinder-surface-inverse);
     border: 1px solid var(--cinder-border-inverse);
     border-radius: var(--cinder-radius-lg);
-    box-shadow: 0 8px 24px oklch(0% 0 0 / 0.25);
+    box-shadow: var(--cinder-shadow-lg);
   }
 
   .cinder-toast-undo-actions__toggle {
