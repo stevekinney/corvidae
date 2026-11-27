@@ -1,34 +1,34 @@
 {
   "issue": "COR-2749",
   "branch": "codex/cor-2749-workers-npm",
-  "checkedAt": "0f3fbca62c0e19289ab72ea5d8642c291fe72ebc",
+  "checkedAt": "934f98719b1933083df39aa457baec8a2936674a",
   "briefVersion": "c57374b70e9f",
   "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "Prescribed production-source Ajv import grep returned no matches; manifests now use json-schema-library and bun.lock was refreshed."
+      "evidence": "Production schema validation uses json-schema-library; Cinder ajv moved to development tooling and Knip inclusive plus production-baseline comparison passed."
     },
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "A2UI all cases, Operative, Bureau (13,548), and Cinder suites passed; interactive-surface coverage is behavior-level."
+      "evidence": "Behavior-level format and error-path regressions passed; exact Cinder emitted validator bundle comparison against b209ff163 was byte-identical."
     },
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "The new optional remote-ref rejection test passed against immutable Ajv baseline 5d2ffca30 and against this branch."
+      "evidence": "Remote dynamic references are rejected while supported nested local dynamic references retain Ajv baseline behavior; regression tests passed."
     },
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "Operative test:slow passed the workerd accepting/refusing human-input integration test."
+      "evidence": "Operative workerd integration passed after renaming its Bun.build fixture to test-support and explicitly registering it with Knip."
     },
     {
       "id": "AC5",
       "status": "met-on-branch",
-      "evidence": "Bureau and Operative declare json-schema-library from the root catalog."
+      "evidence": "Bureau and Operative use the existing root json-schema-library catalog version; frozen install passed."
     }
   ]
 }
