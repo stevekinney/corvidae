@@ -67,6 +67,7 @@ export interface WorkerReplayOperationFailure {
   error: string;
   /** Optional JavaScript error name captured from the failed operation outcome. */
   errorName?: string;
+  /** Validated upstream HTTP failure facts retained for replay, when present. */
   upstreamFailure?: import('../upstream-http-failure.ts').UpstreamHttpFailure;
   /** Optional Weft failure category captured from the failed operation outcome. */
   failureCategory?: FailureCategory;

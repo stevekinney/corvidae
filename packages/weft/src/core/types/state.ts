@@ -45,6 +45,7 @@ export interface WorkflowState {
   failureCategory?: FailureCategory | null;
   /** The {@link WeftErrorCode} of the Weft error that failed this workflow, stored in the failure write. */
   errorCode?: WeftErrorCode;
+  /** Validated upstream HTTP failure facts recorded for a failed workflow, when present. */
   upstreamFailure?: UpstreamHttpFailure;
   /** The step the failed run was on (the one the timeline marks failed), stored in the failure write. */
   failedStep?: WorkflowFailedStep;

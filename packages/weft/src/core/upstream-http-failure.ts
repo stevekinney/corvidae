@@ -1,6 +1,8 @@
 /** Bounded, non-text facts about an upstream HTTP failure. */
 export interface UpstreamHttpFailure {
+  /** The upstream service category. */
   readonly source: 'github' | 'other';
+  /** The upstream HTTP failure status, an integer from 400 through 599. */
   readonly status: number;
 }
 
@@ -8,6 +10,7 @@ function isHttpFailureStatus(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 400 && value <= 599;
 }
 
+/** Check that a value contains only valid upstream HTTP failure facts. */
 export function isUpstreamHttpFailure(value: unknown): value is UpstreamHttpFailure {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const fact = value as Record<string, unknown>;
@@ -22,6 +25,7 @@ export function isUpstreamHttpFailure(value: unknown): value is UpstreamHttpFail
 
 /** An explicit failure from a provider boundary; free-form messages never supply its facts. */
 export class UpstreamHttpError extends Error {
+  /** Validated facts identifying the upstream HTTP failure. */
   readonly upstreamFailure: UpstreamHttpFailure;
   constructor(failure: UpstreamHttpFailure, message: string) {
     super(message);
@@ -33,6 +37,7 @@ export class UpstreamHttpError extends Error {
 
 const attached = new WeakMap<Error, UpstreamHttpFailure>();
 
+/** Attach valid upstream failure facts to a reconstructed error; invalid values are ignored. */
 export function attachUpstreamFailure(error: Error, value: unknown): void {
   if (isUpstreamHttpFailure(value)) attached.set(error, { ...value });
 }

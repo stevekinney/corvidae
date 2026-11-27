@@ -66,6 +66,7 @@ export interface ActivityExecutionResult {
   error?: string;
   /** Error constructor name used by retry classification and diagnostics. */
   errorName?: string;
+  /** Validated upstream HTTP failure facts, when the activity threw a typed failure. */
   upstreamFailure?: UpstreamHttpFailure;
 }
 

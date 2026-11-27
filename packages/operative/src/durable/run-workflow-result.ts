@@ -38,6 +38,7 @@ export interface AgentRunWorkflowResult {
   /** Safe error classifier retained across durable serialization. */
   errorKind?: AgentRunErrorKind | undefined;
   errorCode?: AgentRunErrorCode | undefined;
+  /** Validated upstream HTTP failure facts retained for a failed run, when present. */
   upstreamFailure?: UpstreamHttpFailure | undefined;
   /** The abort reason, when `finishReason` is `aborted`. */
   abortReason?: string | undefined;
