@@ -1,7 +1,7 @@
 {
   "issue": "COR-2725",
   "branch": "chef/chat-recovery",
-  "checkedAt": "c8eeaa6743",
+  "checkedAt": "6aa8e68154",
   "briefVersion": "522303fe7d6a",
   "status": "READY",
   "criteria": [
@@ -13,7 +13,7 @@
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "turn-commands.test.ts (57 cells), chat-turn-commands.test.ts, chat-turn-outcome-anchor.test.ts (3 call shapes by stopped/failed/empty, commands once, plus a dropped stream), turn-outcome-anchor.test.ts (3 shapes by 4 outcomes), chat-conversation-states.test.ts (Discard answered after a session switch, refused Discard inline, dropped run said once, Discard on a tool-only stopped turn sends run-states-ended-on-tool), chat-conversation-stopped.test.ts (setting refusal after a switch), chat-session-retry.svelte.test.ts, chat-session-reconnect.svelte.test.ts. Red against main at f429470056 and 65e0b1ed23. Bureau remains the source of run status and journal replay; the registry keeps workspace-scoped sessions; neither changed."
+      "evidence": "turn-commands.test.ts (57 cells), chat-turn-commands.test.ts, chat-turn-outcome-anchor.test.ts (3 call shapes by stopped/failed/empty, commands once, plus a dropped stream), turn-outcome-anchor.test.ts (3 shapes by 4 outcomes), chat-conversation-states.test.ts (Discard answered after a session switch, refused Discard inline, dropped run said once, Discard on a tool-only stopped turn sends run-states-ended-on-tool), chat-conversation-stopped.test.ts (setting refusal after a switch), chat-session-retry.svelte.test.ts, chat-session-reconnect.svelte.test.ts. Red against main at f429470056, 65e0b1ed23 and e9bdab71f4 (review F1: turn-outcome-turns.test.ts, 149 cells with the probe, and the route rows where Discard and Continue acted on the earlier reply's run; F2: a refused or throwing Retry now of a tool-only turn). The stop, the anchor and the carrier now come from one segmentation of the last turn, and a follow-up after the steps no longer moves the anchor. Bureau remains the source of run status and journal replay; the registry keeps workspace-scoped sessions; neither changed."
     },
     {
       "id": "AC3",
