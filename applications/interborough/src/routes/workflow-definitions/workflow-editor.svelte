@@ -459,7 +459,7 @@
   />
   <p class="weft-workflow-editor__path">
     <span>{hostPaths.data?.mode === 'remote' ? copy.remote.fileLabel : copy.fileLabel}</span>
-    <CodeLocation class="weft-code-location" file={filePath} data-testid="workflow-file-path" />
+    <CodeLocation file={filePath} data-testid="workflow-file-path" />
   </p>
 
   {#if unapplied}

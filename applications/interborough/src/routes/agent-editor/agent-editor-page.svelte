@@ -631,28 +631,31 @@
     <!-- The path relative to the home, which is where a person looks; the full one is in the tooltip (row 41r). -->
     <p class="weft-agent-editor__path">
       <span>{hostPaths.data?.mode === 'remote' ? copy.remote.fileLabel : copy.fileLabel}</span>
-      {#if hostPaths.data === undefined}
-        <CodeLocation
-          class="weft-code-location"
-          file={relativePath}
-          data-testid="agent-file-path"
-        />
-      {:else}
-        <!-- Focusable, so the full path is reachable from the keyboard as well as by hovering. -->
-        <Tooltip text={filePath}>
+      <span class="weft-agent-editor__file">
+        {#if hostPaths.data === undefined}
           <CodeLocation
-            class="weft-code-location"
+            class="weft-agent-editor__location"
             file={relativePath}
-            tabindex={0}
             data-testid="agent-file-path"
           />
-        </Tooltip>
-      {/if}
-      <CopyButton
-        value={filePath}
-        label={copy.newAgent.copyFilePath}
-        copiedLabel={copy.newAgent.copiedFilePath}
-      />
+        {:else}
+          <!-- Focusable, so the full path is reachable from the keyboard as well as by hovering. -->
+          <Tooltip class="weft-agent-editor__tooltip" text={filePath}>
+            <CodeLocation
+              class="weft-agent-editor__location"
+              file={relativePath}
+              tabindex={0}
+              data-testid="agent-file-path"
+            />
+          </Tooltip>
+        {/if}
+        <CopyButton
+          class="weft-agent-editor__copy"
+          value={filePath}
+          label={copy.newAgent.copyFilePath}
+          copiedLabel={copy.newAgent.copiedFilePath}
+        />
+      </span>
     </p>
   {/if}
 
@@ -844,12 +847,31 @@
   .weft-agent-editor__path {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--cinder-space-2);
     align-items: baseline;
     margin: 0;
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-subtle);
-    overflow-wrap: anywhere;
+  }
+
+  .weft-agent-editor__file {
+    display: flex;
+    flex: 0 1 auto;
+    max-inline-size: 100%;
+    min-inline-size: 0;
+    gap: 8px;
+    align-items: baseline;
+  }
+
+  .weft-agent-editor__file > :global(.weft-agent-editor__location),
+  .weft-agent-editor__file > :global(.weft-agent-editor__tooltip) {
+    flex: 0 1 auto;
+    max-inline-size: 100%;
+    min-inline-size: 0;
+  }
+
+  .weft-agent-editor__file > :global(.weft-agent-editor__copy) {
+    flex: none;
   }
 
   .weft-agent-editor__copied {

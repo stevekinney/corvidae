@@ -58,4 +58,27 @@ describe('CodeLocation', () => {
     const { container } = render(CodeLocation, { file: 'src/index.ts', column: 7 });
     expect(container.querySelector('code')?.textContent).toBe('src/index.ts');
   });
+
+  test('keeps source locations intact while offering breaks only after path separators', () => {
+    const file = 'src\\routes/agent-editor.long-name.svelte';
+    const { container } = render(CodeLocation, { file, line: 42, column: 7 });
+    const code = container.querySelector('code');
+
+    expect(code?.textContent).toBe(`${file}:42:7`);
+    expect(container.querySelectorAll('wbr')).toHaveLength(6);
+    expect(
+      [...container.querySelectorAll('.cinder-code-location__segment')].map(
+        (part) => part.textContent,
+      ),
+    ).toEqual(['src\\', 'routes/', 'agent-', 'editor.', 'long-', 'name.', 'svelte:42:7']);
+  });
+
+  test('keeps an overlong unbroken path segment intact for its ellipsis disclosure', () => {
+    const file = 'a'.repeat(240);
+    const { container } = render(CodeLocation, { file });
+
+    expect(container.querySelector('code')?.textContent).toBe(file);
+    expect(container.querySelectorAll('wbr')).toHaveLength(0);
+    expect(container.querySelector('.cinder-code-location__segment')?.textContent).toBe(file);
+  });
 });

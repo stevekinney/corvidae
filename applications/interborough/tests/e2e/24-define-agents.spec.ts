@@ -35,8 +35,10 @@ import { newThreadId, runToEnd } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_FIRST_RUN_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 const WIDTHS = [375, 1280] as const;
+const LONG_PATH_AGENT_ID = 'source-path-preserves-separators-and-truncates-one-long-segment';
 
 /** Identifiers this file's specs create, removed after each spec. */
 const created = new Set<string>();
@@ -547,6 +549,60 @@ test.describe('a new agent on a host with no model provider', () => {
 });
 
 test.describe('an agent that exists', () => {
+  test('/agents/:agent/edit keeps a long file path readable at phone width (PageAgentEditor 41r)', async ({
+    page,
+    request,
+  }) => {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await makeAgent(request, LONG_PATH_AGENT_ID);
+    const fullPath = await agentFilePath(request, LONG_PATH_AGENT_ID);
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`/agents/${LONG_PATH_AGENT_ID}/edit`);
+    await expect(editor(page)).toHaveAttribute('data-state', 'ready');
+    const path = page.getByTestId('agent-file-path');
+    await expect(path).toHaveText(`agents/${LONG_PATH_AGENT_ID}.md`);
+    await captureForDesignReview(page, {
+      route: '/agents/:agent/edit',
+      state: 'long source path',
+      source: '24-define-agents.spec.ts',
+    });
+    const desktopBoxes = await readBoxes(page, {
+      pathBox: path,
+      copyBox: page.getByRole('button', { name: copy.newAgent.copyFilePath }),
+    });
+    expect(desktopBoxes.copyBox.x - (desktopBoxes.pathBox.x + desktopBoxes.pathBox.width)).toBe(8);
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await captureForDesignReview(page, {
+      route: '/agents/:agent/edit',
+      state: 'long source path at phone width',
+      source: '24-define-agents.spec.ts',
+    });
+    const { pathBox, copyBox } = await readBoxes(page, {
+      pathBox: path,
+      copyBox: page.getByRole('button', { name: copy.newAgent.copyFilePath }),
+    });
+    expect(copyBox.x - (pathBox.x + pathBox.width)).toBe(8);
+    expect(copyBox.y + copyBox.height / 2).toBeGreaterThan(pathBox.y);
+    expect(copyBox.y + copyBox.height / 2).toBeLessThan(pathBox.y + pathBox.height);
+    await path.focus();
+    await expect(page.getByRole('tooltip')).toHaveText(fullPath);
+    await page.getByRole('button', { name: copy.newAgent.copyFilePath }).click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(fullPath);
+    await expectNoSidewaysScroll(page, 'the long agent file path');
+    const wrapsAtSeparator = await path.locator('code').evaluate((code) =>
+      [...code.querySelectorAll<HTMLElement>('.cinder-code-location__segment')].some((segment) => {
+        const nextSegment = segment.nextElementSibling?.nextElementSibling;
+        return (
+          nextSegment instanceof HTMLElement &&
+          nextSegment.getBoundingClientRect().top > segment.getBoundingClientRect().top
+        );
+      }),
+    );
+    expect(wrapsAtSeparator).toBe(true);
+  });
+
   for (const width of WIDTHS) {
     test(`is edited in place, keeps its skill descriptors, and shows its file and history, at ${width} pixels`, async ({
       page,

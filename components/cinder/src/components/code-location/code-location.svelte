@@ -15,11 +15,16 @@
     children,
     ...rest
   }: CodeLocationProps = $props();
-  const location = $derived(
-    `${file}${line === undefined ? '' : `:${line}${column === undefined ? '' : `:${column}`}`}`,
-  );
+  const fileSegments = $derived(file.split(/(?<=[/\\.-])/u));
 </script>
 
 <span class={classNames('cinder-code-location', customClassName)} {...rest}
-  ><code>{location}</code>{#if children}{@render children()}{/if}</span
+  ><code
+    >{#each fileSegments as segment, index (index)}<span class="cinder-code-location__segment"
+        >{segment}{#if index === fileSegments.length - 1 && line !== undefined}<span
+            class="cinder-code-location__position"
+            >:{line}{#if column !== undefined}:{column}{/if}</span
+          >{/if}</span
+      >{#if index < fileSegments.length - 1}<wbr />{/if}{/each}</code
+  >{#if children}{@render children()}{/if}</span
 >

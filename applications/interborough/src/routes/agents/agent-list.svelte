@@ -523,11 +523,7 @@
                   {/if}
                 {/snippet}
                 {#snippet meta()}
-                  <CodeLocation
-                    class="weft-code-location"
-                    file={agentRelativePath(entry.id)}
-                    data-testid="agent-file-path"
-                  />
+                  <CodeLocation file={agentRelativePath(entry.id)} data-testid="agent-file-path" />
                 {/snippet}
               </StackedListItem>
             {/snippet}

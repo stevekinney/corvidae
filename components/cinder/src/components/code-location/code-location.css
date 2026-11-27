@@ -2,6 +2,8 @@
 @layer cinder.components {
   .cinder-code-location {
     display: inline-flex;
+    max-inline-size: 100%;
+    min-inline-size: 0;
     align-items: center;
     padding: 0 var(--cinder-space-1);
     border-radius: var(--cinder-radius-sm);
@@ -10,7 +12,19 @@
     font-size: var(--cinder-text-xs);
   }
   .cinder-code-location code {
+    min-inline-size: 0;
+    max-inline-size: 100%;
     font-family: var(--cinder-font-mono);
     font-size: inherit;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+  .cinder-code-location__segment {
+    display: inline-block;
+    max-inline-size: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+    white-space: nowrap;
   }
 }
