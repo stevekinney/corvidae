@@ -256,9 +256,9 @@
   let refusedKey = $state<string | null>(null);
 
   /** A decision found `review` no longer waiting: the panel says so in its place, and both lists are read again. */
-  function gone(review: { readonly source: 'bureau'; readonly id: string }, refresh = true): void {
+  function gone(review: { readonly source: 'bureau'; readonly id: string }): void {
     refusedKey = inboxKey(review);
-    if (refresh) void refreshObservedReviews(waitingQuery.refetch, doneQuery.refetch);
+    void refreshObservedReviews(waitingQuery.refetch, doneQuery.refetch);
   }
 
   function submitDecision(
@@ -325,7 +325,8 @@
     notice = undefined;
     if (result === 'outcome-not-written') notice = REVIEWS_COPY.outcomeNotWritten;
     else if (receipt?.remembered === false) notice = REVIEWS_COPY.notRemembered;
-    else if (result === 'already-resolved') gone({ source: 'bureau', id: seen.id }, false);
+    // A conflicting decision reports before its separate read-back can invalidate the list.
+    else if (result === 'already-resolved') gone({ source: 'bureau', id: seen.id });
     else if (result === 'round-changed')
       outcome = { reviewId: seen.id, tone: 'warning', ...REVIEWS_COPY.roundChanged };
     else if (result === 'superseded')
