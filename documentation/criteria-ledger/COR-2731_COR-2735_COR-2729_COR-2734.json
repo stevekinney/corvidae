@@ -1,7 +1,7 @@
 {
   "issue": "COR-2731_COR-2735_COR-2729_COR-2734",
   "branch": "chef/ownership-moves",
-  "checkedAt": "154746e2ae8dabe1d2e1cb1a5cdb9bfedef5b68d",
+  "checkedAt": "b03c65768b1e6116e772985111a62c43170aa422",
   "briefVersion": "32738a65d084",
   "status": "READY",
   "criteria": [
@@ -18,7 +18,7 @@
     {
       "id": "COR-2731 AC3",
       "status": "met-on-branch",
-      "evidence": "An explained delta (tmp/chef/ownership-moves/round-1/COR-2731/guards-compare.txt): empty-state, sidebar, visible-text and separate-box scans and violations are identical; the hidden-label scan grows by exactly the 11 moved files and its own two files are excluded from the findings, with a test; 62 collected test names are identical plus one new test; the slow lane collects qualify-startup.slow.test.ts and Interborough's UI lane collects all five guard tests; interborough test:slow now passes inside focused-checks (8 passed, 0 failed)."
+      "evidence": "An explained delta (tmp/chef/ownership-moves/round-1/COR-2731/guards-compare.txt): empty-state, sidebar, visible-text and separate-box scans and violations are identical; the hidden-label scan grows by exactly the 11 moved files and its own two files are excluded from the findings, with a test; 62 collected test names are identical plus one new test; the slow lane collects qualify-startup.slow.test.ts and Interborough's UI lane collects all five guard tests; interborough test:slow now passes inside focused-checks (8 passed, 0 failed). The five guard tests (60 tests) and tests/coverage-matrix.test.ts (21) now run in the host segment, not the UI shards: fast.xml lists them and ui-1 to ui-4 do not (tmp/chef/ownership-moves/round-7/guard-suites-by-segment.txt); the names are unchanged."
     },
     {
       "id": "COR-2735 AC1",
