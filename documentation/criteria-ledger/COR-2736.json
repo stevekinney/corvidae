@@ -1,7 +1,7 @@
 {
   "issue": "COR-2736",
   "branch": "steve/composable-portable-bureau-client",
-  "checkedAt": "610fac7d159f2d19c8952b150d1ffb87809c4a8b",
+  "checkedAt": "90ae839344c29f449f7cea404910c1f76ec41e77",
   "briefVersion": "8d15159fe2bc",
   "status": "BLOCKED",
   "criteria": [
@@ -43,7 +43,7 @@
     {
       "id": "AC8",
       "status": "not-met",
-      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+      "evidence": "Cinder leading-always option and 320/375 outcome-first geometry assertions implemented; component tests passed, coordinator's targeted browser stopped before tests at startup. Hosted geometry and design review pending."
     },
     {
       "id": "AC9",
