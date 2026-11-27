@@ -92,7 +92,7 @@ export const routes: readonly RouteDefinition[] = [
   },
   {
     pattern: '/agents',
-    kind: 'table',
+    kind: 'list',
     crumb: VIEW_COPY.agents.label,
     view: 'agents',
     load: () => import('../routes/agents/agent-list.svelte'),
@@ -181,7 +181,7 @@ export const routes: readonly RouteDefinition[] = [
   // it, and `/runs/:run` is the same page for a run known by its ID alone.
   {
     pattern: '/workflows',
-    kind: 'table',
+    kind: 'list',
     crumb: VIEW_COPY.workflows.label,
     view: 'workflows',
     load: workflowArea,
@@ -241,7 +241,7 @@ export const routes: readonly RouteDefinition[] = [
   },
   {
     pattern: '/runs',
-    kind: 'table',
+    kind: 'list',
     crumb: VIEW_COPY.runs.label,
     view: 'runs',
     load: runArea,
@@ -267,7 +267,7 @@ export const routes: readonly RouteDefinition[] = [
   // schedule: its route comes before `/schedules/:schedule`.
   {
     pattern: '/schedules',
-    kind: 'table',
+    kind: 'list',
     crumb: VIEW_COPY.schedules.label,
     view: 'schedules',
     load: schedulesArea,
@@ -337,7 +337,7 @@ export const routes: readonly RouteDefinition[] = [
   // changes it. `new` is a path segment, not a goal: its route comes before `/goals/:goal`.
   {
     pattern: '/goals',
-    kind: 'table',
+    kind: 'list',
     crumb: VIEW_COPY.goals.label,
     view: 'goals',
     load: () => import('../routes/goals/index.svelte'),

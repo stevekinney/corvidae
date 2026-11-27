@@ -25,8 +25,9 @@ describe('the views', () => {
 });
 
 describe('page width by kind of page', () => {
-  test('a list with its detail, a table, an editor and an overview are wide, and a form and prose read', () => {
+  test('assigns the width of each page kind', () => {
     expect(PAGE_KINDS.map((kind) => [kind, pageWidth(kind)])).toEqual([
+      ['list', 'list'],
       ['list-detail', 'full'],
       ['panes', 'panes'],
       ['table', 'full'],
@@ -45,8 +46,12 @@ describe('page width by kind of page', () => {
   });
 
   test('one area holds pages of more than one width, so the width is not the area’s', () => {
-    // The agents area: its list is a table's width, and so are an agent's page and its editor.
-    expect(widthOf('/agents')).toBe('full');
+    // The catalogues have a bounded measure, and their details and editors can use the outlet.
+    for (const pattern of ['/agents', '/goals', '/runs', '/schedules', '/workflows']) {
+      expect(widthOf(pattern), pattern).toBe('list');
+    }
+    expect(widthOf('/goals/:goal')).toBe('full');
+    expect(widthOf('/schedules/:schedule')).toBe('full');
     expect(widthOf('/agents/new')).toBe('full');
     expect(widthOf('/agents/:agent/edit')).toBe('full');
     // A run's setup is a form in the reading column, beside the wide run page of the same workflow.
@@ -67,7 +72,6 @@ describe('page width by kind of page', () => {
   test('the operator tables stay wide and every settings section has the page to itself, its navigation beside one column', () => {
     for (const pattern of [
       '/capabilities',
-      '/runs',
       '/runs/:run',
       '/workflows/:workflow/runs/:run',
       '/health',

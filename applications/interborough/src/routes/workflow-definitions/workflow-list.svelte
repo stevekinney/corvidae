@@ -284,7 +284,7 @@
           {#snippet icon()}<Search aria-hidden="true" />{/snippet}
         </EmptyState>
       {:else}
-        <div class="ib-records__bounded-list" {@attach followLinks}>
+        <div {@attach followLinks}>
           <DataList
             items={visible}
             key={(item) => item.row.name}
