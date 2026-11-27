@@ -188,7 +188,9 @@ describe('StackedListItem chooses its layout from its own width (COR-2448)', () 
     );
     // The comma, the grid, the detail line and the status rules each have a block of their own.
     expect(phoneRules.length - 1).toBeGreaterThanOrEqual(5);
-    expect(phoneRules[2]).toContain('--status-leading');
+    expect(phoneRules.slice(1).some((rule) => /--status-leading(?!-always)/u.test(rule))).toBe(
+      true,
+    );
     expect(stylesheet).toContain('container-type: inline-size');
   });
 });

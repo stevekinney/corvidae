@@ -374,8 +374,8 @@ export async function validateLandingEvidence(
         const record = binding as Record<string, unknown>;
         if (
           Object.keys(record).toSorted().join(',') !== 'attestation,recordedDigest' ||
-          typeof record.attestation !== 'string' ||
-          record.recordedDigest !== designDigest(text)
+          typeof record['attestation'] !== 'string' ||
+          record['recordedDigest'] !== designDigest(text)
         )
           return 'invalid design exclusion binding';
         const rows = read(path.replace(/\.verdicts$/, '.rows'));
@@ -384,7 +384,7 @@ export async function validateLandingEvidence(
           rows === undefined || ledger === undefined
             ? ['missing design exclusion evidence']
             : exclusionResult(
-                record.attestation,
+                record['attestation'],
                 request.revision,
                 route.incomingBase ?? '',
                 rows,

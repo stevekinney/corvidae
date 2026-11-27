@@ -56,38 +56,40 @@ export function exclusionResult(
     if (
       Object.keys(record).toSorted().join(',') !==
         'base,exclusions,head,ledgerDigest,verdictDigest' ||
-      record.head !== head ||
-      record.base !== base ||
+      record['head'] !== head ||
+      record['base'] !== base ||
       !/^[0-9a-f]{40}$/.test(base) ||
-      record.verdictDigest !== designDigest(rows) ||
-      record.ledgerDigest !== designDigest(ledger) ||
-      !Array.isArray(record.exclusions) ||
-      record.exclusions.length === 0
+      record['verdictDigest'] !== designDigest(rows) ||
+      record['ledgerDigest'] !== designDigest(ledger) ||
+      !Array.isArray(record['exclusions']) ||
+      record['exclusions'].length === 0
     )
       throw new Error();
     const all = findings(rows, ledger);
     const excluded = new Set<string>();
-    for (const item of record.exclusions as unknown[]) {
+    for (const item of record['exclusions'] as unknown[]) {
       if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error();
       const entry = item as Record<string, unknown>;
       if (
         Object.keys(entry).toSorted().join(',') !==
           'baselineEvidence,fingerprint,issue,ownerApproval' ||
-        typeof entry.fingerprint !== 'string' ||
-        typeof entry.baselineEvidence !== 'string' ||
-        entry.baselineEvidence.trim().length === 0 ||
-        typeof entry.issue !== 'string' ||
-        !/^https:\/\/linear\.app\/lost-gradient\/issue\/COR-\d+(?:\/[^?#]+)?$/.test(entry.issue) ||
-        typeof entry.ownerApproval !== 'string' ||
-        !/^https:\/\/linear\.app\/lost-gradient\/issue\/COR-\d+(?:\/[^?#]+)?#comment-[a-zA-Z0-9-]+$/.test(
-          entry.ownerApproval,
+        typeof entry['fingerprint'] !== 'string' ||
+        typeof entry['baselineEvidence'] !== 'string' ||
+        entry['baselineEvidence'].trim().length === 0 ||
+        typeof entry['issue'] !== 'string' ||
+        !/^https:\/\/linear\.app\/lost-gradient\/issue\/COR-\d+(?:\/[^?#]+)?$/.test(
+          entry['issue'],
         ) ||
-        excluded.has(entry.fingerprint)
+        typeof entry['ownerApproval'] !== 'string' ||
+        !/^https:\/\/linear\.app\/lost-gradient\/issue\/COR-\d+(?:\/[^?#]+)?#comment-[a-zA-Z0-9-]+$/.test(
+          entry['ownerApproval'],
+        ) ||
+        excluded.has(entry['fingerprint'])
       )
         throw new Error();
-      const matches = all.filter((finding) => finding.fingerprint === entry.fingerprint);
+      const matches = all.filter((finding) => finding.fingerprint === entry['fingerprint']);
       if (matches.length !== 1 || !matches[0]?.eligible) throw new Error();
-      excluded.add(entry.fingerprint);
+      excluded.add(entry['fingerprint']);
     }
     return all
       .filter((finding) => !excluded.has(finding.fingerprint))
