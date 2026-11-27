@@ -10,12 +10,14 @@ export type WorkerOptions = {
   assets?: string;
   durableObjects?: Record<string, string>;
   d1Databases?: readonly string[];
+  r2Buckets?: readonly string[];
   outboundService?: OutboundService;
 };
 
 export type WorkerBindings = {
   dispatchFetch: Miniflare['dispatchFetch'];
   getD1Database(binding: string): ReturnType<Miniflare['getD1Database']>;
+  getR2Bucket(binding: string): ReturnType<Miniflare['getR2Bucket']>;
   getDurableObjectNamespace(binding: string): ReturnType<Miniflare['getDurableObjectNamespace']>;
   outboundService: OutboundService | undefined;
 };
@@ -55,11 +57,13 @@ export async function startWorker(options: WorkerOptions): Promise<RunningWorker
         }),
     ...(options.durableObjects === undefined ? {} : { durableObjects: options.durableObjects }),
     ...(options.d1Databases === undefined ? {} : { d1Databases: [...options.d1Databases] }),
+    ...(options.r2Buckets === undefined ? {} : { r2Buckets: [...options.r2Buckets] }),
     ...(options.outboundService === undefined ? {} : { outboundService: options.outboundService }),
   });
   return {
     dispatchFetch: miniflare.dispatchFetch.bind(miniflare),
     getD1Database: miniflare.getD1Database.bind(miniflare),
+    getR2Bucket: miniflare.getR2Bucket.bind(miniflare),
     getDurableObjectNamespace: miniflare.getDurableObjectNamespace.bind(miniflare),
     outboundService: options.outboundService,
     dispose: () => miniflare.dispose(),

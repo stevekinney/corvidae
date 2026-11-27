@@ -92,6 +92,24 @@ describe('the gate', () => {
   });
 });
 
+describe('the page measure', () => {
+  test('keeps the Storage warning and explorer in one leading default-width container', async () => {
+    const view = await open({ alertSizeBytes: 1600 });
+    await view.findByRole('table');
+
+    const container = view.container.querySelector<HTMLElement>(
+      '.weft-storage-route.cinder-container',
+    );
+    expect(container).not.toBeNull();
+    expect(container?.getAttribute('data-cinder-centered')).toBeNull();
+    expect(container?.getAttribute('data-cinder-padded')).toBeNull();
+    expect(container?.getAttribute('data-cinder-max-width')).toBeNull();
+    expect(container?.querySelector('[data-testid="storage-warning"]')).not.toBeNull();
+    expect(container?.querySelector('[role="search"][aria-label="Find a key"]')).not.toBeNull();
+    expect(container?.querySelector('.cinder-list-detail')).not.toBeNull();
+  });
+});
+
 describe('the key table', () => {
   // Owner, 2026-11-19: "Showing 29 of 29 keys" was the table's last row, cut in half by its own
   // scroll box, and the Key column repeated the prefix the Group column gives.

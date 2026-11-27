@@ -11,6 +11,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import {
+  createS3ObjectOperations,
+  createSigV4Presigner,
+  type S3ObjectStoreOperations,
+} from '@lostgradient/object-store';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createS3TestServer } from '@lostgradient/testing/s3-server';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -27,7 +32,6 @@ import {
   SourceConflictError,
   type WorkflowSource,
 } from './sources/definition-source';
-import { createS3ObjectOperations, type ObjectStoreOperations } from './sources/object-operations';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
 import { workflowObjectSource } from './sources/workflow-object-source';
 import {
@@ -158,9 +162,13 @@ async function objectHarness<K extends HarnessKind>(kind: K): Promise<Harness<So
   const extension = EXTENSIONS[kind];
   const keyOf = (id: string): string => `${prefix}${id}${extension}`;
   const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
-  const real = createS3ObjectOperations(client, server.bucket, 'text/plain');
+  const real = createS3ObjectOperations({
+    presigner: createSigV4Presigner(server.clientOptions()),
+    bucket: server.bucket,
+    contentType: 'text/plain',
+  });
   let armed: { readonly key: string; readonly text: string } | undefined;
-  const operations: ObjectStoreOperations = {
+  const operations: S3ObjectStoreOperations = {
     ...real,
     // The edit lands inside the conditional PUT: after the write's read and hash check, before the
     // request reaches the store.
@@ -174,7 +182,6 @@ async function objectHarness<K extends HarnessKind>(kind: K): Promise<Harness<So
     },
   };
   const options = {
-    client,
     operations,
     runtime,
     pollIntervalMilliseconds: OBJECT_POLL_MILLISECONDS,

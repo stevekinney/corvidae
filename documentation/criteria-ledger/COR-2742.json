@@ -1,0 +1,39 @@
+{
+  "issue": "COR-2742",
+  "branch": "codex/cor-2742-workers-npm",
+  "checkedAt": "167643036b32e8f03a8453569ba892223273c714",
+  "briefVersion": "e5b86e993051",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "The package exports shared, S3, R2 and SigV4 APIs. Root and all affected workspace type checks passed."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "The .integration.test.ts contract passed against real local S3 and Miniflare R2, including both paginators, bytes, ETags, conditional writes, S3 conditional delete, and redacted errors. Fast XML entity and opaque token regressions passed."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "The workerd-testing slow suite passed both cases, including the R2 binding round trip, and the README describes r2Buckets."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Bungalow exposes shared operations and keeps its signer internal. Bureau consumers require S3 conditional remove and Interborough narrows the capability. Interborough typecheck and 39 host tests passed; the production Bun.S3Client grep returned no matches."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "Bureau fast 13548 passed, Bungalow fast 550 passed, and Bungalow slow 36 passed with default and explicit native Node v22.23.4."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "Object-store and Bungalow documentation describe S3-only conditional delete and local Miniflare R2 conditional-write verification."
+    }
+  ]
+}

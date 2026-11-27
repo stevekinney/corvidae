@@ -27,6 +27,7 @@
     "@lostgradient/bungalow": "workspace:*",
     "@lostgradient/api-key-settings": "workspace:*",
     "@lostgradient/bureau": "workspace:*",
+    "@lostgradient/object-store": "workspace:*",
     "@lostgradient/bureau-client": "workspace:*",
     "@lostgradient/chat": "workspace:*",
     "@lostgradient/cinder": "workspace:*",
