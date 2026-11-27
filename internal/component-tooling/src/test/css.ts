@@ -79,7 +79,8 @@ export function declarationsFor(css: string, selector: string): Map<string, stri
   let matched = false;
   parse(css).walkRules((rule) => {
     if (matched) return;
-    const selectors = rule.selector.split(',').map((entry) => entry.replace(/\s+/g, ' ').trim());
+    // `rule.selectors` splits on top-level commas only, so `:is(a, b)` stays one selector.
+    const selectors = rule.selectors.map((entry) => entry.replace(/\s+/g, ' ').trim());
     if (!selectors.includes(wanted)) return;
     matched = true;
     rule.walkDecls((declaration) => {

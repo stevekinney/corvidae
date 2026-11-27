@@ -27,6 +27,13 @@
     padding: var(--cinder-space-2) var(--cinder-space-3);
   }
 
+  /* The default variant draws no fill or frame, only a hairline between rows, so its rows start on
+   * the content's leading edge like the heading above them (COR-2760). A linked row's tint still
+   * reaches 12px past that edge (`.cinder-description-list__link::after`). */
+  .cinder-description-list[data-cinder-variant='default'] .cinder-description-list__row {
+    padding-inline: 0;
+  }
+
   .cinder-description-list[data-cinder-variant='default']
     .cinder-description-list__row:not(:first-child) {
     border-block-start: var(--cinder-border-width) solid var(--cinder-border-muted);
@@ -263,7 +270,8 @@
 
   /* The tint and the ring: on a flat list they reach a little past the row's start, rounded like a
    * control, so the tint never starts at the text and the ring never crosses the label's first
-   * glyph. */
+   * glyph. The tinted strip is part of the link, so a press anywhere the tint is drawn follows it
+   * (it lies under the row's controls, which sit above the text). */
   .cinder-description-list__link::after {
     content: '';
     position: absolute;
@@ -271,7 +279,6 @@
     inset-inline: calc(var(--cinder-space-3) * -1) 0;
     z-index: -1;
     border-radius: var(--cinder-radius-control);
-    pointer-events: none;
   }
 
   /* On a framed list they reach the group's start edge, so no untinted strip is left there; the

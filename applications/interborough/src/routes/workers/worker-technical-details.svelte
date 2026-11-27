@@ -89,7 +89,7 @@
   <div class="weft-worker-detail__grid">
     <section class="weft-workers-panel" aria-labelledby="worker-connection-heading">
       <h3 id="worker-connection-heading" class="weft-workers-panel__title">Connection</h3>
-      <DescriptionList items={connectionItems} />
+      <DescriptionList class="weft-workers-panel__list" items={connectionItems} />
     </section>
     <section class="weft-workers-panel" aria-labelledby="worker-activities-heading">
       <h3 id="worker-activities-heading" class="weft-workers-panel__title">Activities</h3>

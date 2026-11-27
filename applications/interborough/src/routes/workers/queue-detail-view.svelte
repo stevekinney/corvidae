@@ -79,7 +79,7 @@
 
   <div class="weft-workers-panel">
     <div class="weft-workers-panel__title">Strategy</div>
-    <DescriptionList items={strategyItems} />
+    <DescriptionList class="weft-workers-panel__list" items={strategyItems} />
   </div>
 
   <section

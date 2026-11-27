@@ -3,10 +3,12 @@
 </script>
 
 <script lang="ts">
+  import { untrack } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
 
   import { createCutText } from '../../_internal/cut-text.svelte.ts';
-  import { tryGetTableContext } from '../table/table.context.ts';
+  import { tryGetTableContext, tryGetTableRowColumnsContext } from '../table/table.context.ts';
+  import { columnOf, spanOf } from '../table/table-column.ts';
   import type { TableCellProps } from './table-cell.types.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import FullTextTooltip from '../../_internal/full-text-tooltip.svelte';
@@ -27,6 +29,24 @@
 
   // A cell with a control tells its table, which stacks its rows only while one is mounted.
   const tableContext = tryGetTableContext();
+
+  // The cell takes its column's `sizing` from the header cell above it: by the position it claims as
+  // it is created (so the server's HTML carries it), then by its DOM position once mounted, read
+  // again whenever its row's cells change. A cell that spans columns belongs to none of them.
+  const rowColumns = tryGetTableRowColumnsContext();
+  // Claimed once, as the cell is created; later moves are read from the DOM.
+  let columnPosition = $state(untrack(() => rowColumns?.claimColumn(spanOf(rest.colspan)) ?? -1));
+  const spansColumns = $derived(spanOf(rest.colspan) > 1);
+  const sizing = $derived(spansColumns ? undefined : tableContext?.columnSizing?.(columnPosition));
+  // Sizing changes a cell only in a `fit` table that is not drawing flat card rows.
+  const sized = $derived(tableContext?.fit === true && tableContext.stackCard !== true);
+  // A `content` cell never wraps, so a value longer than its column's cap (half the table) is cut
+  // the way a `truncate` cell is: an ellipsis, and the whole value in a tooltip.
+  const cutsAtCap = $derived(sized && sizing === 'content');
+  const placeColumn: Attachment<HTMLElement> = (cell) => {
+    void rowColumns?.version;
+    columnPosition = columnOf(cell);
+  };
   $effect(() => {
     if (!controls) return;
     return tableContext?.registerControls?.(controls !== 'fit');
@@ -83,15 +103,17 @@
 <svelte:element
   this={as}
   {...rest}
-  title={truncate ? undefined : title}
+  title={truncate || cutsAtCap ? undefined : title}
   scope={as === 'th' ? 'row' : undefined}
   class={classNames('cinder-table__cell', className)}
   data-cinder-align={align}
   data-cinder-truncate={truncate || undefined}
   data-cinder-stack={stack}
   data-cinder-controls={controls === 'fit' ? 'fit' : controls ? '' : undefined}
+  data-cinder-sizing={sizing}
+  {@attach placeColumn}
 >
-  {#if truncate}
+  {#if truncate || cutsAtCap}
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the text is cut, so focusing it opens the tooltip with the whole text. -->
     <span
       class="cinder-table__cell-text"

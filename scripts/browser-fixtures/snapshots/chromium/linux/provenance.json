@@ -32,6 +32,14 @@
       "renderedSourceSha": "0f0b4d1f1bc0f0a08562995eb0b019b453758631",
       "suiteExitCode": 0
     },
+    "data-table": {
+      "renderedSourceSha": "988852ec548b6e664c0f5babb556e64495fca8b9",
+      "suiteExitCode": 0
+    },
+    "description-list": {
+      "renderedSourceSha": "988852ec548b6e664c0f5babb556e64495fca8b9",
+      "suiteExitCode": 0
+    },
     "drawer": {
       "renderedSourceSha": "3ab69aa74a9c1df0aa3d27138a912fd3093f5f4f",
       "suiteExitCode": 0
@@ -90,6 +98,14 @@
     },
     "review-editor-scroll": {
       "renderedSourceSha": "2a0143ee0a04a6dc0d5a2b1777e3b4db5e2260f1",
+      "suiteExitCode": 0
+    },
+    "stacked-rows-leading-edge": {
+      "renderedSourceSha": "6f51e3e39d8d0795dedcff787b9a324129c902b2",
+      "suiteExitCode": 0
+    },
+    "table": {
+      "renderedSourceSha": "988852ec548b6e664c0f5babb556e64495fca8b9",
       "suiteExitCode": 0
     },
     "token-computation": {

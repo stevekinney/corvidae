@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
+import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 import { setupHappyDom } from '@lostgradient/testing';
 import type { DescriptionListDefinition } from './description-list.types.ts';
 
@@ -118,6 +119,24 @@ describe('DescriptionList', () => {
     );
     expect(css).toMatch(
       /\[data-cinder-variant='fields'\] dt\s*\{[^}]*font-weight: var\(--cinder-font-normal\)/s,
+    );
+  });
+
+  // COR-2760: a default row has no fill or frame, so it starts on the content's leading edge.
+  test('default rows start on the content edge while every other variant keeps the 12px inset', () => {
+    const css = readFileSync(new URL('./description-list.css', import.meta.url), 'utf8');
+    expect(
+      declarationsFor(
+        css,
+        ".cinder-description-list[data-cinder-variant='default'] .cinder-description-list__row",
+      ).get('padding-inline'),
+    ).toBe('0');
+    expect(declarationsFor(css, '.cinder-description-list__row').get('padding')).toBe(
+      'var(--cinder-space-2) var(--cinder-space-3)',
+    );
+    // A linked default row keeps its tint 12px past the row's start.
+    expect(declarationsFor(css, '.cinder-description-list__link::after').get('inset-inline')).toBe(
+      'calc(var(--cinder-space-3) * -1) 0',
     );
   });
 

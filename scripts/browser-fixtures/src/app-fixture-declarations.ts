@@ -74,6 +74,7 @@ export const appFixtureDeclarations = {
   'schema-form': ['assertion'],
   'side-navigation': ['assertion'],
   table: ['assertion'],
+  'stacked-rows-leading-edge': ['assertion'],
   'speed-dial': ['assertion'],
   tooltip: ['assertion'],
   'virtual-list': ['assertion'],

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { parse } from 'postcss';
 
-import { stripCinderComponentsLayer } from './css.ts';
+import { declarationsFor, stripCinderComponentsLayer } from './css.ts';
 
 /**
  * Parse `css` and return its top-level selectors / at-rule headers, in order.
@@ -64,5 +64,17 @@ describe('stripCinderComponentsLayer', () => {
     const css =
       '@layer cinder.components { /* a } brace in a comment */ .cinder-x { color: red; } }';
     expect(topLevelShape(stripCinderComponentsLayer(css))).toEqual(['.cinder-x']);
+  });
+});
+
+describe('declarationsFor', () => {
+  test('a selector with a comma inside :is() matches as one entry of the list', () => {
+    const css =
+      '.cinder-y { color: blue; } .cinder-x:is([data-a], [data-b])::after, .cinder-z { color: red; }';
+    expect(declarationsFor(css, '.cinder-x:is([data-a], [data-b])::after').get('color')).toBe(
+      'red',
+    );
+    expect(declarationsFor(css, '.cinder-z').get('color')).toBe('red');
+    expect(declarationsFor(css, '[data-b])::after').size).toBe(0);
   });
 });

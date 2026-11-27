@@ -175,19 +175,19 @@
   <div class="weft-task-ledger-detail__grid">
     <section class="weft-workers-panel">
       <h3 class="weft-workers-panel__title">Identity</h3>
-      <DescriptionList items={identityItems} />
+      <DescriptionList class="weft-workers-panel__list" items={identityItems} />
     </section>
     <section class="weft-workers-panel">
       <h3 class="weft-workers-panel__title">Dispatch envelope</h3>
-      <DescriptionList items={dispatchItems} />
+      <DescriptionList class="weft-workers-panel__list" items={dispatchItems} />
     </section>
     <section class="weft-workers-panel">
       <h3 class="weft-workers-panel__title">Recovery readiness</h3>
-      <DescriptionList items={recoveryItems} />
+      <DescriptionList class="weft-workers-panel__list" items={recoveryItems} />
     </section>
     <section class="weft-workers-panel">
       <h3 class="weft-workers-panel__title">Completion</h3>
-      <DescriptionList items={outcomeItems} />
+      <DescriptionList class="weft-workers-panel__list" items={outcomeItems} />
     </section>
   </div>
 
