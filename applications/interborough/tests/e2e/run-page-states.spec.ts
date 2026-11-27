@@ -222,9 +222,9 @@ for (const width of WIDTHS) {
     });
     await how.locator('[data-step-row]').first().click();
     await expect(how.locator('article[data-step]')).toBeVisible();
-    await expect(how.locator('article[data-step] [aria-label="Input"]')).not.toContainText(
-      world.runs.failed,
-    );
+    const stepInput = how.locator('article[data-step] [aria-label="Input"]');
+    await expect(stepInput).toBeVisible();
+    await expect(stepInput).not.toContainText(world.runs.failed);
     await captureForDesignReview(page, {
       route: '/runs/:run',
       state: 'COR-2762 selected step',
