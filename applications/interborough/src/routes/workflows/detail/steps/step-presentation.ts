@@ -70,16 +70,10 @@ export function stepName(entry: WorkflowTimelineEntry): StepName {
   return { readable, raw: raw === readable ? undefined : raw };
 }
 
-/**
- * A summary the engine kept, laid out for reading: a JSON value is indented, and anything else
- * (an error message, a value cut short) is shown as it was kept.
- */
-export function prettySummary(summary: string): string {
+/** Reads a structured summary or keeps opaque text, including a truncated summary, verbatim. */
+export function parseStepSummary(summary: string): unknown {
   try {
-    const parsed: unknown = JSON.parse(summary);
-    return typeof parsed === 'object' && parsed !== null
-      ? JSON.stringify(parsed, null, 2)
-      : summary;
+    return JSON.parse(summary) as unknown;
   } catch {
     return summary;
   }
