@@ -89,7 +89,7 @@ describe('CopyableValue', () => {
       /\.cinder-copyable-value__control \.cinder-copy-button\s*\{[^}]*inline-size:\s*100%;[^}]*block-size:\s*100%;/s,
     );
     expect(css).toMatch(
-      /@media \(any-pointer: coarse\)\s*\{\s*\/\*[\s\S]*?\.cinder-copyable-value\s*\{[^}]*display:\s*inline;[^}]*\}[\s\S]*?\.cinder-copyable-value__control\s*\{[^}]*inline-size:\s*var\(--cinder-touch-target-min\);[^}]*min-block-size:\s*var\(--cinder-touch-target-min\);/,
+      /@media \(any-pointer: coarse\)\s*\{\s*\.cinder-copyable-value__control\s*\{[^}]*inline-size:\s*var\(--cinder-touch-target-min\);[^}]*min-block-size:\s*var\(--cinder-touch-target-min\);/s,
     );
   });
 
@@ -218,6 +218,7 @@ describe('CopyableValue', () => {
 
   test('breaks the value anywhere, and never between its last character and the control', () => {
     expect(css).toMatch(/\.cinder-copyable-value \{[^}]*overflow-wrap: anywhere;/);
+    expect(css).toMatch(/\.cinder-copyable-value \{[^}]*white-space: normal;/);
     expect(css).toMatch(/\.cinder-copyable-value__end \{[^}]*white-space: nowrap;/);
     expect(css).toMatch(/\.cinder-copyable-value \{[^}]*font-family: var\(--cinder-font-mono\);/);
   });

@@ -18,6 +18,9 @@
     max-inline-size: 100%;
     font-family: var(--cinder-font-mono);
     overflow-wrap: anywhere;
+    /* A CopyableValue can live inside a compact control that keeps its own label unbroken. Its
+     * value still owns punctuation-aware line breaking, so it must reset that inherited policy. */
+    white-space: normal;
   }
 
   /* A part (the text between two slashes, say) and a piece of a part (the text between two dots) is
@@ -68,14 +71,6 @@
   /* A phone reserves the complete target in the final value stretch, rather than letting a
    * target pseudo-element hang into the width owned by a surrounding popover or sheet. */
   @media (any-pointer: coarse) {
-    /* The desktop wrapper is an inline block so a complete address can move beside its lead-in.
-     * In a narrow sheet that shrink-to-fit box instead keeps its intrinsic path width, leaving its
-     * punctuation-aware children no finite line to wrap in. A touch value flows inline, while its
-     * parts and the final character/control stretch still set the permitted breaks. */
-    .cinder-copyable-value {
-      display: inline;
-    }
-
     .cinder-copyable-value__control {
       inline-size: var(--cinder-touch-target-min);
       min-block-size: var(--cinder-touch-target-min);
