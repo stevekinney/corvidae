@@ -1,5 +1,12 @@
 import { expect, test } from "bun:test";
-import { access, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -52,8 +59,33 @@ test("external production output renders a context-using route", async () => {
       await application.dispose();
     }
     expect(
-      (await readdir(project)).filter((name) => name.startsWith(".velveteen-graph-")),
+      (await readdir(project)).filter((name) =>
+        name.startsWith(".velveteen-graph-"),
+      ),
     ).toEqual([]);
+    await expect(
+      buildProduction({
+        projectDirectory: project,
+        routesDirectory: fixture.routesDirectory,
+        outputDirectory,
+        browserPlugins: [
+          {
+            name: "broken-browser-plugin",
+            setup() {
+              throw new Error("Caller browser plugin failed");
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow("Caller browser plugin failed");
+    expect((await readProductionGeneration(outputDirectory)).directory).toBe(
+      generation.directory,
+    );
+    expect(
+      (await readdir(outputDirectory)).some((name) =>
+        name.startsWith(".stage-"),
+      ),
+    ).toBe(false);
     await Bun.write(
       join(fixture.routesDirectory, "+page.svelte"),
       "<script>const broken = ;</script>",
@@ -66,7 +98,9 @@ test("external production output renders a context-using route", async () => {
       }),
     ).rejects.toThrow();
     expect(
-      (await readdir(project)).filter((name) => name.startsWith(".velveteen-graph-")),
+      (await readdir(project)).filter((name) =>
+        name.startsWith(".velveteen-graph-"),
+      ),
     ).toEqual([]);
   } finally {
     await rm(project, { recursive: true, force: true });

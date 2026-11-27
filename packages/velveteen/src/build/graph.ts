@@ -164,7 +164,8 @@ export async function buildProductionGraph(
       build.onResolve({ filter: /^svelte(?:\/.*)?$/ }, (args) => {
         if (!args.importer.startsWith(`${frameworkRoot}${sep}`)) return;
         const path = runtimeEntries.get(args.path);
-        if (!path) throw new Error(`Application Svelte does not export ${args.path}`);
+        if (!path)
+          throw new Error(`Application Svelte does not export ${args.path}`);
         return { path, namespace: "file" };
       });
     },
@@ -252,6 +253,7 @@ export async function buildProductionGraph(
         routesDirectory: options.manifest.routesDirectory,
       }),
       createSveltePlugin({ development: options.mode === "development" }),
+      ...(options.browserPlugins ?? []),
     ],
   });
   if (!browserBuild.success || browserBuild.logs.length)
