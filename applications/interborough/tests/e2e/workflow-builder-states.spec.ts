@@ -18,6 +18,7 @@ import {
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { jsonEditor, jsonEditorSource, replaceJsonEditorText } from './json-editor-support.ts';
+import { readBoxes } from './read-boxes.ts';
 import { openJsonTab, openTab } from './workflow-support.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
@@ -397,14 +398,12 @@ test.describe('workflow builder design states for /workflows/new and /workflows/
         field.closest('[data-read-only]')?.hasAttribute('inert'),
       ),
     ).toBe(true);
-    const fieldBox = await workflowTitle.boundingBox();
-    const recoveryBox = await undoActions.boundingBox();
-    expect(fieldBox).not.toBeNull();
-    expect(recoveryBox).not.toBeNull();
-    if (fieldBox !== null && recoveryBox !== null) {
-      expect(fieldBox.y).toBeGreaterThanOrEqual(0);
-      expect(fieldBox.y + fieldBox.height).toBeLessThanOrEqual(recoveryBox.y);
-    }
+    const { field: fieldBox, recovery: recoveryBox } = await readBoxes(page, {
+      field: workflowTitle,
+      recovery: undoActions,
+    });
+    expect(fieldBox.y).toBeGreaterThanOrEqual(0);
+    expect(fieldBox.y + fieldBox.height).toBeLessThanOrEqual(recoveryBox.y);
     await undoActions.click({ trial: true });
     await captureForDesignReview(page, {
       route: '/workflows/new',
