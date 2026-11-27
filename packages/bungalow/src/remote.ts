@@ -244,7 +244,7 @@ function assertExactlyAddressed(client: RemoteObjectStore, bucket: string, key: 
 /**
  * Refuse a presigner that would sign with a session token nobody gave Bungalow. The decision is
  * that remote credentials come only from the environment Bungalow is given. The default presigner
- * reads no environment, but an injected one may: `Bun.S3Client` falls back to the
+ * reads no environment, but an injected SDK signer may fall back to the
  * `AWS_SESSION_TOKEN` or `S3_SESSION_TOKEN` the process had when it started whenever no
  * `sessionToken` option is set, or it is `''`, and no option turns that off. The probe is a
  * presigned URL, so nothing is sent, and its query shows exactly what every request would carry.

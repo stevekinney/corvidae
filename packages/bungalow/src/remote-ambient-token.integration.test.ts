@@ -64,7 +64,7 @@ async function openInChild(
   const result = await runWithHangGuard(
     [
       process.execPath,
-      join(import.meta.dir, 'remote-open.test-support.ts'),
+      join(import.meta.dir, '../testing/remote-open.test-support.ts'),
       JSON.stringify(environment),
       presigner,
     ],

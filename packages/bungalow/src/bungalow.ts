@@ -184,7 +184,8 @@ export type AcquireLock = (root: string) => RootLock | Promise<RootLock>;
  * per open, before any request. The default is `createSigV4Presigner` over the descriptor's
  * credentials; a host injects another to sign some other way. The presigner must also sign a
  * bucket-level request, an empty key with `options.query`, which is how a listing is made:
- * `Bun.S3Client.presign` cannot, so a presigner over it hands those to another signer.
+   * Some injected SDK signers cannot sign that request, so a presigner over one hands listings to
+   * another signer.
  */
 export type PresignerFactory = (descriptor: RemoteBungalowDescriptor) => ObjectPresigner;
 

@@ -154,15 +154,18 @@ export type ContentKind = {
 export type ContentKinds = Readonly<Record<string, ContentKind>>;
 
 /** The object store remote mode holds, or an error: a bucket location with no client is a bug. */
+function hasConditionalRemove(
+  client: ReturnType<Bungalow['objectStore']>,
+): client is S3ObjectStoreOperations {
+  return client !== undefined && typeof client.remove === 'function';
+}
+
 function requireClient(bungalow: Bungalow): S3ObjectStoreOperations {
   const client = bungalow.objectStore();
-  if (
-    client === undefined ||
-    typeof (client as Partial<S3ObjectStoreOperations>).remove !== 'function'
-  ) {
+  if (!hasConditionalRemove(client)) {
     throw new Error('The home names a bucket but has no S3 client with conditional remove.');
   }
-  return client as S3ObjectStoreOperations;
+  return client;
 }
 
 /** The wrong kind of location reached a default entry: a table mistake, and the text holds no field of it. */
