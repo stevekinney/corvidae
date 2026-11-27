@@ -1,74 +1,74 @@
 {
   "issue": "COR-2762",
   "branch": "steve/composable-browser-import-boundary",
-  "checkedAt": "1bfed57049",
+  "checkedAt": "6a01b2b96d1be6a69ecec440d9f7ab5f3d065e18",
   "briefVersion": "5cf5116924b7",
-  "status": "BLOCKED",
+  "status": "READY",
   "criteria": [
     {
       "id": "AC1",
       "status": "met-on-branch",
-      "evidence": "Velveteen production fixture passed; Weft conflict and forget-worker tests passed; focused lint and type checks passed."
+      "evidence": "Focused checks and Velveteen public browser-import production fixture passed."
     },
     {
       "id": "AC2",
       "status": "met-on-branch",
-      "evidence": "Velveteen production fixture and Operative human-wait-parks and message-identifiers tests passed; focused type checks passed."
+      "evidence": "Focused checks and Velveteen public subpath fixture passed."
     },
     {
       "id": "AC3",
       "status": "met-on-branch",
-      "evidence": "Interborough production build and focused direct tests passed; focused lint and type checks passed."
+      "evidence": "Focused lint, types and tests passed; integrated capture 45937445861 passed."
     },
     {
       "id": "AC4",
       "status": "met-on-branch",
-      "evidence": "velveteen-browser-imports.integration.test.ts passed positive production build and real server-only negative control."
+      "evidence": "Velveteen production fixture passed browser build and server-only negative control."
     },
     {
       "id": "AC5",
-      "status": "not-met",
-      "evidence": "Layout and geometry regression implemented; coordinator browser verification and four-width themed captures remain outstanding."
+      "status": "met-on-branch",
+      "evidence": "Integrated capture 45937445861 and approved-scope-review.md, 11 matching rows approved with notes."
     },
     {
       "id": "AC6",
-      "status": "not-met",
-      "evidence": "Header bounded and synthetic retry regression passes; coordinator browser and capture verification pending."
+      "status": "met-on-branch",
+      "evidence": "Integrated capture 45937445861 and approved scope review; real Bureau revision witness at 8d3039d1 and retry test remain applicable to unchanged source."
     },
     {
       "id": "AC7",
-      "status": "not-met",
-      "evidence": "Duplicate controls removed and phone layout implemented; coordinator browser and themed captures pending."
+      "status": "met-on-branch",
+      "evidence": "Integrated capture 45937445861 and approved scope review; focused checks passed."
     },
     {
       "id": "AC8",
-      "status": "not-met",
-      "evidence": "Fields and JSON capture case added; coordinator browser and themed captures pending."
+      "status": "met-on-branch",
+      "evidence": "Integrated capture 45937445861 and approved scope review."
     },
     {
       "id": "AC9",
-      "status": "not-met",
-      "evidence": "Escape closes tag editor and restores focus; coordinator browser and capture verification pending."
+      "status": "met-on-branch",
+      "evidence": "Integrated capture 45937445861; run-tags.test.ts passes 11 tests including nonempty draft Escape without add or remove and preservation of existing tag."
     },
     {
       "id": "AC10",
-      "status": "not-met",
-      "evidence": "Named open-state and Run again destination capture cases added; exact-head captures and coverage ledger pending."
+      "status": "met-on-branch",
+      "evidence": "Integrated capture 45937445861 covers 112 planned and 120 actual frames, 32 selected tests across both themes; approved scope review."
     },
     {
       "id": "AC11",
       "status": "met-on-branch",
-      "evidence": "Velveteen browser import fixture and skipped spring-forward calculation passed."
+      "evidence": "Velveteen browser production fixture and spring-forward calculation passed in focused checks."
     },
     {
       "id": "AC12",
-      "status": "not-met",
-      "evidence": "Typed upstream failure and canonical explanation implemented; one-way review and exact-head hosted verification pending."
+      "status": "met-on-branch",
+      "evidence": "Focused direct tests pass typed upstream evidence and canonical explanation; full required CI remains pending coordinator delivery."
     },
     {
       "id": "AC13",
-      "status": "not-met",
-      "evidence": "Browser-only stack and execution-envelope masking implemented; exact-head browser captures pending."
+      "status": "met-on-branch",
+      "evidence": "Integrated capture 45937445861 and approved scope review; diagnostic display and step detail tests cover scoped masking and nested values."
     }
   ]
 }
