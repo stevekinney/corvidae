@@ -251,9 +251,19 @@ test.describe('Health › Storage on the sample world', () => {
   test('opens the storage details from the line, with its chevron turned up, and lists five facts', async ({
     page,
     context,
+    request,
     checkA11y,
   }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const paths = await request.get('/host/paths');
+    expect(paths.ok()).toBe(true);
+    const database = (await paths.json()) as { database: { kind: 'sqlite'; path: string } };
+    const slash = Math.max(
+      database.database.path.lastIndexOf('/'),
+      database.database.path.lastIndexOf('\\'),
+    );
+    const locationPath =
+      slash <= 0 ? database.database.path : database.database.path.slice(0, slash);
     await openStorage(page);
     const main = page.locator('main');
     const trigger = main.getByRole('button', { name: 'Storage details' });
@@ -289,9 +299,9 @@ test.describe('Health › Storage on the sample world', () => {
     await expect(details.locator('dd').nth(3)).toHaveText(/^[\d,]+\s*$/);
     await expect(details.locator('dd').nth(4)).toHaveText('Per key; managed keys are locked');
     const location = details.getByTestId('storage-location');
-    await expect(location).toContainText('/home/me/.interborough');
+    await expect(location).toContainText(locationPath);
     await location.getByRole('button', { name: 'Copy location' }).click();
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('/home/me/.interborough');
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(locationPath);
     await expect(details).toContainText('Storage is set up in Settings › Data and retention.');
     await expect(
       details.getByRole('link', { name: 'Settings › Data and retention' }),
