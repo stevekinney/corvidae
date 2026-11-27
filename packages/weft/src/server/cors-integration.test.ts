@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 /**
  * End-to-end CORS behavior through a live `serve()` instance: preflight,
  * actual-response decoration, the safe default (no `cors` → no headers),
@@ -23,7 +24,7 @@ function createEngine(): Engine {
   return engine;
 }
 
-describe('serve({ cors }) — preflight', () => {
+describe('serve({ host: bunServerHost, cors }) — preflight', () => {
   let engine: Engine;
   let server: WeftServer;
 
@@ -35,6 +36,7 @@ describe('serve({ cors }) — preflight', () => {
   it('answers a preflight from an allowed origin with Access-Control-* headers', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       cors: { allowedOrigins: ['https://app.example.com'], credentials: true },
@@ -61,7 +63,12 @@ describe('serve({ cors }) — preflight', () => {
 
   it('answers a preflight from a disallowed origin without CORS headers', async () => {
     engine = createEngine();
-    server = serve({ engine, port: 0, cors: { allowedOrigins: ['https://app.example.com'] } });
+    server = serve({
+      host: bunServerHost,
+      engine,
+      port: 0,
+      cors: { allowedOrigins: ['https://app.example.com'] },
+    });
 
     const response = await fetch(`${server.url}/v1/health`, {
       method: 'OPTIONS',
@@ -78,6 +85,7 @@ describe('serve({ cors }) — preflight', () => {
   it('does not require authentication for preflight even when auth is configured', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: ['secret-key'], defaultApiKeyScopes: ['workflows:read'] },
@@ -103,7 +111,7 @@ describe('serve({ cors }) — preflight', () => {
   });
 });
 
-describe('serve({ cors }) — actual responses', () => {
+describe('serve({ host: bunServerHost, cors }) — actual responses', () => {
   let engine: Engine;
   let server: WeftServer;
 
@@ -115,6 +123,7 @@ describe('serve({ cors }) — actual responses', () => {
   it('decorates a real response with the exact origin and Vary for a credentialed policy', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       cors: { allowedOrigins: ['https://app.example.com'], credentials: true },
@@ -132,7 +141,12 @@ describe('serve({ cors }) — actual responses', () => {
 
   it('does not decorate a response for a disallowed origin', async () => {
     engine = createEngine();
-    server = serve({ engine, port: 0, cors: { allowedOrigins: ['https://app.example.com'] } });
+    server = serve({
+      host: bunServerHost,
+      engine,
+      port: 0,
+      cors: { allowedOrigins: ['https://app.example.com'] },
+    });
 
     const response = await fetch(`${server.url}/v1/health`, {
       headers: { Origin: 'https://evil.example.com' },
@@ -145,6 +159,7 @@ describe('serve({ cors }) — actual responses', () => {
   it('emits Access-Control-Allow-Origin: * for a non-credentialed wildcard policy', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       cors: { allowedOrigins: ['*'], allowedHeaders: ['Content-Type'] },
@@ -161,6 +176,7 @@ describe('serve({ cors }) — actual responses', () => {
   it('honors a predicate allowedOrigins end-to-end', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       cors: { allowedOrigins: (origin) => origin.endsWith('.example.com') },
@@ -180,6 +196,7 @@ describe('serve({ cors }) — actual responses', () => {
   it('emits no CORS headers for an Origin: null request', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       cors: { allowedOrigins: ['*'], allowedHeaders: ['Content-Type'] },
@@ -201,7 +218,7 @@ describe('serve() — safe default (no cors)', () => {
 
   it('never emits Access-Control-Allow-Origin: * by default', async () => {
     engine = createEngine();
-    server = serve({ engine, port: 0 });
+    server = serve({ host: bunServerHost, engine, port: 0 });
 
     const response = await fetch(`${server.url}/v1/health`, {
       headers: { Origin: 'https://app.example.com' },
@@ -218,12 +235,17 @@ describe('serve() — safe default (no cors)', () => {
   });
 });
 
-describe('serve({ cors }) — fail-fast validation', () => {
+describe('serve({ host: bunServerHost, cors }) — fail-fast validation', () => {
   it('throws on credentials:true with a wildcard origin before binding', () => {
     const engine = createEngine();
     try {
       expect(() =>
-        serve({ engine, port: 0, cors: { allowedOrigins: ['*'], credentials: true } }),
+        serve({
+          host: bunServerHost,
+          engine,
+          port: 0,
+          cors: { allowedOrigins: ['*'], credentials: true },
+        }),
       ).toThrow(/wildcard origin is illegal/);
     } finally {
       engine[Symbol.dispose]();
@@ -235,6 +257,7 @@ describe('serve({ cors }) — fail-fast validation', () => {
     try {
       expect(() =>
         serve({
+          host: bunServerHost,
           engine,
           port: 0,
           cors: { allowedOrigins: ['*'], allowedHeaders: ['Authorization'] },
@@ -252,6 +275,7 @@ describe('serve({ cors }) — fail-fast validation', () => {
       // wildcard origin must still be rejected before binding.
       expect(() =>
         serve({
+          host: bunServerHost,
           engine,
           port: 0,
           auth: { apiKeys: ['secret-key'], defaultApiKeyScopes: ['workflows:read'] },
@@ -264,7 +288,7 @@ describe('serve({ cors }) — fail-fast validation', () => {
   });
 });
 
-describe('serve({ cors }) — WebSocket origin enforcement', () => {
+describe('serve({ host: bunServerHost, cors }) — WebSocket origin enforcement', () => {
   let engine: Engine;
   let server: WeftServer;
 
@@ -275,7 +299,12 @@ describe('serve({ cors }) — WebSocket origin enforcement', () => {
 
   it('rejects a cross-origin WebSocket upgrade from a disallowed origin with 403', async () => {
     engine = createEngine();
-    server = serve({ engine, port: 0, cors: { allowedOrigins: ['https://app.example.com'] } });
+    server = serve({
+      host: bunServerHost,
+      engine,
+      port: 0,
+      cors: { allowedOrigins: ['https://app.example.com'] },
+    });
 
     // A raw upgrade request carrying a disallowed Origin. We assert the HTTP
     // response is 403 rather than completing the upgrade.
@@ -294,7 +323,12 @@ describe('serve({ cors }) — WebSocket origin enforcement', () => {
 
   it('does not reject a WebSocket upgrade from an allowed origin at the CORS layer', async () => {
     engine = createEngine();
-    server = serve({ engine, port: 0, cors: { allowedOrigins: ['https://app.example.com'] } });
+    server = serve({
+      host: bunServerHost,
+      engine,
+      port: 0,
+      cors: { allowedOrigins: ['https://app.example.com'] },
+    });
 
     const response = await fetch(`${server.url}/jsonrpc`, {
       headers: {

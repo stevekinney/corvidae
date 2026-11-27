@@ -1,5 +1,6 @@
+import { sha256HexSync, timingSafeEqualHex } from '@lostgradient/cryptography';
 import type { ConditionalBatchCondition } from '@lostgradient/storage';
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { VerifiedGrant } from '../http.ts';
 import { OAuthStore, type OAuthClient } from '../oauth-store.ts';
@@ -39,7 +40,7 @@ type Options = {
   clientMetadataDocumentFetch?: ClientMetadataDocumentFetchDependencies;
 };
 const random = () => randomBytes(32).toString('base64url');
-const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+const digest = (value: string) => sha256HexSync(value);
 const escape = (value: string) =>
   value
     .replaceAll('&', '&amp;')
@@ -249,9 +250,7 @@ function createHostedOAuth(configuration: Options) {
       (client.secretExpiresAt !== null && client.secretExpiresAt <= Date.now())
     )
       return null;
-    const actual = Buffer.from(digest(secret), 'hex');
-    const expected = Buffer.from(client.secretHash, 'hex');
-    return actual.length === expected.length && timingSafeEqual(actual, expected) ? client : null;
+    return timingSafeEqualHex(digest(secret), client.secretHash) ? client : null;
   };
   const authority = (identity: { subject: string; tenant: string }) =>
     options.identity.principalForGrant({ subject: identity.subject, tenant: identity.tenant });

@@ -57,7 +57,7 @@ interface Waiter {
  * import { MemoryStorage } from '@lostgradient/storage';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
- * await using server = serve({ engine });
+ * await using server = serve({ host: bunServerHost, engine });
  *
  * const taskQueue: TaskQueue = server.taskQueue;
  * const standaloneTaskQueue = new TaskQueue();

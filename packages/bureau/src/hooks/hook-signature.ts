@@ -16,7 +16,8 @@
  * @module hook-signature
  */
 
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { hmacSha256HexSync, timingSafeEqualHex } from '@lostgradient/cryptography';
+import { randomBytes } from 'node:crypto';
 
 /** The header a delivery's signature travels in. */
 export const HOOK_SIGNATURE_HEADER = 'X-Signature';
@@ -39,7 +40,7 @@ export function generateHookSigningSecret(): string {
 
 /** The digest of `<timestamp>.<body>` under `secret`, as lowercase hexadecimal. */
 function digestOf(secret: string, timestampSeconds: number, body: string): string {
-  return createHmac('sha256', secret).update(`${timestampSeconds}.${body}`).digest('hex');
+  return hmacSha256HexSync(secret, `${timestampSeconds}.${body}`);
 }
 
 /**
@@ -114,9 +115,7 @@ export function verifyHookSignature(input: {
   if (!(Math.abs(nowSeconds - parsed.timestamp) <= tolerance)) {
     return { ok: false, reason: 'expired' };
   }
-  const expected = Buffer.from(digestOf(input.secret, parsed.timestamp, input.body), 'hex');
-  const matched = parsed.digests.some((digest) =>
-    timingSafeEqual(expected, Buffer.from(digest, 'hex')),
-  );
+  const expected = digestOf(input.secret, parsed.timestamp, input.body);
+  const matched = parsed.digests.some((digest) => timingSafeEqualHex(expected, digest));
   return matched ? { ok: true } : { ok: false, reason: 'mismatch' };
 }

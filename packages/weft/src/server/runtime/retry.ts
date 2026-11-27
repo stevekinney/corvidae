@@ -1,3 +1,5 @@
+import { sleep } from '../../runtime/portable.ts';
+
 export async function withRetry<T>(
   operation: () => Promise<T>,
   label: string,
@@ -11,7 +13,7 @@ export async function withRetry<T>(
       lastError = error;
       if (attempt < maxAttempts) {
         console.warn(`[weft] Retrying "${label}" (attempt ${attempt + 1}/${maxAttempts})`);
-        await Bun.sleep(100 * attempt);
+        await sleep(100 * attempt);
       }
     }
   }

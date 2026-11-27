@@ -1,3 +1,4 @@
+import type { WorkerLike } from '../workers/pool.ts';
 import type { FailureCategory, WorkerInboundMessage, WorkerOutboundMessage } from './types.ts';
 import {
   assertWorkerOutboundMessageShape,
@@ -42,7 +43,7 @@ export class WorkerProtocolGuard {
   }
 
   acceptWorkerMessage(
-    worker: Worker,
+    worker: WorkerLike,
     message: unknown,
   ):
     | { accepted: true; message: WorkerOutboundMessage }
@@ -69,7 +70,7 @@ export class WorkerProtocolGuard {
     }
   }
 
-  #assertExpectedWorkerTurn(worker: Worker, message: WorkerOutboundMessage): void {
+  #assertExpectedWorkerTurn(worker: WorkerLike, message: WorkerOutboundMessage): void {
     if (message.protocolVersion !== WORKER_PROTOCOL_VERSION) {
       throw new WorkerProtocolError('Worker protocol version mismatch');
     }

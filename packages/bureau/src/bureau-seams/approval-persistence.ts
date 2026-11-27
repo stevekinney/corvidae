@@ -11,6 +11,7 @@ import type {
   ApprovalPeerRecovery,
   PendingReview,
   ResolveReviewInput,
+  ReviewedApprovalRecovery,
   SessionPendingReview,
 } from '../bureau-types/reviews';
 import { type BureauCore, REVIEW_AUDIT_OUTBOX_NAMESPACE, type ReviewAuditAttachment } from './core';
@@ -130,6 +131,7 @@ export function createApprovalPersistence<D extends AgentDefinitions>(
     sessionId: string,
     reviewId: string,
     peerRecovery?: ApprovalPeerRecovery,
+    reviewedRecovery?: ReviewedApprovalRecovery,
   ): Promise<void> {
     if (!runtime.sessionStore) return;
     await runtime.sessionStore.update(sessionId, (session) => {
@@ -153,6 +155,7 @@ export function createApprovalPersistence<D extends AgentDefinitions>(
                     id: reviewId,
                     startedAt: runtimeServices.clock.now(),
                     ...(peerRecovery === undefined ? {} : { peerRecovery }),
+                    ...(reviewedRecovery === undefined ? {} : { reviewedRecovery }),
                   },
                 ],
           ),
@@ -330,11 +333,12 @@ export function createApprovalPersistence<D extends AgentDefinitions>(
     sessionId: string,
     reviewId: string,
     peerRecovery?: ApprovalPeerRecovery,
+    reviewedRecovery?: ReviewedApprovalRecovery,
   ): Promise<void> {
     let lastError: unknown;
     for (let attempt = 1; attempt <= SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS; attempt += 1) {
       try {
-        await persistApprovalResolutionStarted(sessionId, reviewId, peerRecovery);
+        await persistApprovalResolutionStarted(sessionId, reviewId, peerRecovery, reviewedRecovery);
         return;
       } catch (error) {
         lastError = error;

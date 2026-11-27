@@ -5,7 +5,7 @@
  * Isolation and Lifecycle`) defines a realm's lifecycle above whatever
  * transport eventually hosts it — a real Worker (COR-249) or a child
  * process (COR-246) — before either exists. This module has no dependency
- * on `Worker`, `Bun.spawn`, or any other transport primitive, so it is
+ * on `Worker`, child-process IPC, or any other transport primitive, so it is
  * exercised directly by a deterministic fake realm
  * ({@link import('./fake-realm.test-support.ts')}) and later reused
  * unchanged by both real adapters.

@@ -73,6 +73,23 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function reviewerProvenanceOf(value: unknown): ResolvedReview['reviewerProvenance'] {
+  if (
+    !isObject(value) ||
+    typeof value['actorId'] !== 'string' ||
+    typeof value['workspaceId'] !== 'string' ||
+    typeof value['transport'] !== 'string' ||
+    (value['panelUri'] !== undefined && typeof value['panelUri'] !== 'string')
+  )
+    return undefined;
+  return {
+    actorId: value['actorId'],
+    workspaceId: value['workspaceId'],
+    transport: value['transport'],
+    ...(typeof value['panelUri'] === 'string' ? { panelUri: value['panelUri'] } : {}),
+  };
+}
+
 /**
  * The review as the record keeps it: what a reader needs to see what was decided, and none of a tool
  * approval's signed token, binding, or metadata. `status` is forced to the decision's.
@@ -154,10 +171,12 @@ export function resolvedReviewOfAudit(
   const answerDigest = payload.detail['answerDigest'];
   // COR-2292: only a tool approval's decision records where it was made, and only as a known value.
   const decisionSurface = payload.detail['decisionSurface'];
+  const reviewerProvenance = reviewerProvenanceOf(payload.detail['reviewerProvenance']);
   return {
     review: snapshotOf(review as unknown as PendingReview, STATUS_OF_DECISION[decision]),
     decision,
     decidedBy: payload.principal,
+    ...(reviewerProvenance === undefined ? {} : { reviewerProvenance }),
     decidedAt,
     owner: typeof owner === 'string' ? owner : ANONYMOUS_LOCAL_OWNER,
     ...(typeof reason === 'string' ? { reason } : {}),
@@ -175,6 +194,9 @@ function serialize(resolved: ResolvedReview): string {
     review: resolved.review,
     decision: resolved.decision,
     decidedBy: resolved.decidedBy,
+    ...(resolved.reviewerProvenance === undefined
+      ? {}
+      : { reviewerProvenance: resolved.reviewerProvenance }),
     decidedAt: resolved.decidedAt,
     owner: resolved.owner,
     ...(resolved.reason === undefined ? {} : { reason: resolved.reason }),
@@ -207,10 +229,12 @@ function parse(raw: string): ResolvedReview | undefined {
   }
   const secretRefs = value['secretRefs'];
   const decisionSurface = value['decisionSurface'];
+  const reviewerProvenance = reviewerProvenanceOf(value['reviewerProvenance']);
   return {
     review: review as unknown as ResolvedReview['review'],
     decision,
     decidedBy: value['decidedBy'],
+    ...(reviewerProvenance === undefined ? {} : { reviewerProvenance }),
     decidedAt: value['decidedAt'],
     owner: typeof value['owner'] === 'string' ? value['owner'] : ANONYMOUS_LOCAL_OWNER,
     ...(typeof value['reason'] === 'string' ? { reason: value['reason'] } : {}),

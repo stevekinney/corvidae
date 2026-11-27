@@ -1,9 +1,13 @@
 import {
+  sha256Base64UrlSync,
+  sha256HexSync,
+  timingSafeEqualText,
+} from '@lostgradient/cryptography';
+import {
   storageConditionalBatch,
   type ConditionalBatchCondition,
   type Storage,
 } from '@lostgradient/storage';
-import { createHash, timingSafeEqual } from 'node:crypto';
 
 type Consent = {
   issuer: string;
@@ -86,13 +90,8 @@ export type OAuthClient = {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const encode = (value: unknown) => encoder.encode(JSON.stringify(value));
-const key = (kind: string, value: string) =>
-  `oauth:${kind}:${createHash('sha256').update(value).digest('hex')}`;
-const equal = (left: string, right: string) => {
-  const leftBytes = Buffer.from(left);
-  const rightBytes = Buffer.from(right);
-  return leftBytes.length === rightBytes.length && timingSafeEqual(leftBytes, rightBytes);
-};
+const key = (kind: string, value: string) => `oauth:${kind}:${sha256HexSync(value)}`;
+const equal = (left: string, right: string) => timingSafeEqualText(left, right);
 
 export class OAuthStore {
   constructor(private readonly storage: Storage) {
@@ -319,7 +318,7 @@ export class OAuthStore {
       (input.refresh !== null &&
         (!Number.isFinite(input.refreshExpiresAt) || input.refreshExpiresAt <= Date.now())) ||
       !/^[A-Za-z0-9._~-]{43,128}$/.test(input.verifier) ||
-      !equal(createHash('sha256').update(input.verifier).digest('base64url'), code.challenge)
+      !equal(sha256Base64UrlSync(input.verifier), code.challenge)
     )
       return false;
     const grantKey = key('grant', code.grantId);

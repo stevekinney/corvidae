@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { RealmStateChangedEvent } from '../events/fleet-state-events.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';
@@ -24,6 +25,7 @@ describe('realm:state-changed on the Engine', () => {
 
     registry.ensurePool('order-workflow', 'revision-a', {
       workerUrl,
+      createWorker: bunWorkerFactory,
       expectedWorkflowTypes: ['order-workflow'],
       expectedArtifactDigest: 'digest-a',
       workerName: 'digest-a',

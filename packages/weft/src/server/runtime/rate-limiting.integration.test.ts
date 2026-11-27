@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AuthAuditEvent } from '@lostgradient/backchannel';
@@ -39,6 +40,7 @@ describe('serve() with rate limiting', () => {
   it('rate-limits a flood from one authenticated principal with 429 + Retry-After', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read'] },
@@ -71,6 +73,7 @@ describe('serve() with rate limiting', () => {
   it('answers a throttle in the RateLimited shape: data.retryAfterSeconds matches Retry-After', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read'] },
@@ -101,6 +104,7 @@ describe('serve() with rate limiting', () => {
   it('exempts public paths (health) from rate limiting when auth is configured', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read'] },
@@ -118,6 +122,7 @@ describe('serve() with rate limiting', () => {
   it('exempts public paths (health) from rate limiting even without auth configured', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       // No auth — rate limiter must still exempt public paths independently.
@@ -135,6 +140,7 @@ describe('serve() with rate limiting', () => {
   it('does not rate-limit when rateLimit is omitted', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read'] },
@@ -152,7 +158,12 @@ describe('serve() with rate limiting', () => {
   it('rejects an invalid rateLimit config before binding', () => {
     engine = createEngine();
     expect(() =>
-      serve({ engine, port: 0, rateLimit: { maxRequests: 0, windowMs: 1_000 } }),
+      serve({
+        host: bunServerHost,
+        engine,
+        port: 0,
+        rateLimit: { maxRequests: 0, windowMs: 1_000 },
+      }),
     ).toThrow();
     // No server was created; stub the afterEach handle so cleanup is a no-op.
     server = { stop: async () => {} } as WeftServer;
@@ -161,6 +172,7 @@ describe('serve() with rate limiting', () => {
   it('rate-limits JWT-authenticated requests by subject (not by IP)', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { jwt: { secret: TEST_JWT_SECRET } },
@@ -197,6 +209,7 @@ describe('serve() with rate limiting', () => {
   it('rate-limits credential-stuffing floods (failed-auth requests) by IP', async () => {
     engine = createEngine();
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read'] },
@@ -259,6 +272,7 @@ describe('serve() auth audit trail', () => {
     const events: AuthAuditEvent[] = [];
 
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: {
@@ -301,6 +315,7 @@ describe('serve() auth audit trail', () => {
     const events: AuthAuditEvent[] = [];
 
     server = serve({
+      host: bunServerHost,
       engine,
       port: 0,
       auth: {

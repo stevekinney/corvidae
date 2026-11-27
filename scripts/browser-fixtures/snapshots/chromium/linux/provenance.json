@@ -16,6 +16,10 @@
       "renderedSourceSha": "46c7b32ff20062cf12638ccd31f661cf84431b36",
       "suiteExitCode": 0
     },
+    "breadcrumbs": {
+      "renderedSourceSha": "8c7f3c034f3337ff916453bcd12a80bf4fdb9b9b",
+      "suiteExitCode": 0
+    },
     "chat": {
       "renderedSourceSha": "0f0b4d1f1bc0f0a08562995eb0b019b453758631",
       "suiteExitCode": 0
@@ -42,6 +46,10 @@
     },
     "markdown-editor-template-placeholders": {
       "renderedSourceSha": "2a0143ee0a04a6dc0d5a2b1777e3b4db5e2260f1",
+      "suiteExitCode": 0
+    },
+    "page-header": {
+      "renderedSourceSha": "8c7f3c034f3337ff916453bcd12a80bf4fdb9b9b",
       "suiteExitCode": 0
     },
     "review-editor": {

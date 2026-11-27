@@ -6,7 +6,8 @@
  *
  * @module presign
  */
-import { createHash, createHmac } from 'node:crypto';
+import { sha256HexSync } from '@lostgradient/cryptography';
+import { createHmac } from 'node:crypto';
 
 /** The HTTP methods a presigned URL can be made for. */
 export type PresignMethod = 'GET' | 'PUT' | 'DELETE' | 'HEAD' | 'POST';
@@ -65,7 +66,7 @@ function hmac(key: string | Buffer, text: string): Buffer {
 }
 
 function sha256Hex(text: string): string {
-  return createHash('sha256').update(text, 'utf8').digest('hex');
+  return sha256HexSync(text);
 }
 
 /** `20261125T184601Z`: the ISO 8601 basic format SigV4 signs. */

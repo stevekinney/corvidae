@@ -1,5 +1,6 @@
 import { waitForRealTimersForTesting } from '@lostgradient/testing/fake-timers';
 import { quietFor } from '@lostgradient/testing/wait-until';
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { waitForParityCondition as waitFor } from '../core/parity/real-timer-wait.test-support.ts';
 
@@ -77,8 +78,12 @@ async function flush(): Promise<void> {
   await waitForRealTimersForTesting(10);
 }
 
-function serveTestServer(options: ServeOptions): WeftServer {
-  return serve({ workerShutdownTimeoutMs: TEST_WORKER_SHUTDOWN_TIMEOUT_MS, ...options });
+function serveTestServer(options: Omit<ServeOptions, 'host'>): WeftServer {
+  return serve({
+    host: bunServerHost,
+    workerShutdownTimeoutMs: TEST_WORKER_SHUTDOWN_TIMEOUT_MS,
+    ...options,
+  });
 }
 
 function createReconnectTestEngineWithStorage(): { engine: Engine; storage: MemoryStorage } {
@@ -689,7 +694,12 @@ describe('serve', () => {
         const routeEngine = createEngine();
         try {
           expect(() =>
-            serve({ engine: routeEngine, port: 0, routes: { [routeKey]: makeShell() } }),
+            serve({
+              host: bunServerHost,
+              engine: routeEngine,
+              port: 0,
+              routes: { [routeKey]: makeShell() },
+            }),
           ).toThrow(`"${routeKey}" overlaps /api, /v1, /mcp, /jsonrpc, or a direct route`);
         } finally {
           routeEngine[Symbol.dispose]();
@@ -6462,6 +6472,7 @@ describe('visibility timeout expiry triggers task reassignment', () => {
     // — not through `serveTestServer`, which spreads its argument into a new
     // object and would break the lookup.
     const options = {
+      host: bunServerHost,
       engine,
       port: 0,
       workerShutdownTimeoutMs: TEST_WORKER_SHUTDOWN_TIMEOUT_MS,

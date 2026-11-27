@@ -41,7 +41,8 @@ describe('Breadcrumbs', () => {
 
   test('non-final entries render as <a> with href', () => {
     const { container } = render(Breadcrumbs, { items });
-    const links = container.querySelectorAll('a');
+    // The trail's own links; the phone form's back link (`.cinder-breadcrumbs__back`) is beside them.
+    const links = container.querySelectorAll('a.cinder-breadcrumbs__link');
     expect(links.length).toBe(2);
     expect(links[0]?.getAttribute('href')).toBe('/');
     expect(links[1]?.getAttribute('href')).toBe('/library');
@@ -102,7 +103,7 @@ describe('Breadcrumbs', () => {
     ];
 
     const { container } = render(Breadcrumbs, { items: duplicateHrefItems });
-    const links = container.querySelectorAll('a');
+    const links = container.querySelectorAll('a.cinder-breadcrumbs__link');
     expect(links.length).toBe(2);
     expect(links[0]?.getAttribute('href')).toBe('/section');
     expect(links[1]?.getAttribute('href')).toBe('/section');

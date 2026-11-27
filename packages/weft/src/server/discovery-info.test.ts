@@ -1,3 +1,4 @@
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { DiscoveryInfo } from '@lostgradient/backchannel';
@@ -78,7 +79,7 @@ describe('DiscoveryInfo', () => {
     it('forwards discoveryInfo from serve() options to /openapi.json, /openrpc.json, and /asyncapi.json', async () => {
       const engine = new Engine({ storage: new MemoryStorage() });
       engines.push(engine);
-      const server = serve({ engine, port: 0, discoveryInfo });
+      const server = serve({ host: bunServerHost, engine, port: 0, discoveryInfo });
       servers.push(server);
 
       const openApiResponse = await fetch(`${server.url}/openapi.json`);

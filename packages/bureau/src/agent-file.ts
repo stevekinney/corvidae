@@ -23,9 +23,9 @@
  * @module agent-file
  */
 
-import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 
+import { sha256BytesHexSync } from '@lostgradient/cryptography';
 import type { AgentSkillDescriptor, Effort } from '@lostgradient/operative';
 import { RUN_COST_BUDGET_MAXIMUM_WARNINGS } from '@lostgradient/operative';
 import { CORE_SCHEMA, load as loadYaml, YAMLException } from 'js-yaml';
@@ -1133,7 +1133,7 @@ export type ParseAgentFileResult =
 
 /** The SHA-256 of a file's exact bytes, as lowercase hex. This is the `expectedHash` of a write. */
 export function hashAgentFileBytes(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex');
+  return sha256BytesHexSync(bytes);
 }
 
 const textDecoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });

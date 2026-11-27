@@ -1,9 +1,9 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { stopBunServerForShutdown } from './stop-server.ts';
+import { stopServerForShutdown } from './stop-server.ts';
 
-describe('stopBunServerForShutdown', () => {
+describe('stopServerForShutdown', () => {
   it('logs rejected stop promises and still settles', async () => {
     const error = new Error('stop failed');
     const consoleError = spyOn(console, 'error').mockImplementation(() => {});
@@ -13,7 +13,7 @@ describe('stopBunServerForShutdown', () => {
       },
     };
 
-    expect(await throwingRejectionOf(stopBunServerForShutdown(server as never))).toThrow(
+    expect(await throwingRejectionOf(stopServerForShutdown(server as never))).toThrow(
       'stop failed',
     );
 
@@ -29,7 +29,7 @@ describe('stopBunServerForShutdown', () => {
       },
     };
 
-    await stopBunServerForShutdown(server as never);
+    await stopServerForShutdown(server as never);
 
     expect(clearTimeoutSpy).toHaveBeenCalled();
     clearTimeoutSpy.mockRestore();

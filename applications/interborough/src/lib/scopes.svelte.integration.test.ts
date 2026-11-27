@@ -25,6 +25,7 @@
  */
 
 import { AUTHORIZATION_SCOPES, Engine, HttpClient, serve } from '@lostgradient/weft';
+import { bunServerHost } from '@lostgradient/weft/bun';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
 import { workflows } from '../../fixtures/workflows.ts';
@@ -55,6 +56,7 @@ let anonymousBaseUrl: string;
 beforeAll(async () => {
   authedEngine = await createTestEngine();
   authedServer = serve({
+    host: bunServerHost,
     engine: authedEngine,
     port: 0,
     trustedHosts: ['127.0.0.1'],
@@ -64,6 +66,7 @@ beforeAll(async () => {
 
   anonymousEngine = await createTestEngine();
   anonymousServer = serve({
+    host: bunServerHost,
     engine: anonymousEngine,
     port: 0,
     trustedHosts: ['127.0.0.1'],
