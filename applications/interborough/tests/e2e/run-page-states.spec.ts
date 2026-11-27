@@ -222,7 +222,7 @@ for (const width of WIDTHS) {
     });
     await how.locator('[data-step-row]').first().click();
     await expect(how.locator('article[data-step]')).toBeVisible();
-    await expect(how.locator('article[data-step]').getByRole('group', { name: 'Input' })).not.toContainText(
+    await expect(how.locator('article[data-step] [aria-label="Input"]')).not.toContainText(
       world.runs.failed,
     );
     await captureForDesignReview(page, {

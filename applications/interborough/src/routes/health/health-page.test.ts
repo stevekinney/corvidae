@@ -573,7 +573,7 @@ describe('Advanced', () => {
     ).toBe('advanced-diagnostics');
   });
 
-  test('is opened by an Open Diagnostics link, with three rows and a link on each', async () => {
+  test('the Overview deep link opens three rows with a link on each', async () => {
     const view = open('/health?advanced=open');
     await view.findByText('Open metrics ›');
     expect(view.getByText('Open alerts ›')).not.toBeNull();

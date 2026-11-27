@@ -73,6 +73,31 @@ describe('StepDetail', () => {
     expect(ordinary.container.textContent).toContain('run-id');
   });
 
+  test('masks the confirmed execution ID in both failed-step payload views', async () => {
+    const value = entry({
+      status: 'failed',
+      inputSummary: JSON.stringify({
+        input: { workflowId: 'user-id', value: 'hello' },
+        trigger: null,
+        previous: null,
+        workflowId: 'run-id',
+        step: 1,
+        stepAddress: '1',
+      }),
+    });
+    const view = render(StepDetail, {
+      props: { entry: value, documentWorkflowId: 'run-id', bar, open: false },
+    });
+    const input = within(view.getByRole('group', { name: 'Input' }));
+    expect(view.container.textContent).not.toContain('run-id');
+    expect(view.container.textContent).toContain('user-id');
+    await fireEvent.click(input.getByRole('radio', { name: 'JSON' }));
+    expect(view.container.textContent).not.toContain('run-id');
+    view.unmount();
+    const ordinary = render(StepDetail, { props: { entry: value, bar, open: false } });
+    expect(ordinary.container.textContent).toContain('run-id');
+  });
+
   test('uses independent payload views and a disclosure for a failed step', async () => {
     const { getByRole, container } = render(StepDetail, {
       props: {

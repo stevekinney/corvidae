@@ -73,7 +73,7 @@
     {
       "id": "AC14",
       "status": "not-met",
-      "evidence": "Health page owning test passed 22/22, including actual non-storage attention action navigation to /health?advanced=alerts and expansion of Alerts detail. Direct deep-link capture has a unique state and now reuses the viewport preparation that brings Advanced into view. Both-theme viewport capture and review remain coordinator-owned and pending."
+      "evidence": "Owner revised row 77e: the Overview disclosure and deep link expose Metrics, Alerts and Checks; Open alerts expands Advanced in place and opens Alerts details. System Alerts retains its Worker diagnostics destination. The owning test covers the Overview action; exact-candidate both-theme capture, keyboard and focus verification remain coordinator-owned and pending."
     },
     {
       "id": "AC15",

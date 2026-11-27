@@ -5,7 +5,7 @@
  * The Overview is read at 1280, 768 and 375 pixels: the frame (the heading, the line that names the
  * storage backend, the Live indicator, the tabs with no Diagnostics among them), the four
  * counts, Needs attention with the sample world's three problems, Recent activity, the metric
- * cards, and Advanced collapsed at the foot, and then expanded the way an "Open Diagnostics" link
+ * cards, and Advanced collapsed at the foot, and then expanded through its Overview deep link
  * opens it. A fresh installation has no storage rule, so its list has no storage row (row 76i's
  * captioned state), which the first-run host draws.
  *
@@ -436,7 +436,7 @@ test.describe('the sample world', () => {
     });
   }
 
-  test('Advanced opened by an Open Diagnostics link shows Metrics, Alerts and Checks, each with a link', async ({
+  test('the Overview deep link opens Advanced with Metrics, Alerts and Checks, each with a link', async ({
     page,
     checkA11y,
   }) => {
@@ -466,7 +466,7 @@ test.describe('the sample world', () => {
     await expect(advanced.getByText('Open system checks ›')).toBeVisible();
     await captureForDesignReview(page, {
       route: '/health',
-      state: 'advanced from diagnostics link',
+      state: 'advanced from Overview deep link',
       source: SOURCE,
       ready: showAdvanced,
     });
