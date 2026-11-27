@@ -11,6 +11,7 @@
   import { getTableContext, tryGetTableRowColumnsContext } from '../table/table.context.ts';
   import { columnOf, spanOf } from '../table/table-column.ts';
   import { classNames } from '../../utilities/class-names.ts';
+  import { devWarn } from '../../utilities/dev-warn.ts';
 
   let {
     column,
@@ -32,6 +33,14 @@
   if (typeof untrack(() => label) !== 'string') {
     throw new Error(
       'Table.HeaderCell requires a label: the column name as text, or "" for a column with no name.',
+    );
+  }
+
+  // A stacked `fit` table sorts from a control above its rows, whose row the server renders only
+  // for a `sortable` table; without it the row arrives after hydration and pushes the rows down.
+  if (untrack(() => sortable && !!column && table.fit === true && table.sortable !== true)) {
+    devWarn(
+      '[cinder/Table.HeaderCell] A sortable header cell in a `fit` Table needs `sortable` on the Table, so the first paint holds the place of its stacked sort control.',
     );
   }
 
@@ -59,6 +68,30 @@
     const value = label;
     table.setColumnLabel?.(position, value, owner);
     return () => table.setColumnLabel?.(position, undefined, owner);
+  });
+  // A sortable column offers itself to the stacked sort control the same way: as the cell is
+  // created, so the control's options are in place before its first effect runs.
+  untrack(() => {
+    if (sortable && column) table.setSortColumn?.(columnPosition, column, label, owner);
+  });
+  $effect(() => {
+    const position = columnPosition;
+    const key = sortable && column ? column : undefined;
+    const name = label;
+    table.setSortColumn?.(position, key, name, owner);
+    return () => table.setSortColumn?.(position, undefined, name, owner);
+  });
+  // The position claimed at creation can be short of the DOM's, when the row holds a cell that
+  // claims none (DataTable's selection cell). Once the cell knows its DOM position, the entries it
+  // wrote at the claimed one are withdrawn, or they would be read as another column's.
+  const claimedPosition = untrack(() => columnPosition);
+  $effect(() => {
+    if (columnPosition === claimedPosition) return;
+    untrack(() => {
+      table.setColumnSizing?.(claimedPosition, undefined, owner);
+      table.setColumnLabel?.(claimedPosition, undefined, owner);
+      table.setSortColumn?.(claimedPosition, undefined, label, owner);
+    });
   });
   // Re-read whenever the row's cells change, so a keyed column that moves takes its sizing along.
   const placeColumn: Attachment<HTMLTableCellElement> = (cell) => {

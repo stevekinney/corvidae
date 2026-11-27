@@ -6,6 +6,8 @@
     /** A control column: a switch that keeps its size (`'fit'`), or one that fills its cell (`true`). */
     controls?: 'fit' | true | undefined;
     sortable?: boolean;
+    /** Table's own `sortable`; defaults to `sortable`, and is set apart to test its warning. */
+    tableSortable?: boolean;
   };
 </script>
 
@@ -18,7 +20,13 @@
   import Table from './table.svelte';
   import type { TableSort } from './table.types.ts';
 
-  let { fit = true, stackBelow, controls, sortable = false }: TableCardFixtureProps = $props();
+  let {
+    fit = true,
+    stackBelow,
+    controls,
+    sortable = false,
+    tableSortable = sortable,
+  }: TableCardFixtureProps = $props();
 
   let sort = $state<TableSort | undefined>(undefined);
   const models = [
@@ -39,7 +47,13 @@
   ];
 </script>
 
-<Table caption="Models" {fit} bind:sort {...stackBelow !== undefined ? { stackBelow } : {}}>
+<Table
+  caption="Models"
+  {fit}
+  sortable={tableSortable}
+  bind:sort
+  {...stackBelow !== undefined ? { stackBelow } : {}}
+>
   <TableHeader>
     <TableRow>
       {#if sortable}

@@ -100,6 +100,7 @@
   {scrollable}
   {frameless}
   {fit}
+  sortable={columns.some((column) => column.sortable === true)}
   {...scrollContainerProps !== undefined ? { scrollContainerProps } : {}}
   {...stackBelow !== undefined ? { stackBelow } : {}}
 >

@@ -36,13 +36,20 @@
   let claimedColumns = 0;
   let cellsVersion = $state(0);
   // The row's card title (COR-2771), claimed by a cell as it is created so the server's HTML marks it.
-  let titleClaim: 'header' | 'cell' | undefined;
+  // A row header takes it from a plain cell that claimed it first, so the plain cell, which reads
+  // `holdsTitle`, gives it up once the header exists. On the server the plain cell is written before
+  // the header, so its mark stays in that HTML, and the card rules give a row header the title over
+  // any plain cell that also carries the mark.
+  // Raw, so the owner keeps its identity: a deep proxy would never equal the cell's own object.
+  let titleClaim: { kind: 'header' | 'cell'; owner: object } | undefined = $state.raw();
   setTableRowColumnsContext({
-    claimTitle: (kind) => {
-      if (kind === 'header' ? titleClaim === 'header' : titleClaim !== undefined) return false;
-      titleClaim = kind;
+    claimTitle: (kind, owner) => {
+      const current = untrack(() => titleClaim);
+      if (kind === 'header' ? current?.kind === 'header' : current !== undefined) return false;
+      titleClaim = { kind, owner };
       return true;
     },
+    holdsTitle: (owner) => titleClaim?.owner === owner,
     claimColumn: (span = 1) => {
       const position = claimedColumns;
       claimedColumns += Math.max(1, span);

@@ -52,13 +52,17 @@
     spansColumns ? undefined : tableContext?.columnLabel?.(columnPosition),
   );
   // Read once, as the cell is created and claims its place in the row; script refines it later.
-  const { isTitle, isEmpty } = untrack(() => {
+  const titleOwner = {};
+  const { claimedTitle, isEmpty } = untrack(() => {
     const hasContent = children !== undefined || detail !== undefined;
     const header = as === 'th';
     const candidate = fit && (header || (!controls && stack === undefined && hasContent));
-    const holdsTitle = candidate && (rowColumns?.claimTitle(header ? 'header' : 'cell') ?? false);
-    return { isTitle: holdsTitle, isEmpty: fit && !holdsTitle && !hasContent };
+    const claimed =
+      candidate && (rowColumns?.claimTitle(header ? 'header' : 'cell', titleOwner) ?? false);
+    return { claimedTitle: claimed, isEmpty: fit && !claimed && !hasContent };
   });
+  // A plain cell's claim gives way to a row header created after it.
+  const isTitle = $derived(claimedTitle && (rowColumns?.holdsTitle(titleOwner) ?? true));
   const placeColumn: Attachment<HTMLElement> = (cell) => {
     void rowColumns?.version;
     columnPosition = columnOf(cell);

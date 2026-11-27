@@ -7,10 +7,14 @@
    * - A `fit` table in the shape of the Temporal UI's Namespaces table.
    * - A loading table of Skeleton cells under the same header (the Temporal UI's StateGate shape).
    * - A table whose cells hold a control.
+   * - A sortable `fit` table, hand-composed and as a DataTable: the stacked sort control.
    * - The same `fit` table in a 320px column and in a 900px column: the container decides, not the
    *   window.
    */
   import {
+    DataTable,
+    type DataTableColumn,
+    type TableSort,
     Skeleton,
     Table,
     TableBody,
@@ -26,6 +30,13 @@
     { name: 'default', state: 'Registered', retention: '3 days', owner: 'Platform team' },
     { name: 'orders', state: 'Registered', retention: '30 days', owner: 'Checkout' },
     { name: 'billing-archive', state: 'Deprecated', retention: '90 days', owner: '' },
+  ];
+  let sort = $state<TableSort | undefined>(undefined);
+  const namespaceRows = namespaces.map((namespace) => ({ id: namespace.name, ...namespace }));
+  const dataColumns: DataTableColumn<(typeof namespaceRows)[number]>[] = [
+    { key: 'name', label: 'Namespace', sortable: true },
+    { key: 'state', label: 'State' },
+    { key: 'retention', label: 'Retention', sortable: true },
   ];
   const tools = [
     { name: 'Read files', risk: 'Low' },
@@ -75,7 +86,8 @@
         {#each [1, 2, 3] as row (row)}
           <TableRow>
             <TableCell as="th"><Skeleton width="8rem" height="1rem" /></TableCell>
-            <TableCell><Skeleton width="5rem" height="1rem" /></TableCell>
+            <!-- A skeleton row takes the loaded row's `stack` roles, so its lines match. -->
+            <TableCell stack="status"><Skeleton width="5rem" height="1rem" /></TableCell>
           </TableRow>
         {/each}
       </TableBody>
@@ -103,6 +115,34 @@
         {/each}
       </TableBody>
     </Table>
+  </section>
+
+  <section data-testid="sortable">
+    <Table caption="Namespaces, sortable" fit sortable bind:sort>
+      <TableHeader>
+        <TableRow>
+          <TableHeaderCell label="Namespace" column="name" sortable>Namespace</TableHeaderCell>
+          <TableHeaderCell label="Retention" column="retention" sortable>Retention</TableHeaderCell>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {#each namespaces as namespace (namespace.name)}
+          <TableRow>
+            <TableCell as="th">{namespace.name}</TableCell>
+            <TableCell>{namespace.retention}</TableCell>
+          </TableRow>
+        {/each}
+      </TableBody>
+    </Table>
+  </section>
+
+  <section data-testid="data-table">
+    <DataTable
+      caption="Namespaces, as a DataTable"
+      columns={dataColumns}
+      rows={namespaceRows}
+      fit
+    />
   </section>
 
   <div class="first-paint-columns">

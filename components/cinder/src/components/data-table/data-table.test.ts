@@ -70,6 +70,28 @@ function rectWithHeight(height: number): DOMRect {
 }
 
 describe('DataTable — table structure', () => {
+  // COR-2771: a leading selection cell claims no column, so each header cell moves one position on
+  // mount. What it registered at the claimed position is withdrawn: a stale entry gave the sort
+  // control a second option per value, and Svelte threw `each_key_duplicate`.
+  test('a selectable sortable fit table offers each sort once and labels each column once', async () => {
+    const { container } = render(DataTable, {
+      fit: true,
+      selectable: 'multiple',
+      columns,
+      rows: rowsWithIds,
+    });
+    await tick();
+    const select = container.querySelector('.cinder-table__stack-sort select') as HTMLSelectElement;
+    expect(
+      Array.from(select.options, (option) => option.value).filter((value) => value !== ''),
+    ).toEqual(['ascending:name', 'descending:name', 'ascending:commits', 'descending:commits']);
+    for (const row of Array.from(container.querySelectorAll('tbody tr'))) {
+      expect(
+        Array.from(row.children, (cell) => cell.getAttribute('data-cinder-stack-label')),
+      ).toEqual([null, 'Name', 'Role', 'Commits']);
+    }
+  });
+
   // COR-2769: a column's `sizing` reaches its header cell, and through it every body cell below.
   test('forwards each column sizing to its header cell and body cells', async () => {
     const { container } = render(DataTable, {

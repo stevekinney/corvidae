@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { flushSync, tick } from 'svelte';
 
 import { stripCinderComponentsLayer } from '@lostgradient/component-tooling/test/css.ts';
@@ -331,6 +331,36 @@ describe('Table scroll and stack by container', () => {
     expect(container.querySelector('table')?.hasAttribute('data-cinder-stacked')).toBe(true);
   });
 
+  // COR-2771: the container query resolves an `em` length against the container, so script does too.
+  // With a 16px container and a 14px table, 20em is 320px for both, never 280px for script alone.
+  test('compares the container with an em breakpoint against the container font size', () => {
+    useStubObserver();
+    measureScrollBoxes(300);
+    const original = window.getComputedStyle;
+    const fontSized = (element: Element, size: string) =>
+      new Proxy(original.call(window, element), {
+        get: (style, key) => (key === 'fontSize' ? size : Reflect.get(style, key)),
+      });
+    window.getComputedStyle = ((element: Element, pseudo?: string | null) =>
+      element.classList.contains('cinder-table-container')
+        ? fontSized(element, '16px')
+        : element.tagName === 'TABLE'
+          ? fontSized(element, '14px')
+          : original.call(window, element, pseudo)) as typeof window.getComputedStyle;
+    try {
+      const { container } = render(Wrapper, {
+        columns,
+        rows,
+        cellProps: controlCells,
+        stackBelow: '20em',
+      });
+      flushSync();
+      expect(container.querySelector('table')?.hasAttribute('data-cinder-stacked')).toBe(true);
+    } finally {
+      window.getComputedStyle = original;
+    }
+  });
+
   test('marks a fit control so its column label can sit beside it', () => {
     const { container } = render(Wrapper, { columns, rows, cellProps: { controls: 'fit' } });
     expect(container.querySelector('tbody td')?.getAttribute('data-cinder-controls')).toBe('fit');
@@ -538,6 +568,52 @@ describe('Table fit stacks into cards', () => {
     expect(container.querySelector('.cinder-table__sort-button')?.getAttribute('tabindex')).toBe(
       '-1',
     );
+  });
+
+  test('a sortable fit table holds its sort control while wide, for CSS to show when it stacks', () => {
+    setTestViewportWidth(1280);
+    const { container } = render(CardFixture, { sortable: true });
+    flushSync();
+    // In the markup from the first paint on; the card form's container rule draws it (COR-2771).
+    expect(container.querySelectorAll('.cinder-table__stack-sort')).toHaveLength(1);
+  });
+
+  test('choosing a sort from the stacked control sorts by that column, in that direction', async () => {
+    setTestViewportWidth(375);
+    const { container } = render(CardFixture, { sortable: true });
+    flushSync();
+    const select = container.querySelector('.cinder-table__stack-sort select') as HTMLSelectElement;
+    const header = container.querySelector('th[data-cinder-sortable]') as HTMLElement;
+    expect(
+      Array.from(select.options, (option) => option.value).filter((value) => value !== ''),
+    ).toEqual(['ascending:model', 'descending:model']);
+    select.value = 'descending:model';
+    await fireEvent.change(select);
+    flushSync();
+    expect(header.getAttribute('aria-sort')).toBe('descending');
+    select.value = 'ascending:model';
+    await fireEvent.change(select);
+    flushSync();
+    expect(header.getAttribute('aria-sort')).toBe('ascending');
+  });
+
+  test('a sortable header cell in a fit table without Table sortable warns', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      render(CardFixture, { sortable: true, tableSortable: false });
+      flushSync();
+      expect(
+        warn.mock.calls.some(([message]) =>
+          String(message).includes('needs `sortable` on the Table'),
+        ),
+      ).toBe(true);
+      warn.mockClear();
+      render(CardFixture, { sortable: true });
+      flushSync();
+      expect(warn.mock.calls.map(([message]) => String(message))).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   test('the sort control is a compact ghost select that names its cue, with a 44px hit area', async () => {

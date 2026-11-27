@@ -127,7 +127,12 @@ const STACKED_RULES: readonly StackRule[] = [
     declarations:
       'content: attr(data-cinder-stack-label); order: 1; font-size: var(--cinder-text-sm); color: var(--cinder-text-default);',
   },
-  { selectors: ['& .cinder-table__cell-text'], declarations: 'max-inline-size: 100%;' },
+  // A truncating cell's text asks for no width in a sized table's layout (COR-2769); a stacked cell
+  // is no column, so its text takes its own width again.
+  {
+    selectors: ['& .cinder-table__cell-text'],
+    declarations: 'inline-size: auto; max-inline-size: 100%;',
+  },
   // DataTable's rows that span the table are blocks of their own.
   {
     selectors: [
@@ -206,6 +211,11 @@ const CARD_RULES: readonly StackRule[] = [
     selectors: ['& .cinder-table__body .cinder-table__cell > *'],
     declarations: 'min-inline-size: 0;',
   },
+  // A truncating value fills what its label leaves and ends in an ellipsis there.
+  {
+    selectors: ['& .cinder-table__body .cinder-table__cell > .cinder-table__cell-text'],
+    declarations: 'flex: 1 1 0;',
+  },
   // A cell with nothing in it, and its label, are not drawn. The server marks a cell with no content
   // at all; a cell whose content rendered nothing (an `{#if}` that is false) holds only comments, so
   // `:empty` hides it from the first paint too, before script marks it.
@@ -231,6 +241,34 @@ const CARD_RULES: readonly StackRule[] = [
     selectors: ['& .cinder-table__cell[data-cinder-stack-title] .cinder-table__cell-detail'],
     declarations:
       'display: block; overflow: hidden; color: var(--cinder-text-muted); font-size: var(--cinder-text-sm); font-weight: var(--cinder-font-normal); text-overflow: ellipsis; white-space: nowrap;',
+  },
+  // A plain cell before the row header claims the title as it is created, before the header exists,
+  // so the server's HTML can mark both. The row header is the title: the plain cell is drawn as a
+  // labelled field, as it is once script drops its mark.
+  {
+    selectors: [
+      '& .cinder-table__body .cinder-table__row:has(> th[data-cinder-stack-title]) > td.cinder-table__cell[data-cinder-stack-title]',
+    ],
+    declarations:
+      'grid-column: 1 / -1; grid-row: auto; order: 3; display: flex; font-size: var(--cinder-text-sm); font-weight: var(--cinder-font-normal);',
+  },
+  {
+    selectors: [
+      '& .cinder-table__body .cinder-table__row:has(> th[data-cinder-stack-title]) > td.cinder-table__cell[data-cinder-stack-title][data-cinder-stack-label]::before',
+    ],
+    declarations: 'content: attr(data-cinder-stack-label);',
+  },
+  {
+    selectors: [
+      '& .cinder-table__row:has(> th[data-cinder-stack-title]) > td[data-cinder-stack-title] .cinder-table__cell-detail',
+    ],
+    declarations: 'display: none;',
+  },
+  {
+    selectors: [
+      '& .cinder-table__row:has(> th[data-cinder-stack-title]) > td[data-cinder-stack-title] a::after',
+    ],
+    declarations: 'content: none;',
   },
   // The end value: line one, at the inline end, on the title's baseline.
   {
@@ -347,6 +385,17 @@ function cardScroll(scope: StackScope): string {
   return `.cinder-table-scroll:has(> .cinder-table[data-cinder-fit]${scopeAttribute(scope)}):not(:has(> .cinder-table > .cinder-table__body > .cinder-table__row > ${FILL_CONTROL}))`;
 }
 
+/**
+ * The sort control's row above a table that takes the card form. The row comes before the table, in
+ * its scroll box or beside it (DataTable's own box), so it reads the table through a later
+ * sibling; `:has` cannot nest, so eligibility is two of them, as for `cardScroll`.
+ */
+function cardSortRow(scope: StackScope): string {
+  const fitTable = `.cinder-table[data-cinder-fit]${scopeAttribute(scope)}`;
+  const fill = `.cinder-table > .cinder-table__body > .cinder-table__row > ${FILL_CONTROL}`;
+  return `.cinder-table__stack-sort:is(:has(~ .cinder-table-scroll > ${fitTable}), :has(~ ${fitTable})):not(:has(~ .cinder-table-scroll > ${fill}), :has(~ ${fill}))`;
+}
+
 /** The tables that take the control layout: a filling control in a `fit` table, any control otherwise. */
 function controlTable(scope: StackScope): string {
   return `.cinder-table${scopeAttribute(scope)}:is([data-cinder-fit]${bodyHas(FILL_CONTROL)}, :not([data-cinder-fit])${bodyHas(ANY_CONTROL)})`;
@@ -392,6 +441,8 @@ function scopeRules(scope: StackScope): string[] {
     block(cardLength, [
       ...expand(STACKED_RULES, card, cardScroll(scope)),
       ...expand(CARD_RULES, card, cardScroll(scope)),
+      // The sort control, in every sortable `fit` table's HTML, is drawn only in the card form.
+      `${cardSortRow(scope)} { display: flex; }`,
     ]),
   ];
 }

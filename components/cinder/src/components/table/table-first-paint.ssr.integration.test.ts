@@ -5,7 +5,12 @@
  * empty marks, the table roles, the attributes CSS reads to choose a form, and, for a custom
  * `stackBelow`, the scoped rule for that length.
  */
-import { hydrateServerHtml, renderSvelteOnServer, setupHappyDom } from '@lostgradient/testing';
+import {
+  hydrateServerHtml,
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+  setupHappyDom,
+} from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
@@ -17,6 +22,10 @@ const { render } = await import('@testing-library/svelte');
 const { default: ServerFixture } = await import('./table-server.fixture.svelte');
 
 const fixturePath = new URL('./table-server.fixture.svelte', import.meta.url).pathname;
+
+const cardFixturePath = new URL('./table-card.fixture.svelte', import.meta.url).pathname;
+await prepareSvelteServerSource(fixturePath);
+await prepareSvelteServerSource(cardFixturePath);
 
 // Server rendering spawns a Bun process, so every render runs once at module scope.
 const [fit, fitSwitch, fitSelect, controls, plain, custom480, custom20, noStack] =
@@ -30,6 +39,10 @@ const [fit, fitSwitch, fitSelect, controls, plain, custom480, custom20, noStack]
     renderSvelteOnServer(fixturePath, { shape: 'fit', stackBelow: '20rem' }),
     renderSvelteOnServer(fixturePath, { shape: 'fit', stackBelow: false }),
   ]);
+const [sortableCard, unsortableCard] = await Promise.all([
+  renderSvelteOnServer(cardFixturePath, { sortable: true }),
+  renderSvelteOnServer(cardFixturePath, { sortable: false }),
+]);
 const invalidLength = await renderSvelteOnServer(fixturePath, {
   shape: 'fit',
   stackBelow: 'url(x)',
@@ -79,14 +92,14 @@ describe('Table server HTML', () => {
     expect(shapeOf(fit)).toEqual({ fit: true, controls: [], container: 'wrapped' });
     expect(shapeOf(fitSwitch)).toEqual({
       fit: true,
-      controls: ['fit', 'fit'],
+      controls: ['fit', 'fit', 'fit'],
       container: 'wrapped',
     });
     // The control layout: `fit` with a control that fills its cell, or any control without `fit`.
-    expect(shapeOf(fitSelect)).toEqual({ fit: true, controls: ['', ''], container: 'wrapped' });
+    expect(shapeOf(fitSelect)).toEqual({ fit: true, controls: ['', '', ''], container: 'wrapped' });
     expect(shapeOf(controls)).toEqual({
       fit: false,
-      controls: ['fit', 'fit'],
+      controls: ['fit', 'fit', 'fit'],
       container: 'wrapped',
     });
     // Neither: it never stacks.
@@ -105,19 +118,27 @@ describe('Table server HTML', () => {
         ),
       );
     const server = marks(parsed(fit));
-    // Row one's title is its row header; row two's is its first cell with content.
+    // Row one's title is its row header; row two's is its first cell with content. In row three a
+    // cell with content comes before the row header and claims the title first, as the server
+    // writes it; the card rules give the row header the title over it (table-stack-rules.ts).
     expect(server).toEqual([
       ['title', '', 'empty'],
       ['empty', 'title', ''],
+      ['title', 'title', ''],
     ]);
-    // A phone-width client render draws cards, so script marks the same cells.
+    // A phone-width client render draws cards: the row header takes the title from the earlier
+    // cell, and the other marks match the server's.
     setTestViewportWidth(375);
     const client = render(ServerFixture, { shape: 'fit' });
     flushSync();
     expect(client.container.querySelector('table')?.hasAttribute('data-cinder-stack-card')).toBe(
       true,
     );
-    expect(marks(client.container)).toEqual(server);
+    expect(marks(client.container)).toEqual([
+      ['title', '', 'empty'],
+      ['empty', 'title', ''],
+      ['', 'title', ''],
+    ]);
     client.unmount();
   });
 
@@ -128,6 +149,7 @@ describe('Table server HTML', () => {
       Array.from(root.querySelectorAll('thead, tbody'), (part) => part.getAttribute('role')),
     ).toEqual(['rowgroup', 'rowgroup']);
     expect(Array.from(root.querySelectorAll('tr'), (row) => row.getAttribute('role'))).toEqual([
+      'row',
       'row',
       'row',
       'row',
@@ -152,6 +174,16 @@ describe('Table server HTML', () => {
     } finally {
       await hydrated.cleanup();
     }
+  });
+
+  test('a sortable fit table carries its stacked sort control, before the table', () => {
+    const root = parsed(sortableCard);
+    const sortRow = root.querySelector('.cinder-table__stack-sort');
+    expect(sortRow).not.toBeNull();
+    expect(sortRow?.querySelector('select')).not.toBeNull();
+    // Before the table, in its scroll box, so the generated rule reads it through a later sibling.
+    expect(sortRow?.nextElementSibling?.classList.contains('cinder-table-scroll')).toBe(true);
+    expect(parsed(unsortableCard).querySelector('.cinder-table__stack-sort')).toBeNull();
   });
 
   test('a custom stackBelow brings its scoped rule; false brings none; a bad length throws', () => {

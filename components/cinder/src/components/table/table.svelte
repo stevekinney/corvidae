@@ -16,13 +16,7 @@
   import { SvelteMap } from 'svelte/reactivity';
 
   import Select from '../select/select.svelte';
-  import {
-    applySortOption,
-    holdSortButtonsOutOfTabOrder,
-    markCardCells,
-    readSortOptions,
-    type StackSortOption,
-  } from './table-stack.ts';
+  import { holdSortButtonsOutOfTabOrder, markCardCells } from './table-stack.ts';
   import { lengthToPixels } from './table.length.ts';
   import { getTableContainerProvided } from './table-container-context.ts';
   import { stackStyle, stylesheetCoversLength } from './table-stack-rules.ts';
@@ -51,6 +45,7 @@
     frameless: framelessProp = false,
     framed = false,
     fit = false,
+    sortable = false,
     scrollContainerProps,
     stackBelow,
     class: className,
@@ -136,7 +131,8 @@
       containerNarrow = undefined;
       return;
     }
-    const threshold = lengthToPixels(breakpoint, table);
+    // Against the container, as the container query resolves an `em` length, not the table.
+    const threshold = lengthToPixels(breakpoint, container);
     const update = (width: number): void => {
       containerNarrow = threshold === undefined || !(width > 0) ? undefined : width < threshold;
     };
@@ -227,8 +223,26 @@
 
   // A stacked sortable `fit` table sorts from one Select above the rows: its options are the sortable
   // columns the header names, and choosing one activates that column's header button.
-  let tableElement: HTMLTableElement | undefined;
-  let sortOptions = $state<StackSortOption[]>([]);
+  // Each sortable header cell registers its column as it is created, as it does its label, so the
+  // options are in place before the Select's first effect runs. The server's HTML renders the
+  // control before the header cells, so it carries the control's row with no options, and
+  // hydration fills them in (COR-2771). Entries are keyed by the header cell, not its position: a
+  // cell that moves (after mount, to its DOM position) holds one entry throughout, so the options
+  // never list a column twice, even for the moment between its two registrations.
+  const sortColumns = new SvelteMap<object, { position: number; column: string; label: string }>();
+  const sortOptions = $derived(
+    [...sortColumns.values()]
+      .sort((a, b) => a.position - b.position)
+      // One column key is one way to sort, however many header cells name it.
+      .filter(
+        (entry, index, entries) =>
+          entries.findIndex((other) => other.column === entry.column) === index,
+      )
+      .flatMap(({ column, label }) => [
+        { value: `ascending:${column}`, label: `${label} ascending` },
+        { value: `descending:${column}`, label: `${label} descending` },
+      ]),
+  );
   let chosenSort = $state<{ value: string; column: string; direction: string } | undefined>();
   const selectedSort = $derived(
     chosenSort && sort?.column === chosenSort.column && sort.direction === chosenSort.direction
@@ -237,13 +251,14 @@
   );
   const instanceId = $props.id();
   const sortSelectId = `cinder-table-sort-${instanceId}`;
-  // The options last handed to the Select, kept apart from the state so reading them in the
-  // attachment below does not make the attachment depend on what it writes.
-  let sortOptionsSeen: StackSortOption[] = [];
-
+  // Sorting by a column, as its header button does, once or twice to reach the chosen direction.
   function chooseSort(value: string): void {
-    if (!tableElement) return;
-    applySortOption(tableElement, value, () => sort?.direction);
+    const split = value.indexOf(':');
+    const direction = value.slice(0, split);
+    const column = value.slice(split + 1);
+    if (![...sortColumns.values()].some((entry) => entry.column === column)) return;
+    onSortChange(column);
+    if (sort?.direction !== direction) onSortChange(column);
     if (sort) chosenSort = { value, column: sort.column, direction: sort.direction };
   }
 
@@ -255,29 +270,16 @@
     currentTarget.querySelector('select')?.showPicker?.();
   }
 
-  function sameOptions(a: StackSortOption[], b: StackSortOption[]): boolean {
-    return (
-      a.length === b.length &&
-      a.every((option, i) => option.value === b[i]?.value && option.label === b[i]?.label)
-    );
-  }
-
   const labelCellsWhileStacked: Attachment<HTMLTableElement> = (table) => {
     if (!stacked) return;
     const card = stackCard;
     const roled = new Set<Element>();
-    tableElement = table;
     const releaseSortButtons = card ? holdSortButtonsOutOfTabOrder(table) : undefined;
     const update = (): void => {
       labelStackedCells(table);
       keepTableRoles(table, roled);
       if (!card) return;
       markCardCells(table);
-      const options = readSortOptions(table);
-      if (!sameOptions(options, sortOptionsSeen)) {
-        sortOptionsSeen = options;
-        sortOptions = options;
-      }
     };
     update();
     const observer = new MutationObserver(update);
@@ -287,11 +289,6 @@
       releaseSortButtons?.();
       // The title and empty marks stay: the server's HTML carries them, and only the card rules,
       // which apply below the stack width, read them.
-      if (card) {
-        sortOptionsSeen = [];
-        sortOptions = [];
-      }
-      if (tableElement === table) tableElement = undefined;
       for (const part of roled) part.removeAttribute('role');
     };
   };
@@ -411,6 +408,17 @@
     get fit() {
       return fit;
     },
+    get sortable() {
+      return sortable;
+    },
+    setSortColumn(position, column, label, owner) {
+      if (position < 0) return;
+      untrack(() => {
+        if (column !== undefined)
+          sortColumns.set(owner, { position, column, label: label || column });
+        else if (sortColumns.get(owner)?.position === position) sortColumns.delete(owner);
+      });
+    },
     onSortChange,
     registerControls,
   });
@@ -447,7 +455,10 @@
   {#if ownStackStyle !== undefined}
     <svelte:element this={"style"}>{ownStackStyle}</svelte:element>
   {/if}
-  {#if stackCard && sortOptions.length > 0}
+  <!-- The sort control's row is in the server's HTML of a `sortable` `fit` table, and CSS shows it
+       only while the table takes the card form (`table-stack-rules.ts`), so the first paint already
+       holds its place. Its options are read from the header once mounted (COR-2771). -->
+  {#if fit && (sortable || sortOptions.length > 0)}
     <div class="cinder-table__stack-sort">
       <!-- The select is drawn compact, so this box carries its 44px hit area: a press that lands in
            the padding above or below it opens the select too. The keyboard uses the select itself. -->
@@ -463,6 +474,7 @@
           presentation="native"
           options={sortOptions.map((option) => ({ ...option, label: `Sort: ${option.label}` }))}
           {...selectedSort ? { value: selectedSort } : {}}
+          disabled={sortOptions.length === 0}
           onValueChange={chooseSort}
         />
       </div>

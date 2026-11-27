@@ -2,7 +2,7 @@
  * `table-first-paint.playwright.ts` adds the same file to the server-rendered page, so both paints
  * lay out the page the same way. */
 
-/* One track as wide as the page, so the 1,244px row of columns cannot widen the other sections. */
+/* One track as wide as the page, so the row of columns cannot widen the other sections. */
 .first-paint-page {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -16,11 +16,12 @@
   overflow-x: auto;
 }
 
-/* A 320px column and a 900px one, in the spacing scale's units. */
+/* A 320px column and an 880px one, in the spacing scale's units: with the gap, 1,224px, inside a
+   1280px window's page. */
 .first-paint-narrow {
   flex: 0 0 calc(var(--cinder-space-4) * 20);
 }
 
 .first-paint-wide {
-  flex: 0 0 calc(var(--cinder-space-4) * 56.25);
+  flex: 0 0 calc(var(--cinder-space-4) * 55);
 }

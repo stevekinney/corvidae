@@ -19,7 +19,7 @@ import {
 
 const SOURCE = new URL('../src/fixtures/table-first-paint.svelte', import.meta.url).pathname;
 const PATH = '/server-rendered/table-first-paint';
-const TABLES = ['namespaces', 'loading', 'controls'] as const;
+const TABLES = ['namespaces', 'loading', 'controls', 'sortable', 'data-table'] as const;
 
 let rendered: ServerRenderedPage;
 
@@ -77,7 +77,7 @@ async function openHydratedPage(browser: Browser, width: number) {
   await expect(page.locator('[data-testid="namespaces"] table')).toBeVisible();
   // The table's script has run: it watches its container once mounted.
   await page.waitForFunction(
-    () => document.querySelectorAll('.cinder-table-container').length >= 5,
+    () => document.querySelectorAll('.cinder-table-container').length >= 7,
   );
   return { context, page };
 }
@@ -227,6 +227,89 @@ test('with no script, at 1280px every table is wide', async ({ page }) => {
   }
 });
 
+/** Whether each sortable section's stacked sort control is drawn, by section. */
+async function sortControlShown(page: Page): Promise<Record<string, boolean>> {
+  return page.evaluate(() =>
+    Object.fromEntries(
+      ['sortable', 'data-table'].map((id) => {
+        const row = document.querySelector(`[data-testid="${id}"] .cinder-table__stack-sort`);
+        return [id, row !== null && row.getBoundingClientRect().height > 0];
+      }),
+    ),
+  );
+}
+
+test('with no script, a sortable table holds its sort control on a phone and not when wide', async ({
+  page,
+}) => {
+  await openServerPage(page, 375);
+  expect(await sortControlShown(page)).toEqual({ sortable: true, 'data-table': true });
+  await openServerPage(page, 1280);
+  expect(await sortControlShown(page)).toEqual({ sortable: false, 'data-table': false });
+});
+
+type SortControlState = { control: DOMRectReadOnly; firstRowTop: number; disabled: boolean };
+
+/** Each sortable section's sort control box, its first row's top, and whether its select is disabled. */
+async function sortControlState(page: Page): Promise<Record<string, SortControlState>> {
+  return page.evaluate(() =>
+    Object.fromEntries(
+      ['sortable', 'data-table'].map((id) => {
+        const root = document.querySelector(`[data-testid="${id}"]`)!;
+        const origin = root.getBoundingClientRect();
+        const control = root.querySelector('.cinder-table__stack-sort')!.getBoundingClientRect();
+        const row = root.querySelector('tbody tr')!.getBoundingClientRect();
+        const select = root.querySelector<HTMLSelectElement>('.cinder-table__stack-sort select')!;
+        return [
+          id,
+          {
+            control: new DOMRectReadOnly(
+              control.x - origin.x,
+              control.y - origin.y,
+              control.width,
+              control.height,
+            ).toJSON(),
+            firstRowTop: row.top - origin.y,
+            disabled: select.disabled,
+          },
+        ];
+      }),
+    ),
+  );
+}
+
+test('at 375px hydration fills the sort control without moving it or the rows', async ({
+  page,
+  browser,
+}) => {
+  await openServerPage(page, 375);
+  const { context, page: hydrated } = await openHydratedPage(browser, 375);
+  try {
+    const first = await sortControlState(page);
+    await expect
+      .poll(async () => Object.values(await sortControlState(hydrated)).map((s) => s.disabled))
+      .toEqual([false, false]);
+    const after = await sortControlState(hydrated);
+    for (const id of ['sortable', 'data-table']) {
+      // Before hydration the select has no options, so it is disabled: no one lands on an empty
+      // listbox. Its visible label holds its place.
+      expect(first[id]!.disabled, `${id} disabled before hydration`).toBe(true);
+      for (const side of ['x', 'y', 'width', 'height'] as const) {
+        expect(
+          Math.abs(after[id]!.control[side] - first[id]!.control[side]),
+          `${id} sort control ${side}`,
+        ).toBeLessThanOrEqual(0.5);
+      }
+      expect(
+        Math.abs(after[id]!.firstRowTop - first[id]!.firstRowTop),
+        `${id} first row top`,
+      ).toBeLessThanOrEqual(0.5);
+    }
+  } finally {
+    await context.close();
+  }
+});
+
 test('with no script, the container decides, not the window', async ({ page }) => {
   await openServerPage(page, 1280);
   const headerHidden = (section: string) =>
@@ -236,7 +319,7 @@ test('with no script, the container decides, not the window', async ({ page }) =
         'inset(50%)',
       section,
     );
-  // The same `fit` table: stacked in a 320px column, wide in a 900px one, in a 1280px window.
+  // The same `fit` table: stacked in a 320px column, wide in an 880px one, in a 1280px window.
   expect(await headerHidden('narrow-column')).toBe(true);
   expect(await headerHidden('wide-column')).toBe(false);
 });

@@ -50,6 +50,19 @@ export type TableContext = {
   readonly stackCard?: boolean;
   /** True for a `fit` table. Its row header holds to two lines, stacked or not. */
   readonly fit?: boolean;
+  /** Mirror of Table.sortable: the table renders its stacked sort control's row from the server on. */
+  readonly sortable?: boolean;
+  /**
+   * Called by a sortable header cell with its column position, sort `column` key and `label`, and
+   * again with `undefined` when it leaves that position or stops sorting, as `setColumnSizing` is.
+   * The stacked sort control offers one option per direction of each registered column.
+   */
+  setSortColumn?: (
+    position: number,
+    column: string | undefined,
+    label: string,
+    owner: object,
+  ) => void;
   /**
    * Called by a header cell with its column position and `sizing`, and again with `undefined` when
    * it leaves that position; `owner` identifies the cell, so it withdraws only its own entry. Body
@@ -87,7 +100,9 @@ export type TableRowColumnsContext = {
    * Claims the row's card title for a cell as it is created: a row header (`th`) always takes it
    * from a plain cell; a plain cell takes it only when no cell has. Returns whether this cell holds it.
    */
-  claimTitle: (kind: 'header' | 'cell') => boolean;
+  claimTitle: (kind: 'header' | 'cell', owner: object) => boolean;
+  /** Whether the cell `owner` holds the row's title now: a row header takes it from a plain cell. */
+  holdsTitle: (owner: object) => boolean;
 };
 /** Attributes forwarded to Table's generated scroll wrapper. */
 export type TableScrollContainerProps = Omit<
@@ -178,6 +193,15 @@ export type TableProps = Omit<HTMLTableAttributes, 'class'> & {
    * @default false
    */
   fit?: boolean;
+  /**
+   * Set on a `fit` table with a sortable header cell. A stacked `fit` table sorts from one control
+   * above its rows, and the server renders that control's row before the header cells it lists, so
+   * this prop is how the server knows to keep its place: the first paint already has the row, and
+   * hydration fills in its options without moving the rows (COR-2771). DataTable sets it from its
+   * columns. A sortable header cell in a `fit` table without it warns in development.
+   * @default false
+   */
+  sortable?: boolean;
   /**
    * Attributes forwarded to the generated `.cinder-table-scroll` wrapper when
    * `scrollable` is true. The wrapper is focusable by default so keyboard users

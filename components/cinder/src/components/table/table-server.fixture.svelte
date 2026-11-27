@@ -60,5 +60,14 @@
           ><input type="checkbox" aria-label="On" /></TableCell
         >{/if}
     </TableRow>
+    <!-- A row whose row header follows a cell with content: the header is the title. -->
+    <TableRow>
+      <TableCell>Deprecated</TableCell>
+      <TableCell as="th">billing</TableCell>
+      <TableCell>90 days</TableCell>
+      {#if control}<TableCell controls={control === 'fit' ? 'fit' : true}
+          ><input type="checkbox" aria-label="On" /></TableCell
+        >{/if}
+    </TableRow>
   </TableBody>
 </Table>

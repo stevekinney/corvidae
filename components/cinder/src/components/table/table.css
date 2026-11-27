@@ -544,9 +544,11 @@
     container: cinder-table / inline-size;
   }
 
-  /* The sort control sits above the rows, at the inline end, as compact as its field allows. */
+  /* The sort control sits above the rows, at the inline end, as compact as its field allows. It is
+     in the HTML of every sortable `fit` table, and drawn only in the card form (the generated rules
+     below set its `display`). */
   .cinder-table__stack-sort {
-    display: flex;
+    display: none;
     justify-content: flex-end;
     padding-block-end: var(--cinder-space-2);
   }
@@ -569,6 +571,11 @@
     ) {
     min-block-size: 2.25rem;
     max-block-size: 2.25rem;
+    /* A width of its own, not its widest option's: the server's HTML holds the select with no
+       options, which hydration fills in (COR-2771), and the control must not widen when they
+       arrive. A longer option ends in an ellipsis. */
+    inline-size: calc(var(--cinder-space-4) * 15);
+    max-inline-size: 100%;
   }
 
   /* The row header's name holds to two lines in any `fit` table, stacked or not, and ends with an
@@ -875,6 +882,7 @@
         )
       )
       .cinder-table__cell-text {
+      inline-size: auto;
       max-inline-size: 100%;
     }
     .cinder-table:not([data-cinder-stack-below]):is(
@@ -1155,6 +1163,7 @@
         )
       )
       .cinder-table__cell-text {
+      inline-size: auto;
       max-inline-size: 100%;
     }
     .cinder-table[data-cinder-fit]:not([data-cinder-stack-below]):not(
@@ -1332,6 +1341,16 @@
         )
       )
       .cinder-table__body
+      .cinder-table__cell
+      > .cinder-table__cell-text {
+      flex: 1 1 0;
+    }
+    .cinder-table[data-cinder-fit]:not([data-cinder-stack-below]):not(
+        :has(
+          > .cinder-table__body > .cinder-table__row > .cinder-table__cell[data-cinder-controls='']
+        )
+      )
+      .cinder-table__body
       .cinder-table__cell[data-cinder-stack-empty],
     .cinder-table[data-cinder-fit]:not([data-cinder-stack-below]):not(
         :has(
@@ -1381,6 +1400,51 @@
       font-weight: var(--cinder-font-normal);
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    .cinder-table[data-cinder-fit]:not([data-cinder-stack-below]):not(
+        :has(
+          > .cinder-table__body > .cinder-table__row > .cinder-table__cell[data-cinder-controls='']
+        )
+      )
+      .cinder-table__body
+      .cinder-table__row:has(> th[data-cinder-stack-title])
+      > td.cinder-table__cell[data-cinder-stack-title] {
+      grid-column: 1 / -1;
+      grid-row: auto;
+      order: 3;
+      display: flex;
+      font-size: var(--cinder-text-sm);
+      font-weight: var(--cinder-font-normal);
+    }
+    .cinder-table[data-cinder-fit]:not([data-cinder-stack-below]):not(
+        :has(
+          > .cinder-table__body > .cinder-table__row > .cinder-table__cell[data-cinder-controls='']
+        )
+      )
+      .cinder-table__body
+      .cinder-table__row:has(> th[data-cinder-stack-title])
+      > td.cinder-table__cell[data-cinder-stack-title][data-cinder-stack-label]::before {
+      content: attr(data-cinder-stack-label);
+    }
+    .cinder-table[data-cinder-fit]:not([data-cinder-stack-below]):not(
+        :has(
+          > .cinder-table__body > .cinder-table__row > .cinder-table__cell[data-cinder-controls='']
+        )
+      )
+      .cinder-table__row:has(> th[data-cinder-stack-title])
+      > td[data-cinder-stack-title]
+      .cinder-table__cell-detail {
+      display: none;
+    }
+    .cinder-table[data-cinder-fit]:not([data-cinder-stack-below]):not(
+        :has(
+          > .cinder-table__body > .cinder-table__row > .cinder-table__cell[data-cinder-controls='']
+        )
+      )
+      .cinder-table__row:has(> th[data-cinder-stack-title])
+      > td[data-cinder-stack-title]
+      a::after {
+      content: none;
     }
     .cinder-table[data-cinder-fit]:not([data-cinder-stack-below]):not(
         :has(
@@ -1583,6 +1647,28 @@
         outline: 1px solid Highlight;
         outline-offset: -1px;
       }
+    }
+    .cinder-table__stack-sort:is(
+        :has(
+          ~ .cinder-table-scroll > .cinder-table[data-cinder-fit]:not([data-cinder-stack-below])
+        ),
+        :has(~ .cinder-table[data-cinder-fit]:not([data-cinder-stack-below]))
+      ):not(
+        :has(
+          ~ .cinder-table-scroll
+            > .cinder-table
+            > .cinder-table__body
+            > .cinder-table__row
+            > .cinder-table__cell[data-cinder-controls='']
+        ),
+        :has(
+          ~ .cinder-table
+            > .cinder-table__body
+            > .cinder-table__row
+            > .cinder-table__cell[data-cinder-controls='']
+        )
+      ) {
+      display: flex;
     }
   }
   @container cinder-table not (min-width: 640px) {
@@ -1853,6 +1939,7 @@
         )
       )
       .cinder-table__cell-text {
+      inline-size: auto;
       max-inline-size: 100%;
     }
     .cinder-table[data-cinder-stack-below='640px']:is(
@@ -2133,6 +2220,7 @@
         )
       )
       .cinder-table__cell-text {
+      inline-size: auto;
       max-inline-size: 100%;
     }
     .cinder-table[data-cinder-fit][data-cinder-stack-below='640px']:not(
@@ -2310,6 +2398,16 @@
         )
       )
       .cinder-table__body
+      .cinder-table__cell
+      > .cinder-table__cell-text {
+      flex: 1 1 0;
+    }
+    .cinder-table[data-cinder-fit][data-cinder-stack-below='640px']:not(
+        :has(
+          > .cinder-table__body > .cinder-table__row > .cinder-table__cell[data-cinder-controls='']
+        )
+      )
+      .cinder-table__body
       .cinder-table__cell[data-cinder-stack-empty],
     .cinder-table[data-cinder-fit][data-cinder-stack-below='640px']:not(
         :has(
@@ -2359,6 +2457,51 @@
       font-weight: var(--cinder-font-normal);
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    .cinder-table[data-cinder-fit][data-cinder-stack-below='640px']:not(
+        :has(
+          > .cinder-table__body > .cinder-table__row > .cinder-table__cell[data-cinder-controls='']
+        )
+      )
+      .cinder-table__body
+      .cinder-table__row:has(> th[data-cinder-stack-title])
+      > td.cinder-table__cell[data-cinder-stack-title] {
+      grid-column: 1 / -1;
+      grid-row: auto;
+      order: 3;
+      display: flex;
+      font-size: var(--cinder-text-sm);
+      font-weight: var(--cinder-font-normal);
+    }
+    .cinder-table[data-cinder-fit][data-cinder-stack-below='640px']:not(
+        :has(
+          > .cinder-table__body > .cinder-table__row > .cinder-table__cell[data-cinder-controls='']
+        )
+      )
+      .cinder-table__body
+      .cinder-table__row:has(> th[data-cinder-stack-title])
+      > td.cinder-table__cell[data-cinder-stack-title][data-cinder-stack-label]::before {
+      content: attr(data-cinder-stack-label);
+    }
+    .cinder-table[data-cinder-fit][data-cinder-stack-below='640px']:not(
+        :has(
+          > .cinder-table__body > .cinder-table__row > .cinder-table__cell[data-cinder-controls='']
+        )
+      )
+      .cinder-table__row:has(> th[data-cinder-stack-title])
+      > td[data-cinder-stack-title]
+      .cinder-table__cell-detail {
+      display: none;
+    }
+    .cinder-table[data-cinder-fit][data-cinder-stack-below='640px']:not(
+        :has(
+          > .cinder-table__body > .cinder-table__row > .cinder-table__cell[data-cinder-controls='']
+        )
+      )
+      .cinder-table__row:has(> th[data-cinder-stack-title])
+      > td[data-cinder-stack-title]
+      a::after {
+      content: none;
     }
     .cinder-table[data-cinder-fit][data-cinder-stack-below='640px']:not(
         :has(
@@ -2561,6 +2704,28 @@
         outline: 1px solid Highlight;
         outline-offset: -1px;
       }
+    }
+    .cinder-table__stack-sort:is(
+        :has(
+          ~ .cinder-table-scroll > .cinder-table[data-cinder-fit][data-cinder-stack-below='640px']
+        ),
+        :has(~ .cinder-table[data-cinder-fit][data-cinder-stack-below='640px'])
+      ):not(
+        :has(
+          ~ .cinder-table-scroll
+            > .cinder-table
+            > .cinder-table__body
+            > .cinder-table__row
+            > .cinder-table__cell[data-cinder-controls='']
+        ),
+        :has(
+          ~ .cinder-table
+            > .cinder-table__body
+            > .cinder-table__row
+            > .cinder-table__cell[data-cinder-controls='']
+        )
+      ) {
+      display: flex;
     }
   }
   /* END GENERATED STACK RULES */

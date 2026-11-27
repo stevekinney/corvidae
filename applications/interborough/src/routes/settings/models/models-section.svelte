@@ -82,7 +82,7 @@
 <div class="ib-models" data-section="models">
   {#if failure === undefined && models.length > 0}
     <FormSection grouped heading={copy.heading} description={copy.description} />
-    <Table caption={copy.tableLabel} density="comfortable" fit bind:sort>
+    <Table caption={copy.tableLabel} density="comfortable" fit sortable bind:sort>
       <colgroup>
         <!-- The three narrow columns are as wide as their content (a status word is never cut, a
              long list of abilities wraps); Model takes the rest and ends in an ellipsis. -->

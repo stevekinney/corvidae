@@ -624,6 +624,7 @@
     {density}
     scrollable={false}
     {fit}
+    sortable={columns.some((column) => column.sortable === true)}
     {stackBelow}
     bind:sort
   >
