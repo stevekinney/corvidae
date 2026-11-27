@@ -103,7 +103,10 @@ async function verifyRecovery(): Promise<void> {
     const webComponentsIndex = join(cinder, 'dist/web-components/index.html');
     const modifiedAt = async () =>
       Promise.all(
-        CINDER_GENERATED_OUTPUTS.map(async (output) => (await stat(join(cinder, output))).mtimeMs),
+        CINDER_GENERATED_OUTPUTS.map(async (output) => {
+          const { mtimeMs } = await stat(join(cinder, output));
+          return mtimeMs;
+        }),
       );
     const firstBuild = await run(webComponents, copy);
     webComponentsResult = {
