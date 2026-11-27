@@ -33,13 +33,13 @@
 </script>
 
 <StackedListItem
-  class="ib-checks-row"
   data-check-kind={row.kind}
   data-status={word}
   href={router.href(checkPath(row))}
   tooltip={name}
   metaTooltip={lineTwo}
   wrapMeta
+  statusPlacement="leading-always"
 >
   {#snippet status()}<StatusDot {word} />{/snippet}
   {#snippet title()}
@@ -76,35 +76,5 @@
     font-weight: normal;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
-  }
-
-  @media (max-width: 639px) {
-    :global(
-      .ib-checks-row.cinder-stacked-list-item--status-inline > .cinder-stacked-list-item__layout
-    ) {
-      grid-template-areas:
-        'leading status title time trailing'
-        'leading line line line trailing'
-        '. . details details .';
-    }
-
-    :global(
-      .ib-checks-row.cinder-stacked-list-item--status-inline .cinder-stacked-list-item__line-two
-    ) {
-      display: contents;
-    }
-
-    :global(
-      .ib-checks-row.cinder-stacked-list-item--status-inline
-        .cinder-stacked-list-item__status-inline
-    ) {
-      grid-area: status;
-    }
-
-    :global(
-      .ib-checks-row.cinder-stacked-list-item--status-inline .cinder-stacked-list-item__meta
-    ) {
-      grid-area: line;
-    }
   }
 </style>

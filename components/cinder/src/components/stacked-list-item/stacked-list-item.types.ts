@@ -5,9 +5,9 @@ export type StackedListItemDensity = 'comfortable' | 'condensed';
  * Where a row's status sits. `leading` is the fixed 128px column that leads the row on a tablet
  * or desktop; `line-two` puts the status in a fixed-width column at the start of line two, for a
  * pane too narrow for a leading column (the chat list). On a phone a `leading` status moves to
- * line two in any case.
+ * line two; `leading-always` keeps it on the first line.
  */
-export type StackedListItemStatusPlacement = 'leading' | 'line-two';
+export type StackedListItemStatusPlacement = 'leading' | 'leading-always' | 'line-two';
 /**
  * Which width decides a row's phone form. `row`, the default, is the row's own width below 640px
  * (COR-2448), so a row in a narrow pane of a wide window takes it. `viewport` is the window's width
@@ -106,7 +106,7 @@ type StackedListItemBase = ForwardedLiAttributes & {
    * `statusColumn`. Setting it on a row that has a `status` has no effect.
    */
   statusColumn?: boolean;
-  /** Where the status sits. Default `leading`. */
+  /** Where the status sits. `leading-always` keeps it on the first line on phones. Default `leading`. */
   statusPlacement?: StackedListItemStatusPlacement;
   /**
    * Which width decides the row's phone form: the row's own (`row`, the default) or the window's
