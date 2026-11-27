@@ -429,7 +429,7 @@ describe('internal workspace architecture', () => {
     // The guards (`lint:guards`) and their tests read the shared owner-rule helper at the root, and
     // `tests/coverage-matrix.test.ts` reads the Weft operation coverage matrix there. A change to
     // either must not replay a cached result.
-    expect(configuration.tasks['lint']?.inputs).toContain(
+    expect(configuration.tasks['@lostgradient/interborough#lint']?.inputs).toContain(
       '$TURBO_ROOT$/scripts/owner-rule-guard-support.ts',
     );
     for (const task of [
