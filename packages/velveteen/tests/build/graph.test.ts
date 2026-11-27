@@ -1,10 +1,78 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { access, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { buildProduction } from "../../src/build/index.ts";
+import { readProductionGeneration } from "../../src/build/publication.ts";
+import { createApplication } from "../../src/server/index.ts";
 import { buildRouteManifest } from "../../src/routing/index.ts";
 import { buildProductionGraph } from "../../src/build/graph.ts";
 import { writeProductionFixture } from "./production-fixture.ts";
+
+test("external production output renders a context-using route", async () => {
+  const parent = join(process.cwd(), ".velveteen/build");
+  await mkdir(parent, { recursive: true });
+  const project = await mkdtemp(join(parent, "context-project-"));
+  const outside = await mkdtemp(join(tmpdir(), "velveteen-context-"));
+  try {
+    const fixture = await writeProductionFixture(project);
+    await Bun.write(
+      join(fixture.routesDirectory, "+page.svelte"),
+      `<script>import { setContext, getContext } from 'svelte'; setContext('message', 'context rendered'); const message = getContext('message');</script><h1>{message}</h1>`,
+    );
+    const outputDirectory = join(outside, "output");
+    for (let directory = outside; ; directory = dirname(directory)) {
+      expect(
+        await access(join(directory, "node_modules")).then(
+          () => true,
+          () => false,
+        ),
+      ).toBe(false);
+      if (dirname(directory) === directory) break;
+    }
+    await Promise.all(
+      [outputDirectory, join(outside, "other")].map((destination) =>
+        buildProduction({
+          projectDirectory: project,
+          routesDirectory: fixture.routesDirectory,
+          outputDirectory: destination,
+        }),
+      ),
+    );
+    const generation = await readProductionGeneration(outputDirectory);
+    const application = await createApplication({ generation });
+    try {
+      const response = await application.fetch(
+        new Request("https://example.test/"),
+      );
+      expect(response.status).toBe(200);
+      expect(await response.text()).toContain("context rendered");
+    } finally {
+      await application.dispose();
+    }
+    expect(
+      (await readdir(project)).filter((name) => name.startsWith(".velveteen-graph-")),
+    ).toEqual([]);
+    await Bun.write(
+      join(fixture.routesDirectory, "+page.svelte"),
+      "<script>const broken = ;</script>",
+    );
+    await expect(
+      buildProduction({
+        projectDirectory: project,
+        routesDirectory: fixture.routesDirectory,
+        outputDirectory,
+      }),
+    ).rejects.toThrow();
+    expect(
+      (await readdir(project)).filter((name) => name.startsWith(".velveteen-graph-")),
+    ).toEqual([]);
+  } finally {
+    await rm(project, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
 
 test("D02/D04: emitted role graphs preserve route CSS, lazy modules and the browser boundary", async () => {
   const parent = join(process.cwd(), ".velveteen/build");
@@ -53,6 +121,14 @@ test("D02/D04: emitted role graphs preserve route CSS, lazy modules and the brow
       manifest.outputs.every((output) => !output.file.endsWith(".map")),
     ).toBe(true);
     for (const target of ["browser", "server"] as const) {
+      const inputs = Object.keys(metadata[target].inputs);
+      expect(
+        inputs.some((input) =>
+          input.includes(
+            `svelte/src/index-${target === "browser" ? "client" : "server"}.js`,
+          ),
+        ),
+      ).toBe(true);
       const outputs = manifest.outputs.filter(
         (output) => output.target === target,
       );
