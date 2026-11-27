@@ -1,7 +1,7 @@
 {
   "issue": "COR-2762",
   "branch": "steve/composable-browser-import-boundary",
-  "checkedAt": "8ba92ca8ea3304021cb6c740f89b69c6f89eae01",
+  "checkedAt": "c4f59ac5785cd86fd43909cbd63e4fcebcaaea1e",
   "briefVersion": "5cf5116924b7",
   "status": "READY",
   "criteria": [
