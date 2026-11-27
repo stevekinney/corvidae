@@ -1,7 +1,7 @@
 {
   "issue": "COR-2731_COR-2735_COR-2729_COR-2734",
   "branch": "chef/ownership-moves",
-  "checkedAt": "8c94cf11aac23c26648ac0f5ce32236815dcb924",
+  "checkedAt": "154746e2ae8dabe1d2e1cb1a5cdb9bfedef5b68d",
   "briefVersion": "32738a65d084",
   "status": "READY",
   "criteria": [
