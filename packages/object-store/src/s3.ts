@@ -16,21 +16,6 @@ async function drain(response: Response): Promise<number> {
   return response.status;
 }
 
-const ENTITIES: Readonly<Record<string, string>> = {
-  amp: '&',
-  lt: '<',
-  gt: '>',
-  quot: '"',
-  apos: "'",
-};
-function unescapeXml(text: string): string {
-  return text.replace(/&(#x[0-9a-fA-F]+|#\d+|[a-z]+);/g, (whole, entity: string) => {
-    if (entity.startsWith('#x')) return String.fromCodePoint(Number.parseInt(entity.slice(2), 16));
-    if (entity.startsWith('#')) return String.fromCodePoint(Number.parseInt(entity.slice(1), 10));
-    return Object.hasOwn(ENTITIES, entity) ? (ENTITIES[entity] ?? whole) : whole;
-  });
-}
-
 type XmlNode = { readonly name: string; readonly children: XmlNode[]; text: string };
 
 /** Parse the listing as XML so malformed tokens and nested extension fields cannot impersonate root fields. */
@@ -77,7 +62,7 @@ function field(node: XmlNode, name: string, required = false): string | undefine
   const found = fields[0];
   if (found === undefined) return undefined;
   if (found.children.length !== 0) throw new Error('MalformedListing');
-  return unescapeXml(found.text);
+  return found.text;
 }
 
 function parseListing(xml: string): ListedPage {
@@ -102,7 +87,7 @@ function parseListing(xml: string): ListedPage {
   const keyCount = field(root, 'KeyCount');
   if (keyCount !== undefined && (!/^\d+$/.test(keyCount) || Number(keyCount) !== objects.length))
     throw new Error('MalformedListing');
-  return { objects, ...(token === undefined ? {} : { nextContinuationToken: unescapeXml(token) }) };
+  return { objects, ...(token === undefined ? {} : { nextContinuationToken: token }) };
 }
 
 export type CreateS3ObjectOperationsOptions = {
