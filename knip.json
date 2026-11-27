@@ -238,6 +238,24 @@
         "!src/fixture-worker.ts!"
       ]
     },
+    "packages/object-store": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "src/r2-fixture.test-support.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!",
+        "!src/r2-fixture.test-support.ts!"
+      ]
+    },
     "packages/backchannel-mcp": {
       "entry": [
         "**/*.test.ts",

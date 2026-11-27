@@ -324,7 +324,10 @@ describe('the watch mode of the local directory sources (COR-2291)', () => {
     const home = {
       objectStore: () => ({
         presign: () => 'http://127.0.0.1:9/state/',
-        list: async () => ({ contents: [] }),
+        list: async () => ({ objects: [] }),
+        read: async () => undefined,
+        put: async () => ({ outcome: 'written' as const }),
+        remove: async () => 'removed' as const,
       }),
     } as unknown as Bungalow;
     const remote = { kind: 's3', bucket: 'state', prefix: 'agents/' } as const;

@@ -25,7 +25,7 @@ export interface AgentObjectSourceOptions extends ObjectSourceOptions {
 /**
  * The S3 counterpart of `agentFileDirectory`. Every `*.md` object directly under `location.prefix`
  * is an agent whose identifier is the key's name without the extension. Bureau reads, polls, and
- * writes the prefix through the caller's `Bun.S3Client`; a prefix with no objects is an empty one.
+ * writes the prefix through the caller's S3 object-store operations; a prefix with no objects is an empty one.
  * The documents an agent object's `references` name are other objects under the same prefix, read
  * by path (`<prefix>/<path>`), one listing and one read each.
  * Writes and deletes are conditional on the ETag of the object just read. Bun only. See

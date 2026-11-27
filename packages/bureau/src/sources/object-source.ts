@@ -26,23 +26,18 @@ import {
   type SiblingRead,
   SourceConflictError,
 } from './definition-source';
-import {
-  createS3ObjectOperations,
-  type ObjectLocation,
-  type ObjectStoreClient,
-  type ObjectStoreOperations,
-  type ObjectWriteCondition,
-} from './object-operations';
+import { type ObjectLocation } from './object-operations';
+import type { ObjectWriteCondition, S3ObjectStoreOperations } from '@lostgradient/object-store';
 import { OBJECT_POLL_INTERVAL_MILLISECONDS, createPolledObjects } from './polled-objects';
 import { assertSafeIdentifier } from './safe-identifier';
 
 /** The options both object-source constructors take. */
 export interface ObjectSourceOptions {
   /**
-   * The `Bun.S3Client` the objects are read and written through. The caller builds it, credentials
-   * included; Bureau reads no environment and never sees a credential.
+   * The S3-capable operations the objects are read and written through. Bureau reads no
+   * environment and never sees credentials.
    */
-  readonly client: ObjectStoreClient;
+  readonly operations: S3ObjectStoreOperations;
   /** How often the prefix is rescanned, in milliseconds. Defaults to 1000. */
   readonly pollIntervalMilliseconds?: number | undefined;
   /**
@@ -54,8 +49,6 @@ export interface ObjectSourceOptions {
   readonly runtime?: RuntimeServices | undefined;
   /** Where poll failures are reported. Defaults to the Bureau's channel. */
   readonly diagnose?: ((message: string, cause: unknown) => void) | undefined;
-  /** The object-store requests, behind one seam so a test can record or interleave them. */
-  readonly operations?: ObjectStoreOperations | undefined;
 }
 
 export interface ObjectSourceShape {
@@ -79,7 +72,7 @@ function requireString(value: unknown, name: string): string {
 function validate(
   location: ObjectLocation,
   options: ObjectSourceOptions,
-): { readonly bucket: string; readonly prefix: string; readonly pollInterval: number } {
+): { readonly prefix: string; readonly pollInterval: number } {
   if (typeof location !== 'object' || location === null) {
     throw new TypeError('"location" must be { bucket, prefix }.');
   }
@@ -90,21 +83,22 @@ function validate(
   if (typeof options !== 'object' || options === null) {
     throw new TypeError('The options must include a "client".');
   }
-  const { client } = options;
+  const { operations } = options;
   if (
-    typeof client !== 'object' ||
-    client === null ||
-    typeof client.presign !== 'function' ||
-    typeof client.list !== 'function'
+    typeof operations !== 'object' ||
+    operations === null ||
+    typeof operations.list !== 'function' ||
+    typeof operations.read !== 'function' ||
+    typeof operations.put !== 'function' ||
+    typeof operations.remove !== 'function'
   ) {
-    throw new TypeError('"options.client" must be a Bun.S3Client.');
+    throw new TypeError('"options.operations" must be S3 object-store operations.');
   }
   const pollInterval = options.pollIntervalMilliseconds ?? OBJECT_POLL_INTERVAL_MILLISECONDS;
   if (!Number.isFinite(pollInterval) || pollInterval <= 0) {
     throw new TypeError('"options.pollIntervalMilliseconds" must be a positive number.');
   }
   return {
-    bucket,
     // A prefix is a folder: `agents` and `agents/` both mean the objects directly under `agents/`.
     prefix: prefix === '' || prefix.endsWith('/') ? prefix : `${prefix}/`,
     pollInterval,
@@ -130,9 +124,8 @@ export function createObjectSource(
   options: ObjectSourceOptions,
 ): ObjectSource {
   // Everything the source reads from the caller's objects is taken now, before any await.
-  const { bucket, prefix, pollInterval } = validate(shape.location, options);
-  const operations =
-    options.operations ?? createS3ObjectOperations(options.client, bucket, shape.contentType);
+  const { prefix, pollInterval } = validate(shape.location, options);
+  const { operations } = options;
   const { extension } = shape;
   const keyOf = (id: string): string => `${prefix}${id}${extension}`;
   let host: DefinitionSourceHost | undefined;

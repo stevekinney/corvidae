@@ -1,3 +1,12 @@
+export { createSigV4Presigner } from '@lostgradient/object-store';
+export type {
+  ObjectPresigner,
+  ObjectStoreOperations,
+  PresignMethod,
+  PresignOptions,
+  S3ObjectStoreOperations,
+  SigV4PresignerOptions,
+} from '@lostgradient/object-store';
 export { openBungalow, openLocalBungalow, openTemporaryBungalow } from './bungalow.ts';
 export type {
   AcquireLock,
@@ -33,20 +42,7 @@ export {
 } from './errors.ts';
 export { acquireLocalRootLockDescriptor, acquirePortableLock } from './lock.ts';
 export type { RootLock } from './lock.ts';
-export { ObjectStoreRequestError } from './object-store.ts';
-export type {
-  BungalowObjectStore,
-  ListedObjectEntry,
-  ObjectListInput,
-  ObjectListing,
-} from './object-store.ts';
-export { createSigV4Presigner } from './presign.ts';
-export type {
-  ObjectPresigner,
-  PresignMethod,
-  PresignOptions,
-  SigV4PresignerOptions,
-} from './presign.ts';
+export type { BungalowObjectStore } from './object-store.ts';
 export type { RemoteBungalowDescriptor } from './remote-configuration.ts';
 export { defaultPresigner, openRemoteBungalow } from './remote.ts';
 export { bungalowHomeVariable, resolveBungalowRoot } from './resolve-root.ts';
