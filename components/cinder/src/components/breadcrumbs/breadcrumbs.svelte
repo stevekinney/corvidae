@@ -72,6 +72,8 @@
   const visibleItems = $derived(items.slice(hiddenCount));
   let overflowOpen = $state(false);
   let overflowTrigger = $state<HTMLButtonElement | null>(null);
+  let backLink = $state<HTMLAnchorElement | null>(null);
+  let overflowList = $state<HTMLUListElement | null>(null);
 
   // The phone form hides the "…" item in CSS, and the menu it opens is portaled outside the trail,
   // so a menu left open when the viewport narrows would float over a trigger that is no longer
@@ -81,7 +83,20 @@
     const trigger = overflowTrigger;
     if (!overflowOpen || trigger === null || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
-      if (trigger.getClientRects().length === 0) overflowOpen = false;
+      if (trigger.getClientRects().length > 0) return;
+      // Popover hands focus back to its trigger as it closes, but a trigger that is not drawn
+      // cannot take it, so focus would fall to the page. While focus is in the menu or on the
+      // trigger, the phone form's back link takes it first; Popover's later attempt to focus the
+      // hidden trigger then does nothing.
+      const active = document.activeElement;
+      const focusInMenu =
+        active !== null &&
+        overflowList !== null &&
+        (overflowList.contains(active) || active.contains(overflowList));
+      if (active === null || active === document.body || active === trigger || focusInMenu) {
+        backLink?.focus();
+      }
+      overflowOpen = false;
     });
     observer.observe(trigger);
     return () => observer.disconnect();
@@ -103,7 +118,12 @@
     <svelte:element this={"style"}>{phoneFormCss}</svelte:element>
   {/if}
   {#if phoneBelow !== undefined && parent?.href !== undefined}
-    <a class="cinder-breadcrumbs__back" href={parent.href} aria-label={backName}>
+    <a
+      bind:this={backLink}
+      class="cinder-breadcrumbs__back"
+      href={parent.href}
+      aria-label={backName}
+    >
       <ChevronLeft class="cinder-breadcrumbs__back-icon" aria-hidden="true" />
       <span class="cinder-breadcrumbs__back-label">{parent.label}</span>
     </a>
@@ -131,7 +151,7 @@
           <span aria-hidden="true">…</span>
         </button>
         <Popover bind:open={overflowOpen} triggerRef={overflowTrigger} label={overflowLabel}>
-          <ul class="cinder-breadcrumbs__overflow-list">
+          <ul bind:this={overflowList} class="cinder-breadcrumbs__overflow-list">
             {#each hiddenItems as hidden (`${hidden.href ?? hidden.label}`)}
               <li>
                 <a
