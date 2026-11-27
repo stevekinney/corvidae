@@ -108,7 +108,6 @@
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/host-slots.ts",
-        "$TURBO_ROOT$/scripts/owner-rule-guard-support.ts",
         "$TURBO_ROOT$/scripts/workspace-directories.ts"
       ]
     },
@@ -437,6 +436,29 @@
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/documentation/runtime-contracts.md",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/test-watchdog.ts",
+        "$TURBO_ROOT$/scripts/test-heartbeat.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/worker-crash-report.ts",
+        "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/workspace-directories.ts"
+      ]
+    },
+    "@lostgradient/interborough#test": {
+      "outputs": ["test-output/junit/**"],
+      "dependsOn": ["transit", "metadata", "^metadata"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/documentation/weft-operation-coverage.md",
+        "$TURBO_ROOT$/scripts/owner-rule-guard-support.ts",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
         "$TURBO_ROOT$/scripts/test-watchdog.ts",

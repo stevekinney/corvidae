@@ -420,6 +420,25 @@ describe('internal workspace architecture', () => {
     }
   });
 
+  test("Interborough's cached lint and test tasks read the root files its guards and matrix read", async () => {
+    const configuration: { tasks: Record<string, { inputs?: string[] }> } = await Bun.file(
+      join(root, 'turbo.json'),
+    ).json();
+    // The guards (`lint:guards`) and their tests read the shared owner-rule helper at the root, and
+    // `tests/coverage-matrix.test.ts` reads the Weft operation coverage matrix there. A change to
+    // either must not replay a cached result.
+    expect(configuration.tasks['lint']?.inputs).toContain(
+      '$TURBO_ROOT$/scripts/owner-rule-guard-support.ts',
+    );
+    expect(configuration.tasks['@lostgradient/interborough#test']?.inputs).toEqual(
+      expect.arrayContaining([
+        '$TURBO_DEFAULT$',
+        '$TURBO_ROOT$/documentation/weft-operation-coverage.md',
+        '$TURBO_ROOT$/scripts/owner-rule-guard-support.ts',
+      ]),
+    );
+  });
+
   test('compiler configuration has a dedicated internal owner and two public presets', async () => {
     const configuration = await readManifest('internal/typescript');
     expect(configuration.name).toBe('@lostgradient/typescript');
@@ -618,11 +637,6 @@ describe('internal workspace architecture', () => {
         '$TURBO_ROOT$/scripts/check-documentation-coverage.ts',
       );
     }
-    // Interborough's own guards (`lint:guards`) read the shared owner-rule helper at the root, so a
-    // change to it must not replay a cached lint.
-    expect(configuration.tasks['lint']?.inputs).toContain(
-      '$TURBO_ROOT$/scripts/owner-rule-guard-support.ts',
-    );
     // No type-check task reads the documentation checkers or the published surface any more.
     const typecheckTasks = Object.entries(configuration.tasks).filter(
       ([task]) => task === 'typecheck' || (task.endsWith('#typecheck') && !task.startsWith('//')),
