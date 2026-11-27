@@ -74,6 +74,27 @@ function rejectUnsafeKeywords(root: SchemaNode): void {
   visit(root);
 }
 
+/** Resolve every reference while compiling, including references below optional properties. */
+function rejectUnresolvedReferences(root: SchemaNode): void {
+  const seen = new Set<SchemaNode>();
+  const visit = (node: SchemaNode): void => {
+    if (seen.has(node)) return;
+    seen.add(node);
+    if (typeof node.schema === 'object' && node.schema !== null) {
+      const schema = node.schema as Record<string, unknown>;
+      if (Object.hasOwn(schema, '$ref')) {
+        const result = (
+          node as SchemaNode & { validate(value: unknown): { errors: RawError[] } }
+        ).validate(undefined);
+        const error = result.errors.find((candidate) => candidate.code === 'ref-error');
+        if (error !== undefined) throw new Error(error.message);
+      }
+    }
+    for (const child of childNodes(node)) visit(child);
+  };
+  visit(root);
+}
+
 function keywordOf(code: unknown): string {
   const value = typeof code === 'string' ? code : '';
   const known: Readonly<Record<string, string>> = {
@@ -143,7 +164,22 @@ function errorOf(error: RawError, rootSchema: Readonly<Record<string, unknown>>)
     keyword === 'additionalProperties'
       ? pointer.slice(0, Math.max(0, pointer.lastIndexOf('/')))
       : pointer;
-  return { instancePath, keyword, message: error.message, params };
+  const message =
+    keyword === 'type' && typeof data['expected'] === 'string'
+      ? `must be ${data['expected']}`
+      : error.message;
+  return { instancePath, keyword, message, params };
+}
+
+function errorPath(error: SchemaError): string {
+  if (error.keyword !== 'required' && error.keyword !== 'additionalProperties') {
+    return error.instancePath;
+  }
+  const named =
+    error.keyword === 'required'
+      ? error.params['missingProperty']
+      : error.params['additionalProperty'];
+  return typeof named === 'string' ? `${error.instancePath}/${named}` : error.instancePath;
 }
 
 export function compileInterpretedSchema(
@@ -179,8 +215,9 @@ export function compileInterpretedSchema(
     throwOnInvalidRef: true,
     ...(options.remotes === undefined ? {} : { remotes: options.remotes as JsonSchema[] }),
   };
-  const root = compileSchema(schema as JsonSchema, compileOptions);
+  const root = compileSchema(schema, compileOptions);
   if ((root.schemaErrors?.length ?? 0) > 0) throw new Error(root.schemaErrors?.[0]?.message);
+  rejectUnresolvedReferences(root as unknown as SchemaNode);
   if (!options.allowUnsafeKeywords) rejectUnsafeKeywords(root as unknown as SchemaNode);
   const anyOf = Array.isArray(schema['anyOf']) ? schema['anyOf'] : [];
   let errors: readonly SchemaError[] = [];
@@ -198,6 +235,7 @@ export function compileInterpretedSchema(
             formats === undefined ||
             Object.hasOwn(formats, String(error.params['format'])),
         );
+      errors = errors.toSorted((left, right) => errorPath(left).localeCompare(errorPath(right)));
       if (errors.some((error) => error.keyword === 'anyOf')) {
         for (const branch of anyOf) {
           if (typeof branch !== 'object' || branch === null || Array.isArray(branch)) continue;

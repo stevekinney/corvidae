@@ -202,7 +202,7 @@ function checkMessage(
     }
   }
   const envelope = catalog.messageValidator(A2UI_MESSAGE_DEFINITIONS.updateComponents);
-  if (issues.length === 0 && !envelope(message)) {
+  if (issues.length === 0 && !envelope.validate(message)) {
     issues.push(...issuesOf(envelope.errors, base));
   }
   return issues;
