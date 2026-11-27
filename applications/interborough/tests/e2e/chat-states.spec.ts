@@ -15,11 +15,14 @@ import type { Locator, Page } from '@playwright/test';
 
 import {
   billingThreadWithPartialReply,
+  ENDED_ON_TOOL_CALL_THREAD,
   ENDED_PARTIAL_REPLY,
   FAILED_PARTWAY_REPLY,
   HELD_BY_PLUGIN_REASON,
   HELD_BY_PLUGIN_TITLE,
+  messagesOf,
   REFUND_TITLE,
+  tasksOf,
 } from '../../fixtures/chat-states.ts';
 import { SAMPLE_NOW_MILLISECONDS, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
@@ -631,5 +634,274 @@ test.describe('A turn that ends on a tool call (frame j: 20h)', () => {
       state: 'turn ends on a tool call',
       source: SOURCE,
     });
+  });
+
+  test('the empty answer row reads at 768, 375 and 320 (R6)', async ({ page, request }) => {
+    await connectProvider(page);
+    await openStatesChat(page, request, 'ended-on-tool-call');
+    await page.setViewportSize({ width: 768, height: 900 });
+    const empty = transcript(page).locator('.chat-turn-outcome[data-kind="empty"]');
+    await expect(empty.getByRole('button', { name: 'Try again' })).toBeVisible();
+    // 768 as asked, then 375 and 320 as the phone helper repeats it.
+    await captureForDesignReviewWithPhone(page, {
+      route: '/chats/:chat',
+      state: 'turn ends on a tool call',
+      source: SOURCE,
+    });
+  });
+});
+
+// COR-2725: R3 to R6 supersede rows 20b and 20h, so a turn the run only called tools in says how it
+// ended once, on Chat's anchor after its steps. Each state is captured by name at 1280 and at a phone.
+const FOLLOW_UP_ROW = {
+  id: 'user-states-follow-up',
+  role: 'user',
+  content: 'And check order 4472 too.',
+  metadata: { _followUp: true },
+};
+
+/** What the Bureau answers for the tool-only chat, which a test turns on one state at a time. */
+interface ToolOnlyTurn {
+  /** How the chat's last run ended; the sample's own record says it finished. */
+  readonly run?: 'canceled' | 'failed';
+  /** A message the person typed after the steps, which joined the turn. */
+  readonly followUp?: boolean;
+  /** How the Bureau answers a Discard or a Continue. */
+  readonly command?: 'removes' | 'refuses' | 'holds';
+  /** The run's stream reads the rows and then ends, so the page reconnects. */
+  readonly dropped?: boolean;
+}
+
+/** Opens the tool-only chat as `turn` says, and returns what the page asked the Bureau to do. */
+async function openToolOnlyTurn(
+  page: Page,
+  request: Parameters<typeof openStatesChat>[1],
+  turn: ToolOnlyTurn,
+): Promise<{ readonly commands: string[]; readonly release: () => void }> {
+  await connectProvider(page);
+  await openStatesChat(page, request, 'ended-on-tool-call');
+  const commands: string[] = [];
+  let rows = [...messagesOf('ended-on-tool-call'), ...(turn.followUp ? [FOLLOW_UP_ROW] : [])];
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/jsonrpc', async (route) => {
+    const body = JSON.parse(route.request().postData() ?? '{}') as {
+      method?: string;
+      id?: unknown;
+      params?: { contextId?: string; runId?: string };
+    };
+    if (body.params?.contextId !== ENDED_ON_TOOL_CALL_THREAD) {
+      await route.fallback();
+      return;
+    }
+    if (body.method === 'bureau.tasks.list' && turn.run !== undefined) {
+      const tasks = tasksOf('ended-on-tool-call').map((task) => ({
+        ...task,
+        status: turn.run,
+        finishReason: turn.run === 'canceled' ? 'aborted' : 'error',
+        statusMessage: turn.run === 'failed' ? 'The model provider dropped the connection.' : null,
+      }));
+      await route.fulfill({
+        json: { jsonrpc: '2.0', id: body.id, result: { tasks, nextPageToken: null } },
+      });
+      return;
+    }
+    if (
+      (body.method === 'bureau.contexts.discardturn' ||
+        body.method === 'bureau.contexts.resumeturn') &&
+      turn.command !== undefined
+    ) {
+      commands.push(body.method);
+      if (turn.command === 'holds') await held;
+      if (turn.command === 'refuses' || turn.command === 'holds') {
+        await route.fulfill({
+          json: {
+            jsonrpc: '2.0',
+            id: body.id,
+            error: {
+              code: -32000,
+              message: 'refused',
+              data: { reason: 'history-changed', weftCode: 'Conflict', httpStatus: 409 },
+            },
+          },
+        });
+        return;
+      }
+      // The Bureau removed the run's rows: the thread read again holds the person's message alone.
+      rows = rows.slice(0, 1);
+      await route.fulfill({
+        json: {
+          jsonrpc: '2.0',
+          id: body.id,
+          result: { contextId: ENDED_ON_TOOL_CALL_THREAD, runId: body.params?.runId, removed: 2 },
+        },
+      });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.route(`**/ag-ui/threads/${ENDED_ON_TOOL_CALL_THREAD}/messages`, (route) =>
+    route.fulfill({ json: { threadId: ENDED_ON_TOOL_CALL_THREAD, messages: rows } }),
+  );
+  if (turn.dropped) {
+    let read = 0;
+    await page.route(`**/ag-ui/threads/${ENDED_ON_TOOL_CALL_THREAD}/run`, (route) => {
+      read += 1;
+      // The first read joins the run and then the stream ends with no terminal event; the retries
+      // find the server gone, so the turn stays on its reconnect while the page is captured.
+      if (read > 1) return route.abort('connectionreset');
+      return route.fulfill({
+        contentType: 'text/event-stream',
+        body: [
+          { type: 'RUN_STARTED', threadId: ENDED_ON_TOOL_CALL_THREAD, runId: 'run-states-dropped' },
+          { type: 'MESSAGES_SNAPSHOT', messages: rows },
+        ]
+          .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+          .join(''),
+      });
+    });
+  }
+  await page.reload();
+  await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
+  return { commands, release };
+}
+
+const toolOnlyOutcome = (page: Page, kind: string): Locator =>
+  transcript(page).locator(`.chat-turn-outcome[data-kind="${kind}"]`);
+
+test.describe('A chat turn of only tool calls and how it ended (COR-2725)', () => {
+  test('stopped by the person: one pill after the steps with Continue and Discard, and no status line', async ({
+    page,
+    request,
+  }) => {
+    await openToolOnlyTurn(page, request, { run: 'canceled' });
+    const stopped = toolOnlyOutcome(page, 'stopped');
+    await expect(stopped.getByRole('button', { name: 'Continue' })).toBeVisible();
+    await expect(stopped.getByRole('button', { name: 'Discard' })).toBeVisible();
+    await expect(page.locator('.chat-turn-outcome')).toHaveCount(1);
+    await expect(transcript(page).locator('.chat-note')).toHaveCount(0);
+    await expect(rail(page)).not.toContainText('Run finished, no reply');
+    await captureForDesignReviewWithPhone(page, {
+      route: '/chats/:chat',
+      state: 'tool-only turn stopped',
+      source: SOURCE,
+    });
+  });
+
+  test('failed: one danger alert after the steps with its cause, Retry and Why it failed', async ({
+    page,
+    request,
+  }) => {
+    await openToolOnlyTurn(page, request, { run: 'failed' });
+    const failed = toolOnlyOutcome(page, 'failed');
+    await expect(failed).toContainText('Failed before an answer.');
+    await expect(failed.getByRole('button', { name: 'Retry' })).toBeVisible();
+    await expect(page.locator('.chat-turn-outcome')).toHaveCount(1);
+    await expect(transcript(page).locator('.chat-note')).toHaveCount(0);
+    await captureForDesignReviewWithPhone(page, {
+      route: '/chats/:chat',
+      state: 'tool-only turn failed',
+      source: SOURCE,
+    });
+  });
+
+  test('reconnecting: the connection notice by the composer says so once, with Retry now', async ({
+    page,
+    request,
+  }) => {
+    await openToolOnlyTurn(page, request, { dropped: true });
+    const notice = page.locator('.chat-connection-notice');
+    await expect(notice).toHaveCount(1);
+    await expect(notice).toContainText('Connection lost. Reconnecting');
+    await expect(notice.getByRole('button', { name: 'Retry now' })).toBeVisible();
+    await expect(page.locator('.chat-turn-outcome')).toHaveCount(0);
+    await captureForDesignReviewWithPhone(page, {
+      route: '/chats/:chat',
+      state: 'tool-only turn reconnecting',
+      source: SOURCE,
+    });
+  });
+
+  test('a message typed after the steps joins the turn, and the outcome stands before it', async ({
+    page,
+    request,
+  }) => {
+    await openToolOnlyTurn(page, request, { run: 'canceled', followUp: true });
+    const stopped = toolOnlyOutcome(page, 'stopped');
+    await expect(stopped).toBeVisible();
+    const typed = transcript(page).locator(`[data-message-id="${FOLLOW_UP_ROW.id}"]`);
+    await expect(typed).toBeVisible();
+    const [outcomeBox, typedBox] = [await stopped.boundingBox(), await typed.boundingBox()];
+    expect(outcomeBox).not.toBeNull();
+    expect(typedBox).not.toBeNull();
+    expect(outcomeBox!.y).toBeLessThan(typedBox!.y);
+    await captureForDesignReviewWithPhone(page, {
+      route: '/chats/:chat',
+      state: 'outcome before a trailing follow-up',
+      source: SOURCE,
+    });
+  });
+
+  test('Discard removes the turn: the person’s message alone, with the plain line that says why', async ({
+    page,
+    request,
+  }) => {
+    const { commands } = await openToolOnlyTurn(page, request, {
+      run: 'canceled',
+      command: 'removes',
+    });
+    await toolOnlyOutcome(page, 'stopped').getByRole('button', { name: 'Discard' }).click();
+    await expect(page.locator('.chat-turn-outcome')).toHaveCount(0);
+    await expect(transcript(page).getByText('The run was stopped.')).toBeVisible();
+    expect(commands).toEqual(['bureau.contexts.discardturn']);
+    await captureForDesignReviewWithPhone(page, {
+      route: '/chats/:chat',
+      state: 'stopped tool-only turn after Discard',
+      source: SOURCE,
+    });
+  });
+
+  test('a Discard the Bureau refuses is said once, on the turn, and the controls come back', async ({
+    page,
+    request,
+  }) => {
+    await openToolOnlyTurn(page, request, { run: 'canceled', command: 'refuses' });
+    const stopped = toolOnlyOutcome(page, 'stopped');
+    await stopped.getByRole('button', { name: 'Discard' }).click();
+    const said = transcript(page).locator('.chat-turn-command-failure');
+    await expect(said).toHaveCount(1);
+    await expect(said).toContainText('The stopped reply wasn’t discarded. Try again.');
+    await expect(stopped.getByRole('button', { name: 'Discard' })).toBeEnabled();
+    await expect(stopped.getByRole('button', { name: 'Continue' })).toBeEnabled();
+    await captureForDesignReviewWithPhone(page, {
+      route: '/chats/:chat',
+      state: 'refused command said once on the turn',
+      source: SOURCE,
+    });
+  });
+
+  test('a command under way: its control is busy and the turn’s other control is held', async ({
+    page,
+    request,
+  }) => {
+    const { release } = await openToolOnlyTurn(page, request, {
+      run: 'canceled',
+      command: 'holds',
+    });
+    const stopped = toolOnlyOutcome(page, 'stopped');
+    await stopped.getByRole('button', { name: 'Continue' }).click();
+    await expect(stopped.getByRole('button', { name: 'Continue' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+    await expect(stopped.getByRole('button', { name: 'Discard' })).toBeDisabled();
+    await captureForDesignReviewWithPhone(page, {
+      route: '/chats/:chat',
+      state: 'command under way with the turn held',
+      source: SOURCE,
+    });
+    release();
   });
 });

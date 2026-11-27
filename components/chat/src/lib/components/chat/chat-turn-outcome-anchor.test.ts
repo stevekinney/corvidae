@@ -236,6 +236,16 @@ describe('Chat — the outcome of a turn with no assistant message', () => {
   });
 });
 
+describe('Chat — the anchor takes the whole transcript column', () => {
+  test('the transcript presentation gives the anchor the reply’s full-width rule, since it carries no role', async () => {
+    const css = await Bun.file(new URL('./chat.css', import.meta.url)).text();
+    const rule = /([^{}]*\[data-turn-anchor\][^{}]*)\{([^}]*)\}/u.exec(css);
+    expect(rule?.[1]).toContain(".chat-message-wrapper[data-presentation='transcript']");
+    expect(rule?.[2]).toMatch(/inline-size:\s*100%;/u);
+    expect(rule?.[2]).toMatch(/max-width:\s*100%;/u);
+  });
+});
+
 const DROP = { attempt: 1, attempts: 7, wait: 5_000, nextTryAt: 4_000, runDropped: true };
 
 function statesOf(conversation: ConversationHistory, facts: TurnOutcomeFacts) {

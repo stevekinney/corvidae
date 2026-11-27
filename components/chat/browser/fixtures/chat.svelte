@@ -7,9 +7,14 @@
     ChatConversationList,
     appendAssistantMessage,
     appendMessages,
+    appendToolCall,
+    appendToolResult,
     appendUserMessage,
+    CINDER_NOTES_METADATA_KEY,
     createConversation,
     deriveConversationSummary,
+    resolveTurnOutcome,
+    turnStateOf,
     type ChatRowContext,
     type ChatSubmitEvent,
     type ChatAdapter,
@@ -34,6 +39,62 @@
     new URLSearchParams(globalThis.location.search).get('questionDock') === '1';
   const productionClaimsEnabled =
     new URLSearchParams(globalThis.location.search).get('productionClaims') === '1';
+  // COR-2725: a turn whose run only called tools, with its outcome (`stopped`, `failed`, `empty` or
+  // `reconnecting`) drawn on Chat's anchor after its steps. Behind a query param, so the default
+  // fixture, its baselines and its axe sweep stay as they were.
+  const turnOutcomeKind = new URLSearchParams(globalThis.location.search).get('turnOutcome');
+  function turnOutcomeFixture(kind: string | null) {
+    if (kind !== 'stopped' && kind !== 'failed' && kind !== 'empty' && kind !== 'reconnecting')
+      return undefined;
+    let history = appendToolResult(
+      appendToolCall(
+        appendUserMessage(createConversation({ id: 'turn-outcome-chat' }), 'Look up order 4471'),
+        { id: 'lookup', name: 'lookup_order', arguments: { order: '4471' } },
+      ),
+      { callId: 'lookup', outcome: 'success', content: '$42.00, delivered Monday' },
+    );
+    if (kind === 'stopped' || kind === 'failed') {
+      const lastId = history.ids.at(-1)!;
+      const last = history.messages[lastId]!;
+      history = {
+        ...history,
+        messages: {
+          ...history.messages,
+          [lastId]: {
+            ...last,
+            metadata: {
+              ...last.metadata,
+              [CINDER_NOTES_METADATA_KEY]: [
+                {
+                  kind: 'stopped',
+                  id: 'stopped:turn-outcome-run',
+                  reason: 'The model provider dropped the connection.',
+                  ...(kind === 'failed' ? { failed: true } : {}),
+                },
+              ],
+            },
+          },
+        },
+      };
+    }
+    return resolveTurnOutcome(
+      history,
+      kind === 'reconnecting'
+        ? {
+            running: true,
+            now: 0,
+            reconnect: {
+              attempt: 2,
+              attempts: 5,
+              wait: 10_000,
+              nextTryAt: 8_000,
+              runDropped: true,
+            },
+          }
+        : { running: false, now: 0 },
+    );
+  }
+  const turnOutcome = turnOutcomeFixture(turnOutcomeKind);
   const citedClaims: readonly ChatCitationClaim[] = [
     {
       id: 'revenue',
@@ -538,6 +599,22 @@
         conversation={basicConversation}
         capabilities={{ attachments: true }}
         onSubmit={handleSubmit}
+      />
+    </div>
+  {/if}
+
+  {#if turnOutcome}
+    <div style="height: 34rem;" data-testid="chat-turn-outcome-anchor">
+      <Chat
+        id="fixture-turn-outcome-chat"
+        variant="transcript"
+        conversation={turnOutcome.conversation}
+        capabilities={{ attachments: false }}
+        messageTurnState={(message) => turnStateOf(turnOutcome, message)}
+        onContinueTurn={() => undefined}
+        onDiscardTurn={() => undefined}
+        onRetryTurn={() => undefined}
+        onRetryConnection={() => false}
       />
     </div>
   {/if}

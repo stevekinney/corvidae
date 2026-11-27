@@ -56,7 +56,10 @@
     overflow-x: auto;
   }
 
-  .cinder-chat .chat-message-wrapper[data-presentation='transcript'][data-role='assistant'] {
+  /* The anchor of a turn that ends on its steps carries no role (so no reply rule reaches it), and
+   * its outcome takes the whole column all the same, as a reply's does. */
+  .cinder-chat .chat-message-wrapper[data-presentation='transcript'][data-role='assistant'],
+  .cinder-chat .chat-message-wrapper[data-presentation='transcript'][data-turn-anchor] {
     inline-size: 100%;
     width: 100%;
     max-inline-size: 100%;
