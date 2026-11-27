@@ -72,7 +72,10 @@ export type TableColumnSizing = 'content' | 'fill';
  * created. @internal
  */
 export type TableRowColumnsContext = {
-  claimColumn: () => number;
+  /** Claims the next column position, `span` columns wide (a cell's `colspan`). */
+  claimColumn: (span?: number) => number;
+  /** Changes whenever the row's cells are added, removed or moved, so cells re-read their place. */
+  readonly version: number;
 };
 /** Attributes forwarded to Table's generated scroll wrapper. */
 export type TableScrollContainerProps = Omit<

@@ -5,6 +5,7 @@
 <script lang="ts">
   import type { TableRowProps } from './table-row.types.ts';
   import { untrack } from 'svelte';
+  import type { Attachment } from 'svelte/attachments';
 
   import {
     setTableRowColumnsContext,
@@ -29,9 +30,28 @@
   const table = tryGetTableContext();
   const selectionEnabled = table?.selectionEnabled ?? false;
 
-  // Each Cinder cell in this row claims the next column position as it is created.
+  // Each Cinder cell in this row claims the next column position as it is created, as wide as its
+  // span. After mount the cells read their place from the DOM, and re-read it whenever the row's
+  // cells change (a keyed column moved, a conditional cell added), which bumps `cellsVersion`.
   let claimedColumns = 0;
-  setTableRowColumnsContext({ claimColumn: () => claimedColumns++ });
+  let cellsVersion = $state(0);
+  setTableRowColumnsContext({
+    claimColumn: (span = 1) => {
+      const position = claimedColumns;
+      claimedColumns += Math.max(1, span);
+      return position;
+    },
+    get version() {
+      return cellsVersion;
+    },
+  });
+  const watchCells: Attachment<HTMLTableRowElement> = (row) => {
+    const observer = new MutationObserver(() => {
+      cellsVersion += 1;
+    });
+    observer.observe(row, { childList: true });
+    return () => observer.disconnect();
+  };
 
   const section = tryGetTableSectionContext();
   const headerSelection = tryGetTableHeaderSelectionContext();
@@ -88,6 +108,7 @@
   class={classNames('cinder-table__row', className)}
   aria-current={current ? 'true' : rest['aria-current']}
   data-cinder-current={current ? '' : undefined}
+  {@attach watchCells}
 >
   {#if shouldRenderHeaderSelectionCell && headerSelection}
     <th scope="col" class="cinder-table__header-cell cinder-table__header-cell--selection">

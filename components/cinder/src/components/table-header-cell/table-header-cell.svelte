@@ -9,6 +9,7 @@
   import type { TableHeaderCellProps } from './table-header-cell.types.ts';
 
   import { getTableContext, tryGetTableRowColumnsContext } from '../table/table.context.ts';
+  import { columnOf, spanOf } from '../table/table-column.ts';
   import { classNames } from '../../utilities/class-names.ts';
 
   let {
@@ -29,7 +30,9 @@
   // declared as the cell is created, before the body cells are, so the server's HTML carries it;
   // after mount the cell keeps it current at its DOM position.
   const owner = {};
-  let columnPosition = $state(tryGetTableRowColumnsContext()?.claimColumn() ?? -1);
+  const rowColumns = tryGetTableRowColumnsContext();
+  // Claimed once, as the cell is created; later moves are read from the DOM.
+  let columnPosition = $state(untrack(() => rowColumns?.claimColumn(spanOf(rest.colspan)) ?? -1));
   untrack(() => {
     if (sizing !== undefined) table.setColumnSizing?.(columnPosition, sizing, owner);
   });
@@ -39,8 +42,10 @@
     table.setColumnSizing?.(position, value, owner);
     return () => table.setColumnSizing?.(position, undefined, owner);
   });
+  // Re-read whenever the row's cells change, so a keyed column that moves takes its sizing along.
   const placeColumn: Attachment<HTMLTableCellElement> = (cell) => {
-    columnPosition = cell.cellIndex;
+    void rowColumns?.version;
+    columnPosition = columnOf(cell);
   };
 
   // A column is only actually sortable when both `sortable` is set and a `column`

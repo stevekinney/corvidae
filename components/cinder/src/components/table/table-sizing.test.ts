@@ -41,6 +41,21 @@ describe('Table column sizing', () => {
     );
   });
 
+  test('a cell after a column span takes the sizing of the column it is in', () => {
+    const { container } = render(SizingFixture, { leadingSpan: true });
+    flushSync();
+    const row = container.querySelector('[data-testid="leading-span"]');
+    expect(sizings(row!, ':scope > *')).toEqual([null, 'fill']);
+  });
+
+  test('outside a fit table, sizing marks the cells but cuts nothing and wraps no prose', () => {
+    const { container } = render(SizingFixture, { fit: false });
+    flushSync();
+    expect(sizings(container, 'tbody tr:first-child > *')).toEqual(['content', 'content', 'fill']);
+    expect(container.querySelector('.cinder-table__cell-text')).toBeNull();
+    expect(container.querySelector('.cinder-table__cell-prose')).toBeNull();
+  });
+
   test('a table with no sizing marks no cell', () => {
     const { container } = render(SizingFixture, { unsized: true });
     flushSync();
@@ -72,8 +87,15 @@ describe('Table column sizing', () => {
       ".cinder-table[data-cinder-fit]:not([data-cinder-stacked]) :is(.cinder-table__cell, .cinder-table__header-cell)[data-cinder-sizing='content']",
     );
     expect(content.get('inline-size')).toBe('0');
-    expect(content.get('max-inline-size')).toBe('50cqi');
     expect(content.get('white-space')).toBe('nowrap');
+    // Half the table where the scroll box is a size container; the truncate width where there is none.
+    expect(content.get('max-inline-size')).toBe('var(--_cinder-table-truncate-size)');
+    expect(
+      declarationsFor(
+        css,
+        ".cinder-table-scroll > .cinder-table[data-cinder-fit]:not([data-cinder-stacked]) :is(.cinder-table__cell, .cinder-table__header-cell)[data-cinder-sizing='content']",
+      ).get('max-inline-size'),
+    ).toBe('50cqi');
   });
 
   test('a fill column, and an unsized one beside content columns, breaks anywhere', () => {

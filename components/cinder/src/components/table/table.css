@@ -446,8 +446,16 @@
   .cinder-table[data-cinder-fit]:not([data-cinder-stacked])
     :is(.cinder-table__cell, .cinder-table__header-cell)[data-cinder-sizing='content'] {
     inline-size: 0;
-    max-inline-size: 50cqi;
+    /* With no scroll box (`scrollable={false}`) there is no size container to halve, so the cap is
+     * the longest a truncating cell's text grows. */
+    max-inline-size: var(--_cinder-table-truncate-size);
     white-space: nowrap;
+  }
+
+  .cinder-table-scroll
+    > .cinder-table[data-cinder-fit]:not([data-cinder-stacked])
+    :is(.cinder-table__cell, .cinder-table__header-cell)[data-cinder-sizing='content'] {
+    max-inline-size: 50cqi;
   }
 
   /* A `fill` column, and any column a sized table leaves without `sizing`, breaks anywhere, so one

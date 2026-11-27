@@ -3,10 +3,12 @@
 </script>
 
 <script lang="ts">
+  import { untrack } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
 
   import { createCutText } from '../../_internal/cut-text.svelte.ts';
   import { tryGetTableContext, tryGetTableRowColumnsContext } from '../table/table.context.ts';
+  import { columnOf, spanOf } from '../table/table-column.ts';
   import type { TableCellProps } from './table-cell.types.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import FullTextTooltip from '../../_internal/full-text-tooltip.svelte';
@@ -29,19 +31,23 @@
   const tableContext = tryGetTableContext();
 
   // The cell takes its column's `sizing` from the header cell above it: by the position it claims as
-  // it is created (so the server's HTML carries it), then by its DOM position once mounted. A cell
-  // that spans columns belongs to none of them.
-  let columnPosition = $state(tryGetTableRowColumnsContext()?.claimColumn() ?? -1);
-  const spansColumns = $derived(Number(rest.colspan ?? 1) > 1);
+  // it is created (so the server's HTML carries it), then by its DOM position once mounted, read
+  // again whenever its row's cells change. A cell that spans columns belongs to none of them.
+  const rowColumns = tryGetTableRowColumnsContext();
+  // Claimed once, as the cell is created; later moves are read from the DOM.
+  let columnPosition = $state(untrack(() => rowColumns?.claimColumn(spanOf(rest.colspan)) ?? -1));
+  const spansColumns = $derived(spanOf(rest.colspan) > 1);
   const sizing = $derived(spansColumns ? undefined : tableContext?.columnSizing?.(columnPosition));
+  // Sizing changes a cell only in a `fit` table that is not drawing flat card rows.
+  const sized = $derived(tableContext?.fit === true && tableContext.stackCard !== true);
   // A `content` cell never wraps, so a value longer than its column's cap (half the table) is cut
-  // the way a `truncate` cell is: an ellipsis, and the whole value in a tooltip. Flat card rows
-  // keep their own layout.
-  const cutsAtCap = $derived(sizing === 'content' && tableContext?.stackCard !== true);
+  // the way a `truncate` cell is: an ellipsis, and the whole value in a tooltip.
+  const cutsAtCap = $derived(sized && sizing === 'content');
   // A `fill` cell holds prose, held to a readable measure.
-  const holdsProse = $derived(sizing === 'fill' && tableContext?.stackCard !== true);
+  const holdsProse = $derived(sized && sizing === 'fill');
   const placeColumn: Attachment<HTMLElement> = (cell) => {
-    if (cell instanceof HTMLTableCellElement) columnPosition = cell.cellIndex;
+    void rowColumns?.version;
+    columnPosition = columnOf(cell);
   };
   $effect(() => {
     if (!controls) return;

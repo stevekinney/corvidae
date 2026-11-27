@@ -99,6 +99,31 @@ describe('DataTable — table structure', () => {
     }
   });
 
+  test('a column keeps its sizing when the columns are reordered', async () => {
+    const name = { key: 'name', label: 'Name', sizing: 'content' as const };
+    const role = { key: 'role', label: 'Role', sizing: 'fill' as const };
+    const { container, rerender } = render(DataTable, {
+      fit: true,
+      columns: [name, role],
+      rows: rowsWithIds,
+    });
+    await tick();
+    await rerender({ fit: true, columns: [role, name], rows: rowsWithIds });
+    await waitUntil(
+      () =>
+        container.querySelector('tbody tr > :first-child')?.getAttribute('data-cinder-sizing') ===
+        'fill',
+    );
+    const first = container.querySelector('tbody tr');
+    const cells = Array.from(first?.children ?? []);
+    // The cell under each header holds that header's value and takes its sizing.
+    expect(cells.map((cell) => cell.getAttribute('data-cinder-sizing'))).toEqual([
+      'fill',
+      'content',
+    ]);
+    expect(cells[1]?.textContent).toContain('Ada Lovelace');
+  });
+
   test('renders a semantic <table> element', () => {
     const { container } = render(DataTable, { columns, rows });
     expect(container.querySelector('table')).not.toBeNull();

@@ -5,6 +5,10 @@
     unsized?: boolean;
     /** Add a cell that spans every column, which belongs to none. */
     spanning?: boolean;
+    /** Add a row whose first cell spans two columns, so the cell after it is in the third. */
+    leadingSpan?: boolean;
+    /** Draw the table without `fit`, where sizing changes nothing. */
+    fit?: boolean;
   };
 </script>
 
@@ -16,7 +20,12 @@
   import TableRow from '../table-row/table-row.svelte';
   import Table from './table.svelte';
 
-  let { unsized = false, spanning = false }: TableSizingFixtureProps = $props();
+  let {
+    unsized = false,
+    spanning = false,
+    leadingSpan = false,
+    fit = true,
+  }: TableSizingFixtureProps = $props();
 
   const checks = [
     { check: 'Frontend', result: 'Passed', found: 'The frontend answered on port 7233.' },
@@ -24,7 +33,7 @@
   ];
 </script>
 
-<Table caption="Connection checks" fit stackBelow={false}>
+<Table caption="Connection checks" {fit} stackBelow={false}>
   <TableHeader>
     <TableRow>
       <TableHeaderCell {...unsized ? {} : { sizing: 'content' as const }}>Check</TableHeaderCell>
@@ -42,6 +51,12 @@
         <TableCell>{check.found}</TableCell>
       </TableRow>
     {/each}
+    {#if leadingSpan}
+      <TableRow data-testid="leading-span">
+        <TableCell colspan={2}>All checks</TableCell>
+        <TableCell>Every check ran against the same connection.</TableCell>
+      </TableRow>
+    {/if}
     {#if spanning}
       <TableRow>
         <TableCell colspan={3}>No more checks.</TableCell>
