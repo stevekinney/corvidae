@@ -66,6 +66,11 @@
   });
 </script>
 
-<thead {...rest} class={classNames('cinder-table__header', className)}>
+<!-- A `fit` table's parts carry their table roles in the server's HTML (COR-2771). -->
+<thead
+  {...rest}
+  {...table?.fit === true ? { role: 'rowgroup' } : {}}
+  class={classNames('cinder-table__header', className)}
+>
   {@render children()}
 </thead>

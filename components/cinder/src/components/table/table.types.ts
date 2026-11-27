@@ -58,6 +58,13 @@ export type TableContext = {
   setColumnSizing?: (column: number, sizing: TableColumnSizing | undefined, owner: object) => void;
   /** The `sizing` a header cell declared for the column at `column`, if any. */
   columnSizing?: (column: number) => TableColumnSizing | undefined;
+  /**
+   * Called by a header cell with its column position and `label`, as `setColumnSizing` is. Body
+   * cells in the same column print it beside their value while stacked (COR-2771).
+   */
+  setColumnLabel?: (column: number, label: string | undefined, owner: object) => void;
+  /** The label a header cell declared for the column at `column`, if any. */
+  columnLabel?: (column: number) => string | undefined;
 };
 
 /**
@@ -76,6 +83,11 @@ export type TableRowColumnsContext = {
   claimColumn: (span?: number) => number;
   /** Changes whenever the row's cells are added, removed or moved, so cells re-read their place. */
   readonly version: number;
+  /**
+   * Claims the row's card title for a cell as it is created: a row header (`th`) always takes it
+   * from a plain cell; a plain cell takes it only when no cell has. Returns whether this cell holds it.
+   */
+  claimTitle: (kind: 'header' | 'cell') => boolean;
 };
 /** Attributes forwarded to Table's generated scroll wrapper. */
 export type TableScrollContainerProps = Omit<

@@ -20,6 +20,7 @@
   import TableHeader from '../table-header/table-header.svelte';
   import TableRow from '../table-row/table-row.svelte';
   import TableRoot from '../table/table.svelte';
+  import { setTableContainerProvided } from '../table/table-container-context.ts';
 
   import { overflowFadeEdges } from '../../utilities/attachments.ts';
   import { classNames } from '../../utilities/class-names.ts';
@@ -68,6 +69,9 @@
     class: className,
     ...rest
   }: DataTableProps<Row> = $props();
+
+  // DataTable renders the Table's size container around its own scroll box.
+  setTableContainerProvided();
 
   let wrapperElement: HTMLElement | undefined = $state();
   let scrollOffset = $state(0);
@@ -818,25 +822,33 @@
   </TableRoot>
 {/snippet}
 
+<!-- The table's size container (COR-2771) wraps DataTable's own scroll box, which its stacked card
+     form restyles: a container query cannot style the container itself or anything around it. -->
 <div
-  {...rest}
-  bind:this={wrapperElement}
-  {@attach observeWrapperResize}
-  {@attach scrollsSideways ? fadeAttachment : undefined}
-  class={classNames(
-    'cinder-data-table',
-    scrollsSideways ? 'cinder-table-scroll cinder-_scroll-fade-inline-end' : undefined,
-    className,
-  )}
-  data-cinder-virtualized={shouldVirtualizeRows ? 'true' : undefined}
-  data-cinder-resizable={resizable || undefined}
-  data-cinder-selectable={selectionEnabled || undefined}
-  style:--cinder-data-table-height={shouldVirtualizeRows ? height : undefined}
-  style:--_cinder-data-table-width={resizableTableWidth ? `${resizableTableWidth}px` : undefined}
-  style:--_cinder-data-table-row-height={shouldVirtualizeRows
-    ? `${resolvedRowHeight}px`
-    : undefined}
-  onscroll={handleWrapperScroll}
+  class="cinder-table-container"
+  data-cinder-fit={fit || undefined}
+  data-cinder-stack-below={stackBelow === false ? 'false' : stackBelow.trim()}
 >
-  {@render table()}
+  <div
+    {...rest}
+    bind:this={wrapperElement}
+    {@attach observeWrapperResize}
+    {@attach scrollsSideways ? fadeAttachment : undefined}
+    class={classNames(
+      'cinder-data-table',
+      scrollsSideways ? 'cinder-table-scroll cinder-_scroll-fade-inline-end' : undefined,
+      className,
+    )}
+    data-cinder-virtualized={shouldVirtualizeRows ? 'true' : undefined}
+    data-cinder-resizable={resizable || undefined}
+    data-cinder-selectable={selectionEnabled || undefined}
+    style:--cinder-data-table-height={shouldVirtualizeRows ? height : undefined}
+    style:--_cinder-data-table-width={resizableTableWidth ? `${resizableTableWidth}px` : undefined}
+    style:--_cinder-data-table-row-height={shouldVirtualizeRows
+      ? `${resolvedRowHeight}px`
+      : undefined}
+    onscroll={handleWrapperScroll}
+  >
+    {@render table()}
+  </div>
 </div>

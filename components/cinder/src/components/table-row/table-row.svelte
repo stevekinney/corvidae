@@ -35,7 +35,14 @@
   // cells change (a keyed column moved, a conditional cell added), which bumps `cellsVersion`.
   let claimedColumns = 0;
   let cellsVersion = $state(0);
+  // The row's card title (COR-2771), claimed by a cell as it is created so the server's HTML marks it.
+  let titleClaim: 'header' | 'cell' | undefined;
   setTableRowColumnsContext({
+    claimTitle: (kind) => {
+      if (kind === 'header' ? titleClaim === 'header' : titleClaim !== undefined) return false;
+      titleClaim = kind;
+      return true;
+    },
     claimColumn: (span = 1) => {
       const position = claimedColumns;
       claimedColumns += Math.max(1, span);
@@ -103,8 +110,11 @@
   }
 </script>
 
+<!-- A `fit` table's parts carry their table roles in the server's HTML (COR-2771); spread, since the
+     role repeats the element's own. -->
 <tr
   {...rest}
+  {...table?.fit === true ? { role: 'row' } : {}}
   class={classNames('cinder-table__row', className)}
   aria-current={current ? 'true' : rest['aria-current']}
   data-cinder-current={current ? '' : undefined}

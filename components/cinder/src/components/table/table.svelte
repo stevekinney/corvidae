@@ -21,10 +21,11 @@
     holdSortButtonsOutOfTabOrder,
     markCardCells,
     readSortOptions,
-    unmarkCardCells,
     type StackSortOption,
   } from './table-stack.ts';
   import { lengthToPixels } from './table.length.ts';
+  import { getTableContainerProvided } from './table-container-context.ts';
+  import { stackStyle, stylesheetCoversLength } from './table-stack-rules.ts';
   import { setTableContext } from './table.context.ts';
   import type { TableColumnSizing, TableProps } from './table.types.ts';
 
@@ -101,8 +102,29 @@
     };
   }
 
+  // CSS chooses the stacked form (COR-2771): a size container query on `.cinder-table-container`
+  // reads the table's server HTML (`data-cinder-fit`, each cell's `data-cinder-controls`), so the
+  // first paint is already the right form. `data-cinder-stack-below` names an explicit length;
+  // `table.css` holds the rules for the defaults and for 640px, and any other length brings the
+  // same rules in a `<style>` of its own, whose only value is that validated length.
+  const stackBelowAttribute = $derived(
+    stackBelow === false ? 'false' : stackBelow === undefined ? undefined : stackBreakpoint,
+  );
+  const ownStackStyle = $derived(
+    typeof stackBelow === 'string' &&
+      stackBreakpoint !== undefined &&
+      !stylesheetCoversLength(stackBreakpoint)
+      ? stackStyle(stackBreakpoint)
+      : undefined,
+  );
+  // A component that renders the size container around its own scroll box (DataTable) says so.
+  const containerProvided = getTableContainerProvided() === true;
+
+  // Script still watches the container for what CSS cannot do after hydration (the sort control
+  // above the cards, the sort buttons held out of the tab order, keeping marks current). It changes
+  // no geometry: `data-cinder-stacked` and `data-cinder-stack-card` are hooks, never layout.
   const measureContainer: Attachment<HTMLTableElement> = (table) => {
-    const container = table.parentElement;
+    const container = table.closest('.cinder-table-container') ?? table.parentElement;
     const breakpoint = stackBreakpoint;
     // Only a table that can stack (a control in it, or `fit`) watches its container.
     if (
@@ -140,8 +162,12 @@
 
   function labelStackedCells(table: HTMLTableElement): void {
     const headerRow = table.querySelector(':scope > thead > tr');
+    // A header cell's declared `label` (also in the server's HTML) wins over its visible text.
     const labels = headerRow
-      ? Array.from(headerRow.children, (cell) => cell.textContent?.trim() ?? '')
+      ? Array.from(
+          headerRow.children,
+          (cell) => cell.getAttribute('data-cinder-label') ?? cell.textContent?.trim() ?? '',
+        )
       : [];
     for (const row of Array.from(table.querySelectorAll(':scope > tbody > tr'))) {
       Array.from(row.children).forEach((cell, index) => {
@@ -259,8 +285,9 @@
     return () => {
       observer.disconnect();
       releaseSortButtons?.();
+      // The title and empty marks stay: the server's HTML carries them, and only the card rules,
+      // which apply below the stack width, read them.
       if (card) {
-        unmarkCardCells(table);
         sortOptionsSeen = [];
         sortOptions = [];
       }
@@ -346,6 +373,9 @@
   // mount, to its DOM `cellIndex`) withdraws only its own entry, never a neighbour's that has just
   // moved in.
   const columnSizings = new SvelteMap<number, { owner: object; sizing: TableColumnSizing }>();
+  // Each column's label, written the same way, so a body cell prints it beside its value while
+  // stacked, from the server's HTML on (COR-2771).
+  const columnLabels = new SvelteMap<number, { owner: object; label: string }>();
 
   setTableContext({
     setColumnSizing(column, sizing, owner) {
@@ -358,6 +388,16 @@
     },
     columnSizing(column) {
       return column < 0 ? undefined : columnSizings.get(column)?.sizing;
+    },
+    setColumnLabel(column, label, owner) {
+      if (column < 0) return;
+      untrack(() => {
+        if (label !== undefined && label !== '') columnLabels.set(column, { owner, label });
+        else if (columnLabels.get(column)?.owner === owner) columnLabels.delete(column);
+      });
+    },
+    columnLabel(column) {
+      return column < 0 ? undefined : columnLabels.get(column)?.label;
     },
     get sort() {
       return sort;
@@ -377,8 +417,12 @@
 </script>
 
 {#snippet table()}
+  <!-- A `fit` table can stack, and `display: block` drops table semantics in some engines (Safari
+       among them), so its parts carry their table roles in the server HTML. They are spread, since
+       the roles repeat each element's own. -->
   <table
     {...rest}
+    {...fit ? { role: 'table' } : {}}
     class={classNames('cinder-table', className)}
     data-cinder-sticky-header={stickyHeader || undefined}
     data-cinder-density={density}
@@ -387,6 +431,7 @@
     data-cinder-stack-card={stackCard || undefined}
     data-cinder-frameless={frameless || undefined}
     data-cinder-fit={fit || undefined}
+    data-cinder-stack-below={stackBelowAttribute}
     style:--cinder-table-caption-height={normalizedCaption ? `${captionHeight}px` : undefined}
     {@attach measureContainer}
     {@attach labelCellsWhileStacked}
@@ -398,43 +443,62 @@
   </table>
 {/snippet}
 
-{#if stackCard && sortOptions.length > 0}
-  <div class="cinder-table__stack-sort">
-    <!-- The select is drawn compact, so this box carries its 44px hit area: a press that lands in
-         the padding above or below it opens the select too. The keyboard uses the select itself. -->
-    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-    <div class="cinder-table__stack-sort-hit" onclick={openSortPicker}>
-      <Select
-        id={sortSelectId}
-        label="Sort by"
-        labelVisible={false}
-        placeholder="Sort by"
-        size="sm"
-        variant="ghost"
-        presentation="native"
-        options={sortOptions.map((option) => ({ ...option, label: `Sort: ${option.label}` }))}
-        {...selectedSort ? { value: selectedSort } : {}}
-        onValueChange={chooseSort}
-      />
+{#snippet contents()}
+  {#if ownStackStyle !== undefined}
+    <svelte:element this={"style"}>{ownStackStyle}</svelte:element>
+  {/if}
+  {#if stackCard && sortOptions.length > 0}
+    <div class="cinder-table__stack-sort">
+      <!-- The select is drawn compact, so this box carries its 44px hit area: a press that lands in
+           the padding above or below it opens the select too. The keyboard uses the select itself. -->
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <div class="cinder-table__stack-sort-hit" onclick={openSortPicker}>
+        <Select
+          id={sortSelectId}
+          label="Sort by"
+          labelVisible={false}
+          placeholder="Sort by"
+          size="sm"
+          variant="ghost"
+          presentation="native"
+          options={sortOptions.map((option) => ({ ...option, label: `Sort: ${option.label}` }))}
+          {...selectedSort ? { value: selectedSort } : {}}
+          onValueChange={chooseSort}
+        />
+      </div>
     </div>
-  </div>
-{/if}
+  {/if}
 
-{#if scrollable}
-  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div
-    {...scrollContainerProps}
-    class={classNames('cinder-table-scroll', 'cinder-_scroll-fade-inline-end', wrapperClassName)}
-    role={wrapperRole}
-    aria-label={wrapperAriaLabel}
-    aria-labelledby={wrapperAriaLabelledBy}
-    tabindex={wrapperTabindex}
-    data-cinder-frameless={frameless || undefined}
-    data-cinder-stack-card={stackCard || undefined}
-    {@attach overflowFadeEdges('inline')}
-  >
+  {#if scrollable}
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <div
+      {...scrollContainerProps}
+      class={classNames('cinder-table-scroll', 'cinder-_scroll-fade-inline-end', wrapperClassName)}
+      role={wrapperRole}
+      aria-label={wrapperAriaLabel}
+      aria-labelledby={wrapperAriaLabelledBy}
+      tabindex={wrapperTabindex}
+      data-cinder-frameless={frameless || undefined}
+      data-cinder-stack-card={stackCard || undefined}
+      {@attach overflowFadeEdges('inline')}
+    >
+      {@render table()}
+    </div>
+  {:else}
     {@render table()}
-  </div>
+  {/if}
+{/snippet}
+
+<!-- The table's own container: the size container its stacked forms query. A component that renders
+     it around its own scroll box (DataTable) leaves it out here. -->
+{#if containerProvided}
+  {@render contents()}
 {:else}
-  {@render table()}
+  <div
+    class="cinder-table-container"
+    data-cinder-fit={fit || undefined}
+    data-cinder-stack-below={stackBelowAttribute}
+  >
+    {@render contents()}
+  </div>
 {/if}

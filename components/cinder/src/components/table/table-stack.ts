@@ -41,16 +41,6 @@ export function markCardCells(table: HTMLTableElement): void {
   }
 }
 
-/** Takes the marks off when the table stops drawing cards. */
-export function unmarkCardCells(table: HTMLTableElement): void {
-  for (const cell of Array.from(
-    table.querySelectorAll(`[${TITLE_ATTRIBUTE}], [${EMPTY_ATTRIBUTE}]`),
-  )) {
-    cell.removeAttribute(TITLE_ATTRIBUTE);
-    cell.removeAttribute(EMPTY_ATTRIBUTE);
-  }
-}
-
 /** One way to order the rows: a sortable column and a direction. `value` is `index:direction`. */
 export type StackSortOption = { value: string; label: string };
 

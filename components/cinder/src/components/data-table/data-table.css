@@ -23,11 +23,8 @@
     display: contents;
   }
 
-  /* Table's stacked sort control sits above its rows. DataTable renders both inside the
-     scroll wrapper, where the horizontal flex layout would otherwise put them side by side. */
-  .cinder-data-table.cinder-table-scroll:has(> .cinder-table[data-cinder-stack-card]) {
-    display: block;
-  }
+  /* Table's stacked sort control sits above its rows inside this scroll box; Table's generated card
+     rules (`table-stack-rules.ts`) make the box a block there, so the two do not sit side by side. */
 
   .cinder-data-table[data-cinder-virtualized] {
     block-size: var(--cinder-data-table-height, 24rem);
@@ -140,19 +137,8 @@
     pointer-events: none;
   }
 
-  /* Stacked: the rows that span the table are blocks of their own. */
-  .cinder-table[data-cinder-stacked] .cinder-data-table__group-row,
-  .cinder-table[data-cinder-stacked] .cinder-data-table__row-message,
-  .cinder-table[data-cinder-stacked] .cinder-data-table__footer,
-  .cinder-table[data-cinder-stacked] .cinder-data-table__footer > tr {
-    display: block;
-  }
-
-  .cinder-table[data-cinder-stacked] .cinder-data-table__group-cell,
-  .cinder-table[data-cinder-stacked] .cinder-data-table__row-message-cell,
-  .cinder-table[data-cinder-stacked] .cinder-data-table__footer-cell {
-    display: block;
-  }
+  /* Stacked, the rows that span the table are blocks of their own: Table's generated stack rules
+   * (`table-stack-rules.ts`) carry that, under the same container query as the rest of the form. */
 
   .cinder-data-table[data-cinder-virtualized]
     .cinder-table__row[data-cinder-virtual-row]:focus-visible,

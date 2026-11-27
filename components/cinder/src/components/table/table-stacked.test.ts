@@ -219,10 +219,10 @@ describe('Table scroll and stack by container', () => {
     disconnect(): void {
       this.target = null;
     }
-    /** Reports `width` for every observed scroll box. */
+    /** Reports `width` for every observed table container (COR-2771: the size container). */
     static resize(width: number): void {
       for (const instance of StubResizeObserver.instances) {
-        if (!instance.target?.classList.contains('cinder-table-scroll')) continue;
+        if (!instance.target?.classList.contains('cinder-table-container')) continue;
         instance.callback(
           [{ target: instance.target, contentRect: { width } } as ResizeObserverEntry],
           instance,
@@ -233,7 +233,7 @@ describe('Table scroll and stack by container', () => {
 
   function measureScrollBoxes(width: number): void {
     Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
-      const measured = this.classList.contains('cinder-table-scroll') ? width : 0;
+      const measured = this.classList.contains('cinder-table-container') ? width : 0;
       return {
         width: measured,
         height: 0,

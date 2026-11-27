@@ -18,6 +18,7 @@
     scope = 'col',
     align = 'left',
     sizing,
+    label,
     class: className,
     children,
     actions,
@@ -35,12 +36,21 @@
   let columnPosition = $state(untrack(() => rowColumns?.claimColumn(spanOf(rest.colspan)) ?? -1));
   untrack(() => {
     if (sizing !== undefined) table.setColumnSizing?.(columnPosition, sizing, owner);
+    if (label !== undefined) table.setColumnLabel?.(columnPosition, label, owner);
   });
   $effect(() => {
     const position = columnPosition;
     const value = sizing;
     table.setColumnSizing?.(position, value, owner);
     return () => table.setColumnSizing?.(position, undefined, owner);
+  });
+  // The column's label reaches its body cells the same way, so a stacked cell prints it from the
+  // server's HTML on (COR-2771).
+  $effect(() => {
+    const position = columnPosition;
+    const value = label;
+    table.setColumnLabel?.(position, value, owner);
+    return () => table.setColumnLabel?.(position, undefined, owner);
   });
   // Re-read whenever the row's cells change, so a keyed column that moves takes its sizing along.
   const placeColumn: Attachment<HTMLTableCellElement> = (cell) => {
@@ -77,13 +87,16 @@
   }
 </script>
 
+<!-- A `fit` table's parts carry their table roles in the server's HTML (COR-2771). -->
 <th
   {...rest}
+  {...table.fit === true ? { role: 'columnheader' } : {}}
   {scope}
   class={classNames('cinder-table__header-cell', className)}
   data-cinder-align={align}
   data-cinder-sortable={isSortable || undefined}
   data-cinder-sizing={sizing}
+  data-cinder-label={label}
   aria-sort={ariaSort}
   {@attach placeColumn}
 >
