@@ -50,6 +50,7 @@ export type ProductionGraphOptions = {
   staticDirectory?: string;
   basePath?: string;
   transportModule?: string;
+  browserPlugins?: readonly Bun.BunPlugin[];
 };
 export type ProductionGraphResult = {
   manifest: ProductionManifest;

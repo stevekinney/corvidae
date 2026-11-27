@@ -60,7 +60,8 @@
     JsonViewer,
   } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import { HttpClientError, type HttpClient, type WorkflowEvent } from '@lostgradient/weft';
+  import { HttpClientError } from '@lostgradient/weft/client';
+  import type { HttpClient, WorkflowEvent } from '@lostgradient/weft';
   import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
   import { Funnel, X } from '@lucide/svelte';
   import { onDestroy, untrack } from 'svelte';

@@ -19,9 +19,10 @@
   interface RunTimelineProps {
     engine: RunEngine;
     workflow: WorkflowState;
+    documentWorkflow?: boolean | undefined;
   }
 
-  let { engine, workflow }: RunTimelineProps = $props();
+  let { engine, workflow, documentWorkflow = false }: RunTimelineProps = $props();
 
   const principal = getPrincipalStore();
   const canReadStreams = $derived(principal.hasScope('streams:read'));
@@ -36,6 +37,7 @@
 <TimelineTab
   client={engine.client}
   {workflow}
+  {documentWorkflow}
   {liveObservations}
   finalizerStatus={engine.finalizerStatus}
   {canReadStreams}

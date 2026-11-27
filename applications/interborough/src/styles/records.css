@@ -7,6 +7,12 @@
   min-width: 0;
 }
 
+@media (min-width: 90rem) {
+  .ib-records[data-page='checks'] {
+    max-inline-size: var(--cinder-content-width);
+  }
+}
+
 /* Keep names and right-aligned row facts within the view’s readable measure. */
 .ib-records__bounded-list {
   max-inline-size: 60rem;

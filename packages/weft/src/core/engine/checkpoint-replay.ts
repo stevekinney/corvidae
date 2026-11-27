@@ -8,6 +8,7 @@ import type {
   WorkerReplayOperationSignature,
 } from '../types.ts';
 import { WORKER_REPLAY_SIGNATURE_FORMAT } from '../types/checkpoint.ts';
+import { isUpstreamHttpFailure } from '../upstream-http-failure.ts';
 
 export const CHECKPOINT_REPLAY_PAYLOAD_KEY = '__weftCheckpointReplay';
 
@@ -402,6 +403,9 @@ function isWorkerReplaySignature(value: unknown): value is WorkerReplayOperation
 
 function isWorkerReplayFailure(value: unknown): value is WorkerReplayOperationFailure {
   if (!isRecord(value)) return false;
+  if (value['upstreamFailure'] !== undefined && !isUpstreamHttpFailure(value['upstreamFailure'])) {
+    delete value['upstreamFailure'];
+  }
   const failureCategory = value['failureCategory'];
   return (
     value['status'] === 'failed' &&

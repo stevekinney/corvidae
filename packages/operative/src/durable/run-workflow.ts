@@ -1,5 +1,5 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { workflow } from '@lostgradient/weft';
+import { upstreamFailureOf, workflow } from '@lostgradient/weft';
 import { Conversation, isConversation, type MultiModalContent } from 'conversationalist';
 
 import { appendAgentInput } from '../agent-input';
@@ -253,6 +253,7 @@ export function createRunWorkflow(
         let errorMessage: string | undefined;
         let errorKind: AgentRunErrorKind | undefined;
         let errorCode: AgentRunErrorCode | undefined;
+        let upstreamFailure: import('@lostgradient/weft').UpstreamHttpFailure | undefined;
         let abortReason: string | undefined;
         let schemaValidation: { success: boolean; error?: string | undefined } | undefined;
         let output: unknown;
@@ -473,6 +474,7 @@ export function createRunWorkflow(
               errorMessage = stepResult.errorMessage;
               errorKind = stepResult.errorKind;
               errorCode = stepResult.errorCode;
+              upstreamFailure = stepResult.upstreamFailure;
               tripwire = stepResult.tripwire;
               stoppedEarly = true;
               break;
@@ -553,6 +555,7 @@ export function createRunWorkflow(
                   errorFinishReason: classifyErrorFinishReason(error),
                   errorKind: runError.kind,
                   errorCode: runError.code,
+                  upstreamFailure: upstreamFailureOf(runError),
                 };
               }
             });
@@ -572,6 +575,7 @@ export function createRunWorkflow(
               errorMessage = tail.errorMessage;
               errorKind = tail.errorKind;
               errorCode = tail.errorCode;
+              upstreamFailure = tail.upstreamFailure;
             }
           }
 
@@ -580,6 +584,7 @@ export function createRunWorkflow(
             cursor,
             finishReason,
             errorMessage,
+            upstreamFailure,
             abortReason,
             schemaValidation,
             output,
@@ -601,6 +606,7 @@ export function createRunWorkflow(
             cursor,
             finishReason,
             errorMessage,
+            upstreamFailure,
             abortReason,
             schemaValidation,
             output,
@@ -640,6 +646,7 @@ export function createRunWorkflow(
           ...(errorMessage !== undefined ? { errorMessage } : {}),
           ...(errorKind !== undefined ? { errorKind } : {}),
           ...(errorCode !== undefined ? { errorCode } : {}),
+          ...(upstreamFailure !== undefined ? { upstreamFailure } : {}),
           ...(abortReason !== undefined ? { abortReason } : {}),
           ...(schemaValidation !== undefined ? { schemaValidation } : {}),
           ...(schemaValidation?.success ? { output } : {}),

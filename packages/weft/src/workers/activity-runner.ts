@@ -1,3 +1,5 @@
+import { upstreamFailureOf, type UpstreamHttpFailure } from '../core/upstream-http-failure.ts';
+
 // ---------------------------------------------------------------------------
 // Activity execution request / result types
 // ---------------------------------------------------------------------------
@@ -64,6 +66,8 @@ export interface ActivityExecutionResult {
   error?: string;
   /** Error constructor name used by retry classification and diagnostics. */
   errorName?: string;
+  /** Validated upstream HTTP failure facts, when the activity threw a typed failure. */
+  upstreamFailure?: UpstreamHttpFailure;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,11 +132,13 @@ export async function executeActivity(
       value: result,
     };
   } catch (error) {
+    const upstreamFailure = upstreamFailureOf(error);
     return {
       operationId: request.operationId,
       status: 'failed',
       error: `Activity "${request.activityName}" failed (attempt ${request.attempt}): ${formatError(error)}`,
       ...(error instanceof Error ? { errorName: error.name } : {}),
+      ...(upstreamFailure === undefined ? {} : { upstreamFailure }),
     };
   }
 }

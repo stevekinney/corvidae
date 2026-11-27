@@ -98,12 +98,19 @@ export * from './worker/index.ts';
 // calls `Bun.spawn` and belongs under `@lostgradient/weft/testing` alone. Re-exporting the whole
 // barrel put `Bun.spawn` into the root's browser bundle, which the published package's
 // portability gate refused at the 0.26.0 release (COR-1192).
-export { flushPortableMicrotasks, yieldToPortableEventLoop } from './portable-event-loop.ts';
+export {
+  UpstreamHttpError,
+  attachUpstreamFailure,
+  isUpstreamHttpFailure,
+  upstreamFailureOf,
+  type UpstreamHttpFailure,
+} from './core/upstream-http-failure.ts';
 export {
   UPGRADE_REFUSAL_REASON_PREFIX,
   WORKER_CONFLICT_REASONS,
   type WorkerConflictReason,
-} from './server/operations/worker-conflict-reasons.ts';
+} from './core/worker-conflict-reasons.ts';
+export { flushPortableMicrotasks, yieldToPortableEventLoop } from './portable-event-loop.ts';
 export { VERSION } from './version.ts';
 export {
   bindingFromExecution,

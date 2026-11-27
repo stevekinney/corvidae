@@ -16,6 +16,8 @@
  * `scripts/bun-test-junit.ts`, so it carries the shared per-test deadline and writes
  * `test-output/junit/ui-<n>.xml`, which `scripts/check-test-durations.ts` reads with every other
  * report in that directory.
+ * `--ui-shard=N` runs only the corresponding one-based partition and retains its report name;
+ * without it, all four partitions run as before.
  *
  * The coverage run (`scripts/run-coverage.ts`) deliberately stays one process, in a fixed order.
  *
@@ -153,11 +155,15 @@ export function partitionIntoShards(
   return shards;
 }
 
-function removeStaleReports(reportDirectory: string): void {
+function removeStaleReports(reportDirectory: string, selectedShard: number | undefined): void {
   if (!existsSync(reportDirectory)) return;
   for (const name of readdirSync(reportDirectory)) {
     // `ui.xml` is the single-process report this script replaced.
-    if (name === 'ui.xml' || /^ui-\d+\.xml$/.test(name)) {
+    if (
+      selectedShard === undefined
+        ? name === 'ui.xml' || /^ui-\d+\.xml$/.test(name)
+        : name === `${shardReportName(selectedShard)}.xml`
+    ) {
       rmSync(join(reportDirectory, name), { force: true });
     }
   }
@@ -299,14 +305,28 @@ export async function runUiShards(
     every = everyWithInterval,
     freeMemory = availableMemory,
   } = dependencies;
-  const { flags, roots, ignorePatterns } = splitBunTestArguments(argumentsList);
+  const shardOptions = argumentsList.filter((argument) => argument.startsWith('--ui-shard'));
+  if (
+    shardOptions.length > 1 ||
+    (shardOptions.length === 1 && !/^--ui-shard=[1-4]$/u.test(shardOptions[0] ?? ''))
+  ) {
+    writeStandardError(
+      'run-ui-shards: --ui-shard must occur once and be an integer from 1 to 4.\n',
+    );
+    return 1;
+  }
+  const selectedShard =
+    shardOptions.length === 0 ? undefined : Number(shardOptions[0]?.slice('--ui-shard='.length));
+  const { flags, roots, ignorePatterns } = splitBunTestArguments(
+    argumentsList.filter((argument) => !argument.startsWith('--ui-shard')),
+  );
   const files = narrowToSelection(
     discoverTestFiles(packageRoot, roots, ignorePatterns),
     selectedFilesFor(environment, relative(repositoryRoot, packageRoot), repositoryRoot),
   );
   const reportDirectory = join(packageRoot, JUNIT_DIRECTORY);
   mkdirSync(reportDirectory, { recursive: true });
-  removeStaleReports(reportDirectory);
+  removeStaleReports(reportDirectory, selectedShard);
   if (files.length === 0) {
     writeStandardOutput(
       'run-ui-shards: no UI test file is reachable from the change; nothing to run.\n',
@@ -327,6 +347,7 @@ export async function runUiShards(
   let markStopped: () => void = () => undefined;
   const whenStopped = new Promise<void>((resolve) => (markStopped = resolve));
   const runs = shards.flatMap((shardFiles, index) => {
+    if (selectedShard !== undefined && selectedShard !== index + 1) return [];
     if (shardFiles.length === 0) return [];
     const child = spawn(
       [

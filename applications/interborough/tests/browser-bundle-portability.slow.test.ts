@@ -10,7 +10,7 @@ it('bundles the plain Reviews client without Svelte, Cinder or server modules', 
     entrypoints: [
       resolve(
         import.meta.dir,
-        '../../../packages/bureau-client/src/generated/portable-operation-client.generated.ts',
+        '../../../packages/bureau-sdk/src/generated/portable-operation-client.generated.ts',
       ),
     ],
     target: 'browser',

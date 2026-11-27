@@ -34,7 +34,7 @@ import {
   type MessageInput,
 } from '@lostgradient/chat';
 
-import { parseStepRowIdentifier } from '@lostgradient/operative';
+import { parseStepRowIdentifier } from '@lostgradient/operative/message-identifiers';
 import { CHAT_COPY } from '../../app/copy/chat.ts';
 import {
   discardContextTurn,

@@ -11,10 +11,11 @@
  * workflow file, because that runs no agent and sends no prompt. Non-owner workspace responses also redact
  * input previews, last-fire timestamps, and private fire counters to `null`.
  */
-import { HttpClientError, type ScheduleSpec } from '@lostgradient/weft';
+import type { CatalogOperations } from '@lostgradient/bureau-sdk';
+import type { ScheduleSpec } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 import { bureauClient, type BureauOutput } from './bureau-api.ts';
 import type { Fetcher } from './bureau-client.ts';
-import type { CatalogOperations } from './generated/bureau-operation-client.generated.ts';
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 

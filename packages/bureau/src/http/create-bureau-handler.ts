@@ -1476,6 +1476,7 @@ export function buildBureauHandlerHost(
             status: state.status,
             failureCategory: state.failureCategory,
             errorCode: state.errorCode,
+            upstreamFailure: state.upstreamFailure,
             failedStep: state.failedStep,
           };
     },

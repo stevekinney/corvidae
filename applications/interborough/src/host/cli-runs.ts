@@ -1,5 +1,5 @@
+import type { CatalogOperationTypes } from '@lostgradient/bureau-sdk';
 import { formatCost } from '../lib/format/cost.ts';
-import type { CatalogOperationTypes } from '../lib/generated/bureau-operation-client.generated.ts';
 import {
   catalogRead,
   faultRefusedBeforeAnyEffect,

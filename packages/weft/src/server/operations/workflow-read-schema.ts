@@ -60,6 +60,10 @@ export const workflowStateSchema = z
     errorStack: z.string().optional(),
     failureCategory: failureCategory.nullable().optional(),
     errorCode: z.string().optional(),
+    upstreamFailure: z
+      .object({ source: z.enum(['github', 'other']), status: z.number().int().min(400).max(599) })
+      .strict()
+      .optional(),
     failedStep: failedStep.optional(),
     terminationReason: z
       .enum(['history-circuit-breaker', 'prepared-workflow-abandoned'])

@@ -84,9 +84,19 @@ describe('JUnit artifact paths', () => {
     const source = await workflow.text();
     expect(source).toContain('--filter=!@lostgradient/interborough');
     expect(source).toContain('name: interborough host\n            lane: host');
-    expect(source).toContain('name: interborough ui\n            lane: ui');
+    for (const shard of [1, 2, 3, 4]) {
+      expect(source).toContain(
+        `name: interborough ui ${shard}\n            lane: ui\n            ui_shard: ${shard}`,
+      );
+    }
     expect(source).toContain('bun run --cwd applications/interborough test:${{ matrix.lane }}');
+    expect(source).toContain("if: ${{ matrix.lane == 'host' }}");
+    expect(source).toContain("if: ${{ matrix.lane == 'ui' }}");
+    expect(source).toContain(
+      'bun run --cwd applications/interborough test:ui --ui-shard=${{ matrix.ui_shard }}',
+    );
     expect(source).toContain('merge-multiple: true');
+    expect(source).toContain('name: junit-tests-${{ strategy.job-index }}');
     expect(manifest.scripts['test:host']).toContain('bun-test-junit.ts');
     expect(manifest.scripts['test:ui']).toContain('run-ui-shards.ts');
   });

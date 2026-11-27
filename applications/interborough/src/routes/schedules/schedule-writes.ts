@@ -5,12 +5,8 @@
  * `bureau.workflows.pause` and `resume` with the hash of the file the caller read, and any other
  * through the engine, which has no stale check.
  */
-import {
-  HttpClientError,
-  isWeftFault,
-  type HttpClient,
-  type ScheduleSummary,
-} from '@lostgradient/weft';
+import type { HttpClient, ScheduleSummary } from '@lostgradient/weft';
+import { HttpClientError, isWeftFault } from '@lostgradient/weft/client';
 
 import {
   cancelAgentSchedule,

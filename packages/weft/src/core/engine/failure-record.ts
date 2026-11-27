@@ -6,6 +6,7 @@
  * @module core/engine/failure-record
  */
 import type { WorkflowFailedStep, WorkflowState, WorkflowTimelineEntry } from '../types.ts';
+import { isUpstreamHttpFailure } from '../upstream-http-failure.ts';
 import { isWeftErrorCode } from '../weft-error.ts';
 
 /** Longest `failedStep.label`, in characters. */
@@ -61,5 +62,7 @@ function isFailedStep(value: unknown): value is WorkflowFailedStep {
  */
 export function sanitizeDecodedFailureRecord(state: WorkflowState): void {
   if (state.errorCode !== undefined && !isWeftErrorCode(state.errorCode)) delete state.errorCode;
+  if (state.upstreamFailure !== undefined && !isUpstreamHttpFailure(state.upstreamFailure))
+    delete state.upstreamFailure;
   if (state.failedStep !== undefined && !isFailedStep(state.failedStep)) delete state.failedStep;
 }

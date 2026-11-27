@@ -1,9 +1,21 @@
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { describe, expect, it } from 'bun:test';
+import { UpstreamHttpError } from '../core/upstream-http-failure.ts';
 import type { ActivityExecutionRequest, ActivityExecutionResult } from './activity-runner.ts';
 import { executeActivity } from './activity-runner.ts';
 
 describe('executeActivity', () => {
+  it('carries typed upstream facts in a worker result, without inferring them from text', async () => {
+    const request = { operationId: 'op', activityName: 'fetch', input: null, attempt: 1 };
+    const typed = await executeActivity(request, () => {
+      throw new UpstreamHttpError({ source: 'github', status: 503 }, 'unavailable');
+    });
+    const ordinary = await executeActivity(request, () => {
+      throw new Error('GitHub HTTP 503');
+    });
+    expect(typed.upstreamFailure).toEqual({ source: 'github', status: 503 });
+    expect(ordinary.upstreamFailure).toBeUndefined();
+  });
   it('returns completed for a successful synchronous function', async () => {
     const request: ActivityExecutionRequest = {
       operationId: 'op-1',

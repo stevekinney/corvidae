@@ -3,14 +3,14 @@
  * `bureau.tasks.explain` serves on every surface.
  *
  * Nothing here calls a model or reads a clock. The same facts give the same explanation, and the
- * text is built only from identifiers: the failure category, the error's code and kind, the step's
- * label. A tool's arguments, an error's message and a stack are never facts here, so they cannot
- * reach a sentence.
+ * text is built only from identifiers and bounded typed upstream HTTP facts: the failure category,
+ * the error's code and kind, the step's label, and a recorded source and status. A tool's arguments,
+ * an error's message and a stack are never facts here, so they cannot reach a sentence.
  *
  * @module run-failure-explanation
  */
 
-import type { FailureCategory } from '@lostgradient/weft';
+import type { FailureCategory, UpstreamHttpFailure } from '@lostgradient/weft';
 import type { AgentRunErrorKind } from '@lostgradient/operative';
 
 /** The five categories the engine sorts a failure into, in a fixed order. */
@@ -68,6 +68,7 @@ export interface RunFailureFacts {
    * instance of a workflow file that failed at a step that can run again (COR-2533).
    */
   readonly retryable: boolean;
+  readonly upstreamFailure?: UpstreamHttpFailure | undefined;
 }
 
 /** What `bureau.tasks.explain` answers. */
@@ -209,13 +210,28 @@ function nextCommandsFor(
 /** The explanation of a failed run: the same facts always give the same answer. */
 export function explainRunFailure(facts: RunFailureFacts): RunFailureExplanation {
   const halted = facts.verdicts.some((verdict) => verdict.kind === 'tripwire');
+  const upstream = facts.upstreamFailure;
+  const dependency = upstream?.source === 'github' ? 'GitHub' : 'the upstream service';
+  const label = facts.step === null ? '' : oneLine(facts.step.label);
+  const subject = label === '' ? 'The run' : `The step "${label}"`;
+  const advice =
+    upstream === undefined
+      ? undefined
+      : upstream.status === 401 || upstream.status === 403
+        ? `Check authorization for ${dependency} before trying again.`
+        : upstream.status === 429 || upstream.status >= 500
+          ? `Wait for or check ${dependency}, then retry the run.`
+          : `Check the request and status reported by ${dependency} before trying again.`;
   return {
-    summary: summarizeRunFailure(facts),
+    summary:
+      upstream === undefined
+        ? summarizeRunFailure(facts)
+        : `${subject} failed because ${dependency} returned HTTP ${String(upstream.status)}.`,
     cause: { category: facts.category, code: facts.code, kind: facts.errorKind },
     step: facts.step,
     tries: facts.tries,
     verdicts: facts.verdicts,
-    remediation: `${CATEGORY_REMEDIATION[facts.category ?? 'unclassified']}${halted ? TRIPWIRE_REMEDIATION : ''}`,
+    remediation: `${advice ?? CATEGORY_REMEDIATION[facts.category ?? 'unclassified']}${halted ? TRIPWIRE_REMEDIATION : ''}`,
     nextCommands: nextCommandsFor(facts.kind, facts.runId, facts.retryable),
   };
 }

@@ -60,7 +60,7 @@
     Skeleton,
     Tooltip,
   } from '@lostgradient/cinder';
-  import { HttpClientError } from '@lostgradient/weft';
+  import { HttpClientError } from '@lostgradient/weft/client';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';

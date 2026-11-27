@@ -1,10 +1,10 @@
 <script lang="ts">
   import type { CatalogTransport } from '@lostgradient/backchannel/client';
-  import { ReviewsProvider } from '@lostgradient/bureau-client/reviews/svelte';
-  import type { ApprovalHost, ApprovalOutcome } from '@lostgradient/bureau-client/reviews/ui';
+  import { ReviewsProvider } from '@lostgradient/bureau-sdk/reviews/svelte';
+  import type { ApprovalHost, ApprovalOutcome } from '@lostgradient/bureau-sdk/reviews/ui';
   import { QueryClient } from '@tanstack/svelte-query';
   import PanelContent from './panel-content.svelte';
-  import type { ReviewsOperationTypes } from '@lostgradient/bureau-client/reviews';
+  import type { ReviewsOperationTypes } from '@lostgradient/bureau-sdk/reviews';
   import type { ReviewsView } from './view.svelte.ts';
 
   let {

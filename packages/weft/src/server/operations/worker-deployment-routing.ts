@@ -5,6 +5,7 @@ import {
   readRestTextBody,
 } from '@lostgradient/backchannel/internals';
 import { z } from 'zod';
+import { WORKER_CONFLICT_REASONS } from '../../core/worker-conflict-reasons.ts';
 import type {
   WorkerDeploymentCatalog,
   WorkerDeploymentRemovalOutcome,
@@ -13,7 +14,6 @@ import type {
 } from '../../worker/deployment-routing.ts';
 import type { WorkerRegistry } from '../../worker/registry.ts';
 import { shapeWeftOperationFaultAsJson } from '../weft-operation-fault.ts';
-import { WORKER_CONFLICT_REASONS } from './worker-conflict-reasons.ts';
 import { announceWorkerDeploymentChanged } from './worker-deployment-events.ts';
 
 const routingInput = z.object({

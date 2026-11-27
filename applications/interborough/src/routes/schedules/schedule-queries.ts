@@ -13,22 +13,21 @@
  * something genuinely blocks you … make the smallest local workaround"
  * rather than editing the frozen file for one missing key.
  */
-import {
-  HttpClientError,
-  isWeftErrorCode,
-  type Duration,
-  type HttpClient,
-  type PaginatedResult,
-  type ScheduleFilter,
-  type ScheduleOptions,
-  type ScheduleOverlapPolicy,
-  type ScheduleRevisionPolicy,
-  type ScheduleSpec,
-  type ScheduleSummary,
-  type ScheduleUpdateOptions,
-  type WeftErrorCode,
-  type WorkflowSummary,
+import type {
+  Duration,
+  HttpClient,
+  PaginatedResult,
+  ScheduleFilter,
+  ScheduleOptions,
+  ScheduleOverlapPolicy,
+  ScheduleRevisionPolicy,
+  ScheduleSpec,
+  ScheduleSummary,
+  ScheduleUpdateOptions,
+  WeftErrorCode,
+  WorkflowSummary,
 } from '@lostgradient/weft';
+import { HttpClientError, isWeftErrorCode } from '@lostgradient/weft/client';
 
 import type { QueryKey } from '@tanstack/svelte-query';
 

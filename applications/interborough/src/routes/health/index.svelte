@@ -13,7 +13,7 @@
   import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
   import { HEALTH_RUNNING_RUNS_KEY } from '../../lib/live-source/cache-integration.ts';
   import { readAttention } from '../../lib/bureau-attention.ts';
-  import { createBureauClient } from '../../lib/generated/bureau-operation-client.generated.ts';
+  import { createBureauClient } from '../../lib/bureau-api.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { getPrincipalStore, isForbidden, principalQueryScope } from '../../lib/scopes.svelte.ts';
   import { waitingReviewsQuery } from '../reviews/reviews-data.ts';
@@ -300,6 +300,12 @@
     gap: var(--cinder-space-5);
     min-width: 0;
     container-type: inline-size;
+  }
+
+  @media (min-width: 90rem) {
+    .ib-health-overview {
+      max-inline-size: var(--cinder-content-width);
+    }
   }
 
   /* Needs attention and Recent activity share the wide column, the metric cards the narrow one

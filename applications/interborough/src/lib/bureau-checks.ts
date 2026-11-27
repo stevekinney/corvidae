@@ -5,9 +5,9 @@
  * newest first, paged by a cursor the answer hands back. A row names the check, the agent, the
  * outcome, the time and the run, and never any text a check produced.
  */
+import type { CatalogOperations } from '@lostgradient/bureau-sdk';
 import type { BureauOutput } from './bureau-api.ts';
 import type { Fetcher } from './bureau-client.ts';
-import type { CatalogOperations } from './generated/bureau-operation-client.generated.ts';
 
 /** Where a check result is kept, as the operation names it. */
 export const CHECK_KINDS = [

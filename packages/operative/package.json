@@ -4,6 +4,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./human-wait-parks": "./src/human-wait-parks.ts",
+    "./message-identifiers": "./src/message-identifiers.ts",
     "./testing": "./src/testing/index.ts",
     "./decision-testing": "./src/decision-testing.ts",
     "./provider-kit": "./src/provider-kit.ts",

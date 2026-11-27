@@ -4,7 +4,7 @@
  * came to. Pure, so the pages and their tests share one reading.
  */
 import type { StatusDotWord } from '@lostgradient/cinder';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 import { agentLabel } from '../../lib/agent-label.ts';
 import { agentPath } from '../../lib/agent-paths.ts';

@@ -80,7 +80,7 @@
     type MessageNoteInfo,
     type Message,
   } from '@lostgradient/chat';
-  import { parseStepRowIdentifier } from '@lostgradient/operative';
+  import { parseStepRowIdentifier } from '@lostgradient/operative/message-identifiers';
   import { CircleHelp, GitBranch, Workflow } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 

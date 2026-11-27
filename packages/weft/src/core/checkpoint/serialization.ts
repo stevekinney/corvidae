@@ -6,6 +6,7 @@ import {
   CheckpointSchemaVersionError,
   WORKER_REPLAY_SIGNATURE_FORMAT,
 } from '../types/checkpoint.ts';
+import { isUpstreamHttpFailure } from '../upstream-http-failure.ts';
 
 /**
  * Serialize a Checkpoint to bytes.
@@ -196,6 +197,12 @@ function validateWorkerReplayFailureOutcome(record: Record<string, unknown>): vo
   }
   if (record['errorName'] !== undefined && typeof record['errorName'] !== 'string') {
     throw new Error('Invalid checkpoint: invalid "workerReplayFailures" errorName');
+  }
+  if (
+    record['upstreamFailure'] !== undefined &&
+    !isUpstreamHttpFailure(record['upstreamFailure'])
+  ) {
+    delete record['upstreamFailure'];
   }
   if (record['failureCategory'] !== undefined && !isFailureCategory(record['failureCategory'])) {
     throw new Error('Invalid checkpoint: invalid "workerReplayFailures" failureCategory');

@@ -18,11 +18,24 @@
 // approval (a screen judged wrong or unsure, a sweep that found something, a state not captured) is
 // recorded as one more failing row, `coverage-ledger`, so landing refuses the head. The ledger is
 // kept beside the verdicts as `<head>.ledger`. Exit 0 recorded, 1 refused, 2 invalid usage.
+//
+// Optional `--base <sha> --exclusions <json>` accepts a coordinator attestation. Its JSON contains
+// `head`, `base`, `verdictDigest`, `ledgerDigest`, and `exclusions`. Digests are SHA-256 of the
+// exact file bytes. Each entry contains `fingerprint`, `baselineEvidence`, `ownerApproval`, and
+// `issue`. Fingerprint is SHA-256 of `verdict\n<exact row>` or `ledger\n<exact row>`. The owner
+// approval is a Linear comment URL and the issue is a lost-gradient Linear issue URL. The trusted
+// coordinator must verify the owner comment, issue and baseline evidence before attesting. Only
+// individual drifted, wrong or found rows can be excluded; all other blockers still block. Landing
+// rechecks the base and the full evidence bindings, and the original review remains in the state.
+// An exclusion covers its whole row: attest it only when every defect in that row has the same
+// exact approval and linked issue. A mixed row with an unapproved or differently tracked defect
+// must remain unexcluded and blocking.
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 import { checkLedger } from './design-coverage.ts';
+import { designDigest, exclusionResult } from './design-exclusions.ts';
 import { emitResult, parseOptions, UsageError } from './process-runner.ts';
 
 export { UsageError };
@@ -94,7 +107,7 @@ function coverageRow(blocking: readonly string[]): string {
 
 export function run(argv: string[]): { code: number; output: string } {
   const parsed = parseOptions(argv, {
-    values: ['head', 'file', 'capture', 'ledger', 'state-directory'],
+    values: ['head', 'file', 'capture', 'ledger', 'state-directory', 'exclusions', 'base'],
   });
   if (parsed.positionals[0] !== 'record' || parsed.positionals.length !== 1)
     throw new UsageError(
@@ -126,6 +139,16 @@ export function run(argv: string[]): { code: number; output: string } {
       code: 1,
       output: `refused, the coverage ledger is incomplete: ${ledger.problems.join('; ')}`,
     };
+  const exclusionFile = parsed.values['exclusions'];
+  const base = parsed.values['base'];
+  let exclusionText: string | undefined;
+  if (exclusionFile !== undefined) {
+    if (base === undefined) throw new UsageError('--base is required with --exclusions.');
+    exclusionText = readFileSync(resolve(exclusionFile), 'utf8');
+    const result = exclusionResult(exclusionText, head, base, rowsText, ledgerText);
+    if (result.includes('invalid or mismatched design exclusion attestation'))
+      return { code: 1, output: `refused: ${result.join('; ')}` };
+  } else if (base !== undefined) throw new UsageError('--base requires --exclusions.');
   const text =
     ledger.blocking.length === 0
       ? rowsText
@@ -135,7 +158,22 @@ export function run(argv: string[]): { code: number; output: string } {
   writeFileSync(`${target}.tmp`, text);
   renameSync(`${target}.tmp`, target);
   writeFileSync(target.replace(/\.verdicts$/, '.ledger'), ledgerText);
-  const failing = failingVerdictRows(text);
+  const exclusionPath = target.replace(/\.verdicts$/, '.exclusions.json');
+  const rowsPath = target.replace(/\.verdicts$/, '.rows');
+  if (exclusionText === undefined) {
+    rmSync(exclusionPath, { force: true });
+    rmSync(rowsPath, { force: true });
+  } else {
+    writeFileSync(rowsPath, rowsText);
+    writeFileSync(
+      exclusionPath,
+      JSON.stringify({ attestation: exclusionText, recordedDigest: designDigest(text) }),
+    );
+  }
+  const failing =
+    exclusionText === undefined
+      ? failingVerdictRows(text)
+      : exclusionResult(exclusionText, head, base!, rowsText, ledgerText);
   return {
     code: 0,
     output: `recorded ${target}${failing.length === 0 ? '' : ` (landing refuses: ${failing.join('; ')})`}`,

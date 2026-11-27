@@ -15,11 +15,11 @@
    */
   import { Alert, Button, FilterBar, PageHeader, type FilterSegment } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import type { ApprovalOutcome } from '@lostgradient/bureau-client/reviews/ui';
-  import type { ReviewsOperationTypes } from '@lostgradient/bureau-client/reviews';
-  import { getReviewsHost, useBureauReviewsList } from '@lostgradient/bureau-client/reviews/svelte';
+  import type { ApprovalOutcome } from '@lostgradient/bureau-sdk/reviews/ui';
+  import type { ReviewsOperationTypes } from '@lostgradient/bureau-sdk/reviews';
+  import { getReviewsHost, useBureauReviewsList } from '@lostgradient/bureau-sdk/reviews/svelte';
   import { activateResource } from '@lostgradient/backchannel-svelte';
-  import { HttpClientError } from '@lostgradient/weft';
+  import { HttpClientError } from '@lostgradient/weft/client';
   import { onMount } from 'svelte';
   import { useBureauEventsLive, useFleetEventsLive } from '../../app/live-polling.svelte.ts';
   import { invalidateReviewQueries } from '../../lib/review-queries.ts';

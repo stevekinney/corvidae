@@ -1,3 +1,4 @@
+import { upstreamFailureOf } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { type GuardrailPhase, GuardrailTripwireError, MaximumStepsExceededError } from '../errors';
@@ -8,6 +9,33 @@ import {
   normalizeAgentRunWorkflowResult,
   tripwireDetailFrom,
 } from './run-workflow-result';
+
+it('reconstructs a validated upstream cause and ignores absent or invalid historical details', () => {
+  const base = {
+    schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+    runId: 'run',
+    steps: 1,
+    content: '',
+    parts: [],
+    finishReason: 'error',
+  };
+  const valid = normalizeAgentRunWorkflowResult({
+    ...base,
+    upstreamFailure: { source: 'github', status: 503 },
+  });
+  expect(upstreamFailureOf(reconstructTerminalRunError(valid))).toEqual({
+    source: 'github',
+    status: 503,
+  });
+  for (const upstreamFailure of [
+    undefined,
+    { source: 'github', status: 999 },
+    { source: 'github', status: 503, message: 'secret' },
+  ]) {
+    const normalized = normalizeAgentRunWorkflowResult({ ...base, upstreamFailure });
+    expect(upstreamFailureOf(reconstructTerminalRunError(normalized))).toBeUndefined();
+  }
+});
 
 /**
  * COR-1627 — a durable run's summary says `maximum-steps` for two different ends: the loop ran

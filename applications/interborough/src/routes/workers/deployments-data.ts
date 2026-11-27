@@ -17,7 +17,7 @@ import type {
   WorkerDeploymentRouting,
   WorkerDeploymentVersionReport,
 } from '@lostgradient/weft';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 import {
   createMutation,
   createQuery,

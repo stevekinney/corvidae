@@ -167,6 +167,7 @@ export type WorkflowsOperationTypes = {
       readonly terminationReason?: 'history-circuit-breaker' | 'prepared-workflow-abandoned';
       readonly type: string;
       readonly updatedAt: number;
+      readonly upstreamFailure?: { readonly source: 'github' | 'other'; readonly status: number };
       readonly versionTuple: SharedAgentVersionToolVersions_951e6df7;
       readonly waitingForSignals?: ReadonlyArray<string>;
       readonly workerBinding?: {

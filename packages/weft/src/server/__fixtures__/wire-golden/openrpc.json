@@ -5194,6 +5194,28 @@
             "updatedAt": {
               "type": "number"
             },
+            "upstreamFailure": {
+              "additionalProperties": false,
+              "properties": {
+                "source": {
+                  "enum": [
+                    "github",
+                    "other"
+                  ],
+                  "type": "string"
+                },
+                "status": {
+                  "maximum": 599,
+                  "minimum": 400,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "source",
+                "status"
+              ],
+              "type": "object"
+            },
             "versionTuple": {
               "additionalProperties": {},
               "properties": {

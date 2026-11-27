@@ -25,7 +25,7 @@
  * so verification never compares a worker with a hash the registry did not
  * earn.
  */
-import { parseWorkflowRevisionManifest, REGISTRY_VERSION } from '@lostgradient/weft';
+import { parseWorkflowRevisionManifest, REGISTRY_VERSION } from '@lostgradient/weft/client';
 
 import type {
   RegistrySnapshotSource,

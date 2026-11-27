@@ -8,12 +8,10 @@
    */
   import { Alert, Button, Section } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
-  import { Play, RefreshCw } from '@lucide/svelte';
+  import { TriangleAlert } from '@lucide/svelte';
 
   import { RUN_DETAIL_COPY } from '../../../app/copy/runs.ts';
-  import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
   import { clockTimeWithSeconds } from '../../../lib/format/clock.ts';
-  import { router } from '../../../lib/router.svelte.ts';
   import {
     failureHeading,
     sentenceOf,
@@ -47,26 +45,7 @@
      * the retry keeps and runs again (row 55b).
      */
     retryVersion?: string | undefined;
-    /**
-     * The actions the block carries (row 14t): Retry from step N runs the step again, Run again sets
-     * up another run (not drawn while no provider is connected, because the header says why it is
-     * held), and Open step N opens the step in How it ran.
-     */
-    retry?:
-      | {
-          readonly onRetry: () => void;
-          readonly busy?: boolean | undefined;
-          readonly gate?: ScopeGate | undefined;
-        }
-      | undefined;
-    runAgain?:
-      | {
-          readonly href?: string | undefined;
-          readonly onRun?: (() => void) | undefined;
-          readonly blocked?: boolean | undefined;
-          readonly busy?: boolean | undefined;
-        }
-      | undefined;
+    /** Open the failed step in How it ran. Execution actions belong to the header. */
     onOpenStep?: (() => void) | undefined;
   }
 
@@ -81,8 +60,6 @@
     errorStack = undefined,
     triesTook = undefined,
     retryVersion = undefined,
-    retry = undefined,
-    runAgain = undefined,
     onOpenStep = undefined,
   }: RunInstanceHappenedProps = $props();
 
@@ -118,14 +95,6 @@
   const stepNumber = $derived(progress?.at ?? undefined);
   // A cancellation is a person's doing; any other failure of a step is not (row 14t).
   const notYourFault = $derived(category !== 'cancellation');
-
-  function openLink(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 {#snippet fallback()}
@@ -160,12 +129,11 @@
     {/each}
   </ol>
   {#if failed && heading !== undefined}
-    <Alert
-      variant="danger"
-      class="weft-overview-tab__failure"
-      data-testid="run-step-failure"
-      {heading}
-    >
+    <Alert variant="danger" class="weft-overview-tab__failure" data-testid="run-step-failure">
+      <p class="ib-run-happened__failure-heading">
+        <TriangleAlert aria-hidden="true" size={20} />
+        <span>{heading}</span>
+      </p>
       <!-- Why it failed, as the Bureau stored it (COR-2533): the one reason in the block, with the
            stack behind a disclosure (rows 14t, 55b). The page's own words about the failure show
            only while the Bureau has no answer, or holds none. The step is named once, in the
@@ -181,58 +149,14 @@
       {#if retryKeeps !== undefined}
         <p class="weft-overview-tab__failure-explanation" data-run-retry-sentence>{retryKeeps}</p>
       {/if}
-      {#if retry !== undefined || (runAgain !== undefined && runAgain.blocked !== true) || (onOpenStep !== undefined && stepNumber !== undefined)}
+      {#if onOpenStep !== undefined && stepNumber !== undefined}
         <div class="ib-run-happened__actions" data-run-failure-actions>
-          {#if retry !== undefined && stepNumber !== undefined}
-            {@const retrying = retry}
-            <Button
-              variant="primary"
-              size="sm"
-              label={copy.inBlock.retry(stepNumber)}
-              title={retrying.gate?.title}
-              disabled={retrying.gate?.disabled === true}
-              loading={retrying.busy === true}
-              onclick={() => retrying.onRetry()}
-            >
-              {#snippet leadingIcon()}<RefreshCw aria-hidden="true" size={14} />{/snippet}
-            </Button>
-            {#if retryVersion !== undefined}
-              <span class="ib-run-happened__offset">{copy.inBlock.runsOn(retryVersion)}</span>
-            {/if}
-          {/if}
-          {#if runAgain !== undefined && runAgain.blocked !== true}
-            {@const again = runAgain}
-            {#if again.href !== undefined}
-              {@const path = again.href}
-              <Button
-                variant="secondary"
-                size="sm"
-                href={router.href(path)}
-                label={copy.inBlock.runAgain}
-                onclick={(event) => openLink(event, path)}
-              >
-                {#snippet leadingIcon()}<Play aria-hidden="true" size={14} />{/snippet}
-              </Button>
-            {:else}
-              <Button
-                variant="secondary"
-                size="sm"
-                label={copy.inBlock.runAgain}
-                loading={again.busy === true}
-                onclick={() => again.onRun?.()}
-              >
-                {#snippet leadingIcon()}<Play aria-hidden="true" size={14} />{/snippet}
-              </Button>
-            {/if}
-          {/if}
-          {#if onOpenStep !== undefined && stepNumber !== undefined}
-            <Button
-              variant="ghost-accent"
-              size="sm"
-              label={copy.inBlock.openStep(stepNumber)}
-              onclick={onOpenStep}
-            />
-          {/if}
+          <Button
+            variant="ghost-accent"
+            size="sm"
+            label={copy.inBlock.openStep(stepNumber)}
+            onclick={onOpenStep}
+          />
         </div>
       {/if}
     </Alert>

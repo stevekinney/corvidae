@@ -3,7 +3,7 @@
  * of a list the filters leave empty, and what a list that could not be read tells the person. Plain
  * functions (no rune, no component), so the page, its tests and the browser specs read one source.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 import { RUN_ATTENTION_COPY } from '../../../app/copy/run-attention.ts';
 import { TASK_COPY } from '../../../app/copy/tasks.ts';

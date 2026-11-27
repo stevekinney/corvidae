@@ -19,12 +19,96 @@ import { rewriteBureauAnswer } from './bureau-answer-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL, E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL });
 
 const SOURCE = 'shell-chrome.spec.ts';
 const REVIEWS = 'Reviews, 2 need you';
 const HEALTH = 'Health, 3 need attention';
+
+for (const scheme of ['light', 'dark'] as const) {
+  test.describe(`touch quick settings in ${scheme}`, () => {
+    test.use({ hasTouch: true, colorScheme: scheme });
+
+    for (const width of [320, 375]) {
+      test(`keeps the theme switch compact and usable at ${width}px`, async ({ page }) => {
+        await open(page, '/reviews', width, width === 320 ? 640 : 812, false);
+        expect(await page.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
+        await page.getByRole('banner').getByRole('button', { name: 'Quick settings' }).click();
+        const panel = page.getByRole('dialog', { name: 'Quick settings' });
+        const group = panel.getByRole('radiogroup', { name: 'Color theme' });
+        const names = ['Light', 'System', 'Dark'] as const;
+        const options = names.map((name) => group.getByRole('radio', { name }));
+        for (const option of options) await expect(option).toBeVisible();
+        await expect(panel.getByRole('link', { name: 'All settings' })).toBeVisible();
+        await expectNoSidewaysScroll(page, 'quick settings');
+        const panelSize = await panel.evaluate((element) => [
+          element.scrollWidth,
+          element.clientWidth,
+        ]);
+        expect(panelSize[0]).toBeLessThanOrEqual(panelSize[1] ?? 0);
+        const boxes = await readBoxes(page, {
+          track: group,
+          thumb: group.locator('.cinder-theme-switch__thumb'),
+          lightTarget: options[0]!,
+          systemTarget: options[1]!,
+          darkTarget: options[2]!,
+          light: group.getByRole('radio', { name: 'Light' }).locator('svg'),
+          system: group.getByRole('radio', { name: 'System' }).locator('svg'),
+          dark: group.getByRole('radio', { name: 'Dark' }).locator('svg'),
+        });
+        expect(boxes.track.height).toBeCloseTo(32, 0);
+        expect(boxes.thumb.height).toBeCloseTo(26, 0);
+        const paintInsets = await group.evaluate((element) => {
+          const styles = getComputedStyle(element, '::before');
+          return [styles.left, styles.right, styles.top, styles.bottom].map(Number.parseFloat);
+        });
+        expect(paintInsets).toEqual([14, 14, -1, -1]);
+        expect(boxes.track.width - paintInsets[0]! - paintInsets[1]! - 2).toBeCloseTo(108, 0);
+        expect(boxes.system.x - boxes.light.x).toBeLessThanOrEqual(2.5 * boxes.light.width);
+        expect(boxes.dark.x - boxes.system.x).toBeLessThanOrEqual(2.5 * boxes.system.width);
+        await captureForDesignReview(page, {
+          route: '/reviews',
+          state: 'quick settings touch open',
+          source: SOURCE,
+        });
+        const hits = [boxes.lightTarget, boxes.systemTarget, boxes.darkTarget];
+        for (const [index, option] of options.entries()) {
+          const hit = hits[index]!;
+          expect(hit.width).toBeCloseTo(44, 0);
+          for (const [x, y] of [
+            [0, 0],
+            [-21, -21],
+            [-21, 21],
+            [21, -21],
+            [21, 21],
+          ] as const) {
+            await options[(index + 1) % options.length]!.click();
+            await page.touchscreen.tap(hit.x + hit.width / 2 + x, hit.y + hit.height / 2 + y);
+            await expect(option).toBeChecked();
+            for (const other of options.filter((item) => item !== option))
+              await expect(other).not.toBeChecked();
+          }
+        }
+        const { left, right } = await readBoxes(page, {
+          left: group.getByRole('radio', { name: 'Light' }),
+          right: group.getByRole('radio', { name: 'System' }),
+        });
+        await page.touchscreen.tap(
+          (left.x + left.width + right.x) / 2,
+          left.y + left.height / 2 + 18,
+        );
+        await expect(group.getByRole('radio', { checked: true })).toHaveCount(1);
+        await options[0]!.focus();
+        await page.keyboard.press('ArrowRight');
+        await expect(options[1]!).toBeChecked();
+        await expect(options[1]!).toBeFocused();
+        await expect(options[1]!).toHaveAttribute('tabindex', '0');
+      });
+    }
+  });
+}
 
 const sidebar = (page: Page) => page.locator('aside.weft-shell-sidebar');
 const drawer = (page: Page) => page.locator('dialog.cinder-drawer[open]');
@@ -552,6 +636,37 @@ test.describe('at the limits', () => {
     expect(await widthOf(drawer(page).locator('.cinder-drawer__panel'))).toBeLessThanOrEqual(280);
     await captureForDesignReview(page, { route: '/', state: 'drawer open at 320', source: SOURCE });
   });
+
+  for (const width of [320, 375]) {
+    test(`the phone drawer reaches its last navigation item at ${width}px (05h)`, async ({
+      page,
+    }) => {
+      await open(page, '/', width, 640, false);
+      await page.getByRole('button', { name: 'Open navigation' }).click();
+      const panel = drawer(page);
+      await expect(panel).toBeVisible();
+      const links = panel.locator('a.cinder-side-navigation-item');
+      const last = links.last();
+      await expect(links).toHaveCount(13);
+      for (
+        let index = 0;
+        index < 16 && !(await last.evaluate((element) => element === document.activeElement));
+        index += 1
+      ) {
+        await page.keyboard.press('Tab');
+      }
+      await expect(last).toBeFocused();
+      await expect(last).toBeInViewport({ ratio: 1 });
+      await captureForDesignReview(page, {
+        route: '/',
+        state: 'phone drawer last navigation item',
+        source: SOURCE,
+        ready: async () => {
+          await last.scrollIntoViewIfNeeded();
+        },
+      });
+    });
+  }
 
   test('at 200% text nothing clips: the bar grows, its controls stay Button faces, the title keeps room (05i)', async ({
     page,

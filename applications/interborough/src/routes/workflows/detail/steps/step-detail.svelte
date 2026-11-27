@@ -11,6 +11,7 @@
   import type { Snippet } from 'svelte';
 
   import { RUN_STEPS_COPY } from '../../../../app/copy/runs.ts';
+  import { displayDocumentActivityInput } from '../../../../lib/run-diagnostic-display.ts';
   import { formatDuration } from '../../../../lib/format/index.ts';
   import LogLines from '../../runs/log-lines.svelte';
   import type { RunLogLine } from '../../runs/run-logs-data.ts';
@@ -20,6 +21,7 @@
 
   interface StepDetailProps {
     readonly entry: WorkflowTimelineEntry;
+    readonly documentWorkflowId?: string | undefined;
     readonly bar: WaterfallBar | undefined;
     /** Whether the run is still in this step; false for a `running` entry it has left. */
     readonly open: boolean;
@@ -29,8 +31,13 @@
     readonly actions?: Snippet | undefined;
   }
 
-  let { entry, bar, open, logs, actions }: StepDetailProps = $props();
+  let { entry, documentWorkflowId, bar, open, logs, actions }: StepDetailProps = $props();
 
+  const displayInput = $derived(
+    documentWorkflowId === undefined || entry.operationType !== 'activity'
+      ? entry.inputSummary
+      : displayDocumentActivityInput(entry.inputSummary, documentWorkflowId),
+  );
   const name = $derived(stepName(entry));
   const status = $derived(stepStatus(entry.status, open));
   const failed = $derived(entry.status === 'failed' || entry.status === 'timed-out');
@@ -66,12 +73,10 @@
 
   <div class={['ib-step-detail__fields', { 'ib-step-detail__fields--failed': failed }]}>
     {#if failed}
-      <!-- Timeline reads already mask engine inputs. Inspect exactly the summaries supplied by that
-           read in both views, with no additional payload fetch or heuristic redaction. -->
       <PayloadInspector
         bare
         label={RUN_STEPS_COPY.input}
-        value={entry.inputSummary}
+        value={displayInput}
         parse={parseStepSummary}
         redact={[]}
       />
@@ -92,7 +97,7 @@
     {:else}
       <section class="ib-step-detail__field" aria-label={RUN_STEPS_COPY.input}>
         <h4 class="ib-step-detail__label">{RUN_STEPS_COPY.input}</h4>
-        <pre class="ib-step-detail__value">{prettySummary(entry.inputSummary)}</pre>
+        <pre class="ib-step-detail__value">{prettySummary(displayInput)}</pre>
       </section>
       <section class="ib-step-detail__field" aria-label={RUN_STEPS_COPY.output}>
         <h4 class="ib-step-detail__label">{RUN_STEPS_COPY.output}</h4>

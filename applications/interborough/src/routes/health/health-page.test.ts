@@ -516,6 +516,47 @@ describe('more runs than one page holds', () => {
 });
 
 describe('Advanced', () => {
+  test('a non-storage attention alert opens its Alerts detail on the Health overview', async () => {
+    const view = open('/health', {
+      'bureau.health.attention': () => ({
+        items: [
+          {
+            kind: 'alert',
+            area: 'runs',
+            at: AT,
+            metric: 'workflow.failure_rate',
+            currentValue: 0.5,
+            threshold: 0.2,
+          },
+        ],
+        count: 1,
+        checks: [{ area: 'runs', count: 1 }],
+      }),
+    });
+    const advanced = await view.findByTestId('advanced-diagnostics');
+    expect(advanced.querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe(
+      'false',
+    );
+    const attention = await view.findByTestId('needs-attention');
+    const action = await within(attention).findByRole('link', { name: 'Open alerts' });
+    expect(action.getAttribute('href')).toBe('/health?advanced=alerts');
+    await fireEvent.click(action);
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/health');
+      expect(window.location.search).toBe('?advanced=alerts');
+      expect(advanced.querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe(
+        'true',
+      );
+    });
+    expect(advanced.querySelector('[data-section="metrics"]')).not.toBeNull();
+    expect(advanced.querySelector('[data-section="alerts"]')).not.toBeNull();
+    expect(advanced.querySelector('[data-section="checks"]')).not.toBeNull();
+    expect(
+      within(advanced).getByRole('link', { name: 'Close ›' }).getAttribute('aria-expanded'),
+    ).toBe('true');
+    expect(advanced.querySelector('[aria-label="Alerts detail"]')).not.toBeNull();
+  });
+
   test('is collapsed at the foot, and holds Metrics, Alerts and Checks only behind it', async () => {
     const view = open();
     const advanced = await view.findByTestId('advanced-diagnostics');
@@ -532,7 +573,7 @@ describe('Advanced', () => {
     ).toBe('advanced-diagnostics');
   });
 
-  test('is opened by an Open Diagnostics link, with three rows and a link on each', async () => {
+  test('the Overview deep link opens three rows with a link on each', async () => {
     const view = open('/health?advanced=open');
     await view.findByText('Open metrics ›');
     expect(view.getByText('Open alerts ›')).not.toBeNull();

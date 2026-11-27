@@ -30,7 +30,7 @@
  */
 
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { StorageSizeReportedEvent } from '@lostgradient/weft';
+import { StorageSizeReportedEvent, UpstreamHttpError } from '@lostgradient/weft';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -542,7 +542,7 @@ async function releaseNotesFails(context: SessionContext): Promise<void> {
       if (request.startsWith('Find the most recent release')) runtime.advance(1000);
       if (request.startsWith('Collect the changes merged')) {
         runtime.advance(2000);
-        throw new Error(RELEASE_NOTES_FAILURE);
+        throw new UpstreamHttpError({ source: 'github', status: 503 }, RELEASE_NOTES_FAILURE);
       }
     },
   };

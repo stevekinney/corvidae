@@ -10,7 +10,7 @@ import {
   schemaHoldsConcealedField,
   type ScheduleValue,
 } from '@lostgradient/cinder';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
 import {

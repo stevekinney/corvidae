@@ -12,8 +12,13 @@ import {
   type RunResult,
   toolNeedingApproval,
 } from '@lostgradient/operative';
-import type { JSONValue, WorkflowState } from '@lostgradient/weft';
-import { isJSONValue } from '@lostgradient/weft';
+import {
+  attachUpstreamFailure,
+  isJSONValue,
+  upstreamFailureOf,
+  type JSONValue,
+  type WorkflowState,
+} from '@lostgradient/weft';
 
 import { serializeUnknownError } from './serialization';
 import { type AgentStepResult, WorkflowAgentStepError } from './workflow-host';
@@ -45,15 +50,18 @@ function failed(
   agent: string,
   finishReason: string,
   error: string | undefined,
+  upstreamFailure?: unknown,
 ): WorkflowAgentStepError {
   const aborted = finishReason === 'aborted';
-  return new WorkflowAgentStepError(
+  const failure = new WorkflowAgentStepError(
     aborted ? 'agent-run-aborted' : 'agent-run-failed',
     agent,
     `Agent "${agent}" ${aborted ? 'was aborted' : 'failed'} (finish reason "${finishReason}")${
       error === undefined ? '' : `: ${error}`
     }`,
   );
+  attachUpstreamFailure(failure, upstreamFailure);
+  return failure;
 }
 
 function jsonOrNull(value: unknown): JSONValue | null {
@@ -86,6 +94,7 @@ export function agentStepResultFromRun(
       agent,
       finishReason,
       result.error === undefined ? undefined : serializeUnknownError(result.error),
+      upstreamFailureOf(result.error),
     );
   }
   const needing = toolNeedingApproval(result.steps.flatMap((step) => step.results));
@@ -114,7 +123,7 @@ export function agentStepResultFromState(
   }
   if (state.status === 'cancelled') throw failed(agent, 'aborted', state.error);
   if (state.status === 'failed' || state.status === 'timed-out') {
-    throw failed(agent, 'error', state.error ?? state.status);
+    throw failed(agent, 'error', state.error ?? state.status, state.upstreamFailure);
   }
   const summary = state.result;
   if (
@@ -134,9 +143,10 @@ export function agentStepResultFromState(
     finishReason: string;
     output?: unknown;
     toolNeedingApproval?: unknown;
+    upstreamFailure?: unknown;
   };
   if (recorded.finishReason === 'aborted' || isFailureFinishReason(recorded.finishReason)) {
-    throw failed(agent, recorded.finishReason, undefined);
+    throw failed(agent, recorded.finishReason, undefined, recorded.upstreamFailure);
   }
   // The same failure the live run raised, for a run a restart found finished (COR-1913).
   if (typeof recorded.toolNeedingApproval === 'string') {

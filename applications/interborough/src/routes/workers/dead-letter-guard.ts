@@ -8,7 +8,7 @@
  * way, and a retry started from a task's own ledger also names the attempt that was dead-lettered,
  * so the server refuses it if the task has been dead-lettered again since.
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 import { faultTreatment } from '../../lib/faults.ts';
 import type { TaskDiagnosticItem, TaskLedgerDetail } from './worker-catalog-types.ts';

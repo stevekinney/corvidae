@@ -1,8 +1,11 @@
 {
-  "name": "@lostgradient/bureau-client",
+  "name": "@lostgradient/bureau-sdk",
   "private": true,
   "type": "module",
   "exports": {
+    ".": "./src/client.ts",
+    "./fetch": "./src/bureau-generated/fetch-operation-client.generated.ts",
+    "./svelte": "./src/svelte.ts",
     "./reviews": "./src/reviews/client.ts",
     "./reviews/svelte": "./src/reviews/svelte.ts",
     "./reviews/ui": "./src/reviews/ui.ts"

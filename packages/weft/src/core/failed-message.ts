@@ -7,6 +7,7 @@
 import { errorCodeOf } from './error-code-of.ts';
 import { classifyErrorAsFailureCategory } from './failure-categories.ts';
 import type { FailureCategory, WorkerOutboundMessage } from './types.ts';
+import { upstreamFailureOf } from './upstream-http-failure.ts';
 
 export function failedMessageForError(
   workflowId: string,
@@ -26,5 +27,7 @@ export function failedMessageForError(
   }
   const errorCode = errorCodeOf(error);
   if (errorCode !== undefined) failedMessage.errorCode = errorCode;
+  const upstreamFailure = upstreamFailureOf(error);
+  if (upstreamFailure !== undefined) failedMessage.upstreamFailure = upstreamFailure;
   return failedMessage;
 }

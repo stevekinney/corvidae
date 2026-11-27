@@ -10,12 +10,12 @@
  *
  * @module
  */
+import type { WorkerStartOverridePreview } from '@lostgradient/weft';
 import {
   HttpClientError,
   UPGRADE_REFUSAL_REASON_PREFIX,
   WORKER_CONFLICT_REASONS,
-  type WorkerStartOverridePreview,
-} from '@lostgradient/weft';
+} from '@lostgradient/weft/client';
 
 import { faultTreatment } from '../../../lib/faults.ts';
 

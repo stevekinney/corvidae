@@ -15,6 +15,7 @@
     type DescriptionListItem,
   } from '@lostgradient/cinder';
   import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
+  import { tick } from 'svelte';
 
   import { COST_COPY } from '../../../app/copy/cost.ts';
   import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy/runs.ts';
@@ -185,6 +186,14 @@
   // The run's tags, as Cinder's tag list says them: a person's own, and the system's counted.
   const tagsFact = $derived(runTagsFact(workflow?.tags));
   let editingTags = $state(false);
+  let rail = $state<HTMLElement>();
+  async function closeTags(): Promise<void> {
+    editingTags = false;
+    await tick();
+    [...(rail?.querySelectorAll('button') ?? [])]
+      .find((button) => button.textContent?.trim() === RUN_PAGE_COPY.addTag)
+      ?.focus();
+  }
   const showTags = $derived(
     engine !== undefined && workflow !== undefined && scheduleRules.tags && !editingTags,
   );
@@ -414,13 +423,13 @@
 
 <!-- The rail is a landmark named as its first Section is titled; each block in it is a Cinder
      Section, spaced as the page's main column spaces its blocks. -->
-<aside class="ib-run__rail" aria-label={RUN_PAGE_COPY.detailsHeading}>
+<aside bind:this={rail} class="ib-run__rail" aria-label={RUN_PAGE_COPY.detailsHeading}>
   <Section title={RUN_PAGE_COPY.detailsHeading} data-section="details">
     <Stack gap="var(--cinder-space-3)">
       <DescriptionList {items} variant="default" />
       {#if engine !== undefined && workflow !== undefined && editingTags && scheduleRules.tags}
         <!-- Add a tag opens the editor in place of the Tags row. -->
-        <RunTags client={engine.client} {workflow} {tagGate} />
+        <RunTags client={engine.client} {workflow} {tagGate} onClose={() => void closeTags()} />
       {/if}
     </Stack>
   </Section>

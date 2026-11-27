@@ -26,7 +26,7 @@
  * `currentGeneration` whenever the refusal reason produced them
  * (`fault-to-json-rpc.ts`'s `dataForConflict`).
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 
 /** Mirrors `WorkflowCompatibilityReason` (`@lostgradient/weft`) — the five closed-union literals, in the same fixed evaluation order. */
 export const KNOWN_COMPATIBILITY_REASONS = [

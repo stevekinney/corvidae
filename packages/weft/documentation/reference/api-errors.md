@@ -220,9 +220,12 @@ These classes are exported from the package root and extend `WeftError`, but the
 
 These classes are exported from the package root but extend plain `Error`, so `isWeftError`, `isWeftErrorLike`, `isWeftErrorCode`, and `isWeftFault` all reject them. Catch them with `instanceof`. The storage protocol's `StorageBatchOperationLimitExceededError` is exported by `@lostgradient/storage`, not by Weft; it too extends plain `Error`, with its own `code` property. `CatalogClientError`, which the typed catalog client throws, is exported by `@lostgradient/backchannel/client`, not by Weft. The three `Weft…Warning` classes are reported as process warnings rather than thrown.
 
+`UpstreamHttpError` records a source of `github` or `other` and an integer HTTP status from 400 through 599. Its constructor rejects invalid facts. The message is separate from those facts.
+
 | Class                                   | Defined in                                 |
 | --------------------------------------- | ------------------------------------------ |
 | `ConnectionConfigurationError`          | `connection.ts`                            |
+| `UpstreamHttpError`                     | `core/upstream-http-failure.ts`            |
 | `WeftWorkflowCheckpointConflictWarning` | `core/engine/checkpoint-conflict-error.ts` |
 | `WeftWorkflowClaimLostWarning`          | `core/engine/lease-deposition.ts`          |
 | `WeftWorkflowWakeDiscardedWarning`      | `core/engine/lease-deposition.ts`          |

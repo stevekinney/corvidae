@@ -34,7 +34,8 @@
    */
   import { Badge, ConfirmDialog, Progress } from '@lostgradient/cinder';
   import { onMount, tick, type Snippet } from 'svelte';
-  import { HttpClientError, type BulkOperationDryRunResult } from '@lostgradient/weft';
+  import { HttpClientError } from '@lostgradient/weft/client';
+  import type { BulkOperationDryRunResult } from '@lostgradient/weft';
 
   import { BULK_DIALOG_COPY } from '../../../app/copy/bulk-dialog.ts';
   import { faultTreatment } from '../../../lib/faults.ts';

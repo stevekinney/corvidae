@@ -1,5 +1,5 @@
 import { createBureauCatalogSnapshot, HOST_PANEL_OPERATIONS } from '@lostgradient/bureau';
-import { createReviewsClientWithTransport } from '@lostgradient/bureau-client/reviews';
+import { createReviewsClientWithTransport } from '@lostgradient/bureau-sdk/reviews';
 import { createPluginTestHost } from '@lostgradient/bureau/testing';
 import { pluginContract } from '@lostgradient/interborough-plugin/testing';
 import { describe, expect, it } from 'bun:test';

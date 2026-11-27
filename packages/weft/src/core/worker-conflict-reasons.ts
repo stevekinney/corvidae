@@ -5,7 +5,7 @@
  * A client branches on these, so they are a wire contract. They live here, once, so the
  * operations that produce them and the console that reads them cannot drift apart.
  *
- * @module server/operations/worker-conflict-reasons
+ * @module core/worker-conflict-reasons
  */
 
 export const WORKER_CONFLICT_REASONS = {

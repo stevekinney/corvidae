@@ -28,7 +28,7 @@
 
   import { Collapsible } from '@lostgradient/cinder';
 
-  import { HttpClientError } from '@lostgradient/weft';
+  import { HttpClientError } from '@lostgradient/weft/client';
 
   import FaultErrorState from './fault-error-state.svelte';
 

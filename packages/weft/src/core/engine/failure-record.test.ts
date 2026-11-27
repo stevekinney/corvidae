@@ -124,6 +124,14 @@ describe('sanitizeDecodedFailureRecord', () => {
       expect(Object.hasOwn(decoded, 'failedStep')).toBe(false);
     }
   });
+
+  it('drops malformed upstream facts and keeps the failure record usable', () => {
+    const decoded = state({
+      upstreamFailure: { source: 'github', status: 503, message: 'private' },
+    });
+    sanitizeDecodedFailureRecord(decoded);
+    expect(decoded.upstreamFailure).toBeUndefined();
+  });
 });
 
 describe('retrying activity in the retry-state slot', () => {

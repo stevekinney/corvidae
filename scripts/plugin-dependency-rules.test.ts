@@ -10,7 +10,7 @@ const context: PluginDependencyContext = {
   workspaceNames: new Set([
     '@lostgradient/interborough-plugin',
     '@lostgradient/bureau',
-    '@lostgradient/bureau-client',
+    '@lostgradient/bureau-sdk',
     '@lostgradient/operative',
     '@lostgradient/operative-anthropic',
     '@lostgradient/weft',
@@ -34,7 +34,7 @@ const allowed: PluginManifest = {
   name: '@lostgradient/plugin-example',
   dependencies: {
     '@lostgradient/interborough-plugin': 'workspace:*',
-    '@lostgradient/bureau-client': 'workspace:*',
+    '@lostgradient/bureau-sdk': 'workspace:*',
     '@lostgradient/operative': 'workspace:*',
     '@lostgradient/operative-anthropic': 'workspace:*',
     '@lostgradient/weft': 'workspace:*',

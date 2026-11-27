@@ -7,7 +7,7 @@
  * the stream.
  */
 import type { TaskOriginKind } from '@lostgradient/bureau';
-import { HttpClientError } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft/client';
 import { z } from 'zod';
 
 import { bureauClient, type BureauEvent, type BureauOutput } from './bureau-api.ts';
