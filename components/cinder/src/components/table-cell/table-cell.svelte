@@ -56,8 +56,8 @@
     const hasContent = children !== undefined || detail !== undefined;
     const header = as === 'th';
     const candidate = fit && (header || (!controls && stack === undefined && hasContent));
-    const title = candidate && (rowColumns?.claimTitle(header ? 'header' : 'cell') ?? false);
-    return { isTitle: title, isEmpty: fit && !title && !hasContent };
+    const holdsTitle = candidate && (rowColumns?.claimTitle(header ? 'header' : 'cell') ?? false);
+    return { isTitle: holdsTitle, isEmpty: fit && !holdsTitle && !hasContent };
   });
   const placeColumn: Attachment<HTMLElement> = (cell) => {
     void rowColumns?.version;

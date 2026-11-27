@@ -16,10 +16,11 @@
   overflow-x: auto;
 }
 
+/* A 320px column and a 900px one, in the spacing scale's units. */
 .first-paint-narrow {
-  flex: 0 0 20rem;
+  flex: 0 0 calc(var(--cinder-space-4) * 20);
 }
 
 .first-paint-wide {
-  flex: 0 0 56.25rem;
+  flex: 0 0 calc(var(--cinder-space-4) * 56.25);
 }

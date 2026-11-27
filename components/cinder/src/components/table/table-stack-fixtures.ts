@@ -5,8 +5,25 @@
  */
 import { parse, type Rule } from 'postcss';
 
+import { stackStyle } from './table-stack-rules.ts';
+
+/** `stackStyle`'s rules without its `@layer cinder.components` wrapper, which `table.css` has. */
+function unlayered(css: string): string {
+  const prefix = '@layer cinder.components { ';
+  if (!css.startsWith(prefix) || !css.endsWith(' }')) throw new Error('unexpected stack style');
+  return css.slice(prefix.length, -2);
+}
+
+/**
+ * The stacked rules `table.css` holds, for its test and `scripts/generate-table-stack-css.ts`: the
+ * default lengths, and an explicit 640px (DataTable's default).
+ */
+export function stylesheetStackRules(): string {
+  return `${unlayered(stackStyle())}\n${unlayered(stackStyle('640px'))}`;
+}
+
 /** Collapses whitespace the way formatting may vary it, so two spellings of a selector compare. */
-export function normalizeSelector(selector: string): string {
+function normalizeSelector(selector: string): string {
   return selector
     .replaceAll('"', "'")
     .replace(/\s+/g, ' ')

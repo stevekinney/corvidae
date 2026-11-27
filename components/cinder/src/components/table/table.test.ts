@@ -4,7 +4,7 @@ import { tick } from 'svelte';
 
 import { stripCinderComponentsLayer } from '@lostgradient/component-tooling/test/css.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
-import { stackDeclarations } from './table-stack.test-support.ts';
+import { stackDeclarations } from './table-stack-fixtures.ts';
 import { lengthToPixels } from './table.length.ts';
 import type { TableScrollContainerProps } from './table.types.ts';
 

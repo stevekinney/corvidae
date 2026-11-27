@@ -22,7 +22,7 @@
  */
 
 /** A rule of a stacked form: selector templates, declarations, and an optional media condition. */
-export type StackRule = {
+type StackRule = {
   readonly selectors: readonly string[];
   readonly declarations: string;
   readonly media?: string;
@@ -42,7 +42,7 @@ function bodyHas(cell: string): string {
  * stays in the accessibility tree, and each body row is a card. Declared in this order after the
  * density, selection, alignment and sticky-header rules, so they win at equal specificity.
  */
-export const STACKED_RULES: readonly StackRule[] = [
+const STACKED_RULES: readonly StackRule[] = [
   { selectors: ['&'], declarations: 'display: block; position: relative;' },
   { selectors: ['.cinder-table-scroll > &'], declarations: 'flex: 1 1 auto; min-inline-size: 0;' },
   { selectors: ['& > .cinder-table__body'], declarations: 'display: block;' },
@@ -148,7 +148,7 @@ export const STACKED_RULES: readonly StackRule[] = [
  * set for the same cells. The rows are not cards inside a box: the scroll box and the table draw no
  * frame, and one hairline divides the rows.
  */
-export const CARD_RULES: readonly StackRule[] = [
+const CARD_RULES: readonly StackRule[] = [
   // The rows start on the content's leading edge (COR-2760): the scroll box reaches one gutter past
   // that edge and pads it back, so its content edge stays on the page's and the row tint, which
   // reaches into that gutter, stays inside the box's clip. `inline-size: auto` lets the negative
@@ -357,8 +357,8 @@ function expand(rules: readonly StackRule[], table: string, scroll: string): str
     const selector = rule.selectors
       .map((template) => template.replaceAll('@scroll', scroll).replaceAll('&', table))
       .join(', ');
-    const block = `${selector} { ${rule.declarations} }`;
-    return rule.media === undefined ? block : `@media ${rule.media} { ${block} }`;
+    const text = `${selector} { ${rule.declarations} }`;
+    return rule.media === undefined ? text : `@media ${rule.media} { ${text} }`;
   });
 }
 
@@ -375,8 +375,8 @@ function block(length: string, rules: readonly string[]): string {
 }
 
 /** The default lengths, as `table.css` and Table's documentation give them. */
-export const CARD_STACK_BELOW = '26rem';
-export const CONTROL_STACK_BELOW = '640px';
+const CARD_STACK_BELOW = '26rem';
+const CONTROL_STACK_BELOW = '640px';
 
 /**
  * Every stacking rule for one scope. For the default scope the control layout stacks below 640px
@@ -396,14 +396,6 @@ function scopeRules(scope: StackScope): string[] {
   ];
 }
 
-/** The rules `table.css` holds: the default lengths, and an explicit 640px (DataTable's default). */
-export function stylesheetStackRules(): string {
-  return [
-    ...scopeRules({ kind: 'default' }),
-    ...scopeRules({ kind: 'length', length: CONTROL_STACK_BELOW }),
-  ].join('\n');
-}
-
 /** Whether `table.css` already holds the rules for `stackBelow`, so no `<style>` is needed. */
 export function stylesheetCoversLength(length: string): boolean {
   return length === CONTROL_STACK_BELOW;
@@ -411,8 +403,11 @@ export function stylesheetCoversLength(length: string): boolean {
 
 /**
  * The stacking rules for tables whose `stackBelow` is `length`, a length `readViewportBreakpoint`
- * has validated, in Cinder's component layer so they cascade as `table.css` does.
+ * has validated, in Cinder's component layer so they cascade as `table.css` does. With no length,
+ * the rules for a table with no `stackBelow` (640px for the control layout, 26rem for flat rows),
+ * which `table.css` holds with those for 640px (`scripts/generate-table-stack-css.ts`).
  */
-export function stackStyle(length: string): string {
-  return `@layer cinder.components { ${scopeRules({ kind: 'length', length }).join(' ')} }`;
+export function stackStyle(length?: string): string {
+  const scope: StackScope = length === undefined ? { kind: 'default' } : { kind: 'length', length };
+  return `@layer cinder.components { ${scopeRules(scope).join(' ')} }`;
 }

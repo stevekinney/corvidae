@@ -9,13 +9,12 @@ import { declarationsFor } from '@lostgradient/component-tooling/test/css.ts';
 import { parse } from 'postcss';
 
 import {
-  CARD_STACK_BELOW,
-  CONTROL_STACK_BELOW,
-  stackStyle,
-  stylesheetCoversLength,
+  containerRules,
+  DEFAULT_QUERIES,
+  stackDeclarations,
   stylesheetStackRules,
-} from './table-stack-rules.ts';
-import { containerRules, DEFAULT_QUERIES, stackDeclarations } from './table-stack.test-support.ts';
+} from './table-stack-fixtures.ts';
+import { stackStyle, stylesheetCoversLength } from './table-stack-rules.ts';
 
 const tableCss = await Bun.file(new URL('./table.css', import.meta.url)).text();
 const dataTableCss = await Bun.file(
@@ -48,8 +47,6 @@ describe('Table stacked forms in CSS', () => {
   });
 
   test('the defaults stay 26rem for flat rows and 640px for the control layout', () => {
-    expect(CARD_STACK_BELOW).toBe('26rem');
-    expect(CONTROL_STACK_BELOW).toBe('640px');
     const queries = new Set(containerRules(tableCss).map(([query]) => query));
     expect(queries).toEqual(new Set([DEFAULT_QUERIES.card, DEFAULT_QUERIES.control]));
     // The card form hides the header and draws flat rows; the control layout stacks the controls.

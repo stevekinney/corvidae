@@ -38,6 +38,7 @@
     "test:coverage": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test.ts --conditions browser --conditions svelte --parallel=4 --coverage --coverage-reporter=text --coverage-reporter=lcov --path-ignore-patterns='**/*.slow.test.ts' src scripts",
     "tokens:check": "bun scripts/tokens/validate-corpus.ts && bun scripts/tokens/generate-artifacts.ts --check",
     "tokens:generate": "bun scripts/tokens/generate-artifacts.ts",
+    "table-stack:generate": "bun scripts/generate-table-stack-css.ts && prettier --write src/components/table/table.css",
     "design-system:build": "bun scripts/design-system/build.ts",
     "design-system:url": "bun scripts/design-system/url.ts",
     "check:prop-conventions": "bun ../../internal/component-tooling/scripts/check-prop-conventions.ts src/components",
