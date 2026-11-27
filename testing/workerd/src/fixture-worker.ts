@@ -20,6 +20,10 @@ type Environment = {
       first<T>(): Promise<T | null>;
     };
   };
+  BUCKET: {
+    put(key: string, value: string): Promise<unknown>;
+    get(key: string): Promise<{ text(): Promise<string> } | null>;
+  };
 };
 
 const context = new AsyncLocalStorage<string>();
@@ -47,6 +51,10 @@ export default {
         value: string;
       }>();
       return new Response(row?.value);
+    }
+    if (url.pathname === '/r2') {
+      await environment.BUCKET.put('fixture', 'stored');
+      return new Response(await (await environment.BUCKET.get('fixture'))?.text());
     }
     if (url.pathname === '/async-local-storage') {
       return context.run('carried', async () => {

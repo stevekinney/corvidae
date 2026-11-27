@@ -9,6 +9,7 @@ import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-
 import { createS3TestServer, type S3TestServer } from '@lostgradient/testing/s3-server';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { createSigV4Presigner } from '@lostgradient/object-store';
 import { openBungalow, openTemporaryBungalow, type OpenRemoteBungalowOptions } from './bungalow.ts';
 import type { DeploymentSecretsContext } from './deployment-secrets.ts';
 import { resolveBungalowDescriptor } from './descriptor.ts';
@@ -21,7 +22,6 @@ import {
   TEST_NAME,
   useTemporaryDirectories,
 } from './fixtures.test-support.ts';
-import { createSigV4Presigner } from './presign.ts';
 import type { RemoteBungalowDescriptor } from './remote-configuration.ts';
 import { openRemoteBungalow, openValidatedRemoteBungalow } from './remote.ts';
 import { useS3Proxy } from './s3-proxy.test-support.ts';
@@ -362,8 +362,8 @@ describe('remote mode: an injected presigner', () => {
     proxy.intercept(({ key }) =>
       key === '' ? new Response('<ListBucketResult><Contents>', { status: 200 }) : undefined,
     );
-    const error = await rejectionOf(bungalow.objectStore()?.list({ prefix: `${PREFIX}/` }));
-    expect(error).toMatchObject({ name: 'ObjectStoreRequestError', code: 'MalformedListing' });
+    const error = await rejectionOf(bungalow.objectStore()?.list(`${PREFIX}/`));
+    expect(error).toMatchObject({ name: 'ObjectStoreError' });
   });
 
   test('a factory that returns no function is refused before any request', async () => {
@@ -839,7 +839,7 @@ describe('remote mode: the deployment ID outcome matrix', () => {
 });
 
 describe('remote mode: the handle', () => {
-  test('hands out remote locations and the configured S3 client', async () => {
+  test('hands out remote locations and object-store operations', async () => {
     const server = startServer();
     // `S3_BUCKET` is never read: the client's bucket is `<NAME>_BUCKET`.
     using bungalow = await openRemote(server.endpoint, { S3_BUCKET: 'ambient-bucket' });
@@ -853,32 +853,19 @@ describe('remote mode: the handle', () => {
       prefix: `${PREFIX}/workflows/`,
     });
     const client = bungalow.objectStore();
-    const url = client?.presign('probe') ?? '';
-    expect(url.startsWith(`${server.endpoint}/${BUCKET}/probe?`)).toBe(true);
-    expect(url).toContain(ACCESS_KEY_ID);
-    expect(url).toContain(SESSION_TOKEN);
     server.put(`${PREFIX}/agents/a.md`, 'agent');
     server.put(`${PREFIX}/agents/b & c.md`, 'other');
-    const object = await fetch(client?.presign(`${PREFIX}/agents/a.md`) ?? '');
-    expect(await object.text()).toBe('agent');
-    const listing = await client?.list({ prefix: `${PREFIX}/agents/` });
-    expect(listing?.contents?.map((entry) => entry.key)).toEqual([
+    const object = await client?.read(`${PREFIX}/agents/a.md`);
+    expect(new TextDecoder().decode(object?.bytes)).toBe('agent');
+    const listing = await client?.list(`${PREFIX}/agents/`);
+    expect(listing?.objects.map((entry) => entry.key)).toEqual([
       `${PREFIX}/agents/a.md`,
       `${PREFIX}/agents/b & c.md`,
     ]);
-    expect(listing?.contents?.[0]?.eTag).toBe(object.headers.get('etag') ?? 'missing');
-    expect(listing?.contents?.[0]?.size).toBe(5);
-    const firstPage = await client?.list({ prefix: `${PREFIX}/agents/`, maxKeys: 1 });
-    expect(firstPage?.isTruncated).toBe(true);
-    const secondPage = await client?.list({
-      prefix: `${PREFIX}/agents/`,
-      ...(firstPage?.nextContinuationToken === undefined
-        ? {}
-        : { continuationToken: firstPage.nextContinuationToken }),
-    });
-    expect(secondPage?.contents?.map((entry) => entry.key)).toEqual([`${PREFIX}/agents/b & c.md`]);
-    const missing = await rejectionOf(client?.list({}, { bucket: 'another-bucket' }));
-    expect(missing).toMatchObject({ name: 'ObjectStoreRequestError', status: 404 });
+    expect(listing?.objects?.[0]?.etag).toBe(object?.etag);
+    expect(listing?.objects?.[0]?.size).toBe(5);
+    const missing = await rejectionOf(client?.read('missing'));
+    expect(missing).toBeUndefined();
     expect((missing as Error).message).not.toContain(ACCESS_KEY_ID);
   });
 

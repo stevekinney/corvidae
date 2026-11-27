@@ -29,8 +29,8 @@ export type {
   ListedObject,
   ListedPage,
   ObjectLocation,
-  ObjectStoreClient,
   ObjectStoreOperations,
+  S3ObjectStoreOperations,
   ObjectWriteCondition,
 } from './object-operations';
 export type { ObjectSourceOptions } from './object-source';

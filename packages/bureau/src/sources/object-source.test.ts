@@ -5,6 +5,11 @@
  * the in-process S3 server in `@lostgradient/testing`.
  */
 import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
+import {
+  createS3ObjectOperations,
+  createSigV4Presigner,
+  type S3ObjectStoreOperations,
+} from '@lostgradient/object-store';
 import { createS3TestServer, type S3TestServer } from '@lostgradient/testing/s3-server';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
@@ -20,7 +25,6 @@ import {
   SourceConflictError,
 } from './definition-source';
 import * as sources from './index';
-import { createS3ObjectOperations, type ObjectStoreOperations } from './object-operations';
 import { workflowObjectSource } from './workflow-object-source';
 
 const encoder = new TextEncoder();
@@ -37,7 +41,6 @@ interface Calls {
 
 interface Setup {
   readonly server: S3TestServer;
-  readonly client: Bun.S3Client;
   readonly runtime: ManualRuntimeServices;
   readonly calls: Calls;
   readonly diagnostics: string[];
@@ -48,9 +51,9 @@ interface Setup {
     remove?: ((key: string) => void | Promise<void>) | undefined;
   };
   /** The unrecorded operations over the same server. */
-  readonly real: ObjectStoreOperations;
+  readonly real: S3ObjectStoreOperations;
   /** Make the operations a source built from `overrides` uses. */
-  make(overrides?: Partial<ObjectStoreOperations>): DefinitionSource;
+  make(overrides?: Partial<S3ObjectStoreOperations>): DefinitionSource;
 }
 
 const stops: Array<() => void | Promise<void>> = [];
@@ -61,13 +64,16 @@ afterEach(async () => {
 function setup(options: { watch?: boolean; pollIntervalMilliseconds?: number } = {}): Setup {
   const server = createS3TestServer();
   stops.push(() => server.stop());
-  const client = new Bun.S3Client(server.clientOptions());
   const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
   const calls: Calls = { lists: 0, reads: [], puts: 0, removes: 0 };
   const diagnostics: string[] = [];
-  const real = createS3ObjectOperations(client, server.bucket, 'text/plain');
+  const real = createS3ObjectOperations({
+    presigner: createSigV4Presigner(server.clientOptions()),
+    bucket: server.bucket,
+    contentType: 'text/plain',
+  });
   const before: Setup['before'] = {};
-  const recorded: ObjectStoreOperations = {
+  const recorded: S3ObjectStoreOperations = {
     list: (prefix, token) => {
       calls.lists += 1;
       return real.list(prefix, token);
@@ -87,11 +93,10 @@ function setup(options: { watch?: boolean; pollIntervalMilliseconds?: number } =
       return real.remove(key, etag);
     },
   };
-  function make(overrides: Partial<ObjectStoreOperations> = {}): DefinitionSource {
+  function make(overrides: Partial<S3ObjectStoreOperations> = {}): DefinitionSource {
     return agentObjectSource(
       { bucket: server.bucket, prefix: PREFIX },
       {
-        client,
         operations: { ...recorded, ...overrides },
         runtime,
         pollIntervalMilliseconds: options.pollIntervalMilliseconds ?? POLL,
@@ -102,7 +107,7 @@ function setup(options: { watch?: boolean; pollIntervalMilliseconds?: number } =
       },
     );
   }
-  return { server, client, runtime, calls, diagnostics, source: make(), before, real, make };
+  return { server, runtime, calls, diagnostics, source: make(), before, real, make };
 }
 
 /** The identifiers `source` holds now, sorted. */

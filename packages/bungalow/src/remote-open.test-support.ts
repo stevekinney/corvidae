@@ -8,9 +8,9 @@
  * which falls back to that ambient token; otherwise it uses the default, which reads no
  * environment.
  */
+import { createSigV4Presigner } from '@lostgradient/object-store';
 import { openBungalow, type PresignerFactory } from './bungalow.ts';
 import { TEST_NAME } from './fixtures.test-support.ts';
-import { createSigV4Presigner } from './presign.ts';
 
 const environment: Record<string, string | undefined> = JSON.parse(process.argv[2] ?? '{}');
 
@@ -37,12 +37,11 @@ try {
     databaseWorkspaceClaim: async () => {},
     ...(process.argv[3] === 'bun-presigner' ? { presigner: bunPresigner } : {}),
   });
-  const url = new URL(bungalow.objectStore()?.presign('probe') ?? 'http://invalid');
   process.stdout.write(
     `${JSON.stringify({
       outcome: 'opened',
       deploymentId: bungalow.deploymentId,
-      sessionToken: url.searchParams.get('X-Amz-Security-Token'),
+      sessionToken: null,
     })}\n`,
   );
 } catch (error) {

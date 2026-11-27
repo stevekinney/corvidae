@@ -2,6 +2,7 @@ import { mkdtempSync, readdirSync, rmSync, unlinkSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import type { ObjectPresigner } from '@lostgradient/object-store';
 import type {
   ConfigurationSnapshot,
   ConfigurationWriteCapability,
@@ -35,7 +36,6 @@ import {
 } from './errors.ts';
 import { defaultAcquireLock, type RootLock } from './lock.ts';
 import type { BungalowObjectStore } from './object-store.ts';
-import type { ObjectPresigner } from './presign.ts';
 import { resolveRemoteDescriptor, type RemoteBungalowDescriptor } from './remote-configuration.ts';
 import { openRemoteBungalow, requireDatabaseWorkspaceClaim } from './remote.ts';
 import {
