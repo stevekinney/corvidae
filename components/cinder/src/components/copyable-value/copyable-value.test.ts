@@ -81,6 +81,18 @@ function partsOf(container: HTMLElement): string[][] {
 }
 
 describe('CopyableValue', () => {
+  test('reserves the complete mouse and touch target within the final value stretch', () => {
+    expect(css).toMatch(
+      /\.cinder-copyable-value__control\s*\{[^}]*inline-size:\s*1\.5rem;[^}]*min-block-size:\s*1\.5rem;/s,
+    );
+    expect(css).toMatch(
+      /\.cinder-copyable-value__control \.cinder-copy-button\s*\{[^}]*inline-size:\s*100%;[^}]*block-size:\s*100%;/s,
+    );
+    expect(css).toMatch(
+      /@media \(any-pointer: coarse\)\s*\{\s*\.cinder-copyable-value__control\s*\{[^}]*inline-size:\s*var\(--cinder-touch-target-min\);[^}]*min-block-size:\s*var\(--cinder-touch-target-min\);/s,
+    );
+  });
+
   test('shows the value whole, though the last character is set apart', () => {
     const { container } = render(CopyableValue, { props: { value: ADDRESS } });
     expect(shown(container)).toBe(ADDRESS);

@@ -14,9 +14,11 @@
  * with the sample world's clock.
  */
 import type { APIRequestContext, Page, Route } from '@playwright/test';
+import { dirname } from 'node:path';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { formatBytes } from '../../src/lib/format/index.ts';
+import type { HostPaths } from '../../src/lib/host-paths.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -363,13 +365,22 @@ test.describe('Health › Storage on the sample world', () => {
 
   test('opens the storage details from the line, with its chevron turned up, and lists five facts', async ({
     page,
+    context,
+    request,
     checkA11y,
   }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const paths = await request.get('/host/paths');
+    expect(paths.ok()).toBe(true);
+    const { database } = (await paths.json()) as HostPaths;
+    if (database.kind !== 'sqlite') throw new Error('The Storage showcase must use SQLite.');
+    const expectedLocation = dirname(database.path);
     await openStorage(page);
     const main = page.locator('main');
     const trigger = main.getByRole('button', { name: 'Storage details' });
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-    await trigger.click();
+    await trigger.focus();
+    await page.keyboard.press('Enter');
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
     const details = page.getByTestId('storage-details');
     // The popover is named for the button that opened it; the body does not say it again.
@@ -398,6 +409,8 @@ test.describe('Health › Storage on the sample world', () => {
     await expect(details.locator('dd').nth(2)).toHaveText('1.6 GB');
     await expect(details.locator('dd').nth(3)).toHaveText(/^[\d,]+\s*$/);
     await expect(details.locator('dd').nth(4)).toHaveText('Per key; managed keys are locked');
+    const location = details.getByTestId('storage-location');
+    await expect(location).toHaveText(expectedLocation, { useInnerText: true });
     await expect(details).toContainText('Storage is set up in Settings › Data and retention.');
     await expect(
       details.getByRole('link', { name: 'Settings › Data and retention' }),
@@ -412,6 +425,12 @@ test.describe('Health › Storage on the sample world', () => {
     await checkA11y('health storage details popover');
     await page.keyboard.press('Escape');
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    await trigger.press('Enter');
+    await location.getByRole('button', { name: 'Copy location', exact: true }).press('Enter');
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe(expectedLocation);
   });
 
   test('Range reads from one key to another, both included, over every group, and says when the end comes first', async ({
