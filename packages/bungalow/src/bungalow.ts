@@ -117,9 +117,8 @@ export type Bungalow = {
    */
   content(name: string): ContentLocation;
   /**
-   * The object-store client remote mode signs its requests with, or `undefined` locally: presigned
-   * URLs and `ListObjectsV2` for the home's bucket, over `fetch`. It has the `presign` and `list`
-   * members of `Bun.S3Client`, so code written against those accepts it.
+   * The shared object-store operations in remote mode, or `undefined` locally. They list, read,
+   * and conditionally put objects; S3-specific conditional removal is intentionally not public.
    */
   objectStore(): BungalowObjectStore | undefined;
   /** The backend's write capability, independent of mode and caller permissions. */
