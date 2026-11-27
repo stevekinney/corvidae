@@ -1,7 +1,7 @@
 {
   "issue": "COR-2676_COR-2757",
   "branch": "chef/process-lease",
-  "checkedAt": "a9dc2b7650cdb74d8cd0a2e4b37a06df30830eac",
+  "checkedAt": "e6e9e7968dcd3398fc096ec1799de7e48baf4791",
   "briefVersion": "05fea83645a3",
   "status": "READY",
   "criteria": [
@@ -33,7 +33,7 @@
     {
       "id": "COR-2757 AC4",
       "status": "met-on-branch",
-      "evidence": "Root scheduler tests preserved: run-exclusively, host-slots, host-sessions, bun-test-pool, host-lock-reclaim, merge-gate and ensure-cinder-owned suites pass in the focused and test:self:slow runs with imports repointed only. Checkout verification: the focused checks and the two slow lanes above. Source-absent verification: the archive probe above and build-release's relocated host. Tested archive revision: sourceSha a9dc2b7650cdb74d8cd0a2e4b37a06df30830eac, tarball sha256 f8c58f1c7c1ef5a67fa1a6bed7f811fd037f7a9429975192a9b59ae2c045c2de. Not run here: bun scripts/test-installed-release.ts --archive, which launches Chromium; its command is in the handoff."
+      "evidence": "Root scheduler tests preserved: run-exclusively, host-slots, host-sessions, bun-test-pool, host-lock-reclaim, merge-gate and ensure-cinder-owned suites pass in the focused and test:self:slow runs with imports repointed only. Checkout verification: the focused checks and the two slow lanes above. Source-absent verification: the archive probe above and build-release's relocated host. Tested archive revisions: sourceSha a9dc2b7650cdb74d8cd0a2e4b37a06df30830eac (sha256 f8c58f1c7c1ef5a67fa1a6bed7f811fd037f7a9429975192a9b59ae2c045c2de) and, after review round 1, sourceSha e6e9e7968dcd3398fc096ec1799de7e48baf4791 (sha256 14c58191d37a661834134a11e69808c08f09e1c728f5379c0094fad9b0e752ac): the extracted executable still starts, answers /host/status 200 and stops with exit 0, with no lease and an empty cwd. Every test task of every workspace now keys on the library source the root runners import, guarded by task-cache.integration.test.ts. Not run here: bun scripts/test-installed-release.ts --archive, which launches Chromium; its command is in the handoff."
     }
   ]
 }
