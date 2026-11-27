@@ -217,6 +217,7 @@ describe('runUiShards', () => {
     setup: ReturnType<typeof layout>,
     environment: Record<string, string | undefined>,
     exitCodes: readonly number[] = [],
+    extraArguments: readonly string[] = [],
   ) {
     const commands: string[][] = [];
     const environments: Record<string, string | undefined>[] = [];
@@ -231,7 +232,7 @@ describe('runUiShards', () => {
     const out: string[] = [];
     const err: string[] = [];
     const subscribed: string[] = [];
-    const exitCode = await runUiShards([...uiFlags, 'src'], {
+    const exitCode = await runUiShards([...uiFlags, 'src', ...extraArguments], {
       packageRoot: setup.packageDirectory,
       repositoryRoot: setup.repositoryRoot,
       environment,
@@ -287,6 +288,52 @@ describe('runUiShards', () => {
     expect(existsSync(join(setup.junit, 'ui.xml'))).toBe(false);
     expect(existsSync(join(setup.junit, 'ui-9.xml'))).toBe(false);
     expect(existsSync(join(setup.junit, 'fast.xml'))).toBe(true);
+  });
+
+  it('selects each original partition with its report and does not forward the option', async () => {
+    const setup = layout('run-individual', 13);
+    const all = await run(setup, {});
+    const individual = await Promise.all(
+      Array.from({ length: SHARD_COUNT }, (_, index) =>
+        run(setup, {}, [], [`--ui-shard=${index + 1}`]),
+      ),
+    );
+    for (const [index, result] of individual.entries()) {
+      expect(result.exitCode).toBe(0);
+      expect(result.commands).toEqual([all.commands[index]]);
+      expect(result.commands[0]?.some((argument) => argument.startsWith('--ui-shard'))).toBe(false);
+    }
+    expectPartition(
+      individual.flatMap((result) =>
+        result.commands.map((command) => filesOf(command).map((file) => file.slice(2))),
+      ),
+      setup.files,
+    );
+  });
+
+  it('removes only the selected shard report when running one partition', async () => {
+    const setup = layout('selected-report', 8);
+    writeFileSync(join(setup.junit, 'ui-1.xml'), 'old 1');
+    writeFileSync(join(setup.junit, 'ui-2.xml'), 'old 2');
+    await run(setup, {}, [], ['--ui-shard=1']);
+    expect(existsSync(join(setup.junit, 'ui-1.xml'))).toBe(false);
+    expect(existsSync(join(setup.junit, 'ui-2.xml'))).toBe(true);
+  });
+
+  it('rejects invalid or duplicate shard options before starting a child', async () => {
+    const setup = layout('invalid-shard', 4);
+    for (const options of [
+      ['--ui-shard=0'],
+      ['--ui-shard=5'],
+      ['--ui-shard=1.0'],
+      ['--ui-shard'],
+      ['--ui-shard=1', '--ui-shard=2'],
+    ]) {
+      const result = await run(setup, {}, [], options);
+      expect(result.exitCode).toBe(1);
+      expect(result.commands).toEqual([]);
+      expect(result.err).toContain('--ui-shard must occur once');
+    }
   });
 
   it('starts no more shards than there are files and returns the first failing exit code', async () => {
