@@ -37,7 +37,7 @@
   import { combinePages } from '../../lib/combine-pages.ts';
   import { faultTreatment } from '../../lib/faults.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
-  import { router } from '../../lib/router.svelte.ts';
+  import { reviewsNavigation } from '../../lib/reviews-navigation.ts';
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
   import QueryFaultBanner from './query-fault-banner.svelte';
   import type { ReviewDecisionSubmission } from './review-decision-form.svelte';
@@ -50,6 +50,7 @@
   } from './reviews-data.ts';
   import ReviewsPanel from './reviews-panel.svelte';
 
+  const router = reviewsNavigation();
   const TABS = ['waiting', 'done'] as const;
   type ReviewsTab = (typeof TABS)[number];
 
@@ -77,18 +78,24 @@
   const host = getReviewsHost();
   const waitingRead = useBureauReviewsList(host, () => ({ status: 'pending', limit: 100 }));
   const doneRead = useBureauReviewsList(host, () => ({ status: 'resolved', limit: 25 }));
+  const waitingOpening = host.opening.get(JSON.stringify({ status: 'pending', limit: 100 }));
+  const doneOpening = host.opening.get(JSON.stringify({ status: 'resolved', limit: 25 }));
+  const waitingData = $derived(
+    waitingRead.data ?? (waitingRead.isInitialLoading ? waitingOpening : undefined),
+  );
+  const doneData = $derived(doneRead.data ?? (doneRead.isInitialLoading ? doneOpening : undefined));
   const bureauLive = useBureauEventsLive();
   const fleetLive = useFleetEventsLive();
   let loadingMore = $state(false);
   let pendingPageError = $state<unknown>();
   const waitingQuery = {
     get data() {
-      return waitingRead.data?.nextPageToken === null ? waitingRead.data.reviews : undefined;
+      return waitingData?.nextPageToken === null ? waitingData.reviews : undefined;
     },
     get isPending() {
       return (
-        waitingRead.isInitialLoading ||
-        (waitingRead.data !== undefined && waitingRead.data.nextPageToken !== null)
+        (waitingData === undefined && waitingRead.isInitialLoading) ||
+        (waitingData !== undefined && waitingData.nextPageToken !== null)
       );
     },
     get isError() {
@@ -108,10 +115,10 @@
   };
   const doneQuery = {
     get data() {
-      return doneRead.data === undefined ? undefined : { pages: [doneRead.data] };
+      return doneData === undefined ? undefined : { pages: [doneData] };
     },
     get isPending() {
-      return doneRead.isInitialLoading;
+      return doneData === undefined && doneRead.isInitialLoading;
     },
     get isError() {
       return doneRead.initialError != null || doneRead.refreshError != null;
@@ -120,7 +127,7 @@
       return doneRead.initialError ?? doneRead.refreshError;
     },
     get hasNextPage() {
-      return doneRead.data?.nextPageToken != null;
+      return doneData?.nextPageToken != null;
     },
     get isFetchingNextPage() {
       return loadingMore;
@@ -147,6 +154,7 @@
     if (reviews !== undefined)
       queryClient.setQueryData(queryKeys.reviews.inbox('pending'), reviews);
   });
+  let forwardingApprovalInvalidation = false;
   onMount(() => {
     // poll-reason: fallback
     const timer = setInterval(() => {
@@ -156,7 +164,8 @@
       if (
         event.type === 'updated' &&
         event.action.type === 'invalidate' &&
-        event.query.queryKey[0] === 'reviews'
+        event.query.queryKey[0] === 'reviews' &&
+        !forwardingApprovalInvalidation
       ) {
         host.invalidate(['bureau.reviews.list']);
       }
@@ -303,11 +312,20 @@
     decision: 'approve' | 'deny',
     error: unknown,
   ): void {
-    void invalidateReviewQueries(queryClient);
+    // The generated approval action invalidates its own reads, including after uncertain
+    // reconciliation. Keep the legacy and task caches current without forwarding that same
+    // local decision back into the generated cache a second time.
+    forwardingApprovalInvalidation = result !== 'failed';
+    try {
+      void invalidateReviewQueries(queryClient);
+    } finally {
+      forwardingApprovalInvalidation = false;
+    }
     outcome = undefined;
     notice = undefined;
     if (result === 'outcome-not-written') notice = REVIEWS_COPY.outcomeNotWritten;
     else if (receipt?.remembered === false) notice = REVIEWS_COPY.notRemembered;
+    // A conflicting decision reports before its separate read-back can invalidate the list.
     else if (result === 'already-resolved') gone({ source: 'bureau', id: seen.id });
     else if (result === 'round-changed')
       outcome = { reviewId: seen.id, tone: 'warning', ...REVIEWS_COPY.roundChanged };

@@ -487,6 +487,9 @@
         "**/*.spec.ts",
         "scripts/browser-build.ts!",
         "scripts/startup-process-control.ts",
+        "src/private-routes/**/+layout.svelte!",
+        "src/private-routes/**/+page.svelte!",
+        "src/private-routes/**/+page.server.ts!",
         "src/host/{cli,dev,serve,refund-operations}.ts!",
         "src/host/supervisor-owned.test-support.ts"
       ],

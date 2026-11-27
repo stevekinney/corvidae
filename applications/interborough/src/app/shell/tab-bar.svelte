@@ -10,12 +10,13 @@
   import { NavigationBar, NavigationItem } from '@lostgradient/cinder';
   import { Ellipsis } from '@lucide/svelte';
 
-  import { router } from '../../lib/router.svelte.ts';
+  import { reviewsNavigation } from '../../lib/reviews-navigation.ts';
   import { NAVIGATION_COPY } from '../copy/shell.ts';
   import { VIEW_COPY } from '../copy/view-pages.ts';
   import { DESTINATIONS, isActiveDestinationPath, TAB_BAR_VIEWS } from './destinations.ts';
   import { getShellNavigation } from './shell-navigation.svelte.ts';
 
+  const router = reviewsNavigation();
   const shell = getShellNavigation();
 
   const tabs = TAB_BAR_VIEWS.map((view) => {

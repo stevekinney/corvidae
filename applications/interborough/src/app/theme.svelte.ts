@@ -47,24 +47,32 @@ export function nextThemeMode(current: ThemeMode): ThemeMode {
 export class ThemeStore {
   mode: ThemeMode = $state('system');
 
-  readonly #root: HTMLElement;
-  readonly #storage: Storage;
+  #root: HTMLElement | null;
+  #storage: Storage | null;
 
   constructor(
-    root: HTMLElement = document.documentElement,
-    storage: Storage = window.localStorage,
+    root: HTMLElement | null = document.documentElement,
+    storage: Storage | null = window.localStorage,
   ) {
     this.#root = root;
     this.#storage = storage;
+    if (storage) this.mode = readStoredMode(storage);
+    if (this.#root) applyThemeAttribute(this.#root, this.mode);
+  }
+
+  /** Attach browser preferences after a server-rendered shell hydrates. */
+  activate(root: HTMLElement, storage: Storage): void {
+    this.#root = root;
+    this.#storage = storage;
     this.mode = readStoredMode(storage);
-    applyThemeAttribute(this.#root, this.mode);
+    applyThemeAttribute(root, this.mode);
   }
 
   set(mode: ThemeMode): void {
     this.mode = mode;
-    applyThemeAttribute(this.#root, mode);
+    if (this.#root) applyThemeAttribute(this.#root, mode);
     try {
-      this.#storage.setItem(STORAGE_KEY, mode);
+      this.#storage?.setItem(STORAGE_KEY, mode);
     } catch {
       // Best-effort persistence only — a full/blocked storage quota should
       // not prevent the theme from applying for the rest of this session.

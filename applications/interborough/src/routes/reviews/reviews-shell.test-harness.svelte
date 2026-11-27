@@ -7,7 +7,7 @@
   import { onDestroy, untrack } from 'svelte';
 
   import type { HttpClient } from '@lostgradient/weft';
-  import { QueryClientProvider } from '@tanstack/svelte-query';
+  import { QueryClientProvider, type QueryClient } from '@tanstack/svelte-query';
 
   import { provideFleetEventSource } from '../../app/engine-status.svelte.ts';
   import RouteOutlet from '../../app/shell/route-outlet.svelte';
@@ -26,9 +26,10 @@
     client: HttpClient;
     scopes: readonly AuthorizationScope[];
     onPrincipal?: (store: PrincipalStore) => void;
+    onQueryClient?: (client: QueryClient) => void;
   }
 
-  let { client, scopes, onPrincipal }: ReviewsShellHarnessProps = $props();
+  let { client, scopes, onPrincipal, onQueryClient }: ReviewsShellHarnessProps = $props();
 
   const initialClient = untrack(() => client);
   provideClient(initialClient);
@@ -47,6 +48,7 @@
   provideFleetEventSource(fleetSource);
   onDestroy(() => fleetSource.close());
   const queryClient = createQueryClient();
+  untrack(() => onQueryClient?.(queryClient));
   // A failed mutation reports itself as a toast, as it does under the shell.
   provideToastHost();
 </script>

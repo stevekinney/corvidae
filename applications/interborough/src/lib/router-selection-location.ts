@@ -34,15 +34,18 @@ function withSelection(
  * A selection that reads and writes one parameter of the current address, replacing the entry,
  * and only while the address is `pathname`.
  */
-export function routerSelectionLocationFor(pathname: string): RouterSelectionLocation {
+export function routerSelectionLocationFor(
+  pathname: string,
+  navigation: Pick<typeof router, 'pathname' | 'search' | 'navigate'> = router,
+): RouterSelectionLocation {
   return {
     // Untracked: the list reads the address on every run, and following `router.search` would rerun
     // it on every navigation, writing its selection onto the next page.
-    read: (parameter) => untrack(() => router.search.get(parameter)),
+    read: (parameter) => untrack(() => navigation.search.get(parameter)),
     write: (parameter, key) => {
       // The list outlives the navigation that unmounts it by a tick; it must not write onto the page left for.
-      if (untrack(() => router.pathname) !== pathname) return;
-      router.navigate(withSelection(router.pathname, router.search, parameter, key), {
+      if (untrack(() => navigation.pathname) !== pathname) return;
+      navigation.navigate(withSelection(navigation.pathname, navigation.search, parameter, key), {
         replace: true,
       });
     },

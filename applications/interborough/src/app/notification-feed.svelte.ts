@@ -20,7 +20,7 @@ import {
   markBureauNotificationsRead,
 } from '../lib/bureau-notifications.ts';
 import { queryKeys } from '../lib/query.ts';
-import { router } from '../lib/router.svelte.ts';
+import { reviewsNavigation } from '../lib/reviews-navigation.ts';
 import { REVIEW_POLL_MILLISECONDS, waitingReviewsQuery } from '../routes/reviews/reviews-data.ts';
 import { useBureauEventsLive, useFleetEventsLive } from './live-polling.svelte.ts';
 import { buildNotificationEntries } from './notification-items.ts';
@@ -29,7 +29,7 @@ import type { NotificationStore } from './notifications.svelte.ts';
 import { ATTENTION_POLL_MILLISECONDS } from './shell/attention-count.svelte.ts';
 
 /** The chat the person has open, or `undefined` on any other page (and on a chat not yet started). */
-function openChatSessionId(): string | undefined {
+function openChatSessionId(router: ReturnType<typeof reviewsNavigation>): string | undefined {
   const { route, params } = router.current;
   return route?.pattern === '/chats/:chat' ? params['chat'] : undefined;
 }
@@ -43,6 +43,7 @@ export function connectNotificationFeed(
   store: NotificationStore,
   options: NotificationFeedOptions = {},
 ): void {
+  const router = reviewsNavigation();
   // Reviews itself and the sidebar already observe this cache. Keep the bell attached there, but
   // do not give a just-failed arrival a second mount-triggered fetch before the next poll or retry.
   const reviews = waitingReviewsQuery({ enabled: () => router.pathname !== '/reviews' });
@@ -170,7 +171,7 @@ export function connectNotificationFeed(
   });
 
   $effect(() => {
-    const sessionId = openChatSessionId();
+    const sessionId = openChatSessionId(router);
     // Read after the items above are set, so what arrives while the chat is open is read on arrival.
     if (sessionId !== undefined) store.markSessionRead(sessionId);
   });

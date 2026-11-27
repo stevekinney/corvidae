@@ -45,6 +45,7 @@
   import { agentLabel } from '../../lib/agent-label.ts';
   import { useAgentDisplayName } from '../../lib/agent-display-name.svelte.ts';
   import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
+  import { reviewsNavigation } from '../../lib/reviews-navigation.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
   import ApprovalPane from './approval-pane.svelte';
@@ -140,7 +141,7 @@
       : LIST_WIDTH;
 
   const zone = viewerTimeZone();
-  const selection = routerSelectionLocationFor('/reviews');
+  const selection = routerSelectionLocationFor('/reviews', reviewsNavigation());
   let selectedKey = $state<string | null>(null);
   let frameElement = $state<HTMLElement | undefined>();
   let detailElement = $state<HTMLElement | undefined>();

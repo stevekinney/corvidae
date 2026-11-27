@@ -8,7 +8,7 @@
    */
   import { Siren, X } from '@lucide/svelte';
 
-  import { router } from '../../lib/router.svelte.ts';
+  import { reviewsNavigation } from '../../lib/reviews-navigation.ts';
   import type { NotificationStore } from '../notifications.svelte.ts';
 
   interface CriticalAlertStripProps {
@@ -16,6 +16,7 @@
   }
 
   let { store }: CriticalAlertStripProps = $props();
+  const router = reviewsNavigation();
 </script>
 
 {#if store.criticalUnread.length > 0}

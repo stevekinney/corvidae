@@ -31,9 +31,15 @@ export class LayoutPreferences {
   /** Whether the sidebar is folded to its icon rail on a desktop viewport. */
   sidebarCollapsed: boolean = $state(false);
 
-  readonly #storage: Storage;
+  #storage: Storage | null;
 
-  constructor(storage: Storage = window.localStorage) {
+  constructor(storage: Storage | null = window.localStorage) {
+    this.#storage = storage;
+    if (storage) this.sidebarCollapsed = read(storage, SIDEBAR_KEY) === 'true';
+  }
+
+  /** Restore this browser's preference after server rendering. */
+  activate(storage: Storage): void {
     this.#storage = storage;
     this.sidebarCollapsed = read(storage, SIDEBAR_KEY) === 'true';
   }
@@ -41,7 +47,7 @@ export class LayoutPreferences {
   /** Sets and stores whether the sidebar is folded to its icon rail. */
   setSidebarCollapsed(collapsed: boolean): void {
     this.sidebarCollapsed = collapsed;
-    write(this.#storage, SIDEBAR_KEY, String(collapsed));
+    if (this.#storage) write(this.#storage, SIDEBAR_KEY, String(collapsed));
   }
 }
 

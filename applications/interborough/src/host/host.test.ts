@@ -508,7 +508,7 @@ describe('the built application', () => {
     // A script's fetch, an asset, and every prefix the engine, the Bureau, or the host owns.
     expect(await statusOf(host, '/nowhere/at/all')).toBe(404);
     expect(await statusOf(host, '/favicon.ico')).toBe(404);
-    for (const path of ['/assets/missing.js', '/bureau/missing', '/host/missing']) {
+    for (const path of ['/assets/missing.js', '/bureau/missing', '/host/missing', '/api/missing']) {
       const response = await fetch(new URL(path, host.url), { headers: { accept: 'text/html' } });
       expect(response.status, path).toBe(404);
     }

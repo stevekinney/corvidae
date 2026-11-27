@@ -883,10 +883,24 @@ async function startPrivateSettingsServer(
   authority: HostAuthority,
   port: () => number,
   held: Held,
+  buildDirectory: string,
 ) {
-  const server = await options?.createPrivateServer?.(
-    sharedBrowserServerHooks(authority, options.origin, port),
-  );
+  if (!options) return undefined;
+  const hooks = sharedBrowserServerHooks(authority, options.origin, port);
+  const privateDirectory = join(buildDirectory, 'private');
+  const server = options.createPrivateServer
+    ? await options.createPrivateServer(hooks)
+    : (await Bun.file(join(privateDirectory, 'current.json')).exists())
+      ? await (async () => {
+          const { readProductionGeneration } =
+            await import('@lostgradient/velveteen/build/publication');
+          const { createApplication } = await import('@lostgradient/velveteen/server');
+          return createApplication({
+            generation: await readProductionGeneration(privateDirectory),
+            hooks,
+          });
+        })()
+      : undefined;
   if (server) held.privateServer = server;
   return server;
 }
@@ -1788,10 +1802,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       authority,
       () => listening?.port ?? 0,
       held,
+      buildDirectory,
     );
     const publicRoutes = {
       ...applicationRoutes(buildDirectory, refuse, shell),
-      ...sharedBrowserRoutes(sharedBrowser, authority, privateServer),
+      ...sharedBrowserRoutes(sharedBrowser, authority, privateServer, shell),
       '/api/v1/principal': {
         GET: (request: Request) =>
           hostPrincipalResponse(request, authority, memorySharingAvailable),

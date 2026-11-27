@@ -19,7 +19,7 @@
 
   import { getPlugins, needAttentionCount } from '../../lib/host-plugins.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { router } from '../../lib/router.svelte.ts';
+  import { reviewsNavigation } from '../../lib/reviews-navigation.ts';
   import { PLUGINS_COPY } from '../copy/plugins.ts';
 
   interface Props {
@@ -28,6 +28,7 @@
   }
 
   let { unreachable }: Props = $props();
+  const router = reviewsNavigation();
 
   const copy = PLUGINS_COPY.startupBanner;
   const path = '/settings/plugins';
