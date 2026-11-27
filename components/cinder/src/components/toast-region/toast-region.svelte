@@ -131,7 +131,7 @@
   let nextId = 0;
   let isPointerInsideRegion = false;
   let isFocusInsideRegion = false;
-  let undoActionsExpanded = $state(false);
+  let undoActionsExpanded = $state({ polite: false, assertive: false });
   let destroyed = false;
   let releaseFocusedToastEscape: (() => void) | null = null;
   let returnFocusElement: HTMLElement | null = null;
@@ -148,8 +148,10 @@
   function setCurrentStack(variant: ToastVariant, stack: InternalToastItem[]): void {
     if (isPolite(variant)) {
       politeStack = stack;
+      resetUndoActionsWhenNotGrouped('polite', stack);
     } else {
       assertiveStack = stack;
+      resetUndoActionsWhenNotGrouped('assertive', stack);
     }
   }
 
@@ -177,6 +179,8 @@
   function removeFromBothStacks(id: string): void {
     politeStack = politeStack.filter((toast) => toast.id !== id);
     assertiveStack = assertiveStack.filter((toast) => toast.id !== id);
+    resetUndoActionsWhenNotGrouped('polite', politeStack);
+    resetUndoActionsWhenNotGrouped('assertive', assertiveStack);
   }
 
   function shouldPauseTimers(): boolean {
@@ -319,12 +323,29 @@
     return stack.filter((toast) => toast.undo && !toast.leaving);
   }
 
-  function hidesUndoActions(stack: readonly InternalToastItem[]): boolean {
-    return actionableUndo(stack).length > 1 && !undoActionsExpanded;
+  function resetUndoActionsWhenNotGrouped(
+    channel: 'polite' | 'assertive',
+    stack: readonly InternalToastItem[],
+  ): void {
+    if (actionableUndo(stack).length <= 1) undoActionsExpanded[channel] = false;
   }
 
-  function visibleToasts(stack: readonly InternalToastItem[]): InternalToastItem[] {
-    return hidesUndoActions(stack) ? stack.filter((toast) => !toast.undo) : [...stack];
+  function hidesUndoActions(
+    channel: 'polite' | 'assertive',
+    stack: readonly InternalToastItem[],
+  ): boolean {
+    return (
+      position === 'docked-bottom-right' &&
+      actionableUndo(stack).length > 1 &&
+      !undoActionsExpanded[channel]
+    );
+  }
+
+  function visibleToasts(
+    channel: 'polite' | 'assertive',
+    stack: readonly InternalToastItem[],
+  ): InternalToastItem[] {
+    return hidesUndoActions(channel, stack) ? stack.filter((toast) => !toast.undo) : [...stack];
   }
 
   function clearTimer(id: string): void {
@@ -786,20 +807,20 @@
   </div>
 {/snippet}
 
-{#snippet undoActionsControl(stack: readonly InternalToastItem[])}
+{#snippet undoActionsControl(channel: 'polite' | 'assertive', stack: readonly InternalToastItem[])}
   {@const undoCount = actionableUndo(stack).length}
-  {#if undoCount > 1}
+  {#if position === 'docked-bottom-right' && undoCount > 1}
     <div
       class="cinder-toast-undo-actions"
-      data-cinder-undo-actions={undoActionsExpanded ? 'open' : 'closed'}
+      data-cinder-undo-actions={undoActionsExpanded[channel] ? 'open' : 'closed'}
     >
       <button
         type="button"
         class="cinder-toast-undo-actions__toggle"
-        aria-expanded={undoActionsExpanded}
-        onclick={() => (undoActionsExpanded = !undoActionsExpanded)}
+        aria-expanded={undoActionsExpanded[channel]}
+        onclick={() => (undoActionsExpanded[channel] = !undoActionsExpanded[channel])}
       >
-        {undoActionsExpanded
+        {undoActionsExpanded[channel]
           ? `Hide ${String(undoCount)} Undo actions`
           : `${String(undoCount)} Undo actions available`}
       </button>
@@ -828,10 +849,10 @@
       class="cinder-toast-region__channel"
       data-cinder-overflowing={politeChannelOverflows ? '' : undefined}
     >
-      {#each visibleToasts(politeStack) as toast, index (`${toast.id}:${toast.generation}`)}
+      {#each visibleToasts('polite', politeStack) as toast, index (`${toast.id}:${toast.generation}`)}
         {@render toastItem(toast, index)}
       {/each}
-      {@render undoActionsControl(politeStack)}
+      {@render undoActionsControl('polite', politeStack)}
     </div>
     <div
       bind:this={assertiveChannel}
@@ -843,10 +864,10 @@
       data-cinder-stack="assertive"
       data-cinder-overflowing={assertiveChannelOverflows ? '' : undefined}
     >
-      {#each visibleToasts(assertiveStack) as toast, index (`${toast.id}:${toast.generation}`)}
+      {#each visibleToasts('assertive', assertiveStack) as toast, index (`${toast.id}:${toast.generation}`)}
         {@render toastItem(toast, index)}
       {/each}
-      {@render undoActionsControl(assertiveStack)}
+      {@render undoActionsControl('assertive', assertiveStack)}
     </div>
   </div>
 {/if}

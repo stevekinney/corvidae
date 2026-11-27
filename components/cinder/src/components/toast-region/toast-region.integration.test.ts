@@ -322,6 +322,7 @@ describe('useToast api', () => {
     let api: ToastApi | null = null;
     const { container } = render(Wrapper, {
       maxStack: 2,
+      position: 'docked-bottom-right',
       onReady: (a: ToastApi) => {
         api = a;
       },
@@ -343,6 +344,7 @@ describe('useToast api', () => {
     let api: ToastApi | null = null;
     const { container } = render(Wrapper, {
       maxStack: 2,
+      position: 'docked-bottom-right',
       onReady: (a: ToastApi) => {
         api = a;
       },
@@ -381,6 +383,7 @@ describe('useToast api', () => {
     let api: ToastApi | null = null;
     const { container } = render(Wrapper, {
       maxStack: 2,
+      position: 'docked-bottom-right',
       onReady: (a: ToastApi) => {
         api = a;
       },

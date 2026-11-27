@@ -17,9 +17,12 @@ const { KEYBOARD_INSET_PROPERTY } = await import('../../_internal/keyboard-inset
 const cssText = await Bun.file(new URL('./toast-region.css', import.meta.url)).text();
 const sourceText = await Bun.file(new URL('./toast-region.svelte', import.meta.url)).text();
 
-async function mountRegion(): Promise<{ api: ToastApi; container: HTMLElement }> {
+async function mountRegion(
+  position: 'bottom-right' | 'docked-bottom-right' = 'bottom-right',
+): Promise<{ api: ToastApi; container: HTMLElement }> {
   let api: ToastApi | null = null;
   const { container } = render(Wrapper, {
+    position,
     onReady: (ready: ToastApi) => {
       api = ready;
     },
@@ -101,7 +104,7 @@ describe('Undo toasts (rows 04w, 06x, 48s, 66g, 78v)', () => {
 
   test('dismissUndo removes every undo toast and leaves the others', async () => {
     jest.useFakeTimers();
-    const { api, container } = await mountRegion();
+    const { api, container } = await mountRegion('docked-bottom-right');
     api.show('Memory forgotten.', { undo: () => {} });
     api.show('Reverted 1 change.', { undo: () => {} });
     api.show('Sticky note', { duration: 0 });
@@ -120,7 +123,7 @@ describe('Undo toasts (rows 04w, 06x, 48s, 66g, 78v)', () => {
   });
 
   test('many Undo actions collapse to one reachable recovery control until opened', async () => {
-    const { api, container } = await mountRegion();
+    const { api, container } = await mountRegion('docked-bottom-right');
     const restored: string[] = [];
     for (const label of ['first', 'second', 'third']) {
       api.show(`Deleted ${label}.`, { undo: () => restored.push(label) });
@@ -142,9 +145,58 @@ describe('Undo toasts (rows 04w, 06x, 48s, 66g, 78v)', () => {
     expect(restored).toEqual(['first']);
   });
 
+  test('a fixed-position region keeps each active Undo action visible', async () => {
+    const { api, container } = await mountRegion();
+    api.show('Deleted first.', { undo: () => {} });
+    api.show('Deleted second.', { undo: () => {} });
+    await waitFor(() => {
+      expect(container.querySelectorAll('[data-cinder-undo]')).toHaveLength(2);
+      expect(container.querySelector('.cinder-toast-undo-actions__toggle')).toBeNull();
+    });
+  });
+
+  test('a new Undo group starts collapsed after an expanded group clears, independently per channel', async () => {
+    const { api, container } = await mountRegion('docked-bottom-right');
+    const polite = container.querySelector<HTMLElement>('[role="status"]') as HTMLElement;
+    const assertive = container.querySelector<HTMLElement>('[role="alert"]') as HTMLElement;
+
+    api.show('Deleted first.', { undo: () => {} });
+    api.show('Deleted second.', { undo: () => {} });
+    const politeToggle = await waitFor(() => {
+      const toggle = polite.querySelector<HTMLButtonElement>('.cinder-toast-undo-actions__toggle');
+      expect(toggle?.textContent).toContain('2 Undo actions available');
+      return toggle as HTMLButtonElement;
+    });
+    await fireEvent.click(politeToggle);
+    await waitFor(() => expect(polite.querySelectorAll('[data-cinder-undo]')).toHaveLength(2));
+
+    api.show('Danger first.', { variant: 'danger', undo: () => {} });
+    api.show('Danger second.', { variant: 'danger', undo: () => {} });
+    await waitFor(() => {
+      expect(assertive.querySelector('.cinder-toast-undo-actions__toggle')?.textContent).toContain(
+        '2 Undo actions available',
+      );
+    });
+
+    for (const action of polite.querySelectorAll<HTMLButtonElement>('.cinder-toast__action')) {
+      await fireEvent.click(action);
+    }
+    await waitFor(() => expect(polite.querySelector('[data-cinder-undo]')).toBeNull());
+
+    api.show('Deleted third.', { undo: () => {} });
+    api.show('Deleted fourth.', { undo: () => {} });
+    await waitFor(() => {
+      expect(polite.querySelector('.cinder-toast-undo-actions__toggle')?.textContent).toContain(
+        '2 Undo actions available',
+      );
+      expect(polite.querySelectorAll('[data-cinder-undo]')).toHaveLength(0);
+      expect(assertive.querySelectorAll('[data-cinder-undo]')).toHaveLength(0);
+    });
+  });
+
   test('onClose is called once, after the action, however the toast closes', async () => {
     jest.useFakeTimers();
-    const { api, container } = await mountRegion();
+    const { api, container } = await mountRegion('docked-bottom-right');
     const closed: string[] = [];
     const order: string[] = [];
     api.show('Timed.', { duration: 1000, onClose: () => closed.push('timer') });

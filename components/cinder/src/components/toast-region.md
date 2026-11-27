@@ -26,7 +26,7 @@ Wrap the app inside the region so route components (descendants) can call `useTo
 | --- | --- | --- | --- |
 | `maxStack` | `number` | `5` | Maximum simultaneous ordinary toasts in **each** region. Active Undo toasts remain until acted on or dismissed with `dismissUndo()`. Overflow drops the oldest ordinary toast. |
 | `defaultDuration` | `number` | `5000` | Auto-dismiss duration in milliseconds. `0` makes a toast sticky. Overridable per-call via `ToastOptions.duration`. |
-| `position` | `'top-left' \| 'top-center' \| 'top-right' \| 'bottom-left' \| 'bottom-center' \| 'bottom-right'` | `'bottom-right'` | Viewport anchor for both live-region channels. |
+| `position` | `'top-left' \| 'top-center' \| 'top-right' \| 'bottom-left' \| 'bottom-center' \| 'bottom-right' \| 'docked-bottom-right'` | `'bottom-right'` | Viewport anchor for both live-region channels. `docked-bottom-right` occupies a shell-owned layout row so durable recovery actions do not cover the scrollable page. |
 | `class` | `string` | — | Additional class names merged with `.cinder-toast-region`. |
 | `children` | `Snippet` | — | Optional snippet rendered inside the region. Supply it when callers need access to this region's `useToast()` context — either via `{@const toast = useToast()}` inside the snippet, or in any descendant component rendered through `{@render children()}`. Callers outside the region's subtree cannot dispatch to it. |
 
