@@ -299,8 +299,10 @@ describe('runUiShards', () => {
       ),
     );
     for (const [index, result] of individual.entries()) {
+      const expected = all.commands[index];
+      if (expected === undefined) throw new Error(`Missing original shard ${index + 1}`);
       expect(result.exitCode).toBe(0);
-      expect(result.commands).toEqual([all.commands[index]]);
+      expect(result.commands).toEqual([expected]);
       expect(result.commands[0]?.some((argument) => argument.startsWith('--ui-shard'))).toBe(false);
     }
     expectPartition(
