@@ -1,4 +1,4 @@
-import type { ValidateFunction } from 'ajv/dist/2020.js';
+import type { SchemaValidator } from '@lostgradient/operative';
 
 import {
   InteractiveSurfaceSchemaCompiler,
@@ -76,7 +76,7 @@ export function standardSchemaFromJsonSchema(schema: unknown): JsonSchemaStandar
   }
   // The copy is the caller-independent schema the model is shown and the answer is checked against.
   const copy = JSON.parse(serialized) as InteractiveSurfaceJsonObject;
-  let validate: ValidateFunction;
+  let validate: SchemaValidator;
   try {
     validate = compiler.compile(copy, 'The schema');
   } catch (error) {
@@ -93,9 +93,9 @@ export function standardSchemaFromJsonSchema(schema: unknown): JsonSchemaStandar
       version: 1,
       vendor: 'bureau',
       validate: (value) => {
-        if (validate(value)) return { value };
+        if (validate.validate(value)) return { value };
         return {
-          issues: (validate.errors ?? []).map((error) => ({
+          issues: validate.errors.map((error) => ({
             message: error.message ?? 'does not satisfy the schema',
             path: pathOf(error.instancePath),
           })),

@@ -18,7 +18,7 @@
  * @module adapter
  */
 
-import type { ErrorObject } from 'ajv';
+import type { SchemaError } from '@lostgradient/operative';
 
 import type { InteractiveSurfaces } from '../interactive-surface/store.ts';
 import {
@@ -140,7 +140,7 @@ function reject(
   };
 }
 
-function issuesOf(errors: readonly ErrorObject[] | null | undefined, base: string): A2uiIssue[] {
+function issuesOf(errors: readonly SchemaError[] | null | undefined, base: string): A2uiIssue[] {
   return (errors ?? []).slice(0, MAX_ISSUES).map((error) => {
     const extra = error.params as Record<string, unknown>;
     const named =
@@ -174,7 +174,7 @@ function checkMessage(
   const { kind, message } = classified;
   if (kind !== 'updateComponents') {
     const validate = catalog.messageValidator(A2UI_MESSAGE_DEFINITIONS[kind]);
-    return validate(message) ? [] : issuesOf(validate.errors, base);
+    return validate.validate(message) ? [] : issuesOf(validate.errors, base);
   }
   // Check each component against its own catalog definition, so an error names the component and
   // the property and not every branch of the catalog's component union.
@@ -197,7 +197,7 @@ function checkMessage(
         path: `${where}/component`,
         message: `"${String(name).slice(0, 80)}" is not a component of the catalog ${catalog.id}.`,
       });
-    } else if (!validate(component)) {
+    } else if (!validate.validate(component)) {
       issues.push(...issuesOf(validate.errors, where));
     }
   }

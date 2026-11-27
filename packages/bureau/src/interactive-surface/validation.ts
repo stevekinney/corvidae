@@ -4,7 +4,11 @@
  * shape is closed (an unknown field is an error), every schema must compile,
  * and the content is held to the payload cap.
  */
-import Ajv2020, { type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js';
+import {
+  compileInterpretedSchema,
+  type SchemaError,
+  type SchemaValidator,
+} from '@lostgradient/operative';
 
 import {
   INTERACTIVE_SURFACE_A2UI_VERSION,
@@ -187,25 +191,12 @@ export function readAudience(value: unknown): readonly string[] {
 
 // ── Schemas ─────────────────────────────────────────────────────────
 
-/** Thrown when a surface schema would compile a regular expression. */
-class RegularExpressionRefused extends Error {}
-
 /**
  * Compiles and caches JSON Schema 2020-12 validators. Unknown keywords are
  * allowed (authors annotate their schemas), and `format` is not asserted,
  * which JSON Schema 2020-12 also makes the default.
  */
 export class InteractiveSurfaceSchemaCompiler {
-  /**
-   * Ajv calls this engine for each `pattern` and `patternProperties` it
-   * compiles, wherever the keyword sits (`dependencies` and every other
-   * subschema position included), so Ajv's own vocabulary decides what is a
-   * regular expression, and an annotation holding a `pattern` key is not one.
-   * Only the meta-schema, compiled in the constructor, may use one.
-   */
-  #refusing = false;
-  readonly #ajv: Ajv2020;
-
   /**
    * @param options.formats Formats to assert, by name, each a predicate over the string. Without
    * it `format` is an annotation, as JSON Schema 2020-12 makes it by default; with it, a value
@@ -214,34 +205,17 @@ export class InteractiveSurfaceSchemaCompiler {
   constructor(
     options: { readonly formats?: Readonly<Record<string, (value: string) => boolean>> } = {},
   ) {
-    this.#ajv = new Ajv2020({
-      strict: false,
-      allErrors: true,
-      validateFormats: options.formats !== undefined,
-      ...(options.formats === undefined
-        ? {}
-        : { formats: { ...options.formats }, logger: false as const }),
-      code: {
-        regExp: Object.assign(
-          (pattern: string, flags: string): RegExp => {
-            if (this.#refusing) throw new RegularExpressionRefused();
-            return new RegExp(pattern, flags);
-          },
-          { code: 'new RegExp' },
-        ),
-      },
-    });
-    // Compile the meta-schema, whose own patterns are trusted, before refusing.
-    this.#ajv.compile({});
-    this.#refusing = true;
+    this.#formats = options.formats;
   }
 
+  readonly #formats: Readonly<Record<string, (value: string) => boolean>> | undefined;
+
   /** Compiled validators, most recently used last, bounded so unique schemas cannot grow the heap. */
-  readonly #cache = new Map<string, ValidateFunction>();
+  readonly #cache = new Map<string, SchemaValidator>();
   readonly #capacity = 256;
 
   /** Compiles `schema`, or fails naming `where`. */
-  compile(schema: InteractiveSurfaceJsonObject, where: string): ValidateFunction {
+  compile(schema: InteractiveSurfaceJsonObject, where: string): SchemaValidator {
     const key = JSON.stringify(schema);
     const cached = this.#cache.get(key);
     if (cached !== undefined) {
@@ -250,49 +224,17 @@ export class InteractiveSurfaceSchemaCompiler {
       return cached;
     }
     if (Object.hasOwn(schema, '$id')) fail(`${where} must not declare $id`);
-    // Ajv registers each nested `$id` it finds in a real subschema position
-    // (not a property named `$id`, nor annotation data), so a new entry in its
-    // references is a nested `$id`, which would move base URIs and `$ref`
-    // resolution, and collide across surfaces sharing this compiler.
-    const known = new Set(Object.keys(this.#ajv.refs));
-    const nestedIds = (): string[] => Object.keys(this.#ajv.refs).filter((ref) => !known.has(ref));
-    let validate: ValidateFunction;
     try {
-      validate = this.#ajv.compile(schema);
+      const validate = compileInterpretedSchema(schema, { formats: this.#formats });
+      this.#cache.set(key, validate);
+      if (this.#cache.size > this.#capacity)
+        this.#cache.delete(this.#cache.keys().next().value as string);
+      return validate;
     } catch (error: unknown) {
-      // Ajv caches a schema as compiling begins; a rejected one must not stay.
-      for (const ref of nestedIds()) this.#ajv.removeSchema(ref);
-      this.#ajv.removeSchema(schema);
-      // A schema's regular expressions run on Bureau's event loop when a value
-      // is admitted, and an untrusted author can write one that backtracks for
-      // seconds, so v1 refuses them.
-      if (error instanceof RegularExpressionRefused) {
-        fail(`${where} must not use "pattern" or "patternProperties"`);
-      }
       fail(
         `${where} is not a valid JSON Schema: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
-    const added = nestedIds();
-    if (added.length > 0) {
-      for (const ref of added) this.#ajv.removeSchema(ref);
-      this.#ajv.removeSchema(schema);
-      fail(`${where} must not declare $id`);
-    }
-    // An asynchronous schema validates to a Promise; admission validates synchronously.
-    if (Reflect.get(validate, '$async') === true) {
-      this.#ajv.removeSchema(schema);
-      fail(`${where} must not be an asynchronous ($async) schema`);
-    }
-    this.#cache.set(key, validate);
-    if (this.#cache.size > this.#capacity) {
-      const [oldestKey, oldest] = this.#cache.entries().next().value ?? [];
-      if (oldestKey !== undefined && oldest !== undefined) {
-        this.#cache.delete(oldestKey);
-        this.#ajv.removeSchema(oldest.schema);
-      }
-    }
-    return validate;
   }
 
   /**
@@ -300,16 +242,16 @@ export class InteractiveSurfaceSchemaCompiler {
    * satisfies the schema). Throws {@link InteractiveSurfaceValidationError} when the schema
    * cannot be compiled under this compiler's rules.
    */
-  errors(schema: InteractiveSurfaceJsonObject, value: unknown): readonly ErrorObject[] {
+  errors(schema: InteractiveSurfaceJsonObject, value: unknown): readonly SchemaError[] {
     const validate = this.compile(schema, 'schema');
-    return validate(value) ? [] : [...(validate.errors ?? [])];
+    return validate.validate(value) ? [] : validate.errors;
   }
 
   /** Validates `value` against `schema`; returns the first problem, or `undefined`. */
   check(schema: InteractiveSurfaceJsonObject, value: unknown): string | undefined {
     const validate = this.compile(schema, 'schema');
-    if (validate(value)) return undefined;
-    return this.#ajv.errorsText(validate.errors, { dataVar: 'value' });
+    if (validate.validate(value)) return undefined;
+    return validate.errors.map((error) => `value ${error.message}`).join(', ');
   }
 }
 

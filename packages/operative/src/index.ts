@@ -564,6 +564,11 @@ export {
   humanInputSecretFields,
 } from './human-input-schema-extensions';
 export type { RefusedParkRequest } from './park-refusal';
+export {
+  compileInterpretedSchema,
+  type SchemaError,
+  type SchemaValidator,
+} from './schema-interpreter';
 // F3/D6 — thrown by scheduleWakeup/requestHumanInput when invoked outside a
 // durable run (AB-41's decision record, implemented by AB-43).
 export { DurableCapabilityUnavailableError } from './durable/durable-capability-unavailable-error';

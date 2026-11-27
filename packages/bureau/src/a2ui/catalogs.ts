@@ -10,7 +10,7 @@
  * @module catalogs
  */
 
-import Ajv2020, { type ValidateFunction } from 'ajv/dist/2020.js';
+import { compileInterpretedSchema, type SchemaValidator } from '@lostgradient/operative';
 
 import basicCatalog from './basic-catalog.schema.json' with { type: 'json' };
 import cinderCatalog from './cinder-catalog.schema.json' with { type: 'json' };
@@ -54,11 +54,11 @@ export interface A2uiCatalog {
    */
   readonly referenceKeys: ReadonlySet<string>;
   /** A validator for one component, by component name. */
-  componentValidator(name: string): ValidateFunction | undefined;
+  componentValidator(name: string): SchemaValidator | undefined;
   /** A validator for one server-to-client message definition, such as `CreateSurfaceMessage`. */
-  messageValidator(definition: string): ValidateFunction;
+  messageValidator(definition: string): SchemaValidator;
   /** A validator for `createSurface`'s `theme`. */
-  readonly themeValidator: ValidateFunction;
+  readonly themeValidator: SchemaValidator;
 }
 
 type Schema = Record<string, unknown>;
@@ -100,16 +100,11 @@ function build(schema: Schema): A2uiCatalog {
   if (typeof id !== 'string') throw new Error('A catalog must declare a catalogId.');
   const components = schema['components'] as Schema;
   const functions = (schema['functions'] ?? {}) as Schema;
-  // Trusted, vendored schemas: unlike an author's, they may use `pattern` and `$id`.
-  const ajv = new Ajv2020({ strict: false, allErrors: true, validateFormats: false });
-  ajv.addSchema(commonTypes);
-  ajv.addSchema({ ...schema, $id: CATALOG_ALIAS });
-  ajv.addSchema(serverToClient);
-  const get = (reference: string): ValidateFunction => {
-    const validate = ajv.getSchema(reference);
-    if (validate === undefined) throw new Error(`Missing A2UI schema ${reference}.`);
-    return validate;
-  };
+  // Trusted, vendored schemas may use patterns and `$id`; their references are remotes of a small
+  // root that selects the requested definition.
+  const remotes = [commonTypes, { ...schema, $id: CATALOG_ALIAS }, serverToClient];
+  const get = (reference: string): SchemaValidator =>
+    compileInterpretedSchema({ $ref: reference }, { remotes, allowUnsafeKeywords: true });
   return {
     id,
     componentNames: new Set(Object.keys(components)),
