@@ -468,12 +468,17 @@
           id={sortSelectId}
           label="Sort by"
           labelVisible={false}
-          placeholder="Sort by"
           size="sm"
           variant="ghost"
           presentation="native"
-          options={sortOptions.map((option) => ({ ...option, label: `Sort: ${option.label}` }))}
-          {...selectedSort ? { value: selectedSort } : {}}
+          options={[
+            // A native select shows its selected option, and with no sort applied that is this
+            // one: the control says "Sort by" from the server's HTML on, never a sort that is not
+            // applied, and every real option can be chosen (design review, round 2).
+            { value: '', label: 'Sort by', disabled: true },
+            ...sortOptions.map((option) => ({ ...option, label: `Sort: ${option.label}` })),
+          ]}
+          value={selectedSort}
           disabled={sortOptions.length === 0}
           onValueChange={chooseSort}
         />

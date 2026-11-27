@@ -4,6 +4,8 @@
 
 /* One track as wide as the page, so the row of columns cannot widen the other sections. */
 .first-paint-page {
+  /* A page's measure, so a wide window does not stretch the tables past what they hold. */
+  max-inline-size: calc(var(--cinder-space-4) * 80);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--cinder-space-6);

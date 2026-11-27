@@ -597,6 +597,24 @@ describe('Table fit stacks into cards', () => {
     expect(header.getAttribute('aria-sort')).toBe('ascending');
   });
 
+  test('an unsorted stacked table says "Sort by", and its first sort can be chosen', async () => {
+    setTestViewportWidth(375);
+    const { container } = render(CardFixture, { sortable: true });
+    flushSync();
+    const select = container.querySelector('.cinder-table__stack-sort select') as HTMLSelectElement;
+    // No sort is applied, so the control names none (design review, round 2).
+    expect(select.value).toBe('');
+    expect(select.selectedOptions[0]?.textContent?.trim()).toBe('Sort by');
+    expect(select.options[0]?.disabled).toBe(true);
+    // The first real option is not already selected, so choosing it sorts.
+    select.value = 'ascending:model';
+    await fireEvent.change(select);
+    flushSync();
+    expect(container.querySelector('th[data-cinder-sortable]')?.getAttribute('aria-sort')).toBe(
+      'ascending',
+    );
+  });
+
   test('a sortable header cell in a fit table without Table sortable warns', () => {
     const warn = spyOn(console, 'warn').mockImplementation(() => {});
     try {

@@ -180,7 +180,11 @@ describe('Table server HTML', () => {
     const root = parsed(sortableCard);
     const sortRow = root.querySelector('.cinder-table__stack-sort');
     expect(sortRow).not.toBeNull();
-    expect(sortRow?.querySelector('select')).not.toBeNull();
+    // Before hydration the select is disabled and says "Sort by": it names its role, and no one
+    // lands on an empty list (design review, round 2).
+    const select = sortRow?.querySelector('select');
+    expect(select?.disabled).toBe(true);
+    expect(select?.selectedOptions[0]?.textContent?.trim()).toBe('Sort by');
     // Before the table, in its scroll box, so the generated rule reads it through a later sibling.
     expect(sortRow?.nextElementSibling?.classList.contains('cinder-table-scroll')).toBe(true);
     expect(parsed(unsortableCard).querySelector('.cinder-table__stack-sort')).toBeNull();
