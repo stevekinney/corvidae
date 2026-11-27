@@ -120,9 +120,21 @@ test('hydrates private Reviews without repeating its opening reads', async ({ br
         candidate.request().isNavigationRequest() &&
         new URL(candidate.url()).pathname === '/settings',
     );
-    await page.getByRole('link', { name: 'All settings' }).click();
-    const settingsResponse = await navigation;
-    expect(settingsResponse.status()).toBe(200);
+    const plugins = page.waitForResponse(
+      (candidate) =>
+        candidate.request().method() === 'GET' &&
+        new URL(candidate.url()).pathname === '/host/plugins',
+    );
+    const [settingsResponse, pluginsResponse] = await Promise.all([
+      navigation,
+      plugins,
+      page.getByRole('link', { name: 'All settings' }).click(),
+    ]);
+    expect(settingsResponse.status(), 'Settings document response').toBe(200);
+    expect(pluginsResponse.status(), 'Settings shell plugins response').toBe(200);
+    expect(await pluginsResponse.finished(), 'Settings shell plugins response body').toBeNull();
+    await expect(page.getByRole('heading', { level: 1, name: 'General' })).toBeVisible();
+    await fixture.proxy.drain();
   } catch (error) {
     primaryFailure = error;
   } finally {
