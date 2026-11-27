@@ -24,7 +24,8 @@ test('an open "…" menu closes when the viewport narrows to the phone form', as
   await expect(trigger).toBeHidden();
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
   await expect(menu).toBeHidden();
-  await expect(
-    page.locator('[data-testid="overflow-trail"] a.cinder-breadcrumbs__back'),
-  ).toBeVisible();
+  // Focus was in the menu; the hidden trigger cannot take it back, so the back link does.
+  const back = page.locator('[data-testid="overflow-trail"] a.cinder-breadcrumbs__back');
+  await expect(back).toBeVisible();
+  await expect(back).toBeFocused();
 });
