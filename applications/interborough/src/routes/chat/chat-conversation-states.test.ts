@@ -771,6 +771,34 @@ describe('the last turn’s outcome and its recovery commands (COR-2725)', () =>
     expect(document.body.textContent?.split(CHAT_COPY.discardTurn.failed)).toHaveLength(2);
   });
 
+  test('a Continue the Bureau has not answered yet reads busy on its own control, with Discard held', async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    const served = serve(ONLY_TOOLS('finished'), {
+      answers: {
+        'bureau.tasks.list': stoppedRun('canceled'),
+        'bureau.contexts.resumeturn': () =>
+          new Promise((resolve) => {
+            answer = resolve;
+          }),
+      },
+    });
+    const { container, findByRole } = mount();
+
+    const resume = await findByRole('button', { name: 'Continue' });
+    await fireEvent.click(resume);
+    await waitFor(() =>
+      expect(served.calls.some((call) => call.method === 'bureau.contexts.resumeturn')).toBe(true),
+    );
+
+    await waitFor(() => expect(resume.getAttribute('aria-busy')).toBe('true'));
+    const discard = await findByRole('button', { name: 'Discard' });
+    expect(discard.hasAttribute('disabled')).toBe(true);
+    // Still under way a moment later: nothing the page re-reads clears it.
+    await quietFor(100);
+    expect(container.querySelector('.chat-turn-outcome button[aria-busy="true"]')).not.toBeNull();
+    answer({ contextId: 'session-1', runId: 'run-states-ended-on-tool' });
+  });
+
   test('a refused Discard of a turn that wrote no reply does not name one', async () => {
     const [user, call, result] = endedOnToolCallMessages();
     serve([user!, call!, result!], {

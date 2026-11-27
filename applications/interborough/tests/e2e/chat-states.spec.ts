@@ -917,7 +917,8 @@ test.describe('A chat turn of only tool calls and how it ended (COR-2725)', () =
     await stopped.getByRole('button', { name: 'Discard' }).click();
     const said = transcript(page).locator('.chat-turn-command-failure');
     await expect(said).toHaveCount(1);
-    await expect(said).toContainText('The stopped reply wasn’t discarded. Try again.');
+    // A turn of only tool calls wrote no reply, so the line names none.
+    await expect(said).toContainText('The stopped turn wasn’t discarded. Try again.');
     await expect(stopped.getByRole('button', { name: 'Discard' })).toBeEnabled();
     await expect(stopped.getByRole('button', { name: 'Continue' })).toBeEnabled();
     await captureForDesignReviewWithPhone(page, {

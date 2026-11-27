@@ -2662,6 +2662,7 @@
           onComposerInput={rememberDraft}
           messageTurnState={turnState}
           {turnLabels}
+          turnCommands={session.turnCommands}
           {...!readOnly
             ? {
                 // A reconnect that finds no run to join has still done what was asked.

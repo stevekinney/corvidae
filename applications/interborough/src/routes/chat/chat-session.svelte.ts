@@ -28,6 +28,7 @@ import {
   getUnresolvedToolApprovals,
   pairToolCallsWithResults,
   removeMessage,
+  TurnCommands,
   type ChatSessionController,
   type ConversationHistory,
   type MessageInput,
@@ -331,6 +332,12 @@ export class ChatSessionState {
   readonly #wiring: ChatRunWiring;
   readonly #abort = new AbortController();
   readonly sessionId: string;
+  /**
+   * The commands pressed on this chat's turns (Chat's ledger), kept with the session, so a Continue
+   * or a Discard still under way reads busy, and a refusal stays said, when the page is drawn again
+   * (another width) or left and returned to while the session is kept.
+   */
+  readonly turnCommands: TurnCommands;
   readonly #onNotFound: (() => void) | undefined;
   readonly #closed: ChatSessionOptions['closed'];
   #retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -368,6 +375,7 @@ export class ChatSessionState {
 
   constructor(options: ChatSessionOptions) {
     this.sessionId = options.sessionId;
+    this.turnCommands = new TurnCommands(options.sessionId);
     this.#opened = options.unopened !== true;
     this.#readOnly = options.readOnly === true;
     this.#onSharedHistoryUnavailable = options.onSharedHistoryUnavailable;
@@ -1504,6 +1512,7 @@ export class ChatSessionState {
     if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
     this.#retryTimer = undefined;
     this.controller.dispose();
+    this.turnCommands.dispose();
     void this.#wiring.discardAttach();
   }
 }

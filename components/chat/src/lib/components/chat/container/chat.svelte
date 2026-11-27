@@ -232,6 +232,7 @@
     onContinueTurn,
     onDiscardTurn,
     onRetryTurn,
+    turnCommands: hostTurnCommands,
     onRetryStep,
     onApprovalRequestAgain,
     style,
@@ -1640,11 +1641,17 @@
   // What the person pressed on a turn's recovery controls (COR-2725): one command per turn at a
   // time, tied to the conversation it was pressed in, so an answer that arrives after another
   // conversation is shown, or after the turn moved on, changes nothing.
-  const turnCommands = new TurnCommands(untrack(() => id));
+  // A host that outlives this Chat (a route that is drawn again at another width, a session kept
+  // while its page is left) passes its own ledger, so a command under way and a refusal said on a
+  // turn survive the Chat being made again; the host then owns the ledger's scope and its end.
+  const ownTurnCommands = untrack(() =>
+    hostTurnCommands === undefined ? new TurnCommands(id) : undefined,
+  );
+  const turnCommands = $derived(hostTurnCommands ?? ownTurnCommands!);
   $effect.pre(() => {
-    turnCommands.setScope(id);
+    ownTurnCommands?.setScope(id);
   });
-  $effect(() => () => turnCommands.dispose());
+  $effect(() => () => ownTurnCommands?.dispose());
   // What was said or held on an outcome anchor ends with its outcome: when the anchor's outcome
   // goes (not when its row is merely drawn again, as a resize does), the next outcome on the same
   // anchor starts clean.

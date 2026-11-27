@@ -32,7 +32,7 @@ import type { ChatComposerControlsContext } from './input/composer-controls.ts';
 import type { ChatComposerToolbarContext } from './input/composer-markdown.ts';
 import type { ChatComposerStatus } from './input/composer-status.ts';
 import type { MessagePartOverride } from './message/chat-message-parts.ts';
-import type { TurnCommandAnswer } from './message/turn-commands.ts';
+import type { TurnCommandAnswer, TurnCommands } from './message/turn-commands.ts';
 import type { ChatTurnLabels } from './message/turn-labels.ts';
 import type { ChatTurnState } from './message/turn-state.ts';
 import type { ChatQuestionDockLabels } from './question/question-dock-labels.ts';
@@ -497,6 +497,15 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   onDiscardTurn?: ((messageId: string) => TurnCommandAnswer) | undefined;
   /** Called with a failed turn's id when the person chooses Retry, or an empty turn's when they choose Try again. Each shows only when this is set. Runs as {@link ChatProps.onRetryConnection} does. */
   onRetryTurn?: ((messageId: string) => TurnCommandAnswer) | undefined;
+  /**
+   * The ledger of the commands pressed on this conversation's turns: which one is under way on a
+   * turn, and which one a turn said did not go through. Left out, Chat keeps its own, for as long
+   * as it is mounted. A host whose Chat is made again while a command runs (a page drawn again at
+   * another width, a conversation kept while its page is left) creates one `TurnCommands` per
+   * conversation and passes it on every mount, so the busy control and the refusal survive. The
+   * host ends its life with `dispose()`.
+   */
+  turnCommands?: TurnCommands | undefined;
   /** Called with a failed tool call's id when the person chooses Retry under it. The button shows only when this is set; Copy error always shows. */
   onRetryStep?: ((toolCallId: string) => void) | undefined;
   /** Called when the explicit history trigger is activated. The consumer prepends compatible messages into `conversation`. */

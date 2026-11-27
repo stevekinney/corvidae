@@ -19,6 +19,7 @@ import {
   FOLLOW_UP_METADATA_KEY,
 } from './builders.ts';
 import type { ConversationHistory } from './conversation-model.ts';
+import { TurnCommands } from './message/turn-commands.ts';
 import {
   resolveTurnOutcome,
   turnStateOf,
@@ -402,6 +403,90 @@ describe('Chat — the outcome of a turn that ends on its steps stands before wh
       expect(follows(drawn, typed)).toBe(true);
     });
   }
+});
+
+describe('Chat — a command under way on an outcome anchor', () => {
+  test('its control reads busy, the turn’s other control is held, and both come back when the host answers', async () => {
+    const stopped = noted(turnOf('finished'), {
+      kind: 'stopped',
+      id: 'stopped:r',
+      reason: 'Stopped.',
+    });
+    let answer: (value: boolean) => void = () => undefined;
+    const held = new Promise<boolean>((resolve) => {
+      answer = resolve;
+    });
+    const { container } = render(Chat, {
+      id: 'only-tools',
+      variant: 'transcript',
+      onContinueTurn: () => held,
+      onDiscardTurn: () => undefined,
+      ...statesOf(stopped, IDLE),
+    });
+    await tick();
+    const resume = getByRole(container, 'button', { name: 'Continue' });
+    await fireEvent.click(resume);
+    await tick();
+    expect(resume.getAttribute('aria-busy')).toBe('true');
+    expect(getByRole(container, 'button', { name: 'Discard' }).hasAttribute('disabled')).toBe(true);
+    // A redraw of the transcript while the command runs leaves it under way.
+    await tick();
+    expect(getByRole(container, 'button', { name: 'Continue' }).getAttribute('aria-busy')).toBe(
+      'true',
+    );
+    answer(true);
+    await tick();
+    await tick();
+    expect(getByRole(container, 'button', { name: 'Continue' }).hasAttribute('aria-busy')).toBe(
+      false,
+    );
+    expect(getByRole(container, 'button', { name: 'Discard' }).hasAttribute('disabled')).toBe(
+      false,
+    );
+  });
+});
+
+describe('Chat — a command under way survives the Chat being made again', () => {
+  test('a ledger the host keeps shows the busy control and the refusal on the Chat that replaces it', async () => {
+    const stopped = noted(turnOf('finished'), {
+      kind: 'stopped',
+      id: 'stopped:r',
+      reason: 'Stopped.',
+    });
+    const ledger = new TurnCommands('kept');
+    let answer: (value: boolean) => void = () => undefined;
+    const held = new Promise<boolean>((resolve) => {
+      answer = resolve;
+    });
+    const props = {
+      id: 'only-tools',
+      variant: 'transcript' as const,
+      turnCommands: ledger,
+      onContinueTurn: () => held,
+      onDiscardTurn: () => undefined,
+      ...statesOf(stopped, IDLE),
+    };
+    const first = render(Chat, props);
+    await tick();
+    await fireEvent.click(getByRole(first.container, 'button', { name: 'Continue' }));
+    await tick();
+    // The page is drawn again (another width): a new Chat, the same ledger.
+    cleanup();
+    const second = render(Chat, props);
+    await tick();
+    expect(
+      getByRole(second.container, 'button', { name: 'Continue' }).getAttribute('aria-busy'),
+    ).toBe('true');
+    expect(
+      getByRole(second.container, 'button', { name: 'Discard' }).hasAttribute('disabled'),
+    ).toBe(true);
+    // The host then refuses it: the new Chat says so, once.
+    answer(false);
+    await tick();
+    await tick();
+    expect(second.container.querySelectorAll('.chat-turn-command-failure')).toHaveLength(1);
+    ledger.dispose();
+  });
 });
 
 describe('Chat — a turn that wrote no answer never names a reply', () => {
