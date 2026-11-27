@@ -1,6 +1,7 @@
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, mock } from 'bun:test';
 import { createReviewsClientWithTransport, parseReviewsOpeningSnapshot } from './client.ts';
+import { validatedReviewsTransport } from './validation.ts';
 
 const review = {
   source: 'bureau',
@@ -18,6 +19,17 @@ const list = { reviews: [review], total: 1, nextPageToken: null };
 const receipt = { id: review.id, kind: 'tool-approval', decision: 'approve', receipt: 'applied' };
 
 describe('the portable Reviews boundary', () => {
+  it('refuses unsupported operations before calling the transport', async () => {
+    const dispatch = mock(async () => undefined);
+    const transport = validatedReviewsTransport(dispatch);
+    for (const name of ['bureau.tasks.cancel', 'opening', 'constructor']) {
+      expect(await rejectionOf(transport(name, {}))).toMatchObject({
+        message: `Unsupported Reviews operation: ${name}`,
+      });
+    }
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
   it('omits unknown effects while rejecting malformed known effects', async () => {
     const unknown = { ...review, effect: { kind: 'inventory', publicId: 'one' } };
     const client = createReviewsClientWithTransport(async () => unknown);

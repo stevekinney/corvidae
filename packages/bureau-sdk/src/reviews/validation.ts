@@ -105,20 +105,29 @@ function withoutUnknownEffects(value: unknown): unknown {
   return { ...source, reviews: source['reviews'].map(publicReview) };
 }
 
-/** Validate the declared Reviews outputs without changing the caller's transport or input. */
+function operationOutputSchema(name: string): Schema {
+  if (!Object.hasOwn(schemas, name) || name === 'opening')
+    throw new TypeError(`Unsupported Reviews operation: ${name}`);
+  return schemas[name]!;
+}
+
+function validateOutput(name: string, schema: Schema, input: unknown): unknown {
+  const value = withoutUnknownEffects(input);
+  if (!matches(schema, value)) throw new TypeError(`Invalid ${name} response`);
+  return value;
+}
+
+/** Forward only declared Reviews operations and validate their outputs. */
 export function validatedReviewsTransport(transport: CatalogTransport): CatalogTransport {
   return async (name, input, options) => {
-    return parseReviewsOutput(name, await transport(name, input, options));
+    const schema = operationOutputSchema(name);
+    return validateOutput(name, schema, await transport(name, input, options));
   };
 }
 
 /** Validate and sanitize a Reviews response before rendering or placing it in a cache. */
 export function parseReviewsOutput(name: string, input: unknown): unknown {
-  if (!Object.hasOwn(schemas, name) || name === 'opening')
-    throw new TypeError(`Unsupported Reviews operation: ${name}`);
-  const value = withoutUnknownEffects(input);
-  if (!matches(schemas[name]!, value)) throw new TypeError(`Invalid ${name} response`);
-  return value;
+  return validateOutput(name, operationOutputSchema(name), input);
 }
 
 // Opening data is not correlated with a caller. Its schema differs only in permitting a missing
