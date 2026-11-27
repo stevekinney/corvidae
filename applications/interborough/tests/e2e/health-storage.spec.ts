@@ -583,44 +583,80 @@ test.describe('Health › Storage on the sample world', () => {
   });
 
   test.describe('on a touch phone', () => {
-    test.use({ viewport: { width: 375, height: 900 }, hasTouch: true, isMobile: true });
+    for (const width of [320, 375]) {
+      test.use({ viewport: { width, height: 900 }, hasTouch: true, isMobile: true });
 
-    test('Range stacks its two fields at 44 pixels and never widens the page, and the details fit the screen', async ({
-      page,
-      checkA11y,
-    }) => {
-      await page.goto('/health/storage');
-      const main = page.locator('main');
-      await expect(main.locator('tbody tr[data-cinder-row-id]').first()).toBeVisible();
-      await main.getByRole('radio', { name: 'Range' }).click();
-      const range = main.getByRole('group', { name: 'Range' });
-      for (const field of [range.getByLabel('Range start'), range.getByLabel('Range end')]) {
-        const box = await field.boundingBox();
-        expect(box?.height).toBeGreaterThanOrEqual(44);
-        expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(375);
-      }
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
-        true,
-      );
-      await captureForDesignReview(page, {
-        route: '/health/storage',
-        state: 'range-phone',
-        source: SOURCE,
-      });
-      await checkA11y('health storage range at 375px');
+      test(`Range stacks its two fields at 44 pixels and the details content fits at ${width}px`, async ({
+        page,
+        context,
+        request,
+        checkA11y,
+      }) => {
+        await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+        const paths = await request.get('/host/paths');
+        expect(paths.ok()).toBe(true);
+        const { database } = (await paths.json()) as HostPaths;
+        if (database.kind !== 'sqlite') throw new Error('The Storage showcase must use SQLite.');
+        const expectedLocation = dirname(database.path);
+        await page.goto('/health/storage');
+        const main = page.locator('main');
+        await expect(main.locator('tbody tr[data-cinder-row-id]').first()).toBeVisible();
+        await main.getByRole('radio', { name: 'Range' }).click();
+        const range = main.getByRole('group', { name: 'Range' });
+        for (const field of [range.getByLabel('Range start'), range.getByLabel('Range end')]) {
+          const box = await field.boundingBox();
+          expect(box?.height).toBeGreaterThanOrEqual(44);
+          expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width);
+        }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+          true,
+        );
+        await captureForDesignReview(page, {
+          route: '/health/storage',
+          state: `range-phone-${width}`,
+          source: SOURCE,
+        });
+        await checkA11y(`health storage range at ${width}px`);
 
-      await main.getByRole('button', { name: 'Storage details' }).click();
-      const details = page.getByTestId('storage-details');
-      await expect(details).toBeVisible();
-      const box = await details.boundingBox();
-      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(375);
-      expect(box?.x ?? -1).toBeGreaterThanOrEqual(0);
-      await captureForDesignReview(page, {
-        route: '/health/storage',
-        state: 'popover-phone',
-        source: SOURCE,
+        await main.getByRole('button', { name: 'Storage details' }).tap();
+        const details = page.getByTestId('storage-details');
+        await expect(details).toBeVisible();
+        const box = await details.boundingBox();
+        expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width);
+        expect(box?.x ?? -1).toBeGreaterThanOrEqual(0);
+        const location = details.getByTestId('storage-location');
+        await expect(location).toHaveText(expectedLocation, { useInnerText: true });
+        const copy = location.getByRole('button', { name: 'Copy location', exact: true });
+        const fit = await location.evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const textBounds = [...range.getClientRects()].filter((rect) => rect.width > 0);
+          const frame = element.closest('.cinder-drawer__panel')?.getBoundingClientRect();
+          const control = element.querySelector('button')?.getBoundingClientRect();
+          return {
+            left: Math.min(...textBounds.map((rect) => rect.left)),
+            right: Math.max(...textBounds.map((rect) => rect.right)),
+            frameLeft: frame?.left ?? Infinity,
+            frameRight: frame?.right ?? -Infinity,
+            controlLeft: control?.left ?? Infinity,
+            controlRight: control?.right ?? -Infinity,
+          };
+        });
+        expect(fit.left).toBeGreaterThanOrEqual(Math.floor(fit.frameLeft));
+        expect(fit.right).toBeLessThanOrEqual(Math.ceil(fit.frameRight));
+        expect(fit.controlLeft).toBeGreaterThanOrEqual(Math.floor(fit.frameLeft));
+        expect(fit.controlRight).toBeLessThanOrEqual(Math.ceil(fit.frameRight));
+        await copy.tap();
+        await expect
+          .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+          .toBe(expectedLocation);
+        await captureForDesignReview(page, {
+          route: '/health/storage',
+          state: `popover-phone-${width}`,
+          source: SOURCE,
+        });
       });
-    });
+    }
   });
 });
 

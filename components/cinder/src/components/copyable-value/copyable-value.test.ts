@@ -89,7 +89,7 @@ describe('CopyableValue', () => {
       /\.cinder-copyable-value__control \.cinder-copy-button\s*\{[^}]*inline-size:\s*100%;[^}]*block-size:\s*100%;/s,
     );
     expect(css).toMatch(
-      /@media \(any-pointer: coarse\)\s*\{\s*\.cinder-copyable-value__control\s*\{[^}]*inline-size:\s*var\(--cinder-touch-target-min\);[^}]*min-block-size:\s*var\(--cinder-touch-target-min\);/s,
+      /@media \(any-pointer: coarse\)\s*\{\s*\/\*[\s\S]*?\.cinder-copyable-value\s*\{[^}]*display:\s*inline;[^}]*\}[\s\S]*?\.cinder-copyable-value__control\s*\{[^}]*inline-size:\s*var\(--cinder-touch-target-min\);[^}]*min-block-size:\s*var\(--cinder-touch-target-min\);/,
     );
   });
 

@@ -28,6 +28,15 @@
       label="Copy the address"
     />
   </p>
+  <!-- A real host path is longer than a phone sheet. Its Copy target must stay reachable after the
+       full value has wrapped, rather than hanging past the sheet's inline end. -->
+  <p data-testid="storage-location">
+    <CopyableValue
+      data-testid="storage-location-value"
+      value="/var/folders/ys/8qylcrld5lxcm3bj6nznfh900000gn/T/interborough-storage-showcase-Uo0Fa2/showcase-home"
+      label="Copy storage location"
+    />
+  </p>
 </div>
 
 <style>
