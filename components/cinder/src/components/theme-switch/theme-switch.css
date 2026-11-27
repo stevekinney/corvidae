@@ -16,7 +16,6 @@
     --_cinder-theme-switch-segment-block: 1.625rem;
     --_cinder-theme-switch-inset: 0.125rem;
     --_cinder-theme-switch-position: 1;
-    --_cinder-theme-switch-track-border: var(--cinder-border);
 
     /* The sky and night tracks keep their own lightness in both themes: a sky is pale and a
      * night is dark whichever theme the page is in, so the icons and the thumb on them use fixed
@@ -36,7 +35,7 @@
     box-sizing: border-box;
     padding: var(--_cinder-theme-switch-inset);
     vertical-align: middle;
-    border: 1px solid var(--_cinder-theme-switch-track-border);
+    border: 1px solid var(--_cinder-theme-switch-track-border, var(--cinder-border));
     border-radius: var(--cinder-radius-full);
     background-color: var(--_cinder-theme-switch-track);
     transition:
@@ -202,7 +201,7 @@
       position: absolute;
       inset-block: -1px;
       inset-inline: calc(var(--_cinder-theme-switch-track-offset) - 1px);
-      border: 1px solid var(--_cinder-theme-switch-track-border);
+      border: 1px solid var(--_cinder-theme-switch-track-border, var(--cinder-border));
       border-radius: inherit;
       background-color: var(--_cinder-theme-switch-track);
       pointer-events: none;

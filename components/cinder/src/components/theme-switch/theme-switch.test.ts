@@ -221,8 +221,9 @@ describe('ThemeSwitch — quiet sky and night track', () => {
     expect(painted('dark', border)).toBe('oklch(38% 0.05 265)');
     expect(declaration('system', track)).toBeUndefined();
     expect(themeSwitchCss).toContain('--_cinder-theme-switch-track: var(--cinder-surface-inset);');
-    expect(themeSwitchCss).toContain('--_cinder-theme-switch-track-border: var(--cinder-border);');
-    expect(themeSwitchCss).toContain('border: 1px solid var(--_cinder-theme-switch-track-border);');
+    expect(themeSwitchCss).toContain(
+      'border: 1px solid var(--_cinder-theme-switch-track-border, var(--cinder-border));',
+    );
   });
 
   test('the raised thumb is white behind Light and a lifted night blue behind Dark', () => {
