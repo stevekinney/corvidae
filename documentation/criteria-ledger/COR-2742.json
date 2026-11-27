@@ -1,0 +1,39 @@
+{
+  "issue": "COR-2742",
+  "branch": "codex/cor-2742-workers-npm",
+  "checkedAt": "25f0095eed6abcfc0da1df53d08a4af0933ed5bf",
+  "briefVersion": "e5b86e993051",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "packages/object-store exports shared, S3, R2, and SigV4 APIs; object-store typecheck passed."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "operations-contract.integration.test.ts passed directly against S3 test server and Miniflare R2."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "workerd.integration.test.ts passed directly with r2Buckets round trip."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Bureau and Bungalow use object-store operations; Bureau production source has no Bun.S3Client references."
+    },
+    {
+      "id": "AC5",
+      "status": "not-met",
+      "evidence": "Required package suites could not run while the shared test pool was busy."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "packages/object-store/README.md records conditional semantics, S3-only delete, and Miniflare verification."
+    }
+  ]
+}
