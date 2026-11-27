@@ -25,7 +25,11 @@ try {
     databaseWorkspaceClaim: async () => {},
     ...(process.argv[3] === 'bun-presigner' ? { presigner: bunPresigner } : {}),
   });
-  process.stdout.write(`${JSON.stringify({ outcome: 'opened', deploymentId: bungalow.deploymentId, sessionToken: null })}\n`);
+  process.stdout.write(
+    `${JSON.stringify({ outcome: 'opened', deploymentId: bungalow.deploymentId, sessionToken: null })}\n`,
+  );
 } catch (error) {
-  process.stdout.write(`${JSON.stringify({ outcome: 'failed', name: error instanceof Error ? error.name : 'unknown', message: error instanceof Error ? error.message : '' })}\n`);
+  process.stdout.write(
+    `${JSON.stringify({ outcome: 'failed', name: error instanceof Error ? error.name : 'unknown', message: error instanceof Error ? error.message : '' })}\n`,
+  );
 }

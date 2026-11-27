@@ -157,7 +157,7 @@ export type ContentKinds = Readonly<Record<string, ContentKind>>;
 function hasConditionalRemove(
   client: ReturnType<Bungalow['objectStore']>,
 ): client is S3ObjectStoreOperations {
-  return client !== undefined && typeof client.remove === 'function';
+  return client !== undefined && 'remove' in client && typeof client.remove === 'function';
 }
 
 function requireClient(bungalow: Bungalow): S3ObjectStoreOperations {

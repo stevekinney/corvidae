@@ -56,7 +56,7 @@ describe('S3 object operations', () => {
       bucket: 'bucket',
       contentType: 'text/plain',
       presigner: (_key, options) => {
-        queries.push(options.query);
+        queries.push(options?.query);
         return 'https://objects.example.test/bucket';
       },
       fetch: (async () =>
