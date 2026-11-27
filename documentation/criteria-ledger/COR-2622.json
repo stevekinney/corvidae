@@ -1,0 +1,44 @@
+{
+  "issue": "COR-2622",
+  "branch": "steve/composable-refund-acceptance",
+  "checkedAt": "9161572958bcd2892404292de9a3068e75f88a79",
+  "briefVersion": "b4302e235229",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "b3d56709 scoped Chromium log tmp/chef/2026-11-26-cor-2622-isolated-browser-b3d56709.log: distinct Alice and Bob approve in both claim orders through real page/panel, same review ID and round, visible order and amount, one durable decision and matching payment; later proxy correction limited to identity-cancellation fixture."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "b3d56709 scoped Chromium log covers independent process claims, provider barriers, deny and re-gate with zero provider effects; tmp/chef/scratch/COR-2622-19ac2844/final-focused-46f6898f.log contains direct controls. Bound run 45898366924 could not start any refund case without PostgreSQL; b34470a adds the service and Turbo propagation, exercised with Bun.SQL inside the actual Playwright image."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "tmp/chef/2026-11-26-cor-2622-refund-admission-recovery.log and refund-receipt-order-green-final.log cover admission recovery, replay and changed amounts; scratch/COR-2622-19ac2844/partial-refund-settlement.log exit 0, 12/78, covers two distinct partial settlements and overbalance."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "tmp/chef/scratch/COR-2622-19ac2844/refund-crash-outbox.log and final-focused-46f6898f.log cover both reviewer transports through crash recovery and receipt fencing; scoped b3d56709 browser log covers both outcome-write warning surfaces."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "tmp/chef/scratch/COR-2622-19ac2844/refund-authority-403-corrected.log exit 0, 7/126, and refund-reviewer-revalidation-final.log cover requester, reviewer revocation/replacement, independent decision and provider controls; focused Bureau controls cover ordinary ownership and forged provenance."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "Actual scoped page/panel Chromium builds passed; both source imports resolve to the same generated workspace export (scratch/COR-2622-19ac2844/page-panel-resolution.json), with no Bureau-client override in their build configuration. External browser/server input maps independently name the same generated source; HTTP SSR witness tmp/chef/2026-11-26-cor-2622-external-ssr-witness-c090307e-fixed.log exit 0, zero mount reads or effects. Corrected Claude smoke and zero-resolve proof, sandbox and identity controls passed. Three other optional Inspector panel builds logged deadline warnings; full stock gate remains pending."
+    },
+    {
+      "id": "AC7",
+      "status": "met-on-branch",
+      "evidence": "tmp/chef/2026-11-26-cor-2622-external-fixture-b3d56709.json records production external fixture, authenticated approval, MCP 2025-03-26 and one durable effect. Installed Interborough proof is COR-2631."
+    }
+  ]
+}

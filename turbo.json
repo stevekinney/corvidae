@@ -267,6 +267,7 @@
     "//#ci:browser-interborough": {
       "dependsOn": ["@lostgradient/interborough#transit", "@lostgradient/interborough#metadata"],
       "env": [
+        "WEFT_TEST_POSTGRES_URL",
         "PLAYWRIGHT_SHARD",
         "PLAYWRIGHT_BASE_IMAGE",
         "CORVIDAE_EXPECTED_RELEASE_SHA",

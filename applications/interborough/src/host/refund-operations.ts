@@ -45,8 +45,9 @@ export function reviewedRefundContribution(options: {
   toolId: string;
   approvalStateStore: ApprovalStateStore;
   requestContext(principal: Principal): ToolRequestContext;
+  recoverAccepted?: (refund: Refund) => ReturnType<ReturnType<typeof createRefundLedger>['get']>;
 }) {
-  const { ledger, access } = options;
+  const { ledger, access, recoverAccepted } = options;
   if (options.toolbox.getTool(options.toolId)?.name !== 'issue-refund')
     throw new Error('Refund contribution requires the pinned issue-refund tool');
   const refundForRun = async (runId: string) => {
@@ -129,11 +130,47 @@ export function reviewedRefundContribution(options: {
           },
         },
         access: {
+          allowOtherOwners: true,
+          ...(recoverAccepted === undefined
+            ? {}
+            : {
+                async recover(review) {
+                  const refund = await refundForRun(review.runId);
+                  const argumentsRecord = review.approval.arguments;
+                  if (
+                    !refund ||
+                    refund.reviewId !== review.id ||
+                    !argumentsRecord ||
+                    typeof argumentsRecord !== 'object' ||
+                    Array.isArray(argumentsRecord) ||
+                    Reflect.get(argumentsRecord, 'refundId') !== refund.id ||
+                    Reflect.get(argumentsRecord, 'orderId') !== refund.order ||
+                    Reflect.get(argumentsRecord, 'cents') !== refund.amount ||
+                    Reflect.get(argumentsRecord, 'currency') !== refund.currency
+                  )
+                    return undefined;
+                  const recovered = await recoverAccepted(refund);
+                  if (!recovered) return undefined;
+                  const value = refundView(recovered);
+                  return {
+                    callId: review.approval.callId,
+                    toolCallId: review.approval.callId,
+                    toolName: review.approval.toolName,
+                    outcome: 'success' as const,
+                    content: value,
+                    result: value,
+                  };
+                },
+              }),
           requestScopes: ['demo.refunds:request'],
           readScopes: ['demo.refunds:read'],
           async mayRead(review, principal) {
             const refund = await refundForRun(review.runId);
-            return !!refund && access.read(principal, refund);
+            return (
+              !!refund &&
+              !(await access.isRequester(principal, refund)) &&
+              access.decide(principal, refund)
+            );
           },
           async mayDecide(review, principal) {
             const refund = await refundForRun(review.runId);

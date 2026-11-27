@@ -105,21 +105,16 @@ async function main(): Promise<number> {
     }
     // Per-tool visibility (COR-2209): a tool some running panel lists in its `allowedTools` is
     // visible to apps, and every other tool to the model alone.
-    const panelTools = new Set([
-      'bureau.tasks.inspect',
-      'bureau.tasks.events',
-      'bureau.tasks.cancel',
-      'bureau.reviews.list',
-      'bureau.reviews.get',
-      'bureau.reviews.resolve',
-      'bureau.workflows.get',
-      'bureau.workflows.update',
-      'bureau.runs.compare',
-    ]);
+    const panels = host.bureau.plugins.panels();
+    const hostOnlyTools = new Set(panels.flatMap(({ app }) => app.hostOnlyTools ?? []));
+    const panelTools = new Set(
+      panels.flatMap(({ app }) => app.allowedTools.filter((name) => !hostOnlyTools.has(name))),
+    );
     const listedTools: Array<{ name: string; _meta?: { ui?: { visibility?: unknown } } }> =
       tools?.result?.tools ?? [];
     if (listedTools.length === 0) problems.push('tools/list answered no tools');
     for (const { name, _meta } of listedTools) {
+      if (hostOnlyTools.has(name)) problems.push(`${name} is host-only but advertised over MCP`);
       const expected = panelTools.has(name) ? ['model', 'app'] : ['model'];
       const actual = _meta?.ui?.visibility;
       if (JSON.stringify(actual) !== JSON.stringify(expected)) {
