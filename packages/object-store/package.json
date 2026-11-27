@@ -15,7 +15,8 @@
     "test:slow": "bun ../../scripts/bun-test-selected.ts .slow.test.ts .integration.test.ts"
   },
   "dependencies": {
-    "@lostgradient/cryptography": "workspace:*"
+    "@lostgradient/cryptography": "workspace:*",
+    "saxes": "catalog:"
   },
   "devDependencies": {
     "@lostgradient/testing": "workspace:*",

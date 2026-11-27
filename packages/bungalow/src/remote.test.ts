@@ -346,6 +346,14 @@ describe('remote mode: an injected presigner', () => {
       'a KeyCount the keys contradict',
       '<ListBucketResult><KeyCount>3</KeyCount><IsTruncated>false</IsTruncated></ListBucketResult>',
     ],
+    [
+      'a trailing incomplete tag after an otherwise complete listing',
+      '<ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult><',
+    ],
+    [
+      'a leading incomplete tag before an otherwise complete listing',
+      '<<ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>',
+    ],
     ['an empty body', ''],
     ['an HTML page', '<html><body>ok</body></html>'],
   ] as const;

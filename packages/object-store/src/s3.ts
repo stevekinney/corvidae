@@ -1,3 +1,4 @@
+import { SaxesParser } from 'saxes';
 import {
   failure,
   guarded,
@@ -34,43 +35,35 @@ function unescapeXml(text: string): string {
 
 type XmlNode = { readonly name: string; readonly children: XmlNode[]; text: string };
 
-/** Parse the small S3 listing grammar into a tree so nested extension fields cannot impersonate root fields. */
+/** Parse the listing as XML so malformed tokens and nested extension fields cannot impersonate root fields. */
 function parseXml(xml: string): XmlNode {
-  const tokens = xml.match(/<[^>]*>|[^<]+/g);
-  if (tokens === null) throw new Error('MalformedListing');
   const stack: XmlNode[] = [];
   let root: XmlNode | undefined;
-  for (const token of tokens) {
-    if (token.startsWith('<?') || token.startsWith('<!--')) continue;
-    if (token.startsWith('</')) {
-      const name = /^<\/([A-Za-z][A-Za-z0-9:._-]*)\s*>$/.exec(token)?.[1];
-      const node = stack.pop();
-      if (name === undefined || node === undefined || node.name !== name)
-        throw new Error('MalformedListing');
-      continue;
-    }
-    if (token.startsWith('<')) {
-      const opening = /^<([A-Za-z][A-Za-z0-9:._-]*)(?:\s[^<>]*)?\s*(\/?)>$/.exec(token);
-      if (opening === null) throw new Error('MalformedListing');
-      const node: XmlNode = { name: opening[1] ?? '', children: [], text: '' };
-      if (stack.length === 0) {
-        if (root !== undefined) throw new Error('MalformedListing');
-        root = node;
-      } else {
-        const parent = stack.at(-1);
-        if (parent === undefined) throw new Error('MalformedListing');
-        parent.children.push(node);
-      }
-      if (opening[2] !== '/') stack.push(node);
-      continue;
-    }
+  const parser = new SaxesParser();
+  parser.on('opentag', (tag) => {
+    const node: XmlNode = { name: tag.name, children: [], text: '' };
     if (stack.length === 0) {
-      if (token.trim() !== '') throw new Error('MalformedListing');
+      if (root !== undefined) throw new Error('MalformedListing');
+      root = node;
     } else {
-      const current = stack.at(-1);
-      if (current === undefined) throw new Error('MalformedListing');
-      current.text += token;
+      stack.at(-1)?.children.push(node);
     }
+    stack.push(node);
+  });
+  const appendText = (text: string): void => {
+    const current = stack.at(-1);
+    if (current !== undefined) current.text += text;
+    else if (text.trim() !== '') throw new Error('MalformedListing');
+  };
+  parser.on('text', appendText);
+  parser.on('cdata', appendText);
+  parser.on('closetag', () => {
+    if (stack.pop() === undefined) throw new Error('MalformedListing');
+  });
+  try {
+    parser.write(xml).close();
+  } catch {
+    throw new Error('MalformedListing');
   }
   if (root === undefined || stack.length !== 0) throw new Error('MalformedListing');
   return root;

@@ -791,6 +791,7 @@
       "name": "@lostgradient/object-store",
       "dependencies": {
         "@lostgradient/cryptography": "workspace:*",
+        "saxes": "catalog:",
       },
       "devDependencies": {
         "@lostgradient/testing": "workspace:*",
