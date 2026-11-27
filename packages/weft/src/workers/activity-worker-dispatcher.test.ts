@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import type { ActivityExecutionRequest } from './activity-runner.ts';
 import { ActivityWorkerDispatcher } from './activity-worker-dispatcher.ts';
 import { WorkerPool } from './pool.ts';
@@ -20,7 +21,7 @@ describe('ActivityWorkerDispatcher', () => {
 
   describe('successful execution', () => {
     it('executes a synchronous activity and returns the result', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
       dispatcher = new ActivityWorkerDispatcher(pool);
 
       const request: ActivityExecutionRequest = {
@@ -38,7 +39,7 @@ describe('ActivityWorkerDispatcher', () => {
     });
 
     it('executes an async activity and returns the result', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
       dispatcher = new ActivityWorkerDispatcher(pool);
 
       const request: ActivityExecutionRequest = {
@@ -56,7 +57,7 @@ describe('ActivityWorkerDispatcher', () => {
     });
 
     it('handles numeric results correctly', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
       dispatcher = new ActivityWorkerDispatcher(pool);
 
       const request: ActivityExecutionRequest = {
@@ -80,7 +81,7 @@ describe('ActivityWorkerDispatcher', () => {
 
   describe('failed execution', () => {
     it('returns failed for an unknown activity', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
       dispatcher = new ActivityWorkerDispatcher(pool);
 
       const request: ActivityExecutionRequest = {
@@ -98,7 +99,7 @@ describe('ActivityWorkerDispatcher', () => {
     });
 
     it('returns failed when the activity throws', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
       dispatcher = new ActivityWorkerDispatcher(pool);
 
       const request: ActivityExecutionRequest = {
@@ -122,7 +123,7 @@ describe('ActivityWorkerDispatcher', () => {
 
   describe('configurable pool size', () => {
     it('respects pool concurrency of 1', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
       dispatcher = new ActivityWorkerDispatcher(pool);
 
       // Run two activities concurrently with pool size 1
@@ -153,7 +154,7 @@ describe('ActivityWorkerDispatcher', () => {
     });
 
     it('executes activities concurrently up to pool size', async () => {
-      pool = new WorkerPool({ concurrency: 4, workerUrl });
+      pool = new WorkerPool({ concurrency: 4, workerUrl, createWorker: bunWorkerFactory });
       dispatcher = new ActivityWorkerDispatcher(pool);
 
       // Run 4 activities concurrently
@@ -180,7 +181,7 @@ describe('ActivityWorkerDispatcher', () => {
 
   describe('pool metrics', () => {
     it('exposes availableCount, totalCount, and pendingCount', () => {
-      pool = new WorkerPool({ concurrency: 3, workerUrl });
+      pool = new WorkerPool({ concurrency: 3, workerUrl, createWorker: bunWorkerFactory });
       dispatcher = new ActivityWorkerDispatcher(pool);
 
       expect(dispatcher.availableCount).toBe(0);
@@ -208,6 +209,7 @@ describe('ActivityWorkerDispatcher', () => {
       const fakePool = {
         acquire: async () => worker,
         release: () => {},
+        discard: () => worker.terminate(),
         availableCount: 0,
         totalCount: 1,
         pendingCount: 0,
@@ -249,6 +251,7 @@ describe('ActivityWorkerDispatcher', () => {
         release: () => {
           released = true;
         },
+        discard: () => worker.terminate(),
         availableCount: 0,
         totalCount: 1,
         pendingCount: 0,
@@ -278,7 +281,7 @@ describe('ActivityWorkerDispatcher', () => {
 
   describe('worker reuse', () => {
     it('releases workers back to the pool after execution', async () => {
-      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool = new WorkerPool({ concurrency: 1, workerUrl, createWorker: bunWorkerFactory });
       dispatcher = new ActivityWorkerDispatcher(pool);
 
       // Execute first activity
@@ -311,7 +314,7 @@ describe('ActivityWorkerDispatcher', () => {
 
   describe('disposal', () => {
     it('disposes the underlying pool on sync dispose', () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
       dispatcher = new ActivityWorkerDispatcher(pool);
 
       dispatcher[Symbol.dispose]();
@@ -320,7 +323,7 @@ describe('ActivityWorkerDispatcher', () => {
     });
 
     it('disposes the underlying pool on async dispose', async () => {
-      pool = new WorkerPool({ concurrency: 2, workerUrl });
+      pool = new WorkerPool({ concurrency: 2, workerUrl, createWorker: bunWorkerFactory });
       dispatcher = new ActivityWorkerDispatcher(pool);
 
       const worker = await pool.acquire();

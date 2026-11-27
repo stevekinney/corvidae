@@ -1,3 +1,4 @@
+import type { WorkerLike } from '../workers/pool.ts';
 import type { FailureCategory } from './types.ts';
 import type { WorkflowLogRecord } from './types/workflow-log.ts';
 import type { WorkerExecutionStrategyOptions } from './worker-execution-strategy-options.ts';
@@ -98,7 +99,7 @@ export class WorkerLogAbuseCounter {
   readonly #floodThreshold: number;
   readonly #strikeThreshold: number;
   readonly #getNow: () => number;
-  readonly #stateByWorker = new WeakMap<Worker, WorkerAbuseState>();
+  readonly #stateByWorker = new WeakMap<WorkerLike, WorkerAbuseState>();
 
   constructor(options: WorkerLogAbuseCounterOptions) {
     this.#floodWindowMs = options.floodWindowMs;
@@ -117,7 +118,7 @@ export class WorkerLogAbuseCounter {
    * when `getNow` is wall-clock) also re-anchors the window, so clock regression can never
    * hold a window open and accumulate toward a premature discard.
    */
-  recordArrival(worker: Worker): WorkerLogAbuseVerdict {
+  recordArrival(worker: WorkerLike): WorkerLogAbuseVerdict {
     const now = this.#getNow();
     const state = this.#stateFor(worker);
     const elapsed = now - state.windowStartedAt;
@@ -138,7 +139,7 @@ export class WorkerLogAbuseCounter {
    * (the `never` default) so that adding a future non-strike dropped outcome forces the
    * strike-vs-no-strike policy decision to be made here rather than defaulting to a strike.
    */
-  recordOutcome(worker: Worker, outcome: ForwardedWorkerLogOutcome): WorkerLogAbuseVerdict {
+  recordOutcome(worker: WorkerLike, outcome: ForwardedWorkerLogOutcome): WorkerLogAbuseVerdict {
     switch (outcome) {
       case 'accepted-valid':
         return 'tolerate';
@@ -156,11 +157,11 @@ export class WorkerLogAbuseCounter {
   }
 
   /** Drop a worker's accounting (called when the worker is discarded/forgotten). */
-  forget(worker: Worker): void {
+  forget(worker: WorkerLike): void {
     this.#stateByWorker.delete(worker);
   }
 
-  #stateFor(worker: Worker): WorkerAbuseState {
+  #stateFor(worker: WorkerLike): WorkerAbuseState {
     let state = this.#stateByWorker.get(worker);
     if (!state) {
       state = { windowStartedAt: this.#getNow(), arrivalsInWindow: 0, lifetimeStrikes: 0 };
@@ -238,7 +239,7 @@ export class ForwardedLogGate {
    * `null` to tolerate this occurrence.
    */
   handle(
-    worker: Worker,
+    worker: WorkerLike,
     message: WorkerLogMessageCandidate,
     ownedByWorker: (workflowId: string) => boolean,
   ): LogAbuseDiscardOptions | null {
@@ -260,7 +261,7 @@ export class ForwardedLogGate {
   }
 
   /** Drop a worker's accounting (called when the worker is discarded/forgotten). */
-  forget(worker: Worker): void {
+  forget(worker: WorkerLike): void {
     this.#counter.forget(worker);
   }
 }

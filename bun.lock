@@ -14,8 +14,6 @@
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
         "@types/pngjs": "catalog:",
-        "ajv": "catalog:",
-        "ajv-formats": "catalog:",
         "fflate": "catalog:",
         "knip": "6.47.0",
         "oxlint": "catalog:",
@@ -55,8 +53,10 @@
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/environmentalist": "catalog:",
         "@lostgradient/interborough-plugin": "workspace:*",
+        "@lostgradient/markdown": "workspace:*",
         "@lostgradient/mcp": "workspace:*",
         "@lostgradient/memory": "workspace:*",
+        "@lostgradient/object-store": "workspace:*",
         "@lostgradient/operative": "workspace:*",
         "@lostgradient/operative-anthropic": "workspace:*",
         "@lostgradient/operative-gemini": "workspace:*",
@@ -72,6 +72,7 @@
         "@lostgradient/plugin-typesafe": "workspace:*",
         "@lostgradient/plugin-voyage": "workspace:*",
         "@lostgradient/plugin-workspace": "workspace:*",
+        "@lostgradient/process-lease": "workspace:*",
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/storage-bun-sqlite": "workspace:*",
         "@lostgradient/storage-indexeddb": "workspace:*",
@@ -306,6 +307,7 @@
         "svelte": "catalog:",
       },
       "devDependencies": {
+        "@lostgradient/terminal-testing": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@playwright/test": "catalog:",
@@ -490,6 +492,7 @@
       "name": "@lostgradient/bungalow",
       "dependencies": {
         "@lostgradient/cryptography": "workspace:*",
+        "@lostgradient/object-store": "workspace:*",
       },
       "devDependencies": {
         "@lostgradient/testing": "workspace:*",
@@ -511,6 +514,7 @@
         "@lostgradient/interborough-plugin": "workspace:*",
         "@lostgradient/lifecycle": "workspace:*",
         "@lostgradient/memory": "workspace:*",
+        "@lostgradient/object-store": "workspace:*",
         "@lostgradient/operative": "workspace:*",
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/weft": "workspace:*",
@@ -783,6 +787,21 @@
         "typescript": "catalog:",
       },
     },
+    "packages/object-store": {
+      "name": "@lostgradient/object-store",
+      "dependencies": {
+        "@lostgradient/cryptography": "workspace:*",
+        "saxes": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@lostgradient/workerd-testing": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/operative": {
       "name": "@lostgradient/operative",
       "dependencies": {
@@ -889,6 +908,17 @@
         "@tanstack/ai",
         "@tanstack/ai-typesafe",
       ],
+    },
+    "packages/process-lease": {
+      "name": "@lostgradient/process-lease",
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
     },
     "packages/storage": {
       "name": "@lostgradient/storage",
@@ -1015,6 +1045,7 @@
         "@electric-sql/pglite": "catalog:",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
+        "@lostgradient/workerd-testing": "workspace:*",
         "@types/bun": "catalog:",
         "@types/pg": "catalog:",
         "oxlint": "catalog:",
@@ -1079,6 +1110,7 @@
     "packages/ventriloquist": {
       "name": "@lostgradient/ventriloquist",
       "devDependencies": {
+        "@lostgradient/terminal-testing": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
@@ -1374,6 +1406,20 @@
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "testing/terminal": {
+      "name": "@lostgradient/terminal-testing",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "ajv": "catalog:",
+        "ajv-formats": "catalog:",
         "oxlint": "catalog:",
         "typescript": "catalog:",
       },
@@ -1841,6 +1887,8 @@
 
     "@lostgradient/node-host": ["@lostgradient/node-host@workspace:packages/node-host"],
 
+    "@lostgradient/object-store": ["@lostgradient/object-store@workspace:packages/object-store"],
+
     "@lostgradient/operative": ["@lostgradient/operative@workspace:packages/operative"],
 
     "@lostgradient/operative-anthropic": ["@lostgradient/operative-anthropic@workspace:packages/operative-anthropic"],
@@ -1875,6 +1923,8 @@
 
     "@lostgradient/plugin-workspace": ["@lostgradient/plugin-workspace@workspace:plugins/workspace"],
 
+    "@lostgradient/process-lease": ["@lostgradient/process-lease@workspace:packages/process-lease"],
+
     "@lostgradient/storage": ["@lostgradient/storage@workspace:packages/storage"],
 
     "@lostgradient/storage-bun-sqlite": ["@lostgradient/storage-bun-sqlite@workspace:packages/storage-bun-sqlite"],
@@ -1900,6 +1950,8 @@
     "@lostgradient/terminal": ["@lostgradient/terminal@workspace:components/terminal"],
 
     "@lostgradient/terminal-example": ["@lostgradient/terminal-example@workspace:applications/terminal-example"],
+
+    "@lostgradient/terminal-testing": ["@lostgradient/terminal-testing@workspace:testing/terminal"],
 
     "@lostgradient/testing": ["@lostgradient/testing@workspace:testing/testing"],
 

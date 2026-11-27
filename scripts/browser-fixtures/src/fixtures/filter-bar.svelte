@@ -1,6 +1,9 @@
 <script lang="ts">
   import { type AppliedFilter, type FacetDefinition, FilterBar } from '@lostgradient/cinder';
 
+  const choiceContainment =
+    new URLSearchParams(globalThis.location.search).get('choice-containment') === '1';
+
   const segments = [
     { value: 'all', label: 'All', count: 19 },
     { value: 'waiting', label: 'Waiting on you', count: 2 },
@@ -37,6 +40,17 @@
     },
   ];
 
+  const longFacet: FacetDefinition = {
+    type: 'choice',
+    key: 'outcome',
+    label: 'Outcome',
+    multiple: false,
+    options: Array.from({ length: 20 }, (_, index) => ({
+      value: `outcome-${String(index + 1)}`,
+      label: `Outcome ${String(index + 1)}`,
+    })),
+  };
+
   let segmentValue = $state('all');
   let appliedFilters = $state<AppliedFilter[]>([
     { key: 'agent', value: 'tool-runner', label: 'Agent' },
@@ -44,7 +58,7 @@
   let searchQuery = $state('');
 
   function setFilter(key: string, values: readonly string[]) {
-    const facet = facets.find((candidate) => candidate.key === key);
+    const facet = [...facets, longFacet].find((candidate) => candidate.key === key);
     const rest = appliedFilters.filter((filter) => filter.key !== key);
     appliedFilters =
       values.length === 0
@@ -92,6 +106,16 @@
     onFilterRemove={(key) => setFilter(key, [])}
   />
 </div>
+
+{#if choiceContainment}
+  <FilterBar
+    aria-label="Choice facet containment"
+    facets={[longFacet, facets[1] as FacetDefinition]}
+    {appliedFilters}
+    onFacetChange={(key, value) => setFilter(key, value === '' ? [] : [value])}
+    onFilterRemove={(key) => setFilter(key, [])}
+  />
+{/if}
 
 <!-- The tablet form of the Runs page (row 52x): three chips, two of them applied, in a column the
      medium form cannot hold (its controls need about 640px with every chip in the row, and about

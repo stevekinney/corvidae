@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { encodeStorageKeyComponent, MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { KEYS } from '../storage/keys.ts';
 import { deserializeCheckpoint } from './checkpoint/serialization.ts';
 import {
@@ -101,7 +102,12 @@ describe('worker execution signal suspension', () => {
     const workerEngine = new Engine({
       storage,
       workflowExecutionMode: 'worker',
-      workerExecution: { workerUrl, poolSize: 1, workflowTurnTimeoutMs: 30_000 },
+      workerExecution: {
+        workerUrl,
+        createWorker: bunWorkerFactory,
+        poolSize: 1,
+        workflowTurnTimeoutMs: 30_000,
+      },
     });
     registerWorkerExecutionTestWorkflows(workerEngine);
     engine = workerEngine;
@@ -351,7 +357,12 @@ describe('worker execution isolation boundary', () => {
     const workerEngine = new Engine({
       storage: new MemoryStorage(),
       workflowExecutionMode: 'worker',
-      workerExecution: { workerUrl, poolSize: 1, workflowTurnTimeoutMs: 30_000 },
+      workerExecution: {
+        workerUrl,
+        createWorker: bunWorkerFactory,
+        poolSize: 1,
+        workflowTurnTimeoutMs: 30_000,
+      },
     });
     workerEngine.register(engineSimpleWorkflow);
     workerEngine.register(engineWaitWorkflow);

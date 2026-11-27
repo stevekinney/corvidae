@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import {
   DEFAULT_RETENTION_SWEEP_BATCH_SIZE,
   DEFAULT_RETENTION_SWEEP_INTERVAL_MS,
@@ -263,7 +264,11 @@ describe('normalizeWorkerExecutionConfiguration', () => {
   });
 
   it('rejects worker configuration without explicit worker mode', () => {
-    expect(() => normalizeWorkerExecutionConfiguration({ workerExecution: { workerUrl } })).toThrow(
+    expect(() =>
+      normalizeWorkerExecutionConfiguration({
+        workerExecution: { workerUrl, createWorker: bunWorkerFactory },
+      }),
+    ).toThrow(
       'options.workflowExecutionMode must be "worker" when options.workerExecution is provided',
     );
   });
@@ -272,7 +277,7 @@ describe('normalizeWorkerExecutionConfiguration', () => {
     expect(
       normalizeWorkerExecutionConfiguration({
         workflowExecutionMode: 'worker',
-        workerExecution: { workerUrl },
+        workerExecution: { workerUrl, createWorker: bunWorkerFactory },
       }),
     ).toMatchObject({
       mode: 'worker',
@@ -290,11 +295,11 @@ describe('normalizeWorkerExecutionConfiguration', () => {
     expect(
       normalizeWorkerExecutionConfiguration({
         workflowExecutionMode: 'worker',
-        workerExecution: { workerUrl },
+        workerExecution: { workerUrl, createWorker: bunWorkerFactory },
       }),
     ).toEqual({
       mode: 'worker',
-      workerExecution: { workerUrl },
+      workerExecution: { workerUrl, createWorker: bunWorkerFactory },
       workflowTurnTimeoutMs: 1_000,
       maxProtocolMessageBytes: 1_048_576,
       requireProtocolVersion: true,
@@ -308,6 +313,7 @@ describe('normalizeWorkerExecutionConfiguration', () => {
         workflowExecutionMode: 'worker',
         workerExecution: {
           workerUrl,
+          createWorker: bunWorkerFactory,
           workflowTurnTimeoutMs: 5_000,
           maxProtocolMessageBytes: 8_192,
         },
@@ -331,7 +337,7 @@ describe('normalizeWorkerExecutionConfiguration', () => {
     expect(() =>
       normalizeWorkerExecutionConfiguration({
         workflowExecutionMode: 'inline',
-        workerExecution: { workerUrl },
+        workerExecution: { workerUrl, createWorker: bunWorkerFactory },
       }),
     ).toThrow('cannot be provided');
   });
@@ -369,7 +375,11 @@ describe('normalizeWorkerExecutionConfiguration', () => {
       expect(() =>
         normalizeWorkerExecutionConfiguration({
           workflowExecutionMode: 'worker',
-          workerExecution: { workerUrl, workflowTurnTimeoutMs: value as any },
+          workerExecution: {
+            workerUrl,
+            createWorker: bunWorkerFactory,
+            workflowTurnTimeoutMs: value as any,
+          },
         }),
       ).toThrow('workflowTurnTimeoutMs');
     });
@@ -379,7 +389,11 @@ describe('normalizeWorkerExecutionConfiguration', () => {
     expect(() =>
       normalizeWorkerExecutionConfiguration({
         workflowExecutionMode: 'worker',
-        workerExecution: { workerUrl, maxProtocolMessageBytes: 4_095 },
+        workerExecution: {
+          workerUrl,
+          createWorker: bunWorkerFactory,
+          maxProtocolMessageBytes: 4_095,
+        },
       }),
     ).toThrow('at least 4096');
   });
@@ -388,7 +402,11 @@ describe('normalizeWorkerExecutionConfiguration', () => {
     expect(
       normalizeWorkerExecutionConfiguration({
         workflowExecutionMode: 'worker',
-        workerExecution: { workerUrl, maxProtocolMessageBytes: 4_096 },
+        workerExecution: {
+          workerUrl,
+          createWorker: bunWorkerFactory,
+          maxProtocolMessageBytes: 4_096,
+        },
       }),
     ).toMatchObject({ mode: 'worker', maxProtocolMessageBytes: 4_096 });
   });
@@ -397,7 +415,7 @@ describe('normalizeWorkerExecutionConfiguration', () => {
     const bundle = createExecutionStrategyBundle({
       options: {
         workflowExecutionMode: 'worker',
-        workerExecution: { workerUrl },
+        workerExecution: { workerUrl, createWorker: bunWorkerFactory },
       },
       getNow,
       maxNestingDepth: 10,
@@ -420,7 +438,7 @@ describe('normalizeWorkerExecutionConfiguration', () => {
       createExecutionStrategyBundle({
         options: {
           workflowExecutionMode: 'worker',
-          workerExecution: { workerUrl },
+          workerExecution: { workerUrl, createWorker: bunWorkerFactory },
         },
         getNow,
         maxNestingDepth: 10,
@@ -481,7 +499,7 @@ describe('createExecutionStrategyBundle (workflowExecutionMode: "realm", COR-249
         options: {
           workflowExecutionMode: 'realm',
           revisionRealmExecution: { resolveRevisionRealmConfig },
-          workerExecution: { workerUrl },
+          workerExecution: { workerUrl, createWorker: bunWorkerFactory },
         },
         getWorkflowRevisionPin: () => undefined,
       }),
@@ -522,7 +540,10 @@ describe('createExecutionStrategyBundle (workflowExecutionMode: "realm", COR-249
 
     const workerBundle = createExecutionStrategyBundle({
       ...baseParameters,
-      options: { workflowExecutionMode: 'worker', workerExecution: { workerUrl } },
+      options: {
+        workflowExecutionMode: 'worker',
+        workerExecution: { workerUrl, createWorker: bunWorkerFactory },
+      },
     });
     expect(workerBundle.revisionRealmRegistry).toBeUndefined();
     expect(workerBundle.inlineStrategy).toBeNull();

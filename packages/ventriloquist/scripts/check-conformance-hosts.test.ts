@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { EvidenceCell, EvidenceReport } from '../../../scripts/terminal/evidence-schema.ts';
+import type { EvidenceCell, EvidenceReport } from '@lostgradient/terminal-testing/evidence-schema';
 import {
   REQUIRED_CELL_NAMES,
   REQUIRED_HOST_CELLS,

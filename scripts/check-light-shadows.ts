@@ -31,7 +31,7 @@
 import { readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-import { ensureCinderGenerated } from './ensure-cinder-generated.ts';
+import { ensureCinderGenerated } from '../components/cinder/scripts/ensure-cinder-generated.ts';
 
 const root = join(import.meta.dir, '..');
 

@@ -2,10 +2,10 @@ import { describe as bunDescribe, test as bunTest, expect } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { processStartTime } from '../../packages/process-lease/src/index.ts';
 import { spawnWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
 import { throwingRejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import { waitUntil } from '../../testing/testing/src/wait-until.ts';
-import { processStartTime } from '../run-exclusively.ts';
 import { createDeliveryVerificationFixture } from './delivery-verification.test-support.ts';
 import {
   loadDeliveryVerification,

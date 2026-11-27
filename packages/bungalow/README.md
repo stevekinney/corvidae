@@ -276,7 +276,7 @@ async function openRemoteHome(databaseWorkspaceClaim: DatabaseWorkspaceClaim) {
   await bungalow.readConfiguration(); // the object's text and ETag from one GET
   bungalow.deploymentSecrets.location('api-key'); // 'INTERBOROUGH_SECRET_API_KEY'
   await bungalow.deploymentSecrets.read('api-key'); // 'sk-example', or undefined when the variable is unset or empty
-  bungalow.objectStore()?.presign('production/agents/a.md'); // a signed GET URL; objectStore() is undefined locally
+  await bungalow.objectStore()?.list('production/agents/'); // shared object operations; undefined locally
   bungalow.logs; // undefined: remote mode has no local directory
 
   bungalow.close();
@@ -299,7 +299,7 @@ Every remote request is a presigned URL sent with `fetch`, so a conditional head
 
 An injected presigner must also sign a bucket-level request, an empty key with `options.query`, because that is how a listing is made. `Bun.S3Client.presign` cannot, so a presigner over it hands those to `createSigV4Presigner`. `Bun.S3Client` also signs with the `AWS_SESSION_TOKEN` or `S3_SESSION_TOKEN` the process started with whenever no session token is set. Before the first request, Bungalow checks that the presigner signs no session token the given environment does not set, and throws `BungalowInputError` naming both variables if it does. A factory that throws, or returns something other than a function, also throws `BungalowInputError`, and the factory's own message is dropped because it may quote the endpoint.
 
-`objectStore()` hands out the same signer as a `BungalowObjectStore` with `presign(key, options)` and `list(input, { bucket })`. A listing is one `ListObjectsV2` page with `contents`, `isTruncated`, `nextContinuationToken`, and `keyCount`. These are the `presign` and `list` members of `Bun.S3Client`, so code written against that subset, such as Bureau's object sources, accepts it unchanged. A failed listing rejects with `ObjectStoreRequestError`, whose `code` is the store's error code, or `HTTP<status>` when the store sent none, and whose `status` is the HTTP status. It never carries the URL. A `200` answer that is not a complete `ListBucketResult` also rejects, with code `MalformedListing`, rather than reading as an empty page. This covers a truncated document, an unclosed `Contents` or one without a `Key`, a missing `IsTruncated`, a truncated page with no continuation token, and a `KeyCount` the keys contradict. An empty page is what lets a remote open bootstrap a new identity, so a remote open that meets one fails with `BungalowFilesystemError` and cause `{ code: 'MalformedListing' }` before it writes anything.
+`objectStore()` hands out shared `ObjectStoreOperations`: `list(prefix, token?)`, `read(key)`, and conditional `put(key, bytes, condition)`. It is `undefined` locally. A listing is one page with object keys, ETags, sizes, and an opaque continuation token. S3-specific conditional removal remains internal to Bungalow's remote setup and callers that require it narrow that capability explicitly.
 
 ## Entries Bungalow does not trust
 

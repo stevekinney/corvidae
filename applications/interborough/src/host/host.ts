@@ -111,7 +111,7 @@ import {
  */
 
 import type { Tool } from 'armorer';
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { join, resolve as resolvePath, sep } from 'node:path';
 import {
   combineHostAuthentication,
@@ -146,6 +146,7 @@ import {
   type WorkspaceMembershipOptions,
 } from '@lostgradient/bureau';
 import type { SkillCatalogChange } from '@lostgradient/bureau/skills';
+import { sha256HexSync } from '@lostgradient/cryptography';
 import {
   type GenerateFunction,
   type PeerCallJournal,
@@ -442,6 +443,8 @@ export type HostOptions = {
    * `kind`. Replaces the default entries for `sqlite` and `postgres`.
    */
   readonly databaseKinds?: DatabaseKinds;
+  /** Test-only interception of storage operations after the host has claimed its backing store. */
+  readonly decorateStorageForTesting?: (storage: Storage) => Storage;
   /**
    * How each kind of content location is read and described, keyed by the location's `kind`.
    * Replaces the default entries for `directory` and `s3`.
@@ -1098,6 +1101,13 @@ function snapshotHostOptions(options: HostOptions): HostOptions {
   };
 }
 
+function decorateOwnedStorage(
+  storage: Storage,
+  decorator: HostOptions['decorateStorageForTesting'],
+): Storage {
+  return decorator?.(storage) ?? storage;
+}
+
 /** Start the host. The caller owns it and must `close()` it. */
 export async function startHost(options: HostOptions = {}): Promise<Host> {
   options = snapshotHostOptions(options);
@@ -1138,6 +1148,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   const databaseKinds: DatabaseKinds = { ...(options.databaseKinds ?? DEFAULT_DATABASE_KINDS) };
   const contentKinds: ContentKinds = { ...(options.contentKinds ?? DEFAULT_CONTENT_KINDS) };
   const openHome = options.openHome ?? openBungalow;
+  const decorateStorageForTesting = options.decorateStorageForTesting;
   let claimedRemoteStorage: Storage | undefined;
   let bungalow: Bungalow;
   try {
@@ -1194,9 +1205,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     );
     // The key secret answers are sealed with (COR-1920), read or created the same way and as early.
     const answerKeys = await answerEncryptionKeys(bungalow);
-    const storage =
+    const actualStorage =
       claimedRemoteStorage ?? createHostStorage(bungalow.database, clock.now, databaseKinds);
-    held.storage = storage;
+    held.storage = actualStorage;
+    const storage = decorateOwnedStorage(actualStorage, decorateStorageForTesting);
     // Each tool source's and plugin's last tool listing, kept across restarts (COR-2435), so a
     // source that fails or a plugin that is off still shows the tools it offered.
     const toolListings = createToolListingMemory(storage, clock.now);
@@ -2259,7 +2271,7 @@ async function failHostStartup(held: Held, error: unknown): Promise<never> {
 
 /** The signing secret for worker start-override previews, derived from the per-process key. */
 export function deriveStartOverrideSigningSecret(key: string): string {
-  return createHash('sha256').update(`interborough:worker-start-override:${key}`).digest('hex');
+  return sha256HexSync(`interborough:worker-start-override:${key}`);
 }
 
 /**

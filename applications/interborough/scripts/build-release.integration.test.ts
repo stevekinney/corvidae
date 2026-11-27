@@ -6,7 +6,7 @@ import { cp, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/pro
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { CINDER_GENERATED_OUTPUTS } from '../../../scripts/ensure-cinder-generated.ts';
+import { CINDER_GENERATED_OUTPUTS } from '../../../components/cinder/scripts/ensure-cinder-generated.ts';
 import { digestOf } from '../src/host/panel-build.ts';
 import { prebuiltPanelSchema } from '../src/host/panel-mounts.ts';
 import {

@@ -20,6 +20,11 @@ type Environment = {
       first<T>(): Promise<T | null>;
     };
   };
+  BUCKET: {
+    put(key: string, value: string): Promise<unknown>;
+    get(key: string): Promise<{ text(): Promise<string> } | null>;
+  };
+  HYPERDRIVE: { connectionString: string };
 };
 
 const context = new AsyncLocalStorage<string>();
@@ -48,6 +53,11 @@ export default {
       }>();
       return new Response(row?.value);
     }
+    if (url.pathname === '/r2') {
+      await environment.BUCKET.put('fixture', 'stored');
+      const object = await environment.BUCKET.get('fixture');
+      return new Response(await object?.text());
+    }
     if (url.pathname === '/async-local-storage') {
       return context.run('carried', async () => {
         await Promise.resolve();
@@ -55,6 +65,8 @@ export default {
       });
     }
     if (url.pathname === '/outbound') return fetch('https://upstream.test/fixture');
+    if (url.pathname === '/hyperdrive')
+      return new Response(environment.HYPERDRIVE.connectionString);
     if (url.pathname === '/asset')
       return environment.ASSETS.fetch(new Request('https://assets.test/fixture.txt'));
     return new Response('round trip');

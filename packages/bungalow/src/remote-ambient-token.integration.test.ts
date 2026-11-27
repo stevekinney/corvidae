@@ -26,7 +26,6 @@ type Outcome =
   | {
       readonly outcome: 'opened';
       readonly deploymentId: string;
-      readonly sessionToken: string | null;
     }
   | { readonly outcome: 'failed'; readonly name: string; readonly message: string };
 
@@ -65,7 +64,7 @@ async function openInChild(
   const result = await runWithHangGuard(
     [
       process.execPath,
-      join(import.meta.dir, 'remote-open.test-support.ts'),
+      join(import.meta.dir, '../testing/remote-open.test-support.ts'),
       JSON.stringify(environment),
       presigner,
     ],
@@ -83,12 +82,16 @@ async function runCase(
   presigner: Presigner,
   processEnvironment: Record<string, string>,
   given: Record<string, string> = {},
-): Promise<{ readonly outcome: Outcome; readonly requests: readonly ProxiedRequest[] }> {
+): Promise<{
+  readonly outcome: Outcome;
+  readonly requests: readonly ProxiedRequest[];
+  readonly sessionTokens: readonly (string | null)[];
+}> {
   const server = createS3TestServer({ bucket: BUCKET });
   try {
     const proxy = startProxy(server);
     const outcome = await openInChild(proxy.endpoint, processEnvironment, given, presigner);
-    return { outcome, requests: [...proxy.requests] };
+    return { outcome, requests: [...proxy.requests], sessionTokens: [...proxy.sessionTokens] };
   } finally {
     await server.stop();
   }
@@ -130,8 +133,8 @@ describe('remote mode: the default presigner ignores a session token the process
     test(`${name}: opens, and no request carries the ambient token`, () => {
       expect(result.outcome.outcome).toBe('opened');
       if (result.outcome.outcome !== 'opened') return;
-      expect(result.outcome.sessionToken).toBeNull();
       expect(result.requests.length).toBeGreaterThan(0);
+      expect(result.sessionTokens).toEqual(Array(result.requests.length).fill(null));
     });
   }
 });
@@ -152,13 +155,14 @@ describe('remote mode: a Bun.S3Client presigner and a session token the process 
   test('a session token the given environment supplies is the one every request carries', () => {
     expect(supplied.outcome.outcome).toBe('opened');
     if (supplied.outcome.outcome !== 'opened') return;
-    expect(supplied.outcome.sessionToken).toBe(GIVEN_TOKEN);
     expect(supplied.requests.length).toBeGreaterThan(0);
+    expect(supplied.sessionTokens).toEqual(Array(supplied.requests.length).fill(GIVEN_TOKEN));
   });
 
   test('no session token anywhere: static keys open and sign without one', () => {
     expect(unset.outcome.outcome).toBe('opened');
     if (unset.outcome.outcome !== 'opened') return;
-    expect(unset.outcome.sessionToken).toBeNull();
+    expect(unset.requests.length).toBeGreaterThan(0);
+    expect(unset.sessionTokens).toEqual(Array(unset.requests.length).fill(null));
   });
 });

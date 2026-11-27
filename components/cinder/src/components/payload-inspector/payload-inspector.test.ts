@@ -180,6 +180,15 @@ describe('PayloadInspector', () => {
       );
     });
 
+    test('shows the complete stored string when it is the JSON payload itself', async () => {
+      const value = `Error details: ${'x'.repeat(240)} end of summary`;
+      const { container, getByRole } = renderInspector({ value, bare: true });
+      await fireEvent.click(getByRole('radio', { name: 'JSON' }));
+      expect(container.querySelector('.cinder-json-viewer__value')?.textContent).toBe(
+        JSON.stringify(value),
+      );
+    });
+
     test.each([
       ['null', null, 'None'],
       ['a boolean', false, 'No'],

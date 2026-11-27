@@ -6,7 +6,11 @@
     "../refund-operations.ts",
     "../../ambient.d.ts",
     "../../../tests/panels/pending-review.spec.ts",
-    "../../../tests/panels/reference-host.ts"
+    "../../../tests/panels/reference-host.ts",
+    "../../../tests/e2e/refund-approval-race.spec.ts",
+    "../../../tests/e2e/refund-race.test-support.ts",
+    "../../../tests/e2e/refund-race-host.test-support.ts",
+    "../../../tests/e2e/refund-https-proxy.test-support.ts"
   ],
   "exclude": ["node_modules"],
   "references": [{ "path": "../../../../../packages/velveteen/tsconfig.source.json" }]

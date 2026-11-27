@@ -241,21 +241,20 @@
   /* ----------------------------------------
  * Phone form
  * Below `collapseBelow` the trail is a back link to the parent, then the current page, which
- * truncates first. The back link is a touch target and keeps its full label.
+ * truncates first. The back link is a touch target and keeps its full label. Both forms are in the
+ * markup, server HTML included, and the viewport query at the end of this file shows one of them,
+ * so the first paint is already the right form (COR-2770). Each hidden part is `display: none`, so
+ * the accessibility tree holds one form at a time. The query here is the default `collapseBelow`
+ * (640px); any other length brings the same rules in a `<style>` of its own
+ * (`breadcrumbs-phone-form.ts`).
  * ---------------------------------------- */
-
-  .cinder-breadcrumbs[data-cinder-collapsed] {
-    display: flex;
-    align-items: center;
-    min-inline-size: 0;
-  }
 
   /* The back link keeps its whole label while there is room: the current page, with its far higher
    shrink factor, truncates first (design row 04f), and the link shrinks only once that is at its
-   floor. */
+   floor. It shows only in the phone form. */
   .cinder-breadcrumbs__back {
     box-sizing: border-box;
-    display: inline-flex;
+    display: none;
     flex: 0 1 auto;
     min-inline-size: 0;
     align-items: center;
@@ -308,16 +307,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .cinder-breadcrumbs[data-cinder-collapsed] .cinder-breadcrumbs__list {
-    flex: 1 100000 auto;
-    min-inline-size: 3rem;
-    font-size: var(--cinder-text-base);
-  }
-
-  .cinder-breadcrumbs[data-cinder-collapsed] .cinder-breadcrumbs__current {
-    font-weight: var(--cinder-font-semibold);
   }
 
   @container cinder-breadcrumbs (max-width: 24rem) {
@@ -385,5 +374,36 @@
   .cinder-breadcrumbs__overflow-link:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  /* The phone form at the default `collapseBelow`: a viewport query, as `collapseBelow` is a viewport
+     width. Only a trail marked with that length takes it, so `collapseBelow={false}` and other
+     lengths keep their own form. The ancestors and the "…" item hide, the back link shows, and the
+     current page is the trail's last item. */
+  @media (width < 640px) {
+    .cinder-breadcrumbs[data-cinder-phone-below='640px'] {
+      display: flex;
+      align-items: center;
+      min-inline-size: 0;
+    }
+
+    .cinder-breadcrumbs[data-cinder-phone-below='640px'] .cinder-breadcrumbs__back {
+      display: inline-flex;
+    }
+
+    .cinder-breadcrumbs[data-cinder-phone-below='640px']
+      .cinder-breadcrumbs__item:not(:last-child) {
+      display: none;
+    }
+
+    .cinder-breadcrumbs[data-cinder-phone-below='640px'] .cinder-breadcrumbs__list {
+      flex: 1 100000 auto;
+      min-inline-size: 3rem;
+      font-size: var(--cinder-text-base);
+    }
+
+    .cinder-breadcrumbs[data-cinder-phone-below='640px'] .cinder-breadcrumbs__current {
+      font-weight: var(--cinder-font-semibold);
+    }
   }
 }

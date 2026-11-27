@@ -1,5 +1,6 @@
 <script lang="ts">
   import {
+    Badge,
     Button,
     Card,
     DataTable,
@@ -29,6 +30,34 @@
     { key: longKey, size: '4 KB' },
     { key: 'settings', size: '1 KB' },
   ];
+
+  // COR-2769: the Connection checks shape, a Result badge and a sentence of about 120 characters.
+  const fitColumns = new URLSearchParams(globalThis.location.search).has('fitColumns');
+  const connectionChecks = [
+    {
+      check: 'Frontend',
+      result: 'Passed',
+      tone: 'success',
+      found:
+        'The frontend answered on port 7233 within a second and listed every namespace the worker is configured to poll.',
+    },
+    {
+      check: 'Namespace access',
+      result: 'Not reached',
+      tone: 'warning',
+      found:
+        'The namespace list call timed out after thirty seconds, so the remaining checks for this connection were not run.',
+    },
+    {
+      check: 'TLS',
+      result: 'Passed',
+      tone: 'success',
+      found:
+        'The certificate is valid until March and its name matches the address the worker uses.',
+    },
+  ] as const;
+  /** A name longer than half of any viewport the test uses, which its column must cut at half. */
+  const longName = `Workflow ${'very-long-segment-'.repeat(12)}name`;
 </script>
 
 {#if headerTokens}
@@ -184,6 +213,48 @@
     <Table aria-label="Current contributor at narrow width" fit>
       <TableHeader><TableRow><TableHeaderCell>Name</TableHeaderCell></TableRow></TableHeader>
       <TableBody><TableRow current><TableCell>Ada Lovelace</TableCell></TableRow></TableBody>
+    </Table>
+  </div>
+{/if}
+
+{#if fitColumns}
+  <!-- COR-2769: a fit table shaped like the Temporal UI's Connection checks: two short columns
+       sized to their content and a prose column that takes the rest. -->
+  <div data-testid="fit-columns">
+    <Table caption="Connection checks" fit>
+      <TableHeader>
+        <TableRow>
+          <TableHeaderCell sizing="content">Check</TableHeaderCell>
+          <TableHeaderCell sizing="content">Result</TableHeaderCell>
+          <TableHeaderCell sizing="fill">What it found</TableHeaderCell>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {#each connectionChecks as check (check.check)}
+          <TableRow>
+            <TableCell as="th">{check.check}</TableCell>
+            <TableCell><Badge variant={check.tone}>{check.result}</Badge></TableCell>
+            <TableCell>{check.found}</TableCell>
+          </TableRow>
+        {/each}
+      </TableBody>
+    </Table>
+  </div>
+  <!-- A content value longer than half the table, and a truncating value in the fill column. -->
+  <div data-testid="fit-columns-long">
+    <Table caption="Long values" fit>
+      <TableHeader>
+        <TableRow>
+          <TableHeaderCell sizing="content">Name</TableHeaderCell>
+          <TableHeaderCell sizing="fill">Key</TableHeaderCell>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        <TableRow>
+          <TableCell>{longName}</TableCell>
+          <TableCell truncate>{longKey}</TableCell>
+        </TableRow>
+      </TableBody>
     </Table>
   </div>
 {/if}

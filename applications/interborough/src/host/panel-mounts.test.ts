@@ -9,6 +9,7 @@ import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -618,6 +619,13 @@ describe('bounded and cached panel builds (COR-2219)', () => {
     const a = panelBuildVersions(rootA);
     const b = panelBuildVersions(rootB);
     expect(a.cinderVersion).toMatch(/^unversioned:[0-9a-f]{64}$/);
+    // The digest is the SHA-256 of where the package really is and what its manifest says.
+    const cinder = join(rootA, '@lostgradient', 'cinder');
+    expect(a.cinderVersion).toBe(
+      `unversioned:${createHash('sha256')
+        .update(`${realpathSync(cinder)}\0${JSON.stringify({ name: '@lostgradient/cinder' })}`)
+        .digest('hex')}`,
+    );
     expect(a.cinderVersion).not.toBe(b.cinderVersion);
     expect(a.dependencies).not.toBe(b.dependencies);
     expect(a.dependencies).toBe(realpathSync(rootA));

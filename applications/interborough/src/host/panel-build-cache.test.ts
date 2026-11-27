@@ -35,6 +35,7 @@
  */
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -134,7 +135,10 @@ describe('cold build and warm hit', () => {
 
     const first = await cache.serve(PANEL, sources.inputs, build);
     expect(counter.runs).toBe(1);
-    expect(await entriesIn(directory)).toHaveLength(1);
+    // An entry is named by the first 32 hex digits of the SHA-256 of its panel's name.
+    expect(await entriesIn(directory)).toEqual([
+      `${createHash('sha256').update(PANEL).digest('hex').slice(0, 32)}.json`,
+    ]);
 
     const second = await cache.serve(PANEL, sources.inputs, build);
     expect(counter.runs).toBe(1);

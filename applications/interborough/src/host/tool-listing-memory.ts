@@ -26,8 +26,7 @@
  * @module tool-listing-memory
  */
 
-import { createHash } from 'node:crypto';
-
+import { sha256HexSync } from '@lostgradient/cryptography';
 import type { Storage } from '@lostgradient/storage';
 import { z } from 'zod';
 
@@ -100,10 +99,7 @@ export function pluginListingOwner(plugin: {
   readonly source: string;
   readonly location: string;
 }): string {
-  const digest = createHash('sha256')
-    .update(`${plugin.source}\u0000${plugin.location}`)
-    .digest('hex')
-    .slice(0, 32);
+  const digest = sha256HexSync(`${plugin.source}\u0000${plugin.location}`).slice(0, 32);
   return `plugin:${digest}`;
 }
 

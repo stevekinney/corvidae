@@ -28,12 +28,18 @@ for (const colorScheme of ['light', 'dark'] as const) {
   });
 }
 
-test('the stacked current card has the same row background', async ({ page }) => {
+test('the stacked current card has the same row tint', async ({ page }) => {
   await page.goto(`${fixtureRoute('table')}&current=1`, { waitUntil: 'load' });
   const wrapper = page.getByTestId('stacked-current');
   await setFixtureWidth(wrapper, '300px');
   const stacked = wrapper.locator('[data-cinder-stack-card] [data-cinder-current]');
   await expect(stacked).toBeVisible();
   const open = page.getByTestId('data-open').locator('[data-cinder-open]');
-  expect(await background(stacked)).toBe(await background(open));
+  // A card row draws its tint on its `::after`, which reaches past the row's start (COR-2760), and
+  // paints nothing on the row itself.
+  const cardTint = await stacked.evaluate(
+    (node) => getComputedStyle(node, '::after').backgroundColor,
+  );
+  expect(cardTint).toBe(await background(open));
+  expect(await background(stacked)).toBe('rgba(0, 0, 0, 0)');
 });

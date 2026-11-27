@@ -28,11 +28,11 @@ export { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './watched-directory';
 export type {
   ListedObject,
   ListedPage,
-  ObjectLocation,
-  ObjectStoreClient,
   ObjectStoreOperations,
+  S3ObjectStoreOperations,
   ObjectWriteCondition,
-} from './object-operations';
+} from '@lostgradient/object-store';
+export type { ObjectLocation } from './object-operations';
 export type { ObjectSourceOptions } from './object-source';
 export {
   workflowFileDirectory,

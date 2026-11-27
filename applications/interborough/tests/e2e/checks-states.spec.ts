@@ -89,6 +89,55 @@ async function answerWith(page: Page, checks: readonly Record<string, unknown>[]
 }
 
 test.describe('the list (/checks) on a phone, a tablet, with scorers, a menu open and in the dark', () => {
+  test('long Outcome facet contains and selects its final option (C2-05)', async ({ page }) => {
+    await openChecks(page);
+    const bar = filterBar(page);
+    await bar.getByRole('button', { name: 'Outcome', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Outcome' });
+    const last = dialog.getByRole('radio').last();
+    await last.scrollIntoViewIfNeeded();
+    for (const width of [1280, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+      await last.scrollIntoViewIfNeeded();
+      expect(
+        await last.evaluate((element) => {
+          const option = element.getBoundingClientRect();
+          const surface = element.closest('[role="dialog"]')!.getBoundingClientRect();
+          return option.top >= surface.top && option.bottom <= surface.bottom;
+        }),
+      ).toBe(true);
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await last.scrollIntoViewIfNeeded();
+    await captureForDesignReview(page, {
+      route: '/checks',
+      state: 'long Outcome facet',
+      source: SOURCE,
+      ready: async () => {
+        await last.scrollIntoViewIfNeeded();
+      },
+    });
+    await expect(last).toHaveValue('tainted');
+    await last.click();
+    await expect(page).toHaveURL(/[?&]outcome=tainted(?:&|$)/);
+    const applied = bar.getByRole('button', { name: 'Outcome: Flagged', exact: true });
+    const remove = bar.getByRole('button', { name: 'Remove filter: Outcome: Flagged' });
+    await expect(applied).toBeVisible();
+    await expect(remove).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/checks',
+      state: 'Outcome Flagged applied',
+      source: SOURCE,
+      ready: async () => {
+        await expect(applied).toBeVisible();
+        await expect(remove).toBeVisible();
+      },
+    });
+    await remove.click();
+    await expect(page).not.toHaveURL(/[?&]outcome=/);
+    await expect(bar.getByRole('button', { name: 'Outcome', exact: true })).toBeVisible();
+  });
+
   test('on a phone is two-line rows under day bands, with a Kind select and a Filter button on one row (C2-04, C2-15)', async ({
     page,
     checkA11y,

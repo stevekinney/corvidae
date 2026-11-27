@@ -4,6 +4,9 @@
   "exclude": ["node_modules", "coverage"],
   "references": [
     {
+      "path": "../../testing/terminal/tsconfig.source.json"
+    },
+    {
       "path": "../../testing/testing/tsconfig.source.json"
     }
   ]

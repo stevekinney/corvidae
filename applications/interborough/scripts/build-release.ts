@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import {
   CINDER_GENERATED_OUTPUTS,
   ensureCinderGenerated,
-} from '../../../scripts/ensure-cinder-generated.ts';
+} from '../../../components/cinder/scripts/ensure-cinder-generated.ts';
 import {
   buildPanelPage,
   HOST_PANEL_PACKAGES,

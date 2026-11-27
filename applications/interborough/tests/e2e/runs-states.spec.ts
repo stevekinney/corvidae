@@ -30,6 +30,19 @@ import { textLines } from './text-lines.ts';
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
 const SOURCE = 'runs-states.spec.ts';
+test('Cinder choice facet control on Runs /runs', async ({ page }) => {
+  await openRuns(page);
+  await page
+    .getByRole('search', { name: 'Filter runs' })
+    .getByRole('button', { name: 'Started by', exact: true })
+    .click();
+  await expect(page.getByRole('dialog', { name: 'Started by' })).toBeVisible();
+  await captureForDesignReview(page, {
+    route: '/runs',
+    state: 'choice facet open',
+    source: SOURCE,
+  });
+});
 const WIDTHS = [1280, 375] as const;
 /** Every request the page makes of the host, which a test takes away to make the server stop answering. */
 const HOST_REQUESTS = /\/(v1|bureau|api)\/|\/jsonrpc$/;

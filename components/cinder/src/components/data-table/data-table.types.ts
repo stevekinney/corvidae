@@ -2,7 +2,7 @@ import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
 import type { DataListGroup } from '../data-list/data-list.types.ts';
-import type { TableDensity, TableSort } from '../table/table.types.ts';
+import type { TableColumnSizing, TableDensity, TableSort } from '../table/table.types.ts';
 
 /**
  * A generic record type representing a single data row.
@@ -62,6 +62,13 @@ export type DataTableColumn<Row extends DataTableRow = DataTableRow> = {
    * paths.
    */
   monospace?: boolean;
+  /**
+   * How the column takes its width in a `fit` table, forwarded to its header cell: `'content'` for a
+   * short value (a status word, a badge, an identifier, a count), as wide as its widest value and
+   * never wrapping; `'fill'` for prose, taking the width the content columns leave. Left out, the
+   * columns of a `fit` table share its width equally.
+   */
+  sizing?: TableColumnSizing;
   /** The column's starting width in pixels, for a resizable table. */
   width?: number;
   /** The narrowest a resizable column can be dragged to, in pixels. */

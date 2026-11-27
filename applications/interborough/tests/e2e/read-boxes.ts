@@ -7,7 +7,7 @@
  * moments. `readBoxes` finds every element first, then takes all the rects in a single in-page
  * evaluation, so they come from one layout. Wait for the settled state before calling it
  * (`await expect(row).toBeFocused()`, a visible and stable element): one layout is the same
- * layout only once the page has stopped moving. `scripts/check-separate-box-reads.ts` flags a
+ * layout only once the page has stopped moving. `scripts/check-separate-box-reads.ts` (in this application) flags a
  * comparison across separate reads.
  */
 import type { Locator, Page } from '@playwright/test';

@@ -31,11 +31,12 @@ const DEFAULT_WORKER_TIMEOUT_MILLISECONDS = 30_000;
  * @example
  * ```ts
  * import { ActivityWorkerDispatcher, WorkerPool, type ActivityWorkerDispatcherOptions } from '@lostgradient/weft';
+ * import { bunWorkerFactory } from '@lostgradient/weft/bun';
  *
  * const options: ActivityWorkerDispatcherOptions = {
  *   timeoutMilliseconds: 60_000,
  * };
- * const pool = new WorkerPool({ concurrency: 4, workerUrl: './worker.ts' });
+ * const pool = new WorkerPool({ concurrency: 4, workerUrl: './worker.ts', createWorker: bunWorkerFactory });
  * using dispatcher = new ActivityWorkerDispatcher(pool, options);
  * void dispatcher;
  * ```
@@ -60,10 +61,12 @@ export type ActivityWorkerDispatcherOptions = {
  * @example
  * ```ts
  * import { ActivityWorkerDispatcher, WorkerPool } from '@lostgradient/weft';
+ * import { bunWorkerFactory } from '@lostgradient/weft/bun';
  *
  * const pool = new WorkerPool({
  *   concurrency: 4,
  *   workerUrl: new URL('./my-worker.ts', import.meta.url),
+ *   createWorker: bunWorkerFactory,
  * });
  * using dispatcher = new ActivityWorkerDispatcher(pool, { timeoutMilliseconds: 30_000 });
  *
@@ -95,7 +98,7 @@ export class ActivityWorkerDispatcher implements Disposable, AsyncDisposable {
    */
   async execute(request: ActivityExecutionRequest): Promise<ActivityExecutionResult> {
     const worker = await this.#pool.acquire();
-    let terminated = false;
+    let discarded = false;
 
     try {
       return await new Promise<ActivityExecutionResult>((resolve) => {
@@ -120,6 +123,16 @@ export class ActivityWorkerDispatcher implements Disposable, AsyncDisposable {
             status: 'failed',
             error: `Activity worker crashed: ${event.message ?? 'unknown error'}`,
           });
+          discard();
+        };
+
+        const onMessageError = () => {
+          settle({
+            operationId: request.operationId,
+            status: 'failed',
+            error: 'Activity worker messageerror event',
+          });
+          discard();
         };
 
         const timer = setTimeout(() => {
@@ -130,24 +143,29 @@ export class ActivityWorkerDispatcher implements Disposable, AsyncDisposable {
               `Activity "${request.activityName}" timed out after ${this.#timeoutMilliseconds}ms ` +
               `(operationId: ${request.operationId})`,
           });
-          // Terminate the unresponsive worker so it doesn't linger.
-          // Mark as terminated so the finally block skips pool release.
-          terminated = true;
-          worker.terminate();
+          discard();
         }, this.#timeoutMilliseconds);
 
         const cleanup = () => {
           clearTimeout(timer);
           worker.removeEventListener('message', onMessage as EventListener);
           worker.removeEventListener('error', onError as EventListener);
+          worker.removeEventListener('messageerror', onMessageError);
+        };
+
+        const discard = () => {
+          if (discarded) return;
+          discarded = true;
+          this.#pool.discard(worker);
         };
 
         worker.addEventListener('message', onMessage as EventListener);
         worker.addEventListener('error', onError as EventListener);
+        worker.addEventListener('messageerror', onMessageError);
         worker.postMessage(request);
       });
     } finally {
-      if (!terminated) {
+      if (!discarded) {
         this.#pool.release(worker);
       }
     }

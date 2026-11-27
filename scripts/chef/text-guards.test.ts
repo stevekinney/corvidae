@@ -65,6 +65,17 @@ describe('parseGuardList', () => {
     const script = (value: string) => JSON.stringify({ scripts: { 'lint:guards': value } });
     expect(parseGuardList(script('bun scripts/check-a.ts && echo hi'))).toContain('"echo hi"');
     expect(parseGuardList(script('bun scripts/check-a.ts || true'))).toContain('which is not');
+    expect(
+      parseGuardList(
+        script('bun applications/interborough/scripts/check-a.ts && bun scripts/check-b.ts'),
+      ),
+    ).toEqual([
+      { name: 'check-a', command: ['bun', 'applications/interborough/scripts/check-a.ts'] },
+      { name: 'check-b', command: ['bun', 'scripts/check-b.ts'] },
+    ]);
+    expect(parseGuardList(script('bun applications/x/y/scripts/check-a.ts'))).toContain(
+      'which is not',
+    );
     expect(parseGuardList(JSON.stringify({ scripts: {} }))).toContain('no "lint:guards"');
     expect(parseGuardList('{')).toContain('not valid JSON');
   });

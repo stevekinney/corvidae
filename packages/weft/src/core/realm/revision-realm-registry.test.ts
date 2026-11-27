@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { bunWorkerFactory } from '@lostgradient/weft/bun';
 import { RevisionRealmRegistry } from './revision-realm-registry.ts';
 import type { RevisionRealm } from './revision-realm.ts';
 import type { WorkerRealm, WorkerRealmActivation } from './worker-realm.ts';
@@ -25,6 +26,7 @@ const unresponsiveWorkerUrl = new URL(
 function configFor(revision: 'revision-a' | 'revision-b') {
   return {
     workerUrl,
+    createWorker: bunWorkerFactory,
     expectedWorkflowTypes: ['order-workflow'],
     expectedArtifactDigest: `digest-${revision}`,
     workerName: `digest-${revision}`,
@@ -204,6 +206,7 @@ describe('RevisionRealmRegistry', () => {
       const registry = new RevisionRealmRegistry();
       registry.ensurePool('order-workflow', 'revision-a', {
         workerUrl: unresponsiveWorkerUrl,
+        createWorker: bunWorkerFactory,
         expectedWorkflowTypes: ['order-workflow'],
         realmReadyTimeoutMs: 5,
       });

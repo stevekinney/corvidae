@@ -14,10 +14,10 @@ import { join } from 'node:path';
 import { workflow, type Engine, type WorkflowContext } from '../packages/weft/src/index.ts';
 
 import { startHost } from '../applications/interborough/src/host/host.ts';
+import { CINDER_PACKAGE_NAME } from '../components/cinder/scripts/ensure-cinder-generated.ts';
+import { isProcessAlive, retireOwnedProcessLease } from '../packages/process-lease/src/index.ts';
 import { spawnPipedWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { waitUntil } from '../testing/testing/src/wait-until.ts';
-import { processIsAlive } from './owned-process-group.test-support.ts';
-import { retireOwnedProcessLease } from './owned-process-lease.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'cinder-owned-'));
 const sibling = await startHost({
@@ -57,12 +57,15 @@ async function verifySibling(id: string) {
     digest: createHash('sha256').update(asset.content.bytes).digest('hex'),
   });
 }
+/** A fixture root lists its workspaces, which is how the helper finds the one named for Cinder. */
+const workspaces = JSON.stringify({ workspaces: ['components/*'] });
 const cinder = join(root, 'components/cinder');
+writeFileSync(join(root, 'package.json'), workspaces);
 mkdirSync(join(cinder, 'src'), { recursive: true });
 mkdirSync(join(cinder, 'scripts'), { recursive: true });
 writeFileSync(
   join(cinder, 'package.json'),
-  JSON.stringify({ scripts: { metadata: 'bun metadata.ts' } }),
+  JSON.stringify({ name: CINDER_PACKAGE_NAME, scripts: { metadata: 'bun metadata.ts' } }),
 );
 writeFileSync(
   join(cinder, 'metadata.ts'),
@@ -103,11 +106,12 @@ try {
 }
 const preRoot = mkdtempSync(join(tmpdir(), 'cinder-owned-pre-registration-'));
 const preCinder = join(preRoot, 'components/cinder');
+writeFileSync(join(preRoot, 'package.json'), workspaces);
 mkdirSync(join(preCinder, 'src'), { recursive: true });
 mkdirSync(join(preCinder, 'scripts'), { recursive: true });
 writeFileSync(
   join(preCinder, 'package.json'),
-  JSON.stringify({ scripts: { metadata: 'bun metadata.ts' } }),
+  JSON.stringify({ name: CINDER_PACKAGE_NAME, scripts: { metadata: 'bun metadata.ts' } }),
 );
 writeFileSync(join(preCinder, 'metadata.ts'), 'await Bun.write("should-not-run", "bad")');
 const preOwner = spawnPipedWithHangGuard([
@@ -128,7 +132,7 @@ try {
   preOwner.kill('SIGKILL');
   await preOwner.exited;
   preStopped = true;
-  await waitUntil(() => !processIsAlive(gatePid), {
+  await waitUntil(() => !isProcessAlive(gatePid), {
     message: 'the unregistered generator gate to exit',
   });
   const cleanupStart = performance.now();
@@ -141,11 +145,12 @@ try {
 }
 const unpublishedRoot = mkdtempSync(join(tmpdir(), 'cinder-owned-unpublished-'));
 const unpublishedCinder = join(unpublishedRoot, 'components/cinder');
+writeFileSync(join(unpublishedRoot, 'package.json'), workspaces);
 mkdirSync(join(unpublishedCinder, 'src'), { recursive: true });
 mkdirSync(join(unpublishedCinder, 'scripts'), { recursive: true });
 writeFileSync(
   join(unpublishedCinder, 'package.json'),
-  JSON.stringify({ scripts: { metadata: 'bun metadata.ts' } }),
+  JSON.stringify({ name: CINDER_PACKAGE_NAME, scripts: { metadata: 'bun metadata.ts' } }),
 );
 writeFileSync(join(unpublishedCinder, 'metadata.ts'), 'await Bun.write("should-not-run", "bad")');
 const unpublishedOwner = spawnPipedWithHangGuard([
@@ -210,7 +215,7 @@ test('a killed generator owner can retire its verified build group twice', () =>
 
 test('a killed owner before group registration never starts the generator', () => {
   expect(gatePid).toBeGreaterThan(0);
-  expect(processIsAlive(gatePid)).toBe(false);
+  expect(isProcessAlive(gatePid)).toBe(false);
   expect(existsSync(join(preCinder, 'should-not-run'))).toBe(false);
   expect(existsSync(join(preCinder, '.generate-lock'))).toBe(false);
 });

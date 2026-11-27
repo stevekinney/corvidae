@@ -45,6 +45,15 @@
   </div>
 {/if}
 
+{#if new URLSearchParams(globalThis.location.search).has('pointer-targets')}
+  <PayloadInspector
+    label="Long payload"
+    value={'The release notes could not be published because the upstream request did not complete. '.repeat(
+      6,
+    )}
+  />
+{/if}
+
 <style>
   .payload-envelope-layout {
     inline-size: 20rem;

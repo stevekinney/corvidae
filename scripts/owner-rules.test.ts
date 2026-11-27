@@ -20,7 +20,9 @@ type RegisterRule = {
 
 /** The guard scripts `lint:guards` runs, as `scripts/check-x.ts` paths. */
 export function chainedGuards(guards: string): string[] {
-  return [...guards.matchAll(/(?:^|&& )bun (scripts\/[\w./-]+\.ts)/g)].map((match) => match[1]!);
+  return [
+    ...guards.matchAll(/(?:^|&& )bun ((?:applications\/[\w-]+\/)?scripts\/[\w./-]+\.ts)/g),
+  ].map((match) => match[1]!);
 }
 
 /** What is wrong with the register: a missing file, an unchained guard, a missing reason. */
@@ -87,7 +89,9 @@ describe('the owner-rule register', () => {
     const guards = packageManifest.scripts['lint:guards']!;
     expect(guards).not.toMatch(/&&(?! )|(?<! )&&/);
     const commands = guards.split(' && ');
-    for (const command of commands) expect(command).toMatch(/^bun scripts\/[\w./-]+\.ts$/);
+    for (const command of commands) {
+      expect(command).toMatch(/^bun (?:applications\/[\w-]+\/)?scripts\/[\w./-]+\.ts$/);
+    }
     expect(chainedGuards(guards)).toEqual(commands.map((command) => command.slice('bun '.length)));
   });
 

@@ -13,9 +13,7 @@
         "scripts/chef/evaluate-outcomes.ts",
         "scripts/chef/staged-check.ts",
         "scripts/cinder-release-consumer.ts",
-        "scripts/owned-process-gate.ts",
-        "scripts/ensure-cinder-owned.test-support.ts",
-        "scripts/owned-process-lease.test-support.ts"
+        "scripts/ensure-cinder-owned.test-support.ts"
       ],
       "project": ["scripts/**/*.ts"]
     },
@@ -113,6 +111,21 @@
         "!src/host-contract.ts!"
       ]
     },
+    "packages/process-lease": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "src/owned-process-gate.ts",
+        "src/owned-process-group.test-support.ts",
+        "src/owned-process-lease.test-support.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "!src/**/*.test.ts!",
+        "!src/**/*.test-support.ts!",
+        "!src/owned-process-gate.ts!"
+      ]
+    },
     "packages/weft": {
       "ignoreDependencies": ["ws"],
       "entry": [
@@ -123,7 +136,13 @@
         "**/*.fixture.svelte",
         "**/*.playwright.ts",
         "**/*.spec.ts",
-        "src/server/node-runtime.test-support.ts"
+        "src/server/node-runtime.test-support.ts",
+        "src/core/realm/node-runtime.test-support.ts",
+        "src/core/realm/node-runtime-test-environment.ts",
+        "src/core/realm/__fixtures__/node-runtime-activity-handler.fixture.ts",
+        "src/core/realm/__fixtures__/node-runtime-activity-worker.fixture.ts",
+        "src/core/realm/__fixtures__/node-runtime-activity-child.fixture.ts",
+        "src/__fixtures__/node-worker-factory-gated.fixture.ts"
       ],
       "project": [
         "src/**/*.ts!",
@@ -188,6 +207,7 @@
         "**/*.playwright.ts",
         "**/*.spec.ts",
         "src/oauth/workerd-fixture.ts",
+        "src/oauth/postgres.workerd-fixture.ts",
         "src/connector-smoke-inspector.ts!",
         "src/deployed-oauth.ts!",
         "src/deployed-smoke.ts!"
@@ -199,6 +219,18 @@
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!"
+      ]
+    },
+    "packages/storage-postgres": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "**/*.fixture.svelte",
+        "**/*.playwright.ts",
+        "**/*.spec.ts",
+        "src/workerd-fixture.ts"
       ]
     },
     "packages/storage-d1": {
@@ -217,6 +249,24 @@
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!",
         "!src/fixture-worker.ts!"
+      ]
+    },
+    "packages/object-store": {
+      "entry": [
+        "**/*.test.ts",
+        "**/*.integration.test.ts",
+        "**/*.slow.test.ts",
+        "**/*.bench.ts",
+        "src/r2-fixture.test-support.ts"
+      ],
+      "project": [
+        "src/**/*.ts!",
+        "scripts/**/*.ts",
+        "!src/**/*.test.ts!",
+        "!src/**/*.spec.ts!",
+        "!src/**/*.fixture.svelte!",
+        "!src/**/*.bench.ts!",
+        "!src/r2-fixture.test-support.ts!"
       ]
     },
     "packages/backchannel-mcp": {
@@ -286,6 +336,7 @@
         "**/*.fixture.svelte",
         "**/*.playwright.ts",
         "**/*.spec.ts",
+        "src/node-runtime.test-support.ts",
         "src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts",
         "src/test/review-peer-child.ts",
         "src/hooks/recipient-recovery-child.ts"
@@ -297,6 +348,7 @@
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
         "!src/**/*.bench.ts!",
+        "!src/node-runtime.test-support.ts!",
         "!src/test/{refund-admission-child,refund-crash-child,refund-review-crash-child}.ts!",
         "!src/test/review-peer-child.ts!",
         "!src/hooks/recipient-recovery-child.ts!"
@@ -394,6 +446,10 @@
       ],
       "project": ["src/**/*.ts!", "!src/**/*.test.ts!", "scripts/**/*.ts"]
     },
+    "testing/terminal": {
+      "entry": ["**/*.test.ts", "**/*.integration.test.ts", "**/*.slow.test.ts"],
+      "project": ["src/**/*.ts!", "!src/**/*.test.ts!", "scripts/**/*.ts"]
+    },
     "testing/workerd": {
       "entry": [
         "**/*.test.ts",
@@ -406,8 +462,12 @@
     "scripts/browser-fixtures": {
       "entry": [
         "tests/**/*.playwright.ts",
+        "scripts/**/*.slow.test.ts",
         "src/fixtures/tool-call-rail.svelte",
         "src/fixtures/backchannel-svelte.svelte",
+        "src/fixtures/grouped-list-more.svelte",
+        "src/fixtures/grouped-list-header-edge.svelte",
+        "src/fixtures/stacked-rows-leading-edge.svelte",
         "fixtures/workspace-web-components.ts"
       ],
       "project": ["src/**/*.{ts,svelte}", "scripts/**/*.ts", "tests/**/*.playwright.ts"]

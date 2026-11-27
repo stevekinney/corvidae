@@ -11,7 +11,9 @@
 </script>
 
 <script lang="ts">
+  import { untrack } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
+  import { SvelteMap } from 'svelte/reactivity';
 
   import Select from '../select/select.svelte';
   import {
@@ -24,7 +26,7 @@
   } from './table-stack.ts';
   import { lengthToPixels } from './table.length.ts';
   import { setTableContext } from './table.context.ts';
-  import type { TableProps } from './table.types.ts';
+  import type { TableColumnSizing, TableProps } from './table.types.ts';
 
   import {
     PHONE_VIEWPORT_BREAKPOINT,
@@ -337,7 +339,26 @@
     };
   }
 
+  // The `sizing` each header cell declares, by column position. A header cell writes it as it is
+  // created, before the body cells under it are, so the server's HTML already carries each body
+  // cell's sizing and the first paint is the sized layout.
+  // Each entry names the header cell that wrote it, so a cell that moves to another position (after
+  // mount, to its DOM `cellIndex`) withdraws only its own entry, never a neighbour's that has just
+  // moved in.
+  const columnSizings = new SvelteMap<number, { owner: object; sizing: TableColumnSizing }>();
+
   setTableContext({
+    setColumnSizing(column, sizing, owner) {
+      if (column < 0) return;
+      // A write, never a dependency of the effect that calls it.
+      untrack(() => {
+        if (sizing !== undefined) columnSizings.set(column, { owner, sizing });
+        else if (columnSizings.get(column)?.owner === owner) columnSizings.delete(column);
+      });
+    },
+    columnSizing(column) {
+      return column < 0 ? undefined : columnSizings.get(column)?.sizing;
+    },
     get sort() {
       return sort;
     },

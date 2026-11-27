@@ -55,22 +55,37 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(armed).toBeFocused();
       await expect(armed).toHaveClass(/button-variant-danger/);
 
-      const read = await armed.evaluate((button) => {
-        const probe = document.createElement('span');
-        probe.style.color = 'var(--cinder-status-danger-solid)';
-        document.body.append(probe);
-        const danger = getComputedStyle(probe).color;
-        probe.remove();
-        let page = 'rgb(255, 255, 255)';
-        for (let node = button.parentElement; node !== null; node = node.parentElement) {
-          const color = getComputedStyle(node).backgroundColor;
-          if (color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent') {
-            page = color;
-            break;
+      const readRing = () =>
+        armed.evaluate((button) => {
+          const probe = document.createElement('span');
+          probe.style.color = 'var(--cinder-status-danger-solid)';
+          document.body.append(probe);
+          const danger = getComputedStyle(probe).color;
+          probe.remove();
+          let page = 'rgb(255, 255, 255)';
+          for (let node = button.parentElement; node !== null; node = node.parentElement) {
+            const color = getComputedStyle(node).backgroundColor;
+            if (color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent') {
+              page = color;
+              break;
+            }
           }
-        }
-        return { shadow: getComputedStyle(button).boxShadow, danger, page };
-      });
+          return { shadow: getComputedStyle(button).boxShadow, danger, page };
+        });
+      const { danger } = await readRing();
+      // The button transitions its `box-shadow` (reduced motion still shortens it to 0.01ms rather
+      // than removing it), so the computed value holds the unarmed, transparent shadow until the
+      // transition lands. The danger colour appearing in it is the observable settled state.
+      await expect
+        .poll(
+          async () => {
+            const ring = await readRing();
+            return ring.shadow;
+          },
+          { message: 'the armed button settles on a danger-coloured ring' },
+        )
+        .toContain(danger);
+      const read = await readRing();
       // Two stops: the 2px page-coloured gap, then the danger ring outside it.
       expect(read.shadow).toContain(read.danger);
       expect(read.shadow).toMatch(/0px 0px 0px 2px/);
