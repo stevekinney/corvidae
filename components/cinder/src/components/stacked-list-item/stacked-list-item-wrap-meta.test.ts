@@ -85,6 +85,21 @@ function statusImages(row: Element): HTMLElement[] {
 }
 
 describe('wrapMeta on a phone', () => {
+  test('leading-always retains one status in its leading column on phones and wide rows', () => {
+    const { container } = render(Fixture, { props: { leadingAlways: true } });
+    for (const width of [320, 375, 1024]) {
+      for (const row of resizeRows(container, width)) {
+        expect(statusImages(row)).toHaveLength(1);
+        expect(row.querySelector('.cinder-stacked-list-item__status-inline')).toBeNull();
+        expect(row.querySelector('.cinder-stacked-list-item__status')?.textContent).toContain(
+          'Check not met',
+        );
+        expect(row.classList.contains('cinder-stacked-list-item--status-leading-always')).toBe(
+          true,
+        );
+      }
+    }
+  });
   test('draws the status at the start of line two, before the meta, and not in the column', () => {
     const { container } = render(Fixture);
     for (const row of resizeRows(container, 320)) {

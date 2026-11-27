@@ -294,6 +294,16 @@
     --_cinder-status-track: calc(var(--_cinder-status-width, 8rem) + var(--cinder-space-3));
   }
 
+  /* Keep an opted-in status on the first line while metadata wraps from the leading edge. */
+  .cinder-stacked-list-item--lines.cinder-stacked-list-item--status-leading-always[data-cinder-phone]
+    > .cinder-stacked-list-item__layout {
+    --_cinder-status-track: max-content;
+    grid-template-areas:
+      'status leading title time trailing'
+      'line line line line trailing'
+      '. . details details .';
+  }
+
   .cinder-stacked-list-item--lines
     > .cinder-stacked-list-item__layout
     > .cinder-stacked-list-item__body {

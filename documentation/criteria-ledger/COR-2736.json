@@ -1,0 +1,89 @@
+{
+  "issue": "COR-2736",
+  "branch": "steve/composable-portable-bureau-client",
+  "checkedAt": "4f05ec825a9a60c157eb55559f546c505762e97a",
+  "briefVersion": "8d15159fe2bc",
+  "status": "BLOCKED",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "Prior SDK evidence; focused SDK and consumer checks retained."
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "Prior SDK evidence; focused SDK and consumer checks retained."
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "Prior SDK evidence; focused SDK and consumer checks retained."
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "Prior SDK evidence; focused SDK and consumer checks retained."
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "Prior SDK evidence; focused SDK and consumer checks retained."
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "Prior SDK evidence; focused SDK and consumer checks retained."
+    },
+    {
+      "id": "AC7",
+      "status": "not-met",
+      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+    },
+    {
+      "id": "AC8",
+      "status": "not-met",
+      "evidence": "Cinder leading-always option and 320/375 outcome-first geometry assertions implemented; component tests passed, coordinator's targeted browser stopped before tests at startup. Hosted geometry and design review pending."
+    },
+    {
+      "id": "AC9",
+      "status": "not-met",
+      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+    },
+    {
+      "id": "AC10",
+      "status": "not-met",
+      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+    },
+    {
+      "id": "AC11",
+      "status": "not-met",
+      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+    },
+    {
+      "id": "AC12",
+      "status": "not-met",
+      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+    },
+    {
+      "id": "AC13",
+      "status": "not-met",
+      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+    },
+    {
+      "id": "AC14",
+      "status": "not-met",
+      "evidence": "Health page owning test passed 22/22, including actual non-storage attention action navigation to /health?advanced=alerts and expansion of Alerts detail. Direct deep-link capture has a unique state and now reuses the viewport preparation that brings Advanced into view. Both-theme viewport capture and review remain coordinator-owned and pending."
+    },
+    {
+      "id": "AC15",
+      "status": "not-met",
+      "evidence": "Implementation or capture cases added; exact-candidate browser, design and coordinator gates pending."
+    },
+    {
+      "id": "AC16",
+      "status": "not-met",
+      "evidence": "Coordinator reports frozen tree 173e941e light supplement passed four stock Chromium cases and six viewport captures; dark startup failed before any case at the existing 120s fixture limit. Dark capture and complete cold review remain pending. Both test files match 173e941e and product matches parent 0bc9f938."
+    }
+  ]
+}

@@ -9,7 +9,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { SUBSCRIPTION_OPERATION_NAMES } from '../lib/generated/bureau-operation-client.generated.ts';
+import { SUBSCRIPTION_OPERATION_NAMES } from '@lostgradient/bureau-sdk';
 import { startHost, type Host } from './host.ts';
 import { BUREAU_METHOD_SCOPES } from './scope-gate.ts';
 

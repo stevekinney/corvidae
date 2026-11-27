@@ -21,6 +21,7 @@ import {
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { readBoxes } from './read-boxes.ts';
 
 test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 
@@ -89,6 +90,128 @@ async function answerWith(page: Page, checks: readonly Record<string, unknown>[]
 }
 
 test.describe('the list (/checks) on a phone, a tablet, with scorers, a menu open and in the dark', () => {
+  for (const width of [320, 375, 768, 1280, 1920]) {
+    test(`COR-2736 check details and time fit at ${width}px`, async ({ page }) => {
+      await openChecks(page, width);
+      for (const row of await rows(page).all()) {
+        const geometry = await row.evaluate((element) => {
+          const title = element.querySelector('.ib-checks-row__name')!;
+          const time = element.querySelector('.ib-checks-row__time')!;
+          const meta = element.querySelector('.cinder-stacked-list-item__meta')!;
+          const status = element.querySelector('.cinder-status-dot')!;
+          const titleBox = title.getBoundingClientRect();
+          const timeBox = time.getBoundingClientRect();
+          const statusBox = status.getBoundingClientRect();
+          const metaBox = meta.getBoundingClientRect();
+          const style = getComputedStyle(meta);
+          const measure = document.createElement('div');
+          measure.style.width = 'var(--cinder-space-6)';
+          element.append(measure);
+          const maxGap = measure.getBoundingClientRect().width;
+          measure.remove();
+          return {
+            gap: timeBox.left - titleBox.right,
+            maxGap,
+            metaOverflow: meta.scrollWidth - meta.clientWidth,
+            metaWhiteSpace: style.whiteSpace,
+            timeOverflow: time.scrollWidth - time.clientWidth,
+            sameLine: Math.abs(titleBox.top - timeBox.top),
+            statusBeforeTitle: statusBox.right <= titleBox.left,
+            statusOnFirstLine: statusBox.top < titleBox.bottom && statusBox.bottom > titleBox.top,
+            metaLeadingEdge: Math.abs(metaBox.left - statusBox.left),
+          };
+        });
+        expect(geometry.metaWhiteSpace).toBe('normal');
+        expect(geometry.metaOverflow).toBeLessThanOrEqual(1);
+        expect(geometry.timeOverflow).toBeLessThanOrEqual(1);
+        expect(geometry.sameLine).toBeLessThan(4);
+        if (width <= 375) {
+          expect(geometry.statusBeforeTitle).toBe(true);
+          expect(geometry.statusOnFirstLine).toBe(true);
+          expect(geometry.metaLeadingEdge).toBeLessThanOrEqual(1);
+        }
+        if (width >= 768) expect(geometry.gap).toBeLessThanOrEqual(geometry.maxGap);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      );
+    });
+  }
+
+  test('COR-2736 captures and selects each desktop facet', async ({ page }) => {
+    for (const facet of ['Check', 'Outcome', 'Agent', 'Time']) {
+      await openChecks(page, 1280);
+      const trigger = filterBar(page).getByRole('button', { name: facet, exact: true });
+      await trigger.click();
+      const options = page.locator('.cinder-filter-bar__options label');
+      await expect(options.first()).toBeVisible();
+      await captureForDesignReview(page, {
+        route: '/checks',
+        state: `${facet} facet open`,
+        source: SOURCE,
+      });
+      await page.keyboard.press('Escape');
+      await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      await expect(trigger).toBeFocused();
+      await trigger.click();
+      const value = await page
+        .locator('.cinder-filter-bar__options input[type="radio"]')
+        .first()
+        .inputValue();
+      await options.first().click();
+      const selected = filterBar(page).getByRole('button', { name: new RegExp(`^${facet}:`) });
+      await expect(selected).toHaveAttribute('aria-expanded', 'false');
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get(facet.toLowerCase()))
+        .toBe(value);
+    }
+  });
+
+  test('COR-2736 captures phone kind and filter controls', async ({ page }) => {
+    await openChecks(page, 375);
+    const kind = filterBar(page)
+      .locator('.cinder-filter-bar__segments-select')
+      .getByRole('combobox');
+    const filter = filterBar(page).getByRole('button', { name: 'Filter' });
+    const phoneBoxes = await readBoxes(page, { kind, filter });
+    expect(Math.abs(phoneBoxes.kind.y - phoneBoxes.filter.y)).toBeLessThanOrEqual(1);
+    await kind.click();
+    await captureForDesignReview(page, {
+      route: '/checks',
+      state: 'kind selector open',
+      source: SOURCE,
+    });
+    await page.getByRole('option', { name: 'Scorers', exact: true }).click();
+    await expect(page).toHaveURL(/[?&]kind=scorer/);
+    await captureForDesignReview(page, {
+      route: '/checks',
+      state: 'kind selected',
+      source: SOURCE,
+    });
+    await filter.click();
+    await expect(
+      page.locator('.cinder-filter-bar__menu-row .cinder-filter-bar__menu-label'),
+    ).toHaveText(['Check', 'Outcome', 'Agent', 'Time']);
+    await captureForDesignReview(page, {
+      route: '/checks',
+      state: 'filter menu open',
+      source: SOURCE,
+    });
+  });
+  test('desktop content width contains checks and their timestamps', async ({ page }) => {
+    await openChecks(page, 1920);
+    const records = page.locator('.ib-records[data-page="checks"]');
+    const { bounds, timestamp } = await readBoxes(page, {
+      bounds: records,
+      timestamp: rows(page).first().locator('time'),
+    });
+    const maximum = await records.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).maxInlineSize),
+    );
+    expect(bounds.width).toBeLessThanOrEqual(maximum);
+    expect(timestamp.x + timestamp.width).toBeLessThanOrEqual(bounds.x + bounds.width + 1);
+    expect(maximum).toBe(1152);
+  });
   test('long Outcome facet contains and selects its final option (C2-05)', async ({ page }) => {
     await openChecks(page);
     const bar = filterBar(page);
@@ -175,6 +298,15 @@ test.describe('the list (/checks) on a phone, a tablet, with scorers, a menu ope
     for (const chip of ['Check', 'Outcome', 'Agent', 'Time']) {
       await expect(bar.getByRole('button', { name: chip, exact: true })).toBeVisible();
     }
+    const boxes = await readBoxes(page, {
+      kind: bar.locator('.cinder-filter-bar__segments-select'),
+      check: bar.getByRole('button', { name: 'Check', exact: true }),
+      outcome: bar.getByRole('button', { name: 'Outcome', exact: true }),
+      agent: bar.getByRole('button', { name: 'Agent', exact: true }),
+      time: bar.getByRole('button', { name: 'Time', exact: true }),
+    });
+    const tops = Object.values(boxes).map((box) => box.y);
+    expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
     await captureForDesignReview(page, { route: '/checks', state: 'ready', source: SOURCE });
     await checkA11y('checks on a tablet');
   });

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ReviewsProvider } from '@lostgradient/bureau-client/reviews/svelte';
+  import { ReviewsProvider } from '@lostgradient/bureau-sdk/reviews/svelte';
   import { useQueryClient } from '@tanstack/svelte-query';
   import { bureauTransport } from '../../lib/bureau-transport.ts';
   import { getPrincipalStore } from '../../lib/scopes.svelte.ts';

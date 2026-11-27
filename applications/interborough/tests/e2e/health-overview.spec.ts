@@ -42,8 +42,143 @@ async function settled(page: Page): Promise<void> {
   ).toBeVisible();
 }
 
+async function showAdvanced(page: Page): Promise<void> {
+  const section = page.getByTestId('advanced-diagnostics');
+  await section.evaluate((element) => {
+    const outlet = element.closest('main.weft-shell-outlet');
+    if (!(outlet instanceof HTMLElement)) throw new Error('Health outlet is missing');
+    outlet.scrollTop +=
+      element.getBoundingClientRect().top - outlet.getBoundingClientRect().top - 12;
+  });
+  for (const name of ['metrics', 'alerts', 'checks']) {
+    await expect(section.locator(`[data-section="${name}"]`)).toBeInViewport();
+  }
+}
+
 test.describe('the sample world', () => {
   test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
+
+  for (const width of [320, 375]) {
+    test(`COR-2736 phone attention action fits at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 640 });
+      await page.goto('/health');
+      await settled(page);
+      const attention = page.getByTestId('needs-attention');
+      const heading = attention.getByRole('heading', { name: 'Needs attention' });
+      const action = attention.getByRole('link', { name: 'Connect a provider' });
+      await expect(heading).toBeInViewport();
+      await expect(action).toBeInViewport();
+      const actionBox = await action.boundingBox();
+      expect(actionBox!.y + actionBox!.height).toBeLessThanOrEqual(640);
+      if (width === 375) {
+        await captureForDesignReview(page, {
+          route: '/health',
+          state: 'phone initial viewport 640',
+          source: SOURCE,
+          ready: async (currentPage) => {
+            await currentPage.locator('main.weft-shell-outlet').evaluate((outlet) => {
+              outlet.scrollTop = 0;
+            });
+            await expect(currentPage.getByTestId('needs-attention')).toBeVisible();
+          },
+        });
+      }
+      await action.focus();
+      await expect(action).toBeFocused();
+      await expect(page.getByTestId('health-counts').locator('.cinder-statistic')).toHaveCount(2);
+    });
+  }
+
+  test('COR-2736 captures storage details and expanded Advanced', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/health');
+    await settled(page);
+    const details = page.getByRole('button', { name: 'Storage details' });
+    await details.focus();
+    await page.keyboard.press('Enter');
+    await expect(details).toHaveAttribute('aria-expanded', 'true');
+    await captureForDesignReview(page, {
+      route: '/health',
+      state: 'storage details expanded',
+      source: SOURCE,
+    });
+    await page.keyboard.press('Escape');
+    await expect(details).toBeFocused();
+    const advanced = page.getByTestId('advanced-diagnostics');
+    const disclosure = advanced.locator('button[aria-expanded]');
+    await disclosure.focus();
+    await page.keyboard.press('Enter');
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+    await expect(advanced.locator('[data-section="checks"]')).toContainText('3 need attention');
+    await expect(page.getByTestId('needs-attention').locator('li')).toHaveCount(3);
+    await showAdvanced(page);
+    await captureForDesignReview(page, {
+      route: '/health',
+      state: 'advanced expanded',
+      source: SOURCE,
+      ready: showAdvanced,
+    });
+    await page.getByTestId('needs-attention').getByRole('link', { name: 'View storage' }).click();
+    await expect(page).toHaveURL(/\/health\/storage/);
+    const storageReady = async (currentPage: Page) => {
+      await currentPage.locator('main.weft-shell-outlet').evaluate((outlet) => {
+        outlet.scrollTop = 0;
+      });
+      await expect(currentPage.getByTestId('storage-warning')).toBeVisible();
+      await expect(currentPage.locator('main tbody tr[data-cinder-row-id]').first()).toBeVisible();
+    };
+    await storageReady(page);
+    await captureForDesignReview(page, {
+      route: '/health/storage',
+      state: 'storage alert destination',
+      source: SOURCE,
+      ready: storageReady,
+    });
+  });
+
+  test('COR-2736 captures phone Health section selector', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 900 });
+    await page.goto('/health');
+    await settled(page);
+    const section = page.getByRole('combobox', { name: 'Section' });
+    await section.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('option', { name: 'Overview' })).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/health',
+      state: 'section selector open',
+      source: SOURCE,
+    });
+    await page.keyboard.press('Escape');
+    await expect(section).toBeFocused();
+  });
+
+  test('desktop content width contains overview actions and activity times without constraining the frame', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 900 });
+    await page.goto('/health');
+    await settled(page);
+    const overview = page.locator('.ib-health-overview');
+    const { bounds, frame, action, time } = await readBoxes(page, {
+      bounds: overview,
+      frame: page.locator('.ib-health-frame'),
+      action: page.getByTestId('needs-attention').getByRole('link', { name: 'Connect a provider' }),
+      time: page.locator('[data-activity] .ib-recent-activity__time').first(),
+    });
+    const maximum = await overview.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).maxInlineSize),
+    );
+    expect(maximum).toBe(1152);
+    expect(bounds.width).toBeLessThanOrEqual(maximum);
+    expect(frame.width).toBeGreaterThan(bounds.width);
+    for (const box of [action, time]) {
+      expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width + 1);
+    }
+    await page.goto('/health/storage');
+    await expect(page.locator('.ib-health-frame')).toHaveAttribute('data-tab', 'storage');
+    expect((await page.locator('.ib-health-frame').boundingBox())!.width).toBeGreaterThan(maximum);
+  });
 
   for (const width of WIDTHS) {
     test(`the Overview is the frame, the counts, Needs attention, Recent activity, three cards and Advanced, at ${width} pixels`, async ({
@@ -331,8 +466,9 @@ test.describe('the sample world', () => {
     await expect(advanced.getByText('Open system checks ›')).toBeVisible();
     await captureForDesignReview(page, {
       route: '/health',
-      state: 'advanced-expanded',
+      state: 'advanced from diagnostics link',
       source: SOURCE,
+      ready: showAdvanced,
     });
     await checkA11y('health, Advanced expanded');
 

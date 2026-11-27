@@ -10,8 +10,8 @@
 import { HttpClientError } from '@lostgradient/weft/client';
 import { z } from 'zod';
 
+import type { CatalogOperations } from '@lostgradient/bureau-sdk';
 import { bureauClient, type BureauInput, type BureauOutput } from './bureau-api.ts';
-import type { CatalogOperations } from './generated/bureau-operation-client.generated.ts';
 
 /** The part of `fetch` the application's requests use, so a test can stand a stub in for it. */
 export type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;

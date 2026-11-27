@@ -275,6 +275,10 @@ function objectSchemaNode(schema: Record<string, unknown>, context: ReferenceCon
   return { kind: 'object', fields };
 }
 
+function flattenUnion(member: TypeNode): TypeNode[] {
+  return member.kind === 'union' ? member.members.flatMap(flattenUnion) : [member];
+}
+
 /**
  * Render a {@link TypeNode} to TypeScript. When a child node's
  * {@link canonicalKey} is present in `aliasNameByKey`, the alias name is
@@ -307,8 +311,16 @@ export function renderNode(
       return `Record<string, ${node.value === undefined ? 'unknown' : renderChild(node.value)}>`;
     case 'array':
       return `ReadonlyArray<${renderChild(node.element)}>`;
-    case 'union':
+    case 'union': {
+      const members = node.members.flatMap(flattenUnion);
+      if (members.some((member) => member.kind === 'primitive' && member.text === 'string')) {
+        return members
+          .filter((member) => member.kind !== 'primitive' || !member.text.startsWith('"'))
+          .map((member) => renderChild(member))
+          .join(' | ');
+      }
       return node.members.map((member) => renderChild(member)).join(' | ');
+    }
     case 'object': {
       const fields = node.fields.map((field) => {
         const optional = field.optional ? '?' : '';

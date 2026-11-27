@@ -4,8 +4,8 @@
  * the caller gave itself) and which agent answered. The trail answers oldest first and takes no
  * order, so the newest are the end of the last page.
  */
+import type { CatalogOperations } from '@lostgradient/bureau-sdk';
 import { queryAudit, type AuditRecord } from './bureau-audit.ts';
-import type { CatalogOperations } from './generated/bureau-operation-client.generated.ts';
 
 /** The audit type the Bureau records an A2A call under. */
 export const A2A_CALL_TYPE = 'a2a.call';

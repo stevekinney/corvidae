@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { getReviewsHost, useBureauReviewsList } from '@lostgradient/bureau-client/reviews/svelte';
-  import { useToolApprovalActions } from '@lostgradient/bureau-client/reviews/ui';
+  import { getReviewsHost, useBureauReviewsList } from '@lostgradient/bureau-sdk/reviews/svelte';
+  import { useToolApprovalActions } from '@lostgradient/bureau-sdk/reviews/ui';
   import { onMount } from 'svelte';
   import { MAXIMUM_PAGES, PAGE_LIMIT } from './model.ts';
-  import type { ReviewsOperationTypes } from '@lostgradient/bureau-client/reviews';
+  import type { ReviewsOperationTypes } from '@lostgradient/bureau-sdk/reviews';
   import ReviewList from './review-list.svelte';
   import type { ReviewsView } from './view.svelte.ts';
 

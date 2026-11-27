@@ -4,9 +4,9 @@
  * the newest (`order: 'newest'`), and pages by a cursor that the answer hands back. The operation
  * takes an upper bound on time (`until`) and an actor (`principal`), which the audit log does not use.
  */
+import type { CatalogOperations } from '@lostgradient/bureau-sdk';
 import type { BureauOutput } from './bureau-api.ts';
 import type { Fetcher } from './bureau-client.ts';
-import type { CatalogOperations } from './generated/bureau-operation-client.generated.ts';
 
 type JsonPage = Extract<BureauOutput<'bureau.audit.query'>, { readonly records: unknown }>;
 

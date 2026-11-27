@@ -20,7 +20,7 @@
   import {
     ReviewApprovalButtons,
     type ToolApprovalActions,
-  } from '@lostgradient/bureau-client/reviews/ui';
+  } from '@lostgradient/bureau-sdk/reviews/ui';
   import type { Snippet } from 'svelte';
 
   import { getConnection } from '../../app/connection.svelte.ts';

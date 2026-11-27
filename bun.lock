@@ -48,7 +48,7 @@
         "@lostgradient/backchannel-svelte": "workspace:*",
         "@lostgradient/bungalow": "workspace:*",
         "@lostgradient/bureau": "workspace:*",
-        "@lostgradient/bureau-client": "workspace:*",
+        "@lostgradient/bureau-sdk": "workspace:*",
         "@lostgradient/chat": "workspace:*",
         "@lostgradient/cinder": "workspace:*",
         "@lostgradient/credentials": "workspace:*",
@@ -111,7 +111,6 @@
         "openid-client": "catalog:",
         "oxlint": "catalog:",
         "oxlint-tsgolint": "catalog:",
-        "prettier": "catalog:",
         "svelte-check": "catalog:",
         "typescript": "catalog:",
       },
@@ -536,8 +535,8 @@
         "typescript": "catalog:",
       },
     },
-    "packages/bureau-client": {
-      "name": "@lostgradient/bureau-client",
+    "packages/bureau-sdk": {
+      "name": "@lostgradient/bureau-sdk",
       "dependencies": {
         "@lostgradient/backchannel": "workspace:*",
         "@lostgradient/backchannel-svelte": "workspace:*",
@@ -1231,7 +1230,7 @@
     "plugins/inspectors": {
       "name": "@lostgradient/plugin-inspectors",
       "dependencies": {
-        "@lostgradient/bureau-client": "workspace:*",
+        "@lostgradient/bureau-sdk": "workspace:*",
         "@lostgradient/interborough-plugin": "workspace:*",
         "@modelcontextprotocol/ext-apps": "catalog:",
         "@tanstack/svelte-query": "catalog:",
@@ -1815,7 +1814,7 @@
 
     "@lostgradient/bureau": ["@lostgradient/bureau@workspace:packages/bureau"],
 
-    "@lostgradient/bureau-client": ["@lostgradient/bureau-client@workspace:packages/bureau-client"],
+    "@lostgradient/bureau-sdk": ["@lostgradient/bureau-sdk@workspace:packages/bureau-sdk"],
 
     "@lostgradient/chat": ["@lostgradient/chat@workspace:components/chat"],
 

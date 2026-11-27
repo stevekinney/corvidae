@@ -10,9 +10,9 @@
 import { HttpClientError } from '@lostgradient/weft/client';
 import { z } from 'zod';
 
+import type { CatalogOperations } from '@lostgradient/bureau-sdk';
 import { bureauClient, type BureauInput, type BureauOutput } from './bureau-api.ts';
 import type { Fetcher } from './bureau-client.ts';
-import type { CatalogOperations } from './generated/bureau-operation-client.generated.ts';
 
 /**
  * What an agent's identifier must look like, and the longest it may be. The Bureau owns both rules

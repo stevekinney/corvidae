@@ -1,8 +1,8 @@
 /** The audit export: every page the filters match, JSON Lines, and the file it is saved as. */
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { createBureauClient } from '../../lib/bureau-api.ts';
 import { installBureauStub, type BureauStub } from '../../lib/bureau-stub.test-support.ts';
-import { createBureauClient } from '../../lib/generated/bureau-operation-client.generated.ts';
 import {
   auditExportFilename,
   downloadText,
