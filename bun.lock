@@ -536,6 +536,7 @@
         "@modelcontextprotocol/client": "catalog:",
         "@types/bun": "catalog:",
         "@types/js-yaml": "catalog:",
+        "ajv": "catalog:",
         "oxlint": "catalog:",
         "typescript": "catalog:",
       },
