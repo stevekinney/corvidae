@@ -115,8 +115,10 @@ export function resolveWorkerDescriptor(
   const secretPrefix = workerBindingVariable(name, 'SECRET_');
   const secrets = new Map<string, string>();
   for (const [key, value] of Object.entries(env)) {
-    if (key.startsWith(secretPrefix) && typeof value === 'string' && value !== '')
-      secrets.set(key, value);
+    if (!key.startsWith(secretPrefix)) continue;
+    if (typeof value !== 'string')
+      throw new BungalowInputError(`Worker mode needs ${key} to be text.`);
+    if (value !== '') secrets.set(key, value);
   }
   return {
     kind: 'binding',

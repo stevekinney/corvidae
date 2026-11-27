@@ -41,10 +41,22 @@ async function bindingConfiguration(
 
 /** Open a Worker home using the R2 binding directly, without a process environment or S3 signer. */
 export async function openBindingBungalow(options: OpenBindingBungalowOptions): Promise<Bungalow> {
-  assertBungalowName(options.name);
+  // Snapshot every caller-owned option before the first await. The binding handles themselves stay
+  // live, but changing an options object while R2 answers cannot change this open's identity.
+  const {
+    name,
+    workspaceId: configuredWorkspaceId,
+    secretProvider: secretProviderFactory,
+    deploymentSecrets: deploymentSecretsFactory,
+    databaseWorkspaceClaim,
+  } = options;
+  assertBungalowName(name);
   const descriptor = validateBindingDescriptor(options.descriptor);
-  const claim = requireDatabaseWorkspaceClaim(options.databaseWorkspaceClaim);
-  const name = options.name;
+  const database =
+    descriptor.database.kind === 'd1'
+      ? { kind: 'd1' as const, binding: descriptor.database.binding }
+      : { kind: 'postgres' as const, url: descriptor.database.url };
+  const claim = requireDatabaseWorkspaceClaim(databaseWorkspaceClaim);
   const writableConfiguration = options.writableConfiguration === true;
   const client = createR2ObjectOperations(descriptor.bucket);
   const deploymentKey = `${descriptor.prefix}deployment-id`;
@@ -72,7 +84,7 @@ export async function openBindingBungalow(options: OpenBindingBungalowOptions): 
         );
       }
       try {
-        await claim(descriptor.database, `r2://${descriptor.prefix}`, undefined);
+        await claim(database, `r2://${descriptor.prefix}`, undefined);
       } catch (error) {
         if ((await readObject(client, deploymentKey, 'read deployment ID')) === undefined)
           throw error;
@@ -80,19 +92,19 @@ export async function openBindingBungalow(options: OpenBindingBungalowOptions): 
     }
   }
   const deploymentId = await loadDeploymentId(client, deploymentKey);
-  const expectedWorkspaceId = (options.workspaceId ?? deploymentId).trim();
+  const expectedWorkspaceId = (configuredWorkspaceId ?? deploymentId).trim();
   if (expectedWorkspaceId !== deploymentId) {
     throw new BungalowStateError('The configured workspace identity does not match deployment-id.');
   }
   if (existingWorkspace !== undefined && existingWorkspace.trim() !== expectedWorkspaceId) {
     throw new BungalowStateError('The backing store belongs to a different workspace.');
   }
-  await claim(descriptor.database, `r2://${descriptor.prefix}`, expectedWorkspaceId);
+  await claim(database, `r2://${descriptor.prefix}`, expectedWorkspaceId);
   const workspaceId = await bindWorkspaceId(
     client,
     workspaceKey,
     deploymentId,
-    options.workspaceId,
+    configuredWorkspaceId,
   );
   let closed = false;
   const assertOpen = (): void => {
@@ -103,7 +115,7 @@ export async function openBindingBungalow(options: OpenBindingBungalowOptions): 
   };
   const variablePrefix = `${name.toUpperCase().replaceAll('-', '_')}_SECRET_`;
   const secretProvider =
-    options.secretProvider?.(workspaceId) ??
+    secretProviderFactory?.(workspaceId) ??
     createEnvironmentSecretProvider({
       workspaceId,
       values: Object.fromEntries(
@@ -120,7 +132,7 @@ export async function openBindingBungalow(options: OpenBindingBungalowOptions): 
     throw new BungalowInputError('The secret provider belongs to a different workspace.');
   }
   const deploymentSecrets: DeploymentSecrets =
-    options.deploymentSecrets === undefined
+    deploymentSecretsFactory === undefined
       ? {
           writable: false,
           location(key) {
@@ -137,12 +149,12 @@ export async function openBindingBungalow(options: OpenBindingBungalowOptions): 
             return descriptor.secrets.get(secretVariable(name, key));
           },
         }
-      : injectedDeploymentSecrets(options.deploymentSecrets, { workspaceId, assertOpen });
+      : injectedDeploymentSecrets(deploymentSecretsFactory, { workspaceId, assertOpen });
   return {
     name,
     mode: 'remote',
     capabilities: { sharedBetweenInstances: true, personalMachine: false },
-    database: descriptor.database,
+    database,
     configurationLocation: `r2://${configurationKey}`,
     logs: undefined,
     deploymentId,
