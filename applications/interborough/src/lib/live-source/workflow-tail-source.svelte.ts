@@ -47,10 +47,11 @@
  * module-scope set; `import.meta.hot?.dispose` closes them all before Vite
  * swaps this module out.
  */
+import type { ServerSentEventFrame } from '@lostgradient/backchannel/client';
 import type { WorkflowEvent } from '@lostgradient/weft';
 
 import { computeReconnectDelayMs } from './backoff.ts';
-import { readServerSentEventStream, type ServerSentEventFrame } from './sse-reader.ts';
+import { readServerSentEventStream } from './sse-reader.ts';
 import type { LiveSource, LiveSourceStatus } from './types.ts';
 import { isTerminalWorkflowEventType } from './workflow-lifecycle-events.ts';
 

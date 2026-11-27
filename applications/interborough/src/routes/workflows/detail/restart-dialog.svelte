@@ -6,8 +6,8 @@
    *
    * ## What it calls
    *
-   * `client.startOrSignal(type, input, signal, { id, onTerminalConflict:
-   * 'start-new', tags })` (`weft.workflows.startorsignal`). The engine's
+   * The generated `weft.workflows.startorsignal` command starts or signals the run.
+   * The engine's
    * restart-capable surface is the signal-with-start one, which is why the
    * form asks for a signal: `start-new` "requires `options.id` and
    * `signal.signalId`" (`StartOrSignalOptions`, `@lostgradient/weft`), and
@@ -47,20 +47,13 @@
    * A restart inherits the terminal run's current worker binding. For a
    * terminal auto-upgrade run, `restart-worker-override.svelte` offers a
    * preview-then-spend override (`system:admin`): once the operator confirms a
-   * server-issued preview, this dialog spends its token on the restart through
-   * `weft.workflows.startorsignal`, the JSON-RPC operation, because only that
-   * transport carries the typed `override-token-rejected` reason back. A plain
-   * restart keeps using `client.startOrSignal`. A refused token drops the
-   * preview and asks for a new one; it never retries on its own.
+   * server-issued preview, the same operation spends its token and carries the
+   * typed `override-token-rejected` reason back. A refused token drops the
+   * preview and asks for a new one without retrying automatically.
    */
   import { Button, Input, Modal, Skeleton, Tooltip } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import type {
-    ClientStartOrSignalOptions,
-    WorkerStartOverridePreview,
-    StartOrSignalOutcome,
-    StartOrSignalSignal,
-  } from '@lostgradient/weft';
+  import type { ClientOperationTypes, WorkerStartOverridePreview } from '@lostgradient/weft';
   import type { WorkflowReadState as WorkflowState } from '../../../lib/client.ts';
 
   import { faultTreatment } from '../../../lib/faults.ts';
@@ -81,19 +74,12 @@
   } from './worker-override.ts';
 
   interface RestartDialogProps {
-    /**
-     * `startOrSignal` is narrowed to the one string-name shape this dialog
-     * calls, past `HttpClient`'s overloaded, registry-generic signature, so
-     * a plain test fake can satisfy it; a real `HttpClient` does structurally
-     * (its `ClientHandle` result is assignable to `{ id, outcome }`).
-     */
     readonly client: {
-      startOrSignal(
-        type: string,
-        input: unknown,
-        signal: StartOrSignalSignal,
-        options?: ClientStartOrSignalOptions,
-      ): Promise<{ readonly id: string; readonly outcome?: StartOrSignalOutcome | undefined }>;
+      readonly operations: {
+        'weft.workflows.startorsignal': (
+          input: ClientOperationTypes['weft.workflows.startorsignal']['input'],
+        ) => Promise<ClientOperationTypes['weft.workflows.startorsignal']['output']>;
+      };
     } & WorkflowActiveRevisionClient &
       WorkerOverrideClient;
     /** The terminal run being restarted. */
@@ -159,40 +145,21 @@
       const override = overridePreview;
       attemptedOverride = override !== undefined;
       failure = undefined;
-      const spend = client.operations['weft.workflows.startorsignal'];
-      if (override !== undefined && spend !== undefined) {
-        return spend({
-          type: workflow.type,
-          input: workflow.input,
-          id: workflow.id,
-          onTerminalConflict: 'start-new',
-          ...(workflow.tags !== undefined && workflow.tags.length > 0
-            ? { tags: [...workflow.tags] }
-            : {}),
-          signalName: signalName.trim(),
-          signalId,
-          ...(trimmedPayload.length > 0
-            ? { signalPayload: JSON.parse(trimmedPayload) as unknown }
-            : {}),
-          workerStartOverridePreview: override,
-        });
-      }
-      return client.startOrSignal(
-        workflow.type,
-        workflow.input,
-        {
-          name: signalName.trim(),
-          signalId,
-          ...(trimmedPayload.length > 0 ? { payload: JSON.parse(trimmedPayload) as unknown } : {}),
-        },
-        {
-          id: workflow.id,
-          onTerminalConflict: 'start-new',
-          ...(workflow.tags !== undefined && workflow.tags.length > 0
-            ? { tags: [...workflow.tags] }
-            : {}),
-        },
-      );
+      return client.operations['weft.workflows.startorsignal']({
+        type: workflow.type,
+        input: workflow.input,
+        id: workflow.id,
+        onTerminalConflict: 'start-new',
+        ...(workflow.tags !== undefined && workflow.tags.length > 0
+          ? { tags: [...workflow.tags] }
+          : {}),
+        signalName: signalName.trim(),
+        signalId,
+        ...(trimmedPayload.length > 0
+          ? { signalPayload: JSON.parse(trimmedPayload) as unknown }
+          : {}),
+        ...(override === undefined ? {} : { workerStartOverridePreview: override }),
+      });
     },
     onError: (error) => {
       failure = error;

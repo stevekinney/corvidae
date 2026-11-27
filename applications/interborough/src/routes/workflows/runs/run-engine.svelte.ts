@@ -141,15 +141,24 @@ export class RunEngine {
   async runQuery(name: string, inputText: string): Promise<unknown> {
     const trimmed = inputText.trim();
     const input = trimmed.length === 0 ? undefined : (JSON.parse(trimmed) as unknown);
-    return this.client.query(this.#id(), name, input);
+    const answer = await this.client.operations['weft.workflows.query']({
+      workflowId: this.#id(),
+      queryName: name,
+      ...(input === undefined ? {} : { input }),
+    });
+    if (answer === null || typeof answer !== 'object' || !('result' in answer)) {
+      throw new TypeError('The workflow query did not return a result.');
+    }
+    return answer.result;
   }
 }
 
 const ACTION_CALL: Readonly<
   Record<WorkflowContextualAction, (client: HttpClient, id: string) => Promise<unknown>>
 > = {
-  cancel: (client, id) => client.cancel(id),
-  suspend: (client, id) => client.suspend(id),
-  resume: (client, id) => client.resume(id),
-  'force-timeout': (client, id) => client.timeout(id),
+  cancel: (client, workflowId) => client.operations['weft.workflows.cancel']({ workflowId }),
+  suspend: (client, workflowId) => client.operations['weft.workflows.suspend']({ workflowId }),
+  resume: (client, workflowId) => client.operations['weft.workflows.resume']({ workflowId }),
+  'force-timeout': (client, workflowId) =>
+    client.operations['weft.workflows.timeout']({ workflowId }),
 };

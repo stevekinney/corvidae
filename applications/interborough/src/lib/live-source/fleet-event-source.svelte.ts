@@ -22,8 +22,10 @@
  * module-scope set; `import.meta.hot?.dispose` closes them all before Vite
  * swaps this module out, so a hot edit never leaves an orphaned connection.
  */
+import type { ServerSentEventFrame } from '@lostgradient/backchannel/client';
+
 import { computeReconnectDelayMs } from './backoff.ts';
-import { readServerSentEventStream, type ServerSentEventFrame } from './sse-reader.ts';
+import { readServerSentEventStream } from './sse-reader.ts';
 import type { LiveSource, LiveSourceStatus } from './types.ts';
 
 /** One envelope from the fleet feed — the wire shape documented in plan Appendix A. */

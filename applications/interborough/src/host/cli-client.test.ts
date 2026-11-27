@@ -186,6 +186,65 @@ describe('Interborough command client', () => {
     }
   });
 
+  // spawn-free: fetch observes the complete JSON-RPC request without starting a process.
+  test('review decisions and human responses preserve fields and Bureau validation', async () => {
+    const scenarios = [
+      {
+        arguments: ['reviews', 'get', 'review-1'],
+        method: 'bureau.reviews.get',
+        params: { id: 'review-1' },
+      },
+      {
+        arguments: ['reviews', 'reject', 'review-1', '--round', '3', '--reason', 'Needs work'],
+        method: 'bureau.reviews.resolve',
+        params: { id: 'review-1', decision: 'reject', reason: 'Needs work', round: 3 },
+      },
+      {
+        arguments: ['runs', 'respond', 'task-1', '--message-id', 'answer-1', '--answer', 'Ready'],
+        method: 'bureau.tasks.respond',
+        params: { taskId: 'task-1', messageId: 'answer-1', answer: 'Ready' },
+      },
+      {
+        arguments: ['runs', 'respond', 'task-1', '--message-id', 'answer-1', '--decision', 'deny'],
+        method: 'bureau.tasks.respond',
+        params: { taskId: 'task-1', messageId: 'answer-1', decision: 'deny' },
+      },
+      {
+        arguments: [
+          'runs',
+          'respond',
+          'task-1',
+          '--message-id',
+          'answer-1',
+          '--decision',
+          'invalid',
+        ],
+        method: 'bureau.tasks.respond',
+        params: { taskId: 'task-1', messageId: 'answer-1', decision: 'invalid' },
+        invalid: true,
+      },
+    ];
+    for (const scenario of scenarios) {
+      const calls: unknown[] = [];
+      const result = await executeCli(scenario.arguments, {
+        fetch: async (_input, init) => {
+          if (typeof init?.body !== 'string') throw new Error('Expected a JSON-RPC request body.');
+          calls.push(JSON.parse(init.body));
+          if (scenario.invalid)
+            return Response.json({
+              error: { code: -32_602, message: 'Bureau rejected the decision.' },
+            });
+          return Response.json({ result: { accepted: true } });
+        },
+      });
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ method: scenario.method });
+      expect(calls[0]).toHaveProperty('params', scenario.params);
+      expect(result.exitCode, scenario.arguments.join(' ')).toBe(scenario.invalid ? 1 : 0);
+      if (scenario.invalid) expect(result.stderr).toContain('Bureau rejected the decision.');
+    }
+  });
+
   // spawn-free: injected stdin/fetch prove invalid input never reaches a network or process boundary.
   test('invalid definition and automation inputs never dispatch a mutation', async () => {
     const invalid = [

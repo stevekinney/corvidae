@@ -67,8 +67,9 @@ function clientWith(entries: WorkflowTimelineEntry[], chunks: Record<string, unk
             chunks: (chunks[input.key] ?? []).map((value, sequence) => ({ sequence, value })),
           };
         },
+        'weft.activities.complete': async () => ({ ok: true as const }),
+        'weft.activities.fail': async () => ({ ok: true as const }),
       },
-      activity: { complete: async () => {}, completeExceptionally: async () => {} },
     },
   };
 }

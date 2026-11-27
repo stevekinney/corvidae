@@ -1,9 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 import { uploadAttachment } from './cli-chat-assets.ts';
-import { request, stream, type CliTarget } from './cli-client-transport.ts';
+import { stream, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
-import { isDryRun } from './cli-destructive.ts';
 
 type RecordValue = Record<string, unknown>;
 
@@ -20,23 +19,6 @@ function id(prefix: string): string {
 function option(parsed: Parsed, name: string): string | undefined {
   const value = parsed.options.get(name);
   return typeof value === 'string' ? value : undefined;
-}
-
-async function rpc(
-  target: CliTarget,
-  parsed: Parsed,
-  dependencies: CliClientDependencies,
-  method: string,
-  params: RecordValue,
-): Promise<CliCommandResult> {
-  const result = await request(target, '/bureau/jsonrpc', parsed, dependencies, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: id('cli'), method, params }),
-  });
-  return record(result.data)?.['result'] === undefined
-    ? result
-    : { ...result, data: record(result.data)?.['result'] };
 }
 
 function messageFromEvent(event: RecordValue): string | undefined {
@@ -326,186 +308,76 @@ export async function executeChat(
   parsed: Parsed,
   dependencies: CliClientDependencies,
 ): Promise<CliCommandResult> {
-  const action = parsed.command === 'chat' ? undefined : parsed.arguments[0];
-  if (parsed.command === 'chat') {
-    const agent = option(parsed, 'agent') ?? parsed.arguments[0];
-    if (!agent) throw Object.assign(new Error('chat requires --agent <name>.'), { usage: true });
-    const threadId = option(parsed, 'thread') ?? id('thread');
-    const runId = option(parsed, 'run') ?? id('run');
-    if (option(parsed, 'cursor') !== undefined && option(parsed, 'thread') !== undefined)
-      return runStream(
-        target,
-        parsed,
-        dependencies,
-        `/bureau/ag-ui/threads/${encodeURIComponent(threadId)}/run`,
-        undefined,
-        { threadId, runId },
-      );
-    const messageFile = option(parsed, 'message-file');
-    let message =
-      messageFile === undefined
-        ? (() => {
-            const direct = option(parsed, 'message') ?? parsed.arguments.join(' ');
-            return direct || '';
-          })()
-        : await readFile(messageFile, 'utf8');
-    if (!message && parsed.noInput)
-      throw Object.assign(new Error('chat requires a message when --no-input is set.'), {
-        exitCode: 5,
-      });
-    if (!message && dependencies.stdinIsTTY === true && dependencies.prompt !== undefined) {
-      try {
-        message = await dependencies.prompt('Message: ', dependencies.signal);
-      } catch (error) {
-        if (dependencies.signal?.aborted)
-          throw Object.assign(
-            new Error('Chat stream detached; resume with the reported identifiers.'),
-            {
-              exitCode: 130,
-              identifiers: { threadId, runId },
-            },
-          );
-        throw error;
-      }
-    }
-    if (!message && dependencies.stdin !== undefined) message = await dependencies.stdin();
-    if (!message)
-      throw Object.assign(new Error('chat requires a message or --message-file.'), { usage: true });
-    let content: string | unknown[] = message;
-    const attachmentPath = option(parsed, 'attachment');
-    if (attachmentPath !== undefined) {
-      const asset = await uploadAttachment(target, parsed, dependencies, attachmentPath);
-      const assetId = asset['assetId'];
-      if (typeof assetId !== 'string')
-        throw new Error('The host returned no completed asset identifier.');
-      const modality =
-        asset['modality'] === 'image' || asset['modality'] === 'audio' ? asset['modality'] : 'file';
-      content = [
-        { type: 'text', text: message },
-        { type: modality, source: { type: 'file', provider: 'bureau', value: assetId } },
-      ];
-    }
+  const agent = option(parsed, 'agent') ?? parsed.arguments[0];
+  if (!agent) throw Object.assign(new Error('chat requires --agent <name>.'), { usage: true });
+  const threadId = option(parsed, 'thread') ?? id('thread');
+  const runId = option(parsed, 'run') ?? id('run');
+  if (option(parsed, 'cursor') !== undefined && option(parsed, 'thread') !== undefined)
     return runStream(
       target,
       parsed,
       dependencies,
-      `/bureau/ag-ui/agents/${encodeURIComponent(agent)}/run`,
-      {
-        threadId,
-        runId,
-        messages: [{ id: id('message'), role: 'user', content }],
-        tools: [],
-        context: [],
-        state: {},
-        forwardedProps: {},
-      },
+      `/bureau/ag-ui/threads/${encodeURIComponent(threadId)}/run`,
+      undefined,
+      { threadId, runId },
     );
+  const messageFile = option(parsed, 'message-file');
+  let message =
+    messageFile === undefined
+      ? (() => {
+          const direct = option(parsed, 'message') ?? parsed.arguments.join(' ');
+          return direct || '';
+        })()
+      : await readFile(messageFile, 'utf8');
+  if (!message && parsed.noInput)
+    throw Object.assign(new Error('chat requires a message when --no-input is set.'), {
+      exitCode: 5,
+    });
+  if (!message && dependencies.stdinIsTTY === true && dependencies.prompt !== undefined) {
+    try {
+      message = await dependencies.prompt('Message: ', dependencies.signal);
+    } catch (error) {
+      if (dependencies.signal?.aborted)
+        throw Object.assign(
+          new Error('Chat stream detached; resume with the reported identifiers.'),
+          {
+            exitCode: 130,
+            identifiers: { threadId, runId },
+          },
+        );
+      throw error;
+    }
   }
-  const methodByAction: Record<string, string> = {
-    list: 'bureau.contexts.list',
-    get: 'bureau.contexts.get',
-    send: 'bureau.contexts.input',
-    fork: 'bureau.contexts.fork',
-    rename: 'bureau.contexts.rename',
-    delete: 'bureau.contexts.delete',
-    configure: 'bureau.contexts.steer',
-  };
-  if (parsed.command === 'chats' && action !== undefined) {
-    if (action === 'cancel') {
-      const taskId = option(parsed, 'task-id') ?? option(parsed, 'run') ?? parsed.arguments[1];
-      if (taskId === undefined)
-        throw Object.assign(new Error('chats cancel requires --task-id <id>.'), { usage: true });
-      // The cancel route goes through `bureau.tasks.cancel`, which answers a dry run itself.
-      if (isDryRun(parsed))
-        return rpc(target, parsed, dependencies, 'bureau.tasks.cancel', { taskId, dryRun: true });
-      return request(
-        target,
-        `/bureau/ag-ui/runs/${encodeURIComponent(taskId)}/cancel`,
-        parsed,
-        dependencies,
-        { method: 'POST' },
-      );
-    }
-    const method = methodByAction[action];
-    if (method === undefined)
-      throw Object.assign(new Error(`Unknown chats action: ${action}.`), { usage: true });
-    const contextId = option(parsed, 'context') ?? parsed.arguments[1];
-    const params: RecordValue = contextId === undefined ? {} : { contextId };
-    if (action === 'send')
-      params['input'] = {
-        id: option(parsed, 'input-id') ?? id('input'),
-        payload: option(parsed, 'message') ?? (await dependencies.stdin?.()) ?? '',
-      };
-    if (action === 'fork') {
-      params['commandId'] = option(parsed, 'command-id') ?? id('fork');
-      params['throughMessageId'] = option(parsed, 'through-message-id') ?? null;
-    }
-    if (action === 'rename') params['title'] = option(parsed, 'title') ?? null;
-    if (action === 'delete') {
-      params['waitMilliseconds'] = Number(option(parsed, 'wait') ?? 0);
-      if (isDryRun(parsed)) params['dryRun'] = true;
-    }
-    if (action === 'configure') {
-      params['commandId'] = option(parsed, 'command-id') ?? id('steer');
-      if (option(parsed, 'expected-revision') !== undefined)
-        params['expectedRevision'] = Number(option(parsed, 'expected-revision'));
-      const setting = option(parsed, 'effort') ?? option(parsed, 'permission-mode');
-      if (option(parsed, 'model') !== undefined) {
-        const model = option(parsed, 'model')!;
-        const separator = model.indexOf('/');
-        params['override'] = {
-          provider:
-            option(parsed, 'provider') ?? (separator === -1 ? model : model.slice(0, separator)),
-          model: separator === -1 ? model : model.slice(separator + 1),
-        };
-      } else if (option(parsed, 'effort') !== undefined) params['effort'] = setting;
-      else params['permissionMode'] = setting;
-    }
-    return rpc(target, parsed, dependencies, method, params);
+  if (!message && dependencies.stdin !== undefined) message = await dependencies.stdin();
+  if (!message)
+    throw Object.assign(new Error('chat requires a message or --message-file.'), { usage: true });
+  let content: string | unknown[] = message;
+  const attachmentPath = option(parsed, 'attachment');
+  if (attachmentPath !== undefined) {
+    const asset = await uploadAttachment(target, parsed, dependencies, attachmentPath);
+    const assetId = asset['assetId'];
+    if (typeof assetId !== 'string')
+      throw new Error('The host returned no completed asset identifier.');
+    const modality =
+      asset['modality'] === 'image' || asset['modality'] === 'audio' ? asset['modality'] : 'file';
+    content = [
+      { type: 'text', text: message },
+      { type: modality, source: { type: 'file', provider: 'bureau', value: assetId } },
+    ];
   }
-  throw Object.assign(
-    new Error('Usage: chat or chats list|get|send|fork|rename|delete|configure.'),
-    { usage: true },
+  return runStream(
+    target,
+    parsed,
+    dependencies,
+    `/bureau/ag-ui/agents/${encodeURIComponent(agent)}/run`,
+    {
+      threadId,
+      runId,
+      messages: [{ id: id('message'), role: 'user', content }],
+      tools: [],
+      context: [],
+      state: {},
+      forwardedProps: {},
+    },
   );
-}
-
-/** Execute review decisions and human-input responses through management operations. */
-export async function executeReviewsOrRuns(
-  target: CliTarget,
-  parsed: Parsed,
-  dependencies: CliClientDependencies,
-): Promise<CliCommandResult> {
-  if (parsed.command === 'reviews') {
-    const action = parsed.arguments[0];
-    if (action === 'list') return rpc(target, parsed, dependencies, 'bureau.reviews.list', {});
-    const reviewId = option(parsed, 'review-id') ?? parsed.arguments[1];
-    if (action === 'get')
-      return rpc(target, parsed, dependencies, 'bureau.reviews.get', { id: reviewId });
-    if (action === 'approve' || action === 'reject')
-      return rpc(target, parsed, dependencies, 'bureau.reviews.resolve', {
-        id: reviewId,
-        decision: action === 'approve' ? 'approve' : 'reject',
-        ...(action === 'reject' ? { reason: option(parsed, 'reason') ?? 'Rejected by user.' } : {}),
-        ...(option(parsed, 'round') === undefined
-          ? {}
-          : { round: Number(option(parsed, 'round')) }),
-      });
-  }
-  if (parsed.command === 'runs' && parsed.arguments[0] === 'respond') {
-    const params: RecordValue = {
-      taskId: option(parsed, 'task-id') ?? parsed.arguments[1],
-      messageId: option(parsed, 'message-id') ?? id('response'),
-    };
-    const answer = option(parsed, 'answer');
-    if (answer !== undefined) params['answer'] = answer;
-    else params['decision'] = option(parsed, 'decision') ?? 'approve';
-    if (option(parsed, 'signal-name') !== undefined)
-      params['signalName'] = option(parsed, 'signal-name');
-    if (option(parsed, 'call-id') !== undefined) params['callId'] = option(parsed, 'call-id');
-    if (option(parsed, 'reason') !== undefined) params['reason'] = option(parsed, 'reason');
-    return rpc(target, parsed, dependencies, 'bureau.tasks.respond', params);
-  }
-  throw Object.assign(new Error('Usage: reviews list|get|approve|reject or runs respond.'), {
-    usage: true,
-  });
 }

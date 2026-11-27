@@ -388,7 +388,7 @@ export type World = {
   installedRevisions: Record<string, unknown[]>;
   /** The starts `bureau.workflows.start` accepted, in order. */
   startedRuns: Array<{ id: string; input: unknown }>;
-  /** The starts the engine accepted through `POST /workflows`, in order: a code-defined type is started there. */
+  /** The starts the engine accepted through `weft.workflows.start`, in order: a code-defined type is started there. */
   engineStarts: Array<{ type: string; input: unknown }>;
   /** What `bureau.workflows.signal` answers. */
   signalAnswer: SignalResult;
@@ -1049,6 +1049,10 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
         throw workflowFaults.notFound(`definition ${String(params['name'])}`);
       return found;
     },
+    'weft.workflows.start': (params) => {
+      world.engineStarts.push({ type: String(params['type']), input: params['input'] ?? null });
+      return { id: `engine-run-${String(world.engineStarts.length)}` };
+    },
     'weft.workflows.list': (params) => {
       const status = params['status'];
       const statuses = typeof status === 'string' ? [status] : Array.isArray(status) ? status : [];
@@ -1222,19 +1226,6 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       : /\/schedules(?:\/([^/]+)(?:\/(pause|resume))?)?$/.exec(url.pathname);
     if (scheduleRoute !== null) {
       return answerSchedule(scheduleRoute[1], scheduleRoute[2], init, url);
-    }
-    if (
-      init?.method === 'POST' &&
-      typeof init.body === 'string' &&
-      url.pathname.endsWith('/workflows')
-    ) {
-      const body: unknown = JSON.parse(init.body);
-      const request = isRecord(body) ? body : {};
-      calls.push({ method: 'POST /workflows', params: request });
-      const override = overrides.get('POST /workflows');
-      if (override !== undefined) return Response.json(await override(request));
-      world.engineStarts.push({ type: String(request['type']), input: request['input'] ?? null });
-      return Response.json({ id: `engine-run-${String(world.engineStarts.length)}` });
     }
     if (typeof init?.body === 'string') {
       const body: unknown = JSON.parse(init.body);

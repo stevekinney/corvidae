@@ -73,10 +73,8 @@ function baseClient(
     operations: {
       'weft.workflows.timeline.get': async () => entries,
       'weft.workflows.activities.pending.list': async () => ({ items: pendingItems }),
-    },
-    activity: {
-      complete: async () => {},
-      completeExceptionally: async () => {},
+      'weft.activities.complete': async () => ({ ok: true as const }),
+      'weft.activities.fail': async () => ({ ok: true as const }),
     },
   };
 }

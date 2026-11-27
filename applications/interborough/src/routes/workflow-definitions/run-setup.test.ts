@@ -299,6 +299,16 @@ describe('starting now', () => {
         { type: 'order-processing', input: { topic: 'refund' } },
       ]),
     );
+    expect(stub?.callsTo('weft.workflows.start')).toEqual([
+      {
+        method: 'weft.workflows.start',
+        params: {
+          type: 'order-processing',
+          input: { topic: 'refund' },
+          idempotencyKey: expect.any(String),
+        },
+      },
+    ]);
     expect(stub?.callsTo('bureau.workflows.start')).toEqual([]);
     await waitFor(() =>
       expect(router.pathname).toBe('/workflows/order-processing/runs/engine-run-1'),
@@ -491,13 +501,13 @@ describe('JSON input under a declared schema the form cannot draw', () => {
   test('refuses input the schema rejects, names where, and starts nothing', async () => {
     const view = await typeJson('/workflows/list-input/run', '[1, "two"]');
     expect(await view.findByText(/^1: /)).not.toBeNull();
-    expect(stub?.callsTo('POST /workflows')).toEqual([]);
+    expect(stub?.callsTo('weft.workflows.start')).toEqual([]);
     expect(router.pathname).toBe('/workflows/list-input/run');
   });
 
   test('starts input the schema accepts', async () => {
     await typeJson('/workflows/list-input/run', '[1, 2]');
-    await waitFor(() => expect(stub?.callsTo('POST /workflows')).toHaveLength(1));
+    await waitFor(() => expect(stub?.callsTo('weft.workflows.start')).toHaveLength(1));
   });
 });
 
@@ -536,7 +546,7 @@ describe('a start that fails', () => {
 
   test('puts the engine’s failure to start a code-defined type in a banner, and keeps the input', async () => {
     const { container, findByText } = open('/workflows/order-processing/run');
-    stub?.on('POST /workflows', () => {
+    stub?.on('weft.workflows.start', () => {
       throw new Error('The engine is not accepting work.');
     });
     const root = await ready(container);
@@ -615,7 +625,7 @@ describe('a start whose answer is lost', () => {
   test('reuses one idempotency key when Start run retries a code workflow after a lost answer', async () => {
     const { container, findByText } = open('/workflows/order-processing/run');
     const requests: Array<Record<string, unknown>> = [];
-    stub?.on('POST /workflows', (params) => {
+    stub?.on('weft.workflows.start', (params) => {
       requests.push({ ...params });
       if (requests.length === 1) throw new TypeError('Failed to fetch');
       return { id: 'engine-run-replayed' };
@@ -636,7 +646,7 @@ describe('a start whose answer is lost', () => {
 
   test('says the run may have started, links to the runs, and keeps the input', async () => {
     const { container, findByText, findByRole } = open('/workflows/order-processing/run');
-    stub?.on('POST /workflows', () => {
+    stub?.on('weft.workflows.start', () => {
       throw new TypeError('Failed to fetch');
     });
     const root = await ready(container);

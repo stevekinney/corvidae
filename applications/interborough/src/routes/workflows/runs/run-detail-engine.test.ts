@@ -2,8 +2,8 @@
  * `/runs/:run` for a run the workflow engine holds: the one header and status, the sections it is
  * made of (no tabs), what the engine's actions and its read of the active revision do, and which
  * sections a caller sees by the scopes they hold. The sections' own behavior is tested beside them;
- * this is the page deciding which to draw. The engine answers over scripted HTTP routes and the
- * Bureau over scripted JSON-RPC methods, through one `ScriptedFetch`.
+ * this is the page deciding which to draw. Weft and Bureau answer over scripted JSON-RPC methods
+ * through one `ScriptedFetch`.
  */
 import { quietFor } from '@lostgradient/testing/wait-until';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
@@ -71,6 +71,14 @@ function newQueryClient(): QueryClient {
 }
 
 let fetchScript: ScriptedFetch;
+
+function operationInputs(method: string): unknown[] {
+  return fetchScript.calls.flatMap(({ init }) => {
+    if (typeof init?.body !== 'string') return [];
+    const request = parseJsonObject(init.body);
+    return request?.['method'] === method ? [request['params']] : [];
+  });
+}
 
 beforeEach(() => {
   fetchScript = new ScriptedFetch();
@@ -448,12 +456,12 @@ describe('a run the engine holds', () => {
       suspend.getAttribute('aria-disabled') === 'true' || suspend.hasAttribute('disabled'),
     ).toBe(true);
     await fireEvent.click(suspend);
-    expect(fetchScript.calls.some((call) => call.url.includes('/suspend'))).toBe(false);
+    expect(operationInputs('weft.workflows.suspend')).toEqual([]);
   });
 
-  test('Suspend calls the suspend endpoint without asking first', async () => {
+  test('Suspend submits the current workflow to the catalog without asking first', async () => {
     const id = 'wf-detail-suspend-1';
-    fetchScript.routeUrl(`/workflows/${id}/suspend`, {});
+    fetchScript.routeJsonRpcMethod('weft.workflows.suspend', {});
     routeRun(id, { id, status: 'running' });
 
     const view = mount(id);
@@ -461,9 +469,7 @@ describe('a run the engine holds', () => {
     await fireEvent.click(await view.findByRole('menuitem', { name: 'Suspend' }));
 
     await waitFor(() => {
-      expect(fetchScript.calls.some((call) => call.url.includes(`/workflows/${id}/suspend`))).toBe(
-        true,
-      );
+      expect(operationInputs('weft.workflows.suspend')).toEqual([{ workflowId: id }]);
     });
   });
 
@@ -488,18 +494,23 @@ describe('a run the engine holds', () => {
 
   test('Cancel asks first, and is the engine’s only for a run no task describes', async () => {
     const id = 'wf-detail-cancel-1';
+    fetchScript.routeJsonRpcMethod('weft.workflows.cancel', {
+      status: 'cancel-requested',
+      workflowId: id,
+    });
     routeRun(id, { id, status: 'running' });
 
     const view = mount(id);
     await openMoreActions(view);
     await fireEvent.click(await view.findByRole('menuitem', { name: 'Cancel' }));
 
-    const cancels = () => fetchScript.calls.filter((call) => call.init?.method === 'DELETE');
-    expect(cancels()).toEqual([]);
+    expect(operationInputs('weft.workflows.cancel')).toEqual([]);
     await fireEvent.click(
       within(await view.findByRole('dialog')).getByRole('button', { name: 'Cancel' }),
     );
-    await waitFor(() => expect(cancels().length).toBe(1));
+    await waitFor(() =>
+      expect(operationInputs('weft.workflows.cancel')).toEqual([{ workflowId: id }]),
+    );
   });
 
   test('Restart is offered for a run that is over, and opens its dialog', async () => {
@@ -734,7 +745,7 @@ describe('the sections a caller sees', () => {
 
   test('a query runs from its section and shows the answer, with no dialog', async () => {
     const id = 'wf-sections-query-1';
-    fetchScript.routeUrl(`/workflows/${id}/query/getTotal`, { result: { total: 3 } });
+    fetchScript.routeJsonRpcMethod('weft.workflows.query', { result: { total: 3 } });
     routeRun(id, { id });
 
     const view = mount(id, ALL_BUT());
@@ -748,9 +759,12 @@ describe('the sections a caller sees', () => {
     await fireEvent.click(run);
 
     await waitFor(() =>
-      expect(fetchScript.calls.some((call) => call.url.includes('/query/getTotal'))).toBe(true),
+      expect(operationInputs('weft.workflows.query')).toEqual([
+        { workflowId: id, queryName: 'getTotal' },
+      ]),
     );
-    expect(await view.findByText(/"total": 3/)).not.toBeNull();
+    const result = await view.findByText(/"total": 3/);
+    expect(result.textContent?.trim()).toBe(JSON.stringify({ total: 3 }, null, 2));
     expect(view.queryByRole('dialog')).toBeNull();
   });
 

@@ -37,7 +37,6 @@
     Skeleton,
   } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
-  import type { HttpClient } from '@lostgradient/weft';
 
   import { RETRY_LABEL } from '../../../../app/copy/views.ts';
   import { RUN_CHECKPOINTS_COPY, RUN_COMPARISON_COPY } from '../../../../app/copy/runs.ts';
@@ -49,8 +48,8 @@
     checkpointsListQueryKey,
     listCheckpoints,
     type CheckpointsOperationsClient,
-    type ForkClient,
     type ForkSourceClient,
+    type ReplayClient,
   } from './checkpoints-data.ts';
   import ForkDialog from './fork-dialog.svelte';
   import type { WorkflowRevisionListClient } from './fork-revision-picker.ts';
@@ -58,8 +57,7 @@
 
   interface CheckpointsTabProps {
     readonly client: CheckpointsOperationsClient &
-      Pick<HttpClient, 'replayTo'> &
-      ForkClient &
+      ReplayClient &
       ForkPreviewClient &
       ForkComparisonClient &
       ForkSourceClient &

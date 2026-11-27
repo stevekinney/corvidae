@@ -19,23 +19,12 @@ import {
 
 import { faultTreatment } from '../../../lib/faults.ts';
 
-/** The two operations the override flow calls, optional so a client without them still type-checks. */
+/** The optional override preview operation. */
 export interface WorkerOverrideClient {
   readonly operations: {
     readonly 'weft.worker.startoverrides.preview'?: (input: {
       workflowId: string;
     }) => Promise<{ readonly preview: WorkerStartOverridePreview }>;
-    readonly 'weft.workflows.startorsignal'?: (input: {
-      type: string;
-      input: unknown;
-      id: string;
-      tags?: string[];
-      onTerminalConflict: 'start-new';
-      signalName: string;
-      signalId: string;
-      signalPayload?: unknown;
-      workerStartOverridePreview: WorkerStartOverridePreview;
-    }) => Promise<{ readonly id: string; readonly outcome: 'started' | 'signalled' }>;
   };
 }
 

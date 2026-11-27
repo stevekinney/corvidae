@@ -25,7 +25,12 @@
   import { editableRunTags } from './run-tags.ts';
 
   interface RunTagsProps {
-    readonly client: Pick<HttpClient, 'addTags' | 'removeTags'>;
+    readonly client: {
+      readonly operations: Pick<
+        HttpClient['operations'],
+        'weft.workflows.tags.add' | 'weft.workflows.tags.remove'
+      >;
+    };
     readonly workflow: Pick<WorkflowState, 'id' | 'tags'>;
     /** Whether the principal holds `tags:write`; open when omitted. */
     readonly tagGate?: ScopeGate | undefined;
@@ -54,15 +59,19 @@
   }
   const addTagMutation = createMutation(() => ({
     mutationFn: (tag: string) => {
-      const id = workflow.id;
-      return tagWrites.run(() => client.addTags(id, tag));
+      const workflowId = workflow.id;
+      return tagWrites.run(() =>
+        client.operations['weft.workflows.tags.add']({ workflowId, tags: [tag] }),
+      );
     },
     onSettled: invalidateWhenWritesHaveSettled,
   }));
   const removeTagMutation = createMutation(() => ({
     mutationFn: (tag: string) => {
-      const id = workflow.id;
-      return tagWrites.run(() => client.removeTags(id, tag));
+      const workflowId = workflow.id;
+      return tagWrites.run(() =>
+        client.operations['weft.workflows.tags.remove']({ workflowId, tags: [tag] }),
+      );
     },
     onSettled: invalidateWhenWritesHaveSettled,
   }));

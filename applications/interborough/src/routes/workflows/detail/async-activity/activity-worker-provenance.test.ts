@@ -36,10 +36,14 @@ const activity: AttachedPendingActivity = {
   stepId: 'step-1',
 };
 
-function drawerClient(readTask: (input: { operationId: string }) => Promise<unknown>) {
+function drawerClient(readTask?: (input: { operationId: string }) => Promise<unknown>) {
+  const acknowledge = async () => ({ ok: true as const });
   return {
-    activity: { complete: async () => {}, completeExceptionally: async () => {} },
-    operations: { 'weft.tasks.get': readTask },
+    operations: {
+      'weft.activities.complete': acknowledge,
+      'weft.activities.fail': acknowledge,
+      ...(readTask === undefined ? {} : { 'weft.tasks.get': readTask }),
+    },
   };
 }
 
@@ -135,7 +139,10 @@ describe('activity worker provenance', () => {
     const { queryByText } = render(AsyncActivityDrawerHarness, {
       props: {
         client: {
-          activity: { complete: async () => {}, completeExceptionally: async () => {} },
+          operations: {
+            'weft.activities.complete': async () => ({ ok: true }),
+            'weft.activities.fail': async () => ({ ok: true }),
+          },
         },
         open: true,
         activity,

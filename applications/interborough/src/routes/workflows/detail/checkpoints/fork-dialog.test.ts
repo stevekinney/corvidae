@@ -5,7 +5,12 @@ import { HttpClientError } from '@lostgradient/weft';
 import { QueryClient } from '@tanstack/svelte-query';
 
 import { AUTHORIZATION_SCOPES, type Principal } from '../../../../lib/scopes.svelte.ts';
-import { confirmFork, forkOperations, previewAnswer } from './fork-comparison.test-support.ts';
+import {
+  confirmFork,
+  forkOperations,
+  previewAnswer,
+  type ForkOperationOverrides,
+} from './fork-comparison.test-support.ts';
 import ForkDialogHarness from './fork-dialog.test-harness.svelte';
 
 function allScopesPrincipal(): Principal {
@@ -30,13 +35,18 @@ function installedRevisionRecord(revision: string, installedAt: number) {
 
 function baseClient(
   overrides: {
-    fork?: (id: string, options?: unknown) => Promise<{ readonly id: string }>;
+    fork?: ForkOperationOverrides['fork'];
     revisionsList?: () => Promise<unknown>;
   } = {},
 ) {
   return {
-    fork: overrides.fork ?? (async () => ({ id: 'wf-forked-1' })),
     operations: {
+      'weft.workflows.fork': forkOperations({
+        fork: async (input) => {
+          if (input.dryRun === true) return previewAnswer();
+          return overrides.fork?.(input) ?? { id: 'wf-forked-1' };
+        },
+      })['weft.workflows.fork'],
       'weft.workflows.revisions.list':
         overrides.revisionsList ??
         (async () => [
@@ -323,8 +333,8 @@ describe('ForkDialog', () => {
   test('disables Create fork for a principal without workflows:write, which weft.workflows.fork requires', async () => {
     const forkCalls: unknown[] = [];
     const client = baseClient({
-      fork: async (_id, options) => {
-        forkCalls.push(options);
+      fork: async (input) => {
+        forkCalls.push(input);
         return { id: 'wf-forked-1' };
       },
     });
@@ -350,8 +360,8 @@ describe('ForkDialog', () => {
   test('submitting with an explicit revision passes {fromStep, revision} to client.fork', async () => {
     const forkCalls: unknown[] = [];
     const client = baseClient({
-      fork: async (_id, options) => {
-        forkCalls.push(options);
+      fork: async (input) => {
+        forkCalls.push(input);
         return { id: 'wf-forked-1' };
       },
     });
@@ -374,7 +384,9 @@ describe('ForkDialog', () => {
     await confirmFork(getByRole);
 
     await waitFor(() => {
-      expect(forkCalls).toEqual([{ fromStep: 3, revision: 'order-processing-rev-explicit' }]);
+      expect(forkCalls).toEqual([
+        { workflowId: 'wf-1', fromStep: 3, revision: 'order-processing-rev-explicit' },
+      ]);
     });
   });
 });
@@ -398,6 +410,7 @@ describe('ForkDialog fork preview (COR-2538)', () => {
         ...client.operations,
         ...forkOperations({
           fork: async (input) => {
+            if (input.dryRun !== true) return { id: 'wf-forked-1' };
             calls.push(input);
             return answer(input);
           },

@@ -603,7 +603,7 @@ for (const width of WIDTHS) {
       pageErrors,
     }) => {
       pageErrors.expect({
-        pattern: loggedFailedResponse(500, /reviews\/[^/]+\/decision/),
+        pattern: loggedFailedResponse(500, /\/jsonrpc/),
         reason: 'the test answers the workflow review’s decision with a 500, for its error toast',
       });
       await page.setViewportSize({ width, height: 900 });
@@ -697,7 +697,13 @@ for (const width of WIDTHS) {
 
       // The decision fails: an error toast that stays until it is dismissed comes up while the
       // docked Send back and Approve are on screen, so the two are drawn together (design review 3).
-      await page.route('**/reviews/*/decision', async (route) => {
+      let failedDecisions = 0;
+      await standIn(page, 'weft.reviews.decision.submit', async (route, call) => {
+        if (call.params?.['reviewId'] !== workflowReview.id) {
+          await route.fallback();
+          return;
+        }
+        failedDecisions++;
         await route.fulfill({ status: 500, json: { error: 'The engine broke.' } });
       });
       await approve.click();
@@ -713,7 +719,7 @@ for (const width of WIDTHS) {
         state: 'a workflow review, with an error toast',
         source: SOURCE,
       });
-      await page.unroute('**/reviews/*/decision');
+      expect(failedDecisions).toBe(1);
 
       await page.goto('/reviews?tab=done');
       await expect(page.getByRole('button', { name: REVIEWS_COPY.loadMore })).toBeVisible();

@@ -62,7 +62,8 @@ describe('Reviews data layer (integration, real server)', () => {
         sections: { headline: 'Ship it', body: 'Body copy', callToAction: 'Go' },
       });
 
-      await client.submitReview(pendingReview.reviewId, {
+      await client.operations['weft.reviews.decision.submit']({
+        reviewId: pendingReview.reviewId,
         decision: 'needs-changes',
         reviewer: 'ops@example.com',
         feedback: 'Tighten the CTA.',

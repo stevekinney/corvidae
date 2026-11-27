@@ -1,4 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { executeCliWithDispatchAssertions as executeCli } from './cli-dispatch.test-support.ts';
 
 import { parseCliArguments } from './cli-client.ts';
@@ -75,30 +78,84 @@ describe('CLI chat control', () => {
     expect(result.stdout).toContain('interrupt-1');
   });
 
-  // spawn-free: injected fetch captures the operation request without a child process.
-  test('routes context control and task responses through JSON-RPC without retrying', async () => {
-    const calls: Array<{ method: string; params: unknown }> = [];
-    const result = await executeCli(
-      ['chats', 'configure', '--context', 'thread-1', '--effort', 'high'],
+  // spawn-free: injected fetch records the operation requests without a child process.
+  test('dispatches conversation reads and writes once with the original wire fields', async () => {
+    const scenarios = [
+      { args: ['list'], operation: 'list', params: {} },
+      { args: ['get', 'thread-1'], operation: 'get', params: { contextId: 'thread-1' } },
       {
-        fetch: async (_input, init) => {
-          const body = JSON.parse(
-            typeof init?.body === 'string' ? init.body : JSON.stringify(init?.body),
-          ) as {
-            method: string;
-            params: unknown;
-          };
-          calls.push(body);
-          return Response.json({ jsonrpc: '2.0', id: body.method, result: { ok: true } });
+        args: ['send', 'thread-1', '--message', 'Hello', '--input-id', 'input-1'],
+        operation: 'input',
+        params: { contextId: 'thread-1', input: { id: 'input-1', payload: 'Hello' } },
+      },
+      {
+        args: ['fork', 'thread-1', '--command-id', 'fork-1'],
+        operation: 'fork',
+        params: { contextId: 'thread-1', commandId: 'fork-1', throughMessageId: null },
+      },
+      {
+        args: ['rename', 'thread-1', '--title', 'New title'],
+        operation: 'rename',
+        params: { contextId: 'thread-1', title: 'New title' },
+      },
+      {
+        args: ['delete', 'thread-1', '--wait', '2000', '--dry-run'],
+        operation: 'delete',
+        params: { contextId: 'thread-1', waitMilliseconds: 2000, dryRun: true },
+      },
+      {
+        args: ['configure', 'thread-1', '--command-id', 'set-1', '--effort', 'high'],
+        operation: 'steer',
+        params: { contextId: 'thread-1', commandId: 'set-1', effort: 'high' },
+      },
+      {
+        args: ['configure', 'thread-1', '--command-id', 'set-2', '--permission-mode', 'read-only'],
+        operation: 'steer',
+        params: { contextId: 'thread-1', commandId: 'set-2', permissionMode: 'read-only' },
+      },
+      {
+        args: [
+          'configure',
+          'thread-1',
+          '--command-id',
+          'set-3',
+          '--model',
+          'my/model',
+          '--expected-revision',
+          '3',
+        ],
+        operation: 'steer',
+        params: {
+          contextId: 'thread-1',
+          commandId: 'set-3',
+          expectedRevision: 3,
+          override: { provider: 'my', model: 'model' },
         },
       },
-    );
-    expect(result.exitCode).toBe(0);
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({
-      method: 'bureau.contexts.steer',
-      params: { contextId: 'thread-1', effort: 'high' },
-    });
+      {
+        args: ['configure', 'thread-1', '--command-id', 'set-4', '--effort', 'invalid'],
+        operation: 'steer',
+        params: { contextId: 'thread-1', commandId: 'set-4', effort: 'invalid' },
+        invalid: true,
+      },
+    ];
+    for (const { args, operation, params, invalid } of scenarios) {
+      const calls: unknown[] = [];
+      const result = await executeCli(['chats', ...args], {
+        fetch: async (_input, init) => {
+          if (typeof init?.body !== 'string') throw new Error('Expected a JSON-RPC request.');
+          calls.push(JSON.parse(init.body));
+          return invalid
+            ? Response.json({ error: { code: -32_602, message: 'Bureau rejected the effort.' } })
+            : Response.json({ result: { ok: true } });
+        },
+      });
+      expect(calls, args.join(' ')).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ method: `bureau.contexts.${operation}` });
+      expect(calls[0]).toHaveProperty('params', params);
+      expect(result.exitCode, args.join(' ')).toBe(invalid ? 1 : 0);
+      if (invalid) expect(result.stderr).toContain('Bureau rejected the effort.');
+    }
   });
 
   // spawn-free: scripted AG-UI frames and prompt seam prove resume without a terminal process.
@@ -247,41 +304,119 @@ describe('CLI chat control', () => {
   });
 
   // spawn-free: injected management endpoint verifies raw-byte upload lifecycle and provider part.
-  test('uploads an attachment and sends a Bureau provider file part', async () => {
-    const path = '/tmp/cor2057-attachment.bin';
-    await Bun.write(path, new Uint8Array([0, 255, 1]));
-    const methods: string[] = [];
-    const result = await executeCli(
-      ['chat', '--agent', 'demo', '--message', 'file', '--attachment', path],
-      {
-        fetch: async (_input, init) => {
-          const body = JSON.parse(
-            typeof init?.body === 'string' ? init.body : JSON.stringify(init?.body),
-          ) as {
-            method: string;
-            params: Record<string, unknown>;
-          };
-          methods.push(body.method);
-          if (body.method === 'bureau.assets.uploads.create')
+  test('uploads an attachment in order and sends the completed provider file part', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'interborough-chat-attachment-'));
+    const attachment = join(directory, 'attachment.bin');
+    const chunkSize = 256 * 1024;
+    const bytes = Buffer.alloc(chunkSize + 3, 0);
+    bytes.set([255, 1, 254], chunkSize);
+    const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+    let streamInput: unknown;
+    try {
+      await Bun.write(attachment, bytes);
+      const result = await executeCli(
+        ['chat', '--agent', 'demo', '--message', 'file', '--attachment', attachment],
+        {
+          fetch: async (input, init) => {
+            const url = new URL(input instanceof Request ? input.url : input.toString());
+            const body: unknown = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+            if (url.pathname !== '/bureau/jsonrpc') {
+              streamInput = body;
+              return sse({ type: 'RUN_FINISHED', outcome: { type: 'success', interrupts: [] } });
+            }
+            const call = body as (typeof calls)[number];
+            calls.push(call);
+            if (call.method === 'bureau.assets.uploads.create')
+              return Response.json({ result: { uploadId: 'u-1' } });
+            if (call.method === 'bureau.assets.uploads.complete')
+              return Response.json({ result: { assetId: 'a-1' } });
             return Response.json({ result: { uploadId: 'u-1' } });
-          if (body.method === 'bureau.assets.uploads.complete')
-            return Response.json({ result: { assetId: 'a-1' } });
-          if (body.method === 'bureau.assets.uploads.append') {
-            const chunk = body.params['chunk'];
-            expect(typeof chunk).toBe('string');
-            expect(Buffer.from(String(chunk), 'base64')).toEqual(Buffer.from([0, 255, 1]));
-            return Response.json({ result: { uploadId: 'u-1' } });
-          }
-          return sse({ type: 'RUN_FINISHED', outcome: { type: 'success', interrupts: [] } });
+          },
         },
-      },
-    );
-    expect(result.exitCode).toBe(0);
-    expect(methods).toEqual([
-      'bureau.assets.uploads.create',
-      'bureau.assets.uploads.append',
-      'bureau.assets.uploads.complete',
-    ]);
+      );
+      expect(result.exitCode).toBe(0);
+      expect(calls.map(({ method }) => method)).toEqual([
+        'bureau.assets.uploads.create',
+        'bureau.assets.uploads.append',
+        'bureau.assets.uploads.append',
+        'bureau.assets.uploads.complete',
+      ]);
+      expect(calls[0]?.params).toEqual({ declaredByteLength: bytes.byteLength });
+      expect(
+        Buffer.from(String(calls[1]?.params['chunk']), 'base64').equals(
+          bytes.subarray(0, chunkSize),
+        ),
+      ).toBe(true);
+      expect(
+        Buffer.from(String(calls[2]?.params['chunk']), 'base64').equals(bytes.subarray(chunkSize)),
+      ).toBe(true);
+      expect(calls.slice(1).map(({ params }) => params['uploadId'])).toEqual(['u-1', 'u-1', 'u-1']);
+      expect(streamInput).toMatchObject({
+        messages: [
+          {
+            content: [
+              { type: 'text', text: 'file' },
+              {
+                type: 'file',
+                source: { type: 'file', provider: 'bureau', value: 'a-1' },
+              },
+            ],
+          },
+        ],
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  // spawn-free: the CLI runs in process with every upload and stream request supplied by the fetch double.
+  test('aborts the admitted upload when an attachment append fails', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'interborough-chat-attachment-failure-'));
+    const attachment = join(directory, 'attachment.bin');
+    const methods: string[] = [];
+    try {
+      await Bun.write(attachment, new Uint8Array([0, 255, 1]));
+      const result = await executeCli(
+        ['chat', '--agent', 'demo', '--message', 'file', '--attachment', attachment],
+        {
+          fetch: async (input, init) => {
+            const url = new URL(input instanceof Request ? input.url : input.toString());
+            if (url.pathname !== '/bureau/jsonrpc') {
+              methods.push(url.pathname);
+              return new Response('unexpected AG-UI dispatch', { status: 500 });
+            }
+            const call = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
+              method: string;
+              params: { uploadId?: string };
+            };
+            methods.push(call.method);
+            if (call.method === 'bureau.assets.uploads.create')
+              return Response.json({ result: { uploadId: 'u-1' } });
+            if (call.method === 'bureau.assets.uploads.append')
+              return Response.json({
+                jsonrpc: '2.0',
+                id: 1,
+                error: {
+                  code: -32000,
+                  message: 'attachment chunk was refused',
+                  data: { httpStatus: 422 },
+                },
+              });
+            expect(call.params.uploadId).toBe('u-1');
+            return Response.json({ result: { aborted: true } });
+          },
+        },
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain('attachment chunk was refused');
+      expect(methods).toEqual([
+        'bureau.assets.uploads.create',
+        'bureau.assets.uploads.append',
+        'bureau.assets.uploads.abort',
+      ]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   // spawn-free: injected fetch proves explicit cancellation is separate from SIGINT detach.

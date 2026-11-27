@@ -252,13 +252,14 @@
         const started = await startWorkflowFile(type, variables.input, variables.idempotencyKey);
         return { kind: 'run', runId: started.runId };
       }
-      const handle =
-        variables.idempotencyKey === undefined
-          ? await client.start(type, variables.input)
-          : await client.start(type, variables.input, {
-              idempotencyKey: variables.idempotencyKey,
-            });
-      return { kind: 'run', runId: handle.id };
+      const started = await client.operations['weft.workflows.start']({
+        type,
+        input: variables.input,
+        ...(variables.idempotencyKey === undefined
+          ? {}
+          : { idempotencyKey: variables.idempotencyKey }),
+      });
+      return { kind: 'run', runId: started.id };
     },
     onMutate: () => {
       failure = null;

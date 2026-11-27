@@ -1,7 +1,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClientError } from '@lostgradient/weft';
+import { type HttpClient, HttpClientError } from '@lostgradient/weft';
 
 import AsyncActivityDrawerHarness from './async-activity-drawer.test-harness.svelte';
 import type { AttachedPendingActivity } from './async-activity-matching.ts';
@@ -18,11 +18,25 @@ function activity(overrides: Partial<AttachedPendingActivity> = {}): AttachedPen
   };
 }
 
+type ActivityOperations = Pick<
+  HttpClient['operations'],
+  'weft.activities.complete' | 'weft.activities.fail'
+>;
+
+function activityClient(overrides: Partial<ActivityOperations> = {}) {
+  const acknowledge = async () => ({ ok: true as const });
+  return {
+    operations: {
+      'weft.activities.complete': acknowledge,
+      'weft.activities.fail': acknowledge,
+      ...overrides,
+    },
+  };
+}
+
 describe('AsyncActivityDrawer', () => {
   test('shows the token and the "not a secret" label', async () => {
-    const client = {
-      activity: { complete: async () => {}, completeExceptionally: async () => {} },
-    };
+    const client = activityClient();
     const { getByText } = render(AsyncActivityDrawerHarness, {
       props: { client, open: true, activity: activity(), onClose: () => {}, onResolved: () => {} },
     });
@@ -31,16 +45,14 @@ describe('AsyncActivityDrawer', () => {
     expect(getByText(/deterministic identifier, not a secret/)).not.toBeNull();
   });
 
-  test('completing calls client.activity.complete with the parsed JSON result and fires onResolved', async () => {
-    const received: { call: { token: string; result: unknown } | null } = { call: null };
-    const client = {
-      activity: {
-        complete: async (token: string, result?: unknown) => {
-          received.call = { token, result };
-        },
-        completeExceptionally: async () => {},
+  test('completing calls the generated operation with the parsed JSON result and fires onResolved', async () => {
+    const received: unknown[] = [];
+    const client = activityClient({
+      'weft.activities.complete': async (input) => {
+        received.push(input);
+        return { ok: true };
       },
-    };
+    });
     const resolved: { token: string | null } = { token: null };
 
     const { getByLabelText, getByRole } = render(AsyncActivityDrawerHarness, {
@@ -59,21 +71,19 @@ describe('AsyncActivityDrawer', () => {
     await fireEvent.click(getByRole('button', { name: 'Complete activity' }));
 
     await waitFor(() => {
-      expect(received.call).toEqual({ token: 'async-act:v1:wf-1:0:1', result: { printed: true } });
+      expect(received).toEqual([{ token: 'async-act:v1:wf-1:0:1', result: { printed: true } }]);
     });
     expect(resolved.token).toBe('async-act:v1:wf-1:0:1');
   });
 
-  test('failing calls client.activity.completeExceptionally with the plain-text error message', async () => {
-    const received: { call: { token: string; error: unknown } | null } = { call: null };
-    const client = {
-      activity: {
-        complete: async () => {},
-        completeExceptionally: async (token: string, error: unknown) => {
-          received.call = { token, error };
-        },
+  test('failing calls the generated operation with the plain-text error message', async () => {
+    const received: unknown[] = [];
+    const client = activityClient({
+      'weft.activities.fail': async (input) => {
+        received.push(input);
+        return { ok: true };
       },
-    };
+    });
 
     const { getByLabelText, getByRole } = render(AsyncActivityDrawerHarness, {
       props: { client, open: true, activity: activity(), onClose: () => {}, onResolved: () => {} },
@@ -86,19 +96,43 @@ describe('AsyncActivityDrawer', () => {
     await fireEvent.click(getByRole('button', { name: 'Fail activity' }));
 
     await waitFor(() => {
-      expect(received.call).toEqual({ token: 'async-act:v1:wf-1:0:1', error: 'printer offline' });
+      expect(received).toEqual([
+        { token: 'async-act:v1:wf-1:0:1', error: { message: 'printer offline' } },
+      ]);
     });
   });
 
-  test('a NotFound fault shows the spent-token treatment and hides the form', async () => {
-    const client = {
-      activity: {
-        complete: async () => {
-          throw new HttpClientError(404, 'token not found or already used');
-        },
-        completeExceptionally: async () => {},
+  test('a late acknowledgement settles the submitted token after the drawer switches', async () => {
+    const sent: unknown[] = [];
+    const settled: string[] = [];
+    const { promise: result, resolve: acknowledge } = Promise.withResolvers<{ ok: true }>();
+    const client = activityClient({
+      'weft.activities.complete': (input) => {
+        sent.push(input);
+        return result;
       },
+    });
+    const props = {
+      client,
+      open: true,
+      activity: activity(),
+      onClose: () => {},
+      onResolved: (token: string) => settled.push(token),
     };
+    const view = render(AsyncActivityDrawerHarness, { props });
+    await fireEvent.click(view.getByRole('button', { name: 'Complete activity' }));
+    await waitFor(() => expect(sent).toEqual([{ token: props.activity.token }]));
+    await view.rerender({ ...props, activity: activity({ token: 'async-act:v1:wf-1:0:2' }) });
+    acknowledge({ ok: true });
+    await waitFor(() => expect(settled).toEqual([props.activity.token]));
+  });
+
+  test('a NotFound fault shows the spent-token treatment and hides the form', async () => {
+    const client = activityClient({
+      'weft.activities.complete': async () => {
+        throw new HttpClientError(404, 'token not found or already used');
+      },
+    });
 
     const { getByRole, getByText, queryByRole } = render(AsyncActivityDrawerHarness, {
       props: { client, open: true, activity: activity(), onClose: () => {}, onResolved: () => {} },
@@ -114,14 +148,12 @@ describe('AsyncActivityDrawer', () => {
 
   test('rejects invalid JSON in complete mode without calling the client', async () => {
     let called = false;
-    const client = {
-      activity: {
-        complete: async () => {
-          called = true;
-        },
-        completeExceptionally: async () => {},
+    const client = activityClient({
+      'weft.activities.complete': async () => {
+        called = true;
+        return { ok: true };
       },
-    };
+    });
 
     const { getByLabelText, getByRole, getByText } = render(AsyncActivityDrawerHarness, {
       props: { client, open: true, activity: activity(), onClose: () => {}, onResolved: () => {} },

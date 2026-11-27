@@ -22,7 +22,7 @@ export interface ForkComparisonClient {
   readonly operations: Pick<HttpClient['operations'], 'weft.workflows.compare'>;
 }
 
-/** The one call the fork dialog's dry run needs off `client.operations`. */
+/** The generated operation used to preview and create a fork. */
 export interface ForkPreviewClient {
   readonly operations: Pick<HttpClient['operations'], 'weft.workflows.fork'>;
 }

@@ -21,8 +21,8 @@ function workflow(overrides: Partial<WorkflowState> = {}): WorkflowState {
 describe('SignalsTab', () => {
   test('shows an empty message when no signal has been delivered to a wait point', async () => {
     const client = {
-      signal: async () => {},
       operations: {
+        'weft.workflows.signal': async () => ({ ok: true as const }),
         'weft.workflows.timeline.get': async (): Promise<WorkflowTimelineEntry[]> => [],
       },
     };
@@ -38,8 +38,8 @@ describe('SignalsTab', () => {
 
   test('lists wait-signal timeline entries as received signals', async () => {
     const client = {
-      signal: async () => {},
       operations: {
+        'weft.workflows.signal': async () => ({ ok: true as const }),
         'weft.workflows.timeline.get': async (): Promise<WorkflowTimelineEntry[]> => [
           {
             step: 1,
@@ -63,18 +63,13 @@ describe('SignalsTab', () => {
   });
 
   test('sends a signal with the entered name and JSON payload', async () => {
-    const sent: { call: { id: string; name: string; payload: unknown } | null } = { call: null };
+    const sent: unknown[] = [];
     const client = {
-      // `id: string` (the only overload SignalsTab actually calls) plus a
-      // loose `...rest` covers the other two `signal()` overloads
-      // (`SignalDefinition`-first) without needing to satisfy their exact
-      // variance — this fake only ever receives the string-name call.
-      signal: async (id: string, ...rest: unknown[]) => {
-        const name = rest[0];
-        if (typeof name !== 'string') throw new Error('signal name missing');
-        sent.call = { id, name, payload: rest[1] };
-      },
       operations: {
+        'weft.workflows.signal': async (input: unknown) => {
+          sent.push(input);
+          return { ok: true as const };
+        },
         'weft.workflows.timeline.get': async (): Promise<WorkflowTimelineEntry[]> => [],
       },
     };
@@ -87,16 +82,24 @@ describe('SignalsTab', () => {
     await fireEvent.input(getByLabelText('Payload'), { target: { value: '{"sku":"ABC-123"}' } });
     await fireEvent.click(getByRole('button', { name: 'Send signal' }));
 
-    expect(sent.call).toEqual({ id: 'wf_1', name: 'addItem', payload: { sku: 'ABC-123' } });
+    expect(sent).toEqual([
+      { workflowId: 'wf_1', signalName: 'addItem', payload: { sku: 'ABC-123' } },
+    ]);
+
+    await waitFor(() => expect((getByLabelText('Signal name') as HTMLInputElement).value).toBe(''));
+    await fireEvent.input(getByLabelText('Signal name'), { target: { value: 'advance' } });
+    await fireEvent.click(getByRole('button', { name: 'Send signal' }));
+    expect(sent[1]).toEqual({ workflowId: 'wf_1', signalName: 'advance' });
   });
 
-  test('rejects invalid JSON payloads without calling client.signal', async () => {
+  test('rejects invalid JSON payloads without sending the catalog operation', async () => {
     const outcome: { called: boolean } = { called: false };
     const client = {
-      signal: async () => {
-        outcome.called = true;
-      },
       operations: {
+        'weft.workflows.signal': async () => {
+          outcome.called = true;
+          return { ok: true as const };
+        },
         'weft.workflows.timeline.get': async (): Promise<WorkflowTimelineEntry[]> => [],
       },
     };
@@ -116,10 +119,11 @@ describe('SignalsTab', () => {
   test('disables Send signal when the principal lacks signals:write', async () => {
     const outcome: { called: boolean } = { called: false };
     const client = {
-      signal: async () => {
-        outcome.called = true;
-      },
       operations: {
+        'weft.workflows.signal': async () => {
+          outcome.called = true;
+          return { ok: true as const };
+        },
         'weft.workflows.timeline.get': async (): Promise<WorkflowTimelineEntry[]> => [],
       },
     };

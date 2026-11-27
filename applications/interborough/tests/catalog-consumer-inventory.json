@@ -1,6 +1,22 @@
 {
   "catalog": [
     {
+      "path": "routes/reviews/reviews-data.ts",
+      "operation": "weft.reviews.decision.submit",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "submitReviewDecisionMutation",
+      "count": 1
+    },
+    {
+      "path": "routes/workflows/detail/checkpoints/fork-dialog.svelte",
+      "operation": "weft.workflows.fork",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "<module>",
+      "count": 1
+    },
+    {
       "path": "app/shell/command-palette-search.ts",
       "operation": "weft.workers.list",
       "classification": "generated",
@@ -1609,6 +1625,24 @@
       "count": 1
     },
     {
+      "path": "routes/workflows/detail/async-activity/async-activity-drawer.svelte",
+      "method": "activity.completeExceptionally",
+      "operation": "weft.activities.fail",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "<module>",
+      "count": 1
+    },
+    {
+      "path": "routes/workflows/detail/async-activity/async-activity-drawer.svelte",
+      "method": "activity.complete",
+      "operation": "weft.activities.complete",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "<module>",
+      "count": 1
+    },
+    {
       "path": "routes/workflows/detail/attributes/attributes-data.ts",
       "operation": "weft.workflows.attributes.get",
       "classification": "generated",
@@ -1630,6 +1664,14 @@
       "classification": "generated",
       "transport": "composed JSON-RPC",
       "caller": "getCheckpointAt",
+      "count": 1
+    },
+    {
+      "path": "routes/workflows/detail/checkpoints/checkpoints-data.ts",
+      "operation": "weft.workflows.replay",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "replayWorkflow",
       "count": 1
     },
     {
@@ -2001,6 +2043,14 @@
       "count": 1
     },
     {
+      "path": "routes/workflow-definitions/run-setup-form.svelte",
+      "operation": "weft.workflows.start",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "<module>",
+      "count": 1
+    },
+    {
       "path": "routes/workflow-definitions/workflow-detail.svelte",
       "operation": "weft.schedules.list",
       "classification": "generated",
@@ -2079,19 +2129,81 @@
       "transport": "composed JSON-RPC",
       "caller": "weftReviewsQueryOptions",
       "count": 1
+    },
+    {
+      "path": "routes/workflows/detail/signals-tab.svelte",
+      "method": "signal",
+      "operation": "weft.workflows.signal",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "<module>",
+      "count": 1
+    },
+    {
+      "path": "routes/workflows/runs/run-engine.svelte.ts",
+      "operation": "weft.workflows.cancel",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "<module>",
+      "count": 1
+    },
+    {
+      "path": "routes/workflows/runs/run-engine.svelte.ts",
+      "operation": "weft.workflows.query",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "runQuery",
+      "count": 1
+    },
+    {
+      "path": "routes/workflows/runs/run-engine.svelte.ts",
+      "operation": "weft.workflows.resume",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "<module>",
+      "count": 1
+    },
+    {
+      "path": "routes/workflows/runs/run-engine.svelte.ts",
+      "operation": "weft.workflows.suspend",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "<module>",
+      "count": 1
+    },
+    {
+      "path": "routes/workflows/runs/run-engine.svelte.ts",
+      "operation": "weft.workflows.timeout",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "<module>",
+      "count": 1
+    },
+    {
+      "path": "routes/workflows/runs/run-tags.svelte",
+      "method": "addTags",
+      "operation": "weft.workflows.tags.add",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "<module>",
+      "count": 1
+    },
+    {
+      "path": "routes/workflows/runs/run-tags.svelte",
+      "method": "removeTags",
+      "operation": "weft.workflows.tags.remove",
+      "classification": "generated",
+      "transport": "composed JSON-RPC",
+      "caller": "<module>",
+      "count": 1
     }
   ],
   "eligible": [
-    {
-      "path": "routes/reviews/reviews-data.ts",
-      "method": "submitReview",
-      "operation": "weft.reviews.decision.submit",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2625",
-      "caller": "submitReviewDecisionMutation",
-      "count": 1
-    },
     {
       "path": "routes/schedules/schedule-queries.ts",
       "method": "cancelSchedule",
@@ -2141,553 +2253,138 @@
       "issue": "COR-2623",
       "caller": "updateScheduleSpec",
       "count": 1
-    },
-    {
-      "path": "routes/workflow-definitions/run-setup-form.svelte",
-      "method": "start",
-      "operation": "weft.workflows.start",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2625",
-      "caller": "<module>",
-      "count": 2
-    },
-    {
-      "path": "routes/workflows/detail/async-activity/async-activity-drawer.svelte",
-      "method": "activity.complete",
-      "operation": "weft.activities.complete",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2625",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/detail/async-activity/async-activity-drawer.svelte",
-      "method": "activity.completeExceptionally",
-      "operation": "weft.activities.fail",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2625",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/detail/checkpoints/checkpoints-data.ts",
-      "method": "replayTo",
-      "operation": "weft.workflows.replay",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2625",
-      "caller": "replayWorkflow",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/detail/checkpoints/fork-dialog.svelte",
-      "method": "fork",
-      "operation": "weft.workflows.fork",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2625",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/detail/restart-dialog.svelte",
-      "method": "startOrSignal",
-      "operation": "weft.workflows.startorsignal",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2625",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/detail/signals-tab.svelte",
-      "method": "signal",
-      "operation": "weft.workflows.signal",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2625",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/runs/run-engine.svelte.ts",
-      "method": "cancel",
-      "operation": "weft.workflows.cancel",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2625",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/runs/run-engine.svelte.ts",
-      "method": "resume",
-      "operation": "weft.workflows.resume",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2625",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/runs/run-engine.svelte.ts",
-      "method": "suspend",
-      "operation": "weft.workflows.suspend",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2625",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/runs/run-engine.svelte.ts",
-      "method": "timeout",
-      "operation": "weft.workflows.timeout",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2625",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/runs/run-engine.svelte.ts",
-      "method": "query",
-      "operation": "weft.workflows.query",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2625",
-      "caller": "runQuery",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/runs/run-tags.svelte",
-      "method": "addTags",
-      "operation": "weft.workflows.tags.add",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2625",
-      "caller": "<module>",
-      "count": 1
-    },
-    {
-      "path": "routes/workflows/runs/run-tags.svelte",
-      "method": "removeTags",
-      "operation": "weft.workflows.tags.remove",
-      "classification": "eligible",
-      "transport": "Weft HTTP REST",
-      "issue": "COR-2625",
-      "caller": "<module>",
-      "count": 1
     }
   ],
   "cli": [
     {
-      "path": "host/cli-assets.ts",
-      "operation": "bureau.assets.get",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "download",
-      "count": 1
-    },
-    {
-      "path": "host/cli-assets.ts",
-      "operation": "bureau.assets.uploads.abort",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "upload",
-      "count": 1
-    },
-    {
-      "path": "host/cli-assets.ts",
-      "operation": "bureau.assets.uploads.append",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "upload",
-      "count": 1
-    },
-    {
-      "path": "host/cli-assets.ts",
-      "operation": "bureau.assets.uploads.complete",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "upload",
-      "count": 1
-    },
-    {
-      "path": "host/cli-assets.ts",
-      "operation": "bureau.assets.uploads.create",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "upload",
-      "count": 1
-    },
-    {
-      "path": "host/cli-automation.ts",
-      "operation": "bureau.goals.cancel",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "goals",
-      "count": 1
-    },
-    {
-      "path": "host/cli-automation.ts",
-      "operation": "bureau.goals.create",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "goals",
-      "count": 1
-    },
-    {
-      "path": "host/cli-automation.ts",
-      "operation": "bureau.hooks.create",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "hooks",
-      "count": 1
-    },
-    {
-      "path": "host/cli-automation.ts",
-      "operation": "bureau.hooks.secret.replace",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "hooks",
-      "count": 1
-    },
-    {
-      "path": "host/cli-automation.ts",
-      "operation": "bureau.hooks.update",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "hooks",
-      "count": 1
-    },
-    {
-      "path": "host/cli-automation.ts",
-      "operation": "bureau.schedules.create",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "schedules",
-      "count": 1
-    },
-    {
       "path": "host/cli-automation.ts",
       "operation": "bureau.schedules.pause",
-      "classification": "eligible",
+      "classification": "exceptional",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
       "caller": "schedules",
-      "count": 1
+      "count": 1,
+      "condition": "Only the displayed dry-run preview names this operation. No request is sent."
     },
     {
-      "path": "host/cli-automation.ts",
-      "operation": "bureau.schedules.runnow",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "schedules",
-      "count": 1
-    },
-    {
-      "path": "host/cli-automation.ts",
-      "operation": "bureau.schedules.skipnext",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "schedules",
-      "count": 1
-    },
-    {
-      "path": "host/cli-automation.ts",
-      "operation": "bureau.schedules.update",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "schedules",
-      "count": 1
-    },
-    {
-      "path": "host/cli-chat-assets.ts",
-      "operation": "bureau.assets.uploads.abort",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "uploadAttachment",
-      "count": 1
-    },
-    {
-      "path": "host/cli-chat-assets.ts",
-      "operation": "bureau.assets.uploads.append",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "uploadAttachment",
-      "count": 1
-    },
-    {
-      "path": "host/cli-chat-assets.ts",
-      "operation": "bureau.assets.uploads.complete",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "uploadAttachment",
-      "count": 1
-    },
-    {
-      "path": "host/cli-chat-assets.ts",
-      "operation": "bureau.assets.uploads.create",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "uploadAttachment",
-      "count": 1
-    },
-    {
-      "path": "host/cli-chat.ts",
+      "path": "host/cli-chat-management.ts",
       "operation": "bureau.contexts.delete",
-      "classification": "eligible",
+      "classification": "exceptional",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
-      "caller": "executeChat",
-      "count": 1
+      "caller": "executeChats",
+      "count": 1,
+      "condition": "Only malformed CLI input reaches server-side validation through the original transport."
     },
     {
-      "path": "host/cli-chat.ts",
+      "path": "host/cli-chat-management.ts",
       "operation": "bureau.contexts.fork",
-      "classification": "eligible",
+      "classification": "exceptional",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
-      "caller": "executeChat",
-      "count": 1
+      "caller": "executeChats",
+      "count": 1,
+      "condition": "Only malformed CLI input reaches server-side validation through the original transport."
     },
     {
-      "path": "host/cli-chat.ts",
+      "path": "host/cli-chat-management.ts",
       "operation": "bureau.contexts.get",
-      "classification": "eligible",
+      "classification": "exceptional",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
-      "caller": "executeChat",
-      "count": 1
+      "caller": "executeChats",
+      "count": 1,
+      "condition": "Only malformed CLI input reaches server-side validation through the original transport."
     },
     {
-      "path": "host/cli-chat.ts",
+      "path": "host/cli-chat-management.ts",
       "operation": "bureau.contexts.input",
-      "classification": "eligible",
+      "classification": "exceptional",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
-      "caller": "executeChat",
-      "count": 1
+      "caller": "executeChats",
+      "count": 1,
+      "condition": "Only malformed CLI input reaches server-side validation through the original transport."
     },
     {
-      "path": "host/cli-chat.ts",
+      "path": "host/cli-chat-management.ts",
       "operation": "bureau.contexts.list",
-      "classification": "eligible",
+      "classification": "exceptional",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
-      "caller": "executeChat",
-      "count": 1
+      "caller": "executeChats",
+      "count": 1,
+      "condition": "Only malformed CLI input reaches server-side validation through the original transport."
     },
     {
-      "path": "host/cli-chat.ts",
+      "path": "host/cli-chat-management.ts",
       "operation": "bureau.contexts.rename",
-      "classification": "eligible",
+      "classification": "exceptional",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
-      "caller": "executeChat",
-      "count": 1
+      "caller": "executeChats",
+      "count": 1,
+      "condition": "Only malformed CLI input reaches server-side validation through the original transport."
     },
     {
-      "path": "host/cli-chat.ts",
+      "path": "host/cli-chat-management.ts",
       "operation": "bureau.contexts.steer",
-      "classification": "eligible",
+      "classification": "exceptional",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
-      "caller": "executeChat",
-      "count": 1
+      "caller": "executeChats",
+      "count": 1,
+      "condition": "Only malformed CLI input reaches server-side validation through the original transport."
     },
     {
-      "path": "host/cli-chat.ts",
-      "operation": "bureau.tasks.cancel",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "executeChat",
-      "count": 1
-    },
-    {
-      "path": "host/cli-chat.ts",
+      "path": "host/cli-chat-management.ts",
       "operation": "bureau.reviews.get",
-      "classification": "eligible",
+      "classification": "exceptional",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
       "caller": "executeReviewsOrRuns",
-      "count": 1
+      "count": 1,
+      "condition": "Only malformed CLI input reaches server-side validation through the original transport."
     },
     {
-      "path": "host/cli-chat.ts",
-      "operation": "bureau.reviews.list",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "executeReviewsOrRuns",
-      "count": 1
-    },
-    {
-      "path": "host/cli-chat.ts",
+      "path": "host/cli-chat-management.ts",
       "operation": "bureau.reviews.resolve",
-      "classification": "eligible",
+      "classification": "exceptional",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
       "caller": "executeReviewsOrRuns",
-      "count": 1
+      "count": 1,
+      "condition": "Only malformed CLI input reaches server-side validation through the original transport."
     },
     {
-      "path": "host/cli-chat.ts",
+      "path": "host/cli-chat-management.ts",
       "operation": "bureau.tasks.respond",
-      "classification": "eligible",
+      "classification": "exceptional",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
       "caller": "executeReviewsOrRuns",
-      "count": 1
-    },
-    {
-      "path": "host/cli-configuration.ts",
-      "operation": "bureau.settings.update",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "settings",
-      "count": 1
-    },
-    {
-      "path": "host/cli-definitions.ts",
-      "operation": "bureau.agents.definitions.delete",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "agentCommand",
-      "count": 1
-    },
-    {
-      "path": "host/cli-definitions.ts",
-      "operation": "bureau.agents.definitions.duplicate",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "agentCommand",
-      "count": 1
-    },
-    {
-      "path": "host/cli-definitions.ts",
-      "operation": "bureau.agents.try",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "agentCommand",
-      "count": 1
-    },
-    {
-      "path": "host/cli-definitions.ts",
-      "operation": "bureau.agents.versions.restore",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "agentCommand",
-      "count": 1
-    },
-    {
-      "path": "host/cli-definitions.ts",
-      "operation": "bureau.workflows.signal",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "workflowCommand",
-      "count": 1
-    },
-    {
-      "path": "host/cli-definitions.ts",
-      "operation": "bureau.workflows.start",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "workflowCommand",
-      "count": 1
-    },
-    {
-      "path": "host/cli-memory.ts",
-      "operation": "bureau.memory.correct",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "memory",
-      "count": 1
-    },
-    {
-      "path": "host/cli-memory.ts",
-      "operation": "bureau.memory.forget",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "memory",
-      "count": 1
+      "count": 1,
+      "condition": "Only malformed CLI input reaches server-side validation through the original transport."
     },
     {
       "path": "host/cli-memory.ts",
       "operation": "bureau.memory.remember",
-      "classification": "eligible",
+      "classification": "exceptional",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
       "caller": "memory",
-      "count": 1
-    },
-    {
-      "path": "host/cli-runs.ts",
-      "operation": "bureau.tasks.cancel",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "cancel",
-      "count": 2
-    },
-    {
-      "path": "host/cli-runs.ts",
-      "operation": "weft.workflows.cancel",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "cancel",
-      "count": 2
+      "count": 1,
+      "condition": "Only an unrecognized memory kind reaches server-side validation through the original transport."
     },
     {
       "path": "host/cli-runs.ts",
       "operation": "bureau.audit.query",
-      "classification": "eligible",
+      "classification": "exceptional",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2625",
       "caller": "executeAudit",
-      "count": 1
-    },
-    {
-      "path": "host/cli-runs.ts",
-      "operation": "bureau.tasks.explanation.generate",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "explain",
-      "count": 1
+      "count": 1,
+      "condition": "Only an invalid format reaches server-side validation through the original transport."
     },
     {
       "path": "host/cli-runs.ts",
@@ -2705,15 +2402,6 @@
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2623",
       "caller": "list",
-      "count": 1
-    },
-    {
-      "path": "host/cli-runs.ts",
-      "operation": "bureau.workflows.runs.retry",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "retry",
       "count": 1
     }
   ],
@@ -3347,56 +3035,6 @@
       "reason": "The host composes two catalogs at one endpoint."
     }
   ],
-  "cliTemplates": [
-    {
-      "path": "host/cli-automation.ts",
-      "expression": "`bureau.hooks.${action}`",
-      "operations": ["bureau.hooks.delete", "bureau.hooks.test"],
-      "guard": "if (action === 'delete' || action === 'test')",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "hooks",
-      "count": 1
-    },
-    {
-      "path": "host/cli-automation.ts",
-      "expression": "`bureau.schedules.${action}`",
-      "operations": ["bureau.schedules.pause", "bureau.schedules.resume"],
-      "guard": "if (['pause', 'resume'].includes(action))",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "schedules",
-      "count": 1
-    },
-    {
-      "path": "host/cli-definitions.ts",
-      "expression": "`bureau.agents.definitions.${action}`",
-      "operations": ["bureau.agents.definitions.create", "bureau.agents.definitions.update"],
-      "guard": "if (action === 'create' || action === 'update')",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "agentCommand",
-      "count": 1
-    },
-    {
-      "path": "host/cli-definitions.ts",
-      "expression": "`bureau.workflows.${action}`",
-      "operations": [
-        "bureau.workflows.validate",
-        "bureau.workflows.create",
-        "bureau.workflows.update"
-      ],
-      "guard": "if (action === 'validate' || action === 'create' || action === 'update')",
-      "classification": "eligible",
-      "transport": "Bureau JSON-RPC",
-      "issue": "COR-2625",
-      "caller": "workflowCommand",
-      "count": 1
-    }
-  ],
   "imports": [
     "app/app.svelte ../lib/client.ts { createClient }",
     "app/app.svelte ../lib/scopes.svelte.ts { resolveHostPrincipal, type Principal }",
@@ -3469,23 +3107,27 @@
     "host/a2a-push.ts @lostgradient/weft { Outbox }",
     "host/a2a-push.ts @lostgradient/weft/a2a { createEgressPolicy, createHttpDeliveryAdapter, createOutboxPushNotificationSender, createWeftPushNotificationStore, pushNotificationResolvers, startPushDelivery, }",
     "host/api-routes.ts ../lib/host-session.ts { HOST_SESSION_ROUTE, type HostSession }",
-    "host/cli-assets.ts ./cli-client-transport.ts { request, requestBytes, type CliTarget }",
+    "host/cli-assets.ts ./cli-client-transport.ts { catalogCall, requestBytes, type CliTarget }",
     "host/cli-assets.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
-    "host/cli-automation.ts ./cli-client-transport.ts { catalogRead, request, type CliTarget }",
+    "host/cli-automation.ts ./cli-client-transport.ts { catalogCall, catalogFileCall, type CliTarget }",
     "host/cli-automation.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
-    "host/cli-chat-assets.ts ./cli-client-transport.ts { request, type CliTarget }",
+    "host/cli-chat-assets.ts ./cli-client-transport.ts { catalogCall, type CliTarget }",
     "host/cli-chat-assets.ts ./cli-client.ts type { CliClientDependencies, Parsed }",
     "host/cli-chat.ts ./cli-chat-assets.ts { uploadAttachment }",
-    "host/cli-chat.ts ./cli-client-transport.ts { request, stream, type CliTarget }",
+    "host/cli-chat-management.ts ./cli-client-transport.ts { catalogCall, request, type CliTarget }",
+    "host/cli-chat-management.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
+    "host/cli-chat-management.ts ../lib/agent-definitions.ts { EFFORTS }",
+    "host/cli-chat.ts ./cli-client-transport.ts { stream, type CliTarget }",
     "host/cli-chat.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
     "host/cli-client-connections.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
     "host/cli-client-preferences.ts ./cli-client.ts type { CliClientDependencies, CliConnection }",
     "host/cli-client-transport.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
     "host/cli-client-transport.ts @lostgradient/backchannel/client { createCatalogClient }",
-    "host/cli-client-transport.ts @lostgradient/bureau-sdk { CATALOG_OPERATION_NAMES, type CatalogOperationName, type CatalogOperationTypes, }",
+    "host/cli-client-transport.ts @lostgradient/bureau-sdk type { CatalogOperationTypes }",
+    "host/cli-client-transport.ts @lostgradient/weft type { ClientOperationTypes }",
     "host/cli-client.ts ./cli-assets.ts { executeAssets }",
     "host/cli-client.ts ./cli-automation.ts { executeAutomation }",
-    "host/cli-client.ts ./cli-chat.ts { executeChat, executeReviewsOrRuns }",
+    "host/cli-client.ts ./cli-chat-management.ts { executeChats, executeReviewsOrRuns }",
     "host/cli-client.ts ./cli-client-transport.ts { request, type CliTarget }",
     "host/cli-client.ts ./cli-configuration.ts { executeConfiguration }",
     "host/cli-client.ts ./cli-definitions.ts { executeDefinitions }",
@@ -3493,17 +3135,18 @@
     "host/cli-client.ts ./cli-runs.ts { executeAudit, executeRuns }",
     "host/cli-client.ts ./instance-record.ts { liveInstanceUrl }",
     "host/cli-client.ts @lostgradient/weft { createCatalogSnapshot }",
-    "host/cli-configuration.ts ./cli-client-transport.ts { catalogRead, request, type CliTarget }",
+    "host/cli-configuration.ts ./cli-client-transport.ts { catalogCall, request, type CliTarget }",
     "host/cli-configuration.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
-    "host/cli-definitions.ts ./cli-client-transport.ts { catalogRead, request, type CliTarget }",
+    "host/cli-definitions.ts ./cli-client-transport.ts { catalogCall, catalogFileCall, type CliTarget }",
     "host/cli-definitions.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
     "host/cli-definitions.ts ./cli-runs.ts { executeRuns }",
+    "host/cli-definitions.ts @lostgradient/bureau-sdk type { BureauInput }",
     "host/cli-destructive.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
     "host/cli-mcp.ts ./cli-client-transport.ts type { CliTarget }",
     "host/cli-mcp.ts ./cli-client.ts type { CliCommandResult, Parsed }",
-    "host/cli-memory.ts ./cli-client-transport.ts { catalogRead, request, type CliTarget }",
+    "host/cli-memory.ts ./cli-client-transport.ts { catalogCall, request, type CliTarget }",
     "host/cli-memory.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
-    "host/cli-runs.ts ./cli-client-transport.ts { catalogRead, faultRefusedBeforeAnyEffect, request, stream, type CliTarget, }",
+    "host/cli-runs.ts ./cli-client-transport.ts { catalogCall, faultRefusedBeforeAnyEffect, request, stream, type CliTarget, }",
     "host/cli-runs.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
     "host/cli-runs.ts @lostgradient/bureau-sdk type { CatalogOperationTypes }",
     "host/cli.ts ./cli-client.ts { executeCli }",
@@ -3634,8 +3277,11 @@
     "lib/live-source/bureau-event-source.svelte.ts @lostgradient/backchannel/client { CatalogClientError, type SubscriptionMessage }",
     "lib/live-source/cache-integration.ts ./fleet-event-source.svelte.ts type { FleetEventFrame }",
     "lib/live-source/cache-integration.ts @lostgradient/weft type { WorkflowEvent, WorkflowStatus }",
+    "lib/live-source/fleet-event-source.svelte.ts @lostgradient/backchannel/client type { ServerSentEventFrame }",
+    "lib/live-source/sse-reader.ts @lostgradient/backchannel/client { parseServerSentEventChunk, type ServerSentEventFrame, }",
     "lib/live-source/workflow-lifecycle-events.ts @lostgradient/weft type { WorkflowStatus }",
     "lib/live-source/workflow-lifecycle-events.ts @lostgradient/weft/client { WorkflowCancelledEvent, WorkflowCompletedEvent, WorkflowFailedEvent, WorkflowResumedEvent, WorkflowStartedEvent, WorkflowSuspendedEvent, WorkflowTimedOutEvent, }",
+    "lib/live-source/workflow-tail-source.svelte.ts @lostgradient/backchannel/client type { ServerSentEventFrame }",
     "lib/live-source/workflow-tail-source.svelte.ts @lostgradient/weft type { WorkflowEvent }",
     "lib/memory-client.ts ./bureau-api.ts { bureauClient, type BureauOutput }",
     "lib/memory-client.ts ./bureau-client.ts type { Fetcher }",
@@ -4361,31 +4007,29 @@
     "routes/workflows/aggregate/aggregate-view.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore, scopeGate }",
     "routes/workflows/detail/async-activity/activity-worker-provenance.svelte ../../../../lib/scopes.svelte.ts { isForbidden, scopeReason }",
     "routes/workflows/detail/async-activity/activity-worker-provenance.svelte ../../../workers/workers-data.ts { MalformedTaskLedgerError, parseTaskLedgerDetail, }",
-    "routes/workflows/detail/async-activity/async-activity-drawer.svelte @lostgradient/weft type { HttpClient, WeftClientActivity }",
+    "routes/workflows/detail/async-activity/async-activity-drawer.svelte @lostgradient/weft type { HttpClient }",
     "routes/workflows/detail/async-activity/async-activity-matching.ts @lostgradient/weft type { WorkflowTimelineEntry }",
     "routes/workflows/detail/async-activity/async-activity-query.ts @lostgradient/weft type { PendingAsyncActivityInfo }",
     "routes/workflows/detail/attributes/attribute-row.svelte ./attributes-data.ts { parseEditedValue, type AttributeEntry, type AttributeValue }",
     "routes/workflows/detail/attributes/attributes-data.ts @lostgradient/weft type { HttpClient }",
     "routes/workflows/detail/attributes/attributes-data.ts @lostgradient/weft/client { HttpClientError }",
     "routes/workflows/detail/attributes/attributes-panel.svelte ./attributes-data.ts { attributesQueryKey, readAttributes, setAttribute, type AttributesClient, type AttributeValue, }",
-    "routes/workflows/detail/checkpoints/checkpoints-data.ts @lostgradient/weft type { CheckpointState, CheckpointSummary, ForkOptions, HttpClient, WorkflowReplay, }",
-    "routes/workflows/detail/checkpoints/checkpoints-tab.svelte ./checkpoints-data.ts { checkpointsListQueryKey, listCheckpoints, type CheckpointsOperationsClient, type ForkClient, type ForkSourceClient, }",
+    "routes/workflows/detail/checkpoints/checkpoints-data.ts @lostgradient/weft type { CheckpointState, CheckpointSummary, WorkflowReplay }",
+    "routes/workflows/detail/checkpoints/checkpoints-tab.svelte ./checkpoints-data.ts { checkpointsListQueryKey, listCheckpoints, type CheckpointsOperationsClient, type ForkSourceClient, type ReplayClient, }",
     "routes/workflows/detail/checkpoints/checkpoints-tab.svelte ./fork-comparison-data.ts type { ForkComparisonClient, ForkPreviewClient }",
     "routes/workflows/detail/checkpoints/checkpoints-tab.svelte ./fork-dialog.svelte ForkDialog",
-    "routes/workflows/detail/checkpoints/checkpoints-tab.svelte @lostgradient/weft type { HttpClient }",
     "routes/workflows/detail/checkpoints/fork-comparison-data.ts @lostgradient/weft type { HttpClient }",
     "routes/workflows/detail/checkpoints/fork-comparison.svelte ./fork-comparison-data.ts { fetchForkComparison, forkComparisonQueryKey, type ForkComparisonClient, }",
     "routes/workflows/detail/checkpoints/fork-dialog.svelte ../../../../lib/scopes.svelte.ts { getPrincipalStore, scopeGate }",
     "routes/workflows/detail/checkpoints/fork-dialog.svelte ../../../../lib/workflow-revision.ts { EAGER_REVISION_HEDGE }",
-    "routes/workflows/detail/checkpoints/fork-dialog.svelte ./checkpoints-data.ts type { ForkClient, ForkSourceClient }",
+    "routes/workflows/detail/checkpoints/fork-dialog.svelte ./checkpoints-data.ts type { ForkSourceClient }",
     "routes/workflows/detail/checkpoints/fork-dialog.svelte ./fork-comparison-data.ts { fetchForkPreview, forkPreviewQueryKey, type ForkPreviewClient, type ForkPreviewRequest, }",
     "routes/workflows/detail/checkpoints/fork-dialog.svelte @lostgradient/weft/client { HttpClientError }",
     "routes/workflows/detail/checkpoints/fork-revision-picker.ts @lostgradient/weft type { ForkOptions }",
     "routes/workflows/detail/checkpoints/fork-revision-picker.ts @lostgradient/weft/client { HttpClientError, isWeftFault }",
     "routes/workflows/detail/checkpoints/replay-view.svelte ../../../../lib/scopes.svelte.ts { getPrincipalStore, scopeGate }",
     "routes/workflows/detail/checkpoints/replay-view.svelte ../../../../lib/workflow-revision.ts { EAGER_REVISION_HEDGE }",
-    "routes/workflows/detail/checkpoints/replay-view.svelte ./checkpoints-data.ts { replayQueryKey, replayWorkflow }",
-    "routes/workflows/detail/checkpoints/replay-view.svelte @lostgradient/weft type { HttpClient }",
+    "routes/workflows/detail/checkpoints/replay-view.svelte ./checkpoints-data.ts { replayQueryKey, replayWorkflow, type ReplayClient }",
     "routes/workflows/detail/events-tab.svelte ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
     "routes/workflows/detail/events-tab.svelte ../../../lib/live-source/workflow-tail-source.svelte.ts { WorkflowTailSource }",
     "routes/workflows/detail/events-tab.svelte ./workflow-timeline-data.ts { fetchWorkflowTimeline }",
@@ -4405,7 +4049,7 @@
     "routes/workflows/detail/restart-dialog.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore, scopeGate }",
     "routes/workflows/detail/restart-dialog.svelte ../../../lib/workflow-revision.ts { fetchActiveWorkflowRevision, FRESH_START_REVISION_HEDGE, type WorkflowActiveRevisionClient, }",
     "routes/workflows/detail/restart-dialog.svelte ./restart-worker-override.svelte RestartWorkerOverride",
-    "routes/workflows/detail/restart-dialog.svelte @lostgradient/weft type { ClientStartOrSignalOptions, WorkerStartOverridePreview, StartOrSignalOutcome, StartOrSignalSignal, }",
+    "routes/workflows/detail/restart-dialog.svelte @lostgradient/weft type { ClientOperationTypes, WorkerStartOverridePreview }",
     "routes/workflows/detail/restart-worker-override.svelte ../../../lib/client.ts type { WorkflowReadState as WorkflowState }",
     "routes/workflows/detail/restart-worker-override.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore, scopeGate }",
     "routes/workflows/detail/restart-worker-override.svelte @lostgradient/weft type { WorkerStartOverridePreview }",
@@ -4427,7 +4071,7 @@
     "routes/workflows/detail/timeline-tab.svelte ./async-activity/async-activity-drawer.svelte AsyncActivityDrawer",
     "routes/workflows/detail/timeline-tab.svelte ./streams/stream-chunks-data.ts type { StreamChunksClient }",
     "routes/workflows/detail/timeline-tab.svelte ./workflow-timeline-data.ts { fetchWorkflowTimeline, workflowTimelineQueryKey }",
-    "routes/workflows/detail/timeline-tab.svelte @lostgradient/weft type { WeftClientActivity, HttpClient, WorkflowFinalizerStatus, WorkflowTimelineEntry, }",
+    "routes/workflows/detail/timeline-tab.svelte @lostgradient/weft type { HttpClient, WorkflowFinalizerStatus, WorkflowTimelineEntry, }",
     "routes/workflows/detail/timeline/finalizer-strip.svelte @lostgradient/weft type { WorkflowFinalizerStatus, WorkflowStatus }",
     "routes/workflows/detail/timeline/timeline-filters.ts @lostgradient/weft type { WorkflowTimelineEntry }",
     "routes/workflows/detail/timeline/timeline-mapping.ts @lostgradient/weft type { WorkflowTimelineEntry, WorkflowTimelineOperationDetail }",
@@ -5038,6 +4682,147 @@
   ],
   "cliGenerated": [
     {
+      "path": "host/cli-runs.ts",
+      "operation": "bureau.audit.query",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "executeAudit",
+      "count": 1
+    },
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.goals.create",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "goals",
+      "count": 1
+    },
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.hooks.create",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "hooks",
+      "count": 1
+    },
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.hooks.update",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "hooks",
+      "count": 1
+    },
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.schedules.create",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "schedules",
+      "count": 1
+    },
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.schedules.update",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "schedules",
+      "count": 1
+    },
+    {
+      "path": "host/cli-definitions.ts",
+      "operation": "bureau.agents.try",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "agentCommand",
+      "count": 1
+    },
+    {
+      "path": "host/cli-definitions.ts",
+      "operation": "bureau.agents.definitions.create",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "agentCommand",
+      "count": 1
+    },
+    {
+      "path": "host/cli-definitions.ts",
+      "operation": "bureau.agents.definitions.update",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "agentCommand",
+      "count": 1
+    },
+    {
+      "path": "host/cli-definitions.ts",
+      "operation": "bureau.workflows.validate",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "workflowCommand",
+      "count": 1
+    },
+    {
+      "path": "host/cli-definitions.ts",
+      "operation": "bureau.workflows.create",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "workflowCommand",
+      "count": 1
+    },
+    {
+      "path": "host/cli-definitions.ts",
+      "operation": "bureau.workflows.update",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "workflowCommand",
+      "count": 1
+    },
+    {
+      "path": "host/cli-assets.ts",
+      "operation": "bureau.assets.get",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "download",
+      "count": 1
+    },
+    {
+      "path": "host/cli-assets.ts",
+      "operation": "bureau.assets.uploads.abort",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "upload",
+      "count": 1
+    },
+    {
+      "path": "host/cli-assets.ts",
+      "operation": "bureau.assets.uploads.append",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "upload",
+      "count": 1
+    },
+    {
+      "path": "host/cli-assets.ts",
+      "operation": "bureau.assets.uploads.complete",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "upload",
+      "count": 1
+    },
+    {
+      "path": "host/cli-assets.ts",
+      "operation": "bureau.assets.uploads.create",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "upload",
+      "count": 1
+    },
+    {
       "path": "host/cli-automation.ts",
       "operation": "bureau.goals.get",
       "classification": "generated",
@@ -5093,11 +4878,206 @@
     },
     {
       "path": "host/cli-automation.ts",
+      "operation": "bureau.schedules.pause",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "schedules",
+      "count": 1
+    },
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.schedules.resume",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "schedules",
+      "count": 1
+    },
+    {
+      "path": "host/cli-automation.ts",
       "operation": "bureau.schedules.list",
       "classification": "generated",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2623",
       "caller": "schedules",
+      "count": 1
+    },
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.goals.cancel",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "goals",
+      "count": 1
+    },
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.hooks.delete",
+      "caller": "hooks",
+      "count": 1,
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC"
+    },
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.hooks.secret.replace",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "hooks",
+      "count": 1
+    },
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.hooks.test",
+      "caller": "hooks",
+      "count": 1,
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC"
+    },
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.schedules.runnow",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "schedules",
+      "count": 1
+    },
+    {
+      "path": "host/cli-automation.ts",
+      "operation": "bureau.schedules.skipnext",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "schedules",
+      "count": 1
+    },
+    {
+      "path": "host/cli-chat-assets.ts",
+      "operation": "bureau.assets.uploads.abort",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "uploadAttachment",
+      "count": 1
+    },
+    {
+      "path": "host/cli-chat-assets.ts",
+      "operation": "bureau.assets.uploads.append",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "uploadAttachment",
+      "count": 1
+    },
+    {
+      "path": "host/cli-chat-assets.ts",
+      "operation": "bureau.assets.uploads.complete",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "uploadAttachment",
+      "count": 1
+    },
+    {
+      "path": "host/cli-chat-assets.ts",
+      "operation": "bureau.assets.uploads.create",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "uploadAttachment",
+      "count": 1
+    },
+    {
+      "path": "host/cli-chat-management.ts",
+      "operation": "bureau.reviews.list",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "executeReviewsOrRuns",
+      "count": 1
+    },
+    {
+      "path": "host/cli-chat-management.ts",
+      "operation": "bureau.reviews.get",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "executeReviewsOrRuns",
+      "count": 1
+    },
+    {
+      "path": "host/cli-chat-management.ts",
+      "operation": "bureau.reviews.resolve",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "executeReviewsOrRuns",
+      "count": 1
+    },
+    {
+      "path": "host/cli-chat-management.ts",
+      "operation": "bureau.tasks.respond",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "executeReviewsOrRuns",
+      "count": 1
+    },
+    {
+      "path": "host/cli-chat-management.ts",
+      "operation": "bureau.tasks.cancel",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "executeChats",
+      "count": 1
+    },
+    {
+      "path": "host/cli-chat-management.ts",
+      "operation": "bureau.contexts.delete",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "executeChats",
+      "count": 1
+    },
+    {
+      "path": "host/cli-chat-management.ts",
+      "operation": "bureau.contexts.fork",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "executeChats",
+      "count": 1
+    },
+    {
+      "path": "host/cli-chat-management.ts",
+      "operation": "bureau.contexts.get",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "executeChats",
+      "count": 1
+    },
+    {
+      "path": "host/cli-chat-management.ts",
+      "operation": "bureau.contexts.input",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "executeChats",
+      "count": 1
+    },
+    {
+      "path": "host/cli-chat-management.ts",
+      "operation": "bureau.contexts.list",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "executeChats",
+      "count": 1
+    },
+    {
+      "path": "host/cli-chat-management.ts",
+      "operation": "bureau.contexts.rename",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "executeChats",
+      "count": 1
+    },
+    {
+      "path": "host/cli-chat-management.ts",
+      "operation": "bureau.contexts.steer",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "executeChats",
       "count": 1
     },
     {
@@ -5142,6 +5122,15 @@
       "classification": "generated",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2623",
+      "caller": "settings",
+      "count": 1
+    },
+    {
+      "path": "host/cli-configuration.ts",
+      "operation": "bureau.settings.update",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
       "caller": "settings",
       "count": 1
     },
@@ -5209,6 +5198,51 @@
       "count": 1
     },
     {
+      "path": "host/cli-definitions.ts",
+      "operation": "bureau.agents.definitions.delete",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "agentCommand",
+      "count": 1
+    },
+    {
+      "path": "host/cli-definitions.ts",
+      "operation": "bureau.agents.definitions.duplicate",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "agentCommand",
+      "count": 1
+    },
+    {
+      "path": "host/cli-definitions.ts",
+      "operation": "bureau.agents.versions.restore",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "agentCommand",
+      "count": 1
+    },
+    {
+      "path": "host/cli-definitions.ts",
+      "operation": "bureau.workflows.signal",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "workflowCommand",
+      "count": 1
+    },
+    {
+      "path": "host/cli-definitions.ts",
+      "operation": "bureau.workflows.start",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "workflowCommand",
+      "count": 1
+    },
+    {
       "path": "host/cli-memory.ts",
       "operation": "bureau.memory.export",
       "classification": "generated",
@@ -5228,6 +5262,14 @@
     },
     {
       "path": "host/cli-memory.ts",
+      "operation": "bureau.memory.remember",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "caller": "memory",
+      "count": 1
+    },
+    {
+      "path": "host/cli-memory.ts",
       "operation": "bureau.memory.list",
       "classification": "generated",
       "transport": "Bureau JSON-RPC",
@@ -5241,6 +5283,24 @@
       "classification": "generated",
       "transport": "Bureau JSON-RPC",
       "issue": "COR-2623",
+      "caller": "memory",
+      "count": 1
+    },
+    {
+      "path": "host/cli-memory.ts",
+      "operation": "bureau.memory.correct",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "memory",
+      "count": 1
+    },
+    {
+      "path": "host/cli-memory.ts",
+      "operation": "bureau.memory.forget",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
       "caller": "memory",
       "count": 1
     },
@@ -5297,6 +5357,42 @@
       "issue": "COR-2623",
       "caller": "list",
       "count": 1
+    },
+    {
+      "path": "host/cli-runs.ts",
+      "operation": "bureau.tasks.cancel",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "cancel",
+      "count": 2
+    },
+    {
+      "path": "host/cli-runs.ts",
+      "operation": "bureau.tasks.explanation.generate",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "explain",
+      "count": 1
+    },
+    {
+      "path": "host/cli-runs.ts",
+      "operation": "bureau.workflows.runs.retry",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "retry",
+      "count": 1
+    },
+    {
+      "path": "host/cli-runs.ts",
+      "operation": "weft.workflows.cancel",
+      "classification": "generated",
+      "transport": "Bureau JSON-RPC",
+      "issue": "COR-2625",
+      "caller": "cancel",
+      "count": 2
     }
   ]
 }

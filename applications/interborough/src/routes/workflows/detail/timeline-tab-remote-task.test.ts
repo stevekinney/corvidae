@@ -86,8 +86,9 @@ function renderTab(
           'weft.workflows.timeline.get': async () => entries,
           'weft.workflows.activities.pending.list': async () => ({ items: pending }),
           ...(readTask === undefined ? {} : { 'weft.tasks.get': readTask }),
+          'weft.activities.complete': async () => ({ ok: true as const }),
+          'weft.activities.fail': async () => ({ ok: true as const }),
         },
-        activity: { complete: async () => {}, completeExceptionally: async () => {} },
         // A scripted fake: `weft.tasks.get` answers with a hand-built record, typed `unknown` here.
       } as never,
       workflow: workflow(),

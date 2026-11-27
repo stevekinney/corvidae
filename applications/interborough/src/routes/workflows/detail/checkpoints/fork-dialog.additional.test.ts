@@ -6,7 +6,8 @@ import { QueryClient } from '@tanstack/svelte-query';
 
 import { queryKeys } from '../../../../lib/query.ts';
 import { AUTHORIZATION_SCOPES, type Principal } from '../../../../lib/scopes.svelte.ts';
-import { confirmFork } from './fork-comparison.test-support.ts';
+import type { ForkPreviewClient } from './fork-comparison-data.ts';
+import { confirmFork, previewAnswer } from './fork-comparison.test-support.ts';
 import ForkDialogHarness from './fork-dialog.test-harness.svelte';
 
 function allScopesPrincipal(): Principal {
@@ -36,8 +37,15 @@ function baseClient(
   } = {},
 ) {
   return {
-    fork: overrides.fork ?? (async () => ({ id: 'wf-forked-1' })),
     operations: {
+      'weft.workflows.fork': async ({
+        dryRun,
+        workflowId,
+        ...options
+      }: Parameters<ForkPreviewClient['operations']['weft.workflows.fork']>[0]) => {
+        if (dryRun) return previewAnswer();
+        return overrides.fork?.(workflowId, options) ?? { id: 'wf-forked-1' };
+      },
       'weft.workflows.revisions.list':
         overrides.revisionsList ??
         (async () => [

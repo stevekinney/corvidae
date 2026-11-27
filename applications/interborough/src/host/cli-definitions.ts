@@ -1,11 +1,13 @@
+import type { BureauInput } from '@lostgradient/bureau-sdk';
 import { readFile } from 'node:fs/promises';
 
-import { catalogRead, request, type CliTarget } from './cli-client-transport.ts';
+import { catalogCall, catalogFileCall, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 import { isDryRun } from './cli-destructive.ts';
 import { executeRuns } from './cli-runs.ts';
 
 type RecordValue = Record<string, unknown>;
+type WorkflowInput = Exclude<BureauInput<'bureau.workflows.start'>['input'], undefined>;
 
 function record(value: unknown): RecordValue {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -47,7 +49,7 @@ async function jsonInput(
   parsed: Parsed,
   dependencies: CliClientDependencies,
   names: readonly string[],
-): Promise<unknown> {
+): Promise<WorkflowInput> {
   const source = names.map((name) => option(parsed, name)).find((value) => value !== undefined);
   if (source === undefined)
     throw Object.assign(new Error(`Option --${names[0]} is required.`), { usage: true });
@@ -62,29 +64,6 @@ async function jsonInput(
       usage: true,
     });
   }
-}
-
-async function rpc(
-  target: CliTarget,
-  parsed: Parsed,
-  dependencies: CliClientDependencies,
-  method: string,
-  params: RecordValue,
-): Promise<CliCommandResult> {
-  const response = await request(target, '/bureau/jsonrpc', parsed, dependencies, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: `cli-${crypto.randomUUID()}`,
-      method,
-      params,
-    }),
-  });
-  const body = record(response.data);
-  return body !== undefined && Object.hasOwn(body, 'result')
-    ? { ...response, data: body['result'] }
-    : response;
 }
 
 function expectedHash(parsed: Parsed): string {
@@ -105,23 +84,23 @@ async function agentCommand(
   if (action === 'list') {
     const limit = integerOption(parsed, 'limit');
     const offset = integerOption(parsed, 'offset');
-    return catalogRead(target, parsed, dependencies, 'bureau.agents.definitions.list', {
+    return catalogCall(target, parsed, dependencies, 'bureau.agents.definitions.list', {
       ...(limit === undefined ? {} : { limit }),
       ...(offset === undefined ? {} : { offset }),
     });
   }
   if (action === 'models')
-    return catalogRead(target, parsed, dependencies, 'bureau.agents.catalog', {});
+    return catalogCall(target, parsed, dependencies, 'bureau.agents.catalog', {});
   if (action === 'get')
-    return catalogRead(target, parsed, dependencies, 'bureau.agents.definitions.get', {
+    return catalogCall(target, parsed, dependencies, 'bureau.agents.definitions.get', {
       id: identifier(parsed),
     });
   if (action === 'duplicate')
-    return rpc(target, parsed, dependencies, 'bureau.agents.definitions.duplicate', {
+    return catalogCall(target, parsed, dependencies, 'bureau.agents.definitions.duplicate', {
       id: identifier(parsed),
     });
   if (action === 'delete')
-    return rpc(target, parsed, dependencies, 'bureau.agents.definitions.delete', {
+    return catalogCall(target, parsed, dependencies, 'bureau.agents.definitions.delete', {
       id: identifier(parsed),
       expectedHash: expectedHash(parsed),
       ...(isDryRun(parsed) ? { dryRun: true } : {}),
@@ -130,9 +109,9 @@ async function agentCommand(
     const subcommand = parsed.arguments[1] ?? 'list';
     const id = identifier(parsed, 2);
     if (subcommand === 'list')
-      return catalogRead(target, parsed, dependencies, 'bureau.agents.versions.list', { id });
+      return catalogCall(target, parsed, dependencies, 'bureau.agents.versions.list', { id });
     if (subcommand === 'restore')
-      return rpc(target, parsed, dependencies, 'bureau.agents.versions.restore', {
+      return catalogCall(target, parsed, dependencies, 'bureau.agents.versions.restore', {
         id,
         revision: requiredInteger(option(parsed, 'revision') ?? parsed.arguments[3], 'Revision'),
         expectedHash: expectedHash(parsed),
@@ -142,16 +121,24 @@ async function agentCommand(
     const message = option(parsed, 'message') ?? parsed.arguments[1];
     if (message === undefined || message === '')
       throw Object.assign(new Error('agents try requires --message.'), { usage: true });
-    return rpc(target, parsed, dependencies, 'bureau.agents.try', {
+    return catalogFileCall(target, parsed, dependencies, 'bureau.agents.try', {
       definition: await jsonInput(parsed, dependencies, ['file']),
       message,
     });
   }
   if (action === 'create' || action === 'update') {
     const id = identifier(parsed);
-    const params: RecordValue = { id, definition: await jsonInput(parsed, dependencies, ['file']) };
-    if (action === 'update') params['expectedHash'] = expectedHash(parsed);
-    return rpc(target, parsed, dependencies, `bureau.agents.definitions.${action}`, params);
+    const definition = await jsonInput(parsed, dependencies, ['file']);
+    return action === 'create'
+      ? catalogFileCall(target, parsed, dependencies, 'bureau.agents.definitions.create', {
+          id,
+          definition,
+        })
+      : catalogFileCall(target, parsed, dependencies, 'bureau.agents.definitions.update', {
+          id,
+          definition,
+          expectedHash: expectedHash(parsed),
+        });
   }
   throw Object.assign(
     new Error('Usage: agents list|get|create|update|delete|duplicate|models|versions|try.'),
@@ -170,29 +157,28 @@ async function workflowCommand(
   if (action === 'list') {
     const limit = integerOption(parsed, 'limit');
     const offset = integerOption(parsed, 'offset');
-    return catalogRead(target, parsed, dependencies, 'bureau.workflows.list', {
+    return catalogCall(target, parsed, dependencies, 'bureau.workflows.list', {
       ...(limit === undefined ? {} : { limit }),
       ...(offset === undefined ? {} : { offset }),
       ...(parsed.options.get('include-runs') === true ? { includeRuns: true } : {}),
     });
   }
   if (action === 'get')
-    return catalogRead(target, parsed, dependencies, 'bureau.workflows.get', {
+    return catalogCall(target, parsed, dependencies, 'bureau.workflows.get', {
       id: identifier(parsed),
     });
   if (action === 'history')
-    return catalogRead(target, parsed, dependencies, 'bureau.workflows.history', {
+    return catalogCall(target, parsed, dependencies, 'bureau.workflows.history', {
       id: identifier(parsed),
     });
   if (action === 'signal') {
     const name = option(parsed, 'signal-name') ?? parsed.arguments[1];
     if (name === undefined || name === '')
       throw Object.assign(new Error('workflows signal requires a signal name.'), { usage: true });
-    return rpc(target, parsed, dependencies, 'bureau.workflows.signal', {
+    const signalId = option(parsed, 'signal-id');
+    return catalogCall(target, parsed, dependencies, 'bureau.workflows.signal', {
       name,
-      ...(option(parsed, 'signal-id') === undefined
-        ? {}
-        : { signalId: option(parsed, 'signal-id') }),
+      ...(signalId === undefined ? {} : { signalId }),
       ...(option(parsed, 'input-file') === undefined && option(parsed, 'input') === undefined
         ? {}
         : { payload: await jsonInput(parsed, dependencies, ['input-file', 'input']) }),
@@ -200,7 +186,7 @@ async function workflowCommand(
   }
   if (action === 'start') {
     const id = identifier(parsed);
-    const started = await rpc(target, parsed, dependencies, 'bureau.workflows.start', {
+    const started = await catalogCall(target, parsed, dependencies, 'bureau.workflows.start', {
       id,
       ...(option(parsed, 'input-file') === undefined && option(parsed, 'input') === undefined
         ? {}
@@ -231,7 +217,11 @@ async function workflowCommand(
         option(parsed, 'expected-revision') !== undefined)
     )
       params['expectedHash'] = expectedHash(parsed);
-    return rpc(target, parsed, dependencies, `bureau.workflows.${action}`, params);
+    if (action === 'validate')
+      return catalogFileCall(target, parsed, dependencies, 'bureau.workflows.validate', params);
+    if (action === 'create')
+      return catalogFileCall(target, parsed, dependencies, 'bureau.workflows.create', params);
+    return catalogFileCall(target, parsed, dependencies, 'bureau.workflows.update', params);
   }
   throw Object.assign(
     new Error('Usage: workflows list|get|create|update|validate|start|signal|history.'),

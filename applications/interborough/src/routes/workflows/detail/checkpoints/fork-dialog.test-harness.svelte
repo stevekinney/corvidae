@@ -12,20 +12,18 @@
   import type { Principal } from '../../../../lib/scopes.svelte.ts';
   import WorkflowRouteHarness from '../../list/workflow-route-harness.test-harness.svelte';
   import ForkDialog from './fork-dialog.svelte';
-  import type { ForkClient } from './checkpoints-data.ts';
   import type { ForkPreviewClient } from './fork-comparison-data.ts';
   import { forkOperations } from './fork-comparison.test-support.ts';
   import type { WorkflowRevisionListClient } from './fork-revision-picker.ts';
 
   interface Props {
     /** `get` (the open-time source refetch, COR-15) is optional here; a harness default resolves a purged run so tests that don't care about it keep the page-load revision. */
-    client: ForkClient &
-      Omit<WorkflowRevisionListClient, 'operations'> & {
-        get?: (workflowId: string) => Promise<{ readonly revision?: string | undefined } | null>;
-        /** The preview operation (COR-2538) defaults to a preview that keeps one step and runs one again. */
-        operations: WorkflowRevisionListClient['operations'] &
-          Partial<ForkPreviewClient['operations']>;
-      };
+    client: {
+      get?: (workflowId: string) => Promise<{ readonly revision?: string | undefined } | null>;
+      /** The preview operation (COR-2538) defaults to a preview that keeps one step and runs one again. */
+      operations: WorkflowRevisionListClient['operations'] &
+        Partial<ForkPreviewClient['operations']>;
+    };
     workflowId: string;
     initialStep: number;
     workflowType: string;

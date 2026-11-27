@@ -1,7 +1,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClientError, type WorkflowState } from '@lostgradient/weft';
+import { HttpClientError, type ClientOperationTypes, type WorkflowState } from '@lostgradient/weft';
 import { QueryClient } from '@tanstack/svelte-query';
 
 import { queryKeys } from '../../../lib/query.ts';
@@ -31,36 +31,26 @@ function newQueryClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
 }
 
-interface StartOrSignalCall {
-  readonly type: string;
-  readonly input: unknown;
-  readonly signal: { name: string; payload?: unknown; signalId?: string };
-  readonly options: unknown;
-}
+type StartOrSignalOperation = ClientOperationTypes['weft.workflows.startorsignal'];
 
 function fakeClient(
   overrides: {
     activeRevision?: () => Promise<unknown>;
-    startOrSignal?: () => Promise<{
-      readonly id: string;
-      readonly outcome?: 'started' | 'signalled';
-    }>;
+    startOrSignal?: () => Promise<StartOrSignalOperation['output']>;
   } = {},
 ) {
-  const calls: StartOrSignalCall[] = [];
+  const calls: StartOrSignalOperation['input'][] = [];
   return {
     calls,
     client: {
-      startOrSignal: async (
-        type: string,
-        input: unknown,
-        signal: StartOrSignalCall['signal'],
-        options: unknown,
-      ) => {
-        calls.push({ type, input, signal, options });
-        return (overrides.startOrSignal ?? (async () => ({ id: 'reconcile:installation-42' })))();
-      },
       operations: {
+        'weft.workflows.startorsignal': async (input: StartOrSignalOperation['input']) => {
+          calls.push(input);
+          return (
+            overrides.startOrSignal ??
+            (async () => ({ id: 'reconcile:installation-42', outcome: 'started' as const }))
+          )();
+        },
         'weft.workflows.active.get':
           overrides.activeRevision ??
           (async () => ({ revision: 'order-processing-rev-new', generation: 3, activatedAt: 5 })),
@@ -174,15 +164,15 @@ describe('RestartDialog', () => {
     const [call] = calls;
     expect(call?.type).toBe('order-processing');
     expect(call?.input).toEqual({ installationId: 42 });
-    expect(call?.signal.name).toBe('resync');
-    expect(call?.signal.payload).toEqual({ reason: 'manual' });
-    expect(typeof call?.signal.signalId).toBe('string');
-    expect(call?.signal.signalId?.length).toBeGreaterThan(0);
-    expect(call?.options).toEqual({
+    expect(call?.signalName).toBe('resync');
+    expect(call?.signalPayload).toEqual({ reason: 'manual' });
+    expect(call?.signalId?.length).toBeGreaterThan(0);
+    expect(call).toMatchObject({
       id: 'reconcile:installation-42',
       onTerminalConflict: 'start-new',
       tags: ['nightly'],
     });
+    expect(call).not.toHaveProperty('workerStartOverridePreview');
   });
 
   test('invalidates the detail, list, and every per-run cache after a successful restart', async () => {
