@@ -267,7 +267,6 @@ describe('InlineConfirm', () => {
       ...container.querySelectorAll<HTMLElement>('.cinder-inline-confirm__actions .cinder-button'),
     ];
     expect(actions).toEqual([dismiss, confirm]);
-    expect(dismiss.compareDocumentPosition(confirm) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     await rerender({ cancelLabel: 'Keep editing' });
     expect(getByRole('button', { name: 'Keep editing' })).toBe(dismiss);
