@@ -24,11 +24,18 @@ export type ApprovalPlacement = {
 
 /**
  * @param place - Places the approval again, against the boxes as they are now.
+ * @param hold - Says the placement holds a transcript, and returns what lets go of it: Chat's
+ *   `holdApprovalPlacement`, so the transcript's own pin stands aside while this placement rests
+ *   it, and the card is never carried past its place and brought back from the other side.
  */
-export function createApprovalPlacement(place: () => void): ApprovalPlacement {
+export function createApprovalPlacement(
+  place: () => void,
+  hold?: (transcript: HTMLElement) => () => void,
+): ApprovalPlacement {
   let transcript: HTMLElement | undefined;
   let controller: AbortController | undefined;
   let observer: ResizeObserver | undefined;
+  let letGo: (() => void) | undefined;
 
   const release = (): void => {
     observer?.disconnect();
@@ -36,6 +43,8 @@ export function createApprovalPlacement(place: () => void): ApprovalPlacement {
     controller?.abort();
     controller = undefined;
     transcript = undefined;
+    letGo?.();
+    letGo = undefined;
   };
 
   const placeAgain = (): void => {
@@ -47,6 +56,7 @@ export function createApprovalPlacement(place: () => void): ApprovalPlacement {
       if (transcript === next) return;
       release();
       transcript = next;
+      letGo = hold?.(next);
       controller = new AbortController();
       if (typeof ResizeObserver !== 'undefined') {
         observer = new ResizeObserver(() => {

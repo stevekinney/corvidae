@@ -112,15 +112,28 @@
   // notice then makes overflow by a few pixels: the browser does not anchor a scroll position of 0,
   // and no message arrives to pin it, so only the box changing size can say the end moved. `empty`
   // is a transcript with no message, whose welcome fits its box until a test makes the box smaller.
+  // `settles` is `fits` with a panel that takes its full size after the rows were first rested.
   const pinnedResizeMode = new URLSearchParams(globalThis.location.search).get('pinnedResize');
   const pinnedResizeEnabled =
-    pinnedResizeMode === 'long' || pinnedResizeMode === 'fits' || pinnedResizeMode === 'empty';
+    pinnedResizeMode === 'long' ||
+    pinnedResizeMode === 'fits' ||
+    pinnedResizeMode === 'empty' ||
+    pinnedResizeMode === 'settles';
   let pinnedStreamDropped = $state(false);
   // A notice in the composer that changes nothing in the transcript: the box shrinks and that is all.
   // The real reconnect notice also changes the turn it is about (an outcome row stops being drawn),
   // so what it takes from the box and what the content gives back could not be told apart. The
   // surface is the one Interborough draws (`transparent`), or Chat's own (`?surface=default`).
   let pinnedNoticeShown = $state(false);
+  // `settles` is `fits` with a panel under its rows that takes its full size when a button is
+  // pressed: a row grows with no message arriving and no change to the transcript's box, as a
+  // panel does that sizes itself after it loads. `?settled=1` draws it at full size from the start,
+  // and `?box=<pixels>` gives the chat its height from the start, so a test can reach one layout
+  // in every order (the rows first, the box first, both there before anything rested).
+  let pinnedPanelSettled = $state(
+    new URLSearchParams(globalThis.location.search).get('settled') === '1',
+  );
+  const pinnedBox = new URLSearchParams(globalThis.location.search).get('box');
   const pinnedSurface =
     new URLSearchParams(globalThis.location.search).get('surface') === 'default'
       ? 'default'
@@ -726,8 +739,15 @@
     <Button data-testid="pinned-resize-notice" onclick={() => (pinnedNoticeShown = true)}>
       Show a notice
     </Button>
+    <Button data-testid="pinned-resize-settle" onclick={() => (pinnedPanelSettled = true)}>
+      Settle the panel
+    </Button>
     <div
-      style:height={pinnedResizeMode === 'long' ? '26rem' : '60rem'}
+      style:height={pinnedBox !== null
+        ? `${pinnedBox}px`
+        : pinnedResizeMode === 'long'
+          ? '26rem'
+          : '60rem'}
       data-testid="pinned-resize-chat"
     >
       {#snippet pinnedNotice()}
@@ -735,12 +755,22 @@
           A notice that takes room from the transcript and says nothing about it.
         </p>
       {/snippet}
+      {#snippet pinnedPanel()}
+        <div data-testid="pinned-resize-panel">
+          <p style="margin: 0;">Why this run failed</p>
+          {#if pinnedPanelSettled}
+            <div style="block-size: 12rem;"></div>
+            <p data-testid="pinned-resize-panel-end" style="margin: 0;">What to do next.</p>
+          {/if}
+        </div>
+      {/snippet}
       <Chat
         id="fixture-pinned-resize-chat"
         variant="transcript"
         surfaceMode={pinnedSurface}
         scrollFadeVisible
         composerFooter={pinnedNoticeShown ? pinnedNotice : undefined}
+        {...pinnedResizeMode === 'settles' ? { trailing: pinnedPanel } : {}}
         conversation={pinnedResizeOutcome.conversation}
         capabilities={{ attachments: false }}
         messageTurnState={(message) => turnStateOf(pinnedResizeOutcome, message)}

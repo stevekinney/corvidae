@@ -179,8 +179,11 @@ export function approvalArrivalRestShift(
     const lowerHalf = card.bottom >= (viewport.top + viewport.bottom) / 2;
     return lowerHalf ? 0 : limited(toFadeLine);
   }
-  // Fits: the usual resting place, held between the two lines.
-  return limited(Math.min(Math.max(result, toFadeLine), toTop));
+  // Fits: its top on the header's line, or the transcript's end where that comes first. One place,
+  // from wherever the unit starts: resting it wherever it happened to stand between the two lines
+  // left it on the fade line when it came from below and on the header's line when it came from the
+  // end, so the same card in the same box rested in two places.
+  return limited(toTop);
 }
 
 /**
@@ -479,4 +482,39 @@ export function focusPendingApproval(root: ParentNode | null | undefined): boole
   actions?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   card.focus({ preventScroll: true });
   return card.ownerDocument.activeElement === card;
+}
+
+/** How many arrival placements hold each transcript right now. */
+const placementHolds = new WeakMap<HTMLElement, number>();
+
+/**
+ * Says a waiting approval's arrival placement holds `transcript`, until the function it returns is
+ * called. While one does, it is the one thing that rests the transcript: the pin to the last row
+ * stands aside (`approvalPlacementHeld`), so the card is never carried past its place and brought
+ * back from the other side. Chat's own placement holds it, and so does a host that places the
+ * approval itself by the same rule (`approvalPlacementShift`); each lets go when the person takes
+ * the transcript.
+ */
+export function holdApprovalPlacement(transcript: HTMLElement): () => void {
+  placementHolds.set(transcript, (placementHolds.get(transcript) ?? 0) + 1);
+  let held = true;
+  return () => {
+    if (!held) return;
+    held = false;
+    const left = (placementHolds.get(transcript) ?? 1) - 1;
+    if (left > 0) placementHolds.set(transcript, left);
+    else placementHolds.delete(transcript);
+  };
+}
+
+/**
+ * Whether a waiting approval's arrival placement holds `transcript` (`holdApprovalPlacement`): a
+ * placement holds it, and an approval still waits in it. A hold a host has not let go of once the
+ * approval was decided (somewhere else, with no input here) holds nothing.
+ */
+export function approvalPlacementHeld(transcript: HTMLElement): boolean {
+  return (
+    placementHolds.has(transcript) &&
+    transcript.querySelector(PENDING_APPROVAL_CARD_SELECTOR) !== null
+  );
 }

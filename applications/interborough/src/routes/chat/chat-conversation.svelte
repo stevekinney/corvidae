@@ -68,6 +68,7 @@
     classifyQuestion,
     createConversationHistory,
     DEFAULT_TURN_LABELS,
+    holdApprovalPlacement,
     McpApp,
     resolveMessageNotes,
     resolveTurnOutcome,
@@ -1017,7 +1018,7 @@
   let placedApprovalRow: HTMLElement | undefined;
   const approvalPlacement = createApprovalPlacement(() => {
     if (placedApprovalRow?.isConnected) bringApprovalIntoView(placedApprovalRow);
-  });
+  }, holdApprovalPlacement);
   onDestroy(() => approvalPlacement.release());
 
   // A command that answers after the person left this chat says nothing: its toast would land over

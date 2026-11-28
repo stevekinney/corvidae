@@ -744,3 +744,22 @@ describe('approval row visibility with and without the reminder', () => {
     expect(answers(moved)).toEqual([true, true]);
   });
 });
+
+describe('approvalArrivalRestShift, a unit that fits under a header', () => {
+  test('rests in one place from wherever it starts: its top on the header line, or the end where that comes first', () => {
+    // 320 by 640: the box runs from 179, under the header, to 476; the fade line is at 444.
+    const box = { top: 179, bottom: 476 };
+    for (const top of [-200, 60, 144, 179, 200, 240, 520]) {
+      const unit = { top, bottom: top + 200 };
+      const shift = approvalArrivalRestShift(unit, box, 1000, APPROVAL_BOTTOM_CLEARANCE, true);
+      expect(unit.top - shift, `from ${String(top)}`).toBe(179);
+    }
+    // The transcript's end comes first: it rests there, with its top below the line.
+    expect(
+      approvalArrivalRestShift({ top: 240, bottom: 440 }, box, 20, APPROVAL_BOTTOM_CLEARANCE, true),
+    ).toBe(20);
+    expect(
+      approvalArrivalRestShift({ top: 220, bottom: 420 }, box, 0, APPROVAL_BOTTOM_CLEARANCE, true),
+    ).toBe(0);
+  });
+});

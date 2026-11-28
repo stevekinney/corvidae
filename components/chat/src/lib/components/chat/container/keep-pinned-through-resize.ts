@@ -1,26 +1,20 @@
 /**
- * Where a transcript rests when its own box changes size (COR-2725).
+ * Where a transcript rests, and keeping it there whenever its layout changes (COR-2725).
  *
- * The transcript pins itself to its last message when messages arrive. A box that changes size with
- * no message arriving (a notice that grows the composer, a keyboard that rises, a window made
- * smaller, a phone turned) scrolls nothing by itself: the scroll position stays and the end of the
- * content moves, so the last row can come to rest in the fade at the transcript's end. This looks
- * again whenever the box changes size and, while the transcript rests where the pin left it, asks
- * the page to rest it again. It is the one record of that resting position: every rest the page
- * makes is reported here (`rested`), so the two never disagree about where the transcript is.
+ * A transcript nobody has taken away rests in one place, and that place is read from the layout as
+ * it is now, never remembered from an earlier one: from its start, at the smallest scroll that puts
+ * the end of its last row at the end of the reading box (`startSideRest`; 0 when the rows fit). The
+ * same rows in the same box therefore rest at the same scroll position whatever order they, their
+ * sizes and the box arrived in. Nothing is remembered but where the transcript was left: one that
+ * is where it rests, or at its true end, is rested again; one a person took anywhere else is theirs
+ * and is never moved, until it is brought back.
  *
- * A transcript rests one of two ways, and which one is remembered, not measured again:
- *
- * - From its start, once everything it holds has fitted its box: it shows from its first row. When
- *   the box then shrinks it scrolls only as far as its last row needs to end at the end of the
- *   reading box (`startSideRest`), and scrolls back as the box grows. Its true end, with the clear
- *   space after the last row, would push the start of a short conversation out of view and leave a
- *   blank band above the composer.
- * - At its true end, once anything put it there while it overflowed: a message's pin, Jump to
- *   latest, the person's own scroll. It stays at its true end, as a long conversation does.
- *
- * It never moves a transcript someone took away from where it rested: a scroll that leaves it
- * anywhere but its true end ends the rest, until it is brought back to its end or fits again.
+ * The transcript is rested again whenever its layout changes: its own box (a notice that grows the
+ * composer, a keyboard, a smaller window, a phone turned) or the box of any of its rows (a message
+ * that arrives or streams, a panel that sizes itself after it loads, code that is highlighted, a
+ * font or an image that lands). Nothing else moves by itself when those change, so a rest taken
+ * against a layout that was still settling would otherwise stand. This is also the one record of
+ * where the transcript rests: every rest the page makes is reported here (`rested`).
  */
 
 import { transcriptReadingBox } from './command-failure-reveal.ts';
@@ -30,14 +24,8 @@ const REST_TOLERANCE = 2;
 
 /** The record of where a transcript rests, which `keepPinnedThroughResize` returns. */
 export interface PinnedThroughResize {
-  /** The page rested the transcript itself: from its start (`fromStart`), or at its true end. */
-  rested(fromStart: boolean): void;
-  /**
-   * Whether the transcript rests from its start, is where it was left, and holds what it held then.
-   * Nothing has arrived since it rested, so resting it again means from its start; anything that
-   * arrived takes it to its true end, as it always did.
-   */
-  restsUnchangedFromStart(): boolean;
+  /** The page rested the transcript itself: it rests where it is now. */
+  rested(): void;
   /** Stops looking. */
   stop(): void;
 }
@@ -75,82 +63,89 @@ export function startSideRest(transcript: HTMLElement): number | null {
 }
 
 /**
- * Looks again whenever `transcript`'s box changes size, until `stop` is called. `rest` rests the
- * transcript the way the page does, from its start or at its true end as `fromStart` says, and is
- * the page's to refuse (no message yet, a refusal kept in view, a person editing, history loading,
- * a smooth scroll the person started). A refusal does not end the rest: it is asked again at the
- * next change.
+ * Looks again whenever the layout of `transcript` changes (its box, or the box of any of its
+ * rows), until `stop` is called. While the transcript rests where it was left, `rest` rests it
+ * again the way the page does, and is the page's to refuse (no message yet, a refusal or a waiting
+ * approval kept in view, a person editing, history loading, a smooth scroll the person started). A
+ * refusal does not end the rest: it is asked again at the next change.
  */
 export function keepPinnedThroughResize(
   transcript: HTMLElement,
-  rest: (fromStart: boolean) => void,
+  rest: () => void,
 ): PinnedThroughResize {
-  if (typeof ResizeObserver === 'undefined') {
-    return { rested: () => {}, restsUnchangedFromStart: () => false, stop: () => {} };
-  }
+  if (typeof ResizeObserver === 'undefined') return { rested: () => {}, stop: () => {} };
   const reach = (): number => transcript.scrollHeight - transcript.clientHeight;
   // Everything the transcript holds, the clear space at its end too, is inside a box that is laid out.
   const fitsWhole = (): boolean => transcript.clientHeight > 0 && reach() <= REST_TOLERANCE;
-  const atTrueEnd = (): boolean => reach() - transcript.scrollTop <= REST_TOLERANCE;
+  // Where a transcript nobody took can be found: where it rests from its start, or at its true end
+  // (a placement, Jump to latest or the person put it there, and it is rested again from there).
+  const atRest = (): boolean => {
+    if (reach() - transcript.scrollTop <= REST_TOLERANCE) return true;
+    const side = startSideRest(transcript);
+    return side !== null && Math.abs(transcript.scrollTop - side) <= REST_TOLERANCE;
+  };
 
-  // Where the transcript was last known to rest and how much it held then, whether the pin may move
-  // it, and which way it rests.
+  // Where the transcript was last left, and whether it rests there (nobody took it away). One that
+  // is first seen at its start has not been taken.
   let restingTop = transcript.scrollTop;
-  let restingExtent = transcript.scrollHeight;
-  let following = atTrueEnd();
-  let fromStart = fitsWhole();
-  const record = (): void => {
-    restingTop = transcript.scrollTop;
-    restingExtent = transcript.scrollHeight;
-  };
+  let following = restingTop <= REST_TOLERANCE || atRest();
 
-  // A scroll says where the transcript rests now. One that leaves it where it was left says nothing
-  // new, whatever the layout has become since: a rest's own scroll is heard a frame late, often
-  // after the box has changed size again.
-  const look = (): void => {
+  // A scroll says whose the transcript is, from where it is now. One that leaves it where it was
+  // left says nothing new, whatever the layout has become since: a rest's own scroll is heard a
+  // frame late, often after the layout has changed again.
+  const heard = (): void => {
     const top = transcript.scrollTop;
-    if (fitsWhole()) {
-      following = true;
-      fromStart = true;
-      record();
-      return;
-    }
-    if (Math.abs(top - restingTop) <= REST_TOLERANCE) return;
-    const ended = atTrueEnd();
-    // A box that grows pulls the transcript back to its new end: nobody took it there.
-    if (ended && !(following && top < restingTop)) fromStart = false;
-    following = ended;
-    record();
+    if (fitsWhole()) following = true;
+    else if (Math.abs(top - restingTop) > REST_TOLERANCE) following = atRest();
+    restingTop = top;
   };
-
-  const resizes = new ResizeObserver(() => {
-    if (fitsWhole()) {
-      following = true;
-      fromStart = true;
-    } else if (following && transcript.scrollTop < restingTop - REST_TOLERANCE && !atTrueEnd()) {
-      // Something took it back toward its start in this frame, and its scroll is not heard yet.
+  // The layout changed. A transcript that rests where it was left is rested again; one that has
+  // been taken back toward its start in this frame, with its scroll not heard yet, is not (the
+  // browser pulling it back to the end of a box that grew, or holding the end of the content in
+  // place, is no one taking it).
+  const settle = (): void => {
+    if (fitsWhole()) following = true;
+    else if (following && transcript.scrollTop < restingTop - REST_TOLERANCE && !atRest()) {
       following = false;
     }
-    if (following) rest(fromStart);
-    record();
-  });
-  resizes.observe(transcript);
-  transcript.addEventListener('scroll', look, { passive: true });
+    if (following) rest();
+    restingTop = transcript.scrollTop;
+  };
+
+  const layout = new ResizeObserver(settle);
+  layout.observe(transcript);
+  for (const row of transcript.children) layout.observe(row);
+  // Rows come and go: each new one is watched (and resting again is asked for as it is first
+  // measured), and one taken away changes no box that is watched, so it is looked at here.
+  const rows =
+    typeof MutationObserver === 'undefined'
+      ? null
+      : new MutationObserver((records) => {
+          let removed = false;
+          for (const record of records) {
+            for (const node of record.addedNodes) {
+              if (node instanceof Element) layout.observe(node);
+            }
+            for (const node of record.removedNodes) {
+              if (!(node instanceof Element)) continue;
+              layout.unobserve(node);
+              removed = true;
+            }
+          }
+          if (removed) settle();
+        });
+  rows?.observe(transcript, { childList: true });
+  transcript.addEventListener('scroll', heard, { passive: true });
 
   return {
-    rested: (startSide) => {
-      record();
+    rested: () => {
+      restingTop = transcript.scrollTop;
       following = true;
-      fromStart = startSide || fitsWhole();
     },
-    restsUnchangedFromStart: () =>
-      following &&
-      fromStart &&
-      Math.abs(transcript.scrollTop - restingTop) <= REST_TOLERANCE &&
-      Math.abs(transcript.scrollHeight - restingExtent) <= REST_TOLERANCE,
     stop: () => {
-      resizes.disconnect();
-      transcript.removeEventListener('scroll', look);
+      layout.disconnect();
+      rows?.disconnect();
+      transcript.removeEventListener('scroll', heard);
     },
   };
 }

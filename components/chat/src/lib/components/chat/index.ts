@@ -37,6 +37,7 @@ export {
   approvalTallerThanTranscript,
   approvalUnitBox,
   CHAT_OVERLAY_INSET_START_PROPERTY,
+  holdApprovalPlacement,
 } from './container/chat-approval-review.ts';
 export { default as ChatNote } from './message/parts/note-part.svelte';
 export { TurnCommands } from './message/turn-commands.ts';

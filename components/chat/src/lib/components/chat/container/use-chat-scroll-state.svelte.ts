@@ -81,9 +81,15 @@ export interface UseChatScrollStateReturn {
   scrollToTop(viewport: HTMLElement | null): void;
   /**
    * Jump to the latest message with animation.
-   * Handles smooth scroll and focuses the last message after animation.
+   * Handles smooth scroll and focuses the last message after animation. It lands at the end of the
+   * scrollable area, or where `restingTop` says the transcript rests when the host gives one (read
+   * when the jump starts and again when it finishes), so a jump rests where everything else does.
    */
-  jumpToLatest(viewport: HTMLElement | null, onComplete?: () => void): void;
+  jumpToLatest(
+    viewport: HTMLElement | null,
+    onComplete?: () => void,
+    restingTop?: () => number,
+  ): void;
   /**
    * Run a programmatic scroll `action` while suppressing the auto-stick-to-bottom
    * effect, mirroring the guard `jumpToLatest` already applies. Sets
@@ -761,14 +767,19 @@ export function useChatScrollState(options?: UseChatScrollStateOptions): UseChat
   /**
    * Jump to the latest message with animation.
    */
-  function jumpToLatest(viewport: HTMLElement | null, onComplete?: () => void): void {
+  function jumpToLatest(
+    viewport: HTMLElement | null,
+    onComplete?: () => void,
+    restingTop?: () => number,
+  ): void {
     if (!viewport) return;
+    const target = (): number => restingTop?.() ?? viewport.scrollHeight;
 
     withUserScrollGuard(
       viewport,
       () => {
         withForcedLayout(viewport, () => {
-          viewport.scrollTo({ top: viewport.scrollHeight, behavior: getScrollBehavior() });
+          viewport.scrollTo({ top: target(), behavior: getScrollBehavior() });
         });
         onReachBottom?.();
         onComplete?.();
@@ -782,7 +793,7 @@ export function useChatScrollState(options?: UseChatScrollStateOptions): UseChat
         const lastMessage = lastWrapper?.querySelector<HTMLElement>('.chat-message') ?? null;
         lastMessage?.focus();
       },
-      () => viewport.scrollHeight,
+      target,
     );
   }
 

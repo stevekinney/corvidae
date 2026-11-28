@@ -6,17 +6,26 @@ import { keepPinnedThroughResize, startSideRest } from './keep-pinned-through-re
 
 setupHappyDom();
 
-let resizeCallback: (() => void) | undefined;
+/** The observers the pin makes, by what each watches, so a test can say whose box changed. */
+const observers: Array<{ readonly callback: () => void; readonly targets: Set<Element> }> = [];
 const original = globalThis.ResizeObserver;
 
 beforeAll(() => {
   globalThis.ResizeObserver = class {
+    readonly #entry: { readonly callback: () => void; readonly targets: Set<Element> };
     constructor(callback: () => void) {
-      resizeCallback = callback;
+      this.#entry = { callback, targets: new Set() };
+      observers.push(this.#entry);
     }
-    observe(): void {}
-    unobserve(): void {}
-    disconnect(): void {}
+    observe(target: Element): void {
+      this.#entry.targets.add(target);
+    }
+    unobserve(target: Element): void {
+      this.#entry.targets.delete(target);
+    }
+    disconnect(): void {
+      this.#entry.targets.clear();
+    }
   } as unknown as typeof ResizeObserver;
 });
 
@@ -25,14 +34,34 @@ afterAll(() => {
 });
 
 afterEach(() => {
-  resizeCallback = undefined;
+  observers.length = 0;
+  document.body.replaceChildren();
 });
 
-/** A transcript of `scrollHeight` content in a box of `clientHeight`, scrolled to `scrollTop`. */
-function transcriptOf(layout: { scrollHeight: number; clientHeight: number; scrollTop: number }) {
+/** The box of `element` changed size, as the browser tells every observer that watches it. */
+function changed(element: Element): void {
+  for (const entry of observers) {
+    if (entry.targets.has(element)) entry.callback();
+  }
+}
+
+/** Lets the observer of the transcript's rows hear what was added or taken away. */
+async function rowsHeard(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+/**
+ * A transcript whose rows end `rowsEnd` from its start, with `endSpace` after them, in a box
+ * `clientHeight` tall: one row that holds everything, then the sentinel. The page rests it as Chat
+ * does: from its start where the pin says so, and at its true end otherwise.
+ */
+function transcriptOf(layout: { rowsEnd: number; clientHeight: number; scrollTop?: number }) {
   const transcript = document.createElement('div');
-  const state = { ...layout, startSide: 0 };
-  Object.defineProperty(transcript, 'scrollHeight', { get: () => state.scrollHeight });
+  document.body.append(transcript);
+  const state = { endSpace: 60, scrollTop: 0, ...layout };
+  const extent = (): number => Math.max(state.rowsEnd + state.endSpace, state.clientHeight);
+  Object.defineProperty(transcript, 'scrollHeight', { get: extent });
   Object.defineProperty(transcript, 'clientHeight', { get: () => state.clientHeight });
   Object.defineProperty(transcript, 'scrollTop', {
     get: () => state.scrollTop,
@@ -40,400 +69,285 @@ function transcriptOf(layout: { scrollHeight: number; clientHeight: number; scro
       state.scrollTop = value;
     },
   });
-  const asked: boolean[] = [];
-  // What the page does: its true end, or, from its start, where the test says the last row is clear.
-  const rest = (fromStart: boolean): void => {
-    asked.push(fromStart);
-    const end = state.scrollHeight - state.clientHeight;
-    state.scrollTop = fromStart ? Math.min(state.startSide, end) : end;
+  transcript.getBoundingClientRect = () =>
+    ({ top: 0, bottom: state.clientHeight, height: state.clientHeight }) as DOMRect;
+  const row = document.createElement('div');
+  row.className = 'chat-message-wrapper';
+  row.getBoundingClientRect = () =>
+    ({
+      top: -state.scrollTop,
+      bottom: state.rowsEnd - state.scrollTop,
+      height: state.rowsEnd,
+    }) as DOMRect;
+  const sentinel = document.createElement('div');
+  sentinel.className = 'chat-bottom-sentinel';
+  transcript.append(row, sentinel);
+
+  let asked = 0;
+  let refuse = false;
+  const kept = keepPinnedThroughResize(transcript, () => {
+    asked += 1;
+    if (refuse) return;
+    const end = extent() - state.clientHeight;
+    state.scrollTop = startSideRest(transcript) ?? end;
+    kept.rested();
+  });
+  /** The transcript is scrolled to `top`, and the scroll is heard. */
+  const scrolledTo = (top: number): void => {
+    state.scrollTop = top;
+    transcript.dispatchEvent(new Event('scroll'));
   };
-  return { transcript, state, rest, asked };
+  return {
+    transcript,
+    row,
+    state,
+    kept,
+    scrolledTo,
+    asked: () => asked,
+    refuseRests: () => {
+      refuse = true;
+    },
+  };
 }
 
-const resize = (): void => resizeCallback?.();
-
 describe('keepPinnedThroughResize', () => {
-  test('a transcript at its end is put back at its end when its box shrinks', () => {
-    const { transcript, state, rest, asked } = transcriptOf({
-      scrollHeight: 1000,
-      clientHeight: 400,
-      scrollTop: 600,
-    });
-    keepPinnedThroughResize(transcript, rest);
-    // A notice grows the composer: the box is 80 pixels shorter and nothing scrolls.
-    state.clientHeight = 320;
-    resize();
-    expect(state.scrollTop).toBe(680);
-    // The same transcript shrinks again (a keyboard): it rests at its end again.
-    state.clientHeight = 120;
-    resize();
-    expect(state.scrollTop).toBe(880);
-    expect(asked).toEqual([false, false]);
-  });
-
-  test('a transcript that fit and no longer does is asked to rest from its start', () => {
-    const { transcript, state, rest, asked } = transcriptOf({
-      scrollHeight: 380,
-      clientHeight: 400,
-      scrollTop: 0,
-    });
-    keepPinnedThroughResize(transcript, rest);
-    state.clientHeight = 300;
-    state.startSide = 20;
-    resize();
-    expect(state.scrollTop).toBe(20);
-    state.clientHeight = 250;
-    state.startSide = 70;
-    resize();
-    expect(state.scrollTop).toBe(70);
-    expect(asked).toEqual([true, true]);
-  });
-
-  test("the pin's own scroll, heard after the box shrank again, does not end the rest", () => {
-    const { transcript, state, rest } = transcriptOf({
-      scrollHeight: 1000,
-      clientHeight: 400,
-      scrollTop: 600,
-    });
-    keepPinnedThroughResize(transcript, rest);
-    state.clientHeight = 320;
-    resize();
-    expect(state.scrollTop).toBe(680);
-    state.clientHeight = 200;
-    transcript.dispatchEvent(new Event('scroll'));
-    resize();
-    expect(state.scrollTop).toBe(800);
-  });
-
-  test('a box that grows back is followed from the start in both directions', () => {
-    const { transcript, state, rest } = transcriptOf({
-      scrollHeight: 380,
-      clientHeight: 400,
-      scrollTop: 0,
-    });
-    keepPinnedThroughResize(transcript, rest);
-    state.clientHeight = 300;
-    state.startSide = 20;
-    resize();
-    expect(state.scrollTop).toBe(20);
-    state.clientHeight = 340;
-    state.startSide = 0;
-    resize();
+  test('a row that grows after the last rest is rested again, with no change to the box', () => {
+    const { row, state } = transcriptOf({ rowsEnd: 240, clientHeight: 400 });
+    // A panel in the row sizes itself after it loads: nothing arrived, and no box but the row's changed.
+    state.rowsEnd = 520;
+    changed(row);
+    expect(state.scrollTop).toBe(120);
+    // And shrinks again (a section folds): the transcript rests from its start once more.
+    state.rowsEnd = 300;
+    changed(row);
     expect(state.scrollTop).toBe(0);
+  });
+
+  test('the same rows in the same box rest in one place, whichever settled first', () => {
+    // The rows settle, then the box shrinks.
+    const first = transcriptOf({ rowsEnd: 240, clientHeight: 400 });
+    first.state.rowsEnd = 520;
+    changed(first.row);
+    first.state.clientHeight = 300;
+    changed(first.transcript);
+    // The box shrinks while the rows are still settling, and they settle after.
+    const second = transcriptOf({ rowsEnd: 240, clientHeight: 400 });
+    second.state.clientHeight = 300;
+    changed(second.transcript);
+    second.state.rowsEnd = 520;
+    changed(second.row);
+    // The rows were there in full before anything looked.
+    const third = transcriptOf({ rowsEnd: 520, clientHeight: 300 });
+    changed(third.transcript);
+    expect(first.state.scrollTop).toBe(220);
+    expect(second.state.scrollTop).toBe(220);
+    expect(third.state.scrollTop).toBe(220);
+  });
+
+  test('a transcript that overflowed for a moment and then fits rests as one that always fitted', () => {
+    // The phone layout's new element: its box is tall for a few frames while the header and the
+    // composer land, and its rows are in before or after that.
+    const before = transcriptOf({ rowsEnd: 526, clientHeight: 689 });
+    changed(before.transcript);
+    before.state.clientHeight = 581;
+    changed(before.transcript);
+    const after = transcriptOf({ rowsEnd: 0, clientHeight: 581 });
+    after.state.rowsEnd = 526;
+    changed(after.row);
+    // 587 held in 581: the rows fit the reading box, so it shows from its start either way.
+    expect(before.state.scrollTop).toBe(0);
+    expect(after.state.scrollTop).toBe(0);
+  });
+
+  test("a rest's own scroll, heard after the layout changed again, does not end the rest", () => {
+    const { transcript, row, state } = transcriptOf({ rowsEnd: 520, clientHeight: 400 });
+    changed(transcript);
+    expect(state.scrollTop).toBe(120);
     state.clientHeight = 300;
-    state.startSide = 20;
-    resize();
-    expect(state.scrollTop).toBe(20);
-  });
-
-  test('a box that grows pulls a transcript at its end back with it', () => {
-    const { transcript, state, rest, asked } = transcriptOf({
-      scrollHeight: 1000,
-      clientHeight: 400,
-      scrollTop: 600,
-    });
-    keepPinnedThroughResize(transcript, rest);
-    // The browser clamps the position to the new end.
-    state.clientHeight = 500;
-    state.scrollTop = 500;
-    resize();
-    expect(asked).toEqual([false]);
-    expect(state.scrollTop).toBe(500);
-  });
-
-  test('a clamp does not turn a rest from the start into a rest at the end', () => {
-    const { transcript, state, rest, asked } = transcriptOf({
-      scrollHeight: 364,
-      clientHeight: 400,
-      scrollTop: 0,
-    });
-    keepPinnedThroughResize(transcript, rest);
-    state.clientHeight = 287;
-    state.startSide = 48;
-    resize();
-    expect(state.scrollTop).toBe(48);
-    state.clientHeight = 334;
-    state.scrollTop = 30;
-    state.startSide = 1;
-    resize();
-    expect(asked.at(-1)).toBe(true);
-    expect(state.scrollTop).toBe(1);
-  });
-
-  test('a clamp heard as a scroll first keeps the rest from the start too', () => {
-    const { transcript, state, rest, asked } = transcriptOf({
-      scrollHeight: 364,
-      clientHeight: 400,
-      scrollTop: 0,
-    });
-    keepPinnedThroughResize(transcript, rest);
-    state.clientHeight = 287;
-    state.startSide = 48;
-    resize();
-    state.clientHeight = 334;
-    state.scrollTop = 30;
     transcript.dispatchEvent(new Event('scroll'));
-    state.startSide = 1;
-    resize();
-    expect(asked.at(-1)).toBe(true);
-    expect(state.scrollTop).toBe(1);
-  });
-
-  test('a person who scrolled up is not moved when the box shrinks', () => {
-    const { transcript, state, rest } = transcriptOf({
-      scrollHeight: 1000,
-      clientHeight: 400,
-      scrollTop: 600,
-    });
-    keepPinnedThroughResize(transcript, rest);
-    state.scrollTop = 480;
+    changed(transcript);
+    expect(state.scrollTop).toBe(220);
+    state.rowsEnd = 560;
     transcript.dispatchEvent(new Event('scroll'));
-    state.clientHeight = 320;
-    resize();
-    expect(state.scrollTop).toBe(480);
-    // Nor on a later shrink.
-    state.clientHeight = 300;
-    resize();
-    expect(state.scrollTop).toBe(480);
+    changed(row);
+    expect(state.scrollTop).toBe(260);
   });
 
-  test('a person who scrolled up from a rest at the start is not moved', () => {
-    const { transcript, state, rest, asked } = transcriptOf({
-      scrollHeight: 364,
-      clientHeight: 400,
-      scrollTop: 0,
-    });
-    keepPinnedThroughResize(transcript, rest);
-    state.clientHeight = 287;
-    state.startSide = 48;
-    resize();
-    state.scrollTop = 10;
-    transcript.dispatchEvent(new Event('scroll'));
-    state.clientHeight = 250;
-    state.startSide = 85;
-    resize();
-    expect(state.scrollTop).toBe(10);
-    expect(asked).toHaveLength(1);
-  });
-
-  test('a person who scrolled up and came back to the end is followed again', () => {
-    const { transcript, state, rest, asked } = transcriptOf({
-      scrollHeight: 1000,
-      clientHeight: 400,
-      scrollTop: 600,
-    });
-    keepPinnedThroughResize(transcript, rest);
-    state.scrollTop = 300;
-    transcript.dispatchEvent(new Event('scroll'));
-    state.scrollTop = 600;
-    transcript.dispatchEvent(new Event('scroll'));
-    state.clientHeight = 320;
-    resize();
-    expect(state.scrollTop).toBe(680);
-    expect(asked.at(-1)).toBe(false);
-  });
-
-  test('a transcript resting from its start that is taken to its true end rests there from then on', () => {
-    const { transcript, state, rest, asked } = transcriptOf({
-      scrollHeight: 364,
-      clientHeight: 400,
-      scrollTop: 0,
-    });
-    keepPinnedThroughResize(transcript, rest);
-    state.clientHeight = 287;
-    state.startSide = 48;
-    resize();
-    state.scrollTop = 77;
-    transcript.dispatchEvent(new Event('scroll'));
-    state.clientHeight = 250;
-    resize();
-    expect(asked.at(-1)).toBe(false);
-    expect(state.scrollTop).toBe(114);
-  });
-
-  test('the page saying it rested the transcript at its end is believed without a scroll', () => {
-    const { transcript, state, rest, asked } = transcriptOf({
-      scrollHeight: 364,
-      clientHeight: 400,
-      scrollTop: 0,
-    });
-    const kept = keepPinnedThroughResize(transcript, rest);
-    state.clientHeight = 287;
-    state.startSide = 48;
-    resize();
-    state.scrollTop = 77;
-    kept.rested(false);
-    expect(kept.restsUnchangedFromStart()).toBe(false);
-    state.clientHeight = 250;
-    resize();
-    expect(asked.at(-1)).toBe(false);
-    expect(state.scrollTop).toBe(114);
-  });
-
-  test('the page resting a transcript that fits at its end keeps it resting from its start', () => {
-    const { transcript, state, rest, asked } = transcriptOf({
-      scrollHeight: 380,
-      clientHeight: 400,
-      scrollTop: 0,
-    });
-    const kept = keepPinnedThroughResize(transcript, rest);
-    kept.rested(false);
-    expect(kept.restsUnchangedFromStart()).toBe(true);
-    state.clientHeight = 300;
-    state.startSide = 20;
-    resize();
-    expect(asked).toEqual([true]);
-  });
-
-  test('a rest from the start that the page made is recorded: its scroll does not end the rest', () => {
-    const { transcript, state, rest, asked } = transcriptOf({
-      scrollHeight: 364,
-      clientHeight: 400,
-      scrollTop: 0,
-    });
-    const kept = keepPinnedThroughResize(transcript, rest);
-    state.clientHeight = 287;
-    state.startSide = 48;
-    resize();
-    // The page rests it from its start again, outside a resize, and the scroll is heard after.
-    state.scrollTop = 60;
-    kept.rested(true);
-    transcript.dispatchEvent(new Event('scroll'));
-    expect(kept.restsUnchangedFromStart()).toBe(true);
-    state.clientHeight = 250;
-    state.startSide = 85;
-    resize();
-    expect(asked.at(-1)).toBe(true);
-    expect(state.scrollTop).toBe(85);
-  });
-
-  test('a transcript that holds more than when it rested is not unchanged', () => {
-    const { transcript, state, rest } = transcriptOf({
-      scrollHeight: 364,
-      clientHeight: 400,
-      scrollTop: 0,
-    });
-    const kept = keepPinnedThroughResize(transcript, rest);
-    state.clientHeight = 287;
-    state.startSide = 48;
-    resize();
-    expect(kept.restsUnchangedFromStart()).toBe(true);
-    // A streamed chunk, an outcome row: more to hold, nothing scrolled.
-    state.scrollHeight = 404;
-    expect(kept.restsUnchangedFromStart()).toBe(false);
-    state.scrollHeight = 364;
-    expect(kept.restsUnchangedFromStart()).toBe(true);
-    // Moved from where it was left, with the scroll not heard yet.
-    state.scrollTop = 20;
-    expect(kept.restsUnchangedFromStart()).toBe(false);
-  });
-
-  test('the page can refuse the move, and is asked again at the next change', () => {
-    const { transcript, state } = transcriptOf({
-      scrollHeight: 1000,
-      clientHeight: 400,
-      scrollTop: 600,
-    });
-    let counted = 0;
-    keepPinnedThroughResize(transcript, () => {
-      counted += 1;
-    });
-    state.clientHeight = 320;
-    resize();
-    state.clientHeight = 300;
-    resize();
-    expect(counted).toBe(2);
-    expect(state.scrollTop).toBe(600);
-  });
-
-  test('a transcript with no layout yet is followed, and rests at its end once it has one', () => {
-    const { transcript, state, rest, asked } = transcriptOf({
-      scrollHeight: 0,
-      clientHeight: 0,
-      scrollTop: 0,
-    });
-    keepPinnedThroughResize(transcript, rest);
-    state.scrollHeight = 1000;
+  test('a box that grows back is followed in both directions', () => {
+    const { transcript, state } = transcriptOf({ rowsEnd: 520, clientHeight: 300 });
+    changed(transcript);
+    expect(state.scrollTop).toBe(220);
     state.clientHeight = 400;
-    resize();
-    expect(asked).toEqual([false]);
-    expect(state.scrollTop).toBe(600);
+    changed(transcript);
+    expect(state.scrollTop).toBe(120);
+    state.clientHeight = 300;
+    changed(transcript);
+    expect(state.scrollTop).toBe(220);
   });
 
-  test('something that takes the transcript back toward its start in the frame of a resize is not undone', () => {
-    const { transcript, state, rest, asked } = transcriptOf({
-      scrollHeight: 1000,
+  test('a box that grows pulls the transcript back with it, and that is no one taking it', () => {
+    const { transcript, state } = transcriptOf({ rowsEnd: 320, clientHeight: 300 });
+    changed(transcript);
+    expect(state.scrollTop).toBe(20);
+    // The box grows to 375: all there is to scroll is 5, and the browser pulls the transcript back.
+    state.clientHeight = 375;
+    state.scrollTop = 5;
+    changed(transcript);
+    expect(state.scrollTop).toBe(0);
+    // Heard as a scroll first, it is the same.
+    state.clientHeight = 300;
+    changed(transcript);
+    expect(state.scrollTop).toBe(20);
+    state.clientHeight = 375;
+    state.scrollTop = 5;
+    transcript.dispatchEvent(new Event('scroll'));
+    changed(transcript);
+    expect(state.scrollTop).toBe(0);
+  });
+
+  test('the browser holding the end of the content in place is no one taking the transcript', () => {
+    const { transcript, row, state, asked } = transcriptOf({ rowsEnd: 520, clientHeight: 400 });
+    changed(transcript);
+    expect(state.scrollTop).toBe(120);
+    // A row grows by 40 and the browser moves the transcript by the same 40, in one layout.
+    state.rowsEnd = 560;
+    state.scrollTop = 160;
+    transcript.dispatchEvent(new Event('scroll'));
+    state.clientHeight = 380;
+    changed(transcript);
+    expect(state.scrollTop).toBe(180);
+    // A row shrinks by 30 and the browser moves the transcript back by 30, heard only after.
+    const before = asked();
+    state.rowsEnd = 530;
+    state.scrollTop = 150;
+    changed(row);
+    expect(asked()).toBe(before + 1);
+    expect(state.scrollTop).toBe(150);
+  });
+
+  test('a person who scrolled up is not moved, by the box or by a row', () => {
+    const { transcript, row, state, scrolledTo, asked } = transcriptOf({
+      rowsEnd: 1000,
       clientHeight: 400,
-      scrollTop: 600,
     });
-    keepPinnedThroughResize(transcript, rest);
-    // The attention lift, say: moved, with its scroll not heard yet, as the box shrinks.
+    changed(transcript);
+    expect(state.scrollTop).toBe(600);
+    const before = asked();
+    scrolledTo(480);
+    state.clientHeight = 320;
+    changed(transcript);
+    state.rowsEnd = 1100;
+    changed(row);
+    expect(state.scrollTop).toBe(480);
+    expect(asked()).toBe(before);
+  });
+
+  test('a person who came back to where the transcript rests is followed again', () => {
+    const { transcript, state, scrolledTo } = transcriptOf({ rowsEnd: 1000, clientHeight: 400 });
+    changed(transcript);
+    scrolledTo(300);
+    scrolledTo(600);
+    state.clientHeight = 320;
+    changed(transcript);
+    expect(state.scrollTop).toBe(680);
+  });
+
+  test('a transcript at its true end is still followed, and rests where the layout says at the next change', () => {
+    // Whether a placement, Jump to latest or the person put it there, and whether its scroll is
+    // heard before the layout changes or after: nothing is remembered but that nobody took it away.
+    for (const heardFirst of [true, false]) {
+      const { transcript, row, state } = transcriptOf({ rowsEnd: 1000, clientHeight: 400 });
+      changed(transcript);
+      expect(state.scrollTop).toBe(600);
+      // The end of the scrollable area, 60 further.
+      state.scrollTop = 660;
+      if (heardFirst) transcript.dispatchEvent(new Event('scroll'));
+      state.rowsEnd = 1100;
+      changed(row);
+      if (!heardFirst) transcript.dispatchEvent(new Event('scroll'));
+      expect(state.scrollTop).toBe(700);
+      state.clientHeight = 320;
+      changed(transcript);
+      expect(state.scrollTop).toBe(780);
+    }
+  });
+
+  test('something that takes the transcript back toward its start in the frame of a change is not undone', () => {
+    const { transcript, state, asked } = transcriptOf({ rowsEnd: 1000, clientHeight: 400 });
+    changed(transcript);
+    const before = asked();
+    // A lift of a waiting item's top into view, in this frame; its scroll is not heard yet.
     state.scrollTop = 450;
     state.clientHeight = 320;
-    resize();
+    changed(transcript);
     expect(state.scrollTop).toBe(450);
-    expect(asked).toEqual([]);
+    expect(asked()).toBe(before);
   });
 
-  // The sequence the capture logged for "reply failed partway", at the phone layout.
-  test('the logged sequence of reply failed partway ends with the last row at the end of the reading box', () => {
-    // A new element that overflows by 73 for a moment, then fits.
-    const { transcript, state, rest, asked } = transcriptOf({
-      scrollHeight: 762,
-      clientHeight: 689,
-      scrollTop: 0,
+  test('a transcript with no layout yet rests once it has one', () => {
+    const { transcript, state } = transcriptOf({ rowsEnd: 0, clientHeight: 0 });
+    state.endSpace = 0;
+    state.rowsEnd = 1000;
+    state.endSpace = 60;
+    state.clientHeight = 400;
+    changed(transcript);
+    expect(state.scrollTop).toBe(600);
+  });
+
+  test('the page can refuse the rest, and is asked again at the next change', () => {
+    const { transcript, row, state, asked, refuseRests } = transcriptOf({
+      rowsEnd: 1000,
+      clientHeight: 400,
     });
-    const kept = keepPinnedThroughResize(transcript, rest);
-    expect(kept.restsUnchangedFromStart()).toBe(false);
-    state.scrollHeight = 689;
-    resize();
-    expect(kept.restsUnchangedFromStart()).toBe(true);
-    // 375 wide: 587 in 581, the rows fit.
-    state.scrollHeight = 587;
-    state.clientHeight = 581;
-    state.startSide = 0;
-    resize();
-    expect(state.scrollTop).toBe(0);
-    // 320 wide, the box still 581.
-    state.scrollHeight = 633;
-    state.startSide = 23;
-    resize();
-    expect(state.scrollTop).toBe(23);
-    // The box is 409 tall now, and the pin's own scroll is heard.
-    state.scrollHeight = 629;
-    state.clientHeight = 409;
-    transcript.dispatchEvent(new Event('scroll'));
-    state.startSide = 192;
-    resize();
-    expect(state.scrollTop).toBe(192);
-    // The window grows by 24 and goes back.
-    state.clientHeight = 433;
-    state.startSide = 168;
-    resize();
-    expect(state.scrollTop).toBe(168);
-    state.clientHeight = 409;
-    state.startSide = 192;
-    resize();
-    expect(state.scrollTop).toBe(192);
-    expect(asked.every((fromStart) => fromStart)).toBe(true);
+    changed(transcript);
+    refuseRests();
+    const before = asked();
+    state.clientHeight = 320;
+    changed(transcript);
+    state.rowsEnd = 1100;
+    changed(row);
+    expect(asked()).toBe(before + 2);
+    expect(state.scrollTop).toBe(600);
+  });
+
+  test('a row that is added is watched, and one that is taken away is looked at', async () => {
+    const { transcript, row, state } = transcriptOf({ rowsEnd: 520, clientHeight: 400 });
+    changed(transcript);
+    expect(state.scrollTop).toBe(120);
+    // A typing line appears after the rows: a new child, which then grows.
+    const added = document.createElement('div');
+    added.getBoundingClientRect = () =>
+      ({ top: 520 - state.scrollTop, bottom: 580 - state.scrollTop, height: 60 }) as DOMRect;
+    row.after(added);
+    await rowsHeard();
+    state.endSpace = 120;
+    changed(added);
+    expect(state.scrollTop).toBe(180);
+    // It is taken away: no box that is watched changes, and the transcript is rested again.
+    added.remove();
+    state.endSpace = 60;
+    await rowsHeard();
+    expect(state.scrollTop).toBe(120);
   });
 
   test('stops looking once stop is called, and needs no ResizeObserver', () => {
-    const { transcript, state, rest, asked } = transcriptOf({
-      scrollHeight: 1000,
+    const { transcript, row, state, kept, asked } = transcriptOf({
+      rowsEnd: 520,
       clientHeight: 400,
-      scrollTop: 600,
     });
-    keepPinnedThroughResize(transcript, rest).stop();
-    state.clientHeight = 320;
+    kept.stop();
+    state.clientHeight = 300;
+    changed(transcript);
+    changed(row);
     transcript.dispatchEvent(new Event('scroll'));
-    expect(asked).toEqual([]);
+    expect(asked()).toBe(0);
 
     const resizes = globalThis.ResizeObserver;
     // @ts-expect-error A host with no ResizeObserver: nothing is watched, nothing is thrown.
     globalThis.ResizeObserver = undefined;
     try {
-      expect(() => keepPinnedThroughResize(transcript, rest).stop()).not.toThrow();
+      const none = keepPinnedThroughResize(transcript, () => {});
+      expect(() => none.stop()).not.toThrow();
     } finally {
       globalThis.ResizeObserver = resizes;
     }

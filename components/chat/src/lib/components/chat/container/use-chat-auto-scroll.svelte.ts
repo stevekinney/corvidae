@@ -1,5 +1,6 @@
 import { tick, untrack } from 'svelte';
 import type { Message } from '../conversation-model.ts';
+import { approvalPlacementHeld } from './chat-approval-review.ts';
 import { commandFailureHeld } from './command-failure-reveal.ts';
 import {
   keepPinnedThroughResize,
@@ -38,13 +39,19 @@ export interface UseChatAutoScrollOptions {
    * Whether a row resting at the end of the reading box is clear of the transcript's end fade:
    * true where the fade is a mask (the stylesheet keeps the fade's size clear) or nothing fades,
    * false where an overlay fades the end with no room kept clear (the default surface with
-   * `scrollFadeVisible`).
+   * `scrollFadeVisible`), where the transcript rests at its true end.
    */
   getStartSideRestAllowed: () => boolean;
 }
 
 export interface UseChatAutoScrollReturn {
   resetPrependSuppression(): void;
+  /**
+   * Where `viewport` rests now: the smallest scroll that clears its last row, or its true end where
+   * it cannot rest from its start. Jump to latest lands here, so it rests where every other rest
+   * does and a reply that streams after it moves the transcript on and never back.
+   */
+  restingTop(viewport: HTMLElement): number;
 }
 
 type TranscriptGrowth = {
@@ -111,9 +118,12 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions): UseChatAut
     virtualizer.scrollToOffset(virtualizer.scrollSize, { behavior: 'instant' });
   };
 
-  // Rests the transcript: at its true end, or, for one that rests from its start, at the smallest
-  // scroll that clears its last row. Every programmatic rest goes through here and is recorded.
-  const applyBottomCorrection = (fromStart = false): void => {
+  // Rests the transcript where the layout as it is now says it rests: from its start, at the
+  // smallest scroll that clears its last row, or at its true end where it cannot rest from its
+  // start (an overlay fades the end, the transcript is virtualized, no row is laid out). A message
+  // that arrives and a layout that changes both come here, so the same rows in the same box rest
+  // in the same place whichever came first, and every rest is recorded.
+  const applyBottomCorrection = (): void => {
     const viewport = options.getViewport();
     if (!viewport) return;
     if (
@@ -127,20 +137,21 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions): UseChatAut
       return;
     }
     if (options.getScrollState().isUserScrolling) return;
+    // A waiting approval's arrival placement rests the transcript by its own rule.
+    if (approvalPlacementHeld(viewport)) return;
     if (options.getIsVirtualized()) {
       correctVirtualizedViewport(viewport);
-      pin?.rested(false);
+      pin?.rested();
       return;
     }
-    const top = fromStart && options.getStartSideRestAllowed() ? startSideRest(viewport) : null;
-    if (top !== null) {
-      viewport.scrollTo({ top, behavior: 'instant' });
-      pin?.rested(true);
-      return;
-    }
-    viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'instant' });
-    pin?.rested(false);
+    viewport.scrollTo({ top: restingTop(viewport), behavior: 'instant' });
+    pin?.rested();
   };
+
+  const restingTop = (viewport: HTMLElement): number =>
+    (!options.getIsVirtualized() && options.getStartSideRestAllowed()
+      ? startSideRest(viewport)
+      : null) ?? viewport.scrollHeight;
 
   const scheduleBottomCorrection = (isTranscriptAppend: boolean): (() => void) => {
     let cancelled = false;
@@ -149,9 +160,7 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions): UseChatAut
       : tick();
     void waitForBottomTarget.then(() => {
       if (cancelled) return undefined;
-      // Anything that arrived takes the transcript to its true end. With nothing new (the same
-      // thread read again, the transcript drawn again), it is rested again where it already rests.
-      applyBottomCorrection(pin?.restsUnchangedFromStart() ?? false);
+      applyBottomCorrection();
       return undefined;
     });
     return () => {
@@ -217,17 +226,22 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions): UseChatAut
     return undefined;
   });
 
-  // Where the transcript rests when its own box changes size with no message arriving: a notice that
-  // grows the composer, a keyboard, a smaller window. Only a new message rested it before.
+  // The transcript is rested again whenever its layout changes with no message arriving: its own
+  // box (a notice that grows the composer, a keyboard, a smaller window) or the box of any row (a
+  // panel that sizes itself after it loads, highlighted code, a font, an image).
   $effect(() => {
     const viewport = options.getViewport();
     if (!viewport) return undefined;
-    const kept = keepPinnedThroughResize(viewport, (fromStart) => {
+    const kept = keepPinnedThroughResize(viewport, () => {
       // An empty or welcome transcript has no last row to rest on: it is never moved.
       if (options.getMessages().length === 0) return;
+      // Earlier messages were put before a transcript that was not at its end: the rows that
+      // changed are the ones a person is reading, and their place is kept, as a message's own
+      // correction keeps it.
+      if (prependSuppressed) return;
       // A refusal being kept in view rests the transcript itself (`commandFailureHeld`).
       if (commandFailureHeld(viewport)) return;
-      applyBottomCorrection(fromStart);
+      applyBottomCorrection();
     });
     pin = kept;
     return () => {
@@ -236,5 +250,5 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions): UseChatAut
     };
   });
 
-  return { resetPrependSuppression };
+  return { resetPrependSuppression, restingTop };
 }

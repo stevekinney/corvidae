@@ -73,6 +73,7 @@
     approvalPlacementShift,
     approvalRowVisible,
     focusPendingApproval,
+    holdApprovalPlacement,
     PENDING_APPROVAL_CARD_SELECTOR,
     pendingApprovalCard,
     withLapsedApprovals,
@@ -1452,10 +1453,16 @@
       return;
     }
 
-    scrollState.jumpToLatest(viewport, () => {
-      unreadState.markAllAsRead();
-      onJumpToLatest?.();
-    });
+    scrollState.jumpToLatest(
+      viewport,
+      () => {
+        unreadState.markAllAsRead();
+        onJumpToLatest?.();
+      },
+      // The jump rests where every other rest does (`useChatAutoScroll`), so a reply that streams
+      // after it moves the transcript on, never back.
+      () => (viewport === null ? 0 : autoScroll.restingTop(viewport)),
+    );
   }
 
   /**
@@ -1866,11 +1873,23 @@
   // The placement runs again whenever the transcript, the card or the fonts change its layout,
   // until a pass moves nothing, and never on a timer; it stops when the person scrolls, wheels,
   // touches or presses a key there, or when focus is inside the card.
+  //
+  // While it has a card to place, it holds the transcript (`holdApprovalPlacement`): it is the one
+  // thing that rests it, and the pin to the last row (`useChatAutoScroll`) stands aside, so the
+  // card is never carried past its place and brought back from the other side.
   $effect(() => {
     const scroller = viewport;
     const messageId = approvalWait.messageId;
     approvalArrivalSettled = false;
     if (scroller === null || !approvalWaiting || messageId === undefined) return undefined;
+    let letGo: (() => void) | undefined = holdApprovalPlacement(scroller);
+    const hold = (): void => {
+      letGo ??= holdApprovalPlacement(scroller);
+    };
+    const unhold = (): void => {
+      letGo?.();
+      letGo = undefined;
+    };
     let released = false;
     let frame = 0;
     let observedCard: HTMLElement | null = null;
@@ -1885,8 +1904,12 @@
       const card = pendingApprovalCard(containerRef, messageId);
       const actionRow = card === null ? null : approvalActionRow(card);
       // Nothing drawn to place (a row not yet mounted, or a card with no decision row): the
-      // reminder follows what is in view.
-      if (card === null || actionRow === null) return settled();
+      // reminder follows what is in view, and the transcript's own pin rests it meanwhile.
+      if (card === null || actionRow === null) {
+        unhold();
+        return settled();
+      }
+      hold();
       if (card !== observedCard) {
         if (observedCard !== null) resizes?.unobserve(observedCard);
         observedCard = card;
@@ -1903,10 +1926,9 @@
       // A layout not yet measured (zero-sized boxes) says nothing about where the card stands, so
       // the reminder stays available; the resize that measures it places the card.
       if (cardBox.height <= 0 || viewportBox.bottom - viewportBox.top <= 0) return settled();
-      // A card that fits rests at the end the transcript pins itself to, so the pin and this
-      // placement agree on one position whichever runs last. The card and the row that labels it
-      // are one unit, and the box starts below the header overlay, so the end is chosen only while
-      // the unit's top still clears the overlay there.
+      // The card and the row that labels it are one unit, and the box starts below the header
+      // overlay. A unit that fits rests in one place from wherever the transcript stood: its top on
+      // the header's line, or the transcript's end where that comes first (`approvalPlacementShift`).
       const shift = approvalPlacementShift(scroller, card) ?? 0;
       if (shift === 0) {
         movedFrom = undefined;
@@ -1928,6 +1950,7 @@
     };
     const release = (): void => {
       released = true;
+      unhold();
       settled();
     };
     const inputs = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
@@ -1946,6 +1969,7 @@
     schedule();
     return () => {
       disposed = true;
+      unhold();
       if (frame !== 0) cancelAnimationFrame(frame);
       resizes?.disconnect();
       changes.disconnect();
@@ -3562,10 +3586,9 @@
    * background behind it, whatever that is. An edge fades only while there is content past it (the
    * `data-cinder-overflows` attributes `overflowFadeEdges` sets), so a transcript at its end never
    * dims its last message (COR-2327). Short of its true end the fade is drawn, so the transcript
-   * rests with its last row above it: a new message pins it to its true end, and `useChatAutoScroll`
-   * rests it again when its box changes size with no message (a notice in the composer, a
-   * keyboard, a smaller window), at its true end or, for a conversation that showed from its
-   * start, at the smallest scroll that clears the last row. */
+   * rests with its last row above it: `useChatAutoScroll` rests it at the smallest scroll that
+   * clears the last row, when a message arrives and whenever its box or a row changes size (a
+   * notice in the composer, a keyboard, a smaller window, a panel that sizes itself late). */
   .chat-timeline-mask-fade {
     --_chat-timeline-fade-size: var(--cinder-space-6);
     --_chat-timeline-clear-end: var(--_chat-timeline-fade-size);

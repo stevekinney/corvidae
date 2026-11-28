@@ -166,3 +166,26 @@ describe('placing the approval again when the header grows', () => {
     expect(approvalPlacementShift(transcript, card)).toBe(0);
   });
 });
+
+describe('createApprovalPlacement, holding the transcript', () => {
+  test('holds the transcript from its first placement until the person scrolls it', () => {
+    const transcript = document.createElement('div');
+    document.body.append(transcript);
+    const said: string[] = [];
+    const placement = createApprovalPlacement(
+      () => {},
+      () => {
+        said.push('hold');
+        return () => said.push('let go');
+      },
+    );
+    placement.placed(transcript);
+    placement.placed(transcript);
+    expect(said).toEqual(['hold']);
+    transcript.dispatchEvent(new window.Event('wheel'));
+    expect(said).toEqual(['hold', 'let go']);
+    placement.release();
+    expect(said).toEqual(['hold', 'let go']);
+    transcript.remove();
+  });
+});

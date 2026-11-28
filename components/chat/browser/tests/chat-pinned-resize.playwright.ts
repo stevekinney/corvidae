@@ -4,14 +4,14 @@ import { fixtureRoute } from '@lostgradient/testing/playwright/overlay-fixture';
 import { expect, test, type Page } from '@playwright/test';
 
 /**
- * COR-2725: where a transcript rests when its box changes size with no message arriving. Two rests:
- *
- * - A transcript that showed from its start (everything it held fitted its box) rests with its last
- *   row at the end of its reading box (its box less `scroll-padding-block-end`, where the fade at its
- *   end begins), at the smallest scroll that clears the row, and never at its true end, which would
- *   push the start of a short conversation out of view and leave a band above the composer. An empty
- *   welcome is never scrolled.
- * - A transcript scrolled to its end rests at its true end (`scrollTop` at its maximum).
+ * COR-2725: where a transcript rests, whatever order its rows, its box and what it holds arrived in.
+ * One rule, read from the layout as it is now: from its start, at the smallest scroll that puts the
+ * end of its last row at the end of its reading box (its box less `scroll-padding-block-end`, where
+ * the fade at its end begins), and 0 when the rows fit. The true end, with the clear space after the
+ * last row, would push the start of a short conversation out of view. A transcript scrolled to its
+ * true end is still followed, and rests there too at the next change. An empty welcome is never
+ * scrolled. The default surface, whose fade is an overlay with no room kept clear, rests at its true
+ * end.
  *
  * The `fits` cases draw the route's own sequence (Interborough chat states, "tool-only turn
  * reconnecting" at 320 by 640), on the surface Interborough draws: a turn that only called tools is
@@ -21,21 +21,22 @@ import { expect, test, type Page } from '@playwright/test';
  * drawn, which shrinks the content as the box shrinks, so the fixture's notice is a plain one. The
  * browser does not anchor a scroll position of 0, so only the box changing size can say the end
  * moved. A separate case keeps the default surface (an overlay fade, no room kept clear) at its
- * true end. The window made smaller
- * (375 to 320 wide) is the same sequence with the content growing instead. The `long` cases, a
- * transcript that overflows and is scrolled to its end, are controls: the browser's own scroll
- * anchoring holds those at the end, and the cases say it keeps doing so.
+ * true end. The window made smaller (375 to 320 wide) is the same sequence with the content growing
+ * instead. The `settles` cases are a row that grows after the last rest with no message and no change
+ * to the box (a panel that sizes itself after it loads), and the same rows in the same box reached
+ * four ways: they rest in one place whichever came first.
  *
  * A person who had scrolled up is the negative control: they are not moved.
  *
- * The fixture is `fixtures/chat.svelte` behind `?pinnedResize=fits`, `long` or `empty`.
+ * The fixture is `fixtures/chat.svelte` behind `?pinnedResize=fits`, `long`, `empty` or `settles`.
  *
  * Run: `bun run --cwd components/chat test:browser --grep "pinned transcript"`
  */
 async function open(
   page: Page,
-  mode: 'fits' | 'long' | 'empty',
+  mode: 'fits' | 'long' | 'empty' | 'settles',
   surface: 'transparent' | 'default' = 'transparent',
+  options: { readonly settled?: boolean; readonly box?: number } = {},
 ): Promise<void> {
   const url = new URL(
     fixtureRoute('chat'),
@@ -44,6 +45,9 @@ async function open(
   url.searchParams.set('pinnedResize', mode);
   // Interborough draws the transparent surface; `default` is Chat's own, whose fade is an overlay.
   if (surface === 'default') url.searchParams.set('surface', 'default');
+  // `settles`: the panel under the rows has its full size from the start, and the chat's height.
+  if (options.settled === true) url.searchParams.set('settled', '1');
+  if (options.box !== undefined) url.searchParams.set('box', String(options.box));
   await page.goto(url.href);
   const chat = page.getByTestId('pinned-resize-chat');
   await expect(chat.locator('.chat-timeline')).toBeVisible();
@@ -205,6 +209,31 @@ async function showNotice(page: Page): Promise<void> {
   await expect(page.getByTestId('pinned-resize-notice-text')).toBeVisible();
 }
 
+/**
+ * The panel under the rows takes its full size: a row grows with no message arriving and no change
+ * to the transcript's box, as a panel does that sizes itself after it loads.
+ */
+async function settlePanel(page: Page): Promise<void> {
+  await page.getByTestId('pinned-resize-settle').click();
+  await expect(page.getByTestId('pinned-resize-panel-end')).toBeVisible();
+}
+
+/** Makes the chat `height` pixels tall: the transcript's box changes and nothing else does. */
+async function setBox(page: Page, height: number): Promise<void> {
+  await page.getByTestId('pinned-resize-chat').evaluate((chat, pixels) => {
+    (chat as HTMLElement).style.height = `${String(pixels)}px`;
+  }, height);
+}
+
+/** The transcript rests from its start with its last row clear: where the rule says, and no further. */
+function expectStartSideRest(now: Painted): void {
+  expect(now.overflow, 'the setup must overflow').toBeGreaterThan(2);
+  expect(now.inFade).toBeLessThanOrEqual(1);
+  expect(now.scrollTop).toBeGreaterThan(0);
+  // Not at its true end: that would push the start of the conversation out of view.
+  expect(now.distanceToEnd).toBeGreaterThanOrEqual(16);
+}
+
 test.describe('a pinned transcript whose box shrinks', () => {
   test.use({ viewport: { width: 320, height: 640 }, colorScheme: 'light' });
 
@@ -283,7 +312,70 @@ test.describe('a pinned transcript whose box shrinks', () => {
     expect(now.scrollTop).toBe(0);
   });
 
-  test('a transcript scrolled to its end, then a reconnect notice takes room from it, rests at its end', async ({
+  test('a panel that sizes itself after the last rest is rested again, with no message and no change to the box', async ({
+    page,
+  }) => {
+    await open(page, 'settles');
+    await sizeBox(page, 2);
+    await settlePanel(page);
+    await settled(page);
+    expectStartSideRest(await painted(page));
+  });
+
+  test('the same rows in the same box rest in one place, whichever arrived first', async ({
+    page,
+  }) => {
+    // The box: 120 pixels shorter than everything the transcript holds once the panel has its size.
+    await open(page, 'settles', 'transparent', { settled: true });
+    const box = await page.getByTestId('pinned-resize-chat').evaluate((chat) => {
+      const timeline = chat.querySelector<HTMLElement>('.chat-timeline');
+      const sentinel = chat.querySelector<HTMLElement>('.chat-bottom-sentinel');
+      if (timeline === null || sentinel === null) throw new Error('The transcript is not drawn.');
+      const padding = Number.parseFloat(getComputedStyle(timeline).paddingBottom);
+      const contentEnd =
+        sentinel.getBoundingClientRect().bottom -
+        timeline.getBoundingClientRect().top +
+        timeline.scrollTop +
+        (Number.isFinite(padding) ? padding : 0);
+      const spare = timeline.clientHeight - contentEnd;
+      return Math.round(chat.getBoundingClientRect().height - spare - 120);
+    });
+    const rests: number[] = [];
+    const rested = async (): Promise<void> => {
+      await settled(page);
+      const now = await painted(page);
+      expectStartSideRest(now);
+      rests.push(now.scrollTop);
+    };
+
+    // The rows and the box are there from the start.
+    await open(page, 'settles', 'transparent', { settled: true, box });
+    await rested();
+
+    // The panel sizes itself after the transcript was first rested, in the same box.
+    await open(page, 'settles', 'transparent', { box });
+    await settled(page);
+    await settlePanel(page);
+    await rested();
+
+    // The box shrinks while the panel has not sized itself, and it sizes itself after.
+    await open(page, 'settles');
+    await setBox(page, box);
+    await settled(page);
+    await settlePanel(page);
+    await rested();
+
+    // The panel sizes itself, and then the box shrinks.
+    await open(page, 'settles');
+    await settlePanel(page);
+    await settled(page);
+    await setBox(page, box);
+    await rested();
+
+    expect(Math.max(...rests) - Math.min(...rests)).toBeLessThanOrEqual(1);
+  });
+
+  test('a transcript scrolled to its end, then a reconnect notice takes room from it, rests with its last row clear', async ({
     page,
   }) => {
     await open(page, 'long');
@@ -292,7 +384,9 @@ test.describe('a pinned transcript whose box shrinks', () => {
     await page.getByTestId('pinned-resize-drop').click();
     await expect(page.locator('.chat-connection-notice')).toBeVisible();
     expect(await composerHeight(page)).toBeGreaterThan(before);
-    await expectRestsAtEnd(page);
+    // Nothing remembers that it was scrolled to its true end: it rests where every transcript does.
+    await settled(page);
+    expectStartSideRest(await painted(page));
   });
 
   test('a person who scrolled up is not moved when the notice appears', async ({ page }) => {
@@ -329,10 +423,13 @@ test.describe('a pinned transcript whose window is made smaller', () => {
     expect(now.scrollTop === 0 || now.distanceToEnd >= 16).toBe(true);
   });
 
-  test('a transcript scrolled to its end at 375 rests at its end at 320', async ({ page }) => {
+  test('a transcript scrolled to its end at 375 rests with its last row clear at 320', async ({
+    page,
+  }) => {
     await open(page, 'long');
     await pinToEnd(page);
     await page.setViewportSize({ width: 320, height: 640 });
-    await expectRestsAtEnd(page);
+    await settled(page);
+    expectStartSideRest(await painted(page));
   });
 });
