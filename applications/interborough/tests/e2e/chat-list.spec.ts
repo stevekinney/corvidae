@@ -475,6 +475,13 @@ test.describe('the chat list at other widths', () => {
       'Request human input, Which environment should the release go to?',
     );
     await expect(row(page, 'Say hello')).toContainText('Assistant, Hello! How can I help?');
+    // The pane opens the first chat beside the list, and its history is read after the rows are
+    // drawn: the frame is the loaded conversation, never the placeholder that stands in for it.
+    const open = page.getByRole('region', { name: 'Open chat' });
+    await expect(open.locator('[data-chat-availability="loading"]')).toHaveCount(0);
+    await expect(
+      open.locator('[data-cinder-tool-call-row]').filter({ hasText: 'Issue refund' }),
+    ).toBeVisible();
     await captureForDesignReview(page, {
       route: '/chats',
       state: 'wide pane',
