@@ -1,7 +1,7 @@
 {
   "issue": "COR-2732",
   "branch": "chef/config-move",
-  "checkedAt": "2f816966d49f370a01b075c07fe814173136a7db",
+  "checkedAt": "ad44a23f834c3fb3e34a45f8a509f787120228ff",
   "briefVersion": "126bf6507d9e",
   "status": "READY",
   "criteria": [
@@ -33,7 +33,7 @@
     {
       "id": "AC6",
       "status": "met-on-branch",
-      "evidence": "lint:root 0, test:self 0, test:self:slow 993 pass 0 fail (at 472b3cae), check-export-runtime-reach 0, focused-checks 8 passed at head"
+      "evidence": "lint:root 0, test:self 0, test:self:slow 993 pass 0 fail at head; connected-apps and api-key-settings test:slow pass, check-export-runtime-reach 0, focused-checks 8 passed at head"
     }
   ]
 }
