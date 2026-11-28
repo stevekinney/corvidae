@@ -195,14 +195,6 @@
   // The comparison needs only this run's id and the server's answer, so it opens the same way after
   // a reload and in a new browser session as it does right after the fork.
   let comparisonOpen = $state(false);
-
-  function goToWorkflow(id: string): void {
-    router.navigate(workflowDetailPath(id));
-  }
-
-  function goToSchedule(scheduleId: string): void {
-    router.navigate(scheduleDetailPath(scheduleId));
-  }
 </script>
 
 {#if scheduleProvenanceQuery.isPending || scheduleProvenanceQuery.data || restartedFrom || forkedFrom}
@@ -215,13 +207,7 @@
         <div class="weft-lineage-panel__row">
           <CalendarClock aria-hidden="true" size={14} />
           <span class="weft-lineage-panel__row-label">Launched by schedule</span>
-          <a
-            href={router.href(scheduleDetailPath(provenance.scheduleId))}
-            onclick={(event) => {
-              event.preventDefault();
-              goToSchedule(provenance.scheduleId);
-            }}
-          >
+          <a href={router.href(scheduleDetailPath(provenance.scheduleId))}>
             {provenance.scheduleId}
           </a>
           {#if provenance.occurrence !== undefined}
@@ -283,13 +269,7 @@
           {#if forkSourceQuery.isPending}
             <Skeleton height="1rem" width="8rem" />
           {:else}
-            <a
-              href={router.href(workflowDetailPath(forkedFrom.workflowId))}
-              onclick={(event) => {
-                event.preventDefault();
-                goToWorkflow(forkedFrom.workflowId);
-              }}
-            >
+            <a href={router.href(workflowDetailPath(forkedFrom.workflowId))}>
               {forkSourceQuery.data?.type ?? `${truncateId(forkedFrom.workflowId)} run`}
             </a>
             <!-- Named by its workflow and when it started; the link and the copy button carry the id. -->

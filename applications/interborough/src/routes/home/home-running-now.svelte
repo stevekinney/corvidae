@@ -18,7 +18,6 @@
   import { router } from '../../lib/router.svelte.ts';
   import { useMinuteClock } from './home-clock.svelte.ts';
   import HomeCard from './home-card.svelte';
-  import { openInApplication } from './home-navigation.ts';
   import { useAgentList, useRecentChats } from './home-queries.svelte.ts';
   import { RUNNING_ROW_LIMIT, runningRows } from './home-rows.ts';
 
@@ -65,7 +64,6 @@
             {
               label: copy.viewRun,
               href: router.href(row.href),
-              onclick: (event) => openInApplication(event, row.href),
             },
           ]}
         >

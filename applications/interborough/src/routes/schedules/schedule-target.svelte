@@ -16,12 +16,11 @@
     schedule: { readonly workflowType: string };
     kind: ScheduleKind;
     /** In a list row, whose own click opens the schedule: a click on the link is the link's alone. */
-    stopPropagation?: boolean;
     /** In the middle of a sentence ("Runs assistant every day"): a workflow does not say which kind it is, and an agent the caller may not read is "an agent". */
     inSentence?: boolean;
   }
 
-  let { schedule, kind, stopPropagation = false, inSentence = false }: Props = $props();
+  let { schedule, kind, inSentence = false }: Props = $props();
 
   const target = $derived.by<{ label: string; path: string | null; identifier: boolean }>(() => {
     switch (kind.kind) {
@@ -50,16 +49,6 @@
       ? SCHEDULE_COPY.kind[kind.kind]
       : null,
   );
-
-  function go(event: MouseEvent, path: string): void {
-    if (!stopPropagation) return;
-    event.stopPropagation();
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 <span class="ib-schedule-target" data-testid="schedule-target">
@@ -68,10 +57,8 @@
   {/if}
   {#if target.path !== null}
     {@const path = target.path}
-    <a
-      class="ib-schedule-target__link"
-      href={router.href(path)}
-      onclick={(event) => go(event, path)}><code class="ib-identifier">{target.label}</code></a
+    <a class="ib-schedule-target__link" href={router.href(path)}
+      ><code class="ib-identifier">{target.label}</code></a
     >
   {:else if target.identifier}
     <code class="ib-identifier">{target.label}</code>

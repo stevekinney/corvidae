@@ -91,16 +91,8 @@
     return !item.read && item.tier !== 'info';
   }
 
-  /** Where a link at the foot of the panel goes. */
-  function followLink(event: MouseEvent, path: string): void {
-    event.preventDefault();
-    router.navigate(path);
-    open = false;
-  }
-
-  function goTo(item: NotificationItem): void {
+  function markReadAndClose(item: NotificationItem): void {
     store.markRead(item.id);
-    router.navigate(item.href);
     open = false;
   }
 </script>
@@ -159,10 +151,7 @@
           data-tier={item.tier}
           data-kind={item.kind}
           data-read={!isUnread(item)}
-          onclick={(event) => {
-            event.preventDefault();
-            goTo(item);
-          }}
+          onclick={() => markReadAndClose(item)}
         >
           <span class="weft-notification-panel__item-mark">
             {#if isUnread(item)}
@@ -201,12 +190,10 @@
     </div>
 
     <nav class="weft-notification-panel__links" aria-label={NOTIFICATION_COPY.linksLabel}>
-      <a
-        href={router.href(NOTIFICATION_SETTINGS_PATH)}
-        onclick={(event) => followLink(event, NOTIFICATION_SETTINGS_PATH)}
+      <a href={router.href(NOTIFICATION_SETTINGS_PATH)} onclick={() => (open = false)}
         >{NOTIFICATION_COPY.settingsLink}</a
       >
-      <a href={router.href(HOOKS_PATH)} onclick={(event) => followLink(event, HOOKS_PATH)}
+      <a href={router.href(HOOKS_PATH)} onclick={() => (open = false)}
         >{NOTIFICATION_COPY.hooksLink}</a
       >
     </nav>

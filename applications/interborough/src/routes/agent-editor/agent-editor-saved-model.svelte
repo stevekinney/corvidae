@@ -13,7 +13,6 @@
   import { agentTabPath } from '../../lib/agent-paths.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { modelDisplayName, providerDisplayName } from '../settings/models/format-model.ts';
-  import { followInApp } from './agent-editor-links.ts';
   import type { ModelUnavailableReason } from './agent-editor-models.ts';
   import type { AgentEditorState } from './agent-editor-state.svelte.ts';
 
@@ -61,10 +60,7 @@
     </p>
   {/if}
   <p class="weft-agent-saved-model__note">
-    {copy.changeLead}<a
-      href={router.href(settingsPath)}
-      onclick={(event) => followInApp(event, settingsPath)}>{copy.settingsTab}</a
-    >{copy.changeTail}
+    {copy.changeLead}<a href={router.href(settingsPath)}>{copy.settingsTab}</a>{copy.changeTail}
   </p>
   {#if notice !== undefined}
     <Alert variant="warning" data-testid="agent-model-notice">{notice}</Alert>

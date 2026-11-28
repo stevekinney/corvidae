@@ -14,7 +14,6 @@
   import { Link, Section } from '@lostgradient/cinder';
 
   import { router } from '../../lib/router.svelte.ts';
-  import { openInApplication } from './home-navigation.ts';
 
   interface HomeCardProps {
     /** The section's title, a level-two heading. */
@@ -48,10 +47,6 @@
 {#snippet actions()}
   {#if link !== undefined}
     {@const path = link.href}
-    <Link
-      variant="more"
-      href={router.href(path)}
-      onclick={(event: MouseEvent) => openInApplication(event, path)}>{link.label}</Link
-    >
+    <Link variant="more" href={router.href(path)}>{link.label}</Link>
   {/if}
 {/snippet}

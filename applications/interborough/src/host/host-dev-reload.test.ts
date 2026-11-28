@@ -10,7 +10,7 @@ import { startHost, type Host } from './host.ts';
 import {
   NATIVE_DOCUMENT_DIRECTORY,
   openDevelopmentNativeDocuments,
-  openNativeDocuments,
+  openPublishedNativeDocuments,
 } from './native-document-path.ts';
 
 const directories: string[] = [];
@@ -26,18 +26,20 @@ const project = join(import.meta.dir, '../..');
 await mkdir(join(project, '.cache'), { recursive: true });
 const fixtures = await mkdtemp(join(project, '.cache/dev-document-'));
 afterAll(() => rm(fixtures, { recursive: true, force: true }));
-const generation = (async () => {
+const publishedDocuments = (async () => {
   const routes = join(fixtures, 'routes');
   for (const path of ['', 'chats', 'runs/[run]']) {
     const directory = join(routes, path);
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, '+page.svelte'), '<main>Native test document</main>');
   }
-  return buildProduction({
+  const output = join(fixtures, 'output');
+  await buildProduction({
     projectDirectory: project,
     routesDirectory: routes,
-    outputDirectory: join(fixtures, 'output'),
+    outputDirectory: join(output, NATIVE_DOCUMENT_DIRECTORY),
   });
+  return output;
 })();
 
 async function start(development: boolean): Promise<Host> {
@@ -45,7 +47,8 @@ async function start(development: boolean): Promise<Host> {
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
     port: 0,
-    openDocumentCandidate: async () => openNativeDocuments(await generation, development),
+    openDocumentCandidate: async () =>
+      openPublishedNativeDocuments(await publishedDocuments, development),
     ...(development ? { development } : {}),
   });
   hosts.push(host);

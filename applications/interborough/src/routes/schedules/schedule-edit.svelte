@@ -128,10 +128,6 @@
           variant="secondary"
           size="sm"
           href={router.href(workflowEditPath(kind.file.id))}
-          onclick={(event) => {
-            event.preventDefault();
-            router.navigate(workflowEditPath(kind.file.id));
-          }}
           label={SCHEDULE_COPY.editWorkflowAction}
         />
       </Alert>

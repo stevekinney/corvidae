@@ -136,13 +136,8 @@
 {#snippet workflowLink()}
   {#if task.workflowId !== undefined}
     {@const workflowPath = workflowDetailPath(task.workflowId)}
-    <a
-      href={router.href(workflowPath)}
-      aria-label={`Open workflow ${task.workflowId}`}
-      onclick={(event) => {
-        event.preventDefault();
-        router.navigate(workflowPath);
-      }}>{task.workflowId}</a
+    <a href={router.href(workflowPath)} aria-label={`Open workflow ${task.workflowId}`}
+      >{task.workflowId}</a
     >
   {/if}
 {/snippet}

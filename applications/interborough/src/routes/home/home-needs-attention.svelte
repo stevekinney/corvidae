@@ -26,7 +26,6 @@
   import { useMinuteClock } from './home-clock.svelte.ts';
   import HomeCard from './home-card.svelte';
   import HomeCardError from './home-card-error.svelte';
-  import { openInApplication } from './home-navigation.ts';
   import { useAgentList, useAttentionItems } from './home-queries.svelte.ts';
   import { attentionRows } from './home-rows.ts';
 
@@ -82,7 +81,6 @@
               {
                 label: row.action.label,
                 href: router.href(row.action.href),
-                onclick: (event) => openInApplication(event, row.action.href),
               },
             ]}
           >

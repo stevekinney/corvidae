@@ -51,7 +51,6 @@
   import { router } from '../../lib/router.svelte.ts';
   import { referenceSizeText } from '../agents/agent-presentation.ts';
   import { AGENT_EDITOR_FORM_ID } from './agent-editor-form-id.ts';
-  import { followInApp } from './agent-editor-links.ts';
   import type { AgentEditorState } from './agent-editor-state.svelte.ts';
   import AgentEditorEffortField from './agent-editor-effort-field.svelte';
   import AgentEditorModelField from './agent-editor-model-field.svelte';
@@ -294,16 +293,13 @@
     <FormSection heading={copy.sections.tools} columns={1}>
       <p class="weft-agent-form__note" data-testid="agent-tools-summary">
         {copy.edit.tools.count(editor.chosenTools.length)}
-        {copy.edit.tools.changeLead}<a
-          href={router.href(accessPath)}
-          onclick={(event) => followInApp(event, accessPath)}>{copy.edit.tools.accessTab}</a
+        {copy.edit.tools.changeLead}<a href={router.href(accessPath)}>{copy.edit.tools.accessTab}</a
         >{copy.edit.tools.changeTail}
       </p>
       <p class="weft-agent-form__note" data-testid="agent-guardrails-summary">
         {copy.edit.guardrails.summary(editor.guardrailIds, spendLimit)}
-        {copy.edit.guardrails.changeLead}<a
-          href={router.href(accessPath)}
-          onclick={(event) => followInApp(event, accessPath)}>{copy.edit.guardrails.accessTab}</a
+        {copy.edit.guardrails.changeLead}<a href={router.href(accessPath)}
+          >{copy.edit.guardrails.accessTab}</a
         >{copy.edit.guardrails.changeTail}
       </p>
     </FormSection>

@@ -266,10 +266,6 @@
                 {
                   label: CHAT_COPY.newChat,
                   href: router.href(newChatPath(id)),
-                  onclick: (event) => {
-                    event.preventDefault();
-                    router.navigate(newChatPath(id));
-                  },
                 },
               ]}
         >

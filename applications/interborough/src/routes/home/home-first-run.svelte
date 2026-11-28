@@ -22,7 +22,6 @@
   import type { ChatReadiness } from '../../app/first-run.ts';
   import { HOME_COPY } from '../../app/copy/home.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { openInApplication } from './home-navigation.ts';
   import type { ChecklistStep } from './home-rows.ts';
   import { newChatAddress } from './home-start-chat.ts';
 
@@ -80,7 +79,6 @@
       size="sm"
       variant={state === 'current' ? 'primary' : 'secondary'}
       href={router.href(copy.provider.href)}
-      onclick={(event) => openInApplication(event, copy.provider.href)}
       label={copy.provider.action}
     />
   {/if}
@@ -101,7 +99,6 @@
       size="sm"
       variant={state === 'current' ? 'primary' : 'secondary'}
       href={router.href(copy.agent.href)}
-      onclick={(event) => openInApplication(event, copy.agent.href)}
       label={copy.agent.action}
     />
   {/if}
@@ -114,7 +111,6 @@
         size="sm"
         variant={state === 'current' ? 'primary' : 'secondary'}
         href={router.href(chatPath)}
-        onclick={(event) => openInApplication(event, chatPath)}
         label={copy.chat.action}
       />
     {:else}

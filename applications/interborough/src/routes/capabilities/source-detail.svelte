@@ -446,18 +446,7 @@
                     <span class="ib-capability__name-line">
                       <a
                         href={router.href(`/capabilities?tool=${encodeURIComponent(tool.name)}`)}
-                        aria-label={copy.tools.open(tool.name)}
-                        onclick={(event) => {
-                          if (
-                            event.metaKey ||
-                            event.ctrlKey ||
-                            event.shiftKey ||
-                            event.button !== 0
-                          )
-                            return;
-                          event.preventDefault();
-                          router.navigate(`/capabilities?tool=${encodeURIComponent(tool.name)}`);
-                        }}>{sourceToolHeading(tool)}</a
+                        aria-label={copy.tools.open(tool.name)}>{sourceToolHeading(tool)}</a
                       >
                       <code class="ib-capability__code ib-capability__identifier">{tool.tool}</code>
                     </span>

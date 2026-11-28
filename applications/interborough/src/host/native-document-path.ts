@@ -49,7 +49,7 @@ function documentTemplate(buildLabel: string) {
 }
 
 /** Open the generated document graph without taking over the listener or its authority. */
-export function openNativeDocuments(
+function openNativeDocuments(
   generation: Parameters<typeof createApplication>[0]['generation'],
   development = false,
   buildLabel = '',

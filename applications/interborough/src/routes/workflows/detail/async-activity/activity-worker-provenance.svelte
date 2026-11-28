@@ -90,13 +90,8 @@
     />
   {:else if taskQuery.data}
     <TaskAttemptHistory task={taskQuery.data} />
-    <a
-      class="weft-activity-provenance__link"
-      href={router.href(ledgerPath)}
-      onclick={(event) => {
-        event.preventDefault();
-        router.navigate(ledgerPath);
-      }}>Open the full task ledger</a
+    <a class="weft-activity-provenance__link" href={router.href(ledgerPath)}
+      >Open the full task ledger</a
     >
   {/if}
 </section>

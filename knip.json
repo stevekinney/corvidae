@@ -487,6 +487,7 @@
         "**/*.spec.ts",
         "scripts/browser-build.ts!",
         "scripts/build-native-documents.ts!",
+        "scripts/build.ts!",
         "scripts/startup-process-control.ts",
         "src/app/native-document.svelte!",
         "src/private-routes/**/+layout.server.ts!",

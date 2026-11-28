@@ -3,10 +3,15 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { buildNativeDocuments, openNativeDocuments } from '../../scripts/build-native-documents.ts';
+import { readProductionGeneration } from '@lostgradient/velveteen/build/publication';
 import { buildCheckoutApplication } from '../../scripts/build.ts';
+import { NOT_FOUND_ROUTE_COPY } from '../../src/app/copy/views.ts';
 import { routes, velveteenRouteId } from '../../src/app/routes.ts';
 import { startHost, type Host } from '../../src/host/host.ts';
+import {
+  NATIVE_DOCUMENT_DIRECTORY,
+  UNOWNED_DOCUMENT_ROUTE,
+} from '../../src/host/native-document-path.ts';
 import { createTextEchoAgents, TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
 test.describe.configure({ mode: 'serial' });
@@ -17,16 +22,18 @@ let manifestIds: readonly string[];
 
 test.beforeAll(async () => {
   directory = await mkdtemp(join(tmpdir(), 'interborough-route-parity-'));
-  const checkout = await buildCheckoutApplication({ outdir: join(directory, 'checkout') });
-  const generation = await buildNativeDocuments(join(directory, 'candidate'));
+  const buildDirectory = join(directory, 'build');
+  const checkout = await buildCheckoutApplication({ outdir: buildDirectory });
+  const generation = await readProductionGeneration(
+    join(checkout.directory, NATIVE_DOCUMENT_DIRECTORY),
+  );
   manifestIds = generation.manifest.routing.routes.map((route) => route.id);
   host = await startHost({
     environment: { INTERBOROUGH_HOME: join(directory, 'home') },
-    buildDirectory: checkout.directory,
+    buildDirectory,
     plugins: [],
     extraAgents: { agents: createTextEchoAgents() },
     port: 0,
-    openDocumentCandidate: () => openNativeDocuments(generation),
   });
 });
 
@@ -41,7 +48,7 @@ test.afterAll(async () => {
 test('mounts each current document pattern through the native manifest', async ({ page }) => {
   const origin = host!.url;
   expect([...manifestIds].toSorted()).toEqual(
-    routes.map(({ pattern }) => velveteenRouteId(pattern)).toSorted(),
+    [...routes.map(({ pattern }) => velveteenRouteId(pattern)), UNOWNED_DOCUMENT_ROUTE].toSorted(),
   );
 
   for (const { pattern, view } of routes) {
@@ -105,6 +112,7 @@ test('keeps native history, dirty navigation and transport ownership distinct', 
 
   const missing = await page.goto(new URL('/missing-document-parity', origin).href);
   expect(missing?.status()).toBe(404);
+  await expect(page.getByRole('heading', { name: NOT_FOUND_ROUTE_COPY.title })).toBeVisible();
   const principal = await request.get(new URL('/api/v1/principal', origin).href, {
     headers: { accept: 'text/html' },
   });
@@ -114,7 +122,13 @@ test('keeps native history, dirty navigation and transport ownership distinct', 
       headers: { accept: 'text/html' },
     });
     expect(refused.status(), path).toBe(404);
+    expect(refused.headers()['content-type'] ?? '', path).not.toContain('text/html');
   }
+  const missingModule = await request.get(new URL('/_assets/missing.js', origin).href, {
+    headers: { accept: 'application/javascript' },
+  });
+  expect(missingModule.status()).toBe(404);
+  expect(await missingModule.text()).toBe('Not found');
 });
 
 test('keeps encoded identifiers distinct from static segments', async ({ page, request }) => {
@@ -148,6 +162,34 @@ test('keeps encoded identifiers distinct from static segments', async ({ page, r
     const document = await page.goto(new URL(address, origin).href);
     expect(document?.status(), address).toBe(404);
   }
+});
+
+test('leaves a modified Diagnostics link to the browser and navigates a plain click once', async ({
+  page,
+}) => {
+  const origin = host!.url;
+  const alerts = new URL('/health?advanced=alerts', origin).href;
+  const diagnostics = new URL('/health/workers?tab=diagnostics', origin).href;
+  await page.goto(alerts);
+  const link = page.getByRole('link', { name: 'Open Diagnostics' });
+  await expect(link).toHaveAttribute('href', '/health/workers?tab=diagnostics');
+
+  const [modified] = await Promise.all([
+    page.context().waitForEvent('page'),
+    link.click({ modifiers: ['ControlOrMeta'] }),
+  ]);
+  await expect(modified).toHaveURL(diagnostics);
+  await expect(page).toHaveURL(alerts);
+  await modified.close();
+
+  const dataRequests: string[] = [];
+  page.on('request', (entry) => {
+    if (entry.headers()['accept']?.includes('application/x-velveteen-data'))
+      dataRequests.push(entry.url());
+  });
+  await link.click();
+  await expect(page).toHaveURL(diagnostics);
+  expect(dataRequests).toEqual([diagnostics]);
 });
 
 test('leaves modified, downloaded, external and consumed links with their existing owner', async ({

@@ -121,16 +121,7 @@
 
 <div class="weft-aggregate-view">
   {#snippet backToList()}
-    <a
-      class="weft-aggregate-view__back"
-      href={router.href('/runs')}
-      onclick={(event) => {
-        event.preventDefault();
-        router.navigate('/runs');
-      }}
-    >
-      ← Back to list
-    </a>
+    <a class="weft-aggregate-view__back" href={router.href('/runs')}> ← Back to list </a>
   {/snippet}
   <PageHeader title="Workflow aggregate" headingLevel={1} actions={backToList} />
 

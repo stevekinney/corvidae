@@ -190,15 +190,7 @@
       {/snippet}
     </EmptyState>
     <p class="weft-alerts-tab__next-step">
-      <a
-        href={router.href('/health/workers?tab=diagnostics')}
-        onclick={(event) => {
-          event.preventDefault();
-          router.navigate('/health/workers?tab=diagnostics');
-        }}
-      >
-        Open Diagnostics
-      </a>
+      <a href={router.href('/health/workers?tab=diagnostics')}> Open Diagnostics </a>
     </p>
   {:else}
     <ul class="weft-alerts-tab__list">
@@ -252,16 +244,7 @@
           </div>
           <Badge variant={badge.variant}>{badge.label}</Badge>
           <span class="weft-alerts-tab__row-time">{formatTime(row.emittedAtMs)}</span>
-          <a
-            class="weft-alerts-tab__row-link"
-            href={router.href(detailsHref(row))}
-            onclick={(event) => {
-              event.preventDefault();
-              router.navigate(detailsHref(row));
-            }}
-          >
-            Details
-          </a>
+          <a class="weft-alerts-tab__row-link" href={router.href(detailsHref(row))}> Details </a>
         </li>
       {/each}
     </ul>

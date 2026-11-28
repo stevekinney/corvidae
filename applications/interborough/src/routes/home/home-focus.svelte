@@ -20,7 +20,6 @@
   import QuietLine from '../../lib/quiet-line.svelte';
   import { router } from '../../lib/router.svelte.ts';
   import { waitingReviewsQuery } from '../reviews/reviews-data.ts';
-  import { openInApplication } from './home-navigation.ts';
   import { needsYouRows } from './home-rows.ts';
 
   const reviews = waitingReviewsQuery();
@@ -49,12 +48,7 @@
          action, at the end of its line as a section's action sits beside its heading. -->
     <Spotlight value={HOME_COPY.needsYou.spotlight(waiting)} data-testid="home-spotlight">
       {#snippet action()}
-        <Link
-          variant="more"
-          href={router.href('/reviews')}
-          onclick={(event: MouseEvent) => openInApplication(event, '/reviews')}
-          >{HOME_COPY.needsYou.link}</Link
-        >
+        <Link variant="more" href={router.href('/reviews')}>{HOME_COPY.needsYou.link}</Link>
       {/snippet}
     </Spotlight>
   {:else if !reviews.isError}

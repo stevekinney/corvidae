@@ -128,10 +128,7 @@
                   class="weft-workers-id weft-workers-id-link"
                   href={router.href(workflowPath)}
                   aria-label={`${truncateId(item.workflowId)}, open workflow ${item.workflowId}`}
-                  onclick={(event) => {
-                    event.preventDefault();
-                    router.navigate(workflowPath);
-                  }}>{truncateId(item.workflowId)}</a
+                  >{truncateId(item.workflowId)}</a
                 >
               {:else if item.operationId}
                 <span class="weft-workers-id">{truncateId(item.operationId)}</span>
@@ -141,11 +138,7 @@
                 <a
                   class="weft-workers-id-link"
                   href={router.href(workerDeepLink(workerId))}
-                  title={workerId}
-                  onclick={(event) => {
-                    event.preventDefault();
-                    router.navigate(workerDeepLink(workerId));
-                  }}>Worker {truncateId(workerId)}</a
+                  title={workerId}>Worker {truncateId(workerId)}</a
                 >
               {/if}
               {#if item.operationId}

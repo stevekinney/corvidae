@@ -97,14 +97,7 @@
       variant="two-column"
       items={fields.map((field) => ({ term: field.term, definition: field.value }))}
     />
-    <a
-      class="weft-remote-task__link"
-      href={router.href(ledgerPath)}
-      onclick={(event) => {
-        event.preventDefault();
-        router.navigate(ledgerPath);
-      }}>Open the task ledger record</a
-    >
+    <a class="weft-remote-task__link" href={router.href(ledgerPath)}>Open the task ledger record</a>
   {/if}
 </section>
 

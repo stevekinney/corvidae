@@ -31,11 +31,7 @@
         <a
           href={router.href(item.href)}
           class="weft-critical-strip__link"
-          onclick={(event) => {
-            event.preventDefault();
-            store.dismissCritical(item.id);
-            router.navigate(item.href);
-          }}
+          onclick={() => store.dismissCritical(item.id)}
         >
           View
         </a>
