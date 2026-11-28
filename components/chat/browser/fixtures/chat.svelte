@@ -104,26 +104,32 @@
         : { running: false, now: 0 },
     );
   }
-  // COR-2725: a transcript pinned to its end whose box then shrinks with no message arriving. The
-  // run only called tools; a button drops its stream, and the reconnect notice appears in the
-  // composer, which takes room from the transcript. Behind a query param like the others.
-  const pinnedResizeEnabled =
-    new URLSearchParams(globalThis.location.search).get('pinnedResize') === '1';
+  // COR-2725: a transcript at its end whose box then shrinks with no message arriving. The run only
+  // called tools; a button drops its stream, and the reconnect notice appears in the composer, which
+  // takes room from the transcript. Behind a query param like the others: `long` is a transcript
+  // that overflows and is scrolled to its end; `fits` is the route's own sequence, a transcript that
+  // fits its box exactly at scroll position 0 (a test sizes the box to the content), which the
+  // notice then makes overflow by a few pixels: the browser does not anchor a scroll position of 0,
+  // and no message arrives to pin it, so only the box changing size can say the end moved.
+  const pinnedResizeMode = new URLSearchParams(globalThis.location.search).get('pinnedResize');
+  const pinnedResizeEnabled = pinnedResizeMode === 'long' || pinnedResizeMode === 'fits';
   let pinnedStreamDropped = $state(false);
   const pinnedResizeHistory = (() => {
     let history = createConversation({ id: 'pinned-resize' });
-    for (const order of ['4398', '4399', '4400', '4401']) {
+    for (const order of pinnedResizeMode === 'long' ? ['4398', '4399', '4400', '4401'] : []) {
       history = appendAssistantMessage(
         appendUserMessage(history, `Look up order ${order}`),
         `Order ${order} is $42.00, delivered Monday, and nothing else about it needs saying.`,
       );
     }
     return appendToolResult(
-      appendToolCall(appendUserMessage(history, 'Look up order 4471'), {
-        id: 'pinned-lookup',
-        name: 'lookup_order',
-        arguments: { order: '4471' },
-      }),
+      appendToolCall(
+        appendUserMessage(
+          history,
+          'Look up order 4471 and tell me when it was delivered, what it cost, and whether anything else is open on the account.',
+        ),
+        { id: 'pinned-lookup', name: 'lookup_order', arguments: { order: '4471' } },
+      ),
       { callId: 'pinned-lookup', outcome: 'success', content: '$42.00, delivered Monday' },
     );
   })();
@@ -705,7 +711,10 @@
     <Button data-testid="pinned-resize-drop" onclick={() => (pinnedStreamDropped = true)}>
       Drop the stream
     </Button>
-    <div style="height: 26rem;" data-testid="pinned-resize-chat">
+    <div
+      style:height={pinnedResizeMode === 'long' ? '26rem' : '60rem'}
+      data-testid="pinned-resize-chat"
+    >
       <Chat
         id="fixture-pinned-resize-chat"
         variant="transcript"

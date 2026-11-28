@@ -75,6 +75,24 @@ function transcriptReadingBox(transcript: HTMLElement): BlockEdges {
   };
 }
 
+/** The transcripts a placement is keeping a refusal in view in right now (not released, not stopped). */
+const held = new WeakSet<HTMLElement>();
+
+/**
+ * Whether a refusal is being kept in view in `transcript`. While it is, that placement owns the
+ * transcript's resting position: the pin to the true end (`keepPinnedThroughResize`) yields to it.
+ * The two rest on different edges. The pin puts the end of the scrollable area at the box's end;
+ * the placement puts the refusal line, the news, at the reading box's end, and only moves on to
+ * the true end when that still shows the controls the refusal belongs to. A unit taller than the
+ * reading box keeps its line, and the pin going on to the true end would push the controls above
+ * the box, where nothing could pull them back (the placement only moves toward the end). So the
+ * pin steps aside, and the placement, which also runs on every resize, rests the transcript.
+ * Once the person takes the transcript, or the refusal is cleared, the pin is the only rule again.
+ */
+export function commandFailureHeld(transcript: HTMLElement): boolean {
+  return held.has(transcript);
+}
+
 /**
  * Keeps the refusal drawn in `transcript` in view until the returned function is called. Chat calls
  * it once per refusal (the ledger, not the line's element, says when one is said), so a row that is
@@ -119,13 +137,14 @@ export function keepCommandFailureInView(transcript: HTMLElement): () => void {
   };
   const release = (): void => {
     released = true;
+    held.delete(transcript);
   };
   // A move toward the end (the pin to the last message, Jump to latest) is one this placement
   // would never undo, so the transcript rests from there. A move back toward the start is someone
   // else's: the person's own scroll, a jump to a message, a host that scrolls the transcript.
   const followScroll = (): void => {
     const top = transcript.scrollTop;
-    if (top < restingTop - 2) released = true;
+    if (top < restingTop - 2) release();
     else if (top > restingTop) restingTop = top;
   };
   // A box that grows can clamp the scroll position in the same layout; that is not a scroll back.
@@ -148,9 +167,11 @@ export function keepCommandFailureInView(transcript: HTMLElement): () => void {
     return undefined;
   });
   schedule();
+  held.add(transcript);
 
   return () => {
     disposed = true;
+    held.delete(transcript);
     if (frame !== 0) cancelAnimationFrame(frame);
     resizes.disconnect();
     changes.disconnect();

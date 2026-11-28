@@ -1,5 +1,6 @@
 import { tick, untrack } from 'svelte';
 import type { Message } from '../conversation-model.ts';
+import { commandFailureHeld } from './command-failure-reveal.ts';
 import { keepPinnedThroughResize } from './keep-pinned-through-resize.ts';
 import { isAtBottom as checkIsAtBottom } from './scroll-utilities.ts';
 import type { useChatHistoryLifecycle } from './use-chat-history-lifecycle.svelte.ts';
@@ -196,7 +197,11 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions): UseChatAut
   $effect(() => {
     const viewport = options.getViewport();
     if (!viewport) return undefined;
-    return keepPinnedThroughResize(viewport, applyBottomCorrection);
+    return keepPinnedThroughResize(viewport, () => {
+      // A refusal being kept in view rests the transcript itself (`commandFailureHeld`): the true end
+      // would push the controls it belongs to above the box, where nothing pulls them back.
+      if (!commandFailureHeld(viewport)) applyBottomCorrection();
+    });
   });
 
   return { resetPrependSuppression };

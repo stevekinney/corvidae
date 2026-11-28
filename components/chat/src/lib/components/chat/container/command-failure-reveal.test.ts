@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test
 
 import { setupHappyDom } from '@lostgradient/testing';
 
-import { keepCommandFailureInView } from './command-failure-reveal.ts';
+import { commandFailureHeld, keepCommandFailureInView } from './command-failure-reveal.ts';
 
 setupHappyDom();
 
@@ -202,6 +202,22 @@ describe('keepCommandFailureInView', () => {
     settle();
     expect(transcript.scrollTop).toBe(0);
     stop();
+  });
+
+  test('a transcript is held while a refusal is kept in view, and not once it is released or stopped', () => {
+    const transcript = transcriptOf(COARSE);
+    expect(commandFailureHeld(transcript)).toBe(false);
+    const stop = keepCommandFailureInView(transcript);
+    expect(commandFailureHeld(transcript)).toBe(true);
+    transcript.dispatchEvent(new Event('wheel'));
+    expect(commandFailureHeld(transcript)).toBe(false);
+    stop();
+
+    const again = transcriptOf(COARSE);
+    const stopAgain = keepCommandFailureInView(again);
+    expect(commandFailureHeld(again)).toBe(true);
+    stopAgain();
+    expect(commandFailureHeld(again)).toBe(false);
   });
 
   test('the function it returns stops it, and the transcript stays where it is', () => {
