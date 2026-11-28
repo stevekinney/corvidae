@@ -20,6 +20,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { outcomeOf, rethrow } from '@lostgradient/testing';
 
@@ -64,6 +65,23 @@ afterAll(() => {
 
 const GRAMMAR_MODULE = /@shikijs\/langs\/dist\/([^/]+)\.mjs$/;
 const THEME_MODULE = /@shikijs\/themes\/dist\/([^/]+)\.mjs$/;
+const CURATED_GRAMMARS = [
+  'bash',
+  'css',
+  'diff',
+  'html',
+  'javascript',
+  'json',
+  'markdown',
+  'postcss',
+  'python',
+  'shellscript',
+  'sql',
+  'svelte',
+  'typescript',
+  'yaml',
+];
+const CURATED_THEMES = ['github-dark', 'github-light'];
 
 /** The names a metafile's `outputs[*].inputs` keys yield for `pattern`, sorted. */
 function emittedModules(metafile: Bun.BuildMetafile, pattern: RegExp): string[] {
@@ -83,9 +101,8 @@ describe('buildApplication', () => {
 
     expect(result.directory).toBe(outdir);
     expect(result.files).toContain('index.html');
-    const assets = result.files.filter(
-      (file) => file !== 'index.html' && file !== 'build-info.json',
-    );
+    const assets = result.files.filter((file) => file.startsWith(`${BUILD_ASSET_DIRECTORY}/`));
+    expect(result.files).toContain('private/current.json');
     expect(assets.length).toBeGreaterThan(0);
     for (const file of assets) {
       expect(file).toMatch(
@@ -128,23 +145,42 @@ describe('buildApplication', () => {
     // for CSS inside Svelte and HTML, `shellscript` for the shell family). The complete registries
     // Cinder offers are never reachable: `curatedShikiPlugin` (`browser-build.ts`) resolves them to
     // `src/lib/curated-shiki-registries.ts`, whose tables Chat's highlighter reads.
-    expect(emittedModules(metafile, GRAMMAR_MODULE)).toEqual([
-      'bash',
-      'css',
-      'diff',
-      'html',
-      'javascript',
-      'json',
-      'markdown',
-      'postcss',
-      'python',
-      'shellscript',
-      'sql',
-      'svelte',
-      'typescript',
-      'yaml',
-    ]);
-    expect(emittedModules(metafile, THEME_MODULE)).toEqual(['github-dark', 'github-light']);
+    expect(emittedModules(metafile, GRAMMAR_MODULE)).toEqual(CURATED_GRAMMARS);
+    expect(emittedModules(metafile, THEME_MODULE)).toEqual(CURATED_THEMES);
+  });
+
+  it('keeps the private browser generation on the same curated registries', async () => {
+    const result = sharedBuild();
+    const chunks = result.files.filter(
+      (file) =>
+        file.startsWith('private/') && file.includes('/browser/chunks/') && file.endsWith('.js'),
+    );
+    const grammars = (await Bun.file(
+      fileURLToPath(import.meta.resolve('@shikijs/langs/package.json')),
+    ).json()) as {
+      exports: Record<string, unknown>;
+    };
+    const themes = (await Bun.file(
+      fileURLToPath(import.meta.resolve('@shikijs/themes/package.json')),
+    ).json()) as {
+      exports: Record<string, unknown>;
+    };
+    const grammarNames = new Set(Object.keys(grammars.exports).map((name) => name.slice(2)));
+    const themeNames = new Set(Object.keys(themes.exports).map((name) => name.slice(2)));
+    const foundGrammars: string[] = [];
+    const foundThemes: string[] = [];
+    for (const chunk of chunks) {
+      const name = /\/([^/]+)-[a-z0-9]{8}\.js$/.exec(chunk)?.[1];
+      if (name === undefined) continue;
+      if (grammarNames.has(name)) {
+        const source = await Bun.file(join(result.directory, chunk)).text();
+        // Bun also emits the Oniguruma binary as a `wasm` JavaScript chunk, which is not a grammar.
+        if (!source.includes('Uint8Array.from(atob(')) foundGrammars.push(name);
+      }
+      if (themeNames.has(name)) foundThemes.push(name);
+    }
+    expect(foundGrammars.toSorted()).toEqual(CURATED_GRAMMARS);
+    expect(foundThemes.toSorted()).toEqual(CURATED_THEMES);
   });
 });
 
@@ -162,7 +198,9 @@ describe('buildApplication stylesheets', () => {
 
   async function emittedStylesheets(result: ApplicationBuild): Promise<Map<string, string>> {
     const sheets = new Map<string, string>();
-    for (const file of result.files.filter((name) => name.endsWith('.css'))) {
+    for (const file of result.files.filter(
+      (name) => name.startsWith(`${BUILD_ASSET_DIRECTORY}/`) && name.endsWith('.css'),
+    )) {
       sheets.set(file, await Bun.file(join(result.directory, file)).text());
     }
     return sheets;
@@ -250,7 +288,9 @@ describe('buildApplication source maps', () => {
   it('writes a linked map beside each chunk in development', async () => {
     const result = await builtFiles(true);
 
-    const chunks = result.files.filter((file) => file.endsWith('.js'));
+    const chunks = result.files.filter(
+      (file) => !file.startsWith('private/') && file.endsWith('.js'),
+    );
     expect(chunks.some((file) => file.startsWith(`${BUILD_ASSET_DIRECTORY}/`))).toBe(true);
     for (const chunk of chunks) {
       const map = `${chunk}.map`;

@@ -7,6 +7,28 @@ import { armWriteGuard } from '../lib/write-guard.ts';
 import { WorkspaceLifetime, workspaceStorage } from './workspace-lifetime.ts';
 
 describe('workspace lifetime', () => {
+  test('opens the server identity immediately and closes it before a replacement', async () => {
+    const events: string[] = [];
+    const lifetime = new WorkspaceLifetime<string>({
+      initial: 'workspace-a:actor-a',
+      resolve: async () => 'workspace-b:actor-b',
+      open: (identity) => {
+        events.push(`open:${identity}`);
+        return () => events.push(`close:${identity}`);
+      },
+      fail: () => events.push('failure'),
+    });
+    expect(events).toEqual(['open:workspace-a:actor-a']);
+    await lifetime.refresh();
+    expect(events).toEqual([
+      'open:workspace-a:actor-a',
+      'close:workspace-a:actor-a',
+      'open:workspace-b:actor-b',
+    ]);
+    lifetime.dispose();
+    expect(events.at(-1)).toBe('close:workspace-b:actor-b');
+  });
+
   test('disposes the previous identity and ignores its late resolution', async () => {
     const completed: string[] = [];
     const closed: string[] = [];
@@ -67,10 +89,12 @@ test('private storage separates workspaces and actors and ignores old unscoped e
 
 test('late private results cannot populate the replacement cache after lifetime disposal', async () => {
   const pending = Promise.withResolvers<string>();
+  let aborted = false;
   const opened: string[] = [];
   const closed: string[] = [];
   let active: QueryClient | undefined;
   const lifetime = new WorkspaceLifetime<string>({
+    initial: 'workspace-a:actor-a',
     resolve: async () => 'workspace-a:actor-a',
     open: (identity) => {
       const cache = new QueryClient();
@@ -84,12 +108,24 @@ test('late private results cannot populate the replacement cache after lifetime 
     },
     fail: () => {},
   });
-  await lifetime.refresh();
   const oldCache = active!;
   const oldResult = oldCache
-    .fetchQuery({ queryKey: ['private', 'same-id'], queryFn: () => pending.promise })
+    .fetchQuery({
+      queryKey: ['private', 'same-id'],
+      queryFn: ({ signal }) => {
+        signal.addEventListener(
+          'abort',
+          () => {
+            aborted = true;
+          },
+          { once: true },
+        );
+        return pending.promise;
+      },
+    })
     .catch(() => undefined);
   await lifetime.refresh(async () => 'workspace-b:actor-a');
+  expect(aborted).toBe(true);
   const workspaceB = active!;
   workspaceB.setQueryData(['private', 'same-id'], 'workspace-b value');
   pending.resolve('workspace-a secret');

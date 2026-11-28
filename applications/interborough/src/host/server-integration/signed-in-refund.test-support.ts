@@ -18,7 +18,7 @@ import { reviewedRefundContribution } from '../refund-operations.ts';
 import { createSyntheticIssuer } from './synthetic-issuer.test-support.ts';
 
 /** Separate model and signed-in reviewer on the real panel listener. */
-export async function startSignedInRefundFixture() {
+export async function startSignedInRefundFixture(options: { buildDirectory?: string } = {}) {
   const syntheticIssuer = await createSyntheticIssuer();
   const { issuer, provider } = syntheticIssuer;
   const home = await mkdtemp(join(tmpdir(), 'interborough-sign-in-'));
@@ -116,6 +116,7 @@ export async function startSignedInRefundFixture() {
   let refundWorker: Awaited<ReturnType<typeof refund.attachWorker>> | undefined;
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
+    ...(options.buildDirectory === undefined ? {} : { buildDirectory: options.buildDirectory }),
     workspaceId,
     port: 0,
     plugins: [
@@ -177,8 +178,8 @@ export async function startSignedInRefundFixture() {
       redirect: 'manual',
       headers: { ...Object.fromEntries(new Headers(init.headers)), host: 'settings.example' },
     });
-  async function signIn() {
-    syntheticIssuer.setSubject('admin');
+  async function signIn(actor = 'admin') {
+    syntheticIssuer.setSubject(actor);
     const started = await send('/auth/sign-in');
     const temporaryCookie = started.headers.getSetCookie()[0]!.split(';')[0]!;
     const authorized = await fetch(started.headers.get('location')!, { redirect: 'manual' });
@@ -213,6 +214,7 @@ export async function startSignedInRefundFixture() {
     host,
     send,
     signIn,
+    revoke: (actor: string) => members.delete(actor),
     requestRefund,
     async refundStatus() {
       const entry = refundId ? await ledger.get(refundId) : undefined;

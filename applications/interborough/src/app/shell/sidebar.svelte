@@ -28,7 +28,7 @@
 
   import { buildCommit } from '../../lib/build-commit.ts';
   import { usePluginPages } from '../../lib/plugin-page-queries.svelte.ts';
-  import { router } from '../../lib/router.svelte.ts';
+  import { reviewsNavigation } from '../../lib/reviews-navigation.ts';
   import { usePendingReviewsCount } from '../../routes/reviews/pending-reviews-count.svelte.ts';
   import { PLUGIN_PAGE_COPY } from '../copy/plugin-pages.ts';
   import { NAVIGATION_COPY, SHORTCUT_COPY } from '../copy/shell.ts';
@@ -55,6 +55,7 @@
 
   // The shell provides one object that the top bar's menu button shares. A sidebar mounted without
   // the shell, as the standalone views and most tests are, keeps its own.
+  const router = reviewsNavigation();
   const shell: ShellNavigation =
     getShellNavigation() ?? new ShellNavigation(getLayoutPreferences() ?? new LayoutPreferences());
 

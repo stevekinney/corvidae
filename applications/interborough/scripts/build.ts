@@ -25,6 +25,7 @@ import { cp, mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { buildProduction } from '@lostgradient/velveteen/build';
 import { ensureCinderGenerated } from '../../../components/cinder/scripts/ensure-cinder-generated.ts';
 import {
   BUILD_INFO_FILE,
@@ -38,6 +39,7 @@ import {
   assertCleanBuild,
   browserBuildOptions,
   BUILD_ASSET_DIRECTORY,
+  curatedShikiPlugin,
   pruneUnlinkedStylesheets,
 } from './browser-build.ts';
 import { warmSvelteTransforms } from './warm-svelte-transforms.ts';
@@ -217,8 +219,10 @@ export async function buildApplication(
      * Turbo or not, goes through here; a test supplies a no-op.
      */
     readonly ensureGenerated?: () => void | Promise<void>;
+    readonly buildPrivate?: typeof buildProduction;
   } = {},
 ): Promise<ApplicationBuild> {
+  const buildPrivate = options.buildPrivate ?? buildProduction;
   const generationStarted = performance.now();
   const generated = await (options.ensureGenerated ?? ensureCinderGenerated)();
   if (processEnvironment()['INTERBOROUGH_STARTUP_PROFILE'] === '1') {
@@ -254,12 +258,26 @@ export async function buildApplication(
       minify: !development,
     });
     const bundled = assertCleanBuild(result);
+    await buildPrivate({
+      projectDirectory: PACKAGE_DIRECTORY,
+      routesDirectory: join(PACKAGE_DIRECTORY, 'src/private-routes'),
+      outputDirectory: join(staging, 'private'),
+      mode: development ? 'development' : 'production',
+      browserPlugins: [curatedShikiPlugin],
+    });
     const files = await pruneUnlinkedStylesheets(
       staging,
       result.outputs
         .map((output) => relative(staging, output.path).split(sep).join('/'))
         .toSorted(),
     );
+    const privateDirectory = join(staging, 'private');
+    const privateEntries = existsSync(privateDirectory)
+      ? await readdir(privateDirectory, { recursive: true, withFileTypes: true })
+      : [];
+    const privateFiles = privateEntries
+      .filter((entry) => entry.isFile())
+      .map((entry) => relative(staging, join(entry.parentPath, entry.name)).split(sep).join('/'));
     const written = new Set(files);
     // The metafile describes what is on disk: it keeps no entry for a stylesheet that was pruned.
     const metafile: Bun.BuildMetafile = {
@@ -279,7 +297,7 @@ export async function buildApplication(
         `STARTUP ${JSON.stringify({ stage: 'ui-bundle', milliseconds: performance.now() - bundleStarted, transforms: warmTransforms?.statistics })}`,
       );
     }
-    return { directory, files: [...files, BUILD_INFO_FILE].toSorted(), metafile };
+    return { directory, files: [...files, ...privateFiles, BUILD_INFO_FILE].toSorted(), metafile };
   } finally {
     await rm(staging, { recursive: true, force: true });
     stagingDirectories.delete(staging);

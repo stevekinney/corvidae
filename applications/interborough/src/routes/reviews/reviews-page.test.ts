@@ -4,7 +4,9 @@
  * table (`bureau-world.test-support.ts`). The keys that act on the open review are checked through
  * the registry, as the shell reads them (`lib/shortcuts.ts`).
  */
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { HttpClient, type PendingReviewEntry, type ReviewListEntry } from '@lostgradient/weft';
+import type { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
@@ -800,6 +802,51 @@ describe('the approval’s details', () => {
 });
 
 describe('a decision that took effect', () => {
+  test('refreshes each generated page once after approval and still forwards external invalidations', async () => {
+    const world = emptyBureauWorld({ reviews: [APPROVAL] });
+    stub = installBureauWorld(world);
+    router.navigate('/reviews', { replace: true });
+    const clients: QueryClient[] = [];
+    const { container, findByRole } = render(Harness, {
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+        onQueryClient: (client: QueryClient) => clients.push(client),
+      },
+    } as never);
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+    const baseline = stub.callsTo('bureau.reviews.list').length;
+    const pending = Promise.withResolvers<{ reviews: []; nextPageToken: null; total: 0 }>();
+    const resolved = Promise.withResolvers<{ reviews: []; nextPageToken: null; total: 0 }>();
+    stub.on('bureau.reviews.list', (params) =>
+      params['status'] === 'pending' ? pending.promise : resolved.promise,
+    );
+    try {
+      await approveRefund(findByRole);
+      await waitFor(() =>
+        expect(stub?.callsTo('bureau.reviews.list').length).toBeGreaterThanOrEqual(baseline + 2),
+      );
+      await quietFor(50);
+      const statuses = stub
+        .callsTo('bureau.reviews.list')
+        .slice(baseline)
+        .map((call) => call.params['status']);
+      expect(statuses).toHaveLength(2);
+      expect(statuses).toContain('pending');
+      expect(statuses).toContain('resolved');
+      pending.resolve({ reviews: [], nextPageToken: null, total: 0 });
+      resolved.resolve({ reviews: [], nextPageToken: null, total: 0 });
+      await waitFor(() => expect(clients[0]!.isFetching({ queryKey: ['backchannel'] })).toBe(0));
+      await clients[0]!.invalidateQueries({ queryKey: ['reviews'] });
+      await quietFor(50);
+      expect(stub.callsTo('bureau.reviews.list')).toHaveLength(baseline + 4);
+    } finally {
+      pending.resolve({ reviews: [], nextPageToken: null, total: 0 });
+      resolved.resolve({ reviews: [], nextPageToken: null, total: 0 });
+    }
+  });
+
   /** Answers as the Bureau does: the decision is committed, so the review leaves the pending list, and then the write fails. */
   function writeFails(world: BureauWorld, decidedId: string): void {
     stub?.on('bureau.reviews.resolve', () => {

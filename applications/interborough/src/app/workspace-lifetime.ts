@@ -10,10 +10,12 @@ export class WorkspaceLifetime<Identity> {
     readonly resolve: () => Promise<Identity>;
     readonly open: (identity: Identity) => () => void;
     readonly fail: () => void;
+    readonly initial?: Identity;
   }) {
     this.#resolve = options.resolve;
     this.#open = options.open;
     this.#fail = options.fail;
+    if (options.initial !== undefined) this.#close = this.#open(options.initial);
   }
 
   async refresh(resolve: () => Promise<Identity> = this.#resolve): Promise<void> {

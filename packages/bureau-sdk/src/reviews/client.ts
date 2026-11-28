@@ -3,7 +3,11 @@ import { createReviewsClientWithTransport as createGeneratedClient } from '../ge
 import { validatedReviewsTransport } from './validation.ts';
 
 export type { ReviewsOperationTypes } from '../generated/reviews-operations.generated.ts';
-export { parseReviewsOpeningSnapshot, validatedReviewsTransport } from './validation.ts';
+export {
+  parseReviewsOpeningSnapshot,
+  parseReviewsOutput,
+  validatedReviewsTransport,
+} from './validation.ts';
 export type { ReviewsOpeningSnapshot } from './validation.ts';
 
 export function createReviewsClientWithTransport(transport: CatalogTransport) {

@@ -19,12 +19,12 @@
   import { Banner, guardThemeTransitions, trackInputModality } from '@lostgradient/cinder';
   import type { HttpClient } from '@lostgradient/weft';
   import { useQueryClient } from '@tanstack/svelte-query';
-  import { onDestroy, untrack } from 'svelte';
+  import { onDestroy, onMount, untrack, type Snippet } from 'svelte';
 
   import { provideClient } from '../../lib/client.ts';
   import { BureauEventSource } from '../../lib/live-source/bureau-event-source.svelte.ts';
   import { usePluginPages } from '../../lib/plugin-page-queries.svelte.ts';
-  import { router } from '../../lib/router.svelte.ts';
+  import { reviewsNavigation } from '../../lib/reviews-navigation.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
   import { armWriteGuard } from '../../lib/write-guard.ts';
   import type { Principal } from '../../lib/scopes.svelte.ts';
@@ -77,9 +77,19 @@
     initialPrincipal: Principal;
     onAuthExpired: (expiredClient: HttpClient) => void;
     onIdentityMismatch: (expiredClient: HttpClient) => void;
+    serverRendered?: boolean;
+    children?: Snippet;
   }
 
-  let { client, initialPrincipal, onAuthExpired, onIdentityMismatch }: ShellProps = $props();
+  let {
+    client,
+    initialPrincipal,
+    onAuthExpired,
+    onIdentityMismatch,
+    serverRendered = false,
+    children,
+  }: ShellProps = $props();
+  const router = reviewsNavigation();
 
   // `client`/`initialPrincipal` are read exactly once, here, at Shell's own
   // initialization — see the module doc: these values belong to one
@@ -169,22 +179,25 @@
     };
   });
 
-  const disarmWriteGuard = armWriteGuard(
-    () => connection.unreachable,
-    [window.location.origin, new URL(initialClient.baseUrl, window.location.origin).origin],
-    globalThis,
-    () => authExpiredHandler(initialClient),
-    resolvedPrincipal.workspace === undefined
+  const disarmWriteGuard =
+    typeof window === 'undefined'
       ? undefined
-      : {
-          identity: resolvedPrincipal.workspace,
-          onMismatch: () => identityMismatchHandler(initialClient),
-          onForbidden: checkIdentity,
-        },
-  );
-  onDestroy(disarmWriteGuard);
+      : armWriteGuard(
+          () => connection.unreachable,
+          [window.location.origin, new URL(initialClient.baseUrl, window.location.origin).origin],
+          globalThis,
+          () => authExpiredHandler(initialClient),
+          resolvedPrincipal.workspace === undefined
+            ? undefined
+            : {
+                identity: resolvedPrincipal.workspace,
+                onMismatch: () => identityMismatchHandler(initialClient),
+                onForbidden: checkIdentity,
+              },
+        );
+  onDestroy(() => disarmWriteGuard?.());
+  onMount(() => trackInputModality(document));
   // A focus the page moves by script draws its ring only after the keyboard was the last input.
-  onDestroy(trackInputModality(document));
   $effect(() => {
     const stopObserving = connection.observe(queryClient);
     const goOffline = () => connection.setBrowserOffline(true);
@@ -217,11 +230,23 @@
     });
   });
 
-  const theme = provideTheme(new ThemeStore());
+  const initialServerRendered = untrack(() => serverRendered);
+  const theme = provideTheme(initialServerRendered ? new ThemeStore(null, null) : new ThemeStore());
   // A theme switch must not animate every themed color from the old theme to the new one.
-  onDestroy(guardThemeTransitions());
-  const layout = provideLayoutPreferences(new LayoutPreferences());
-  const keyboard = provideKeyboardPreferences(new KeyboardPreferences());
+  const layout = provideLayoutPreferences(
+    initialServerRendered ? new LayoutPreferences(null) : new LayoutPreferences(),
+  );
+  const keyboard = provideKeyboardPreferences(
+    initialServerRendered ? new KeyboardPreferences(null) : new KeyboardPreferences(),
+  );
+  onMount(() => {
+    if (initialServerRendered) {
+      theme.activate(document.documentElement, window.localStorage);
+      layout.activate(window.localStorage);
+      keyboard.activate(window.localStorage);
+    }
+    return guardThemeTransitions();
+  });
   const notifications = new NotificationStore({
     storage: browserWorkspaceStorage(resolvedPrincipal.workspace, 'localStorage'),
   });
@@ -383,7 +408,11 @@
     <AuthModeBanner mode={principalStore.bannerMode} />
     <PluginProblemsBanner unreachable={connection.unreachable} />
     <CriticalAlertStrip store={notifications} />
-    <RouteOutlet />
+    {#if children}
+      {@render children()}
+    {:else}
+      <RouteOutlet />
+    {/if}
     <TabBar />
   </div>
 </div>

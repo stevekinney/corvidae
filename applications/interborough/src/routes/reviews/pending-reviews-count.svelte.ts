@@ -4,7 +4,7 @@
  * Reviews badge, the Health overview's "Needs you" count and the page's Waiting tab can never
  * disagree.
  */
-import { router } from '../../lib/router.svelte.ts';
+import { reviewsNavigation } from '../../lib/reviews-navigation.ts';
 import { waitingItems } from './review-items.ts';
 import { waitingReviewsQuery } from './reviews-data.ts';
 
@@ -22,6 +22,7 @@ export interface PendingReviewsCount {
  * initializes, because it reads context and starts a query.
  */
 export function usePendingReviewsCount(): PendingReviewsCount {
+  const router = reviewsNavigation();
   // The Reviews page owns the arrival fetch. The sidebar remains an observer there, so its badge
   // still follows the same cache without re-opening a just-failed request.
   const waiting = waitingReviewsQuery({ enabled: () => router.pathname !== '/reviews' });

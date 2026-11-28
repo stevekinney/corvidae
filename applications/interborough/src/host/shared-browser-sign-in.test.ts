@@ -4,6 +4,8 @@ import { MemoryStorage } from '@lostgradient/storage';
 import { expect, test } from 'bun:test';
 import {
   createSharedBrowserSignIn,
+  sharedBrowserRoutes,
+  sharedBrowserServerHooks,
   type SharedBrowserSignInOptions,
 } from './shared-browser-sign-in.ts';
 
@@ -24,6 +26,44 @@ const options: SharedBrowserSignInOptions = {
   },
 };
 const workspace = { workspaceId: 'workspace', resolveMembership: async () => null };
+
+test('server-side private fetch refuses JSON-RPC mutations and malformed requests', async () => {
+  const hooks = sharedBrowserServerHooks({} as never, options.origin, () => 1);
+  const event = { request: new Request('https://settings.example/reviews') } as never;
+  for (const body of ['{', JSON.stringify({ method: 'bureau.reviews.resolve', params: {} })]) {
+    const response = await hooks.handleFetch!({
+      event,
+      request: new Request('https://settings.example/jsonrpc', { method: 'POST', body }),
+      fetch: async () => {
+        throw new Error('must not reach the network');
+      },
+    });
+    expect(response.status).toBe(403);
+  }
+});
+
+test('routes shared Reviews documents to the private server and local navigation to the shell', async () => {
+  using storage = new MemoryStorage();
+  const shared = createSharedBrowserSignIn(options, workspace, storage);
+  const routes = sharedBrowserRoutes(
+    shared,
+    {} as never,
+    { fetch: async () => new Response('private') },
+    async () => new Response('shell'),
+  );
+  if (!('/reviews' in routes)) throw new Error('Reviews route was not registered');
+  const { GET: handler } = routes['/reviews'] as {
+    GET: (request: Request) => Response | Promise<Response>;
+  };
+  const sharedResponse = await handler(
+    new Request('http://127.0.0.1/reviews', { headers: { host: 'settings.example' } }),
+  );
+  expect(await sharedResponse.text()).toBe('private');
+  const localResponse = await handler(
+    new Request('http://127.0.0.1/reviews', { headers: { host: 'localhost' } }),
+  );
+  expect(await localResponse.text()).toBe('shell');
+});
 
 test('shared browser composition requires HTTPS and refuses missing sessions', async () => {
   using storage = new MemoryStorage();

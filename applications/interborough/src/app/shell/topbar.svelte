@@ -15,7 +15,7 @@
   import { Breadcrumbs, Button, Kbd } from '@lostgradient/cinder';
   import { Menu, Search } from '@lucide/svelte';
 
-  import { router } from '../../lib/router.svelte.ts';
+  import { reviewsNavigation } from '../../lib/reviews-navigation.ts';
   import { breadcrumbTrail } from '../breadcrumbs.svelte.ts';
   import { NAVIGATION_COPY, PALETTE_COPY } from '../copy/shell.ts';
   import { NOT_FOUND_COPY } from '../copy/views.ts';
@@ -36,6 +36,7 @@
 
   let { notifications, theme, layout, paletteOpen = $bindable(false) }: TopbarProps = $props();
 
+  const router = reviewsNavigation();
   const shell = getShellNavigation();
 
   // The trail for the page on screen. An address no route owns reads in words, as the leading

@@ -18,7 +18,8 @@
   import { truncateId } from '../../lib/format/index.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
+  import { workflowDetailPath } from '../../lib/router.svelte.ts';
+  import { reviewsNavigation } from '../../lib/reviews-navigation.ts';
 
   interface ReviewSourceProps {
     readonly review: ListedReview;
@@ -28,6 +29,7 @@
 
   let { review, waiting }: ReviewSourceProps = $props();
 
+  const router = reviewsNavigation();
   const displayName = useAgentDisplayName();
   const sessionId = $derived(review.kind === 'engine-review' ? undefined : review.sessionId);
 
