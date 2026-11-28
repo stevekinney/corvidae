@@ -9,6 +9,7 @@
     "./build/publication": "./src/build/publication.ts",
     "./build/serving": "./src/build/serving.ts",
     "./routing": "./src/routing/index.ts",
+    "./navigation": "./src/client/navigation-context.ts",
     "./remote/client": "./src/remote/client.ts",
     "./remote/server": "./src/remote/server.ts",
     "./remote/forms": "./src/remote/forms.ts",

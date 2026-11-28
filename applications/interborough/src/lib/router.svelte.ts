@@ -12,8 +12,10 @@
  * or a Node consumer that imports the entry without a DOM must not throw just
  * because this module was evaluated.
  */
+import type { ApplicationState } from '@lostgradient/velveteen/navigation';
 import { routes, type RouteDefinition } from '../app/routes.ts';
-import { identifierPath, withEscapedIdentifier } from './identifier-paths.ts';
+import { identifierPath, identifierViewKey, withEscapedIdentifier } from './identifier-paths.ts';
+import { bindNativeRouteState } from './native-route-state.svelte.ts';
 
 /** A route pattern a location matched and the parameters it captured. */
 export interface RouteMatch {
@@ -173,6 +175,19 @@ export function matchRoute(
  * structure `router` exposes.
  */
 class DashboardRouter {
+  #native: ReturnType<typeof bindNativeRouteState> | undefined;
+
+  /** Attach the mounted native browser application before its shell reads the current route. */
+  bindNative(state: ApplicationState): () => void {
+    if (this.#native !== undefined) throw new Error('A native document router is already mounted');
+    const native = bindNativeRouteState(state, (path) => this.#allowsLeaving(path));
+    this.#native = native;
+    return () => {
+      native.dispose();
+      this.#native = undefined;
+    };
+  }
+
   // `undefined` until the router itself observes a location change
   // (`navigate()` or a `popstate`). Until then the getters read
   // `window.location` directly, so a first read never writes reactive state:
@@ -195,7 +210,7 @@ class DashboardRouter {
 
   /** Subscribes to `popstate` on first use, so evaluating this module never touches `window`. */
   #listen(): void {
-    if (this.#listening) return;
+    if (this.#native !== undefined || this.#listening) return;
     this.#listening = true;
     window.addEventListener('popstate', () => {
       const arrived = `${window.location.pathname}${window.location.search}`;
@@ -250,18 +265,21 @@ class DashboardRouter {
    * this and scrolls to the target itself, once it is there (COR-2533).
    */
   get hash(): string {
+    if (this.#native !== undefined) return this.#native.url.hash;
     this.#listen();
     return this.#hashString ?? window.location.hash;
   }
 
   /** The current location's pathname, live. */
   get pathname(): string {
+    if (this.#native !== undefined) return this.#native.url.pathname;
     this.#listen();
     return this.#pathname ?? window.location.pathname;
   }
 
   /** The current location's query string, live (not a frozen snapshot). */
   get search(): URLSearchParams {
+    if (this.#native !== undefined) return this.#native.url.searchParams;
     this.#listen();
     return new URLSearchParams(this.#searchString ?? window.location.search);
   }
@@ -273,26 +291,27 @@ class DashboardRouter {
    * stays mounted under the new address (a new chat becoming its session, mid-run).
    */
   get viewKey(): string {
+    if (this.#native !== undefined) return this.#native.viewKey;
     this.#listen();
     if (this.#keptKey !== undefined) return this.#keptKey;
-    // Two identifiers a path stands in for with one placeholder are two pages, not one.
-    const found = findRouteDefinition(this.pathname, routes);
-    const params = found === null ? undefined : withEscapedIdentifier(found, this.search);
-    const key =
-      found !== null && params !== found.params
-        ? `${this.pathname}#${JSON.stringify(params)}`
-        : this.pathname;
+    const key = identifierViewKey(
+      this.pathname,
+      findRouteDefinition(this.pathname, routes),
+      this.search,
+    );
     // A raw NUL cannot be in a pathname (it arrives as %00), so this key is no address's.
     return this.#generation === 0 ? key : `${key}\u0000${this.#generation}`;
   }
 
   /** The route matching the current `pathname`, or `null` for an unowned path. */
   get match(): RouteMatch | null {
+    if (this.#native !== undefined) return this.#native.match;
     return matchRoute(this.pathname);
   }
 
   /** The fully parsed `{ route, params, search }` view of the current location. */
   get current(): RouteState {
+    if (this.#native !== undefined) return this.#native.current;
     const found = findRouteDefinition(this.pathname, routes);
     const search = this.search;
     const params = found === null ? {} : withEscapedIdentifier(found, search);
@@ -317,6 +336,10 @@ class DashboardRouter {
     path: string,
     options?: { readonly replace?: boolean; readonly keep?: boolean; readonly force?: boolean },
   ): void {
+    if (this.#native !== undefined) {
+      void this.#native.navigate(path, options);
+      return;
+    }
     this.#listen();
     // A page that guards leaving is asked first; `force` is the answer to its own question.
     if (options?.force !== true && !this.#allowsLeaving(path)) return;

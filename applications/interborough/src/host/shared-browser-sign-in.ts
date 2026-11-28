@@ -420,7 +420,8 @@ export function sharedBrowserRoutes(
   shared: ReturnType<typeof createSharedBrowserSignIn> | undefined,
   authority: HostAuthority,
   privateServer: { fetch(request: Request): Promise<Response> } | undefined,
-  shell: () => Promise<Response>,
+  ordinaryDocument: (request: Request) => Response | Promise<Response>,
+  candidateAssets?: (request: Request) => Response | Promise<Response>,
 ) {
   if (!shared) return {};
   const onOrigin =
@@ -461,17 +462,30 @@ export function sharedBrowserRoutes(
       ...routes,
       '/reviews': {
         GET: (request: Request) =>
-          shared.matches(request) ? new Response('Reviews unavailable', { status: 503 }) : shell(),
+          shared.matches(request)
+            ? new Response('Reviews unavailable', { status: 503 })
+            : ordinaryDocument(request),
       },
     };
   }
   const page = onOrigin((request) => privateServer.fetch(shared.publicRequest(request)));
+  const asset = async (request: Request): Promise<Response> => {
+    if (shared.matches(request)) {
+      const response = await page(request);
+      if (response.status !== 404 || candidateAssets === undefined) return response;
+      await response.body?.cancel();
+    }
+    return candidateAssets?.(request) ?? new Response('Not found', { status: 404 });
+  };
   return {
     ...routes,
     '/settings/api-keys': { GET: page, HEAD: page, POST: page },
     '/settings/connected-apps': { GET: page, HEAD: page, POST: page },
-    '/reviews': { GET: (request: Request) => (shared.matches(request) ? page(request) : shell()) },
-    '/_assets/*': { GET: page, HEAD: page },
+    '/reviews': {
+      GET: (request: Request) =>
+        shared.matches(request) ? page(request) : ordinaryDocument(request),
+    },
+    '/_assets/*': { GET: asset, HEAD: asset },
     '/_remote/*': { POST: page },
   };
 }

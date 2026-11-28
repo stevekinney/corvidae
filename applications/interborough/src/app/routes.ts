@@ -52,6 +52,18 @@ export interface RouteDefinition {
   redirect?: (match: { params: Readonly<Record<string, string | undefined>> }) => Promise<string>;
 }
 
+/** Translate an application document pattern to the corresponding Velveteen route ID. */
+export function velveteenRouteId(pattern: string): string {
+  return pattern
+    .split('/')
+    .map((segment) => {
+      if (segment === '*') return '[...path]';
+      if (segment.startsWith(':')) return `[${segment.slice(1)}]`;
+      return segment;
+    })
+    .join('/');
+}
+
 const agentEditor = () => import('../routes/agent-editor/index.svelte');
 const agentPage = () => import('../routes/agents/agent-detail.svelte');
 const workflowArea = () => import('../routes/workflow-definitions/index.svelte');

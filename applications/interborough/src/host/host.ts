@@ -285,7 +285,7 @@ import {
   sharedBrowserServerHooks,
   type SharedBrowserSignInOptions,
 } from './shared-browser-sign-in.ts';
-import { isShellNavigation } from './shell-request.ts';
+import { isDocumentCandidateRequest, isShellNavigation } from './shell-request.ts';
 import {
   createSkillManager,
   discoverFirstSkills,
@@ -429,6 +429,11 @@ export type RunAgentLookup = (runId: string) => Promise<string | undefined>;
  * What `startHost` reads to start a host. Every field is optional and defaults to the environment
  * and the checked-in build.
  */
+type DocumentCandidate = {
+  fetch(request: Request): Response | Promise<Response>;
+  dispose(): Promise<void>;
+};
+
 export type HostOptions = {
   /** The environment to read `INTERBOROUGH_HOME` and `INTERBOROUGH_PORT` from. Defaults to the process's. */
   readonly environment?: BungalowEnvironment;
@@ -474,6 +479,8 @@ export type HostOptions = {
   readonly buildDirectory?: string;
   /** Development preparation that must succeed before application routes or the listener exist. */
   readonly browserReady?: PromiseLike<void>;
+  /** Open the opt-in document application after the build is ready. The host owns disposal. */
+  readonly openDocumentCandidate?: () => Promise<DocumentCandidate>;
   /**
    * Replaces the engine behind the Engine console, for a host whose console must start and inspect
    * workflows of its own (the end-to-end fixtures). The default is the Bureau's durable engine:
@@ -997,6 +1004,32 @@ function reportBoundListener(
 
 type PublicRoutes = Bun.Serve.Routes<HostSocketData, string>;
 
+async function openHostDocuments(
+  openCandidate: HostOptions['openDocumentCandidate'],
+  held: Held,
+  buildDirectory: string,
+  development: boolean,
+) {
+  const candidate = await openCandidate?.();
+  if (candidate !== undefined) held.documentCandidate = candidate;
+  const shell = shellResponder(buildDirectory, development);
+  return {
+    legacyShell: candidate === undefined ? shell : undefined,
+    ordinaryDocument: (request: Request) =>
+      candidate === undefined ? shell() : candidate.fetch(request),
+    candidateAssets:
+      candidate === undefined ? undefined : (request: Request) => candidate.fetch(request),
+    unclaimed(request: Request): Response | Promise<Response> {
+      if (candidate !== undefined) {
+        if (isDocumentCandidateRequest(request)) return candidate.fetch(request);
+      } else if (isShellNavigation(request)) {
+        return shell();
+      }
+      return new Response('Not found', { status: 404 });
+    },
+  };
+}
+
 /**
  * The route table for the application: `index.html` for every client route, and the build's
  * assets. The routes are the client router's own patterns, so a route added there is served here.
@@ -1004,7 +1037,7 @@ type PublicRoutes = Bun.Serve.Routes<HostSocketData, string>;
 function applicationRoutes(
   buildDirectory: string,
   refuse: Guard,
-  shell: () => Promise<Response>,
+  shell?: () => Promise<Response>,
 ): PublicRoutes {
   const table: PublicRoutes = {
     '/assets/*': {
@@ -1012,8 +1045,10 @@ function applicationRoutes(
         refuse(request) ?? assetResponse(buildDirectory, new URL(request.url).pathname),
     },
   };
-  for (const route of clientRoutes) {
-    table[route.pattern] = { GET: (request) => refuse(request) ?? shell() };
+  if (shell !== undefined) {
+    for (const route of clientRoutes) {
+      table[route.pattern] = { GET: (request) => refuse(request) ?? shell() };
+    }
   }
   return table;
 }
@@ -1789,7 +1824,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const buildDirectory = options.buildDirectory ?? DEFAULT_BUILD_DIRECTORY;
     const devReload = options.development === true ? createDevReload() : undefined;
     if (devReload !== undefined) held.devReload = devReload;
-    const shell = shellResponder(buildDirectory, devReload !== undefined);
+    const documents = await openHostDocuments(
+      options.openDocumentCandidate,
+      held,
+      buildDirectory,
+      devReload !== undefined,
+    );
     // Handed over by the supervisor when it started (`launch-command.ts`), for the page to show
     // after a restart that does not come back.
     const launchCommand = resolveLaunchCommand(environment);
@@ -1805,8 +1845,14 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       buildDirectory,
     );
     const publicRoutes = {
-      ...applicationRoutes(buildDirectory, refuse, shell),
-      ...sharedBrowserRoutes(sharedBrowser, authority, privateServer, shell),
+      ...applicationRoutes(buildDirectory, refuse, documents.legacyShell),
+      ...sharedBrowserRoutes(
+        sharedBrowser,
+        authority,
+        privateServer,
+        documents.ordinaryDocument,
+        documents.candidateAssets,
+      ),
       '/api/v1/principal': {
         GET: (request: Request) =>
           hostPrincipalResponse(request, authority, memorySharingAvailable),
@@ -2020,12 +2066,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       async fetch(request, listener) {
         const refusal = refuse(request);
         if (refusal !== undefined) return refusal;
-        if (!isEngineRequestPath(new URL(request.url).pathname)) {
-          // An address no client route names: the router renders its not-found view inside the
-          // shell. A miss on an asset, the engine, or the Bureau stays a 404.
-          if (isShellNavigation(request)) return shell();
-          return new Response('Not found', { status: 404 });
-        }
+        if (!isEngineRequestPath(new URL(request.url).pathname))
+          return documents.unclaimed(request);
         const { url, key } = await upstream;
         // `/jsonrpc` answers a Bureau method or `rpc.discover` itself (COR-2269), each catalog behind
         // its own gate: Weft's operations need the deployment operator, as the relay's do, and
@@ -2320,6 +2362,7 @@ type Held = {
   instanceRecord?: { readonly home: string; readonly pid: number };
   storage?: Storage;
   privateServer?: { dispose(): Promise<void> };
+  documentCandidate?: DocumentCandidate;
   bureau?: Bureau<AgentDefinitions>;
   reviewedWorker?: { dispose(): Promise<void> };
   providers?: ProviderManager;
@@ -2369,6 +2412,7 @@ async function teardown(held: Held): Promise<void> {
   await step(held.devReload && (() => held.devReload?.close()));
   await step(held.privateServer && (() => held.privateServer?.dispose()));
   await step(held.publicServer && (() => held.publicServer?.stop(true)));
+  await step(held.documentCandidate && (() => held.documentCandidate?.dispose()));
   await step(held.server && (() => held.server?.stop()));
   await step(held.pushDelivery && (() => held.pushDelivery?.stop()));
   await step(held.nightlyCleanUp && (() => held.nightlyCleanUp?.close()));

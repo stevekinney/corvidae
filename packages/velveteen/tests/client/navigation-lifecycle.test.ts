@@ -120,6 +120,7 @@ for (const mode of ["development", "production"] as const)
         await page.goto(
           new URL(`${runtime.basePath}/chat/new`, runtime.server.url).href,
         );
+        await page.waitForFunction(() => Boolean(globalThis.lifecycle));
         const reroutedUrl = new URL(
           `${runtime.basePath}/rerouted`,
           runtime.server.url,

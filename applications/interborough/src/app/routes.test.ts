@@ -32,7 +32,7 @@ import {
   workflowRunsPath,
   workflowTypePath,
 } from '../lib/workflow-type-paths.ts';
-import { type RouteDefinition, routes } from './routes.ts';
+import { type RouteDefinition, routes, velveteenRouteId } from './routes.ts';
 import { DESTINATIONS } from './shell/destinations.ts';
 import { VIEW_NAMES } from './views.ts';
 
@@ -68,6 +68,18 @@ function sourcePath(specifier: string): string {
 }
 
 describe('the route table', () => {
+  test('projects the complete document table into distinct native route IDs', () => {
+    const ids = routes.map(({ pattern }) => velveteenRouteId(pattern));
+    expect(new Set(ids).size).toBe(routes.length);
+    expect(velveteenRouteId('/')).toBe('/');
+    expect(velveteenRouteId('/chats/new')).toBe('/chats/new');
+    expect(velveteenRouteId('/chats/:chat')).toBe('/chats/[chat]');
+    expect(velveteenRouteId('/workflows/:workflow/runs/:run')).toBe(
+      '/workflows/[workflow]/runs/[run]',
+    );
+    expect(velveteenRouteId('/plugins/:plugin/*')).toBe('/plugins/[plugin]/[...path]');
+  });
+
   test('gives every route a view', () => {
     expect(routes.filter((route) => route.view === undefined)).toEqual([]);
     for (const route of routes) expect(VIEW_NAMES).toContain(route.view as never);
