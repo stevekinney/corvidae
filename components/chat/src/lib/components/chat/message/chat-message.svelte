@@ -2249,13 +2249,13 @@
   .chat-message-wrapper[data-role='user']
     .chat-message-line-actions:has(
       > :global(
-          .chat-message-action-button:last-child:not(
-              .chat-message-copy,
-              .chat-message-quote-button,
-              .chat-message-regenerate-button,
-              [data-cinder-icon-only]
-            )
-        )
+        .chat-message-action-button:last-child:not(
+            .chat-message-copy,
+            .chat-message-quote-button,
+            .chat-message-regenerate-button,
+            [data-cinder-icon-only]
+          )
+      )
     ) {
     margin-inline-end: 0;
   }

@@ -90,13 +90,18 @@ describe('a waiting approval', () => {
   });
 
   test('words the review delegate: a visible label at the inline end, never an unlabelled icon', () => {
-    const { getByRole } = mount('dangerous', mock((_resolution: unknown) => undefined));
+    const { getByRole } = mount(
+      'dangerous',
+      mock((_resolution: unknown) => undefined),
+    );
     const deck = getByRole('button', { name: 'Review in deck' });
     expect(deck.textContent?.trim()).toBe('Review in deck');
     expect(deck.hasAttribute('data-cinder-icon-only')).toBe(false);
     expect(deck.classList.contains('weft-chat-approval__review')).toBe(true);
     const source = readFileSync(new URL('./chat-approval.svelte', import.meta.url), 'utf8');
-    expect(source).toMatch(/:global\(\.weft-chat-approval__review\)\s*\{[^}]*margin-inline-start: auto;/);
+    expect(source).toMatch(
+      /:global\(\.weft-chat-approval__review\)\s*\{[^}]*margin-inline-start: auto;/,
+    );
   });
 
   test('offers its supplied review delegate from the decision surface and commits its guarded choice', async () => {

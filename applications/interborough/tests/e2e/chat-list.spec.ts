@@ -631,7 +631,9 @@ test.describe('the chat list at other widths', () => {
     // "$42.00, delive…" beside an input that holds "4471" in a 120px slot (COR-2725).
     const result = page.locator('.cinder-tool-call-rail__result', { hasText: '$42.00' }).first();
     await expect(result).toBeVisible();
-    expect(await result.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
+    expect(
+      await result.evaluate((element) => element.scrollWidth - element.clientWidth),
+    ).toBeLessThanOrEqual(0);
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'list beside the chat',
