@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, test } from 'bun:test';
+import { createRawSnippet } from 'svelte';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
@@ -7,7 +8,6 @@ setupHappyDom();
 
 const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
 const { default: VideoPlayer } = await import('./video-player.svelte');
-const { default: VideoPlayerHarness } = await import('./video-player-harness.test.svelte');
 const { default: AudioPlayer } = await import('../audio-player/audio-player.svelte');
 const { default: ShareCard } = await import('../share-card/share-card.svelte');
 
@@ -425,59 +425,79 @@ describe('VideoPlayer playback speed', () => {
 });
 
 describe('VideoPlayer bound currentTime', () => {
-  function harnessMedia(container: HTMLElement): HTMLMediaElement {
-    return mediaElement(container);
+  /** Props whose `currentTime` is bound the way `bind:currentTime` binds it: a getter and a setter. */
+  function boundProps(bound: number[], initial = 0) {
+    let value = initial;
+    return {
+      src: SOURCE,
+      label: LABEL,
+      get currentTime() {
+        return value;
+      },
+      set currentTime(next: number) {
+        value = next;
+        bound.push(next);
+      },
+    };
   }
 
   test('the bound value follows the element on timeupdate', async () => {
     const bound: number[] = [];
-    const { container } = render(VideoPlayerHarness, { onBound: (value) => bound.push(value) });
-    const media = harnessMedia(container);
+    const { container } = render(VideoPlayer, boundProps(bound));
+    const media = mediaElement(container);
     await loadDuration(media, 48, 0);
     media.currentTime = 9;
     await fireEvent(media, new Event('timeupdate'));
     expect(bound.at(-1)).toBe(9);
   });
 
-  test('writing the bound value seeks, clamped to the length', async () => {
-    const bound: number[] = [];
-    const { container, rerender } = render(VideoPlayerHarness, {
-      onBound: (value) => bound.push(value),
-    });
-    const media = harnessMedia(container);
+  test('writing the value seeks, clamped to the length', async () => {
+    const { container, rerender } = render(VideoPlayer, { src: SOURCE, label: LABEL });
+    const media = mediaElement(container);
     await loadDuration(media, 48, 0);
-    await rerender({ requested: 20 });
+    await rerender({ currentTime: 20 });
     expect(media.currentTime).toBe(20);
-    await rerender({ requested: 99 });
+    await rerender({ currentTime: 99 });
     expect(media.currentTime).toBe(48);
-    expect(bound.at(-1)).toBe(48);
   });
 
-  test('a value written before the metadata loads is applied once it does', async () => {
+  test('a value bound before the metadata loads is held, then applied once it does', async () => {
     const bound: number[] = [];
-    const { container, rerender } = render(VideoPlayerHarness, {
-      onBound: (value) => bound.push(value),
-    });
-    const media = harnessMedia(container);
-    await rerender({ requested: 20 });
+    const { container } = render(VideoPlayer, boundProps(bound, 20));
+    const media = mediaElement(container);
+    // A position the element reports before its length is known does not overwrite the held one.
     await fireEvent(media, new Event('timeupdate'));
-    expect(bound.at(-1)).toBe(20);
+    expect(bound).toEqual([]);
     Object.defineProperty(media, 'duration', { configurable: true, value: 48 });
     await fireEvent(media, new Event('loadedmetadata'));
     expect(media.currentTime).toBe(20);
     expect(bound.at(-1)).toBe(20);
   });
 
+  test('a value written before the metadata loads is applied once it does', async () => {
+    const { container, rerender } = render(VideoPlayer, { src: SOURCE, label: LABEL });
+    const media = mediaElement(container);
+    await rerender({ currentTime: 20 });
+    Object.defineProperty(media, 'duration', { configurable: true, value: 48 });
+    await fireEvent(media, new Event('loadedmetadata'));
+    expect(media.currentTime).toBe(20);
+  });
+
   test('the actions snippet is the last of the controls row and receives the position', async () => {
-    const { container, getByTestId } = render(VideoPlayerHarness, {});
-    const media = harnessMedia(container);
+    // A snippet's argument is a getter Svelte keeps current; holding it reads the live position.
+    let received: (() => { currentTime: number }) | undefined;
+    const actions = createRawSnippet((context: () => { currentTime: number }) => {
+      received = context;
+      return { render: () => `<button type="button" data-testid="comment">Comment</button>` };
+    });
+    const { container, getByTestId } = render(VideoPlayer, { src: SOURCE, label: LABEL, actions });
+    const media = mediaElement(container);
     await loadDuration(media, 48, 19);
     const row = requiredInstance(
       container.querySelector('.cinder-media-controls__row'),
       HTMLElement,
     );
-    const comment = getByTestId('comment');
-    expect(row.lastElementChild).toBe(comment);
-    expect(comment.textContent).toBe('Comment at 19');
+    expect(row.lastElementChild).toBe(getByTestId('comment'));
+    expect(received?.().currentTime).toBe(19);
   });
 });

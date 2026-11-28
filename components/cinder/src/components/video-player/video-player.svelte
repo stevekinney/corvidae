@@ -46,8 +46,12 @@
     },
   );
 
+  // Only a new source resets: a parent that passes the same source again keeps the loaded length,
+  // so the markers and a held position survive it.
+  let resetSource: string | undefined;
   $effect(() => {
-    void src;
+    if (src === resetSource) return;
+    resetSource = src;
     player.reset();
   });
 
