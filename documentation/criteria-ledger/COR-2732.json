@@ -1,0 +1,39 @@
+{
+  "issue": "COR-2732",
+  "branch": "chef/config-move",
+  "checkedAt": "e2c7877936eb41368daece285567e6dde472aa37",
+  "briefVersion": "126bf6507d9e",
+  "status": "READY",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "met-on-branch",
+      "evidence": "git mv to configuration/typescript; exports unchanged; test:self workspace-contract passes"
+    },
+    {
+      "id": "AC2",
+      "status": "met-on-branch",
+      "evidence": "git mv to packages/component-tooling; consumers resolve; create-package and gate-wiring tests pass"
+    },
+    {
+      "id": "AC3",
+      "status": "met-on-branch",
+      "evidence": "package.json workspaces, workspace-directories.ts, workspace-layout.md, AGENTS.md updated"
+    },
+    {
+      "id": "AC4",
+      "status": "met-on-branch",
+      "evidence": "turbo.json, workflows, guards updated; fixture token check runs via component-tooling tokens:fixtures"
+    },
+    {
+      "id": "AC5",
+      "status": "met-on-branch",
+      "evidence": "git grep finds old paths only in MIGRATION.md, a dated history record"
+    },
+    {
+      "id": "AC6",
+      "status": "met-on-branch",
+      "evidence": "frozen install, preflight, lint:root, test:self pass; focused-checks 8 passed at head"
+    }
+  ]
+}
