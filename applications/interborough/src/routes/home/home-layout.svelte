@@ -242,6 +242,12 @@
       block-size: 100%;
     }
 
+    /* Needs attention ends at its rows: they keep the height of the Needs you rows above them
+     * instead of stretching to the height of the Recent chats card beside them. */
+    .ib-home__needs-attention :global(.ib-home-column-card) {
+      align-self: start;
+    }
+
     :is(.ib-home__needs-attention, .ib-home__recent) :global(.ib-home-column-list) {
       display: grid;
     }

@@ -71,7 +71,7 @@
       <Skeleton variant="grouped" rows={3} action />
     {:else}
       <GroupedList
-        class="ib-home-column-list ib-home-column-fill"
+        class="ib-home-column-list"
         data-home-column-list
         aria-label={copy.listLabel}
       >

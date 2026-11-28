@@ -118,6 +118,24 @@ const everythingDecided = {
 
 const needsYou = (page: Page) => page.locator('[data-home-card="Needs you"]');
 
+test('Needs attention rows keep the Needs you row height at 1280 and 1920', async ({ page }) => {
+  await openHome(page);
+  const home = page.locator('[data-page="home"][data-mode="overview"]');
+  const attention = home.getByRole('list', { name: 'System problems' }).getByRole('listitem');
+  const needsYouRows = needsYou(page).getByRole('listitem');
+  const pitch = async (rows: Locator): Promise<number> => {
+    const first = await rows.nth(0).boundingBox();
+    const second = await rows.nth(1).boundingBox();
+    return second!.y - first!.y;
+  };
+  for (const width of [1280, 1920]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(attention.nth(1)).toBeVisible();
+    // The card ends at its rows: they were about 97px apart, stretched to the Recent chats card.
+    expect(Math.abs((await pitch(attention)) - (await pitch(needsYouRows)))).toBeLessThan(2);
+  }
+});
+
 test('wide Home keeps attention actions in the content bound', async ({ page }) => {
   await openHome(page);
   const home = page.locator('[data-page="home"][data-mode="overview"]');

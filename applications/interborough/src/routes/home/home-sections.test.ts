@@ -146,6 +146,20 @@ describe('Home’s sections', () => {
   });
 });
 
+describe('Needs attention ends at its content', () => {
+  // The rows beside the Needs you list are about 60.5px apart; stretched to the Recent chats card's
+  // height they were about 97px apart. The Recent chats list takes the leftover height of its
+  // column, Needs attention never does.
+  test('its list does not fill the column, and its card starts at the top and ends at its rows', () => {
+    const source = readFileSync(new URL('./home-needs-attention.svelte', import.meta.url), 'utf8');
+    expect(source).not.toContain('ib-home-column-fill');
+    const layout = readFileSync(new URL('./home-layout.svelte', import.meta.url), 'utf8');
+    expect(layout).toMatch(
+      /\.ib-home__needs-attention :global\(\.ib-home-column-card\) \{[^}]*align-self: start;/,
+    );
+  });
+});
+
 describe('Home holds no middle dot (COR-2388)', () => {
   test('no rendered text on Home contains U+00B7', async () => {
     const { container } = await open();
