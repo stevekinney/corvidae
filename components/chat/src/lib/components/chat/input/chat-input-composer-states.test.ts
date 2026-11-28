@@ -171,8 +171,9 @@ describe('the offline drawer (C5)', () => {
 
     const drawer = container.querySelector<HTMLElement>('[data-chat-composer-drawer="offline"]')!;
     expect(drawer.textContent).toContain(
-      "You're offline. Your draft is saved here, and Send comes back when you reconnect.",
+      'Your draft is saved here, and Send comes back when you reconnect.',
     );
+    expect(drawer.textContent).not.toMatch(/offline/i);
     // The drawer sits above the box, outside the text column.
     const form = container.querySelector('form.chat-input')!;
     expect(form.contains(drawer)).toBe(false);

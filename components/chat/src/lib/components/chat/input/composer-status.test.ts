@@ -17,8 +17,10 @@ describe('composerStatusText', () => {
 
   test('reads the offline drawer with the draft kept and Send coming back', () => {
     expect(composerStatusText({ kind: 'offline' })).toBe(
-      "You're offline. Your draft is saved here, and Send comes back when you reconnect.",
+      'Your draft is saved here, and Send comes back when you reconnect.',
     );
+    // The page banner says the connection is gone; the drawer says only what is new.
+    expect(composerStatusText({ kind: 'offline' })).not.toMatch(/offline/i);
   });
 
   test('reads the draft-restored drawer with when the draft is from', () => {

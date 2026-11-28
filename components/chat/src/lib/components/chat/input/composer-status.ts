@@ -100,9 +100,12 @@ export type ChatComposerStatus =
 /** The words of the neutral bar a read-only chat draws in place of its composer. */
 export const COMPOSER_READ_ONLY_LABEL = 'Read only';
 
-/** What the offline drawer says: the draft is kept, and Send comes back with the connection. */
+/**
+ * What the offline drawer says: the draft is kept, and Send comes back with the connection. The
+ * page's banner already says "You're offline", so the drawer says only what is new.
+ */
 export const COMPOSER_OFFLINE_TEXT =
-  "You're offline. Your draft is saved here, and Send comes back when you reconnect.";
+  'Your draft is saved here, and Send comes back when you reconnect.';
 
 /** The action of the draft-restored drawer: it empties the composer. */
 export const COMPOSER_DISCARD_DRAFT_LABEL = 'Discard draft';
