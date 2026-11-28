@@ -10,9 +10,15 @@ const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
 const { tick } = await import('svelte');
 const { default: Carousel } = await import('./carousel.svelte');
 
+// Whether the DOM had `onscrollend` before any test stubbed it. Every Carousel test file
+// later in this process reads `'onscrollend' in viewport` to choose its settle path, so a
+// stub that outlives its test moves them onto the native path (COR-2718).
+const hadNativeScrollEnd = 'onscrollend' in HTMLElement.prototype;
+
 afterEach(() => {
   jest.useRealTimers();
   cleanup();
+  expect('onscrollend' in HTMLElement.prototype).toBe(hadNativeScrollEnd);
 });
 
 const slides = [
@@ -36,10 +42,37 @@ function installScrollEndSupport(): () => void {
     if (original) {
       Object.defineProperty(proto, 'onscrollend', original);
     } else {
-      Object.defineProperty(proto, 'onscrollend', { configurable: true, value: undefined });
+      // Delete rather than redefine as `undefined`: `'onscrollend' in element` is what the
+      // Carousel reads, and a property set to `undefined` still answers `true` (COR-2718).
+      Reflect.deleteProperty(proto, 'onscrollend');
     }
   };
 }
+
+describe('installScrollEndSupport (COR-2718)', () => {
+  test('restoring removes the stub when the DOM had no onscrollend of its own', () => {
+    expect(Object.prototype.hasOwnProperty.call(HTMLElement.prototype, 'onscrollend')).toBe(false);
+    const restore = installScrollEndSupport();
+    expect('onscrollend' in document.createElement('div')).toBe(true);
+    restore();
+    expect('onscrollend' in document.createElement('div')).toBe(hadNativeScrollEnd);
+    expect(Object.prototype.hasOwnProperty.call(HTMLElement.prototype, 'onscrollend')).toBe(false);
+  });
+
+  test('restoring puts back an onscrollend the DOM already had', () => {
+    const descriptor = { configurable: true, enumerable: false, writable: true, value: 'native' };
+    Object.defineProperty(HTMLElement.prototype, 'onscrollend', descriptor);
+    try {
+      const restore = installScrollEndSupport();
+      restore();
+      expect(Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'onscrollend')).toEqual(
+        descriptor,
+      );
+    } finally {
+      Reflect.deleteProperty(HTMLElement.prototype, 'onscrollend');
+    }
+  });
+});
 
 describe('native scrollend (Tier 2 progressive enhancement)', () => {
   // The listener-attachment effect runs once at mount and checks

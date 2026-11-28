@@ -369,8 +369,15 @@ describe('Carousel', () => {
       HTMLElement,
     );
 
-    await fireEvent.wheel(viewport, { shiftKey: true, deltaX: 0, deltaY: 40 });
+    // happy-dom's WheelEvent extends UIEvent, not MouseEvent, so it drops `shiftKey` from its
+    // init; without the key the wheel never reaches the pause, and this test passed only when
+    // autoplay's advance happened not to show within 50ms (COR-2718).
+    const wheel = new window.WheelEvent('wheel', { bubbles: true, deltaX: 0, deltaY: 40 });
+    Object.defineProperty(wheel, 'shiftKey', { value: true });
+    expect(wheel.shiftKey).toBe(true);
+    await fireEvent(viewport, wheel);
     jest.advanceTimersByTime(50);
+    await tick();
     expectActiveSlide(container, 0);
   });
 
