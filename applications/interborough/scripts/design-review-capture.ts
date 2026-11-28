@@ -268,6 +268,12 @@ const SHOWCASE_SPECIFICATIONS = [
   // and its toast, a chat title with Markdown, and a setting description with a code span.
   // `--grep copy-and-inline-markdown-states` selects it.
   'tests/e2e/copy-and-inline-markdown-states.spec.ts',
+  // The states a SchemaForm opens into when it is given a schema as published: a field that is
+  // also null (cleared, unset, a yes or no with Not set, a group with Set, a list with Clear), a
+  // union drawn as a flat choice, and a duration, on
+  // Settings General, Data and retention, run setup, a plugin's configuration and a workflow
+  // step's input (COR-2774). `--grep schema-form-states` selects it.
+  'tests/e2e/schema-form-states.spec.ts',
 ] as const;
 
 type Scheme = 'light' | 'dark';

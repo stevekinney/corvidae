@@ -202,14 +202,27 @@ test.describe('Settings › Data and retention', () => {
       }
       await route.fallback();
     });
-    await page.evaluate(() => {
-      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
-      document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
-      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
-      document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
-    });
-
+    // A refocus while a read is already in flight (the one the page makes once the Bureau accepts
+    // its subscription) joins that read, which began before the 500 was routed, so it finds
+    // nothing to fail. The window regains focus again until a read of its own meets the 500.
     const banner = page.getByTestId('settings-refresh-failed');
+    await expect
+      .poll(async () => {
+        await page.evaluate(() => {
+          Object.defineProperty(document, 'visibilityState', {
+            value: 'hidden',
+            configurable: true,
+          });
+          document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
+          Object.defineProperty(document, 'visibilityState', {
+            value: 'visible',
+            configurable: true,
+          });
+          document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
+        });
+        return banner.count();
+      })
+      .toBe(1);
     await expect(banner).toContainText('Couldn’t refresh these settings.');
     await expect(banner).toContainText('Showing what loaded as of');
     await expect(banner.getByRole('button', { name: 'Try again' })).toBeVisible();

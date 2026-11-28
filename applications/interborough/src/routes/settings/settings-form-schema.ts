@@ -1,15 +1,12 @@
 /**
- * The JSON Schema a Cinder `SchemaForm` is given for an object-valued setting, made from the node
- * `bureau.settings.schema` publishes. The Bureau's schema is Zod's: a union is an `anyOf`, where
- * `SchemaForm` reads a `oneOf` (a segmented choice between a literal and an object); a duration is
- * a number named `olderThan`, where `SchemaForm` reads a unit from `format: 'duration-ms'` or a name
- * that ends in `Ms`. The row draws the node's description as Markdown itself, so the form's copy
- * is left out, and the form is titled by the key so its choice has the setting's name. A union with
- * `null` (`engine.payloadSize.maxBytes`, where `null` removes the limit) is drawn as the other
- * branch alone, a number field: `SchemaForm` has no control for `null`, and would draw the whole
- * field as JSON. A field cleared in the form is left out of the value, as it is left unset.
+ * The JSON Schema a Cinder `SchemaForm` is given for an object-valued setting, a contributed
+ * configuration or a workflow step's input: the node the Bureau or a plugin publishes, as it was
+ * published. `SchemaForm` reads a union (an `anyOf` or a `oneOf`), a value that may be `null`, and
+ * the unit of a duration on the field's own schema, and checks a value against the schema it was
+ * given, so nothing here rewrites a keyword: a union stays the union it is, and a `null` or `false`
+ * alternative stays an alternative. The row draws the node's description as Markdown itself, so the
+ * form's copy is left out, and the form is titled by the key so its choice has the setting's name.
  */
-import { isDuration } from './settings-controls.ts';
 
 type Json = Record<string, unknown>;
 
@@ -17,77 +14,31 @@ function isRecord(value: unknown): value is Json {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** The branch a union holds beside `null`, or `undefined` for any other union. */
-function withoutNull(branches: unknown): unknown {
-  if (!Array.isArray(branches) || branches.length !== 2) return undefined;
-  const [first, second] = branches;
-  const isNull = (branch: unknown): boolean => isRecord(branch) && branch['type'] === 'null';
-  if (isNull(first) !== isNull(second)) return isNull(first) ? second : first;
-  return undefined;
-}
-
-/** The object a union of `false` and one object holds, or `undefined` for any other union. */
-function withoutFalse(branches: unknown): unknown {
-  if (!Array.isArray(branches) || branches.length !== 2) return undefined;
-  const isFalse = (branch: unknown): boolean => isRecord(branch) && branch['const'] === false;
-  const [first, second] = branches;
-  if (isFalse(first) !== isFalse(second)) return isFalse(first) ? second : first;
-  return undefined;
-}
-
-function convert(node: unknown, name: string): unknown {
-  if (Array.isArray(node)) return node.map((item) => convert(item, name));
-  if (!isRecord(node)) return node;
-  const object = withoutFalse(node['anyOf']);
-  if (object !== undefined) {
-    const { anyOf: _union, ...rest } = node;
-    return convert({ ...(isRecord(object) ? object : {}), ...rest }, name);
-  }
-  const optional = withoutNull(node['anyOf']);
-  if (optional !== undefined) {
-    const { anyOf: _union, ...rest } = node;
-    return convert({ ...(isRecord(optional) ? optional : {}), ...rest }, name);
-  }
-  const converted: Json = {};
-  for (const [key, value] of Object.entries(node)) {
-    if (key === 'properties' && isRecord(value)) {
-      converted[key] = Object.fromEntries(
-        Object.entries(value).map(([property, child]) => [property, convert(child, property)]),
-      );
-    } else {
-      converted[key === 'anyOf' ? 'oneOf' : key] = convert(value, name);
-    }
-  }
-  if (
-    (converted['type'] === 'number' || converted['type'] === 'integer') &&
-    isDuration(name) &&
-    converted['format'] === undefined
-  ) {
-    converted['format'] = 'duration-ms';
-  }
-  return converted;
-}
-
 /** The schema of the form for the setting `key`, whose published node is `node`. */
 export function formSchemaOf(key: string, node: unknown): Json {
-  const converted = convert(node, key);
-  const { description: _description, ...rest } = isRecord(converted) ? converted : {};
+  const { description: _description, ...rest } = isRecord(node) ? node : {};
   return { ...rest, title: key };
 }
 
 /**
  * Whether every number field of `value` holds a committed number. A `SchemaForm` reports a field
  * that is still being typed in as its text (`onDraftChange`), so a string where `schema` calls for
- * a number is an edit that has not finished: it is neither checked nor sent.
+ * a number is an edit that has not finished: it is neither checked nor sent. The number may be one
+ * of a list of types (`["integer", "null"]`), and a union (an `anyOf` or a `oneOf`) holds its
+ * fields in its alternatives.
  */
 export function numbersCommitted(schema: unknown, value: unknown): boolean {
   if (!isRecord(schema)) return true;
-  const type = schema['type'];
-  if ((type === 'number' || type === 'integer') && typeof value === 'string') return false;
-  // A choice (`retention.events`: `'forever'` or `{ olderThan }`) holds its fields in its branches.
-  const branches = schema['oneOf'];
-  if (Array.isArray(branches) && !branches.every((branch) => numbersCommitted(branch, value))) {
+  const types: unknown[] = [schema['type']].flat();
+  if ((types.includes('number') || types.includes('integer')) && typeof value === 'string') {
     return false;
+  }
+  // A choice (`retention.events`: `'forever'` or `{ olderThan }`) holds its fields in its branches.
+  for (const keyword of ['anyOf', 'oneOf']) {
+    const branches = schema[keyword];
+    if (Array.isArray(branches) && !branches.every((branch) => numbersCommitted(branch, value))) {
+      return false;
+    }
   }
   if (Array.isArray(value)) {
     return value.every((item) => numbersCommitted(schema['items'], item));

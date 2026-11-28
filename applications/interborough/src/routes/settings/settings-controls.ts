@@ -112,6 +112,22 @@ function unionControl(branches: readonly SchemaNode[]): Control {
   return { kind: 'json' };
 }
 
+/**
+ * The words a setting that is one of a few words or an object (`retention.checkpoints`: `keep-all`
+ * or `{ keepLast }`) is chosen between, or `undefined` for any other node. The row draws the choice
+ * in its own control column, and the form below it draws the object's fields.
+ */
+export function wordOrObjectOf(node: SchemaNode): string | undefined {
+  const branches = node.anyOf;
+  if (branches?.length !== 2) return undefined;
+  const objects = branches.filter(isObjectNode);
+  const words = branches.filter((branch) => typeof branch.const === 'string');
+  const [word] = words;
+  return objects.length === 1 && words.length === 1 && typeof word?.const === 'string'
+    ? word.const
+    : undefined;
+}
+
 /** The control of the setting `key`, whose schema node is `node`. */
 export function controlFor(key: string, node: SchemaNode): Control {
   if (node.anyOf !== undefined) return unionControl(node.anyOf);
@@ -327,9 +343,4 @@ export function optionLabel(value: string): string {
       .toLowerCase()
       .trim(),
   );
-}
-
-/** Whether a property of an object-valued setting is a duration, which every setting takes in milliseconds. */
-export function isDuration(name: string): boolean {
-  return name === 'olderThan' || name.endsWith('Milliseconds');
 }

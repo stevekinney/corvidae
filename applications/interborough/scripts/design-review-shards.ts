@@ -55,6 +55,8 @@ export const SPECIFICATION_WEIGHTS: Readonly<Record<string, number>> = {
   'run-timeline-states.spec.ts': 80,
   // Eight states at two to three widths each (four with the repeats at 1920 and 320), one page apiece.
   'copy-and-inline-markdown-states.spec.ts': 70,
+  // Nine states at four widths each, every one from a fresh page of a stubbed read.
+  'schema-form-states.spec.ts': 60,
 };
 
 /** The weight of a specification the table does not list. */

@@ -32,7 +32,7 @@
   import { router } from '../../../lib/router.svelte.ts';
   import { policyOf } from '../model-policy-edit.ts';
   import { controlFor, inSection, MODEL_POLICY_KEY, type Control } from '../settings-controls.ts';
-  import { formSchemaOf, numbersCommitted } from '../settings-form-schema.ts';
+  import { numbersCommitted } from '../settings-form-schema.ts';
   import { SettingsAutosave } from '../settings-autosave.svelte.ts';
   import { SettingsForm } from '../settings-form.svelte.ts';
   import SettingsRestartNotice from '../settings-restart-notice.svelte';
@@ -121,13 +121,13 @@
   async function validate(key: string, value: unknown): Promise<string | undefined> {
     const node = schema[key];
     if (node === undefined) return undefined;
-    const result = await validateSchemaFormValue(formSchemaOf(key, node), value);
+    const result = await validateSchemaFormValue(node, value);
     return result.valid ? undefined : (result.issues[0]?.message ?? SETTINGS_COPY.invalidValue);
   }
 
   function committed(key: string, value: unknown): boolean {
     const node = schema[key];
-    return node === undefined || numbersCommitted(formSchemaOf(key, node), value);
+    return node === undefined || numbersCommitted(node, value);
   }
 
   const form = new SettingsForm(controls, (key) => stateOf(key).locked, validate, committed);

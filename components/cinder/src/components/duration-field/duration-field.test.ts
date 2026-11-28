@@ -202,6 +202,63 @@ describe('DurationField', () => {
     expect(unitOf(container).disabled).toBe(true);
   });
 
+  test('never clips the unit: its track is its content, and the select is no wider than its label needs', () => {
+    const { container } = render(DurationField, {
+      props: { id: 'narrow', label: 'Default time to live', value: 120_000, unit: 'min' },
+    });
+    const unit = unitOf(container);
+    expect(unit.value).toBe('min');
+    expect(unit.scrollWidth).toBeLessThanOrEqual(unit.clientWidth);
+    // A unit that may shrink below its content is what clipped "min" to "m..": the unit keeps its
+    // longest option's width and never shrinks, and the number is the one that gives way, down to
+    // its floor, after which the unit wraps under it.
+    const css = readFileSync(new URL('./duration-field.css', import.meta.url), 'utf8');
+    expect(css).toMatch(
+      />\s*:last-child:not\(:first-child\)\s*\{\s*flex:\s*0 0 auto;\s*inline-size:\s*max-content;/,
+    );
+    expect(css).toMatch(
+      /\.cinder-duration-field:not\(\[data-cinder-fixed-unit\]\)\s*>\s*\.cinder-number-input-field\s*\{\s*flex:\s*1 1 min-content;\s*min-inline-size:\s*0;/,
+    );
+  });
+
+  test("measures the number's floor from two digits and the placeholder's own words", () => {
+    const css = readFileSync(new URL('./duration-field.css', import.meta.url), 'utf8');
+    const sizer =
+      /\.cinder-duration-field:not\(\[data-cinder-fixed-unit\]\)\s*>\s*\.cinder-number-input-field::after\s*\{([^}]*)\}/.exec(
+        css,
+      )?.[1] ?? '';
+    expect(sizer).toMatch(/content:\s*'00\\A'\s+attr\(data-cinder-placeholder-text\);/);
+    expect(sizer).toMatch(
+      /padding-inline-end:\s*calc\(var\(--_cinder-number-input-chrome\)\s*\+\s*var\(--cinder-space-0-5\)\);/,
+    );
+    expect(sizer).toMatch(/block-size:\s*0;/);
+    expect(sizer).toMatch(/visibility:\s*hidden;/);
+    expect(sizer).toMatch(/white-space:\s*pre;/);
+    expect(sizer).toMatch(/font-size:\s*var\(--cinder-text-sm\);/);
+    // No width of a text is typed in: an estimate is what gave "Not set" room to a field that
+    // never says it, and wrapped a pair that fits.
+    expect(css).not.toContain('--_cinder-duration-slot-floor');
+    expect(css).not.toContain('--_cinder-duration-number-floor');
+    expect(css).not.toMatch(/\.cinder-number-input__input\s*\{\s*min-inline-size/);
+  });
+
+  test('hands the placeholder to the number as the words its floor is measured from', () => {
+    const unset = render(DurationField, {
+      props: { id: 'limit', label: 'Limit', value: null, placeholder: 'Not set' },
+    });
+    const frame = unset.container.querySelector('.cinder-number-input-field');
+    expect(frame?.getAttribute('data-cinder-placeholder-text')).toBe('Not set');
+    expect(numberOf(unset.container).placeholder).toBe('Not set');
+    cleanup();
+
+    const plain = render(DurationField, { props: { id: 'wait', label: 'Wait', value: null } });
+    expect(
+      plain.container
+        .querySelector('.cinder-number-input-field')
+        ?.hasAttribute('data-cinder-placeholder-text'),
+    ).toBe(false);
+  });
+
   test('keeps the selectable unit directly after the capped number control on a wide row', () => {
     const css = readFileSync(new URL('./duration-field.css', import.meta.url), 'utf8');
     const fixture = readFileSync(
@@ -210,15 +267,18 @@ describe('DurationField', () => {
     );
 
     expect(css).toMatch(
-      /\.cinder-duration-field\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*10rem\)\s+auto;/,
+      /\.cinder-duration-field\s*\{[\s\S]*?display:\s*flex;\s*flex-wrap:\s*wrap;\s*justify-content:\s*flex-start;/,
     );
     expect(css).toMatch(
-      /\.cinder-duration-field\[data-cinder-fixed-unit\]\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\);/,
+      /\.cinder-duration-field\[data-cinder-fixed-unit\]\s*\{\s*display:\s*grid;\s*grid-template-columns:\s*minmax\(0,\s*1fr\);/,
     );
     expect(fixture).toContain('data-testid="wide"');
     expect(fixture).toContain('data-testid="squeezed"');
     expect(fixture).toContain('data-testid="fixed-unit"');
     expect(fixture).toContain('data-testid="large-number"');
+    expect(fixture).toContain('data-testid="phone-card"');
+    expect(fixture).toContain('data-testid="phone-card-not-set"');
+    expect(fixture).toContain('data-testid="squeezed-not-set"');
   });
 });
 

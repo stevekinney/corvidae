@@ -299,6 +299,74 @@ describe('Settings › Data and retention', () => {
     expect(keys.slice(4)).toContain('retention.events');
     expect(keys.indexOf('retention.events')).toBeLessThan(keys.indexOf('storage-usage'));
   });
+
+  test('is clean once it has loaded: no row is dirty, and nothing is sent (COR-2774)', async () => {
+    const { view } = open();
+    await rowReady(view, 'retention.checkpoints');
+    await rowReady(view, 'retention.audit');
+    const rows = [...view.container.querySelectorAll<HTMLElement>('[data-setting]')];
+    expect(rows.length).toBeGreaterThan(4);
+    expect(rows.filter((found) => found.dataset['dirty'] === 'true')).toEqual([]);
+    expect(updates()).toHaveLength(0);
+  });
+
+  test('Checkpoints chooses Keep all from the row, saves it, and Custom brings its fields back (COR-2774)', async () => {
+    const { view } = open();
+    const row = await rowReady(view, 'retention.checkpoints');
+
+    await fireEvent.click(within(row).getByRole('radio', { name: 'Keep all' }));
+    await waitFor(() => expect(updates()).toHaveLength(1));
+    expect(updates()[0]?.params).toMatchObject({ patch: { 'retention.checkpoints': 'keep-all' } });
+    // The fields are drawn only for the object, so Keep all leaves none of them.
+    await waitFor(() => expect(within(row).queryAllByRole('spinbutton')).toHaveLength(0));
+
+    await fireEvent.click(within(row).getByRole('radio', { name: 'Custom' }));
+    await waitFor(() => expect(within(row).getAllByRole('spinbutton').length).toBeGreaterThan(0));
+    // Choosing Custom saves nothing until its fields are filled in and left.
+    expect(updates()).toHaveLength(1);
+  });
+
+  test('Checkpoints draws the Bureau’s own anyOf as a choice, and its timeout as a duration saved in milliseconds (COR-2774)', async () => {
+    const { view } = open();
+    const row = await rowReady(view, 'retention.checkpoints');
+
+    expect(within(row).getByRole('radio', { name: 'Keep all' })).not.toBeNull();
+    expect(within(row).getByRole('radio', { name: 'Custom' }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
+    expect(row.querySelector('textarea')).toBeNull();
+    // The labels are the ones a person reads, with no unit in a duration's name, and the choice
+    // sits flat in the row: no fieldset, and no legend that repeats the setting's key.
+    expect(row.textContent).toContain('Keep last');
+    expect(row.textContent).toContain('Timeout');
+    expect(row.textContent).not.toContain('Milliseconds');
+    expect(row.querySelectorAll('.cinder-schema-form__fieldset')).toHaveLength(0);
+    expect(row.querySelectorAll('.cinder-schema-form__legend')).toHaveLength(0);
+    // The choice is in the row's control column, on the label line like its siblings' controls.
+    expect(row.querySelector('.cinder-setting-row__field [role="radiogroup"]')).not.toBeNull();
+    expect(row.querySelector('.cinder-schema-form [role="radiogroup"]')).toBeNull();
+    // The fields are the row's body: the row's own gap puts them under its text (the form's
+    // fieldset takes no margin of its own), and the form draws no header for a choice it does
+    // not draw, nor a block-end padding after its last field.
+    expect(row.querySelectorAll('fieldset.weft-setting__form[data-row-body]')).toHaveLength(1);
+    expect(row.querySelectorAll('.cinder-schema-form__choice-header')).toHaveLength(0);
+    expect(
+      row.querySelectorAll('.cinder-schema-form__choice[data-cinder-root-choice]'),
+    ).toHaveLength(1);
+
+    const unit = within(row).getByRole('combobox', { name: /unit/i });
+    await fireEvent.change(unit, { target: { value: 'min' } });
+    const timeout = within(row).getAllByRole('spinbutton')[1]!;
+    await fireEvent.focus(timeout);
+    await fireEvent.input(timeout, { target: { value: '2' } });
+    await fireEvent.blur(timeout);
+    await fireEvent.focusOut(timeout);
+
+    await waitFor(() => expect(updates()).toHaveLength(1));
+    expect(updates()[0]?.params).toMatchObject({
+      patch: { 'retention.checkpoints': { keepLast: 5, timeoutMilliseconds: 120_000 } },
+    });
+  });
 });
 
 describe('Settings › Data and retention › Storage', () => {

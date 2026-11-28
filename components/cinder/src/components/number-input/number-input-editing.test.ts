@@ -1,3 +1,4 @@
+import { pressDelete, selectAsChromium } from '@lostgradient/testing/text-control';
 import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
@@ -43,6 +44,59 @@ describe('External updates and edge cases', () => {
     const input = getInput(container);
     await fireEvent.keyDown(input, { key: 'ArrowUp' });
     expect(calls).toEqual([5]);
+  });
+});
+
+describe('A field filled the way Playwright fills one: select(), focus(), then Delete', () => {
+  // Playwright's `fill('')` runs `input.select(); input.focus()` and then presses Delete. Chromium
+  // fires `focus` inside `select()`, before the range is applied, so a listener reads a caret at 0;
+  // text it writes moves the range to the end. `selectAsChromium` does that, which happy-dom's
+  // `select()` does not. The field shows `4,096` and edits as `4096`.
+  test('the whole edit text is selected once a field whose shown text differs is focused', async () => {
+    const { container } = render(NumberInput, { props: { id: 'n', value: 4096, locale: 'en-US' } });
+    const input = getInput(container);
+    expect(input.value).toBe('4,096');
+    selectAsChromium(input);
+    input.focus();
+    await tick();
+    expect(input.value).toBe('4096');
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, 4]);
+  });
+
+  test('Delete empties the field as an unsaved draft, and leaving it reports null', async () => {
+    const calls: Array<number | null> = [];
+    const { container } = render(NumberInput, {
+      props: {
+        id: 'n',
+        value: 4096,
+        locale: 'en-US',
+        onValueChange: (next: number | null) => calls.push(next),
+      },
+    });
+    const input = getInput(container);
+    selectAsChromium(input);
+    input.focus();
+    await tick();
+    pressDelete(input);
+    await tick();
+    expect(input.value).toBe('');
+    expect(input.getAttribute('aria-valuenow')).toBeNull();
+    expect(calls).toEqual([]);
+    await blur(input);
+    expect(calls).toEqual([null]);
+    expect(input.value).toBe('');
+  });
+
+  test('a field whose shown text is its edit text keeps the selection the script made', async () => {
+    const { container } = render(NumberInput, { props: { id: 'n', value: 30, locale: 'en-US' } });
+    const input = getInput(container);
+    selectAsChromium(input);
+    input.focus();
+    await tick();
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, 2]);
+    pressDelete(input);
+    await tick();
+    expect(input.value).toBe('');
   });
 });
 

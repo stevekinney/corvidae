@@ -20,6 +20,17 @@
     max-inline-size: 14rem;
   }
 
+  /* What the field is besides its text: both steppers (each stepper's 1px rule is inside its
+   * width), the group's two 1px borders and the text slot's padding. A parent that sizes the
+   * number to its content (DurationField) adds this to the text the slot must show. */
+  .cinder-number-input-field {
+    --_cinder-number-input-stepper-size: 2.25rem;
+    --_cinder-number-input-chrome: calc(
+      2 * var(--_cinder-number-input-stepper-size) + 2px + var(--cinder-space-3) +
+        var(--cinder-space-2)
+    );
+  }
+
   .cinder-input-group:has(> .cinder-number-input__input) > .cinder-number-input__input {
     padding-inline-end: var(--cinder-space-2);
   }
@@ -71,7 +82,7 @@
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
-    inline-size: 2.25rem;
+    inline-size: var(--_cinder-number-input-stepper-size);
     padding: 0;
     background: transparent;
     border: none;

@@ -168,7 +168,7 @@ export class SchemaFormState {
   updateNumberValue(field: SchemaFormField, next: number | null): void {
     const draft = ownEntry(this.#numericDrafts, pathKey(field.path));
     if (next === null && draft !== undefined && draft.trim() !== '') return;
-    this.updateValue(field.path, next ?? undefined);
+    this.updateValue(field.path, next ?? this.#clearedValue(field));
   }
 
   async validateTouchedField(field: SchemaFormField): Promise<void> {
@@ -214,11 +214,23 @@ export class SchemaFormState {
     if (this.#options.getSubmitting()) return;
     const select = event.currentTarget;
     if (!(select instanceof HTMLSelectElement)) return;
-    // The empty choice of a clearable field leaves it unset, which the draft reports as absent.
+    // The empty choice of a clearable field leaves it unset, which the draft reports as absent, or
+    // `null` when its schema allows that.
     this.updateValue(
       field.path,
-      field.clearable && select.value === '' ? undefined : decodeEnumValue(select.value),
+      field.clearable && select.value === ''
+        ? this.#clearedValue(field)
+        : decodeEnumValue(select.value),
     );
+  }
+
+  /**
+   * What a field holds once it is cleared: `null` for a field whose schema allows it, a value of
+   * its own that is neither a missing property nor an empty text, and a property left out for any
+   * other field.
+   */
+  #clearedValue(field: SchemaFormField): null | undefined {
+    return field.nullable ? null : undefined;
   }
 
   /** JSON fields hold a raw text draft (validated/parsed on submit), so the
@@ -294,6 +306,17 @@ export class SchemaFormState {
     if (this.#options.getSubmitting()) return;
     this.#dropStateBelow(field.path);
     this.updateValue(field.path, defaultValueForField(branch));
+  }
+
+  /**
+   * Sets a field that allows `null` to `null` or to a value, such as an object's fields at their
+   * defaults. Every draft and error under the field is dropped, because it described what the field
+   * held before.
+   */
+  setNullable(field: SchemaFormField, next: unknown): void {
+    if (this.#options.getSubmitting()) return;
+    this.#dropStateBelow(field.path);
+    this.updateValue(field.path, next);
   }
 
   #dropStateBelow(path: readonly string[]): void {
@@ -500,6 +523,8 @@ export class SchemaFormState {
         visit(choiceBranchForValue(candidate, getValueAtPath(currentValue, candidate.path)));
         return;
       }
+      // An object that is not set draws none of its fields, so none has a draft to write into it.
+      if (candidate.nullable && getValueAtPath(currentValue, candidate.path) === null) return;
       for (const child of candidate.fields) visit(child);
       if (candidate.kind === 'array' && candidate.item) {
         for (const [index] of arrayValueAtPath(currentValue, candidate.path).entries()) {

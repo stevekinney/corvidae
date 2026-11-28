@@ -41,6 +41,12 @@
       "file": "src/styles/foundation.css",
       "subject": ".cinder-drawer__title",
       "reason": "Cinder's Sidebar renders the Drawer it opens on a phone inside itself and takes a class only for its own root, so the shell has no way to hand the drawer, or its body, header and title, a class or a token."
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/routes/settings/setting-field.svelte",
+      "subject": ".cinder-schema-form",
+      "reason": "Whether a SchemaForm draws nothing is known only inside it (its own data-cinder-root-body marker), so the host's fieldset around it can drop out of the row only by reading that marker; the host has no prop that says the form is empty."
     }
   ]
 }

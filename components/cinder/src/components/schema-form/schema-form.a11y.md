@@ -12,7 +12,11 @@
 - Enum arrays render as a `fieldset` whose legend is the field label; each option is a toggle button with `aria-pressed`.
 - String arrays render a tag input named by the field label; committed tags can be removed with the keyboard like any tag input.
 - Records render a key/value row list. Each input is named `Key` or `Value`, and the add and remove buttons carry the field label so several records on one page stay distinguishable.
-- A choice renders a `radiogroup` with one radio per branch inside a `fieldset` named by the field label.
+- A choice renders a `radiogroup` with one radio per alternative, in a `group` named by the field label (a `div`, not a `fieldset`: it has no border). Each radio is named in words (`Keep all`, `Off`), never by a JSON type. A root choice draws no visible title, and keeps the group's name.
+- A yes or no that may be unset is a `radiogroup` of three radios, `Not set`, `Yes` and `No`, named by the field label; `Not set` is the `null`.
+- An object that may be unset is a `radiogroup` of `Not set` and `Set`, and its fields are in the page only once it is set.
+- A list that may be unset says "Not set" while it is `null`, and otherwise has one `Clear <label>` button, which returns it there.
+- An empty number that may be `null` has a placeholder, "Not set" or the field's own short description, so an emptied field reads as set to nothing.
 - A millisecond field renders a labelled number input and a select named `<label> unit`.
 
 ## Setting Rows
@@ -46,4 +50,4 @@ On successful submit, the hidden serialized output field is updated before the c
 
 ## Raw JSON Fallback
 
-Unknown or unsupported schema nodes render as a labelled textarea containing JSON. Invalid JSON is reported as a field error and blocks submission. This preserves data instead of silently dropping fields the renderer cannot safely model.
+Unknown or unsupported schema nodes render as a labelled JSON editor (a Cinder `JsonEditor`, the same in every variant, with a textarea under it) containing JSON. Invalid JSON is reported as a field error and blocks submission. This preserves data instead of silently dropping fields the renderer cannot safely model.

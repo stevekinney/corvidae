@@ -143,6 +143,17 @@ export function missingRequiredField(schema: unknown, value: unknown): string | 
   return firstMissingField(schema, value)?.name;
 }
 
+/** Whether a property's schema lets it hold `null`: a type list with `null`, or a union that has it. */
+function allowsNull(property: unknown): boolean {
+  if (!isRecord(property)) return false;
+  const type = property['type'];
+  if (type === 'null' || (Array.isArray(type) && type.includes('null'))) return true;
+  return ['anyOf', 'oneOf'].some((keyword) => {
+    const branches = property[keyword];
+    return Array.isArray(branches) && branches.some(allowsNull);
+  });
+}
+
 /**
  * The first required field of an object schema that a form draft leaves empty, or `undefined` when
  * every required field holds something. Only the top level is read: it is where a run's required
@@ -158,10 +169,13 @@ export function firstMissingField(schema: unknown, value: unknown): MissingField
   for (const key of keys) {
     if (typeof key !== 'string' || !Object.hasOwn(properties, key)) continue;
     const held = Object.hasOwn(draft, key) ? draft[key] : undefined;
-    const empty =
-      held === undefined || held === null || (typeof held === 'string' && held.trim() === '');
-    if (!empty) continue;
     const property = properties[key];
+    // `null` is a value a field that allows it holds, so a required one is not missing for it.
+    const empty =
+      held === undefined ||
+      (held === null && !allowsNull(property)) ||
+      (typeof held === 'string' && held.trim() === '');
+    if (!empty) continue;
     const title = isRecord(property) ? property['title'] : undefined;
     const name =
       typeof title === 'string' && title.trim() !== ''

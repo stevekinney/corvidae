@@ -105,6 +105,34 @@ describe('NumberInput basics', () => {
     expect(css).toMatch(/:where\(\.cinder-number-input-field\)\s*\{[^}]*max-inline-size:\s*10rem;/);
   });
 
+  test('names its own fixed width, so a parent can add it to the text the slot must show', async () => {
+    const css = await Bun.file(new URL('./number-input.css', import.meta.url)).text();
+
+    expect(css).toMatch(/--_cinder-number-input-stepper-size:\s*2\.25rem;/);
+    expect(css).toMatch(
+      /--_cinder-number-input-chrome:\s*calc\(\s*2\s*\*\s*var\(--_cinder-number-input-stepper-size\)\s*\+\s*2px\s*\+\s*var\(--cinder-space-3\)\s*\+\s*var\(--cinder-space-2\)\s*\);/,
+    );
+    // One figure for the stepper: the painted width and the sum both read it.
+    expect(css).toMatch(
+      /\.cinder-number-input__stepper\s*\{[^}]*inline-size:\s*var\(--_cinder-number-input-stepper-size\);/,
+    );
+    expect(css).not.toMatch(/inline-size:\s*2\.25rem/);
+  });
+
+  test("puts the placeholder's words on the field wrapper, and nothing when there is none", () => {
+    const unset = render(NumberInput, {
+      props: { id: 'unset', value: null, placeholder: 'Not set' },
+    });
+    expect(unset.container.firstElementChild?.getAttribute('data-cinder-placeholder-text')).toBe(
+      'Not set',
+    );
+
+    const plain = render(NumberInput, { props: { id: 'plain', value: 2 } });
+    expect(plain.container.firstElementChild?.hasAttribute('data-cinder-placeholder-text')).toBe(
+      false,
+    );
+  });
+
   test('widens the cap for a field with a unit beside the number, so the digits keep their room', async () => {
     const [css, { container }] = await Promise.all([
       Bun.file(new URL('./number-input.css', import.meta.url)).text(),

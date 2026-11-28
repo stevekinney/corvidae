@@ -91,4 +91,13 @@ export default [
       },
     },
   },
+  {
+    // A settings list whose rows a host draws (`rootRowHosted`), as Interborough's Advanced list
+    // does: a lone number and a lone choice put their one control in the host row's control
+    // column, beside reference scalar rows, and a duration in a row whose control sits at the end.
+    // The geometry tests measure that the hosted rows are as tall, as wide and as far apart as the
+    // reference ones, which happy-dom, with no layout, cannot.
+    name: 'host-row',
+    host: './schema-form-host-row.fixture.svelte',
+  },
 ];

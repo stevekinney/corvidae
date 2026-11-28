@@ -7,6 +7,7 @@ setupHappyDom();
 
 const { cleanup, fireEvent, render, screen } = await import('@testing-library/svelte');
 const { default: SchemaForm } = await import('./schema-form.svelte');
+const { default: HostRows } = await import('./schema-form-host-row.fixture.svelte');
 
 // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
 function flush(): Promise<void> {
@@ -378,7 +379,7 @@ describe('SchemaForm setting-rows variant', () => {
     ).toEqual(Object.keys(properties));
   });
 
-  test('reads a key as a sentence-case label, and leaves the other variants as they are', async () => {
+  test('reads a key as a sentence-case label, in every variant', async () => {
     const schema = {
       type: 'object',
       properties: {
@@ -394,7 +395,8 @@ describe('SchemaForm setting-rows variant', () => {
     cleanup();
 
     const plain = await mount(schema, { variant: 'default' });
-    expect(plain.container.textContent).toContain('Blocked Patterns');
+    expect(plain.container.textContent).toContain('Blocked patterns');
+    expect(plain.container.textContent).not.toContain('Blocked Patterns');
   });
 
   test('names the fields of a group and the buttons of an array in sentence case too, in the rows only', async () => {
@@ -502,5 +504,102 @@ describe('SchemaForm setting-rows variant', () => {
     await flush();
     const cleared = view.drafts.at(-1) as Record<string, unknown>;
     expect(Object.hasOwn(cleared, 'region')).toBe(false);
+  });
+});
+
+describe('SchemaForm where a host draws the row of its root (rootRowHosted)', () => {
+  afterEach(() => cleanup());
+
+  /** What `onRootControl` was told at mount: `undefined` for a root with no control to hand over. */
+  async function announced(schema: Record<string, unknown>, value?: unknown) {
+    const told: unknown[] = [];
+    const view = render(SchemaForm, {
+      props: {
+        schema,
+        value,
+        variant: 'setting-rows',
+        rootRowHosted: true,
+        onRootControl: (control: unknown) => void told.push(control),
+      },
+    });
+    await flush();
+    return { told, view };
+  }
+
+  test('hands the row a lone field’s control, once, and keeps the form for what the row cannot carry', async () => {
+    const { told, view } = await announced({
+      type: 'object',
+      title: 'Payload size',
+      properties: { maxBytes: { type: 'integer', title: 'Max bytes' } },
+    });
+    expect(told).toHaveLength(1);
+    expect(typeof told[0]).toBe('function');
+    // It draws no row of its own, and nothing is left to draw where it is mounted.
+    expect(view.container.querySelector('.cinder-setting-row')).toBeNull();
+    expect(view.container.querySelector('form')?.getAttribute('data-cinder-root-body')).toBe(
+      'none',
+    );
+  });
+
+  test('hands over nothing for a group of two fields, and draws both where it is mounted', async () => {
+    const { told, view } = await announced({
+      type: 'object',
+      properties: { first: { type: 'string' }, second: { type: 'string' } },
+    });
+    expect(told).toEqual([undefined]);
+    expect(view.container.querySelector('form')?.hasAttribute('data-cinder-root-body')).toBe(false);
+    expect(view.container.querySelectorAll('input[type="text"]')).toHaveLength(2);
+  });
+
+  test('flips the root body when the host’s choice goes from off to its object', async () => {
+    const view = render(HostRows);
+    await flush();
+    const row = requiredInstance(
+      view.container.querySelector('[data-testid="choice-off"]'),
+      HTMLElement,
+    );
+    const root = () => requiredInstance(row.querySelector('form'), HTMLFormElement);
+    // Off adds nothing: the form takes no room, and the row's control is the choice.
+    expect(root().getAttribute('data-cinder-root-body')).toBe('none');
+    expect(row.querySelector('.cinder-setting-row__field [role="radiogroup"]')).not.toBeNull();
+
+    await fireEvent.click(
+      requiredInstance(
+        row.querySelector('.cinder-setting-row__field [role="radio"]:not([aria-checked="true"])'),
+        HTMLElement,
+      ),
+    );
+    await flush();
+    expect(root().hasAttribute('data-cinder-root-body')).toBe(false);
+    expect(screen.getAllByRole('spinbutton', { name: /Count/ }).length).toBeGreaterThan(0);
+  });
+});
+
+describe('SchemaForm setting rows with a lone choice', () => {
+  afterEach(() => cleanup());
+
+  test('draws a group whose one field is a choice as one row, the choice in the control column', async () => {
+    const view = await mount({
+      type: 'object',
+      properties: {
+        retention: {
+          type: 'object',
+          title: 'Retention',
+          properties: {
+            window: {
+              title: 'Window',
+              anyOf: [
+                { type: 'string', const: 'keep-all' },
+                { type: 'object', title: 'Custom', properties: { days: { type: 'integer' } } },
+              ],
+            },
+          },
+        },
+      },
+    });
+    const row = rowOf(view, 'retention');
+    expect(row.querySelectorAll('.cinder-setting-row')).toHaveLength(1);
+    expect(row.querySelector('.cinder-setting-row__field [role="radiogroup"]')).not.toBeNull();
+    expect(row.querySelector('.cinder-schema-form__choice-header')).toBeNull();
   });
 });

@@ -5,7 +5,8 @@
  * of this browser. The Bureau is a stub that answers as the real one does
  * (`settings-fixtures.test-support.ts`); the real one is exercised by the Playwright suite.
  */
-import { waitUntil } from '@lostgradient/testing/wait-until';
+import { pressDelete, selectAsChromium } from '@lostgradient/testing/text-control';
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { HttpClient } from '@lostgradient/weft';
 import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
@@ -471,6 +472,129 @@ describe('a save', () => {
     );
   });
 
+  test('clears a nullable field to null, which is the setting with no limit and not a missing one (COR-2774)', async () => {
+    const served = servedSettings({ revision: 5 });
+    served.values = { ...served.values, 'engine.payloadSize': { maxBytes: 4096 } };
+    const view = open(served);
+    await view.findByRole('group', READY);
+    await openAdvanced(view.container);
+    expect(fieldOf(view.container, 'engine.payloadSize').value).toBe('4,096');
+
+    const field = fieldOf(view.container, 'engine.payloadSize');
+    await fireEvent.focus(field);
+    await fireEvent.input(field, { target: { value: '' } });
+    await fireEvent.blur(field);
+    await fireEvent.focusOut(field);
+
+    await waitFor(() => expect(updates()).toHaveLength(1));
+    expect(updates()[0]?.params).toEqual({
+      patch: { 'engine.payloadSize': { maxBytes: null } },
+      expectedRevision: 5,
+    });
+    await waitFor(() =>
+      expect(statusOf(view.container, 'engine.payloadSize')).toBe('Saved just now'),
+    );
+  });
+
+  test('clears a nullable field the way a fill of the real input does: select, focus, then delete the selection (COR-2774)', async () => {
+    const served = servedSettings({ revision: 5 });
+    served.values = { ...served.values, 'engine.payloadSize': { maxBytes: 4096 } };
+    const view = open(served);
+    await view.findByRole('group', READY);
+    await openAdvanced(view.container);
+    const field = fieldOf(view.container, 'engine.payloadSize');
+    expect(field.value).toBe('4,096');
+
+    // Select and focus in one turn, then the key press in the next: what Playwright's `fill('')` does.
+    selectAsChromium(field);
+    field.focus();
+    await waitUntil(() => field.value === '4096');
+    expect([field.selectionStart, field.selectionEnd]).toEqual([0, 4]);
+    pressDelete(field);
+    // The emptied field stays empty through the re-render the edit causes, until it is left.
+    await waitFor(() =>
+      expect(row(view.container, 'engine.payloadSize')?.dataset['dirty']).toBe('true'),
+    );
+    expect(field.value).toBe('');
+    expect(updates()).toHaveLength(0);
+
+    await fireEvent.blur(field);
+    await fireEvent.focusOut(field);
+    await waitFor(() => expect(updates()).toHaveLength(1));
+    expect(updates()[0]?.params).toEqual({
+      patch: { 'engine.payloadSize': { maxBytes: null } },
+      expectedRevision: 5,
+    });
+  });
+
+  test('saves a number typed into a nullable field once it is a number, and holds it until then (COR-2774)', async () => {
+    const served = servedSettings({ revision: 5 });
+    const view = open(served);
+    await view.findByRole('group', READY);
+    await openAdvanced(view.container);
+    const field = fieldOf(view.container, 'engine.payloadSize');
+    await fireEvent.focus(field);
+    await fireEvent.input(field, { target: { value: '1e' } });
+    await fireEvent.blur(field);
+    await fireEvent.focusOut(field);
+    expect(updates()).toHaveLength(0);
+
+    await typeAndLeave(view.container, 'engine.payloadSize', '2048');
+    await waitFor(() => expect(updates()).toHaveLength(1));
+    expect(updates()[0]?.params).toEqual({
+      patch: { 'engine.payloadSize': { maxBytes: 2048 } },
+      expectedRevision: 5,
+    });
+  });
+
+  test('draws a lone field’s control in the row’s own control column, not under the row (COR-2774)', async () => {
+    const view = open(servedSettings());
+    await view.findByRole('group', READY);
+    await openAdvanced(view.container);
+    const field = fieldOf(view.container, 'engine.payloadSize');
+    expect(field.closest('.cinder-setting-row__field')).not.toBeNull();
+    // Outside the form's own box: nothing of the setting's is left under the row but the form.
+    expect(field.closest('fieldset.weft-setting__form')).toBeNull();
+  });
+
+  test('saves a row of several fields when focus leaves the row, and not when it moves between its fields (COR-2774)', async () => {
+    const view = open(servedSettings({ revision: 5 }));
+    await view.findByRole('group', READY);
+    await openAdvanced(view.container);
+    const inputs = [
+      ...(row(view.container, 'engine.retention')?.querySelectorAll<HTMLInputElement>(
+        'input[inputmode="decimal"]',
+      ) ?? []),
+    ];
+    const [first, second] = inputs;
+    if (first === undefined || second === undefined) throw new Error('Two fields are drawn.');
+
+    await fireEvent.focus(first);
+    await fireEvent.input(first, { target: { value: '12345' } });
+    await fireEvent.blur(first);
+    // Focus moves to the next field of the same row: that is not leaving it.
+    await fireEvent.focusOut(first, { relatedTarget: second });
+    await quietFor(50);
+    expect(updates()).toHaveLength(0);
+
+    await fireEvent.focus(second);
+    await fireEvent.blur(second);
+    await fireEvent.focusOut(second);
+    await waitFor(() => expect(updates()).toHaveLength(1));
+    expect(updates()[0]?.params).toMatchObject({
+      patch: { 'engine.retention': { completed: 12345 } },
+    });
+  });
+
+  test('disables a lone field’s control in a row the deployment locked (COR-2774)', async () => {
+    const view = open(servedSettings({ locked: new Set(['engine.payloadSize']) }));
+    await view.findByRole('group', READY);
+    await openAdvanced(view.container);
+    const field = fieldOf(view.container, 'engine.payloadSize');
+    expect(field.disabled).toBe(true);
+    expect(row(view.container, 'engine.payloadSize')?.dataset['locked']).toBe('true');
+  });
+
   test('sends nothing for a field that was left as it was', async () => {
     const view = open(servedSettings());
     await view.findByRole('group', READY);
@@ -623,6 +747,35 @@ describe('a save', () => {
     expect(updates()[1]?.params).toMatchObject({
       patch: { 'tools.humanInput': { inputSchemas: { a: {} } } },
     });
+  });
+
+  test('draws false or an object as the row’s switch and the object’s fields, with no second choice (COR-2774)', async () => {
+    const served = servedSettings({ revision: 4 });
+    served.values = { ...served.values, 'tools.humanInput': { count: 3 } };
+    const schema = {
+      ...PUBLISHED_SCHEMA,
+      properties: {
+        ...PUBLISHED_SCHEMA.properties,
+        'tools.humanInput': {
+          anyOf: [
+            { type: 'boolean', const: false },
+            { type: 'object', properties: { count: { type: 'integer' } } },
+          ],
+          description: 'Let agents ask a person.',
+        },
+      },
+    };
+    const view = open(served, { extra: { 'bureau.settings.schema': () => ({ schema }) } });
+    await view.findByRole('group', READY);
+
+    const found = row(view.container, 'tools.humanInput');
+    expect(toggleOf(view.container, 'tools.humanInput').getAttribute('aria-checked')).toBe('true');
+    expect(within(found as HTMLElement).queryByRole('radio')).toBeNull();
+    expect(fieldOf(view.container, 'tools.humanInput').value).toBe('3');
+
+    await fireEvent.click(toggleOf(view.container, 'tools.humanInput'));
+    await waitFor(() => expect(updates()).toHaveLength(1));
+    expect(updates()[0]?.params).toMatchObject({ patch: { 'tools.humanInput': false } });
   });
 });
 
@@ -920,6 +1073,62 @@ describe('a page that follows the Bureau', () => {
     await waitFor(() =>
       expect(toggleOf(view.container, 'tools.decide').getAttribute('aria-checked')).toBe('false'),
     );
+    expect(started).toBeGreaterThanOrEqual(3);
+  });
+
+  test('answers a refocus that joins the read already in flight with that read, and the next refocus with a read of its own', async () => {
+    // A read of the settings is in flight (the one the page makes once the Bureau accepts the
+    // subscription is one, and so is the read of a change). A window that regains focus joins it,
+    // so a read that fails from now on is not met until the focus comes back once more: the Data
+    // and retention spec refocuses until the banner shows for this reason.
+    const served = servedSettings({ revision: 3 });
+    const stream = settingsStream();
+    let failing = false;
+    let holding = false;
+    let releaseHeld: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      releaseHeld = resolve;
+    });
+    let started = 0;
+    const view = open(served, {
+      stream,
+      extra: {
+        'bureau.settings.get': async () => {
+          started += 1;
+          if (failing) throw new StubFault('Internal', 500, 'The server broke.');
+          const answer = settingsSnapshot(served);
+          if (holding) {
+            holding = false;
+            await held;
+          }
+          return answer;
+        },
+      },
+    });
+    await view.findByRole('group', READY);
+    await waitFor(() => expect(stream.opened).toEqual([undefined]));
+
+    holding = true;
+    served.revision = 4;
+    stream.push(4, ['tools.decide']);
+    await waitFor(() => expect(holding).toBe(false));
+    const inFlight = started;
+
+    failing = true;
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    releaseHeld();
+    await waitUntil(() => stream.drained());
+    expect(started).toBe(inFlight);
+    expect(view.queryByTestId('settings-refresh-failed')).toBeNull();
+
+    // The released read may still be settling, which a refocus joins too, so refocus until a read
+    // of its own meets the failure.
+    await waitFor(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+      expect(view.queryByTestId('settings-refresh-failed')).not.toBeNull();
+    });
     expect(started).toBeGreaterThanOrEqual(3);
   });
 

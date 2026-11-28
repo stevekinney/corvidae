@@ -22,7 +22,7 @@ import {
 import { queryKeys } from '../../lib/query.ts';
 import { SettingsAutosave } from './settings-autosave.svelte.ts';
 import { controlFor, type Control } from './settings-controls.ts';
-import { formSchemaOf, numbersCommitted } from './settings-form-schema.ts';
+import { numbersCommitted } from './settings-form-schema.ts';
 import { SettingsForm } from './settings-form.svelte.ts';
 import { SettingsRevert } from './settings-revert.svelte.ts';
 
@@ -69,13 +69,13 @@ export class SettingsSession {
     const validate = async (key: string, value: unknown): Promise<string | undefined> => {
       const node = schema[key];
       if (node === undefined) return undefined;
-      const result = await validateSchemaFormValue(formSchemaOf(key, node), value);
+      const result = await validateSchemaFormValue(node, value);
       if (!result.valid) return result.issues[0]?.message ?? SETTINGS_COPY.invalidValue;
       return extraCheck?.(key, value);
     };
     const committed = (key: string, value: unknown): boolean => {
       const node = schema[key];
-      return node === undefined || numbersCommitted(formSchemaOf(key, node), value);
+      return node === undefined || numbersCommitted(node, value);
     };
     this.form = new SettingsForm(controls, (key) => this.stateOf(key).locked, validate, committed);
     untrack(() => this.form.load(snapshot()));

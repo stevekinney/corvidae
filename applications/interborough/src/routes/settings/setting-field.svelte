@@ -14,6 +14,8 @@
     JsonEditor,
     NumberInput,
     SchemaForm,
+    Segment,
+    SegmentedControl,
     Select,
     SettingRow,
     Toggle,
@@ -36,6 +38,7 @@
     holdsForm,
     optionLabel,
     settingLabel,
+    wordOrObjectOf,
     type Control,
   } from './settings-controls.ts';
   import { formSchemaOf } from './settings-form-schema.ts';
@@ -150,9 +153,26 @@
   );
   /** An unset object stays "Not set" until the person asks to set it, so its empty fields carry no error. */
   let revealed = $state(false);
+  /**
+   * The word a setting is chosen between and an object (`keep-all` or `{ keepLast }`), which the
+   * row draws in its control column, like its siblings' controls, with the object's fields below.
+   */
+  const word = $derived(spec.kind === 'form' ? wordOrObjectOf(node) : undefined);
+  const isObject = $derived(typeof draft === 'object' && draft !== null && !Array.isArray(draft));
   const formShown = $derived(
-    (spec.kind === 'form' && (hasValue || revealed)) || (spec.kind === 'switch-form' && switchedOn),
+    (spec.kind === 'form' && (word === undefined ? hasValue || revealed : isObject)) ||
+      (spec.kind === 'switch-form' && switchedOn),
   );
+
+  /**
+   * Whether the setting's form draws for this row: an object edited through a `SchemaForm`, in a
+   * row with no control of its own. The form hands the row its one control when the object is a
+   * single short field or a single choice (`engine.payloadSize`: the limit), which the row draws
+   * in its control column like its siblings' controls, and draws every other field under the row.
+   */
+  const formHostsRow = $derived(custom === undefined && spec.kind === 'form' && word === undefined);
+  /** The control the form handed this row. It is drawn only while the form is shown. */
+  let formControl = $state<Snippet | undefined>(undefined);
 
   // Starting over puts an unset setting back to unset, so its fields are hidden again.
   $effect(() => {
@@ -259,6 +279,9 @@
   data-apply={keyState.apply}
   data-locked={locked ? 'true' : 'false'}
   data-dirty={form.isDirty(name) ? 'true' : 'false'}
+  role={formHostsRow && formShown ? 'group' : undefined}
+  aria-labelledby={formHostsRow && formShown ? `${id}-label` : undefined}
+  onfocusout={formHostsRow && formShown ? leaveControl : undefined}
 >
   <SettingRow
     {id}
@@ -388,6 +411,29 @@
             onValueChange={(next) => change(next ?? undefined)}
           />
         </div>
+      {:else if word !== undefined && (hasValue || revealed || locked)}
+        <SegmentedControl
+          {id}
+          {label}
+          // hidden-label-allowed: the SettingRow beside the control draws its label, name and description
+          labelVisible={false}
+          value={isObject ? 'object' : 'word'}
+          disabled={inert}
+          onValueChange={(next) => {
+            if (next === 'word') {
+              change(word);
+              leave();
+              return;
+            }
+            // The object's fields are filled in below, and saved when they are left.
+            autosave.clear(name);
+            onEdit?.();
+            form.setSwitch(name, true);
+          }}
+        >
+          <Segment value="word">{optionLabel(word)}</Segment>
+          <Segment value="object">Custom</Segment>
+        </SegmentedControl>
       {:else if spec.kind === 'form' && !hasValue && !revealed && !locked}
         <div class="weft-setting__unset">
           <span>{SETTINGS_COPY.notSet}</span>
@@ -398,6 +444,9 @@
             label={SETTINGS_COPY.setAction}
           />
         </div>
+      {:else if formHostsRow && formShown && formControl !== undefined}
+        <!-- The object's one control, which its form draws for this row's control column. -->
+        {@render formControl()}
       {:else if spec.kind === 'form' || spec.kind === 'json'}
         <span class="weft-setting__unset">{hasValue ? '' : SETTINGS_COPY.notSet}</span>
       {/if}
@@ -408,12 +457,28 @@
       {:else if formSchema !== undefined && formShown}
         <!-- A `SchemaForm` takes its value once, so it is made again whenever the draft starts over. -->
         {#key form.generation}
-          <fieldset class="weft-setting__form" disabled={inert} onfocusout={leaveControl}>
+          <!-- A form that draws for its row has a control outside this fieldset, so the row, not
+               the fieldset, is what is left, and the form is told the lock itself. -->
+          <fieldset
+            class="weft-setting__form"
+            data-row-body={formHostsRow || word !== undefined ? '' : undefined}
+            disabled={inert}
+            onfocusout={formHostsRow ? undefined : leaveControl}
+          >
             <SchemaForm
               schema={formSchema}
               name={`setting-${id}`}
               value={spec.kind === 'switch-form' && draft === false ? undefined : draft}
               jsonEditable={false}
+              rootChoiceVisible={spec.kind !== 'switch-form' && word === undefined}
+              {...formHostsRow
+                ? {
+                    variant: 'setting-rows' as const,
+                    rootRowHosted: true,
+                    disabled: inert,
+                    onRootControl: (next: Snippet | undefined) => (formControl = next),
+                  }
+                : {}}
               onDraftChange={(next) => change(next)}
               onSubmit={() => leave()}
             />
@@ -460,6 +525,17 @@
     margin: var(--cinder-space-3) 0 0;
     padding: 0;
     border: 0;
+  }
+
+  /* A form that is the body of its row (it draws the row's control or the fields a chosen
+     alternative adds) starts one step under the row's text, which is the row's own gap, and a form
+     with nothing to draw takes no room. */
+  .weft-setting__form[data-row-body] {
+    margin-block-start: 0;
+  }
+
+  .weft-setting__form:has(> :global(.cinder-schema-form[data-cinder-root-body='none'])) {
+    display: none;
   }
 
   /* A setting saves as it is left, so the form's own submit button is not drawn. */

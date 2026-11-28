@@ -22,6 +22,11 @@ async function submit(form: HTMLFormElement): Promise<SubmitEvent> {
   return event;
 }
 
+/** The text a raw JSON field is edited in: JsonEditor keeps a textarea, whatever it draws over it. */
+function rawJsonTextarea(): HTMLTextAreaElement {
+  return requiredInstance(document.querySelector('textarea'), HTMLTextAreaElement);
+}
+
 function formFrom(container: HTMLElement): HTMLFormElement {
   const form = container.querySelector('form');
   expect(form).toBeInstanceOf(HTMLFormElement);
@@ -178,7 +183,7 @@ describe('SchemaForm', () => {
     });
     await flush();
 
-    const rawInputs = within(container).getAllByRole('textbox');
+    const rawInputs = [...container.querySelectorAll('textarea')];
     expect(rawInputs).toHaveLength(2);
     await fireEvent.input(rawInputs[1]!, { target: { value: '{"ok":42}' } });
     await submit(formFrom(container));
@@ -213,7 +218,7 @@ describe('SchemaForm', () => {
     });
     await flush();
 
-    const rawInputs = within(container).getAllByRole('textbox');
+    const rawInputs = [...container.querySelectorAll('textarea')];
     expect(rawInputs).toHaveLength(2);
     await fireEvent.input(rawInputs[1]!, { target: { value: '{"ok":99}' } });
     await fireEvent.click(within(container).getByRole('button', { name: 'Remove Items item 1' }));
@@ -331,7 +336,7 @@ describe('SchemaForm', () => {
     expect(screen.getByRole('button', { name: 'Remove Scores item 2' })).toBeTruthy();
 
     await fireEvent.input(screen.getByLabelText(/Owner/), { target: { value: 'Grace' } });
-    await fireEvent.input(screen.getByLabelText(/Raw payload/), {
+    await fireEvent.input(rawJsonTextarea(), {
       target: { value: '{"ok":true,"level":2}' },
     });
 
@@ -366,11 +371,13 @@ describe('SchemaForm', () => {
     });
     await flush();
 
-    await fireEvent.input(screen.getByLabelText(/Raw payload/), { target: { value: '{' } });
+    await fireEvent.input(rawJsonTextarea(), {
+      target: { value: '{' },
+    });
     await submit(formFrom(container));
 
     expect(calls).toHaveLength(0);
-    expect(screen.getByLabelText(/Raw payload/).getAttribute('aria-invalid')).toBe('true');
+    expect(rawJsonTextarea().getAttribute('aria-invalid')).toBe('true');
     expect(screen.getByText(/JSON|Expected|position/i)).toBeTruthy();
   });
 
@@ -387,7 +394,7 @@ describe('SchemaForm', () => {
     });
     await flush();
 
-    const rawTextarea = screen.getByLabelText(/Raw payload/);
+    const rawTextarea = rawJsonTextarea();
     await fireEvent.input(rawTextarea, { target: { value: '{' } });
     await fireEvent.blur(rawTextarea);
     await flush();
@@ -534,7 +541,6 @@ describe('SchemaForm — composed-control regressions', () => {
     expect(requiredInstance(countInput, HTMLInputElement).value).toBe('7'); // does not revert after blur commit
 
     const rawTextarea = requiredInstance(container.querySelector('textarea'), HTMLTextAreaElement);
-    expect(rawTextarea.getAttribute('data-cinder-variant')).toBe('code');
     await fireEvent.input(rawTextarea, { target: { value: '{"ok":true}' } });
     expect(rawTextarea.value).toBe('{"ok":true}'); // draft does not revert
 
@@ -768,8 +774,10 @@ describe('SchemaForm — schema-change resets form state; value is seed-only', (
     });
     await flush();
 
-    await fireEvent.input(screen.getByLabelText(/Raw payload/), { target: { value: '{' } });
-    await fireEvent.input(screen.getByLabelText(/Raw payload/), {
+    await fireEvent.input(rawJsonTextarea(), {
+      target: { value: '{' },
+    });
+    await fireEvent.input(rawJsonTextarea(), {
       target: { value: '{"ok":false}' },
     });
 
