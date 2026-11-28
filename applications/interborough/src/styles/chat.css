@@ -551,6 +551,25 @@
   font-size: var(--cinder-text-sm);
 }
 
+/* The "More agents" button is pinned to the end of the scroll box while the last agent is under
+   it. The wrapper has no height, so the agents never move, and the button rises from its edge. */
+.ib-new-chat-choices__more {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  align-self: stretch;
+  block-size: 0;
+  overflow: visible;
+}
+
+.ib-new-chat-choices__more > .ib-new-chat-choices__more-button {
+  position: absolute;
+  inset-block-end: var(--cinder-space-2);
+  box-shadow: var(--cinder-shadow-sm);
+}
+
 /* A prompt is a sentence, not a label: it is a pill that wraps inside its button (Cinder's buttons
    never wrap) and a word too long for the line breaks, so a long prompt cannot widen the page. */
 .ib-new-chat-choices__row .ib-new-chat-choices__prompt {

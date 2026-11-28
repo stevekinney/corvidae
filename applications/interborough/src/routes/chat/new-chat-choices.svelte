@@ -8,6 +8,7 @@
    * way out. The selected agent is not repeated; with no agent selected, the row is every agent.
    */
   import { Avatar, Button } from '@lostgradient/cinder';
+  import { ChevronDown } from '@lucide/svelte';
 
   import { CHAT_COPY } from '../../app/copy/chat.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
@@ -41,9 +42,57 @@
       (prompt) => prompt,
     ),
   );
+
+  // The agents sit in the chat's scroll box above a docked composer, so on a short or busy phone
+  // (offline adds a banner and a drawer) the last of them is under the box's end with nothing to say
+  // so: the edge fade is polish over blank space between rows, and an overlay scroll bar is hidden.
+  // While the last agent is not whole in view a button says the list continues and takes it there.
+  let more = $state(false);
+
+  const lastAgentIn = (container: Element): HTMLElement | undefined =>
+    Array.from(container.querySelectorAll<HTMLElement>('[data-agent]')).at(-1);
+
+  /** The nearest ancestor that scrolls, which the last agent is measured against. */
+  function scrollBoxOf(node: HTMLElement): HTMLElement | null {
+    for (let parent = node.parentElement; parent !== null; parent = parent.parentElement) {
+      const overflow = getComputedStyle(parent).overflowY;
+      if (overflow === 'auto' || overflow === 'scroll') return parent;
+    }
+    return null;
+  }
+
+  function watchEnd(container: HTMLElement) {
+    if (typeof IntersectionObserver === 'undefined') return;
+    $effect(() => {
+      // Watch the last agent again when the agents change.
+      void others.length;
+      const last = lastAgentIn(container);
+      if (last === undefined) {
+        more = false;
+        return;
+      }
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const entry = entries.at(-1);
+          if (entry !== undefined) more = entry.intersectionRatio < 0.99;
+        },
+        { root: scrollBoxOf(container), threshold: [0, 0.25, 0.5, 0.75, 1] },
+      );
+      observer.observe(last);
+      return () => {
+        observer.disconnect();
+        more = false;
+      };
+    });
+  }
+
+  function showLastAgent(event: MouseEvent) {
+    const container = (event.currentTarget as HTMLElement).closest('.ib-new-chat-choices');
+    if (container !== null) lastAgentIn(container)?.scrollIntoView({ block: 'nearest' });
+  }
 </script>
 
-<div class="ib-new-chat-choices" data-testid="new-chat-choices">
+<div class="ib-new-chat-choices" data-testid="new-chat-choices" {@attach watchEnd}>
   {#if prompts.length > 0}
     <div
       class="ib-new-chat-choices__row ib-new-chat-choices__row--prompts"
@@ -94,6 +143,22 @@
           {agentLabel(agent.name, agents)}
         </Button>
       {/each}
+    </div>
+  {/if}
+  {#if more}
+    <!-- Pinned to the scroll box's end while the last agent is under it; the wrapper has no height,
+         so the button never moves the agents. -->
+    <div class="ib-new-chat-choices__more">
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        class="ib-new-chat-choices__more-button"
+        onclick={showLastAgent}
+      >
+        {#snippet leadingIcon()}<ChevronDown aria-hidden="true" />{/snippet}
+        {CHAT_COPY.newChatWelcome.moreAgents}
+      </Button>
     </div>
   {/if}
 </div>

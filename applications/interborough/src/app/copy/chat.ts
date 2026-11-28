@@ -48,6 +48,8 @@ export const CHAT_COPY = {
     promptsLabel: 'Example prompts',
     /** The lead of the row of the other agents to start with, and the name of that group. */
     otherAgents: 'Or chat with',
+    /** The button that says the list of agents continues past the end of the scroll box. */
+    moreAgents: 'More agents',
     chooseAgent: 'Choose an agent to start with',
     /** What Send reads while the first message is on its way and the chat page has not opened. */
     starting: 'Starting chat…',
