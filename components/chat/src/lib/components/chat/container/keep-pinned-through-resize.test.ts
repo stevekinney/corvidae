@@ -448,6 +448,54 @@ describe('keepPinnedThroughResize', () => {
     expect(state.scrollTop).toBe(220);
   });
 
+  test('whose the transcript is after a hold does not depend on which code made the last scroll', () => {
+    // What holds the transcript moves it to its own position, 60, where neither the pin (120) nor
+    // the true end (180) is, in one of three ways. Then it lets go with no scroll (an approval
+    // decided by a press on a button), and the box changes.
+    const movers = ['in this callback', 'an observer before it', 'a pass after it'] as const;
+    const outcome = (mover: (typeof movers)[number], leftAt: (end: number) => number) => {
+      const holder = { holds: true };
+      let place = (): void => {};
+      const { transcript, row, state, asked } = transcriptOf(
+        { rowsEnd: 520, clientHeight: 400 },
+        () => {
+          if (holder.holds) place();
+          return holder.holds;
+        },
+      );
+      const position = (): number => leftAt(520 + state.endSpace - state.clientHeight);
+      // Chat's own placement: it scrolls inside the pin's callback.
+      if (mover === 'in this callback') place = () => (state.scrollTop = position());
+      // A host's placement: its own observer ran first in the same frame.
+      if (mover === 'an observer before it') state.scrollTop = position();
+      changed(row);
+      // A pass in an animation frame: it scrolls after the callback, and the scroll is heard.
+      if (mover === 'a pass after it') state.scrollTop = position();
+      transcript.dispatchEvent(new Event('scroll'));
+      holder.holds = false;
+      state.clientHeight = 380;
+      changed(transcript);
+      const result = { rests: asked(), scrollTop: state.scrollTop };
+      transcript.remove();
+      observers.length = 0;
+      return result;
+    };
+    // Left at the holder's own position: the transcript is not the pin's, and is not moved.
+    for (const mover of movers) {
+      expect(
+        outcome(mover, () => 60),
+        mover,
+      ).toEqual({ rests: 0, scrollTop: 60 });
+    }
+    // Left at its true end (180): it is followed, and rested where the layout says (520 in 380).
+    for (const mover of movers) {
+      expect(
+        outcome(mover, (end) => end),
+        mover,
+      ).toEqual({ rests: 1, scrollTop: 140 });
+    }
+  });
+
   test('a row is watched by its border box, so one that only gains padding is seen, and the transcript by its content box', async () => {
     const { transcript, row } = transcriptOf({ rowsEnd: 520, clientHeight: 400 });
     expect(watchedBoxes.get(row)).toBe('border-box');

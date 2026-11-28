@@ -57,6 +57,14 @@ export interface UseChatAutoScrollReturn {
    * the transcript to its end, whatever they pressed to ask for it.
    */
   pageScrolled(): void;
+  /**
+   * Whether the page keeps the transcript where it rests: nobody has taken it away
+   * (`keepPinnedThroughResize`), and nothing stops the page resting it again as it grows (no
+   * message yet, earlier messages put before a reader, a refusal kept in view, history loading, a
+   * person editing, a scroll the person started). The control that jumps to the latest message is
+   * not offered then: the reader is at the latest, and stays there.
+   */
+  resting(): boolean;
 }
 
 type TranscriptGrowth = {
@@ -266,5 +274,24 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions): UseChatAut
     };
   });
 
-  return { resetPrependSuppression, restingTop, pageScrolled: () => pin?.pageScrolled() };
+  const resting = (): boolean => {
+    const viewport = options.getViewport();
+    if (!viewport || pin?.following() !== true) return false;
+    if (options.getMessages().length === 0 || prependSuppressed) return false;
+    if (commandFailureHeld(viewport)) return false;
+    if (
+      options.getHistoryLifecycle().pending ||
+      options.getHistoryRestoration().historyAnchorMessageId !== null
+    ) {
+      return false;
+    }
+    return !options.getIsEditing() && !options.getScrollState().isUserScrolling;
+  };
+
+  return {
+    resetPrependSuppression,
+    restingTop,
+    pageScrolled: () => pin?.pageScrolled(),
+    resting,
+  };
 }

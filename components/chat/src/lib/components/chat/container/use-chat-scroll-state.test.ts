@@ -607,6 +607,98 @@ describe('useChatScrollState — isUserScrolling guard (regression for #774)', (
     expect(state.isUserScrolling).toBe(false);
   });
 
+  test('jumpToLatest hides the control from the press until the jump settles, and before it is aimed', () => {
+    jest.useFakeTimers();
+    // A threshold the landing place is past: 100 from the end, with the control offered beyond 80.
+    const state = useChatScrollState({ jumpThreshold: 80, bottomThreshold: 40 });
+    const viewport = createViewport();
+    state.recomputeFromViewport(viewport);
+    expect(state.showJumpButton).toBe(true);
+
+    const shownWhenAimed: boolean[] = [];
+    viewport.scrollTo = () => {
+      shownWhenAimed.push(state.showJumpButton);
+    };
+    let landed = 0;
+    state.jumpToLatest(
+      viewport,
+      undefined,
+      () => 1500,
+      () => (landed += 1),
+    );
+    // The page was told the control is gone before the scroll was issued: a host that gives the
+    // transcript room back when it hides knows by then that the room is on its way.
+    expect(shownWhenAimed).toEqual([false]);
+    expect(state.showJumpButton).toBe(false);
+    expect(landed).toBe(0);
+
+    // On the way, a scroll that is heard does not bring it back, however far from the end.
+    (viewport as { scrollTop: number }).scrollTop = 600;
+    state.recomputeFromViewport(viewport);
+    expect(state.showJumpButton).toBe(false);
+
+    // It lands and settles: from here the geometry says, and 100 from the end is past 80.
+    (viewport as { scrollTop: number }).scrollTop = 1500;
+    viewport.dispatchEvent(new Event('scrollend'));
+    expect(state.isUserScrolling).toBe(false);
+    expect(landed).toBe(1);
+    expect(state.showJumpButton).toBe(true);
+  });
+
+  test('a jump that another scroll takes over stops hiding the control, and has not landed', () => {
+    jest.useFakeTimers();
+    const state = useChatScrollState();
+    const viewport = createViewport();
+    state.recomputeFromViewport(viewport);
+    let landed = 0;
+    state.jumpToLatest(
+      viewport,
+      undefined,
+      () => 1500,
+      () => (landed += 1),
+    );
+    expect(state.showJumpButton).toBe(false);
+    // The person asks for the start instead: the jump is over, and the control is the geometry's.
+    state.scrollToTop(viewport);
+    state.recomputeFromViewport(viewport);
+    expect(state.showJumpButton).toBe(true);
+    viewport.dispatchEvent(new Event('scrollend'));
+    expect(landed).toBe(0);
+  });
+
+  test('the control is not offered while the host rests the transcript, however far from the end', () => {
+    jest.useFakeTimers();
+    // The host rests a transcript short of its end, and a threshold can be smaller than that gap.
+    let resting = true;
+    const state = useChatScrollState({
+      jumpThreshold: 15,
+      bottomThreshold: 10,
+      getResting: () => resting,
+    });
+    const viewport = createViewport();
+    (viewport as { scrollTop: number }).scrollTop = 1540;
+    state.recomputeFromViewport(viewport);
+    // 60 from the end and past the threshold of 15, but it is where the host keeps it.
+    expect(state.showJumpButton).toBe(false);
+    // The person scrolls up: it is theirs, and the distance says.
+    resting = false;
+    (viewport as { scrollTop: number }).scrollTop = 1500;
+    state.recomputeFromViewport(viewport);
+    expect(state.showJumpButton).toBe(true);
+
+    // A jump that lands where the host rests it is told so before the control is judged again.
+    state.jumpToLatest(
+      viewport,
+      undefined,
+      () => 1540,
+      () => (resting = true),
+    );
+    (viewport as { scrollTop: number }).scrollTop = 1540;
+    viewport.dispatchEvent(new Event('scrollend'));
+    expect(state.isUserScrolling).toBe(false);
+    expect(state.showJumpButton).toBe(false);
+  });
+
   test('jumpToLatest does not re-issue scroll when the bottom target is unchanged', () => {
     jest.useFakeTimers();
     const state = useChatScrollState();

@@ -159,6 +159,36 @@
     new URLSearchParams(globalThis.location.search).get('surface') === 'default'
       ? 'default'
       : 'transparent';
+  /** `history` with a refund that waits for the person's approval after it. */
+  function withPinnedApproval<History extends Parameters<typeof appendMessages>[0]>(
+    history: History,
+  ): ReturnType<typeof appendMessages> {
+    return appendMessages(
+      history,
+      {
+        role: 'tool-call',
+        content: '',
+        toolCall: { id: 'pinned-refund', name: 'issue_refund', arguments: { order: '4471' } },
+      },
+      {
+        role: 'tool-result',
+        content: '',
+        toolResult: {
+          callId: 'pinned-refund',
+          outcome: 'action_required',
+          content: null,
+          action: {
+            type: 'approval',
+            message: 'Refund order 4471 for $42.00?',
+            risk: 'high',
+            operation: { kind: 'command', command: 'issue_refund --order 4471 --amount 42.00' },
+            policyVersion: 'approval-fixture-policy-v1',
+            idempotencyKey: 'fixture-pinned-refund',
+          },
+        },
+      },
+    );
+  }
   const pinnedResizeHistory = (() => {
     let history = createConversation({ id: 'pinned-resize' });
     if (pinnedResizeMode === 'empty') return history;
@@ -169,30 +199,8 @@
       );
     }
     if (pinnedResizeMode === 'approval') {
-      return appendMessages(
+      return withPinnedApproval(
         appendUserMessage(history, 'Look up order 4471. It arrived damaged, so refund it.'),
-        {
-          role: 'tool-call',
-          content: '',
-          toolCall: { id: 'pinned-refund', name: 'issue_refund', arguments: { order: '4471' } },
-        },
-        {
-          role: 'tool-result',
-          content: '',
-          toolResult: {
-            callId: 'pinned-refund',
-            outcome: 'action_required',
-            content: null,
-            action: {
-              type: 'approval',
-              message: 'Refund order 4471 for $42.00?',
-              risk: 'high',
-              operation: { kind: 'command', command: 'issue_refund --order 4471 --amount 42.00' },
-              policyVersion: 'approval-fixture-policy-v1',
-              idempotencyKey: 'fixture-pinned-refund',
-            },
-          },
-        },
       );
     }
     return appendToolResult(
@@ -211,6 +219,22 @@
   // the reply starts, as it is when a reply streams: a turn that is over draws its outcome after
   // its steps, and that row would leave as the reply's first chunk arrives.
   const pinnedRunning = new URLSearchParams(globalThis.location.search).get('running') === '1';
+  // `?jumpThreshold=<pixels>` and `?bottomThreshold=<pixels>` are Chat's own props: how far from
+  // the end Jump to latest is offered, and how near it a transcript counts as at its end. Where a
+  // transcript rests is 20 to 100 pixels from its end, and the control's band is 40, so a
+  // threshold can be smaller than either.
+  const pinnedThreshold = (name: string): number | undefined => {
+    const value = new URLSearchParams(globalThis.location.search).get(name);
+    return value === null ? undefined : Number(value);
+  };
+  const pinnedJumpThreshold = pinnedThreshold('jumpThreshold');
+  const pinnedBottomThreshold = pinnedThreshold('bottomThreshold');
+  // `?approvalArrives=1` gives the chat what decides an approval, and a button that appends one
+  // that waits: an approval that arrives in a transcript already drawn, whatever its reader has
+  // done with it since.
+  const pinnedApprovalArrives =
+    new URLSearchParams(globalThis.location.search).get('approvalArrives') === '1';
+  let pinnedApprovalArrived = $state(false);
   let pinnedStreamed = $state.raw<{
     readonly conversation: typeof pinnedResizeHistory;
     readonly messageId: string;
@@ -244,7 +268,9 @@
   }
   const pinnedResizeOutcome = $derived(
     resolveTurnOutcome(
-      pinnedStreamed?.conversation ?? pinnedResizeHistory,
+      pinnedApprovalArrived
+        ? withPinnedApproval(pinnedResizeHistory)
+        : (pinnedStreamed?.conversation ?? pinnedResizeHistory),
       pinnedStreamDropped
         ? {
             running: true,
@@ -830,6 +856,11 @@
       Settle the rows
     </Button>
     <Button data-testid="pinned-resize-stream" onclick={streamPinnedChunk}>Stream a chunk</Button>
+    {#if pinnedApprovalArrives}
+      <Button data-testid="pinned-resize-approval" onclick={() => (pinnedApprovalArrived = true)}>
+        An approval arrives
+      </Button>
+    {/if}
     <div
       style:height={pinnedBox !== null
         ? `${pinnedBox}px`
@@ -867,7 +898,11 @@
         {...pinnedResizeMode === 'settles' ? { trailing: pinnedPanel } : {}}
         conversation={pinnedResizeOutcome.conversation}
         capabilities={{ attachments: false }}
-        {...pinnedResizeMode === 'approval' ? { adapter, onApprovalResolve: () => {} } : {}}
+        {...pinnedResizeMode === 'approval' || pinnedApprovalArrives
+          ? { adapter, onApprovalResolve: () => {} }
+          : {}}
+        {...pinnedJumpThreshold === undefined ? {} : { jumpThreshold: pinnedJumpThreshold }}
+        {...pinnedBottomThreshold === undefined ? {} : { bottomThreshold: pinnedBottomThreshold }}
         messageTurnState={(message) => turnStateOf(pinnedResizeOutcome, message)}
         emptyTitle="What should the assistant do?"
         emptyDescription="It looks up orders and says what is open on the account."

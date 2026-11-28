@@ -60,6 +60,11 @@ async function open(
     readonly rowsSettled?: boolean;
     /** The run is still going, so the turn draws no outcome yet: a reply can stream after it. */
     readonly running?: boolean;
+    /** A button appends an approval that waits, when the case presses it. */
+    readonly approvalArrives?: boolean;
+    /** Chat's `jumpThreshold` and `bottomThreshold`, where a case sets them. */
+    readonly jumpThreshold?: number;
+    readonly bottomThreshold?: number;
   } = {},
 ): Promise<void> {
   const url = new URL(
@@ -79,6 +84,13 @@ async function open(
   }
   if (options.rowsSettled === true) url.searchParams.set('rowsSettled', '1');
   if (options.running === true) url.searchParams.set('running', '1');
+  if (options.approvalArrives === true) url.searchParams.set('approvalArrives', '1');
+  if (options.jumpThreshold !== undefined) {
+    url.searchParams.set('jumpThreshold', String(options.jumpThreshold));
+  }
+  if (options.bottomThreshold !== undefined) {
+    url.searchParams.set('bottomThreshold', String(options.bottomThreshold));
+  }
   await page.goto(url.href);
   const chat = page.getByTestId('pinned-resize-chat');
   await expect(chat.locator('.chat-timeline')).toBeVisible();
@@ -710,6 +722,65 @@ async function lastRowEndFromReadingEnd(page: Page): Promise<number> {
     });
 }
 
+test.describe('an approval that arrives while Jump to latest shows', () => {
+  test.use({ viewport: { width: 1280, height: 800 }, colorScheme: 'light' });
+
+  test('takes the control away in the frame its card is drawn, with the clock stopped', async ({
+    page,
+  }) => {
+    await open(page, 'long', 'transparent', { running: true, approvalArrives: true });
+    const chat = page.getByTestId('pinned-resize-chat');
+    const timeline = chat.locator('.chat-timeline');
+    await expect
+      .poll(async () => Math.abs(await lastRowEndFromReadingEnd(page)))
+      .toBeLessThanOrEqual(1);
+    // The person wheels up to read what came before, and Jump to latest is offered.
+    await timeline.hover();
+    await page.mouse.wheel(0, -600);
+    const container = chat.locator('.chat-container');
+    await expect(chat.locator('.chat-jump-button')).toBeVisible();
+    await expect(container).toHaveAttribute('data-jump-visible', '');
+
+    // No animation frame runs from here on, as under a design-review capture's clock: a control
+    // that waited for the placement's first pass to go would stay, and its band with it.
+    await freezePageTimers(page);
+    await page.getByTestId('pinned-resize-approval').click();
+    await expect(chat.locator('.cinder-approval-card')).toBeVisible();
+    await paintedFrames(page);
+    // Read once, not waited for: it was gone before the card's first frame was painted.
+    expect(await container.evaluate((element) => element.hasAttribute('data-jump-visible'))).toBe(
+      false,
+    );
+  });
+});
+
+/**
+ * Where the fixture's transcript rests is 21 pixels from its end at 320 and 33 at 1280, and the
+ * band Jump to latest floats in is 40. The control is offered beyond `jumpThreshold` from the end.
+ * So 15 is below the gap at both sizes (the control is offered at rest), 50 is between the gap and
+ * the gap with the band (the control would not hide where a jump lands while its band is there),
+ * and Chat's own 200 is above both.
+ */
+const JUMP_CASES = [
+  { name: "Chat's own thresholds", thresholds: {}, reducedMotion: false },
+  {
+    name: 'jumpThreshold 50',
+    thresholds: { jumpThreshold: 50, bottomThreshold: 25 },
+    reducedMotion: false,
+  },
+  {
+    name: 'jumpThreshold 15',
+    thresholds: { jumpThreshold: 15, bottomThreshold: 10 },
+    reducedMotion: false,
+  },
+  { name: 'reduced motion', thresholds: {}, reducedMotion: true },
+  {
+    name: 'jumpThreshold 50 and reduced motion',
+    thresholds: { jumpThreshold: 50, bottomThreshold: 25 },
+    reducedMotion: true,
+  },
+] as const;
+
 for (const viewport of [
   { width: 320, height: 640 },
   { width: 1280, height: 800 },
@@ -717,68 +788,76 @@ for (const viewport of [
   test.describe(`a reply that streams after Jump to latest, at ${String(viewport.width)} by ${String(viewport.height)}`, () => {
     test.use({ viewport, colorScheme: 'light' });
 
-    test('moves the transcript on and never back, and its last row ends on the end of the reading box', async ({
-      page,
-    }) => {
-      await open(page, 'long', 'transparent', { running: true });
-      const chat = page.getByTestId('pinned-resize-chat');
-      const timeline = chat.locator('.chat-timeline');
-      await expect
-        .poll(async () => Math.abs(await lastRowEndFromReadingEnd(page)))
-        .toBeLessThanOrEqual(1);
+    for (const jumpCase of JUMP_CASES) {
+      test(`moves the transcript on and never back, and its last row ends on the end of the reading box, with ${jumpCase.name}`, async ({
+        page,
+      }) => {
+        if (jumpCase.reducedMotion) await page.emulateMedia({ reducedMotion: 'reduce' });
+        await open(page, 'long', 'transparent', { running: true, ...jumpCase.thresholds });
+        const chat = page.getByTestId('pinned-resize-chat');
+        const timeline = chat.locator('.chat-timeline');
+        await expect
+          .poll(async () => Math.abs(await lastRowEndFromReadingEnd(page)))
+          .toBeLessThanOrEqual(1);
 
-      // The person wheels up to read what came before, and Jump to latest is offered.
-      await timeline.hover();
-      await page.mouse.wheel(0, -600);
-      const jump = chat.locator('.chat-jump-button');
-      await expect(jump).toBeVisible();
-      await jump.click();
-      // It lands on the rest. The band the control floated in goes back to the transcript, which
-      // is rested once more in the taller box: the series starts from there.
-      await expect(jump).toBeHidden();
-      await expect
-        .poll(async () => Math.abs(await lastRowEndFromReadingEnd(page)))
-        .toBeLessThanOrEqual(1);
-      await settled(page);
-      const landed = await painted(page);
-      const start = landed.scrollTop;
-      expect(start).toBeGreaterThan(0);
-
-      // Every position the transcript takes from here on, as the browser reports each scroll.
-      await timeline.evaluate((element) => {
-        const tops: number[] = [element.scrollTop];
-        element.addEventListener('scroll', () => tops.push(element.scrollTop), { passive: true });
-        (globalThis as unknown as { pinnedTops: number[] }).pinnedTops = tops;
-      });
-
-      const rests: number[] = [start];
-      for (let chunk = 1; chunk <= 5; chunk += 1) {
-        await page.getByTestId('pinned-resize-stream').click();
-        await expect(chat.getByText(`Part ${String(chunk)}:`)).toBeVisible();
+        // The person wheels up to read what came before, and Jump to latest is offered.
+        await timeline.hover();
+        await page.mouse.wheel(0, -600);
+        const jump = chat.locator('.chat-jump-button');
+        await expect(jump).toBeVisible();
+        // Every position the transcript takes from the press on, as the browser reports each
+        // scroll: the jump itself, where it lands, and every chunk after it.
+        await timeline.evaluate((element) => {
+          const tops: number[] = [element.scrollTop];
+          element.addEventListener('scroll', () => tops.push(element.scrollTop), { passive: true });
+          (globalThis as unknown as { pinnedTops: number[] }).pinnedTops = tops;
+        });
+        await jump.click();
+        // The control is gone at the press, and the jump lands on the rest of the box it lands in.
+        await expect(jump).toBeHidden();
+        await expect
+          .poll(async () => Math.abs(await lastRowEndFromReadingEnd(page)))
+          .toBeLessThanOrEqual(1);
         await settled(page);
-        const now = await painted(page);
-        // The reply's end is on the end of the reading box, clear of the fade, after every chunk.
-        expect(
-          Math.abs(await lastRowEndFromReadingEnd(page)),
-          `chunk ${String(chunk)}`,
-        ).toBeLessThanOrEqual(1);
-        expect(now.inFade, `chunk ${String(chunk)}`).toBeLessThanOrEqual(1);
-        // Not at its true end: Jump to latest claimed nothing for the person.
-        expect(now.distanceToEnd, `chunk ${String(chunk)}`).toBeGreaterThanOrEqual(8);
-        rests.push(now.scrollTop);
-      }
-      // The reply streamed past the end of the box: every chunk moved the transcript on.
-      for (let index = 1; index < rests.length; index += 1) {
-        expect(rests[index]!, `chunk ${String(index)}`).toBeGreaterThan(rests[index - 1]!);
-      }
-      // And it never went back, at any scroll in between.
-      const tops = await page.evaluate(
-        () => (globalThis as unknown as { pinnedTops: number[] }).pinnedTops,
-      );
-      expect(tops.length).toBeGreaterThan(5);
-      for (let index = 1; index < tops.length; index += 1) {
-        expect(tops[index]!, `scroll ${String(index)}`).toBeGreaterThanOrEqual(tops[index - 1]!);
-      }
-    });
+        const landed = await painted(page);
+        const start = landed.scrollTop;
+        expect(start).toBeGreaterThan(0);
+
+        const rests: number[] = [start];
+        for (let chunk = 1; chunk <= 5; chunk += 1) {
+          await page.getByTestId('pinned-resize-stream').click();
+          await expect(chat.getByText(`Part ${String(chunk)}:`)).toBeVisible();
+          await settled(page);
+          const now = await painted(page);
+          // The reply's end is on the end of the reading box, clear of the fade, after every chunk.
+          expect(
+            Math.abs(await lastRowEndFromReadingEnd(page)),
+            `chunk ${String(chunk)}`,
+          ).toBeLessThanOrEqual(1);
+          expect(now.inFade, `chunk ${String(chunk)}`).toBeLessThanOrEqual(1);
+          // Not at its true end: Jump to latest claimed nothing for the person.
+          expect(now.distanceToEnd, `chunk ${String(chunk)}`).toBeGreaterThanOrEqual(8);
+          rests.push(now.scrollTop);
+        }
+        // The reply streamed past the end of the box: every chunk moved the transcript on.
+        for (let index = 1; index < rests.length; index += 1) {
+          expect(rests[index]!, `chunk ${String(index)}`).toBeGreaterThan(rests[index - 1]!);
+        }
+        // And it never went back, at any scroll from the press on, with reduced motion as
+        // without. Under reduced motion every style change is a transition of a hundredth of a
+        // millisecond (Cinder's reset) unless the element says it never transitions: the band of
+        // the control and the step row before the reply both did, so the band outlived the
+        // control by a frame and the first chunk rested the transcript twice, 5 to 9 pixels apart.
+        const tops = await page.evaluate(
+          () => (globalThis as unknown as { pinnedTops: number[] }).pinnedTops,
+        );
+        expect(tops.length).toBeGreaterThan(5);
+        for (let index = 1; index < tops.length; index += 1) {
+          expect(tops[index]!, `scroll ${String(index)}`).toBeGreaterThanOrEqual(tops[index - 1]!);
+        }
+        // At rest there is nothing later to jump to, however small the threshold.
+        await expect(jump).toBeHidden();
+      });
+    }
   });
 }

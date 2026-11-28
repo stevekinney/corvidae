@@ -692,6 +692,74 @@ describe('Chat — a waiting approval is placed again in the frame its layout ch
     expect(state.scrollTop).toBe(132);
   });
 
+  test('after a press in the card, a box change leaves the transcript where the placement left it, whichever code placed it last', async () => {
+    for (const placedBy of ['the layout step', 'a pass in an animation frame'] as const) {
+      // 1000 in a box of 400, the card from 300 to 500: it rests with its bottom clear, at 112,
+      // which is neither where the pin rests a transcript nor its true end.
+      const { view, timeline, state, changed } = await renderApproval({
+        content: 1000,
+        cardTop: 300,
+      });
+      if (placedBy === 'the layout step') changed(timeline);
+      else runFrames();
+      expect(state.scrollTop, placedBy).toBe(112);
+      timeline.dispatchEvent(new Event('scroll'));
+      // The person presses Approve. Nothing scrolls, and the placement is over.
+      await fireEvent.pointerDown(getByRole(view.container, 'button', { name: 'Approve' }));
+      // The box changes. The transcript is where the placement left it, not where the pin would
+      // rest one, and not one thing after a placement made in the layout step and another after
+      // one made by a pass.
+      state.clientHeight = 380;
+      changed(timeline);
+      runFrames();
+      expect(state.scrollTop, placedBy).toBe(112);
+      cleanup();
+      observers.length = 0;
+      frames.length = 0;
+    }
+  });
+
+  test('Jump to latest is gone when an approval arrives, before any pass has run', async () => {
+    holdFrames();
+    const view = render(Chat, {
+      id: 'pinned',
+      variant: 'transcript',
+      conversation: appendUserMessage(createConversationHistory({ id: 'pinned' }), 'refund it'),
+      adapter: { sendMessage: async () => undefined, resolveToolApproval: async () => undefined },
+      ...MASKED,
+    });
+    const container = view.container.querySelector<HTMLElement>('.chat-container')!;
+    const timeline = view.container.querySelector<HTMLElement>('.chat-timeline')!;
+    // 1000 in a box of 400.
+    const state = { scrollTop: 0 };
+    Object.defineProperty(timeline, 'scrollHeight', { get: () => 1000 });
+    Object.defineProperty(timeline, 'clientHeight', { get: () => 400 });
+    Object.defineProperty(timeline, 'scrollTop', {
+      get: () => state.scrollTop,
+      set: (value: number) => {
+        state.scrollTop = Math.min(Math.max(value, 0), 600);
+      },
+    });
+    timeline.scrollTo = ((options: ScrollToOptions) => {
+      timeline.scrollTop = options.top ?? 0;
+    }) as typeof timeline.scrollTo;
+    await corrected();
+    // The person wheels back to its start, 600 from the end, so Jump to latest is offered.
+    timeline.dispatchEvent(new Event('wheel'));
+    state.scrollTop = 0;
+    timeline.dispatchEvent(new Event('scroll'));
+    runFrames();
+    await tick();
+    expect(container.hasAttribute('data-jump-visible')).toBe(true);
+
+    // An approval arrives and its card is drawn. No animation frame runs.
+    await view.rerender({ conversation: approvalConversation() });
+    await corrected();
+    expect(view.container.querySelector('.cinder-approval-card')).not.toBeNull();
+    // The control is gone already: its band takes nothing from the box the card is placed in.
+    expect(container.hasAttribute('data-jump-visible')).toBe(false);
+  });
+
   test('a host that holds the transcript is told of every change, wherever its placement left the transcript, until it lets go', async () => {
     const { view, conversation, timeline, state, boxChanged, rowChanged, layOut, rowGrows, rests } =
       renderChat({ scrollHeight: 580, clientHeight: 400, scrollTop: 0 }, MASKED);
@@ -798,6 +866,13 @@ describe('Chat — a transcript a person took to its true end is theirs there', 
 });
 
 describe('Chat — Jump to latest rests where every other rest does', () => {
+  /** Puts back the page's `getComputedStyle` after a case that stood in for its stylesheet. */
+  let restoreComputedStyle = (): void => {};
+  afterEach(() => {
+    restoreComputedStyle();
+    restoreComputedStyle = () => {};
+  });
+
   test('after Jump to latest, history that arrives late leaves the last row on the end of the reading box', async () => {
     const { view, timeline, state, boxChanged, rowChanged, layOut, rowGrows } = renderChat(
       { scrollHeight: 300, clientHeight: 400, scrollTop: 0 },
@@ -867,51 +942,144 @@ describe('Chat — Jump to latest rests where every other rest does', () => {
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
   });
 
-  test('Jump to latest lands on the rest of the box it lands in, which has the band of the control back', async () => {
-    const { view, timeline, state, boxChanged, rowChanged, layOut, rowGrows } = renderChat(
-      { scrollHeight: 900, clientHeight: 400, scrollTop: 0 },
-      MASKED,
-    );
-    // The rows end 840 from the start, in a box of 400: the rest is 440, and the true end 500.
-    state.rowsEnd = 840;
-    layOut();
-    await corrected();
-    boxChanged();
-    expect(state.scrollTop).toBe(440);
+  // The rows end 840 from the start and 60 of space follows them. In a box of 400 the rest is 440
+  // and the true end 500: the rest is 60 from the end. The control's band is 40. So the thresholds
+  // are: below the band, between the gap and the gap with the band, and above both. Each is also
+  // run with a band that is still laid out for a frame after the control has gone, as it was with
+  // reduced motion before the transcript's box stopped transitioning, and as a host's own styles
+  // could still have it: the jump is aimed by what is laid out, so it lands in the same place.
+  for (const thresholds of [
+    { jumpThreshold: 30, bottomThreshold: 20 },
+    { jumpThreshold: 80, bottomThreshold: 50 },
+    { jumpThreshold: 200, bottomThreshold: 150 },
+  ]) {
+    for (const bandLags of [false, true]) {
+      const name = `jumpThreshold ${String(thresholds.jumpThreshold)}${bandLags ? ' and a band that leaves a frame late' : ''}`;
+      test(`Jump to latest lands on the rest and a reply after it never steps back, with ${name}`, async () => {
+        const frame = (): Promise<void> =>
+          new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        const asked = appendUserMessage(
+          createConversationHistory({ id: 'pinned' }),
+          'Look up 4398',
+        );
+        const view = render(Chat, {
+          id: 'pinned',
+          variant: 'transcript',
+          conversation: appendAssistantMessage(asked, 'It shipped on Monday.'),
+          ...MASKED,
+          ...thresholds,
+        });
+        const container = view.container.querySelector<HTMLElement>('.chat-container')!;
+        const timeline = view.container.querySelector<HTMLElement>('.chat-timeline')!;
+        const state = { rowsEnd: 840, scrollTop: 0 };
+        // The transcript gives 40 to the band Jump to latest floats in while the control is drawn,
+        // as its end margin, as Chat's stylesheet has it (happy-dom applies none of it).
+        const drawn = (): boolean => container.hasAttribute('data-jump-visible');
+        let laidOut = drawn();
+        const band = (): number => ((bandLags ? laidOut : drawn()) ? 40 : 0);
+        const box = (): number => 400 - band();
+        const extent = (): number => state.rowsEnd + 60;
+        Object.defineProperty(timeline, 'scrollHeight', { get: extent });
+        Object.defineProperty(timeline, 'clientHeight', { get: box });
+        Object.defineProperty(timeline, 'scrollTop', {
+          get: () => state.scrollTop,
+          set: (value: number) => {
+            state.scrollTop = Math.min(Math.max(value, 0), extent() - box());
+          },
+        });
+        timeline.scrollTo = ((options: ScrollToOptions) => {
+          timeline.scrollTop = options.top ?? 0;
+        }) as typeof timeline.scrollTo;
+        timeline.getBoundingClientRect = () =>
+          ({ top: 0, bottom: box(), height: box() }) as DOMRect;
+        const computed = globalThis.getComputedStyle;
+        restoreComputedStyle = () => {
+          globalThis.getComputedStyle = computed;
+        };
+        globalThis.getComputedStyle = (element: Element, pseudo?: string | null) => {
+          const style = computed(element, pseudo);
+          if (element !== timeline) return style;
+          return new Proxy(style, {
+            get: (target, key) => {
+              if (key === 'marginBottom') return `${String(band())}px`;
+              const value: unknown = Reflect.get(target, key);
+              return typeof value === 'function' ? value.bind(target) : value;
+            },
+          });
+        };
+        const lastRow = [...timeline.children]
+          .filter((child) => child.classList.contains('chat-message-wrapper'))
+          .at(-1) as HTMLElement;
+        lastRow.getBoundingClientRect = () =>
+          ({
+            top: 180 - state.scrollTop,
+            bottom: state.rowsEnd - state.scrollTop,
+            height: state.rowsEnd - 180,
+          }) as DOMRect;
+        const changed = (element: Element): void => {
+          for (const entry of observers) {
+            if (entry.targets.includes(element)) entry.callback();
+          }
+        };
+        let seen = box();
+        /** The scroll is heard, a frame passes, and the browser tells whoever watches the box. */
+        const heard = async (): Promise<void> => {
+          timeline.dispatchEvent(new Event('scroll'));
+          await frame();
+          await tick();
+          laidOut = drawn();
+          if (box() !== seen) {
+            seen = box();
+            changed(timeline);
+          }
+        };
+        const atRest = (): boolean => state.scrollTop === state.rowsEnd - box();
 
-    // The person wheels up to read what came before. Jump to latest shows, and the transcript
-    // gives up the band the control floats in: 40 pixels, as its end margin.
-    timeline.dispatchEvent(new Event('wheel'));
-    state.scrollTop = 0;
-    timeline.dispatchEvent(new Event('scroll'));
-    const container = view.container.querySelector<HTMLElement>('.chat-container')!;
-    await waitFor(() => expect(container.hasAttribute('data-jump-visible')).toBe(true));
-    timeline.style.marginBottom = '40px';
-    state.clientHeight = 360;
-    boxChanged();
-    expect(state.scrollTop).toBe(0);
+        await corrected();
+        changed(timeline);
+        await heard();
+        expect(atRest(), `${name}: at rest to begin with`).toBe(true);
+        // At rest the control is not offered, however small the threshold: there is nothing later.
+        expect(drawn(), `${name}: no control at rest`).toBe(false);
 
-    // They jump. The rest of the box as it is now, 360 tall, is 480; the box the jump lands in is
-    // 400 tall again, and its rest is 440.
-    await fireEvent.keyDown(container, { key: 'End' });
-    expect(state.scrollTop).toBe(440);
-    // The control hides as the jump lands and the band goes back to the transcript.
-    timeline.dispatchEvent(new Event('scroll'));
-    await waitFor(() => expect(container.hasAttribute('data-jump-visible')).toBe(false));
-    timeline.style.marginBottom = '';
-    state.clientHeight = 400;
-    boxChanged();
-    timeline.dispatchEvent(new Event('scrollend'));
-    expect(state.scrollTop).toBe(440);
+        // The person wheels up to read what came before, and Jump to latest shows.
+        timeline.dispatchEvent(new Event('wheel'));
+        state.scrollTop = 0;
+        await heard();
+        expect(drawn(), name).toBe(true);
+        expect(state.scrollTop, name).toBe(0);
 
-    // A reply streams, 10 at a time: on, and never back.
-    rowGrows(850);
-    rowChanged();
-    expect(state.scrollTop).toBe(450);
-    rowGrows(860);
-    rowChanged();
-    expect(state.scrollTop).toBe(460);
-  });
+        // They jump. The control is gone at the press, and the jump lands on the rest of the box
+        // of 400, which the transcript has again or has a frame later.
+        await fireEvent.keyDown(container, { key: 'End' });
+        expect(state.scrollTop, `${name}: where the jump lands`).toBe(440);
+        const positions = [state.scrollTop];
+        await heard();
+        timeline.dispatchEvent(new Event('scrollend'));
+        await heard();
+        positions.push(state.scrollTop);
+        // Settled, the last row ends on the end of the reading box and no control is offered.
+        expect(atRest(), `${name}: at rest once the jump has settled`).toBe(true);
+        expect(drawn(), `${name}: no control once the jump has settled`).toBe(false);
+
+        // A reply streams, 30 at a time: more at once than the middle threshold leaves between
+        // the rest and itself, so a scroll heard before the reply is rested is past that threshold.
+        for (const rowsEnd of [870, 900, 930]) {
+          state.rowsEnd = rowsEnd;
+          // A scroll heard as the reply grows, before it is rested, as one is while a reply streams.
+          await heard();
+          changed(lastRow);
+          positions.push(state.scrollTop);
+          await heard();
+          positions.push(state.scrollTop);
+          expect(atRest(), `${name}: at rest with the rows at ${String(rowsEnd)}`).toBe(true);
+          expect(drawn(), `${name}: no control with the rows at ${String(rowsEnd)}`).toBe(false);
+        }
+        // On, and never back.
+        expect(positions, name).toEqual([...positions].sort((a, b) => a - b));
+      });
+    }
+  }
 });
 
 describe('Chat — a refusal held in view and the pin to the end agree on one resting position', () => {

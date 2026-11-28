@@ -9,6 +9,7 @@
  * - Imperative scroll methods
  */
 
+import { flushSync } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import { useReducedMotion } from '../../../utilities/use-reduced-motion.svelte.ts';
 import type { ChatScrollStateChangeEvent } from './chat-events.ts';
@@ -45,6 +46,15 @@ export interface UseChatScrollStateOptions {
   onScrollStateChange?: (event: ChatScrollStateChangeEvent) => void;
   /** Callback when scroll reaches bottom (for clearing unread state) */
   onReachBottom?: () => void;
+  /**
+   * Whether the host holds the transcript where it rests, and will keep it there as it grows.
+   * `showJumpButton` is false then, however far that is from the end: there is nothing later to
+   * jump to. Without it the control is judged by its distance from the end alone, at whatever
+   * moment a scroll is heard: a reply that had grown and not yet been rested read as scrolled
+   * away, the control came in, and where a host gives the control room (Chat's band) the
+   * transcript was rested on, the control left, and the transcript stepped back by that room.
+   */
+  getResting?: () => boolean;
 }
 
 /** Return type for the scroll state helper */
@@ -84,11 +94,16 @@ export interface UseChatScrollStateReturn {
    * Handles smooth scroll and focuses the last message after animation. It lands at the end of the
    * scrollable area, or where `restingTop` says the transcript rests when the host gives one (read
    * when the jump starts and again when it finishes), so a jump rests where everything else does.
+   * `showJumpButton` is false from the press until the jump settles, and the page has drawn that
+   * before the scroll is issued: a host that gives the transcript room back when the control hides
+   * knows at the press that the room is on its way back, whatever `jumpThreshold` is. `onLanded`
+   * runs when the jump has settled where it was aimed, and not when another scroll took it over.
    */
   jumpToLatest(
     viewport: HTMLElement | null,
     onComplete?: () => void,
     restingTop?: () => number,
+    onLanded?: () => void,
   ): void;
   /**
    * Run a programmatic scroll `action` while suppressing the auto-stick-to-bottom
@@ -229,6 +244,7 @@ export function useChatScrollState(options?: UseChatScrollStateOptions): UseChat
     getJumpThreshold,
     onScrollStateChange,
     onReachBottom,
+    getResting,
   } = options ?? {};
 
   // Shared reduced-motion preference (OVERLAY-POLICY: use the shared hook, not inline matchMedia).
@@ -284,6 +300,21 @@ export function useChatScrollState(options?: UseChatScrollStateOptions): UseChat
   // guard start. Used by finishUserScrollGuard to complete the scroll
   // instantly instead of leaving its animation racing a later instant scroll.
   let activeUserScrollGuardDestination: (() => number) | null = null;
+  // The target of the jump to the latest message that is under way, while its guard is the active
+  // one. The control that asks for the jump is not offered again until that guard is over: the
+  // person has asked, and the page is taking them there.
+  let jumpTarget: (() => number) | null = null;
+  const jumping = (): boolean =>
+    jumpTarget !== null && activeUserScrollGuardDestination === jumpTarget;
+  /** Whether the control is offered for this geometry: not on the way to the latest, not at rest. */
+  const offersJump = (state: {
+    scrollTop: number;
+    scrollHeight: number;
+    clientHeight: number;
+  }): boolean =>
+    !jumping() &&
+    getResting?.() !== true &&
+    shouldShowJumpToLatest(state, getJumpThreshold?.() ?? jumpThreshold);
 
   /**
    * Set atBottom state directly.
@@ -312,10 +343,7 @@ export function useChatScrollState(options?: UseChatScrollStateOptions): UseChat
             state,
             getBottomThreshold?.() ?? bottomThreshold,
           );
-          const shouldShowJump = shouldShowJumpToLatest(
-            state,
-            getJumpThreshold?.() ?? jumpThreshold,
-          );
+          const shouldShowJump = offersJump(state);
 
           // Update reactive state
           atBottom = scrolledToBottom;
@@ -369,7 +397,7 @@ export function useChatScrollState(options?: UseChatScrollStateOptions): UseChat
       clientHeight: viewport.clientHeight,
     };
     const scrolledToBottom = checkIsAtBottom(state, getBottomThreshold?.() ?? bottomThreshold);
-    showJumpButton = shouldShowJumpToLatest(state, getJumpThreshold?.() ?? jumpThreshold);
+    showJumpButton = offersJump(state);
     if (scrolledToBottom && !atBottom) {
       atBottom = true;
       onReachBottom?.();
@@ -771,13 +799,26 @@ export function useChatScrollState(options?: UseChatScrollStateOptions): UseChat
     viewport: HTMLElement | null,
     onComplete?: () => void,
     restingTop?: () => number,
+    onLanded?: () => void,
   ): void {
     if (!viewport) return;
     const target = (): number => restingTop?.() ?? viewport.scrollHeight;
+    jumpTarget = target;
 
     withUserScrollGuard(
       viewport,
       () => {
+        // The control is hidden from here until the jump settles, and the page draws that now,
+        // before the scroll is issued. A host gives the transcript room back when the control
+        // hides (Chat's band), which moves where it rests. Left to hide by its threshold on the
+        // way, the control was still there where the jump landed whenever the threshold was
+        // smaller than the landing place's distance from the end with that room taken, the
+        // transcript landed short of its rest, and the first thing to arrive carried it on, hid
+        // the control and brought the transcript back.
+        if (showJumpButton) {
+          showJumpButton = false;
+          flushSync();
+        }
         withForcedLayout(viewport, () => {
           viewport.scrollTo({ top: target(), behavior: getScrollBehavior() });
         });
@@ -792,6 +833,17 @@ export function useChatScrollState(options?: UseChatScrollStateOptions): UseChat
         const lastWrapper = wrappers.length > 0 ? wrappers[wrappers.length - 1] : null;
         const lastMessage = lastWrapper?.querySelector<HTMLElement>('.chat-message') ?? null;
         lastMessage?.focus();
+        if (onLanded !== undefined) {
+          onLanded();
+          // The host knows only now that the transcript is where it rests it. The guard read the
+          // control's state just before, when a transcript that had been scrolled on its way
+          // still read as taken, and offered the control for the distance alone.
+          showJumpButton = offersJump({
+            scrollTop: viewport.scrollTop,
+            scrollHeight: viewport.scrollHeight,
+            clientHeight: viewport.clientHeight,
+          });
+        }
       },
       target,
     );

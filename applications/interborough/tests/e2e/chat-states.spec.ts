@@ -679,7 +679,17 @@ async function openToolOnlyTurn(
   turn: ToolOnlyTurn,
 ): Promise<{ readonly commands: string[]; readonly release: () => void }> {
   await connectProvider(page);
-  await openStatesChat(page, request, 'ended-on-tool-call');
+  // A run whose stream dropped is still going, and the Bureau says so: its record of the chat is
+  // what the title, the chat list and Home all read the status word from. With the record left
+  // idle beside a stream that had started and not ended, they said Done over a notice that the
+  // page was reconnecting to that run.
+  await openStatesChat(
+    page,
+    request,
+    'ended-on-tool-call',
+    undefined,
+    turn.dropped ? { activity: 'running' } : {},
+  );
   const commands: string[] = [];
   let rows = [...messagesOf('ended-on-tool-call'), ...(turn.followUp ? [FOLLOW_UP_ROW] : [])];
   let release = () => {};
@@ -886,6 +896,15 @@ test.describe('A chat turn of only tool calls and how it ended (COR-2725)', () =
     await expect(notice).toContainText('Connection lost. Reconnecting');
     await expect(notice.getByRole('button', { name: 'Retry now' })).toBeVisible();
     await expect(page.locator('.chat-turn-outcome')).toHaveCount(0);
+    // The run is still going, so the title and the chat's row in the list both say Running: one
+    // word from one fact, the Bureau's, beside the notice that the page lost its stream.
+    await expect(page.locator('[data-testid="chat-header"]')).toContainText('Running');
+    await expect(page.locator('[data-testid="chat-header"]')).not.toContainText('Done');
+    await expect(
+      page
+        .locator(`[data-chat="${ENDED_ON_TOOL_CALL_THREAD}"]`)
+        .getByText('Running', { exact: true }),
+    ).toBeVisible();
     await captureForDesignReviewWithPhone(page, {
       route: '/chats/:chat',
       state: 'tool-only turn reconnecting',

@@ -40,6 +40,11 @@ export interface PinnedThroughResize {
    * transcript to its true end, and creates none.
    */
   pageScrolled(): void;
+  /**
+   * Whether the transcript rests where the page left it, so the page keeps it there: nobody has
+   * taken it away. There is nothing later to jump to then, whatever its distance from its end.
+   */
+  following(): boolean;
   /** Stops looking. */
   stop(): void;
 }
@@ -100,7 +105,9 @@ export function startSideRest(transcript: HTMLElement): number | null {
  * `held` is asked first, at every change: whether something else rests the transcript by a rule of
  * its own (a waiting approval's placement), which it then does there, in the same frame, before
  * anything is painted. While it does, the transcript is wherever that left it, whether or not it
- * is where the pin would rest it, and `rest` is not asked.
+ * is where the pin would rest it, and `rest` is not asked. The move it made there is read as any
+ * scroll that is heard is read, so whose the transcript is once the hold is over does not depend
+ * on which code made the last scroll.
  */
 export function keepPinnedThroughResize(
   transcript: HTMLElement,
@@ -108,7 +115,13 @@ export function keepPinnedThroughResize(
   held: () => boolean = () => false,
 ): PinnedThroughResize {
   if (typeof ResizeObserver === 'undefined') {
-    return { rested: () => {}, takenToEnd: () => false, pageScrolled: () => {}, stop: () => {} };
+    return {
+      rested: () => {},
+      takenToEnd: () => false,
+      pageScrolled: () => {},
+      following: () => false,
+      stop: () => {},
+    };
   }
   const reach = (): number => transcript.scrollHeight - transcript.clientHeight;
   // Everything the transcript holds, the clear space at its end too, is inside a box that is laid out.
@@ -164,7 +177,12 @@ export function keepPinnedThroughResize(
   // place, is no one taking it).
   const settle = (): void => {
     if (held()) {
-      restingTop = transcript.scrollTop;
+      // What holds the transcript has just rested it, in this callback. That scroll is never heard
+      // as a move: when its scroll event comes, the transcript is already where it was left. So
+      // it is read here, as a heard scroll is. Otherwise a transcript the holder left at its own
+      // position was still followed if this callback made the last move, and the person's if a
+      // pass in an animation frame or a host's observer did.
+      heard();
       return;
     }
     if (fitsWhole()) following = true;
@@ -214,6 +232,7 @@ export function keepPinnedThroughResize(
       input = false;
     },
     takenToEnd: () => toEnd,
+    following: () => following,
     pageScrolled: () => {
       restingTop = transcript.scrollTop;
       following = true;

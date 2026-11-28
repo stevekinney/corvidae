@@ -457,6 +457,8 @@
   const scrollState = useChatScrollState({
     getBottomThreshold: () => bottomThreshold,
     getJumpThreshold: () => jumpThreshold,
+    // Jump to latest is not offered while the transcript rests where the page keeps it.
+    getResting: () => autoScroll.resting(),
     onScrollStateChange: handleScrollStateChange,
     onReachBottom: () => {
       // The sentinel fires when the user reaches the bottom via
@@ -1461,26 +1463,32 @@
       },
       // The jump rests where every other rest does (`useChatAutoScroll`), so a reply that streams
       // after it moves the transcript on, never back. The rest is read for the box the jump lands
-      // in: while Jump to latest shows, the transcript gives up the band the control floats in,
-      // and it has that band back by the time the jump lands (`jumpBandRoom`).
+      // in: the scroll state hides Jump to latest at the press, so the band the control floats in
+      // is on its way back to the transcript, and what is left of it is taken off (`jumpBandRoom`).
       () =>
         viewport === null
           ? 0
           : Math.max(autoScroll.restingTop(viewport) - jumpBandRoom(viewport), 0),
+      // Where the jump has landed is where the page rests the transcript, whatever was heard on
+      // the way, and whatever arrives before the landing's own scroll is heard.
+      () => autoScroll.pageScrolled(),
     );
     // The jump is the page's own scroll, whatever was pressed to ask for it.
     autoScroll.pageScrolled();
   }
 
   /**
-   * The room `scroller` gives up to the band Jump to latest floats in, while the control shows
-   * (`.chat-container[data-jump-visible] > .chat-timeline`), and 0 once it is hidden. The control
-   * hides as a jump nears the end, so the transcript is that much taller where the jump lands,
-   * and rests that much nearer its start. A jump aimed at the rest of the shorter box landed the
-   * band's height past the rest, and the first chunk of a reply then brought the transcript back.
+   * The room `scroller` still gives up to the band Jump to latest floats in
+   * (`.chat-container[data-jump-visible] > .chat-timeline`): its end margin as it is laid out
+   * now. The control is hidden at the press of a jump, so the transcript has that room back where
+   * the jump lands and rests that much nearer its start. It is read from the layout and not from
+   * whether the control shows, so the jump is aimed by what is laid out when it is aimed. Chat's
+   * own stylesheet takes the band back in the frame the control goes (the transcript's box never
+   * transitions), so this is 0 there; a host whose styles hold the margin a moment longer is
+   * still aimed right. A jump aimed at the rest of the shorter box landed the band's height past
+   * the rest, and the first chunk of a reply then brought the transcript back.
    */
   function jumpBandRoom(scroller: HTMLElement): number {
-    if (!jumpButtonShown) return 0;
     const room = Number.parseFloat(getComputedStyle(scroller).marginBottom);
     return Number.isFinite(room) ? room : 0;
   }
@@ -1995,7 +2003,25 @@
       }
       schedule();
     };
+    // Jump to latest is hidden from the moment there is a card to place, and not from the first
+    // pass, an animation frame later: until that pass the control showed for a transcript placed
+    // far from its end, and its band shrank the transcript under the card. It is said where no
+    // observer of the layout is running: here, as the placement starts, and when the card is
+    // drawn (a mutation, which the browser reports before it lays the card out). Never in
+    // `placeNow`, which runs in an observer's callback.
+    const lift = (): void => {
+      if (released) return;
+      const card = pendingApprovalCard(
+        untrack(() => containerRef),
+        messageId,
+      );
+      if (card === null || approvalActionRow(card) === null) return;
+      if (focusIsInside(card, scroller.ownerDocument.activeElement)) return;
+      attentionLifted = true;
+      attentionLiftedTop = scroller.scrollTop;
+    };
     hold();
+    lift();
     const release = (): void => {
       released = true;
       unhold();
@@ -2006,7 +2032,10 @@
     const resizes =
       typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(schedule);
     resizes?.observe(scroller);
-    const changes = new MutationObserver(schedule);
+    const changes = new MutationObserver(() => {
+      lift();
+      schedule();
+    });
     changes.observe(scroller, { childList: true, subtree: true });
     // Web fonts change every line's height once they load; place the card again then.
     let disposed = false;
@@ -3585,6 +3614,19 @@
    * and the visible message jumped (COR-2259). Cinder's VirtualList does the same (COR-1535). */
   .chat-virtual-spacer,
   .chat-virtual-row {
+    transition-property: none;
+  }
+
+  /* For the same reason, neither does the transcript's own box, nor a step row whose spacing
+   * depends on what follows it. Both are sizes the transcript is rested by. Under reduced motion
+   * the band Jump to latest floats in was still laid out for a frame after the control had gone,
+   * and a collapsed step row took its spacing above an answer (below) a frame or two after the
+   * answer's first chunk was drawn: the transcript was rested for the row as it had been, then
+   * again for the row as it is, and a reply that had just started streaming stepped back by the
+   * difference (COR-2725). None of the three has a transition of its own to lose. */
+  .chat-timeline,
+  .chat-tool-call-group > :global(.chat-tool-call-timeline),
+  .chat-tool-call-group > :global(.chat-tool-call-timeline) :global(.chat-tool-call-toggle) {
     transition-property: none;
   }
 

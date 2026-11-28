@@ -260,12 +260,22 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await open(page, 320, `/chats/${SAMPLE_WORLD_THREADS.refund}`, 640);
     const approval = page.locator('[data-approval-decision]');
     await expect(approval.getByRole('button', { name: 'Approve', exact: true })).toBeVisible();
-    // The arrival placement is over before the press: the waiting row's label rests on the header's
-    // line, not under it. A press while the rows are still settling scrolls the button clear of the
-    // transcript's end padding and ends the placement where that left it, so the frame came out in
-    // one of two places.
+    // The waiting row's label rests on the header's line, not under it.
     await expectApprovalPlaced(page);
-    await approval.getByRole('button', { name: 'Review in deck' }).click();
+    // The deck is opened as a press opens it, with the button focused and clicked, and with no
+    // pointer. A pointer's press does two things to the transcript behind the deck that are no
+    // part of what this test and its frames are about: it first scrolls the button clear of the
+    // transcript's end padding, by 18.5px, and then ends the approval's placement where that left
+    // it. Whether the placement had put the card back in between depended on what else was
+    // settling, so the frames came out in one of two places (the waiting row at 116 or at 135).
+    // With no press the placement holds the transcript throughout, and the card is where its rule
+    // puts it, as in every other frame of this chat at this size.
+    await approval
+      .getByRole('button', { name: 'Review in deck' })
+      .evaluate((button: HTMLElement) => {
+        button.focus({ preventScroll: true });
+        button.click();
+      });
     const deck = page.getByRole('dialog', { name: 'Review tool approval' });
     const irreversible = deck.getByText('Approval can’t be undone.', { exact: true });
     await expect(deck).toContainText('Refund order 4471 for $42.00?');
