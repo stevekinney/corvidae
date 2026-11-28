@@ -2243,6 +2243,23 @@
     margin-inline-end: calc((0.625rem - 1.5rem) / 2);
   }
 
+  /* A trailing action with words (a host's Branch) ends at its words, not at a glyph inset inside
+   * a 24px box, so it has no overhang: with it the action ran 7px past the bubble's edge, and past
+   * the column the bubble and the cards under it share. An icon-only action keeps the overhang. */
+  .chat-message-wrapper[data-role='user']
+    .chat-message-line-actions:has(
+      > :global(
+          .chat-message-action-button:last-child:not(
+              .chat-message-copy,
+              .chat-message-quote-button,
+              .chat-message-regenerate-button,
+              [data-cinder-icon-only]
+            )
+        )
+    ) {
+    margin-inline-end: 0;
+  }
+
   /* The time sits the same distance under an assistant's last text line as under a user's bubble
    * (about 9 to 12px of ink): the line box's leading below the last text line is pulled back. */
   .chat-message-wrapper[data-presentation='transcript'][data-role='assistant']

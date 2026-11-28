@@ -13,6 +13,26 @@ describe('glyphs meet their edges, spacing and direction', () => {
     );
   });
 
+  test('a trailing action that has words ends on the bubble edge, not past it', async () => {
+    const source = await read('chat-message.svelte');
+    // The overhang above is the glyph's own inset inside its 24px box. A text action such as
+    // Branch ends at its words, so the same overhang pushed it 7px past the bubble and the column.
+    const rule = source.match(
+      /\.chat-message-wrapper\[data-role='user'\]\s+\.chat-message-line-actions:has\(([\s\S]*?)\)\s*\{\s*margin-inline-end: 0;/,
+    );
+    expect(rule).not.toBeNull();
+    const selector = rule?.[1]?.replace(/\s+/g, ' ') ?? '';
+    expect(selector).toContain('.chat-message-action-button:last-child');
+    for (const iconOnly of [
+      '.chat-message-copy',
+      '.chat-message-quote-button',
+      '.chat-message-regenerate-button',
+      '[data-cinder-icon-only]',
+    ]) {
+      expect(selector).toContain(iconOnly);
+    }
+  });
+
   test('a bubble that is only attachments insets its tile evenly, whatever sits around the tile', async () => {
     const source = await read('chat-message.svelte');
     // The body can hold an empty text part and a status row follows the tile, so the rule keys on
