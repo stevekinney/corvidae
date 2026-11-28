@@ -158,9 +158,9 @@
       "outputs": ["test-output/junit/self.xml"],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "{applications,components,packages,testing,internal,plugins}/*/package.json",
-        "{applications,components,packages,testing,internal,plugins}/*/tsconfig*.json",
-        "{applications,components,packages,testing,internal,plugins}/**/*.{slow,integration}.test.ts",
+        "{applications,components,packages,testing,configuration,plugins}/*/package.json",
+        "{applications,components,packages,testing,configuration,plugins}/*/tsconfig*.json",
+        "{applications,components,packages,testing,configuration,plugins}/**/*.{slow,integration}.test.ts",
         "scripts/browser-fixtures/package.json",
         "scripts/browser-fixtures/tsconfig*.json",
         "scripts/groom/package.json",

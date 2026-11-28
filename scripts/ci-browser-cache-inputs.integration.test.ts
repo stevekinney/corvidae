@@ -150,7 +150,7 @@ describe.each([
         {
           // The helper walks Cinder's `src` and `scripts`, and reads the root `workspaces` and the
           // workspace manifests they list only to find the one named `@lostgradient/cinder`.
-          fingerprint: '717730156d1ee877d2e21febd9340b24f6784aea8419b23eee78358bd352cf4f',
+          fingerprint: 'f99a56721b306c8ec8b3647946c265b7763ea3a8bb3127062ea871c11384a74a',
           inputs: [
             '$TURBO_ROOT$/components/cinder/{src,scripts}/**',
             '$TURBO_ROOT$/package.json',
