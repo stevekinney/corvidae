@@ -23,6 +23,7 @@ import type { ServerHooks } from '@lostgradient/velveteen/server';
 import { keySettingsMembership, keySettingsProtocolRequest } from './api-key-settings.ts';
 import { createConnectedAppsSettings } from './connected-apps-settings.ts';
 import type { HostAuthority } from './host-authority.ts';
+import { isNativeAssetPath } from './native-document-request.ts';
 
 /** Reviewed Bureau reads eligible for connector grants; additions require reviewing the operation. */
 const CONNECTOR_READ_OPERATIONS = new Set([
@@ -70,6 +71,7 @@ export function sharedBrowserServerHooks(
 ): ServerHooks {
   return {
     async handle({ event, resolve }) {
+      if (isNativeAssetPath(event.url.pathname)) return new Response('Not found', { status: 404 });
       const context = await authority.authenticate(event.request);
       if (context instanceof Response) return context;
       const principal = context.principal;

@@ -18,6 +18,10 @@ function hasPrefix(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
 
+export function isNativeAssetPath(pathname: string): boolean {
+  return hasPrefix(pathname, '/_assets');
+}
+
 /** Unclaimed reads go to Velveteen for documents, assets and 404s. */
 export function isDocumentRequest(request: Request): boolean {
   if ((request.method !== 'GET' && request.method !== 'HEAD') || request.headers.has('upgrade'))

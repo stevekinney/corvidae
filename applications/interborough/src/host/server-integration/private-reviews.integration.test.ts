@@ -56,8 +56,11 @@ test('the listener serves private Reviews for each current member', async () => 
     fixture.revoke('admin');
     const revoked = await fixture.send('/reviews', { headers: { cookie: admin } });
     expect(revoked.status).toBe(401);
-    const missingAsset = await fixture.send('/_assets/missing.js', { headers: { cookie: member } });
+    const missingAsset = await fixture.send('/_assets/missing.js', {
+      headers: { cookie: member, accept: 'application/javascript' },
+    });
     expect(missingAsset.status).toBe(404);
+    expect(await missingAsset.text()).toBe('Not found');
     const restrictedApi = await fixture.send('/api/missing', { headers: { cookie: member } });
     expect(restrictedApi.status).toBe(403);
     const unknown = await fixture.send('/unknown', { headers: { accept: 'text/html' } });

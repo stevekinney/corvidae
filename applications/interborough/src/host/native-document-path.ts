@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { displayedCommit, publishedBrowserBuildDirectory, readBuildInfo } from './build-info.ts';
 import { injectDevReloadClient } from './dev-reload.ts';
+import { isNativeAssetPath } from './native-document-request.ts';
 
 export const NATIVE_DOCUMENT_DIRECTORY = 'documents';
 export const UNOWNED_DOCUMENT_ROUTE = '/[...unowned]';
@@ -62,8 +63,7 @@ function openNativeDocuments(
       reroute: ({ url }) => nativeDocumentPath(url),
       async handle({ event, resolve }) {
         // Velveteen already checked published assets before invoking document hooks.
-        const { pathname } = event.url;
-        if (pathname === '/_assets' || pathname.startsWith('/_assets/')) {
+        if (isNativeAssetPath(event.url.pathname)) {
           return new Response('Not found', { status: 404 });
         }
         const response = await resolve(event);

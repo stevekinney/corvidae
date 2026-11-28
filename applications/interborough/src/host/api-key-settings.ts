@@ -8,6 +8,7 @@ import type { ServerHooks } from '@lostgradient/velveteen/server';
 
 import { A2A_SCOPES, A2A_SUBJECT } from './a2a-authentication.ts';
 import type { HostAuthority } from './host-authority.ts';
+import { isNativeAssetPath } from './native-document-request.ts';
 
 /** Select an interactive API key manager after the host has admitted the request's origin. */
 export function keySettingsMembership(
@@ -163,7 +164,8 @@ export function desktopSettingsServerHooks(
 ): ServerHooks {
   return {
     async handle({ event, resolve }) {
-      if (event.url.pathname.startsWith('/_assets/')) return resolve(event);
+      // Velveteen has already served any matching published asset before this hook.
+      if (isNativeAssetPath(event.url.pathname)) return new Response('Not found', { status: 404 });
       const context = await authority.authenticate(event.request);
       if (context instanceof Response) return context;
       if (keySettingsMembership(context.principal, 'local') === undefined)
