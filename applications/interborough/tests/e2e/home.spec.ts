@@ -123,16 +123,20 @@ test('Needs attention rows keep the Needs you row height at 1280 and 1920', asyn
   const home = page.locator('[data-page="home"][data-mode="overview"]');
   const attention = home.getByRole('list', { name: 'System problems' }).getByRole('listitem');
   const needsYouRows = needsYou(page).getByRole('listitem');
-  const pitch = async (rows: Locator): Promise<number> => {
-    const first = await rows.nth(0).boundingBox();
-    const second = await rows.nth(1).boundingBox();
-    return second!.y - first!.y;
-  };
   for (const width of [1280, 1920]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(attention.nth(1)).toBeVisible();
+    // One read, so the four rows come from one layout.
+    const rows = await readBoxes(page, {
+      attentionFirst: attention.nth(0),
+      attentionSecond: attention.nth(1),
+      needsYouFirst: needsYouRows.nth(0),
+      needsYouSecond: needsYouRows.nth(1),
+    });
     // The card ends at its rows: they were about 97px apart, stretched to the Recent chats card.
-    expect(Math.abs((await pitch(attention)) - (await pitch(needsYouRows)))).toBeLessThan(2);
+    const attentionPitch = rows.attentionSecond.y - rows.attentionFirst.y;
+    const needsYouPitch = rows.needsYouSecond.y - rows.needsYouFirst.y;
+    expect(Math.abs(attentionPitch - needsYouPitch)).toBeLessThan(2);
   }
 });
 

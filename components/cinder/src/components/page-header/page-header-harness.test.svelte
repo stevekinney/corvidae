@@ -16,6 +16,7 @@
     withCreate = true,
     title = 'Agents',
     titleText,
+    titleLines,
   }: {
     compactActions?: boolean;
     error?: boolean;
@@ -28,6 +29,7 @@
     withCreate?: boolean;
     title?: string;
     titleText?: string;
+    titleLines?: 1 | 2;
   } = $props();
 </script>
 
@@ -46,6 +48,7 @@
   <PageHeader
     title={titleText === undefined ? title : markdownTitle}
     {...titleText === undefined ? {} : { titleText }}
+    {...titleLines === undefined ? {} : { titleLines }}
     description="Agents run your chats, goals and schedules."
     {...compactActions === undefined ? {} : { compactActions }}
     {error}

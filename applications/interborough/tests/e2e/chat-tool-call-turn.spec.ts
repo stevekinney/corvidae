@@ -332,6 +332,10 @@ test.describe('the shipped turn display is B’s rail with E’s panel (21a, 21b
     // The click left the pointer over the row, and its tooltip would be in the capture whenever the
     // pointer got there first. Move the pointer off every row so the capture never depends on it.
     await page.mouse.move(0, 0);
+    // A tooltip that is open says the identifier, and never repeats the name already on the row.
+    await expect(
+      page.locator('[role="tooltip"][data-cinder-visible]').filter({ hasNotText: 'send-email' }),
+    ).toHaveCount(0);
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'thirty tool calls, failed call panel',
