@@ -10,6 +10,12 @@
       "code": "<script lang=\"ts\">\n  import { VideoPlayer } from '@lostgradient/cinder';\n</script>\n\n<VideoPlayer src=\"https://example.com/media/intro.mp4\" label=\"Product introduction\" poster=\"https://example.com/media/intro.jpg\" />\n"
     },
     {
+      "id": "review",
+      "title": "Comment markers and chapters",
+      "description": "Numbered markers on the seek track jump to each comment, the chapters list the walkthrough's sections, and the bound position feeds a comment action at the end of the controls row.",
+      "code": "<script lang=\"ts\">\n  import { Button, VideoPlayer } from '@lostgradient/cinder';\n\n  let currentTime = $state(19);\n\n  const markers = [\n    { time: 8, badge: '1', label: 'Comment 1 at 0:08' },\n    { time: 19, badge: '2', label: 'Comment 2 at 0:19' },\n    { time: 33, badge: '3', label: 'Comment 3 at 0:33' },\n  ];\n\n  const chapters = [\n    { time: 0, title: 'Open board' },\n    { time: 12, title: 'Add card' },\n    { time: 30, title: 'Move card' },\n  ];\n\n  function clock(seconds: number): string {\n    const whole = Math.floor(seconds);\n    return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;\n  }\n</script>\n\n<VideoPlayer\n  src=\"https://example.com/media/walkthrough.mp4\"\n  label=\"Walkthrough recording\"\n  {markers}\n  {chapters}\n  bind:currentTime\n>\n  {#snippet actions({ currentTime: position })}\n    <Button size=\"sm\">Comment at {clock(position)}</Button>\n  {/snippet}\n</VideoPlayer>\n"
+    },
+    {
       "id": "unavailable",
       "title": "Unavailable source",
       "description": "A source whose scheme is not https, http, or blob never loads and renders the unavailable controls.",

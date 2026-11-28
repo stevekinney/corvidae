@@ -1,6 +1,8 @@
 <!--
   Private playback controls shared by AudioPlayer and VideoPlayer. Not exported from
-  `@lostgradient/cinder`: the players are the public surface.
+  `@lostgradient/cinder`: the players are the public surface. Everything past play, seek, time,
+  mute and full screen (`seekAbove`, `onBack`, the snippets) is opt-in, so a player that passes
+  none renders exactly the one flat row.
 -->
 <script lang="ts">
   import { classNames } from '../../utilities/class-names.ts';
@@ -27,6 +29,11 @@
     onToggleMute,
     fullscreen = false,
     onToggleFullscreen,
+    onBack,
+    seekAbove = false,
+    seekOverlay,
+    secondary,
+    trailing,
     class: customClassName,
     ...rest
   }: MediaControlsProps = $props();
@@ -90,6 +97,11 @@
     onSeek?.(next);
   }
 
+  function handleBack() {
+    if (isDisabled) return;
+    onBack?.();
+  }
+
   function handleToggleMute() {
     if (disabled) return;
     onToggleMute?.();
@@ -137,7 +149,37 @@
   data-cinder-playing={playing ? '' : undefined}
   data-cinder-loading={loading ? '' : undefined}
   data-cinder-unavailable={unavailable ? '' : undefined}
+  data-cinder-seek-above={seekAbove ? '' : undefined}
 >
+  {#if seekAbove}
+    <!-- The slider takes its own row above the buttons, so it is first in the tab order and the
+         overlay (VideoPlayer's markers) follows it. -->
+    {#if hasProgress}
+      <div class="cinder-media-controls__track">
+        {@render seekControl()}
+        {#if seekOverlay}{@render seekOverlay()}{/if}
+      </div>
+    {/if}
+    <div class="cinder-media-controls__row" data-cinder-trailing={trailing ? '' : undefined}>
+      {@render primaryButton()}
+      {@render backButton()}
+      {@render timeReadout()}
+      {#if secondary}{@render secondary()}{/if}
+      {@render toggles()}
+      {#if trailing}{@render trailing()}{/if}
+    </div>
+  {:else}
+    {@render primaryButton()}
+    {@render backButton()}
+    {@render seekControl()}
+    {@render timeReadout()}
+    {#if secondary}{@render secondary()}{/if}
+    {@render toggles()}
+    {#if trailing}{@render trailing()}{/if}
+  {/if}
+</div>
+
+{#snippet primaryButton()}
   <button
     type="button"
     class="cinder-media-controls__button"
@@ -248,7 +290,38 @@
       {/if}
     {/if}
   </button>
+{/snippet}
 
+{#snippet backButton()}
+  {#if onBack && !unavailable}
+    <button
+      type="button"
+      class="cinder-media-controls__action"
+      aria-label="Back 5 seconds"
+      aria-disabled={isDisabled ? 'true' : undefined}
+      data-cinder-action="back"
+      onclick={handleBack}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class="cinder-media-controls__svg"
+        aria-hidden="true"
+      >
+        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+        <path d="M3 3v5h5" />
+        <path d="M10 15.5h2.5a1.5 1.5 0 0 0 0-3H10V9h4" />
+      </svg>
+    </button>
+  {/if}
+{/snippet}
+
+{#snippet seekControl()}
   {#if hasProgress && onSeek}
     <input
       type="range"
@@ -278,7 +351,9 @@
       </div>
     </div>
   {/if}
+{/snippet}
 
+{#snippet timeReadout()}
   {#if hasTime}
     <!-- The slider's value text already speaks the time, so the visible copy stays out of the
          accessibility tree rather than reading twice. -->
@@ -288,7 +363,9 @@
       <span class="cinder-media-controls__duration">{durationText}</span>
     </span>
   {/if}
+{/snippet}
 
+{#snippet toggles()}
   {#if onToggleMute && !unavailable}
     <button
       type="button"
@@ -355,7 +432,7 @@
       </svg>
     </button>
   {/if}
-</div>
+{/snippet}
 
 <!-- Announce state changes to assistive technology via a polite live region. -->
 <VisuallyHiddenLiveRegion message={announcement} />

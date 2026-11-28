@@ -210,4 +210,66 @@
       box-shadow: none;
     }
   }
+
+  /* Seek above (`seekAbove`, VideoPlayer only): the slider takes a full-width row over the
+     buttons, and the buttons wrap onto as many rows as a narrow player needs. The slider's thumb
+     travels half its own width short of each edge, so an overlay laid over the slider (markers)
+     insets by that half to line up with the thumb. */
+  .cinder-media-controls[data-cinder-seek-above] {
+    --_cinder-media-controls-thumb-half: 0.5rem;
+    display: grid;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-media-controls__track {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-block-size: var(--cinder-space-6);
+  }
+
+  .cinder-media-controls__track .cinder-media-controls__seek {
+    inline-size: 100%;
+  }
+
+  .cinder-media-controls__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  /* The `trailing` content sits at the row's inline end. */
+  .cinder-media-controls__row[data-cinder-trailing] > :last-child {
+    margin-inline-start: auto;
+  }
+
+  /* On a coarse pointer each control reaches 44px through a pseudo-element that takes no layout
+     space, and the row spaces its controls so no target reaches over a neighbour's. */
+  @media (any-pointer: coarse) {
+    .cinder-media-controls[data-cinder-seek-above] {
+      gap: var(--cinder-space-4);
+    }
+
+    .cinder-media-controls__track {
+      min-block-size: var(--cinder-touch-target-min);
+    }
+
+    .cinder-media-controls__row {
+      gap: var(--cinder-space-4);
+    }
+
+    .cinder-media-controls__row > .cinder-media-controls__button,
+    .cinder-media-controls__row > .cinder-media-controls__action {
+      position: relative;
+    }
+
+    .cinder-media-controls__row > .cinder-media-controls__button::after,
+    .cinder-media-controls__row > .cinder-media-controls__action::after {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+  }
 }

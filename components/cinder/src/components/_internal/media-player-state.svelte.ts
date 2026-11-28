@@ -33,10 +33,18 @@ export class MediaPlayerState {
   readonly unavailable: boolean;
   readonly progress: number | undefined;
   #erroredSource = $state<string | undefined>(undefined);
+  // A position asked for before the length is known, applied once `loadedmetadata` fires.
+  #pendingTime: number | undefined = undefined;
   readonly #getSource: () => string | undefined;
+  readonly #onTimeChange: ((seconds: number) => void) | undefined;
 
-  constructor(getSource: () => string | undefined) {
+  /**
+   * `onTimeChange` hears every position the element reports, except while a position asked for
+   * before the length was known still waits to be applied, so the held position is not overwritten.
+   */
+  constructor(getSource: () => string | undefined, onTimeChange?: (seconds: number) => void) {
     this.#getSource = getSource;
+    this.#onTimeChange = onTimeChange;
     this.playable = $derived(isPlayableMediaSource(this.#getSource()));
     this.unavailable = $derived(!this.playable || this.#erroredSource === this.#getSource());
     this.progress = $derived(
@@ -69,7 +77,10 @@ export class MediaPlayerState {
     },
     ontimeupdate: () => this.#sync(),
     ondurationchange: () => this.#sync(),
-    onloadedmetadata: () => this.#sync(),
+    onloadedmetadata: () => {
+      this.#applyPendingTime();
+      this.#sync();
+    },
     // Mute can change outside the controls (a browser menu, a script), so the element is the
     // source of truth and the toggle only asks it.
     onvolumechange: () => {
@@ -86,6 +97,16 @@ export class MediaPlayerState {
     if (this.element === null) return;
     this.currentTime = this.element.currentTime;
     this.duration = this.element.duration;
+    if (this.#pendingTime === undefined) this.#onTimeChange?.(this.currentTime);
+  }
+
+  #applyPendingTime(): void {
+    const pending = this.#pendingTime;
+    if (pending === undefined || this.element === null) return;
+    const duration = this.element.duration;
+    if (!Number.isFinite(duration) || duration <= 0) return;
+    this.#pendingTime = undefined;
+    this.element.currentTime = Math.min(pending, duration);
   }
 
   /** Forget playback state when the source changes. */
@@ -95,6 +116,7 @@ export class MediaPlayerState {
     this.waiting = false;
     this.currentTime = 0;
     this.duration = Number.NaN;
+    this.#pendingTime = undefined;
   }
 
   play = (): void => {
@@ -123,6 +145,21 @@ export class MediaPlayerState {
     if (this.element === null || this.unavailable) return;
     if (!Number.isFinite(this.duration) || this.duration <= 0) return;
     this.element.currentTime = fraction * this.duration;
+    this.#sync();
+  };
+
+  /**
+   * Moves to `seconds`, clamped to the length. Before the length is known the position is held
+   * and applied once `loadedmetadata` fires.
+   */
+  seekTo = (seconds: number): void => {
+    if (this.unavailable || !Number.isFinite(seconds)) return;
+    const target = Math.max(0, seconds);
+    if (this.element === null || !Number.isFinite(this.duration) || this.duration <= 0) {
+      this.#pendingTime = target;
+      return;
+    }
+    this.element.currentTime = Math.min(target, this.duration);
     this.#sync();
   };
 }

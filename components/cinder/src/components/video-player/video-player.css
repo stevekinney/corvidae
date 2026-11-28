@@ -19,6 +19,135 @@
     inline-size: 100%;
   }
 
+  /* Markers lie over the seek slider, inset by half its thumb so a marker and the thumb at the
+     same time line up. The layer lets the slider take a press between markers. */
+  .cinder-video-player__markers {
+    position: absolute;
+    inset-block: 0;
+    inset-inline: var(--_cinder-media-controls-thumb-half);
+    pointer-events: none;
+  }
+
+  /* A numbered badge centred on its moment. Close markers overlap: the later one paints over the
+     earlier, and the tab order reaches both. */
+  .cinder-video-player__marker {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-start: var(--_cinder-video-player-marker-position);
+    translate: -50% -50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: var(--cinder-space-5);
+    block-size: var(--cinder-space-5);
+    padding-inline: var(--cinder-space-1);
+    border: 2px solid var(--cinder-surface);
+    border-radius: var(--cinder-radius-full, 9999px);
+    background-color: var(--cinder-accent-solid);
+    color: var(--cinder-accent-contrast);
+    font: inherit;
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-semibold);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+
+  .cinder-video-player__marker:dir(rtl) {
+    translate: 50% -50%;
+  }
+
+  /* The marker reaches 24px under a mouse and 44px under a coarse pointer through a pseudo-element
+     that takes no layout space. */
+  .cinder-video-player__marker::after {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((100% - var(--_cinder-video-player-marker-target)) / 2));
+    inset-inline: min(0px, calc((100% - var(--_cinder-video-player-marker-target)) / 2));
+  }
+
+  .cinder-video-player {
+    --_cinder-video-player-marker-target: var(--cinder-space-6);
+  }
+
+  /* A coarse pointer reaches each control through a 44px target that takes no layout space, so
+     the controls and the chapters step a full gap apart and no target reaches over another. */
+  @media (any-pointer: coarse) {
+    .cinder-video-player {
+      --_cinder-video-player-marker-target: var(--cinder-touch-target-min);
+      gap: var(--cinder-space-4);
+    }
+  }
+
+  .cinder-video-player__marker:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-video-player__marker {
+      border-color: ButtonBorder;
+    }
+
+    .cinder-video-player__marker:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+      box-shadow: none;
+    }
+  }
+
+  /* Chapters: a flat wrapping row of start times and titles, none marked active. */
+  .cinder-video-player__chapters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-video-player__chapter {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-block-size: var(--cinder-control-height-sm);
+    padding-inline: var(--cinder-space-2);
+    border: 0;
+    border-radius: var(--cinder-radius-md);
+    background-color: transparent;
+    color: var(--cinder-text-default);
+    font: inherit;
+    font-size: var(--cinder-text-sm);
+    cursor: pointer;
+    transition: background-color var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  @media (hover: hover) {
+    .cinder-video-player__chapter:hover {
+      background-color: var(--cinder-accent-background);
+    }
+  }
+
+  .cinder-video-player__chapter:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-video-player__chapter:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 2px;
+      box-shadow: none;
+    }
+  }
+
+  .cinder-video-player__chapter-time {
+    color: var(--cinder-text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
   /* Full screen holds the whole player: the video takes the free height and the controls stay
      under it on the page surface rather than the browser's black backdrop. */
   .cinder-video-player:fullscreen {

@@ -1357,7 +1357,12 @@ export type {
 } from './components/virtual-list/index.ts';
 
 export { default as VideoPlayer } from './components/video-player/index.ts';
-export type { VideoPlayerProps } from './components/video-player/index.ts';
+export type {
+  VideoPlayerActionsContext,
+  VideoPlayerChapter,
+  VideoPlayerMarker,
+  VideoPlayerProps,
+} from './components/video-player/index.ts';
 
 export { default as VisuallyHidden } from './components/visually-hidden/index.ts';
 export type {

@@ -1,3 +1,4 @@
+import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
 /** Layout mode: compact icon-only or expanded icon+label. */
@@ -47,6 +48,22 @@ export type MediaControlsProps = Omit<
   fullscreen?: boolean;
   /** Called when the user toggles full screen. Providing it renders the full-screen toggle. */
   onToggleFullscreen?: (() => void) | undefined;
+  /**
+   * Called when the user steps back five seconds. Providing it renders a "Back 5 seconds" button
+   * after the play button.
+   */
+  onBack?: (() => void) | undefined;
+  /**
+   * Draws the seek slider on its own row above the buttons, which then wrap, so the slider comes
+   * first in the tab order. @default false
+   */
+  seekAbove?: boolean;
+  /** Content laid over the seek slider in the `seekAbove` layout, after it in the tab order. */
+  seekOverlay?: Snippet | undefined;
+  /** Controls drawn after the elapsed and total time, before mute and full screen. */
+  secondary?: Snippet | undefined;
+  /** Content drawn last in the row, at its inline end. */
+  trailing?: Snippet | undefined;
   /** Additional class names merged with `.cinder-media-controls`. */
   class?: string;
 };
