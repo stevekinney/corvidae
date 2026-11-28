@@ -87,9 +87,16 @@
     row-gap: var(--cinder-space-1);
   }
 
+  /* One line ends at the box's edge, not at a break opportunity: a line clamp breaks the line at its
+     last hyphen or space that fits and puts the ellipsis there, so a title such as
+     `Explain run run-39-9fa4dea5-0196-…` stopped about 150px short of the actions. `nowrap` with
+     `text-overflow` fills the whole inline size before the ellipsis. */
   .cinder-page-header[data-cinder-title-lines='1'] .cinder-page-header__title {
-    -webkit-line-clamp: 1;
-    line-clamp: 1;
+    display: block;
+    -webkit-line-clamp: none;
+    line-clamp: none;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
 
   .cinder-page-header__status {

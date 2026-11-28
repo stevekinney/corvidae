@@ -186,7 +186,12 @@ describe('PageHeader', () => {
       stylesheet.match(
         /\.cinder-page-header\[data-cinder-title-lines='1'\] \.cinder-page-header__title\s*\{[^}]*\}/,
       )?.[0] ?? '';
-    expect(title).toContain('line-clamp: 1;');
+    // A line clamp ends the line at its last break opportunity, so a long title with hyphens stopped
+    // short of the actions; one line fills the inline size and ends in an ellipsis at its edge.
+    expect(title).not.toContain('line-clamp: 1;');
+    expect(title).toContain('white-space: nowrap;');
+    expect(title).toContain('text-overflow: ellipsis;');
+    expect(title).toContain('display: block;');
   });
 
   test('is flush with the content below by default, and insets only when asked (COR-2448)', () => {
@@ -594,6 +599,31 @@ describe('PageHeader', () => {
           container.querySelector('.cinder-page-header__title')?.hasAttribute('tabindex'),
         ).toBe(false);
       });
+    });
+
+    test('a one-line title that overflows in width is cut off, so it gets the tooltip and a keyboard stop', () => {
+      const scroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth');
+      const client = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+      Object.defineProperty(HTMLElement.prototype, 'scrollWidth', {
+        configurable: true,
+        get: () => 600,
+      });
+      Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+        configurable: true,
+        get: () => 400,
+      });
+      try {
+        const { container } = render(Harness, { props: { title: longTitle, titleLines: 1 } });
+        flushSync();
+        expect(
+          container.querySelector('.cinder-page-header__title')?.getAttribute('tabindex'),
+        ).toBe('0');
+      } finally {
+        if (scroll) Object.defineProperty(HTMLElement.prototype, 'scrollWidth', scroll);
+        else delete (HTMLElement.prototype as { scrollWidth?: number }).scrollWidth;
+        if (client) Object.defineProperty(HTMLElement.prototype, 'clientWidth', client);
+        else delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+      }
     });
 
     test('takes the tooltip words from titleText when the title is a snippet', () => {

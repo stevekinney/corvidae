@@ -108,8 +108,11 @@
   let titleElement = $state<HTMLElement | null>(null);
   let titleCutOff = $state(false);
   function measureTitle(): void {
+    // A two-line title is cut off in height; a one-line title (`titleLines={1}`) in width.
     titleCutOff =
-      titleElement !== null && titleElement.scrollHeight - titleElement.clientHeight > 1;
+      titleElement !== null &&
+      (titleElement.scrollHeight - titleElement.clientHeight > 1 ||
+        titleElement.scrollWidth - titleElement.clientWidth > 1);
   }
   const observeTitle = useResizeObserver(measureTitle);
   $effect(() => {

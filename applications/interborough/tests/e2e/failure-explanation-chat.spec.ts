@@ -26,7 +26,11 @@ test.describe('/chats/:chat, the failure explanation in Chat', () => {
   }) => {
     const failing = newThreadId('failure-explanation-failed');
     threads.push(failing);
-    await runToEnd(request, FAILING_AGENT_NAME, failing, 'Fail on purpose.');
+    // A fixed run id: the explained run's id is the chat's title, so a random one changed the
+    // design-review capture on every run.
+    await runToEnd(request, FAILING_AGENT_NAME, failing, 'Fail on purpose.', {
+      runId: 'run-failure-explanation-failed',
+    });
     const [failed] = await tasksOfSession(request, failing);
     expect(failed?.status).toBe('failed');
 
