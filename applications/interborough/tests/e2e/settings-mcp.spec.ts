@@ -90,3 +90,41 @@ test.describe('Settings › MCP', () => {
     await page.setViewportSize({ width: 1280, height: 900 });
   });
 });
+
+test.describe('Settings › MCP on a touch phone', () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  test('keeps the Section selector above the sticky restart cover', async ({ page }) => {
+    for (const width of [320, 375]) {
+      await page.setViewportSize({ width, height: 640 });
+      await page.goto(`${E2E_SHOWCASE_URL}${ROUTE}`);
+      const section = page.getByRole('combobox', { name: 'Section' });
+      const banner = page.getByTestId('settings-restart-summary');
+      await expect(section).toHaveValue(ROUTE);
+      await expect(banner).toBeVisible();
+      const coverSeparation = await banner.evaluate((element) => {
+        const select = document.querySelector('#weft-settings-section');
+        if (!select) throw new Error('The Settings Section selector is missing.');
+        const cover = getComputedStyle(element, '::before');
+        const border = getComputedStyle(element);
+        const coverTop =
+          element.getBoundingClientRect().bottom -
+          Number.parseFloat(border.borderBottomWidth) -
+          Number.parseFloat(cover.insetBlockEnd) -
+          Number.parseFloat(cover.blockSize);
+        return coverTop - select.getBoundingClientRect().bottom;
+      });
+      expect(coverSeparation).toBeGreaterThanOrEqual(-0.5);
+      if (width === 375) {
+        await captureForDesignReview(page, {
+          route: ROUTE,
+          state: 'section-clears-restart-cover',
+          source: SOURCE,
+        });
+      }
+      await section.selectOption('/settings');
+      await expect(page).toHaveURL(/\/settings$/u);
+      await expect(page.getByRole('combobox', { name: 'Section' })).toHaveValue('/settings');
+    }
+  });
+});

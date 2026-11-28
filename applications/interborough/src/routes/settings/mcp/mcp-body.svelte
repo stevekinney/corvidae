@@ -8,11 +8,12 @@
    * setting. The endpoint's authentication depends on the host-resolved principal. The restart
    * notice every section shares sits above it.
    */
-  import { CodeBlock, CopyableValue, FormSection } from '@lostgradient/cinder';
+  import { CodeBlock, CopyableValue, FormSection, Link } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
   import { MCP_COPY } from '../../../app/copy/mcp.ts';
+  import { SETTINGS_SECTION_COPY } from '../../../app/copy/settings.ts';
   import type { SettingsSchema, SettingsSnapshot } from '../../../lib/bureau-settings.ts';
   import { getClient } from '../../../lib/client.ts';
   import { codeHighlighter } from '../../../lib/code-highlighter.ts';
@@ -66,6 +67,11 @@
         copiedLabel={copy.endpoint.copied}
         data-testid="mcp-endpoint"
       />
+    </div>
+    <div>
+      <Link href="/settings/connected-apps" variant="more"
+        >{SETTINGS_SECTION_COPY.connectedApps}</Link
+      >
     </div>
   </FormSection>
 

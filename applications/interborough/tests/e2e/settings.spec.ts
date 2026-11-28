@@ -12,6 +12,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
 
 import { HUMAN_INPUT_PROMPT } from '@lostgradient/plugin-demo';
 import { SETTINGS_COPY } from '../../src/app/copy/settings.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_LOCKED_SETTING } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { bureauCall, taskOfSession, waitingReviewOf } from './task-support.ts';
@@ -276,5 +277,226 @@ test('edits an object without JSON, and a model name from the catalog', async ({
         expectedRevision: current.revision,
       });
     }
+  }
+});
+
+test('opens Settings API keys from desktop and clears an issued secret after dismissal and reload (/settings/api-keys)', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/settings');
+  await page.getByRole('link', { name: 'API keys', exact: true }).click();
+  await expect(page).toHaveURL(/\/settings\/api-keys$/);
+  await expect(page.getByRole('heading', { name: 'API keys', exact: true })).toHaveCount(1);
+  const label = 'API keys browser check';
+  const issue = page.getByRole('button', { name: 'Issue key' });
+  await expect(issue).toBeVisible();
+  await captureForDesignReview(page, {
+    route: '/settings/api-keys',
+    state: 'ready',
+    source: 'settings',
+  });
+  await page.getByLabel('Label', { exact: true }).fill(label);
+  await page.getByLabel('Target', { exact: true }).selectOption('a2a');
+  await page.getByLabel('bureau.assets:read', { exact: true }).check();
+  await issue.click();
+  const newKey = page.getByRole('region', { name: 'New API key' });
+  await expect(newKey).toBeVisible();
+  const secret = await newKey.locator('code').innerText();
+  expect(secret.startsWith('lgk_')).toBe(true);
+  await newKey.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(newKey).toHaveCount(0);
+  await page.reload();
+  const row = page.getByRole('listitem').filter({ hasText: label });
+  await expect(row).toBeVisible();
+  const pageText = await page.locator('body').innerText();
+  expect(pageText.includes(secret)).toBe(false);
+  await row.getByRole('button', { name: 'Revoke' }).click();
+  await page.getByRole('button', { name: 'Revoke key', exact: true }).click();
+  await expect(row.getByRole('button', { name: 'Revoke' })).toHaveCount(0);
+});
+
+test.describe('Settings API keys on touch', () => {
+  test.use({ hasTouch: true, isMobile: true, reducedMotion: 'reduce' });
+  for (const width of [320, 375]) {
+    test(`opens Settings API keys through the complete section selector at ${width}px (/settings/api-keys)`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: width === 320 ? 640 : 812 });
+      await page.goto('/settings/mcp');
+      await page.getByLabel('Section', { exact: true }).selectOption('/settings/api-keys');
+      await expect(page).toHaveURL(/\/settings\/api-keys$/);
+      await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+      const section = page.getByLabel('Section', { exact: true });
+      await expect(section).toHaveValue('/settings/api-keys');
+      const visible = await section.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        return element.contains(
+          document.elementFromPoint(bounds.left + bounds.width / 2, bounds.bottom - 1),
+        );
+      });
+      expect(visible).toBe(true);
+      const calendar = page.getByRole('button', { name: 'Open Expires at calendar' });
+      const target = await calendar.evaluate((button) => {
+        const bounds = button.getBoundingClientRect();
+        const x = bounds.left + bounds.width / 2;
+        const y = bounds.top + bounds.height / 2;
+        const inset = 21.5;
+        const points = [
+          [x - inset, y - inset],
+          [x + inset, y - inset],
+          [x - inset, y + inset],
+          [x + inset, y + inset],
+        ] as const;
+        return {
+          x: x + inset,
+          y,
+          fits: points.every(([horizontal, vertical]) =>
+            button.contains(document.elementFromPoint(horizontal, vertical)),
+          ),
+        };
+      });
+      expect(target.fits).toBe(true);
+      await page.touchscreen.tap(target.x, target.y);
+      const dialog = page.getByRole('dialog', { name: 'Expires at calendar' });
+      await expect(dialog).toBeVisible();
+      const dayAndMonthTargets = await dialog
+        .locator('.cinder-calendar__day:not([aria-disabled="true"]), .cinder-calendar__nav:enabled')
+        .evaluateAll((buttons) =>
+          buttons
+            .filter((button) => {
+              const bounds = button.getBoundingClientRect();
+              const x = bounds.left + bounds.width / 2;
+              const y = bounds.top + bounds.height / 2;
+              const face = getComputedStyle(button, '::before');
+              const edgeCenters = [
+                [x - 21, y],
+                [x + 21, y],
+                [x, y - 21],
+                [x, y + 21],
+              ] as const;
+              return (
+                bounds.width < 44 ||
+                bounds.height < 44 ||
+                face.content === 'none' ||
+                !(Number.parseFloat(face.blockSize) <= 36) ||
+                edgeCenters.some(
+                  ([horizontal, vertical]) =>
+                    !button.contains(document.elementFromPoint(horizontal, vertical)),
+                )
+              );
+            })
+            .map((button) => button.getAttribute('aria-label')),
+        );
+      expect(dayAndMonthTargets).toEqual([]);
+      const calendarRowPitch = await dialog
+        .locator('.cinder-calendar__grid-row')
+        .evaluateAll(([first, second]) => {
+          if (!first || !second) throw new Error('Calendar has fewer than two weeks');
+          return second.getBoundingClientRect().top - first.getBoundingClientRect().top;
+        });
+      expect(calendarRowPitch).toBe(44);
+      if (width === 375) {
+        await captureForDesignReview(page, {
+          route: '/settings/api-keys',
+          state: 'expiration calendar open',
+          source: 'settings',
+        });
+      }
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog')).not.toBeVisible();
+      if (width === 375) {
+        await captureForDesignReview(page, {
+          route: '/settings/api-keys',
+          state: 'section selector',
+          source: 'settings',
+        });
+      }
+      await section.selectOption('/settings/mcp');
+      await expect(page).toHaveURL(/\/settings\/mcp$/);
+    });
+  }
+});
+
+test('opens Connected apps from desktop MCP setup and explains a disabled issuer (/settings/mcp, /settings/connected-apps)', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/settings/mcp');
+  const navigation = page.getByRole('navigation', { name: 'Settings sections' });
+  await expect(navigation.getByRole('link', { name: 'MCP', exact: true })).toBeVisible();
+  const labels = await navigation.getByRole('link').allTextContents();
+  const mcp = labels.findIndex((entry) => entry.trim() === 'MCP');
+  expect(labels.slice(mcp, mcp + 4).map((entry) => entry.trim())).toEqual([
+    'MCP',
+    'API keys',
+    'Connected apps',
+    'Plugins',
+  ]);
+  const setup = page.getByRole('group', { name: 'MCP connection' });
+  await expect(setup).toBeVisible();
+  const connectedApps = setup.getByRole('link', { name: 'Connected apps', exact: true });
+  expect(await connectedApps.count()).toBe(1);
+  await captureForDesignReview(page, {
+    route: '/settings/mcp',
+    state: 'connected apps link',
+    source: 'settings',
+  });
+  await connectedApps.click();
+  await expect(page).toHaveURL(/\/settings\/connected-apps$/);
+  await expect(page.getByRole('heading', { name: 'Connected apps', exact: true })).toHaveCount(1);
+  await expect(page.getByText('Connector sign-in is disabled', { exact: true })).toBeVisible();
+  await captureForDesignReview(page, {
+    route: '/settings/connected-apps',
+    state: 'disabled issuer',
+    source: 'settings',
+  });
+});
+
+test.describe('Connected apps on touch', () => {
+  test.use({ hasTouch: true, isMobile: true });
+  for (const width of [320, 375]) {
+    test(`opens Connected apps through MCP setup and the complete Section selector at ${width}px (/settings/mcp, /settings/connected-apps)`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: width === 320 ? 640 : 812 });
+      await page.goto('/settings/mcp');
+      const setup = page.getByRole('group', { name: 'MCP connection' });
+      await expect(setup).toBeVisible();
+      const connectedApps = setup.getByRole('link', { name: 'Connected apps', exact: true });
+      expect(await connectedApps.count()).toBe(1);
+      if (width === 375) {
+        await captureForDesignReview(page, {
+          route: '/settings/mcp',
+          state: 'connected apps link',
+          source: 'settings',
+        });
+      }
+      await connectedApps.click();
+      await expect(page).toHaveURL(/\/settings\/connected-apps$/);
+      const section = page.getByLabel('Section', { exact: true });
+      await expect(section).toHaveValue('/settings/connected-apps');
+      const bottom = await section.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        return {
+          visible: element.contains(
+            document.elementFromPoint(bounds.left + bounds.width / 2, bounds.bottom - 1),
+          ),
+          viewport: window.innerWidth,
+        };
+      });
+      expect(bottom).toEqual({ visible: true, viewport: width });
+      if (width === 375) {
+        await captureForDesignReview(page, {
+          route: '/settings/connected-apps',
+          state: 'section selector',
+          source: 'settings',
+        });
+      }
+      await section.selectOption('/settings/mcp');
+      await expect(page).toHaveURL(/\/settings\/mcp$/);
+      await page.getByLabel('Section', { exact: true }).selectOption('/settings/connected-apps');
+      await expect(page).toHaveURL(/\/settings\/connected-apps$/);
+    });
   }
 });

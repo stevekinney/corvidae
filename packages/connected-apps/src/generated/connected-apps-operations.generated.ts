@@ -17,6 +17,7 @@ export type ConnectedAppsOperationTypes = {
           readonly scope: string;
         }>;
         readonly resource: string;
+        readonly workspace?: string;
       }>;
       readonly managementDestination?: string;
     };

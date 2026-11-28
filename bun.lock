@@ -49,6 +49,7 @@
         "@lostgradient/bureau-sdk": "workspace:*",
         "@lostgradient/chat": "workspace:*",
         "@lostgradient/cinder": "workspace:*",
+        "@lostgradient/connected-apps": "workspace:*",
         "@lostgradient/credentials": "workspace:*",
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/environmentalist": "catalog:",

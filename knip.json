@@ -489,6 +489,7 @@
         "scripts/build-native-documents.ts!",
         "scripts/startup-process-control.ts",
         "src/app/native-document.svelte!",
+        "src/private-routes/**/+layout.server.ts!",
         "src/private-routes/**/+layout.svelte!",
         "src/private-routes/**/+page.svelte!",
         "src/private-routes/**/+page.server.ts!",

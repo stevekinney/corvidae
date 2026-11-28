@@ -39,6 +39,7 @@ test('listener binds verified browser identities, revokes private access and res
   const syntheticIssuer = await createSyntheticIssuer();
   const { issuer, provider } = syntheticIssuer;
   let acceptedIssuer = issuer;
+  let allowA2a = false;
   const home = await mkdtemp(join(tmpdir(), 'interborough-sign-in-'));
   const bungalow = await openBungalow({
     name: 'interborough',
@@ -231,7 +232,11 @@ test('listener binds verified browser identities, revokes private access and res
         ['admin', 'member', 'removed'].includes(identity.subject)
           ? identity.subject
           : null,
-      scopes: async () => ['system:read', 'reviews:read'],
+      scopes: async () => [
+        'system:read',
+        'reviews:read',
+        ...(allowA2a ? ['bureau.assets:read'] : []),
+      ],
       createPrivateServer: async (hooks) => {
         const routing = {
           version: 1,
@@ -329,7 +334,10 @@ test('listener binds verified browser identities, revokes private access and res
             keyTargetsStarted.resolve();
             await releaseKeyTargets.promise;
           }
-          return [{ subject: 'service', scopes: ['reviews:read'] }];
+          return [
+            { subject: 'service', scopes: ['reviews:read'] },
+            ...(allowA2a ? [{ subject: 'a2a', scopes: ['bureau.assets:read'] }] : []),
+          ];
         },
         allowedActions: async () => ['rotate', 'revoke'],
         overlapCutoff: () => Date.now() + 60_000,
@@ -715,7 +723,7 @@ test('listener binds verified browser identities, revokes private access and res
     expect(await remote.call('member', null)).toBe('admin');
 
     const listKeys = (cookie: string) =>
-      send('/key-admin/jsonrpc', {
+      send('/host/api-keys/jsonrpc', {
         method: 'POST',
         headers: { cookie, origin: 'https://settings.example', 'content-type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'api.keys.list', params: {} }),
@@ -731,7 +739,7 @@ test('listener binds verified browser identities, revokes private access and res
     });
     const managementCsrf = await managementSession.json();
     holdKeyTargets = true;
-    const pendingIssue = send('/key-admin/jsonrpc', {
+    const pendingIssue = send('/host/api-keys/jsonrpc', {
       method: 'POST',
       headers: {
         cookie: administrator.cookie!,
@@ -765,7 +773,7 @@ test('listener binds verified browser identities, revokes private access and res
       { 'x-api-key': 'engine-relay-key' },
       { authorization: 'Bearer deployment-operator' },
     ]) {
-      const response = await send('/key-admin/jsonrpc', {
+      const response = await send('/host/api-keys/jsonrpc', {
         method: 'POST',
         headers: {
           ...headers,
@@ -975,7 +983,7 @@ test('listener binds verified browser identities, revokes private access and res
     expect(await deniedWrite.text()).toContain('error');
     const deniedRead = await connector('bureau.reviews.list', {});
     expect(await deniedRead.text()).toContain('error');
-    const connectorKeys = await send('/key-admin/jsonrpc', {
+    const connectorKeys = await send('/host/api-keys/jsonrpc', {
       method: 'POST',
       headers: {
         authorization: `Bearer ${token.access_token}`,
@@ -1002,6 +1010,98 @@ test('listener binds verified browser identities, revokes private access and res
       }),
     });
     expect(resourceCall.status).toBe(403);
+    const connectedHeaders = {
+      cookie: continuation.cookie!,
+      origin: 'https://settings.example',
+      'content-type': 'application/json',
+    };
+    const connections = (
+      method: string,
+      params: object,
+      headers: Record<string, string> = connectedHeaders,
+    ) =>
+      send('/host/connected-apps/jsonrpc', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      });
+    const list = await connections('connected.apps.list', {});
+    expect(list.headers.get('cache-control')).toBe('private, no-store');
+    const connectionInventory = await list.json();
+    expect(connectionInventory.result.grants).toEqual([
+      expect.objectContaining({
+        clientId: registered.client_id,
+        clientName: 'Listener fixture',
+        resource: 'https://settings.example/bureau/mcp',
+        workspace: workspaceId,
+        permissions: [{ scope: 'reviews:read', description: expect.any(String), available: true }],
+      }),
+    ]);
+    const selected = connectionInventory.result.grants[0].grantId;
+    const unverified = await connections('connected.apps.revoke', { grantId: selected });
+    expect(unverified.status).toBe(403);
+    const currentSession = await send('/auth/session', {
+      headers: { cookie: continuation.cookie! },
+    });
+    const { csrfToken } = await currentSession.json();
+    const revoked = await connections(
+      'connected.apps.revoke',
+      { grantId: selected },
+      {
+        ...connectedHeaders,
+        'x-csrf-token': csrfToken,
+      },
+    );
+    const revokedBody = await revoked.json();
+    expect(revokedBody.result).toEqual({ grantId: selected, status: 'revoked' });
+    const disconnected = await connector('bureau.tasks.get', { taskId: run.id });
+    expect(disconnected.status).toBe(401);
+    const refresh = await send('/oauth/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: registered.client_id,
+        refresh_token: token.refresh_token,
+        resource: 'https://settings.example/bureau/mcp',
+      }),
+    });
+    expect(refresh.status).toBe(400);
+    expect(await refresh.json()).toMatchObject({ error: 'invalid_grant' });
+    const afterList = await connections('connected.apps.list', {});
+    const after = await afterList.json();
+    expect(after.result.grants).toEqual([]);
+    allowA2a = true;
+    const firstA2aKey = await send('/host/api-keys/jsonrpc', {
+      method: 'POST',
+      headers: { ...connectedHeaders, 'x-csrf-token': csrfToken },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'api.keys.issue',
+        params: { label: 'Live service', subject: 'a2a', scopes: ['bureau.assets:read'] },
+      }),
+    });
+    const minted = await firstA2aKey.json();
+    if (typeof minted.result?.secret !== 'string')
+      throw new Error('First managed A2A key was refused');
+    const admittedAsset = await host.bureau.assets!.admit(
+      {
+        source: { kind: 'inline', bytes: new TextEncoder().encode('service-owned content') },
+        declaredMediaType: 'text/plain',
+      },
+      { id: 'api-key:a2a' },
+    );
+    await admittedAsset.work.result();
+    const serviceHeaders = { 'x-api-key': minted.result.secret };
+    const credentialedAsset = await fetch(
+      new URL(`/bureau/assets/${admittedAsset.assetId}/content`, host.url),
+      {
+        headers: serviceHeaders,
+      },
+    );
+    expect(credentialedAsset.status).toBe(200);
+    expect(await credentialedAsset.text()).toBe('service-owned content');
     members.delete('admin');
     const removedGrant = await connector('bureau.tasks.get', { taskId: run.id });
     expect(removedGrant.status).toBe(401);

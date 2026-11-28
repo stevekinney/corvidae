@@ -250,7 +250,9 @@
   const notifications = new NotificationStore({
     storage: browserWorkspaceStorage(resolvedPrincipal.workspace, 'localStorage'),
   });
-  const engineStatus = new EngineStatusController(initialClient, { enabled: !sharedBrowser });
+  const engineStatus = new EngineStatusController(initialClient, {
+    enabled: !sharedBrowser && typeof document !== 'undefined',
+  });
   // Additive Track B workaround — see `engine-status.svelte.ts`'s
   // `provideFleetEventSource()` doc: shares the ONE fleet SSE connection with
   // route components instead of each opening its own.

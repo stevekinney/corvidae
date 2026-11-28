@@ -116,10 +116,12 @@ import { join } from 'node:path';
 import {
   combineHostAuthentication,
   createHostAuthority,
+  hostWorkspaceWithA2a,
   type HostAuthority,
   type HostWorkspaceAuthentication,
 } from './host-authority.ts';
-import { localWorkspaceMembership } from './workspace-principal.ts';
+
+import { createScopeVocabulary, unauthenticatedLocalAuthContext } from '@lostgradient/backchannel';
 
 import {
   openBungalow,
@@ -131,6 +133,7 @@ import {
 import {
   ANONYMOUS_LOCAL_OWNER,
   BUREAU_PLUGIN_ENTRY,
+  BUREAU_SCOPES,
   createBureau,
   createBureauHandler,
   createDurableAssetStorage,
@@ -157,6 +160,7 @@ import { DEMO_AGENT_NAMES } from '@lostgradient/plugin-demo';
 import { type Storage } from '@lostgradient/storage';
 import {
   serve,
+  WEFT_SCOPE_VOCABULARY,
   type AlertingOptions,
   type RegistryAgnosticEngine,
   type ServeOptions,
@@ -167,11 +171,18 @@ import { bunServerHost } from '@lostgradient/weft/bun';
 
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
 import { HOST_STORAGE_ROUTE, HOST_STORAGE_SUMMARY_ROUTE } from '../lib/host-storage.ts';
-import { A2A_API_KEY_SECRET_KEY, A2A_SUBJECT, resolveA2aExposure } from './a2a-authentication.ts';
+import { A2A_API_KEY_SECRET_KEY, resolveA2aExposure } from './a2a-authentication.ts';
 import { createA2APeerTools, readA2APeersConfiguration } from './a2a-peers.ts';
 import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
 import { ANSWER_ENCRYPTION_KEY, answerEncryptionKeys } from './answer-encryption.ts';
 import { API_DESCRIPTION_ROUTE, apiDescription } from './api-description.ts';
+import {
+  createLocalA2aKeys,
+  desktopSettingsServerHooks,
+  keySettingsAccessHandler,
+  localKeySettingsHandler,
+  settingsAccessResponse,
+} from './api-key-settings.ts';
 import { apiRoutes, localApiPrincipal, type ApiPrincipal } from './api-routes.ts';
 import { publishedBrowserBuildDirectory } from './build-info.ts';
 import {
@@ -891,10 +902,12 @@ async function startPrivateSettingsServer(
   held: Held,
   buildDirectory: string,
 ) {
-  if (!options) return undefined;
-  const hooks = sharedBrowserServerHooks(authority, options.origin, port);
+  const hooks =
+    options === undefined
+      ? desktopSettingsServerHooks(authority, port)
+      : sharedBrowserServerHooks(authority, options.origin, port);
   const privateDirectory = join(buildDirectory, 'private');
-  const server = options.createPrivateServer
+  const server = options?.createPrivateServer
     ? await options.createPrivateServer(hooks)
     : (await Bun.file(join(privateDirectory, 'current.json')).exists())
       ? await (async () => {
@@ -911,13 +924,28 @@ async function startPrivateSettingsServer(
   return server;
 }
 
+const localBureauScopes = createScopeVocabulary([
+  ...WEFT_SCOPE_VOCABULARY.scopes,
+  ...BUREAU_SCOPES,
+]);
+
 function bureauAuthenticationOptions(
   browser: ReturnType<typeof createSharedBrowserSignIn> | undefined,
   configured: HostWorkspaceAuthentication | undefined,
   authentication: Parameters<typeof createHostAuthority>[1],
   authority: HostAuthority,
+  credentialedA2a: boolean,
 ) {
   if (browser) return { authenticateRequest: authority.authenticateCredential };
+  if (!configured && !credentialedA2a) {
+    return {
+      unauthenticatedAccess: 'allow' as const,
+      authenticateRequest: async (request: Request) =>
+        request.headers.has('authorization') || request.headers.has('x-api-key')
+          ? authority.authenticateCredential(request)
+          : unauthenticatedLocalAuthContext(localBureauScopes),
+    };
+  }
   if (configured) return { authentication: authentication! };
   return {
     unauthenticatedAccess: 'allow' as const,
@@ -1182,19 +1210,18 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     await workspaceSecrets.reconcile();
     const approval = await approvalSecret(bungalow);
     const delegation = await delegationSecret(bungalow);
-    // The A2A key and public origin (COR-1904), read as early, so a public origin without a key
-    // stops the host before anything listens.
-    const a2aExposure = await resolveA2aExposure(
-      bungalow,
-      a2aPublicOrigin,
-      options.warn ?? ((message) => console.warn(message)),
-    );
     // The key secret answers are sealed with (COR-1920), read or created the same way and as early.
     const answerKeys = await answerEncryptionKeys(bungalow);
     const actualStorage =
       claimedRemoteStorage ?? createHostStorage(bungalow.database, clock.now, databaseKinds);
     held.storage = actualStorage;
     const storage = decorateOwnedStorage(actualStorage, decorateStorageForTesting);
+    const managedA2aKeys = createLocalA2aKeys(storage, bungalow.workspaceId, clock.now);
+    const a2aExposure = await resolveA2aExposure(
+      managedA2aKeys,
+      a2aPublicOrigin,
+      options.warn ?? ((message) => console.warn(message)),
+    );
     // Each tool source's and plugin's last tool listing, kept across restarts (COR-2435), so a
     // source that fails or a plugin that is off still shows the tools it offered.
     const toolListings = createToolListingMemory(storage, clock.now);
@@ -1425,37 +1452,16 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         );
       }
     }
-    const localWorkspace = localWorkspaceMembership(
-      bungalow.workspaceId,
-      a2aExposure.authentication !== undefined,
-    );
+    const sharedWeb = options.sharedBrowserSignIn !== undefined;
     const memorySharingAvailable = memorySharingAvailableOf(options);
-    const configuredWorkspace = options.workspaceAuthentication?.workspace ?? localWorkspace;
-    if (configuredWorkspace.workspaceId !== bungalow.workspaceId)
-      throw new Error('The authentication directory belongs to another workspace.');
-    const baseWorkspace =
-      options.workspaceAuthentication === undefined || a2aExposure.authentication === undefined
-        ? configuredWorkspace
-        : {
-            ...configuredWorkspace,
-            resolveMembership: async (
-              credential: Parameters<typeof configuredWorkspace.resolveMembership>[0],
-            ) =>
-              credential.method === 'api-key' && credential.subject === A2A_SUBJECT
-                ? localWorkspace.resolveMembership(credential)
-                : configuredWorkspace.resolveMembership(credential),
-            resolveOwnerMembership: async (owner: string) =>
-              owner === `api-key:${encodeURIComponent(A2A_SUBJECT)}`
-                ? ((await localWorkspace.resolveOwnerMembership?.(owner)) ?? null)
-                : ((await configuredWorkspace.resolveOwnerMembership?.(owner)) ?? null),
-          };
-    const workspace = sharedConnectorDirectory(
-      baseWorkspace,
-      options.sharedBrowserSignIn !== undefined,
+    const baseWorkspace = hostWorkspaceWithA2a(
+      bungalow.workspaceId,
+      options.workspaceAuthentication?.workspace,
     );
+    const workspace = sharedConnectorDirectory(baseWorkspace, sharedWeb);
     const authentication = await combineHostAuthentication(
       options.workspaceAuthentication?.authentication,
-      a2aExposure.authentication,
+      sharedWeb ? undefined : a2aExposure.authentication,
     );
     const sharedBrowser = sharedBrowserForHost(
       options,
@@ -1468,6 +1474,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       authentication,
       options.workspaceAuthentication === undefined,
       sharedBrowser,
+      sharedWeb ? a2aExposure.authentication : undefined,
+      !sharedWeb && options.workspaceAuthentication === undefined
+        ? async () => !(await managedA2aKeys.hasIssued())
+        : undefined,
     );
     const bureau = await createBureau({
       peerCallsReady: (journal) => {
@@ -1776,14 +1786,43 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       held,
       documents.browserBuild,
     );
+    const manageLocalKeys = localKeySettingsHandler({
+      authority,
+      keys: managedA2aKeys,
+      workspaceId: bungalow.workspaceId,
+      now: clock.now,
+    });
     const publicRoutes = {
       ...sharedBrowserRoutes(
         sharedBrowser,
-        authority,
         privateServer,
         documents.ordinaryDocument,
         documents.candidateAssets,
       ),
+      '/host/api-keys/access': {
+        GET: keySettingsAccessHandler(
+          authority,
+          (request) => sharedBrowser?.matches(request) === true,
+        ),
+      },
+      '/host/api-keys/jsonrpc': {
+        POST: (request: Request) =>
+          sharedBrowser?.matches(request)
+            ? sharedBrowser.manageKeys(request, authority.authenticate)
+            : manageLocalKeys(request),
+      },
+      '/host/connected-apps/access': {
+        GET: (request: Request) =>
+          sharedBrowser?.matches(request)
+            ? sharedBrowser.connectionAccess(request, authority.authenticate)
+            : settingsAccessResponse(undefined, undefined),
+      },
+      '/host/connected-apps/jsonrpc': {
+        POST: (request: Request) =>
+          sharedBrowser?.matches(request)
+            ? sharedBrowser.manageConnections(request, authority.authenticate)
+            : new Response('Forbidden', { status: 403 }),
+      },
       '/api/v1/principal': {
         GET: (request: Request) =>
           hostPrincipalResponse(request, authority, memorySharingAvailable),
@@ -1805,6 +1844,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       ) => {
         const refusal = refuseBureau(request);
         if (refusal !== undefined) return refusal;
+        const a2aRefusal = await a2aExposure.authorize(request);
+        if (a2aRefusal !== undefined) return a2aRefusal;
         if (bureauHandler === undefined) {
           return new Response('The Bureau is not serving yet.', { status: 503 });
         }
@@ -2095,6 +2136,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         options.workspaceAuthentication,
         authentication,
         authority,
+        a2aExposure.credentialed,
       ),
       // Chat runs over AG-UI: the mount starts, attaches to, and resumes a run, and takes the
       // `RunAgentInput` Chat's transport sends.

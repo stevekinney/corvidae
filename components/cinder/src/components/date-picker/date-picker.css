@@ -59,6 +59,19 @@
     cursor: pointer;
   }
 
+  @media (any-pointer: coarse) {
+    .cinder-date-picker__trigger {
+      position: relative;
+    }
+
+    .cinder-date-picker__trigger::before {
+      content: '';
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+      inset-inline: min(0px, calc((100% - var(--cinder-touch-target-min)) / 2));
+    }
+  }
+
   .cinder-date-picker__trigger:disabled {
     cursor: not-allowed;
     color: var(--cinder-text-disabled);
@@ -66,6 +79,7 @@
 
   .cinder-date-picker__panel {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--cinder-space-2);
     min-inline-size: 16rem;
   }

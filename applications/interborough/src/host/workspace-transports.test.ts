@@ -15,6 +15,7 @@ import type { ApiPrincipal } from './api-routes.ts';
 import { composeOperationNames } from './composed-json-rpc.ts';
 
 import { startHost, type Host } from './host.ts';
+import { provisionA2aKey } from './workspace-home.test-support.ts';
 
 const hosts: Host[] = [];
 const homes: string[] = [];
@@ -25,7 +26,7 @@ afterEach(async () => {
 });
 
 async function authenticatedHost(
-  a2aKey?: string,
+  enableA2a?: boolean,
   pendingGeneration?: { started: () => void; promise: Promise<void> },
   apiPrincipal?: () => ApiPrincipal,
 ) {
@@ -36,8 +37,8 @@ async function authenticatedHost(
     environment: { INTERBOROUGH_HOME: home },
   });
   const workspaceId = bungalow.workspaceId;
-  if (a2aKey !== undefined) await bungalow.deploymentSecrets.write('a2a-api-key', a2aKey);
   await bungalow.close();
+  const a2aKey = enableA2a ? await provisionA2aKey(home) : undefined;
   const members = new Map<string, WorkspaceMembership>(
     ['member', 'administrator', 'owner', 'peer', 'grantee', 'foreign'].map((actorId) => [
       actorId,
@@ -102,7 +103,7 @@ async function authenticatedHost(
     },
   });
   hosts.push(host);
-  return { host, members, workspaceId };
+  return { host, a2aKey, members, workspaceId };
 }
 
 function request(host: Host, path: string, actor: string, init: RequestInit = {}) {
@@ -310,9 +311,11 @@ describe('injected workspace transport authority', () => {
     expect(composed).toEqual(direct);
 
     // A credential that is not a member sees the same agents, and the same refusals, at both.
-    const service = await authenticatedHost('separate-a2a-credential');
-    expect(await send(service.host, '/jsonrpc', 'separate-a2a-credential')).toEqual(
-      await send(service.host, '/bureau/jsonrpc', 'separate-a2a-credential'),
+    const service = await authenticatedHost(true);
+    const { a2aKey } = service;
+    if (!a2aKey) throw new Error('Managed A2A key unavailable');
+    expect(await send(service.host, '/jsonrpc', a2aKey)).toEqual(
+      await send(service.host, '/bureau/jsonrpc', a2aKey),
     );
 
     // A browser identity that changed is refused at both, with the same status.
@@ -397,14 +400,15 @@ describe('injected workspace transport authority', () => {
   });
 
   test('keeps the A2A credential a service without workspace-administrator or deployment powers', async () => {
-    const { host } = await authenticatedHost('separate-a2a-credential');
-    const response = await request(host, '/api/v1/principal', 'separate-a2a-credential');
+    const { host, a2aKey } = await authenticatedHost(true);
+    if (!a2aKey) throw new Error('Managed A2A key unavailable');
+    const response = await request(host, '/api/v1/principal', a2aKey);
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       workspace: { actorKind: 'service', capabilities: ['workspace:use'] },
     });
     for (const path of ['/host/providers', '/host/paths', '/api/v1/workflows']) {
-      const denied = await request(host, path, 'separate-a2a-credential');
+      const denied = await request(host, path, a2aKey);
       expect(denied.status, path).toBe(403);
     }
     const member = await request(host, '/api/v1/principal', 'member');

@@ -13,7 +13,7 @@ export type HostRouteAdmission =
 const routeAdmissions: Readonly<Record<string, HostRouteAdmission>> = {
   'GET /host/oauth/callback/:id': 'durable-oauth-callback',
   'POST /triggers/:workflow': 'trigger-receive',
-  'POST /key-admin/jsonrpc': 'interactive-key-management',
+  'POST /host/api-keys/jsonrpc': 'interactive-key-management',
 };
 
 /** A live registered route and its policy; delegated routes enumerate their own child catalog. */
@@ -45,7 +45,10 @@ const routeClasses: Readonly<Record<string, WorkspaceOperationClass>> = {
   'GET /auth/callback': 'public-discovery',
   'GET /auth/session': 'public-discovery',
   'POST /auth/sign-out': 'public-discovery',
-  'POST /key-admin/jsonrpc': 'administrator-shared',
+  'POST /host/api-keys/jsonrpc': 'administrator-shared',
+  'GET /host/api-keys/access': 'private-owned',
+  'GET /host/connected-apps/access': 'private-owned',
+  'POST /host/connected-apps/jsonrpc': 'private-owned',
   'GET /settings/api-keys': 'private-owned',
   'GET /settings/connected-apps': 'private-owned',
   'HEAD /settings/api-keys': 'private-owned',

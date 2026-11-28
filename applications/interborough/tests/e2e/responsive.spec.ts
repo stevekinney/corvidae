@@ -218,6 +218,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // The endpoint's address, which only this page prints.
   '/settings/mcp': /\/bureau\/mcp/,
   // Each tab of the API reference prints a value only its own read gives.
+  '/settings/api-keys': /Issue key/,
+  '/settings/connected-apps': /Connector sign-in is disabled/,
   '/settings/api-reference': /\/api\//,
   '/settings/api-reference (discovery)': /\/openapi\.json/,
   '/settings/api-reference (scopes)': /hooks:write/,

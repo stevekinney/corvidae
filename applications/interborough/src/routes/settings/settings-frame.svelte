@@ -37,7 +37,7 @@
   import { SettingsFollower } from './settings-follower.ts';
   import { SettingsReader } from './settings-reader.ts';
 
-  interface Props {
+  interface FrameHeading {
     /** The page's heading. */
     title: string;
     /** The sentence under the heading. */
@@ -49,27 +49,39 @@
      * `wide` is for a section that draws a list beside a detail (64rem).
      */
     measure?: 'default' | 'wide';
-    /**
-     * The section's settings. It draws straight into the page's grid, so it places what it draws
-     * in the grid areas `banner` (a sticky notice) and `content` (the reading
-     * column); a section saves each setting as it is left. `setHeaderStatus` puts a status at the
-     * right of the heading ("Saved just now"), or takes it away when given nothing.
-     */
-    body: Snippet<
-      [
-        {
-          schema: SettingsSchema;
-          snapshot: SettingsSnapshot;
-          setHeaderStatus: (status: string | undefined) => void;
-        },
-      ]
-    >;
+    documentPath?: string | undefined;
+    headingId?: string;
+    staticState?: 'loading' | 'ready' | 'error';
   }
 
-  let { title, intro, page, measure = 'default', body }: Props = $props();
+  type SettingsBody = Snippet<
+    [
+      {
+        schema: SettingsSchema;
+        snapshot: SettingsSnapshot;
+        setHeaderStatus: (status: string | undefined) => void;
+      },
+    ]
+  >;
+
+  type FrameProps = FrameHeading &
+    ({ body: SettingsBody; staticBody?: never } | { body?: never; staticBody: Snippet });
+
+  let {
+    title,
+    intro,
+    page,
+    measure = 'default',
+    body,
+    staticBody,
+    documentPath,
+    headingId,
+    staticState,
+  }: FrameProps = $props();
 
   /** Whether the section navigation sits beside the content: 640px and wider. */
   const wide = new MediaQuery('(min-width: 40rem)', true);
+  const visibleTitle = $derived(wide.current ? title : SETTINGS_COPY.general.narrowTitle);
   const queryClient = useQueryClient();
   /** Whether the person gave up on a read that took longer than usual. */
   let canceled = $state(false);
@@ -108,6 +120,7 @@
       queryFn: ({ signal }) => getSettingsSchema({ signal }),
       staleTime: Number.POSITIVE_INFINITY,
       retry: false,
+      enabled: staticBody === undefined,
     }),
     undefined,
   );
@@ -117,6 +130,7 @@
       queryKey: queryKeys.settings.snapshot(),
       queryFn: ({ signal }) => getSettings({ signal }),
       retry: false,
+      enabled: staticBody === undefined,
     }),
     undefined,
   );
@@ -138,6 +152,7 @@
   // A change made elsewhere reaches the page as an event; the settings are read again on each one,
   // and once the Bureau accepts the subscription, so none is missed in between.
   onMount(() => {
+    if (staticBody !== undefined) return;
     const follower = new SettingsFollower({
       onChange: (revision) => void reader.notify(revision),
     });
@@ -153,20 +168,25 @@
   </span>
 {/snippet}
 
+{#snippet labelledHeading()}<span id={headingId}>{visibleTitle}</span>{/snippet}
+
 <section
   class="weft-settings"
   aria-label={title}
   data-page={page}
+  data-view={staticBody === undefined ? undefined : 'settings'}
+  data-state={staticState}
   data-measure={measure === 'wide' ? 'wide' : undefined}
 >
-  <div class="weft-settings__nav"><SettingsSectionNav /></div>
+  <div class="weft-settings__nav"><SettingsSectionNav {documentPath} /></div>
   <div class="weft-settings__title-area">
     <PageHeader
-      title={wide.current ? title : SETTINGS_COPY.general.narrowTitle}
+      title={headingId === undefined ? visibleTitle : labelledHeading}
+      titleText={visibleTitle}
       {...wide.current ? { description: intro } : {}}
       {...headerStatus === undefined ? {} : { actions: headerStatusLine }}
     />
-    {#if phase === 'ready' && refreshFailed}
+    {#if staticBody === undefined && phase === 'ready' && refreshFailed}
       <div class="weft-settings__refresh-failed">
         <Banner
           preset="refresh-failed"
@@ -180,7 +200,11 @@
     {/if}
   </div>
 
-  {#if phase === 'ready' && schema.data !== undefined && snapshot.data !== undefined}
+  {#if staticBody}
+    <div class="weft-settings__content">
+      {@render staticBody()}
+    </div>
+  {:else if phase === 'ready' && schema.data !== undefined && snapshot.data !== undefined}
     {#if !snapshot.data.persisted}
       <div class="weft-settings__content">
         <Alert variant="info" data-testid="settings-not-persisted">
@@ -188,7 +212,7 @@
         </Alert>
       </div>
     {/if}
-    {@render body({
+    {@render body?.({
       schema: schema.data,
       snapshot: snapshot.data,
       setHeaderStatus: (status) => (headerStatus = status),

@@ -20,6 +20,8 @@ import { createProtectedHttpHandler } from '@lostgradient/mcp/http';
 import { hostedOAuth, OAuthStore } from '@lostgradient/mcp/oauth';
 import type { Storage } from '@lostgradient/storage';
 import type { ServerHooks } from '@lostgradient/velveteen/server';
+import { keySettingsMembership, keySettingsProtocolRequest } from './api-key-settings.ts';
+import { createConnectedAppsSettings } from './connected-apps-settings.ts';
 import type { HostAuthority } from './host-authority.ts';
 
 /** Reviewed Bureau reads eligible for connector grants; additions require reviewing the operation. */
@@ -270,23 +272,21 @@ export function createSharedBrowserSignIn(
     const first = await resolve(request);
     if (first instanceof Response) return first;
     const original = first.principal;
-    if (original?.method !== 'browser-session' || original.workspace === undefined)
-      return new Response('Forbidden', { status: 403 });
+    const initialMember = keySettingsMembership(original, 'shared');
+    if (!original || !initialMember) return new Response('Forbidden', { status: 403 });
     const current = async () => {
       const result = await resolve(request);
       if (result instanceof Response) return null;
       const principal = result.principal;
-      const member = principal?.workspace;
+      const member = keySettingsMembership(principal, 'shared');
       if (
-        principal?.method !== 'browser-session' ||
+        principal === undefined ||
         member === undefined ||
-        member.workspaceId !== original.workspace!.workspaceId ||
-        member.actorId !== original.workspace!.actorId ||
-        member.owner !== original.workspace!.owner ||
-        member.membershipRevision !== original.workspace!.membershipRevision ||
-        [...original.scopes].some((scope) => !principal.hasScope(scope)) ||
-        !member.capabilities.includes('workspace:manage') ||
-        !member.capabilities.includes('workspace:use')
+        member.workspaceId !== initialMember.workspaceId ||
+        member.actorId !== initialMember.actorId ||
+        member.owner !== initialMember.owner ||
+        member.membershipRevision !== initialMember.membershipRevision ||
+        [...original.scopes].some((scope) => !principal.hasScope(scope))
       )
         return null;
       return member;
@@ -339,9 +339,15 @@ export function createSharedBrowserSignIn(
         overlapCutoff: () => options.keyManagement?.overlapCutoff() ?? 0,
       },
     });
-    const response = await handler(publicRequest(request));
+    const response = await handler(keySettingsProtocolRequest(publicRequest(request)));
     return guardWorkspaceResponse(response, async () => (await current()) !== null);
   };
+  const { connectionAccess, manageConnections } = createConnectedAppsSettings({
+    oauth,
+    origin: options.origin,
+    permittedConnectorScopes: new Set(Object.values(options.oauth.operationScopes)),
+    guardWrite: (write) => browser.validWrite(publicRequest(write)),
+  });
   const operationFilter: NonNullable<OperationMcpMountOptions['operationFilter']> = (
     operation,
     context,
@@ -409,6 +415,8 @@ export function createSharedBrowserSignIn(
     publicRequest,
     authenticate,
     manageKeys,
+    manageConnections,
+    connectionAccess,
     operationFilter,
     scopeChallenge,
     protectedMcp,
@@ -418,12 +426,30 @@ export function createSharedBrowserSignIn(
 /** Register only the shared browser's routes on its configured origin. */
 export function sharedBrowserRoutes(
   shared: ReturnType<typeof createSharedBrowserSignIn> | undefined,
-  authority: HostAuthority,
   privateServer: { fetch(request: Request): Promise<Response> } | undefined,
   ordinaryDocument: (request: Request) => Response | Promise<Response>,
   candidateAssets?: (request: Request) => Response | Promise<Response>,
 ) {
-  if (!shared) return {};
+  const localPage = (request: Request) =>
+    privateServer?.fetch(request) ?? ordinaryDocument(request);
+  const serveAsset = async (
+    request: Request,
+    privateAsset: (request: Request) => Response | Promise<Response>,
+  ): Promise<Response> => {
+    if (privateServer !== undefined) {
+      const response = await privateAsset(request);
+      if (response.status !== 404 || candidateAssets === undefined) return response;
+      await response.body?.cancel();
+    }
+    return candidateAssets?.(request) ?? new Response('Not found', { status: 404 });
+  };
+  const localAsset = (request: Request) => serveAsset(request, localPage);
+  const localRoutes = {
+    '/settings/api-keys': { GET: localPage, HEAD: localPage },
+    '/settings/connected-apps': { GET: localPage, HEAD: localPage },
+    '/_assets/*': { GET: localAsset, HEAD: localAsset },
+  };
+  if (!shared) return localRoutes;
   const onOrigin =
     (handler: (request: Request) => Response | Promise<Response>) => (request: Request) =>
       shared.matches(request) ? handler(request) : new Response('Not found', { status: 404 });
@@ -442,9 +468,6 @@ export function sharedBrowserRoutes(
           { headers: { 'cache-control': 'private, no-store' } },
         );
       }),
-    },
-    '/key-admin/jsonrpc': {
-      POST: onOrigin((request) => shared.manageKeys(request, authority.authenticate)),
     },
     '/.well-known/oauth-authorization-server': { GET: oauth },
     '/.well-known/oauth-protected-resource/bureau/mcp': {
@@ -469,18 +492,14 @@ export function sharedBrowserRoutes(
     };
   }
   const page = onOrigin((request) => privateServer.fetch(shared.publicRequest(request)));
-  const asset = async (request: Request): Promise<Response> => {
-    if (shared.matches(request)) {
-      const response = await page(request);
-      if (response.status !== 404 || candidateAssets === undefined) return response;
-      await response.body?.cancel();
-    }
-    return candidateAssets?.(request) ?? new Response('Not found', { status: 404 });
-  };
+  const settingsPage = (request: Request) =>
+    shared.matches(request) ? page(request) : localPage(request);
+  const asset = (request: Request) =>
+    serveAsset(request, shared.matches(request) ? page : localPage);
   return {
     ...routes,
-    '/settings/api-keys': { GET: page, HEAD: page, POST: page },
-    '/settings/connected-apps': { GET: page, HEAD: page, POST: page },
+    '/settings/api-keys': { GET: settingsPage, HEAD: settingsPage, POST: page },
+    '/settings/connected-apps': { GET: settingsPage, HEAD: settingsPage, POST: page },
     '/reviews': {
       GET: (request: Request) =>
         shared.matches(request) ? page(request) : ordinaryDocument(request),

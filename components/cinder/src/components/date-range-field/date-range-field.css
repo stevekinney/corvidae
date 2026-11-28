@@ -5,6 +5,13 @@
 @import '../popover/popover.css';
 
 @layer cinder.components {
+  @media (any-pointer: coarse) {
+    .cinder-popover__sheet-content.cinder-date-range-field__calendar-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
   .cinder-date-range-field__time-controls {
     padding-top: var(--cinder-space-3);
     border-top: 1px solid var(--cinder-border-faint);

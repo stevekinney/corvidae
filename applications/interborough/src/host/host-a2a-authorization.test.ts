@@ -1,6 +1,5 @@
 /**
- * COR-1904 — who reaches A2A on the Interborough host. An operator who stores an A2A key (the
- * Bungalow secret `a2a-api-key`) makes every A2A JSON-RPC call present it, and one who also names
+ * COR-1904 — who reaches A2A on the Interborough host. An operator who issues a managed A2A key makes every A2A JSON-RPC call present it, and one who also names
  * the public origin a reverse proxy serves (`INTERBOROUGH_PUBLIC_ORIGIN`) lets a caller with
  * that `Host` reach `/bureau/a2a/*`, `/bureau/assets/*` with the key and `POST /triggers/<workflow>`
  * (COR-2169, the describe at the end of this file), and nothing else. A host with neither is the loopback-only,
@@ -15,7 +14,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { openBungalow } from '@lostgradient/bungalow';
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { rejectionOf } from '@lostgradient/testing';
 
 import { startHost, type Host } from './host.ts';
@@ -28,9 +27,10 @@ import {
   THROW_HEADER,
   type HookPlugin,
 } from './trigger-plugin.test-support.ts';
+import { provisionA2aKey } from './workspace-home.test-support.ts';
 
-/** The operator's A2A key. The secret file ends in a newline, as one written by `echo` does. */
-const A2A_KEY = 'host-a2a-key-0123456789';
+const A2A_KEY = 'valid managed key';
+const managedKeys = new WeakMap<Host, string>();
 const PUBLIC_ORIGIN = 'https://agents.example.test';
 const PUBLIC_HOST = 'agents.example.test';
 const MEDIA = 'generated media';
@@ -371,30 +371,20 @@ const agentFile = (name: string, a2a: boolean) =>
   ].join('\n');
 
 /** A home with a provider, one agent that opts into A2A and one that does not, and maybe a key. */
-async function makeHome(key: string | undefined): Promise<string> {
+async function makeHome(): Promise<string> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-a2a-authorization-'));
   directories.push(home);
   await writeProviderHome(home);
   await mkdir(join(home, 'agents'), { recursive: true });
   await writeFile(join(home, 'agents', 'open.md'), agentFile('Open', true));
   await writeFile(join(home, 'agents', 'closed.md'), agentFile('Closed', false));
-  if (key !== undefined) {
-    const bungalow = await openBungalow({
-      name: 'interborough',
-      environment: { INTERBOROUGH_HOME: home },
-    });
-    try {
-      await bungalow.deploymentSecrets.write('a2a-api-key', key);
-    } finally {
-      bungalow.close();
-    }
-  }
   return home;
 }
 
 async function startConfigured(configuration: Configuration): Promise<Host> {
-  const home = await makeHome(configuration === 'unkeyed' ? undefined : `${A2A_KEY}\n`);
-  return startHost({
+  const home = await makeHome();
+  const key = configuration === 'unkeyed' ? undefined : await provisionA2aKey(home);
+  const host = await startHost({
     environment: {
       INTERBOROUGH_HOME: home,
       ...(configuration === 'public' ? { INTERBOROUGH_PUBLIC_ORIGIN: PUBLIC_ORIGIN } : {}),
@@ -403,6 +393,8 @@ async function startConfigured(configuration: Configuration): Promise<Host> {
     resolveProviderGenerate: fakeProvider('Answered.').resolver,
     warn: (message) => warnings.push(message),
   });
+  if (key !== undefined) managedKeys.set(host, key);
+  return host;
 }
 
 // A JSON-RPC body read back from the wire: each outcome reads the shape it needs.
@@ -482,6 +474,11 @@ async function rpcOutcome(response: Response): Promise<Outcome> {
 
 async function outcomeOf(host: Host, row: Row): Promise<Outcome> {
   const { operation } = row;
+  if (row.credential === A2A_KEY) {
+    const key = managedKeys.get(host);
+    if (key === undefined) throw new Error('Managed key unavailable for keyed test');
+    row = { ...row, credential: key };
+  }
   if (operation.kind === 'raw-send') {
     return (await rawStatus(host, row, operation.path)) === 403
       ? { kind: 'guard' }
@@ -611,7 +608,7 @@ describe('the public origin', () => {
   });
 
   test('without an A2A key stops the host before it listens', async () => {
-    const home = await makeHome(undefined);
+    const home = await makeHome();
 
     const failure = await rejectionOf(
       startHost({
@@ -620,13 +617,105 @@ describe('the public origin', () => {
       }),
     );
 
-    expect(String(failure)).toContain('a2a-api-key');
+    expect(String(failure)).toContain('requires a managed A2A key');
+  });
+
+  test('revokes managed keys across processes without reopening public A2A', async () => {
+    const home = await makeHome();
+    const environment = { INTERBOROUGH_HOME: home };
+    let now = Date.now();
+    const runtime = {
+      ...createDefaultRuntimeServices(),
+      clock: { now: () => now, nowISO: () => new Date(now).toISOString() },
+    };
+    let host = await startHost({ environment, runtime, port: 0, plugins: [] });
+    const management = (method: string, params: object, credential?: string) =>
+      fetch(new URL('/host/api-keys/jsonrpc', host.url), {
+        method: 'POST',
+        headers: {
+          origin: host.url.origin,
+          'content-type': 'application/json',
+          ...(credential === undefined ? {} : { 'x-api-key': credential }),
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      });
+    const mediaRequest = (id: string, key?: string) =>
+      fetch(new URL(`/bureau/assets/${id}/content`, host.url), {
+        headers: {
+          host: PUBLIC_HOST,
+          ...(key === undefined ? {} : { authorization: `Bearer ${key}` }),
+        },
+      });
+    const principalWithKey = (key: string) =>
+      fetch(new URL('/api/v1/principal', host.url), { headers: { 'x-api-key': key } });
+    const openPublic = () =>
+      startHost({
+        environment: { ...environment, INTERBOROUGH_PUBLIC_ORIGIN: PUBLIC_ORIGIN },
+        runtime,
+        port: 0,
+        plugins: [],
+      });
+    try {
+      const legacyLocal = await principalWithKey('unknown-local-header');
+      expect(legacyLocal.status).toBe(200);
+      expect(await legacyLocal.json()).toMatchObject({ subject: LOCAL_OWNER });
+      const issueResponse = await management('api.keys.issue', {
+        subject: 'a2a',
+        label: 'Asset reader',
+        scopes: ['bureau.assets:read'],
+      });
+      const { result: issued }: { result: { id: string; secret: string } } =
+        await issueResponse.json();
+      const unknownAfterIssue = await principalWithKey('unknown-local-header');
+      expect(unknownAfterIssue.status).toBe(401);
+      const owned = await admitMedia(host, A2A_OWNER);
+      const foreign = await admitMedia(host, LOCAL_OWNER);
+      await host.close();
+      host = await openPublic();
+      const ownedMedia = await mediaRequest(owned, issued.secret);
+      const foreignMedia = await mediaRequest(foreign, issued.secret);
+      const anonymousMedia = await mediaRequest(owned);
+      expect(ownedMedia.status).toBe(200);
+      expect(foreignMedia.status).toBe(404);
+      expect(anonymousMedia.status).toBe(401);
+      for (const operation of ['list', 'issue', 'rotate', 'revoke']) {
+        const denied = await management(`api.keys.${operation}`, { id: issued.id }, issued.secret);
+        expect(denied.status).toBe(403);
+      }
+      const rotateResponse = await management('api.keys.rotate', { id: issued.id });
+      const { result: rotated }: { result: { id: string; secret: string; retiresAt: number } } =
+        await rotateResponse.json();
+      const rotatedMedia = await mediaRequest(owned, rotated.secret);
+      expect(rotatedMedia.status).toBe(200);
+      now = rotated.retiresAt;
+      const retiredMedia = await mediaRequest(owned, issued.secret);
+      expect(retiredMedia.status).toBe(401);
+      const revokeResponse = await management('api.keys.revoke', { id: rotated.id });
+      const revoked = await revokeResponse.json();
+      expect(revoked.result).toEqual({ id: rotated.id, revoked: true });
+      const revokedMedia = await mediaRequest(owned, rotated.secret);
+      expect(revokedMedia.status).toBe(401);
+      await host.close();
+      host = await openPublic();
+      const restartedRevoked = await mediaRequest(owned, rotated.secret);
+      const restartedAnonymous = await mediaRequest(owned);
+      expect(restartedRevoked.status).toBe(401);
+      expect(restartedAnonymous.status).toBe(401);
+      const revokedPrincipal = await principalWithKey(rotated.secret);
+      expect(revokedPrincipal.status).toBe(401);
+      const card = await fetch(new URL('/bureau/a2a/.well-known/agent-card.json', host.url), {
+        headers: { host: PUBLIC_HOST },
+      });
+      expect(card.status).toBe(200);
+    } finally {
+      await host.close();
+    }
   });
 
   test.each(['http://agents.example.test', 'https://agents.example.test/a2a', 'not a url'])(
     'that is not an https origin (%s) stops the host',
     async (origin) => {
-      const home = await makeHome(A2A_KEY);
+      const home = await makeHome();
 
       const failure = await rejectionOf(
         startHost({
@@ -640,7 +729,7 @@ describe('the public origin', () => {
   );
 
   test('named by its old name stops the host with a renamed-to message, whatever the new name holds (COR-2169)', async () => {
-    const home = await makeHome(A2A_KEY);
+    const home = await makeHome();
 
     for (const environment of [
       { INTERBOROUGH_HOME: home, INTERBOROUGH_A2A_PUBLIC_ORIGIN: PUBLIC_ORIGIN },
@@ -659,19 +748,10 @@ describe('the public origin', () => {
 });
 
 describe('the A2A key', () => {
-  test('that is blank stops the host, and is never echoed', async () => {
-    const home = await makeHome('  \n');
-
-    const failure = await rejectionOf(
-      startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 }),
-    );
-
-    expect(String(failure)).toContain('a2a-api-key');
-  });
-
   test('is not in a refusal the host reports', async () => {
     const warnings: string[] = [];
-    const home = await makeHome(A2A_KEY);
+    const home = await makeHome();
+    const key = await provisionA2aKey(home);
     const host = await startHost({
       environment: { INTERBOROUGH_HOME: home },
       port: 0,
@@ -684,9 +764,9 @@ describe('the A2A key', () => {
         body: sendBody(),
       });
       expect(response.status).toBe(401);
-      expect(await response.text()).not.toContain(A2A_KEY);
+      expect(await response.text()).not.toContain(key);
       expect(warnings.some((warning) => warning.includes('A2A authentication refused'))).toBe(true);
-      expect(warnings.join('\n')).not.toContain(A2A_KEY);
+      expect(warnings.join('\n')).not.toContain(key);
     } finally {
       await host.close();
     }
@@ -711,7 +791,8 @@ describe('trigger deliveries (COR-2169)', () => {
   let deliveries = 0;
 
   async function startTriggerHost(configuration: Configuration): Promise<TriggerHost> {
-    const home = await makeHome(configuration === 'unkeyed' ? undefined : `${A2A_KEY}\n`);
+    const home = await makeHome();
+    if (configuration !== 'unkeyed') await provisionA2aKey(home);
     await mkdir(join(home, 'workflows'), { recursive: true });
     const steps = [
       {

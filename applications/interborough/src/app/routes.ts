@@ -447,6 +447,20 @@ export const routes: readonly RouteDefinition[] = [
     load: () => import('../routes/settings/mcp/index.svelte'),
   },
   {
+    pattern: '/settings/api-keys',
+    kind: 'editor',
+    crumb: SETTINGS_SECTION_COPY.apiKeys,
+    view: 'settings',
+    load: () => import('../routes/settings/api-keys/index.svelte'),
+  },
+  {
+    pattern: '/settings/connected-apps',
+    kind: 'editor',
+    crumb: SETTINGS_SECTION_COPY.connectedApps,
+    view: 'settings',
+    load: () => import('../routes/settings/connected-apps/index.svelte'),
+  },
+  {
     pattern: '/settings/plugins',
     kind: 'list-detail',
     crumb: SETTINGS_SECTION_COPY.plugins,

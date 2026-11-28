@@ -183,6 +183,47 @@ test.describe('number input resting geometry', () => {
 });
 
 test.describe('date picker surface ownership', () => {
+  test.describe('date range field on touch', () => {
+    test.use({ hasTouch: true, isMobile: true, reducedMotion: 'reduce' });
+
+    for (const width of [320, 375]) {
+      test(`keeps the range calendar within a ${width}px viewport`, async ({ componentPage }) => {
+        const entry = entries.find((candidate) => candidate.slug === 'date-range-field');
+        if (entry === undefined) throw new Error('Date range fixture is missing.');
+        const page = await componentPage.open({
+          entry,
+          theme: 'light',
+          viewport: { name: 'mobile', width, height: width === 320 ? 640 : 812 },
+          fixtureName: 'assertion',
+          fixtureContentHash: assertionHash(entry),
+        });
+
+        await page.getByRole('button', { name: 'Open date range calendar' }).tap();
+        const dialog = page.getByRole('dialog', { name: 'Date range calendar' });
+        await expect(dialog).toBeVisible();
+        const days = dialog.locator('.cinder-calendar__day');
+        expect(await days.count()).toBeGreaterThanOrEqual(28);
+        const fits = await days.evaluateAll((buttons) =>
+          buttons.every((button) => {
+            const bounds = button.getBoundingClientRect();
+            const x = bounds.left + bounds.width / 2;
+            const y = bounds.top + bounds.height / 2;
+            return (
+              bounds.width >= 44 &&
+              bounds.height >= 44 &&
+              button.contains(document.elementFromPoint(x - 21, y)) &&
+              button.contains(document.elementFromPoint(x + 21, y))
+            );
+          }),
+        );
+        expect(fits).toBe(true);
+        await days.nth(9).tap();
+        await days.nth(16).tap();
+        await expect(dialog).not.toBeVisible();
+      });
+    }
+  });
+
   test('uses one custom calendar surface without native date controls', async ({
     componentPage,
   }) => {

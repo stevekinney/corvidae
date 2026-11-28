@@ -598,7 +598,8 @@ function createHostedOAuth(configuration: Options) {
         return {
           grantId: grant.grantId,
           clientId: grant.client,
-          clientName: client?.name ?? 'Unknown Client',
+          clientName:
+            client?.name && isValidClientName(client.name) ? client.name : 'Unknown Client',
           resource: grant.resource,
           approvedAt: grant.approvedAt,
           permissions: grant.scopes.map((scope) => ({

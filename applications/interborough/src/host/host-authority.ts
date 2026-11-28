@@ -15,12 +15,14 @@ import {
   type WorkspaceOperationClass,
 } from '@lostgradient/bureau';
 import { WEFT_SCOPE_VOCABULARY } from '@lostgradient/weft';
+import { A2A_SUBJECT } from './a2a-authentication.ts';
 import {
   createHostMutationContext,
   HostMutationError,
   parseHostMutationInput,
   type HostMutationContext,
 } from './host-mutation-context.ts';
+import { localWorkspaceMembership } from './workspace-principal.ts';
 
 /** Trusted host composition; request payloads cannot select either member. */
 export type HostWorkspaceAuthentication = {
@@ -34,6 +36,27 @@ export type HostWorkspaceAuthentication = {
    */
   readonly memorySharingAvailable?: ((member: WorkspaceMembership) => Promise<boolean>) | undefined;
 };
+
+/** Include the durable A2A service identity independently of key issuance. */
+export function hostWorkspaceWithA2a(
+  workspaceId: string,
+  configured?: WorkspaceMembershipOptions,
+): WorkspaceMembershipOptions {
+  const local = localWorkspaceMembership(workspaceId, true);
+  if (configured === undefined) return local;
+  if (configured.workspaceId !== workspaceId)
+    throw new Error('The authentication directory belongs to another workspace.');
+  const serviceOwner = 'api-key:' + encodeURIComponent(A2A_SUBJECT);
+  return {
+    ...configured,
+    resolveMembership: async (credential) =>
+      credential.method === 'api-key' && credential.subject === A2A_SUBJECT
+        ? local.resolveMembership(credential)
+        : configured.resolveMembership(credential),
+    resolveOwnerMembership: async (owner) =>
+      (await (owner === serviceOwner ? local : configured).resolveOwnerMembership?.(owner)) ?? null,
+  };
+}
 
 /** Request-local authentication and current class authorization. */
 export type HostAuthority = {
@@ -68,6 +91,8 @@ export async function createHostAuthority(
     readonly matches: (request: Request) => boolean;
     readonly authenticate: OperationHandlerAuthenticate;
   },
+  managedService?: AuthConfig,
+  allowUnrecognizedLocalCredential?: () => Promise<boolean>,
 ): Promise<HostAuthority> {
   const credentials =
     authentication === undefined
@@ -76,7 +101,14 @@ export async function createHostAuthority(
           scopeVocabulary: WEFT_SCOPE_VOCABULARY,
           additionalScopes: BUREAU_SCOPES,
         });
-  await credentials?.ready;
+  const service =
+    managedService === undefined
+      ? undefined
+      : createOperationHandlerAuthenticator(
+          { ...managedService, auditSink: () => {} },
+          { scopeVocabulary: WEFT_SCOPE_VOCABULARY, additionalScopes: BUREAU_SCOPES },
+        );
+  await Promise.all([credentials?.ready, service?.ready]);
   const local: OperationHandlerAuthenticate = async () => {
     const context = unauthenticatedLocalAuthContext(WEFT_SCOPE_VOCABULARY);
     return {
@@ -86,15 +118,26 @@ export async function createHostAuthority(
         : { principal: { ...context.principal, subject: ANONYMOUS_LOCAL_OWNER } }),
     };
   };
-  const authenticateCredential: OperationHandlerAuthenticate = (request) => {
+  const authenticateCredential: OperationHandlerAuthenticate = async (request) => {
     if (browser?.matches(request)) return browser.authenticate(request);
-    if (credentials === undefined)
-      return allowLocal
-        ? local(request)
-        : Promise.resolve(new Response('Authentication required', { status: 401 }));
-    return allowLocal && !request.headers.has('authorization') && !request.headers.has('x-api-key')
-      ? local(request)
-      : credentials(request);
+    const presented = request.headers.has('authorization') || request.headers.has('x-api-key');
+    if (presented && service) {
+      const verified = await service(request);
+      if (!(verified instanceof Response)) return verified;
+    }
+    if (allowLocal && !presented) return local(request);
+    if (!credentials) return new Response('Authentication required', { status: 401 });
+    const context = await credentials(request);
+    if (context instanceof Response && allowLocal && (await allowUnrecognizedLocalCredential?.()))
+      return local(request);
+    if (
+      service &&
+      !(context instanceof Response) &&
+      context.principal?.method === 'api-key' &&
+      context.principal.subject === A2A_SUBJECT
+    )
+      return new Response('Authentication required', { status: 401 });
+    return context;
   };
   const resolve = withWorkspaceMembership(authenticateCredential, workspace);
   const identities = new WeakMap<Request, ReturnType<typeof unauthenticatedLocalAuthContext>>();
@@ -176,9 +219,13 @@ export async function combineHostAuthentication(
     ...(authentication.auditSink === undefined ? {} : { auditSink: authentication.auditSink }),
     resolveApiKeyPrincipal: async (key) => {
       const request = new Request('http://localhost/', { headers: { 'x-api-key': key } });
-      for (const authenticate of authenticators) {
+      for (const [index, authenticate] of authenticators.entries()) {
         const context = await authenticate(request);
-        if (!(context instanceof Response) && context.principal !== undefined)
+        if (
+          !(context instanceof Response) &&
+          context.principal !== undefined &&
+          (index === 0 || context.principal.subject !== A2A_SUBJECT)
+        )
           return context.principal;
       }
       return null;

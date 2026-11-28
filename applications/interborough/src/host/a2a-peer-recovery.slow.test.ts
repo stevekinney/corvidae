@@ -9,11 +9,12 @@ import { join } from 'node:path';
 
 import { startHost, type Host } from './host.ts';
 import { writeProviderHome } from './stub-provider.ts';
+import { provisionA2aKey } from './workspace-home.test-support.ts';
 
 const homes: string[] = [];
 const hosts: Host[] = [];
 const children: ReturnType<typeof spawnWithHangGuard>[] = [];
-const PEER_BEARER = 'fixture-peer-bearer-cor-2025';
+let peerBearer: string;
 async function exists(path: string, text?: string): Promise<boolean> {
   try {
     const contents = await readFile(path, 'utf8');
@@ -55,13 +56,9 @@ afterEach(async () => {
 const recovery = await (async () => {
   const peerHome = await mkdtemp(join(tmpdir(), 'interborough-peer-recovery-'));
   homes.push(peerHome);
-  const peerBungalow = await openBungalow({
-    name: 'interborough',
-    environment: { INTERBOROUGH_HOME: peerHome },
-  });
-  await peerBungalow.deploymentSecrets.write('a2a-api-key', PEER_BEARER);
-  peerBungalow.close();
+  peerBearer = await provisionA2aKey(peerHome);
   const state = { sends: 0, active: false, release: () => {} };
+
   const peer = await startHost({
     environment: { INTERBOROUGH_HOME: peerHome },
     port: 0,
@@ -82,7 +79,7 @@ const recovery = await (async () => {
                 resolve();
               };
             });
-            return { content: `peer result ${PEER_BEARER}`, toolCalls: [] };
+            return { content: `peer result ${peerBearer}`, toolCalls: [] };
           },
           stopWhen: stopWhen.noToolCalls(),
         }),
@@ -97,7 +94,7 @@ const recovery = await (async () => {
     name: 'interborough',
     environment: { INTERBOROUGH_HOME: callerHome },
   });
-  await callerBungalow.deploymentSecrets.write('peer-bearer', PEER_BEARER);
+  await callerBungalow.deploymentSecrets.write('peer-bearer', peerBearer);
   callerBungalow.close();
   await mkdir(join(callerHome, 'agents'), { recursive: true });
   await writeFile(
@@ -189,12 +186,12 @@ const recovery = await (async () => {
   await waitUntil(() => exists(files.AUDIT_FILE), { message: 'persisted recovery audit' });
   await waitUntil(() => exists(files.SESSION_FILE), { message: 'persisted recovered session' });
   const resultText = await readFile(files.RESULT_FILE, 'utf8');
-  expect(resultText).not.toContain(PEER_BEARER);
+  expect(resultText).not.toContain(peerBearer);
   const auditText = await readFile(files.AUDIT_FILE, 'utf8');
-  expect(auditText).not.toContain(PEER_BEARER);
+  expect(auditText).not.toContain(peerBearer);
   expect(auditText).toContain('peer-call-1');
   const sessionText = await readFile(files.SESSION_FILE, 'utf8');
-  expect(sessionText).not.toContain(PEER_BEARER);
+  expect(sessionText).not.toContain(peerBearer);
   const session = JSON.parse(sessionText) as {
     conversationHistory?: {
       messages?: Record<

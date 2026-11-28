@@ -119,6 +119,8 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/settings/mcp': '/settings/mcp',
     '/settings/plugins': '/settings/plugins',
     '/settings/data-and-retention': '/settings/data-and-retention',
+    '/settings/api-keys': '/settings/api-keys',
+    '/settings/connected-apps': '/settings/connected-apps',
     '/settings/api-reference': '/settings/api-reference',
     // The main host serves no plugin page, so the address is the not-found state a plugin's page
     // shows for one nobody serves; the pages themselves are `plugin-page.spec.ts`'s, on its own host.

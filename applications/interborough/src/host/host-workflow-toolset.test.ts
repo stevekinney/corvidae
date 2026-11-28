@@ -4,12 +4,12 @@
  * exercises the production toolbox without a network provider. The fixture workflow itself uses
  * only a native signal wait, which lets the harness release the exact run it just started.
  */
-import { openBungalow } from '@lostgradient/bungalow';
 import type { GenerateContext, GenerateFunction } from '@lostgradient/operative';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { provisionA2aKey } from './workspace-home.test-support.ts';
 
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
@@ -29,7 +29,6 @@ afterEach(async () => {
 
 const WORKFLOW_ID = 'toolset-fixture';
 const REVIEW_TEXT = 'The workflow is healthy and ready to run.';
-const A2A_KEY = 'fixture-a2a-toolset-key';
 
 const agentFile = (
   name: string,
@@ -383,19 +382,11 @@ const scriptedResolver: NonNullable<HostOptions['resolveProviderGenerate']> = ()
   return generate;
 };
 
-async function startFixture(): Promise<{ host: Host; home: string }> {
+async function startFixture(): Promise<{ host: Host; home: string; a2aKey: string }> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-workflow-toolset-'));
   directories.push(home);
   await writeProviderHome(home);
-  const bungalow = await openBungalow({
-    name: 'interborough',
-    environment: { INTERBOROUGH_HOME: home },
-  });
-  try {
-    await bungalow.deploymentSecrets.write('a2a-api-key', A2A_KEY);
-  } finally {
-    bungalow.close();
-  }
+  const a2aKey = await provisionA2aKey(home);
   await mkdir(join(home, 'agents'), { recursive: true });
   await mkdir(join(home, 'workflows'), { recursive: true });
   await writeFile(
@@ -449,7 +440,7 @@ async function startFixture(): Promise<{ host: Host; home: string }> {
     await host.engine.signal(runId, 'go', payload);
     await host.engine.getHandle(runId).result();
   };
-  return { host, home };
+  return { host, home, a2aKey };
 }
 
 async function chat(host: Host, message: string, agent = 'parent'): Promise<string> {
@@ -509,10 +500,10 @@ describe('the workflow toolset on a real Interborough host', () => {
   });
 
   test('returns not-found to the same parent when its owner is api-key:a2a', async () => {
-    const { host } = await startFixture();
+    const { host, a2aKey } = await startFixture();
     const response = await fetch(new URL('/bureau/a2a/parent', host.url), {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'A2A-Version': '1.0', 'X-API-Key': A2A_KEY },
+      headers: { 'content-type': 'application/json', 'A2A-Version': '1.0', 'X-API-Key': a2aKey },
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 1,
@@ -535,7 +526,7 @@ describe('the workflow toolset on a real Interborough host', () => {
           headers: {
             'content-type': 'application/json',
             'A2A-Version': '1.0',
-            'X-API-Key': A2A_KEY,
+            'X-API-Key': a2aKey,
           },
           body: JSON.stringify({
             jsonrpc: '2.0',

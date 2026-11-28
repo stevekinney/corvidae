@@ -154,6 +154,14 @@
     margin-block-end: var(--cinder-space-4);
   }
 
+  @media (max-width: 39.99rem) {
+    .weft-settings-restart {
+      /* The sticky Banner covers space-4 above itself. Add the missing space-1 to the mobile
+         frame's space-3 row gap so the cover clears the Section selector at the top of the page. */
+      margin-block-start: var(--cinder-space-1);
+    }
+  }
+
   /* On a phone the two buttons are compact, sized to their labels and side by side under the words,
      because the notice does not ask the Banner to stack its actions (`stackActions` makes each a
      full-width bar). A Button reaches a 44px touch target through its own hit area on a touch

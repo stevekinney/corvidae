@@ -30,14 +30,20 @@ test('shows approval details and asks before disconnecting', async () => {
     expect(target.textContent).toContain('Time unavailable');
     click('Disconnect');
     await waitUntil(
-      () => target.textContent?.includes('This approval will no longer grant access.') ?? false,
+      () =>
+        target.textContent?.includes(
+          'Future calls and token refreshes through this connection will stop.',
+        ) ?? false,
     );
     click('Cancel');
     expect(target.querySelector('[data-testid="writes"]')?.textContent).toBe('0');
     await waitUntil(() => !target.querySelector('dialog[open]'));
     click('Disconnect');
     await waitUntil(
-      () => target.textContent?.includes('This approval will no longer grant access.') ?? false,
+      () =>
+        target.textContent?.includes(
+          'Future calls and token refreshes through this connection will stop.',
+        ) ?? false,
     );
     const confirm = [...target.querySelectorAll('dialog button')].find(
       (entry) => entry.textContent?.trim() === 'Disconnect',

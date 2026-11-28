@@ -2895,6 +2895,7 @@
         "handleFetch fetch(target, { method: request.method, headers, ...(body === undefined ? {} : { body }), redirect: 'manual', signal: event.signal, })",
         "handleFetch next(request)",
         "handleFetch sha256:f7766dbfb906b15ebdf33b3a2300457f2ffa6f92234d92a4496d5cf6fcbe7fd3",
+        "localPage privateServer?.fetch(request)",
         "sharedBrowserRoutes privateServer.fetch(shared.publicRequest(request))",
         "sharedBrowserRoutes shared.browser.fetch(shared.publicRequest(request))"
       ]
@@ -3035,6 +3036,14 @@
       ]
     },
     {
+      "path": "host/api-key-settings.ts",
+      "classification": "boundary",
+      "transport": "request-bound Velveteen fetch",
+      "owner": "Interborough Settings host",
+      "reason": "Only forwards approved desktop Settings reads to the same loopback listener.",
+      "expressions": ["handleFetch fetch(target, { signal: event.signal, redirect: 'manual' })"]
+    },
+    {
       "path": "private-routes/reviews/+page.server.ts",
       "classification": "boundary",
       "transport": "request-bound Velveteen fetch",
@@ -3043,6 +3052,57 @@
       "expressions": [
         "load sha256:9deca095012387dbbfc951dcd136b6f76b1e76bacf3c308c14d281db3040e215",
         "load sha256:9deca095012387dbbfc951dcd136b6f76b1e76bacf3c308c14d281db3040e215"
+      ]
+    },
+    {
+      "path": "private-routes/settings/+layout.server.ts",
+      "classification": "boundary",
+      "transport": "request-bound Velveteen fetch",
+      "owner": "Interborough Settings documents",
+      "reason": "The native shell reads the actual current host principal through the document request.",
+      "expressions": [
+        "load sha256:7771fd5e35aca9b7037982179d03ee95659ea7a2631801d6ab5abb2293cd1e6f"
+      ]
+    },
+    {
+      "path": "private-routes/settings/api-keys/+page.server.ts",
+      "classification": "boundary",
+      "transport": "request-bound Velveteen fetch",
+      "owner": "Interborough API keys Settings",
+      "reason": "Reads only the opaque admission and scope over the document-bound fetch.",
+      "expressions": [
+        "load sha256:9841d8170ca86666aeb7a7e8063ae694ba33416083dca096f6bf2a5a19bfc388"
+      ]
+    },
+    {
+      "path": "private-routes/settings/connected-apps/+page.server.ts",
+      "classification": "boundary",
+      "transport": "request-bound Velveteen fetch",
+      "owner": "Interborough Connected apps Settings",
+      "reason": "Reads only the opaque admission and scope over the document-bound fetch.",
+      "expressions": [
+        "load sha256:26d13bb89a21382a98e09139f8aab2d5bd0c7dd39fa71e25ded97bb28e83acb9"
+      ]
+    },
+    {
+      "path": "routes/settings/section-access.ts",
+      "classification": "boundary",
+      "transport": "private host HTTP",
+      "owner": "Interborough Settings documents",
+      "reason": "Reads a no-store opaque UI decision from the explicitly classified host access route.",
+      "expressions": [
+        "readSettingsAccess fetchRequest(path, { cache: 'no-store', ...(signal === undefined ? {} : { signal }), })",
+        "readSettingsAccess sha256:c622ddaba77b71b26b4dc9c97bf939c08c22e6f68cfcfdeb50cfae1cdb9cf433"
+      ]
+    },
+    {
+      "path": "routes/settings/section-transport.ts",
+      "classification": "boundary",
+      "transport": "private host HTTP",
+      "owner": "Interborough Settings commands",
+      "reason": "Reads the existing browser session write guard and calls generated Settings packages on their own endpoints.",
+      "expressions": [
+        "settingsTransport fetch('/auth/session', { cache: 'no-store', ...(options?.signal === undefined ? {} : { signal: options.signal }), })"
       ]
     }
   ],
@@ -3182,6 +3242,7 @@
     "host/cli-runs.ts ./cli-client.ts type { CliClientDependencies, CliCommandResult, Parsed }",
     "host/cli-runs.ts @lostgradient/bureau-sdk type { CatalogOperationTypes }",
     "host/cli.ts ./cli-client.ts { executeCli }",
+    "host/connected-apps-settings.ts ./api-key-settings.ts { settingsAccessResponse }",
     "host/dev.ts ./host.ts { startHost, type Host, type HostOptions }",
     "host/dev.ts ./native-document-path.ts { openDevelopmentNativeDocuments }",
     "host/engine-proxy.ts @lostgradient/weft { AUTHORIZATION_SCOPES }",
@@ -3194,6 +3255,7 @@
     "host/host.ts ../lib/host-paths.ts { HOST_PATHS_ROUTE }",
     "host/host.ts ../lib/host-storage.ts { HOST_STORAGE_ROUTE, HOST_STORAGE_SUMMARY_ROUTE }",
     "host/host.ts ./a2a-peers.ts { createA2APeerTools, readA2APeersConfiguration }",
+    "host/host.ts ./api-key-settings.ts { createLocalA2aKeys, desktopSettingsServerHooks, keySettingsAccessHandler, localKeySettingsHandler, settingsAccessResponse, }",
     "host/host.ts ./composed-json-rpc.ts { COMPOSED_JSON_RPC_PATH, composeOperationNames, serveComposedJsonRpc, }",
     "host/host.ts ./engine-proxy.ts { createLocalAuthentication, isEngineRequestPath, relayRequest, webSocketRelayData, }",
     "host/host.ts ./host-storage.ts { hostStorageReport, hostStorageSummary }",
@@ -3202,7 +3264,7 @@
     "host/host.ts ./shared-browser-sign-in.ts { createSharedBrowserSignIn, sharedBrowserRoutes, sharedBrowserServerHooks, type SharedBrowserSignInOptions, }",
     "host/host.ts ./tool-source-manager.ts { createToolSourceManager, type ToolSourceManager }",
     "host/host.ts ./tool-source-routes.ts { toolSourceRoutes }",
-    "host/host.ts @lostgradient/weft { serve, type AlertingOptions, type RegistryAgnosticEngine, type ServeOptions, type WeftServer, }",
+    "host/host.ts @lostgradient/weft { serve, WEFT_SCOPE_VOCABULARY, type AlertingOptions, type RegistryAgnosticEngine, type ServeOptions, type WeftServer, }",
     "host/host.ts @lostgradient/weft/a2a { createEgressPolicy, type A2APeerUpdate, type EgressPolicy }",
     "host/host.ts @lostgradient/weft/bun { bunServerHost }",
     "host/panel-review-eligibility.ts ./shared-browser-sign-in.ts type { createSharedBrowserSignIn }",
@@ -3212,6 +3274,7 @@
     "host/native-document-request.ts ./engine-proxy.ts { isEngineRequestPath }",
     "host/showcase-agents.ts ./host.ts type { ExtraAgents }",
     "host/showcase.ts ./host.ts type { HostOptions, RunAgentLookup }",
+    "host/shared-browser-sign-in.ts ./api-key-settings.ts { keySettingsMembership, keySettingsProtocolRequest }",
     "host/showcase.ts @lostgradient/weft type { AlertingOptions }",
     "host/stub-provider.ts ./host.ts type { HostOptions }",
     "host/tool-source-routes.ts ./openapi-inspection.ts { inspectOpenApiAddress, inspectOpenApiSpec, type OpenApiFetchFailure, type OpenApiInspection, }",
@@ -3365,6 +3428,14 @@
     "private-routes/reviews/+page.svelte ../../app/shell/shell.svelte Shell",
     "private-routes/reviews/+page.svelte ../../lib/client.ts { createClient }",
     "private-routes/reviews/+page.svelte ../../lib/scopes.svelte.ts { resolveHostPrincipal, type Principal }",
+    "private-routes/settings/+layout.server.ts ../../lib/scopes.svelte.ts { resolveHostPrincipal }",
+    "private-routes/settings/+layout.svelte ../../app/shell/shell.svelte Shell",
+    "private-routes/settings/+layout.svelte ../../lib/client.ts { createClient }",
+    "private-routes/settings/+layout.svelte ../../lib/scopes.svelte.ts { resolveHostPrincipal, type Principal }",
+    "private-routes/settings/api-keys/+page.server.ts ../../../routes/settings/section-access.ts { readSettingsAccess }",
+    "private-routes/settings/api-keys/+page.svelte ../../../routes/settings/section-access.ts type { SettingsAccess }",
+    "private-routes/settings/connected-apps/+page.server.ts ../../../routes/settings/section-access.ts { readSettingsAccess }",
+    "private-routes/settings/connected-apps/+page.svelte ../../../routes/settings/section-access.ts type { SettingsAccess }",
     "routes/agent-editor/agent-copy.ts ../../lib/agent-definitions.ts { AGENT_IDENTIFIER_MAX_LENGTH, AGENT_IDENTIFIER_PATTERN, type AgentDetail, }",
     "routes/agent-editor/agent-editor-effort-field.svelte ../../lib/agent-definitions.ts { EFFORTS }",
     "routes/agent-editor/agent-editor-models.ts ../../lib/agent-definitions.ts type { AgentCatalog, CatalogModel }",
@@ -3797,6 +3868,9 @@
     "routes/settings/a2a/recent-calls.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore, principalQueryScope }",
     "routes/settings/allowed-models-body.svelte ../../lib/bureau-settings.ts { getSettings, settingsFaultOf, updateSettings, type SettingKeyState, type SettingsSchema, type SettingsSnapshot, }",
     "routes/settings/allowed-models-body.svelte ../../lib/host-providers.ts { getProviders, type ProviderModel }",
+    "routes/settings/api-keys/index.svelte ../../../lib/scopes.svelte.ts { getPrincipalStore }",
+    "routes/settings/api-keys/index.svelte ../section-access.ts { readSettingsAccess, type SettingsAccess }",
+    "routes/settings/api-keys/index.svelte ../section-transport.ts { settingsTransport }",
     "routes/settings/api-reference/api-reference-body.svelte ../../../lib/bureau-settings.ts type { SettingsSchema, SettingsSnapshot }",
     "routes/settings/api-reference/api-reference-body.svelte ../../../lib/client.ts { getClient }",
     "routes/settings/api-reference/api-reference-body.svelte ../../system/discovery-client.ts { discoveryOrigin }",
@@ -3808,6 +3882,8 @@
     "routes/settings/api-reference/scopes-panel.svelte ../../../lib/host-session.ts { getHostSession }",
     "routes/settings/api-reference/sources-panel.svelte ../../../lib/host-paths.ts { getHostPaths, workflowFilePath }",
     "routes/settings/api-reference/sources-panel.svelte ../../../lib/workflow-files.ts { listWorkflowFiles }",
+    "routes/settings/connected-apps/index.svelte ../section-access.ts { readSettingsAccess, type SettingsAccess }",
+    "routes/settings/connected-apps/index.svelte ../section-transport.ts { settingsTransport }",
     "routes/settings/embedder-model.ts ../../lib/bureau-embedding.ts type { EmbeddingStatus }",
     "routes/settings/embedder-model.ts ../../lib/host-plugins.ts type { PluginStanding }",
     "routes/settings/embedder-row.svelte ../../lib/bureau-embedding.ts { cancelEmbeddingSwitch, embeddingFaultOf, getEmbeddingStatus, type EmbeddingStatus, }",
@@ -3866,6 +3942,7 @@
     "routes/settings/retention/retention-window.ts ../../../lib/bureau-settings.ts type { SchemaNode }",
     "routes/settings/retention/storage-usage-row.svelte ../../../lib/bureau-attention.ts { listAttentionAlerts }",
     "routes/settings/retention/storage-usage-row.svelte ../../../lib/host-storage.ts { getHostStorage }",
+    "routes/settings/section-transport.ts @lostgradient/backchannel/client { httpJsonRpcTransport, type CatalogTransport }",
     "routes/settings/setting-field.svelte ../../lib/agent-definitions.ts { getAgentCatalog, isAvailableModel }",
     "routes/settings/setting-field.svelte ../../lib/bureau-settings.ts type { SchemaNode, SettingKeyState }",
     "routes/settings/settings-autosave.svelte.ts ../../lib/bureau-settings.ts { settingsFaultOf, type SettingsFault, type SettingsSnapshot, type SettingsUpdateReceipt, }",
@@ -4335,12 +4412,6 @@
       "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
     },
     {
-      "route": "POST /key-admin/jsonrpc",
-      "protocol": "HTTP",
-      "owner": "Interborough shared browser host",
-      "reason": "This shared-origin sign-in, settings or OAuth route is served by the host outside the operation catalogs."
-    },
-    {
       "route": "GET /settings/api-keys",
       "protocol": "HTTP",
       "owner": "Interborough shared browser host",
@@ -4723,6 +4794,30 @@
       "protocol": "HTTP",
       "owner": "Interborough trigger host",
       "reason": "External trigger delivery uses its authenticated HTTP route."
+    },
+    {
+      "route": "GET /host/api-keys/access",
+      "protocol": "HTTP",
+      "owner": "Interborough Settings host",
+      "reason": "Admitted by the private Settings route policy on its own endpoint and served outside the composed Weft and Bureau catalogs."
+    },
+    {
+      "route": "GET /host/connected-apps/access",
+      "protocol": "HTTP",
+      "owner": "Interborough Settings host",
+      "reason": "Admitted by the private Settings route policy on its own endpoint and served outside the composed Weft and Bureau catalogs."
+    },
+    {
+      "route": "POST /host/api-keys/jsonrpc",
+      "protocol": "HTTP",
+      "owner": "Interborough Settings host",
+      "reason": "Admitted by the private Settings route policy on its own endpoint and served outside the composed Weft and Bureau catalogs."
+    },
+    {
+      "route": "POST /host/connected-apps/jsonrpc",
+      "protocol": "HTTP",
+      "owner": "Interborough Settings host",
+      "reason": "Admitted by the private Settings route policy on its own endpoint and served outside the composed Weft and Bureau catalogs."
     }
   ],
   "cliGenerated": [

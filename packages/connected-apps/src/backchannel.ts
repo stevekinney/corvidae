@@ -13,6 +13,7 @@ const grant = z.object({
   clientId: z.string(),
   clientName: z.string(),
   resource: z.string(),
+  workspace: z.string().optional(),
   approvedAt: z.number().nullable(),
   permissions: z.array(permission),
 });
@@ -32,6 +33,17 @@ export type ConnectedAppsHost = {
   revoke?: (principal: Principal, grantId: string) => Promise<boolean>;
   managementDestination?: string;
 };
+function interactiveIdentity(principal: Principal) {
+  if (
+    (principal.method !== 'browser-session' && principal.method !== 'jwt') ||
+    !principal.subject ||
+    principal.workspace?.actorKind !== 'user' ||
+    !principal.workspace.capabilities.includes('workspace:use')
+  )
+    return undefined;
+  return { subject: principal.subject, tenant: principal.workspace.workspaceId };
+}
+
 export function hostedConnectedAppsHost(
   issuer: {
     listConnectedApps(identity: { subject: string; tenant: string }): Promise<ConnectedApp[]>;
@@ -43,13 +55,17 @@ export function hostedConnectedAppsHost(
   currentMember: ConnectedAppsHost['currentMember'],
 ): ConnectedAppsHost {
   const identity = (principal: Principal) => {
-    if (principal.method !== 'jwt' || !principal.subject || !principal.workspace)
-      throw new Error('Forbidden');
-    return { subject: principal.subject, tenant: principal.workspace.workspaceId };
+    const current = interactiveIdentity(principal);
+    if (current === undefined) throw new Error('Forbidden');
+    return current;
   };
   return {
     currentMember,
-    list: (principal) => issuer.listConnectedApps(identity(principal)),
+    list: async (principal) => {
+      const owner = identity(principal);
+      const grants = await issuer.listConnectedApps(owner);
+      return grants.map((metadata) => ({ ...metadata, workspace: owner.tenant }));
+    },
     revoke: (principal, grantId) => issuer.revokeConnectedApp(identity(principal), grantId),
   };
 }
@@ -68,11 +84,7 @@ const authorize = async ({
   host: ConnectedAppsHost;
 }) => {
   const allowed =
-    principal.method === 'jwt' &&
-    principal.subject !== undefined &&
-    principal.workspace?.actorKind === 'user' &&
-    principal.workspace.capabilities.includes('workspace:use') &&
-    (await host.currentMember(principal));
+    interactiveIdentity(principal) !== undefined && (await host.currentMember(principal));
   return allowed
     ? { allowed: true as const }
     : { allowed: false as const, classification: 'forbidden' as const, reason: 'Forbidden' };

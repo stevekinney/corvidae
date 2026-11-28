@@ -6,83 +6,91 @@ import {
 import { expect, test } from 'bun:test';
 import { connectedAppsOperations, createConnectedAppsHandler } from './backchannel.ts';
 
-test('limits personal management to a current session and applies the write guard', async () => {
-  const actor = {
-    ...principalFromJwtClaims({ sub: 'member' }),
-    workspace: {
-      version: 1 as const,
-      workspaceId: 'workspace',
-      actorId: 'member',
-      actorKind: 'user' as const,
-      owner: 'owner',
-      membershipRevision: '1',
-      capabilities: ['workspace:use' as const],
-    },
-  };
-  let signedIn = true;
-  let revoked = false;
-  const handler = createConnectedAppsHandler({
-    publicOrigin: 'https://app.test',
-    authenticateSession: async () =>
-      signedIn
-        ? { method: 'jwt', principal: actor }
-        : { method: 'anonymous', principal: anonymousPrincipal() },
-    guardWrite: async (request) => request.headers.get('x-csrf') === 'valid',
-    host: {
-      currentMember: async () => true,
-      list: async (principal) => {
-        expect(principal).toEqual(actor);
-        return [];
+test.each(['jwt', 'browser-session'] as const)(
+  'limits personal management to a current %s session and applies the write guard',
+  async (method) => {
+    const actor = {
+      ...principalFromJwtClaims({ sub: 'member' }),
+      method,
+      workspace: {
+        version: 1 as const,
+        workspaceId: 'workspace',
+        actorId: 'member',
+        actorKind: 'user' as const,
+        owner: 'owner',
+        membershipRevision: '1',
+        capabilities: ['workspace:use' as const],
       },
-      revoke: async (principal, grantId) => {
-        expect(principal).toEqual(actor);
-        if (grantId !== 'owned') return false;
-        revoked = true;
-        return true;
-      },
-    },
-  });
-  const call = async (method: string, params: object, csrf = 'valid') => {
-    const response = await handler(
-      new Request('https://app.test/connected-apps/jsonrpc', {
-        method: 'POST',
-        headers: { origin: 'https://app.test', 'x-csrf': csrf, 'content-type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-      }),
-    );
-    expect(response.headers.get('cache-control')).toBe('private, no-store');
-    return {
-      response,
-      body: response.headers.get('content-type')?.includes('json')
-        ? ((await response.json()) as { result?: unknown; error?: unknown })
-        : undefined,
     };
-  };
-  expect(connectedAppsOperations.every((operation) => !operation.mcpExposable)).toBe(true);
-  const listing = await call('connected.apps.list', {});
-  expect(listing.body?.result).toEqual({
-    grants: [],
-    canList: true,
-    canRevoke: true,
-  });
-  const denied = await call('connected.apps.revoke', { grantId: 'owned' }, 'invalid');
-  expect(denied.response.status).toBe(403);
-  expect(revoked).toBe(false);
-  const missing = await call('connected.apps.revoke', { grantId: 'missing' });
-  const foreign = await call('connected.apps.revoke', { grantId: 'foreign' });
-  expect(missing.response.status).toBe(foreign.response.status);
-  expect(missing.body?.error).toEqual(foreign.body?.error);
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const result = await call('connected.apps.revoke', { grantId: 'owned' });
-    expect(result.body?.result).toEqual({
-      grantId: 'owned',
-      status: 'revoked',
+    let signedIn = true;
+    let revoked = false;
+    const handler = createConnectedAppsHandler({
+      publicOrigin: 'https://app.test',
+      authenticateSession: async () =>
+        signedIn
+          ? { method, principal: actor }
+          : { method: 'anonymous', principal: anonymousPrincipal() },
+      guardWrite: async (request) => request.headers.get('x-csrf') === 'valid',
+      host: {
+        currentMember: async () => true,
+        list: async (principal) => {
+          expect(principal).toEqual(actor);
+          return [];
+        },
+        revoke: async (principal, grantId) => {
+          expect(principal).toEqual(actor);
+          if (grantId !== 'owned') return false;
+          revoked = true;
+          return true;
+        },
+      },
     });
-  }
-  signedIn = false;
-  const anonymous = await call('connected.apps.list', {});
-  expect(anonymous.body?.error).toBeDefined();
-});
+    const call = async (method: string, params: object, csrf = 'valid') => {
+      const response = await handler(
+        new Request('https://app.test/connected-apps/jsonrpc', {
+          method: 'POST',
+          headers: {
+            origin: 'https://app.test',
+            'x-csrf': csrf,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+        }),
+      );
+      expect(response.headers.get('cache-control')).toBe('private, no-store');
+      return {
+        response,
+        body: response.headers.get('content-type')?.includes('json')
+          ? ((await response.json()) as { result?: unknown; error?: unknown })
+          : undefined,
+      };
+    };
+    expect(connectedAppsOperations.every((operation) => !operation.mcpExposable)).toBe(true);
+    const listing = await call('connected.apps.list', {});
+    expect(listing.body?.result).toEqual({
+      grants: [],
+      canList: true,
+      canRevoke: true,
+    });
+    const denied = await call('connected.apps.revoke', { grantId: 'owned' }, 'invalid');
+    expect(denied.response.status).toBe(403);
+    expect(revoked).toBe(false);
+    const missing = await call('connected.apps.revoke', { grantId: 'missing' });
+    const foreign = await call('connected.apps.revoke', { grantId: 'foreign' });
+    expect(missing.response.status).toBe(foreign.response.status);
+    expect(missing.body?.error).toEqual(foreign.body?.error);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await call('connected.apps.revoke', { grantId: 'owned' });
+      expect(result.body?.result).toEqual({
+        grantId: 'owned',
+        status: 'revoked',
+      });
+    }
+    signedIn = false;
+    const anonymous = await call('connected.apps.list', {});
+    expect(anonymous.body?.error).toBeDefined();
+  },
+);
 
 test('external management capabilities receive the current actor and can be absent', async () => {
   const actor = {

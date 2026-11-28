@@ -58,7 +58,11 @@ describe('the comparisons of a presented secret', () => {
   test.each(PRESENTED)('the A2A key admits %j: %p', async (presented, admitted) => {
     expect(
       await admits(
-        createA2aAuthentication(KEY, () => undefined),
+        createA2aAuthentication(
+          async (presented) =>
+            sameSecret(presented, KEY) ? { subject: 'a2a', workspaceId: 'test', scopes: [] } : null,
+          () => undefined,
+        ),
         presented,
       ),
     ).toBe(admitted);
@@ -86,7 +90,10 @@ describe('the comparisons of a presented secret', () => {
 
   test('the A2A refusal reaches the warning without the presented key', async () => {
     const warnings: string[] = [];
-    const authentication = createA2aAuthentication(KEY, (message) => warnings.push(message));
+    const authentication = createA2aAuthentication(
+      async () => null,
+      (message) => warnings.push(message),
+    );
     authentication.auditSink?.({
       outcome: 'failure',
       httpMethod: 'POST',

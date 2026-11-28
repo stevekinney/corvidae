@@ -6,9 +6,21 @@ export const SETTINGS_SECTION_COPY = {
   modelPolicy: 'Allowed models',
   a2a: 'A2A',
   mcp: 'MCP',
+  apiKeys: 'API keys',
+  connectedApps: 'Connected apps',
   plugins: 'Plugins',
   dataAndRetention: 'Data and retention',
   apiReference: 'API reference',
+} as const;
+
+/** The API key Settings page and its private access states. */
+export const API_KEY_SETTINGS_COPY = {
+  intro: 'Issue, rotate, and revoke keys for services that connect to this workspace.',
+  loading: 'Checking API key access',
+  unavailable: 'Couldn’t check API key access',
+  unavailableDescription: 'Try checking access again.',
+  denied: 'You can’t manage API keys',
+  deniedDescription: 'Sign in as a workspace administrator or open Settings from the local host.',
 } as const;
 
 /**
@@ -520,4 +532,14 @@ export const STORAGE_COPY = {
     popoverLabel: 'What the storage can do',
     popoverHint: 'Storage details',
   },
+} as const;
+
+export const CONNECTED_APPS_SETTINGS_COPY = {
+  intro: 'Apps you’ve authorized to act on your behalf in this workspace.',
+  disabled: 'Connector sign-in is disabled',
+  disabledDescription:
+    'This host cannot authorize apps. Sign in to a workspace with connector sign-in enabled to manage your connections.',
+  unavailable: 'Couldn’t check Connected apps',
+  unavailableDescription: 'Try checking your access again.',
+  loading: 'Checking Connected apps access',
 } as const;

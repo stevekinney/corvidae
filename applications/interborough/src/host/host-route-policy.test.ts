@@ -126,6 +126,12 @@ test('fully composed host captures its routes and its engine discovery catalog',
     const keys = host.routeInventory.map((entry) => entry.key);
     expect(new Set(keys).size).toBe(keys.length);
     expect(keys).toContain('GET /host/providers');
+    expect(host.routeInventory).toContainEqual(
+      expect.objectContaining({
+        key: 'GET /host/api-keys/access',
+        resourceClass: 'private-owned',
+      }),
+    );
     expect(
       host.routeInventory
         .filter((entry) => entry.admission !== undefined)
@@ -138,6 +144,11 @@ test('fully composed host captures its routes and its engine discovery catalog',
       {
         key: 'GET /host/oauth/callback/:id',
         admission: 'durable-oauth-callback',
+        resourceClass: 'administrator-shared',
+      },
+      {
+        key: 'POST /host/api-keys/jsonrpc',
+        admission: 'interactive-key-management',
         resourceClass: 'administrator-shared',
       },
       {

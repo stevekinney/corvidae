@@ -16,9 +16,11 @@
 
   .cinder-calendar__nav {
     appearance: none;
-    border: 1px solid var(--cinder-border);
+    --_calendar-face-border: var(--cinder-border);
+    --_calendar-face-background: var(--cinder-surface-raised);
+    border: 1px solid var(--_calendar-face-border);
     border-radius: var(--cinder-radius-sm);
-    background: var(--cinder-surface-raised);
+    background: var(--_calendar-face-background);
     color: var(--cinder-text-default);
     inline-size: 2rem;
     block-size: 2rem;
@@ -61,9 +63,10 @@
 
   .cinder-calendar__day {
     appearance: none;
-    border: 1px solid transparent;
+    border: 1px solid var(--_calendar-face-border, transparent);
     border-radius: var(--cinder-radius-sm);
-    background: transparent;
+    background: var(--_calendar-face-background, transparent);
+    box-shadow: var(--_calendar-face-shadow, none);
     color: var(--cinder-text-default);
     font-size: var(--cinder-text-sm);
     inline-size: 100%;
@@ -76,24 +79,24 @@
   }
 
   .cinder-calendar__day[data-selected] {
-    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 84%);
-    border-color: var(--cinder-accent-solid);
+    --_calendar-face-background: color-mix(in oklch, var(--cinder-accent-solid), transparent 84%);
+    --_calendar-face-border: var(--cinder-accent-solid);
     color: var(--cinder-accent-text);
   }
 
   .cinder-calendar__day[data-in-range],
   .cinder-calendar__day[data-range-preview] {
-    background: var(--cinder-accent-background);
+    --_calendar-face-background: var(--cinder-accent-background);
   }
 
   .cinder-calendar__day[data-range-start],
   .cinder-calendar__day[data-range-end] {
-    background: var(--cinder-accent-solid);
+    --_calendar-face-background: var(--cinder-accent-solid);
     color: var(--cinder-accent-contrast);
   }
 
   .cinder-calendar__day[data-focused] {
-    box-shadow: inset 0 0 0 1px var(--cinder-ring-color);
+    --_calendar-face-shadow: inset 0 0 0 1px var(--cinder-ring-color);
   }
 
   .cinder-calendar__day[aria-disabled='true'] {
@@ -105,14 +108,71 @@
     outline: var(--cinder-ring-width) solid transparent;
     /* Ring replaces the border while focused rather than stacking on it — the two
        together read as one heavier shape than either was designed to be. */
-    border-color: transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
+    --_calendar-face-border: transparent;
+    --_calendar-face-shadow: var(--_cinder-focus-ring-shadow);
   }
 
   /* Range ends are solid accent fills: gap, then ring (COR-1498). */
   .cinder-calendar__day[data-range-start]:focus-visible,
   .cinder-calendar__day[data-range-end]:focus-visible {
-    box-shadow: var(--_cinder-focus-ring-filled-shadow);
+    --_calendar-face-shadow: var(--_cinder-focus-ring-filled-shadow);
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-calendar {
+      inline-size: max(min(20rem, 100%), calc(7 * var(--cinder-touch-target-min)));
+      justify-self: center;
+    }
+
+    .cinder-calendar__weekdays,
+    .cinder-calendar__grid-row {
+      column-gap: 0;
+    }
+
+    .cinder-calendar__header {
+      block-size: 2rem;
+    }
+
+    .cinder-calendar__grid {
+      /* Adjacent 44px targets already provide the minimum non-overlapping row pitch. */
+      row-gap: 0;
+    }
+
+    .cinder-calendar__nav {
+      inline-size: var(--cinder-touch-target-min);
+    }
+
+    .cinder-calendar__nav,
+    .cinder-calendar__day {
+      position: relative;
+      isolation: isolate;
+      block-size: var(--cinder-touch-target-min);
+      border-color: transparent;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+
+    /* Draw the face inside the full hit box so adjacent dates remain independently tappable. */
+    .cinder-calendar__nav::before,
+    .cinder-calendar__day::before {
+      content: '';
+      box-sizing: border-box;
+      position: absolute;
+      z-index: -1;
+      inset: 0;
+      margin: auto;
+      block-size: 2rem;
+      border: 1px solid var(--_calendar-face-border, transparent);
+      border-radius: var(--cinder-radius-sm);
+      background: var(--_calendar-face-background, transparent);
+      box-shadow: var(--_calendar-face-shadow, none);
+      pointer-events: none;
+    }
+
+    .cinder-calendar__nav::before {
+      inline-size: 2rem;
+    }
   }
 
   @media (forced-colors: active) {
@@ -127,7 +187,7 @@
     .cinder-calendar__day:focus-visible {
       outline: var(--cinder-ring-width) solid ButtonText;
       outline-offset: 1px;
-      box-shadow: none;
+      --_calendar-face-shadow: none;
     }
   }
 }

@@ -67,6 +67,8 @@ export function showcaseAddresses(world: SampleWorldRecords): Readonly<Record<st
     '/settings/mcp': '/settings/mcp',
     '/settings/plugins': '/settings/plugins',
     '/settings/data-and-retention': '/settings/data-and-retention',
+    '/settings/api-keys': '/settings/api-keys',
+    '/settings/connected-apps': '/settings/connected-apps',
     '/settings/api-reference': '/settings/api-reference',
     // The showcase host loads no plugin that places a page, so the address is one nobody serves.
     '/plugins/:plugin/*': '/plugins/nobody/overview',

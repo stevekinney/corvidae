@@ -15,8 +15,23 @@
   /** Whether the column fits beside the content: 640px and wider. */
   const wide = new MediaQuery('(min-width: 40rem)', true);
 
+  let { documentPath }: { documentPath?: string | undefined } = $props();
+
+  function documentRoute(path: string): boolean {
+    return (
+      documentPath !== undefined ||
+      ['/settings/api-keys', '/settings/connected-apps'].includes(path)
+    );
+  }
+
+  function select(path: string): void {
+    if (documentRoute(path)) window.location.assign(path);
+    else router.navigate(path);
+  }
+
+  const pathname = $derived(documentPath ?? router.pathname);
   const current = $derived(
-    SETTINGS_SECTIONS.find((section) => section.path === router.pathname)?.path ??
+    SETTINGS_SECTIONS.find((section) => section.path === pathname)?.path ??
       SETTINGS_SECTIONS[0]?.path ??
       '/settings',
   );
@@ -27,7 +42,9 @@
     {#each SETTINGS_SECTIONS as section (section.path)}
       <SideNavigation.Item
         href={router.href(section.path)}
-        active={router.pathname === section.path}>{section.label}</SideNavigation.Item
+        active={pathname === section.path}
+        data-velveteen-reload={documentRoute(section.path) ? '' : undefined}
+        >{section.label}</SideNavigation.Item
       >
     {/each}
   </SideNavigation>
@@ -38,7 +55,7 @@
       label={SETTINGS_COPY.sectionSelect}
       value={current}
       options={SETTINGS_SECTIONS.map((section) => ({ value: section.path, label: section.label }))}
-      onchange={(event) => router.navigate(event.currentTarget.value)}
+      onchange={(event) => select(event.currentTarget.value)}
     />
   </div>
 {/if}

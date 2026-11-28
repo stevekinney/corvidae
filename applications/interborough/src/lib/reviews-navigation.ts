@@ -14,7 +14,7 @@ function resolveReviewsDestination(path: string, address: string): URL {
   return target;
 }
 
-/** Supply request-local navigation to the independently hosted Reviews document. */
+/** Supply request-local shell navigation to a native document. */
 export function provideReviewsNavigation(address: string): void {
   const url = new URL(address);
   const match = matchRoute(url.pathname);
@@ -34,7 +34,7 @@ export function provideReviewsNavigation(address: string): void {
     href: (path) => path,
     navigate: (path, options) => {
       const target = resolveReviewsDestination(path, window.location.href);
-      if (target.pathname === '/reviews') {
+      if (url.pathname === '/reviews' && target.pathname === '/reviews') {
         router.navigate(path, { ...options, keep: true });
       } else {
         window.location.assign(target.href);
@@ -44,7 +44,7 @@ export function provideReviewsNavigation(address: string): void {
   setContext(key, navigation);
 }
 
-/** Use the document-local navigation if present, otherwise the legacy application router. */
+/** Use the document-local navigation if present, otherwise the application navigation. */
 export function reviewsNavigation(): Navigation {
   return hasContext(key) ? getContext<Navigation>(key) : router;
 }

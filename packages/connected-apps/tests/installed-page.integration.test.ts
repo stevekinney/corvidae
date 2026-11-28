@@ -41,10 +41,12 @@ test('installed public entries support personal connected app management', async
   const outputs = new Map(build.outputs.map((output) => [basename(output.path), output]));
   const javascript = build.outputs.find((output) => output.kind === 'entry-point')!;
   let present = true;
+  let duplicateName = true;
   let fail = false;
   let reads = 0;
   let writes = 0;
   let externalOnly = false;
+  let heldRevoke: PromiseWithResolvers<void> | undefined;
   let handler: ReturnType<typeof installed.createConnectedAppsHandler>;
   let externalHandler: ReturnType<typeof installed.createConnectedAppsHandler>;
   const server = Bun.serve({
@@ -56,7 +58,7 @@ test('installed public entries support personal connected app management', async
         return externalOnly ? externalHandler(request) : handler(request);
       if (url.pathname === '/')
         return new Response(
-          `<!doctype html><html><head>${build.outputs
+          `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">${build.outputs
             .filter((output) => output.path.endsWith('.css'))
             .map((output) => `<link rel="stylesheet" href="/${basename(output.path)}">`)
             .join(
@@ -91,24 +93,26 @@ test('installed public entries support personal connected app management', async
       currentMember: async () => true,
       list: async (actor) => {
         reads++;
-        return actor.method !== 'unauthenticated' && actor.workspace?.workspaceId === 'A' && present
-          ? [
-              {
-                grantId: 'grant',
-                clientId: 'client',
-                clientName: 'Claude',
-                resource: 'https://resource.test',
-                approvedAt: 1,
-                permissions: [
-                  { scope: 'read', description: 'Read assets', available: true },
-                  { scope: 'write', description: 'Change assets', available: false },
-                ],
-              },
-            ]
-          : [];
+        if (actor.method === 'unauthenticated' || actor.workspace?.workspaceId !== 'A' || !present)
+          return [];
+        const grant = {
+          grantId: 'grant',
+          clientId: 'client',
+          clientName: 'Claude',
+          resource: 'https://resource.test',
+          approvedAt: 1,
+          permissions: [
+            { scope: 'read', description: 'Read assets', available: true },
+            { scope: 'write', description: 'Change assets', available: false },
+          ],
+        };
+        return duplicateName
+          ? [grant, { ...grant, grantId: 'separate-grant', clientId: 'separate-client' }]
+          : [grant];
       },
       revoke: async (_actor, id) => {
         writes++;
+        await heldRevoke?.promise;
         if (fail) throw new Error('Unavailable');
         if (id !== 'grant') return false;
         present = false;
@@ -127,20 +131,56 @@ test('installed public entries support personal connected app management', async
   });
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage();
+    const page = await browser.newPage({
+      viewport: { width: 375, height: 812 },
+      hasTouch: true,
+      isMobile: true,
+    });
     await page.goto(server.url.href);
-    await page.getByText('Claude', { exact: true }).waitFor();
-    expect(await page.getByText('https://resource.test').count()).toBe(1);
-    await page.getByText('Approved permissions').click();
-    expect(await page.getByText('Read assets', { exact: false }).count()).toBe(1);
-    expect(await page.getByText('currently unavailable', { exact: false }).count()).toBe(1);
-    await page
-      .getByRole('listitem')
-      .filter({ has: page.getByRole('heading', { name: 'Claude' }) })
-      .getByRole('button', { name: 'Disconnect' })
-      .click();
-    await page.getByRole('button', { name: 'Cancel' }).click();
+    await page.getByRole('heading', { name: 'Claude', exact: true }).first().waitFor();
+    const original = page.getByRole('listitem').filter({
+      has: page.getByText('Grant reference grant', { exact: true }),
+    });
+    const duplicate = page.getByRole('listitem').filter({
+      has: page.getByText('Grant reference separate-grant', { exact: true }),
+    });
+    expect(await original.getByText('Grant reference grant', { exact: true }).isVisible()).toBe(
+      true,
+    );
+    expect(
+      await duplicate.getByText('Grant reference separate-grant', { exact: true }).isVisible(),
+    ).toBe(true);
+    const disclosure = original.getByText('Connection details', { exact: true });
+    const reachesTouchTarget = await disclosure.evaluate((label) => {
+      const trigger = label.closest('button, summary');
+      if (!trigger) return false;
+      const bounds = trigger.getBoundingClientRect();
+      const x = bounds.left + bounds.width / 2;
+      const y = bounds.top + bounds.height / 2;
+      return [-21.5, 21.5].every((offset) =>
+        trigger.contains(document.elementFromPoint(x, y + offset)),
+      );
+    });
+    expect(reachesTouchTarget).toBe(true);
+    await disclosure.click();
+    expect(await original.getByText('https://resource.test').count()).toBe(1);
+    expect(
+      await original
+        .getByRole('region', { name: 'Connection details' })
+        .getByText('Read assets', { exact: false })
+        .count(),
+    ).toBe(1);
+    expect(await original.getByText('currently unavailable', { exact: false }).count()).toBe(1);
+    await original.getByRole('button', { name: 'Disconnect' }).click();
+    const confirmation = page.getByRole('dialog', { name: 'Disconnect Claude' });
+    expect(await confirmation.getByText('Grant reference grant', { exact: true }).count()).toBe(1);
+    await confirmation.getByRole('button', { name: 'Cancel' }).click();
     expect(writes).toBe(0);
+    duplicateName = false;
+    await page.getByRole('button', { name: 'Change account' }).click();
+    await page.getByText('You haven’t authorized any apps in this workspace.').waitFor();
+    await page.getByRole('button', { name: 'Change account' }).click();
+    await page.getByText('Claude', { exact: true }).waitFor();
     fail = true;
     const previousReads = reads;
     await page
@@ -153,7 +193,7 @@ test('installed public entries support personal connected app management', async
     expect(reads).toBeGreaterThan(previousReads);
     fail = false;
     await page.getByRole('button', { name: 'Change account' }).click();
-    await page.getByText('No connected apps.').waitFor();
+    await page.getByText('You haven’t authorized any apps in this workspace.').waitFor();
     expect(await page.getByText('Claude', { exact: true }).count()).toBe(0);
     await page.getByRole('button', { name: 'Change account' }).click();
     await page.getByText('Claude', { exact: true }).waitFor();
@@ -162,15 +202,27 @@ test('installed public entries support personal connected app management', async
       .filter({ has: page.getByRole('heading', { name: 'Claude' }) })
       .getByRole('button', { name: 'Disconnect' })
       .click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Disconnect' }).click();
+    heldRevoke = Promise.withResolvers<void>();
+    await confirmation.getByRole('button', { name: 'Disconnect' }).click();
+    const row = page
+      .getByRole('listitem')
+      .filter({ has: page.getByRole('heading', { name: 'Claude' }) });
+    expect(await row.isVisible()).toBe(true);
+    expect(await row.getByRole('button', { name: 'Disconnect' }).getAttribute('aria-busy')).toBe(
+      'true',
+    );
+    heldRevoke.resolve();
     await page.getByRole('status').getByText('App disconnected.').waitFor();
-    await page.getByText('No connected apps.').waitFor();
+    await page.getByText('You haven’t authorized any apps in this workspace.').waitFor();
     externalOnly = true;
     await page.reload();
     await page.getByRole('link', { name: 'Manage connected apps' }).waitFor();
     expect(await page.getByRole('button', { name: 'Disconnect' }).count()).toBe(0);
-    expect(await page.getByText('No connected apps.').count()).toBe(0);
+    expect(await page.getByText('You haven’t authorized any apps in this workspace.').count()).toBe(
+      0,
+    );
   } finally {
+    heldRevoke?.resolve();
     await browser.close();
     server.stop(true);
   }

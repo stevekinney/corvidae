@@ -17,6 +17,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { path: '/settings/allowed-models', label: SETTINGS_SECTION_COPY.modelPolicy },
   { path: '/settings/a2a', label: SETTINGS_SECTION_COPY.a2a },
   { path: '/settings/mcp', label: SETTINGS_SECTION_COPY.mcp },
+  { path: '/settings/api-keys', label: SETTINGS_SECTION_COPY.apiKeys },
+  { path: '/settings/connected-apps', label: SETTINGS_SECTION_COPY.connectedApps },
   { path: '/settings/plugins', label: SETTINGS_SECTION_COPY.plugins },
   { path: '/settings/data-and-retention', label: SETTINGS_SECTION_COPY.dataAndRetention },
   { path: '/settings/api-reference', label: SETTINGS_SECTION_COPY.apiReference },
