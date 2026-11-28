@@ -170,6 +170,14 @@ async function registerGlobalCleanup(): Promise<void> {
 
 await registerGlobalCleanup();
 
+// TanStack Query keeps a query that lost its last observer for five minutes, on a timer that holds
+// it and its data. No test run lasts that long, so every query stayed alive to the end and each UI
+// shard grew to gigabytes until the CI runner was lost. Its timers are tracked from here on, and
+// what a test leaves is cleared after Testing Library's cleanup above has unmounted it.
+const { clearQueryTimers, trackQueryTimers } = await import('./query-timers.ts');
+trackQueryTimers();
+afterEach(clearQueryTimers);
+
 // Testing Library's asynchronous utilities wait up to the hang guard, not one second.
 await configureAsyncUtilityDeadline();
 
