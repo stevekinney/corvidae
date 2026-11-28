@@ -627,6 +627,11 @@ test.describe('the chat list at other widths', () => {
     expect(placed.branch.x + placed.branch.width).toBeLessThanOrEqual(
       placed.bubble.x + placed.bubble.width + 0.5,
     );
+    // The input column is as wide as its words, so "$42.00, delivered Mon" is not cut to
+    // "$42.00, delive…" beside an input that holds "4471" in a 120px slot (COR-2725).
+    const result = page.locator('.cinder-tool-call-rail__result', { hasText: '$42.00' }).first();
+    await expect(result).toBeVisible();
+    expect(await result.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'list beside the chat',

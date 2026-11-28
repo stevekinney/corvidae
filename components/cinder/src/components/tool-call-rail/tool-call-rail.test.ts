@@ -253,6 +253,14 @@ describe('ToolCallRail rows', () => {
     expect(row.tagName).toBe('DIV');
   });
 
+  test('the input column is as wide as its content, up to its cap, so the result keeps the rest', () => {
+    // A fixed 7.25rem slot held "4471" and cut "$42.00, delivered Mon" to "$42.00, delive…".
+    const row = cssText.match(/\n {2}\.cinder-tool-call-rail__row \{[^}]*\}/)?.[0] ?? '';
+    expect(row.replace(/\s+/g, ' ')).toContain(
+      'var(--cinder-tool-call-rail-input-width, fit-content(7.25rem)) minmax(0, 1fr)',
+    );
+  });
+
   test('each status draws its own marker and words', () => {
     const calls: Call[] = [
       { id: 'run', name: 'A', input: '1', status: 'running', duration: '1.2s' },
