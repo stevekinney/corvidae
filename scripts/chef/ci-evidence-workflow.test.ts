@@ -230,7 +230,6 @@ describe('createCiEvidenceWorkflowReceipt', () => {
       'interborough ui 4',
       'bureau',
       'weft',
-      'everything else',
     ];
     const jobs = ['junit-root', ...names.map((_, index) => `junit-tests-${index}`)];
     for (const job of jobs) {
@@ -361,7 +360,7 @@ describe('CI evidence workflow producers', () => {
 describe('validateJUnitArtifacts', () => {
   const expected = [
     'junit-root-2',
-    ...Array.from({ length: 12 }, (_, index) => `junit-tests-${index}-2`),
+    ...Array.from({ length: 11 }, (_, index) => `junit-tests-${index}-2`),
   ];
   const report = (body = '<testcase name="passes"/>') =>
     new TextEncoder().encode(`<testsuite>${body}</testsuite>`);
