@@ -237,13 +237,18 @@ export async function buildProductionGraph(
       chunk: "chunks/[name]-[hash].[ext]",
       asset: "assets/[name]-[hash].[ext]",
     },
-    sourcemap: "none",
+    sourcemap: options.mode === "development" ? "linked" : "none",
     env: "disable",
     define: {
       "process.env.NODE_ENV": JSON.stringify(options.mode ?? "production"),
     },
     publicPath: `${basePath}/_assets/`,
-    conditions: ["browser", "svelte", options.mode ?? "production"],
+    conditions: [
+      "browser",
+      "svelte",
+      options.mode ?? "production",
+      ...(options.browserConditions ?? []),
+    ],
     allowUnresolved: [],
     metafile: true,
     plugins: [

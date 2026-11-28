@@ -105,15 +105,6 @@
 
   const chosen = $derived(editor.chosenModel);
   const abilities = $derived(chosen?.row === undefined ? undefined : abilitiesOf(chosen.row));
-
-  /** Follows the link in the app's router, unless the click asks for a new tab. */
-  function openSettings(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(SETTINGS_MODELS_PATH);
-  }
 </script>
 
 <div class="weft-agent-model">
@@ -168,12 +159,12 @@
   {#if unconnected.length > 0}
     <p class="weft-agent-model__hint" data-testid="agent-model-unconnected">
       {copy.unconnectedLead(unconnected)}
-      <a href={router.href(SETTINGS_MODELS_PATH)} onclick={openSettings}>{copy.settingsLink}</a>.
+      <a href={router.href(SETTINGS_MODELS_PATH)}>{copy.settingsLink}</a>.
     </p>
   {:else}
     <p class="weft-agent-model__hint" data-testid="agent-model-not-listed">
       {newCopy.notListed}
-      <a href={router.href(SETTINGS_MODELS_PATH)} onclick={openSettings}>{copy.settingsLink}</a>
+      <a href={router.href(SETTINGS_MODELS_PATH)}>{copy.settingsLink}</a>
     </p>
   {/if}
 </div>

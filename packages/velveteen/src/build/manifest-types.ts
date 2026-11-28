@@ -51,6 +51,7 @@ export type ProductionGraphOptions = {
   basePath?: string;
   transportModule?: string;
   browserPlugins?: readonly Bun.BunPlugin[];
+  browserConditions?: readonly string[];
 };
 export type ProductionGraphResult = {
   manifest: ProductionManifest;

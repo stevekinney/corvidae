@@ -122,14 +122,6 @@
   const connect = CHAT_COPY.readiness['needs-provider'];
   const connectPath = CHAT_READINESS_PATHS['needs-provider'];
 
-  /** Opens the page that connects a provider inside the application, unless a new tab was asked for. */
-  function goToProviders(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(connectPath);
-  }
   const paragraphs = $derived((written?.text ?? '').split(/\n{2,}/).filter((part) => part !== ''));
   const writtenCost = $derived(formatCost(written?.costUsd));
 
@@ -218,12 +210,7 @@
             <Plug />
           {/snippet}
           {#snippet secondaryAction()}
-            <Button
-              variant="secondary"
-              href={router.href(connectPath)}
-              label={connect.action}
-              onclick={goToProviders}
-            />
+            <Button variant="secondary" href={router.href(connectPath)} label={connect.action} />
           {/snippet}
         </ErrorState>
       {:else}

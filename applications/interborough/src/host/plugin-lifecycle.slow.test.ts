@@ -36,7 +36,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { BUILD_INFO_FILE, readSourceInfo } from './build-info.ts';
+import { buildTestDocuments } from './build-info.test-support.ts';
+import { readSourceInfo } from './build-info.ts';
 import { HOST_RESTART_ROUTE } from './restart.ts';
 
 const packageDirectory = join(import.meta.dir, '..', '..');
@@ -348,11 +349,7 @@ async function scaffoldPlugin(home: string, marker: string): Promise<void> {
 const home = await scratch('interborough-plugin-lifecycle-');
 await initializeWorkspaceHome(home);
 const buildDirectory = join(await scratch('interborough-plugin-lifecycle-build-'), 'build');
-await Bun.write(join(buildDirectory, 'index.html'), '<!doctype html><title>Interborough</title>');
-await Bun.write(
-  join(buildDirectory, BUILD_INFO_FILE),
-  JSON.stringify(readSourceInfo(packageDirectory)),
-);
+await buildTestDocuments(buildDirectory, readSourceInfo(packageDirectory));
 const marker = join(home, 'tool-ran.txt');
 await scaffoldPlugin(home, marker);
 

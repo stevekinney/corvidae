@@ -1,13 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { rejectionOf } from '@lostgradient/testing';
 
-import { BUILD_INFO_FILE, type GitRunner } from '../src/host/build-info.ts';
+import { stubBrowserPublication } from '../src/host/build-info.test-support.ts';
+import { type GitRunner } from '../src/host/build-info.ts';
 import {
   buildThenStart,
   guideText,
@@ -64,8 +65,7 @@ describe('staleBuildRefusal', () => {
 
   function build(commit: string): string {
     const directory = mkdtempSync(join(tmpdir(), 'smoke-stale-'));
-    writeFileSync(join(directory, 'index.html'), 'page');
-    writeFileSync(join(directory, BUILD_INFO_FILE), JSON.stringify({ commit, changes: '' }));
+    stubBrowserPublication(directory, { commit, changes: '' });
     return directory;
   }
 

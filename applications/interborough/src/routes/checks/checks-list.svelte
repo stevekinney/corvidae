@@ -51,7 +51,6 @@
   import { combinePages } from '../../lib/combine-pages.ts';
   import { faultErrorStateAdvice } from '../../lib/faults.ts';
   import { createBureauClient } from '../../lib/bureau-api.ts';
-  import { followLinks } from '../../lib/follow-links.ts';
   import { viewerTimeZone } from '../../lib/format/clock.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -246,14 +245,6 @@
     router.navigate(CHECKS_PATH, { replace: true });
   }
 
-  function open(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
-
   async function loadMore(): Promise<void> {
     // The failure is the footer's: it keeps every row and offers Try again.
     await results.fetchNextPage({ throwOnError: true });
@@ -300,7 +291,6 @@
           <Button
             variant="secondary"
             href={router.href(TASK_COPY.list.loadFailed.healthPath)}
-            onclick={(event) => open(event, TASK_COPY.list.loadFailed.healthPath)}
             label={TASK_COPY.list.loadFailed.checkHealth}
           />
         {/snippet}
@@ -324,7 +314,6 @@
         create={{
           label: CHECKS_COPY.empty.action,
           href: router.href(CHECKS_COPY.empty.path),
-          onclick: (event) => open(event, CHECKS_COPY.empty.path),
         }}
       />
     {:else}
@@ -340,7 +329,7 @@
           onClearFilters={clearFilters}
         />
       {:else}
-        <div class="ib-checks__list" {@attach followLinks}>
+        <div class="ib-checks__list">
           <DataList
             items={rows}
             key={checkKey}

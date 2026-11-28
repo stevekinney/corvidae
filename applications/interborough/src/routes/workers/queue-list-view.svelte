@@ -23,14 +23,6 @@
   function detailHref(queueName: string): string {
     return router.href(`/health/workers?tab=queues&queue=${encodeURIComponent(queueName)}`);
   }
-
-  function onQueueLinkClick(event: MouseEvent, queueName: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(`/health/workers?tab=queues&queue=${encodeURIComponent(queueName)}`);
-  }
 </script>
 
 {#if queues.length === 0}
@@ -62,11 +54,7 @@
       {#each queues as queue (queue.queue)}
         <Table.Row>
           <Table.Cell>
-            <a
-              class="weft-workers-mono weft-workers-id-link"
-              href={detailHref(queue.queue)}
-              onclick={(event) => onQueueLinkClick(event, queue.queue)}
-            >
+            <a class="weft-workers-mono weft-workers-id-link" href={detailHref(queue.queue)}>
               {queue.queue}
             </a>
           </Table.Cell>

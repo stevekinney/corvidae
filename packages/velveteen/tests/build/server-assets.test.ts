@@ -32,7 +32,7 @@ test("D03: server asset URLs correspond to browser file-loader artifacts", async
     );
     await Bun.write(
       join(source, "browser.ts"),
-      'import "./styles.css"; import first from "./first.svg" with {type:"file"}; import second from "./second.svg" with {type:"file"}; import third from "./third.svg" with {type:"file"}; import document from "./document.pdf" with {type:"file"}; export {first, second, third, document};',
+      'import "./styles.css"; import first from "./first.svg" with {type:"file"}; import second from "./second.svg" with {type:"file"}; import third from "./third.svg" with {type:"file"}; import document from "./document.pdf" with {type:"file"}; import generated from "virtual:generated.bin"; export {first, second, third, document, generated};',
     );
     await Bun.write(
       join(source, "server.ts"),
@@ -46,6 +46,21 @@ test("D03: server asset URLs correspond to browser file-loader artifacts", async
       naming: { entry: "[name]-[hash].[ext]", asset: "[name]-[hash].[ext]" },
       loader: { ".svg": "file" },
       metafile: true,
+      plugins: [
+        {
+          name: "browser-only generated file",
+          setup(build) {
+            build.onResolve({ filter: /^virtual:/u }, () => ({
+              path: "generated.bin",
+              namespace: "fixture-asset",
+            }));
+            build.onLoad({ filter: /./u, namespace: "fixture-asset" }, () => ({
+              contents: "browser-only asset",
+              loader: "file",
+            }));
+          },
+        },
+      ],
     });
     expect(browserBuild.success).toBe(true);
     if (!browserBuild.success) throw new Error("browser asset build failed");
@@ -75,6 +90,7 @@ test("D03: server asset URLs correspond to browser file-loader artifacts", async
     expect(serverOutput).toBeDefined();
     const browserValues = await import(browserOutput!.path);
     const serverValues = await import(serverOutput!.path);
+    expect(browserValues.generated).toMatch(/^\/app\/_assets\/generated-/);
     expect(serverValues.first).toBe(browserValues.first);
     expect(serverValues.second).toBe(browserValues.second);
     expect(serverValues.third).toBe(browserValues.third);

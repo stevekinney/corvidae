@@ -72,14 +72,6 @@
       (definitions.data ?? []).filter((agent) => agent.source === 'code').map((agent) => agent.id),
     ),
   );
-
-  function addToAgent(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(copy.addToAgent.href);
-  }
 </script>
 
 <article class="ib-capability" data-testid="tool-detail" data-tool={tool.name} data-tier={tier}>
@@ -95,7 +87,6 @@
           href={router.href(copy.addToAgent.href)}
           variant="secondary"
           size="sm"
-          onclick={addToAgent}
           data-testid="tool-add-to-agent"
           label={copy.addToAgent.label}
         />

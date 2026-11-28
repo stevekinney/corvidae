@@ -3,6 +3,7 @@ import { writeFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { buildTestDocuments } from '../../src/host/build-info.test-support.ts';
 import { readSourceInfo } from '../../src/host/build-info.ts';
 import { startConnectHost } from './connect-host.ts';
 
@@ -16,11 +17,7 @@ const build = join(directory, `build-${mode}`);
 const home = join(directory, `home-${mode}`);
 await mkdir(build);
 await mkdir(home);
-await writeFile(join(build, 'index.html'), '<html></html>');
-await writeFile(
-  join(build, 'build-info.json'),
-  JSON.stringify(readSourceInfo(join(import.meta.dir, '../..'))),
-);
+await buildTestDocuments(build, readSourceInfo(join(import.meta.dir, '../..')));
 const listener = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } });
 const port = listener.port;
 if (mode !== 'collision') listener.stop(true);

@@ -1,7 +1,7 @@
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { AUTHORIZATION_SCOPES, MCP_LEGACY_PROTOCOL_VERSION } from '@lostgradient/weft';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -16,16 +16,6 @@ async function scratch(prefix: string): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), prefix));
   directories.push(directory);
   return directory;
-}
-
-/** A build directory holding the two kinds of file the host serves. */
-async function createBuild(): Promise<string> {
-  const build = await scratch('interborough-build-');
-  await mkdir(join(build, 'assets'));
-  await writeFile(join(build, 'index.html'), '<!doctype html><div id="app"></div>');
-  await writeFile(join(build, 'assets', 'main-abc12345.js'), 'export const loaded = true;');
-  await writeFile(join(build, 'secret.txt'), 'outside the assets directory');
-  return build;
 }
 
 async function start(buildDirectory?: string): Promise<Host> {
@@ -54,11 +44,6 @@ type Principal = {
   workspace?: { readonly memorySharing?: boolean };
 };
 
-async function statusOf(host: Host, path: string): Promise<number> {
-  const response = await fetch(new URL(path, host.url));
-  return response.status;
-}
-
 async function principalOver(host: Host, headers: HeadersInit = {}): Promise<Principal> {
   const response = await fetch(new URL('/api/v1/principal', host.url), { headers });
   expect(response.status).toBe(200);
@@ -68,7 +53,7 @@ async function principalOver(host: Host, headers: HeadersInit = {}): Promise<Pri
 describe('the host’s listener', () => {
   test('gives only candidate document requests to an opt-in application', async () => {
     const home = await scratch('interborough-candidate-home-');
-    const buildDirectory = await createBuild();
+    const buildDirectory = await scratch('interborough-empty-build-');
     const calls: string[] = [];
     let disposed = false;
     const host = await startHost({
@@ -519,68 +504,17 @@ describe('the relay to Weft’s server', () => {
   });
 });
 
-describe('the built application', () => {
-  test('serves index.html at every client route', async () => {
-    const host = await start(await createBuild());
-    // A plugin's page has a path of one segment or several (`/plugins/:plugin/*`).
-    for (const path of [
-      '/',
-      '/chats',
-      '/runs/abc',
-      '/reviews',
-      '/plugins/acme/overview',
-      '/plugins/acme/reviews/queue',
-    ]) {
-      const response = await fetch(new URL(path, host.url));
-      expect(response.status, path).toBe(200);
-      expect(response.headers.get('content-type'), path).toBe('text/html; charset=utf-8');
-      expect(await response.text(), path).toContain('<div id="app"></div>');
-    }
-  });
-
-  test('serves hashed assets and refuses a path that leaves the assets directory', async () => {
-    const host = await start(await createBuild());
-    const asset = await fetch(new URL('/assets/main-abc12345.js', host.url));
-    expect(asset.status).toBe(200);
-    expect(await asset.text()).toBe('export const loaded = true;');
-    expect(await statusOf(host, '/assets/missing.js')).toBe(404);
-    for (const path of ['/assets/%2e%2e/secret.txt', '/assets/..%2fsecret.txt']) {
-      expect(await statusOf(host, path), path).toBe(404);
-    }
-    expect(await statusOf(host, '/assets/%zz')).toBe(400);
-  });
-
-  test('says how to build when there is no build', async () => {
-    const empty = await scratch('interborough-empty-');
-    const host = await start(join(empty, 'build'));
-    const response = await fetch(new URL('/', host.url));
-    expect(response.status).toBe(503);
-    expect(await response.text()).toContain('bun run --filter=@lostgradient/interborough build');
-  });
-
-  test('serves the shell for an unknown address a browser navigates to, so the router can say so', async () => {
-    const host = await start(await createBuild());
-    for (const path of ['/nowhere/at/all', '/nonsense/route', '/chats/new/extra', '/gone.html']) {
-      const response = await fetch(new URL(path, host.url), { headers: { accept: 'text/html' } });
-      expect(response.status, path).toBe(200);
-      expect(response.headers.get('content-type'), path).toBe('text/html; charset=utf-8');
-      expect(await response.text(), path).toContain('<div id="app"></div>');
-    }
-  });
-
-  test('answers a miss that is not a page navigation with 404', async () => {
-    const host = await start(await createBuild());
-    // A script's fetch, an asset, and every prefix the engine, the Bureau, or the host owns.
-    expect(await statusOf(host, '/nowhere/at/all')).toBe(404);
-    expect(await statusOf(host, '/favicon.ico')).toBe(404);
-    for (const path of ['/assets/missing.js', '/bureau/missing', '/host/missing', '/api/missing']) {
-      const response = await fetch(new URL(path, host.url), { headers: { accept: 'text/html' } });
-      expect(response.status, path).toBe(404);
-    }
-    const post = await fetch(new URL('/nowhere/at/all', host.url), {
-      method: 'POST',
-      headers: { accept: 'text/html' },
-    });
-    expect(post.status).toBe(404);
-  });
+test('an API-only host keeps unknown documents and old asset URLs out of host dispatch', async () => {
+  const empty = await scratch('interborough-api-only-');
+  const host = await start(join(empty, 'build'));
+  for (const path of [
+    '/',
+    '/nowhere/at/all',
+    '/assets/missing.js',
+    '/_assets/missing.js',
+    '/host/missing',
+  ]) {
+    const response = await fetch(new URL(path, host.url), { headers: { accept: 'text/html' } });
+    expect(response.status, path).toBe(404);
+  }
 });

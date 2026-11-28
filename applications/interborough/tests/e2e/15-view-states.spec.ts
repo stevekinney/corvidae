@@ -957,11 +957,15 @@ for (const width of WIDTHS) {
   test(`an address no route names (/nonsense/route) shows the not-found page inside the shell at ${width} pixels, and passes axe`, async ({
     page,
     checkA11y,
+    pageErrors,
   }) => {
     await page.setViewportSize({ width, height: 900 });
-    // A document navigation: the host answers it with the shell, not a bare 404.
+    pageErrors.expect({
+      pattern: loggedFailedResponse(404, /\/nonsense\/route:0\)$/u),
+      reason: 'native document dispatch returns HTTP 404 with the Interborough view',
+    });
     const response = await page.goto('/nonsense/route');
-    expect(response?.status()).toBe(200);
+    expect(response?.status()).toBe(404);
 
     const frame = page.locator('[data-view="not-found"]');
     await expect(frame).toHaveAttribute('data-state', 'not-found');
@@ -1013,8 +1017,12 @@ for (const width of WIDTHS) {
     await checkA11y(`a run that does not exist at ${width}px`);
   });
 
-  test(`the not-found page keeps the sidebar at ${width} pixels`, async ({ page }) => {
+  test(`the not-found page keeps the sidebar at ${width} pixels`, async ({ page, pageErrors }) => {
     await page.setViewportSize({ width, height: 900 });
+    pageErrors.expect({
+      pattern: loggedFailedResponse(404, /\/nonsense\/route:0\)$/u),
+      reason: 'the test opens an unmatched document',
+    });
     await page.goto('/nonsense/route');
     await expect(page.locator('[data-view="not-found"]')).toHaveAttribute(
       'data-state',
@@ -1030,10 +1038,16 @@ for (const width of WIDTHS) {
   });
 }
 
-test('an address that is not valid percent-encoding shows the not-found page', async ({ page }) => {
-  // `%E0` cannot be decoded; the router used to throw while matching `/workflows/:workflow/runs`.
+test('an address that is not valid percent-encoding shows the not-found page', async ({
+  page,
+  pageErrors,
+}) => {
+  pageErrors.expect({
+    pattern: loggedFailedResponse(404, /\/workflows\/%E0\/nope:0\)$/u),
+    reason: 'the malformed path renders a native 404 document',
+  });
   const response = await page.goto('/workflows/%E0/nope');
-  expect(response?.status()).toBe(200);
+  expect(response?.status()).toBe(404);
   const frame = page.locator('[data-view="not-found"]');
   await expect(frame).toHaveAttribute('data-state', 'not-found');
   await expect(frame.getByRole('heading', { level: 1 })).toHaveText(NOT_FOUND_ROUTE_COPY.title);

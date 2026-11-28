@@ -87,14 +87,6 @@
   const deliveryLine = $derived(standing.state === 'delivery');
   /** Settings › Plugins, which opens the plugin its address selects. */
   const pluginSettings = routerSelectionLocationFor('/settings/plugins');
-
-  function openSettings(event: MouseEvent, plugin: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(pluginSettings.pathTo('plugin', plugin));
-  }
 </script>
 
 {#snippet theSwitch()}
@@ -203,10 +195,8 @@
         >
       {:else if standing.action?.kind === 'settings'}
         {@const plugin = standing.action.plugin}
-        <Link
-          underline="always"
-          href={router.href(pluginSettings.pathTo('plugin', plugin))}
-          onclick={(event) => openSettings(event, plugin)}>{standing.action.label}</Link
+        <Link underline="always" href={router.href(pluginSettings.pathTo('plugin', plugin))}
+          >{standing.action.label}</Link
         >
       {/if}
     {/if}

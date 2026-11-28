@@ -22,6 +22,7 @@ import { startHost } from '../host.ts';
 import { buildPanelPage } from '../panel-build.ts';
 import { PANEL_PREBUILT_DIRECTORY_VARIABLE, prebuiltPanelFile } from '../panel-mounts.ts';
 import { reviewedRefundContribution } from '../refund-operations.ts';
+import { loadDeploymentOptions } from '../serve.ts';
 import { createSyntheticIssuer } from './synthetic-issuer.test-support.ts';
 
 const privateRemotes = {
@@ -1011,5 +1012,40 @@ test('listener binds verified browser identities, revokes private access and res
     await host.close();
     provider.stop(true);
     await rm(home, { recursive: true, force: true });
+  }
+});
+
+test('loads only explicitly configured local deployment modules', async () => {
+  expect(await loadDeploymentOptions({})).toEqual({});
+  const scratchDirectory = await mkdtemp(join(tmpdir(), 'interborough-host-configuration-'));
+  try {
+    const module = join(scratchDirectory, 'configuration.mjs');
+    await Bun.write(
+      module,
+      `export default (factories) => {
+      if (!Object.isFrozen(factories)) throw new Error('Expected immutable factory table');
+      for (const name of ['oidc', 'reviewedToolOperations', 'createTool', 'createToolbox',
+        'approvalOnlyPolicy', 'validateApprovalBinding']) {
+        if (typeof factories[name] !== 'function') throw new Error('Missing factory ' + name);
+      }
+      return {};
+    }`,
+    );
+    expect(await loadDeploymentOptions({ INTERBOROUGH_HOST_CONFIGURATION: module })).toEqual({});
+    expect(
+      await loadDeploymentOptions({ INTERBOROUGH_HOST_CONFIGURATION: 'relative.mjs' }).catch(
+        (error: unknown) => error,
+      ),
+    ).toMatchObject({ message: expect.stringContaining('absolute local file') });
+
+    const disallowed = join(scratchDirectory, 'disallowed.mjs');
+    await Bun.write(disallowed, 'export default () => ({ port: 80 });');
+    expect(
+      await loadDeploymentOptions({ INTERBOROUGH_HOST_CONFIGURATION: disallowed }).catch(
+        (error: unknown) => error,
+      ),
+    ).toMatchObject({ message: expect.stringContaining('unsupported options') });
+  } finally {
+    await rm(scratchDirectory, { recursive: true, force: true });
   }
 });

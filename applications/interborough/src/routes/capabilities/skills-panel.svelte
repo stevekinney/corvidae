@@ -71,15 +71,6 @@
   const all = $derived(skills.data?.skills ?? []);
   const hasSources = $derived((skills.data?.sourceCount ?? 0) > 0);
   const shown = $derived(all.filter((skill) => matchesSkillFilter(skill, filter)));
-
-  /** Goes to the plugins page, unless the person asked for a new tab or window. */
-  function addPlugin(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(copy.skill.empty.action.href);
-  }
 </script>
 
 <div class="ib-capabilities__panel" data-testid="skills-panel">
@@ -109,7 +100,6 @@
       create={{
         label: copy.skill.empty.action.label,
         href: router.href(copy.skill.empty.action.href),
-        onclick: addPlugin,
         mutating: false,
       }}
       data-testid="skills-first-use"

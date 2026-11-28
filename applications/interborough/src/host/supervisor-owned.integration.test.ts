@@ -3,11 +3,12 @@ import { waitUntil } from '@lostgradient/testing/wait-until';
 import { workflow, type Engine, type WorkflowContext } from '@lostgradient/weft';
 import { afterAll, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { BUILD_INFO_FILE, readSourceInfo } from './build-info.ts';
+import { buildTestDocuments } from './build-info.test-support.ts';
+import { readSourceInfo } from './build-info.ts';
 import { startHost } from './host.ts';
 import { readInstanceRecord } from './instance-record.ts';
 import { publishSupervisorReadiness } from './supervisor-owned.test-support.ts';
@@ -33,10 +34,10 @@ test('remote supervisors do not share a local-home lease', () => {
 });
 
 const root = mkdtempSync(join(tmpdir(), 'interborough-owned-supervisor-'));
-mkdirSync(join(root, 'build'));
-writeFileSync(join(root, 'build', 'index.html'), '<!doctype html><title>fixture</title>');
+
 const initialized = await runWithHangGuard(['git', 'init', '-q', root]);
 if (initialized.exitCode !== 0) throw new Error('Could not initialize the disposable worktree.');
+await buildTestDocuments(join(root, 'build'), readSourceInfo(join(import.meta.dir, '..', '..')));
 const homeB = join(root, 'home-b');
 const hostB = await startHost({
   environment: { INTERBOROUGH_HOME: homeB },
@@ -113,10 +114,6 @@ try {
   const item = await engine.start('owned-sibling-check', null, { id: 'owned-sibling-item' });
   resultB = await item.result();
   writeFileSync(join(root, 'retained.log'), `${await output}\n${await errors}`);
-  writeFileSync(
-    join(root, 'build', BUILD_INFO_FILE),
-    JSON.stringify(readSourceInfo(join(import.meta.dir, '../..'))),
-  );
   const serving = spawnPipedWithHangGuard([
     process.execPath,
     join(import.meta.dir, 'supervisor-owned.test-support.ts'),

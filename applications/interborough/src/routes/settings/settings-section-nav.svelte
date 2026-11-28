@@ -15,14 +15,6 @@
   /** Whether the column fits beside the content: 640px and wider. */
   const wide = new MediaQuery('(min-width: 40rem)', true);
 
-  function open(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
-
   const current = $derived(
     SETTINGS_SECTIONS.find((section) => section.path === router.pathname)?.path ??
       SETTINGS_SECTIONS[0]?.path ??
@@ -35,9 +27,7 @@
     {#each SETTINGS_SECTIONS as section (section.path)}
       <SideNavigation.Item
         href={router.href(section.path)}
-        active={router.pathname === section.path}
-        onclick={(event: MouseEvent) => open(event, section.path)}
-        >{section.label}</SideNavigation.Item
+        active={router.pathname === section.path}>{section.label}</SideNavigation.Item
       >
     {/each}
   </SideNavigation>

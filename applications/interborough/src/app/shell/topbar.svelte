@@ -53,30 +53,6 @@
     const view = router.current.route?.view;
     return [{ label: view === undefined ? 'Interborough' : VIEW_COPY[view].label }];
   });
-
-  /** A link in the "…" menu of hidden ancestors opens its page without leaving the application. */
-  function onOverflowNavigate(item: { href?: string }, event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    if (item.href === undefined) return;
-    event.preventDefault();
-    router.navigate(item.href);
-  }
-
-  /** A breadcrumb link opens its page without leaving the application. */
-  function onTrailClick(event: MouseEvent): void {
-    // A link inside the entry's popover (a chat's agent) has already opened its page.
-    if (event.defaultPrevented) return;
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
-    const href = link?.getAttribute('href');
-    if (href === null || href === undefined) return;
-    event.preventDefault();
-    router.navigate(href);
-  }
 </script>
 
 <!-- A page below a top-level one has a parent, which the trail offers as a back link on a phone
@@ -97,14 +73,8 @@
     </Button>
   {/if}
 
-  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-  <div class="weft-shell-topbar__trail" onclick={onTrailClick}>
-    <Breadcrumbs
-      items={trail}
-      label={NAVIGATION_COPY.breadcrumb}
-      separator="›"
-      {onOverflowNavigate}
-    />
+  <div class="weft-shell-topbar__trail">
+    <Breadcrumbs items={trail} label={NAVIGATION_COPY.breadcrumb} separator="›" />
   </div>
 
   <Button

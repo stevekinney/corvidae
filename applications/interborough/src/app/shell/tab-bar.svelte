@@ -26,12 +26,16 @@
   });
 
   /** A tab opens its page without leaving the application, unless the click asks for a new tab. */
-  function onTabClick(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+  function onTabClick(event: MouseEvent): void {
+    if (
+      event.defaultPrevented ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      event.button !== 0
+    )
       return;
-    }
-    event.preventDefault();
-    router.navigate(path);
     shell?.close();
   }
 </script>
@@ -46,7 +50,7 @@
           {variant}
           href={router.href(destination.path)}
           active={isActiveDestinationPath(router.pathname, destination.path)}
-          onclick={(event) => onTabClick(event, destination.path)}
+          onclick={onTabClick}
         >
           {#snippet icon()}<Icon aria-hidden="true" />{/snippet}
           {label}

@@ -43,19 +43,10 @@
       who !== null && who !== undefined && viewer !== null && viewer !== undefined && who === viewer
     );
   }
-
-  /** Opens a link in place, and leaves a modified click to the browser. */
-  function open(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 {#snippet link(href: string)}
-  <a href={router.href(href)} onclick={(event) => open(event, href)}>
+  <a href={router.href(href)}>
     {#if origin.kind === 'chat'}
       {origin.title === '' ? TASK_COPY.untitledChat : origin.title}
     {:else if origin.kind === 'agent'}
@@ -84,15 +75,12 @@
   {:else if origin.kind === 'schedule' && scheduleLine !== undefined && origin.schedulePath !== null}
     {@const schedulePath = origin.schedulePath}
     <span class="ib-run-origin__kind">{TASK_COPY.list.kinds.schedule}</span>
-    <a href={router.href(schedulePath)} onclick={(event) => open(event, schedulePath)}
-      >{scheduleLine.name}</a
-    >, {scheduleLine.cadence}{#if origin.manual}, {TASK_COPY.firedByHand}{/if}
+    <a href={router.href(schedulePath)}>{scheduleLine.name}</a>, {scheduleLine.cadence}{#if origin.manual},
+      {TASK_COPY.firedByHand}{/if}
   {:else if origin.kind === 'schedule'}
     {#if origin.scheduleId !== null && origin.schedulePath !== null}
       {@const schedulePath = origin.schedulePath}
-      <a href={router.href(schedulePath)} onclick={(event) => open(event, schedulePath)}
-        ><code class="ib-identifier">{origin.scheduleId}</code></a
-      >
+      <a href={router.href(schedulePath)}><code class="ib-identifier">{origin.scheduleId}</code></a>
       ({origin.manual
         ? `${TASK_COPY.schedule}, ${TASK_COPY.firedByHand}`
         : TASK_COPY.schedule}){#if origin.href !== null},{/if}
@@ -100,7 +88,7 @@
     <!-- A run only the engine holds ran in no session, so there is nothing to link to. -->
     {#if origin.href !== null}
       {@const sessionPath = origin.href}
-      <a href={router.href(sessionPath)} onclick={(event) => open(event, sessionPath)}
+      <a href={router.href(sessionPath)}
         >{origin.title === '' ? TASK_COPY.untitledChat : origin.title}</a
       >
     {/if}
@@ -111,7 +99,7 @@
     {@render link(origin.href)} ({TASK_COPY.agent})
   {:else if origin.kind === 'agent-run'}
     An agent's tool call, {origin.agentName},
-    <a href={router.href(origin.href)} onclick={(event) => open(event, origin.href)}>Calling run</a>
+    <a href={router.href(origin.href)}>Calling run</a>
   {:else if origin.kind === 'goal'}
     <!-- A goal's session is named only when it has a title: the chain is the goal, the attempt and
          this run (row 55f), and an untitled session adds nothing to it. -->
@@ -121,9 +109,7 @@
         attempt.of,
       )}{/if}{#if origin.session && origin.session.title !== ''}
       {@const session = origin.session},
-      <a href={router.href(session.href)} onclick={(event) => open(event, session.href)}
-        >{session.title}</a
-      >{/if}
+      <a href={router.href(session.href)}>{session.title}</a>{/if}
   {:else if origin.kind === 'parent'}
     {@render link(origin.href)} ({TASK_COPY.workflow})
   {:else if origin.kind === 'system'}
@@ -137,8 +123,7 @@
       <span class="ib-run-origin__kind">{TASK_COPY.list.kinds.trigger}</span>
       {#if origin.href !== null}
         {@const triggerPath = origin.href}
-        <a href={router.href(triggerPath)} onclick={(event) => open(event, triggerPath)}>{plugin}</a
-        >
+        <a href={router.href(triggerPath)}>{plugin}</a>
       {:else}
         {plugin}
       {/if}

@@ -35,7 +35,7 @@ export function provideReviewsNavigation(address: string): void {
     navigate: (path, options) => {
       const target = resolveReviewsDestination(path, window.location.href);
       if (target.pathname === '/reviews') {
-        router.navigate(path, options);
+        router.navigate(path, { ...options, keep: true });
       } else {
         window.location.assign(target.href);
       }

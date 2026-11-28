@@ -148,15 +148,6 @@
         workflow.status === 'suspended'),
   );
 
-  /** Opens a link in place, leaving a modified click to the browser. */
-  function open(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
-
   // A schedule's chat run (row 55m) keeps its Schedule row, has no Tags row and says whether it was
   // the schedule's last run; a workflow file's instance a schedule started (row 55d) says the
   // schedule once, in Started by, keeps its Tags, and says what came from it under Related runs.
@@ -356,36 +347,28 @@
 {#snippet scheduleLink()}
   {#if schedule !== undefined}
     {@const path = scheduleDetailPath(schedule.id)}
-    <a class="ib-run-value" href={router.href(path)} onclick={(event) => open(event, path)}
-      >{schedule.description ?? schedule.id}</a
-    >
+    <a class="ib-run-value" href={router.href(path)}>{schedule.description ?? schedule.id}</a>
   {/if}
 {/snippet}
 
 {#snippet sessionLink()}
   {#if session !== undefined}
     {@const path = session}
-    <a class="ib-run-value" href={router.href(path)} onclick={(event) => open(event, path)}
-      >{TASK_COPY.openSession}</a
-    >
+    <a class="ib-run-value" href={router.href(path)}>{TASK_COPY.openSession}</a>
   {/if}
 {/snippet}
 
 {#snippet goalLink()}
   {#if goal !== undefined}
     {@const path = goalPath(goal.goalRunId)}
-    <a class="ib-run-value" href={router.href(path)} onclick={(event) => open(event, path)}
-      >{goalName(goal)}</a
-    >
+    <a class="ib-run-value" href={router.href(path)}>{goalName(goal)}</a>
   {/if}
 {/snippet}
 
 {#snippet workflowLink()}
   {#if workflowType !== undefined}
     {@const path = workflowTypePath(workflowType)}
-    <a class="ib-run-value" href={router.href(path)} onclick={(event) => open(event, path)}
-      >{workflowTypeName(workflowType)}</a
-    >
+    <a class="ib-run-value" href={router.href(path)}>{workflowTypeName(workflowType)}</a>
   {/if}
 {/snippet}
 

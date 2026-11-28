@@ -30,7 +30,6 @@
     /** Where the agent's page is. */
     agentHref: string;
     /** Opens the agent's page without leaving the application. */
-    onOpenAgent: (event: MouseEvent) => void;
     /** When the chat started, in epoch milliseconds, or `null` when the Bureau's time is unreadable. */
     startedAt: number | null;
     /** When the chat last changed, in epoch milliseconds, or `null` when it is unreadable. */
@@ -55,7 +54,6 @@
     agent,
     agentLabel,
     agentHref,
-    onOpenAgent,
     startedAt,
     lastActiveAt,
     now,
@@ -109,7 +107,7 @@
     <div class="weft-chat-details__row">
       <dt>{COPY.agent}</dt>
       <dd>
-        <a class="weft-chat-details__agent" href={agentHref} onclick={onOpenAgent}>{agentLabel}</a>
+        <a class="weft-chat-details__agent" href={agentHref}>{agentLabel}</a>
       </dd>
     </div>
     {#if started !== undefined}

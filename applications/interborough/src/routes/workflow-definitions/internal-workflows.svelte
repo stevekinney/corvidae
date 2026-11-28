@@ -59,14 +59,6 @@
     void activity.dataUpdatedAt;
     return Date.now();
   });
-
-  function go(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 <section class="ib-workflows ib-records" aria-label={copy.title} data-page="internal-workflows">
@@ -117,10 +109,7 @@
           {@const cells = internalCells(activity.data?.get(row.name), now)}
           <Table.Row data-workflow={row.name} data-engine>
             <Table.Cell as="th" class="ib-records__wrap ib-records__row-name">
-              <Link
-                href={router.href(workflowRunsPath(row.name))}
-                onclick={(event) => go(event, workflowRunsPath(row.name))}>{words.title}</Link
-              >
+              <Link href={router.href(workflowRunsPath(row.name))}>{words.title}</Link>
               {#snippet detail()}
                 <code
                   class="ib-identifier ib-workflows__code-name"

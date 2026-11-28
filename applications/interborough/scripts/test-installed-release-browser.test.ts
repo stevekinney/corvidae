@@ -51,7 +51,7 @@ function operations(
       calls.push(`goto:${url}`);
       return { status: () => options.shellStatus ?? 200 };
     },
-    locator: () => ({ waitFor: async () => undefined }),
+    locator: () => ({ first: () => ({ waitFor: async () => undefined }) }),
     waitForFunction: async (callback: () => boolean) => {
       callback();
     },

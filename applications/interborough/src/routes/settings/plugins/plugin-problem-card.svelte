@@ -69,14 +69,6 @@
             : true,
   );
 
-  function follow(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
-
   async function copy(value: string): Promise<void> {
     if (await copyToClipboard(value)) {
       showToast(PLUGINS_COPY.problems.developmentSource.copied, { variant: 'success' });
@@ -107,12 +99,7 @@
     <Button variant="secondary" size="sm" onclick={() => onShowBoth?.()}>{action.label}</Button>
   {:else if action?.kind === 'link'}
     {@const href = action.href}
-    <Button
-      variant="secondary"
-      size="sm"
-      href={router.href(href)}
-      onclick={(event) => follow(event, href)}>{action.label}</Button
-    >
+    <Button variant="secondary" size="sm" href={router.href(href)}>{action.label}</Button>
   {:else if action?.kind === 'copy'}
     {@const value = action.text}
     <Button variant="secondary" size="sm" onclick={() => void copy(value)}>{action.label}</Button>

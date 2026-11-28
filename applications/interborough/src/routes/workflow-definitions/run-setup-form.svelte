@@ -493,14 +493,6 @@
     inputField?.request(choice);
   }
 
-  function openLink(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
-
   function cancel(): void {
     router.navigate(workflowTypePath(type));
   }
@@ -602,10 +594,8 @@
           {/if}
           {#each startedBy as line (line.id)}
             <p class="ib-run-setup__line" data-testid="run-setup-started-by">
-              {copy.alsoStartedBy.before}<a
-                href={router.href(line.href)}
-                onclick={(event) => openLink(event, line.href)}>{line.label}</a
-              >{copy.alsoStartedBy.after}{line.paused
+              {copy.alsoStartedBy.before}<a href={router.href(line.href)}>{line.label}</a>{copy
+                .alsoStartedBy.after}{line.paused
                 ? copy.alsoStartedBy.paused
                 : line.note === null
                   ? copy.alsoStartedBy.bare
@@ -666,9 +656,7 @@
       {#if failure.check !== undefined}
         {@const check = failure.check}
         <p class="ib-run-setup__alert-message">
-          <a href={router.href(check.path)} onclick={(event) => openLink(event, check.path)}
-            >{check.label}</a
-          >
+          <a href={router.href(check.path)}>{check.label}</a>
         </p>
       {/if}
     </Alert>

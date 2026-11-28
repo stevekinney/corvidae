@@ -43,14 +43,6 @@
       ? undefined
       : formatBytes(storage.data.sizeBytes),
   );
-
-  function openHealth(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate('/health');
-  }
 </script>
 
 <div class="ib-storage-usage" data-setting="storage-usage" data-alert={firing ? 'firing' : 'none'}>
@@ -77,7 +69,7 @@
 </div>
 
 {#snippet openHealthLink()}
-  <Link href={router.href('/health')} onclick={openHealth}>{copy.openHealth}</Link>
+  <Link href={router.href('/health')}>{copy.openHealth}</Link>
 {/snippet}
 
 <style>

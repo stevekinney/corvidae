@@ -55,7 +55,6 @@
   import { faultErrorStateAdvice } from '../../../lib/faults.ts';
   import { listAllGoals } from '../../../lib/bureau-goals.ts';
   import { listAllTasks, listAllTasksNeedingAttention } from '../../../lib/bureau-tasks.ts';
-  import { followLinks } from '../../../lib/follow-links.ts';
   import { viewerTimeZone } from '../../../lib/format/clock.ts';
   import { phoneViewport } from '../../../lib/phone-viewport.svelte.ts';
   import { usePluginTitle } from '../../../lib/plugin-title.svelte.ts';
@@ -478,14 +477,6 @@
     change({ q: query });
   }
 
-  function open(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
-
   // A list built from what could be read would pass a missing goal or chat off as none: the runs
   // of a goal would be gone and the runs of a chat would lose their origin. Any of the three
   // failing with nothing cached is a failed list, and Try again reads the ones with nothing yet.
@@ -599,7 +590,6 @@
       createAction={{
         label: TASK_COPY.startRun,
         href: router.href(START_RUN_PATH),
-        onclick: (event: MouseEvent) => open(event, START_RUN_PATH),
         ...(failed ? { inertReason: TASK_COPY.list.loadFailed.startOffReason } : {}),
       }}
     />
@@ -622,7 +612,6 @@
           <Button
             variant="secondary"
             href={router.href(TASK_COPY.list.loadFailed.healthPath)}
-            onclick={(event) => open(event, TASK_COPY.list.loadFailed.healthPath)}
             label={TASK_COPY.list.loadFailed.checkHealth}
           />
         {/snippet}
@@ -644,13 +633,11 @@
         create={{
           label: TASK_COPY.startRun,
           href: router.href(START_RUN_PATH),
-          onclick: (event) => open(event, START_RUN_PATH),
         }}
         secondary={[
           {
             label: TASK_COPY.empty.chatAction,
             href: router.href(TASK_COPY.empty.chatPath),
-            onclick: (event) => open(event, TASK_COPY.empty.chatPath),
           },
         ]}
       />
@@ -665,7 +652,7 @@
           onClearFilters={clearFilters}
         />
       {:else}
-        <div class="ib-runs__list" {@attach followLinks}>
+        <div class="ib-runs__list">
           <DataList
             items={entries}
             key={(entry: RunListEntry) => entry.key}

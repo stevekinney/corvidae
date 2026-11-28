@@ -53,14 +53,6 @@
       : '/capabilities',
   );
 
-  function reconnect(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(sourcePath);
-  }
-
   function enable(): void {
     if (cause.kind !== 'plugin') return;
     void restart.run([{ name: cause.name, enabled: true }], false, { changes: [cause.title] });
@@ -75,7 +67,6 @@
         variant="secondary"
         size="sm"
         href={router.href(sourcePath)}
-        onclick={reconnect}
         data-testid="tool-lost-reconnect"
         label={copy.reconnect}
       />

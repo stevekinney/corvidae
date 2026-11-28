@@ -22,15 +22,6 @@
 
   const word = $derived(run.status === undefined ? undefined : workflowRunStatusWord(run.status));
   const path = $derived(workflowDetailPath(run.id));
-
-  /** Opens the run in place, leaving a modified click to the browser. */
-  function open(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 <span class="ib-related-run" data-related-run={run.id}>
@@ -40,8 +31,7 @@
     <a
       class="ib-related-run__type"
       href={router.href(path)}
-      aria-label={RUN_RELATED_COPY.openRun(run.type)}
-      onclick={open}>{run.type}</a
+      aria-label={RUN_RELATED_COPY.openRun(run.type)}>{run.type}</a
     >
   {/if}
   {#if word !== undefined}<StatusLabel {word} />{/if}

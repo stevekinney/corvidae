@@ -51,14 +51,6 @@
   });
 
   const count = $derived(plugins.data === undefined ? 0 : needAttentionCount(plugins.data));
-
-  function open(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 {#if count > 0 && !dismissed}
@@ -73,9 +65,7 @@
     {#snippet icon()}<TriangleAlert size={16} aria-hidden="true" />{/snippet}
     {copy.consequence(count)}
     {#snippet actions()}
-      <Button variant="secondary" size="sm" href={router.href(path)} onclick={open}
-        >{copy.action}</Button
-      >
+      <Button variant="secondary" size="sm" href={router.href(path)}>{copy.action}</Button>
     {/snippet}
   </Banner>
 {/if}

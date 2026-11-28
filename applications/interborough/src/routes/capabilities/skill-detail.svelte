@@ -60,14 +60,6 @@
 
   const toolPath = (name: string): string => `/capabilities?tool=${encodeURIComponent(name)}`;
 
-  /** Opens the tool on the Tools tab, unless the person asked for a new tab or window. */
-  function openTool(event: MouseEvent, name: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(toolPath(name));
-  }
   const unavailable = $derived(unavailableText(skill));
   // Users match by name, so a shadowed row would inherit the winning skill's agents.
   const shadowed = $derived(skill.unavailableReason === 'shadowed');
@@ -112,10 +104,7 @@
             <Table.Row data-brought-tool={entry.name}>
               <Table.Cell>
                 <span class="ib-capability__name-line">
-                  <a
-                    href={router.href(toolPath(entry.name))}
-                    onclick={(event) => openTool(event, entry.name)}>{entry.heading}</a
-                  >
+                  <a href={router.href(toolPath(entry.name))}>{entry.heading}</a>
                   <code class="ib-capability__code ib-capability__identifier">{entry.name}</code>
                 </span>
               </Table.Cell>

@@ -42,7 +42,6 @@
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { getClient } from '../../lib/client.ts';
   import { faultErrorStateAdvice } from '../../lib/faults.ts';
-  import { followLinks } from '../../lib/follow-links.ts';
   import { getProviders } from '../../lib/host-providers.ts';
   import { newChatFromWorkflowsPath } from '../../lib/new-chat-address.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -184,14 +183,6 @@
       )
       ?.focus();
   }
-
-  function go(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 <section class="ib-workflows ib-records" aria-label={VIEW_COPY.workflows.label}>
@@ -211,7 +202,6 @@
       createAction={{
         label: WORKFLOW_COPY.newAction,
         href: router.href(newPath),
-        onclick: (event) => go(event, newPath),
       }}
     />
 
@@ -234,13 +224,11 @@
         create={{
           label: WORKFLOW_COPY.newAction,
           href: router.href(newPath),
-          onclick: (event) => go(event, newPath),
         }}
         secondary={[
           {
             label: copy.empty.askAction,
             href: router.href(askPath),
-            onclick: (event) => go(event, askPath),
             ...(askUnavailable === undefined ? {} : { inertReason: askUnavailable }),
           },
         ]}
@@ -249,7 +237,7 @@
         {#if needsProvider}
           <Text class="ib-workflows__hint">
             {copy.empty.needsProvider}
-            <Link href={router.href(providersPath)} onclick={(event) => go(event, providersPath)}>
+            <Link href={router.href(providersPath)}>
               {copy.empty.connectProvider}
             </Link>
           </Text>
@@ -284,7 +272,7 @@
           {#snippet icon()}<Search aria-hidden="true" />{/snippet}
         </EmptyState>
       {:else}
-        <div class="ib-records__bounded-list" {@attach followLinks}>
+        <div class="ib-records__bounded-list">
           <DataList
             items={visible}
             key={(item) => item.row.name}
@@ -307,7 +295,6 @@
   <Button
     variant="secondary"
     href={router.href(internalPath)}
-    onclick={(event) => go(event, internalPath)}
     data-testid="internal-workflows-action"
   >
     {copy.internalAction(engineRows.length)}

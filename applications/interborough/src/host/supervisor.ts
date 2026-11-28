@@ -11,7 +11,7 @@
  * bun src/host/supervisor.ts dev --showcase   # the same, on the showcase home with believable content
  * ```
  *
- * `serve` refuses to start without `build/index.html` (or the directory
+ * `serve` refuses to start without a generation published under `build/` (or the directory
  * `INTERBOROUGH_BUILD_DIRECTORY` names) and tells the person to run `bun run build`. `dev` builds
  * for itself. Under `bun --watch` the child's exit code is the code the host exited with, so the
  * supervisor sees the same code in both modes. A source change restarts the host inside
@@ -37,12 +37,17 @@ import {
   runOwnedProcessGroup,
   type HeldHostLock,
 } from '@lostgradient/process-lease';
-import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { constants, homedir } from 'node:os';
 import { join, resolve as resolvePath } from 'node:path';
 
-import { runGit, staleBuildProblem, type GitRunner } from './build-info.ts';
+import {
+  BUILD_INFO_FILE,
+  publishedBrowserBuildDirectory,
+  runGit,
+  staleBuildProblem,
+  type GitRunner,
+} from './build-info.ts';
 import { DEVELOPMENT_PLUGIN_FLAG } from './development-plugin-flag.ts';
 import { processEnvironment, resolveBuildDirectory } from './environment-configuration.ts';
 import {
@@ -242,9 +247,9 @@ export function serveProblem(
   source: string = PACKAGE_DIRECTORY,
   git: GitRunner = runGit,
 ): string | undefined {
-  const page = join(buildDirectory, 'index.html');
-  if (!existsSync(page)) {
-    return `Interborough has not been built: ${page} does not exist. Run \`bun run build\` first.`;
+  if (publishedBrowserBuildDirectory(buildDirectory) === undefined) {
+    const pointer = join(buildDirectory, BUILD_INFO_FILE);
+    return `Interborough has not been built: no generation in ${pointer}. Run \`bun run build\` first.`;
   }
   return staleBuildProblem(buildDirectory, source, git);
 }

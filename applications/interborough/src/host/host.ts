@@ -104,15 +104,15 @@ import {
  *   `onRestartRequested` (the entries, which run under the supervisor), and answers `202` before
  *   the callback runs. `GET /host/restart` says whether it is registered, and the terminal command
  *   the supervisor recorded when it started this host (`launch-command.ts`), or `null`.
- * - `/assets/*` and the client routes: the built application, with `index.html` for every route
- *   the client router owns.
+ * - `/_assets/*` and application pages: the published Velveteen generation handles assets,
+ *   documents and client navigation data.
  *
  * @module host
  */
 
 import type { Tool } from 'armorer';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { join, resolve as resolvePath, sep } from 'node:path';
+import { join } from 'node:path';
 import {
   combineHostAuthentication,
   createHostAuthority,
@@ -165,7 +165,6 @@ import {
 import { createEgressPolicy, type A2APeerUpdate, type EgressPolicy } from '@lostgradient/weft/a2a';
 import { bunServerHost } from '@lostgradient/weft/bun';
 
-import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
 import { HOST_STORAGE_ROUTE, HOST_STORAGE_SUMMARY_ROUTE } from '../lib/host-storage.ts';
 import { A2A_API_KEY_SECRET_KEY, A2A_SUBJECT, resolveA2aExposure } from './a2a-authentication.ts';
@@ -174,18 +173,14 @@ import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
 import { ANSWER_ENCRYPTION_KEY, answerEncryptionKeys } from './answer-encryption.ts';
 import { API_DESCRIPTION_ROUTE, apiDescription } from './api-description.ts';
 import { apiRoutes, localApiPrincipal, type ApiPrincipal } from './api-routes.ts';
+import { publishedBrowserBuildDirectory } from './build-info.ts';
 import {
   COMPOSED_JSON_RPC_PATH,
   composeOperationNames,
   serveComposedJsonRpc,
 } from './composed-json-rpc.ts';
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
-import {
-  createDevReload,
-  DEV_RELOAD_ROUTE,
-  injectDevReloadClient,
-  type DevReload,
-} from './dev-reload.ts';
+import { createDevReload, DEV_RELOAD_ROUTE, type DevReload } from './dev-reload.ts';
 import {
   createLocalAuthentication,
   isEngineRequestPath,
@@ -246,6 +241,8 @@ import {
   type LocalDirectoryOptions,
 } from './locations.ts';
 import { createHostMemory } from './memory.ts';
+import { openPublishedNativeDocuments } from './native-document-path.ts';
+import { isDocumentRequest } from './native-document-request.ts';
 import { cleanUpRoutes, startNightlyCleanUp, type NightlyCleanUp } from './nightly-clean-up.ts';
 import {
   hostPanelMountOptions,
@@ -285,7 +282,6 @@ import {
   sharedBrowserServerHooks,
   type SharedBrowserSignInOptions,
 } from './shared-browser-sign-in.ts';
-import { isDocumentCandidateRequest, isShellNavigation } from './shell-request.ts';
 import {
   createSkillManager,
   discoverFirstSkills,
@@ -431,6 +427,7 @@ export type RunAgentLookup = (runId: string) => Promise<string | undefined>;
  */
 type DocumentCandidate = {
   fetch(request: Request): Response | Promise<Response>;
+  refresh?(): Promise<void>;
   dispose(): Promise<void>;
 };
 
@@ -479,7 +476,7 @@ export type HostOptions = {
   readonly buildDirectory?: string;
   /** Development preparation that must succeed before application routes or the listener exist. */
   readonly browserReady?: PromiseLike<void>;
-  /** Open the opt-in document application after the build is ready. The host owns disposal. */
+  /** Open a development or test document application after the build is ready. The host owns disposal. */
   readonly openDocumentCandidate?: () => Promise<DocumentCandidate>;
   /**
    * Replaces the engine behind the Engine console, for a host whose console must start and inspect
@@ -587,7 +584,7 @@ export type HostOptions = {
   readonly settings?: SettingsOptions;
   /**
    * Whether this is the development host (`dev.ts`). It serves the reload stream at
-   * `/__dev/reload` and injects its client into `index.html`, and {@link Host.notifyRebuilt}
+   * `/__dev/reload` and injects its client into the development document template, and {@link Host.notifyRebuilt}
    * sends the reload. A host without it has no such route and serves the page as built. Defaults
    * to `false`.
    */
@@ -756,6 +753,8 @@ export type Host = {
    * Call it after a successful rebuild. It does nothing on a host started without `development`.
    */
   notifyRebuilt(): void;
+  /** Refresh the native document application after a successful child build. */
+  refreshBrowserDocuments(): Promise<void>;
   /** Stop listening, shut the Bureau and the engine down, close the database, and release the lock. */
   close(): Promise<void>;
 };
@@ -957,41 +956,6 @@ function missingBuild(): Response {
   );
 }
 
-/** The files under `/assets/`, refusing any path that leaves the build directory. */
-async function assetResponse(buildDirectory: string, pathname: string): Promise<Response> {
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(pathname);
-  } catch {
-    return new Response('Malformed asset path.', { status: 400 });
-  }
-  // The route is `/assets/*`, so only the build's `assets/` directory is reachable: `..` may not
-  // climb out of it to `index.html` or anything else in the build.
-  const assets = resolvePath(buildDirectory, 'assets');
-  const path = resolvePath(buildDirectory, `.${decoded}`);
-  if (!path.startsWith(`${assets}${sep}`)) return new Response('Not found', { status: 404 });
-  const asset = Bun.file(path);
-  if (!(await asset.exists())) return new Response('Not found', { status: 404 });
-  return new Response(asset, {
-    headers: { 'cache-control': 'public, max-age=31536000, immutable' },
-  });
-}
-
-/**
- * The application's one page, `index.html`, which the client router takes over. A development host
- * injects the reload client into it as it serves it (`dev-reload.ts`); the file in the build never
- * holds it.
- */
-function shellResponder(buildDirectory: string, development: boolean): () => Promise<Response> {
-  return async () => {
-    const page = Bun.file(join(buildDirectory, 'index.html'));
-    if (!(await page.exists())) return missingBuild();
-    return new Response(development ? injectDevReloadClient(await page.text()) : page, {
-      headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
-    });
-  };
-}
-
 function reportBoundListener(
   environment: BungalowEnvironment,
   log: (message: string) => void,
@@ -1002,55 +966,30 @@ function reportBoundListener(
   }
 }
 
-type PublicRoutes = Bun.Serve.Routes<HostSocketData, string>;
-
 async function openHostDocuments(
-  openCandidate: HostOptions['openDocumentCandidate'],
+  open: HostOptions['openDocumentCandidate'],
   held: Held,
   buildDirectory: string,
-  development: boolean,
 ) {
-  const candidate = await openCandidate?.();
-  if (candidate !== undefined) held.documentCandidate = candidate;
-  const shell = shellResponder(buildDirectory, development);
+  const published = publishedBrowserBuildDirectory(buildDirectory);
+  const application =
+    open === undefined
+      ? published === undefined
+        ? undefined
+        : await openPublishedNativeDocuments(published)
+      : await open();
+  if (application !== undefined) held.documentCandidate = application;
   return {
-    legacyShell: candidate === undefined ? shell : undefined,
-    ordinaryDocument: (request: Request) =>
-      candidate === undefined ? shell() : candidate.fetch(request),
+    browserBuild: published ?? buildDirectory,
+    ordinaryDocument: (request: Request) => application?.fetch(request) ?? missingBuild(),
     candidateAssets:
-      candidate === undefined ? undefined : (request: Request) => candidate.fetch(request),
+      application === undefined ? undefined : (request: Request) => application.fetch(request),
     unclaimed(request: Request): Response | Promise<Response> {
-      if (candidate !== undefined) {
-        if (isDocumentCandidateRequest(request)) return candidate.fetch(request);
-      } else if (isShellNavigation(request)) {
-        return shell();
-      }
+      if (application !== undefined && isDocumentRequest(request))
+        return application.fetch(request);
       return new Response('Not found', { status: 404 });
     },
   };
-}
-
-/**
- * The route table for the application: `index.html` for every client route, and the build's
- * assets. The routes are the client router's own patterns, so a route added there is served here.
- */
-function applicationRoutes(
-  buildDirectory: string,
-  refuse: Guard,
-  shell?: () => Promise<Response>,
-): PublicRoutes {
-  const table: PublicRoutes = {
-    '/assets/*': {
-      GET: (request) =>
-        refuse(request) ?? assetResponse(buildDirectory, new URL(request.url).pathname),
-    },
-  };
-  if (shell !== undefined) {
-    for (const route of clientRoutes) {
-      table[route.pattern] = { GET: (request) => refuse(request) ?? shell() };
-    }
-  }
-  return table;
 }
 
 /**
@@ -1093,8 +1032,6 @@ function restartHandler(restart: () => void | Promise<void>): () => Response {
 }
 
 /** A request guard: the refusal to send, or `undefined` to let the request through. */
-type Guard = (request: Request) => Response | undefined;
-
 /** Where the engine's private listener is, once it is up. */
 type EngineUpstream = { readonly url: string; readonly key: string };
 
@@ -1824,12 +1761,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const buildDirectory = options.buildDirectory ?? DEFAULT_BUILD_DIRECTORY;
     const devReload = options.development === true ? createDevReload() : undefined;
     if (devReload !== undefined) held.devReload = devReload;
-    const documents = await openHostDocuments(
-      options.openDocumentCandidate,
-      held,
-      buildDirectory,
-      devReload !== undefined,
-    );
+    const documents = await openHostDocuments(options.openDocumentCandidate, held, buildDirectory);
     // Handed over by the supervisor when it started (`launch-command.ts`), for the page to show
     // after a restart that does not come back.
     const launchCommand = resolveLaunchCommand(environment);
@@ -1842,10 +1774,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       authority,
       () => listening?.port ?? 0,
       held,
-      buildDirectory,
+      documents.browserBuild,
     );
     const publicRoutes = {
-      ...applicationRoutes(buildDirectory, refuse, documents.legacyShell),
       ...sharedBrowserRoutes(
         sharedBrowser,
         authority,
@@ -2306,6 +2237,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         pendingSecretOperationCount: workspaceSecrets.pending().length,
       }),
       notifyRebuilt: () => devReload?.notify(),
+      refreshBrowserDocuments: async () => {
+        await held.documentCandidate?.refresh?.();
+      },
       close: () => (held.closing ??= teardown(held)),
     };
   } catch (error) {

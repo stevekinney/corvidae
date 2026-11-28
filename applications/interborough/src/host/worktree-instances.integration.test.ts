@@ -27,12 +27,14 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { buildTestDocuments } from './build-info.test-support.ts';
 import { executeCli } from './cli-client.ts';
 import { processEnvironment } from './environment-configuration.ts';
 import { instanceRecordPath, readInstanceRecord } from './instance-record.ts';
 import { linkedWorktreeRoot, worktreeHome } from './worktree-instance.ts';
 
 const supervisorEntry = join(import.meta.dir, 'supervisor.ts');
+
 const serveEntry = join(import.meta.dir, 'serve.ts');
 const cliEntry = join(import.meta.dir, 'cli.ts');
 
@@ -183,7 +185,7 @@ const build = join(root, 'build');
 await mkdir(fakeHome);
 await mkdir(mainCheckout);
 await mkdir(build);
-await writeFile(join(build, 'index.html'), '<!doctype html><title>Interborough</title>');
+await buildTestDocuments(build);
 await git(mainCheckout, fakeHome, 'init', '-q', '-b', 'main');
 await git(mainCheckout, fakeHome, 'commit', '-q', '--allow-empty', '-m', 'Start');
 await git(mainCheckout, fakeHome, 'worktree', 'add', '-q', '-b', 'first', first);

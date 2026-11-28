@@ -52,14 +52,6 @@
   const canConnect = $derived(paths?.locked.providerKeys === undefined);
   const connectPath = $derived(connectProviderPath(router.pathname));
 
-  function connect(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(connectPath);
-  }
-
   /** The first provider the host offers, as the example plugin the snippet enables. */
   const snippet = $derived.by(() => {
     const example = paths?.providers[0]?.name;
@@ -94,7 +86,6 @@
   <Button
     variant="primary"
     href={router.href(connectPath)}
-    onclick={connect}
     data-testid="agent-connect-provider"
     label={copy.connectAction}
   />

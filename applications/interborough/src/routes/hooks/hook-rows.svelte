@@ -29,7 +29,6 @@
   import { updateHook, type ListedHook } from '../../lib/bureau-hooks.ts';
   import { listContributedKinds } from '../../lib/bureau-plugin-kinds.ts';
   import { faultTreatment } from '../../lib/faults.ts';
-  import { followLinks } from '../../lib/follow-links.ts';
   import { getPlugins } from '../../lib/host-plugins.ts';
   import { hookPath } from '../../lib/identifier-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -129,7 +128,7 @@
   </Alert>
 {/if}
 
-<div {@attach followLinks}>
+<div>
   <DataList
     items={[...ordered]}
     key={(hook) => hook.id}

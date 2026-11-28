@@ -106,11 +106,6 @@
       manage: {
         label: copy.manage,
         href: router.href(settingsPath),
-        onclick: (event) => {
-          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-          event.preventDefault();
-          router.navigate(settingsPath);
-        },
       },
     };
   });

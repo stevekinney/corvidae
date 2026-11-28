@@ -78,15 +78,6 @@
     : null;
   const connected = $derived(providers.data?.providers.some((entry) => entry.connected) === true);
 
-  function goBack(event: MouseEvent): void {
-    if (returnPath === null) return;
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(returnPath);
-  }
-
   /** The provider whose Connect or Manage dialog is open. */
   let connecting = $state<string | null>(null);
 
@@ -220,7 +211,6 @@
         variant={connected ? 'primary' : 'secondary'}
         size="sm"
         href={router.href(returnPath)}
-        onclick={goBack}
         label={MODELS_COPY.returnNotice.action}
       />
     </Alert>

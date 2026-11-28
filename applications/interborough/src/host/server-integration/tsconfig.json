@@ -4,6 +4,8 @@
   "include": [
     "*.ts",
     "../refund-operations.ts",
+    "../cli.ts",
+    "../serve.ts",
     "../../private-routes/**/*.server.ts",
     "../../ambient.d.ts",
     "../../../tests/panels/pending-review.spec.ts",

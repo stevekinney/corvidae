@@ -39,15 +39,6 @@
   );
   const others = $derived(otherRunsOfChat(runId, tasks.data ?? []));
 
-  /** Opens a link in place, leaving a modified click to the browser. */
-  function open(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
-
   function pathOf(task: TaskView): string {
     return workflowDetailPath(task.id);
   }
@@ -62,7 +53,7 @@
         {#each others as task (task.id)}
           {@const path = pathOf(task)}
           <li>
-            <a href={router.href(path)} onclick={(event) => open(event, path)}
+            <a href={router.href(path)}
               >{title === undefined || title === '' ? TASK_COPY.runTitle : title}</a
             >{TASK_COPY.list.separator}<StatusLabel word={taskStatusWord(task.status)} />{TASK_COPY
               .list.separator}{rowTime(Date.parse(task.createdAt), Date.now())}

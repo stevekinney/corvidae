@@ -46,15 +46,6 @@
       ? undefined
       : scheduleRelatedSentence(schedule, startedAt, missedSince),
   );
-
-  /** Opens a link in place, leaving a modified click to the browser. */
-  function open(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 {#if goal !== undefined || sentence !== undefined}
@@ -77,7 +68,7 @@
       {#each attempts as attempt (attempt.runId)}
         {@const path = workflowDetailPath(attempt.runId)}
         <li>
-          <a href={router.href(path)} onclick={(event) => open(event, path)}>{attempt.label}</a>
+          <a href={router.href(path)}>{attempt.label}</a>
         </li>
       {/each}
     </ul>

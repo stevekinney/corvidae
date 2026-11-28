@@ -343,14 +343,6 @@
     canceled = false;
     void plugins.refetch();
   }
-
-  function openHealth(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate('/health');
-  }
 </script>
 
 <SettingsRestartNotice
@@ -503,7 +495,6 @@
           variant="ghost"
           size="sm"
           href={router.href('/health')}
-          onclick={openHealth}
           label={copy.loadFailed.openHealth}
         />
       {/snippet}

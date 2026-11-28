@@ -614,15 +614,6 @@
     write(setSchema(text, key, record));
     return next;
   }
-
-  /** Follows a link inside the page without reloading it. */
-  function go(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 {#snippet schemaSection(key: SchemaKey, heading: string, description: string, empty: string)}
@@ -766,9 +757,7 @@
                 role="alert"
                 data-testid="workflow-builder-id-taken"
               >
-                {idProblem.message.slice(0, at)}<a
-                  href={router.href(takenPath)}
-                  onclick={(event) => go(event, takenPath)}>{takenLink}</a
+                {idProblem.message.slice(0, at)}<a href={router.href(takenPath)}>{takenLink}</a
                 >{idProblem.message.slice(at + takenLink.length)}
               </p>
             {/if}

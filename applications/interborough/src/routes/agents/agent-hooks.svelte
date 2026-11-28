@@ -45,18 +45,10 @@
     hooks.isError && classifyFault(hooks.error)?.kind === 'not-supported',
   );
   const newHookPath = $derived(`/hooks/new?agent=${encodeURIComponent(id)}`);
-
-  function go(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(newHookPath);
-  }
 </script>
 
 {#snippet newHook()}
-  <Button href={router.href(newHookPath)} variant="secondary" size="sm" onclick={go}>
+  <Button href={router.href(newHookPath)} variant="secondary" size="sm">
     {#snippet leadingIcon()}<Plus aria-hidden="true" size={14} />{/snippet}
     {HOOKS_COPY.newAction}
   </Button>

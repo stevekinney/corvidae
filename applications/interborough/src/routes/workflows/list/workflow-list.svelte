@@ -260,30 +260,6 @@
     navigateToFilter(next);
   }
 
-  function onStartWorkflowClick(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate('/runs/new');
-  }
-
-  function onTypeLinkClick(event: MouseEvent, type: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(workflowTypePath(type));
-  }
-
-  function onAggregateClick(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate('/runs?view=aggregate');
-  }
-
   const deniedDescription = $derived(
     listGate.title
       ? `You don't have permission to view workflows. ${listGate.title}.`
@@ -297,10 +273,7 @@
       Workflow runs
     {:else}
       Runs of
-      <a
-        href={router.href(workflowTypePath(scopedType))}
-        onclick={(event) => onTypeLinkClick(event, scopedType)}>{scopedType}</a
-      >
+      <a href={router.href(workflowTypePath(scopedType))}>{scopedType}</a>
     {/if}
   {/snippet}
   {#snippet snapshot()}
@@ -314,7 +287,6 @@
           size="sm"
           class="weft-workflow-list__header-action"
           href={router.href('/runs?view=aggregate')}
-          onclick={onAggregateClick}
         >
           <ChartBar aria-hidden="true" size={14} />
           Aggregate view
@@ -324,7 +296,6 @@
           size="sm"
           class="weft-workflow-list__header-action"
           href={router.href('/runs/new')}
-          onclick={onStartWorkflowClick}
         >
           <Plus aria-hidden="true" size={14} />
           Start workflow
@@ -411,12 +382,7 @@
       >
         {#snippet icon()}<GitBranch aria-hidden="true" size={22} />{/snippet}
         {#snippet action()}
-          <Button
-            variant="primary"
-            size="md"
-            href={router.href('/runs/new')}
-            onclick={onStartWorkflowClick}
-          >
+          <Button variant="primary" size="md" href={router.href('/runs/new')}>
             <Plus aria-hidden="true" size={15} />
             Start workflow
           </Button>

@@ -14,14 +14,6 @@
   }
 
   let { line }: Props = $props();
-
-  function go(event: MouseEvent, target: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(target);
-  }
 </script>
 
 <p class="ib-workflow__line" data-testid={`workflow-line-${line.id}`}>
@@ -33,7 +25,7 @@
           <StatusDot word={run.word} size="sm" />
         {:else if run.href !== undefined}
           {@const target = run.href}
-          <a href={router.href(target)} onclick={(event) => go(event, target)}>{run.text}</a>
+          <a href={router.href(target)}>{run.text}</a>
         {:else if run.code}
           <code>{run.text}</code>
         {:else}

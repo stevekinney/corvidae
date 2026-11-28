@@ -656,25 +656,22 @@
 
   /** Cancel: while a create is in flight it stops the request and keeps the form; otherwise it leaves. */
   function cancel(event: MouseEvent): void {
-    if (creating) {
-      event.preventDefault();
-      controller?.abort();
-      creating = false;
+    if (
+      !creating ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    )
       return;
-    }
-    leave(event, LIST_PATH);
+    event.preventDefault();
+    controller?.abort();
+    creating = false;
   }
 
   function chooseCadence(next: ScheduleValue): void {
     draft.cadence = next;
-  }
-
-  function leave(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
   }
 
   // Leaving after typing asks first. A back or forward the guard refuses puts the address back.
@@ -751,10 +748,6 @@
     draft.continueChat = next;
     if (next) draft.overlap = 'skip';
   }
-
-  function goTo(event: MouseEvent, path: string): void {
-    leave(event, path);
-  }
 </script>
 
 <svelte:window onbeforeunload={warnBeforeUnload} />
@@ -798,10 +791,7 @@
         {#snippet footer()}
           <span class="ib-schedule-new__picker-footer">
             {copy.noMatchFooter}
-            <a
-              href={router.href(workflowNewPath())}
-              onclick={(event) => goTo(event, workflowNewPath())}>{copy.createOne}</a
-            >
+            <a href={router.href(workflowNewPath())}>{copy.createOne}</a>
           </span>
         {/snippet}
       </Combobox>
@@ -824,7 +814,6 @@
               {
                 label: copy.noAgents.action,
                 href: router.href('/agents/new'),
-                onclick: (event) => goTo(event, '/agents/new'),
               },
             ]}
           />
@@ -1047,17 +1036,13 @@
 </section>
 
 {#snippet connectProvider()}
-  <a href={router.href(PROVIDERS_PATH)} onclick={(event) => goTo(event, PROVIDERS_PATH)}
-    >{copy.connectProvider}</a
-  >
+  <a href={router.href(PROVIDERS_PATH)}>{copy.connectProvider}</a>
 {/snippet}
 
 {#snippet openTaken()}
   {#if nameTaken !== undefined}
     {@const path = scheduleDetailPath(nameTaken.id)}
-    <a href={router.href(path)} onclick={(event) => goTo(event, path)}
-      >{copy.openSchedule(nameTaken.name)}</a
-    >
+    <a href={router.href(path)}>{copy.openSchedule(nameTaken.name)}</a>
   {/if}
 {/snippet}
 

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
+import { parseArgs } from 'node:util';
 
 import { principalFromApiKey } from '@lostgradient/backchannel';
 import { openBungalow } from '@lostgradient/bungalow';
@@ -11,7 +12,11 @@ import { enableDemoPlugin } from '../src/host/demo-plugin-home.ts';
 import { startHost } from '../src/host/host.ts';
 import { expectedReleaseSourceSha } from './environment-configuration.ts';
 import { assertInstalledAppsInChromium } from './test-installed-release-browser.ts';
-import { linkPluginRuntime, writeFixture } from './test-installed-release-fixture.ts';
+import {
+  linkPluginRuntime,
+  runExternalReviewedFixture,
+  writeFixture,
+} from './test-installed-release-fixture.ts';
 import {
   createResponseDroppingProxy,
   interruptInstalledStream,
@@ -36,24 +41,51 @@ const RECEIPT_CONFIGURATION_PATHS = [
 ] as const;
 
 export type InstalledReleaseArguments =
-  | { readonly mode: 'archive'; readonly archive: string; readonly evidence?: string }
+  | {
+      readonly mode: 'archive';
+      readonly archive: string;
+      readonly evidence?: string;
+      readonly reviewedFixture?: string;
+    }
   | { readonly mode: 'command'; readonly command: string; readonly evidence?: string };
 
 export function parseInstalledReleaseArguments(argv: readonly string[]): InstalledReleaseArguments {
-  if (
-    (argv.length !== 2 && argv.length !== 4) ||
-    (argv[0] !== '--archive' && argv[0] !== '--command') ||
-    argv[1]?.trim() === '' ||
-    (argv.length === 4 && (argv[2] !== '--evidence' || argv[3]?.trim() === ''))
-  )
-    throw new Error(
-      'Usage: bun scripts/test-installed-release.ts --archive <archive> | --command <executable>',
-    );
-  return {
-    mode: argv[0] === '--archive' ? 'archive' : 'command',
-    [argv[0] === '--archive' ? 'archive' : 'command']: resolve(argv[1]!),
-    ...(argv.length === 4 ? { evidence: resolve(argv[3]!) } : {}),
-  } as InstalledReleaseArguments;
+  const usage =
+    'Usage: bun scripts/test-installed-release.ts --archive <archive> [--reviewed-fixture <external-file>] | --command <executable>';
+  try {
+    const { values, tokens } = parseArgs({
+      args: [...argv],
+      options: {
+        archive: { type: 'string' },
+        command: { type: 'string' },
+        evidence: { type: 'string' },
+        'reviewed-fixture': { type: 'string' },
+      },
+      tokens: true,
+    });
+    const options = tokens.map((token) => (token.kind === 'option' ? token.name : ''));
+    if (
+      options.length !== new Set(options).size ||
+      Object.values(values).some((value) => typeof value === 'string' && value.trim() === '') ||
+      (values.archive === undefined) === (values.command === undefined)
+    )
+      throw new Error(usage);
+    const evidence = values.evidence === undefined ? {} : { evidence: resolve(values.evidence) };
+    if (values.archive !== undefined) {
+      const fixture = values['reviewed-fixture'];
+      return {
+        mode: 'archive',
+        archive: resolve(values.archive),
+        ...evidence,
+        ...(fixture === undefined ? {} : { reviewedFixture: resolve(fixture) }),
+      };
+    }
+    if (values.command === undefined || values['reviewed-fixture'] !== undefined)
+      throw new Error(usage);
+    return { mode: 'command', command: resolve(values.command), ...evidence };
+  } catch (error) {
+    throw new Error(usage, { cause: error });
+  }
 }
 
 type Child = ReturnType<typeof Bun.spawn>;
@@ -137,7 +169,13 @@ let installedCommandTracePath: string | undefined;
 const installedCommandTrace: Array<Record<string, unknown>> = [];
 
 export function referencedAssets(html: string): string[] {
-  return [...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)].map((match) => match[1]!);
+  const linked = [...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/gu)].map(
+    (match) => match[1]!,
+  );
+  const modules = [...html.matchAll(/<script\b[^>]*type="module"[^>]*>([\s\S]*?)<\/script>/gu)]
+    .flatMap((script) => [...script[1]!.matchAll(/\bfrom\s+"(\/_assets\/[^"]+\.js)"/gu)])
+    .map((match) => match[1]!);
+  return [...new Set([...linked, ...modules])];
 }
 
 export function spawn(
@@ -1332,6 +1370,19 @@ export async function runInstalledRelease(
       });
     } else executable = options.command;
     assertions.push(...(await runOperation(executable, root, false, await freePort())));
+    if (options.mode === 'archive' && options.reviewedFixture !== undefined) {
+      const witness = await runExternalReviewedFixture(
+        options.reviewedFixture,
+        executable,
+        REPOSITORY_ROOT,
+      );
+      assertions.push({
+        assertion: 'source-absent Reviews and sandboxed panel refund approvals',
+        command: 'run the external reviewed-refund fixture against the unpacked executable',
+        exit: 0,
+        details: witness,
+      });
+    }
     if (options.mode === 'archive') {
       const relocated = join(root, 'relocated');
       await mkdir(relocated, { recursive: true });

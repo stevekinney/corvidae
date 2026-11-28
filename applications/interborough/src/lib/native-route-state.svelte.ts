@@ -2,14 +2,15 @@ import type { ApplicationState } from '@lostgradient/velveteen/navigation';
 import { routes, velveteenRouteId } from '../app/routes.ts';
 import { identifierViewKey, withEscapedIdentifier } from './identifier-paths.ts';
 
-const routeDefinitions = new Map(routes.map((route) => [velveteenRouteId(route.pattern), route]));
-
 function readLocation(
-  location: ApplicationState['page']['payload'] | NonNullable<ApplicationState['shallow']>,
+  location: NavigationState['page']['payload'] | NonNullable<ApplicationState['shallow']>,
   restoredFromDocument: boolean,
 ) {
   const url = new URL(location.url);
-  const definition = location.routeId === null ? undefined : routeDefinitions.get(location.routeId);
+  const definition =
+    location.routeId === null
+      ? undefined
+      : routes.find((route) => velveteenRouteId(route.pattern) === location.routeId);
   const params = Object.fromEntries(
     Object.entries(location.params).map(([name, value]) => [
       name === 'path' ? '*' : name,
@@ -20,8 +21,14 @@ function readLocation(
 }
 
 /** Project native navigation into the app's existing layout and identifier metadata. */
+type NavigationState = Pick<ApplicationState, 'registerNavigationHook'> & {
+  shallow?: ApplicationState['shallow'];
+  page: { payload: Pick<ApplicationState['page']['payload'], 'url' | 'params' | 'routeId'> };
+  navigation?: Pick<NonNullable<ApplicationState['navigation']>, 'goto'>;
+};
+
 export function bindNativeRouteState(
-  state: ApplicationState,
+  state: NavigationState,
   allowsLeaving: (destination: string) => boolean,
 ) {
   const { navigation, registerNavigationHook } = state;
@@ -37,8 +44,9 @@ export function bindNativeRouteState(
   };
   let generation = $state(0);
   let retainedKey: string | undefined;
+  let forced = false;
   const removeBefore = registerNavigationHook('before', (event) => {
-    if (!allowsLeaving(event.to.pathname + event.to.search)) event.cancel();
+    if (!forced && !allowsLeaving(event.to.pathname + event.to.search)) event.cancel();
   });
   const removeAfter = registerNavigationHook('after', () => {
     if (state.shallow !== undefined) {
@@ -77,11 +85,19 @@ export function bindNativeRouteState(
         search: url.searchParams,
       };
     },
-    navigate(path: string, options?: { readonly replace?: boolean; readonly keep?: boolean }) {
-      return navigation.goto(path, {
-        replace: options?.replace === true,
-        shallow: options?.keep === true,
-      });
+    navigate(
+      path: string,
+      options?: { readonly replace?: boolean; readonly keep?: boolean; readonly force?: boolean },
+    ) {
+      forced = options?.force === true;
+      try {
+        return navigation.goto(path, {
+          replace: options?.replace === true,
+          shallow: options?.keep === true,
+        });
+      } finally {
+        forced = false;
+      }
     },
     dispose() {
       removeBefore();

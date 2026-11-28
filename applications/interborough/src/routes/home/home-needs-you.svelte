@@ -25,7 +25,6 @@
 
   import { HOME_COPY } from '../../app/copy/home.ts';
   import { getAgentCatalog } from '../../lib/agent-definitions.ts';
-  import { followLinks } from '../../lib/follow-links.ts';
   import { waitedFor } from '../../lib/format/clock.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -69,7 +68,7 @@
     <Skeleton variant="grouped" rows={2} action />
   </div>
 {:else if rows.length > 0}
-  <div data-home-card={copy.title} {@attach followLinks}>
+  <div data-home-card={copy.title}>
     <GroupedList aria-label={copy.listLabel}>
       {#each shown as row (row.key)}
         <GroupedListItem

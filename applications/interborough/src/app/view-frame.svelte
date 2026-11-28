@@ -262,13 +262,6 @@
   });
 
   const forbiddenTitle = $derived(forbiddenCopy?.title ?? copy.forbidden.title);
-
-  function navigateTo(event: MouseEvent, href: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)
-      return;
-    event.preventDefault();
-    router.navigate(href);
-  }
 </script>
 
 {#snippet failure(title: string, description: string)}
@@ -355,13 +348,11 @@
           : {
               label: emptyAction.label,
               href: router.href(emptyAction.href),
-              onclick: (event) => navigateTo(event, emptyAction.href),
             }}
         secondary={[
           {
             label: CHAT_COPY.browseAgents,
             href: router.href('/agents'),
-            onclick: (event) => navigateTo(event, '/agents'),
           },
         ]}
       />
@@ -376,7 +367,6 @@
           : {
               label: emptyAction.label,
               href: router.href(emptyAction.href),
-              onclick: (event) => navigateTo(event, emptyAction.href),
             }}
       />
     {/if}
@@ -406,7 +396,6 @@
         createAction={{
           label: AGENT_EDITOR_COPY.newAction,
           href: router.href('/agents/new'),
-          onclick: (event) => navigateTo(event, '/agents/new'),
         }}
       />
     {/if}

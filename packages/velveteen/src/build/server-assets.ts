@@ -53,11 +53,15 @@ export async function createServerAssetPlugin(
     const path = await realpath(resolve(inputRoot, source)).catch(
       () => undefined,
     );
-    if (!path) throw new Error(`Missing browser asset input ${source}`);
+    // Browser plugins can emit files from their own Bun namespace. They have no source on disk
+    // for the server resolver, which runs without those browser plugins.
+    if (!path && !/^[a-z][a-z0-9+.-]*:/iu.test(source))
+      throw new Error(`Missing browser asset input ${source}`);
     return path;
   };
   for (const source of sources) {
     const sourcePath = await canonicalSource(source);
+    if (!sourcePath) continue;
     const bytes = await Bun.file(sourcePath)
       .arrayBuffer()
       .then((value) => Buffer.from(value));

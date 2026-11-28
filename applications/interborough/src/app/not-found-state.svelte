@@ -54,33 +54,16 @@
   const openSearch = getSearchOpener();
 
   usePageLabel(() => ({ path: router.pathname, label: NOT_FOUND_COPY.breadcrumb }));
-
-  /** Opens `path` in place, unless the person asked for a new tab or window. */
-  function follow(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 {#snippet actions()}
   {#if create !== undefined}
-    <Button
-      variant="primary"
-      href={router.href(create.href)}
-      onclick={(event) => follow(event, create.href)}
-    >
+    <Button variant="primary" href={router.href(create.href)}>
       {#snippet leadingIcon()}<SquarePen class="cinder-icon-sm" aria-hidden="true" />{/snippet}
       {create.label}
     </Button>
   {/if}
-  <Button
-    variant="secondary"
-    href={router.href(parent.path)}
-    onclick={(event) => follow(event, parent.path)}
-  >
+  <Button variant="secondary" href={router.href(parent.path)}>
     {back?.label ?? NOT_FOUND_COPY.back(parent.label)}
   </Button>
   {#if create === undefined && search}

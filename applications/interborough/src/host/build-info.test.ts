@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { stubBrowserPublication } from './build-info.test-support.ts';
 import {
   BUILD_INFO_FILE,
   displayedCommit,
@@ -33,16 +34,11 @@ const first = 'a'.repeat(40);
 const second = 'b'.repeat(40);
 const clean: Checkout = { commit: first, edits: '', untracked: '' };
 
-/** A build directory holding a page and, when given a source, the record of it. */
+/** A build directory with a publication record when given a source. */
 function build(recorded?: Checkout): string {
   const directory = mkdtempSync(join(scratch, 'build-'));
-  writeFileSync(join(directory, 'index.html'), 'page');
-  if (recorded !== undefined) {
-    writeFileSync(
-      join(directory, BUILD_INFO_FILE),
-      JSON.stringify(readSourceInfo('.', fakeGit(recorded))),
-    );
-  }
+  if (recorded !== undefined)
+    stubBrowserPublication(directory, readSourceInfo('.', fakeGit(recorded)));
   return directory;
 }
 
@@ -82,8 +78,7 @@ describe('staleBuildProblem', () => {
     const untracked = { ...clean, untracked: 'new.txt\n' };
     const git = fakeGit(untracked);
     const directory = mkdtempSync(join(scratch, 'build-'));
-    writeFileSync(join(directory, 'index.html'), 'page');
-    writeFileSync(join(directory, BUILD_INFO_FILE), JSON.stringify(readSourceInfo(source, git)));
+    stubBrowserPublication(directory, readSourceInfo(source, git));
     expect(serveProblem(directory, source, git)).toBeUndefined();
     writeFileSync(file, 'two');
     expect(serveProblem(directory, source, git)).toContain('uncommitted changes');

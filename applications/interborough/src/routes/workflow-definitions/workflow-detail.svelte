@@ -528,14 +528,6 @@
     if (resolution.data === null) untrack(workflowIsGone);
   });
 
-  function go(event: MouseEvent, target: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(target);
-  }
-
   const editPath = workflowEditPath(type);
   const editJsonPath = workflowEditJsonPath(type);
   const internalPath = internalWorkflowsPath();
@@ -764,7 +756,6 @@
       variant="secondary"
       size="sm"
       href={router.href(internalPath)}
-      onclick={(event) => go(event, internalPath)}
       label={copy.page.seeInternal}
     />
   {:else if resolution.isPending}
@@ -778,7 +769,6 @@
       href={router.href(invalidFile ? editJsonPath : editPath)}
       variant="secondary"
       size="sm"
-      onclick={(event) => go(event, invalidFile ? editJsonPath : editPath)}
       label={copy.editAction}
     />
   {/if}
@@ -788,7 +778,6 @@
       variant="primary"
       size="sm"
       href={router.href(runSetupPath)}
-      onclick={(event) => go(event, runSetupPath)}
       label={copy.page.startAction}
     />
   {:else if file !== undefined && actions?.resume === true && file.paused}

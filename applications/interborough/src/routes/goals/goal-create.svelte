@@ -178,14 +178,6 @@
     }
     creation.mutate();
   }
-
-  function leave(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 {#if reading}
@@ -205,7 +197,6 @@
         {
           label: AGENT_EDITOR_COPY.newAction,
           href: router.href('/agents/new'),
-          onclick: (event) => leave(event, '/agents/new'),
         },
       ]}
     />

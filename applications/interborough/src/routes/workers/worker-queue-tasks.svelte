@@ -119,15 +119,6 @@
       },
     ];
   }
-
-  /** Opens a run in place, and leaves a modified click to the browser. */
-  function openRun(event: MouseEvent, id: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(workflowDetailPath(id));
-  }
 </script>
 
 {#snippet bulkButton(
@@ -226,11 +217,7 @@
               <code class="ib-worker-tasks__name" title={row.id}>{row.name}</code>
               {#if row.run !== undefined}
                 {copy.forThe}
-                <Link
-                  href={router.href(workflowDetailPath(row.run.id))}
-                  onclick={(event: MouseEvent) =>
-                    row.run !== undefined && openRun(event, row.run.id)}>{row.run.label}</Link
-                >
+                <Link href={router.href(workflowDetailPath(row.run.id))}>{row.run.label}</Link>
               {/if}
             </span>
           {/snippet}

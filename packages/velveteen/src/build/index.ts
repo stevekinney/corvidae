@@ -4,7 +4,10 @@ import { buildRouteManifest } from "../routing/index.ts";
 import { buildProductionGraph } from "./graph.ts";
 import { publishProductionGeneration } from "./publication.ts";
 import { normalizeBasePath } from "./paths.ts";
-import type { ProductionGeneration } from "./manifest-types.ts";
+import type {
+  ProductionGeneration,
+  ProductionGraphResult,
+} from "./manifest-types.ts";
 
 function contains(directory: string, file: string) {
   const path = relative(directory, file);
@@ -38,7 +41,15 @@ export async function buildProduction(options: {
   mode?: "development" | "production";
   /** Trusted application build plugins, applied only to browser inputs. */
   browserPlugins?: readonly Bun.BunPlugin[];
+  /** Extra Bun export conditions for application browser inputs. */
+  browserConditions?: readonly string[];
+  /** Optionally observe the browser and server dependencies before publishing. */
+  onBuildMetadata?: (
+    metadata: ProductionGraphResult["metadata"],
+  ) => void | Promise<void>;
 }): Promise<ProductionGeneration> {
+  const onBuildMetadata = options.onBuildMetadata;
+  const browserConditions = [...(options.browserConditions ?? [])];
   const projectDirectory = await realpath(options.projectDirectory);
   const routesDirectory = await realpath(options.routesDirectory);
   const staticDirectory = options.staticDirectory
@@ -84,7 +95,9 @@ export async function buildProduction(options: {
       basePath,
       transportModule,
       browserPlugins: options.browserPlugins,
+      browserConditions,
     });
+    await onBuildMetadata?.(result.metadata);
     return await publishProductionGeneration({
       stagingDirectory,
       outputDirectory,

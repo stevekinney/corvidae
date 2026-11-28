@@ -57,29 +57,16 @@
       label: chat.data?.title ?? REVIEWS_COPY.untitledChat,
     };
   });
-
-  /** Follows a link inside the app's router, unless the click asks for a new tab or window. */
-  function follow(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 {#snippet when()}
   {#if waiting}
     <!-- How long it has waited, as a duration: "waiting 4 min" (rows 25f, 26o). -->
     {REVIEWS_COPY.source.waiting}
-    <a href={router.href(runPath)} onclick={(event) => follow(event, runPath)}
-      >{waitingFor(review.requestedAt, Date.now())}</a
-    >
+    <a href={router.href(runPath)}>{waitingFor(review.requestedAt, Date.now())}</a>
   {:else}
     {REVIEWS_COPY.source.askedAt}
-    <a href={router.href(runPath)} onclick={(event) => follow(event, runPath)}
-      ><RelativeTime date={review.requestedAt} /></a
-    >
+    <a href={router.href(runPath)}><RelativeTime date={review.requestedAt} /></a>
   {/if}
 {/snippet}
 
@@ -87,7 +74,7 @@
   <!-- COR-2426, row 25o: the workflow by its name, and the step that asked. -->
   <p class="ib-review-source" data-testid="review-source">
     {REVIEWS_COPY.source.askedBy}
-    <a href={router.href(runPath)} onclick={(event) => follow(event, runPath)}
+    <a href={router.href(runPath)}
       >{REVIEWS_COPY.source.workflowNamed(
         humanizeIdentifier(review.workflowName, { casing: 'sentence' }),
       )}</a
@@ -98,9 +85,7 @@
   <p class="ib-review-source" data-testid="review-source">
     {REVIEWS_COPY.source.askedBy}
     {#if agent !== undefined}
-      <a href={router.href(agentPath(agent))} onclick={(event) => follow(event, agentPath(agent))}
-        >{agentLabel(displayName(agent), undefined)}</a
-      >
+      <a href={router.href(agentPath(agent))}>{agentLabel(displayName(agent), undefined)}</a>
     {:else}
       <span
         >{review.kind === 'engine-review'
@@ -109,9 +94,7 @@
       >
     {/if}
     {REVIEWS_COPY.source.in}
-    <a href={router.href(place.path)} onclick={(event) => follow(event, place.path)}
-      >{place.label}</a
-    >,
+    <a href={router.href(place.path)}>{place.label}</a>,
     {@render when()}
   </p>
 {/if}

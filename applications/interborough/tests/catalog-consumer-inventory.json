@@ -2870,12 +2870,20 @@
       "classification": "boundary",
       "transport": "Native application documents and published assets",
       "owner": "Interborough host",
-      "reason": "The host reaches the candidate router only at the existing document and asset boundaries.",
+      "reason": "The host forwards unclaimed document and asset reads to the published application after its private and API boundaries.",
       "expressions": [
-        "openHostDocuments candidate.fetch(request)",
-        "openHostDocuments candidate.fetch(request)",
-        "unclaimed candidate.fetch(request)"
+        "openHostDocuments application?.fetch(request)",
+        "openHostDocuments application.fetch(request)",
+        "unclaimed application.fetch(request)"
       ]
+    },
+    {
+      "path": "host/native-document-path.ts",
+      "classification": "boundary",
+      "transport": "Development document dispatch",
+      "owner": "Interborough host",
+      "reason": "The watched host dispatches document reads to the active immutable generation.",
+      "expressions": ["fetch active.fetch(request)"]
     },
     {
       "path": "host/shared-browser-sign-in.ts",
@@ -3175,6 +3183,7 @@
     "host/cli-runs.ts @lostgradient/bureau-sdk type { CatalogOperationTypes }",
     "host/cli.ts ./cli-client.ts { executeCli }",
     "host/dev.ts ./host.ts { startHost, type Host, type HostOptions }",
+    "host/dev.ts ./native-document-path.ts { openDevelopmentNativeDocuments }",
     "host/engine-proxy.ts @lostgradient/weft { AUTHORIZATION_SCOPES }",
     "host/host-authority.ts @lostgradient/weft { WEFT_SCOPE_VOCABULARY }",
     "host/host-diagnostics.ts @lostgradient/weft type { RegistryAgnosticEngine, WeftServer }",
@@ -3189,6 +3198,7 @@
     "host/host.ts ./engine-proxy.ts { createLocalAuthentication, isEngineRequestPath, relayRequest, webSocketRelayData, }",
     "host/host.ts ./host-storage.ts { hostStorageReport, hostStorageSummary }",
     "host/host.ts ./instance-record.ts { instanceRecordPath, removeInstanceRecord, writeInstanceRecord, }",
+    "host/host.ts ./native-document-path.ts { openPublishedNativeDocuments }",
     "host/host.ts ./shared-browser-sign-in.ts { createSharedBrowserSignIn, sharedBrowserRoutes, sharedBrowserServerHooks, type SharedBrowserSignInOptions, }",
     "host/host.ts ./tool-source-manager.ts { createToolSourceManager, type ToolSourceManager }",
     "host/host.ts ./tool-source-routes.ts { toolSourceRoutes }",
@@ -3198,8 +3208,8 @@
     "host/panel-review-eligibility.ts ./shared-browser-sign-in.ts type { createSharedBrowserSignIn }",
     "host/panel-routes.ts @lostgradient/weft { MCP_LEGACY_PROTOCOL_VERSION }",
     "host/refund-operations.ts @lostgradient/weft { WorkflowClaimUnavailableError }",
-    "host/serve.ts ./host.ts { startHost }",
-    "host/shell-request.ts ./engine-proxy.ts { isEngineRequestPath }",
+    "host/serve.ts ./host.ts { startHost, type HostOptions }",
+    "host/native-document-request.ts ./engine-proxy.ts { isEngineRequestPath }",
     "host/showcase-agents.ts ./host.ts type { ExtraAgents }",
     "host/showcase.ts ./host.ts type { HostOptions, RunAgentLookup }",
     "host/showcase.ts @lostgradient/weft type { AlertingOptions }",

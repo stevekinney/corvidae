@@ -407,14 +407,6 @@
   const duplicatePath = agentDuplicatePath(id);
   const connectPath = CHAT_READINESS_PATHS['needs-provider'];
 
-  function goTo(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
-
   // The address owns the tab, so a tab can be linked and the back button returns to it:
   // `activeTab` follows the route, and a tab the person picks writes the address before Tabs
   // commits it (`onValueChangeRequest`), so a jump through history to an older tab is only read,
@@ -472,13 +464,7 @@
       >
     </Tooltip>
   {:else if listed?.kind === 'file'}
-    <Button
-      href={router.href(editPath)}
-      variant="secondary"
-      size="sm"
-      mutating
-      onclick={(event) => goTo(event, editPath)}
-    >
+    <Button href={router.href(editPath)} variant="secondary" size="sm" mutating>
       {#snippet leadingIcon()}<Pencil aria-hidden="true" size={14} />{/snippet}
       {AGENT_EDITOR_COPY.editAction}
     </Button>
@@ -491,9 +477,7 @@
         variant="secondary"
         size="sm"
         iconOnly
-        aria-label={copy.duplicate}
-        onclick={(event) => goTo(event, duplicatePath)}
-        ><CopyPlus aria-hidden="true" size={14} /></Button
+        aria-label={copy.duplicate}><CopyPlus aria-hidden="true" size={14} /></Button
       >
     </Tooltip>
   {/if}
@@ -513,12 +497,7 @@
       </Button>
     </Tooltip>
   {:else if !needsProvider}
-    <Button
-      href={router.href(newChatPath(id))}
-      variant={newChatVariant}
-      size="sm"
-      onclick={(event) => goTo(event, newChatPath(id))}
-    >
+    <Button href={router.href(newChatPath(id))} variant={newChatVariant} size="sm">
       {#snippet leadingIcon()}<Plus aria-hidden="true" size={14} />{/snippet}
       {CHAT_COPY.newChat}
     </Button>
@@ -588,9 +567,7 @@
                not a banner, because it asks for nothing. -->
           <p class="ib-agent__reason" data-testid="agent-copied-from">
             {copy.header.copiedFrom.lead}
-            <a
-              href={router.href(agentPath(copiedFrom.agent))}
-              onclick={(event) => goTo(event, agentPath(copiedFrom.agent))}>{copiedFrom.name}</a
+            <a href={router.href(agentPath(copiedFrom.agent))}>{copiedFrom.name}</a
             >{copiedFrom.versions === null
               ? copy.header.copiedFrom.changed
               : copy.header.copiedFrom.changedFrom(
@@ -602,9 +579,7 @@
         {#if needsProvider}
           <p class="ib-agent__reason" data-testid="agent-provider-reason">
             {copy.header.needsProvider}
-            <a href={router.href(connectPath)} onclick={(event) => goTo(event, connectPath)}
-              >{copy.header.connectProvider}</a
-            >
+            <a href={router.href(connectPath)}>{copy.header.connectProvider}</a>
           </p>
         {/if}
       </div>

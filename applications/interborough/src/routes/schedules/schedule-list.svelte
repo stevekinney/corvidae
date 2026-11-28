@@ -53,7 +53,6 @@
   import { agentLabel } from '../../lib/agent-label.ts';
   import { getClient } from '../../lib/client.ts';
   import { faultErrorStateAdvice } from '../../lib/faults.ts';
-  import { followLinks } from '../../lib/follow-links.ts';
   import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router, scheduleCreatePath } from '../../lib/router.svelte.ts';
@@ -417,7 +416,7 @@
           {#snippet icon()}<Search aria-hidden="true" />{/snippet}
         </EmptyState>
       {:else}
-        <div {@attach followLinks}>
+        <div>
           <DataList
             items={visibleRows}
             key={rowKey}

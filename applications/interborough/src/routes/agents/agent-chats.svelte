@@ -35,7 +35,6 @@
   import { listBureauReviews } from '../../lib/bureau-reviews.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import { clockTime, viewerTimeZone } from '../../lib/format/clock.ts';
-  import { followLinks } from '../../lib/follow-links.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { chatsWithFailedRun, recentTasksQuery } from '../../lib/recent-tasks.ts';
@@ -278,7 +277,7 @@
         </EmptyState>
       {/if}
     {:else if rows.length > 0}
-      <div {@attach followLinks}>
+      <div>
         <DataList
           items={rows}
           key={(row: SessionRow) => row.id}

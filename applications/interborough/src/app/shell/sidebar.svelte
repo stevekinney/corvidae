@@ -99,12 +99,16 @@
   const keyboard = getKeyboardPreferences();
   const showNewChatKey = $derived(keyboard?.singleKeyShortcuts ?? true);
 
-  function onNavClick(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+  function onNavClick(event: MouseEvent): void {
+    if (
+      event.defaultPrevented ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      event.button !== 0
+    )
       return;
-    }
-    event.preventDefault();
-    router.navigate(path);
     shell.close();
   }
 
@@ -191,7 +195,7 @@
           count={reviewsCount}
           countLabel={NAVIGATION_COPY.reviewsCountLabel}
           active={isActivePath(destination.path)}
-          onclick={(event) => onNavClick(event, destination.path)}
+          onclick={onNavClick}
         >
           {#snippet icon()}<Icon size="1rem" />{/snippet}
           {label}
@@ -202,7 +206,7 @@
           {label}
           {...healthSignal}
           active={isActivePath(destination.path)}
-          onclick={(event) => onNavClick(event, destination.path)}
+          onclick={onNavClick}
         >
           {#snippet icon()}<Icon size="1rem" />{/snippet}
           {label}
@@ -212,7 +216,7 @@
           href={router.href(destination.path)}
           {label}
           active={isActivePath(destination.path)}
-          onclick={(event) => onNavClick(event, destination.path)}
+          onclick={onNavClick}
         >
           {#snippet icon()}<Icon size="1rem" />{/snippet}
           {label}
@@ -226,7 +230,7 @@
         label={entry.title}
         badge={PLUGIN_PAGE_COPY.badge}
         active={router.pathname === entry.path}
-        onclick={(event) => onNavClick(event, entry.path)}
+        onclick={onNavClick}
       >
         {#snippet icon()}<Icon size="1rem" />{/snippet}
         {entry.title}

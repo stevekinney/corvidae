@@ -305,10 +305,10 @@ describe('router singleton', () => {
     router.navigate('/runs');
     router.navigate('/schedules');
 
-    router.back();
+    window.history.back();
     expect(router.pathname).toBe('/runs');
 
-    router.forward();
+    window.history.forward();
     expect(router.pathname).toBe('/schedules');
   });
 
@@ -316,7 +316,7 @@ describe('router singleton', () => {
     router.navigate('/runs');
     router.navigate('/schedules', { replace: true });
 
-    router.back();
+    window.history.back();
     // The replace collapsed onto /runs's entry, so back() from
     // /schedules lands on whatever preceded /runs — the "/" baseline
     // `resetLocation` established — not on /runs itself.
@@ -371,7 +371,7 @@ describe('the key the outlet mounts a route under', () => {
     router.navigate('/chats/new');
     router.navigate('/chats/session-1', { replace: true, keep: true });
 
-    router.back();
+    window.history.back();
     window.dispatchEvent(new PopStateEvent('popstate'));
 
     expect(router.viewKey).toBe(router.pathname);

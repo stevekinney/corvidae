@@ -354,17 +354,17 @@ describe('the tab in the address', () => {
     const entries = window.history.length;
 
     // Two steps back is the Runs entry; the Code entry sits between it and the address of no tab.
-    router.back();
+    window.history.back();
     await waitFor(() => expect(router.search.get('tab')).toBe('code'));
     await waitFor(() => expect(testId(container, 'workflow-code')).not.toBeNull());
-    router.back();
+    window.history.back();
     await waitFor(() => expect(router.search.get('tab')).toBe('runs'));
     await waitFor(() => expect(testId(container, 'workflow-recent-runs')).not.toBeNull());
     // Each entry was only read: none was replaced and none was added.
     expect(window.history.length).toBe(entries);
-    router.forward();
+    window.history.forward();
     await waitFor(() => expect(router.search.get('tab')).toBe('code'));
-    router.forward();
+    window.history.forward();
     await waitFor(() => expect(router.search.has('tab')).toBe(false));
     await waitFor(() => expect(testId(container, 'workflow-overview')).not.toBeNull());
   });

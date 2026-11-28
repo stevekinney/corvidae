@@ -41,14 +41,6 @@
   // The names the Agents list shows, from the same query and helper the shell's bell and the search
   // palette use; an agent the list does not hold reads as its identifier in words.
   const agents = createQuery(agentsListQuery, undefined);
-
-  function go(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 <section class="ib-capability__section" data-testid="capability-users">
@@ -60,11 +52,7 @@
         {#if empty.action !== undefined}
           {@const action = empty.action}
           <!-- In a line of text, so underlined: colour alone does not mark it (axe link-in-text-block). -->
-          <Link
-            underline="always"
-            href={router.href(action.href)}
-            onclick={(event) => go(event, action.href)}>{action.label}</Link
-          >
+          <Link underline="always" href={router.href(action.href)}>{action.label}</Link>
         {/if}
       </p>
     {:else}
@@ -75,11 +63,8 @@
         description={empty.description}
       >
         {#snippet action()}
-          <Button
-            href={router.href(empty.action.href)}
-            variant="secondary"
-            size="sm"
-            onclick={(event) => go(event, empty.action.href)}>{empty.action.label}</Button
+          <Button href={router.href(empty.action.href)} variant="secondary" size="sm"
+            >{empty.action.label}</Button
           >
         {/snippet}
       </EmptyState>
@@ -89,10 +74,8 @@
       {#each users as user (user)}
         <li>
           <!-- The agent's name as the Agents list shows it ("Workflow author"), never its identifier. -->
-          <Link
-            href={router.href(agentPath(user))}
-            onclick={(event) => go(event, agentPath(user))}
-            data-agent={user}>{agentLabel(user, agents.data)}</Link
+          <Link href={router.href(agentPath(user))} data-agent={user}
+            >{agentLabel(user, agents.data)}</Link
           >
           {#if note !== undefined}
             <span class="ib-capability__user-note" data-testid="capability-user-note"

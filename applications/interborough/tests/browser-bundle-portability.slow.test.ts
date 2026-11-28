@@ -3,7 +3,7 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 
-import { assertCleanBuild, browserBuildOptions } from '../scripts/browser-build.ts';
+import { buildNativeDocuments } from '../scripts/build-native-documents.ts';
 
 it('bundles the plain Reviews client without Svelte, Cinder or server modules', async () => {
   const result = await Bun.build({
@@ -23,17 +23,6 @@ it('bundles the plain Reviews client without Svelte, Cinder or server modules', 
     [],
   );
 });
-
-/** Compile the application for the browser, failing on any error or warning. */
-async function buildBrowserBundle(options: {
-  entrypoints: string[];
-  outdir: string;
-  development: boolean;
-}) {
-  const result = await Bun.build(browserBuildOptions(options));
-  assertCleanBuild(result);
-  return result;
-}
 
 // BEGIN node-crypto-predicate
 const nodeCryptoFindingKinds = [
@@ -129,7 +118,6 @@ function nodeCryptoResolutions(evidence: NodeCryptoEvidence): NodeCryptoFinding[
 // END node-crypto-predicate
 
 const applicationRoot = join(import.meta.dir, '..');
-const htmlEntrypoint = join(applicationRoot, 'index.html');
 
 async function readEmittedScripts(directory: string): Promise<Map<string, string>> {
   const files = new Map<string, string>();
@@ -146,17 +134,16 @@ afterAll(async () => {
   await rm(workDirectory, { recursive: true, force: true });
 });
 
-type ShippedBuild = Awaited<ReturnType<typeof buildBrowserBundle>>;
-let shipped: ShippedBuild | undefined;
+let shippedMetadata: Bun.BuildMetafile | undefined;
 let shippedBuildError: unknown;
 let shippedFiles = new Map<string, string>();
 try {
-  shipped = await buildBrowserBundle({
-    entrypoints: [htmlEntrypoint],
-    outdir: join(workDirectory, 'shipped'),
-    development: false,
+  const shipped = await buildNativeDocuments(join(workDirectory, 'shipped'), {
+    onBuildMetadata({ browser }) {
+      shippedMetadata = browser;
+    },
   });
-  shippedFiles = await readEmittedScripts(join(workDirectory, 'shipped'));
+  shippedFiles = await readEmittedScripts(join(shipped.directory, 'browser'));
 } catch (error) {
   shippedBuildError = error;
 }
@@ -197,7 +184,7 @@ function emittedFindings(snippet: string): NodeCryptoFinding[] {
 }
 
 describe('interborough browser bundle portability', () => {
-  it('builds the shipped SPA without errors or warnings', () => {
+  it('builds the shipped native graph without errors or warnings', () => {
     const failures =
       shippedBuildError instanceof AggregateError
         ? shippedBuildError.errors.map((entry) => String(entry?.message ?? entry))
@@ -211,25 +198,24 @@ describe('interborough browser bundle portability', () => {
     expect(failures).toEqual([]);
   });
 
-  it('bundles weft source and emits index.html', () => {
+  it('bundles Weft source and emits a native browser registry', () => {
     // Metafile inputs are relative to the working directory, so they are resolved before asking
     // whether Weft's source was bundled.
     const weftSource = `${resolve(applicationRoot, '..', '..', 'packages', 'weft', 'src')}${sep}`;
-    const inputs = Object.keys(shipped?.metafile?.inputs ?? {}).map((key) => resolve(key));
+    const inputs = Object.keys(shippedMetadata?.inputs ?? {}).map((key) => resolve(key));
     expect(inputs.some((path) => path.startsWith(weftSource))).toBe(true);
-    const outputs = Object.keys(shipped?.metafile?.outputs ?? {});
-    expect(outputs.some((key) => key.endsWith('index.html'))).toBe(true);
+    const outputs = Object.keys(shippedMetadata?.outputs ?? {});
+    expect(outputs.some((key) => /browser-registry-.+\.js$/u.test(key))).toBe(true);
   });
 
-  it('resolves node:crypto nowhere in the shipped SPA', () => {
+  it('resolves node:crypto nowhere in the shipped native graph', () => {
     expect(
       nodeCryptoResolutions({
-        metafile: shipped?.metafile,
+        metafile: shippedMetadata,
         logs:
-          shipped?.logs ??
-          (shippedBuildError instanceof AggregateError
+          shippedBuildError instanceof AggregateError
             ? (shippedBuildError.errors as NodeCryptoLog[])
-            : []),
+            : [],
         files: shippedFiles,
       }),
     ).toEqual([]);

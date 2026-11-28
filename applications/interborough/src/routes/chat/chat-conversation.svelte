@@ -922,13 +922,6 @@
     return owner !== null && owner !== principal.subject ? SETTINGS.notYours : undefined;
   });
 
-  function openAgent(event: MouseEvent, name: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)
-      return;
-    event.preventDefault();
-    router.navigate(agentPath(name));
-  }
-
   let route = $state<HTMLElement | undefined>();
   let head = $state<HTMLElement | undefined>();
   /** The header band's height on the route, for `.weft-chat-alerts` in `chat.css`. */
@@ -1213,18 +1206,6 @@
   const branchPoints = $derived(
     branchPointIds(session.conversation, session.streaming || session.attaching),
   );
-  /** A link in a line under a message (a memory record, a child run) opens its page inside the app. */
-  function openNoteLink(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    const link =
-      event.target instanceof Element ? event.target.closest('a[data-chat-note-link]') : null;
-    const href = link?.getAttribute('href');
-    if (href === null || href === undefined) return;
-    event.preventDefault();
-    router.navigate(href);
-  }
   const retryCommands = createPendingCommandKey();
 
   /** Replaces the latest completed answer through the host-owned Bureau operation. */
@@ -2401,7 +2382,6 @@
     {agent}
     agentLabel={agentLabel(agent, agents.data)}
     agentHref={router.href(agentPath(agent))}
-    onOpenAgent={(event) => openAgent(event, agent)}
     startedAt={context.data === undefined ? null : epochOf(context.data.createdAt)}
     lastActiveAt={context.data === undefined ? null : epochOf(context.data.updatedAt)}
     now={clock()}
@@ -2593,11 +2573,6 @@
               href={router.href(CHAT_READINESS_PATHS[chatMissing])}
               variant="primary"
               size="sm"
-              onclick={(event: MouseEvent) => {
-                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                event.preventDefault();
-                router.navigate(CHAT_READINESS_PATHS[chatMissing]);
-              }}
             >
               {CHAT_COPY.readiness[chatMissing].action}
             </Button>
@@ -2606,7 +2581,7 @@
       </div>
     {:else}
       <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-      <div class="weft-chat-surface" onclick={openNoteLink}>
+      <div class="weft-chat-surface">
         <Chat
           bind:this={chat}
           bind:hostQuestionDocked
@@ -2739,7 +2714,6 @@
                 {#if note.kind === 'stopped' && note.failed === true}
                   {@const failedRunId = stoppedRunIdOf(note.id)}
                   {#if failedRunId !== undefined}
-                    <!-- `data-chat-note-link` opens it inside the app (`openNoteLink`). -->
                     <Link
                       color="inherit"
                       underline="always"

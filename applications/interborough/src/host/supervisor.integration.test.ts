@@ -10,10 +10,11 @@ import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterAll, describe, expect, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { stubBrowserPublication } from './build-info.test-support.ts';
 import { BUILD_INFO_FILE, readSourceInfo } from './build-info.ts';
 import { processEnvironment } from './environment-configuration.ts';
 import { hostCommand, supervise, type SupervisorSignals } from './supervisor.ts';
@@ -111,22 +112,11 @@ const missingBuild = await runWithHangGuard([process.execPath, supervisorEntry, 
 // is passed, so the answer does not depend on how the test was started.
 const launchDirectory = scratch();
 const launchBuild = join(launchDirectory, 'build');
-mkdirSync(launchBuild);
-writeFileSync(join(launchBuild, 'index.html'), '<!doctype html>');
-// A build `serve` accepts records the checkout's current source (`build-info.ts`).
-writeFileSync(
-  join(launchBuild, BUILD_INFO_FILE),
-  JSON.stringify(readSourceInfo(join(import.meta.dir, '..', '..'))),
-);
+stubBrowserPublication(launchBuild, readSourceInfo(packageDirectory));
 // A build made from another commit is refused, and nothing starts.
 const staleDirectory = scratch();
 const staleBuild = join(staleDirectory, 'build');
-mkdirSync(staleBuild);
-writeFileSync(join(staleBuild, 'index.html'), '<!doctype html>');
-writeFileSync(
-  join(staleBuild, BUILD_INFO_FILE),
-  JSON.stringify({ commit: '0'.repeat(40), changes: '' }),
-);
+stubBrowserPublication(staleBuild, { commit: '0'.repeat(40), changes: '' });
 const staleServe = await runWithHangGuard([process.execPath, supervisorEntry, 'serve'], {
   cwd: join(import.meta.dir, '..', '..'),
   env: { ...processEnvironment(), INTERBOROUGH_BUILD_DIRECTORY: staleBuild },
@@ -286,10 +276,10 @@ describe('hostCommand', () => {
 });
 
 describe('the supervisor command', () => {
-  test('`serve` without build/index.html exits 1, starts nothing, and names `bun run build`', () => {
+  test('`serve` without a published build exits 1, starts nothing, and names `bun run build`', () => {
     expect(missingBuild.exitCode).toBe(1);
     expect(missingBuild.stderr.toString()).toContain('bun run build');
-    expect(missingBuild.stderr.toString()).toContain(join(emptyBuild, 'index.html'));
+    expect(missingBuild.stderr.toString()).toContain(join(emptyBuild, BUILD_INFO_FILE));
     expect(missingBuild.stdout.toString()).not.toContain('Started the host');
   });
 

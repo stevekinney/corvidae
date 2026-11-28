@@ -1,10 +1,4 @@
-/**
- * Tests for `scripts/build.ts`: the atomic directory swap, the clean-build check, the bundler
- * options, the WebAssembly plugin, and the staging, retention and replacement that surround the
- * bundler (driven through a fake bundler). The real build, which bundles for seconds, is in
- * `build.slow.test.ts`.
- */
-import { afterAll, describe, expect, it, spyOn } from 'bun:test';
+import { afterAll, describe, expect, it } from 'bun:test';
 import {
   existsSync,
   mkdirSync,
@@ -14,268 +8,31 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { rename, rm } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 
-import { rejectionOf } from '@lostgradient/testing';
+import { rejectionOf, waitUntil } from '@lostgradient/testing';
 
-import { waitUntil } from '@lostgradient/testing/wait-until';
-import { compareCodepoint } from '../src/lib/compare-codepoint.ts';
-import {
-  assertCleanBuild,
-  browserBuildOptions,
-  BUILD_ASSET_DIRECTORY,
-  CURATED_SHIKI_REGISTRIES,
-  curatedShikiPlugin,
-  linkedStylesheets,
-  wasmPlugin,
-} from './browser-build.ts';
+import { BUILD_INFO_FILE, publishedBrowserBuildDirectory } from '../src/host/build-info.ts';
+import { CURATED_SHIKI_REGISTRIES, curatedShikiPlugin, wasmPlugin } from './browser-build.ts';
 import {
   assertSafeOutputDirectory,
+  buildApplication,
   buildInputPaths,
-  buildApplication as buildRealApplication,
   DEFAULT_BUILD_DIRECTORY,
-  ENTRY_HTML_PATH,
   exitWhenStandardInputCloses,
   PACKAGE_DIRECTORY,
   parseBuildArguments,
-  replaceDirectory,
   REPOSITORY_ROOT,
-  RETAINED_ASSETS_FILE,
-  retainPreviousAssets,
   runBuildCommand,
   runBuildMain,
 } from './build.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'interborough-build-'));
 
-const buildApplication: typeof buildRealApplication = (options) =>
-  buildRealApplication({
-    ...options,
-    buildPrivate: options?.buildPrivate ?? (async () => ({}) as never),
-  });
-
 afterAll(() => {
   rmSync(scratch, { recursive: true, force: true });
-});
-
-describe('replaceDirectory', () => {
-  /** A parent directory holding `build/` (when `previous` is given) and `staging/`. */
-  function directories(previous: string | undefined): {
-    parent: string;
-    directory: string;
-    staging: string;
-  } {
-    const parent = mkdtempSync(join(scratch, 'replace-'));
-    const directory = join(parent, 'build');
-    const staging = join(parent, 'staging');
-    if (previous !== undefined) {
-      mkdirSync(directory);
-      writeFileSync(join(directory, 'index.html'), previous);
-    }
-    mkdirSync(staging);
-    writeFileSync(join(staging, 'index.html'), 'new');
-    return { parent, directory, staging };
-  }
-
-  it('puts the staged tree in place and deletes the previous one', async () => {
-    const { parent, directory, staging } = directories('old');
-    await replaceDirectory(staging, directory);
-    expect(await Bun.file(join(directory, 'index.html')).text()).toBe('new');
-    expect(readdirSync(parent)).toEqual(['build']);
-  });
-
-  it('puts the staged tree in place when nothing was there before', async () => {
-    const { parent, directory, staging } = directories(undefined);
-    await replaceDirectory(staging, directory);
-    expect(await Bun.file(join(directory, 'index.html')).text()).toBe('new');
-    expect(readdirSync(parent)).toEqual(['build']);
-  });
-
-  it('restores the previous tree when the staged tree cannot be renamed into place', async () => {
-    const { parent, directory, staging } = directories('old');
-    const failure = new Error('rename failed');
-    const renames: [string, string][] = [];
-    const rejection = await rejectionOf(
-      replaceDirectory(staging, directory, {
-        rename: async (from, to) => {
-          renames.push([from, to]);
-          if (from === staging) throw failure;
-          await rename(from, to);
-        },
-        rm,
-      }),
-    );
-    expect(rejection).toBe(failure);
-    expect(renames).toHaveLength(3);
-    expect(renames[0]?.[0]).toBe(directory);
-    expect(renames[2]).toEqual([renames[0]?.[1] ?? '', directory]);
-    expect(await Bun.file(join(directory, 'index.html')).text()).toBe('old');
-    expect(readdirSync(parent).toSorted()).toEqual(['build', 'staging']);
-  });
-
-  it('leaves the previous tree alone when it cannot be moved aside', async () => {
-    const { directory, staging } = directories('old');
-    const failure = Object.assign(new Error('busy'), { code: 'EBUSY' });
-    const rejection = await rejectionOf(
-      replaceDirectory(staging, directory, {
-        rename: async () => {
-          throw failure;
-        },
-        rm,
-      }),
-    );
-    expect(rejection).toBe(failure);
-    expect(await Bun.file(join(directory, 'index.html')).text()).toBe('old');
-  });
-});
-
-type BuildLog = Bun.BuildOutput['logs'][number];
-
-describe('assertCleanBuild', () => {
-  const metafile: Bun.BuildMetafile = { inputs: {}, outputs: {} };
-  const warning = { level: 'warning', message: 'unused selector' } as unknown as BuildLog;
-  const failure = { level: 'error', message: 'syntax error' } as unknown as BuildLog;
-
-  function output(fields: Partial<Bun.BuildOutput>): Bun.BuildOutput {
-    return { success: true, outputs: [], logs: [], metafile, ...fields };
-  }
-
-  it('returns the metafile of a clean build', () => {
-    expect(assertCleanBuild(output({}))).toBe(metafile);
-  });
-
-  it('fails a build that did not succeed', () => {
-    expect(() => assertCleanBuild(output({ success: false, logs: [failure] }))).toThrow(
-      'Browser compilation failed',
-    );
-  });
-
-  it('fails a build that logged a warning', () => {
-    expect(() => assertCleanBuild(output({ logs: [warning] }))).toThrow(
-      'Browser compilation emitted warnings',
-    );
-  });
-
-  it('fails a build without a metafile', () => {
-    const { metafile: _metafile, ...withoutMetafile } = output({});
-    expect(() => assertCleanBuild(withoutMetafile)).toThrow(
-      'Browser compilation did not emit module provenance',
-    );
-  });
-});
-
-describe('retainPreviousAssets', () => {
-  /** A `build/` and a `staging/` tree whose `assets/` hold the named files. */
-  function generation(built: string[], staged: string[]): { directory: string; staging: string } {
-    const parent = mkdtempSync(join(scratch, 'retain-'));
-    const directory = join(parent, 'build');
-    const staging = join(parent, 'staging');
-    for (const [root, names] of [
-      [directory, built],
-      [staging, staged],
-    ] as const) {
-      mkdirSync(join(root, BUILD_ASSET_DIRECTORY), { recursive: true });
-      for (const name of names) {
-        writeFileSync(join(root, BUILD_ASSET_DIRECTORY, name), `${root}:${name}`);
-      }
-    }
-    return { directory, staging };
-  }
-
-  function assetNames(root: string): string[] {
-    return readdirSync(join(root, BUILD_ASSET_DIRECTORY)).toSorted();
-  }
-
-  it("keeps the previous build's hashed assets beside the new build's own", async () => {
-    const { directory, staging } = generation(['chunk-old11111.js'], ['chunk-new22222.js']);
-    await retainPreviousAssets(staging, directory);
-    await replaceDirectory(staging, directory);
-    expect(assetNames(directory)).toEqual(['chunk-new22222.js', 'chunk-old11111.js']);
-  });
-
-  it('keeps only one generation: assets the previous build carried over are dropped', async () => {
-    const first = generation(['chunk-first111.js'], ['chunk-second22.js']);
-    await retainPreviousAssets(first.staging, first.directory);
-    await replaceDirectory(first.staging, first.directory);
-    expect(assetNames(first.directory)).toEqual(['chunk-first111.js', 'chunk-second22.js']);
-
-    const third = join(first.directory, '..', 'staging-third');
-    mkdirSync(join(third, BUILD_ASSET_DIRECTORY), { recursive: true });
-    writeFileSync(join(third, BUILD_ASSET_DIRECTORY, 'chunk-third333.js'), 'third');
-    await retainPreviousAssets(third, first.directory);
-    await replaceDirectory(third, first.directory);
-
-    expect(assetNames(first.directory)).toEqual(['chunk-second22.js', 'chunk-third333.js']);
-  });
-
-  it('never overwrites a file the new build emitted under the same name', async () => {
-    const { directory, staging } = generation(['shared-abcd1234.css'], ['shared-abcd1234.css']);
-    await retainPreviousAssets(staging, directory);
-    expect(await Bun.file(join(staging, BUILD_ASSET_DIRECTORY, 'shared-abcd1234.css')).text()).toBe(
-      `${staging}:shared-abcd1234.css`,
-    );
-  });
-
-  it('retains nothing when there was no build before', async () => {
-    const parent = mkdtempSync(join(scratch, 'retain-first-'));
-    const staging = join(parent, 'staging');
-    mkdirSync(staging);
-    expect(await retainPreviousAssets(staging, join(parent, 'build'))).toEqual([]);
-  });
-
-  it('rethrows a failure to read the previous assets that is not a missing directory', async () => {
-    const parent = mkdtempSync(join(scratch, 'retain-unreadable-'));
-    const directory = join(parent, 'build');
-    const staging = join(parent, 'staging');
-    mkdirSync(directory);
-    mkdirSync(staging);
-    // `assets` is a file, so listing it fails with ENOTDIR rather than ENOENT.
-    writeFileSync(join(directory, BUILD_ASSET_DIRECTORY), 'not a directory');
-
-    const rejection = await rejectionOf(retainPreviousAssets(staging, directory));
-
-    expect(rejection).toBeInstanceOf(Error);
-    expect(rejection).toHaveProperty('code', 'ENOTDIR');
-    expect(readdirSync(staging)).toEqual([]);
-  });
-});
-
-describe('browserBuildOptions', () => {
-  const entrypoints = ['index.html'];
-
-  it('links source maps in development and ships none in production', () => {
-    const development = browserBuildOptions({ entrypoints, outdir: 'out', development: true });
-    const production = browserBuildOptions({ entrypoints, outdir: 'out', development: false });
-
-    expect(development.sourcemap).toBe('linked');
-    expect(production.sourcemap).toBe('none');
-  });
-
-  it('compiles NODE_ENV in and the Svelte plugin for the mode asked for', () => {
-    const production = browserBuildOptions({ entrypoints, outdir: 'out', development: false });
-    const development = browserBuildOptions({ entrypoints, outdir: 'out', development: true });
-
-    expect(production.define).toEqual({ 'process.env.NODE_ENV': '"production"' });
-    expect(development.define).toEqual({ 'process.env.NODE_ENV': '"development"' });
-    for (const options of [production, development]) {
-      expect(options.entrypoints).toBe(entrypoints);
-      expect(options.outdir).toBe('out');
-      expect(options.conditions).toEqual(['browser', 'svelte', 'unwasm']);
-      expect(options.splitting).toBe(true);
-      expect(options.metafile).toBe(true);
-      expect(options.plugins?.[0]).toBe(wasmPlugin);
-      expect(options.plugins?.[1]).toBe(curatedShikiPlugin);
-      expect(options.plugins).toHaveLength(3);
-      expect(options.plugins?.[2]?.name).toBe('velveteen-svelte');
-      expect(options.naming).toEqual({
-        entry: '[name].[ext]',
-        chunk: `${BUILD_ASSET_DIRECTORY}/[name]-[hash].[ext]`,
-        asset: `${BUILD_ASSET_DIRECTORY}/[name]-[hash].[ext]`,
-      });
-    }
-  });
 });
 
 describe('wasmPlugin', () => {
@@ -366,283 +123,64 @@ describe('curatedShikiPlugin', () => {
   });
 });
 
-describe('buildApplication', () => {
-  /** A bundler that writes `files` into the staging directory it is given, as `Bun.build` would. */
-  function fakeBundle(
-    files: Record<string, string>,
-    overrides: Partial<Bun.BuildOutput> = {},
-  ): {
-    bundle: (configuration: Bun.BuildConfig) => Promise<Bun.BuildOutput>;
-    calls: Bun.BuildConfig[];
-  } {
-    const calls: Bun.BuildConfig[] = [];
-    return {
-      calls,
-      bundle: async (configuration) => {
-        calls.push(configuration);
-        const outdir = configuration.outdir ?? '';
-        for (const [name, contents] of Object.entries(files)) {
-          mkdirSync(join(outdir, name, '..'), { recursive: true });
-          writeFileSync(join(outdir, name), contents);
-        }
-        return {
-          success: true,
-          outputs: Object.keys(files).map((name) => ({ path: join(outdir, name) })),
-          logs: [],
-          metafile: { inputs: {}, outputs: {} },
-          ...overrides,
-        } as unknown as Bun.BuildOutput;
-      },
+describe('native browser publication', () => {
+  it('publishes the pair atomically and keeps the last good generation after a failed build', async () => {
+    const directory = join(mkdtempSync(join(scratch, 'generation-')), 'build');
+    const source = { commit: 'a'.repeat(40), changes: '' };
+    const writeOutput = async (path: string, content: string) => {
+      await mkdir(path, { recursive: true });
+      await writeFile(join(path, 'manifest.json'), content);
+      return { directory: path, manifest: {} as never };
     };
-  }
-
-  function outputDirectory(): string {
-    return join(mkdtempSync(join(scratch, 'build-')), 'build');
-  }
-
-  it('waits for generated inputs before starting the bundler', async () => {
-    const ready = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<void>();
-    const { bundle, calls } = fakeBundle({ 'index.html': 'page' });
-    const build = buildApplication({
-      outdir: outputDirectory(),
-      source: { commit: 'b'.repeat(40), changes: '' },
-      bundle,
-      ensureGenerated: async () => {
-        ready.resolve();
-        await release.promise;
-      },
-    });
-    await ready.promise;
-    expect(calls).toHaveLength(0);
-    release.resolve();
-    await build;
-    expect(calls).toHaveLength(1);
-  });
-
-  it('captures the private builder before waiting for generated inputs', async () => {
-    const ready = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<void>();
-    const builders: string[] = [];
-    const options = {
-      outdir: outputDirectory(),
-      bundle: fakeBundle({ 'index.html': 'page' }).bundle,
-      ensureGenerated: async () => {
-        ready.resolve();
-        await release.promise;
-      },
-      buildPrivate: async () => {
-        builders.push('original');
-        return {} as never;
-      },
+    const settings = {
+      outdir: directory,
+      source,
+      ensureGenerated: () => {},
+      buildNative: (path: string) => writeOutput(path, 'native'),
+      buildPrivate: ({ outputDirectory }: { outputDirectory: string }) =>
+        writeOutput(outputDirectory, 'private'),
     };
-    const build = buildRealApplication(options);
-    await ready.promise;
-    options.buildPrivate = async () => {
-      builders.push('replacement');
-      return {} as never;
-    };
-    release.resolve();
-    await build;
-    expect(builders).toEqual(['original']);
-  });
-
-  it('builds the production application into the output directory and lists its files', async () => {
-    const outdir = outputDirectory();
-    const { bundle, calls } = fakeBundle({
-      'index.html': 'page',
-      [`${BUILD_ASSET_DIRECTORY}/main-aaaaaaaa.js`]: 'main',
-    });
-
-    const source = { commit: 'b'.repeat(40), changes: '' };
-    const result = await buildApplication({ outdir, bundle, source });
-
-    expect(result.directory).toBe(resolve(outdir));
-    expect(result.files).toEqual(['assets/main-aaaaaaaa.js', 'build-info.json', 'index.html']);
-    // The build records its commit, and the page is given the short one.
-    expect(JSON.parse(await Bun.file(join(outdir, 'build-info.json')).text())).toEqual(source);
-    expect(calls[0]?.define?.['INTERBOROUGH_BUILD_COMMIT']).toBe('"bbbbbbb"');
-    expect(result.metafile).toEqual({ inputs: {}, outputs: {} });
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.entrypoints).toEqual([ENTRY_HTML_PATH]);
-    expect(calls[0]?.minify).toBe(true);
-    expect(calls[0]?.define?.['process.env.NODE_ENV']).toBe('"production"');
-    expect(await Bun.file(join(outdir, 'index.html')).text()).toBe('page');
-    // The staging directory is gone: only the build remains beside it.
-    expect(readdirSync(join(outdir, '..'))).toEqual(['build']);
-  });
-
-  it('builds into the default directory when called with no options, without writing it here', async () => {
-    // The only way to reach the default directory is to call `buildApplication()` with nothing, and
-    // the real one is `build/` in this checkout, which the development host serves. The bundler
-    // is replaced by one that fails, so the call stops before `replaceDirectory`: the default
-    // directory is read, never written. Only the staging directory is created beside it, and
-    // the `finally` block removes it.
-    const before = readdirSync(PACKAGE_DIRECTORY).toSorted();
-    const buildExisted = existsSync(DEFAULT_BUILD_DIRECTORY);
-    const buildFilesBefore = buildExisted
-      ? readdirSync(DEFAULT_BUILD_DIRECTORY, { recursive: true, encoding: 'utf8' }).toSorted(
-          compareCodepoint,
-        )
-      : [];
-    const stagingParents: string[] = [];
-    const bundler = spyOn(Bun, 'build').mockImplementation(async (configuration) => {
-      stagingParents.push(dirname(String(configuration.outdir)));
-      throw new Error('stopped before the directory swap');
-    });
-    try {
-      const rejection = await rejectionOf(buildApplication());
-      expect(rejection).toBeInstanceOf(Error);
-      expect(rejection).toHaveProperty('message', 'stopped before the directory swap');
-    } finally {
-      bundler.mockRestore();
-    }
-
-    // One build ran, and its staging directory was created beside `build/`, where the build would land.
-    expect(stagingParents).toEqual([dirname(DEFAULT_BUILD_DIRECTORY)]);
-    expect(readdirSync(PACKAGE_DIRECTORY).toSorted()).toEqual(before);
-    expect(existsSync(DEFAULT_BUILD_DIRECTORY)).toBe(buildExisted);
-    if (buildExisted) {
-      expect(
-        readdirSync(DEFAULT_BUILD_DIRECTORY, { recursive: true, encoding: 'utf8' }).toSorted(
-          compareCodepoint,
-        ),
-      ).toEqual(buildFilesBefore);
-    }
-  });
-
-  it('keeps the previous build’s assets in development and drops them in production', async () => {
-    const outdir = outputDirectory();
-    const planted = join(outdir, BUILD_ASSET_DIRECTORY, 'previous-generation-aaaaaaaa.js');
-    const files = { 'index.html': 'page', [`${BUILD_ASSET_DIRECTORY}/main-bbbbbbbb.js`]: 'main' };
-
-    await buildApplication({ outdir, development: true, bundle: fakeBundle(files).bundle });
-    writeFileSync(planted, '');
-    const development = fakeBundle(files);
-    await buildApplication({ outdir, development: true, bundle: development.bundle });
-    expect(existsSync(planted)).toBe(true);
-    expect(development.calls[0]?.minify).toBe(false);
-    expect(development.calls[0]?.define?.['process.env.NODE_ENV']).toBe('"development"');
-    expect(existsSync(join(outdir, RETAINED_ASSETS_FILE))).toBe(true);
-
-    await buildApplication({ outdir, bundle: fakeBundle(files).bundle });
-    expect(existsSync(planted)).toBe(false);
-    expect(existsSync(join(outdir, RETAINED_ASSETS_FILE))).toBe(false);
-  });
-
-  it('leaves the previous build intact and no staging directory when the build fails', async () => {
-    const outdir = outputDirectory();
-    await buildApplication({ outdir, bundle: fakeBundle({ 'index.html': 'old' }).bundle });
-
-    const rejection = await rejectionOf(
+    const first = await buildApplication(settings);
+    expect(publishedBrowserBuildDirectory(directory)).toBe(first.directory);
+    expect(first.files).toEqual([
+      'build-info.json',
+      'documents/manifest.json',
+      'private/manifest.json',
+    ]);
+    const pointer = await Bun.file(join(directory, BUILD_INFO_FILE)).text();
+    const failure = new Error('private graph failed');
+    const result = await rejectionOf(
       buildApplication({
-        outdir,
-        bundle: fakeBundle({ 'index.html': 'half-written' }, { success: false }).bundle,
-      }),
-    );
-
-    expect(rejection).toBeInstanceOf(AggregateError);
-    expect(await Bun.file(join(outdir, 'index.html')).text()).toBe('old');
-    expect(readdirSync(join(outdir, '..'))).toEqual(['build']);
-  });
-
-  it('publishes the private generation with the browser build and preserves the old build on failure', async () => {
-    const outdir = outputDirectory();
-    const bundle = fakeBundle({ 'index.html': 'page' }).bundle;
-    const built = await buildApplication({
-      outdir,
-      bundle,
-      buildPrivate: async ({ outputDirectory, browserPlugins }) => {
-        expect(browserPlugins).toEqual([curatedShikiPlugin]);
-        await Bun.write(join(outputDirectory, 'current.json'), 'generation');
-        return {} as never;
-      },
-    });
-    expect(await Bun.file(join(outdir, 'private/current.json')).text()).toBe('generation');
-    expect(built.files).toContain('private/current.json');
-    const failure = await rejectionOf(
-      buildApplication({
-        outdir,
-        bundle,
+        ...settings,
         buildPrivate: async () => {
-          throw new Error('private build failed');
+          throw failure;
         },
       }),
     );
-    expect(failure).toBeInstanceOf(Error);
-    expect(String(failure)).toContain('private build failed');
-    expect(await Bun.file(join(outdir, 'private/current.json')).text()).toBe('generation');
-  });
-});
+    expect(result).toBe(failure);
+    expect(await Bun.file(join(directory, BUILD_INFO_FILE)).text()).toBe(pointer);
+    expect(await Bun.file(join(first.directory, 'documents/manifest.json')).text()).toBe('native');
 
-describe('stylesheets', () => {
-  it('reads the href of each stylesheet link and nothing else', () => {
-    expect(
-      linkedStylesheets(
-        '<link rel="modulepreload" href="/assets/a.js"><link rel="stylesheet" crossorigin href="/assets/b.css"><link href="/assets/c.css" rel="stylesheet">',
-      ),
-    ).toEqual(['/assets/b.css', '/assets/c.css']);
-  });
-
-  it('drops the stylesheets and maps the page does not link, from the disk, the file list and the metafile', async () => {
-    const outdir = join(mkdtempSync(join(scratch, 'build-')), 'build');
-    const files: Record<string, string> = {
-      'index.html': '<link rel="stylesheet" crossorigin href="/assets/page-aaaaaaaa.css">',
-      'assets/page-aaaaaaaa.css': 'page',
-      'assets/page-aaaaaaaa.css.map': 'page map',
-      'assets/lazy-bbbbbbbb.css': 'duplicate',
-      'assets/lazy-bbbbbbbb.css.map': 'duplicate map',
-      'assets/lazy-bbbbbbbb.js': 'lazy',
-    };
-    const metafile = {
-      inputs: {},
-      outputs: {
-        './assets/page-aaaaaaaa.css': { inputs: {} },
-        './assets/lazy-bbbbbbbb.css': { inputs: {} },
-        './assets/lazy-bbbbbbbb.js': { inputs: {} },
-      },
-    };
-
-    const result = await buildApplication({
-      outdir,
-      bundle: async (configuration) => {
-        const staging = configuration.outdir ?? '';
-        for (const [name, contents] of Object.entries(files)) {
-          mkdirSync(join(staging, name, '..'), { recursive: true });
-          writeFileSync(join(staging, name), contents);
-        }
-        return {
-          success: true,
-          outputs: Object.keys(files).map((name) => ({ path: join(staging, name) })),
-          logs: [],
-          metafile,
-        } as unknown as Bun.BuildOutput;
-      },
+    const next = await buildApplication({
+      ...settings,
+      buildNative: (path) => writeOutput(path, 'new'),
     });
-
-    expect(result.files).toEqual([
-      'assets/lazy-bbbbbbbb.js',
-      'assets/page-aaaaaaaa.css',
-      'assets/page-aaaaaaaa.css.map',
-      'build-info.json',
-      'index.html',
-    ]);
-    expect(readdirSync(join(outdir, 'assets')).toSorted()).toEqual([
-      'lazy-bbbbbbbb.js',
-      'page-aaaaaaaa.css',
-      'page-aaaaaaaa.css.map',
-    ]);
-    expect(Object.keys(result.metafile.outputs).toSorted()).toEqual([
-      './assets/lazy-bbbbbbbb.js',
-      './assets/page-aaaaaaaa.css',
-    ]);
+    expect(next.directory).not.toBe(first.directory);
+    expect(publishedBrowserBuildDirectory(directory)).toBe(next.directory);
+    expect(await Bun.file(join(next.directory, 'documents/manifest.json')).text()).toBe('new');
+    expect(await Bun.file(join(first.directory, 'documents/manifest.json')).text()).toBe('native');
+    expect(readdirSync(dirname(directory))).toEqual(['build']);
   });
 });
 
 describe('runBuildCommand', () => {
   it('builds with the default options and logs where and how many files it wrote', async () => {
     const lines: string[] = [];
-    const build = { directory: DEFAULT_BUILD_DIRECTORY, files: ['index.html'], metafile: {} };
+    const build = {
+      directory: DEFAULT_BUILD_DIRECTORY,
+      files: ['documents/current.json'],
+      metafile: {},
+    };
     const result = await runBuildCommand(
       (line) => lines.push(line),
       async () => build as unknown as Awaited<ReturnType<typeof buildApplication>>,
@@ -671,18 +209,20 @@ describe('runBuildCommand', () => {
 describe('the recorded build inputs', () => {
   const metafile = {
     inputs: {
-      'index.html': { bytes: 1, imports: [] },
-      'src/main.ts': { bytes: 1, imports: [] },
+      'src/app/native-document.svelte': { bytes: 1, imports: [] },
+      'src/app/routes.ts': { bytes: 1, imports: [] },
       '../../components/chat/src/index.ts': { bytes: 1, imports: [] },
       'wasm-asset:/somewhere/onig.wasm.binary.wasm': { bytes: 1, imports: [] },
+      '.cache/native-documents-generated/+layout.svelte': { bytes: 1, imports: [] },
+      '/tmp/build/.velveteen-graph-generated/wrappers/browser.ts': { bytes: 1, imports: [] },
     },
     outputs: {},
   } as Bun.BuildMetafile;
 
   it('names every input as an absolute path, resolved against the working directory', () => {
     expect(buildInputPaths(metafile, '/repository/applications/interborough')).toEqual([
-      '/repository/applications/interborough/index.html',
-      '/repository/applications/interborough/src/main.ts',
+      '/repository/applications/interborough/src/app/native-document.svelte',
+      '/repository/applications/interborough/src/app/routes.ts',
       '/repository/components/chat/src/index.ts',
     ]);
   });
@@ -806,12 +346,18 @@ describe('the output directory guard', () => {
 
   it('builds nothing and creates nothing when buildApplication is given a blank or unsafe directory', async () => {
     let bundled = false;
-    const bundle = async (): Promise<Bun.BuildOutput> => {
+    const buildNative: NonNullable<
+      Parameters<typeof buildApplication>[0]
+    >['buildNative'] = async () => {
       bundled = true;
       throw new Error('The bundler must not run.');
     };
     for (const outdir of ['', ' ', PACKAGE_DIRECTORY, join(PACKAGE_DIRECTORY, 'src')]) {
-      const rejection = await buildApplication({ outdir, bundle }).catch((error: unknown) => error);
+      const rejection = await buildApplication({
+        outdir,
+        buildNative,
+        ensureGenerated: () => {},
+      }).catch((error: unknown) => error);
       expect(rejection).toBeInstanceOf(Error);
     }
     expect(bundled).toBe(false);

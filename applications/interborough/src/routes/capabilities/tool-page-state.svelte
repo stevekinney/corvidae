@@ -35,15 +35,6 @@
     path: CAPABILITIES_PATH,
     label: kind === 'not-found' ? NOT_FOUND_COPY.breadcrumb : undefined,
   }));
-
-  /** Goes back to the list, unless the person asked for a new tab or window. */
-  function back(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(CAPABILITIES_PATH);
-  }
 </script>
 
 {#if kind === 'loading'}
@@ -79,7 +70,6 @@
       <Button
         variant="secondary"
         href={router.href(CAPABILITIES_PATH)}
-        onclick={back}
         label={copy.notFound.back}
       />
     {/snippet}

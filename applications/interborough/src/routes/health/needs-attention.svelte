@@ -64,20 +64,10 @@
     overspending: CircleDollarSign,
   };
 
-  /** Opens `path` in place, and leaves a modified click to the browser. */
-  function open(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
-
   function actionsOf(row: AttentionRow): StackedListItemAction[] {
     return row.actions.map((action) => ({
       label: action.label,
       href: router.href(action.href),
-      onclick: (event: MouseEvent) => open(event, action.href),
     }));
   }
 </script>

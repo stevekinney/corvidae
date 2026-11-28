@@ -12,14 +12,15 @@ import type { BureauDiagnostics } from '@lostgradient/bureau';
 import type { RegistryAgnosticEngine, WeftServer } from '@lostgradient/weft';
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
+import { BUILD_INFO_FILE } from './build-info.ts';
 
 import type { LoadedProviders } from './providers.ts';
 
-/** The build the host serves, as {@link HostDiagnostics.build} reports it when `index.html` exists. */
+/** The build the host serves, as {@link HostDiagnostics.build} reports it when a publication record exists. */
 export type HostBuildDiagnostics = {
   /** The directory the host serves the application from. */
   readonly directory: string;
-  /** When the build's `index.html` was last modified, in milliseconds since the epoch. */
+  /** When the build pointer was last modified, in milliseconds since the epoch. */
   readonly indexModifiedAt: number;
 };
 
@@ -55,20 +56,20 @@ export type HostDiagnostics = {
   readonly bureau: BureauDiagnostics;
   /** The engine server's lease, workers, and connections. */
   readonly weft: HostWeftDiagnostics;
-  /** The build directory and its `index.html`'s modification time, or `null` while `index.html` is absent. */
+  /** The build directory and the pointer modification time, or `null` when no pointer exists. */
   readonly build: HostBuildDiagnostics | null;
   /** The providers the host offers, in the order their models appear in the catalog. */
   readonly providers: readonly HostProviderDiagnostics[];
 };
 
 /**
- * The build directory and when its `index.html` last changed, or `null` when there is no such
+ * The build directory and when its publication last changed, or `null` when there is no such
  * file. Only a missing file is `null`; any other failure to read it is thrown.
  */
 export function buildDiagnostics(buildDirectory: string): HostBuildDiagnostics | null {
-  const index = statSync(join(buildDirectory, 'index.html'), { throwIfNoEntry: false });
-  if (index === undefined || !index.isFile()) return null;
-  return { directory: buildDirectory, indexModifiedAt: index.mtimeMs };
+  const pointer = statSync(join(buildDirectory, BUILD_INFO_FILE), { throwIfNoEntry: false });
+  if (pointer === undefined || !pointer.isFile()) return null;
+  return { directory: buildDirectory, indexModifiedAt: pointer.mtimeMs };
 }
 
 /**

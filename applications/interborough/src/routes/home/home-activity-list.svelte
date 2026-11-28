@@ -15,7 +15,6 @@
    */
   import { Badge, GroupedList, GroupedListItem } from '@lostgradient/cinder';
 
-  import { followLinks } from '../../lib/follow-links.ts';
   import { rowTime } from '../../lib/format/clock.ts';
   import { router } from '../../lib/router.svelte.ts';
   import type { ActivityFeed } from './home-activity-feed.svelte.ts';
@@ -34,7 +33,7 @@
   const clock = useMinuteClock();
 </script>
 
-<div {@attach followLinks} {@attach feed.hold}>
+<div {@attach feed.hold}>
   <GroupedList aria-label={listLabel}>
     {#each feed.shown as entry (entry.key)}
       {@const Icon = entry.icon}

@@ -115,16 +115,7 @@
         data-testid="home-start-chat-not-ready"
       >
         {#snippet action()}
-          <Button
-            href={router.href(CHAT_READINESS_PATHS[missing])}
-            variant="primary"
-            size="sm"
-            onclick={(event: MouseEvent) => {
-              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-              event.preventDefault();
-              router.navigate(CHAT_READINESS_PATHS[missing]);
-            }}
-          >
+          <Button href={router.href(CHAT_READINESS_PATHS[missing])} variant="primary" size="sm">
             {CHAT_COPY.readiness[missing].action}
           </Button>
         {/snippet}

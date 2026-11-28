@@ -39,18 +39,32 @@ test("D05: build output exports a manifest and server registry for host-owned ru
   const root = await mkdtemp(join(buildRoot, "build-host-inputs-"));
   try {
     const fixture = await writeProductionFixture(root);
+    const buildInputs: Array<{ browser: string[]; server: string[] }> = [];
     const generation = await buildProduction({
       projectDirectory: root,
       routesDirectory: fixture.routesDirectory,
       staticDirectory: fixture.staticDirectory,
       outputDirectory: join(root, "application"),
       basePath: "/app",
+      onBuildMetadata({ browser, server }) {
+        buildInputs.push({
+          browser: Object.keys(browser.inputs),
+          server: Object.keys(server.inputs),
+        });
+      },
     });
+    expect(buildInputs).toHaveLength(1);
+    expect(buildInputs[0]?.browser).toEqual(
+      expect.arrayContaining([expect.stringContaining("+page.svelte")]),
+    );
+    expect(buildInputs[0]?.server).toEqual(
+      expect.arrayContaining([expect.stringContaining("+page.server.ts")]),
+    );
     const manifestModule = await import(
-      pathToFileURL(join(generation.directory, "velveteen-manifest.js")).href,
+      pathToFileURL(join(generation.directory, "velveteen-manifest.js")).href
     );
     const registryModule = await import(
-      pathToFileURL(join(generation.directory, "velveteen-registry.js")).href,
+      pathToFileURL(join(generation.directory, "velveteen-registry.js")).href
     );
     expect(manifestModule.manifest).toEqual(generation.manifest);
     const application = await createApplication({

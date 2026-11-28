@@ -5,7 +5,7 @@
    * (two lines at most, the whole name as its tooltip) and the time it was decided on line one, and
    * line two says what kind of result it is, which agent it judged, a scorer's score and the check's
    * version (`checkLineTwo`). The whole row is one link, to the goal when it has one and to the run
-   * otherwise; the list around it follows the link in place (`followLinks`). The outcome is said once,
+   * otherwise; the document router follows its link. The outcome is said once,
    * by the `StatusDot` alone; no badge, tint or second word repeats it, and no raw id is shown.
    */
   import { StackedListItem, StatusDot } from '@lostgradient/cinder';

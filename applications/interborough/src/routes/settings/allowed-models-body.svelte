@@ -291,14 +291,6 @@
     }),
   );
 
-  function openProviders(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(PROVIDERS_PATH);
-  }
-
   const bar = $derived(changes > 0 || failure !== undefined);
   // The controls are held while a save is sent and the settings are read again after it, because
   // that read replaces the form: an edit made meanwhile would be dropped without a word.
@@ -375,7 +367,6 @@
             {
               label: copy.models.goToProviders,
               href: router.href(PROVIDERS_PATH),
-              onclick: openProviders,
             },
           ]}
           data-testid="allowed-models-empty"

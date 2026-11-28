@@ -2,17 +2,18 @@
  * What a build records about the source it was made from, and the check that refuses to serve a
  * build that no longer matches the checkout.
  *
- * `bun scripts/build.ts` writes `build-info.json` beside `index.html`: the commit of `HEAD` and a
+ * `bun scripts/build.ts` atomically publishes `build-info.json`: the commit of `HEAD` and a
  * digest of the uncommitted changes (edits to tracked files and the names of untracked ones). A
  * server the owner is pointed at calls {@link staleBuildProblem} before it starts, so a build made
  * from an older commit, or from a tree that has since changed, is refused instead of reviewed.
  */
 
-import { readFileSync } from 'node:fs';
+import { lstatSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** The file, in the build directory, that records the source the build was made from. */
 export const BUILD_INFO_FILE = 'build-info.json';
+export const BROWSER_BUILD_GENERATIONS = 'generations';
 
 /** The commit a build records when the checkout has no readable Git history. */
 export const UNKNOWN_COMMIT = 'unknown';
@@ -24,12 +25,6 @@ export type BuildInfo = {
   /** Empty when the tree matched `commit`; otherwise a digest of the edits on top of it. */
   readonly changes: string;
 };
-
-/**
- * The expression the build replaces with the text the page shows (`src/lib/build-commit.ts` reads
- * it), so the commit is compiled into the bundle and no request fetches it.
- */
-export const BUILD_COMMIT_VARIABLE = 'INTERBOROUGH_BUILD_COMMIT';
 
 /**
  * What the page shows for `source`: the short commit, with "(edited)" after it when the tree
@@ -88,19 +83,41 @@ export function readSourceInfo(directory: string, git: GitRunner = runGit): Buil
   return { commit, changes };
 }
 
-/** Read the record in `buildDirectory`, or `undefined` when there is none or it is not a record. */
-export function readBuildInfo(buildDirectory: string): BuildInfo | undefined {
+function readBuildRecord(
+  buildDirectory: string,
+): (BuildInfo & { generation?: unknown }) | undefined {
   try {
     const parsed: unknown = JSON.parse(readFileSync(join(buildDirectory, BUILD_INFO_FILE), 'utf8'));
     if (typeof parsed !== 'object' || parsed === null) return undefined;
     const commit: unknown = Reflect.get(parsed, 'commit');
     const changes: unknown = Reflect.get(parsed, 'changes');
     return typeof commit === 'string' && typeof changes === 'string'
-      ? { commit, changes }
+      ? { commit, changes, generation: Reflect.get(parsed, 'generation') }
       : undefined;
   } catch {
     return undefined;
   }
+}
+
+/** Read the source information from the atomically published build record. */
+export function readBuildInfo(buildDirectory: string): BuildInfo | undefined {
+  const record = readBuildRecord(buildDirectory);
+  return record === undefined ? undefined : { commit: record.commit, changes: record.changes };
+}
+
+/** Resolve the immutable directory named by one complete publication record. */
+export function publishedBrowserBuildDirectory(buildDirectory: string): string | undefined {
+  const record = readBuildRecord(buildDirectory);
+  const generation = record?.generation;
+  if (
+    typeof generation !== 'string' ||
+    !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(generation)
+  ) {
+    return undefined;
+  }
+  const directory = join(buildDirectory, BROWSER_BUILD_GENERATIONS, generation);
+  const entry = lstatSync(directory, { throwIfNoEntry: false });
+  return entry?.isDirectory() === true ? directory : undefined;
 }
 
 /**

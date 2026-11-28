@@ -219,14 +219,6 @@
     if (hash === null || hash === undefined || resume.isPending) return;
     resume.mutate(hash);
   }
-
-  function go(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 {#snippet headingText()}
@@ -245,13 +237,7 @@
       <code>{unreadable.fileName}</code>{unreadable.rest}
       {copy.unreadableStartOff}
       {#snippet actions()}
-        <Button
-          variant="secondary"
-          size="sm"
-          href={router.href(codePath)}
-          onclick={(event: MouseEvent) => go(event, codePath)}
-          label={copy.openCode}
-        />
+        <Button variant="secondary" size="sm" href={router.href(codePath)} label={copy.openCode} />
       {/snippet}
     </Alert>
   {:else if target?.status === 'paused'}
@@ -278,7 +264,6 @@
           variant="secondary"
           size="sm"
           href={router.href(MODELS_PATH)}
-          onclick={(event: MouseEvent) => go(event, MODELS_PATH)}
           label={copy.connectProvider}
         />
       {/snippet}
@@ -306,7 +291,6 @@
         <Button
           variant="secondary"
           href={router.href(workflowPath)}
-          onclick={(event: MouseEvent) => go(event, workflowPath)}
           label={copy.blocked.openWorkflow}
         />
       {/snippet}

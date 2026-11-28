@@ -11,7 +11,6 @@
   import { Target } from '@lucide/svelte';
 
   import { GOALS_COPY } from '../../app/copy/goals.ts';
-  import { followLinks } from '../../lib/follow-links.ts';
   import { clockTime } from '../../lib/format/clock.ts';
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
   import type { AttemptRow } from './goal-page-rows.ts';
@@ -63,7 +62,7 @@
       {copy.attemptsHeading}
       <span class="ib-goal-attempts__count">{count}</span>
     </h2>
-    <div {@attach followLinks}>
+    <div>
       <DataList items={[...rows]} key={rowKey} aria-label={copy.attemptsLabel}>
         {#snippet children(row: AttemptRow)}
           <StackedListItem

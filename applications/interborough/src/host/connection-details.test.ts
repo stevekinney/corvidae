@@ -4,10 +4,11 @@
  * They are checked against a real host, so each address named is one the host answers.
  */
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { buildTestDocuments } from './build-info.test-support.ts';
 import { connectionLines } from './connection-details.ts';
 import { startHost, type Host } from './host.ts';
 
@@ -25,7 +26,7 @@ async function start(): Promise<Host> {
   // Beside the home, never in it: Bungalow refuses a home that holds files but no deployment identity.
   const buildDirectory = await mkdtemp(join(tmpdir(), 'interborough-connection-build-'));
   homes.push(buildDirectory);
-  await writeFile(join(buildDirectory, 'index.html'), '<!doctype html><title>Interborough</title>');
+  await buildTestDocuments(buildDirectory);
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
     buildDirectory,

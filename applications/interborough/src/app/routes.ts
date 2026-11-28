@@ -10,13 +10,9 @@ import type { PageKind, ViewName } from './views.ts';
 
 /**
  * The route registry: a path pattern, the view it renders, and a lazy import of the component
- * that renders it. `:id`-style segments are simple named params; the router
- * (`src/lib/router.svelte.ts`) owns matching semantics, and the first matching pattern wins.
- *
- * The host serves `index.html` for exactly these patterns (`src/host/host.ts`), so a route added
- * here is served there with no second list to edit. It also serves it for any other address a
- * browser navigates to (`src/host/shell-request.ts`), and the route outlet renders the not-found
- * view for the ones that match no pattern here.
+ * that renders it. The build turns the `:id`-style patterns into Velveteen routes. Velveteen
+ * owns document and data dispatch, and the route outlet renders the not-found view for the
+ * native fallback route.
  */
 export interface RouteDefinition {
   /** Path pattern, e.g. `/runs/:run`. */

@@ -22,7 +22,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { BUILD_INFO_FILE, readSourceInfo } from './build-info.ts';
+import { stubBrowserPublication } from './build-info.test-support.ts';
+import { readSourceInfo } from './build-info.ts';
 import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { DEVELOPMENT_PLUGIN_FLAG } from './development-plugin-flag.ts';
 import { HOST_RESTART_ROUTE } from './restart.ts';
@@ -176,13 +177,7 @@ async function withSupervised<T>(
 
 async function stubBuild(): Promise<string> {
   const directory = join(await scratch(), 'build');
-  await mkdir(directory, { recursive: true });
-  await writeFile(join(directory, 'index.html'), '<!doctype html><title>Interborough</title>');
-  // `serve` refuses a build that does not record the checkout's current source (`build-info.ts`).
-  await writeFile(
-    join(directory, BUILD_INFO_FILE),
-    JSON.stringify(readSourceInfo(join(import.meta.dir, '..', '..'))),
-  );
+  stubBrowserPublication(directory, readSourceInfo(join(import.meta.dir, '..', '..')));
   return directory;
 }
 

@@ -103,14 +103,18 @@
     const params = serializeWorkflowListFilter(filter as WorkflowListQuery);
     return `/runs?${params.toString()}`;
   }
-
-  function onGroupRowClick(event: MouseEvent, key: string | null): void {
-    const href = drillThroughHref(key);
-    if (!href) return;
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+  // The plain link belongs to Velveteen. Clicking an otherwise inert table cell also opens the group.
+  function openGroupFromRow(event: MouseEvent, href: string): void {
+    if (
+      event.defaultPrevented ||
+      (event.target instanceof Element && event.target.closest('a, button')) ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    )
       return;
-    }
-    event.preventDefault();
     router.navigate(href);
   }
 </script>
@@ -224,13 +228,11 @@
             <tr
               class="weft-aggregate-view__row"
               data-clickable={href ? '' : undefined}
-              onclick={href ? (event) => onGroupRowClick(event, group.key) : undefined}
+              onclick={href ? (event) => openGroupFromRow(event, href) : undefined}
             >
               <td>
                 {#if href}
-                  <a href={router.href(href)} onclick={(event) => onGroupRowClick(event, group.key)}
-                    >{aggregateGroupKeyLabel(group.key)}</a
-                  >
+                  <a href={router.href(href)}>{aggregateGroupKeyLabel(group.key)}</a>
                 {:else}
                   {aggregateGroupKeyLabel(group.key)}
                 {/if}

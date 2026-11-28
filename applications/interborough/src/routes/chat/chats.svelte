@@ -352,19 +352,6 @@
   // The list pane, where the focus is put after a change of view.
   let listPane = $state<HTMLElement | undefined>();
 
-  /** Opens a page of the application without leaving it, as a plain click on its link. */
-  function openPath(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
-
-  function openNewChat(event: MouseEvent): void {
-    openPath(event, '/chats/new');
-  }
-
   /** The query that keeps the view: the archived chats', or none. */
   function viewSearch(archivedView: boolean): URLSearchParams {
     return new URLSearchParams(archivedView ? { [VIEW_PARAMETER]: ARCHIVED_VIEW } : {});
@@ -441,13 +428,7 @@
 
 {#snippet newChatButton()}
   <!-- A labelled primary button, never a "+" alone, as on every list page (owner report, 2026-11-19). -->
-  <Button
-    data-changes
-    href={router.href('/chats/new')}
-    variant="primary"
-    size="sm"
-    onclick={openNewChat}
-  >
+  <Button data-changes href={router.href('/chats/new')} variant="primary" size="sm">
     {#snippet leadingIcon()}<Plus aria-hidden="true" size={16} />{/snippet}
     {CHAT_COPY.newChat}
   </Button>
@@ -469,7 +450,6 @@
       : {
           label: missing === undefined ? CHAT_COPY.newChat : CHAT_COPY.readiness[missing].action,
           href: router.href(destination),
-          onclick: (event: MouseEvent) => openPath(event, destination),
         }}
   />
 {/snippet}
@@ -561,7 +541,6 @@
           data-changes
           href={router.href('/chats/new')}
           variant="secondary"
-          onclick={openNewChat}
           label={CHAT_COPY.newChat}
         />
       {/snippet}

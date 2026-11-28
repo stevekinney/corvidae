@@ -1,5 +1,5 @@
 import { mkdir, realpath, symlink, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 
 export async function writeFixture(
   home: string,
@@ -82,4 +82,68 @@ document.body.innerHTML = '<main>Installed fixture MCP panel</main>';
 
 export async function linkPluginRuntime(home: string, runtime: string): Promise<void> {
   await symlink(runtime, join(home, 'plugins', 'node_modules'), 'dir');
+}
+
+/** Run a disposable refund witness against the executable from this exact archive. */
+export async function runExternalReviewedFixture(
+  fixture: string,
+  executable: string,
+  repository: string,
+): Promise<Record<string, unknown>> {
+  const [fixturePath, repositoryRoot] = await Promise.all([
+    realpath(fixture),
+    realpath(repository),
+  ]);
+  if (fixturePath === repositoryRoot || fixturePath.startsWith(repositoryRoot + sep)) {
+    throw new Error('The reviewed refund fixture must live outside Corvidae.');
+  }
+  const child = Bun.spawn([process.execPath, fixturePath, executable], {
+    cwd: dirname(fixturePath),
+    stdout: 'pipe',
+    stderr: 'inherit',
+  });
+  const [exit, output] = await Promise.all([child.exited, new Response(child.stdout).text()]);
+  if (exit !== 0) throw new Error(`The external reviewed refund fixture exited ${exit}.`);
+  const reports: unknown = JSON.parse(output);
+  if (!Array.isArray(reports) || reports.length !== 2) {
+    throw new Error('The fixture must report exactly two verified approval surfaces.');
+  }
+  const surfaces = new Set<string>();
+  const reviewers = new Set<string>();
+  const receipts = new Set<string>();
+  for (const report of reports as unknown[]) {
+    if (
+      typeof report !== 'object' ||
+      report === null ||
+      !('surface' in report) ||
+      (report.surface !== 'reviews' && report.surface !== 'panel') ||
+      !('reviewer' in report) ||
+      typeof report.reviewer !== 'string' ||
+      !report.reviewer ||
+      !('receipt' in report) ||
+      typeof report.receipt !== 'string' ||
+      !report.receipt ||
+      !('claims' in report) ||
+      report.claims !== 1 ||
+      !('admissions' in report) ||
+      report.admissions !== 1 ||
+      !('payments' in report) ||
+      report.payments !== 1 ||
+      !('sourceCheckoutReadsDenied' in report) ||
+      report.sourceCheckoutReadsDenied !== true
+    ) {
+      throw new Error(
+        'The fixture did not verify reviewer, source isolation and one durable result per surface.',
+      );
+    }
+    surfaces.add(report.surface);
+    reviewers.add(report.reviewer);
+    receipts.add(report.receipt);
+  }
+  if (surfaces.size !== 2 || reviewers.size !== 2 || receipts.size !== 2) {
+    throw new Error(
+      'The refund approvals must use distinct surfaces, reviewers and provider receipts.',
+    );
+  }
+  return { executable, fixture: fixturePath, witnesses: reports };
 }

@@ -102,22 +102,10 @@
     }
     return undefined;
   });
-
-  function open(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 {#if strip !== undefined}
   <p class="weft-chat-strip" data-tone={strip.tone}>
-    <a
-      class="weft-chat-tasks__link"
-      href={router.href(runPath(strip.taskId))}
-      onclick={(event) => open(event, runPath(strip.taskId))}>{strip.text}</a
-    >
+    <a class="weft-chat-tasks__link" href={router.href(runPath(strip.taskId))}>{strip.text}</a>
   </p>
 {/if}

@@ -4,7 +4,7 @@
    * `StackedListItem`): the status word leads in its fixed column, then the title (two lines at
    * most, the whole title as its tooltip) and the time the run started on line one, and line two
    * says what kind of run it is, which agent ran it and how it went (`runLineTwo`). The whole row is
-   * one link to the run's page; the list around it follows the link in place (`followLinks`). A
+   * one link to the run's page; the document router follows its link. A
    * running row keeps its place: its duration follows `now`, and its word changes where it stands.
    */
   import {

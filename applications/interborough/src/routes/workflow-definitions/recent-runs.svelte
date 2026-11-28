@@ -34,7 +34,6 @@
   import { WORKFLOW_COPY } from '../../app/copy/workflows.ts';
   import { agentLabel as agentLabelOf } from '../../lib/agent-label.ts';
   import { getClient } from '../../lib/client.ts';
-  import { followLinks } from '../../lib/follow-links.ts';
   import { viewerTimeZone } from '../../lib/format/clock.ts';
   import { serializeWorkflowListFilter } from '../../lib/filters.ts';
   import { usePluginTitle } from '../../lib/plugin-title.svelte.ts';
@@ -213,14 +212,6 @@
     if (canStart) return { description: copy.emptyDescription, hint: copy.emptyHint };
     return { description: copy.emptyDescriptionCode, hint: undefined };
   });
-
-  function go(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 <section class="ib-workflow__section ib-workflow-runs" data-testid="workflow-recent-runs">
@@ -276,7 +267,7 @@
         onClearFilters={() => (filter = {})}
       />
     {:else}
-      <div class="ib-workflow-runs__list" {@attach followLinks}>
+      <div class="ib-workflow-runs__list">
         <DataList
           items={rows}
           key={(row: RunRow) => row.id}
@@ -301,8 +292,6 @@
     {/if}
   {/if}
   <p class="ib-workflow-runs__all">
-    <a href={router.href(runsPath)} onclick={(event) => go(event, runsPath)}
-      >{WORKFLOW_COPY.runsAction}</a
-    >
+    <a href={router.href(runsPath)}>{WORKFLOW_COPY.runsAction}</a>
   </p>
 </section>

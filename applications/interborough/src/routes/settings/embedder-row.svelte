@@ -180,22 +180,7 @@
   });
   let secretTarget = $state<SecretTarget | null>(null);
 
-  function openPlugin(event: MouseEvent, plugin: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(pluginPath(plugin));
-  }
   const pluginPath = (plugin: string): string => `/settings/plugins?plugin=${plugin}`;
-
-  function openPlugins(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate('/settings/plugins');
-  }
 
   // The switch confirmation, which "Embed again" and "Retry switch" open too.
   let switchOpen = $state(false);
@@ -355,10 +340,7 @@
 
 {#snippet descriptionAction()}
   {#if cause === 'not-loaded' && owner !== undefined}
-    <Link
-      href={router.href(pluginPath(owner.descriptor.name))}
-      underline="always"
-      onclick={(event: MouseEvent) => openPlugin(event, owner.descriptor.name)}
+    <Link href={router.href(pluginPath(owner.descriptor.name))} underline="always"
       >{copy.problem.openPlugin(owner.descriptor.title)}</Link
     >
   {:else if cause === 'needs-setup' && owner !== undefined}
@@ -370,10 +352,7 @@
         onclick={() => (secretTarget = { plugin: owner.descriptor.name, key: missingKey })}
       />
     {:else}
-      <Link
-        href={router.href(pluginPath(owner.descriptor.name))}
-        underline="always"
-        onclick={(event: MouseEvent) => openPlugin(event, owner.descriptor.name)}
+      <Link href={router.href(pluginPath(owner.descriptor.name))} underline="always"
         >{copy.problem.openPlugin(owner.descriptor.title)}</Link
       >
     {/if}
@@ -386,9 +365,7 @@
       onclick={() => askSwitch(inUse)}
     />
   {:else if cause === undefined && embedding !== undefined && embedding.embedders.length === 1}
-    <Link href={router.href('/settings/plugins')} underline="always" onclick={openPlugins}
-      >{copy.openPlugins}</Link
-    >
+    <Link href={router.href('/settings/plugins')} underline="always">{copy.openPlugins}</Link>
   {/if}
 {/snippet}
 

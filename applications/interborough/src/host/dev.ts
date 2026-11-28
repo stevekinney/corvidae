@@ -2,9 +2,9 @@
  * The development entry (`bun run --filter=@lostgradient/interborough dev`): build the
  * application, start the host on it, and rebuild when the source changes.
  *
- * The host serves `build/` from disk on every request, and a rebuild swaps the whole directory in
- * at once, so a reload after a rebuild gets the new bundle. `bun --watch` restarts this process
- * when the host's own modules change, so the browser build runs in a child process
+ * A complete rebuild publishes one native generation, which the host opens before notifying the
+ * browser. Requests on the old generation drain while new ones use the new build. `bun --watch`
+ * restarts this process when the host's own modules change, so the build runs in a child process
  * ({@link buildBrowserApplication}): inside the watched process the bundler cannot resolve
  * `@msgpack/msgpack`.
  *
@@ -25,7 +25,6 @@
  * the build, and the file that records its inputs goes beside it.
  */
 
-import { unwatchFile, watchFile, type Stats } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
@@ -40,6 +39,7 @@ import { connectionLines } from './connection-details.ts';
 import { developmentPluginPaths } from './development-plugin-flag.ts';
 import { processEnvironment, resolveBuildDirectory } from './environment-configuration.ts';
 import { startHost, type Host, type HostOptions } from './host.ts';
+import { openDevelopmentNativeDocuments } from './native-document-path.ts';
 import { createRebuildScheduler } from './rebuild-scheduler.ts';
 import { RESTART_EXIT_CODE } from './restart.ts';
 import { showcaseEnvironment, splitShowcaseFlag } from './showcase.ts';
@@ -58,8 +58,6 @@ const repositoryRoot = join(packageRoot, '..', '..');
 if (showcase && !processEnvironment()['INTERBOROUGH_SHOWCASE_ROOT']) {
   await mkdir(join(repositoryRoot, 'tmp', 'interborough-fixtures'), { recursive: true });
 }
-
-const ENTRY_PAGE = join(packageRoot, 'index.html');
 
 /**
  * Where each build records the files it read. The directories a rebuild depends on come from it
@@ -99,6 +97,7 @@ const hostOptions = {
   environment,
   buildDirectory,
   development: true,
+  openDocumentCandidate: () => openDevelopmentNativeDocuments(buildDirectory),
   developmentPlugins: pluginPaths,
   onRestartRequested: async () => {
     await initialized;
@@ -129,11 +128,9 @@ for (const line of connectionLines(host.url)) console.info(line);
 
 if (showcase) console.info('The showcase host holds the sample world at Monday, Nov 2, 10:45 AM.');
 
-// The entry page is watched by its own poll below, so its input is not watched as a directory.
 const sources = createSourceWatcher({
   inputsFile: BUILD_INPUTS_FILE,
   fallbackDirectory: join(packageRoot, 'src'),
-  ignore: [ENTRY_PAGE],
   onChange: () => rebuilds.schedule(),
 });
 
@@ -141,6 +138,7 @@ const rebuilds = createRebuildScheduler({
   // The next build may import a workspace this one did not, so the watch follows each build.
   build: async () => {
     await buildBrowserApplication(buildOptions);
+    await host.refreshBrowserDocuments();
     await sources.refresh();
   },
   delayMilliseconds: REBUILD_DELAY_MILLISECONDS,
@@ -153,13 +151,6 @@ const rebuilds = createRebuildScheduler({
 
 await sources.refresh();
 
-// An editor's atomic save replaces `index.html`, which a directory-less file watch can miss on
-// macOS, so the entry page is polled by its modification time and inode instead.
-const entryChanged = (current: Stats, previous: Stats): void => {
-  if (current.mtimeMs !== previous.mtimeMs || current.ino !== previous.ino) rebuilds.schedule();
-};
-watchFile(ENTRY_PAGE, { interval: 100 }, entryChanged);
-
 /**
  * Stop everything this process started, then exit with `code`. The first call decides the code: a
  * signal that arrives while a restart is stopping the host does not turn it into a plain exit. A
@@ -171,7 +162,6 @@ function shutDown(code: number): Promise<never> {
       rebuilds.close();
       // A build still running would write `build/` after this process has gone.
       await stopBrowserBuilds();
-      unwatchFile(ENTRY_PAGE, entryChanged);
       sources.close();
       await host.close();
     } catch (error) {

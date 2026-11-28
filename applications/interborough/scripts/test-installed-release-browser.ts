@@ -7,7 +7,6 @@ type BrowserPage = Pick<
   | 'on'
   | 'goto'
   | 'locator'
-  | 'waitForFunction'
   | 'route'
   | 'addScriptTag'
   | 'exposeFunction'
@@ -87,8 +86,7 @@ export async function assertInstalledAppsInChromium(
     page.on('pageerror', (error) => shellErrors.push(error.message));
     const shell = await page.goto(installedUrl);
     if (shell?.status() !== 200) throw new Error(`Installed shell returned ${shell?.status()}`);
-    await page.locator('#app').waitFor();
-    await page.waitForFunction(() => (document.querySelector('#app')?.children.length ?? 0) > 0);
+    await page.locator('main.weft-shell-outlet [data-view]').first().waitFor();
     if (shellErrors.length > 0)
       throw new Error(`Installed shell JavaScript failed: ${shellErrors.join('; ')}`);
 

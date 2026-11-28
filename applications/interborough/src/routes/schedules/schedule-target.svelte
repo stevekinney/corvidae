@@ -52,7 +52,8 @@
   );
 
   function go(event: MouseEvent, path: string): void {
-    if (stopPropagation) event.stopPropagation();
+    if (!stopPropagation) return;
+    event.stopPropagation();
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
       return;
     }

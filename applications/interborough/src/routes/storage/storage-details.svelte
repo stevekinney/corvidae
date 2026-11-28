@@ -79,14 +79,6 @@
     },
     { term: copy.writes, definition: copy.writesPerKey },
   ]);
-
-  function openSettings(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(copy.settingsPath);
-  }
 </script>
 
 {#snippet location()}
@@ -107,8 +99,7 @@
     <DescriptionList {items} />
   {/if}
   <p class="ib-storage-details__footer">
-    {copy.footerBefore}<Link href={router.href(copy.settingsPath)} onclick={openSettings}
-      >{copy.footerLink}</Link
+    {copy.footerBefore}<Link href={router.href(copy.settingsPath)}>{copy.footerLink}</Link
     >{copy.footerAfter}
   </p>
 </div>

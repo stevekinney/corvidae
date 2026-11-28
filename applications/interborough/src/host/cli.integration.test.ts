@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { buildTestDocuments } from './build-info.test-support.ts';
 import { readFirstJsonlRecord } from './cli-jsonl.test-support.ts';
 import { HOST_RESTART_ROUTE, RESTART_EXIT_CODE } from './restart.ts';
 
@@ -13,7 +14,7 @@ afterAll(() => rmSync(directory, { recursive: true, force: true }));
 const executable = join(directory, 'bin', 'interborough');
 const browser = join(directory, 'share', 'interborough', 'browser');
 mkdirSync(browser, { recursive: true });
-writeFileSync(join(browser, 'index.html'), '<!doctype html><title>Interborough</title>');
+await buildTestDocuments(browser);
 writeFileSync(join(directory, '.env'), 'INTERBOROUGH_PORT=invalid-dotenv-value\n');
 const version = '1.2.3-test.4';
 const build = await runWithHangGuard([
@@ -1007,7 +1008,7 @@ mock.module(${hostModule}, () => ({
 }));
 const { serveHost } = await import(${serveModule});
 test('restart requested before startup resolves', async () => {
-  await serveHost({}, '.');
+  await serveHost({}, ${JSON.stringify(browser)});
   await new Promise((resolve) => setImmediate(resolve));
 });
 `,
@@ -1017,6 +1018,6 @@ const earlyRestart = await runWithHangGuard([process.execPath, 'test', startingF
 });
 
 test('a restart received during startup closes the host before requesting a relaunch', () => {
-  expect(earlyRestart.exitCode).toBe(RESTART_EXIT_CODE);
+  expect(earlyRestart.exitCode, earlyRestart.stderr.toString()).toBe(RESTART_EXIT_CODE);
   expect(earlyRestart.stdout.toString()).toContain('Closed the host after startup.');
 });

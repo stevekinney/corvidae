@@ -235,20 +235,10 @@
         ? SETTINGS_COPY.notSet
         : SETTINGS_COPY.defaultOption(modelDisplayName(fallbackRow.model)),
   );
-
-  function openTypesafe(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(TYPESAFE_PATH);
-  }
 </script>
 
 {#snippet connectTypesafe()}
-  <Link href={router.href(TYPESAFE_PATH)} underline="always" onclick={openTypesafe}
-    >{copy.model.connect}</Link
-  >
+  <Link href={router.href(TYPESAFE_PATH)} underline="always">{copy.model.connect}</Link>
 {/snippet}
 
 {#snippet field(

@@ -913,14 +913,6 @@
     testing.mutate();
   }
 
-  function leave(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
-
   /** Moves to the delivery log, which holds the payload each delivery sent. */
   function jumpToLog(event: MouseEvent): void {
     event.preventDefault();
@@ -1007,7 +999,6 @@
               <Link
                 underline="always"
                 href={router.href(pluginSettings.pathTo('plugin', declared.plugin))}
-                onclick={(event) => leave(event, pluginSettings.pathTo('plugin', declared.plugin))}
                 >{declaringTitle}</Link
               >{declared.withdrawn
                 ? HOOKS_COPY.defaultHook.provenance.withdrawn
@@ -1217,7 +1208,6 @@
                       {
                         label: copy.workflow.create,
                         href: router.href('/workflows/new'),
-                        onclick: (event) => leave(event, '/workflows/new'),
                       },
                     ]}
                   />
@@ -1350,9 +1340,7 @@
                 {#if testReasonParts !== undefined}
                   {testReasonParts?.before}<Link
                     underline="always"
-                    href={router.href(testReasonParts?.path ?? '')}
-                    onclick={(event) => leave(event, testReasonParts?.path ?? '')}
-                    >{testReasonParts?.link}</Link
+                    href={router.href(testReasonParts?.path ?? '')}>{testReasonParts?.link}</Link
                   >{testReasonParts?.after}
                 {:else}
                   {testReason}

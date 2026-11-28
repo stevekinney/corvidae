@@ -14,7 +14,6 @@
   import { HOME_COPY } from '../../app/copy/home.ts';
   import type { TaskView } from '../../lib/bureau-tasks.ts';
   import { listBureauSchedules } from '../../lib/bureau-schedules.ts';
-  import { followLinks } from '../../lib/follow-links.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { useMinuteClock } from './home-clock.svelte.ts';
@@ -57,7 +56,7 @@
 </script>
 
 <HomeCard title={copy.title} link={{ label: copy.link, href: '/runs' }}>
-  <div {@attach followLinks}>
+  <div>
     <GroupedList aria-label={copy.listLabel}>
       {#each shown as row (row.key)}
         <GroupedListItem

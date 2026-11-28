@@ -1,4 +1,4 @@
-import { accessSync, constants, existsSync, lstatSync, realpathSync, statSync } from 'node:fs';
+import { accessSync, constants, lstatSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
@@ -8,6 +8,7 @@ import { environmentalist } from '@lostgradient/environmentalist';
 import type { Source } from '@lostgradient/environmentalist/types';
 import { z } from 'zod';
 
+import { BUILD_INFO_FILE, publishedBrowserBuildDirectory } from './build-info.ts';
 import { executeCli } from './cli-client.ts';
 import {
   BUILD_DIRECTORY_VARIABLE,
@@ -242,8 +243,8 @@ async function run(arguments_: string[]): Promise<number> {
       }),
     },
     prepare: () => {
-      const page = join(buildDirectory, 'index.html');
-      return existsSync(page) ? undefined : `Interborough browser assets are missing: ${page}`;
+      if (publishedBrowserBuildDirectory(buildDirectory) !== undefined) return undefined;
+      return `Interborough browser assets are missing: ${join(buildDirectory, BUILD_INFO_FILE)}`;
     },
   });
 }

@@ -5,7 +5,7 @@
  * These tests check the table's wiring and never import a route's component. Importing one
  * compiles its Svelte source and everything it pulls in, which costs seconds per route under load
  * and grows with every route. Compilation stays covered by `typecheck` (`svelte-check`) and by
- * `scripts/build.slow.test.ts`, which bundles `index.html` and follows every route's lazy import.
+ * `scripts/build.slow.test.ts`, which builds the native graph and follows each route's lazy import.
  */
 import { Glob } from 'bun';
 import { describe, expect, test } from 'bun:test';

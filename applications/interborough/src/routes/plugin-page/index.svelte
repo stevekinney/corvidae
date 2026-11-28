@@ -98,14 +98,6 @@
   const needsSetup = $derived(standing?.status === 'needs-setup');
   let secret = $state<SecretTarget | null>(null);
 
-  function follow(event: MouseEvent, target: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(target);
-  }
-
   function openLink(target: string): boolean {
     router.navigate(target);
     return true;
@@ -113,11 +105,7 @@
 </script>
 
 {#snippet settingsLink()}
-  <Button
-    variant="secondary"
-    size="sm"
-    href={router.href(settingsPath)}
-    onclick={(event) => follow(event, settingsPath)}
+  <Button variant="secondary" size="sm" href={router.href(settingsPath)}
     >{PLUGIN_PAGE_COPY.failed.settings(pluginTitle)}</Button
   >
 {/snippet}
@@ -125,9 +113,7 @@
 {#snippet fromPlugin()}
   {@const owner = pluginTitle}
   {#if owner !== undefined}
-    From <Link href={router.href(settingsPath)} onclick={(event) => follow(event, settingsPath)}
-      >{owner}</Link
-    >
+    From <Link href={router.href(settingsPath)}>{owner}</Link>
   {/if}
 {/snippet}
 

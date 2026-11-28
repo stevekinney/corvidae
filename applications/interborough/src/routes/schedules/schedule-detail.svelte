@@ -51,7 +51,6 @@
   import { agentPath } from '../../lib/agent-paths.ts';
   import { getClient } from '../../lib/client.ts';
   import { faultErrorStateAdvice, faultTreatment } from '../../lib/faults.ts';
-  import { followLinks } from '../../lib/follow-links.ts';
   import IdentifierText from '../../lib/identifier-text.svelte';
   import {
     router,
@@ -246,12 +245,7 @@
   }
 </script>
 
-<section
-  class="ib-records ib-schedule"
-  aria-label={SCHEDULE_COPY.title}
-  data-page="schedule"
-  {@attach followLinks}
->
+<section class="ib-records ib-schedule" aria-label={SCHEDULE_COPY.title} data-page="schedule">
   {#if readGate.disabled}
     <EmptyState kind="first-use" title={copy.locked.title} description={readGate.title ?? ''}>
       {#snippet action()}

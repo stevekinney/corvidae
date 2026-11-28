@@ -23,7 +23,6 @@
   import { AUDIT_COPY } from '../../app/copy/audit.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { listAgentVersions } from '../../lib/agent-definitions.ts';
-  import { followLinks } from '../../lib/follow-links.ts';
   import type { CatalogOperations } from '@lostgradient/bureau-sdk';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -108,7 +107,7 @@
   </header>
 
   {#if model.facts.length > 0}
-    <div class="ib-audit-detail__facts" data-testid="audit-facts" {@attach followLinks}>
+    <div class="ib-audit-detail__facts" data-testid="audit-facts">
       <!-- One list for every fact, flat: hairlines between the rows and no box around any of them. -->
       <dl class="ib-audit-detail__fact-list">
         {#each model.facts as fact (fact.term)}
@@ -161,7 +160,7 @@
     </section>
   {/if}
 
-  <div class="ib-audit-detail__actions" {@attach followLinks}>
+  <div class="ib-audit-detail__actions">
     {#each model.links as link (link.href)}
       <Link href={router.href(link.href)}>{link.label} ›</Link>
     {/each}
@@ -173,7 +172,7 @@
     />
   </div>
 
-  <p class="ib-audit-detail__footer" {@attach followLinks}>
+  <p class="ib-audit-detail__footer">
     {copy.retention.before}<Link
       underline="always"
       href={router.href('/settings/data-and-retention')}>{copy.retention.link}</Link

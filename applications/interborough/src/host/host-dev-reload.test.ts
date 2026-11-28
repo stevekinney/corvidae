@@ -1,10 +1,17 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { buildProduction } from '@lostgradient/velveteen/build';
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { stubBrowserPublication } from './build-info.test-support.ts';
 import { DEV_RELOAD_CLIENT, DEV_RELOAD_ROUTE } from './dev-reload.ts';
 import { startHost, type Host } from './host.ts';
+import {
+  NATIVE_DOCUMENT_DIRECTORY,
+  openDevelopmentNativeDocuments,
+  openNativeDocuments,
+} from './native-document-path.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -15,22 +22,30 @@ async function scratch(prefix: string): Promise<string> {
   return directory;
 }
 
-async function createBuild(): Promise<string> {
-  const build = await scratch('interborough-dev-build-');
-  await mkdir(join(build, 'assets'));
-  await writeFile(
-    join(build, 'index.html'),
-    '<!doctype html><html><body><div id="app"></div></body></html>',
-  );
-  return build;
-}
+const project = join(import.meta.dir, '../..');
+await mkdir(join(project, '.cache'), { recursive: true });
+const fixtures = await mkdtemp(join(project, '.cache/dev-document-'));
+afterAll(() => rm(fixtures, { recursive: true, force: true }));
+const generation = (async () => {
+  const routes = join(fixtures, 'routes');
+  for (const path of ['', 'chats', 'runs/[run]']) {
+    const directory = join(routes, path);
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, '+page.svelte'), '<main>Native test document</main>');
+  }
+  return buildProduction({
+    projectDirectory: project,
+    routesDirectory: routes,
+    outputDirectory: join(fixtures, 'output'),
+  });
+})();
 
 async function start(development: boolean): Promise<Host> {
   const home = await scratch('interborough-dev-home-');
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
     port: 0,
-    buildDirectory: await createBuild(),
+    openDocumentCandidate: async () => openNativeDocuments(await generation, development),
     ...(development ? { development } : {}),
   });
   hosts.push(host);
@@ -64,13 +79,13 @@ async function openStream(host: Host): Promise<ReadableStreamDefaultReader<Uint8
 }
 
 describe('the development host', () => {
-  test('injects the reload client into index.html at every client route', async () => {
+  test('injects the reload client at every native document route', async () => {
     const host = await start(true);
     for (const path of ['/', '/chats', '/runs/abc']) {
       const response = await fetch(new URL(path, host.url));
       const html = await response.text();
       expect(html, path).toContain(DEV_RELOAD_CLIENT);
-      expect(html, path).toContain('<div id="app"></div>');
+      expect(html, path).toContain('<main>Native test document</main>');
     }
   });
 
@@ -124,13 +139,70 @@ describe('a host that is not the development host', () => {
     }
   });
 
-  test('serves index.html as built, with no reload client, and ignores a rebuild notice', async () => {
+  test('serves the published document with no reload client, and ignores a rebuild notice', async () => {
     const host = await start(false);
     expect(() => host.notifyRebuilt()).not.toThrow();
     const response = await fetch(new URL('/', host.url));
     const html = await response.text();
     expect(html).not.toContain(DEV_RELOAD_CLIENT);
     expect(html).not.toContain(DEV_RELOAD_ROUTE);
-    expect(html).toBe('<!doctype html><html><body><div id="app"></div></body></html>');
+    expect(html).toContain('<main>Native test document</main>');
+    expect(html).toContain('id="velveteen-data"');
   });
+});
+
+test('a development publication preserves live responses and the previous hashed assets', async () => {
+  const root = await scratch('interborough-native-publication-');
+  const routes = join(fixtures, 'retirement-routes');
+  const stream = join(routes, 'stream');
+  await mkdir(stream, { recursive: true });
+  async function publish(label: string) {
+    await Bun.write(join(routes, '+page.svelte'), `<main>Generation ${label}</main>`);
+    await Bun.write(
+      join(stream, '+server.ts'),
+      `export function GET() {
+        const chunks = ['${label}-first', '${label}-last'];
+        return new Response(new ReadableStream({
+          pull(controller) {
+            const chunk = chunks.shift();
+            if (chunk === undefined) controller.close();
+            else controller.enqueue(new TextEncoder().encode(chunk));
+          },
+        }, { highWaterMark: 0 }));
+      }`,
+    );
+    const directory = stubBrowserPublication(root);
+    return buildProduction({
+      projectDirectory: project,
+      routesDirectory: routes,
+      outputDirectory: join(directory, NATIVE_DOCUMENT_DIRECTORY),
+    });
+  }
+
+  const first = await publish('one');
+  const documents = await openDevelopmentNativeDocuments(root);
+  const request = (path: string) => new Request(new URL(path, 'http://127.0.0.1'));
+  try {
+    const originalResponse = await documents.fetch(request('/stream'));
+    const originalSource = originalResponse.body!.getReader();
+    expect(await readText(originalSource)).toBe('one-first');
+
+    const next = await publish('two');
+    const newAssetUrls = new Set(next.manifest.assets.map(({ url }) => url));
+    const retiredAsset = first.manifest.assets.find(({ url }) => !newAssetUrls.has(url));
+    expect(retiredAsset).toBeDefined();
+    await documents.refresh();
+
+    const fresh = await documents.fetch(request('/'));
+    expect(await fresh.text()).toContain('Generation two');
+    expect(await readText(originalSource)).toBe('one-last');
+    const end = await originalSource.read();
+    expect(end.done).toBe(true);
+    const asset = await documents.fetch(request(retiredAsset!.url));
+    expect(asset.status).toBe(200);
+    const bytes = await asset.arrayBuffer();
+    expect(bytes.byteLength).toBe(retiredAsset!.bytes);
+  } finally {
+    await documents.dispose();
+  }
 });

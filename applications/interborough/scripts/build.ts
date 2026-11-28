@@ -1,48 +1,23 @@
-/**
- * Build Interborough's browser application into `build/`, the directory its host serves.
- *
- * Run from `applications/interborough`: `bun scripts/build.ts`. The output is `build/index.html`
- * plus content-hashed JavaScript, CSS and WebAssembly under `build/assets/`, because the host
- * serves the page at its shell routes and only the files under `assets/` at `/assets/*`.
- *
- * The build is `Bun.build` over the real `index.html` entry with the browser, Svelte and unwasm
- * conditions, production `NODE_ENV`, the Velveteen Svelte compiler plugin, splitting
- * and minification. There is no second bundler: the development host rebuilds with the same
- * options ({@link browserBuildOptions}) and differs only in `development`, in minification, and
- * in where the files land.
- *
- * In development the previous build's hashed assets stay for one more generation
- * ({@link retainPreviousAssets}), so a page loaded before a rebuild can still fetch the chunks it
- * lazily imports. The production build keeps nothing of the build it replaces.
- *
- * The output directory is replaced only once a build succeeds: Bun writes into a staging
- * directory beside it, which {@link replaceDirectory} swaps into place, so a failed build or a
- * failed swap leaves the previous build intact and a reader never sees a half-written tree.
- */
+/** Build and publish the native browser and authenticated document graphs together. */
 
 import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
-import { cp, mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildProduction } from '@lostgradient/velveteen/build';
 import { ensureCinderGenerated } from '../../../components/cinder/scripts/ensure-cinder-generated.ts';
 import {
+  BROWSER_BUILD_GENERATIONS,
   BUILD_INFO_FILE,
-  displayedCommit,
   readSourceInfo,
   UNKNOWN_COMMIT,
   type BuildInfo,
 } from '../src/host/build-info.ts';
 import { processEnvironment } from '../src/host/environment-configuration.ts';
-import {
-  assertCleanBuild,
-  browserBuildOptions,
-  BUILD_ASSET_DIRECTORY,
-  curatedShikiPlugin,
-  pruneUnlinkedStylesheets,
-} from './browser-build.ts';
-import { warmSvelteTransforms } from './warm-svelte-transforms.ts';
+import { NATIVE_DOCUMENT_DIRECTORY } from '../src/host/native-document-path.ts';
+import { curatedShikiPlugin } from './browser-build.ts';
+import { buildNativeDocuments } from './build-native-documents.ts';
 
 /** The `@lostgradient/interborough` package root. */
 export const PACKAGE_DIRECTORY = fileURLToPath(new URL('..', import.meta.url));
@@ -53,93 +28,31 @@ export const DEFAULT_BUILD_DIRECTORY = join(PACKAGE_DIRECTORY, 'build');
 /** The repository root, which holds every workspace. */
 export const REPOSITORY_ROOT = resolve(PACKAGE_DIRECTORY, '..', '..');
 
-/** The page the build starts from. */
-export const ENTRY_HTML_PATH = join(PACKAGE_DIRECTORY, 'index.html');
-
-/** The filesystem operations {@link replaceDirectory} uses, replaceable in tests. */
-export type DirectoryOperations = {
-  readonly rename: (from: string, to: string) => Promise<void>;
-  readonly rm: (path: string, options: { recursive: true; force: true }) => Promise<void>;
-};
-
-const NODE_DIRECTORY_OPERATIONS: DirectoryOperations = { rename, rm };
-
-function isMissingPath(error: unknown): boolean {
-  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
-}
-
-/**
- * Put `staging` at `directory`. Whatever was at `directory` is renamed aside first and deleted
- * only once `staging` is in place, so there is no moment with neither tree, and when the second
- * rename fails the previous tree is renamed back before the error is rethrown.
- */
-export async function replaceDirectory(
-  staging: string,
-  directory: string,
-  operations: DirectoryOperations = NODE_DIRECTORY_OPERATIONS,
-): Promise<void> {
-  const previous = join(dirname(directory), `.build-previous-${crypto.randomUUID()}`);
-  let movedAside = true;
-  try {
-    await operations.rename(directory, previous);
-  } catch (error) {
-    if (!isMissingPath(error)) throw error;
-    movedAside = false;
-  }
-  try {
-    await operations.rename(staging, directory);
-  } catch (error) {
-    if (movedAside) await operations.rename(previous, directory);
-    throw error;
-  }
-  if (movedAside) await operations.rm(previous, { recursive: true, force: true });
-}
-
-/** Names the assets carried over from the build before, which the next build must not carry again. */
-export const RETAINED_ASSETS_FILE = '.retained-assets.json';
-
-async function readRetainedAssets(directory: string): Promise<ReadonlySet<string>> {
-  const file = Bun.file(join(directory, RETAINED_ASSETS_FILE));
-  if (!(await file.exists())) return new Set();
-  const names: unknown = await file.json();
-  return new Set(Array.isArray(names) ? names.filter((name) => typeof name === 'string') : []);
-}
-
-/**
- * Copy the assets `directory` serves into `staging` beside the new build's own, and record which
- * ones they are in {@link RETAINED_ASSETS_FILE}. A page that was open before a rebuild keeps
- * lazily importing chunks by their old hashed names, and those would be gone once the directory
- * is swapped. Only the build immediately before is kept: assets that build itself carried over
- * are listed in its record and are dropped here, so nothing accumulates. A name the new build
- * also emitted is never overwritten.
- */
-export async function retainPreviousAssets(staging: string, directory: string): Promise<string[]> {
-  const previousAssets = join(directory, BUILD_ASSET_DIRECTORY);
-  let names: string[];
-  try {
-    names = await readdir(previousAssets);
-  } catch (error) {
-    if (isMissingPath(error)) return [];
-    throw error;
-  }
-  const carriedOver = await readRetainedAssets(directory);
-  await mkdir(join(staging, BUILD_ASSET_DIRECTORY), { recursive: true });
-  const retained: string[] = [];
-  for (const name of names.toSorted()) {
-    if (carriedOver.has(name)) continue;
-    const target = join(staging, BUILD_ASSET_DIRECTORY, name);
-    if (await Bun.file(target).exists()) continue;
-    await cp(join(previousAssets, name), target);
-    retained.push(name);
-  }
-  await Bun.write(join(staging, RETAINED_ASSETS_FILE), JSON.stringify(retained));
-  return retained;
-}
-
-/** The staging directories of the builds running in this process. */
 const stagingDirectories = new Set<string>();
 
-/** Whether `path` is `directory` or lies beneath it. */
+/**
+ * Publish both document graphs under one immutable generation, then commit one pointer.
+ * A running reader keeps its original immutable directory until its requests finish.
+ */
+async function publishBrowserBuild(staging: string, directory: string, source: BuildInfo) {
+  const generation = crypto.randomUUID();
+  const generations = join(directory, BROWSER_BUILD_GENERATIONS);
+  const published = join(generations, generation);
+  const pending = join(directory, `.${BUILD_INFO_FILE}.${generation}`);
+  await mkdir(generations, { recursive: true });
+  await rename(staging, published);
+  try {
+    await writeFile(pending, `${JSON.stringify({ ...source, generation })}\n`);
+    await rename(pending, join(directory, BUILD_INFO_FILE));
+  } catch (error) {
+    await rm(published, { recursive: true, force: true });
+    throw error;
+  } finally {
+    await rm(pending, { force: true });
+  }
+  return published;
+}
+
 function isWithin(directory: string, path: string): boolean {
   const difference = relative(directory, path);
   return difference === '' || (!difference.startsWith('..') && !isAbsolute(difference));
@@ -158,7 +71,7 @@ function resolveExisting(path: string): string {
 }
 
 /**
- * Refuse an output directory the build must never replace. {@link replaceDirectory} renames the
+ * Refuse an output directory the build must never replace. The build publishes under the
  * directory it is given aside and deletes it, so an `--outdir` that is blank (which resolves to the
  * working directory), or that is, contains, or sits inside the working directory, the application,
  * the repository, or any of their source would delete work. An output directory is allowed outside
@@ -197,107 +110,66 @@ export type ApplicationBuild = {
   readonly metafile: Bun.BuildMetafile;
 };
 
-/**
- * Build the application into `outdir` (by default `build/` at the package root), replacing what
- * was there only once the build succeeds. The default is the production build: minified, with
- * `NODE_ENV=production` compiled in. `development: true` keeps the Svelte compiler's diagnostics
- * and skips minification, for the development host.
- */
+/** Build native document graphs into a new directory and publish only when both succeed. */
 export async function buildApplication(
   options: {
     readonly outdir?: string;
     readonly development?: boolean;
-    /**
-     * The source being built, which the build records. The command-line entry reads it from the
-     * checkout; a caller that gives none records an unknown commit, which every server refuses.
-     */
     readonly source?: BuildInfo;
-    /** The bundler. `Bun.build` by default; a test supplies a fake so it need not bundle. */
-    readonly bundle?: (configuration: Bun.BuildConfig) => Promise<Bun.BuildOutput>;
-    /**
-     * Makes sure Cinder's generated files exist before the bundler imports them. Every caller,
-     * Turbo or not, goes through here; a test supplies a no-op.
-     */
     readonly ensureGenerated?: () => void | Promise<void>;
+    readonly buildNative?: typeof buildNativeDocuments;
     readonly buildPrivate?: typeof buildProduction;
   } = {},
 ): Promise<ApplicationBuild> {
+  const buildNative = options.buildNative ?? buildNativeDocuments;
   const buildPrivate = options.buildPrivate ?? buildProduction;
   const generationStarted = performance.now();
   const generated = await (options.ensureGenerated ?? ensureCinderGenerated)();
-  if (processEnvironment()['INTERBOROUGH_STARTUP_PROFILE'] === '1') {
+  const profiling = processEnvironment()['INTERBOROUGH_STARTUP_PROFILE'] === '1';
+  if (profiling) {
     console.error(
       `STARTUP ${JSON.stringify({ stage: 'cinder', milliseconds: performance.now() - generationStarted, generated })}`,
     );
   }
   const bundleStarted = performance.now();
-  const development = options.development ?? false;
-  const warmTransforms =
-    development && options.bundle === undefined
-      ? await warmSvelteTransforms(join(PACKAGE_DIRECTORY, '.cache', 'svelte-transforms'))
-      : undefined;
+  const mode = options.development === true ? 'development' : 'production';
   const directory =
     options.outdir === undefined
       ? DEFAULT_BUILD_DIRECTORY
       : assertSafeOutputDirectory(options.outdir);
-  const parent = dirname(directory);
-  // Created and recorded in one synchronous step, so a stale build that is told to exit between
-  // two awaits either has not made its staging directory yet or removes it.
-  const staging = mkdtempSync(join(parent, '.build-staging-'));
+  const staging = mkdtempSync(join(dirname(directory), '.build-staging-'));
   stagingDirectories.add(staging);
   try {
     const source = options.source ?? { commit: UNKNOWN_COMMIT, changes: '' };
-    const result = await (options.bundle ?? Bun.build)({
-      ...browserBuildOptions({
-        entrypoints: [ENTRY_HTML_PATH],
-        outdir: staging,
-        development,
-        ...(warmTransforms === undefined ? {} : { sveltePlugin: warmTransforms.plugin }),
-        commit: displayedCommit(source),
-      }),
-      minify: !development,
-    });
-    const bundled = assertCleanBuild(result);
+    const metafile: Bun.BuildMetafile = { inputs: {}, outputs: {} };
+    const collect: NonNullable<Parameters<typeof buildProduction>[0]['onBuildMetadata']> = ({
+      browser,
+      server,
+    }) => {
+      Object.assign(metafile.inputs, browser.inputs, server.inputs);
+      Object.assign(metafile.outputs, browser.outputs);
+    };
+    await buildNative(join(staging, NATIVE_DOCUMENT_DIRECTORY), { mode, onBuildMetadata: collect });
     await buildPrivate({
       projectDirectory: PACKAGE_DIRECTORY,
       routesDirectory: join(PACKAGE_DIRECTORY, 'src/private-routes'),
       outputDirectory: join(staging, 'private'),
-      mode: development ? 'development' : 'production',
+      mode,
       browserPlugins: [curatedShikiPlugin],
+      onBuildMetadata: collect,
     });
-    const files = await pruneUnlinkedStylesheets(
-      staging,
-      result.outputs
-        .map((output) => relative(staging, output.path).split(sep).join('/'))
-        .toSorted(),
-    );
-    const privateDirectory = join(staging, 'private');
-    const privateEntries = existsSync(privateDirectory)
-      ? await readdir(privateDirectory, { recursive: true, withFileTypes: true })
-      : [];
-    const privateFiles = privateEntries
+    await writeFile(join(staging, BUILD_INFO_FILE), `${JSON.stringify(source)}\n`);
+    const entries = await readdir(staging, { recursive: true, withFileTypes: true });
+    const files = entries
       .filter((entry) => entry.isFile())
       .map((entry) => relative(staging, join(entry.parentPath, entry.name)).split(sep).join('/'));
-    const written = new Set(files);
-    // The metafile describes what is on disk: it keeps no entry for a stylesheet that was pruned.
-    const metafile: Bun.BuildMetafile = {
-      ...bundled,
-      outputs: Object.fromEntries(
-        Object.entries(bundled.outputs).filter(
-          ([name]) => !name.endsWith('.css') || written.has(name.replace(/^\.\//, '')),
-        ),
-      ),
-    };
-    // The record of the source the build was made from, which the servers check (`build-info.ts`).
-    await writeFile(join(staging, BUILD_INFO_FILE), `${JSON.stringify(source)}\n`);
-    if (development) await retainPreviousAssets(staging, directory);
-    await replaceDirectory(staging, directory);
-    if (processEnvironment()['INTERBOROUGH_STARTUP_PROFILE'] === '1') {
+    const published = await publishBrowserBuild(staging, directory, source);
+    if (profiling) {
       console.error(
-        `STARTUP ${JSON.stringify({ stage: 'ui-bundle', milliseconds: performance.now() - bundleStarted, transforms: warmTransforms?.statistics })}`,
+        `STARTUP ${JSON.stringify({ stage: 'ui-bundle', milliseconds: performance.now() - bundleStarted })}`,
       );
     }
-    return { directory, files: [...files, ...privateFiles, BUILD_INFO_FILE].toSorted(), metafile };
+    return { directory: published, files: files.toSorted(), metafile };
   } finally {
     await rm(staging, { recursive: true, force: true });
     stagingDirectories.delete(staging);
@@ -351,6 +223,7 @@ export function buildInputPaths(
   return Object.keys(metafile.inputs)
     .filter((input) => !/^[a-z][a-z0-9+.-]*:/i.test(input))
     .map((input) => resolve(workingDirectory, input))
+    .filter((input) => !/(?:^|\/)(?:native-documents-|\.velveteen-graph-)[^/]+\//u.test(input))
     .toSorted();
 }
 

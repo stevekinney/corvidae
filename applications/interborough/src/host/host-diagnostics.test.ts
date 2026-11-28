@@ -57,7 +57,7 @@ async function startAt(home: string, buildDirectory: string): Promise<Host> {
 async function buildWithIndex(): Promise<string> {
   const build = await scratch('interborough-diagnostics-build-');
   await mkdir(join(build, 'assets'));
-  await writeFile(join(build, 'index.html'), '<!doctype html><div id="app"></div>');
+  await writeFile(join(build, 'build-info.json'), '<!doctype html><div id="app"></div>');
   return build;
 }
 
@@ -78,7 +78,7 @@ describe('Host.diagnostics', () => {
     expect(reading.weft.connections).toEqual(host.server.connections());
     expect(reading.weft.connections.workers).toBe(0);
 
-    const index = await stat(join(build, 'index.html'));
+    const index = await stat(join(build, 'build-info.json'));
     expect(reading.build).toEqual({ directory: build, indexModifiedAt: index.mtimeMs });
 
     const anthropic = anthropicRows()
@@ -99,15 +99,15 @@ describe('Host.diagnostics', () => {
     expect(host.diagnostics().providers).toEqual([]);
   });
 
-  test('reports the build as null while index.html is absent, and finds it once it exists', async () => {
+  test('reports the build as null while build-info.json is absent, and finds it once it exists', async () => {
     const home = await scratch('interborough-diagnostics-home-');
     const build = await scratch('interborough-diagnostics-build-');
     const host = await startAt(home, build);
 
     expect(host.diagnostics().build).toBeNull();
 
-    await writeFile(join(build, 'index.html'), '<!doctype html>');
-    const index = await stat(join(build, 'index.html'));
+    await writeFile(join(build, 'build-info.json'), '<!doctype html>');
+    const index = await stat(join(build, 'build-info.json'));
     expect(host.diagnostics().build).toEqual({ directory: build, indexModifiedAt: index.mtimeMs });
   });
 

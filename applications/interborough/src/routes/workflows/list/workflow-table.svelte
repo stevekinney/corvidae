@@ -115,24 +115,6 @@
     else nextSet.delete(id);
     onSelectionChange?.(nextSet);
   }
-
-  /**
-   * SPA-intercepted navigation for the id link, mirroring the shell's own
-   * `router.href()` + guarded `preventDefault()` convention
-   * (`src/app/shell/sidebar.svelte`'s `onNavClick`) so modifier-clicks
-   * (open in new tab, etc.) keep working. The id link is the row's whole
-   * navigation affordance — a `<tr onclick>` was considered and rejected:
-   * it would also fire when the click originates from the row's own
-   * selection checkbox or the copy button, re-navigating away from a
-   * selection/copy action the user did not ask to leave the page for.
-   */
-  function onIdLinkClick(event: MouseEvent, workflowType: string, workflowId: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(workflowRunPath(workflowType, workflowId));
-  }
 </script>
 
 <!-- Health Runs stacks through Cinder at phone width; scoped workflow runs retain their table floor. -->
@@ -184,7 +166,6 @@
                 <a
                   class="weft-workflows-table__id-link"
                   href={router.href(workflowRunPath(row.type, row.id))}
-                  onclick={(event) => onIdLinkClick(event, row.type, row.id)}
                 >
                   <code>{truncateId(row.id)}</code>
                 </a>

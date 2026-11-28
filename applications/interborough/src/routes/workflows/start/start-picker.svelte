@@ -48,14 +48,6 @@
     })),
   ]);
 
-  function go(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
-
   /** Goes to the chosen workflow's setup page, or focuses the field and says what is missing. */
   function proceed(): void {
     if (chosen === '') {
@@ -91,12 +83,7 @@
     >
       {#snippet icon()}<GitBranch size={24} aria-hidden="true" />{/snippet}
       {#snippet action()}
-        <Button
-          variant="primary"
-          href={router.href(workflowNewPath())}
-          onclick={(event) => go(event, workflowNewPath())}
-          label={copy.emptyAction}
-        />
+        <Button variant="primary" href={router.href(workflowNewPath())} label={copy.emptyAction} />
       {/snippet}
     </EmptyState>
   {:else}
@@ -112,12 +99,7 @@
       />
     </div>
     <div class="ib-run-picker__actions">
-      <Button
-        variant="secondary"
-        href={router.href('/runs')}
-        onclick={(event) => go(event, '/runs')}
-        label={copy.cancel}
-      />
+      <Button variant="secondary" href={router.href('/runs')} label={copy.cancel} />
       <Button variant="primary" onclick={proceed} label={copy.continue} />
     </div>
   {/if}

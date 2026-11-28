@@ -53,7 +53,6 @@
   import { agentEditPath } from '../../lib/agent-paths.ts';
   import { agentsListQuery } from '../../lib/agent-queries.ts';
   import { listAllContexts } from '../../lib/bureau-client.ts';
-  import { followLinks } from '../../lib/follow-links.ts';
   import { agentRelativePath, getHostPaths } from '../../lib/host-paths.ts';
   import { getPlugins } from '../../lib/host-plugins.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
@@ -216,14 +215,6 @@
   const enableLabel = AGENTS_COPY.enable.action;
   let enabling = $state(false);
 
-  function go(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
-
   function clearFilters(): void {
     search = '';
     segment = 'all';
@@ -259,7 +250,7 @@
 {/snippet}
 
 {#snippet newAgentAction(variant: 'primary' | 'secondary')}
-  <Button href={router.href('/agents/new')} {variant} onclick={(event) => go(event, '/agents/new')}>
+  <Button href={router.href('/agents/new')} {variant}>
     {#snippet leadingIcon()}<Plus size={14} aria-hidden="true" />{/snippet}
     {AGENT_EDITOR_COPY.newAction}
   </Button>
@@ -280,11 +271,10 @@
     createAction={{
       label: AGENT_EDITOR_COPY.newAction,
       href: router.href('/agents/new'),
-      onclick: (event) => go(event, '/agents/new'),
     }}
   />
 
-  <div class="ib-agents__body" {@attach followLinks}>
+  <div class="ib-agents__body">
     <!-- Always mounted: the banners that follow a restart outlive the held-back agents they were for. -->
     <AgentListEnable
       bind:open={enabling}
@@ -337,13 +327,11 @@
         create={{
           label: AGENT_EDITOR_COPY.newAction,
           href: router.href('/agents/new'),
-          onclick: (event) => go(event, '/agents/new'),
         }}
         secondary={[
           {
             label: AGENTS_COPY.empty.addPlugin,
             href: router.href(PLUGINS_PATH),
-            onclick: (event) => go(event, PLUGINS_PATH),
           },
         ]}
       >

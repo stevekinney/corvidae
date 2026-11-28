@@ -40,7 +40,7 @@ const [stdout, stderr, code] = await Promise.all([
 it('builds the browser application under `bun --watch` after the host modules have loaded', () => {
   expect({ code, stderr }).toEqual({ code: 0, stderr: '' });
   expect(stdout).toContain('BUILD OK');
-  expect(existsSync(join(outdir, 'index.html'))).toBe(true);
+  expect(existsSync(join(outdir, 'build-info.json'))).toBe(true);
 });
 
 // A reload keeps the process and drops the module scope, so the generation's build child must end
@@ -129,7 +129,7 @@ it('ends the earlier generation’s build child when `bun --watch` reloads the h
   expect(lines.at(-1)).toBe('built');
   // The earlier child was stopped, not allowed to finish: it never replaced a build directory.
   expect(existsSync(`${reloadOutdir}-1`)).toBe(false);
-  expect(existsSync(join(`${reloadOutdir}-2`, 'index.html'))).toBe(true);
+  expect(existsSync(join(`${reloadOutdir}-2`, 'build-info.json'))).toBe(true);
   expect(readdirSync(reloadDirectory).filter((name) => name.startsWith('.build-staging-'))).toEqual(
     [],
   );

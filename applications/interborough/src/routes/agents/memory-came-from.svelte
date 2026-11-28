@@ -45,15 +45,6 @@
           chat.data.title === null || chat.data.title === '' ? copy.untitled : chat.data.title,
         ),
   );
-
-  /** Follows a link inside the app's router, unless the click asks for a new tab or window. */
-  function follow(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 {#if sessionId === null}
@@ -63,7 +54,7 @@
 {:else if deleted}
   <span class="ib-memory-came-from__muted" data-came-from="deleted">{copy.deleted}</span>
 {:else}
-  <a href={router.href(path)} onclick={follow} data-came-from="chat">{label}</a>
+  <a href={router.href(path)} data-came-from="chat">{label}</a>
 {/if}
 
 <style>

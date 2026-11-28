@@ -56,7 +56,6 @@
   import { useAgentDisplayName } from '../../lib/agent-display-name.svelte.ts';
   import { goalHasEnded, listAllGoals, type Goal } from '../../lib/bureau-goals.ts';
   import { faultErrorStateAdvice } from '../../lib/faults.ts';
-  import { followLinks } from '../../lib/follow-links.ts';
   import { viewerTimeZone } from '../../lib/format/clock.ts';
   import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -274,7 +273,7 @@
     {/if}
 
     {#if failedFirstLoad && failure !== undefined}
-      <div {@attach followLinks}>
+      <div>
         <ErrorState
           bordered
           headingLevel={2}
@@ -348,7 +347,7 @@
           {#snippet icon()}<Search aria-hidden="true" />{/snippet}
         </EmptyState>
       {:else}
-        <div {@attach followLinks}>
+        <div>
           <DataList
             items={visibleRows}
             key={rowKey}

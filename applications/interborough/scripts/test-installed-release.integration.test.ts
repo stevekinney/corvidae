@@ -362,6 +362,7 @@ describe('installed-release harness arguments', () => {
     expect(() => validateInspection(response, {})).toThrow('returned an error');
   });
 
+  // spawn-free: unpack and runInstalled use in-process results for both runs.
   test('orchestrates archive and relocation through injectable process seams', async () => {
     const calls: string[] = [];
     const evidenceDirectory = await mkdtemp(join(tmpdir(), 'installed-release-seam-'));

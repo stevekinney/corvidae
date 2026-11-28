@@ -32,14 +32,6 @@
   );
   const deleted = $derived(parent.isError && classifyFault(parent.error)?.kind === 'not-found');
   const path = $derived(chatSessionPath(parentId));
-
-  function open(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 <span class="weft-chat-header__origin">
@@ -47,7 +39,7 @@
   {#if deleted}
     {CHAT_COPY.branch.parentDeleted}
   {:else}
-    <a class="weft-chat-header__origin-link" href={router.href(path)} onclick={open}
+    <a class="weft-chat-header__origin-link" href={router.href(path)}
       >{parent.data?.title ?? CHAT_COPY.untitled}</a
     >
   {/if}

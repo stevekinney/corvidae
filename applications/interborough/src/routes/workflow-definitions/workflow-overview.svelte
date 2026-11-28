@@ -79,14 +79,6 @@
   function declares(schema: unknown): boolean {
     return typeof schema === 'object' && schema !== null;
   }
-
-  function go(event: MouseEvent, target: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(target);
-  }
 </script>
 
 {#snippet schemaSection(label: string, schema: unknown, testId: string)}
@@ -147,10 +139,7 @@
       <ul class="ib-workflow__list">
         {#each schedules as schedule (schedule.id)}
           <li data-schedule={schedule.id} data-status={schedule.status}>
-            <a
-              href={router.href(scheduleDetailPath(schedule.id))}
-              onclick={(event) => go(event, scheduleDetailPath(schedule.id))}>{schedule.id}</a
-            >
+            <a href={router.href(scheduleDetailPath(schedule.id))}>{schedule.id}</a>
             <span>{scheduleLabel(schedule)}</span>
             <Badge variant={schedule.status === 'active' ? 'success' : 'neutral'} size="sm"
               >{schedule.status === 'active'

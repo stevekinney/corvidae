@@ -150,13 +150,16 @@
     onSubmit();
   }
 
-  function leave(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    if (busy) return;
-    router.navigate(path);
+  function preventLeavingWhileSaving(event: MouseEvent): void {
+    if (
+      busy &&
+      event.button === 0 &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.shiftKey &&
+      !event.altKey
+    )
+      event.preventDefault();
   }
 </script>
 
@@ -180,7 +183,7 @@
             variant="ghost"
             size="sm"
             href={router.href(copy.connectProviderPath)}
-            onclick={(event) => leave(event, copy.connectProviderPath)}
+            onclick={preventLeavingWhileSaving}
             label={copy.connectProvider}
           />
           {#if scripted !== undefined}
@@ -313,7 +316,7 @@
           href={router.href(cancelPath)}
           variant="ghost"
           aria-disabled={busy ? 'true' : undefined}
-          onclick={(event) => leave(event, cancelPath)}>{cancelLabel}</Button
+          onclick={preventLeavingWhileSaving}>{cancelLabel}</Button
         >
         <Button
           data-changes

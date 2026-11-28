@@ -15,21 +15,12 @@
   }
 
   let { title, headingLevel = 1 }: ForbiddenStateProps = $props();
-
-  /** A button opens its page without leaving the application. */
-  function open(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
 </script>
 
 <EmptyState kind="disabled" {headingLevel} {title} description={FORBIDDEN_COPY.description}>
   {#snippet icon()}<Lock aria-hidden="true" />{/snippet}
   {#snippet action()}
-    <Button variant="secondary" href={router.href('/')} onclick={(event) => open(event, '/')}>
+    <Button variant="secondary" href={router.href('/')}>
       {FORBIDDEN_COPY.home}
     </Button>
   {/snippet}

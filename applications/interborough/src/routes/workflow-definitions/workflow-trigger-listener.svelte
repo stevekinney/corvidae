@@ -75,15 +75,6 @@
 
   const status = $derived(triggerStatus(listener, { now, pluginTitle }));
 
-  /** Opens a link in place, and leaves a modified click to the browser. */
-  function go(event: MouseEvent, target: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(target);
-  }
-
   // A failed retry is said once, here beside the control: this `onError` replaces the query
   // client's default, which would also raise a toast.
   let retryFailure = $state<string | null>(null);
@@ -109,8 +100,7 @@
   <!-- The line is drawn as the header's lines are: inline parts, muted, wrapping as prose does. -->
   <p class="ib-workflow__line" data-state={listener.state}>
     <StatusDot word={status.word} size="sm" />{status.text}{#if status.settings !== null}<Link
-        href={router.href(SETTINGS_PATH)}
-        onclick={(event) => go(event, SETTINGS_PATH)}>{status.settings.link}</Link
+        href={router.href(SETTINGS_PATH)}>{status.settings.link}</Link
       >{status.settings.after}{/if}{#if status.lastStarted !== null}{' '}{status.lastStarted}{/if}
     {#if status.canRetry}
       <Button
@@ -131,7 +121,6 @@
         variant="secondary"
         size="xs"
         href={router.href(target)}
-        onclick={(event) => go(event, target)}
         label={copy.edit}
       />
     {/if}

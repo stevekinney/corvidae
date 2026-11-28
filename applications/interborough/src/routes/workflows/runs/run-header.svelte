@@ -207,14 +207,6 @@
       showFault({ kind: 'not-supported', message: `${RUN_PAGE_COPY.runIdCopyFailed}.` });
     }
   }
-
-  function openLink(event: MouseEvent, href: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(href);
-  }
 </script>
 
 {#snippet heading()}
@@ -250,22 +242,12 @@
       </Button>
     {/if}
     {#if chat !== undefined}
-      <Button
-        variant="secondary"
-        href={router.href(chat.href)}
-        label={chat.label}
-        onclick={(event) => openLink(event, chat.href)}
-      >
+      <Button variant="secondary" href={router.href(chat.href)} label={chat.label}>
         {#snippet leadingIcon()}<MessageSquare aria-hidden="true" size={16} />{/snippet}
       </Button>
     {/if}
     {#if owner !== undefined}
-      <Button
-        variant="secondary"
-        href={router.href(owner.href)}
-        label={owner.label}
-        onclick={(event) => openLink(event, owner.href)}
-      />
+      <Button variant="secondary" href={router.href(owner.href)} label={owner.label} />
     {/if}
     {#if runAgain !== undefined}
       {@const again = runAgain}
@@ -282,12 +264,7 @@
           </Button>
         {:else if again.href !== undefined}
           {@const path = again.href}
-          <Button
-            variant="secondary"
-            href={router.href(path)}
-            label={RUN_DETAIL_COPY.runAgain}
-            onclick={(event) => openLink(event, path)}
-          >
+          <Button variant="secondary" href={router.href(path)} label={RUN_DETAIL_COPY.runAgain}>
             {#snippet leadingIcon()}<Play aria-hidden="true" size={16} />{/snippet}
           </Button>
         {:else}
@@ -362,9 +339,7 @@
     <a
       id="ib-run-again-blocked"
       class="ib-run__again-note"
-      href={router.href(RUN_DETAIL_COPY.providersPath)}
-      onclick={(event) => openLink(event, RUN_DETAIL_COPY.providersPath)}
-      >{RUN_DETAIL_COPY.connectProvider}</a
+      href={router.href(RUN_DETAIL_COPY.providersPath)}>{RUN_DETAIL_COPY.connectProvider}</a
     >
   {/if}
 {/snippet}

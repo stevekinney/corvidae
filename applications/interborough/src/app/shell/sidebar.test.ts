@@ -238,14 +238,18 @@ describe('the sidebar', () => {
     onDesktop();
     stubEngine();
     landAt('/chats');
-    Reflect.set(globalThis, 'INTERBOROUGH_BUILD_COMMIT', 'abc1234 (edited)');
+    const config = document.createElement('script');
+    config.id = 'weft-ui-config';
+    config.type = 'application/json';
+    config.textContent = JSON.stringify({ baseUrl: '', buildCommit: 'abc1234 (edited)' });
+    document.head.append(config);
     try {
       const { container } = mount();
       const commit = container.querySelector('.weft-shell-sidebar__commit');
       expect(commit?.textContent).toBe('abc1234 (edited)');
       expect(commit?.previousElementSibling?.className).toContain('weft-shell-sidebar__name');
     } finally {
-      Reflect.deleteProperty(globalThis, 'INTERBOROUGH_BUILD_COMMIT');
+      config.remove();
     }
   });
 

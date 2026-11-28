@@ -1,20 +1,6 @@
-/**
- * History-API router (plan §4, §8, T1.3). Frozen after the Phase 1
- * Foundation gate — see PROJECT-BRIEF "Shared contracts". Parses the current
- * location against the route table in `src/app/routes.ts` into a
- * rune-backed `{ route, params, search }` triple (`router.current`);
- * `navigate()`/`back()`/`forward()`/`href()` are the only way surfaces
- * should touch `window.history`, so the whole app agrees on one history-API
- * story with no SvelteKit involved.
- *
- * `window` is read lazily, on the router's first use, never at module
- * evaluation: the router is a module-scope singleton, and a server render
- * or a Node consumer that imports the entry without a DOM must not throw just
- * because this module was evaluated.
- */
-import type { ApplicationState } from '@lostgradient/velveteen/navigation';
+/** Interborough route metadata and application actions over Velveteen navigation. */
 import { routes, type RouteDefinition } from '../app/routes.ts';
-import { identifierPath, identifierViewKey, withEscapedIdentifier } from './identifier-paths.ts';
+import { identifierPath } from './identifier-paths.ts';
 import { bindNativeRouteState } from './native-route-state.svelte.ts';
 
 /** A route pattern a location matched and the parameters it captured. */
@@ -170,224 +156,79 @@ export function matchRoute(
   return found ? { pattern: found.definition.pattern, params: found.params } : null;
 }
 
-/**
- * The type of {@link router}. Not exported by name: it is public only as the
- * structure `router` exposes.
- */
-class DashboardRouter {
-  #native: ReturnType<typeof bindNativeRouteState> | undefined;
+type NativeNavigationState = Parameters<typeof bindNativeRouteState>[0];
 
-  /** Attach the mounted native browser application before its shell reads the current route. */
-  bindNative(state: ApplicationState): () => void {
-    if (this.#native !== undefined) throw new Error('A native document router is already mounted');
-    const native = bindNativeRouteState(state, (path) => this.#allowsLeaving(path));
+class ApplicationRouter {
+  #native: ReturnType<typeof bindNativeRouteState> | undefined;
+  #leaveGuards: ((destination: string) => boolean)[] = [];
+
+  /** Attach Velveteen to the installed document before its descendants read the route. */
+  bindNative(state: NativeNavigationState): () => void {
+    if (this.#native !== undefined) throw new Error('A document router is already mounted');
+    const native = bindNativeRouteState(state, (path) =>
+      this.#leaveGuards.toReversed().every((guard) => guard(path)),
+    );
     this.#native = native;
     return () => {
       native.dispose();
-      this.#native = undefined;
+      if (this.#native === native) this.#native = undefined;
     };
   }
 
-  // `undefined` until the router itself observes a location change
-  // (`navigate()` or a `popstate`). Until then the getters read
-  // `window.location` directly, so a first read never writes reactive state:
-  // a write from inside a template or `$derived` read is an unsafe mutation
-  // in Svelte 5.
-  #pathname = $state<string | undefined>(undefined);
-  #searchString = $state<string | undefined>(undefined);
-  #hashString = $state<string | undefined>(undefined);
-  #listening = false;
-  // The key the outlet mounts the route under, while a navigation asked the page to keep it
-  // (`navigate`'s `keep`). `undefined` means the key is the pathname.
-  #keptKey = $state<string | undefined>(undefined);
-  // Bumped when a navigation lands on the address a kept page was keyed on, so that address is a
-  // new page and not the kept one: a kept key is a past address, and a pathname can be reached again.
-  #generation = $state(0);
-  // What a page registered to be asked before the address changes (`guardLeaving`).
-  #leaveGuards: ((destination: string) => boolean)[] = [];
-  // The address the page was last at, so a back or forward that a guard refused can be undone.
-  #settledAddress: string | undefined;
-
-  /** Subscribes to `popstate` on first use, so evaluating this module never touches `window`. */
-  #listen(): void {
-    if (this.#native !== undefined || this.#listening) return;
-    this.#listening = true;
-    window.addEventListener('popstate', () => {
-      const arrived = `${window.location.pathname}${window.location.search}`;
-      const settled = this.#settledAddress;
-      // The browser has already moved, so a refused move goes back to where the page was. The
-      // guard that refused it keeps the address it was asked about, to go there if it is let through.
-      if (settled !== undefined && settled !== arrived && !this.#allowsLeaving(arrived)) {
-        window.history.pushState(null, '', settled);
-        return;
-      }
-      this.#settledAddress = arrived;
-      const leftKey = this.#keptKey;
-      this.#keptKey = undefined;
-      this.#syncFromLocation();
-      if (leftKey !== undefined && this.viewKey === leftKey) this.#generation += 1;
-    });
+  get #navigation() {
+    if (this.#native === undefined) throw new Error('No Velveteen document navigation is mounted');
+    return this.#native;
   }
 
-  /** Asks every registered guard, newest first, whether the page may be left for `destination`. */
-  #allowsLeaving(destination: string): boolean {
-    for (const guard of this.#leaveGuards.toReversed()) {
-      if (!guard(destination)) return false;
-    }
-    return true;
-  }
-
-  /**
-   * Registers a question the router asks before it leaves the current page: `guard` is given the
-   * address the navigation is for and answers whether to go. A page that holds work the person has
-   * not saved answers `false` and asks them (a dialog), then calls `navigate(destination, { force:
-   * true })` if they choose to leave. A back or forward the guard refuses puts the address back.
-   * Returns the function that removes the guard, which the page calls when it unmounts.
-   */
   guardLeaving(guard: (destination: string) => boolean): () => void {
-    this.#listen();
-    this.#settledAddress = `${window.location.pathname}${window.location.search}`;
     this.#leaveGuards.push(guard);
     return () => {
       this.#leaveGuards = this.#leaveGuards.filter((candidate) => candidate !== guard);
     };
   }
 
-  #syncFromLocation(): void {
-    this.#pathname = window.location.pathname;
-    this.#searchString = window.location.search;
-    this.#hashString = window.location.hash;
-  }
-
-  /**
-   * The current location's fragment, live, with its `#` (empty for none). `pushState` never scrolls
-   * to a fragment as a page load does, so a page whose target mounts after its data arrives reads
-   * this and scrolls to the target itself, once it is there (COR-2533).
-   */
   get hash(): string {
-    if (this.#native !== undefined) return this.#native.url.hash;
-    this.#listen();
-    return this.#hashString ?? window.location.hash;
+    return this.#navigation.url.hash;
   }
 
-  /** The current location's pathname, live. */
   get pathname(): string {
-    if (this.#native !== undefined) return this.#native.url.pathname;
-    this.#listen();
-    return this.#pathname ?? window.location.pathname;
+    return this.#navigation.url.pathname;
   }
 
-  /** The current location's query string, live (not a frozen snapshot). */
   get search(): URLSearchParams {
-    if (this.#native !== undefined) return this.#native.url.searchParams;
-    this.#listen();
-    return new URLSearchParams(this.#searchString ?? window.location.search);
+    return this.#navigation.url.searchParams;
   }
 
-  /**
-   * What the route outlet keys the mounted route on: the pathname (and the identifier an escaped
-   * path stands in for), so a new path is a new page.
-   * A navigation that asks to `keep` the page leaves the key as it was, so the route that made it
-   * stays mounted under the new address (a new chat becoming its session, mid-run).
-   */
   get viewKey(): string {
-    if (this.#native !== undefined) return this.#native.viewKey;
-    this.#listen();
-    if (this.#keptKey !== undefined) return this.#keptKey;
-    const key = identifierViewKey(
-      this.pathname,
-      findRouteDefinition(this.pathname, routes),
-      this.search,
-    );
-    // A raw NUL cannot be in a pathname (it arrives as %00), so this key is no address's.
-    return this.#generation === 0 ? key : `${key}\u0000${this.#generation}`;
+    return this.#navigation.viewKey;
   }
 
-  /** The route matching the current `pathname`, or `null` for an unowned path. */
   get match(): RouteMatch | null {
-    if (this.#native !== undefined) return this.#native.match;
-    return matchRoute(this.pathname);
+    return this.#navigation.match;
   }
 
-  /** The fully parsed `{ route, params, search }` view of the current location. */
   get current(): RouteState {
-    if (this.#native !== undefined) return this.#native.current;
-    const found = findRouteDefinition(this.pathname, routes);
-    const search = this.search;
-    const params = found === null ? {} : withEscapedIdentifier(found, search);
-    return {
-      route: found?.definition ?? null,
-      params,
-      search,
-    };
+    return this.#navigation.current;
   }
 
-  /**
-   * Pushes `path` onto browser history (or replaces the current entry with
-   * `options.replace`) and updates the reactive route state. `path` may
-   * include a query string (e.g. `/runs?status=running`) — the browser
-   * resolves it, so `pathname`/`search` are read back from
-   * `window.location` rather than re-parsed here. With `keep`, the page that is mounted stays
-   * mounted (see {@link DashboardRouter.viewKey}); use it only with `replace`, for an address that
-   * names the same thing the page already shows. A page's leave guard (`guardLeaving`) may refuse
-   * the navigation; `force` skips the guards.
-   */
   navigate(
     path: string,
     options?: { readonly replace?: boolean; readonly keep?: boolean; readonly force?: boolean },
   ): void {
-    if (this.#native !== undefined) {
-      void this.#native.navigate(path, options);
-      return;
-    }
-    this.#listen();
-    // A page that guards leaving is asked first; `force` is the answer to its own question.
-    if (options?.force !== true && !this.#allowsLeaving(path)) return;
-    // A kept page carries on under the key it already had; any other navigation ends that.
-    const leftKey = this.#keptKey;
-    this.#keptKey = options?.keep === true ? this.viewKey : undefined;
-    if (options?.replace) {
-      window.history.replaceState(null, '', path);
-    } else {
-      window.history.pushState(null, '', path);
-    }
-    this.#syncFromLocation();
-    this.#settledAddress = `${window.location.pathname}${window.location.search}`;
-    // Arriving at the address the kept page was keyed on is a new page, even though the key it
-    // computes is the one that is mounted (a new chat's address, after that chat started).
-    if (leftKey !== undefined && this.#keptKey === undefined && this.viewKey === leftKey) {
-      this.#generation += 1;
-    }
+    void this.#navigation.navigate(path, options);
   }
 
-  /** Goes back one entry in browser history (mirrors the browser's back button). */
-  back(): void {
-    this.#listen();
-    window.history.back();
-  }
-
-  /** Goes forward one entry in browser history (mirrors the browser's forward button). */
-  forward(): void {
-    this.#listen();
-    window.history.forward();
-  }
-
-  /** Resolves an `href` for a link. Identity today; a seam for a future base path. */
   href(path: string): string {
     return path;
   }
 }
 
-/**
- * The dashboard's one router: it parses the browser location, navigates with the History API, and
- * exposes the current route reactively.
- */
-export const router = new DashboardRouter();
+export const router = new ApplicationRouter();
 
 /**
  * The question a form asks before its page is left with work the person has not saved: one
  * primitive every form reuses (the agent editor, and a Settings tab with unsaved changes). It
- * registers with {@link DashboardRouter.guardLeaving}, so Cancel, the breadcrumb, a link in the
+ * registers with {@link ApplicationRouter.guardLeaving}, so Cancel, the breadcrumb, a link in the
  * shell, and back or forward are all asked, and with the window's `beforeunload`, so closing the tab
  * or reloading is asked by the browser. A navigation it refuses is kept, and the page's dialog,
  * open while {@link LeaveGuard.asking} is true, answers with {@link LeaveGuard.leave} (go there,

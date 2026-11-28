@@ -30,14 +30,6 @@
   const AUDIT_PATH = '/health/audit';
   /** Read and holding nothing: the empty state stands for the section, with no heading over it. */
   const empty = $derived(!failed && lines !== undefined && lines.length === 0);
-
-  function openAudit(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(AUDIT_PATH);
-  }
 </script>
 
 <section
@@ -48,7 +40,7 @@
   {#if !empty}
     <div class="ib-recent-activity__heading-row">
       <h2 id="ib-recent-activity-title" class="ib-recent-activity__title">{copy.title}</h2>
-      <a class="ib-recent-activity__audit" href={router.href(AUDIT_PATH)} onclick={openAudit}>
+      <a class="ib-recent-activity__audit" href={router.href(AUDIT_PATH)}>
         {copy.auditLink(total)} ›
       </a>
     </div>

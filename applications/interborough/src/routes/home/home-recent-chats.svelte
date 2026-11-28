@@ -23,7 +23,6 @@
   import { createQuery } from '@tanstack/svelte-query';
 
   import { HOME_COPY } from '../../app/copy/home.ts';
-  import { followLinks } from '../../lib/follow-links.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { chatsWithFailedRun, recentTasksQuery } from '../../lib/recent-tasks.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -78,7 +77,7 @@
     {:else if chats.data === undefined}
       <Skeleton variant="grouped" rows={3} />
     {:else}
-      <div class="ib-home-column-fill" {@attach followLinks}>
+      <div class="ib-home-column-fill">
         <GroupedList
           class="ib-home-column-list ib-home-column-fill"
           data-home-column-list

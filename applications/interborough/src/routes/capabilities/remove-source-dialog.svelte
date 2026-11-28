@@ -102,12 +102,16 @@
                 <a
                   href={router.href(agentPath(agent.id))}
                   onclick={(event) => {
-                    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) {
+                    if (
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.shiftKey ||
+                      event.altKey ||
+                      event.button !== 0
+                    ) {
                       return;
                     }
-                    event.preventDefault();
                     onClose();
-                    router.navigate(agentPath(agent.id));
                   }}>{agent.name}</a
                 >
                 <span class="ib-capability__identifier"

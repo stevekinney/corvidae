@@ -159,6 +159,9 @@ Object.defineProperty(globalThis.document, 'compatMode', {
 
 await plugin(sveltePlugin());
 
+const { installDocumentNavigation } = await import('./document-navigation.test-support.svelte.ts');
+installDocumentNavigation();
+
 let cleanupRegistered = false;
 
 async function registerGlobalCleanup(): Promise<void> {

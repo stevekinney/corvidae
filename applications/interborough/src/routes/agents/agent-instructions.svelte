@@ -90,32 +90,11 @@
     return referenceSizeText(detail?.referenceSizes?.find((entry) => entry.path === path)?.size);
   }
 
-  function goToEditor(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(editPath);
-  }
-
   const settingsPath = $derived(agentTabPath(id, 'settings'));
-
-  function goToSettings(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(settingsPath);
-  }
 </script>
 
 {#snippet addInstructions()}
-  <Button
-    href={router.href(editPath)}
-    variant="primary"
-    onclick={goToEditor}
-    label={copy.emptyAction}
-  />
+  <Button href={router.href(editPath)} variant="primary" label={copy.emptyAction} />
 {/snippet}
 
 {#snippet addOnSettings()}
@@ -123,13 +102,12 @@
     href={router.href(settingsPath)}
     variant="primary"
     data-testid="agent-instructions-settings"
-    onclick={goToSettings}
     label={copy.emptyAction}
   />
 {/snippet}
 
 {#snippet editorLink(label: string)}
-  <a href={router.href(editPath)} onclick={goToEditor}>{label}</a>
+  <a href={router.href(editPath)}>{label}</a>
 {/snippet}
 
 <div class="ib-agent-instructions" data-testid="agent-instructions">
@@ -144,8 +122,7 @@
         <!-- With none to change, the empty state's own action is the way to Settings: one statement, not three. -->
         {#if hasBody}
           <p class="ib-agent-note" data-testid="agent-instructions-settings">
-            {copy.changeBefore}<a href={router.href(settingsPath)} onclick={goToSettings}
-              >{copy.changeSettings}</a
+            {copy.changeBefore}<a href={router.href(settingsPath)}>{copy.changeSettings}</a
             >{copy.changeAfter}
           </p>
         {/if}

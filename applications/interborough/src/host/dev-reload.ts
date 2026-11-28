@@ -3,7 +3,7 @@
  *
  * The development host (`startHost({ development: true })`) serves a Server-Sent Events stream at
  * {@link DEV_RELOAD_ROUTE}. Each page `dev.ts` serves opens it through a small client script the
- * host injects into `index.html` at request time, and the host sends one `reload` event down every
+ * host injects into the development document template, and the host sends one `reload` event down every
  * open stream after each successful rebuild. A production host registers neither the route nor the
  * script, and the build never writes the script into `build/`, so nothing a person deploys carries
  * it.

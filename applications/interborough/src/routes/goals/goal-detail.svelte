@@ -231,14 +231,6 @@
     void goal.refetch();
   }
 
-  function go(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
-
   /** Where a note's link goes: the attempt's run, or the review in Reviews. */
   function notePath(target: GoalNoteTarget): string {
     return target.kind === 'run' ? workflowDetailPath(target.runId) : reviewPath(target.reviewKey);
@@ -312,7 +304,6 @@
           <Button
             variant="secondary"
             href={router.href(goalEditPath(found.goalRunId))}
-            onclick={(event) => go(event, goalEditPath(found.goalRunId))}
             mutating
             label={copy.editAction}
           />
@@ -323,7 +314,6 @@
                 href={router.href(startAgainPath(found.goalRunId))}
                 aria-disabled={needsProvider ? 'true' : undefined}
                 aria-describedby={needsProvider ? providerReasonId : undefined}
-                onclick={(event) => go(event, startAgainPath(found.goalRunId))}
               >
                 {#snippet leadingIcon()}<RotateCcw size={16} />{/snippet}
                 {copy.startAgainAction}
@@ -358,8 +348,7 @@
         class="ib-goal__reason"
         id={providerReasonId}
         data-testid="goal-provider-reason"
-        href={router.href(copy.connectProviderPath)}
-        onclick={(event) => go(event, copy.connectProviderPath)}>{copy.connectProvider}</a
+        href={router.href(copy.connectProviderPath)}>{copy.connectProvider}</a
       >
     {/snippet}
     <StaleRegion
@@ -392,7 +381,7 @@
           {#snippet action()}
             {#if note.link !== undefined}
               {@const path = notePath(note.link.target)}
-              <a href={router.href(path)} onclick={(event) => go(event, path)}>{note.link.label}</a>
+              <a href={router.href(path)}>{note.link.label}</a>
             {/if}
           {/snippet}
         </Callout>

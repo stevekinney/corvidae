@@ -154,12 +154,16 @@
   }
 
   function openPlugins(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+    if (
+      event.defaultPrevented ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      event.button !== 0
+    )
       return;
-    }
-    event.preventDefault();
     open = false;
-    router.navigate(PLUGINS_PATH);
   }
 </script>
 

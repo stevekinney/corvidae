@@ -715,6 +715,7 @@ test('verifies newly built archives and keeps evidence local to each invocation'
   expect(second.assertions[0].details.sha256).toBe(first.assertions[0].details.sha256);
 });
 
+// spawn-free: command mode supplies an in-process runInstalled observation.
 test('runs command mode and cleans its disposable prefix on success and failure', async () => {
   let prefix = '';
   let evidence = '';
@@ -751,6 +752,7 @@ test('runs command mode and cleans its disposable prefix on success and failure'
   }
 });
 
+// spawn-free: command mode supplies an in-process rejection instead of a child.
 test('records non-Error journey failures and removes the disposable installation', async () => {
   const root = await mkdtemp(join(tmpdir(), 'installed-release-rejection-'));
   let prefix = '';
@@ -781,19 +783,24 @@ test('records non-Error journey failures and removes the disposable installation
   }
 });
 
-test('rejects an unreadable archive instead of recording successful extraction', async () => {
+const invalidArchiveFailure = await (async () => {
   const root = await mkdtemp(join(tmpdir(), 'installed-release-invalid-archive-'));
   try {
     const archive = join(root, 'invalid.tar.gz');
     await writeFile(archive, 'not an archive');
-    expect(await throwingRejectionOf(runInstalledRelease(['--archive', archive]))).toThrow(
-      'tar failed',
+    return await throwingRejectionOf(
+      runInstalledRelease(['--archive', archive, '--evidence', root]),
     );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+})();
+
+test('rejects an unreadable archive instead of recording successful extraction', () => {
+  expect(invalidArchiveFailure).toThrow('tar failed');
 });
 
+// spawn-free: the unpack stub produces an invalid target before any executable can run.
 test('rejects and records an archive receipt for a different target', async () => {
   const evidenceDirectory = await mkdtemp(join(tmpdir(), 'installed-release-wrong-target-'));
   try {
@@ -820,6 +827,7 @@ test('rejects and records an archive receipt for a different target', async () =
   }
 });
 
+// spawn-free: unpack and runInstalled both supply in-process fixture results.
 test('retains initial and relocated command traces when the relocated journey fails', async () => {
   const evidenceDirectory = await mkdtemp(join(tmpdir(), 'installed-relocation-failure-'));
   const initialTrace = [{ arguments: ['doctor'], exitCode: 0 }];

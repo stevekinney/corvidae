@@ -29,14 +29,6 @@
   const alert = $derived(
     attention.data?.items.find((item) => item.kind === 'alert' && item.metric === 'storage.size'),
   );
-
-  function open(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(RETENTION_PATH);
-  }
 </script>
 
 {#if alert?.kind === 'alert'}
@@ -44,9 +36,7 @@
     {#snippet icon()}<Database aria-hidden="true" size={16} />{/snippet}
     {HEALTH_ATTENTION_COPY.storage.title(alert.currentValue)}.
     {#snippet actions()}
-      <Link href={router.href(RETENTION_PATH)} onclick={open}
-        >{HEALTH_ATTENTION_COPY.storage.retention}</Link
-      >
+      <Link href={router.href(RETENTION_PATH)}>{HEALTH_ATTENTION_COPY.storage.retention}</Link>
     {/snippet}
   </Banner>
 {/if}

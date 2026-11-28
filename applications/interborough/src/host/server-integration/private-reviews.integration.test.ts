@@ -4,6 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { curatedShikiPlugin } from '../../../scripts/browser-build.ts';
+import { buildTestDocuments } from '../build-info.test-support.ts';
 import { startSignedInRefundFixture } from './signed-in-refund.test-support.ts';
 
 test('the listener serves private Reviews for each current member', async () => {
@@ -12,14 +13,14 @@ test('the listener serves private Reviews for each current member', async () => 
   const buildDirectory = join(scratch, 'build');
   let fixture: Awaited<ReturnType<typeof startSignedInRefundFixture>> | undefined;
   try {
+    const publication = await buildTestDocuments(buildDirectory);
     await buildProduction({
       projectDirectory,
       routesDirectory: join(projectDirectory, 'src/private-routes'),
-      outputDirectory: join(buildDirectory, 'private'),
+      outputDirectory: join(publication, 'private'),
       mode: 'development',
       browserPlugins: [curatedShikiPlugin],
     });
-    await Bun.write(join(buildDirectory, 'index.html'), '<html>application shell</html>');
     fixture = await startSignedInRefundFixture({ buildDirectory });
     const reviewId = await fixture.requestRefund();
     const anonymous = await fixture.send('/reviews');
@@ -41,7 +42,10 @@ test('the listener serves private Reviews for each current member', async () => 
     const restrictedApi = await fixture.send('/api/missing', { headers: { cookie: member } });
     expect(restrictedApi.status).toBe(403);
     const unknown = await fixture.send('/unknown', { headers: { accept: 'text/html' } });
-    expect(await unknown.text()).toContain('application shell');
+    expect(unknown.status).toBe(404);
+    const publicPage = await fixture.send('/');
+    expect(publicPage.status).toBe(200);
+    expect(await publicPage.text()).toContain('Native test document');
   } finally {
     await fixture?.close();
     await rm(scratch, { recursive: true, force: true });

@@ -370,15 +370,6 @@
     effort = EFFORTS.find((entry) => entry === next) ?? '';
   }
 
-  /** Follows a link in the app's router, unless the click asks for a new tab. */
-  function openSettings(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(SETTINGS_MODELS_PATH);
-  }
-
   // ── Save, and what refuses a write ───────────────────────────────────────────────────────────
 
   let problem = $state<string | null>(null);
@@ -662,7 +653,6 @@
                     href={router.href(SETTINGS_MODELS_PATH)}
                     variant="secondary"
                     size="sm"
-                    onclick={openSettings}
                     label={copy.noProvider.action}
                   />
                 {/snippet}

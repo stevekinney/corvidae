@@ -111,24 +111,9 @@
   };
   const formatValue = (field: PayloadInspectorField): string | undefined =>
     payloadValueText(field, lookups);
-
-  /** Opens a link of the Fields view in place, leaving a modified click to the browser. */
-  function open(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    if (!(event.target instanceof Element)) return;
-    const anchor = event.target.closest('a.cinder-payload-inspector__link');
-    const href = anchor?.getAttribute('href');
-    if (href === null || href === undefined) return;
-    event.preventDefault();
-    router.navigate(href);
-  }
 </script>
 
-<!-- The click is a delegate for the links the inspector draws; each link is itself focusable and reachable by keyboard. -->
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="ib-run__payload" onclick={open}>
+<div class="ib-run__payload">
   <PayloadInspector
     {value}
     {label}
