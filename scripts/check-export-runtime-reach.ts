@@ -54,10 +54,7 @@ function workspaces(root: string): Workspace[] {
     const directory = join(root, parent);
     return existsSync(directory)
       ? readdirSync(directory, { withFileTypes: true })
-          // Component tooling is repository tooling, not a runtime library: its exports name
-          // script entry points and one file that does not exist, and it sat outside these scans
-          // while it lived under `internal/`.
-          .filter((entry) => entry.isDirectory() && entry.name !== 'component-tooling')
+          .filter((entry) => entry.isDirectory())
           .flatMap((entry) => {
             const workspace = join(directory, entry.name);
             try {

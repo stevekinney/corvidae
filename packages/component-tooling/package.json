@@ -13,7 +13,6 @@
     "./scripts/css-fingerprint.ts": "./scripts/css-fingerprint.ts",
     "./scripts/discover-component-directories.ts": "./scripts/discover-component-directories.ts",
     "./scripts/environment-configuration.ts": "./scripts/environment-configuration.ts",
-    "./scripts/generate-component-metadata.ts": "./scripts/generate-component-metadata.ts",
     "./scripts/generate-manifest.ts": "./scripts/generate-manifest.ts",
     "./scripts/lib/component-meta.ts": "./scripts/lib/component-meta.ts",
     "./scripts/lib/discover-components.ts": "./scripts/lib/discover-components.ts",
