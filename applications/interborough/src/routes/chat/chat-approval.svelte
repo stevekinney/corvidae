@@ -20,7 +20,6 @@
     Modal,
     PayloadInspector,
     Text,
-    Tooltip,
     type ApprovalFailure,
     type ApprovalOperation,
     type ApprovalResolution,
@@ -159,22 +158,22 @@
 </script>
 
 {#snippet decisionReview(commit: (decision: 'approve' | 'deny') => void, disabled: boolean)}
-  <Tooltip text={copy.reviewDeck} describe={false}>
-    <Button
-      type="button"
-      variant="secondary"
-      size="sm"
-      iconOnly
-      label={copy.reviewDeck}
-      {disabled}
-      onclick={() => {
-        selectedDecision = undefined;
-        deckFor = requestKey;
-      }}
-    >
-      {#snippet leadingIcon()}<Layers aria-hidden="true" />{/snippet}
-    </Button>
-  </Tooltip>
+  <!-- Said in words, at the inline end of the decision controls: an icon alone left a button nobody
+       could name without hovering it, on a row of its own under Add note. -->
+  <Button
+    type="button"
+    variant="ghost"
+    size="sm"
+    class="weft-chat-approval__review"
+    {disabled}
+    onclick={() => {
+      selectedDecision = undefined;
+      deckFor = requestKey;
+    }}
+  >
+    {#snippet leadingIcon()}<Layers aria-hidden="true" />{/snippet}
+    {copy.reviewDeck}
+  </Button>
   {#if deckFor === requestKey && !disabled}
     <DecisionDeck
       items={[{ id: requestKey, title: entry.name, eyebrow: source }]}
@@ -318,6 +317,12 @@
 {/if}
 
 <style>
+  /* The review control sits at the inline end of whatever it is in: a flex row of the decision
+   * controls or the card's column. */
+  :global(.weft-chat-approval__review) {
+    margin-inline-start: auto;
+  }
+
   .weft-chat-approval__deck-content,
   .weft-chat-approval__deck-footer {
     display: grid;
