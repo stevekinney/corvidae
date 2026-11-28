@@ -384,9 +384,11 @@ describe('ToolCallRail rows', () => {
     await waitFor(() =>
       expect(describedBy(requiredInstance(first, HTMLElement))).toBe('lookup-order'),
     );
-    await waitFor(() =>
-      expect(describedBy(requiredInstance(second, HTMLElement))).toBe('Check inventory'),
-    );
+    // A row with no identifier has nothing new to say: a tooltip would only repeat the name on the row.
+    expect(requiredInstance(second, HTMLElement).hasAttribute('aria-describedby')).toBe(false);
+    expect(
+      Array.from(document.querySelectorAll('[role="tooltip"]')).map((node) => node.textContent),
+    ).toEqual(['lookup-order']);
 
     const tooltip = (row: HTMLElement): HTMLElement | null =>
       document.getElementById(row.getAttribute('aria-describedby') ?? '');

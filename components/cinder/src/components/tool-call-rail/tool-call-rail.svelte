@@ -322,12 +322,14 @@
         {@render cells(call)}
       </div>
     {/if}
-    <!-- The name never wraps, so the tooltip carries the tool's identifier, or its whole name when it has none. -->
-    <Tooltip
-      text={call.identifier ?? call.name}
-      placement="top"
-      triggerRef={rowElements.get(call.id) ?? null}
-    />
+    <!-- The tooltip carries the tool's identifier. A call with none, or one the name already says, has nothing new to say, so it gets no tooltip. -->
+    {#if call.identifier !== undefined && call.identifier !== '' && call.identifier !== call.name}
+      <Tooltip
+        text={call.identifier}
+        placement="top"
+        triggerRef={rowElements.get(call.id) ?? null}
+      />
+    {/if}
     {#if call.status === 'failed' && call.failure !== undefined && call.failure !== ''}
       <div class="cinder-tool-call-rail__failure">
         <span class="cinder-tool-call-rail__failure-text">

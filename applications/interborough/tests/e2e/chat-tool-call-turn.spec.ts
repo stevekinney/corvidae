@@ -329,6 +329,9 @@ test.describe('the shipped turn display is B’s rail with E’s panel (21a, 21b
     await expect(rowOf(page, 'Send email')).toHaveAttribute('aria-pressed', 'true');
     // The rows stay one line each: nothing in the rail opened under a row.
     await expect(rail(page).locator('.ib-tool__details')).toHaveCount(0);
+    // The click left the pointer over the row, and its tooltip would be in the capture whenever the
+    // pointer got there first. Move the pointer off every row so the capture never depends on it.
+    await page.mouse.move(0, 0);
     await captureForDesignReview(page, {
       route: '/chats/:chat',
       state: 'thirty tool calls, failed call panel',

@@ -137,7 +137,7 @@ children     Snippet<[call]>         optional  Content under the rows of calls t
 ```
 id          string   required  Stable identity.
 name        string   required  The tool's name as a person reads it.
-identifier  string   optional  The tool's identifier, in a tooltip on the name.
+identifier  string   optional  The tool's identifier, in a tooltip on the row. A call with none, or one equal to its name, has no tooltip.
 input       string   optional  The key input, muted and truncated.
 result      string   optional  What came back, in one line.
 decision    string   optional  What a person decided, in their own words and without an arrow.
