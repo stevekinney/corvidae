@@ -37,14 +37,8 @@
   let open = $state(false);
 
   function openAllSettings(event: MouseEvent): void {
-    if (
-      event.defaultPrevented ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.shiftKey ||
-      event.altKey ||
-      event.button !== 0
-    )
+    // Velveteen can already own a plain click when the popover receives it.
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)
       return;
     open = false;
   }
