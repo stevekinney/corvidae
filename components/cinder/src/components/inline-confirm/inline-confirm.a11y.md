@@ -6,7 +6,7 @@
 - Review outcome: Final review complete—approved.
 - Nearest neighbours: ConfirmDialog, Alert, ButtonGroup.
 - Why this component exists: It keeps a short, reversible confirmation beside the action without interrupting the page with a top-layer dialog.
-- Findings and resolutions: It uses document flow and existing Button primitives. It intentionally has no scrim, `aria-modal`, focus trap, body scroll lock, or modal backdrop. The non-destructive strip is a soft neutral; the destructive strip is a soft danger tint, and the tone is carried by the prompt (danger text color plus a decorative `aria-hidden` warning glyph) and the danger confirm button, while prompt and action labels remain visible text. With `flush`, at the start or end of a bordered container the strip drops its own rule there so it does not double the container's edge; without it, a standalone strip keeps both edges.
+- Findings and resolutions: It uses document flow and existing Button primitives. It intentionally has no scrim, `aria-modal`, focus trap, body scroll lock, or modal backdrop. The non-destructive strip is a soft neutral; the destructive strip is a soft danger tint, and the tone is carried by the prompt (danger text color plus a decorative `aria-hidden` warning glyph) and the danger confirm button, while the prompt and the confirm label remain visible text. The strip dismisses with a quiet icon-only ghost X (COR-2825) before the confirm action, so the confirm action is the strip's one labelled button and keeps the trailing edge; under a coarse pointer the X answers a 44px press through Button's hit-area pseudo-element, which adds no spacing. With `flush`, at the start or end of a bordered container the strip drops its own rule there so it does not double the container's edge; without it, a standalone strip keeps both edges.
 
 ## Novel interaction accessibility review
 
@@ -16,7 +16,7 @@
 
 ### Focus management
 
-The visible prompt labels `role="group"`. On open, focus moves to Cancel, the safe action. The focus ring shows when the strip was opened from the keyboard and not when it was opened with a pointer: the component remembers whether the last input was a `keydown` or a `pointerdown` and passes `focusVisible` to `focus()` accordingly. On cancel, confirm, or Escape, focus returns to the element active when the confirmation opened.
+The visible prompt labels `role="group"`. On open, focus moves to the dismissing X, the safe action. The focus ring shows when the strip was opened from the keyboard and not when it was opened with a pointer: the component remembers whether the last input was a `keydown` or a `pointerdown` and passes `focusVisible` to `focus()` accordingly. On cancel, confirm, or Escape, focus returns to the element active when the confirmation opened.
 
 ### Keyboard matrix
 
@@ -29,7 +29,7 @@ The visible prompt labels `role="group"`. On open, focus moves to Cancel, the sa
 
 ### Assistive-technology announcements
 
-The visible prompt names the group and both actions have specific visible labels. The component does not use `role="alertdialog"`, `aria-modal`, or a live region because this is an in-flow decision rather than an urgent announcement.
+The visible prompt names the group. The confirm action has a specific visible label; the X's glyph is `aria-hidden`, and `cancelLabel` (default "Cancel") is its accessible name, carried in screen-reader text rather than shown. The component does not use `role="alertdialog"`, `aria-modal`, or a live region because this is an in-flow decision rather than an urgent announcement.
 
 ### Two-press arming
 
@@ -37,6 +37,7 @@ A destructive two-press action is the solid danger face at rest and armed (COR-2
 
 ## Verification
 
-- Verify Cancel receives focus first.
+- Verify the dismissing X, named by `cancelLabel`, receives focus first.
+- Verify the X answers a 44px press under a coarse pointer (`inline-confirm-strip.playwright.ts`).
 - Verify Escape follows LIFO ordering with another overlay.
 - Verify both actions and Escape close the group without a dialog element or scroll lock.

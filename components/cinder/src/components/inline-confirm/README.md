@@ -1,6 +1,6 @@
 # InlineConfirm
 
-`InlineConfirm` keeps a confirmation in document flow for reversible actions. It uses a labelled `role="group"`, focuses Cancel on open, and restores focus to the trigger when dismissed.
+`InlineConfirm` keeps a confirmation in document flow for reversible actions. It uses a labelled `role="group"` that reads prompt, then a quiet icon-only X, then the confirm action, the strip's one labelled button, at the trailing edge. The X dismisses; `cancelLabel` (default `'Cancel'`) is its accessible name, not visible text, so a consumer can name it ("Keep editing"). The strip focuses the X on open and restores focus to the trigger when dismissed.
 
 Use `presentation="two-press"` for an irreversible action. It renders one named action, arms on the first press, resets after three seconds or Escape, and never renders a competing Cancel action. The action is primary at rest and danger once armed; with `destructive` it is solid danger at rest, the region's one primary and plainly dangerous. Once armed it also draws a danger ring, so arming is a visible step.
 
@@ -41,7 +41,7 @@ Use `presentation="two-press"` for an irreversible action. It renders one named 
 | `armedHint` | `string` | no | — | Status text shown while the two-press action is armed. |
 | `armedLabel` | `string` | no | — | Full accessible label shown after the first press. |
 | `blocked` | `boolean` | no | — | Blocks interaction while keeping the action focusable for an explanatory reason. |
-| `cancelLabel` | `string` | no | `"Cancel"` | Label for the cancelling action. Defaults to `'Cancel'`. |
+| `cancelLabel` | `string` | no | `"Cancel"` | Accessible name of the strip's dismissing X, a quiet icon-only button; it is not visible text. Defaults to `'Cancel'`. |
 | `class` | `string` | no | — | Additional class merged with the component's root class. |
 | `confirmLabel` | `string` | yes | — | Label for the confirming action. |
 | `destructive` | `boolean` | no | `false` | Marks the confirming action as destructive: the strip's confirm button and a two-press action take the solid danger face, at rest and armed. An armed two-press action, destructive or not, also draws a danger ring, so arming is a visible step. A non-destructive two-press action is primary at rest and danger once armed. Defaults to `false`. |
@@ -52,13 +52,13 @@ Use `presentation="two-press"` for an irreversible action. It renders one named 
 | `loading` | `boolean` | no | — | Shows a loading state on the action button. |
 | `loadingLabel` | `string` | no | — | Accessible loading label for the action button. |
 | `mutating` | `boolean` | no | — | Marks the two-press action as one that changes something, so a stale `StaleRegion` makes it inert. |
-| `open` | `boolean` | no | `false` | Whether the confirmation is open. Bindable, and component-owned on close: confirming, clicking Cancel, and pressing Escape all set this to `false` before calling `onConfirm`/`onCancel`, so a bound parent observes the confirmation as already closed by the time either callback runs—neither callback can veto or delay that close. Defaults to `false`. |
+| `open` | `boolean` | no | `false` | Whether the confirmation is open. Bindable, and component-owned on close: confirming, clicking the dismissing X, and pressing Escape all set this to `false` before calling `onConfirm`/`onCancel`, so a bound parent observes the confirmation as already closed by the time either callback runs—neither callback can veto or delay that close. Defaults to `false`. |
 | `presentation` | `"strip"` \| `"two-press"` | no | — | The in-flow strip (default) or a single guarded action button. |
 | `prompt` | `string` | no | — |  |
 | `requestKey` | `string` | no | — | Request identity; changing it disarms two-press presentation. |
 | `requiresSecondPress` | `boolean` | no | — | Requires a second press; defaults to `true` in two-press presentation. |
 | `children` | `(opaque)` | no | — | Additional content rendered below the prompt, above the confirm/cancel actions, while the confirmation is open. Not expressible in JSON Schema; see the component types for the signature. |
-| `onCancel` | `(opaque)` | no | — | Called when the user cancels the action (via the Cancel action or Escape), after `open` is already set to `false`. Not expressible in JSON Schema; see the component types for the signature. |
+| `onCancel` | `(opaque)` | no | — | Called when the user cancels the action (via the dismissing X or Escape), after `open` is already set to `false`. Not expressible in JSON Schema; see the component types for the signature. |
 | `onConfirm` | `(opaque)` | no | — | Called when the user confirms the action, after `open` is already set to `false`. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

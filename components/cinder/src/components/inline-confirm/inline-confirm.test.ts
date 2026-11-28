@@ -241,6 +241,42 @@ describe('InlineConfirm', () => {
     expect(queryByRole('group')).toBeNull();
   });
 
+  test('dismisses with a quiet X named by cancelLabel, before the confirm action (COR-2825)', async () => {
+    let cancellations = 0;
+    const { container, getByRole, queryByRole, rerender } = render(InlineConfirm, {
+      prompt: 'Revoke this sign-in?',
+      confirmLabel: 'Revoke',
+      open: true,
+      destructive: true,
+      onCancel: () => cancellations++,
+    });
+
+    const dismiss = getByRole('button', { name: 'Cancel' });
+    const confirm = getByRole('button', { name: 'Revoke' });
+    expect(dismiss.hasAttribute('data-cinder-inline-cancel')).toBe(true);
+    expect(dismiss.hasAttribute('data-cinder-icon-only')).toBe(true);
+    expect(dismiss.hasAttribute('data-cinder-quiet')).toBe(true);
+    expect(dismiss.classList.contains('button-variant-ghost')).toBe(true);
+    // No visible words: the name lives only in the screen-reader text, beside the X glyph.
+    const visible = dismiss.cloneNode(true) as HTMLElement;
+    for (const hidden of visible.querySelectorAll('.cinder-sr-only')) hidden.remove();
+    expect(visible.textContent?.trim()).toBe('');
+    expect(dismiss.querySelector('svg')).not.toBeNull();
+    // Dismiss, then confirm: the confirm action keeps the trailing edge.
+    const actions = [
+      ...container.querySelectorAll<HTMLElement>('.cinder-inline-confirm__actions .cinder-button'),
+    ];
+    expect(actions).toEqual([dismiss, confirm]);
+    expect(dismiss.compareDocumentPosition(confirm) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await rerender({ cancelLabel: 'Keep editing' });
+    expect(getByRole('button', { name: 'Keep editing' })).toBe(dismiss);
+
+    await fireEvent.click(dismiss);
+    expect(cancellations).toBe(1);
+    expect(queryByRole('group')).toBeNull();
+  });
+
   test('uses neutral styling by default and explicit danger styling when destructive', async () => {
     const { container, rerender } = render(InlineConfirm, {
       prompt: 'Archive this item?',

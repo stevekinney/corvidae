@@ -6,6 +6,7 @@
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import { onDestroy, tick, untrack } from 'svelte';
   import { default as Button } from '../button/index.ts';
+  import { X } from '../icons/index.ts';
   import { pushEscapeHandler } from '../../_internal/overlay.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import type { InlineConfirmProps } from './inline-confirm.types.ts';
@@ -42,7 +43,7 @@
   let trigger: HTMLElement | null = $state(null);
   let releaseEscape: (() => void) | null = null;
   let wasOpen = false;
-  // How the user last interacted, so moving focus to Cancel shows a focus ring
+  // How the user last interacted, so moving focus to the dismissing X shows a focus ring
   // after a keyboard activation and not after a click. Tracked for the whole
   // time the component is mounted, because the input that OPENS the strip
   // happens before it renders.
@@ -207,13 +208,19 @@
     </p>
     {@render children?.()}
     <div class="cinder-inline-confirm__actions">
+      <!-- A quiet X dismisses (COR-2825), so the confirm action is the strip's one labelled
+           button and keeps the trailing edge. `cancelLabel` is its accessible name. -->
       <Button
-        variant="secondary"
+        variant="ghost"
         size="xs"
+        iconOnly
+        quiet
         data-cinder-inline-cancel
         onclick={cancel}
         label={cancelLabel}
-      ></Button>
+      >
+        <X aria-hidden="true" />
+      </Button>
       <Button
         variant={destructive ? 'danger' : 'primary'}
         size="xs"

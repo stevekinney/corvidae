@@ -51,13 +51,15 @@
     flex-wrap: wrap;
     justify-content: flex-end;
     gap: var(--cinder-space-2);
-    /* On its own line the pair still ends at the trailing edge, the confirming action last. */
+    align-items: center;
+    /* On its own line the pair still ends at the trailing edge: the quiet dismissing X, then the
+       confirming action last. */
     margin-inline-start: auto;
   }
 
   /* Confirmation words must remain readable inside a narrow in-flow strip. Button's default
    * label contract is single-line elsewhere; this local pair may reflow so a long destructive
-   * command never truncates or overlaps its Cancel target. */
+   * command never truncates or overlaps the dismissing X. */
   .cinder-inline-confirm__actions .cinder-button {
     max-inline-size: 100%;
     white-space: normal;

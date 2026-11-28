@@ -11,5 +11,5 @@
     }
   ],
   "related": ["confirm-dialog"],
-  "rationale": "Nearest alternative: ConfirmDialog interrupts with a modal; this keeps confirmation in flow."
+  "rationale": "Nearest alternative: ConfirmDialog interrupts with a modal; this keeps confirmation in flow. The strip dismisses with a quiet icon-only X whose accessible name is cancelLabel, not visible text, so the confirm action is its one labelled button at the trailing edge."
 }

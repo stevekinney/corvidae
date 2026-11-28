@@ -3,7 +3,11 @@ import type { Snippet } from 'svelte';
 type InlineConfirmSharedProps = {
   /** Label for the confirming action. */
   confirmLabel: string;
-  /** Label for the cancelling action. Defaults to `'Cancel'`. @default 'Cancel' */
+  /**
+   * Accessible name of the strip's dismissing X, a quiet icon-only button; it is not visible
+   * text. Defaults to `'Cancel'`.
+   * @default 'Cancel'
+   */
   cancelLabel?: string;
   /**
    * Marks the confirming action as destructive: the strip's confirm button and a two-press action
@@ -21,7 +25,7 @@ type InlineConfirmSharedProps = {
   flush?: boolean;
   /**
    * Whether the confirmation is open. Bindable, and component-owned on
-   * close: confirming, clicking Cancel, and pressing Escape all set this
+   * close: confirming, clicking the dismissing X, and pressing Escape all set this
    * to `false` before calling `onConfirm`/`onCancel`, so a bound parent
    * observes the confirmation as already closed by the time either
    * callback runs—neither callback can veto or delay that close. Defaults
@@ -61,7 +65,7 @@ type InlineConfirmSharedProps = {
   children?: Snippet;
   /** Called when the user confirms the action, after `open` is already set to `false`. */
   onConfirm?: () => void;
-  /** Called when the user cancels the action (via the Cancel action or Escape), after `open` is already set to `false`. */
+  /** Called when the user cancels the action (via the dismissing X or Escape), after `open` is already set to `false`. */
   onCancel?: () => void;
   /** Additional class merged with the component's root class. */
   class?: string;

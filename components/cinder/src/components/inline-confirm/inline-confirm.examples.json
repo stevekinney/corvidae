@@ -6,7 +6,7 @@
     {
       "id": "basic",
       "title": "Basic inline confirmation",
-      "description": "Confirm a destructive action without leaving the current flow.",
+      "description": "Confirm a destructive action without leaving the current flow. A quiet X, named by cancelLabel (default \"Cancel\") rather than visible text, dismisses the strip; the confirm action keeps the trailing edge.",
       "code": "<script lang=\"ts\">\n  import { InlineConfirm } from '@lostgradient/cinder';\n</script>\n\n<InlineConfirm prompt=\"Remove this workspace?\" confirmLabel=\"Remove workspace\" open destructive />\n"
     },
     {
