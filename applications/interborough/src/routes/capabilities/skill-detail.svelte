@@ -102,9 +102,15 @@
       <Table caption={copy.brings.caption(heading)} density="comfortable">
         <Table.Header>
           <Table.Row>
-            <Table.HeaderCell>{copy.brings.columns.tool}</Table.HeaderCell>
-            <Table.HeaderCell>{copy.brings.columns.risk}</Table.HeaderCell>
-            <Table.HeaderCell>{copy.brings.columns.asks}</Table.HeaderCell>
+            <Table.HeaderCell label={copy.brings.columns.tool}
+              >{copy.brings.columns.tool}</Table.HeaderCell
+            >
+            <Table.HeaderCell label={copy.brings.columns.risk}
+              >{copy.brings.columns.risk}</Table.HeaderCell
+            >
+            <Table.HeaderCell label={copy.brings.columns.asks}
+              >{copy.brings.columns.asks}</Table.HeaderCell
+            >
           </Table.Row>
         </Table.Header>
         <Table.Body>

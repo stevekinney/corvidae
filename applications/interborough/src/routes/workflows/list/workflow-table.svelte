@@ -153,11 +153,11 @@
   </colgroup>
   <Table.Header {allSelected} {someSelected} onSelectAll={toggleAll}>
     <Table.Row>
-      <Table.HeaderCell>Status</Table.HeaderCell>
-      <Table.HeaderCell>Workflow ID</Table.HeaderCell>
-      <Table.HeaderCell>Type</Table.HeaderCell>
-      <Table.HeaderCell>Revision</Table.HeaderCell>
-      <Table.HeaderCell align="right">Updated</Table.HeaderCell>
+      <Table.HeaderCell label="Status">Status</Table.HeaderCell>
+      <Table.HeaderCell label="Workflow ID">Workflow ID</Table.HeaderCell>
+      <Table.HeaderCell label="Type">Type</Table.HeaderCell>
+      <Table.HeaderCell label="Revision">Revision</Table.HeaderCell>
+      <Table.HeaderCell label="Updated" align="right">Updated</Table.HeaderCell>
     </Table.Row>
   </Table.Header>
   <Table.Body>

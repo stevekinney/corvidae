@@ -1,17 +1,15 @@
 /// <reference lib="dom" />
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { flushSync, tick } from 'svelte';
 
-import {
-  declarationsFor,
-  stripCinderComponentsLayer,
-} from '@lostgradient/component-tooling/test/css.ts';
+import { stripCinderComponentsLayer } from '@lostgradient/component-tooling/test/css.ts';
 import {
   DEFAULT_TEST_VIEWPORT,
   setTestViewportWidth,
 } from '@lostgradient/component-tooling/test/viewport.ts';
 import { setupHappyDom } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { containerRules, DEFAULT_QUERIES, stackDeclarations } from './table-stack.test-support.ts';
 
 setupHappyDom();
 
@@ -59,7 +57,8 @@ describe('Table stackBelow', () => {
     flushSync();
 
     expect(container.querySelector('table')?.hasAttribute('data-cinder-stacked')).toBe(false);
-    expect(container.querySelector('[data-cinder-stack-label]')).toBeNull();
+    // COR-2771: the labels are in the markup at every width; only the stacked rules print them.
+    expect(bodyCells(container)[1]?.getAttribute('data-cinder-stack-label')).toBe('Status');
   });
 
   test('follows the viewport across the breakpoint', async () => {
@@ -169,22 +168,34 @@ describe('Table stackBelow', () => {
     const css = stripCinderComponentsLayer(
       await Bun.file(new URL('./table.css', import.meta.url)).text(),
     );
-    expect(css).toMatch(
-      /\.cinder-table\[data-cinder-stacked\] > \.cinder-table__header \{[^}]*clip-path: inset\(50%\);/,
+    // COR-2771: the control layout is a container query on the table's own container.
+    expect(stackDeclarations(css, 'control', ' > .cinder-table__header').get('clip-path')).toBe(
+      'inset(50%)',
     );
-    expect(css).toMatch(
-      /\.cinder-table\[data-cinder-stacked\]\s+\.cinder-table__body\s+\.cinder-table__cell\[data-cinder-controls\] \{\s*order: 2;[^}]*min-block-size: 2\.75rem;/,
+    const controlCell = stackDeclarations(
+      css,
+      'control',
+      ' .cinder-table__body .cinder-table__cell[data-cinder-controls]',
     );
-    expect(css).toMatch(
-      /\.cinder-table\[data-cinder-stacked\]\s+\.cinder-table__body\s+\.cinder-table__cell\[data-cinder-controls='fit'\]\[data-cinder-stack-label\]::before \{\s*content: attr\(data-cinder-stack-label\);/,
+    expect(controlCell.get('order')).toBe('2');
+    expect(controlCell.get('min-block-size')).toBe('2.75rem');
+    expect(
+      stackDeclarations(
+        css,
+        'control',
+        " .cinder-table__body .cinder-table__cell[data-cinder-controls='fit'][data-cinder-stack-label]::before",
+      ).get('content'),
+    ).toBe('attr(data-cinder-stack-label)');
+    // The scroll box rule's table half: `.cinder-table-scroll > ` before the form's table.
+    const scrolled = containerRules(css).find(
+      ([query, , selector]) =>
+        query === DEFAULT_QUERIES.control && selector.startsWith('.cinder-table-scroll > '),
     );
-    expect(css).toMatch(
-      /\.cinder-table-scroll > \.cinder-table\[data-cinder-stacked\] \{\s*flex: 1 1 auto;\s*min-inline-size: 0;/,
-    );
+    expect(scrolled?.[3]).toBe('flex: 1 1 auto; min-inline-size: 0');
     // A cell's detail flows with its content, and a card drops it so line one is the name and its facts.
     expect(css).toMatch(/\.cinder-table__cell-detail \{\s*display: contents;/);
-    expect(css).toMatch(
-      /\.cinder-table\[data-cinder-stacked\] \.cinder-table__cell-detail \{\s*display: none;/,
+    expect(stackDeclarations(css, 'control', ' .cinder-table__cell-detail').get('display')).toBe(
+      'none',
     );
     // Only an unbroken string breaks, not every character. The one exception is a table that sets
     // column `sizing` (COR-2769), whose automatic layout must not let one long word widen it.
@@ -196,7 +207,7 @@ describe('Table stackBelow', () => {
     expect(breaksAnywhere.length).toBeGreaterThan(0);
     for (const selector of breaksAnywhere) {
       expect(selector).toMatch(
-        /^\.cinder-table\[data-cinder-fit\]:not\(\[data-cinder-stacked\]\):has\(\s*> \.cinder-table__header \[data-cinder-sizing\]\s*\)/,
+        /^\.cinder-table\[data-cinder-fit\]:has\(\s*> \.cinder-table__header \[data-cinder-sizing\]\s*\)/,
       );
     }
   });
@@ -219,10 +230,10 @@ describe('Table scroll and stack by container', () => {
     disconnect(): void {
       this.target = null;
     }
-    /** Reports `width` for every observed scroll box. */
+    /** Reports `width` for every observed table container (COR-2771: the size container). */
     static resize(width: number): void {
       for (const instance of StubResizeObserver.instances) {
-        if (!instance.target?.classList.contains('cinder-table-scroll')) continue;
+        if (!instance.target?.classList.contains('cinder-table-container')) continue;
         instance.callback(
           [{ target: instance.target, contentRect: { width } } as ResizeObserverEntry],
           instance,
@@ -233,7 +244,7 @@ describe('Table scroll and stack by container', () => {
 
   function measureScrollBoxes(width: number): void {
     Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
-      const measured = this.classList.contains('cinder-table-scroll') ? width : 0;
+      const measured = this.classList.contains('cinder-table-container') ? width : 0;
       return {
         width: measured,
         height: 0,
@@ -277,7 +288,11 @@ describe('Table scroll and stack by container', () => {
     flushSync();
 
     expect(container.querySelector('table')?.hasAttribute('data-cinder-stacked')).toBe(false);
-    expect(container.querySelector('[data-cinder-stack-label]')).toBeNull();
+    // Its wrapper is no size container, so no stacked rule can ever apply (COR-2771).
+    expect(
+      container.querySelector('.cinder-table-container')?.hasAttribute('data-cinder-fit'),
+    ).toBe(false);
+    expect(container.querySelector('tbody [data-cinder-controls]')).toBeNull();
   });
 
   test('stacks by its own container width, not the window width', async () => {
@@ -314,6 +329,36 @@ describe('Table scroll and stack by container', () => {
     });
     flushSync();
     expect(container.querySelector('table')?.hasAttribute('data-cinder-stacked')).toBe(true);
+  });
+
+  // COR-2771: the container query resolves an `em` length against the container, so script does too.
+  // With a 16px container and a 14px table, 20em is 320px for both, never 280px for script alone.
+  test('compares the container with an em breakpoint against the container font size', () => {
+    useStubObserver();
+    measureScrollBoxes(300);
+    const original = window.getComputedStyle;
+    const fontSized = (element: Element, size: string) =>
+      new Proxy(original.call(window, element), {
+        get: (style, key) => (key === 'fontSize' ? size : Reflect.get(style, key)),
+      });
+    window.getComputedStyle = (element: Element, pseudo?: string | null) =>
+      element.classList.contains('cinder-table-container')
+        ? fontSized(element, '16px')
+        : element.tagName === 'TABLE'
+          ? fontSized(element, '14px')
+          : original.call(window, element, pseudo);
+    try {
+      const { container } = render(Wrapper, {
+        columns,
+        rows,
+        cellProps: controlCells,
+        stackBelow: '20em',
+      });
+      flushSync();
+      expect(container.querySelector('table')?.hasAttribute('data-cinder-stacked')).toBe(true);
+    } finally {
+      window.getComputedStyle = original;
+    }
   });
 
   test('marks a fit control so its column label can sit beside it', () => {
@@ -482,12 +527,15 @@ describe('Table fit stacks into cards', () => {
     }
   });
 
-  test('a table that is not stacked clamps the row header too, with no card marks', () => {
+  test('a table that is not stacked clamps the row header too, and already carries its card marks', () => {
     setTestViewportWidth(1280);
     const { container } = render(CardFixture, {});
     flushSync();
     expect(container.querySelector('.cinder-table__cell-title')).not.toBeNull();
-    expect(container.querySelector('[data-cinder-stack-title]')).toBeNull();
+    expect(container.querySelector('table')?.hasAttribute('data-cinder-stack-card')).toBe(false);
+    // COR-2771: the marks are in the markup from the server on; only the card rules, which apply
+    // below the stack width, read them.
+    expect(container.querySelectorAll('[data-cinder-stack-title]')).toHaveLength(2);
   });
 
   test('a row header that opts out of the clamp is drawn bare', async () => {
@@ -520,6 +568,88 @@ describe('Table fit stacks into cards', () => {
     expect(container.querySelector('.cinder-table__sort-button')?.getAttribute('tabindex')).toBe(
       '-1',
     );
+  });
+
+  test('a sortable fit table holds its sort control while wide, for CSS to show when it stacks', () => {
+    setTestViewportWidth(1280);
+    const { container } = render(CardFixture, { sortable: true });
+    flushSync();
+    // In the markup from the first paint on; the card form's container rule draws it (COR-2771).
+    expect(container.querySelectorAll('.cinder-table__stack-sort')).toHaveLength(1);
+  });
+
+  test('choosing a sort from the stacked control sorts by that column, in that direction', async () => {
+    setTestViewportWidth(375);
+    const { container } = render(CardFixture, { sortable: true });
+    flushSync();
+    const select = container.querySelector('.cinder-table__stack-sort select') as HTMLSelectElement;
+    const header = container.querySelector('th[data-cinder-sortable]') as HTMLElement;
+    expect(
+      Array.from(select.options, (option) => option.value).filter((value) => value !== ''),
+    ).toEqual(['ascending:model', 'descending:model']);
+    select.value = 'descending:model';
+    await fireEvent.change(select);
+    flushSync();
+    expect(header.getAttribute('aria-sort')).toBe('descending');
+    select.value = 'ascending:model';
+    await fireEvent.change(select);
+    flushSync();
+    expect(header.getAttribute('aria-sort')).toBe('ascending');
+  });
+
+  test('an unsorted stacked table says "Sort by", and its first sort can be chosen', async () => {
+    setTestViewportWidth(375);
+    const { container } = render(CardFixture, { sortable: true });
+    flushSync();
+    const select = container.querySelector('.cinder-table__stack-sort select') as HTMLSelectElement;
+    // No sort is applied, so the control names none (design review, round 2).
+    expect(select.value).toBe('');
+    expect(select.selectedOptions[0]?.textContent?.trim()).toBe('Sort by');
+    expect(select.options[0]?.disabled).toBe(true);
+    // The first real option is not already selected, so choosing it sorts.
+    select.value = 'ascending:model';
+    await fireEvent.change(select);
+    flushSync();
+    expect(container.querySelector('th[data-cinder-sortable]')?.getAttribute('aria-sort')).toBe(
+      'ascending',
+    );
+  });
+
+  test('the stacked control shows a sort applied from the start, and choosing it keeps it', async () => {
+    setTestViewportWidth(375);
+    const { container } = render(CardFixture, {
+      sortable: true,
+      initialSort: { column: 'model', direction: 'descending' },
+    });
+    flushSync();
+    const select = container.querySelector('.cinder-table__stack-sort select') as HTMLSelectElement;
+    const header = container.querySelector('th[data-cinder-sortable]') as HTMLElement;
+    // The applied sort is named, not "Sort by" (design review, round 3).
+    expect(select.value).toBe('descending:model');
+    expect(header.getAttribute('aria-sort')).toBe('descending');
+    // Choosing the sort already applied leaves it: one more press would turn it around.
+    await fireEvent.change(select);
+    flushSync();
+    expect(header.getAttribute('aria-sort')).toBe('descending');
+  });
+
+  test('a sortable header cell in a fit table without Table sortable warns', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      render(CardFixture, { sortable: true, tableSortable: false });
+      flushSync();
+      expect(
+        warn.mock.calls.some(([message]) =>
+          String(message).includes('needs `sortable` on the Table'),
+        ),
+      ).toBe(true);
+      warn.mockClear();
+      render(CardFixture, { sortable: true });
+      flushSync();
+      expect(warn.mock.calls.map(([message]) => String(message))).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   test('the sort control is a compact ghost select that names its cue, with a 44px hit area', async () => {
@@ -557,107 +687,96 @@ describe('Table fit stacks into cards', () => {
   });
 
   test('the stacked description and end value are muted, in the phone row type of a stacked list item', async () => {
-    const css = stripCinderComponentsLayer(
-      await Bun.file(new URL('./table.css', import.meta.url)).text(),
-    ).replace(/\s+/g, ' ');
-    const body = (selector: string): string => {
-      const escaped = selector
-        .replace(/\s+/g, ' ')
-        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        .replace(/ /g, '\\s+');
-      return new RegExp(`${escaped}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? '';
-    };
-    // The sibling rule decides the layout only: a colour on it would outrank the muted parts.
-    const sibling = body(
-      '.cinder-table[data-cinder-stack-card]\n    .cinder-table__body\n    .cinder-table__cell:not([data-cinder-controls])\n    ~ .cinder-table__cell:not([data-cinder-controls])',
+    const css = await Bun.file(new URL('./table.css', import.meta.url)).text();
+    // The card form's rules, by the part of their selector after the table (COR-2771).
+    const card = (suffix: string) => stackDeclarations(css, 'card', suffix);
+    // The card's own sibling rule decides the layout only: a colour on it would outrank the muted
+    // parts. (The control layout's sibling rule mutes it, and the card rules come after it.)
+    const siblingSuffix =
+      ' .cinder-table__body .cinder-table__cell:not([data-cinder-controls]) ~ .cinder-table__cell:not([data-cinder-controls])';
+    const siblings = containerRules(css).filter(
+      ([query, , selector]) =>
+        query === DEFAULT_QUERIES.card && selector.endsWith(siblingSuffix.trim()),
     );
-    expect(sibling).toContain('flex: 0 1 auto;');
-    expect(sibling).not.toMatch(/color:/);
-    const prose = body(
-      ".cinder-table[data-cinder-stack-card]\n    .cinder-table__body\n    .cinder-table__cell[data-cinder-stack='plain']",
-    );
-    expect(prose).toContain('color: var(--cinder-text-muted);');
-    const end = body(
-      ".cinder-table[data-cinder-stack-card]\n    .cinder-table__body\n    .cinder-table__cell[data-cinder-stack='end']",
-    );
-    expect(end).toContain('color: var(--cinder-text-subtle);');
-    expect(end).toContain('font-size: var(--cinder-text-xs);');
-    const title = body(
-      '.cinder-table[data-cinder-stack-card]\n    .cinder-table__body\n    .cinder-table__cell[data-cinder-stack-title]',
-    );
-    expect(title).toContain('font-size: var(--cinder-text-base);');
-    expect(title).toContain('font-weight: var(--cinder-font-semibold);');
+    expect(siblings.at(-1)?.[3]).toBe('flex: 0 1 auto; text-align: start');
+    // A field's value is in the default ink, by a rule that leaves the placed parts to theirs.
+    expect(
+      card(
+        ' .cinder-table__body .cinder-table__cell:not([data-cinder-controls]) ~ .cinder-table__cell:not([data-cinder-controls], [data-cinder-stack])',
+      ).get('color'),
+    ).toBe('var(--cinder-text-default)');
+    expect(
+      card(" .cinder-table__body .cinder-table__cell[data-cinder-stack='plain']").get('color'),
+    ).toBe('var(--cinder-text-muted)');
+    const end = card(" .cinder-table__body .cinder-table__cell[data-cinder-stack='end']");
+    expect(end.get('color')).toBe('var(--cinder-text-subtle)');
+    expect(end.get('font-size')).toBe('var(--cinder-text-xs)');
+    const title = card(' .cinder-table__body .cinder-table__cell[data-cinder-stack-title]');
+    expect(title.get('font-size')).toBe('var(--cinder-text-base)');
+    expect(title.get('font-weight')).toBe('var(--cinder-font-semibold)');
   });
 
-  test('the card styles are scoped to the card marker and draw no frame', async () => {
-    const css = stripCinderComponentsLayer(
-      await Bun.file(new URL('./table.css', import.meta.url)).text(),
-    );
-    expect(css).toMatch(
-      /\.cinder-table-scroll:has\(> \.cinder-table\[data-cinder-stack-card\]\) \{[^}]*border: 0;[^}]*border-radius: 0;/,
-    );
-    expect(css).toMatch(
-      /\.cinder-table\[data-cinder-stack-card\]\s+\.cinder-table__body\s+\.cinder-table__row \{[^}]*display: grid;/,
-    );
-    expect(css).toMatch(/\[data-cinder-stack-empty\][^{]*\{\s*display: none;/);
+  /** The card form's scroll box rule (`.cinder-table-scroll:has(…)`), in the default scope. */
+  function cardScrollDeclarations(css: string): string | undefined {
+    return containerRules(css).find(
+      ([query, , selector]) =>
+        query === DEFAULT_QUERIES.card && selector.startsWith('.cinder-table-scroll:has('),
+    )?.[3];
+  }
+
+  test('the card styles belong to the card form and draw no frame', async () => {
+    const css = await Bun.file(new URL('./table.css', import.meta.url)).text();
+    expect(cardScrollDeclarations(css)).toContain('border: 0; border-radius: 0');
+    expect(
+      stackDeclarations(css, 'card', ' .cinder-table__body .cinder-table__row').get('display'),
+    ).toBe('grid');
+    expect(
+      stackDeclarations(
+        css,
+        'card',
+        ' .cinder-table__body .cinder-table__cell[data-cinder-stack-empty]',
+      ).get('display'),
+    ).toBe('none');
   });
 
   // COR-2760: a card row starts on the content's leading edge, and its tint reaches 12px past it.
   test('a card row starts on the content edge and keeps a gap at its end', async () => {
     const css = await Bun.file(new URL('./table.css', import.meta.url)).text();
-    const row = declarationsFor(
-      css,
-      '.cinder-table[data-cinder-stack-card] .cinder-table__body .cinder-table__row',
-    );
+    const row = stackDeclarations(css, 'card', ' .cinder-table__body .cinder-table__row');
     expect(row.get('padding-inline')).toBe('0 var(--cinder-space-2)');
     expect(row.get('isolation')).toBe('isolate');
   });
 
   test('the card tint and focus ring sit on a pseudo-element 12px past the row start, inside the scroll box', async () => {
     const css = await Bun.file(new URL('./table.css', import.meta.url)).text();
-    const rowSelector =
-      '.cinder-table[data-cinder-stack-card] .cinder-table__body .cinder-table__row';
-    const tint = declarationsFor(css, `${rowSelector}::after`);
+    const row = ' .cinder-table__body .cinder-table__row';
+    const card = (suffix: string, media?: string) => stackDeclarations(css, 'card', suffix, media);
+    const tint = card(`${row}::after`);
     expect(tint.get('content')).toBe("''");
     expect(tint.get('position')).toBe('absolute');
     expect(tint.get('inset-inline')).toBe('calc(var(--cinder-space-3) * -1) 0');
     expect(tint.get('z-index')).toBe('-1');
     expect(
-      declarationsFor(
-        css,
-        `${rowSelector}:is([data-cinder-open], [data-cinder-current])::after`,
-      ).get('background'),
+      card(`${row}:is([data-cinder-open], [data-cinder-current])::after`).get('background'),
     ).toBe('color-mix(in oklch, var(--cinder-accent-solid), transparent 92%)');
     expect(
-      declarationsFor(
-        css,
-        `${rowSelector}:has(.cinder-table__cell[data-cinder-stack-title] a:focus-visible)::after`,
-      ).get('box-shadow'),
+      card(`${row}:has(.cinder-table__cell[data-cinder-stack-title] a:focus-visible)::after`).get(
+        'box-shadow',
+      ),
     ).toBe('inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color)');
     // The row itself paints no tint and no ring.
     expect(
-      declarationsFor(
-        css,
-        `${rowSelector}:is(:hover, [data-cinder-open], [data-cinder-current])`,
-      ).get('background'),
+      card(`${row}:is(:hover, [data-cinder-open], [data-cinder-current])`).get('background'),
     ).toBe('transparent');
     expect(
-      declarationsFor(
-        css,
-        `${rowSelector}:has(.cinder-table__cell[data-cinder-stack-title] a:focus-visible)`,
-      ).size,
+      card(`${row}:has(.cinder-table__cell[data-cinder-stack-title] a:focus-visible)`).size,
     ).toBe(0);
 
-    const scroll = declarationsFor(
-      css,
-      '.cinder-table-scroll:has(> .cinder-table[data-cinder-stack-card])',
-    );
-    expect(scroll.get('padding-inline-start')).toBe('var(--cinder-space-3)');
-    expect(scroll.get('margin-inline-start')).toBe('calc(var(--cinder-space-3) * -1)');
+    const scroll = cardScrollDeclarations(css);
+    expect(scroll).toContain('padding-inline-start: var(--cinder-space-3)');
+    expect(scroll).toContain('margin-inline-start: calc(var(--cinder-space-3) * -1)');
     // The table draws no frame in card form, so it must not clip the tint either.
-    expect(declarationsFor(css, '.cinder-table[data-cinder-stack-card]').get('overflow')).toBe(
-      'visible',
-    );
+    expect(card('').get('overflow')).toBe('visible');
   });
 });
 

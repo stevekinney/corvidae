@@ -11,8 +11,8 @@
 <Table>
   <TableHeader>
     <TableRow>
-      <TableHeaderCell>Tool</TableHeaderCell>
-      <TableHeaderCell>Asks</TableHeaderCell>
+      <TableHeaderCell label="Tool">Tool</TableHeaderCell>
+      <TableHeaderCell label="Asks">Asks</TableHeaderCell>
     </TableRow>
   </TableHeader>
   <TableBody>

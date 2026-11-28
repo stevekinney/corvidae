@@ -33,7 +33,7 @@
   >
     <TableHeader>
       <TableRow>
-        <TableHeaderCell>Name</TableHeaderCell>
+        <TableHeaderCell label="Name">Name</TableHeaderCell>
       </TableRow>
     </TableHeader>
     <TableBody>

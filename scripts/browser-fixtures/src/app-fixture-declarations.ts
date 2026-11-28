@@ -75,6 +75,7 @@ export const appFixtureDeclarations = {
   'side-navigation': ['assertion'],
   table: ['assertion'],
   'stacked-rows-leading-edge': ['assertion'],
+  'table-first-paint': ['assertion'],
   'speed-dial': ['assertion'],
   tooltip: ['assertion'],
   'virtual-list': ['assertion'],

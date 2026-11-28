@@ -77,7 +77,8 @@
         "!src/**/*.test.ts!",
         "!src/**/*.spec.ts!",
         "!src/**/*.fixture.svelte!",
-        "!src/**/*.bench.ts!"
+        "!src/**/*.bench.ts!",
+        "!src/**/*.test-support.ts!"
       ]
     },
     "packages/*": {
@@ -468,6 +469,7 @@
         "src/fixtures/grouped-list-more.svelte",
         "src/fixtures/grouped-list-header-edge.svelte",
         "src/fixtures/stacked-rows-leading-edge.svelte",
+        "src/fixtures/table-first-paint.svelte",
         "fixtures/workspace-web-components.ts"
       ],
       "project": ["src/**/*.{ts,svelte}", "scripts/**/*.ts", "tests/**/*.playwright.ts"]

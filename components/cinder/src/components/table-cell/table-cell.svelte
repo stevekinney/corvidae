@@ -38,11 +38,31 @@
   let columnPosition = $state(untrack(() => rowColumns?.claimColumn(spanOf(rest.colspan)) ?? -1));
   const spansColumns = $derived(spanOf(rest.colspan) > 1);
   const sizing = $derived(spansColumns ? undefined : tableContext?.columnSizing?.(columnPosition));
-  // Sizing changes a cell only in a `fit` table that is not drawing flat card rows.
-  const sized = $derived(tableContext?.fit === true && tableContext.stackCard !== true);
-  // A `content` cell never wraps, so a value longer than its column's cap (half the table) is cut
-  // the way a `truncate` cell is: an ellipsis, and the whole value in a tooltip.
-  const cutsAtCap = $derived(sized && sizing === 'content');
+  // Sizing changes a cell only in a `fit` table. CSS chooses the stacked form, so the markup is the
+  // same in both forms: a `content` cell never wraps, and a value longer than its column's cap
+  // (half the table) is cut the way a `truncate` cell is, with the whole value in a tooltip.
+  const fit = tableContext?.fit === true;
+  const cutsAtCap = $derived(fit && sizing === 'content');
+
+  // What a stacked `fit` table needs from each cell, written as the cell is created so the server's
+  // HTML carries it (COR-2771): its column's label, beside the value; whether it is the row's card
+  // title (the row header, else the first cell with content that holds no control); and whether it
+  // has nothing to draw. Script keeps them current as rows change after hydration.
+  const stackLabel = $derived(
+    spansColumns ? undefined : tableContext?.columnLabel?.(columnPosition),
+  );
+  // Read once, as the cell is created and claims its place in the row; script refines it later.
+  const titleOwner = {};
+  const { claimedTitle, isEmpty } = untrack(() => {
+    const hasContent = children !== undefined || detail !== undefined;
+    const header = as === 'th';
+    const candidate = fit && (header || (!controls && stack === undefined && hasContent));
+    const claimed =
+      candidate && (rowColumns?.claimTitle(header ? 'header' : 'cell', titleOwner) ?? false);
+    return { claimedTitle: claimed, isEmpty: fit && !claimed && !hasContent };
+  });
+  // A plain cell's claim gives way to a row header created after it.
+  const isTitle = $derived(claimedTitle && (rowColumns?.holdsTitle(titleOwner) ?? true));
   const placeColumn: Attachment<HTMLElement> = (cell) => {
     void rowColumns?.version;
     columnPosition = columnOf(cell);
@@ -103,6 +123,7 @@
 <svelte:element
   this={as}
   {...rest}
+  {...fit ? { role: as === 'th' ? 'rowheader' : 'cell' } : {}}
   title={truncate || cutsAtCap ? undefined : title}
   scope={as === 'th' ? 'row' : undefined}
   class={classNames('cinder-table__cell', className)}
@@ -111,6 +132,9 @@
   data-cinder-stack={stack}
   data-cinder-controls={controls === 'fit' ? 'fit' : controls ? '' : undefined}
   data-cinder-sizing={sizing}
+  data-cinder-stack-label={stackLabel}
+  data-cinder-stack-title={isTitle ? '' : undefined}
+  data-cinder-stack-empty={isEmpty ? '' : undefined}
   {@attach placeColumn}
 >
   {#if truncate || cutsAtCap}

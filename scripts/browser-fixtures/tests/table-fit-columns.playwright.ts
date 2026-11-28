@@ -151,3 +151,26 @@ test('at 375px the sized fit table still stacks into flat rows', async ({ page }
     .evaluate((node) => ({ client: node.clientWidth, scroll: node.scrollWidth }));
   expect(scroll.scroll).toBeLessThanOrEqual(scroll.client);
 });
+
+// COR-2771: a sized table's truncating text asks for no width in the table layout. Stacked, its
+// cell is no column, so the value takes the line its label leaves instead of collapsing to nothing.
+test('a stacked truncating value fills the line beside its label', async ({ page }) => {
+  await open(page, 375);
+  const measured = await page.getByTestId('fit-columns-long').evaluate((root) => {
+    // The Key column: `fill`, with a truncating value, so outside a content column.
+    const cell = root.querySelector(
+      "tbody td[data-cinder-sizing='fill']:has(.cinder-table__cell-text)",
+    )!;
+    const text = cell.querySelector('.cinder-table__cell-text')!;
+    return {
+      stacked: getComputedStyle(root.querySelector('thead')!).clipPath === 'inset(50%)',
+      cell: cell.getBoundingClientRect().width,
+      text: text.getBoundingClientRect().width,
+      label: Number.parseFloat(getComputedStyle(cell, '::before').width) || 0,
+    };
+  });
+  expect(measured.stacked).toBe(true);
+  // The value has the cell's width less its label and the gap between them.
+  expect(measured.text).toBeGreaterThan(measured.cell - measured.label - 24);
+  expect(measured.text).toBeLessThanOrEqual(measured.cell);
+});

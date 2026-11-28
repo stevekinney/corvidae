@@ -409,14 +409,16 @@
         <Table caption={copy.tools.caption(heading)} density="comfortable" fit frameless>
           <Table.Header>
             <Table.Row>
-              <Table.HeaderCell class="ib-source__column-on"
+              <Table.HeaderCell label={copy.tools.columns.on} class="ib-source__column-on"
                 >{copy.tools.columns.on}</Table.HeaderCell
               >
-              <Table.HeaderCell>{copy.tools.columns.tool}</Table.HeaderCell>
-              <Table.HeaderCell class="ib-source__column-risk"
+              <Table.HeaderCell label={copy.tools.columns.tool}
+                >{copy.tools.columns.tool}</Table.HeaderCell
+              >
+              <Table.HeaderCell label={copy.tools.columns.risk} class="ib-source__column-risk"
                 >{copy.tools.columns.risk}</Table.HeaderCell
               >
-              <Table.HeaderCell class="ib-source__column-asks"
+              <Table.HeaderCell label={copy.tools.columns.asks} class="ib-source__column-asks"
                 >{copy.tools.columns.asks}</Table.HeaderCell
               >
             </Table.Row>

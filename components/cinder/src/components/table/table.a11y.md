@@ -10,8 +10,8 @@ Native semantic table per [WAI-ARIA Authoring Practices: Sortable Table](https:/
 <Table bind:sort selectable>
   <TableHeader {allSelected} {someSelected} {onSelectAll}>
     <TableRow>
-      <TableHeaderCell column="name" sortable>Name</TableHeaderCell>
-      <TableHeaderCell column="age" sortable>Age</TableHeaderCell>
+      <TableHeaderCell label="Name" column="name" sortable>Name</TableHeaderCell>
+      <TableHeaderCell label="Age" column="age" sortable>Age</TableHeaderCell>
     </TableRow>
   </TableHeader>
   <TableBody>

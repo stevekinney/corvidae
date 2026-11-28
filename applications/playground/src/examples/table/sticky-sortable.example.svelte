@@ -40,9 +40,11 @@
   <Table caption="Contributors" stickyHeader bind:sort>
     <Table.Header>
       <Table.Row>
-        <Table.HeaderCell column="name" sortable>Name</Table.HeaderCell>
-        <Table.HeaderCell column="role" sortable>Role</Table.HeaderCell>
-        <Table.HeaderCell column="commits" sortable align="right">Commits</Table.HeaderCell>
+        <Table.HeaderCell label="Name" column="name" sortable>Name</Table.HeaderCell>
+        <Table.HeaderCell label="Role" column="role" sortable>Role</Table.HeaderCell>
+        <Table.HeaderCell label="Commits" column="commits" sortable align="right"
+          >Commits</Table.HeaderCell
+        >
       </Table.Row>
     </Table.Header>
     <Table.Body>

@@ -21,9 +21,9 @@ See the [tabular family boundaries](https://github.com/stevekinney/cinder/blob/m
 <Table caption="Recent contributors">
   <Table.Header>
     <Table.Row>
-      <Table.HeaderCell>Name</Table.HeaderCell>
-      <Table.HeaderCell>Role</Table.HeaderCell>
-      <Table.HeaderCell align="right">Commits</Table.HeaderCell>
+      <Table.HeaderCell label="Name">Name</Table.HeaderCell>
+      <Table.HeaderCell label="Role">Role</Table.HeaderCell>
+      <Table.HeaderCell label="Commits" align="right">Commits</Table.HeaderCell>
     </Table.Row>
   </Table.Header>
   <Table.Body>
@@ -52,10 +52,10 @@ A table whose cells hold controls (a select, a switch, a checkbox, a button) sta
 <Table caption="Tool access">
   <Table.Header>
     <Table.Row>
-      <Table.HeaderCell>Tool</Table.HeaderCell>
-      <Table.HeaderCell>Risk</Table.HeaderCell>
-      <Table.HeaderCell>On</Table.HeaderCell>
-      <Table.HeaderCell>Asks</Table.HeaderCell>
+      <Table.HeaderCell label="Tool">Tool</Table.HeaderCell>
+      <Table.HeaderCell label="Risk">Risk</Table.HeaderCell>
+      <Table.HeaderCell label="On">On</Table.HeaderCell>
+      <Table.HeaderCell label="Asks">Asks</Table.HeaderCell>
     </Table.Row>
   </Table.Header>
   <Table.Body>
@@ -73,6 +73,10 @@ A table whose cells hold controls (a select, a switch, a checkbox, a button) sta
 </Table>
 ```
 
+### Stacked on the first paint
+
+CSS chooses whether a table stacks, by a size container query on the table's own container, so the HTML a server renders is already the stacked form on a phone, with no script. Every body cell carries its column's label in that HTML, from its header cell's `label`, so every `Table.HeaderCell` takes a required `label`: usually its own text, `''` for a column with no name. It is required on every table, because a header cell cannot tell whether its table can stack, and a table may gain `fit` later. A `fit` table's card title and empty-cell marks and its table roles are in the server HTML too. A stacked sortable `fit` table sorts from one control above its cards. The server renders that control before the header cells that list its options, so set `sortable` on a `fit` Table with a sortable header cell: the server HTML then holds the control's row, CSS shows it only in the card form, and hydration fills in its options without moving the rows. DataTable sets it from its columns, and a sortable header cell in a `fit` Table without it warns in development. Script still adds what CSS can't do after hydration: the sort control's options, the sort buttons held out of the tab order, and the title tooltip. A loading row of skeletons takes the `stack` roles of the row it stands in for, so its lines match when the data arrives. A `stackBelow` other than the defaults and `640px` brings its rules in a small inline `<style>`, so a page's content security policy must allow inline styles for it.
+
 ### Tables that fit
 
 A records table whose values can be very long (a storage key, a URL, a model identifier) sets `fit`. The table fills its container with a fixed layout, so a value never widens it: a `truncate` cell ends its text with an ellipsis at its column's width and keeps the whole value in a tooltip a focus or a hover opens, and every other cell wraps. To size a column whose content never wraps (a status badge, a date, a short identifier with its copy button) by that content, set `sizing` on its header cell, as the next section shows; `<col>` widths still set an exact share where one is known. When the columns need more room than a phone has, set a `min-inline-size` on the table: below that floor the table scrolls inside its frame because of its column count, never because of a value.
@@ -85,8 +89,8 @@ A records table whose values can be very long (a storage key, a URL, a model ide
   </colgroup>
   <Table.Header>
     <Table.Row>
-      <Table.HeaderCell>Key</Table.HeaderCell>
-      <Table.HeaderCell align="right">Size</Table.HeaderCell>
+      <Table.HeaderCell label="Key">Key</Table.HeaderCell>
+      <Table.HeaderCell label="Size" align="right">Size</Table.HeaderCell>
     </Table.Row>
   </Table.Header>
   <Table.Body>
@@ -110,9 +114,9 @@ By default the columns of a `fit` table share its width equally, so a one-word s
 <Table caption="Connection checks" fit>
   <Table.Header>
     <Table.Row>
-      <Table.HeaderCell sizing="content">Check</Table.HeaderCell>
-      <Table.HeaderCell sizing="content">Result</Table.HeaderCell>
-      <Table.HeaderCell sizing="fill">What it found</Table.HeaderCell>
+      <Table.HeaderCell label="Check" sizing="content">Check</Table.HeaderCell>
+      <Table.HeaderCell label="Result" sizing="content">Result</Table.HeaderCell>
+      <Table.HeaderCell label="What it found" sizing="fill">What it found</Table.HeaderCell>
     </Table.Row>
   </Table.Header>
   <Table.Body>
@@ -143,7 +147,8 @@ The leaves are also named exports of `@lostgradient/cinder`.
 | `frameless` | `boolean` | no | `false` | Draw no outline, radius or fill around the table, for a queue or list that sits on the page. Rows keep their hairlines. |
 | `scrollable` | `boolean` | no | `true` | Wraps the table in a `.cinder-table-scroll` box that owns the frame (the border, the radius and the clip) and scrolls sideways when the columns do not fit, with a visible scrollbar and a fade at the inline end. The page never scrolls sideways. Pass `false` for a table that must lay out as a bare `<table>`. When combined with `stickyHeader`, the generated wrapper is the sticky header's scroll container. Set a bounded block size on `scrollContainerProps` when the table should scroll vertically inside that wrapper. |
 | `selectable` | `boolean` | no | `false` | Enables the leading selection column on the entire table. When true: - The single `TableRow` inside `TableHeader` renders a leading `<th>` with a select-all checkbox sourced from the header's props. - Every `TableRow` inside `TableBody` renders a leading selection cell. Selection is strictly controlled — the consumer owns all selection state. |
-| `stackBelow` | `string` \| `false` | no | `"640px"` | Width of the table's own container below which a table whose cells hold controls, or a `fit` table, stacks. With controls, each body row becomes a card: the name and its muted detail on the first line, the controls full width at 44px beneath. A `fit` table stacks into flat rows (see `fit`). A table that is neither `fit` nor holds a `controls` cell never stacks; it scrolls. The width is the container's (the scroll box, or the parent when `scrollable` is false), not the window's, so a table in a narrow column stacks in a wide window. A simple CSS length such as `'640px'`; only `px`, `rem` and `em` are measured against the container, and any other unit falls back to the viewport. `false` keeps the table layout at every width. A `fit` table that stacks as flat rows (no cell holds a control that fills it) stacks only below `'26rem'` (416px) by default, because flat rows read well in a narrow column; the control layout keeps 640px. |
+| `sortable` | `boolean` | no | `false` | Set on a `fit` table with a sortable header cell. A stacked `fit` table sorts from one control above its rows, and the server renders that control's row before the header cells it lists, so this prop is how the server knows to keep its place: the first paint already has the row, and hydration fills in its options without moving the rows (COR-2771). DataTable sets it from its columns. A sortable header cell in a `fit` table without it warns in development. |
+| `stackBelow` | `string` \| `false` | no | `"640px"` | Width of the table's own container below which a table whose cells hold controls, or a `fit` table, stacks. With controls, each body row becomes a card: the name and its muted detail on the first line, the controls full width at 44px beneath. A `fit` table stacks into flat rows (see `fit`). A table that is neither `fit` nor holds a `controls` cell never stacks; it scrolls. The width is the table's own container's (`.cinder-table-container`, around the scroll box), not the window's, so a table in a narrow column stacks in a wide window. CSS chooses the form, by a size container query, so the server's HTML is already the stacked form on a phone: each body cell carries its column's label (`Table.HeaderCell`'s `label`), and a `fit` table's card marks and table roles are in that HTML too. A simple CSS length such as `'640px'`; the default lengths and `'640px'` are in Cinder's stylesheet, and any other length brings the same rules in a small `<style>` beside the table, keyed to that length, so a page's content security policy must allow inline styles for it. `false` keeps the table layout at every width. A `fit` table that stacks as flat rows (no cell holds a control that fills it) stacks only below `'26rem'` (416px) by default, because flat rows read well in a narrow column; the control layout keeps 640px. |
 | `stickyHeader` | `boolean` | no | `false` | When true, the header sticks to the top of the scrolling container. |
 | `children` | `(opaque)` | yes | — | TableHeader, TableBody, etc. Not expressible in JSON Schema; see the component types for the signature. |
 | `scrollContainerProps` | `(opaque)` | no | — | Attributes forwarded to the generated `.cinder-table-scroll` wrapper when `scrollable` is true. The wrapper is focusable by default so keyboard users can scroll read-only wide tables. When the table has a caption, or when `aria-label` or `aria-labelledby` is provided here, the wrapper becomes a named `region`; pass `role` or `tabindex` here to override those defaults. Not expressible in JSON Schema; see the component types for the signature. |

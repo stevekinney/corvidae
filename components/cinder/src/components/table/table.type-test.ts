@@ -8,7 +8,9 @@
  * stop compiling — surfacing the drift as a type error instead of silently
  * keeping the old declared type.
  */
-import type { Component } from 'svelte';
+import type { Component, Snippet } from 'svelte';
+
+import type { TableHeaderCellProps } from '../table-header-cell/table-header-cell.types.ts';
 
 import TableBody from '../table-body/table-body.svelte';
 import TableCell from '../table-cell/table-cell.svelte';
@@ -24,6 +26,20 @@ const headerCell: typeof TableHeaderCell = Table.HeaderCell;
 const row: typeof TableRow = Table.Row;
 
 Table satisfies Component<never>;
+
+// COR-2771: every header cell names its column as text, so a stacked table's server HTML carries
+// each body cell's label. A header cell cannot tell whether its table can stack, so it is required.
+declare const headerChildren: Snippet;
+const labelled: TableHeaderCellProps = { label: 'Namespace', children: headerChildren };
+const unnamed: TableHeaderCellProps = { label: '', children: headerChildren };
+// @ts-expect-error A header cell without a label is rejected.
+const unlabelled: TableHeaderCellProps = { children: headerChildren };
+// @ts-expect-error A label is text, never a snippet.
+const snippetLabel: TableHeaderCellProps = { label: headerChildren, children: headerChildren };
+void labelled;
+void unnamed;
+void unlabelled;
+void snippetLabel;
 
 void body;
 void cell;

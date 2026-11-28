@@ -57,10 +57,10 @@
 <Table caption="Tool access">
   <Table.Header>
     <Table.Row>
-      <Table.HeaderCell>On</Table.HeaderCell>
-      <Table.HeaderCell>Tool</Table.HeaderCell>
-      <Table.HeaderCell>Risk</Table.HeaderCell>
-      <Table.HeaderCell>Default asks</Table.HeaderCell>
+      <Table.HeaderCell label="On">On</Table.HeaderCell>
+      <Table.HeaderCell label="Tool">Tool</Table.HeaderCell>
+      <Table.HeaderCell label="Risk">Risk</Table.HeaderCell>
+      <Table.HeaderCell label="Default asks">Default asks</Table.HeaderCell>
     </Table.Row>
   </Table.Header>
   <Table.Body>

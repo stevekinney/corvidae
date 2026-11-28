@@ -69,9 +69,15 @@
     >
       <Table.Header>
         <Table.Row>
-          <Table.HeaderCell>{copy.newAgent.columns.tool}</Table.HeaderCell>
-          <Table.HeaderCell>{copy.newAgent.columns.risk}</Table.HeaderCell>
-          <Table.HeaderCell>{copy.newAgent.columns.asks}</Table.HeaderCell>
+          <Table.HeaderCell label={copy.newAgent.columns.tool}
+            >{copy.newAgent.columns.tool}</Table.HeaderCell
+          >
+          <Table.HeaderCell label={copy.newAgent.columns.risk}
+            >{copy.newAgent.columns.risk}</Table.HeaderCell
+          >
+          <Table.HeaderCell label={copy.newAgent.columns.asks}
+            >{copy.newAgent.columns.asks}</Table.HeaderCell
+          >
         </Table.Row>
       </Table.Header>
       <Table.Body>

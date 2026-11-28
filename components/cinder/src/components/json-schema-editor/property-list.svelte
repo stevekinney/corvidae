@@ -376,15 +376,18 @@
     >
       <Table.Header class={classNames(depth > 0 && 'cinder-sr-only')}>
         <Table.Row>
-          <Table.HeaderCell>Field</Table.HeaderCell>
-          <Table.HeaderCell class="cinder-jse-property-table__type-heading">Type</Table.HeaderCell>
-          <Table.HeaderCell class="cinder-jse-property-table__description-heading"
-            >Description</Table.HeaderCell
+          <Table.HeaderCell label="Field">Field</Table.HeaderCell>
+          <Table.HeaderCell label="Type" class="cinder-jse-property-table__type-heading"
+            >Type</Table.HeaderCell
           >
-          <Table.HeaderCell class="cinder-jse-property-table__required-heading"
+          <Table.HeaderCell
+            label="Description"
+            class="cinder-jse-property-table__description-heading">Description</Table.HeaderCell
+          >
+          <Table.HeaderCell label="Required" class="cinder-jse-property-table__required-heading"
             >Required</Table.HeaderCell
           >
-          <Table.HeaderCell class="cinder-jse-property-table__actions-heading"
+          <Table.HeaderCell class="cinder-jse-property-table__actions-heading" label="Actions"
             ><span class="cinder-sr-only">Actions</span></Table.HeaderCell
           >
         </Table.Row>

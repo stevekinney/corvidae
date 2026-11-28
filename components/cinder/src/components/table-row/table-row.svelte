@@ -35,7 +35,21 @@
   // cells change (a keyed column moved, a conditional cell added), which bumps `cellsVersion`.
   let claimedColumns = 0;
   let cellsVersion = $state(0);
+  // The row's card title (COR-2771), claimed by a cell as it is created so the server's HTML marks it.
+  // A row header takes it from a plain cell that claimed it first, so the plain cell, which reads
+  // `holdsTitle`, gives it up once the header exists. On the server the plain cell is written before
+  // the header, so its mark stays in that HTML, and the card rules give a row header the title over
+  // any plain cell that also carries the mark.
+  // Raw, so the owner keeps its identity: a deep proxy would never equal the cell's own object.
+  let titleClaim: { kind: 'header' | 'cell'; owner: object } | undefined = $state.raw();
   setTableRowColumnsContext({
+    claimTitle: (kind, owner) => {
+      const held = untrack(() => titleClaim);
+      if (kind === 'header' ? held?.kind === 'header' : held !== undefined) return false;
+      titleClaim = { kind, owner };
+      return true;
+    },
+    holdsTitle: (owner) => titleClaim?.owner === owner,
     claimColumn: (span = 1) => {
       const position = claimedColumns;
       claimedColumns += Math.max(1, span);
@@ -103,8 +117,11 @@
   }
 </script>
 
+<!-- A `fit` table's parts carry their table roles in the server's HTML (COR-2771); spread, since the
+     role repeats the element's own. -->
 <tr
   {...rest}
+  {...table?.fit === true ? { role: 'row' } : {}}
   class={classNames('cinder-table__row', className)}
   aria-current={current ? 'true' : rest['aria-current']}
   data-cinder-current={current ? '' : undefined}

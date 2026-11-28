@@ -137,13 +137,13 @@
           >
             <Table.Header>
               <Table.Row>
-                <Table.HeaderCell>Build</Table.HeaderCell>
-                <Table.HeaderCell>State</Table.HeaderCell>
-                <Table.HeaderCell>Artifact digest</Table.HeaderCell>
-                <Table.HeaderCell>Manifest digest</Table.HeaderCell>
-                <Table.HeaderCell>References</Table.HeaderCell>
-                <Table.HeaderCell>Workers</Table.HeaderCell>
-                <Table.HeaderCell>Actions</Table.HeaderCell>
+                <Table.HeaderCell label="Build">Build</Table.HeaderCell>
+                <Table.HeaderCell label="State">State</Table.HeaderCell>
+                <Table.HeaderCell label="Artifact digest">Artifact digest</Table.HeaderCell>
+                <Table.HeaderCell label="Manifest digest">Manifest digest</Table.HeaderCell>
+                <Table.HeaderCell label="References">References</Table.HeaderCell>
+                <Table.HeaderCell label="Workers">Workers</Table.HeaderCell>
+                <Table.HeaderCell label="Actions">Actions</Table.HeaderCell>
               </Table.Row>
             </Table.Header>
             <Table.Body>

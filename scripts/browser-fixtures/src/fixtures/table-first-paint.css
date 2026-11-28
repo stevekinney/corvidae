@@ -1,0 +1,29 @@
+/* COR-2771: the table-first-paint fixture's layout. The fixture imports it on the client, and
+ * `table-first-paint.playwright.ts` adds the same file to the server-rendered page, so both paints
+ * lay out the page the same way. */
+
+/* One track as wide as the page, so the row of columns cannot widen the other sections. */
+.first-paint-page {
+  /* A page's measure, so a wide window does not stretch the tables past what they hold. */
+  max-inline-size: calc(var(--cinder-space-4) * 80);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--cinder-space-6);
+}
+
+.first-paint-columns {
+  display: flex;
+  gap: var(--cinder-space-6);
+  align-items: flex-start;
+  overflow-x: auto;
+}
+
+/* A 320px column and an 880px one, in the spacing scale's units: with the gap, 1,224px, inside a
+   1280px window's page. */
+.first-paint-narrow {
+  flex: 0 0 calc(var(--cinder-space-4) * 20);
+}
+
+.first-paint-wide {
+  flex: 0 0 calc(var(--cinder-space-4) * 55);
+}

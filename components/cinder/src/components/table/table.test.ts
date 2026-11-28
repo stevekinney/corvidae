@@ -4,6 +4,7 @@ import { tick } from 'svelte';
 
 import { stripCinderComponentsLayer } from '@lostgradient/component-tooling/test/css.ts';
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
+import { stackDeclarations } from './table-stack.test-support.ts';
 import { lengthToPixels } from './table.length.ts';
 import type { TableScrollContainerProps } from './table.types.ts';
 
@@ -1232,10 +1233,14 @@ describe('Table data display', () => {
   });
 
   test('a stacked card sets its controls to 44px so a select is as tall as its row (row 40a)', () => {
-    const stacked = tableCss.slice(tableCss.indexOf('[data-cinder-stacked]'));
-    expect(stacked).toMatch(
-      /:is\(\.cinder-select, \.cinder-input, \.cinder-button\) \{\s*min-block-size: 2\.75rem;/,
-    );
+    // COR-2771: the stacked forms are a container query, not a script-set attribute.
+    expect(
+      stackDeclarations(
+        tableCss,
+        'control',
+        ' .cinder-table__body .cinder-table__cell[data-cinder-controls] :is(.cinder-select, .cinder-input, .cinder-button)',
+      ).get('min-block-size'),
+    ).toBe('2.75rem');
   });
 
   test('the table is framed with a quiet header and a caption kept for screen readers', () => {

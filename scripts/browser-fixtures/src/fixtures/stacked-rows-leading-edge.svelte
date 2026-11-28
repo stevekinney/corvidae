@@ -45,9 +45,9 @@
     <Table caption="Runs" fit stackBelow="4000px">
       <TableHeader>
         <TableRow>
-          <TableHeaderCell>Run</TableHeaderCell>
-          <TableHeaderCell>Status</TableHeaderCell>
-          <TableHeaderCell>Started</TableHeaderCell>
+          <TableHeaderCell label="Run">Run</TableHeaderCell>
+          <TableHeaderCell label="Status">Status</TableHeaderCell>
+          <TableHeaderCell label="Started">Started</TableHeaderCell>
         </TableRow>
       </TableHeader>
       <TableBody>

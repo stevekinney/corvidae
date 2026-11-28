@@ -108,10 +108,10 @@
       <Table caption="Accepted workflow and activity contracts" scrollable>
         <Table.Header>
           <Table.Row>
-            <Table.HeaderCell>Workflow / activity</Table.HeaderCell>
-            <Table.HeaderCell>Workflow version</Table.HeaderCell>
-            <Table.HeaderCell>Revision</Table.HeaderCell>
-            <Table.HeaderCell>Contract identity</Table.HeaderCell>
+            <Table.HeaderCell label="Workflow / activity">Workflow / activity</Table.HeaderCell>
+            <Table.HeaderCell label="Workflow version">Workflow version</Table.HeaderCell>
+            <Table.HeaderCell label="Revision">Revision</Table.HeaderCell>
+            <Table.HeaderCell label="Contract identity">Contract identity</Table.HeaderCell>
           </Table.Row>
         </Table.Header>
         <Table.Body>

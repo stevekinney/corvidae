@@ -110,10 +110,10 @@
       <Table caption="Dead letters" scrollable class="weft-dead-letters-table">
         <Table.Header>
           <Table.Row>
-            <Table.HeaderCell>Task</Table.HeaderCell>
-            <Table.HeaderCell>Activity</Table.HeaderCell>
-            <Table.HeaderCell>Failed for good</Table.HeaderCell>
-            <Table.HeaderCell>Actions</Table.HeaderCell>
+            <Table.HeaderCell label="Task">Task</Table.HeaderCell>
+            <Table.HeaderCell label="Activity">Activity</Table.HeaderCell>
+            <Table.HeaderCell label="Failed for good">Failed for good</Table.HeaderCell>
+            <Table.HeaderCell label="Actions">Actions</Table.HeaderCell>
           </Table.Row>
         </Table.Header>
         <Table.Body>

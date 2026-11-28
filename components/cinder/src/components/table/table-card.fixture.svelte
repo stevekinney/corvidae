@@ -1,4 +1,6 @@
 <script lang="ts" module>
+  import type { TableSort } from './table.types.ts';
+
   /** Test-only fixture: a table of models that stacks into cards when it is `fit`. */
   export type TableCardFixtureProps = {
     fit?: boolean;
@@ -6,21 +8,33 @@
     /** A control column: a switch that keeps its size (`'fit'`), or one that fills its cell (`true`). */
     controls?: 'fit' | true | undefined;
     sortable?: boolean;
+    /** Table's own `sortable`; defaults to `sortable`, and is set apart to test its warning. */
+    tableSortable?: boolean;
+    /** The sort applied from the start. */
+    initialSort?: TableSort;
   };
 </script>
 
 <script lang="ts">
+  import { untrack } from 'svelte';
+
   import TableBody from '../table-body/table-body.svelte';
   import TableCell from '../table-cell/table-cell.svelte';
   import TableHeaderCell from '../table-header-cell/table-header-cell.svelte';
   import TableHeader from '../table-header/table-header.svelte';
   import TableRow from '../table-row/table-row.svelte';
   import Table from './table.svelte';
-  import type { TableSort } from './table.types.ts';
 
-  let { fit = true, stackBelow, controls, sortable = false }: TableCardFixtureProps = $props();
+  let {
+    fit = true,
+    stackBelow,
+    controls,
+    sortable = false,
+    tableSortable = sortable,
+    initialSort,
+  }: TableCardFixtureProps = $props();
 
-  let sort = $state<TableSort | undefined>(undefined);
+  let sort = $state<TableSort | undefined>(untrack(() => initialSort));
   const models = [
     {
       name: 'Claude Opus',
@@ -39,18 +53,24 @@
   ];
 </script>
 
-<Table caption="Models" {fit} bind:sort {...stackBelow !== undefined ? { stackBelow } : {}}>
+<Table
+  caption="Models"
+  {fit}
+  sortable={tableSortable}
+  bind:sort
+  {...stackBelow !== undefined ? { stackBelow } : {}}
+>
   <TableHeader>
     <TableRow>
       {#if sortable}
-        <TableHeaderCell column="model" sortable>Model</TableHeaderCell>
+        <TableHeaderCell label="Model" column="model" sortable>Model</TableHeaderCell>
       {:else}
-        <TableHeaderCell>Model</TableHeaderCell>
+        <TableHeaderCell label="Model">Model</TableHeaderCell>
       {/if}
-      <TableHeaderCell>Allowed</TableHeaderCell>
-      <TableHeaderCell>Abilities</TableHeaderCell>
-      <TableHeaderCell>Last run</TableHeaderCell>
-      {#if controls}<TableHeaderCell>On</TableHeaderCell>{/if}
+      <TableHeaderCell label="Allowed">Allowed</TableHeaderCell>
+      <TableHeaderCell label="Abilities">Abilities</TableHeaderCell>
+      <TableHeaderCell label="Last run">Last run</TableHeaderCell>
+      {#if controls}<TableHeaderCell label="On">On</TableHeaderCell>{/if}
     </TableRow>
   </TableHeader>
   <TableBody>

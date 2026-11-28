@@ -50,6 +50,19 @@ export type TableContext = {
   readonly stackCard?: boolean;
   /** True for a `fit` table. Its row header holds to two lines, stacked or not. */
   readonly fit?: boolean;
+  /** Mirror of Table.sortable: the table renders its stacked sort control's row from the server on. */
+  readonly sortable?: boolean;
+  /**
+   * Called by a sortable header cell with its column position, sort `column` key and `label`, and
+   * again with `undefined` when it leaves that position or stops sorting, as `setColumnSizing` is.
+   * The stacked sort control offers one option per direction of each registered column.
+   */
+  setSortColumn?: (
+    position: number,
+    column: string | undefined,
+    label: string,
+    owner: object,
+  ) => void;
   /**
    * Called by a header cell with its column position and `sizing`, and again with `undefined` when
    * it leaves that position; `owner` identifies the cell, so it withdraws only its own entry. Body
@@ -58,6 +71,13 @@ export type TableContext = {
   setColumnSizing?: (column: number, sizing: TableColumnSizing | undefined, owner: object) => void;
   /** The `sizing` a header cell declared for the column at `column`, if any. */
   columnSizing?: (column: number) => TableColumnSizing | undefined;
+  /**
+   * Called by a header cell with its column position and `label`, as `setColumnSizing` is. Body
+   * cells in the same column print it beside their value while stacked (COR-2771).
+   */
+  setColumnLabel?: (column: number, label: string | undefined, owner: object) => void;
+  /** The label a header cell declared for the column at `column`, if any. */
+  columnLabel?: (column: number) => string | undefined;
 };
 
 /**
@@ -76,6 +96,13 @@ export type TableRowColumnsContext = {
   claimColumn: (span?: number) => number;
   /** Changes whenever the row's cells are added, removed or moved, so cells re-read their place. */
   readonly version: number;
+  /**
+   * Claims the row's card title for a cell as it is created: a row header (`th`) always takes it
+   * from a plain cell; a plain cell takes it only when no cell has. Returns whether this cell holds it.
+   */
+  claimTitle: (kind: 'header' | 'cell', owner: object) => boolean;
+  /** Whether the cell `owner` holds the row's title now: a row header takes it from a plain cell. */
+  holdsTitle: (owner: object) => boolean;
 };
 /** Attributes forwarded to Table's generated scroll wrapper. */
 export type TableScrollContainerProps = Omit<
@@ -167,6 +194,15 @@ export type TableProps = Omit<HTMLTableAttributes, 'class'> & {
    */
   fit?: boolean;
   /**
+   * Set on a `fit` table with a sortable header cell. A stacked `fit` table sorts from one control
+   * above its rows, and the server renders that control's row before the header cells it lists, so
+   * this prop is how the server knows to keep its place: the first paint already has the row, and
+   * hydration fills in its options without moving the rows (COR-2771). DataTable sets it from its
+   * columns. A sortable header cell in a `fit` table without it warns in development.
+   * @default false
+   */
+  sortable?: boolean;
+  /**
    * Attributes forwarded to the generated `.cinder-table-scroll` wrapper when
    * `scrollable` is true. The wrapper is focusable by default so keyboard users
    * can scroll read-only wide tables. When the table has a caption, or when
@@ -179,14 +215,18 @@ export type TableProps = Omit<HTMLTableAttributes, 'class'> & {
    * table, stacks. With controls, each body row becomes a card: the name and its muted detail on
    * the first line, the controls full width at 44px beneath. A `fit` table stacks into flat rows
    * (see `fit`). A table that is neither `fit` nor holds a `controls` cell never stacks; it
-   * scrolls. The width
-   * is the container's (the scroll box, or the parent when `scrollable` is false), not the
-   * window's, so a table in a narrow column stacks in a wide window. A simple CSS length such as
-   * `'640px'`; only `px`, `rem` and `em` are measured against the container, and any other unit
-   * falls back to the viewport. `false` keeps the table layout at every width. A `fit` table that
-   * stacks as flat rows (no cell holds a control that fills it) stacks only below `'26rem'`
-   * (416px) by default, because flat rows read well in a narrow column; the control layout keeps
-   * 640px.
+   * scrolls. The width is the table's own container's (`.cinder-table-container`, around the
+   * scroll box), not the window's, so a table in a narrow column stacks in a wide window.
+   *
+   * CSS chooses the form, by a size container query, so the server's HTML is already the stacked
+   * form on a phone: each body cell carries its column's label (`Table.HeaderCell`'s `label`), and a
+   * `fit` table's card marks and table roles are in that HTML too. A simple CSS length such as
+   * `'640px'`; the default lengths and `'640px'` are in Cinder's stylesheet, and any other length
+   * brings the same rules in a small `<style>` beside the table, keyed to that length, so a page's
+   * content security policy must allow inline styles for it. `false` keeps the table layout at
+   * every width. A `fit` table that stacks as flat rows (no cell holds a control that fills it)
+   * stacks only below `'26rem'` (416px) by default, because flat rows read well in a narrow column;
+   * the control layout keeps 640px.
    * @default "640px"
    */
   stackBelow?: string | false;

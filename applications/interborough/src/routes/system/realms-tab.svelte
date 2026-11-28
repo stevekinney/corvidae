@@ -74,13 +74,13 @@
     <Table caption="Workflow-revision realm pools" scrollable>
       <Table.Header>
         <Table.Row>
-          <Table.HeaderCell>Workflow</Table.HeaderCell>
-          <Table.HeaderCell>Revision</Table.HeaderCell>
-          <Table.HeaderCell>Active pointer</Table.HeaderCell>
-          <Table.HeaderCell>Realm state</Table.HeaderCell>
-          <Table.HeaderCell>Generation</Table.HeaderCell>
-          <Table.HeaderCell>Restarts</Table.HeaderCell>
-          <Table.HeaderCell>In-flight turns</Table.HeaderCell>
+          <Table.HeaderCell label="Workflow">Workflow</Table.HeaderCell>
+          <Table.HeaderCell label="Revision">Revision</Table.HeaderCell>
+          <Table.HeaderCell label="Active pointer">Active pointer</Table.HeaderCell>
+          <Table.HeaderCell label="Realm state">Realm state</Table.HeaderCell>
+          <Table.HeaderCell label="Generation">Generation</Table.HeaderCell>
+          <Table.HeaderCell label="Restarts">Restarts</Table.HeaderCell>
+          <Table.HeaderCell label="In-flight turns">In-flight turns</Table.HeaderCell>
         </Table.Row>
       </Table.Header>
       <Table.Body>

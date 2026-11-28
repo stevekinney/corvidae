@@ -1126,7 +1126,9 @@ for (const width of [768, 1280]) {
       'table',
     );
     await expect(section.locator('thead th')).toHaveCount(4);
-    await expect(section.locator('.cinder-table__stack-sort')).toHaveCount(0);
+    // The stacked sort control is in the server's HTML of a sortable fit table, and CSS draws it
+    // only in the card form, so a wide table holds it hidden (COR-2771).
+    await expect(section.locator('.cinder-table__stack-sort')).toBeHidden();
   });
 }
 

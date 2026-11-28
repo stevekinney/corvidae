@@ -22,8 +22,8 @@
 <Table caption="Stored values">
   <TableHeader>
     <TableRow>
-      <TableHeaderCell>Key</TableHeaderCell>
-      <TableHeaderCell>Setting</TableHeaderCell>
+      <TableHeaderCell label="Key">Key</TableHeaderCell>
+      <TableHeaderCell label="Setting">Setting</TableHeaderCell>
     </TableRow>
   </TableHeader>
   <TableBody>

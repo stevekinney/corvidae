@@ -227,9 +227,9 @@
                 >
                   <Table.Header>
                     <Table.Row>
-                      <Table.HeaderCell>Check</Table.HeaderCell>
-                      <Table.HeaderCell>Result</Table.HeaderCell>
-                      <Table.HeaderCell>Message</Table.HeaderCell>
+                      <Table.HeaderCell label="Check">Check</Table.HeaderCell>
+                      <Table.HeaderCell label="Result">Result</Table.HeaderCell>
+                      <Table.HeaderCell label="Message">Message</Table.HeaderCell>
                     </Table.Row>
                   </Table.Header>
                   <Table.Body>
