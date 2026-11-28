@@ -69,7 +69,7 @@
       />
     </div>
     <div>
-      <Link href="/settings/connected-apps" variant="more"
+      <Link href="/settings/connected-apps" variant="more" data-velveteen-reload
         >{SETTINGS_SECTION_COPY.connectedApps}</Link
       >
     </div>
