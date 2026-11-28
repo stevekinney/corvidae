@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "navigation",
   "status": "stable",
   "purpose": "Tablist container inside a tabs composite that wraps tab triggers and exposes the ARIA tablist role with orientation metadata.",

@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "layout",
   "status": "stable",
   "purpose": "Page-level heading with named title, description, breadcrumb, and action regions, as a default header, a large title that collapses on scroll, or a full-bleed hero band.",

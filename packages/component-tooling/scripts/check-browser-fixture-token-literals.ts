@@ -294,7 +294,7 @@ export async function checkBrowserFixtureLiterals({
       );
     } else {
       process.stdout.write(
-        'Fixture token baseline can shrink. Run: bun internal/component-tooling/scripts/check-design-token-literals.ts --browser-fixtures --update-baseline\n',
+        'Fixture token baseline can shrink. Run: bun packages/component-tooling/scripts/check-design-token-literals.ts --browser-fixtures --update-baseline\n',
       );
       if (strict) process.exitCode = 1;
       return;
@@ -304,3 +304,5 @@ export async function checkBrowserFixtureLiterals({
     `Browser fixture token literals — OK (${currentCount} existing declarations).\n`,
   );
 }
+
+if (import.meta.main) await checkBrowserFixtureLiterals({ strict: true });

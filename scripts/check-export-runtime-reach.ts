@@ -20,6 +20,13 @@ const NODE_REPORT_BUILTINS = new Set(
 const TEST_PATH =
   /\/(?:src\/(?:test|testing)|__fixtures__)\/|(?:\.test-support|-test-fixture)\.[^/]+$/;
 
+/**
+ * An export subpath under `./scripts/` or `./test/` is a tooling entry point: a repository script
+ * or test helper reached by `bun` and test runners only. It is no runtime surface to protect, so
+ * the probe does not bundle it. Only `component-tooling` exports such subpaths.
+ */
+const TOOLING_ENTRY_POINT = /^\.\/(?:scripts|test)\//;
+
 export interface ExportRuntimeReachFinding {
   package: string;
   subpath: string;
@@ -211,7 +218,12 @@ export async function scanExportRuntimeReachReport(root = ROOT): Promise<ExportR
   const nodeFindings: ExportRuntimeReachFinding[] = [];
   for (const workspace of allWorkspaces)
     for (const [subpath, source] of Object.entries(workspace.exports)) {
-      if (!subpath.includes('*') && !source.endsWith('.json') && !source.endsWith('.css')) {
+      if (
+        !subpath.includes('*') &&
+        !TOOLING_ENTRY_POINT.test(subpath) &&
+        !source.endsWith('.json') &&
+        !source.endsWith('.css')
+      ) {
         const report = await findingsForExport(root, workspace, subpath, source, paths);
         findings.push(...report.findings);
         nodeFindings.push(...report.nodeFindings);

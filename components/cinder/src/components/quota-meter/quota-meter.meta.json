@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "data-display",
   "status": "beta",
   "purpose": "Meter composition for quota usage with reset and unlimited states.",

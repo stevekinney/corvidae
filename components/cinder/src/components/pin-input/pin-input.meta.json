@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "form",
   "status": "stable",
   "purpose": "Segmented one-time-code input with auto-advance, paste distribution, and masking support for entering short security codes.",

@@ -4,8 +4,8 @@
  * tags after merging `main` runs it once and commits the result.
  *
  * ```sh
- * bun internal/component-tooling/scripts/convert-component-metadata.ts           # convert
- * bun internal/component-tooling/scripts/convert-component-metadata.ts --check   # exit 1 if anything is left
+ * bun packages/component-tooling/scripts/convert-component-metadata.ts           # convert
+ * bun packages/component-tooling/scripts/convert-component-metadata.ts --check   # exit 1 if anything is left
  * ```
  *
  * For cinder, chat, editor and terminal it:
@@ -18,7 +18,7 @@
  *    `applications/playground/src/shell-app/compound-families.ts` still exists;
  * 3. deletes each `<name>.constraints.ts` whose authored `<name>.constraints.json` exists, and
  *    points its `<name>.constraints.test.ts` at the JSON;
- * 4. writes `internal/component-tooling/src/schemas/component-meta.schema.json` from `src/manifest.meta.ts`.
+ * 4. writes `packages/component-tooling/src/schemas/component-meta.schema.json` from `src/manifest.meta.ts`.
  *
  * `--check` reports any step with work left, which is what `lint:checks` runs.
  */
@@ -39,7 +39,7 @@ import {
 
 /** The command that converts what `--check` reports. */
 export const CONVERT_COMPONENT_METADATA_COMMAND =
-  'bun internal/component-tooling/scripts/convert-component-metadata.ts';
+  'bun packages/component-tooling/scripts/convert-component-metadata.ts';
 
 const repositoryRoot = join(import.meta.dir, '..', '..', '..');
 const COMPOUND_FAMILIES_PATH = join(

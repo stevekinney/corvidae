@@ -2,8 +2,8 @@
  * Scaffolds a component family package (COR-2079).
  *
  * ```sh
- * bun internal/component-tooling/scripts/create-package.ts <name>                 # components/<name>
- * bun internal/component-tooling/scripts/create-package.ts <name> --root <dir>    # another repository root
+ * bun packages/component-tooling/scripts/create-package.ts <name>                 # components/<name>
+ * bun packages/component-tooling/scripts/create-package.ts <name> --root <dir>    # another repository root
  * ```
  *
  * It writes `components/<name>/package.json` (`@lostgradient/<name>`, with the declaration
@@ -20,7 +20,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 const KEBAB_CASE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
-const TOOLING_SCRIPTS = '../../internal/component-tooling/scripts';
+const TOOLING_SCRIPTS = '../../packages/component-tooling/scripts';
 
 export function packageManifest(name: string): Record<string, unknown> {
   return {

@@ -114,7 +114,7 @@ function newestInput(directory: string, outputs: ReadonlySet<string>): number {
 /** Why the generated files need regenerating, or `undefined` when they are present and fresh. */
 export function cinderGeneratedStaleness(cinder: string): string | undefined {
   const root = resolve(cinder, '..', '..');
-  const tooling = join(root, 'internal/component-tooling');
+  const tooling = join(root, 'packages/component-tooling');
   const outputs = CINDER_GENERATED_OUTPUTS.map((path) => join(cinder, path));
   const missing = outputs.find((path) => !existsSync(path));
   if (missing !== undefined) return `${relative(cinder, missing)} is missing`;

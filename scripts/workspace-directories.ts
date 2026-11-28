@@ -15,7 +15,7 @@ export const workspaceParentDirectories = [
   'components',
   'packages',
   'testing',
-  'internal',
+  'configuration',
   'plugins',
 ] as const;
 

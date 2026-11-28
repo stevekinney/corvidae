@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "overlay",
   "status": "stable",
   "purpose": "Headless portal primitive that moves a subtree into a target element while preserving inline rendering as an explicit opt-out.",

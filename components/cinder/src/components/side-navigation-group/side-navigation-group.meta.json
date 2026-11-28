@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "navigation",
   "status": "stable",
   "purpose": "Collapsible labelled bucket inside side-navigation that groups related side-navigation-item entries under a single heading.",

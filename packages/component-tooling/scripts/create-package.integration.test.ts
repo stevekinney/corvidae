@@ -16,7 +16,7 @@ const repositoryRoot = resolve(import.meta.dirname, '../../..');
 async function temporaryRepository(): Promise<string> {
   const root = mkdtempSync(join(tmpdir(), 'create-package-'));
   mkdirSync(join(root, 'components'));
-  for (const name of ['node_modules', 'scripts', 'internal', 'testing']) {
+  for (const name of ['node_modules', 'scripts', 'configuration', 'packages', 'testing']) {
     symlinkSync(join(repositoryRoot, name), join(root, name), 'dir');
   }
   copyFileSync(join(repositoryRoot, 'package.json'), join(root, 'package.json'));

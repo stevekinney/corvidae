@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "data-display",
   "status": "stable",
   "purpose": "Single key metric with a label, formatted value, and optional change indicator that pairs into a statistic-group dashboard tile.",

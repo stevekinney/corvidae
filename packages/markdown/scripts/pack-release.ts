@@ -59,7 +59,7 @@ try {
   await Bun.write(
     compilerConfiguration,
     JSON.stringify({
-      extends: join(repositoryRoot, 'internal/typescript/library.json'),
+      extends: join(repositoryRoot, 'configuration/typescript/library.json'),
       compilerOptions: {
         noEmit: false,
         declaration: true,

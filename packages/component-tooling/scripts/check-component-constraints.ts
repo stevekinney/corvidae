@@ -33,7 +33,7 @@ import { isObjectRecord } from './validation-utilities.ts';
 
 /** The constraints schema the tooling owns, from a Cinder component directory. */
 export const SCHEMA_REF =
-  '../../../../../internal/component-tooling/src/schemas/constraints.schema.json';
+  '../../../../../packages/component-tooling/src/schemas/constraints.schema.json';
 const VALID_SEVERITIES = new Set<ConstraintSeverity>(['error', 'warning', 'info']);
 const VALID_COMBINATORS = new Set<Combinator>(['exactlyOne', 'anyOf', 'allOf', 'requires']);
 const KEBAB_CASE_PATTERN = /^[a-z][a-z0-9-]*$/;

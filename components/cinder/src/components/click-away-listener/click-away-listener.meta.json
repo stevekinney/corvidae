@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "overlay",
   "status": "beta",
   "purpose": "Headless utility that calls a function when the user clicks or taps outside a subtree.",

@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "data-display",
   "status": "beta",
   "purpose": "A value in monospace, such as an address or an identifier, that breaks after its punctuation when its place is narrow, with a copy control that stays on the value's last line.",

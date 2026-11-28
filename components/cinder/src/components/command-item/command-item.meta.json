@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "action",
   "status": "stable",
   "purpose": "Single selectable row inside a command palette or inline command menu that registers itself with the parent command list.",

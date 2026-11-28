@@ -10,10 +10,10 @@
  * Usage (from a component package, such as `components/cinder`):
  *
  * ```sh
- * bun ../../internal/component-tooling/scripts/css-fingerprint.ts [entry.css …]          # a hash of the ordered flattened CSS
- * bun ../../internal/component-tooling/scripts/css-fingerprint.ts --rules [entry.css …]  # every rule, in cascade order
- * bun ../../internal/component-tooling/scripts/css-fingerprint.ts --rule-multiset […]    # the same lines, sorted
- * bun ../../internal/component-tooling/scripts/css-fingerprint.ts --package-root <dir> … # another checkout's package
+ * bun ../../packages/component-tooling/scripts/css-fingerprint.ts [entry.css …]          # a hash of the ordered flattened CSS
+ * bun ../../packages/component-tooling/scripts/css-fingerprint.ts --rules [entry.css …]  # every rule, in cascade order
+ * bun ../../packages/component-tooling/scripts/css-fingerprint.ts --rule-multiset […]    # the same lines, sorted
+ * bun ../../packages/component-tooling/scripts/css-fingerprint.ts --package-root <dir> … # another checkout's package
  * ```
  *
  * With no entry the command flattens both package entries, `src/styles/all.css` (the full cascade

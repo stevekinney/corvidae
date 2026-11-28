@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "data-display",
   "status": "beta",
   "purpose": "One property row of an inspector: a muted label, a value and a trailing affordance; an editable row opens an inline editor or a popover on activation and commits or cancels from the keyboard.",

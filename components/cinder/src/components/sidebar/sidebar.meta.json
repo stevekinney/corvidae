@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "layout",
   "status": "stable",
   "purpose": "Responsive layout shell that anchors a collapsible column beside main content and swaps to a drawer below a configurable breakpoint.",

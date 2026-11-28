@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "overlay",
   "status": "stable",
   "purpose": "Floating toolbar anchored to a text selection that exposes a comment-on-selection action with an inline composer.",

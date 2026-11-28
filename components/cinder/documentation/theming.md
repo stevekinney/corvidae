@@ -314,9 +314,9 @@ Every `--cinder-*` custom property a component references falls into one of four
 
 Two local audits check component CSS against the override contract. Run them from the Corvidae root with `--strict` to reject regressions from their checked-in baselines.
 
-- **Token-usage audit** ([`check-component-css-token-usage.ts`](../../../internal/component-tooling/scripts/check-component-css-token-usage.ts)) classifies every `var(--cinder-*)` reference into the four categories above and reports any that resolve to nothing — a typo, a stale rename, or an undeclared "looks-like-a-token" name. Those references silently fall back to their inline default, so the component stops tracking the token system without any error. Run `bun internal/component-tooling/scripts/check-component-css-token-usage.ts --strict` for the full inventory.
+- **Token-usage audit** ([`check-component-css-token-usage.ts`](../../../packages/component-tooling/scripts/check-component-css-token-usage.ts)) classifies every `var(--cinder-*)` reference into the four categories above and reports any that resolve to nothing — a typo, a stale rename, or an undeclared "looks-like-a-token" name. Those references silently fall back to their inline default, so the component stops tracking the token system without any error. Run `bun packages/component-tooling/scripts/check-component-css-token-usage.ts --strict` for the full inventory.
 
-- **Raw-color audit** ([`check-component-css-raw-colors.ts`](../../../internal/component-tooling/scripts/check-component-css-raw-colors.ts)) reports raw color values (`#hex`, `rgb()`, `hsl()`, `oklch()`, `light-dark()`) in component CSS — values that don't track token overrides. Not every raw color is debt: a color-domain control (a color picker's hue spectrum) or a structural pattern (a transparency checkerboard) is intrinsic. Mark those intentional sites inline so the audit classifies them correctly:
+- **Raw-color audit** ([`check-component-css-raw-colors.ts`](../../../packages/component-tooling/scripts/check-component-css-raw-colors.ts)) reports raw color values (`#hex`, `rgb()`, `hsl()`, `oklch()`, `light-dark()`) in component CSS — values that don't track token overrides. Not every raw color is debt: a color-domain control (a color picker's hue spectrum) or a structural pattern (a transparency checkerboard) is intrinsic. Mark those intentional sites inline so the audit classifies them correctly:
 
   ```css
   background: linear-gradient(
@@ -326,7 +326,7 @@ Two local audits check component CSS against the override contract. Run them fro
 
   Anything unmarked counts as **migration debt** — a color that should become a token or a shared recipe.
 
-When you fix debt (replace a raw color with a token, rename a stale reference), the baseline shrinks: run `bun internal/component-tooling/scripts/check-component-css-raw-colors.ts --update-baseline` (or `bun internal/component-tooling/scripts/check-component-css-token-usage.ts --update-baseline`) to record the new, lower floor.
+When you fix debt (replace a raw color with a token, rename a stale reference), the baseline shrinks: run `bun packages/component-tooling/scripts/check-component-css-raw-colors.ts --update-baseline` (or `bun packages/component-tooling/scripts/check-component-css-token-usage.ts --update-baseline`) to record the new, lower floor.
 
 ### Proving it at paint time
 

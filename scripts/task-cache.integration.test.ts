@@ -202,7 +202,7 @@ async function createWorkspace(directory: string): Promise<void> {
       name: 'task-cache-regression',
       private: true,
       packageManager: `bun@${Bun.version}`,
-      workspaces: ['packages/*', 'components/*', 'applications/*', 'internal/*'],
+      workspaces: ['packages/*', 'components/*', 'applications/*', 'configuration/*'],
     }),
   );
   // Turbo writes each task's log to `<package>/.turbo/turbo-<task>.log` after the
@@ -213,7 +213,7 @@ async function createWorkspace(directory: string): Promise<void> {
   await Bun.write(join(directory, '.gitignore'), 'node_modules/\n.turbo/\n');
   await Bun.write(join(directory, 'turbo.json'), Bun.file(join(root, 'turbo.json')));
   await Bun.write(
-    join(directory, 'internal/typescript/package.json'),
+    join(directory, 'configuration/typescript/package.json'),
     JSON.stringify({
       name: '@fixture/typescript',
       private: true,
@@ -221,7 +221,7 @@ async function createWorkspace(directory: string): Promise<void> {
     }),
   );
   await Bun.write(
-    join(directory, 'internal/typescript/library.json'),
+    join(directory, 'configuration/typescript/library.json'),
     JSON.stringify({ compilerOptions: { strict: true } }),
   );
   for (const [name, dependency] of [
@@ -264,7 +264,7 @@ const scenario4 = await outcomeOf(async () => {
     const afterComponent = applicationHash(await run(directory, command));
     expect(afterComponent).not.toBe(afterDependency);
     await Bun.write(
-      join(directory, 'internal/typescript/library.json'),
+      join(directory, 'configuration/typescript/library.json'),
       JSON.stringify({ compilerOptions: { strict: true, noImplicitReturns: true } }),
     );
     const afterConfiguration = applicationHash(await run(directory, command));
@@ -710,7 +710,7 @@ test('a test task whose files read generated .metadata waits for a metadata task
       if (!waits) missing.push(`${manifest.name}#${name}`);
     }
   }
-  expect(directories).toContain('internal/component-tooling');
+  expect(directories).toContain('packages/component-tooling');
   expect(missing.toSorted()).toEqual([]);
 });
 

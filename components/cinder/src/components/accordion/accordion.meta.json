@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "data-display",
   "status": "stable",
   "purpose": "Composite root that coordinates a stack of collapsible accordion-item panels with single or multiple expansion.",

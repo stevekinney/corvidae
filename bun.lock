@@ -318,7 +318,7 @@
         "typescript": "catalog:",
       },
     },
-    "internal/component-tooling": {
+    "packages/component-tooling": {
       "name": "@lostgradient/component-tooling",
       "dependencies": {
         "@lostgradient/environmentalist": "catalog:",
@@ -347,7 +347,7 @@
         "oxlint-tsgolint": "catalog:",
       },
     },
-    "internal/typescript": {
+    "configuration/typescript": {
       "name": "@lostgradient/typescript",
     },
     "packages/api-key-settings": {
@@ -1856,7 +1856,7 @@
 
     "@lostgradient/cinder-mcp": ["@lostgradient/cinder-mcp@workspace:packages/cinder-mcp"],
 
-    "@lostgradient/component-tooling": ["@lostgradient/component-tooling@workspace:internal/component-tooling"],
+    "@lostgradient/component-tooling": ["@lostgradient/component-tooling@workspace:packages/component-tooling"],
 
     "@lostgradient/connected-apps": ["@lostgradient/connected-apps@workspace:packages/connected-apps"],
 
@@ -1954,7 +1954,7 @@
 
     "@lostgradient/testing": ["@lostgradient/testing@workspace:testing/testing"],
 
-    "@lostgradient/typescript": ["@lostgradient/typescript@workspace:internal/typescript"],
+    "@lostgradient/typescript": ["@lostgradient/typescript@workspace:configuration/typescript"],
 
     "@lostgradient/velveteen": ["@lostgradient/velveteen@workspace:packages/velveteen"],
 

@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "domain",
   "status": "alpha",
   "purpose": "Render a terminal session's screen, cursor, colors, and scrollback inside Cinder's TerminalFrame, with the selected engine mounted only in the browser.",

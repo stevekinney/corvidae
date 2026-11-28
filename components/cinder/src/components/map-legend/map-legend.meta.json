@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "data-display",
   "status": "beta",
   "purpose": "Key to the marker states of a map, drawn with the same shapes as the markers, and a map attribution that is always rendered, defaulting to the OpenStreetMap and ODbL credit.",

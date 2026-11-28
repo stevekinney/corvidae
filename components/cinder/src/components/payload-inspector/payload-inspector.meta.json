@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "data-display",
   "status": "stable",
   "purpose": "Card for any payload: sentence-case fields by default, a Fields / JSON switch, count and size, one copy action, secret masking, and states from streaming to failed.",

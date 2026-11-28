@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "form",
   "status": "alpha",
   "purpose": "Keyboard-navigable month grid for choosing a calendar date with full styling control and min/max constraints.",

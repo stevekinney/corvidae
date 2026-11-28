@@ -77,7 +77,7 @@ const WORKSPACE_ROOT = resolve(import.meta.dirname, '..', '..', '..');
 const PACKAGES_DIR = join(WORKSPACE_ROOT, 'packages');
 // Corvidae workspaces live in several parent directories, not only `packages/`:
 // the root package.json `workspaces` globs (`applications/*`, `components/*`,
-// `packages/*`, `internal/*`) name them.
+// `packages/*`, `configuration/*`) name them.
 const WORKSPACE_PARENT_DIRS = (
   JSON.parse(readFileSync(join(WORKSPACE_ROOT, 'package.json'), 'utf-8')) as {
     workspaces: string[];

@@ -29,7 +29,7 @@ How each was invoked, how many processes it runs at once and what bounds that, a
 | `applications/playground/scripts/run-linux-lifecycle.ts` | By the playground's isolated tests | Two `docker run` containers, one after the other | Not measured | Test slots, through the test that runs it |
 | `applications/playground/scripts/measure-playground*.ts` | By hand | A Chromium probe and `playwright test` runs, one at a time | Not measured | Neither |
 | `components/terminal/scripts/engine-probe.ts`, `testing/terminal/src/resource-probe.ts` | By hand, for terminal engine research | Headless browsers, one probe at a time | Not measured | Neither |
-| `internal/component-tooling/scripts/memory-canary.ts` | `bun run test:memory-canary` in `components/cinder` | One `bun test --parallel=1` started directly, not through the pool's wrappers | Not measured | Neither |
+| `packages/component-tooling/scripts/memory-canary.ts` | `bun run test:memory-canary` in `components/cinder` | One `bun test --parallel=1` started directly, not through the pool's wrappers | Not measured | Neither |
 | `applications/interborough/scripts/test-installed-release-browser.ts` | The release workflow, on a runner | One headless Chromium against the installed artifact | Not measured | Neither (runs on a CI runner) |
 | `packages/weft` `test:benchmarks`, `packages/ventriloquist/scripts/pty-spawn-stress.ts`, the `test:a2a-tck` scripts of `packages/weft` and `packages/bureau` | By hand | Benchmark subprocesses, PTY stress children, or one external test kit, one run at a time | Not measured | Neither |
 | `scripts/dev-container.ts` | By hand | The whole development container | Not measured | Neither |

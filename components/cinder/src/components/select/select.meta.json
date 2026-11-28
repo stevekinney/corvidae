@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "form",
   "status": "stable",
   "purpose": "Native select control with label, description, and error wiring for picking one value from a short fixed option list.",

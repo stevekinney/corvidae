@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "overlay",
   "status": "stable",
   "purpose": "Horizontal divider with role=\"separator\" that visually segments groups of rows inside a dropdown-menu.",

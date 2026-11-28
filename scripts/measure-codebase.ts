@@ -249,7 +249,7 @@ for (const file of paths) {
     continue;
   }
   const text = buffer.toString('utf8');
-  const workspace = /^(applications|components|packages|internal)\/[^/]+\//.test(file)
+  const workspace = /^(applications|components|packages|configuration)\/[^/]+\//.test(file)
     ? file.split('/').slice(0, 2).join('/')
     : '(root)';
   const digest = createHash('sha256').update(buffer).digest('hex');

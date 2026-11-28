@@ -3,7 +3,7 @@
  *
  * ```sh
  * # from a component package; the barrel path is relative to it
- * bun ../../internal/component-tooling/scripts/export-names.ts src/index.ts  # `runtime`, then `types`
+ * bun ../../packages/component-tooling/scripts/export-names.ts src/index.ts  # `runtime`, then `types`
  * ```
  *
  * Each list is one name per line, sorted, under a `# runtime` or `# types` heading. The names are

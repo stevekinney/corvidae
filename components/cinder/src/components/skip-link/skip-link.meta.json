@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "navigation",
   "status": "stable",
   "purpose": "Visually hidden skip link that moves keyboard focus to a landmark element, letting keyboard and screen reader users bypass repeated navigation.",

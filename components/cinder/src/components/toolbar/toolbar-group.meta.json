@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "action",
   "status": "stable",
   "purpose": "Compound child for Toolbar that clusters related controls inside the roving tabindex boundary.",

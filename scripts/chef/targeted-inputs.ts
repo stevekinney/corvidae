@@ -10,7 +10,7 @@ const E2E_SPEC = /^tests\/e2e\/[\w.-]+\.spec\.ts$/;
  * equal to the manifest's `workspaces`.
  */
 export const WORKSPACE =
-  /^(?:(?:applications|components|packages|plugins|testing|internal)\/[\w.-]+|scripts\/(?:browser-fixtures|groom))$/;
+  /^(?:(?:applications|components|packages|plugins|testing|configuration)\/[\w.-]+|scripts\/(?:browser-fixtures|groom))$/;
 const SAFE_PATH = /^[\w@./-]+$/;
 /**
  * The most characters the `unit_lanes` input takes in one dispatch. GitHub caps all of a dispatch's

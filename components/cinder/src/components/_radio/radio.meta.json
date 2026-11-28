@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../../internal/component-tooling/src/schemas/component-meta.schema.json",
+  "$schema": "../../../../../packages/component-tooling/src/schemas/component-meta.schema.json",
   "category": "form",
   "status": "stable",
   "purpose": "Single radio button that contributes a value, label, and id to a parent radio-group for one-of-many selection.",

@@ -94,7 +94,14 @@ const PACKAGE_PREFIX = 'package:';
 export const commentMarker = 'Groom:';
 
 /** The workspace folders whose packages a `package:` label can name. */
-const workspaceRoots = ['applications', 'components', 'packages', 'plugins', 'internal', 'testing'];
+const workspaceRoots = [
+  'applications',
+  'components',
+  'packages',
+  'plugins',
+  'configuration',
+  'testing',
+];
 
 /** Asks Jev a batch of questions about one issue; a failed call throws. */
 export type Decide = (batch: DecisionBatch) => Promise<DecisionBatchResult>;

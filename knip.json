@@ -397,7 +397,7 @@
       ],
       "project": ["src/**/*.ts!", "!src/**/*.test.ts!"]
     },
-    "internal/*": {
+    "packages/component-tooling": {
       "entry": [
         "**/*.test.ts",
         "**/*.integration.test.ts",

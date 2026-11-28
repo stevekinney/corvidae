@@ -36,7 +36,7 @@ function json(value: unknown): string {
 
 const ROOT_MANIFEST = {
   name: 'fixture-root',
-  workspaces: ['applications/*', 'packages/*', 'internal/*'],
+  workspaces: ['applications/*', 'packages/*', 'configuration/*'],
 };
 
 /**
@@ -69,11 +69,11 @@ const FIXTURE_FILES: Record<string, string> = {
   'packages/unrelated/src/index.ts': 'export {};\n',
   'packages/build-tool/package.json': json({ name: '@fixture/build-tool' }),
   'packages/build-tool/src/index.ts': 'export {};\n',
-  'internal/typescript/package.json': json({
+  'configuration/typescript/package.json': json({
     name: '@fixture/typescript',
     dependencies: { '@fixture/build-tool': 'workspace:*' },
   }),
-  'internal/typescript/base.json': '{}\n',
+  'configuration/typescript/base.json': '{}\n',
   'scripts/outside-the-closure.ts': 'export {};\n',
 };
 
@@ -158,7 +158,7 @@ const touchedPathCases = [
   ['applications/playground/src/page.ts', 1],
   ['packages/direct/src/index.ts', 1],
   ['packages/transitive/src/index.ts', 1],
-  ['internal/typescript/base.json', 1],
+  ['configuration/typescript/base.json', 1],
   ['packages/build-tool/src/index.ts', 1],
   ['packages/direct/src/test-helpers.ts', 1],
   ['bun.lock', 1],
@@ -229,7 +229,7 @@ describe('dependencyClosure', () => {
     const closure = dependencyClosure(readWorkspaces(repository), '@lostgradient/playground');
     expect(closure.map((workspace) => workspace.directory)).toEqual([
       'applications/playground',
-      'internal/typescript',
+      'configuration/typescript',
       'packages/build-tool',
       'packages/direct',
       'packages/transitive',
@@ -244,9 +244,9 @@ describe('dependencyClosure', () => {
       'components/chat',
       'components/cinder',
       'components/editor',
-      'internal/component-tooling',
-      'internal/typescript',
+      'configuration/typescript',
       'packages/armorer',
+      'packages/component-tooling',
       'packages/conversationalist',
       'packages/cryptography',
       'packages/lifecycle',

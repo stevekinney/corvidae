@@ -3,7 +3,7 @@
  * cinder, chat, editor and terminal.
  *
  * The file is validated twice with the same rules: by its `$schema`
- * (`internal/component-tooling/src/schemas/component-meta.schema.json`, built here from the closed
+ * (`packages/component-tooling/src/schemas/component-meta.schema.json`, built here from the closed
  * vocabularies in `src/manifest.meta.ts`) while it is edited, and by {@link parseComponentMeta}
  * when a generator or check reads it. The manifest generator reads the manifest fields, the
  * inventory and prose checks read the guidance, and the playground derives its compound families
@@ -32,7 +32,7 @@ export const COMPONENT_PACKAGE_ROOTS: readonly string[] = [
 /** The schema every `<name>.meta.json` names in its `$schema`. */
 export const COMPONENT_META_SCHEMA_PATH = join(
   cinderRoot,
-  '../../internal/component-tooling/src/schemas/component-meta.schema.json',
+  '../../packages/component-tooling/src/schemas/component-meta.schema.json',
 );
 
 const AVOID_WHEN_REASON_MAX_LENGTH = 140;
@@ -135,7 +135,7 @@ export function buildComponentMetaSchema(): Record<string, unknown> {
     $id: 'component-meta.schema.json',
     title: 'Cinder component metadata',
     description:
-      'Authored metadata for one component, in `<name>.meta.json` beside its `<name>.svelte`. Generated from `internal/component-tooling/src/manifest.meta.ts` by `bun internal/component-tooling/scripts/convert-component-metadata.ts`; do not edit.',
+      'Authored metadata for one component, in `<name>.meta.json` beside its `<name>.svelte`. Generated from `packages/component-tooling/src/manifest.meta.ts` by `bun packages/component-tooling/scripts/convert-component-metadata.ts`; do not edit.',
     type: 'object',
     additionalProperties: false,
     required: [
@@ -425,7 +425,7 @@ export function readComponentMeta(directory: string, id: string): ExtractResult 
       error: {
         componentId: id,
         file,
-        reason: `missing ${relative(dirname(directory), file)}; author it, or move module-script @cinder tags into it with \`bun internal/component-tooling/scripts/convert-component-metadata.ts\``,
+        reason: `missing ${relative(dirname(directory), file)}; author it, or move module-script @cinder tags into it with \`bun packages/component-tooling/scripts/convert-component-metadata.ts\``,
       },
     };
   }
